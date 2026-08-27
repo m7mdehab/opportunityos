@@ -33,22 +33,34 @@ class Health:
     policy_url: str
 
 
-def robots_allow(url: str, cache: dict[str, bool]) -> bool:
+def robots_allow(url: str, cache: dict[str, str]) -> str:
     parsed = urllib.parse.urlparse(url)
     root = f"{parsed.scheme}://{parsed.netloc}"
     if root not in cache:
-        parser = RobotFileParser(f"{root}/robots.txt")
-        try:
-            parser.read()
-            cache[root] = parser.can_fetch(USER_AGENT, url)
-        except (OSError, urllib.error.URLError):
-            cache[root] = False
+        robots_url = f"{root}/robots.txt"
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(urllib.request.Request(robots_url, headers={"User-Agent": USER_AGENT}), timeout=15) as response:
+                    parser = RobotFileParser()
+                    parser.parse(response.read().decode("utf-8", errors="replace").splitlines())
+                    cache[root] = "allowed" if parser.can_fetch(USER_AGENT, url) else "disallowed_by_robots"
+                    break
+            except urllib.error.HTTPError as error:
+                if error.code == 404:
+                    cache[root] = "allowed"
+                    break
+                cache[root] = "robots_unreachable"
+            except (OSError, urllib.error.URLError, TimeoutError):
+                cache[root] = "robots_unreachable"
+            if attempt < 2:
+                time.sleep(2 ** attempt)
     return cache[root]
 
 
-def fetch(source: Source, out_dir: Path, robots: dict[str, bool]) -> tuple[list[Record], Health]:
-    if not robots_allow(source.url, robots):
-        return [], Health(source.source_id, source.track, "blocked_robots", "robots.txt unavailable or disallows the truthful client", 0, 0, source.policy_url)
+def fetch(source: Source, out_dir: Path, robots: dict[str, str]) -> tuple[list[Record], Health]:
+    robots_status = robots_allow(source.url, robots)
+    if robots_status != "allowed":
+        return [], Health(source.source_id, source.track, robots_status, "robots.txt disallowed access" if robots_status == "disallowed_by_robots" else "robots.txt could not be read after three attempts", 0, 0, source.policy_url)
     started = time.monotonic()
     request = urllib.request.Request(source.url, headers={"User-Agent": USER_AGENT, "Accept": "application/json, application/rss+xml, text/html;q=0.9"})
     try:
@@ -69,7 +81,9 @@ def fetch(source: Source, out_dir: Path, robots: dict[str, bool]) -> tuple[list[
             for record in source.parser(payload, str(fixture.relative_to(out_dir)))]
     except (ValueError, KeyError, json.JSONDecodeError, Exception) as error:
         return [], Health(source.source_id, source.track, "parse_error", str(error), latency, 0, source.policy_url)
-    return records, Health(source.source_id, source.track, f"http_{status}", "parseable response", latency, len(records), source.policy_url)
+    if not records:
+        return [], Health(source.source_id, source.track, "parse_empty", "HTTP 200 parsed zero records", latency, 0, source.policy_url)
+    return records, Health(source.source_id, source.track, "allowed_ok", "HTTP 200 parsed records", latency, len(records), source.policy_url)
 
 
 def yaml_quote(value: str) -> str:
@@ -114,7 +128,7 @@ def write_evidence(path: Path, all_records: list[Record], unique: list[Record], 
     for source in families:
         members = [item.source for item in health if family(item.source) == source]
         lines.append(f"| {source} | {sum(by_source[item].raw_count for item in members)} | {sum(eligible.get(item, 0) for item in members)} | {sum(individuals.get(item, 0) for item in members)} |")
-    lines.extend(["", f"2. **Unique records after deduplication:** {len(unique)}; **duplicate rate:** {(duplicate_count / len(all_records) * 100) if all_records else 0:.1f}%.", f"3. **Cross-source overlap:** {overlaps} fingerprints appeared on more than one source.", f"4. **Egypt-eligible:** {total_eligible}/{len(unique)} ({rate:.1f}%). Per-source counts are in the table above.", f"5. **Unclear percentage:** {unclear_rate:.1f}% ({unclear_geography}/{len(unique)}) stated no geography at all.", "6. **Individual-eligible count:** per-source counts are in the table above.", "", "## Source health", "", "| Source | Status | Latency ms | Records | Detail |", "|---|---|---:|---:|---|"])
+    lines.extend(["", f"2. **Unique records after deduplication:** {len(unique)}; **duplicate rate:** {(duplicate_count / len(all_records) * 100) if all_records else 0:.1f}%.", f"3. **Cross-source overlap:** {overlaps} fingerprints appeared on more than one source.", "4. **Egypt-eligible percentage:** withheld pending the mandatory precision audit.", f"5. **Unclear percentage:** {unclear_rate:.1f}% ({unclear_geography}/{len(unique)}) stated no geography at all.", "6. **Individual-eligible count:** per-source counts are in the table above.", "", "## Source health", "", "| Source | Status | Latency ms | Records | Detail |", "|---|---|---:|---:|---|"])
     for item in health:
         lines.append(f"| {item.source} | {item.status} | {item.latency_ms} | {item.raw_count} | {item.detail.replace('|', '/')} |")
     lines.extend(["", "## ATS company watchlist", "", ", ".join(ATS_WATCHLIST), "", "The list contains 27 remote-friendly organizations selected for plausibility across data engineering, data science, analytics, and AI engineering. Each was probed only through the named public ATS endpoint; an absent board is recorded as an observed shortfall, not inferred as no hiring.", "", "## Scope and policy", "", "Only unauthenticated HTTP GET requests were made with the truthful `OpportunityOS-SourceRecon/1.1` user agent after a robots.txt check. No accounts, credentials, writes, submissions, retries after a block, or listing fetches from the 16 deliberately skipped platforms were used. Raw responses and normalized rows remain only under ignored `out/`; this report publishes aggregate measurements, not source corpus content.", "", "## What this changes about the plan", "", "This is a one-pass availability measurement, not a validation of the 37-source Phase 1 build-out or the regional-eligibility moat. The measured eligible share and the number of policy-blocked or unreadable routes should determine whether to build any adapter next. It contradicts any assumption that all 37 source families should be implemented before their permitted access and Egypt eligibility are measured."])
@@ -127,7 +141,7 @@ def main() -> None:
     parser.add_argument("--docs", type=Path, default=Path("docs"))
     args = parser.parse_args()
     args.out.mkdir(exist_ok=True)
-    robots: dict[str, bool] = {}
+    robots: dict[str, str] = {}
     health: list[Health] = []
     records: list[Record] = []
     for source in (*EMPLOYMENT_SOURCES, *INDEPENDENT_SOURCES, *ats_sources()):

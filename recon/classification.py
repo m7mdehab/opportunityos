@@ -6,48 +6,61 @@ import re
 from recon.models import Classification, Record
 
 
-def _text(record: Record) -> str:
-    return " ".join((record.title, record.location_text, record.description)).lower()
+RESTRICTIONS = (
+    r"\b(?:must (?:be )?(?:authorized|eligible)|(?:work )?authorization (?:is )?required|right to work)\b[^.]{0,50}\b(?:united states|u\.?s\.?|usa|canada|canadian)\b",
+    r"\b(?:united states|u\.?s\.?|usa|canada|canadian)\b[^.]{0,35}\b(?:work )?(?:authorization|residen\w*|citizen\w*)\b",
+    r"\b(?:must be |applicants must be |candidates must )(?:based|located|resident|reside|live) (?:in )?(?:the )?(?:united states|u\.?s\.?|usa|canada|australia|germany|france|japan|brazil|india|uk|united kingdom)\b",
+    r"\b(?:based|located|resident|reside|live) in (?:france|japan|brazil|germany|australia)\b",
+    r"\b(?:australian|canadian|german|french|japanese|brazilian) residents? only\b",
+    r"\b(?:us|u\.?s\.?|usa|united states|canada|eu|india|latam)\s*(?:-| )?only\b",
+    r"\b(?:us|u\.?s\.?|usa)[ -]based\b",
+    r"\b(?:green card|citizenship|citizen(?:ship)?|right to work)\b",
+    r"\b(?:no visa sponsorship|sponsorship is not available|no sponsorship available)\b",
+    r"\beligible countries\s*:\s*(?![^.]*\begypt\b)[^.]+",
+)
+ELIGIBLE = (
+    r"\b(?:egypt|egyptian|mena|middle east(?: and north africa)?|emea|africa)\b",
+    r"\b(?:worldwide|anywhere(?: in the world)?|global|work from anywhere|any country)\b",
+    r"\bremote\s*[-(]\s*(?:global|worldwide)\b",
+)
+
+
+def _combined(record: Record) -> str:
+    return " ".join((record.title, record.location_text, record.description))
+
+
+def _match(patterns: tuple[str, ...], text: str) -> str | None:
+    for pattern in patterns:
+        found = re.search(pattern, text, re.IGNORECASE)
+        if found:
+            return found.group(0)
+    return None
 
 
 def classify(record: Record) -> Classification:
-    """Classify one record without I/O, configuration, fixtures, or network access."""
-    text = _text(record)
-    excluded = (
-        (r"\b(us|u\.s\.|united states) (work )?(authorization|residen|citizen)", "US work authorization or residence required"),
-        (r"\bmust be (based|located|resident) in (the )?(us|u\.s\.|united states)\b", "US-only residence requirement"),
-        (r"\b(canada|canadian) (work )?(authorization|residen|citizen)", "Canada work authorization or residence required"),
-        (r"\bmust be (based|located|resident) in (canada|australia|uk|united kingdom)\b", "country-only residence requirement"),
-        (r"\b(no visa sponsorship|sponsorship is not available)\b", "no sponsorship stated"),
-    )
-    for pattern, reason in excluded:
-        if re.search(pattern, text):
-            return Classification("excluded", reason, *_individual(text, record.track))
-
-    if re.search(r"\b(egypt|egyptian)\b", text):
-        return Classification("eligible", "Egypt explicitly included", *_individual(text, record.track))
-    if re.search(r"\b(mena|middle east and north africa)\b", text):
-        return Classification("eligible", "MENA explicitly included", *_individual(text, record.track))
-    if re.search(r"\b(emea|europe,? middle east (and|&) africa)\b", text):
-        return Classification("eligible", "EMEA explicitly included", *_individual(text, record.track))
-    if re.search(r"\b(worldwide|work from anywhere|anywhere in the world|global remote)\b", text):
-        return Classification("eligible", "worldwide eligibility stated", *_individual(text, record.track))
-    if re.search(r"\bremote\b", text):
-        return Classification("unclear", "remote stated without an eligible geography", *_individual(text, record.track))
-    return Classification("unclear", "no geography stated", *_individual(text, record.track))
+    """Return a deterministic result with the actual matched signal or restriction."""
+    text = _combined(record)
+    restriction = _match(RESTRICTIONS, text)
+    individual, individual_reason = _individual(text, record.track)
+    if restriction:
+        return Classification("excluded", restriction, individual, individual_reason)
+    eligible = _match(ELIGIBLE, record.location_text)
+    if not eligible:
+        eligible = _match((ELIGIBLE[0].replace("|emea|", "|"), *ELIGIBLE[1:]), record.description)
+    if eligible:
+        return Classification("eligible", eligible, individual, individual_reason)
+    if re.search(r"\bremote\b", text, re.IGNORECASE):
+        return Classification("unclear", "remote without an eligibility geography", individual, individual_reason)
+    return Classification("unclear", "no geography signal", individual, individual_reason)
 
 
 def _individual(text: str, track: str) -> tuple[str, str]:
     if track != "independent":
         return "unclear", "not an independent-track record"
-    entity_patterns = (
-        r"\b(registered (company|legal entity|vendor|supplier)|incorporated (company|entity))\b",
-        r"\b(company registration|commercial registration|trade license)\b",
-        r"\b(minimum annual turnover|bid bond|performance bond)\b",
-        r"\b(only (companies|firms|organizations)|legal entities only)\b",
-    )
-    if any(re.search(pattern, text) for pattern in entity_patterns):
-        return "entity_required", "legal-entity, registration, turnover, or bond requirement stated"
-    if re.search(r"\b(individual consultant|individual contractor|sole consultant|natural person)\b", text):
-        return "individual_ok", "individual participation explicitly stated"
-    return "unclear", "individual or entity requirement not stated"
+    entity = _match((r"\b(?:commercial registration|registered (?:company|legal entit\w*)|legal entities only|bid bond|minimum annual turnover)\b",), text)
+    if entity:
+        return "entity_required", entity
+    individual = _match((r"\b(?:individual consultants?|individual contractors?|natural persons?)\b",), text)
+    if individual:
+        return "individual_ok", individual
+    return "unclear", "no individual or entity signal"

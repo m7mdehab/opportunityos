@@ -1,47 +1,49 @@
 # REPORT-001 — Source Reconnaissance
 
 **Date:** 2026-08-27
-**Version:** 1.1
+**Version:** 1.2
+**Codex CLI:** `0.150.0-alpha.8`
 
 ## Scope completed
 
-- Added the read-only `recon/` harness with one flat record contract, 14 public-source families, a 27-company ATS watchlist, deterministic classification, and fingerprint deduplication.
-- Added network-free synthetic tests for Egypt inclusion, remote ambiguity, individual/entity signals, and the required Anywhere-plus-US-work-authorization exclusion.
-- Ran the permitted GET-only measurement, generated the aggregate evidence and source registry, and retained raw third-party payloads and CSV rows only in ignored `out/`.
-- Added `recon/**` to the mirrored boundary. `out/**` is ignored and was not committed or mirrored.
+- **Mechanic:** replaced the implementation-fitting tests with the fixed 20/12/4/7 classifier corpus and 15 generalization cases; no mandated case changed.
+- **Builder:** made restrictions win over eligibility signals and split robots into `allowed`, `disallowed_by_robots`, and three-attempt `robots_unreachable` states.
+- **Scout:** re-ran permitted public GET endpoints and identified the TED POST hard gate plus unverified Lever/Ashby watchlist tokens.
+- **Architect:** installed the mirrored routing roster, revised the brief, and verified this report's acceptance claims.
 
 ## Test evidence
 
-- `python -m unittest recon.test_classification -v` passed all five synthetic tests without network or fixtures.
-- The final run fetched 2,161 raw records, wrote 1,829 deduplicated CSV rows, and classified every row with eligibility and individual-eligibility reasons.
-- The run produced 12 raw fixtures for 12 HTTP 200 responses; all 16 prohibited platforms have registry entries marked deliberately not fetched.
-- `python scripts/check_repository.py`, `python scripts/check_guard.py`, and `python scripts/check_mirror.py` passed. PR #23 and main each ran State, Guard, and Mirror successfully; the post-Mirror Heartbeat reported `HEALTHY` and current at `20430d0`.
+- All 43 mandated classifier cases and all 15 additional cases pass. Every verdict contains its matched restriction, eligibility signal, or explicit no-signal reason.
+- The corrected run fetched 2,465 raw records and wrote 2,109 unique records. Twelve of fourteen source families reached HTTP; six independent families reached HTTP; Jobicy and Ashby were the only two family-level `robots_unreachable` outcomes.
+- `parse_empty` now identifies Freelancer, Etimad, and the empty HubSpot board. HTTP 403/404/405 responses remain explicit source-health outcomes.
 
 ## Failures and known limitations
 
-- Only Remote OK and the Greenhouse watchlist yielded normalized employment records. Himalayas, Jobicy, Remotive, We Work Remotely, UNGM, World Bank, AfDB, and Ashby were stopped by the robots gate; TED returned HTTP 405 because its Search API does not permit GET; the selected Lever boards returned HTTP 404.
-- Freelancer and Etimad returned HTTP 200 but no records through the conservative parsers. No independent record was classified individual-eligible in this pass.
-- The 22.9% Egypt-eligible figure is a deterministic first measurement, not a validated market estimate or a claim of availability beyond this run date.
+- **v1.1 is retracted:** its 419 (22.9%) result included seven unmeasured families and a classifier that could call US- or Germany-restricted postings eligible.
+- The mandatory 30/30/30 raw-text adjudication has not yet been performed, so the corrected eligibility percentage is withheld. The mandatory per-source rate and eligible-precision gate are not met.
+- ATS board tokens remain unverified and TED's required POST method conflicts with the carried-forward no-external-write rule. This is a hard gate, not a reason to bypass it.
+- Global `~/.codex/config.toml` was not changed because its existing `gpt-5.6-sol` / `medium` defaults conflict with Addendum A's Luna / high values.
 
-## Outcome evidence
+## Routing and escalation
 
-- `docs/SOURCE_EVIDENCE.md` records 419 Egypt-eligible records out of 1,829 unique records (22.9%), 15.4% duplicates, zero cross-source overlaps, and 58.8% with no stated geography.
-- The source registry records the observed status and disables all future prepare/submit actions; no account, credential, write request, submission, or listing fetch from a prohibited platform occurred.
+- Work followed BRIEF-001 §11 locally; no cloud task or Ultra-mode run was used.
+- One escalation occurred: `mechanic` to `builder` after G03–G05 and G10 failed. Trigger: pattern-only changes could not distinguish location eligibility from incidental “EMEA hours”; the structural location-versus-description rule fixed all cases.
 
 ## What this changes about the plan
 
-The evidence contradicts a plan to build all 37 Phase 1 adapters before proving permitted access and Egypt eligibility. The regional-eligibility moat remains a hypothesis: the first pass shows useful signal in Greenhouse and Remote OK, but broad source coverage is not yet demonstrated and independent individual-eligible supply is unmeasured. Any next adapter must first pass a source-specific permission and parser review.
+The v1.2 run still cannot support §16.2's 37-adapter rollout or §41's regional-eligibility moat hypothesis. It demonstrates that several previously unmeasured endpoints are reachable, but it does not yet establish Egypt eligibility or individual-track supply at the required precision.
 
 ## Decision
 
-PASS
+FAIL / remain in phase
 
-All BRIEF-001 v1.1 acceptance criteria pass. The evidence is suitable for founder review and BRIEF-002 selection.
+BRIEF-001 v1.2 must remain active until the mandatory adjudication and verified ATS/source-method work complete. No eligibility percentage is published as a measurement.
 
 ## Deferred acceptance items
 
-- None.
+- A 30/30/30 manual audit, precision calculation, disagreement strings, and stable ignored adjudication set.
+- Verified ATS tokens and a policy-resolved TED retrieval method.
 
 ## Next phase prerequisites
 
-- Review `docs/SOURCE_EVIDENCE.md` and select the limited, policy-reviewed source families for BRIEF-002; do not infer permission from coverage.
+- Complete the v1.2 audit and source-token gates; do not advance to BRIEF-002.

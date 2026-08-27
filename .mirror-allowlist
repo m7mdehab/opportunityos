@@ -2,6 +2,7 @@ docs/**
 briefs/**
 reports/**
 AGENTS.md
+.codex/**
 scripts/**
 recon/**
 .github/workflows/**

@@ -2,33 +2,57 @@
 # OpportunityOS State
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
-Last shipped: BRIEF-001 — 2026-08-27.
-Active work: none.
-Phase status: passed.
-Blocked: Only Remote OK and the Greenhouse watchlist yielded normalized employment records. Himalayas, Jobicy, Remotive, We Work Remotely, UNGM, World Bank, AfDB, and Ashby were stopped by the robots gate; TED returned HTTP 405 because its Search API does not permit GET; the selected Lever boards returned HTTP 404..
-Next: Review `docs/SOURCE_EVIDENCE.md` and select the limited, policy-reviewed source families for BRIEF-002; do not infer permission from coverage..
+Last shipped: BRIEF-000 — 2026-08-27.
+Active work: BRIEF-001.
+Phase status: failed — remain in phase.
+Blocked: **v1.1 is retracted:** its 419 (22.9%) result included seven unmeasured families and a classifier that could call US- or Germany-restricted postings eligible..
+Next: Complete the v1.2 audit and source-token gates; do not advance to BRIEF-002..
 
 ## Repository
 
-- **Generated:** 2026-08-27T16:28:04Z
+- **Generated:** 2026-08-27T18:26:46Z
 - **State generated at commit:** `85f72e1` — docs: report BRIEF-001 source reconnaissance
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
 
-- **Brief:** none
-- **Phase status:** passed
-- **Open acceptance items:** 0
-- None
+- **Brief:** BRIEF-001
+- **Phase status:** failed — remain in phase
+- **Open acceptance items:** 26
+- All 20 cases in §3.1 pass
+- All 12 cases in §3.2 pass
+- All 4 cases in §3.3 pass
+- All 7 cases in §3.4 pass
+- At least 15 generalization cases are added and listed in REPORT-001
+- No mandated case was edited, skipped, or deleted
+- Eligible is impossible when any restriction is present
+- Every verdict records the matched string
+- `robots_allow` returns three states and a 404 is `allowed`
+- `robots_unreachable` retries three times
+- Health vocabulary is closed and uses `parse_empty`
+- TED uses the correct method and every ATS token is verified
+- At least 8 of 14 families and 3 independent families reached HTTP
+- A 30/30/30 sample is adjudicated with per-class precision and disagreement strings
+- Eligible precision is at least 90%, or its percentage is withheld
+- The adjudicated set is stored only under `out/`
+- Per-source eligible rates and inversions are reported
+- REPORT-001 explicitly retracts the v1.1 419 figure and reason
+- STATE is regenerated; workflows green; mirror HEALTHY; `out/` absent
+- `.codex/agents/` contains five pinned roster files
+- `.codex/**` is allowlisted for mirror review
+- `AGENTS.md` contains Model routing
+- The routing table was followed; escalations and triggers are in REPORT-001
+- REPORT-001 names the producing agent for each major deliverable
+- Codex CLI version (at least 0.147.0) is recorded
+- No cloud task or Ultra-mode run was used
 
 ## Completed Briefs
 
 - BRIEF-000 — 2026-08-27
-- BRIEF-001 — 2026-08-27
 
 ## Last Phase Outcome
 
-- PASS
+- FAIL / remain in phase
 
 ## Decisions
 
@@ -41,21 +65,24 @@ Next: Review `docs/SOURCE_EVIDENCE.md` and select the limited, policy-reviewed s
 
 ## Blocked Items
 
-- Only Remote OK and the Greenhouse watchlist yielded normalized employment records. Himalayas, Jobicy, Remotive, We Work Remotely, UNGM, World Bank, AfDB, and Ashby were stopped by the robots gate; TED returned HTTP 405 because its Search API does not permit GET; the selected Lever boards returned HTTP 404.
-- Freelancer and Etimad returned HTTP 200 but no records through the conservative parsers. No independent record was classified individual-eligible in this pass.
-- The 22.9% Egypt-eligible figure is a deterministic first measurement, not a validated market estimate or a claim of availability beyond this run date.
+- **v1.1 is retracted:** its 419 (22.9%) result included seven unmeasured families and a classifier that could call US- or Germany-restricted postings eligible.
+- The mandatory 30/30/30 raw-text adjudication has not yet been performed, so the corrected eligibility percentage is withheld. The mandatory per-source rate and eligible-precision gate are not met.
+- ATS board tokens remain unverified and TED's required POST method conflicts with the carried-forward no-external-write rule. This is a hard gate, not a reason to bypass it.
+- Global `~/.codex/config.toml` was not changed because its existing `gpt-5.6-sol` / `medium` defaults conflict with Addendum A's Luna / high values.
 
 ## Source Status Counts
 
-- blocked_robots: 16
+- allowed_ok: 14
 - deliberately_not_fetched: 16
-- http_200: 12
+- http_403: 1
 - http_404: 9
 - http_405: 1
 - manual_only: 16
+- parse_empty: 3
 - review_required: 54
+- robots_unreachable: 10
 - unknown_disable_actions: 38
 
 ## Next Prerequisites
 
-- Review `docs/SOURCE_EVIDENCE.md` and select the limited, policy-reviewed source families for BRIEF-002; do not infer permission from coverage.
+- Complete the v1.2 audit and source-token gates; do not advance to BRIEF-002.

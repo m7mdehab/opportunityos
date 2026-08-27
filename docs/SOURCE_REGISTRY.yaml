@@ -19,10 +19,10 @@ sources:
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: blocked_robots
-      detail: "robots.txt unavailable or disallows the truthful client"
-      latency_ms: 0
-      record_count: 0
+      status: allowed_ok
+      detail: "HTTP 200 parsed records"
+      latency_ms: 264
+      record_count: 20
     last_policy_reviewed: 2026-08-27
     policy_evidence:
       - https://himalayas.app/terms
@@ -45,8 +45,8 @@ sources:
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: blocked_robots
-      detail: "robots.txt unavailable or disallows the truthful client"
+      status: robots_unreachable
+      detail: "robots.txt could not be read after three attempts"
       latency_ms: 0
       record_count: 0
     last_policy_reviewed: 2026-08-27
@@ -71,10 +71,10 @@ sources:
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: blocked_robots
-      detail: "robots.txt unavailable or disallows the truthful client"
-      latency_ms: 0
-      record_count: 0
+      status: allowed_ok
+      detail: "HTTP 200 parsed records"
+      latency_ms: 343
+      record_count: 18
     last_policy_reviewed: 2026-08-27
     policy_evidence:
       - https://remotive.com/terms
@@ -92,14 +92,14 @@ sources:
     commercial_use:
       status: review_required
     automation:
-      read: allowed
+      read: disabled
       prepare: disabled
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: http_200
-      detail: "parseable response"
-      latency_ms: 843
+      status: allowed_ok
+      detail: "HTTP 200 parsed records"
+      latency_ms: 1062
       record_count: 99
     last_policy_reviewed: 2026-08-27
     policy_evidence:
@@ -123,10 +123,10 @@ sources:
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: blocked_robots
-      detail: "robots.txt unavailable or disallows the truthful client"
-      latency_ms: 0
-      record_count: 0
+      status: allowed_ok
+      detail: "HTTP 200 parsed records"
+      latency_ms: 969
+      record_count: 89
     last_policy_reviewed: 2026-08-27
     policy_evidence:
       - https://weworkremotely.com/terms-and-conditions
@@ -149,10 +149,10 @@ sources:
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: blocked_robots
-      detail: "robots.txt unavailable or disallows the truthful client"
-      latency_ms: 0
-      record_count: 0
+      status: allowed_ok
+      detail: "HTTP 200 parsed records"
+      latency_ms: 1531
+      record_count: 163
     last_policy_reviewed: 2026-08-27
     policy_evidence:
       - https://www.ungm.org/Public/Terms
@@ -175,10 +175,10 @@ sources:
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: blocked_robots
-      detail: "robots.txt unavailable or disallows the truthful client"
-      latency_ms: 0
-      record_count: 0
+      status: allowed_ok
+      detail: "HTTP 200 parsed records"
+      latency_ms: 219
+      record_count: 7
     last_policy_reviewed: 2026-08-27
     policy_evidence:
       - https://www.worldbank.org/en/about/legal/terms-of-use
@@ -203,7 +203,7 @@ sources:
     observed:
       status: http_405
       detail: "{\"message\":\"Request method 'GET' is not supported\",\"error\":null}"
-      latency_ms: 297
+      latency_ms: 280
       record_count: 0
     last_policy_reviewed: 2026-08-27
     policy_evidence:
@@ -227,9 +227,9 @@ sources:
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: blocked_robots
-      detail: "robots.txt unavailable or disallows the truthful client"
-      latency_ms: 0
+      status: http_403
+      detail: "<!DOCTYPE html><html lang=\"en-US\"><head><title>Just a moment...</title><meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"><meta http-equiv=\"X-UA-Compatible\" content=\"IE=Edge\"><meta name=\"robots\" content=\"noindex,nofollow\"><meta name=\"viewport\" content=\"width=device-width,initial-scal"
+      latency_ms: 172
       record_count: 0
     last_policy_reviewed: 2026-08-27
     policy_evidence:
@@ -248,14 +248,14 @@ sources:
     commercial_use:
       status: review_required
     automation:
-      read: allowed
+      read: disabled
       prepare: disabled
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: http_200
-      detail: "parseable response"
-      latency_ms: 687
+      status: parse_empty
+      detail: "HTTP 200 parsed zero records"
+      latency_ms: 702
       record_count: 0
     last_policy_reviewed: 2026-08-27
     policy_evidence:
@@ -274,14 +274,14 @@ sources:
     commercial_use:
       status: review_required
     automation:
-      read: allowed
+      read: disabled
       prepare: disabled
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: http_200
-      detail: "parseable response"
-      latency_ms: 952
+      status: parse_empty
+      detail: "HTTP 200 parsed zero records"
+      latency_ms: 578
       record_count: 0
     last_policy_reviewed: 2026-08-27
     policy_evidence:
@@ -300,15 +300,15 @@ sources:
     commercial_use:
       status: review_required
     automation:
-      read: allowed
+      read: disabled
       prepare: disabled
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: http_200
-      detail: "parseable response"
-      latency_ms: 1812
-      record_count: 309
+      status: allowed_ok
+      detail: "HTTP 200 parsed records"
+      latency_ms: 2234
+      record_count: 311
     last_policy_reviewed: 2026-08-27
     policy_evidence:
       - https://www.greenhouse.com/terms-of-use
@@ -326,15 +326,15 @@ sources:
     commercial_use:
       status: review_required
     automation:
-      read: allowed
+      read: disabled
       prepare: disabled
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: http_200
-      detail: "parseable response"
-      latency_ms: 2250
-      record_count: 450
+      status: allowed_ok
+      detail: "HTTP 200 parsed records"
+      latency_ms: 2046
+      record_count: 451
     last_policy_reviewed: 2026-08-27
     policy_evidence:
       - https://www.greenhouse.com/terms-of-use
@@ -352,14 +352,14 @@ sources:
     commercial_use:
       status: review_required
     automation:
-      read: allowed
+      read: disabled
       prepare: disabled
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: http_200
-      detail: "parseable response"
-      latency_ms: 609
+      status: allowed_ok
+      detail: "HTTP 200 parsed records"
+      latency_ms: 531
       record_count: 83
     last_policy_reviewed: 2026-08-27
     policy_evidence:
@@ -378,15 +378,15 @@ sources:
     commercial_use:
       status: review_required
     automation:
-      read: allowed
+      read: disabled
       prepare: disabled
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: http_200
-      detail: "parseable response"
-      latency_ms: 735
-      record_count: 159
+      status: allowed_ok
+      detail: "HTTP 200 parsed records"
+      latency_ms: 1562
+      record_count: 160
     last_policy_reviewed: 2026-08-27
     policy_evidence:
       - https://www.greenhouse.com/terms-of-use
@@ -404,15 +404,15 @@ sources:
     commercial_use:
       status: review_required
     automation:
-      read: allowed
+      read: disabled
       prepare: disabled
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: http_200
-      detail: "parseable response"
-      latency_ms: 1265
-      record_count: 160
+      status: allowed_ok
+      detail: "HTTP 200 parsed records"
+      latency_ms: 2968
+      record_count: 161
     last_policy_reviewed: 2026-08-27
     policy_evidence:
       - https://www.greenhouse.com/terms-of-use
@@ -430,14 +430,14 @@ sources:
     commercial_use:
       status: review_required
     automation:
-      read: allowed
+      read: disabled
       prepare: disabled
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: http_200
-      detail: "parseable response"
-      latency_ms: 843
+      status: allowed_ok
+      detail: "HTTP 200 parsed records"
+      latency_ms: 750
       record_count: 182
     last_policy_reviewed: 2026-08-27
     policy_evidence:
@@ -456,13 +456,13 @@ sources:
     commercial_use:
       status: review_required
     automation:
-      read: allowed
+      read: disabled
       prepare: disabled
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: http_200
-      detail: "parseable response"
+      status: parse_empty
+      detail: "HTTP 200 parsed zero records"
       latency_ms: 202
       record_count: 0
     last_policy_reviewed: 2026-08-27
@@ -489,7 +489,7 @@ sources:
     observed:
       status: http_404
       detail: "{\"status\":404,\"error\":\"Job not found\"}"
-      latency_ms: 202
+      latency_ms: 219
       record_count: 0
     last_policy_reviewed: 2026-08-27
     policy_evidence:
@@ -508,15 +508,15 @@ sources:
     commercial_use:
       status: review_required
     automation:
-      read: allowed
+      read: disabled
       prepare: disabled
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: http_200
-      detail: "parseable response"
-      latency_ms: 1702
-      record_count: 578
+      status: allowed_ok
+      detail: "HTTP 200 parsed records"
+      latency_ms: 2000
+      record_count: 577
     last_policy_reviewed: 2026-08-27
     policy_evidence:
       - https://www.greenhouse.com/terms-of-use
@@ -534,15 +534,15 @@ sources:
     commercial_use:
       status: review_required
     automation:
-      read: allowed
+      read: disabled
       prepare: disabled
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: http_200
-      detail: "parseable response"
-      latency_ms: 889
-      record_count: 141
+      status: allowed_ok
+      detail: "HTTP 200 parsed records"
+      latency_ms: 812
+      record_count: 144
     last_policy_reviewed: 2026-08-27
     policy_evidence:
       - https://www.greenhouse.com/terms-of-use
@@ -567,7 +567,7 @@ sources:
     observed:
       status: http_404
       detail: "{\"ok\":false,\"error\":\"Document not found\"}"
-      latency_ms: 875
+      latency_ms: 859
       record_count: 0
     last_policy_reviewed: 2026-08-27
     policy_evidence:
@@ -593,7 +593,7 @@ sources:
     observed:
       status: http_404
       detail: "{\"ok\":false,\"error\":\"Document not found\"}"
-      latency_ms: 4469
+      latency_ms: 858
       record_count: 0
     last_policy_reviewed: 2026-08-27
     policy_evidence:
@@ -619,7 +619,7 @@ sources:
     observed:
       status: http_404
       detail: "{\"ok\":false,\"error\":\"Document not found\"}"
-      latency_ms: 858
+      latency_ms: 860
       record_count: 0
     last_policy_reviewed: 2026-08-27
     policy_evidence:
@@ -645,7 +645,7 @@ sources:
     observed:
       status: http_404
       detail: "{\"ok\":false,\"error\":\"Document not found\"}"
-      latency_ms: 2187
+      latency_ms: 1030
       record_count: 0
     last_policy_reviewed: 2026-08-27
     policy_evidence:
@@ -671,7 +671,7 @@ sources:
     observed:
       status: http_404
       detail: "{\"ok\":false,\"error\":\"Document not found\"}"
-      latency_ms: 875
+      latency_ms: 1187
       record_count: 0
     last_policy_reviewed: 2026-08-27
     policy_evidence:
@@ -697,7 +697,7 @@ sources:
     observed:
       status: http_404
       detail: "{\"ok\":false,\"error\":\"Document not found\"}"
-      latency_ms: 1047
+      latency_ms: 1000
       record_count: 0
     last_policy_reviewed: 2026-08-27
     policy_evidence:
@@ -723,7 +723,7 @@ sources:
     observed:
       status: http_404
       detail: "{\"ok\":false,\"error\":\"Document not found\"}"
-      latency_ms: 875
+      latency_ms: 859
       record_count: 0
     last_policy_reviewed: 2026-08-27
     policy_evidence:
@@ -749,7 +749,7 @@ sources:
     observed:
       status: http_404
       detail: "{\"ok\":false,\"error\":\"Document not found\"}"
-      latency_ms: 875
+      latency_ms: 890
       record_count: 0
     last_policy_reviewed: 2026-08-27
     policy_evidence:
@@ -773,8 +773,8 @@ sources:
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: blocked_robots
-      detail: "robots.txt unavailable or disallows the truthful client"
+      status: robots_unreachable
+      detail: "robots.txt could not be read after three attempts"
       latency_ms: 0
       record_count: 0
     last_policy_reviewed: 2026-08-27
@@ -799,8 +799,8 @@ sources:
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: blocked_robots
-      detail: "robots.txt unavailable or disallows the truthful client"
+      status: robots_unreachable
+      detail: "robots.txt could not be read after three attempts"
       latency_ms: 0
       record_count: 0
     last_policy_reviewed: 2026-08-27
@@ -825,8 +825,8 @@ sources:
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: blocked_robots
-      detail: "robots.txt unavailable or disallows the truthful client"
+      status: robots_unreachable
+      detail: "robots.txt could not be read after three attempts"
       latency_ms: 0
       record_count: 0
     last_policy_reviewed: 2026-08-27
@@ -851,8 +851,8 @@ sources:
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: blocked_robots
-      detail: "robots.txt unavailable or disallows the truthful client"
+      status: robots_unreachable
+      detail: "robots.txt could not be read after three attempts"
       latency_ms: 0
       record_count: 0
     last_policy_reviewed: 2026-08-27
@@ -877,8 +877,8 @@ sources:
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: blocked_robots
-      detail: "robots.txt unavailable or disallows the truthful client"
+      status: robots_unreachable
+      detail: "robots.txt could not be read after three attempts"
       latency_ms: 0
       record_count: 0
     last_policy_reviewed: 2026-08-27
@@ -903,8 +903,8 @@ sources:
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: blocked_robots
-      detail: "robots.txt unavailable or disallows the truthful client"
+      status: robots_unreachable
+      detail: "robots.txt could not be read after three attempts"
       latency_ms: 0
       record_count: 0
     last_policy_reviewed: 2026-08-27
@@ -929,8 +929,8 @@ sources:
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: blocked_robots
-      detail: "robots.txt unavailable or disallows the truthful client"
+      status: robots_unreachable
+      detail: "robots.txt could not be read after three attempts"
       latency_ms: 0
       record_count: 0
     last_policy_reviewed: 2026-08-27
@@ -955,8 +955,8 @@ sources:
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: blocked_robots
-      detail: "robots.txt unavailable or disallows the truthful client"
+      status: robots_unreachable
+      detail: "robots.txt could not be read after three attempts"
       latency_ms: 0
       record_count: 0
     last_policy_reviewed: 2026-08-27
@@ -981,8 +981,8 @@ sources:
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: blocked_robots
-      detail: "robots.txt unavailable or disallows the truthful client"
+      status: robots_unreachable
+      detail: "robots.txt could not be read after three attempts"
       latency_ms: 0
       record_count: 0
     last_policy_reviewed: 2026-08-27
