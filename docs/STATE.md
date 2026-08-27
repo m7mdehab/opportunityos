@@ -10,8 +10,8 @@ Next: Complete the v1.2 audit and source-token gates; do not advance to BRIEF-00
 
 ## Repository
 
-- **Generated:** 2026-08-27T18:26:46Z
-- **State generated at commit:** `85f72e1` — docs: report BRIEF-001 source reconnaissance
+- **Generated:** 2026-08-27T18:27:14Z
+- **State generated at commit:** `9950eb9` — docs: enumerate BRIEF-001 pending criteria
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
