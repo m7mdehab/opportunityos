@@ -1,0 +1,94 @@
+name: Mirror
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 2 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: opportunityos-docs-mirror
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Re-scan exact publish boundary
+        run: python scripts/check_guard.py --mirror-only
+
+      - name: Verify mirror assembly on pull request
+        if: github.event_name == 'pull_request'
+        run: |
+          target="$(mktemp -d)"
+          git -C "$target" init
+          python scripts/sync_mirror.py "$GITHUB_WORKSPACE" "$target" \
+            --source-sha "$(git rev-parse --short HEAD)" \
+            --sync-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Configure mirror deploy key
+        if: github.event_name != 'pull_request'
+        env:
+          MIRROR_DEPLOY_KEY: ${{ secrets.MIRROR_DEPLOY_KEY }}
+        run: |
+          if [ -z "$MIRROR_DEPLOY_KEY" ]; then
+            echo "RULE MIRROR_DEPLOY_KEY FAILED: MIRROR_DEPLOY_KEY is unavailable. REMEDY: restore the write-enabled deploy key secret in the private repository."
+            exit 1
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$MIRROR_DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+      - name: Clone public mirror
+        if: github.event_name != 'pull_request'
+        env:
+          MIRROR_REPOSITORY: ${{ github.repository_owner }}/opportunityos-docs
+        run: git clone "git@github.com:${MIRROR_REPOSITORY}.git" "$RUNNER_TEMP/opportunityos-docs"
+
+      - name: Check nightly drift
+        id: drift
+        if: github.event_name == 'schedule'
+        run: |
+          set +e
+          python scripts/check_mirror.py "$RUNNER_TEMP/opportunityos-docs" --source-sha "$(git rev-parse HEAD)"
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ]; then
+            echo "sync=false" >> "$GITHUB_OUTPUT"
+          elif [ "$code" -eq 2 ]; then
+            echo "sync=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "RULE MIRROR_DRIFT_CHECK FAILED: mirror state could not be inspected. REMEDY: verify public repository availability and deploy-key access."
+            exit "$code"
+          fi
+
+      - name: Assemble clean mirror
+        if: github.event_name != 'pull_request' && (github.event_name != 'schedule' || steps.drift.outputs.sync == 'true')
+        run: |
+          python scripts/sync_mirror.py "$GITHUB_WORKSPACE" "$RUNNER_TEMP/opportunityos-docs" \
+            --source-sha "$(git rev-parse --short HEAD)" \
+            --sync-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Commit and push mirror
+        if: github.event_name != 'pull_request' && (github.event_name != 'schedule' || steps.drift.outputs.sync == 'true')
+        working-directory: ${{ runner.temp }}/opportunityos-docs
+        run: |
+          git config user.name "OpportunityOS Mirror"
+          git config user.email "opportunityos-mirror@users.noreply.github.com"
+          git add --all
+          if git diff --cached --quiet; then
+            echo "Mirror content already matches source."
+            exit 0
+          fi
+          git commit -m "sync: $(git -C "$GITHUB_WORKSPACE" rev-parse --short HEAD)"
+          git push origin HEAD:main

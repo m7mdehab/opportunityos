@@ -1,0 +1,27 @@
+name: State
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  state:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify generated state freshness
+        env:
+          STATE_PRESERVE_TIMESTAMP: "1"
+        run: |
+          python scripts/generate_state.py
+          if ! git diff --exit-code -- docs/STATE.md; then
+            echo "RULE STATE_FRESHNESS FAILED: docs/STATE.md differs from repository facts. REMEDY: run 'python scripts/generate_state.py' and commit docs/STATE.md."
+            exit 1
+          fi
+      - name: Verify report, brief, and ADR integrity
+        run: python scripts/check_repository.py
