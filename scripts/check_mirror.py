@@ -29,10 +29,12 @@ def main() -> None:
     if mirror_path.is_dir():
         checkout = mirror_path.resolve()
         run("git", "fetch", "origin", cwd=checkout)
+        if (checkout / ".git" / "shallow").exists():
+            run("git", "fetch", "--deepen", "100", "origin", cwd=checkout)
     else:
         temporary = tempfile.TemporaryDirectory(prefix="opportunityos-mirror-")
         checkout = Path(temporary.name) / "mirror"
-        cloned = run("git", "clone", "--depth", "1", args.mirror, str(checkout))
+        cloned = run("git", "clone", "--depth", "100", args.mirror, str(checkout))
         if cloned.returncode != 0:
             raise SystemExit(f"RULE MIRROR_FETCH FAILED: {cloned.stderr.strip()}. REMEDY: verify repository access and deploy-key health, then retry.")
 

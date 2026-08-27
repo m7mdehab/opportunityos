@@ -42,6 +42,7 @@
 - Added six-hour and push-triggered `heartbeat.yml`. Its public commits stage exactly `docs/CI_STATUS.md`; the first publication reported HEALTHY.
 - Pushed one deliberate stale-state commit through the documented `--no-verify` hole. `state` failed, heartbeat still completed successfully, and public status reported `CHECKS FAILING`. A normal hook-verified repair restored green checks.
 - Reverted the public mirror ref to a previously boundary-scanned `sync: f67f004` commit. Heartbeat reported `MIRROR STALE`; normal mirror and heartbeat workflow dispatches restored `HEALTHY` at private SHA `f8d55cd`.
+- Updated remote drift reconciliation to deepen its clone so intervening heartbeat-only commits cannot hide the latest `sync:` marker; the remote check then reported current against the final mirror history.
 - Reporting-time private `main` SHA: `f8d55cd`. Reporting-time `docs/CI_STATUS.md` verdict: `HEALTHY`.
 
 ## Failures and known limitations
