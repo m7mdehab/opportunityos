@@ -2,15 +2,15 @@
 # OpportunityOS State
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
-Last shipped: repository foundation not yet reported.
+Last shipped: BRIEF-000 — 2026-08-27.
 Active work: BRIEF-001.
-Blocked: none.
-Next: complete active brief.
+Blocked: GitHub returned HTTP 403 when private `main` branch protection was requested: the personal account must upgrade to GitHub Pro or make the repository public. Making the source public is forbidden, paid spend exceeds the zero-budget cap, and no guard was weakened. PR discipline and green checks exist, but GitHub does not enforce them server-side on this plan..
+Next: Enable branch protection support for the private repository without changing its visibility, then require pull requests and the `state`, `guard`, and `mirror` contexts on `main`..
 
 ## Repository
 
-- **Generated:** 2026-08-27T10:02:57Z
-- **Source HEAD:** `380458f` — test: remove mirrored removal probe
+- **Generated:** 2026-08-27T10:06:00Z
+- **Source HEAD:** `bf59fc6` — docs: report BRIEF-000 phase gate
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -31,11 +31,11 @@ Next: complete active brief.
 
 ## Completed Briefs
 
-- None
+- BRIEF-000 — 2026-08-27
 
 ## Last Phase Outcome
 
-- No phase report yet
+- FAIL / remain in phase
 
 ## Decisions
 
@@ -47,7 +47,8 @@ Next: complete active brief.
 
 ## Blocked Items
 
-- None
+- GitHub returned HTTP 403 when private `main` branch protection was requested: the personal account must upgrade to GitHub Pro or make the repository public. Making the source public is forbidden, paid spend exceeds the zero-budget cap, and no guard was weakened. PR discipline and green checks exist, but GitHub does not enforce them server-side on this plan.
+- The founder-name scanner uses locally inferred common name variants because no canonical founder-name value exists in the supplied project documents. Mirrored content is independently clean of those variants, email addresses, and international phone patterns.
 
 ## Source Status Counts
 
@@ -55,4 +56,5 @@ Next: complete active brief.
 
 ## Next Prerequisites
 
-- Complete the active brief.
+- Enable branch protection support for the private repository without changing its visibility, then require pull requests and the `state`, `guard`, and `mirror` contexts on `main`.
+- After protection is verified, regenerate this report decision and `docs/STATE.md`; BRIEF-001 source reconnaissance can then proceed.
