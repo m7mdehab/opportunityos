@@ -2,42 +2,43 @@
 # OpportunityOS State
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
-Last shipped: BRIEF-000 — 2026-08-27.
-Active work: BRIEF-001.
-Phase status: in progress.
-Blocked: none.
-Next: Begin BRIEF-001 source reconnaissance using the active brief, accepted ADRs, generated state, advisory pre-push hook, and public heartbeat..
+Last shipped: repository foundation not yet reported.
+Active work: BRIEF-000.
+Phase status: failed — remain in phase.
+Blocked: The public mirror boundary currently skips secret-pattern checks when invoked with `--mirror-only`; REPORT-000's PASS is withdrawn until BRIEF-000 v1.4 acceptance completes..
+Next: Complete BRIEF-000 v1.4 acceptance and restore this report to PASS before BRIEF-001 begins..
 
 ## Repository
 
-- **Generated:** 2026-08-27T15:35:27Z
-- **State generated at commit:** `eb2c46b` — fix: reconcile mirror through heartbeat history
+- **Generated:** 2026-08-27T15:46:51Z
+- **State generated at commit:** `857ef1c` — fix: harden mirror publication boundary
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
 
-- **Brief:** BRIEF-001
-- **Phase status:** in progress
-- **Open acceptance items:** 11
-- Repository initializes and `recon/` runs end to end on a clean checkout
-- At least 6 of 8 employment sources returned parseable data, **or** each shortfall has a recorded status code and response body
-- At least 3 of 6 independent sources returned parseable data, **or** each shortfall is recorded the same way
-- A fixture file exists for every source that returned HTTP 200
-- Every fetched or skipped source has a `SOURCE_REGISTRY.yaml` entry
-- The classifier ran over 100% of normalized rows without unhandled errors
-- Every classification verdict carries a stated reason
-- `opportunities.csv` opens cleanly and row count matches the report
-- No credential, token, or secret appears anywhere in the repository
-- All eight required numbers appear in `SOURCE_EVIDENCE.md`
-- No forbidden action in §7 was taken
+- **Brief:** BRIEF-000
+- **Phase status:** failed — remain in phase
+- **Open acceptance items:** 12
+- `check_guard.py --mirror-only` runs secret patterns over mirrored paths
+- A planted fake API key in a mirrored path aborts the mirror sync and nothing is pushed
+- A planted fake API key in a non-mirrored path still fails the full guard
+- `guard.yml` and `state.yml` fire once per push and once per PR, not twice
+- A single failing PR produces one notification per workflow
+- Heartbeat runs on `workflow_run` after Mirror, plus schedule and dispatch
+- Heartbeat and Mirror share the `opportunityos-docs-mirror` concurrency group
+- `mirror.yml`'s push retries on conflict like the heartbeat's does
+- Ten consecutive merges produce no spurious `MIRROR STALE` and no failed run
+- `README.md` and `STATE.md` are scanned before publication
+- `derive_founder_patterns.py` carries the stdout warning comment
+- REPORT-000 returns to PASS only after all of the above
 
 ## Completed Briefs
 
-- BRIEF-000 — 2026-08-27
+- None
 
 ## Last Phase Outcome
 
-- PASS
+- FAIL / remain in phase
 
 ## Decisions
 
@@ -50,7 +51,7 @@ Next: Begin BRIEF-001 source reconnaissance using the active brief, accepted ADR
 
 ## Blocked Items
 
-- None
+- The public mirror boundary currently skips secret-pattern checks when invoked with `--mirror-only`; REPORT-000's PASS is withdrawn until BRIEF-000 v1.4 acceptance completes.
 
 ## Source Status Counts
 
@@ -58,4 +59,4 @@ Next: Begin BRIEF-001 source reconnaissance using the active brief, accepted ADR
 
 ## Next Prerequisites
 
-- Begin BRIEF-001 source reconnaissance using the active brief, accepted ADRs, generated state, advisory pre-push hook, and public heartbeat.
+- Complete BRIEF-000 v1.4 acceptance and restore this report to PASS before BRIEF-001 begins.
