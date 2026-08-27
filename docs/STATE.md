@@ -9,8 +9,8 @@ Next: complete active brief.
 
 ## Repository
 
-- **Generated:** 2026-08-27T09:56:15Z
-- **Source HEAD:** `05f83fe` — chore: establish repository foundation
+- **Generated:** 2026-08-27T10:00:24Z
+- **Source HEAD:** `c736219` — test: add mirrored removal probe
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
