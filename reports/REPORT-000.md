@@ -1,7 +1,7 @@
 # REPORT-000 — Repository Foundation & Assistant Interoperability
 
 **Date:** 2026-08-27
-**Version:** 1.3
+**Version:** 1.4 — remediation in progress
 
 ## Scope completed
 
@@ -47,7 +47,16 @@
 
 ## Failures and known limitations
 
-- None.
+- The public mirror boundary currently skips secret-pattern checks when invoked with `--mirror-only`; REPORT-000's PASS is withdrawn until BRIEF-000 v1.4 acceptance completes.
+
+## v1.4 remediation
+
+- Separated guard path selection from check-family selection. `--mirror-only` now selects allowlisted paths while both secret and PII families run by default; `--checks` independently selects `all`, `secrets`, or `pii`.
+- Added assembled-tree scanning after `sync_mirror.py` generates the mirror README and rewrites STATE, immediately before any public commit.
+- Restricted State and Guard push triggers to `main` while retaining one pull-request trigger.
+- Changed Heartbeat from direct push triggering to post-Mirror `workflow_run`, retained schedule and dispatch, and placed both public writers in the same concurrency group.
+- Added three-attempt conflict-safe rebase/push handling to Mirror and the required warning that founder patterns must never be printed in Actions logs.
+- Local probes confirmed mirrored fake keys fail the boundary, non-mirrored fake keys fail the full guard, and generated README/STATE files fail assembled-tree scanning when planted with a fake key.
 
 ## Residual risks
 
@@ -67,17 +76,29 @@
 - Master Plan §12.9's branch-protection requirement is unachievable on a zero-budget personal GitHub plan with a private repository. The plan should carry accepted ADR-0002's advisory policy and revisit triggers instead of treating paid enforcement as a current gate.
 - The standing delegation rule from BRIEF-000 v1.3 §2.6 now governs every future brief, including briefs authored upstream: executable work stays with the agent unless it falls within the exhaustive exception list.
 - Generated state must be committed after source-changing commits and PRs must use merge commits; rebase or squash rewrites the recorded source SHA and correctly makes the state check red.
+- The implemented mirror boundary scan was narrower than BRIEF-000 v1.1 required because `--mirror-only` skipped credential patterns. Widening the allowlist in v1.3 made the enforcement scripts and workflows reviewable; that public visibility is what allowed the defect and the generated-file scan gap to be found.
 
 ## Decision
 
-PASS
+FAIL / remain in phase
 
-All BRIEF-000 v1.3 acceptance criteria pass. BRIEF-001 source reconnaissance is unblocked.
+BRIEF-000 v1.4 publish-boundary and workflow-ordering remediation is in progress. BRIEF-001 is blocked until this report returns to PASS.
 
 ## Deferred acceptance items
 
-- None.
+- `check_guard.py --mirror-only` runs secret patterns over mirrored paths
+- A planted fake API key in a mirrored path aborts the mirror sync and nothing is pushed
+- A planted fake API key in a non-mirrored path still fails the full guard
+- `guard.yml` and `state.yml` fire once per push and once per PR, not twice
+- A single failing PR produces one notification per workflow
+- Heartbeat runs on `workflow_run` after Mirror, plus schedule and dispatch
+- Heartbeat and Mirror share the `opportunityos-docs-mirror` concurrency group
+- `mirror.yml`'s push retries on conflict like the heartbeat's does
+- Ten consecutive merges produce no spurious `MIRROR STALE` and no failed run
+- `README.md` and `STATE.md` are scanned before publication
+- `derive_founder_patterns.py` carries the stdout warning comment
+- REPORT-000 returns to PASS only after all of the above
 
 ## Next phase prerequisites
 
-- Begin BRIEF-001 source reconnaissance using the active brief, accepted ADRs, generated state, advisory pre-push hook, and public heartbeat.
+- Complete BRIEF-000 v1.4 acceptance and restore this report to PASS before BRIEF-001 begins.

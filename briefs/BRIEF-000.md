@@ -1,274 +1,152 @@
 # BRIEF-000 — Repository Foundation & Assistant Interoperability
 
-**Version:** 1.3 — agent-derived identity; standing delegation rule
-**Project:** OpportunityOS
+**Version:** 1.4 — defects found in review of the v1.3 implementation
 **Issued to:** Master Development Agent (Claude Code)
 **Date:** 27 August 2026
-**Supersedes:** v1.2, which was never executed. Replaces `briefs/BRIEF-000.md`.
-Full v1.1 text remains in git history.
-**Status of phase:** remain in phase. Revise REPORT-000 in place.
+**Supersedes:** v1.3. Replaces `briefs/BRIEF-000.md`.
+**Status of phase:** REPORT-000's PASS is **withdrawn**. Revise it in place to
+`FAIL / remain in phase` until §1 is fixed, then restore the pass.
+
+Reviewed from the public mirror at `c1fd7c3`. The allowlist widening in v1.3
+made this review possible; three of these four defects were invisible before it.
 
 ---
 
-## 0. What is already delivered — do not rebuild
+## 0. Accepted — do not rebuild
 
-Both repositories, the skeleton, `AGENTS.md`, `CLAUDE.md`, the constitution and
-plan copies, templates, `AGENT_PERMISSIONS.yaml`, `SOURCE_REGISTRY.yaml`,
-ADR-0001, the deploy key, `state.yml`, `guard.yml`, `mirror.yml`,
-`generate_state.py`, `check_mirror.py`, `check_guard.py`,
-`check_repository.py`, and the mirror sync chain all passed under v1.1 and are
-accepted. Do not re-create, re-verify, or refactor them except where this brief
-requires a change.
-
----
-
-## 1. Founder prerequisites
-
-**None.**
-
-Every item in this brief is executable by the agent with the access it already
-has. If any step appears to need the founder, re-read §2.6 before surfacing it.
+Everything delivered under v1.1 and v1.3 stands except the four items below.
+The fail-closed check in `check_guard.py:59` is correct. The identity validation
+in `derive_founder_patterns.py:139` is well designed — refusing any pattern set
+that matches existing mirrored content structurally prevents the GitHub-handle
+mistake rather than relying on an instruction. The temporary-directory handling
+is clean. The active-brief fix works. The heartbeat correctly exits zero when
+reporting a bad verdict instead of failing the job.
 
 ---
 
-## 2. Work
+## 1. The publish boundary does not scan for secrets — blocking
 
-Apply in order. **2.2 must complete before 2.3.**
+`check_guard.py:74` gates the entire secret-pattern block behind
+`if not args.mirror_only:`. `mirror.yml:29` runs `check_guard.py --mirror-only`
+as its "Re-scan exact publish boundary" step.
 
-### 2.1 Active-brief logic — blocking
+So the last check before publishing to a public repository does not look for
+private keys, GitHub tokens, OpenAI keys, AWS access keys, connection strings,
+or `.env` files. It checks names and structural PII only.
 
-`generate_state.py` derives the active brief as the highest-numbered brief with
-no matching report. That advanced `STATE.md` to BRIEF-001 while recording
-`Last Phase Outcome: FAIL / remain in phase`. Since `AGENTS.md` tells every
-agent to read `STATE.md` first, the next session starts the wrong phase — the
-exact failure the file exists to prevent.
+This defeats the stated purpose of that step. BRIEF-000 v1.1 §7.3 required the
+re-scan specifically because a leak into a private repository is recoverable and
+a leak into a public mirror is not. It also invalidates a claim in REPORT-000:
+that a bad commit on private `main` still cannot push personal data to the
+mirror. That holds for names. It does not hold for credentials.
 
-Correct rule: the active brief is the **lowest-numbered brief that has not
-passed**. A brief has passed only when a matching report exists **and** its
-Decision section does not contain `FAIL`. The summary line at the top of
-`STATE.md` must agree with the detail section. Add a `Phase status` field
-reading `in progress`, `passed`, or `failed — remain in phase`.
+ADR-0002 makes this reachable rather than theoretical. With CI advisory and
+`--no-verify` documented as a known hole, a credential can land in `docs/` on
+`main` with `guard.yml` red, and `mirror.yml` will then publish it to a public
+repository and into permanent git history.
 
-### 2.2 Founder-name patterns — derived by the agent, stored as a secret
-
-REPORT-000 line 34 records that the name scanner uses locally inferred variants
-because no canonical value exists in the repository. The control reports green
-while not matching the founder's actual name. Fix it without asking him.
-
-**Derive the canonical identity** from sources already available to you, in
-this priority order, taking the first that yields a real value:
-
-1. `gh api user --jq '.name'`
-2. `git config --get user.name` and `git config --get user.email`
-3. `git log --format='%an|%ae' | sort -u` across the private repository
-
-**Expand variants algorithmically.** For an Arabic name this set is large and
-enumerable. Cover at minimum: given-name transliterations
-(Mohammed / Mohamed / Muhammad / Mohamad / Muhammed and equivalents for each
-name element); surname prefix forms (`El-X`, `El X`, `ElX`, `Al-X`, `AlX`,
-bare `X`); full-name orderings; and the email local part. Match
-case-insensitively.
-
-**Validate before storing.** The pattern set must produce **zero** matches
-against current mirrored content, and must match a deliberately planted variant
-in a scratch file. A pattern set that fires on the repository's own
-documentation is unusable and must be narrowed until both conditions hold.
-
-**Store it** with `gh secret set FOUNDER_NAME_PATTERNS --repo <private>`, reading
-from stdin. Never write the value to a tracked file, and scrub any temporary
-file afterwards.
-
-**Guard behaviour.** `check_guard.py` reads the patterns from the environment.
-If the variable is unset in CI, **the guard fails**. A missing secret must never
-degrade to a skip, or the hollow-green problem returns in a new form. Local runs
-without it exit non-zero unless `--allow-missing-patterns` is passed explicitly.
-
-Remove all inferred name variants from `.github/pii-patterns.txt`; that file
-keeps only structural patterns — emails, phone shapes, key shapes, file types.
-
-**Do not include the GitHub handle.** It appears in every repository URL, so
-scanning for it would fail the guard against its own documentation. Record in
-ADR-0001 consequences that the mirror is inherently attributable to the founder
-through the account namespace, and that the PII boundary protects content — CV
-text, applications, tracker data — not attribution.
-
-**Only if all three derivation sources yield nothing** is this a hard gate. Say
-so explicitly in the report and name which sources were tried.
-
-### 2.3 Widen `.mirror-allowlist`
-
-The review could not verify any guard, because the enforcement layer is not
-mirrored. Add:
-
-```text
-scripts/**
-.github/workflows/**
-.github/pii-patterns.txt
-.mirror-allowlist
-```
-
-After 2.2 these contain no personal data. Add nothing else.
-
-### 2.4 Amended branch policy — replaces v1.1 §6.9
-
-Server-enforced branch protection is **withdrawn as a requirement**. GitHub Free
-offers neither protected branches nor rulesets on private repositories, and v1.1
-set a zero-spend cap in the same document. The requirement was contradictory,
-not the implementation.
-
-**`docs/adr/ADR-0002-unenforced-branch-policy.md`**, status `accepted`, recording:
-
-- **Decision:** private `main` is not server-protected; CI is advisory; PR
-  discipline is convention.
-- **Why acceptable now:** two writers, the founder and Claude Code. No external
-  collaborators, no deployment, no users. No adversary in the threat model, only
-  mistakes.
-- **What is lost:** a commit failing `state` or `guard` can land on `main`, and
-  `STATE.md` can go stale unblocked. Quality drift, not data leakage.
-- **What still holds:** `mirror.yml` re-runs the PII scan immediately before
-  publishing, so a bad commit on private `main` still cannot push personal data
-  to the mirror. That redundancy is now load-bearing.
-- **Residual risk owner:** the founder.
-- **Revisit triggers:** a non-founder gains write access; anything deploys
-  serving a person other than the founder; the account moves to a paid GitHub
-  plan for any other reason.
-- **Rejected:** GitHub Pro at roughly four dollars monthly (deferred, not
-  refused); making the source public (rejected under ADR-0001).
-
-**`scripts/install_hooks.sh`** — idempotent, installs a `pre-push` hook running
-the same checks as `state.yml` and `guard.yml` and refusing the push on failure.
-Document in `AGENTS.md` and `README.md`. Bypassable only via explicit
-`--no-verify`; name that hole in ADR-0002.
-
-### 2.5 CI visibility in the mirror — `heartbeat.yml`
-
-A guard failure aborts the sync, so today a broken `main` and a healthy one look
-identical to anyone reading only the mirror. Staleness and failure are
-indistinguishable.
-
-New workflow, scheduled every six hours and on push to `main`, which **always
-runs to completion and never aborts on a failing check**. It writes exactly one
-file to the mirror, `docs/CI_STATUS.md`, containing:
-
-- private `main` short SHA and commit subject
-- UTC timestamp
-- conclusion of the most recent `state`, `guard`, and `mirror` runs for that SHA
-- whether the mirror's last `sync:` SHA equals private `main`
-- a one-line verdict: `HEALTHY`, `CHECKS FAILING`, or `MIRROR STALE`
-
-It publishes that file and nothing else, scans it before pushing, and must not
-be able to publish repository content by any path. `gh api` for check
-conclusions is permitted.
-
-### 2.6 Standing delegation rule — add to `AGENTS.md` and `briefs/TEMPLATE.md`
-
-This is a permanent project rule, not a one-time instruction. Add it verbatim to
-`AGENTS.md` as its own section, and to `briefs/TEMPLATE.md` so every future brief
-inherits it:
-
-> **Delegation rule.** Anything the agent can do, the agent does. Never return a
-> task to the founder that is executable in this environment. Before surfacing
-> any request for founder action, check it against the exception list; if it is
-> not on that list, do it.
->
-> **Exceptions, exhaustive:** interactive authentication requiring the founder's
-> own credentials or a browser OAuth flow; any action requiring payment;
-> accepting terms of service or entering a binding agreement; professional legal
-> or accounting sign-off; and communication with another human being.
->
-> Everything else is the agent's: deriving values, generating configuration,
-> setting secrets, choosing names, installing tooling, writing tests, and making
-> reversible technical decisions. Surfacing an executable task as a founder
-> prerequisite is a defect, and should be reported as one.
-
-### 2.7 State currency fields
-
-`STATE.md` shows `Source HEAD` and `Mirror sync` as different SHAs — correct by
-construction, unreadable in practice. Rename `Source HEAD` to `State generated
-at commit` and let the mirror-sync line be the single currency indicator. Keep
-both values.
-
-### 2.8 Acceptance-item parser
-
-The parser truncates wrapped markdown list items mid-sentence, so `STATE.md`
-misreports open acceptance criteria. Join continuation lines — indented lines
-not beginning a new list item — before recording each item.
+**Fix:** `--mirror-only` must mean *restrict to mirrored paths*, not *skip secret
+checks*. Separate the two concerns — one flag selects the path set, another
+selects which check families run — and run both families over the mirrored path
+set at the boundary. Add an acceptance test that plants a fake key in a mirrored
+path and confirms the sync aborts.
 
 ---
 
-## 3. Scope — out
+## 2. Duplicate workflow runs — the source of the failure emails
 
-Unchanged from v1.1 §8, plus: no refactoring of accepted v1.1 work, no widening
-of the allowlist beyond §2.3, no paid GitHub plan, no new repositories.
+`guard.yml` and `state.yml` both declare a bare `on: push:` with no branch
+filter, alongside `on: pull_request:`. For a pull request from a branch in the
+same repository, both events fire, so each workflow runs twice per push. One
+logical failure produces four notifications.
 
----
-
-## 4. Acceptance criteria
-
-Items verified under v1.1 are checked and must not be re-run.
-
-**Carried forward — accepted**
-- [x] Both repositories exist with correct visibility and structure
-- [x] `AGENTS.md` under 150 lines, directs the reader to `STATE.md` first
-- [x] `CLAUDE.md` line one is `@AGENTS.md`
-- [x] Generated state, guards, mirror sync, deletion propagation, drift
-      detection, and fresh-clone review context all verified
-- [x] ADR-0001 records the real reasoning and rejected alternatives
-
-**Identity and guards**
-- [x] `FOUNDER_NAME_PATTERNS` is set from an agent-derived value with no founder
-      involvement, and the report names the source used
-- [x] The pattern set produces zero matches against current mirrored content
-- [x] The guard matches a planted founder-name variant in a mirrored path
-- [x] `check_guard.py` fails in CI when `FOUNDER_NAME_PATTERNS` is unset
-- [x] `.github/pii-patterns.txt` contains no name variants
-- [x] The secret value appears in no tracked file and no temporary file survives
-
-**Branch policy**
-- [x] ADR-0002 exists, `accepted`, with all fields including the three revisit
-      triggers and the `--no-verify` hole
-- [x] `install_hooks.sh` is idempotent and documented in both files
-- [x] A commit failing the state check is refused by the pre-push hook
-
-**Heartbeat**
-- [x] `docs/CI_STATUS.md` publishes to the mirror
-- [x] With `main` deliberately red, the heartbeat still runs and reports
-      `CHECKS FAILING`
-- [x] With the mirror artificially reverted, it reports `MIRROR STALE`
-- [x] The heartbeat cannot publish any file other than `CI_STATUS.md`
-
-**State and delegation**
-- [x] With REPORT-000 recording FAIL, `STATE.md` reports BRIEF-000 as active
-- [x] Once REPORT-000 passes, `STATE.md` advances to BRIEF-001
-- [x] `Phase status` appears and agrees with the summary line
-- [x] The delegation rule appears verbatim in `AGENTS.md` and `briefs/TEMPLATE.md`
-- [x] The mirror contains `scripts/`, `.github/workflows/`, `pii-patterns.txt`,
-      and `.mirror-allowlist`, and still no personal data
-- [x] `STATE.md` open acceptance items are complete sentences
+**Fix:** `on: push: branches: [main]` plus `pull_request:` on both workflows.
+Confirm in the report that a single failing PR now produces one notification per
+workflow.
 
 ---
 
-## 5. Report
+## 3. Heartbeat and Mirror race each other
 
-Revise `reports/REPORT-000.md` in place. Keep v1.1 test evidence, append a
-remediation section, update the Decision.
+`mirror.yml:14` sets `concurrency: opportunityos-docs-mirror`.
+`heartbeat.yml` has no concurrency block at all. Both trigger on push to `main`
+and both push commits to the same public repository.
 
-In "What this changes about the plan", record two things: that Master Plan §12.9's
-branch-protection requirement is unachievable on a zero-budget personal GitHub
-plan with a private repository and the plan should carry ADR-0002 instead; and
-that the delegation rule in §2.6 now governs every future brief, including
-briefs authored upstream.
+Two consequences, both observable in the mirror history:
 
-Include the private `main` SHA and the `CI_STATUS.md` verdict at reporting time.
+- The heartbeat can read the mirror before `mirror.yml` has synced and report a
+  spurious `MIRROR STALE`. Commit `8b8e6fc` reports `MIRROR STALE` at 15:30
+  alongside `5a598c5 sync: f8d55cd` at the same minute.
+- Both push to the mirror's `main`. The heartbeat retries three times with
+  rebase (`heartbeat.yml:73`). `mirror.yml:98` pushes with **no retry at all**,
+  so when the mirror loses the race the job fails outright and emails.
+
+**Fix:** trigger the heartbeat on `workflow_run` completion of Mirror rather than
+on push, so it always reads a post-sync mirror. Keep the schedule and
+`workflow_dispatch`. Put both workflows in the `opportunityos-docs-mirror`
+concurrency group regardless, and give `mirror.yml`'s push the same
+conflict-safe retry the heartbeat already has.
+
+---
+
+## 4. Generated files reach the mirror unscanned
+
+`sync_mirror.py:77-78` writes `README.md` and rewrites `STATE.md` into the
+destination *after* `mirror.yml:29` has run the boundary scan. Those two files
+are published without being checked.
+
+The heartbeat gets this right — it generates `CI_STATUS.md`, scans it at
+`heartbeat.yml:53`, then publishes. The mirror should match.
+
+**Fix:** move the boundary scan to run against the assembled destination tree
+immediately before commit, or scan the generated files individually after
+assembly. Low risk today since both are template-generated, but it is an
+unscanned publish path and the asymmetry with the heartbeat is the tell.
+
+---
+
+## 5. Note, not a defect
+
+`derive_founder_patterns.py:166` prints the pattern set to stdout. No workflow
+calls it, which is correct. Add a comment saying so: if it is ever run inside
+Actions, the founder's name variants land in a build log.
+
+---
+
+## 6. Acceptance criteria
+
+- [ ] `check_guard.py --mirror-only` runs secret patterns over mirrored paths
+- [ ] A planted fake API key in a mirrored path aborts the mirror sync and
+      nothing is pushed
+- [ ] A planted fake API key in a non-mirrored path still fails the full guard
+- [ ] `guard.yml` and `state.yml` fire once per push and once per PR, not twice
+- [ ] A single failing PR produces one notification per workflow
+- [ ] Heartbeat runs on `workflow_run` after Mirror, plus schedule and dispatch
+- [ ] Heartbeat and Mirror share the `opportunityos-docs-mirror` concurrency group
+- [ ] `mirror.yml`'s push retries on conflict like the heartbeat's does
+- [ ] Ten consecutive merges produce no spurious `MIRROR STALE` and no failed run
+- [ ] `README.md` and `STATE.md` are scanned before publication
+- [ ] `derive_founder_patterns.py` carries the stdout warning comment
+- [ ] REPORT-000 returns to PASS only after all of the above
+
+---
+
+## 7. Report
+
+Revise `reports/REPORT-000.md` in place. Under "What this changes about the
+plan", record that the mirror boundary scan was narrower than the brief that
+required it, and that the widened allowlist is what surfaced it — the review
+that caught this was only possible because `scripts/` and `.github/workflows/`
+became visible in v1.3.
 
 ```yaml
 phase_id: BRIEF-000
-version: 1.3
-objective: remediate REPORT-000 findings; agent-derived identity; delegation rule
+version: 1.4
+objective: fix publish-boundary secret scanning, duplicate runs, mirror race,
+  and unscanned generated files
 founder_prerequisites: none
 final_report_only: true
-council_required: false
 budget_cap: zero external spend
-ordering: 2.2 before 2.3; 2.1 is blocking
-next_brief: BRIEF-001 (source reconnaissance) — unblocked once REPORT-000 passes
+blocking: §1
+next_brief: BRIEF-001 — unblocked once REPORT-000 returns to PASS
 ```

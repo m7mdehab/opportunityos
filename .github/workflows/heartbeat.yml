@@ -1,8 +1,9 @@
 name: Heartbeat
 
 on:
-  push:
-    branches: [main]
+  workflow_run:
+    workflows: [Mirror]
+    types: [completed]
   workflow_dispatch:
   schedule:
     - cron: "17 */6 * * *"
@@ -11,8 +12,13 @@ permissions:
   actions: read
   contents: read
 
+concurrency:
+  group: opportunityos-docs-mirror
+  cancel-in-progress: false
+
 jobs:
   heartbeat:
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.event != 'pull_request')
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
@@ -21,6 +27,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: main
 
       - name: Configure mirror deploy key
         env:

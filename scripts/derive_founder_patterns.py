@@ -163,6 +163,7 @@ def main() -> None:
     patterns, planted = pattern_set(name, email, login)
     if args.validate:
         validate(patterns, planted)
+    # Never invoke this command in GitHub Actions: stdout contains founder-name variants and would persist in build logs.
     print(json.dumps(patterns, separators=(",", ":")))
 
 

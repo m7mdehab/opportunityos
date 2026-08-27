@@ -28,14 +28,11 @@ jobs:
       - name: Re-scan exact publish boundary
         run: python scripts/check_guard.py --mirror-only
 
-      - name: Verify mirror assembly on pull request
+      - name: Prepare mirror checkout on pull request
         if: github.event_name == 'pull_request'
         run: |
-          target="$(mktemp -d)"
-          git -C "$target" init
-          python scripts/sync_mirror.py "$GITHUB_WORKSPACE" "$target" \
-            --source-sha "$(git rev-parse --short HEAD)" \
-            --sync-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          mkdir -p "$RUNNER_TEMP/opportunityos-docs"
+          git -C "$RUNNER_TEMP/opportunityos-docs" init
 
       - name: Configure mirror deploy key
         if: github.event_name != 'pull_request'
@@ -77,11 +74,15 @@ jobs:
           fi
 
       - name: Assemble clean mirror
-        if: github.event_name != 'pull_request' && (github.event_name != 'schedule' || steps.drift.outputs.sync == 'true')
+        if: github.event_name != 'schedule' || steps.drift.outputs.sync == 'true'
         run: |
           python scripts/sync_mirror.py "$GITHUB_WORKSPACE" "$RUNNER_TEMP/opportunityos-docs" \
             --source-sha "$(git rev-parse --short HEAD)" \
             --sync-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Scan assembled publish tree
+        if: github.event_name != 'schedule' || steps.drift.outputs.sync == 'true'
+        run: python scripts/check_guard.py --scan-root "$RUNNER_TEMP/opportunityos-docs"
 
       - name: Commit and push mirror
         if: github.event_name != 'pull_request' && (github.event_name != 'schedule' || steps.drift.outputs.sync == 'true')
@@ -95,4 +96,11 @@ jobs:
             exit 0
           fi
           git commit -m "sync: $(git -C "$GITHUB_WORKSPACE" rev-parse --short HEAD)"
-          git push origin HEAD:main
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            git pull --rebase origin main
+          done
+          echo "RULE MIRROR_PUSH FAILED: guarded mirror content could not be published after three conflict-safe retries. REMEDY: inspect concurrent mirror writes and rerun mirror.yml."
+          exit 1
