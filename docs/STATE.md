@@ -10,23 +10,27 @@ Next: Begin BRIEF-001 source reconnaissance using the active brief, accepted ADR
 
 ## Repository
 
-- **Generated:** 2026-08-27T16:06:27Z
-- **State generated at commit:** `09588d8` — docs: pass BRIEF-000 v1.4 remediation
+- **Generated:** 2026-08-27T16:25:31Z
+- **State generated at commit:** `0d04de0` — feat: add source reconnaissance harness
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
 
 - **Brief:** BRIEF-001
 - **Phase status:** in progress
-- **Open acceptance items:** 11
+- **Open acceptance items:** 15
 - Repository initializes and `recon/` runs end to end on a clean checkout
+- The eligibility classifier is importable and runnable against synthetic records with no network and no fixtures on disk
 - At least 6 of 8 employment sources returned parseable data, **or** each shortfall has a recorded status code and response body
 - At least 3 of 6 independent sources returned parseable data, **or** each shortfall is recorded the same way
 - A fixture file exists for every source that returned HTTP 200
 - Every fetched or skipped source has a `SOURCE_REGISTRY.yaml` entry
+- Every one of the 16 sources in §6 has a documented access route and no fetched listing data
 - The classifier ran over 100% of normalized rows without unhandled errors
 - Every classification verdict carries a stated reason
 - `opportunities.csv` opens cleanly and row count matches the report
+- `out/**` appears in `.gitignore`, is committed to neither repository, and is absent from the mirror
+- `recon/**` is in `.mirror-allowlist` and present in the mirror
 - No credential, token, or secret appears anywhere in the repository
 - All eight required numbers appear in `SOURCE_EVIDENCE.md`
 - No forbidden action in §7 was taken
@@ -54,7 +58,14 @@ Next: Begin BRIEF-001 source reconnaissance using the active brief, accepted ADR
 
 ## Source Status Counts
 
-- No source entries
+- blocked_robots: 16
+- deliberately_not_fetched: 16
+- http_200: 12
+- http_404: 9
+- http_405: 1
+- manual_only: 16
+- review_required: 54
+- unknown_disable_actions: 38
 
 ## Next Prerequisites
 

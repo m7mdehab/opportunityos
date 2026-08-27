@@ -1,5 +1,8 @@
 # BRIEF-001 — Source Reconnaissance
 
+**Version:** 1.1 — updated for the completed BRIEF-000 foundation
+**Supersedes:** BRIEF-001 v1.0. This v1.1 amendment controls wherever it differs below.
+**Predecessor:** BRIEF-000 v1.4, PASS at `c355b8e`.
 **Project:** OpportunityOS
 **Issued to:** Master Development Agent (Claude Code)
 **Issued by:** Founder + Co-owner
@@ -11,6 +14,12 @@
 ---
 
 ## 0. Read this first
+
+Read `docs/STATE.md`, then `AGENTS.md`, then this brief, then accepted ADRs.
+Founder prerequisites are none. Repository bootstrap is complete: do not
+re-create the foundation, templates, workflows, guards, or governing documents.
+The v1.0 bootstrap instruction is withdrawn. This is a reconnaissance-only
+phase; return the final report rather than routine implementation questions.
 
 This is a **reconnaissance brief**, not a build brief. It runs *before* Phase 0
 and its only job is to replace an assumption with a measurement.
@@ -82,7 +91,9 @@ self-unblocking so it can start immediately.
 2. **A reconnaissance harness** under `recon/`. Python, standard library
    preferred, `requests` acceptable. Quality bar is "correct and legible", not
    production. Each source is an independent module behind one shared
-   normalizer signature.
+   normalizer signature. The eligibility classifier must be a pure function of
+   a normalized record, importable and runnable against synthetic records with
+   no network and no fixtures on disk.
 
 3. **Employment sources to fetch** (public, documented, no authentication):
    Himalayas, Jobicy, Remotive, Remote OK, We Work Remotely (RSS),
@@ -146,6 +157,7 @@ absence is a pass condition, not an omission.
 - Background workers, job queues, schedulers, cron
 - Any agent framework, council implementation, or orchestration runtime
 - Any test framework beyond what the harness needs to prove it parses correctly
+- Widening `.mirror-allowlist` beyond `recon/**`
 
 If a decision feels like it needs one of these, it is out of scope. Note it in
 the report under "next prerequisites" and move on.
@@ -194,6 +206,13 @@ a failure.
 ---
 
 ## 8. Required deliverables
+
+### v1.1 mirror and data-handling policy
+
+`recon/**` is added to `.mirror-allowlist` so independent review can execute
+the classifier. `out/**` is gitignored, never committed, and never mirrored:
+it contains third-party listing content. Publish aggregate statistics rather
+than source content whenever measuring would require republishing it.
 
 | Path | Content |
 |---|---|
@@ -265,15 +284,22 @@ report:
 Machine-checkable. The brief passes when all of these hold:
 
 - [ ] Repository initializes and `recon/` runs end to end on a clean checkout
+- [ ] The eligibility classifier is importable and runnable against synthetic
+      records with no network and no fixtures on disk
 - [ ] At least 6 of 8 employment sources returned parseable data, **or** each
       shortfall has a recorded status code and response body
 - [ ] At least 3 of 6 independent sources returned parseable data, **or** each
       shortfall is recorded the same way
 - [ ] A fixture file exists for every source that returned HTTP 200
 - [ ] Every fetched or skipped source has a `SOURCE_REGISTRY.yaml` entry
+- [ ] Every one of the 16 sources in §6 has a documented access route and no
+      fetched listing data
 - [ ] The classifier ran over 100% of normalized rows without unhandled errors
 - [ ] Every classification verdict carries a stated reason
 - [ ] `opportunities.csv` opens cleanly and row count matches the report
+- [ ] `out/**` appears in `.gitignore`, is committed to neither repository, and
+      is absent from the mirror
+- [ ] `recon/**` is in `.mirror-allowlist` and present in the mirror
 - [ ] No credential, token, or secret appears anywhere in the repository
 - [ ] All eight required numbers appear in `SOURCE_EVIDENCE.md`
 - [ ] No forbidden action in §7 was taken

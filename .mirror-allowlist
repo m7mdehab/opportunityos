@@ -3,6 +3,7 @@ briefs/**
 reports/**
 AGENTS.md
 scripts/**
+recon/**
 .github/workflows/**
 .github/pii-patterns.txt
 .mirror-allowlist
