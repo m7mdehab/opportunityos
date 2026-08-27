@@ -10,8 +10,8 @@ Next: Complete BRIEF-000 v1.4 acceptance and restore this report to PASS before 
 
 ## Repository
 
-- **Generated:** 2026-08-27T15:46:51Z
-- **State generated at commit:** `857ef1c` — fix: harden mirror publication boundary
+- **Generated:** 2026-08-27T15:50:18Z
+- **State generated at commit:** `0a50f8a` — test: race merge 01 of 10
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
