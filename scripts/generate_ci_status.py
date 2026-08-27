@@ -65,6 +65,8 @@ def main() -> None:
         time.sleep(10)
         statuses = conclusions(args.repository, args.source_sha)
 
+    run("git", "fetch", "origin", "main", cwd=args.mirror)
+    run("git", "reset", "--hard", "origin/main", cwd=args.mirror)
     mirror_sha = latest_sync(args.mirror)
     mirror_current = args.source_sha.lower().startswith(mirror_sha.lower())
     checks_green = all(statuses[name] == "success" for name in WORKFLOWS)
