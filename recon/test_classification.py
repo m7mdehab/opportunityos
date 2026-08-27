@@ -1,6 +1,7 @@
 import unittest
 
 from recon.classification import classify
+from recon.geography import eligibility_for, extract
 from recon.models import Record
 
 
@@ -44,3 +45,19 @@ class ClassificationTests(unittest.TestCase):
         for identifier, location, body, expected in GENERALIZATION:
             with self.subTest(identifier):
                 self.assertEqual(expected, classify(record(location, body)).eligibility)
+
+    def test_stored_rule_cases(self):
+        cases = [
+            ("Global", "Sponsorship not available for this position.", {"WORLDWIDE"}, {"NO_SPONSORSHIP"}, "unstated", "excluded"),
+            ("Anywhere", "Restricted to residents of the EEA.", {"WORLDWIDE", "EEA"}, {"RESIDENCY_REQUIRED:EEA"}, "unstated", "excluded"),
+            ("Remote", "Hiring in: US, UK, Germany.", {"US", "GB", "DE"}, set(), "remote", "excluded"),
+            ("Remote", "Must hold a valid Schengen visa.", set(), {"RESIDENCY_REQUIRED:EU"}, "remote", "excluded"),
+            ("Cairo", "On-site five days a week.", {"EG"}, set(), "onsite", "eligible"),
+        ]
+        for location, body, allows, denies, mode, expected in cases:
+            with self.subTest(body=body):
+                extracted = extract(record(location, body))
+                self.assertEqual(allows, {token for token, _ in extracted.geo_allow})
+                self.assertEqual(denies, {token for token, _ in extracted.geo_deny})
+                self.assertEqual(mode, extracted.work_mode[0])
+                self.assertEqual(expected, eligibility_for(extracted)[0])

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 
+from recon.geography import eligibility_for, extract
 from recon.models import Classification, Record
 
 
@@ -40,18 +41,10 @@ def _match(patterns: tuple[str, ...], text: str) -> str | None:
 def classify(record: Record) -> Classification:
     """Return a deterministic result with the actual matched signal or restriction."""
     text = _combined(record)
-    restriction = _match(RESTRICTIONS, text)
+    extracted = extract(record)
     individual, individual_reason = _individual(text, record.track)
-    if restriction:
-        return Classification("excluded", restriction, individual, individual_reason)
-    eligible = _match(ELIGIBLE, record.location_text)
-    if not eligible:
-        eligible = _match((ELIGIBLE[0].replace("|emea|", "|"), *ELIGIBLE[1:]), record.description)
-    if eligible:
-        return Classification("eligible", eligible, individual, individual_reason)
-    if re.search(r"\bremote\b", text, re.IGNORECASE):
-        return Classification("unclear", "remote without an eligibility geography", individual, individual_reason)
-    return Classification("unclear", "no geography signal", individual, individual_reason)
+    eligibility, reason = eligibility_for(extracted)
+    return Classification(eligibility, reason, individual, individual_reason)
 
 
 def _individual(text: str, track: str) -> tuple[str, str]:

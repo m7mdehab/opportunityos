@@ -56,6 +56,10 @@ def main() -> None:
         relative = raw.decode("utf-8")
         if not any(fnmatch.fnmatchcase(relative, pattern) for pattern in patterns):
             continue
+        if relative.startswith(".github/workflows/"):
+            relative = f"ci-reference/workflows/{relative.removeprefix('.github/workflows/')}"
+        elif relative == ".github/pii-patterns.txt":
+            relative = "ci-reference/pii-patterns.txt"
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source / relative, target)
