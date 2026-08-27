@@ -1,6 +1,7 @@
 # REPORT-000 — Repository Foundation & Assistant Interoperability
 
 **Date:** 2026-08-27
+**Version:** 1.3
 
 ## Scope completed
 
@@ -12,6 +13,7 @@
 - Intentionally deferred all product frameworks, servers, databases, deployment stacks, source adapters, personal founder data, LLM integrations, and placeholder directories listed out of scope.
 - Public review clone: `git clone https://github.com/m7mdehab/opportunityos-docs.git`
 - First successful mirror sync source SHA: `7acac24`.
+- Remediated the v1.1 phase findings under BRIEF-000 v1.3 without rebuilding accepted foundation work.
 
 ## Test evidence
 
@@ -28,52 +30,53 @@
 - Maker/checker repair loop: a rebase-merge SHA rewrite caused one post-merge state failure; the state was regenerated and merge-commit PR handling was verified with all three checks green.
 - Serial work covered instructions, skeleton, and allowlist first; scripts and governance artifacts followed; mirror workflow and remote configuration were last.
 
+## v1.3 remediation
+
+- Corrected active-phase selection to choose the lowest-numbered brief not passed. While this report recorded FAIL, generated state showed BRIEF-000 active with `failed — remain in phase`; after this PASS decision it advances to BRIEF-001 with `in progress`.
+- Added `Phase status`, renamed the private currency field to `State generated at commit`, and joined wrapped acceptance-item continuation lines into complete sentences.
+- Derived the canonical identity from `gh api user --jq '.name'`, expanded full-name transliterations, surname-prefix forms, orderings, and eligible email-local forms algorithmically, validated zero current mirror matches plus a planted scratch match, and streamed the JSON pattern set directly into the `FOUNDER_NAME_PATTERNS` repository secret.
+- Removed inferred name values from tracked patterns. CI now fails closed when `FOUNDER_NAME_PATTERNS` is absent; local structural scans require the explicit `--allow-missing-patterns` flag.
+- Widened `.mirror-allowlist` only to `scripts/**`, `.github/workflows/**`, `.github/pii-patterns.txt`, and `.mirror-allowlist`; the expanded public boundary passes the full guard.
+- Accepted ADR-0002, documenting advisory CI, conventional PR discipline, residual-risk ownership, the `--no-verify` hole, and all three revisit triggers.
+- Added and documented idempotent `scripts/install_hooks.sh`; a committed stale-state probe was refused by the pre-push hook and no remote branch was created.
+- Added six-hour and push-triggered `heartbeat.yml`. Its public commits stage exactly `docs/CI_STATUS.md`; the first publication reported HEALTHY.
+- Pushed one deliberate stale-state commit through the documented `--no-verify` hole. `state` failed, heartbeat still completed successfully, and public status reported `CHECKS FAILING`. A normal hook-verified repair restored green checks.
+- Reverted the public mirror ref to a previously boundary-scanned `sync: f67f004` commit. Heartbeat reported `MIRROR STALE`; normal mirror and heartbeat workflow dispatches restored `HEALTHY` at private SHA `f8d55cd`.
+- Reporting-time private `main` SHA: `f8d55cd`. Reporting-time `docs/CI_STATUS.md` verdict: `HEALTHY`.
+
 ## Failures and known limitations
 
-- GitHub returned HTTP 403 when private `main` branch protection was requested: the personal account must upgrade to GitHub Pro or make the repository public. Making the source public is forbidden, paid spend exceeds the zero-budget cap, and no guard was weakened. PR discipline and green checks exist, but GitHub does not enforce them server-side on this plan.
-- The founder-name scanner uses locally inferred common name variants because no canonical founder-name value exists in the supplied project documents. Mirrored content is independently clean of those variants, email addresses, and international phone patterns.
+- None.
+
+## Residual risks
+
+- Private branch enforcement is intentionally advisory under accepted ADR-0002; the founder owns the documented residual quality-drift risk.
+- Local hooks remain explicitly bypassable with `--no-verify`. The mirror boundary scan is load-bearing and remains mandatory immediately before every public sync.
 
 ## Outcome evidence
 
-- The public mirror is readable without credentials and contains 15 tracked files: generated README plus only the four seeded allowlist classes.
+- The public mirror is readable without credentials and now exposes the enforcement scripts, workflow definitions, structural PII patterns, allowlist, generated CI heartbeat, governance, briefs, state, and reports.
 - Claude chat can inspect agent instructions, current state, governance, briefs, reports, registry, and ADRs without access to code or private founder data.
 - The current mirror README states plainly that the mirror is read-only, derived, non-authoritative, rejects pull requests, and is disposable after a leak.
+- The final heartbeat reports `HEALTHY`, all three private checks successful, and mirror currency current.
 
 ## What this changes about the plan
 
 - The two-repository interoperability model is viable and automated on GitHub Free.
-- The zero-spend requirement conflicts with enforced branch protection for a private repository on the founder's current personal GitHub plan. The plan must either fund GitHub Pro, move the private repository to an organization plan that supports protection, or explicitly accept unenforced PR discipline until that prerequisite changes.
+- Master Plan §12.9's branch-protection requirement is unachievable on a zero-budget personal GitHub plan with a private repository. The plan should carry accepted ADR-0002's advisory policy and revisit triggers instead of treating paid enforcement as a current gate.
+- The standing delegation rule from BRIEF-000 v1.3 §2.6 now governs every future brief, including briefs authored upstream: executable work stays with the agent unless it falls within the exhaustive exception list.
 - Generated state must be committed after source-changing commits and PRs must use merge commits; rebase or squash rewrites the recorded source SHA and correctly makes the state check red.
 
 ## Decision
 
-FAIL / remain in phase
+PASS
 
-The repository, guard, state, and mirror acceptance tests pass, but BRIEF-000 §6.9 requires server-enforced private-branch protection and the zero-budget GitHub plan refuses it.
+All BRIEF-000 v1.3 acceptance criteria pass. BRIEF-001 source reconnaissance is unblocked.
 
 ## Deferred acceptance items
 
-- `FOUNDER_NAME_PATTERNS` is set from an agent-derived value with no founder involvement, and the report names the source used
-- The pattern set produces zero matches against current mirrored content
-- The guard matches a planted founder-name variant in a mirrored path
-- `check_guard.py` fails in CI when `FOUNDER_NAME_PATTERNS` is unset
-- `.github/pii-patterns.txt` contains no name variants
-- The secret value appears in no tracked file and no temporary file survives
-- ADR-0002 exists, `accepted`, with all fields including the three revisit triggers and the `--no-verify` hole
-- `install_hooks.sh` is idempotent and documented in both files
-- A commit failing the state check is refused by the pre-push hook
-- `docs/CI_STATUS.md` publishes to the mirror
-- With `main` deliberately red, the heartbeat still runs and reports `CHECKS FAILING`
-- With the mirror artificially reverted, it reports `MIRROR STALE`
-- The heartbeat cannot publish any file other than `CI_STATUS.md`
-- With REPORT-000 recording FAIL, `STATE.md` reports BRIEF-000 as active
-- Once REPORT-000 passes, `STATE.md` advances to BRIEF-001
-- `Phase status` appears and agrees with the summary line
-- The delegation rule appears verbatim in `AGENTS.md` and `briefs/TEMPLATE.md`
-- The mirror contains `scripts/`, `.github/workflows/`, `pii-patterns.txt`, and `.mirror-allowlist`, and still no personal data
-- `STATE.md` open acceptance items are complete sentences
+- None.
 
 ## Next phase prerequisites
 
-- Enable branch protection support for the private repository without changing its visibility, then require pull requests and the `state`, `guard`, and `mirror` contexts on `main`.
-- After protection is verified, regenerate this report decision and `docs/STATE.md`; BRIEF-001 source reconnaissance can then proceed.
+- Begin BRIEF-001 source reconnaissance using the active brief, accepted ADRs, generated state, advisory pre-push hook, and public heartbeat.
