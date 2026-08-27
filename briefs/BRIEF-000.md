@@ -115,19 +115,19 @@ Actions, the founder's name variants land in a build log.
 
 ## 6. Acceptance criteria
 
-- [ ] `check_guard.py --mirror-only` runs secret patterns over mirrored paths
-- [ ] A planted fake API key in a mirrored path aborts the mirror sync and
+- [x] `check_guard.py --mirror-only` runs secret patterns over mirrored paths
+- [x] A planted fake API key in a mirrored path aborts the mirror sync and
       nothing is pushed
-- [ ] A planted fake API key in a non-mirrored path still fails the full guard
-- [ ] `guard.yml` and `state.yml` fire once per push and once per PR, not twice
-- [ ] A single failing PR produces one notification per workflow
-- [ ] Heartbeat runs on `workflow_run` after Mirror, plus schedule and dispatch
-- [ ] Heartbeat and Mirror share the `opportunityos-docs-mirror` concurrency group
-- [ ] `mirror.yml`'s push retries on conflict like the heartbeat's does
-- [ ] Ten consecutive merges produce no spurious `MIRROR STALE` and no failed run
-- [ ] `README.md` and `STATE.md` are scanned before publication
-- [ ] `derive_founder_patterns.py` carries the stdout warning comment
-- [ ] REPORT-000 returns to PASS only after all of the above
+- [x] A planted fake API key in a non-mirrored path still fails the full guard
+- [x] `guard.yml` and `state.yml` fire once per push and once per PR, not twice
+- [x] A single failing PR produces one notification per workflow
+- [x] Heartbeat runs on `workflow_run` after Mirror, plus schedule and dispatch
+- [x] Heartbeat and Mirror share the `opportunityos-docs-mirror` concurrency group
+- [x] `mirror.yml`'s push retries on conflict like the heartbeat's does
+- [x] Ten consecutive merges produce no spurious `MIRROR STALE` and no failed run
+- [x] `README.md` and `STATE.md` are scanned before publication
+- [x] `derive_founder_patterns.py` carries the stdout warning comment
+- [x] REPORT-000 returns to PASS only after all of the above
 
 ---
 

@@ -1,7 +1,7 @@
 # REPORT-000 — Repository Foundation & Assistant Interoperability
 
 **Date:** 2026-08-27
-**Version:** 1.4 — remediation in progress
+**Version:** 1.4
 
 ## Scope completed
 
@@ -47,7 +47,7 @@
 
 ## Failures and known limitations
 
-- The public mirror boundary currently skips secret-pattern checks when invoked with `--mirror-only`; REPORT-000's PASS is withdrawn until BRIEF-000 v1.4 acceptance completes.
+- None.
 
 ## v1.4 remediation
 
@@ -57,6 +57,10 @@
 - Changed Heartbeat from direct push triggering to post-Mirror `workflow_run`, retained schedule and dispatch, and placed both public writers in the same concurrency group.
 - Added three-attempt conflict-safe rebase/push handling to Mirror and the required warning that founder patterns must never be printed in Actions logs.
 - Local probes confirmed mirrored fake keys fail the boundary, non-mirrored fake keys fail the full guard, and generated README/STATE files fail assembled-tree scanning when planted with a fake key.
+- Pull request 11 planted a fake API key under `docs/`. Exactly one State, one Guard, and one Mirror PR run fired; all three failed, Mirror named `RULE SECRET_OPENAI_KEY`, and the public mirror HEAD remained unchanged.
+- Ten consecutive merge commits completed without a failed run or spurious stale verdict: `43e6698`, `8196af3`, `f8bacbf`, `6b3e6db`, `ae5317a`, `34946ee`, `c814aa2`, `861eafb`, `07deaec`, and `272382b`.
+- For each race-test merge, the PR produced exactly one successful State, Guard, and Mirror run; main produced successful State, Guard, Mirror, and post-Mirror Heartbeat runs; CI status reported current currency and `HEALTHY`.
+- Merge 10 removed the temporary race probe from both repositories, confirmed by HTTP 404 from the mirror contents API.
 
 ## Residual risks
 
@@ -80,25 +84,14 @@
 
 ## Decision
 
-FAIL / remain in phase
+PASS
 
-BRIEF-000 v1.4 publish-boundary and workflow-ordering remediation is in progress. BRIEF-001 is blocked until this report returns to PASS.
+All BRIEF-000 v1.4 acceptance criteria pass. BRIEF-001 source reconnaissance is unblocked.
 
 ## Deferred acceptance items
 
-- `check_guard.py --mirror-only` runs secret patterns over mirrored paths
-- A planted fake API key in a mirrored path aborts the mirror sync and nothing is pushed
-- A planted fake API key in a non-mirrored path still fails the full guard
-- `guard.yml` and `state.yml` fire once per push and once per PR, not twice
-- A single failing PR produces one notification per workflow
-- Heartbeat runs on `workflow_run` after Mirror, plus schedule and dispatch
-- Heartbeat and Mirror share the `opportunityos-docs-mirror` concurrency group
-- `mirror.yml`'s push retries on conflict like the heartbeat's does
-- Ten consecutive merges produce no spurious `MIRROR STALE` and no failed run
-- `README.md` and `STATE.md` are scanned before publication
-- `derive_founder_patterns.py` carries the stdout warning comment
-- REPORT-000 returns to PASS only after all of the above
+- None.
 
 ## Next phase prerequisites
 
-- Complete BRIEF-000 v1.4 acceptance and restore this report to PASS before BRIEF-001 begins.
+- Begin BRIEF-001 source reconnaissance using the active brief, accepted ADRs, generated state, guarded mirror, serialized heartbeat, and advisory pre-push hook.
