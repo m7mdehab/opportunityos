@@ -2,42 +2,29 @@
 # OpportunityOS State
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
-Last shipped: BRIEF-000 — 2026-08-27.
-Active work: BRIEF-001.
-Phase status: in progress.
-Blocked: none.
-Next: Begin BRIEF-001 source reconnaissance using the active brief, accepted ADRs, generated state, guarded mirror, serialized heartbeat, and advisory pre-push hook..
+Last shipped: BRIEF-001 — 2026-08-27.
+Active work: none.
+Phase status: passed.
+Blocked: Only Remote OK and the Greenhouse watchlist yielded normalized employment records. Himalayas, Jobicy, Remotive, We Work Remotely, UNGM, World Bank, AfDB, and Ashby were stopped by the robots gate; TED returned HTTP 405 because its Search API does not permit GET; the selected Lever boards returned HTTP 404..
+Next: Review `docs/SOURCE_EVIDENCE.md` and select the limited, policy-reviewed source families for BRIEF-002; do not infer permission from coverage..
 
 ## Repository
 
-- **Generated:** 2026-08-27T16:25:31Z
-- **State generated at commit:** `0d04de0` — feat: add source reconnaissance harness
+- **Generated:** 2026-08-27T16:28:04Z
+- **State generated at commit:** `85f72e1` — docs: report BRIEF-001 source reconnaissance
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
 
-- **Brief:** BRIEF-001
-- **Phase status:** in progress
-- **Open acceptance items:** 15
-- Repository initializes and `recon/` runs end to end on a clean checkout
-- The eligibility classifier is importable and runnable against synthetic records with no network and no fixtures on disk
-- At least 6 of 8 employment sources returned parseable data, **or** each shortfall has a recorded status code and response body
-- At least 3 of 6 independent sources returned parseable data, **or** each shortfall is recorded the same way
-- A fixture file exists for every source that returned HTTP 200
-- Every fetched or skipped source has a `SOURCE_REGISTRY.yaml` entry
-- Every one of the 16 sources in §6 has a documented access route and no fetched listing data
-- The classifier ran over 100% of normalized rows without unhandled errors
-- Every classification verdict carries a stated reason
-- `opportunities.csv` opens cleanly and row count matches the report
-- `out/**` appears in `.gitignore`, is committed to neither repository, and is absent from the mirror
-- `recon/**` is in `.mirror-allowlist` and present in the mirror
-- No credential, token, or secret appears anywhere in the repository
-- All eight required numbers appear in `SOURCE_EVIDENCE.md`
-- No forbidden action in §7 was taken
+- **Brief:** none
+- **Phase status:** passed
+- **Open acceptance items:** 0
+- None
 
 ## Completed Briefs
 
 - BRIEF-000 — 2026-08-27
+- BRIEF-001 — 2026-08-27
 
 ## Last Phase Outcome
 
@@ -54,7 +41,9 @@ Next: Begin BRIEF-001 source reconnaissance using the active brief, accepted ADR
 
 ## Blocked Items
 
-- None
+- Only Remote OK and the Greenhouse watchlist yielded normalized employment records. Himalayas, Jobicy, Remotive, We Work Remotely, UNGM, World Bank, AfDB, and Ashby were stopped by the robots gate; TED returned HTTP 405 because its Search API does not permit GET; the selected Lever boards returned HTTP 404.
+- Freelancer and Etimad returned HTTP 200 but no records through the conservative parsers. No independent record was classified individual-eligible in this pass.
+- The 22.9% Egypt-eligible figure is a deterministic first measurement, not a validated market estimate or a claim of availability beyond this run date.
 
 ## Source Status Counts
 
@@ -69,4 +58,4 @@ Next: Begin BRIEF-001 source reconnaissance using the active brief, accepted ADR
 
 ## Next Prerequisites
 
-- Begin BRIEF-001 source reconnaissance using the active brief, accepted ADRs, generated state, guarded mirror, serialized heartbeat, and advisory pre-push hook.
+- Review `docs/SOURCE_EVIDENCE.md` and select the limited, policy-reviewed source families for BRIEF-002; do not infer permission from coverage.

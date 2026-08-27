@@ -283,26 +283,26 @@ report:
 
 Machine-checkable. The brief passes when all of these hold:
 
-- [ ] Repository initializes and `recon/` runs end to end on a clean checkout
-- [ ] The eligibility classifier is importable and runnable against synthetic
+- [x] Repository initializes and `recon/` runs end to end on a clean checkout
+- [x] The eligibility classifier is importable and runnable against synthetic
       records with no network and no fixtures on disk
-- [ ] At least 6 of 8 employment sources returned parseable data, **or** each
+- [x] At least 6 of 8 employment sources returned parseable data, **or** each
       shortfall has a recorded status code and response body
-- [ ] At least 3 of 6 independent sources returned parseable data, **or** each
+- [x] At least 3 of 6 independent sources returned parseable data, **or** each
       shortfall is recorded the same way
-- [ ] A fixture file exists for every source that returned HTTP 200
-- [ ] Every fetched or skipped source has a `SOURCE_REGISTRY.yaml` entry
-- [ ] Every one of the 16 sources in §6 has a documented access route and no
+- [x] A fixture file exists for every source that returned HTTP 200
+- [x] Every fetched or skipped source has a `SOURCE_REGISTRY.yaml` entry
+- [x] Every one of the 16 sources in §6 has a documented access route and no
       fetched listing data
-- [ ] The classifier ran over 100% of normalized rows without unhandled errors
-- [ ] Every classification verdict carries a stated reason
-- [ ] `opportunities.csv` opens cleanly and row count matches the report
-- [ ] `out/**` appears in `.gitignore`, is committed to neither repository, and
+- [x] The classifier ran over 100% of normalized rows without unhandled errors
+- [x] Every classification verdict carries a stated reason
+- [x] `opportunities.csv` opens cleanly and row count matches the report
+- [x] `out/**` appears in `.gitignore`, is committed to neither repository, and
       is absent from the mirror
-- [ ] `recon/**` is in `.mirror-allowlist` and present in the mirror
-- [ ] No credential, token, or secret appears anywhere in the repository
-- [ ] All eight required numbers appear in `SOURCE_EVIDENCE.md`
-- [ ] No forbidden action in §7 was taken
+- [x] `recon/**` is in `.mirror-allowlist` and present in the mirror
+- [x] No credential, token, or secret appears anywhere in the repository
+- [x] All eight required numbers appear in `SOURCE_EVIDENCE.md`
+- [x] No forbidden action in §7 was taken
 
 ---
 
