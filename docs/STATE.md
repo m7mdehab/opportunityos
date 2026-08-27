@@ -10,8 +10,8 @@ Next: Begin BRIEF-001 source reconnaissance using the active brief, accepted ADR
 
 ## Repository
 
-- **Generated:** 2026-08-27T15:32:42Z
-- **State generated at commit:** `0d93d47` — docs: pass BRIEF-000 v1.3 remediation
+- **Generated:** 2026-08-27T15:35:27Z
+- **State generated at commit:** `eb2c46b` — fix: reconcile mirror through heartbeat history
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
