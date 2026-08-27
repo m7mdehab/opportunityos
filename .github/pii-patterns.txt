@@ -1,4 +1,5 @@
 # label<TAB>Python regular expression
 email_address	[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}
 international_phone	\+[1-9][0-9 ()-]{7,}[0-9]
-founder_name_variant	(?i)\b(?:mohammed|mohamed|muhammad)\b
+private_key_shape	-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----
+api_key_shape	(?:sk-|gh[pousr]_)[A-Za-z0-9_-]{20,}

@@ -67,7 +67,35 @@ def decision_line(text: str) -> str:
 
 
 def acceptance_items(path: Path) -> list[str]:
-    return re.findall(r"(?m)^\s*- \[ \]\s+(.+)$", path.read_text(encoding="utf-8"))
+    items: list[str] = []
+    current: str | None = None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        item = re.match(r"^\s*- \[ \]\s+(.+)$", line)
+        if item:
+            if current:
+                items.append(current)
+            current = item.group(1).strip()
+            continue
+        continuation = re.match(r"^\s{2,}(\S.*)$", line)
+        new_list_item = re.match(r"^\s*[-*+]\s+", line)
+        if current and continuation and not new_list_item:
+            current = f"{current} {continuation.group(1).strip()}"
+        elif current:
+            items.append(current)
+            current = None
+    if current:
+        items.append(current)
+    return items
+
+
+def brief_status(number: int, reports: dict[int, Path]) -> str:
+    report = reports.get(number)
+    if report is None:
+        return "in progress"
+    decision = section(report.read_text(encoding="utf-8"), "Decision")
+    if re.search(r"(?i)\bFAIL\b", decision):
+        return "failed — remain in phase"
+    return "passed"
 
 
 def adr_records() -> tuple[list[str], list[str]]:
@@ -125,14 +153,18 @@ def bullets(items: list[str], empty: str) -> str:
 def main() -> None:
     briefs = numbered_files("briefs", "BRIEF")
     reports = numbered_files("reports", "REPORT")
-    unmatched = sorted(set(briefs) - set(reports))
-    active_number = unmatched[-1] if unmatched else None
+    statuses = {number: brief_status(number, reports) for number in sorted(briefs)}
+    active_number = next(
+        (number for number in sorted(briefs) if statuses[number] != "passed"), None
+    )
     active_label = f"BRIEF-{active_number:03d}" if active_number is not None else "none"
+    phase_status = statuses[active_number] if active_number is not None else "passed"
     open_items = acceptance_items(briefs[active_number]) if active_number is not None else []
 
     completed = [
         f"BRIEF-{number:03d} — {report_date(reports[number])}"
-        for number in sorted(set(briefs) & set(reports))
+        for number in sorted(briefs)
+        if statuses[number] == "passed"
     ]
     latest_number = max(reports) if reports else None
     latest_text = (
@@ -168,18 +200,20 @@ def main() -> None:
 OpportunityOS is an opportunity-acquisition platform for MENA.
 Last shipped: {shipped}.
 Active work: {active_label}.
+Phase status: {phase_status}.
 Blocked: {blocked_summary}.
 Next: {next_summary}.
 
 ## Repository
 
 - **Generated:** {generated_at()}
-- **Source HEAD:** `{source_sha}` — {source_subject}
+- **State generated at commit:** `{source_sha}` — {source_subject}
 - **Mirror sync:** `{mirror_sha}` at {mirror_time}
 
 ## Active Brief
 
 - **Brief:** {active_label}
+- **Phase status:** {phase_status}
 - **Open acceptance items:** {len(open_items)}
 {bullets(open_items, "None")}
 

@@ -36,7 +36,9 @@ def main() -> None:
         if cloned.returncode != 0:
             raise SystemExit(f"RULE MIRROR_FETCH FAILED: {cloned.stderr.strip()}. REMEDY: verify repository access and deploy-key health, then retry.")
 
-    subject = run("git", "log", "-1", "--format=%s", cwd=checkout).stdout.strip()
+    subject = run(
+        "git", "log", "--format=%s", "--grep=^sync: ", "-1", cwd=checkout
+    ).stdout.strip()
     match = re.fullmatch(r"sync:\s+([0-9a-fA-F]{7,40})", subject)
     mirror_sha = match.group(1) if match else "missing"
     current = source_sha.lower().startswith(mirror_sha.lower()) or mirror_sha.lower().startswith(source_sha.lower())

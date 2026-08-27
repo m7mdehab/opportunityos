@@ -39,6 +39,9 @@ def main() -> None:
         ["git", "ls-files", "-z"], cwd=source, capture_output=True, check=True
     ).stdout.split(b"\0")
 
+    heartbeat_path = destination / "docs" / "CI_STATUS.md"
+    heartbeat = heartbeat_path.read_bytes() if heartbeat_path.exists() else None
+
     for child in destination.iterdir():
         if child.name == ".git":
             continue
@@ -56,6 +59,10 @@ def main() -> None:
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source / relative, target)
+
+    if heartbeat is not None:
+        heartbeat_path.parent.mkdir(parents=True, exist_ok=True)
+        heartbeat_path.write_bytes(heartbeat)
 
     state = destination / "docs" / "STATE.md"
     if state.exists():
