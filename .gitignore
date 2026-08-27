@@ -11,6 +11,9 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 
+# Third-party reconnaissance payloads and derived corpus
+out/
+
 # Editors and operating systems
 .idea/
 .vscode/
