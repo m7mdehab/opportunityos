@@ -53,6 +53,14 @@ OpportunityOS is an opportunity-acquisition platform for MENA, beginning with a 
 - No agent is the sole approver of its own work; route checker failures back through repair and re-test.
 - Merge only through pull requests after required checks pass; keep `main` green.
 
+## Model routing
+
+The agent roster in `.codex/agents/` is the routing policy. Every brief carries
+a routing table assigning a tier to each work item; escalate a tier only after a
+failure and record each escalation and trigger in the phase report. Ultra mode
+is not used on this project. Cloud tasks are not used because Sol, Terra, and
+Luna are local-only. Any change to this policy requires an ADR.
+
 Install the advisory local checks with `bash scripts/install_hooks.sh`. The pre-push hook runs the same state, integrity, secret, and mirrored-PII checks as CI. Private `main` is not server-protected on the zero-budget GitHub plan; PR discipline is convention under ADR-0002.
 
 ## Standing Delegation Rule

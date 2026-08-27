@@ -1,0 +1,5 @@
+name = "architect"
+description = "Acceptance verification, phase reports, ADRs, and any decision that is hard to reverse."
+model = "gpt-5.6-sol"
+model_reasoning_effort = "xhigh"
+rollout_token_budget = 400000
