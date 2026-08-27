@@ -53,6 +53,25 @@ OpportunityOS is an opportunity-acquisition platform for MENA, beginning with a 
 - No agent is the sole approver of its own work; route checker failures back through repair and re-test.
 - Merge only through pull requests after required checks pass; keep `main` green.
 
+Install the advisory local checks with `bash scripts/install_hooks.sh`. The pre-push hook runs the same state, integrity, secret, and mirrored-PII checks as CI. Private `main` is not server-protected on the zero-budget GitHub plan; PR discipline is convention under ADR-0002.
+
+## Standing Delegation Rule
+
+> **Delegation rule.** Anything the agent can do, the agent does. Never return a
+> task to the founder that is executable in this environment. Before surfacing
+> any request for founder action, check it against the exception list; if it is
+> not on that list, do it.
+>
+> **Exceptions, exhaustive:** interactive authentication requiring the founder's
+> own credentials or a browser OAuth flow; any action requiring payment;
+> accepting terms of service or entering a binding agreement; professional legal
+> or accounting sign-off; and communication with another human being.
+>
+> Everything else is the agent's: deriving values, generating configuration,
+> setting secrets, choosing names, installing tooling, writing tests, and making
+> reversible technical decisions. Surfacing an executable task as a founder
+> prerequisite is a defect, and should be reported as one.
+
 ## Governing Documents
 
 - Full plan: `docs/MASTER_PLAN.md`

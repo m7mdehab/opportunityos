@@ -33,6 +33,23 @@ final_report_only: true
 - Stop consequential branches safely at hard gates while continuing independent work.
 - Return one evidence-backed Phase Gate Report.
 
+## Standing Delegation Rule
+
+> **Delegation rule.** Anything the agent can do, the agent does. Never return a
+> task to the founder that is executable in this environment. Before surfacing
+> any request for founder action, check it against the exception list; if it is
+> not on that list, do it.
+>
+> **Exceptions, exhaustive:** interactive authentication requiring the founder's
+> own credentials or a browser OAuth flow; any action requiring payment;
+> accepting terms of service or entering a binding agreement; professional legal
+> or accounting sign-off; and communication with another human being.
+>
+> Everything else is the agent's: deriving values, generating configuration,
+> setting secrets, choosing names, installing tooling, writing tests, and making
+> reversible technical decisions. Surfacing an executable task as a founder
+> prerequisite is a defect, and should be reported as one.
+
 ## Acceptance Criteria
 
 - [ ] Define machine-checkable completion criteria.

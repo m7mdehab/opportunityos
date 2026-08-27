@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import json
+import os
 import re
 import subprocess
 import sys
@@ -45,10 +47,29 @@ def readable(path: Path) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mirror-only", action="store_true")
+    parser.add_argument("--allow-missing-patterns", action="store_true")
+    parser.add_argument("--scan-file", type=Path)
     args = parser.parse_args()
     patterns = allowlist()
-    files = repository_files()
+    files = [args.scan_file.resolve()] if args.scan_file else repository_files()
     failures: list[str] = []
+
+    founder_patterns: list[re.Pattern[str]] = []
+    encoded_founder_patterns = os.environ.get("FOUNDER_NAME_PATTERNS", "")
+    if not encoded_founder_patterns and not args.allow_missing_patterns:
+        failures.append(
+            "RULE PII_FOUNDER_NAME_PATTERNS_MISSING FAILED: FOUNDER_NAME_PATTERNS is unset. REMEDY: restore the agent-derived repository secret or pass --allow-missing-patterns only for an explicit local structural scan."
+        )
+    elif encoded_founder_patterns:
+        try:
+            expressions = json.loads(encoded_founder_patterns)
+            if not isinstance(expressions, list) or not expressions:
+                raise ValueError("expected a non-empty JSON array")
+            founder_patterns = [re.compile(expression) for expression in expressions]
+        except (json.JSONDecodeError, TypeError, ValueError, re.error) as error:
+            failures.append(
+                f"RULE PII_FOUNDER_NAME_PATTERNS_INVALID FAILED: FOUNDER_NAME_PATTERNS is invalid ({error}). REMEDY: regenerate it with scripts/derive_founder_patterns.py and reset the repository secret."
+            )
 
     if not args.mirror_only:
         secret_patterns = {
@@ -64,7 +85,11 @@ def main() -> None:
             ),
         }
         for path in files:
-            relative = path.relative_to(ROOT).as_posix()
+            relative = (
+                path.relative_to(ROOT).as_posix()
+                if path.is_relative_to(ROOT)
+                else path.name
+            )
             if path.name == ".env" or path.name.startswith(".env."):
                 failures.append(
                     f"RULE SECRET_ENV_FILE FAILED: {relative}. REMEDY: remove the .env file from git and store values in repository secrets."
@@ -91,9 +116,13 @@ def main() -> None:
             )
 
     for path in files:
-        if not mirrored(path, patterns):
+        if not args.scan_file and not mirrored(path, patterns):
             continue
-        relative = path.relative_to(ROOT).as_posix()
+        relative = (
+            path.relative_to(ROOT).as_posix()
+            if path.is_relative_to(ROOT)
+            else path.name
+        )
         if path.suffix.lower() in {".pdf", ".docx"} and not relative.startswith("docs/"):
             failures.append(
                 f"RULE PII_DOCUMENT_LOCATION FAILED: {relative}. REMEDY: remove the document from mirrored paths or place an approved non-personal document under docs/."
@@ -103,6 +132,11 @@ def main() -> None:
             if pattern.search(text):
                 failures.append(
                     f"RULE PII_{label.upper()} FAILED: {relative}. REMEDY: remove or redact the personal identifier before mirroring."
+                )
+        for pattern in founder_patterns:
+            if pattern.search(text):
+                failures.append(
+                    f"RULE PII_FOUNDER_NAME FAILED: {relative}. REMEDY: replace the founder's name with 'the founder' before mirroring."
                 )
 
     if failures:

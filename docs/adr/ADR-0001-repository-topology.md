@@ -20,6 +20,8 @@ Keep `opportunityos` private and authoritative. Publish only `.mirror-allowlist`
 
 Claude chat can review governance, briefs, state, evidence, and reports without seeing working code. CI and private-repository checker agents remain responsible for validating code claims. A leaked mirror is deleted and recreated from the private source.
 
+The public mirror is inherently attributable to the founder through the GitHub account namespace. The PII boundary protects mirrored content—CV text, applications, tracker data, personal contact details, and similar records—not repository ownership attribution. The founder-name content patterns therefore exclude the GitHub handle, which necessarily appears in repository URLs.
+
 ## Alternatives considered
 
 - **Fully public:** rejected because it unnecessarily exposes working code.

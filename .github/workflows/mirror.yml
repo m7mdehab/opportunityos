@@ -18,6 +18,8 @@ concurrency:
 jobs:
   mirror:
     runs-on: ubuntu-latest
+    env:
+      FOUNDER_NAME_PATTERNS: ${{ secrets.FOUNDER_NAME_PATTERNS }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,7 +55,9 @@ jobs:
         if: github.event_name != 'pull_request'
         env:
           MIRROR_REPOSITORY: ${{ github.repository_owner }}/opportunityos-docs
-        run: git clone "git@github.com:${MIRROR_REPOSITORY}.git" "$RUNNER_TEMP/opportunityos-docs"
+        run: |
+          host=github.com
+          git clone "git@${host}:${MIRROR_REPOSITORY}.git" "$RUNNER_TEMP/opportunityos-docs"
 
       - name: Check nightly drift
         id: drift
@@ -84,7 +88,7 @@ jobs:
         working-directory: ${{ runner.temp }}/opportunityos-docs
         run: |
           git config user.name "OpportunityOS Mirror"
-          git config user.email "opportunityos-mirror@users.noreply.github.com"
+          git config user.email "opportunityos-mirror"
           git add --all
           if git diff --cached --quiet; then
             echo "Mirror content already matches source."

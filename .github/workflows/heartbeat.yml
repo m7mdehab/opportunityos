@@ -1,0 +1,80 @@
+name: Heartbeat
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      FOUNDER_NAME_PATTERNS: ${{ secrets.FOUNDER_NAME_PATTERNS }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure mirror deploy key
+        env:
+          MIRROR_DEPLOY_KEY: ${{ secrets.MIRROR_DEPLOY_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$MIRROR_DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+      - name: Clone public mirror
+        env:
+          MIRROR_REPOSITORY: ${{ github.repository_owner }}/opportunityos-docs
+        run: |
+          host=github.com
+          git clone "git@${host}:${MIRROR_REPOSITORY}.git" "$RUNNER_TEMP/opportunityos-docs"
+
+      - name: Generate status regardless of check conclusions
+        run: |
+          git -C "$RUNNER_TEMP/opportunityos-docs" fetch origin main
+          git -C "$RUNNER_TEMP/opportunityos-docs" reset --hard origin/main
+          python scripts/generate_ci_status.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --source-sha "$(git rev-parse HEAD)" \
+            --source-subject "$(git log -1 --format=%s)" \
+            --mirror "$RUNNER_TEMP/opportunityos-docs" \
+            --output "$RUNNER_TEMP/CI_STATUS.md"
+
+      - name: Scan status file
+        run: python scripts/check_guard.py --scan-file "$RUNNER_TEMP/CI_STATUS.md"
+
+      - name: Publish only CI status
+        working-directory: ${{ runner.temp }}/opportunityos-docs
+        run: |
+          mkdir -p docs
+          cp "$RUNNER_TEMP/CI_STATUS.md" docs/CI_STATUS.md
+          git config user.name "OpportunityOS Heartbeat"
+          git config user.email "opportunityos-heartbeat"
+          git add -- docs/CI_STATUS.md
+          if git diff --cached --quiet; then
+            echo "CI status is unchanged."
+            exit 0
+          fi
+          staged="$(git diff --cached --name-only)"
+          if [ "$staged" != "docs/CI_STATUS.md" ]; then
+            echo "RULE HEARTBEAT_SCOPE FAILED: heartbeat staged a path other than docs/CI_STATUS.md. REMEDY: restore the single-file staging boundary."
+            exit 1
+          fi
+          git commit -m "heartbeat: $(git -C "$GITHUB_WORKSPACE" rev-parse --short HEAD)"
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            git pull --rebase origin main
+          done
+          echo "RULE HEARTBEAT_PUSH FAILED: CI_STATUS.md could not be published after three conflict-safe retries. REMEDY: inspect concurrent mirror writes and rerun heartbeat.yml."
+          exit 1

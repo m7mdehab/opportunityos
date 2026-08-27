@@ -2,36 +2,46 @@
 # OpportunityOS State
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
-Last shipped: BRIEF-000 — 2026-08-27.
-Active work: BRIEF-001.
+Last shipped: repository foundation not yet reported.
+Active work: BRIEF-000.
+Phase status: failed — remain in phase.
 Blocked: GitHub returned HTTP 403 when private `main` branch protection was requested: the personal account must upgrade to GitHub Pro or make the repository public. Making the source public is forbidden, paid spend exceeds the zero-budget cap, and no guard was weakened. PR discipline and green checks exist, but GitHub does not enforce them server-side on this plan..
 Next: Enable branch protection support for the private repository without changing its visibility, then require pull requests and the `state`, `guard`, and `mirror` contexts on `main`..
 
 ## Repository
 
-- **Generated:** 2026-08-27T10:06:00Z
-- **Source HEAD:** `bf59fc6` — docs: report BRIEF-000 phase gate
+- **Generated:** 2026-08-27T15:24:47Z
+- **State generated at commit:** `e0af07c` — feat: remediate BRIEF-000 governance controls
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
 
-- **Brief:** BRIEF-001
-- **Open acceptance items:** 11
-- Repository initializes and `recon/` runs end to end on a clean checkout
-- At least 6 of 8 employment sources returned parseable data, **or** each
-- At least 3 of 6 independent sources returned parseable data, **or** each
-- A fixture file exists for every source that returned HTTP 200
-- Every fetched or skipped source has a `SOURCE_REGISTRY.yaml` entry
-- The classifier ran over 100% of normalized rows without unhandled errors
-- Every classification verdict carries a stated reason
-- `opportunities.csv` opens cleanly and row count matches the report
-- No credential, token, or secret appears anywhere in the repository
-- All eight required numbers appear in `SOURCE_EVIDENCE.md`
-- No forbidden action in §7 was taken
+- **Brief:** BRIEF-000
+- **Phase status:** failed — remain in phase
+- **Open acceptance items:** 19
+- `FOUNDER_NAME_PATTERNS` is set from an agent-derived value with no founder involvement, and the report names the source used
+- The pattern set produces zero matches against current mirrored content
+- The guard matches a planted founder-name variant in a mirrored path
+- `check_guard.py` fails in CI when `FOUNDER_NAME_PATTERNS` is unset
+- `.github/pii-patterns.txt` contains no name variants
+- The secret value appears in no tracked file and no temporary file survives
+- ADR-0002 exists, `accepted`, with all fields including the three revisit triggers and the `--no-verify` hole
+- `install_hooks.sh` is idempotent and documented in both files
+- A commit failing the state check is refused by the pre-push hook
+- `docs/CI_STATUS.md` publishes to the mirror
+- With `main` deliberately red, the heartbeat still runs and reports `CHECKS FAILING`
+- With the mirror artificially reverted, it reports `MIRROR STALE`
+- The heartbeat cannot publish any file other than `CI_STATUS.md`
+- With REPORT-000 recording FAIL, `STATE.md` reports BRIEF-000 as active
+- Once REPORT-000 passes, `STATE.md` advances to BRIEF-001
+- `Phase status` appears and agrees with the summary line
+- The delegation rule appears verbatim in `AGENTS.md` and `briefs/TEMPLATE.md`
+- The mirror contains `scripts/`, `.github/workflows/`, `pii-patterns.txt`, and `.mirror-allowlist`, and still no personal data
+- `STATE.md` open acceptance items are complete sentences
 
 ## Completed Briefs
 
-- BRIEF-000 — 2026-08-27
+- None
 
 ## Last Phase Outcome
 
@@ -44,6 +54,7 @@ Next: Enable branch protection support for the private repository without changi
 
 ### Accepted
 - [ADR-0001 — Private Source with Public Documentation Mirror](adr/ADR-0001-repository-topology.md)
+- [ADR-0002 — Unenforced Private Branch Policy](adr/ADR-0002-unenforced-branch-policy.md)
 
 ## Blocked Items
 

@@ -53,7 +53,25 @@ The repository, guard, state, and mirror acceptance tests pass, but BRIEF-000 §
 
 ## Deferred acceptance items
 
-- None. All checkbox acceptance tests passed; the unresolved item is the mandatory branch-policy scope requirement in §6.9.
+- `FOUNDER_NAME_PATTERNS` is set from an agent-derived value with no founder involvement, and the report names the source used
+- The pattern set produces zero matches against current mirrored content
+- The guard matches a planted founder-name variant in a mirrored path
+- `check_guard.py` fails in CI when `FOUNDER_NAME_PATTERNS` is unset
+- `.github/pii-patterns.txt` contains no name variants
+- The secret value appears in no tracked file and no temporary file survives
+- ADR-0002 exists, `accepted`, with all fields including the three revisit triggers and the `--no-verify` hole
+- `install_hooks.sh` is idempotent and documented in both files
+- A commit failing the state check is refused by the pre-push hook
+- `docs/CI_STATUS.md` publishes to the mirror
+- With `main` deliberately red, the heartbeat still runs and reports `CHECKS FAILING`
+- With the mirror artificially reverted, it reports `MIRROR STALE`
+- The heartbeat cannot publish any file other than `CI_STATUS.md`
+- With REPORT-000 recording FAIL, `STATE.md` reports BRIEF-000 as active
+- Once REPORT-000 passes, `STATE.md` advances to BRIEF-001
+- `Phase status` appears and agrees with the summary line
+- The delegation rule appears verbatim in `AGENTS.md` and `briefs/TEMPLATE.md`
+- The mirror contains `scripts/`, `.github/workflows/`, `pii-patterns.txt`, and `.mirror-allowlist`, and still no personal data
+- `STATE.md` open acceptance items are complete sentences
 
 ## Next phase prerequisites
 
