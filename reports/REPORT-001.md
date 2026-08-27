@@ -41,8 +41,32 @@ BRIEF-001 v1.2 must remain active until the mandatory adjudication and verified 
 
 ## Deferred acceptance items
 
-- A 30/30/30 manual audit, precision calculation, disagreement strings, and stable ignored adjudication set.
-- Verified ATS tokens and a policy-resolved TED retrieval method.
+- All 20 cases in §3.1 pass
+- All 12 cases in §3.2 pass
+- All 4 cases in §3.3 pass
+- All 7 cases in §3.4 pass
+- At least 15 generalization cases are added and listed in REPORT-001
+- No mandated case was edited, skipped, or deleted
+- Eligible is impossible when any restriction is present
+- Every verdict records the matched string
+- `robots_allow` returns three states and a 404 is `allowed`
+- `robots_unreachable` retries three times
+- Health vocabulary is closed and uses `parse_empty`
+- TED uses the correct method and every ATS token is verified
+- At least 8 of 14 families and 3 independent families reached HTTP
+- A 30/30/30 sample is adjudicated with per-class precision and disagreement strings
+- Eligible precision is at least 90%, or its percentage is withheld
+- The adjudicated set is stored only under `out/`
+- Per-source eligible rates and inversions are reported
+- REPORT-001 explicitly retracts the v1.1 419 figure and reason
+- STATE is regenerated; workflows green; mirror HEALTHY; `out/` absent
+- `.codex/agents/` contains five pinned roster files
+- `.codex/**` is allowlisted for mirror review
+- `AGENTS.md` contains Model routing
+- The routing table was followed; escalations and triggers are in REPORT-001
+- REPORT-001 names the producing agent for each major deliverable
+- Codex CLI version (at least 0.147.0) is recorded
+- No cloud task or Ultra-mode run was used
 
 ## Next phase prerequisites
 
