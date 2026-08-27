@@ -202,6 +202,17 @@ never committed or mirrored.
 - [ ] Codex CLI version (at least 0.147.0) is recorded
 - [ ] No cloud task or Ultra-mode run was used
 
+**Geographic eligibility model**
+- [ ] ADR-0003 records the model, closed vocabulary, and Egypt-as-parameter
+- [ ] `geo_allow`, `geo_deny`, and `work_mode` store evidence strings
+- [ ] `regions.py` maps Egypt to AFRICA, NORTH_AFRICA, MENA, EMEA—not EU, EEA, EUROPE
+- [ ] `eligibility_for(record, country)` is pure and defaults to `EG`
+- [ ] Deny beats allow and an allowlist omitting Egypt excludes
+- [ ] Five Addendum B cases assert extraction and derived verdict
+- [ ] Unmapped phrases are captured and reported with frequency
+- [ ] Evidence reports eligibility for at least three non-Egypt countries
+- [ ] Audit separates extraction and derived-verdict precision
+
 ## 10. Final report only
 
 Revise `reports/REPORT-001.md` in place. State whether corrected evidence
@@ -222,5 +233,33 @@ supports or contradicts Master Plan §16.2 and §41, or cannot answer them.
 | §7 | Run invariants | `builder` |
 | §9 | Acceptance verification | `architect` |
 | §10 | Report and plan-impact decision | `architect` |
+| §12 | Closed vocabulary, regions, and extraction | `builder` |
+| §12 | Derivation, absorbed cases, and multi-country reporting | `mechanic` |
+| §12 | ADR-0003 | `architect` |
 
 Escalate only after a genuine failure; record each escalation and trigger.
+
+## 12. Store the rule, derive the answer
+
+Extract what each posting permits and forbids; store that rule and derive
+eligibility with `eligibility_for(record, country="EG")`. `eligibility` and its
+reason remain output fields but are derived, not the source of truth. Store
+`geo_allow` and `geo_deny` token/evidence pairs plus one `work_mode` token
+(`remote`, `hybrid`, `onsite`, or `unstated`). Unmapped phrases are stored with
+their evidence and reported as a frequency backlog.
+
+The closed vocabulary is ISO alpha-2 country tokens and `WORLDWIDE`, `EMEA`,
+`MENA`, `GCC`, `EU`, `EEA`, `EUROPE`, `AFRICA`, `NORTH_AFRICA`, `AMERICAS`,
+`LATAM`, `APAC`; conditions are `WORK_AUTH_REQUIRED:<cc>`,
+`RESIDENCY_REQUIRED:<cc>`, `ENTITY_REQUIRED:<cc>`, `NO_SPONSORSHIP`, and
+`TIMEZONE_ONLY`. Extend it only through an ADR. A region table is the sole
+membership authority: Egypt is AFRICA, NORTH_AFRICA, MENA, and EMEA, not EU,
+EEA, or EUROPE.
+
+Deny beats allow. A deny resolving to the queried country or a disqualifying
+condition excludes; an allow resolving to it is eligible; an allowlist that
+omits it excludes; otherwise the result is unclear. Add extraction and derived
+assertions for Global plus no sponsorship, EEA-residents only, US/UK/DE hiring,
+Schengen visa, and Cairo on-site cases. Report token distributions, unmapped
+frequencies, and derived eligibility for AE, SA, and a EU member. Audit
+extraction and derivation separately; the existing 90% Egypt-derived gate stays.
