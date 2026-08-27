@@ -419,42 +419,42 @@ Their absence is a pass condition:
 ## 12. Acceptance criteria
 
 **Structure**
-- [ ] Private `opportunityos` exists with the §6.2 structure
-- [ ] Public `opportunityos-docs` exists, is public, and contains only
+- [x] Private `opportunityos` exists with the §6.2 structure
+- [x] Public `opportunityos-docs` exists, is public, and contains only
       allowlisted paths
-- [ ] No directory exists for a framework not yet in use
+- [x] No directory exists for a framework not yet in use
 
 **Instruction files**
-- [ ] `AGENTS.md` is under 150 lines and instructs the reader to open
+- [x] `AGENTS.md` is under 150 lines and instructs the reader to open
       `docs/STATE.md` first
-- [ ] `CLAUDE.md` line one is `@AGENTS.md` and does not duplicate it
+- [x] `CLAUDE.md` line one is `@AGENTS.md` and does not duplicate it
 
 **Generated state**
-- [ ] `python3 scripts/generate_state.py` runs clean on a fresh clone with no
+- [x] `python3 scripts/generate_state.py` runs clean on a fresh clone with no
       third-party dependencies
-- [ ] `docs/STATE.md` is committed, generated, carries the DO-NOT-EDIT marker,
+- [x] `docs/STATE.md` is committed, generated, carries the DO-NOT-EDIT marker,
       and includes the mirror-sync row
-- [ ] Hand-editing `STATE.md` makes `state.yml` fail
+- [x] Hand-editing `STATE.md` makes `state.yml` fail
 
 **Guards — each verified by a deliberate failing case, then reverted**
-- [ ] A report with no matching brief fails CI
-- [ ] A fake API key in any path fails `guard.yml`
-- [ ] An email address in a mirrored path fails `guard.yml`
-- [ ] An email address in a non-mirrored path does **not** fail
-- [ ] Every guard failure message names the rule and the remedy
+- [x] A report with no matching brief fails CI
+- [x] A fake API key in any path fails `guard.yml`
+- [x] An email address in a mirrored path fails `guard.yml`
+- [x] An email address in a non-mirrored path does **not** fail
+- [x] Every guard failure message names the rule and the remedy
 
 **Mirror**
-- [ ] A merge to `main` syncs the allowlisted paths to the public repository
+- [x] A merge to `main` syncs the allowlisted paths to the public repository
       within one workflow run
-- [ ] The mirror commit message carries the source short SHA
-- [ ] Deleting a mirrored file and merging removes it from the mirror
-- [ ] A PII violation in a mirrored path aborts the sync and nothing is pushed
-- [ ] `check_mirror.py` detects an artificially reverted mirror and re-syncs
-- [ ] The mirror's `README.md` states it is read-only, derived, and disposable
-- [ ] `git grep -i` for the founder's name returns nothing in the mirror
+- [x] The mirror commit message carries the source short SHA
+- [x] Deleting a mirrored file and merging removes it from the mirror
+- [x] A PII violation in a mirrored path aborts the sync and nothing is pushed
+- [x] `check_mirror.py` detects an artificially reverted mirror and re-syncs
+- [x] The mirror's `README.md` states it is read-only, derived, and disposable
+- [x] `git grep -i` for the founder's name returns nothing in the mirror
 
 **The real test**
-- [ ] A fresh clone of the **public mirror**, plus `AGENTS.md` and `STATE.md`,
+- [x] A fresh clone of the **public mirror**, plus `AGENTS.md` and `STATE.md`,
       is sufficient to understand the project with no other context
 
 That last one is what the whole brief is for. Everything above it is a proxy.
