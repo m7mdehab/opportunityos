@@ -10,8 +10,8 @@ Next: Complete BRIEF-000 v1.4 acceptance and restore this report to PASS before 
 
 ## Repository
 
-- **Generated:** 2026-08-27T16:02:50Z
-- **State generated at commit:** `af372ab` — test: race merge 09 of 10
+- **Generated:** 2026-08-27T16:04:28Z
+- **State generated at commit:** `cd007b0` — test: race merge 10 of 10 removes probe
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
