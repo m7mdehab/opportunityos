@@ -72,7 +72,6 @@ class ClassificationTests(unittest.TestCase):
         self.assertTrue(includes("WORLDWIDE", "JP"))
         self.assertEqual("eligible", eligibility_for(extract(record("Worldwide")))[0])
 
-<<<<<<< HEAD
     def test_eu_membership_complete(self):
         """Test that all 27 EU member states are included."""
         from recon.regions import includes
