@@ -72,6 +72,7 @@ class ClassificationTests(unittest.TestCase):
         self.assertTrue(includes("WORLDWIDE", "JP"))
         self.assertEqual("eligible", eligibility_for(extract(record("Worldwide")))[0])
 
+<<<<<<< HEAD
     def test_eu_membership_complete(self):
         """Test that all 27 EU member states are included."""
         from recon.regions import includes
@@ -242,3 +243,40 @@ class ClassificationTests(unittest.TestCase):
         extracted = extract(record("Cairo, Egypt"))
         result, _ = eligibility_for(extracted)
         self.assertEqual("eligible", result)
+
+    def test_eeo_citizenship_mention_is_not_a_work_authorization_requirement(self):
+        body = "We do not discriminate without regard to race, religion, sex, citizenship, age, or disability."
+        extracted = extract(record("Anywhere", body))
+
+        self.assertNotIn("WORK_AUTH_REQUIRED:US", {token for token, _ in extracted.geo_deny})
+        self.assertEqual("eligible", classify(record("Anywhere", body)).eligibility)
+
+    def test_explicit_citizenship_requirements_are_excluded(self):
+        requirements = [
+            "U.S. citizenship required.",
+            "Candidates must possess US citizenship.",
+            "Proof of citizenship required.",
+            "Green card or citizenship required.",
+        ]
+        for body in requirements:
+            with self.subTest(body=body):
+                extracted = extract(record("Anywhere", body))
+                self.assertIn("WORK_AUTH_REQUIRED:US", {token for token, _ in extracted.geo_deny})
+                self.assertEqual("excluded", classify(record("Anywhere", body)).eligibility)
+
+    def test_non_us_only_locations_use_their_own_residency_tokens(self):
+        cases = {
+            "France only": "RESIDENCY_REQUIRED:FR",
+            "Japan only": "RESIDENCY_REQUIRED:JP",
+            "Brazil only": "RESIDENCY_REQUIRED:BR",
+            "India only": "RESIDENCY_REQUIRED:IN",
+            "Canada only": "RESIDENCY_REQUIRED:CA",
+            "LATAM only": "RESIDENCY_REQUIRED:LATAM",
+            "EU only": "RESIDENCY_REQUIRED:EU",
+        }
+        for location, expected in cases.items():
+            with self.subTest(location=location):
+                extracted = extract(record(location, "Remote role."))
+                deny_tokens = {token for token, _ in extracted.geo_deny}
+                self.assertIn(expected, deny_tokens)
+                self.assertNotIn("RESIDENCY_REQUIRED:US", deny_tokens)
