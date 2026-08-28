@@ -1,73 +1,41 @@
 # REPORT-001 — Source Reconnaissance
 
-**Date:** 2026-08-27
-**Version:** 1.2
+**Date:** 2026-08-28
+**Version:** 1.4
 **Codex CLI:** `0.150.0-alpha.8`
 
-## Scope completed
+## Delivered work
 
-- **Mechanic:** replaced the implementation-fitting tests with the fixed 20/12/4/7 classifier corpus and 15 generalization cases; no mandated case changed.
-- **Builder:** made restrictions win over eligibility signals and split robots into `allowed`, `disallowed_by_robots`, and three-attempt `robots_unreachable` states.
-- **Scout:** re-ran permitted public GET endpoints and identified the TED POST hard gate plus unverified Lever/Ashby watchlist tokens.
-- **Architect:** installed the mirrored routing roster, revised the brief, and verified this report's acceptance claims.
+- **Builder:** relocated mirrored workflow references to `ci-reference/`, added ADR-0004, and verified mirror Actions are disabled.
+- **Mechanic:** implemented the stored geographic-rule model, removed the legacy classifier path, and pinned the mandated extraction and region coverage.
+- **Mechanic:** added the semantic external-action allowlist and ADR-0005. TED now uses the documented unauthenticated `POST /v3/notices/search` request with only `query`, `fields`, `page`, and `limit`; metadata excludes payload contents and credentials.
+- **Builder:** completed a fresh final corpus run: 2,659 raw records and 2,280 unique records. TED returned 100 parseable notices through its approved POST.
 
-## Test evidence
+## Verification
 
-- All 43 mandated classifier cases and all 15 additional cases pass. Every verdict contains its matched restriction, eligibility signal, or explicit no-signal reason.
-- The corrected run fetched 2,465 raw records and wrote 2,109 unique records. Twelve of fourteen source families reached HTTP; six independent families reached HTTP; Jobicy and Ashby were the only two family-level `robots_unreachable` outcomes.
-- `parse_empty` now identifies Freelancer, Etimad, and the empty HubSpot board. HTTP 403/404/405 responses remain explicit source-health outcomes.
+- `python -m unittest discover -v`: 12 tests passed, including the fixed corpus, generalization cases, stored-rule cases, region assertions, and TED POST policy boundaries.
+- 12 of 14 source families reached HTTP; six independent families reached HTTP; two family-level `robots_unreachable` outcomes remained. No `allowed_ok` source reported zero records.
+- The final local audit set contains all 8 eligible records plus 30 excluded and 30 unclear records in ignored `out/audit-001.json`, with raw text retained locally for adjudication.
 
 ## Failures and known limitations
 
-- **v1.1 is retracted:** its 419 (22.9%) result included seven unmeasured families and a classifier that could call US- or Germany-restricted postings eligible.
-- The mandatory 30/30/30 raw-text adjudication has not yet been performed, so the corrected eligibility percentage is withheld. The mandatory per-source rate and eligible-precision gate are not met.
-- ATS board tokens remain unverified and TED's required POST method conflicts with the carried-forward no-external-write rule. This is a hard gate, not a reason to bypass it.
-- Global `~/.codex/config.toml` was not changed because its existing `gpt-5.6-sol` / `medium` defaults conflict with Addendum A's Luna / high values.
+- The mandatory raw-text adjudication remains pending: the set was generated but extraction and derivation judgments were not independently completed. Egypt eligibility percentage and eligible precision are withheld.
+- The ATS watchlist has unresolved token defects: all carried-forward Lever boards returned HTTP 404, `greenhouse:plaid` returned HTTP 404, and Ashby robots retrieval remained unreachable. No substitutions have been claimed.
+- Because those gates remain open, the mirror was not synchronized from this incomplete branch and BRIEF-001 cannot advance.
 
-## Routing and escalation
+## Falsification
 
-- Work followed BRIEF-001 §11 locally; no cloud task or Ultra-mode run was used.
-- One escalation occurred: `mechanic` to `builder` after G03–G05 and G10 failed. Trigger: pattern-only changes could not distinguish location eligibility from incidental “EMEA hours”; the structural location-versus-description rule fixed all cases.
-
-## What this changes about the plan
-
-The v1.2 run still cannot support §16.2's 37-adapter rollout or §41's regional-eligibility moat hypothesis. It demonstrates that several previously unmeasured endpoints are reachable, but it does not yet establish Egypt eligibility or individual-track supply at the required precision.
+- The corrected model reduced the final Egypt-eligible count to 8 of 2,280; broad company-description mentions are no longer treated as applicant geography. The v1.1 419 (22.9%) claim remains retracted.
+- The result does not support a 37-source Phase 1 rollout or the regional moat hypothesis. It is a source-health measurement, not a validated supply figure.
 
 ## Decision
 
 FAIL / remain in phase
 
-BRIEF-001 v1.2 must remain active until the mandatory adjudication and verified ATS/source-method work complete. No eligibility percentage is published as a measurement.
-
-## Deferred acceptance items
-
-- All 20 cases in §3.1 pass
-- All 12 cases in §3.2 pass
-- All 4 cases in §3.3 pass
-- All 7 cases in §3.4 pass
-- At least 15 generalization cases are added and listed in REPORT-001
-- No mandated case was edited, skipped, or deleted
-- Eligible is impossible when any restriction is present
-- Every verdict records the matched string
-- `robots_allow` returns three states and a 404 is `allowed`
-- `robots_unreachable` retries three times
-- Health vocabulary is closed and uses `parse_empty`
-- TED uses the correct method and every ATS token is verified
-- At least 8 of 14 families and 3 independent families reached HTTP
-- A 30/30/30 sample is adjudicated with per-class precision and disagreement strings
-- Eligible precision is at least 90%, or its percentage is withheld
-- The adjudicated set is stored only under `out/`
-- Per-source eligible rates and inversions are reported
-- REPORT-001 explicitly retracts the v1.1 419 figure and reason
-- STATE is regenerated; workflows green; mirror HEALTHY; `out/` absent
-- `.codex/agents/` contains five pinned roster files
-- `.codex/**` is allowlisted for mirror review
-- `AGENTS.md` contains Model routing
-- The routing table was followed; escalations and triggers are in REPORT-001
-- REPORT-001 names the producing agent for each major deliverable
-- Codex CLI version (at least 0.147.0) is recorded
-- No cloud task or Ultra-mode run was used
+No eligibility percentage is published. BRIEF-001 remains active until verified ATS substitutions, complete independent 30/30/30 raw-text adjudication, and post-merge mirror reconciliation satisfy the terminal gates.
 
 ## Next phase prerequisites
 
-- Complete the v1.2 audit and source-token gates; do not advance to BRIEF-002.
+- Verify and substitute every non-resolving ATS board, then rerun the corpus.
+- Complete a fresh independent raw-text adjudication and publish only aggregate precision results.
+- Merge the completed phase, synchronize the relocated mirror tree, and verify mirror health and zero workflow runs.

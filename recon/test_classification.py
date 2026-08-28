@@ -49,7 +49,7 @@ class ClassificationTests(unittest.TestCase):
     def test_stored_rule_cases(self):
         cases = [
             ("Global", "Sponsorship not available for this position.", {"WORLDWIDE"}, {"NO_SPONSORSHIP"}, "unstated", "excluded"),
-            ("Anywhere", "Restricted to residents of the EEA.", {"WORLDWIDE", "EEA"}, {"RESIDENCY_REQUIRED:EEA"}, "unstated", "excluded"),
+            ("Anywhere", "Restricted to residents of the EEA.", {"EEA"}, {"RESIDENCY_REQUIRED:EEA"}, "unstated", "excluded"),
             ("Remote", "Hiring in: US, UK, Germany.", {"US", "GB", "DE"}, set(), "remote", "excluded"),
             ("Remote", "Must hold a valid Schengen visa.", set(), {"RESIDENCY_REQUIRED:EU"}, "remote", "excluded"),
             ("Cairo", "On-site five days a week.", {"EG"}, set(), "onsite", "eligible"),
@@ -61,3 +61,13 @@ class ClassificationTests(unittest.TestCase):
                 self.assertEqual(denies, {token for token, _ in extracted.geo_deny})
                 self.assertEqual(mode, extracted.work_mode[0])
                 self.assertEqual(expected, eligibility_for(extracted)[0])
+
+    def test_region_membership_and_unbounded_allow(self):
+        from recon.regions import includes
+        for region in ("AFRICA", "NORTH_AFRICA", "MENA", "EMEA"):
+            self.assertTrue(includes(region, "EG"))
+        for region in ("EU", "EEA", "EUROPE"):
+            self.assertFalse(includes(region, "EG"))
+        self.assertTrue(includes("WORLDWIDE", "EG"))
+        self.assertTrue(includes("WORLDWIDE", "JP"))
+        self.assertEqual("eligible", eligibility_for(extract(record("Worldwide")))[0])

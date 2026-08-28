@@ -21,4 +21,12 @@ action_classes:
     description: tenders, contracts, binding offers, or sensitive declarations
     external_write: false
     enabled: false
-adapter_permissions: {}
+adapter_permissions:
+  - host: api.ted.europa.eu
+    method: POST
+    path: /v3/notices/search
+    classification: READ_ONLY_QUERY
+    authentication: none
+    permitted_purpose: retrieval/search of published TED procurement notices only
+    permitted_request_fields: [query, fields, page, limit, scope, checkQuerySyntax, paginationMode, iterationNextToken]
+    prohibited_endpoints: [publication, validation, conversion, rendering, stop-publication]

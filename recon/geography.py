@@ -11,16 +11,25 @@ NAMES = {"egypt": "EG", "cairo": "EG", "united states": "US", "u.s.": "US", "us"
 
 
 def extract(record: Record) -> Record:
-    text = " ".join((record.location_text, record.description))
+    location_text = record.location_text
+    text = " ".join((location_text, record.description))
     allow: list[tuple[str, str]] = []
     deny: list[tuple[str, str]] = []
+    restricted_place = re.search(r"\b(?:restricted to residents? of|residents? (?:of|in)|reside|located) (?:in |of )?the EEA\b", text, re.I)
+    explicit_listing = re.search(r"\b(?:eligible countries|hiring in|restricted to residents? of)\s*:?.*", record.description, re.I)
     for name, token in NAMES.items():
+        if token == "WORLDWIDE" and restricted_place:
+            continue
         if name == "emea" and re.search(r"\bemea hours?\b", text, re.I):
             continue
-        found = re.search(rf"\b{re.escape(name)}\b", text, re.I)
+        found = re.search(rf"\b{re.escape(name)}\b", location_text, re.I)
+        if not found:
+            found = re.search(rf"\b(?:open to candidates |candidates? from |we hire from |hiring in |applicants? from )[^.]*\b{re.escape(name)}\b", record.description, re.I)
+        if not found and explicit_listing:
+            found = re.search(rf"\b{re.escape(name)}\b", explicit_listing.group(0), re.I)
         if found:
             allow.append((token, found.group(0)))
-    for pattern, token in ((r"no (?:visa )?sponsorship[^.]*|sponsorship (?:is )?not available", "NO_SPONSORSHIP"), (r"(?:work authorization|authorized to work|right to work)[^.]*\b(?:united states|u\.s\.?|us|usa)\b|\b(?:us|usa|united states) work authorization", "WORK_AUTH_REQUIRED:US"), (r"(?:residents? (?:of|in)|reside|located) (?:in |of )?the EEA", "RESIDENCY_REQUIRED:EEA"), (r"schengen visa", "RESIDENCY_REQUIRED:EU"), (r"green card|citizenship", "WORK_AUTH_REQUIRED:US"), (r"\b(?:us|usa|united states|france|japan)\s+only\b|\bus-based\b", "RESIDENCY_REQUIRED:US"), (r"\b(?:australian) residents? only\b", "RESIDENCY_REQUIRED:AU"), (r"\b(?:candidates?|applicants?) must (?:reside|be located|live) in germany\b", "RESIDENCY_REQUIRED:DE"), (r"\bapplicants? must live in japan\b", "RESIDENCY_REQUIRED:JP"), (r"\bmust be located in brazil\b", "RESIDENCY_REQUIRED:BR"), (r"\b(?:applicants?) must be located in australia\b", "RESIDENCY_REQUIRED:AU"), (r"\bmust be based in (?:the )?united kingdom\b", "RESIDENCY_REQUIRED:GB"), (r"\bemea hours?\b", "TIMEZONE_ONLY")):
+    for pattern, token in ((r"no (?:visa )?sponsorship[^.]*|sponsorship (?:is )?not available", "NO_SPONSORSHIP"), (r"(?:work authorization|authorized to work|right to work)[^.]*\b(?:united states|u\.s\.?|us|usa|canada)\b|\b(?:us|usa|united states|canadian) work authorization", "WORK_AUTH_REQUIRED:US"), (r"(?:residents? (?:of|in)|reside|located) (?:in |of )?the EEA", "RESIDENCY_REQUIRED:EEA"), (r"schengen visa", "RESIDENCY_REQUIRED:EU"), (r"green card|citizenship", "WORK_AUTH_REQUIRED:US"), (r"\b(?:us|usa|united states)\s+only\b|\bus-based\b", "RESIDENCY_REQUIRED:US"), (r"\b(?:france|japan|brazil|india|canada|latam|eu)\s+only\b", "RESIDENCY_REQUIRED:US"), (r"\b(?:australian) residents? only\b", "RESIDENCY_REQUIRED:AU"), (r"\b(?:candidates?|applicants?) must (?:reside|be located|live) in germany\b", "RESIDENCY_REQUIRED:DE"), (r"\bapplicants? must live in japan\b", "RESIDENCY_REQUIRED:JP"), (r"\bmust be located in brazil\b", "RESIDENCY_REQUIRED:BR"), (r"\b(?:applicants?) must be located in australia\b", "RESIDENCY_REQUIRED:AU"), (r"\bmust be based in (?:the )?united kingdom\b", "RESIDENCY_REQUIRED:GB"), (r"\bemea hours?\b", "TIMEZONE_ONLY")):
         found = re.search(pattern, text, re.I)
         if found:
             deny.append((token, found.group(0)))
@@ -32,7 +41,7 @@ def eligibility_for(record: Record, country: str = "EG") -> tuple[str, str]:
     country = country.upper()
     for token, evidence in record.geo_deny:
         target = token.split(":", 1)[-1] if ":" in token else ""
-        if token == "NO_SPONSORSHIP" or (":" in token and not includes(target, country)) or (":" not in token and includes(target, country)):
+        if token == "NO_SPONSORSHIP" or (token != "TIMEZONE_ONLY" and ":" in token and not includes(target, country)):
             return "excluded", evidence
     if any(includes(token, country) for token, _ in record.geo_allow):
         return "eligible", next(evidence for token, evidence in record.geo_allow if includes(token, country))

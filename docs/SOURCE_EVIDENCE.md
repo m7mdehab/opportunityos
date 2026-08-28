@@ -4,64 +4,64 @@
 
 ## Required numbers
 
-1. **Total raw records fetched:** 2465.
+1. **Total raw records fetched:** 2659.
 
 | Source family | Raw records | Unique eligible | Individual-eligible |
 |---|---:|---:|---:|
-| afdb | 0 | 0 | 0 |
+| afdb | 90 | 0 | 0 |
 | ashby | 0 | 0 | 0 |
 | etimad | 0 | 0 | 0 |
-| eu_ted | 0 | 0 | 0 |
+| eu_ted | 100 | 0 | 0 |
 | freelancer | 0 | 0 | 0 |
-| greenhouse | 2069 | 765 | 0 |
-| himalayas | 20 | 3 | 0 |
+| greenhouse | 2073 | 1 | 0 |
+| himalayas | 20 | 0 | 0 |
 | jobicy | 0 | 0 | 0 |
 | lever | 0 | 0 | 0 |
-| remote_ok | 99 | 13 | 0 |
-| remotive | 18 | 14 | 0 |
+| remote_ok | 99 | 0 | 0 |
+| remotive | 18 | 7 | 0 |
 | ungm | 163 | 0 | 0 |
-| we_work_remotely | 89 | 36 | 0 |
+| we_work_remotely | 89 | 0 | 0 |
 | world_bank | 7 | 0 | 0 |
 
-2. **Unique records after deduplication:** 2109; **duplicate rate:** 14.4%.
-3. **Cross-source overlap:** 0 fingerprints appeared on more than one source.
+2. **Unique records after deduplication:** 2280; **duplicate rate:** 14.3%.
+3. **Cross-source overlap:** 1 fingerprints appeared on more than one source.
 4. **Egypt-eligible percentage:** withheld pending the mandatory precision audit.
-5. **Unclear percentage:** 0.0% (0/2109) stated no geography at all.
+5. **Unclear percentage:** 0.0% (0/2280) stated no geography at all.
 6. **Individual-eligible count:** per-source counts are in the table above.
 
 ## Source health
 
 | Source | Status | Latency ms | Records | Detail |
 |---|---|---:|---:|---|
-| himalayas | allowed_ok | 264 | 20 | HTTP 200 parsed records |
+| himalayas | allowed_ok | 969 | 20 | HTTP 200 parsed records |
 | jobicy | robots_unreachable | 0 | 0 | robots.txt could not be read after three attempts |
-| remotive | allowed_ok | 343 | 18 | HTTP 200 parsed records |
-| remote_ok | allowed_ok | 1062 | 99 | HTTP 200 parsed records |
-| we_work_remotely | allowed_ok | 969 | 89 | HTTP 200 parsed records |
-| ungm | allowed_ok | 1531 | 163 | HTTP 200 parsed records |
-| world_bank | allowed_ok | 219 | 7 | HTTP 200 parsed records |
-| eu_ted | http_405 | 280 | 0 | {"message":"Request method 'GET' is not supported","error":null} |
-| afdb | http_403 | 172 | 0 | <!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=Edge"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scal |
-| freelancer | parse_empty | 702 | 0 | HTTP 200 parsed zero records |
+| remotive | allowed_ok | 296 | 18 | HTTP 200 parsed records |
+| remote_ok | allowed_ok | 1046 | 99 | HTTP 200 parsed records |
+| we_work_remotely | allowed_ok | 1015 | 89 | HTTP 200 parsed records |
+| ungm | allowed_ok | 1062 | 163 | HTTP 200 parsed records |
+| world_bank | allowed_ok | 234 | 7 | HTTP 200 parsed records |
+| eu_ted | allowed_ok | 625 | 100 | HTTP 200 parsed records |
+| afdb | allowed_ok | 2375 | 90 | HTTP 200 parsed records |
+| freelancer | parse_empty | 640 | 0 | HTTP 200 parsed zero records |
 | etimad | parse_empty | 578 | 0 | HTTP 200 parsed zero records |
-| greenhouse:cloudflare | allowed_ok | 2234 | 311 | HTTP 200 parsed records |
-| greenhouse:datadog | allowed_ok | 2046 | 451 | HTTP 200 parsed records |
-| greenhouse:duolingo | allowed_ok | 531 | 83 | HTTP 200 parsed records |
-| greenhouse:figma | allowed_ok | 1562 | 160 | HTTP 200 parsed records |
-| greenhouse:flexport | allowed_ok | 2968 | 161 | HTTP 200 parsed records |
-| greenhouse:coinbase | allowed_ok | 750 | 182 | HTTP 200 parsed records |
-| greenhouse:hubspot | parse_empty | 202 | 0 | HTTP 200 parsed zero records |
-| greenhouse:plaid | http_404 | 219 | 0 | {"status":404,"error":"Job not found"} |
-| greenhouse:stripe | allowed_ok | 2000 | 577 | HTTP 200 parsed records |
-| greenhouse:twilio | allowed_ok | 812 | 144 | HTTP 200 parsed records |
-| lever:coursera | http_404 | 859 | 0 | {"ok":false,"error":"Document not found"} |
-| lever:mixpanel | http_404 | 858 | 0 | {"ok":false,"error":"Document not found"} |
-| lever:postman | http_404 | 860 | 0 | {"ok":false,"error":"Document not found"} |
-| lever:samsara | http_404 | 1030 | 0 | {"ok":false,"error":"Document not found"} |
-| lever:sourcegraph | http_404 | 1187 | 0 | {"ok":false,"error":"Document not found"} |
-| lever:netlify | http_404 | 1000 | 0 | {"ok":false,"error":"Document not found"} |
-| lever:sentry | http_404 | 859 | 0 | {"ok":false,"error":"Document not found"} |
-| lever:docker | http_404 | 890 | 0 | {"ok":false,"error":"Document not found"} |
+| greenhouse:cloudflare | allowed_ok | 2563 | 312 | HTTP 200 parsed records |
+| greenhouse:datadog | allowed_ok | 2610 | 450 | HTTP 200 parsed records |
+| greenhouse:duolingo | allowed_ok | 984 | 83 | HTTP 200 parsed records |
+| greenhouse:figma | allowed_ok | 687 | 160 | HTTP 200 parsed records |
+| greenhouse:flexport | allowed_ok | 780 | 161 | HTTP 200 parsed records |
+| greenhouse:coinbase | allowed_ok | 797 | 183 | HTTP 200 parsed records |
+| greenhouse:hubspot | parse_empty | 265 | 0 | HTTP 200 parsed zero records |
+| greenhouse:plaid | http_404 | 172 | 0 | {"status":404,"error":"Job not found"} |
+| greenhouse:stripe | allowed_ok | 1546 | 580 | HTTP 200 parsed records |
+| greenhouse:twilio | allowed_ok | 843 | 144 | HTTP 200 parsed records |
+| lever:coursera | http_404 | 858 | 0 | {"ok":false,"error":"Document not found"} |
+| lever:mixpanel | http_404 | 859 | 0 | {"ok":false,"error":"Document not found"} |
+| lever:postman | http_404 | 859 | 0 | {"ok":false,"error":"Document not found"} |
+| lever:samsara | http_404 | 890 | 0 | {"ok":false,"error":"Document not found"} |
+| lever:sourcegraph | http_404 | 859 | 0 | {"ok":false,"error":"Document not found"} |
+| lever:netlify | http_404 | 905 | 0 | {"ok":false,"error":"Document not found"} |
+| lever:sentry | http_404 | 875 | 0 | {"ok":false,"error":"Document not found"} |
+| lever:docker | http_404 | 875 | 0 | {"ok":false,"error":"Document not found"} |
 | ashby:notion | robots_unreachable | 0 | 0 | robots.txt could not be read after three attempts |
 | ashby:ramp | robots_unreachable | 0 | 0 | robots.txt could not be read after three attempts |
 | ashby:webflow | robots_unreachable | 0 | 0 | robots.txt could not be read after three attempts |

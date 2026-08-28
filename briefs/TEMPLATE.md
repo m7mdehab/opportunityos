@@ -1,5 +1,11 @@
 # BRIEF-XXX — Title
 
+**Terminal gate:** State the independently verifiable condition that permits a final founder response.
+
+## Transactional execution
+
+Maintain an internal unresolved-task ledger and dependency DAG. Do not return while an available agent or tool can execute an unresolved task; repair defects and rerun invalidated evidence automatically.
+
 ```yaml
 phase_id: ""
 objective: ""

@@ -5,20 +5,20 @@ OpportunityOS is an opportunity-acquisition platform for MENA.
 Last shipped: BRIEF-000 — 2026-08-27.
 Active work: BRIEF-001.
 Phase status: failed — remain in phase.
-Blocked: **v1.1 is retracted:** its 419 (22.9%) result included seven unmeasured families and a classifier that could call US- or Germany-restricted postings eligible..
-Next: Complete the v1.2 audit and source-token gates; do not advance to BRIEF-002..
+Blocked: The mandatory raw-text adjudication remains pending: the set was generated but extraction and derivation judgments were not independently completed. Egypt eligibility percentage and eligible precision are withheld..
+Next: Verify and substitute every non-resolving ATS board, then rerun the corpus..
 
 ## Repository
 
 - **Generated:** 2026-08-27T18:27:14Z
-- **State generated at commit:** `9950eb9` — docs: enumerate BRIEF-001 pending criteria
+- **State generated at commit:** `8dc939f` — fix: prevent mirror workflows and derive eligibility
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
 
 - **Brief:** BRIEF-001
 - **Phase status:** failed — remain in phase
-- **Open acceptance items:** 26
+- **Open acceptance items:** 35
 - All 20 cases in §3.1 pass
 - All 12 cases in §3.2 pass
 - All 4 cases in §3.3 pass
@@ -45,6 +45,15 @@ Next: Complete the v1.2 audit and source-token gates; do not advance to BRIEF-00
 - REPORT-001 names the producing agent for each major deliverable
 - Codex CLI version (at least 0.147.0) is recorded
 - No cloud task or Ultra-mode run was used
+- ADR-0003 records the model, closed vocabulary, and Egypt-as-parameter
+- `geo_allow`, `geo_deny`, and `work_mode` store evidence strings
+- `regions.py` maps Egypt to AFRICA, NORTH_AFRICA, MENA, EMEA—not EU, EEA, EUROPE
+- `eligibility_for(record, country)` is pure and defaults to `EG`
+- Deny beats allow and an allowlist omitting Egypt excludes
+- Five Addendum B cases assert extraction and derived verdict
+- Unmapped phrases are captured and reported with frequency
+- Evidence reports eligibility for at least three non-Egypt countries
+- Audit separates extraction and derived-verdict precision
 
 ## Completed Briefs
 
@@ -62,21 +71,21 @@ Next: Complete the v1.2 audit and source-token gates; do not advance to BRIEF-00
 ### Accepted
 - [ADR-0001 — Private Source with Public Documentation Mirror](adr/ADR-0001-repository-topology.md)
 - [ADR-0002 — Unenforced Private Branch Policy](adr/ADR-0002-unenforced-branch-policy.md)
+- [ADR-0003 — Geographic Eligibility Model](adr/ADR-0003-geographic-eligibility-model.md)
+- [ADR-0004 — Mirror Does Not Execute](adr/ADR-0004-mirror-does-not-execute.md)
+- [ADR-0005 — TED Search Is a Read-Only Query](adr/ADR-0005-ted-search-read-only-post.md)
 
 ## Blocked Items
 
-- **v1.1 is retracted:** its 419 (22.9%) result included seven unmeasured families and a classifier that could call US- or Germany-restricted postings eligible.
-- The mandatory 30/30/30 raw-text adjudication has not yet been performed, so the corrected eligibility percentage is withheld. The mandatory per-source rate and eligible-precision gate are not met.
-- ATS board tokens remain unverified and TED's required POST method conflicts with the carried-forward no-external-write rule. This is a hard gate, not a reason to bypass it.
-- Global `~/.codex/config.toml` was not changed because its existing `gpt-5.6-sol` / `medium` defaults conflict with Addendum A's Luna / high values.
+- The mandatory raw-text adjudication remains pending: the set was generated but extraction and derivation judgments were not independently completed. Egypt eligibility percentage and eligible precision are withheld.
+- The ATS watchlist has unresolved token defects: all carried-forward Lever boards returned HTTP 404, `greenhouse:plaid` returned HTTP 404, and Ashby robots retrieval remained unreachable. No substitutions have been claimed.
+- Because those gates remain open, the mirror was not synchronized from this incomplete branch and BRIEF-001 cannot advance.
 
 ## Source Status Counts
 
-- allowed_ok: 14
+- allowed_ok: 16
 - deliberately_not_fetched: 16
-- http_403: 1
 - http_404: 9
-- http_405: 1
 - manual_only: 16
 - parse_empty: 3
 - review_required: 54
@@ -85,4 +94,6 @@ Next: Complete the v1.2 audit and source-token gates; do not advance to BRIEF-00
 
 ## Next Prerequisites
 
-- Complete the v1.2 audit and source-token gates; do not advance to BRIEF-002.
+- Verify and substitute every non-resolving ATS board, then rerun the corpus.
+- Complete a fresh independent raw-text adjudication and publish only aggregate precision results.
+- Merge the completed phase, synchronize the relocated mirror tree, and verify mirror health and zero workflow runs.
