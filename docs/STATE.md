@@ -10,8 +10,8 @@ Next: Claude Code independently adjudicates `out/audit-001.json` and records pre
 
 ## Repository
 
-- **Generated:** 2026-08-28T01:12:09Z
-- **State generated at commit:** `c70196a` — fix: authorize read-only TED search
+- **Generated:** 2026-08-28T23:04:37Z
+- **State generated at commit:** `dcdd30a` — fix(geo): complete region definitions, unmapped phrase extraction, and record persistence
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -74,6 +74,7 @@ Next: Claude Code independently adjudicates `out/audit-001.json` and records pre
 - [ADR-0003 — Geographic Eligibility Model](adr/ADR-0003-geographic-eligibility-model.md)
 - [ADR-0004 — Mirror Does Not Execute](adr/ADR-0004-mirror-does-not-execute.md)
 - [ADR-0005 — TED Search Is a Read-Only Query](adr/ADR-0005-ted-search-read-only-post.md)
+- [ADR-0006 — Geographic Region Completion and Taxonomy Invariants](adr/ADR-0006-geographic-region-completion.md)
 
 ## Blocked Items
 
