@@ -2,3 +2,8 @@ name = "builder"
 description = "Everyday implementation needing judgment: refactors, taxonomies, workflow changes."
 model = "gpt-5.6-terra"
 model_reasoning_effort = "high"
+developer_instructions = """
+Implement core features, refactor code, update taxonomies, and manage workflow changes
+requiring technical judgment. Ensure changes strictly satisfy requirements and pass all checks.
+"""
+
