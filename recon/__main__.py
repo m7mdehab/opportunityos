@@ -65,7 +65,11 @@ def fetch(source: Source, out_dir: Path, robots: dict[str, str]) -> tuple[list[R
     if robots_status != "allowed":
         return [], Health(source.source_id, source.track, robots_status, "robots.txt disallowed access" if robots_status == "disallowed_by_robots" else "robots.txt could not be read after three attempts", 0, 0, source.policy_url)
     if source.method != "GET" and not permits(source.method, source.url, source.action_classification):
-        return [], Health(source.source_id, source.track, "disallowed_by_robots", "external operation is not allowlisted", 0, 0, source.policy_url)
+        raise SystemExit(
+            f"SOURCE DEFINITION ERROR: {source.source_id} uses method={source.method} "
+            f"which is not allowlisted by AGENT_PERMISSIONS.yaml. "
+            "Fix the source definition or update committed permissions before running."
+        )
     started = time.monotonic()
     body = None
     headers = {"User-Agent": USER_AGENT, "Accept": "application/json, application/rss+xml, text/html;q=0.9"}

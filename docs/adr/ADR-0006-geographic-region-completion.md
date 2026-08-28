@@ -31,3 +31,4 @@ Derivations for regional postings resolve accurately across all member countries
 ## Required tests and rollback
 
 Maintain deterministic unit tests verifying exact membership, boundary exclusions, and hierarchy invariants (`EU ⊆ EEA ⊆ EUROPE ⊆ EMEA`, `LATAM ⊆ AMERICAS`, `AFRICA ⊆ EMEA`).
+
