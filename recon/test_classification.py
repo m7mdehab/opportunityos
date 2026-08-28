@@ -222,6 +222,19 @@ class ClassificationTests(unittest.TestCase):
         for country in apac_countries:
             self.assertTrue(includes("APAC", country), f"{country} should be in APAC")
 
+    def test_regional_hierarchy_invariants(self):
+        """Test mathematical set hierarchy invariants across defined regions."""
+        from recon.regions import REGIONS
+        self.assertTrue(REGIONS["EU"].issubset(REGIONS["EEA"]), "EU must be a subset of EEA")
+        self.assertTrue(REGIONS["EEA"].issubset(REGIONS["EUROPE"]), "EEA must be a subset of EUROPE")
+        self.assertTrue(REGIONS["EUROPE"].issubset(REGIONS["EMEA"]), "EUROPE must be a subset of EMEA")
+        self.assertTrue(REGIONS["AFRICA"].issubset(REGIONS["EMEA"]), "AFRICA must be a subset of EMEA")
+        self.assertTrue(REGIONS["MENA"].issubset(REGIONS["EMEA"]), "MENA must be a subset of EMEA")
+        self.assertTrue(REGIONS["NORTH_AFRICA"].issubset(REGIONS["AFRICA"]), "NORTH_AFRICA must be a subset of AFRICA")
+        self.assertTrue(REGIONS["NORTH_AFRICA"].issubset(REGIONS["MENA"]), "NORTH_AFRICA must be a subset of MENA")
+        self.assertTrue(REGIONS["GCC"].issubset(REGIONS["MENA"]), "GCC must be a subset of MENA")
+        self.assertTrue(REGIONS["LATAM"].issubset(REGIONS["AMERICAS"]), "LATAM must be a subset of AMERICAS")
+
     def test_egypt_region_consistency(self):
         """Test Egypt's membership is consistent with ADR-0003."""
         from recon.regions import includes

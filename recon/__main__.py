@@ -117,7 +117,8 @@ def write_csv(path: Path, records: list[Record]) -> None:
         writer = csv.DictWriter(handle, fieldnames=columns)
         writer.writeheader()
         for record in records:
-            writer.writerow({**record.flat(), **classify(record).__dict__})
+            extracted = extract(record)
+            writer.writerow({**extracted.flat(), **classify(record).__dict__})
 
 
 def write_evidence(path: Path, all_records: list[Record], unique: list[Record], duplicate_count: int, overlaps: int, health: list[Health]) -> None:

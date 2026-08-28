@@ -17,13 +17,19 @@ IGNORE_WORDS = {
 }
 
 
-def _extract_unmapped(location_text: str, allow: list[tuple[str, str]], deny: list[tuple[str, str]]) -> tuple[str, ...]:
-    if not location_text:
-        return ()
-    segments = re.split(r"[,/|;•·\-]|\band\b|\bor\b", location_text)
+def _extract_unmapped(location_text: str, description: str, allow: list[tuple[str, str]], deny: list[tuple[str, str]]) -> tuple[str, ...]:
+    candidates: list[str] = []
+    if location_text:
+        segments = re.split(r"[,/|;•·]|\s+[-–—]\s+|\band\b|\bor\b", location_text)
+        candidates.extend(segments)
+    if not allow:
+        explicit = re.search(r"\b(?:hiring in|candidates from|open to candidates in|restricted to residents of)\s+([A-Za-z\s,]+)", description, re.I)
+        if explicit:
+            desc_segments = re.split(r"[,/|;•·]|\band\b|\bor\b", explicit.group(1))
+            candidates.extend(desc_segments)
     unmapped: list[str] = []
-    for seg in segments:
-        clean = seg.strip()
+    for seg in candidates:
+        clean = re.sub(r"^[\s()\[\]{}:\"'.,-]+|[\s()\[\]{}:\"'.,-]+$", "", seg).strip()
         if not clean or len(clean) < 2:
             continue
         if clean.lower() in IGNORE_WORDS:
@@ -60,7 +66,7 @@ def extract(record: Record) -> Record:
         if found:
             deny.append((token, found.group(0)))
     mode = ("onsite", "on-site") if re.search(r"\bon[- ]site\b", text, re.I) else ("hybrid", "hybrid") if re.search(r"\bhybrid\b", text, re.I) else ("remote", "remote") if re.search(r"\bremote\b", text, re.I) else ("unstated", "")
-    unmapped = _extract_unmapped(location_text, allow, deny)
+    unmapped = _extract_unmapped(location_text, record.description, allow, deny)
     return replace(record, geo_allow=tuple(dict.fromkeys(allow)), geo_deny=tuple(dict.fromkeys(deny)), work_mode=mode, unmapped=unmapped)
 
 
