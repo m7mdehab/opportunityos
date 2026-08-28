@@ -10,6 +10,32 @@ from recon.regions import includes
 NAMES = {"egypt": "EG", "cairo": "EG", "united states": "US", "u.s.": "US", "us": "US", "usa": "US", "canada": "CA", "united kingdom": "GB", "uk": "GB", "germany": "DE", "australia": "AU", "india": "IN", "france": "FR", "japan": "JP", "brazil": "BR", "latam": "LATAM", "uae": "AE", "saudi arabia": "SA", "eea": "EEA", "eu": "EU", "emea": "EMEA", "mena": "MENA", "middle east": "MENA", "africa": "AFRICA", "worldwide": "WORLDWIDE", "global": "WORLDWIDE", "anywhere": "WORLDWIDE", "any country": "WORLDWIDE"}
 
 
+IGNORE_WORDS = {
+    "remote", "hybrid", "onsite", "on-site", "office", "work from home", "wfh",
+    "full-time", "part-time", "contract", "freelance", "n/a", "any", "unstated",
+    "anywhere", "flexible", "multiple locations", "various", "worldwide", "global",
+}
+
+
+def _extract_unmapped(location_text: str, allow: list[tuple[str, str]], deny: list[tuple[str, str]]) -> tuple[str, ...]:
+    if not location_text:
+        return ()
+    segments = re.split(r"[,/|;•·\-]|\band\b|\bor\b", location_text)
+    unmapped: list[str] = []
+    for seg in segments:
+        clean = seg.strip()
+        if not clean or len(clean) < 2:
+            continue
+        if clean.lower() in IGNORE_WORDS:
+            continue
+        matched_allow = any(re.search(rf"\b{re.escape(name)}\b", clean, re.I) for name in NAMES)
+        matched_deny = any(re.search(re.escape(evidence), clean, re.I) for _, evidence in deny)
+        if not matched_allow and not matched_deny:
+            if re.search(r"[a-zA-Z]", clean):
+                unmapped.append(clean)
+    return tuple(dict.fromkeys(unmapped))
+
+
 def extract(record: Record) -> Record:
     location_text = record.location_text
     text = " ".join((location_text, record.description))
@@ -34,7 +60,8 @@ def extract(record: Record) -> Record:
         if found:
             deny.append((token, found.group(0)))
     mode = ("onsite", "on-site") if re.search(r"\bon[- ]site\b", text, re.I) else ("hybrid", "hybrid") if re.search(r"\bhybrid\b", text, re.I) else ("remote", "remote") if re.search(r"\bremote\b", text, re.I) else ("unstated", "")
-    return replace(record, geo_allow=tuple(dict.fromkeys(allow)), geo_deny=tuple(dict.fromkeys(deny)), work_mode=mode)
+    unmapped = _extract_unmapped(location_text, allow, deny)
+    return replace(record, geo_allow=tuple(dict.fromkeys(allow)), geo_deny=tuple(dict.fromkeys(deny)), work_mode=mode, unmapped=unmapped)
 
 
 def eligibility_for(record: Record, country: str = "EG") -> tuple[str, str]:
