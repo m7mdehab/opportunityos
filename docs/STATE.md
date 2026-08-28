@@ -10,8 +10,8 @@ Next: Claude Code independently adjudicates `out/audit-001.json` and records pre
 
 ## Repository
 
-- **Generated:** 2026-08-28T23:04:37Z
-- **State generated at commit:** `dcdd30a` — fix(geo): complete region definitions, unmapped phrase extraction, and record persistence
+- **Generated:** 2026-08-28T23:43:25Z
+- **State generated at commit:** `e6c8026` — fix(health): resolve Codex cross-review REQUEST_CHANGES
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
