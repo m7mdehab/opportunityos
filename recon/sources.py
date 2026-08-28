@@ -117,15 +117,15 @@ ATS_WATCHLIST: dict[str, tuple[str, str]] = {
     "cloudflare": ("greenhouse", "cloudflare"), "datadog": ("greenhouse", "datadog"),
     "duolingo": ("greenhouse", "duolingo"), "figma": ("greenhouse", "figma"),
     "flexport": ("greenhouse", "flexport"), "coinbase": ("greenhouse", "coinbase"),
-    "hubspot": ("greenhouse", "hubspot"), "plaid": ("greenhouse", "plaid"),
     "stripe": ("greenhouse", "stripe"), "twilio": ("greenhouse", "twilio"),
-    "coursera": ("lever", "coursera"), "mixpanel": ("lever", "mixpanel"),
-    "postman": ("lever", "postman"), "samsara": ("lever", "samsara"),
-    "sourcegraph": ("lever", "sourcegraph"), "netlify": ("lever", "netlify"),
-    "sentry": ("lever", "sentry"), "docker": ("lever", "docker"),
-    "notion": ("ashby", "notion"), "ramp": ("ashby", "ramp"), "webflow": ("ashby", "webflow"),
-    "posthog": ("ashby", "posthog"), "deepl": ("ashby", "deepl"), "openai": ("ashby", "openai"),
-    "linear": ("ashby", "linear"), "vanta": ("ashby", "vanta"), "calendly": ("ashby", "calendly"),
+    "airbnb": ("greenhouse", "airbnb"), "affirm": ("greenhouse", "affirm"),
+    "shyftlabs": ("lever", "shyftlabs"), "ryz_labs": ("lever", "RyzLabs"),
+    "socket": ("ashby", "socket"), "paires": ("ashby", "paires"),
+    "jellyfish": ("ashby", "jellyfish"), "adaptive_innovations": ("ashby", "adaptive-innovations"),
+    "bedrock_robotics": ("ashby", "bedrock-robotics"), "cube": ("ashby", "CUBE"),
+    "bjak": ("ashby", "bjakcareer"), "farseer": ("ashby", "farseer"),
+    "regard": ("ashby", "regard"), "tessera_labs": ("ashby", "tessera-labs"),
+    "posthog": ("ashby", "posthog"), "openai": ("ashby", "openai"), "linear": ("ashby", "linear"),
 }
 
 

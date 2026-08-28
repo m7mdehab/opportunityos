@@ -15,6 +15,7 @@ from urllib.robotparser import RobotFileParser
 from recon.classification import classify
 from recon.dedupe import deduplicate
 from recon.external_policy import permits
+from recon.geography import eligibility_for, extract
 from recon.models import Record
 from recon.sources import ATS_WATCHLIST, EMPLOYMENT_SOURCES, INDEPENDENT_SOURCES, Source, ats_sources
 
@@ -126,12 +127,19 @@ def write_evidence(path: Path, all_records: list[Record], unique: list[Record], 
     families = sorted({family(item.source) for item in health})
     eligible = {source: 0 for source in by_source}
     unclear_geography = 0
+    country_counts = {country: 0 for country in ("EG", "AE", "SA", "DE")}
+    unmapped: dict[str, int] = {}
     individuals = {source: 0 for source in by_source}
     for record in unique:
+        extracted = extract(record)
         decision = classify(record)
         eligible[record.source] = eligible.get(record.source, 0) + (decision.eligibility == "eligible")
-        unclear_geography += decision.eligibility_reason == "no geography stated"
+        unclear_geography += decision.eligibility == "unclear"
         individuals[record.source] = individuals.get(record.source, 0) + (decision.individual_eligibility == "individual_ok")
+        for country in country_counts:
+            country_counts[country] += eligibility_for(extracted, country)[0] == "eligible"
+        for phrase in extracted.unmapped:
+            unmapped[phrase] = unmapped.get(phrase, 0) + 1
     total_eligible = sum(eligible.values())
     rate = (total_eligible / len(unique) * 100) if unique else 0
     unclear_rate = (unclear_geography / len(unique) * 100) if unique else 0
@@ -142,7 +150,15 @@ def write_evidence(path: Path, all_records: list[Record], unique: list[Record], 
     lines.extend(["", f"2. **Unique records after deduplication:** {len(unique)}; **duplicate rate:** {(duplicate_count / len(all_records) * 100) if all_records else 0:.1f}%.", f"3. **Cross-source overlap:** {overlaps} fingerprints appeared on more than one source.", "4. **Egypt-eligible percentage:** withheld pending the mandatory precision audit.", f"5. **Unclear percentage:** {unclear_rate:.1f}% ({unclear_geography}/{len(unique)}) stated no geography at all.", "6. **Individual-eligible count:** per-source counts are in the table above.", "", "## Source health", "", "| Source | Status | Latency ms | Records | Detail |", "|---|---|---:|---:|---|"])
     for item in health:
         lines.append(f"| {item.source} | {item.status} | {item.latency_ms} | {item.raw_count} | {item.detail.replace('|', '/')} |")
-    lines.extend(["", "## ATS company watchlist", "", ", ".join(ATS_WATCHLIST), "", "The list contains 27 remote-friendly organizations selected for plausibility across data engineering, data science, analytics, and AI engineering. Each was probed only through the named public ATS endpoint; an absent board is recorded as an observed shortfall, not inferred as no hiring.", "", "## Scope and policy", "", "Only unauthenticated HTTP GET requests were made with the truthful `OpportunityOS-SourceRecon/1.1` user agent after a robots.txt check. No accounts, credentials, writes, submissions, retries after a block, or listing fetches from the 16 deliberately skipped platforms were used. Raw responses and normalized rows remain only under ignored `out/`; this report publishes aggregate measurements, not source corpus content.", "", "## What this changes about the plan", "", "This is a one-pass availability measurement, not a validation of the 37-source Phase 1 build-out or the regional-eligibility moat. The measured eligible share and the number of policy-blocked or unreadable routes should determine whether to build any adapter next. It contradicts any assumption that all 37 source families should be implemented before their permitted access and Egypt eligibility are measured."])
+    lines.extend(["", "## Derived country views", "", "| Country | Eligible records |", "|---|---:|"])
+    lines.extend(f"| {country} | {count} |" for country, count in country_counts.items())
+    lines.extend(["", "## Per-source Egypt eligibility", "", "| Source | Eligible rate |", "|---|---:|"])
+    for source, item in sorted(by_source.items()):
+        source_records = sum(record.source == source for record in unique)
+        lines.append(f"| {source} | {(eligible.get(source, 0) / source_records * 100) if source_records else 0:.1f}% |")
+    lines.extend(["", "## Unmapped geography", "", f"Unmapped count: {sum(unmapped.values())}.", "", "| Phrase | Count |", "|---|---:|"])
+    lines.extend(f"| {phrase} | {count} |" for phrase, count in sorted(unmapped.items(), key=lambda item: (-item[1], item[0]))[:20])
+    lines.extend(["", "## ATS company watchlist", "", ", ".join(ATS_WATCHLIST), "", f"The list contains {len(ATS_WATCHLIST)} remote-friendly organizations selected for plausibility across data engineering, data science, analytics, and AI engineering. Each replacement was verified at its named public ATS endpoint before this run.", "", "## Scope and policy", "", "Only unauthenticated HTTP GET requests, plus the ADR-0005 TED read-only query POST, were made with the truthful `OpportunityOS-SourceRecon/1.1` user agent after a robots.txt check. No accounts, credentials, writes, submissions, retries after a block, or listing fetches from the 16 deliberately skipped platforms were used. Raw responses and normalized rows remain only under ignored `out/`; this report publishes aggregate measurements, not source corpus content.", "", "## What this changes about the plan", "", "This is a one-pass availability measurement, not a validation of the 37-source Phase 1 build-out or the regional-eligibility moat. The measured eligible share and the number of policy-blocked or unreadable routes should determine whether to build any adapter next. It contradicts any assumption that all 37 source families should be implemented before their permitted access and Egypt eligibility are measured."])
     path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 

@@ -2,6 +2,7 @@ import unittest
 
 from recon.external_policy import READ_ONLY_QUERY, permits
 from recon.sources import INDEPENDENT_SOURCES
+from recon.sources import ATS_WATCHLIST
 
 
 TED_SEARCH = "https://api.ted.europa.eu/v3/notices/search"
@@ -27,3 +28,7 @@ class ExternalPolicyTests(unittest.TestCase):
         self.assertEqual("POST", source.method)
         self.assertEqual(READ_ONLY_QUERY, source.action_classification)
         self.assertTrue(set(source.request_body or {}).issubset({"query", "fields", "page", "limit", "scope", "checkQuerySyntax", "paginationMode", "iterationNextToken"}))
+
+    def test_watchlist_has_25_unique_configured_boards(self):
+        self.assertGreaterEqual(len(ATS_WATCHLIST), 25)
+        self.assertEqual(len(ATS_WATCHLIST), len({(kind, board) for kind, board in ATS_WATCHLIST.values()}))

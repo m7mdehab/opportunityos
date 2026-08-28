@@ -6,6 +6,12 @@
 
 Maintain an internal unresolved-task ledger and dependency DAG. Do not return while an available agent or tool can execute an unresolved task; repair defects and rerun invalidated evidence automatically.
 
+## Capability preflight
+
+Map every logical role to a capability exposed by the execution harness before
+starting. An approved separate model, tool, or session may satisfy an
+independence requirement; record the planned handoff and immutable evidence.
+
 ```yaml
 phase_id: ""
 objective: ""

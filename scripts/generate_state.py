@@ -61,7 +61,7 @@ def decision_line(text: str) -> str:
     value = section(text, "Decision")
     for line in value.splitlines():
         cleaned = line.strip().lstrip("- ")
-        if re.match(r"(?i)^(PASS|CONDITIONAL PASS|FAIL)", cleaned):
+        if re.match(r"(?i)^(PASS|CONDITIONAL PASS|FAIL|READY_FOR_INDEPENDENT_AUDIT)", cleaned):
             return cleaned
     return "No phase outcome recorded"
 
@@ -93,6 +93,8 @@ def brief_status(number: int, reports: dict[int, Path]) -> str:
     if report is None:
         return "in progress"
     decision = section(report.read_text(encoding="utf-8"), "Decision")
+    if re.search(r"READY_FOR_INDEPENDENT_AUDIT", decision):
+        return "READY_FOR_INDEPENDENT_AUDIT"
     if re.search(r"(?i)\bFAIL\b", decision):
         return "failed — remain in phase"
     return "passed"

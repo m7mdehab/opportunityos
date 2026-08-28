@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import random
 from pathlib import Path
@@ -19,6 +20,8 @@ def main() -> None:
         decision = classify(record)
         buckets[decision.eligibility].append({
             "source": record.source, "track": record.track, "title": record.title,
+            "record_id": hashlib.sha256(f"{record.source}\0{record.url}\0{record.title}".encode()).hexdigest()[:16],
+            "url": record.url,
             "location_text": record.location_text, "raw_text": record.description,
             "raw_payload_pointer": record.raw_payload_pointer,
             "geo_allow": list(record.geo_allow), "geo_deny": list(record.geo_deny),

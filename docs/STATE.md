@@ -4,20 +4,20 @@
 OpportunityOS is an opportunity-acquisition platform for MENA.
 Last shipped: BRIEF-000 — 2026-08-27.
 Active work: BRIEF-001.
-Phase status: failed — remain in phase.
-Blocked: The mandatory raw-text adjudication remains pending: the set was generated but extraction and derivation judgments were not independently completed. Egypt eligibility percentage and eligible precision are withheld..
-Next: Verify and substitute every non-resolving ATS board, then rerun the corpus..
+Phase status: READY_FOR_INDEPENDENT_AUDIT.
+Blocked: none.
+Next: Claude Code independently adjudicates `out/audit-001.json` and records precision/disagreements..
 
 ## Repository
 
-- **Generated:** 2026-08-27T18:27:14Z
-- **State generated at commit:** `8dc939f` — fix: prevent mirror workflows and derive eligibility
+- **Generated:** 2026-08-28T01:12:09Z
+- **State generated at commit:** `c70196a` — fix: authorize read-only TED search
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
 
 - **Brief:** BRIEF-001
-- **Phase status:** failed — remain in phase
+- **Phase status:** READY_FOR_INDEPENDENT_AUDIT
 - **Open acceptance items:** 35
 - All 20 cases in §3.1 pass
 - All 12 cases in §3.2 pass
@@ -61,7 +61,7 @@ Next: Verify and substitute every non-resolving ATS board, then rerun the corpus
 
 ## Last Phase Outcome
 
-- FAIL / remain in phase
+- READY_FOR_INDEPENDENT_AUDIT
 
 ## Decisions
 
@@ -77,23 +77,20 @@ Next: Verify and substitute every non-resolving ATS board, then rerun the corpus
 
 ## Blocked Items
 
-- The mandatory raw-text adjudication remains pending: the set was generated but extraction and derivation judgments were not independently completed. Egypt eligibility percentage and eligible precision are withheld.
-- The ATS watchlist has unresolved token defects: all carried-forward Lever boards returned HTTP 404, `greenhouse:plaid` returned HTTP 404, and Ashby robots retrieval remained unreachable. No substitutions have been claimed.
-- Because those gates remain open, the mirror was not synchronized from this incomplete branch and BRIEF-001 cannot advance.
+- None
 
 ## Source Status Counts
 
-- allowed_ok: 16
+- allowed_ok: 20
 - deliberately_not_fetched: 16
-- http_404: 9
 - manual_only: 16
-- parse_empty: 3
-- review_required: 54
-- robots_unreachable: 10
-- unknown_disable_actions: 38
+- parse_empty: 2
+- review_required: 52
+- robots_unreachable: 14
+- unknown_disable_actions: 36
 
 ## Next Prerequisites
 
-- Verify and substitute every non-resolving ATS board, then rerun the corpus.
-- Complete a fresh independent raw-text adjudication and publish only aggregate precision results.
-- Merge the completed phase, synchronize the relocated mirror tree, and verify mirror health and zero workflow runs.
+- Claude Code independently adjudicates `out/audit-001.json` and records precision/disagreements.
+- Codex remediates any audit finding, reruns invalidated evidence, and requests a fresh independent audit.
+- Architect verifies every v1.4 acceptance criterion; only then may the branch merge and synchronize the mirror.

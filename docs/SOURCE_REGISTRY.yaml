@@ -22,7 +22,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/jobs/api"
-      latency_ms: 969
+      latency_ms: 297
       record_count: 20
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -76,7 +76,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/api/remote-jobs"
-      latency_ms: 296
+      latency_ms: 344
       record_count: 18
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -103,7 +103,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/api"
-      latency_ms: 1046
+      latency_ms: 891
       record_count: 99
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -130,7 +130,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/remote-jobs.rss"
-      latency_ms: 1015
+      latency_ms: 844
       record_count: 89
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -157,7 +157,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/Public/Notice"
-      latency_ms: 1062
+      latency_ms: 2030
       record_count: 163
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -184,7 +184,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/en/projects-operations/opportunities"
-      latency_ms: 234
+      latency_ms: 219
       record_count: 7
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -211,7 +211,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=POST; endpoint=/v3/notices/search; fields=fields,limit,page,query"
-      latency_ms: 625
+      latency_ms: 593
       record_count: 100
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -238,7 +238,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/en/news-keywords/procurement-notices"
-      latency_ms: 2375
+      latency_ms: 2500
       record_count: 90
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -265,7 +265,7 @@ sources:
       status: parse_empty
       detail: "HTTP 200 parsed zero records"
       request_metadata: "method=GET; endpoint=/api/projects/0.1/projects/active/"
-      latency_ms: 640
+      latency_ms: 718
       record_count: 0
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -292,7 +292,7 @@ sources:
       status: parse_empty
       detail: "HTTP 200 parsed zero records"
       request_metadata: "method=GET; endpoint=/Tender/AllTendersForVisitor"
-      latency_ms: 578
+      latency_ms: 546
       record_count: 0
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -319,7 +319,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/cloudflare/jobs"
-      latency_ms: 2563
+      latency_ms: 2343
       record_count: 312
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -346,7 +346,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/datadog/jobs"
-      latency_ms: 2610
+      latency_ms: 3047
       record_count: 450
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -373,7 +373,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/duolingo/jobs"
-      latency_ms: 984
+      latency_ms: 563
       record_count: 83
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -400,7 +400,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/figma/jobs"
-      latency_ms: 687
+      latency_ms: 1859
       record_count: 160
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -427,7 +427,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/flexport/jobs"
-      latency_ms: 780
+      latency_ms: 827
       record_count: 161
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -454,62 +454,8 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/coinbase/jobs"
-      latency_ms: 797
+      latency_ms: 922
       record_count: 183
-    last_policy_reviewed: 2026-08-28
-    policy_evidence:
-      - https://www.greenhouse.com/terms-of-use
-  - source_id: greenhouse:hubspot
-    name: "greenhouse:hubspot"
-    category: employment
-    access:
-      discovery: public_get
-      detail: public_get_or_unknown
-      submit: prohibited_or_unknown
-    attribution:
-      required: review_required
-    rate_limits:
-      documented: unknown
-    commercial_use:
-      status: review_required
-    automation:
-      read: allowed
-      prepare: disabled
-      submit: disabled
-    policy_status: unknown_disable_actions
-    observed:
-      status: parse_empty
-      detail: "HTTP 200 parsed zero records"
-      request_metadata: "method=GET; endpoint=/v1/boards/hubspot/jobs"
-      latency_ms: 265
-      record_count: 0
-    last_policy_reviewed: 2026-08-28
-    policy_evidence:
-      - https://www.greenhouse.com/terms-of-use
-  - source_id: greenhouse:plaid
-    name: "greenhouse:plaid"
-    category: employment
-    access:
-      discovery: public_get
-      detail: public_get_or_unknown
-      submit: prohibited_or_unknown
-    attribution:
-      required: review_required
-    rate_limits:
-      documented: unknown
-    commercial_use:
-      status: review_required
-    automation:
-      read: disabled
-      prepare: disabled
-      submit: disabled
-    policy_status: unknown_disable_actions
-    observed:
-      status: http_404
-      detail: "{\"status\":404,\"error\":\"Job not found\"}"
-      request_metadata: "method=GET; endpoint=/v1/boards/plaid/jobs"
-      latency_ms: 172
-      record_count: 0
     last_policy_reviewed: 2026-08-28
     policy_evidence:
       - https://www.greenhouse.com/terms-of-use
@@ -535,7 +481,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/stripe/jobs"
-      latency_ms: 1546
+      latency_ms: 2172
       record_count: 580
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -562,13 +508,13 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/twilio/jobs"
-      latency_ms: 843
+      latency_ms: 813
       record_count: 144
     last_policy_reviewed: 2026-08-28
     policy_evidence:
       - https://www.greenhouse.com/terms-of-use
-  - source_id: lever:coursera
-    name: "lever:coursera"
+  - source_id: greenhouse:airbnb
+    name: "greenhouse:airbnb"
     category: employment
     access:
       discovery: public_get
@@ -581,21 +527,21 @@ sources:
     commercial_use:
       status: review_required
     automation:
-      read: disabled
+      read: allowed
       prepare: disabled
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: http_404
-      detail: "{\"ok\":false,\"error\":\"Document not found\"}"
-      request_metadata: "method=GET; endpoint=/v0/postings/coursera"
-      latency_ms: 858
-      record_count: 0
+      status: allowed_ok
+      detail: "HTTP 200 parsed records"
+      request_metadata: "method=GET; endpoint=/v1/boards/airbnb/jobs"
+      latency_ms: 1016
+      record_count: 183
     last_policy_reviewed: 2026-08-28
     policy_evidence:
-      - https://www.lever.co/terms
-  - source_id: lever:mixpanel
-    name: "lever:mixpanel"
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:affirm
+    name: "greenhouse:affirm"
     category: employment
     access:
       discovery: public_get
@@ -608,21 +554,21 @@ sources:
     commercial_use:
       status: review_required
     automation:
-      read: disabled
+      read: allowed
       prepare: disabled
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: http_404
-      detail: "{\"ok\":false,\"error\":\"Document not found\"}"
-      request_metadata: "method=GET; endpoint=/v0/postings/mixpanel"
-      latency_ms: 859
-      record_count: 0
+      status: allowed_ok
+      detail: "HTTP 200 parsed records"
+      request_metadata: "method=GET; endpoint=/v1/boards/affirm/jobs"
+      latency_ms: 1093
+      record_count: 205
     last_policy_reviewed: 2026-08-28
     policy_evidence:
-      - https://www.lever.co/terms
-  - source_id: lever:postman
-    name: "lever:postman"
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: lever:shyftlabs
+    name: "lever:shyftlabs"
     category: employment
     access:
       discovery: public_get
@@ -635,21 +581,21 @@ sources:
     commercial_use:
       status: review_required
     automation:
-      read: disabled
+      read: allowed
       prepare: disabled
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: http_404
-      detail: "{\"ok\":false,\"error\":\"Document not found\"}"
-      request_metadata: "method=GET; endpoint=/v0/postings/postman"
-      latency_ms: 859
-      record_count: 0
+      status: allowed_ok
+      detail: "HTTP 200 parsed records"
+      request_metadata: "method=GET; endpoint=/v0/postings/shyftlabs"
+      latency_ms: 1547
+      record_count: 22
     last_policy_reviewed: 2026-08-28
     policy_evidence:
       - https://www.lever.co/terms
-  - source_id: lever:samsara
-    name: "lever:samsara"
+  - source_id: lever:ryz_labs
+    name: "lever:ryz_labs"
     category: employment
     access:
       discovery: public_get
@@ -662,129 +608,21 @@ sources:
     commercial_use:
       status: review_required
     automation:
-      read: disabled
+      read: allowed
       prepare: disabled
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: http_404
-      detail: "{\"ok\":false,\"error\":\"Document not found\"}"
-      request_metadata: "method=GET; endpoint=/v0/postings/samsara"
-      latency_ms: 890
-      record_count: 0
+      status: allowed_ok
+      detail: "HTTP 200 parsed records"
+      request_metadata: "method=GET; endpoint=/v0/postings/RyzLabs"
+      latency_ms: 1983
+      record_count: 44
     last_policy_reviewed: 2026-08-28
     policy_evidence:
       - https://www.lever.co/terms
-  - source_id: lever:sourcegraph
-    name: "lever:sourcegraph"
-    category: employment
-    access:
-      discovery: public_get
-      detail: public_get_or_unknown
-      submit: prohibited_or_unknown
-    attribution:
-      required: review_required
-    rate_limits:
-      documented: unknown
-    commercial_use:
-      status: review_required
-    automation:
-      read: disabled
-      prepare: disabled
-      submit: disabled
-    policy_status: unknown_disable_actions
-    observed:
-      status: http_404
-      detail: "{\"ok\":false,\"error\":\"Document not found\"}"
-      request_metadata: "method=GET; endpoint=/v0/postings/sourcegraph"
-      latency_ms: 859
-      record_count: 0
-    last_policy_reviewed: 2026-08-28
-    policy_evidence:
-      - https://www.lever.co/terms
-  - source_id: lever:netlify
-    name: "lever:netlify"
-    category: employment
-    access:
-      discovery: public_get
-      detail: public_get_or_unknown
-      submit: prohibited_or_unknown
-    attribution:
-      required: review_required
-    rate_limits:
-      documented: unknown
-    commercial_use:
-      status: review_required
-    automation:
-      read: disabled
-      prepare: disabled
-      submit: disabled
-    policy_status: unknown_disable_actions
-    observed:
-      status: http_404
-      detail: "{\"ok\":false,\"error\":\"Document not found\"}"
-      request_metadata: "method=GET; endpoint=/v0/postings/netlify"
-      latency_ms: 905
-      record_count: 0
-    last_policy_reviewed: 2026-08-28
-    policy_evidence:
-      - https://www.lever.co/terms
-  - source_id: lever:sentry
-    name: "lever:sentry"
-    category: employment
-    access:
-      discovery: public_get
-      detail: public_get_or_unknown
-      submit: prohibited_or_unknown
-    attribution:
-      required: review_required
-    rate_limits:
-      documented: unknown
-    commercial_use:
-      status: review_required
-    automation:
-      read: disabled
-      prepare: disabled
-      submit: disabled
-    policy_status: unknown_disable_actions
-    observed:
-      status: http_404
-      detail: "{\"ok\":false,\"error\":\"Document not found\"}"
-      request_metadata: "method=GET; endpoint=/v0/postings/sentry"
-      latency_ms: 875
-      record_count: 0
-    last_policy_reviewed: 2026-08-28
-    policy_evidence:
-      - https://www.lever.co/terms
-  - source_id: lever:docker
-    name: "lever:docker"
-    category: employment
-    access:
-      discovery: public_get
-      detail: public_get_or_unknown
-      submit: prohibited_or_unknown
-    attribution:
-      required: review_required
-    rate_limits:
-      documented: unknown
-    commercial_use:
-      status: review_required
-    automation:
-      read: disabled
-      prepare: disabled
-      submit: disabled
-    policy_status: unknown_disable_actions
-    observed:
-      status: http_404
-      detail: "{\"ok\":false,\"error\":\"Document not found\"}"
-      request_metadata: "method=GET; endpoint=/v0/postings/docker"
-      latency_ms: 875
-      record_count: 0
-    last_policy_reviewed: 2026-08-28
-    policy_evidence:
-      - https://www.lever.co/terms
-  - source_id: ashby:notion
-    name: "ashby:notion"
+  - source_id: ashby:socket
+    name: "ashby:socket"
     category: employment
     access:
       discovery: public_get
@@ -810,8 +648,8 @@ sources:
     last_policy_reviewed: 2026-08-28
     policy_evidence:
       - https://www.ashbyhq.com/privacy
-  - source_id: ashby:ramp
-    name: "ashby:ramp"
+  - source_id: ashby:paires
+    name: "ashby:paires"
     category: employment
     access:
       discovery: public_get
@@ -837,8 +675,197 @@ sources:
     last_policy_reviewed: 2026-08-28
     policy_evidence:
       - https://www.ashbyhq.com/privacy
-  - source_id: ashby:webflow
-    name: "ashby:webflow"
+  - source_id: ashby:jellyfish
+    name: "ashby:jellyfish"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: robots_unreachable
+      detail: "robots.txt could not be read after three attempts"
+      request_metadata: ""
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-08-28
+    policy_evidence:
+      - https://www.ashbyhq.com/privacy
+  - source_id: ashby:adaptive_innovations
+    name: "ashby:adaptive_innovations"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: robots_unreachable
+      detail: "robots.txt could not be read after three attempts"
+      request_metadata: ""
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-08-28
+    policy_evidence:
+      - https://www.ashbyhq.com/privacy
+  - source_id: ashby:bedrock_robotics
+    name: "ashby:bedrock_robotics"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: robots_unreachable
+      detail: "robots.txt could not be read after three attempts"
+      request_metadata: ""
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-08-28
+    policy_evidence:
+      - https://www.ashbyhq.com/privacy
+  - source_id: ashby:cube
+    name: "ashby:cube"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: robots_unreachable
+      detail: "robots.txt could not be read after three attempts"
+      request_metadata: ""
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-08-28
+    policy_evidence:
+      - https://www.ashbyhq.com/privacy
+  - source_id: ashby:bjak
+    name: "ashby:bjak"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: robots_unreachable
+      detail: "robots.txt could not be read after three attempts"
+      request_metadata: ""
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-08-28
+    policy_evidence:
+      - https://www.ashbyhq.com/privacy
+  - source_id: ashby:farseer
+    name: "ashby:farseer"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: robots_unreachable
+      detail: "robots.txt could not be read after three attempts"
+      request_metadata: ""
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-08-28
+    policy_evidence:
+      - https://www.ashbyhq.com/privacy
+  - source_id: ashby:regard
+    name: "ashby:regard"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: robots_unreachable
+      detail: "robots.txt could not be read after three attempts"
+      request_metadata: ""
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-08-28
+    policy_evidence:
+      - https://www.ashbyhq.com/privacy
+  - source_id: ashby:tessera_labs
+    name: "ashby:tessera_labs"
     category: employment
     access:
       discovery: public_get
@@ -866,33 +893,6 @@ sources:
       - https://www.ashbyhq.com/privacy
   - source_id: ashby:posthog
     name: "ashby:posthog"
-    category: employment
-    access:
-      discovery: public_get
-      detail: public_get_or_unknown
-      submit: prohibited_or_unknown
-    attribution:
-      required: review_required
-    rate_limits:
-      documented: unknown
-    commercial_use:
-      status: review_required
-    automation:
-      read: disabled
-      prepare: disabled
-      submit: disabled
-    policy_status: unknown_disable_actions
-    observed:
-      status: robots_unreachable
-      detail: "robots.txt could not be read after three attempts"
-      request_metadata: ""
-      latency_ms: 0
-      record_count: 0
-    last_policy_reviewed: 2026-08-28
-    policy_evidence:
-      - https://www.ashbyhq.com/privacy
-  - source_id: ashby:deepl
-    name: "ashby:deepl"
     category: employment
     access:
       discovery: public_get
@@ -947,60 +947,6 @@ sources:
       - https://www.ashbyhq.com/privacy
   - source_id: ashby:linear
     name: "ashby:linear"
-    category: employment
-    access:
-      discovery: public_get
-      detail: public_get_or_unknown
-      submit: prohibited_or_unknown
-    attribution:
-      required: review_required
-    rate_limits:
-      documented: unknown
-    commercial_use:
-      status: review_required
-    automation:
-      read: disabled
-      prepare: disabled
-      submit: disabled
-    policy_status: unknown_disable_actions
-    observed:
-      status: robots_unreachable
-      detail: "robots.txt could not be read after three attempts"
-      request_metadata: ""
-      latency_ms: 0
-      record_count: 0
-    last_policy_reviewed: 2026-08-28
-    policy_evidence:
-      - https://www.ashbyhq.com/privacy
-  - source_id: ashby:vanta
-    name: "ashby:vanta"
-    category: employment
-    access:
-      discovery: public_get
-      detail: public_get_or_unknown
-      submit: prohibited_or_unknown
-    attribution:
-      required: review_required
-    rate_limits:
-      documented: unknown
-    commercial_use:
-      status: review_required
-    automation:
-      read: disabled
-      prepare: disabled
-      submit: disabled
-    policy_status: unknown_disable_actions
-    observed:
-      status: robots_unreachable
-      detail: "robots.txt could not be read after three attempts"
-      request_metadata: ""
-      latency_ms: 0
-      record_count: 0
-    last_policy_reviewed: 2026-08-28
-    policy_evidence:
-      - https://www.ashbyhq.com/privacy
-  - source_id: ashby:calendly
-    name: "ashby:calendly"
     category: employment
     access:
       discovery: public_get
