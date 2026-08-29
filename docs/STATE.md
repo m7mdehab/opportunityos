@@ -10,8 +10,8 @@ Next: BRIEF-003: Opportunity Discovery & Ingestion Pipelines.
 
 ## Repository
 
-- **Generated:** 2026-08-29T21:47:48Z
-- **State generated at commit:** `b013d38` — docs(audit): record independent audit pass for final four invariants
+- **Generated:** 2026-08-29T22:12:44Z
+- **State generated at commit:** `1ac1f69` — fix(truth): implement final three-invariant mechanical closure
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
