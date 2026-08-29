@@ -64,15 +64,15 @@ def synthetic_evidence() -> tuple[EvidenceRecord, ...]:
             "ev-python", "Uses Python for data engineering.", "synthetic_cv", "skills.0",
             assertion_type=AssertionType.NORMALIZED_FACT,
         ),
-        EvidenceRecord("ev-degree", "BSc in Example Systems", "synthetic_cv", "education.0"),
+        EvidenceRecord("ev-degree", "BSc in Example Systems from Example Institute from 2017-09-01 to 2021-06-30.", "synthetic_cv", "education.0"),
         EvidenceRecord("ev-language", "English professional proficiency", "synthetic_cv", "languages.0"),
         EvidenceRecord("ev-work-auth", "Authorized to work in Exampleland", "synthetic_cv", "work_authorizations.0"),
         EvidenceRecord(
-            "ev-cert-plan", "Planning to pursue the Example Cloud Architect certification.",
+            "ev-cert-plan", "Planning to pursue the Example Cloud Architect certification from Example Cloud Foundation.",
             "synthetic_profile", "certifications.0",
         ),
         EvidenceRecord(
-            "ev-service", "Offers analytics pipeline assessments.",
+            "ev-service", "Offers analytics pipeline assessments and deliverables including Evidence-backed findings and Prioritized remediation plan.",
             "synthetic_capability_pack", "services.0",
             assertion_type=AssertionType.DERIVED_CAPABILITY,
         ),
@@ -81,7 +81,7 @@ def synthetic_evidence() -> tuple[EvidenceRecord, ...]:
             "synthetic_capability_pack", "portfolio.0",
         ),
         EvidenceRecord(
-            "ev-capacity", "Available for 20 hours per week from 2026-09-01.",
+            "ev-capacity", "Available for 20 hours per week from 2026-09-01 with min project value 1000 and max 10000 USD across MENA and WORLDWIDE on a case_by_case onsite basis.",
             "synthetic_capability_pack", "capacity",
         ),
         EvidenceRecord(

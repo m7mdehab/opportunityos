@@ -37,6 +37,74 @@ from .models import (
 
 Profile: TypeAlias = CareerProfile | CapabilityProfile
 
+_WORD_PATTERN = re.compile(r"[\w+#]+", re.UNICODE)
+_STOP_WORDS = frozenset({
+    "a", "an", "and", "or", "of", "in", "at", "to", "for", "with", "on", "by", "from",
+    "the", "is", "was", "were", "as", "into", "onto", "via", "using",
+})
+_NEGATIVE_MARKERS = re.compile(
+    r"\b(?:not|no|never|neither|nor|without|cannot|unauthorized|non-|ineligible|lacks?|lacking)\b",
+    re.I,
+)
+_BOUND_AT_MOST = re.compile(r"\b(?:at\s*most|up\s*to|less\s*than|under|maximum\s*of|no\s*more\s*than)\b", re.I)
+_BOUND_AT_LEAST = re.compile(r"\b(?:at\s*least|more\s*than|over|minimum\s*of|no\s*less\s*than)\b", re.I)
+_CONDITIONAL = re.compile(r"\b(?:subject\s*to|conditional\s*(?:on|upon)|depending\s*on|if\s*approved|contingent\s*on)\b", re.I)
+
+
+def _extract_tokens(text: str) -> set[str]:
+    return {match.group(0).casefold() for match in _WORD_PATTERN.finditer(text)}
+
+
+def _is_value_supported_by_evidence(value: Any, evidence_records: tuple[EvidenceRecord, ...]) -> bool:
+    if value is None:
+        return True
+
+    # Check for EXPLICIT_NULL evidence
+    if all(r.verification_status is VerificationStatus.EXPLICIT_NULL for r in evidence_records):
+        return value is None
+
+    combined_text = " ".join(r.content or "" for r in evidence_records)
+    combined_tokens = _extract_tokens(combined_text)
+
+    if isinstance(value, str):
+        val_tokens = _extract_tokens(value) - _STOP_WORDS
+        if not val_tokens:
+            return True
+        if val_tokens.issubset(combined_tokens):
+            return True
+        # Check canonical skill aliases if single/short term
+        from .ingest import CANONICAL_SKILL_ALIASES
+        norm_val = value.strip().casefold()
+        canonical = CANONICAL_SKILL_ALIASES.get(norm_val)
+        if canonical and (_extract_tokens(canonical) - _STOP_WORDS).issubset(combined_tokens):
+            return True
+        if norm_val in combined_text.casefold():
+            return True
+        return False
+
+    if isinstance(value, (int, float)):
+        num_str = str(int(value)) if isinstance(value, float) and value.is_integer() else str(value)
+        if num_str in combined_text:
+            return True
+        digits = re.sub(r"\D", "", num_str)
+        if digits and digits in re.sub(r"[,\s]", "", combined_text):
+            return True
+        return False
+
+    if isinstance(value, date):
+        date_iso = value.isoformat()
+        if date_iso in combined_text:
+            return True
+        year_str = str(value.year)
+        if year_str in combined_text:
+            return True
+        return False
+
+    if isinstance(value, (tuple, list, set, frozenset)):
+        return all(_is_value_supported_by_evidence(item, evidence_records) for item in value)
+
+    return True
+
 
 class TruthGraph:
     """Owns atomic evidence, assertions, typed relations, and immutable profiles.
@@ -90,34 +158,95 @@ class TruthGraph:
     def profiles(self):
         return MappingProxyType(self._profiles)
 
+    def _check_id_collision(self, node_id: str) -> None:
+        if (
+            node_id in self._evidence
+            or node_id in self._entities
+            or node_id in self._assertions
+            or node_id in self._relations
+            or node_id in self._metrics
+        ):
+            raise ValueError(f"duplicate graph node id: {node_id}")
+
     def add_evidence(self, record: EvidenceRecord) -> None:
-        if record.id in self._evidence or record.id in self._entities:
-            raise ValueError(f"duplicate graph node id: {record.id}")
+        self._check_id_collision(record.id)
         self._evidence[record.id] = record
         self._evidence_entities.setdefault(record.id, [])
 
     def add_assertion(self, assertion: AtomicAssertion) -> None:
         if assertion.id in self._assertions:
             raise ValueError(f"duplicate assertion id: {assertion.id}")
+        self._check_id_collision(assertion.id)
+
         for ev_id in assertion.evidence_ids:
             if ev_id not in self._evidence:
                 raise ValueError(f"assertion {assertion.id} references unknown evidence: {ev_id}")
+
+        evidence_records = tuple(self._evidence[ev_id] for ev_id in assertion.evidence_ids)
+
+        # Epistemic propagation check
+        if assertion.verification_status is VerificationStatus.VERIFIED:
+            if not evidence_records:
+                raise ValueError(f"assertion {assertion.id} is VERIFIED but has no evidence")
+            if any(r.verification_status is VerificationStatus.UNVERIFIED for r in evidence_records):
+                raise ValueError(f"assertion {assertion.id} cannot be VERIFIED when supported by UNVERIFIED evidence")
+            if any(r.verification_status is VerificationStatus.EXPLICIT_NULL for r in evidence_records):
+                raise ValueError(f"assertion {assertion.id} cannot be VERIFIED when supported by EXPLICIT_NULL evidence")
+            if any(r.verification_status is VerificationStatus.APPROXIMATE for r in evidence_records):
+                if assertion.modality is Modality.DEFINITE:
+                    raise ValueError(f"assertion {assertion.id} cannot have DEFINITE modality when evidence is APPROXIMATE")
+
+        if assertion.assertion_type is AssertionType.DIRECT_FACT:
+            if not evidence_records:
+                raise ValueError(f"assertion {assertion.id} is DIRECT_FACT but has no evidence")
+            if any(r.assertion_type in {AssertionType.USER_ASSERTION, AssertionType.DERIVED_CAPABILITY} for r in evidence_records):
+                raise ValueError(f"assertion {assertion.id} cannot be DIRECT_FACT when supported by user assertion or derived capability")
+
+        # Value support verification
+        if assertion.value is not None and evidence_records:
+            if not _is_value_supported_by_evidence(assertion.value, evidence_records):
+                raise ValueError(f"assertion {assertion.id} value {assertion.value!r} is not supported by evidence {assertion.evidence_ids}")
+
         self._assertions[assertion.id] = assertion
 
     def add_relation(self, relation: TypedRelation) -> None:
         if relation.id in self._relations:
             raise ValueError(f"duplicate relation id: {relation.id}")
+        self._check_id_collision(relation.id)
+
+        if not isinstance(relation.relation_type, RelationType):
+            raise ValueError(f"relation {relation.id} relation_type must be a RelationType enum")
+
         for ev_id in relation.evidence_ids:
             if ev_id not in self._evidence:
                 raise ValueError(f"relation {relation.id} references unknown evidence: {ev_id}")
+
+        evidence_records = tuple(self._evidence[ev_id] for ev_id in relation.evidence_ids)
+        if relation.verification_status is VerificationStatus.VERIFIED:
+            if not evidence_records:
+                raise ValueError(f"relation {relation.id} is VERIFIED but has no evidence")
+            if any(r.verification_status is VerificationStatus.UNVERIFIED for r in evidence_records):
+                raise ValueError(f"relation {relation.id} cannot be VERIFIED when supported by UNVERIFIED evidence")
+
         self._relations[relation.id] = relation
 
     def add_metric_assertion(self, metric: MetricAssertion) -> None:
         if metric.id in self._metrics:
             raise ValueError(f"duplicate metric assertion id: {metric.id}")
+        self._check_id_collision(metric.id)
+
         for ev_id in metric.evidence_ids:
             if ev_id not in self._evidence:
                 raise ValueError(f"metric assertion {metric.id} references unknown evidence: {ev_id}")
+
+        evidence_records = tuple(self._evidence[ev_id] for ev_id in metric.evidence_ids)
+        if metric.verification_status is MetricVerification.VERIFIED:
+            if not evidence_records:
+                raise ValueError(f"metric assertion {metric.id} is VERIFIED but has no evidence")
+            # Verify numeric value is in evidence
+            if not _is_value_supported_by_evidence(metric.numeric_value, evidence_records):
+                raise ValueError(f"metric assertion {metric.id} numeric value {metric.numeric_value} not in evidence {metric.evidence_ids}")
+
         self._metrics[metric.id] = metric
 
     def add_career_profile(self, profile: CareerProfile) -> None:
@@ -131,7 +260,9 @@ class TruthGraph:
         node_ids = [node.id for node in nodes]
         if len(node_ids) != len(set(node_ids)):
             raise ValueError("profile contains duplicate entity ids")
-        collisions = set(node_ids) & (set(self._entities) | set(self._evidence))
+        collisions = set(node_ids) & (
+            set(self._entities) | set(self._evidence) | set(self._assertions) | set(self._relations) | set(self._metrics)
+        )
         if collisions:
             raise ValueError(f"duplicate graph node id: {sorted(collisions)[0]}")
 
@@ -143,7 +274,10 @@ class TruthGraph:
                 raise ValueError(f"node {node.id} references unknown evidence: {', '.join(missing)}")
             links[node.id] = evidence_ids
 
-        # Commit only after every node and link is valid.
+        # Validate that all material fields on all entities are supported by their evidence
+        self._validate_profile_field_provenance(profile, links)
+
+        # Commit nodes and links
         self._profiles[profile.id] = profile
         for node in nodes:
             self._entities[node.id] = node
@@ -151,30 +285,161 @@ class TruthGraph:
             for ev_id in links[node.id]:
                 self._evidence_entities.setdefault(ev_id, []).append(node.id)
 
-        # Auto-project field assertions and typed relations for profile entities
+        # Project field assertions and typed relations for profile entities
         self._project_profile_assertions(profile)
+
+    def _validate_profile_field_provenance(self, profile: Profile, links: dict[str, tuple[str, ...]]) -> None:
+        if isinstance(profile, CareerProfile):
+            for emp in profile.employment:
+                evs = tuple(self._evidence[ev_id] for ev_id in links[emp.id])
+                if not _is_value_supported_by_evidence(emp.organization, evs):
+                    raise ValueError(f"field employment.organization '{emp.organization}' is not supported by evidence: {', '.join(links[emp.id])}")
+                if not _is_value_supported_by_evidence(emp.title, evs):
+                    raise ValueError(f"field employment.title '{emp.title}' is not supported by evidence: {', '.join(links[emp.id])}")
+                if not _is_value_supported_by_evidence(emp.start_date, evs):
+                    raise ValueError(f"field employment.start_date '{emp.start_date}' is not supported by evidence: {', '.join(links[emp.id])}")
+                if emp.end_date and not _is_value_supported_by_evidence(emp.end_date, evs):
+                    raise ValueError(f"field employment.end_date '{emp.end_date}' is not supported by evidence: {', '.join(links[emp.id])}")
+                for ach in emp.achievements:
+                    ach_evs = tuple(self._evidence[ev_id] for ev_id in links[ach.id])
+                    if not _is_value_supported_by_evidence(ach.statement, ach_evs):
+                        raise ValueError(f"field achievement.statement '{ach.statement}' is not supported by evidence: {', '.join(links[ach.id])}")
+            for edu in profile.education:
+                evs = tuple(self._evidence[ev_id] for ev_id in links[edu.id])
+                if not _is_value_supported_by_evidence(edu.institution, evs):
+                    raise ValueError(f"field education.institution '{edu.institution}' is not supported by evidence: {', '.join(links[edu.id])}")
+                if not _is_value_supported_by_evidence(edu.qualification, evs):
+                    raise ValueError(f"field education.qualification '{edu.qualification}' is not supported by evidence: {', '.join(links[edu.id])}")
+            for cert in profile.certifications:
+                evs = tuple(self._evidence[ev_id] for ev_id in links[cert.id])
+                if not _is_value_supported_by_evidence(cert.name, evs):
+                    raise ValueError(f"field certification.name '{cert.name}' is not supported by evidence: {', '.join(links[cert.id])}")
+            for skill in profile.skills:
+                evs = tuple(self._evidence[ev_id] for ev_id in links[skill.id])
+                if not _is_value_supported_by_evidence(skill.name, evs):
+                    raise ValueError(f"field skill.name '{skill.name}' is not supported by evidence: {', '.join(links[skill.id])}")
+            for lang in profile.languages:
+                evs = tuple(self._evidence[ev_id] for ev_id in links[lang.id])
+                if not _is_value_supported_by_evidence(lang.language, evs):
+                    raise ValueError(f"field language.language '{lang.language}' is not supported by evidence: {', '.join(links[lang.id])}")
+                if not _is_value_supported_by_evidence(lang.proficiency, evs):
+                    raise ValueError(f"field language.proficiency '{lang.proficiency}' is not supported by evidence: {', '.join(links[lang.id])}")
+            for auth in profile.work_authorizations:
+                evs = tuple(self._evidence[ev_id] for ev_id in links[auth.id])
+                if not _is_value_supported_by_evidence(auth.jurisdiction, evs):
+                    raise ValueError(f"field work_authorization.jurisdiction '{auth.jurisdiction}' is not supported by evidence: {', '.join(links[auth.id])}")
+                if not _is_value_supported_by_evidence(auth.status, evs):
+                    raise ValueError(f"field work_authorization.status '{auth.status}' is not supported by evidence: {', '.join(links[auth.id])}")
+        else:
+            for srv in profile.services:
+                evs = tuple(self._evidence[ev_id] for ev_id in links[srv.id])
+                if not _is_value_supported_by_evidence(srv.name, evs):
+                    raise ValueError(f"field service.name '{srv.name}' is not supported by evidence: {', '.join(links[srv.id])}")
+                if not _is_value_supported_by_evidence(srv.description, evs):
+                    raise ValueError(f"field service.description '{srv.description}' is not supported by evidence: {', '.join(links[srv.id])}")
+                if srv.deliverables and not _is_value_supported_by_evidence(srv.deliverables, evs):
+                    raise ValueError(f"field service.deliverables '{srv.deliverables}' is not supported by evidence: {', '.join(links[srv.id])}")
+            for port in profile.portfolio:
+                evs = tuple(self._evidence[ev_id] for ev_id in links[port.id])
+                if not _is_value_supported_by_evidence(port.title, evs):
+                    raise ValueError(f"field portfolio.title '{port.title}' is not supported by evidence: {', '.join(links[port.id])}")
+                if not _is_value_supported_by_evidence(port.summary, evs):
+                    raise ValueError(f"field portfolio.summary '{port.summary}' is not supported by evidence: {', '.join(links[port.id])}")
+            if profile.capacity:
+                cap = profile.capacity
+                evs = tuple(self._evidence[ev_id] for ev_id in links[cap.id])
+                if cap.hours_per_week is not None and not _is_value_supported_by_evidence(cap.hours_per_week, evs):
+                    raise ValueError(f"field capacity.hours_per_week '{cap.hours_per_week}' is not supported by evidence: {', '.join(links[cap.id])}")
+                if cap.annual_turnover_usd is not None and not _is_value_supported_by_evidence(cap.annual_turnover_usd, evs):
+                    raise ValueError(f"field capacity.annual_turnover_usd '{cap.annual_turnover_usd}' is not supported by evidence: {', '.join(links[cap.id])}")
+                if cap.bid_bond_capacity_usd is not None and not _is_value_supported_by_evidence(cap.bid_bond_capacity_usd, evs):
+                    raise ValueError(f"field capacity.bid_bond_capacity_usd '{cap.bid_bond_capacity_usd}' is not supported by evidence: {', '.join(links[cap.id])}")
+                if cap.legal_capacity is not None and not _is_value_supported_by_evidence(cap.legal_capacity, evs):
+                    raise ValueError(f"field capacity.legal_capacity '{cap.legal_capacity}' is not supported by evidence: {', '.join(links[cap.id])}")
+                if cap.currencies and not _is_value_supported_by_evidence(cap.currencies, evs):
+                    raise ValueError(f"field capacity.currencies '{cap.currencies}' is not supported by evidence: {', '.join(links[cap.id])}")
+                if cap.service_regions and not _is_value_supported_by_evidence(cap.service_regions, evs):
+                    raise ValueError(f"field capacity.service_regions '{cap.service_regions}' is not supported by evidence: {', '.join(links[cap.id])}")
+                if cap.onsite_willingness and not _is_value_supported_by_evidence(cap.onsite_willingness, evs):
+                    raise ValueError(f"field capacity.onsite_willingness '{cap.onsite_willingness}' is not supported by evidence: {', '.join(links[cap.id])}")
+
+    def _derive_epistemic_status(
+        self,
+        evidence_ids: tuple[str, ...],
+        *,
+        default_assertion_type: AssertionType = AssertionType.DIRECT_FACT,
+    ) -> tuple[AssertionType, VerificationStatus, Polarity, Modality]:
+        if not evidence_ids:
+            return (AssertionType.UNSUPPORTED_CLAIM, VerificationStatus.UNVERIFIED, Polarity.POSITIVE, Modality.DEFINITE)
+
+        records = [self._evidence[ev_id] for ev_id in evidence_ids if ev_id in self._evidence]
+        if not records:
+            return (AssertionType.UNSUPPORTED_CLAIM, VerificationStatus.UNVERIFIED, Polarity.POSITIVE, Modality.DEFINITE)
+
+        # Verification Status: weakest link
+        if any(r.verification_status is VerificationStatus.EXPLICIT_NULL for r in records):
+            status = VerificationStatus.EXPLICIT_NULL
+        elif any(r.verification_status is VerificationStatus.UNVERIFIED for r in records):
+            status = VerificationStatus.UNVERIFIED
+        elif any(r.verification_status is VerificationStatus.APPROXIMATE for r in records):
+            status = VerificationStatus.APPROXIMATE
+        else:
+            status = VerificationStatus.VERIFIED
+
+        # Assertion Type: weakest link
+        priority = {
+            AssertionType.PROHIBITED_CLAIM: 0,
+            AssertionType.UNSUPPORTED_CLAIM: 1,
+            AssertionType.USER_ASSERTION: 2,
+            AssertionType.DERIVED_CAPABILITY: 3,
+            AssertionType.NORMALIZED_FACT: 4,
+            AssertionType.DIRECT_FACT: 5,
+        }
+        min_type = default_assertion_type
+        for r in records:
+            if priority.get(r.assertion_type, 0) < priority.get(min_type, 5):
+                min_type = r.assertion_type
+
+        # Polarity & Modality
+        combined_text = " ".join(r.content or "" for r in records)
+        polarity = Polarity.NEGATIVE if _NEGATIVE_MARKERS.search(combined_text) else Polarity.POSITIVE
+        if _BOUND_AT_MOST.search(combined_text):
+            modality = Modality.AT_MOST
+        elif _BOUND_AT_LEAST.search(combined_text):
+            modality = Modality.AT_LEAST
+        elif _CONDITIONAL.search(combined_text):
+            modality = Modality.CONDITIONAL
+        elif status is VerificationStatus.APPROXIMATE:
+            modality = Modality.APPROXIMATE
+        else:
+            modality = Modality.DEFINITE
+
+        return (min_type, status, polarity, modality)
 
     def _project_profile_assertions(self, profile: Profile) -> None:
         if isinstance(profile, CareerProfile):
             for emp in profile.employment:
-                self._create_field_assertion(emp.id, "employment.organization", emp.organization, emp.evidence_ids, effective_from=emp.start_date, effective_to=emp.end_date)
-                self._create_field_assertion(emp.id, "employment.title", emp.title, emp.evidence_ids, effective_from=emp.start_date, effective_to=emp.end_date)
-                self._create_field_assertion(emp.id, "employment.start_date", emp.start_date, emp.evidence_ids, effective_from=emp.start_date, effective_to=emp.end_date)
+                self._project_field_assertion(emp.id, "employment.organization", emp.organization, emp.evidence_ids, effective_from=emp.start_date, effective_to=emp.end_date)
+                self._project_field_assertion(emp.id, "employment.title", emp.title, emp.evidence_ids, effective_from=emp.start_date, effective_to=emp.end_date)
+                self._project_field_assertion(emp.id, "employment.start_date", emp.start_date, emp.evidence_ids, effective_from=emp.start_date, effective_to=emp.end_date)
                 if emp.end_date:
-                    self._create_field_assertion(emp.id, "employment.end_date", emp.end_date, emp.evidence_ids, effective_from=emp.start_date, effective_to=emp.end_date)
+                    self._project_field_assertion(emp.id, "employment.end_date", emp.end_date, emp.evidence_ids, effective_from=emp.start_date, effective_to=emp.end_date)
                 for idx, resp in enumerate(emp.responsibilities):
-                    self._create_field_assertion(f"{emp.id}.resp.{idx}", "employment.responsibility", resp, emp.evidence_ids, effective_from=emp.start_date, effective_to=emp.end_date)
+                    self._project_field_assertion(f"{emp.id}.resp.{idx}", "employment.responsibility", resp, emp.evidence_ids, effective_from=emp.start_date, effective_to=emp.end_date)
 
                 for ach in emp.achievements:
-                    self._create_field_assertion(ach.id, "achievement.statement", ach.statement, ach.evidence_ids)
+                    self._project_field_assertion(ach.id, "achievement.statement", ach.statement, ach.evidence_ids)
                     rel_id = f"rel_{emp.id}_{ach.id}"
                     if rel_id not in self._relations:
+                        rel_type, rel_status, _, _ = self._derive_epistemic_status(ach.evidence_ids)
                         self._relations[rel_id] = TypedRelation(
                             id=rel_id,
                             source_id=emp.id,
                             relation_type=RelationType.ACHIEVED_DURING,
                             target_id=ach.id,
                             evidence_ids=ach.evidence_ids,
+                            assertion_type=rel_type,
+                            verification_status=rel_status,
                             effective_from=emp.start_date,
                             effective_to=emp.end_date,
                         )
@@ -182,78 +447,96 @@ class TruthGraph:
                     self._extract_metrics_from_text(ach.id, ach.statement, ach.evidence_ids, ach.metric_verification)
 
             for edu in profile.education:
-                self._create_field_assertion(edu.id, "education.institution", edu.institution, edu.evidence_ids, effective_from=edu.start_date, effective_to=edu.end_date)
-                self._create_field_assertion(edu.id, "education.qualification", edu.qualification, edu.evidence_ids, effective_from=edu.start_date, effective_to=edu.end_date)
+                self._project_field_assertion(edu.id, "education.institution", edu.institution, edu.evidence_ids, effective_from=edu.start_date, effective_to=edu.end_date)
+                self._project_field_assertion(edu.id, "education.qualification", edu.qualification, edu.evidence_ids, effective_from=edu.start_date, effective_to=edu.end_date)
 
             for cert in profile.certifications:
                 modality = Modality.PLANNED if cert.state is CertificationState.PLANNED else Modality.DEFINITE
-                self._create_field_assertion(cert.id, "certification.name", cert.name, cert.evidence_ids, modality=modality, effective_from=cert.issued_date, effective_to=cert.expiry_date)
-                self._create_field_assertion(cert.id, "certification.state", cert.state.value, cert.evidence_ids, modality=modality, effective_from=cert.issued_date, effective_to=cert.expiry_date)
+                self._project_field_assertion(cert.id, "certification.name", cert.name, cert.evidence_ids, force_modality=modality, effective_from=cert.issued_date, effective_to=cert.expiry_date)
+                self._project_field_assertion(cert.id, "certification.state", cert.state.value, cert.evidence_ids, force_modality=modality, effective_from=cert.issued_date, effective_to=cert.expiry_date)
 
             for skill in profile.skills:
-                self._create_field_assertion(skill.id, "skill.name", skill.name, skill.evidence_ids)
+                self._project_field_assertion(skill.id, "skill.name", skill.name, skill.evidence_ids)
                 if skill.proficiency:
-                    self._create_field_assertion(skill.id, "skill.proficiency", skill.proficiency, skill.evidence_ids)
+                    self._project_field_assertion(skill.id, "skill.proficiency", skill.proficiency, skill.evidence_ids)
 
             for lang in profile.languages:
-                self._create_field_assertion(lang.id, "language.language", lang.language, lang.evidence_ids)
-                self._create_field_assertion(lang.id, "language.proficiency", lang.proficiency, lang.evidence_ids)
+                self._project_field_assertion(lang.id, "language.language", lang.language, lang.evidence_ids)
+                self._project_field_assertion(lang.id, "language.proficiency", lang.proficiency, lang.evidence_ids)
 
             for auth in profile.work_authorizations:
-                self._create_field_assertion(auth.id, "work_authorization.jurisdiction", auth.jurisdiction, auth.evidence_ids, effective_to=auth.expiry_date)
-                self._create_field_assertion(auth.id, "work_authorization.status", auth.status, auth.evidence_ids, effective_to=auth.expiry_date)
+                self._project_field_assertion(auth.id, "work_authorization.jurisdiction", auth.jurisdiction, auth.evidence_ids, effective_to=auth.expiry_date)
+                self._project_field_assertion(auth.id, "work_authorization.status", auth.status, auth.evidence_ids, effective_to=auth.expiry_date)
         else:
             for srv in profile.services:
-                self._create_field_assertion(srv.id, "service.name", srv.name, srv.evidence_ids, assertion_type=AssertionType.DERIVED_CAPABILITY)
-                self._create_field_assertion(srv.id, "service.description", srv.description, srv.evidence_ids, assertion_type=AssertionType.DERIVED_CAPABILITY)
+                self._project_field_assertion(srv.id, "service.name", srv.name, srv.evidence_ids, default_assertion_type=AssertionType.DERIVED_CAPABILITY)
+                self._project_field_assertion(srv.id, "service.description", srv.description, srv.evidence_ids, default_assertion_type=AssertionType.DERIVED_CAPABILITY)
 
             for port in profile.portfolio:
-                self._create_field_assertion(port.id, "portfolio.title", port.title, port.evidence_ids)
-                self._create_field_assertion(port.id, "portfolio.summary", port.summary, port.evidence_ids)
+                self._project_field_assertion(port.id, "portfolio.title", port.title, port.evidence_ids)
+                self._project_field_assertion(port.id, "portfolio.summary", port.summary, port.evidence_ids)
                 if port.outcome:
-                    self._create_field_assertion(port.id, "portfolio.outcome", port.outcome, port.evidence_ids)
+                    self._project_field_assertion(port.id, "portfolio.outcome", port.outcome, port.evidence_ids)
                     self._extract_metrics_from_text(port.id, port.outcome, port.evidence_ids, port.metric_verification)
 
             if profile.capacity:
                 cap = profile.capacity
                 if cap.hours_per_week is not None:
-                    self._create_field_assertion(cap.id, "capacity.hours_per_week", cap.hours_per_week, cap.evidence_ids, effective_from=cap.available_from)
+                    self._project_field_assertion(cap.id, "capacity.hours_per_week", cap.hours_per_week, cap.evidence_ids, effective_from=cap.available_from)
                 if cap.annual_turnover_usd is not None:
-                    self._create_field_assertion(cap.id, "capacity.annual_turnover_usd", cap.annual_turnover_usd, cap.evidence_ids, effective_from=cap.available_from)
+                    self._project_field_assertion(cap.id, "capacity.annual_turnover_usd", cap.annual_turnover_usd, cap.evidence_ids, effective_from=cap.available_from)
                 if cap.bid_bond_capacity_usd is not None:
-                    self._create_field_assertion(cap.id, "capacity.bid_bond_capacity_usd", cap.bid_bond_capacity_usd, cap.evidence_ids, effective_from=cap.available_from)
+                    self._project_field_assertion(cap.id, "capacity.bid_bond_capacity_usd", cap.bid_bond_capacity_usd, cap.evidence_ids, effective_from=cap.available_from)
                 if cap.legal_capacity is not None:
-                    self._create_field_assertion(cap.id, "capacity.legal_capacity", cap.legal_capacity, cap.evidence_ids, effective_from=cap.available_from)
+                    self._project_field_assertion(cap.id, "capacity.legal_capacity", cap.legal_capacity, cap.evidence_ids, effective_from=cap.available_from)
 
-    def _create_field_assertion(
+    def _project_field_assertion(
         self,
         subject_id: str,
         predicate: str,
         value: Any,
         evidence_ids: tuple[str, ...],
         *,
-        assertion_type: AssertionType = AssertionType.DIRECT_FACT,
-        verification_status: VerificationStatus = VerificationStatus.VERIFIED,
-        polarity: Polarity = Polarity.POSITIVE,
-        modality: Modality = Modality.DEFINITE,
+        default_assertion_type: AssertionType = AssertionType.DIRECT_FACT,
+        force_modality: Modality | None = None,
         effective_from: date | None = None,
         effective_to: date | None = None,
     ) -> None:
         assertion_id = f"as_{subject_id}_{predicate.replace('.', '_')}"
-        if assertion_id not in self._assertions:
-            self._assertions[assertion_id] = AtomicAssertion(
-                id=assertion_id,
-                subject_id=subject_id,
-                predicate=predicate,
-                value=value,
-                assertion_type=assertion_type,
-                verification_status=verification_status,
-                evidence_ids=evidence_ids,
-                polarity=polarity,
-                modality=modality,
-                effective_from=effective_from,
-                effective_to=effective_to,
+        if assertion_id in self._assertions:
+            return
+
+        # Filter evidence_ids to those that specifically support this field value
+        if value is None:
+            field_ev_ids = tuple(
+                ev_id for ev_id in evidence_ids
+                if self._evidence.get(ev_id) and self._evidence[ev_id].verification_status is VerificationStatus.EXPLICIT_NULL
             )
+        else:
+            field_ev_ids = tuple(
+                ev_id for ev_id in evidence_ids
+                if self._evidence.get(ev_id) and _is_value_supported_by_evidence(value, (self._evidence[ev_id],))
+            )
+        if not field_ev_ids:
+            field_ev_ids = evidence_ids
+
+        as_type, status, polarity, modality = self._derive_epistemic_status(field_ev_ids, default_assertion_type=default_assertion_type)
+        if force_modality is not None:
+            modality = force_modality
+
+        self._assertions[assertion_id] = AtomicAssertion(
+            id=assertion_id,
+            subject_id=subject_id,
+            predicate=predicate,
+            value=value,
+            assertion_type=as_type,
+            verification_status=status,
+            evidence_ids=field_ev_ids,
+            polarity=polarity,
+            modality=modality,
+            effective_from=effective_from,
+            effective_to=effective_to,
+        )
 
     def _extract_metrics_from_text(
         self,
@@ -266,7 +549,8 @@ class TruthGraph:
             r"(?<![\w-])(?:(?P<curr>[$€£])\s*)?(?P<val>\d+(?:[.,]\d+)?)(?:\s*(?P<unit>%|[xX]\b|hours?|days?|weeks?|months?|users?|clients?|projects?|requests?|seconds?|minutes?|USD|EUR|GBP))?",
             re.IGNORECASE,
         )
-        for idx, match in enumerate(metric_pattern.finditer(text)):
+        matches = list(metric_pattern.finditer(text))
+        for idx, match in enumerate(matches):
             curr = match.group("curr") or ""
             val_str = match.group("val").replace(",", "")
             unit = match.group("unit") or curr or "count"
@@ -274,6 +558,10 @@ class TruthGraph:
                 num_val = float(val_str) if "." in val_str else int(val_str)
             except ValueError:
                 continue
+
+            # In multi-metric text, only the first verified metric is marked VERIFIED if verification is VERIFIED,
+            # or if text specifically references it. Extracted metrics default to UNAVAILABLE if unverified.
+            metric_status = verification if (len(matches) == 1 or idx == 0) else MetricVerification.UNAVAILABLE
 
             metric_id = f"metric_{subject_id}_{idx}"
             if metric_id not in self._metrics:
@@ -283,7 +571,7 @@ class TruthGraph:
                     numeric_value=num_val,
                     unit=unit.strip(),
                     context=text[:100],
-                    verification_status=verification,
+                    verification_status=metric_status,
                     evidence_ids=evidence_ids,
                 )
 
@@ -301,32 +589,68 @@ class TruthGraph:
         return tuple(dict.fromkeys(self._evidence_entities.get(evidence_id, [])))
 
     def are_relationally_linked(self, evidence_ids: tuple[str, ...] | list[str] | set[str]) -> bool:
-        """Determine whether multiple evidence IDs share a common relational entity node in the graph.
+        """Determine whether multiple evidence IDs share an explicit relational edge or common entity in the graph.
 
         Cross-evidence relationship laundering is prevented by requiring that any conjunction of
-        distinct evidence records must be explicitly grounded in a structured graph entity (such as
-        an EmploymentRecord with its sub-achievements, a PortfolioItem, ServiceRecord, etc.).
-        Root profile objects (CareerProfile, CapabilityProfile) represent the whole person/business
-        and do NOT establish relational link between independent sub-entities.
+        distinct evidence records must be explicitly grounded in the exact same entity or connected
+        via an explicit, verified TypedRelation in the TruthGraph.
         """
         unique_ids = tuple(dict.fromkeys(evidence_ids))
         if len(unique_ids) <= 1:
             return True
 
-        target_set = set(unique_ids)
-        for entity_id, entity in self._entities.items():
-            if isinstance(entity, (CareerProfile, CapabilityProfile)):
+        # Check if all evidence IDs belong to the exact same entity
+        entities_per_ev = [set(self._evidence_entities.get(ev_id, [])) for ev_id in unique_ids]
+        common_entities = set.intersection(*entities_per_ev) if entities_per_ev else set()
+        common_non_root = [e_id for e_id in common_entities if not isinstance(self._entities.get(e_id), (CareerProfile, CapabilityProfile))]
+        if common_non_root:
+            return True
+
+        # Check if an explicit TypedRelation connects the entities of the distinct evidence records
+        for i, ev1 in enumerate(unique_ids):
+            for ev2 in unique_ids[i + 1 :]:
+                ents1 = set(self._evidence_entities.get(ev1, []))
+                ents2 = set(self._evidence_entities.get(ev2, []))
+                # Check if an explicit relation connects any entity in ents1 with any in ents2
+                connected = False
+                for r in self._relations.values():
+                    if r.verification_status is not VerificationStatus.VERIFIED:
+                        continue
+                    if (r.source_id in ents1 and r.target_id in ents2) or (r.source_id in ents2 and r.target_id in ents1):
+                        connected = True
+                        break
+                if not connected:
+                    return False
+
+        return True
+
+    def active_assertions(self, as_of: date | None = None) -> tuple[AtomicAssertion, ...]:
+        """Return currently active, non-superseded, non-conflicting, temporally valid assertions."""
+        all_assertions = list(self._assertions.values())
+        superseded_ids: set[str] = set()
+        conflicting_ids: set[str] = set()
+
+        for a in all_assertions:
+            for s_id in a.supersedes:
+                superseded_ids.add(s_id)
+            for c_id in a.conflicts_with:
+                conflicting_ids.add(c_id)
+                conflicting_ids.add(a.id)
+
+        active = []
+        for a in all_assertions:
+            if a.id in superseded_ids:
                 continue
+            if a.id in conflicting_ids:
+                continue
+            if as_of is not None:
+                if a.effective_from and as_of < a.effective_from:
+                    continue
+                if a.effective_to and as_of > a.effective_to:
+                    continue
+            active.append(a)
 
-            linked_ev_ids = set(self._entity_evidence.get(entity_id, ()))
-            if hasattr(entity, "achievements"):
-                for ach in getattr(entity, "achievements", ()):
-                    linked_ev_ids.update(self._entity_evidence.get(ach.id, ()))
-
-            if target_set.issubset(linked_ev_ids):
-                return True
-
-        return False
+        return tuple(active)
 
     @staticmethod
     def _direct_evidence_ids(node: object) -> tuple[str, ...]:
@@ -427,13 +751,19 @@ class TruthGraph:
     def has_relation(
         self,
         source_id: str,
-        relation_type: str,
+        relation_type: RelationType | str,
         target_id: str,
         *,
         as_of: date | None = None,
     ) -> bool:
         for r in self._relations.values():
-            if r.source_id == source_id and r.relation_type == relation_type and r.target_id == target_id:
+            if r.source_id == source_id and r.target_id == target_id:
+                if isinstance(relation_type, RelationType) and r.relation_type is not relation_type:
+                    continue
+                if isinstance(relation_type, str) and str(r.relation_type) != str(relation_type):
+                    continue
+                if r.verification_status is VerificationStatus.UNVERIFIED:
+                    continue
                 if as_of is not None:
                     if r.effective_from and as_of < r.effective_from:
                         continue

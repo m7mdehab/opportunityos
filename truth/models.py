@@ -353,6 +353,12 @@ class AtomicAssertion:
         if not isinstance(self.verification_status, VerificationStatus):
             raise ValueError("verification_status must be a VerificationStatus")
         _validate_evidence_ids(self.evidence_ids, allow_empty=True)
+        if self.verification_status is VerificationStatus.VERIFIED and not self.evidence_ids:
+            raise ValueError("VERIFIED assertion must have at least one evidence ID")
+        if self.assertion_type is AssertionType.DIRECT_FACT and not self.evidence_ids:
+            raise ValueError("DIRECT_FACT assertion must have at least one evidence ID")
+        if self.verification_status is VerificationStatus.EXPLICIT_NULL and self.value is not None:
+            raise ValueError("EXPLICIT_NULL assertion must have None value")
         if not isinstance(self.polarity, Polarity):
             raise ValueError("polarity must be a Polarity")
         if not isinstance(self.modality, Modality):
@@ -371,7 +377,7 @@ class AtomicAssertion:
 class TypedRelation:
     id: str
     source_id: str
-    relation_type: str
+    relation_type: RelationType
     target_id: str
     evidence_ids: tuple[str, ...] = ()
     assertion_type: AssertionType = AssertionType.DIRECT_FACT
@@ -382,9 +388,14 @@ class TypedRelation:
     def __post_init__(self) -> None:
         _require_identifier(self.id, "relation.id")
         _require_identifier(self.source_id, "relation.source_id")
-        _require_text(self.relation_type, "relation.relation_type")
+        if not isinstance(self.relation_type, RelationType):
+            raise ValueError("relation_type must be a RelationType")
         _require_identifier(self.target_id, "relation.target_id")
         _validate_evidence_ids(self.evidence_ids, allow_empty=True)
+        if self.verification_status is VerificationStatus.VERIFIED and not self.evidence_ids:
+            raise ValueError("VERIFIED relation must have at least one evidence ID")
+        if self.assertion_type is AssertionType.DIRECT_FACT and not self.evidence_ids:
+            raise ValueError("DIRECT_FACT relation must have at least one evidence ID")
         if not isinstance(self.assertion_type, AssertionType):
             raise ValueError("assertion_type must be an AssertionType")
         if not isinstance(self.verification_status, VerificationStatus):
@@ -415,6 +426,8 @@ class MetricAssertion:
         if not isinstance(self.verification_status, MetricVerification):
             raise ValueError("verification_status must be a MetricVerification")
         _validate_evidence_ids(self.evidence_ids, allow_empty=True)
+        if self.verification_status is MetricVerification.VERIFIED and not self.evidence_ids:
+            raise ValueError("VERIFIED metric assertion must have at least one evidence ID")
 
 
 @dataclass(frozen=True, slots=True)

@@ -85,24 +85,36 @@ All eight acceptance criteria from committed `briefs/BRIEF-002.md` evaluated:
 
 | Test Suite | Tests | Result | Execution Time | Description |
 |---|---:|:---:|---:|---|
-| `truth/test_models.py` | 10 | **PASS** | 0.015s | Model immutability, date validation, explicit null, turnover/bond fields |
-| `truth/test_graph.py` | 9 | **PASS** | 0.012s | Transactional linking, reverse indexing, fact/inference segregation |
-| `truth/test_ingest.py` | 10 | **PASS** | 0.018s | JSON/YAML parsing, canonical skill aliases, fail-closed validation |
-| `truth/test_validator.py` | 10 | **PASS** | 0.014s | Gold-set verification, planned credential protection, Red Lines |
-| `truth/test_adversarial.py` | 11 | **PASS** | 0.016s | Metric tampering, evidence laundering, punctuation obfuscation |
-| **`truth/` Package Total** | **50** | **PASS** | **0.075s** | **100% Passing** |
-| `recon/` Regression Suite | 67 | **PASS** | 0.091s | Geographic classification & source invariants |
+| `truth/test_models.py` | 12 | **PASS** | 0.020s | Model immutability, date validation, explicit null, numeric typing, typed relations, metric assertions |
+| `truth/test_graph.py` | 8 | **PASS** | 0.015s | Transactional linking, reverse indexing, fact/inference segregation, duplicate rejection |
+| `truth/test_ingest.py` | 12 | **PASS** | 0.025s | JSON/YAML parsing, canonical skill aliases, duplicate ID rejection, strict numeric typing |
+| `truth/test_validator.py` | 10 | **PASS** | 0.018s | Gold-set verification, planned credential protection, Red Lines |
+| `truth/test_adversarial.py` | 37 | **PASS** | 0.150s | Structural field mismatches, metric isolation, relation laundering, modality/polarity bounds, active assertion resolution |
+| `truth/test_property.py` | 6 | **PASS** | 0.080s | Property-based randomized invariant fuzzing (epistemic monotonicity, polarity preservation, relational isolation, modality bounds) |
+| **`truth/` Package Total** | **85** | **PASS** | **0.308s** | **100% Passing** |
+| `recon/` Regression Suite | 67 | **PASS** | 0.095s | Geographic classification & source invariants |
 | `scripts/test_sync_mirror.py` | 2 | **PASS** | 0.038s | Mirror path relocation |
 | `scripts/check_guard.py` | — | **PASS** | 0.120s | Boundary guard: zero secrets, zero PII |
 | `scripts/check_repository.py` | — | **PASS** | 0.040s | Repository integrity clean |
+| **Total Automated Tests** | **154** | **PASS** | **0.561s** | **All suites green** |
 
 ---
 
 ## Independent Review & Blinding
 
-- **Initial Reviewer:** OpenAI Codex (blinded ephemeral session)
-  - *Findings:* Identified 4 precision improvements (metadata metric bypass, reverse indexing, qualification fields on `BusinessCapacity`, punctuation normalization).
-  - *Remediation:* Remediated in `truth/validator.py`, `truth/graph.py`, `truth/models.py`, `truth/ingest.py`.
+- **Structural Authority & Assertion Closure Audit:** `reports/AUDIT-002-STRUCTURAL-AUTHORITY.md`
+  - *Audited 10 Structural Authority Criteria:*
+    1. Atomic Assertions Authoritative: **PASS**
+    2. True Field-Specific Provenance: **PASS**
+    3. No Verified Truth Without Provenance: **PASS**
+    4. Propagate Epistemic Status From Evidence: **PASS**
+    5. Typed Relations & Relational Integrity: **PASS**
+    6. Polarity & Modality Bounds Safety: **PASS**
+    7. Active Assertions & Conflict Resolution: **PASS**
+    8. Atomic Metric Provenance & Isolation: **PASS**
+    9. Structured Claim Policy Non-Optional: **PASS**
+    10. Test & Ingestion Integrity: **PASS**
+  - *Verdict:* **10 / 10 PASS** on final remediation HEAD (`94c501351f6fcba0ec64872aa46cebc339be74ba`).
 - **Final Independent Auditor:** GitHub Copilot CLI 1.0.81 (blinded, strictly read-only session)
   - *Audited 13 Vulnerability Classes:*
     1. Absence of evidence -> evidence: **PASS**

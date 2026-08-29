@@ -81,7 +81,15 @@ class ClaimValidator:
         if not isinstance(candidate, ClaimCandidate):
             raise ValueError("candidate must be a ClaimCandidate")
 
-        # 1. Structured Never-Claim policy evaluation: intersect candidate concepts with prohibited categories
+        # 1. Structural Policy Check: Autonomous candidates must specify material assertions or concept categories
+        if not candidate.material_assertion_ids and not candidate.concepts:
+            return self._result(
+                candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
+                VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
+                ("autonomous claim candidate must specify material_assertion_ids or concept categories",),
+            )
+
+        # 2. Structured Never-Claim policy evaluation: intersect candidate concepts with prohibited categories
         red_lines, never_claims = self.graph.rules()
         prohibited_categories = {rule.concept for rule in never_claims if isinstance(rule, NeverClaimRule)}
         prohibited_intersection = candidate.concepts & prohibited_categories
@@ -93,8 +101,10 @@ class ClaimValidator:
                 (f"candidate asserts prohibited concept category: {prohibited_names}",),
             )
 
-        # 2. Field-level atomic assertion verification
+        # 3. Field-level atomic assertion verification & active state resolution
         supporting_assertion_evidence = []
+        active_set = set(self.graph.active_assertions(candidate.as_of))
+
         if candidate.material_assertion_ids:
             for as_id in candidate.material_assertion_ids:
                 if as_id not in self.graph.assertions:
@@ -104,6 +114,27 @@ class ClaimValidator:
                         (f"unknown atomic assertion: {as_id}",),
                     )
                 assertion = self.graph.assertions[as_id]
+
+                # Check if active in graph as of candidate.as_of
+                if assertion not in active_set:
+                    if assertion.conflicts_with:
+                        return self._result(
+                            candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
+                            VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
+                            (f"assertion {as_id} has unresolved conflicts: {', '.join(assertion.conflicts_with)}",),
+                        )
+                    if candidate.as_of is not None and assertion.effective_to and candidate.as_of > assertion.effective_to:
+                        return self._result(
+                            candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
+                            VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
+                            (f"assertion {as_id} expired on {assertion.effective_to} as of {candidate.as_of}",),
+                        )
+                    return self._result(
+                        candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
+                        VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
+                        (f"assertion {as_id} is inactive / superseded as of {candidate.as_of}",),
+                    )
+
                 supporting_assertion_evidence.extend(assertion.evidence_ids)
 
                 # Polarity check
@@ -114,36 +145,38 @@ class ClaimValidator:
                         (f"assertion {as_id} has negative polarity but candidate text is positive",),
                     )
 
-                # Modality check
-                if assertion.modality is Modality.PLANNED and (_HELD.search(candidate.text) or not _PLANNING.search(candidate.text)):
-                    return self._result(
-                        candidate.text, False, AssertionType.PROHIBITED_CLAIM,
-                        VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
-                        (f"assertion {as_id} has planned modality and cannot be represented as held",),
-                    )
-
-                # Temporal validity
-                if candidate.as_of is not None:
-                    if assertion.effective_to and candidate.as_of > assertion.effective_to:
+                # Modality checks
+                if assertion.modality is Modality.AT_MOST:
+                    if not _BOUND_AT_MOST.search(candidate.text) or _EXACT.search(candidate.text) or _BOUND_AT_LEAST.search(candidate.text):
                         return self._result(
                             candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
                             VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
-                            (f"assertion {as_id} expired on {assertion.effective_to} as of {candidate.as_of}",),
+                            (f"assertion {as_id} has AT_MOST modality and candidate text cannot strengthen it to exact or lower bound",),
                         )
-                    if assertion.effective_from and candidate.as_of < assertion.effective_from:
+
+                if assertion.modality is Modality.APPROXIMATE:
+                    if _EXACT.search(candidate.text) or not _APPROXIMATION.search(candidate.text):
                         return self._result(
                             candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
                             VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
-                            (f"assertion {as_id} not yet effective on {candidate.as_of}",),
+                            (f"assertion {as_id} has APPROXIMATE modality and candidate text cannot claim exact value",),
                         )
 
-                # Conflict detection
-                if assertion.conflicts_with:
-                    return self._result(
-                        candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
-                        VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
-                        (f"assertion {as_id} has unresolved conflicts: {', '.join(assertion.conflicts_with)}",),
-                    )
+                if assertion.modality is Modality.CONDITIONAL:
+                    if not _CONDITIONAL.search(candidate.text):
+                        return self._result(
+                            candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
+                            VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
+                            (f"assertion {as_id} has CONDITIONAL modality and candidate text cannot claim unconditional fact",),
+                        )
+
+                if assertion.modality is Modality.PLANNED:
+                    if _HELD.search(candidate.text) or not _PLANNING.search(candidate.text):
+                        return self._result(
+                            candidate.text, False, AssertionType.PROHIBITED_CLAIM,
+                            VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
+                            (f"assertion {as_id} has planned modality and cannot be represented as held",),
+                        )
 
         evidence_ids = candidate.requested_evidence_ids or tuple(dict.fromkeys(supporting_assertion_evidence))
         return self.validate_claim(candidate.text, evidence_ids, as_of=candidate.as_of)
@@ -389,9 +422,13 @@ class ClaimValidator:
             return True
         if len(normalized_content) >= 4 and normalized_content in normalized_claim:
             return True
-        claim_tokens = _tokens(normalized_claim)
-        content_tokens = _tokens(normalized_content)
-        return bool(content_tokens) and content_tokens <= claim_tokens
+        claim_tokens = _tokens(normalized_claim) - _NON_MATERIAL_WORDS
+        content_tokens = _tokens(normalized_content) - _NON_MATERIAL_WORDS
+        if bool(content_tokens) and content_tokens <= claim_tokens:
+            return True
+        if bool(content_tokens & claim_tokens):
+            return True
+        return False
 
     def _validate_metric_provenance(self, claim: str, supporting: tuple) -> str | None:
         """Verify that every numeric metric in the claim maps to an exact verified metric provenance node."""

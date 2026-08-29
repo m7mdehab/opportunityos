@@ -22,7 +22,7 @@ def minimal_document():
                 "observed_at": "2026-08-29T10:00:00Z",
             },
             {
-                "id": "ev-role", "content": "Example Engineer", "source": "fixture",
+                "id": "ev-role", "content": "Example Engineer at Example Org from 2024-01-01", "source": "fixture",
                 "locator": "employment.0.title",
             },
         ],
@@ -166,7 +166,7 @@ career_profile:
 
     def test_ingestion_supports_assertions_relations_and_metrics(self):
         doc = {
-            "evidence": [{"id": "ev-1", "content": "Python Engineer", "source": "test", "locator": "test"}],
+            "evidence": [{"id": "ev-1", "content": "Python Engineer with 40% latency reduction", "source": "test", "locator": "test"}],
             "assertions": [
                 {
                     "id": "as-1",
