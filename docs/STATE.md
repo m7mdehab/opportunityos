@@ -10,8 +10,8 @@ Next: complete active brief.
 
 ## Repository
 
-- **Generated:** 2026-08-29T13:57:26Z
-- **State generated at commit:** `6bfa684` — feat(brief-002): complete Professional Truth Graph & Capability Ingestion acceptance
+- **Generated:** 2026-08-29T13:58:02Z
+- **State generated at commit:** `c178b10` — feat(brief-002): finalize BRIEF-002 closure with verified private boundary and independent Copilot audit
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
