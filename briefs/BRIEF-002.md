@@ -66,11 +66,11 @@ final_report_only: true
 
 ## Acceptance Criteria
 
-- [ ] Career truth schema implemented with atomic evidence links (dates, titles, organizations, achievements).
-- [ ] Independent capability graph implemented with services, portfolio items, RFP qualification parameters, and delivery constraints.
-- [ ] Automated verification engine enforces "never claim" constraints and flags unbacked assertions.
-- [ ] Unit and property-based test suite covering truth ingestion, validation, and rejection.
-- [ ] Zero PII or private career data committed to public/mirrored directories; repository guards green.
-- [ ] ADR accepted for Truth Graph Architecture and Provenance Model.
-- [ ] Independent audit / checker passes acceptance gate.
-- [ ] `docs/STATE.md` regenerated and accurate.
+- [x] Career truth schema implemented with atomic evidence links (dates, titles, organizations, achievements).
+- [x] Independent capability graph implemented with services, portfolio items, RFP qualification parameters, and delivery constraints.
+- [x] Automated verification engine enforces "never claim" constraints and flags unbacked assertions.
+- [x] Unit and property-based test suite covering truth ingestion, validation, and rejection.
+- [x] Zero PII or private career data committed to public/mirrored directories; repository guards green.
+- [x] ADR accepted for Truth Graph Architecture and Provenance Model.
+- [x] Independent audit / checker passes acceptance gate.
+- [x] `docs/STATE.md` regenerated and accurate.

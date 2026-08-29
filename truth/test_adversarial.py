@@ -37,8 +37,11 @@ class AdversarialTruthTests(unittest.TestCase):
         variants = (
             "FORTUNE 500 CLIENTS",
             "fortune   500\nclients",
+            "Fortune-500 Clients",
+            "Fortune.500.Clients",
             "We GuArAnTeE the result",
             "This GUARANTEES success",
+            "We Guarantee!",
         )
         for claim in variants:
             with self.subTest(claim=claim):

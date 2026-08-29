@@ -2,36 +2,30 @@
 # OpportunityOS State
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
-Last shipped: BRIEF-001 — 2026-08-29.
-Active work: BRIEF-002.
-Phase status: in progress.
+Last shipped: BRIEF-002 — 2026-08-29.
+Active work: none.
+Phase status: passed.
 Blocked: none.
-Next: [x] Independent audit passed with $\ge 90.0\%$ eligible precision (100.00% achieved, $n=8$)..
+Next: BRIEF-003: Opportunity Discovery & Ingestion Pipelines (aggregating and classifying external procurement notices and employment postings against the truth graph)..
 
 ## Repository
 
-- **Generated:** 2026-08-29T11:40:20Z
-- **State generated at commit:** `d1911a1` — feat(brief-002): initialize BRIEF-002 Professional Truth Graph & Capability Ingestion
+- **Generated:** 2026-08-29T12:09:30Z
+- **State generated at commit:** `2c9b7df` — feat(truth): implement Professional Truth Graph and Capability Ingestion engine
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
 
-- **Brief:** BRIEF-002
-- **Phase status:** in progress
-- **Open acceptance items:** 8
-- Career truth schema implemented with atomic evidence links (dates, titles, organizations, achievements).
-- Independent capability graph implemented with services, portfolio items, RFP qualification parameters, and delivery constraints.
-- Automated verification engine enforces "never claim" constraints and flags unbacked assertions.
-- Unit and property-based test suite covering truth ingestion, validation, and rejection.
-- Zero PII or private career data committed to public/mirrored directories; repository guards green.
-- ADR accepted for Truth Graph Architecture and Provenance Model.
-- Independent audit / checker passes acceptance gate.
-- `docs/STATE.md` regenerated and accurate.
+- **Brief:** none
+- **Phase status:** passed
+- **Open acceptance items:** 0
+- None
 
 ## Completed Briefs
 
 - BRIEF-000 — 2026-08-27
 - BRIEF-001 — 2026-08-29
+- BRIEF-002 — 2026-08-29
 
 ## Last Phase Outcome
 
@@ -49,6 +43,7 @@ Next: [x] Independent audit passed with $\ge 90.0\%$ eligible precision (100.00%
 - [ADR-0004 — Mirror Does Not Execute](adr/ADR-0004-mirror-does-not-execute.md)
 - [ADR-0005 — TED Search Is a Read-Only Query](adr/ADR-0005-ted-search-read-only-post.md)
 - [ADR-0006 — Geographic Region Completion and Taxonomy Invariants](adr/ADR-0006-geographic-region-completion.md)
+- [ADR-0007 — Professional Truth Graph and Provenance Model](adr/ADR-0007-truth-graph-and-provenance-model.md)
 
 ## Blocked Items
 
@@ -66,8 +61,4 @@ Next: [x] Independent audit passed with $\ge 90.0\%$ eligible precision (100.00%
 
 ## Next Prerequisites
 
-- [x] Independent audit passed with $\ge 90.0\%$ eligible precision (100.00% achieved, $n=8$).
-- [x] All 67 unit tests, mirror relocation tests, and boundary guards passing.
-- [x] `docs/STATE.md` regenerated via `python scripts/generate_state.py`.
-- [x] Mirror synchronization workflow verified ready for post-merge publication.
-- [x] Ready for merge to `main` and activation of Phase 2 (`briefs/BRIEF-002.md`).
+- BRIEF-003: Opportunity Discovery & Ingestion Pipelines (aggregating and classifying external procurement notices and employment postings against the truth graph).

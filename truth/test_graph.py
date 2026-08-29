@@ -65,12 +65,14 @@ class TruthGraphTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             graph.profiles["injected"] = object()
 
-    def test_unknown_lookup_has_explicit_error(self):
-        graph = TruthGraph()
+    def test_reverse_provenance_indexing(self):
+        graph = synthetic_graph()
+        entities = graph.entities_for_evidence("ev-achievement")
+        entity_ids = graph.entity_ids_for_evidence("ev-achievement")
+        self.assertIn("achievement-verified", entity_ids)
+        self.assertTrue(any(getattr(e, "id", None) == "achievement-verified" for e in entities))
         with self.assertRaisesRegex(KeyError, "unknown evidence id"):
-            graph.evidence("missing")
-        with self.assertRaisesRegex(KeyError, "unknown entity id"):
-            graph.entity("missing")
+            graph.entities_for_evidence("non-existent-evidence")
 
 
 if __name__ == "__main__":

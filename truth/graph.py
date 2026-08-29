@@ -30,6 +30,7 @@ class TruthGraph:
         self._profiles: dict[str, Profile] = {}
         self._entities: dict[str, object] = {}
         self._entity_evidence: dict[str, tuple[str, ...]] = {}
+        self._evidence_entities: dict[str, list[str]] = {}
         for record in evidence:
             self.add_evidence(record)
 
@@ -45,6 +46,7 @@ class TruthGraph:
         if record.id in self._evidence or record.id in self._entities:
             raise ValueError(f"duplicate graph node id: {record.id}")
         self._evidence[record.id] = record
+        self._evidence_entities.setdefault(record.id, [])
 
     def add_career_profile(self, profile: CareerProfile) -> None:
         self._add_profile(profile)
@@ -74,6 +76,21 @@ class TruthGraph:
         for node in nodes:
             self._entities[node.id] = node
             self._entity_evidence[node.id] = links[node.id]
+            for ev_id in links[node.id]:
+                self._evidence_entities.setdefault(ev_id, []).append(node.id)
+
+    def entities_for_evidence(self, evidence_id: str) -> tuple[object, ...]:
+        """Return all entity nodes supported by a given evidence record."""
+        if evidence_id not in self._evidence:
+            raise KeyError(f"unknown evidence id: {evidence_id}")
+        entity_ids = tuple(dict.fromkeys(self._evidence_entities.get(evidence_id, [])))
+        return tuple(self._entities[entity_id] for entity_id in entity_ids if entity_id in self._entities)
+
+    def entity_ids_for_evidence(self, evidence_id: str) -> tuple[str, ...]:
+        """Return all entity node IDs supported by a given evidence record."""
+        if evidence_id not in self._evidence:
+            raise KeyError(f"unknown evidence id: {evidence_id}")
+        return tuple(dict.fromkeys(self._evidence_entities.get(evidence_id, [])))
 
     @staticmethod
     def _direct_evidence_ids(node: object) -> tuple[str, ...]:

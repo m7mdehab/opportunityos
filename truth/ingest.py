@@ -360,6 +360,7 @@ def parse_capacity(value: Any) -> BusinessCapacity:
     _validate_keys(
         data, "capacity", required={"id", "evidence_ids"},
         optional={"available_from", "hours_per_week", "min_project_value", "max_project_value",
+                  "annual_turnover_usd", "bid_bond_capacity_usd",
                   "currencies", "service_regions", "onsite_willingness", "legal_capacity"},
     )
     return BusinessCapacity(
@@ -368,6 +369,8 @@ def parse_capacity(value: Any) -> BusinessCapacity:
         hours_per_week=_positive_int_or_none(data.get("hours_per_week"), "capacity.hours_per_week"),
         min_project_value=_positive_int_or_none(data.get("min_project_value"), "capacity.min_project_value"),
         max_project_value=_positive_int_or_none(data.get("max_project_value"), "capacity.max_project_value"),
+        annual_turnover_usd=float(data["annual_turnover_usd"]) if data.get("annual_turnover_usd") is not None else None,
+        bid_bond_capacity_usd=float(data["bid_bond_capacity_usd"]) if data.get("bid_bond_capacity_usd") is not None else None,
         currencies=_strings(data.get("currencies"), "capacity.currencies"),
         service_regions=_strings(data.get("service_regions"), "capacity.service_regions"),
         onsite_willingness=data.get("onsite_willingness"), legal_capacity=data.get("legal_capacity"),

@@ -356,6 +356,8 @@ class BusinessCapacity:
     hours_per_week: int | None = None
     min_project_value: int | None = None
     max_project_value: int | None = None
+    annual_turnover_usd: float | None = None
+    bid_bond_capacity_usd: float | None = None
     currencies: tuple[str, ...] = ()
     service_regions: tuple[str, ...] = ()
     onsite_willingness: str | None = None
@@ -372,6 +374,8 @@ class BusinessCapacity:
         for value, name in (
             (self.min_project_value, "min_project_value"),
             (self.max_project_value, "max_project_value"),
+            (self.annual_turnover_usd, "annual_turnover_usd"),
+            (self.bid_bond_capacity_usd, "bid_bond_capacity_usd"),
         ):
             if value is not None and value < 0:
                 raise ValueError(f"{name} cannot be negative")

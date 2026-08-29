@@ -51,6 +51,11 @@ def _material_metrics(value: str) -> tuple[str, ...]:
     return tuple(metrics)
 
 
+def _clean_text_for_matching(value: str) -> str:
+    cleaned = re.sub(r"[^\w\s]", " ", value, flags=re.UNICODE)
+    return _SPACE.sub(" ", cleaned.strip().casefold())
+
+
 class ClaimValidator:
     """Enforce evidence, metric, credential, red-line, and never-claim rules."""
 
@@ -178,9 +183,10 @@ class ClaimValidator:
                 raise ValueError(f"invalid red-line pattern {rule.id}: {error}") from error
             if matched:
                 reasons.append(f"red line {rule.id}: {rule.reason}")
-        normalized_claim = _normalize(claim)
+        cleaned_claim = _clean_text_for_matching(claim)
         for rule in never_claims:
-            if _normalize(rule.phrase) in normalized_claim:
+            cleaned_phrase = _clean_text_for_matching(rule.phrase)
+            if cleaned_phrase and cleaned_phrase in cleaned_claim:
                 reasons.append(f"never-claim {rule.id}: {rule.reason}")
         return tuple(reasons)
 
@@ -226,12 +232,7 @@ class ClaimValidator:
             for record in supporting
             for status in self.graph.metric_status_for_evidence(record.id)
         )
-        metadata_statuses = tuple(
-            str(record.metadata.get("metric_verification", "")).casefold()
-            for record in supporting
-            if record.metadata.get("metric_verification") is not None
-        )
-        if MetricVerification.VERIFIED not in statuses and "verified" not in metadata_statuses:
+        if MetricVerification.VERIFIED not in statuses:
             return "numeric metric lacks a verified metric provenance node"
         return None
 

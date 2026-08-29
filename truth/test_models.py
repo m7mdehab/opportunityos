@@ -74,6 +74,19 @@ class ModelTests(unittest.TestCase):
             )
         with self.assertRaises(ValueError):
             BusinessCapacity("capacity-1", ("ev-1",), hours_per_week=-1)
+        with self.assertRaises(ValueError):
+            BusinessCapacity("capacity-1", ("ev-1",), annual_turnover_usd=-500.0)
+
+    def test_business_capacity_qualification_fields(self):
+        capacity = BusinessCapacity(
+            "capacity-1", ("ev-1",),
+            annual_turnover_usd=150000.0,
+            bid_bond_capacity_usd=50000.0,
+            legal_capacity="registered_entity",
+        )
+        self.assertEqual(150000.0, capacity.annual_turnover_usd)
+        self.assertEqual(50000.0, capacity.bid_bond_capacity_usd)
+        self.assertEqual("registered_entity", capacity.legal_capacity)
 
     def test_capability_industry_sets_cannot_contradict(self):
         with self.assertRaises(ValueError):
