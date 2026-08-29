@@ -17,45 +17,45 @@
 | himalayas | 20 | 0 | 0 |
 | jobicy | 0 | 0 | 0 |
 | lever | 57 | 0 | 0 |
-| remote_ok | 100 | 1 | 0 |
+| remote_ok | 100 | 0 | 0 |
 | remotive | 19 | 4 | 0 |
 | ungm | 163 | 0 | 0 |
-| we_work_remotely | 89 | 5 | 0 |
+| we_work_remotely | 89 | 3 | 0 |
 | world_bank | 7 | 0 | 0 |
 
 2. **Unique records after deduplication:** 2472; **duplicate rate:** 18.0%.
 3. **Cross-source overlap:** 1 fingerprints appeared on more than one source.
 4. **Egypt-eligible percentage:** withheld pending the mandatory precision audit.
-5. **Unclear percentage:** 20.4% (505/2472) stated no geography at all.
+5. **Unclear percentage:** 30.1% (745/2472) stated no geography at all.
 6. **Individual-eligible count:** per-source counts are in the table above.
 
 ## Source health
 
 | Source | Status | Latency ms | Records | Detail |
 |---|---|---:|---:|---|
-| himalayas | allowed_ok | 266 | 20 | HTTP 200 parsed records |
+| himalayas | allowed_ok | 545 | 20 | HTTP 200 parsed records |
 | jobicy | robots_unreachable | 0 | 0 | robots.txt could not be read after three attempts |
-| remotive | allowed_ok | 344 | 19 | HTTP 200 parsed records |
-| remote_ok | allowed_ok | 1125 | 100 | HTTP 200 parsed records |
-| we_work_remotely | allowed_ok | 860 | 89 | HTTP 200 parsed records |
-| ungm | allowed_ok | 1625 | 163 | HTTP 200 parsed records |
-| world_bank | allowed_ok | 234 | 7 | HTTP 200 parsed records |
-| eu_ted | allowed_ok | 734 | 100 | HTTP 200 parsed records |
+| remotive | allowed_ok | 311 | 19 | HTTP 200 parsed records |
+| remote_ok | allowed_ok | 1078 | 100 | HTTP 200 parsed records |
+| we_work_remotely | allowed_ok | 967 | 89 | HTTP 200 parsed records |
+| ungm | allowed_ok | 2671 | 163 | HTTP 200 parsed records |
+| world_bank | allowed_ok | 203 | 7 | HTTP 200 parsed records |
+| eu_ted | allowed_ok | 1280 | 100 | HTTP 200 parsed records |
 | afdb | robots_unreachable | 0 | 0 | robots.txt could not be read after three attempts |
-| freelancer | parse_empty | 812 | 0 | HTTP 200 parsed zero records |
+| freelancer | parse_empty | 733 | 0 | HTTP 200 parsed zero records |
 | etimad | parse_empty | 577 | 0 | HTTP 200 parsed zero records |
-| greenhouse:cloudflare | allowed_ok | 2500 | 309 | HTTP 200 parsed records |
-| greenhouse:datadog | allowed_ok | 2030 | 454 | HTTP 200 parsed records |
-| greenhouse:duolingo | allowed_ok | 469 | 83 | HTTP 200 parsed records |
-| greenhouse:figma | allowed_ok | 1328 | 163 | HTTP 200 parsed records |
-| greenhouse:flexport | allowed_ok | 1250 | 165 | HTTP 200 parsed records |
-| greenhouse:coinbase | allowed_ok | 765 | 188 | HTTP 200 parsed records |
-| greenhouse:stripe | allowed_ok | 1421 | 573 | HTTP 200 parsed records |
-| greenhouse:twilio | allowed_ok | 1000 | 144 | HTTP 200 parsed records |
+| greenhouse:cloudflare | allowed_ok | 2610 | 309 | HTTP 200 parsed records |
+| greenhouse:datadog | allowed_ok | 2563 | 454 | HTTP 200 parsed records |
+| greenhouse:duolingo | allowed_ok | 500 | 83 | HTTP 200 parsed records |
+| greenhouse:figma | allowed_ok | 688 | 163 | HTTP 200 parsed records |
+| greenhouse:flexport | allowed_ok | 1311 | 165 | HTTP 200 parsed records |
+| greenhouse:coinbase | allowed_ok | 812 | 188 | HTTP 200 parsed records |
+| greenhouse:stripe | allowed_ok | 1390 | 573 | HTTP 200 parsed records |
+| greenhouse:twilio | allowed_ok | 795 | 144 | HTTP 200 parsed records |
 | greenhouse:airbnb | allowed_ok | 796 | 172 | HTTP 200 parsed records |
 | greenhouse:affirm | allowed_ok | 875 | 210 | HTTP 200 parsed records |
-| lever:shyftlabs | allowed_ok | 1844 | 22 | HTTP 200 parsed records |
-| lever:ryz_labs | allowed_ok | 2328 | 35 | HTTP 200 parsed records |
+| lever:shyftlabs | allowed_ok | 1687 | 22 | HTTP 200 parsed records |
+| lever:ryz_labs | allowed_ok | 2094 | 35 | HTTP 200 parsed records |
 | ashby:socket | robots_unreachable | 0 | 0 | robots.txt could not be read after three attempts |
 | ashby:paires | robots_unreachable | 0 | 0 | robots.txt could not be read after three attempts |
 | ashby:jellyfish | robots_unreachable | 0 | 0 | robots.txt could not be read after three attempts |
@@ -74,10 +74,10 @@
 
 | Country | Eligible records |
 |---|---:|
-| EG | 11 |
-| AE | 12 |
-| SA | 12 |
-| DE | 25 |
+| EG | 8 |
+| AE | 10 |
+| SA | 10 |
+| DE | 23 |
 
 ## Per-source Egypt eligibility
 
@@ -114,15 +114,15 @@
 | jobicy | 0.0% |
 | lever:ryz_labs | 0.0% |
 | lever:shyftlabs | 0.0% |
-| remote_ok | 1.1% |
+| remote_ok | 0.0% |
 | remotive | 21.1% |
 | ungm | 0.0% |
-| we_work_remotely | 5.7% |
+| we_work_remotely | 3.4% |
 | world_bank | 0.0% |
 
 ## Unmapped geography
 
-Unmapped count: 1051.
+Unmapped count: 976.
 
 | Phrase | Count |
 |---|---:|
@@ -134,7 +134,6 @@ Unmapped count: 1051.
 | Colorado | 39 |
 | In-Office | 38 |
 | Illinois | 30 |
-| China | 23 |
 | Washington | 22 |
 | Texas | 18 |
 | Pittsburgh | 16 |
@@ -142,10 +141,11 @@ Unmapped count: 1051.
 | Georgia | 13 |
 | Bellevue | 12 |
 | SEA | 12 |
-| Dallas | 11 |
 | Los Angeles | 10 |
 | Maryland | 10 |
-| Beijing | 9 |
+| Europe | 9 |
+| IL | 9 |
+| Virginia | 9 |
 
 ## ATS company watchlist
 
