@@ -10,8 +10,8 @@ Next: [x] Independent audit passed with $\ge 90.0\%$ eligible precision (100.00%
 
 ## Repository
 
-- **Generated:** 2026-08-29T11:40:12Z
-- **State generated at commit:** `be05673` — docs: finalize Invariant 4 withholding accounting and mirror workflow status
+- **Generated:** 2026-08-29T11:40:20Z
+- **State generated at commit:** `d1911a1` — feat(brief-002): initialize BRIEF-002 Professional Truth Graph & Capability Ingestion
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
