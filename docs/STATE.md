@@ -10,8 +10,8 @@ Next: [x] Independent audit passed with $\ge 90.0\%$ eligible precision (100.00%
 
 ## Repository
 
-- **Generated:** 2026-08-29T11:33:36Z
-- **State generated at commit:** `5577568` — docs: reconcile evidence nuances, small denominator, and model routing in REPORT-001
+- **Generated:** 2026-08-29T11:33:50Z
+- **State generated at commit:** `899887b` — docs: finalize REPORT-001 section titles and decision outcome
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
