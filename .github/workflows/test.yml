@@ -1,4 +1,4 @@
-name: Tests
+name: Mandatory Governance & Test Suite
 
 on:
   push:
@@ -16,12 +16,15 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
       - name: Run Truth Test Suite
         run: python -m unittest discover truth -v
       - name: Run Recon Regression Suite
         run: python -m unittest discover recon -v
       - name: Run Sync Mirror Unit Tests
         run: python scripts/test_sync_mirror.py -v
+      - name: Check Guard Boundary & PII
+        run: python scripts/check_guard.py --allow-missing-patterns
       - name: Check Repository Integrity
         run: python scripts/check_repository.py
+

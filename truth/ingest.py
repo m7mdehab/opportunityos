@@ -33,6 +33,7 @@ from .models import (
     PortfolioItem,
     ProhibitedConceptCategory,
     RedLineRule,
+    RelationType,
     ServiceRecord,
     SkillRecord,
     TypedRelation,
@@ -427,7 +428,7 @@ def parse_relation(value: Any) -> TypedRelation:
     return TypedRelation(
         id=data["id"],
         source_id=data["source_id"],
-        relation_type=data["relation_type"],
+        relation_type=_enum(RelationType, data["relation_type"], "relation.relation_type"),
         target_id=data["target_id"],
         evidence_ids=_strings(data.get("evidence_ids"), "relation.evidence_ids"),
         assertion_type=_enum(AssertionType, data.get("assertion_type", "direct_fact"), "relation.assertion_type"),

@@ -140,9 +140,9 @@ class AdversarialTruthTests(unittest.TestCase):
         from truth.models import EvidenceRecord, VerificationStatus, EmploymentRecord, SkillRecord, CareerProfile
         from truth.graph import TruthGraph
 
-        ev_fact = EvidenceRecord("ev-f", "Direct employer fact.", "src", "loc", assertion_type=AssertionType.DIRECT_FACT)
-        ev_derived = EvidenceRecord("ev-d", "Derived consulting capability.", "src", "loc", assertion_type=AssertionType.DERIVED_CAPABILITY)
-        ev_user = EvidenceRecord("ev-u", "Self-declared user assertion.", "src", "loc", assertion_type=AssertionType.USER_ASSERTION)
+        ev_fact = EvidenceRecord("ev-f", "Direct employer fact at Org as Title from 2020-01-01.", "src", "loc", assertion_type=AssertionType.DIRECT_FACT)
+        ev_derived = EvidenceRecord("ev-d", "Derived consulting capability at Org as Title from 2020-01-01.", "src", "loc", assertion_type=AssertionType.DERIVED_CAPABILITY)
+        ev_user = EvidenceRecord("ev-u", "Self-declared user assertion at Org as Title from 2020-01-01.", "src", "loc", assertion_type=AssertionType.USER_ASSERTION)
 
         # 1. Direct fact alone is direct fact
         g1 = TruthGraph((ev_fact,))
@@ -189,9 +189,9 @@ class AdversarialTruthTests(unittest.TestCase):
         from truth.models import EvidenceRecord, Achievement, MetricVerification, EmploymentRecord, CareerProfile
         from truth.graph import TruthGraph
 
-        ev_verified = EvidenceRecord("ev-v", "Reduced latency by 40%.", "src", "loc")
-        ev_unverified = EvidenceRecord("ev-u", "Increased revenue by 500%.", "src", "loc")
-        ev_diff_num = EvidenceRecord("ev-num", "Managed 40 projects.", "src", "loc")
+        ev_verified = EvidenceRecord("ev-v", "Reduced latency by 40% at Org as Title from 2020-01-01.", "src", "loc")
+        ev_unverified = EvidenceRecord("ev-u", "Increased revenue by 500% at Org as Title from 2020-01-01.", "src", "loc")
+        ev_diff_num = EvidenceRecord("ev-num", "Managed 40 projects at Org as Title from 2020-01-01.", "src", "loc")
 
         ach_v = Achievement("ach-v", "Reduced latency by 40%.", ("ev-v",), MetricVerification.VERIFIED)
         ach_u = Achievement("ach-u", "Increased revenue by 500%.", ("ev-u",), MetricVerification.UNAVAILABLE)
@@ -366,7 +366,7 @@ class AdversarialTruthTests(unittest.TestCase):
         from truth.models import EvidenceRecord, Achievement, MetricVerification, EmploymentRecord, CareerProfile
         from truth.graph import TruthGraph
 
-        ev_multi = EvidenceRecord("ev-multi", "Reduced latency by 40% and increased revenue by 200%.", "cv", "ach")
+        ev_multi = EvidenceRecord("ev-multi", "Reduced latency by 40% and increased revenue by 200% at Org as Title from 2020-01-01.", "cv", "ach")
         # Only 40% is verified; 200% is unverified
         ach = Achievement("ach-multi", "Reduced latency by 40%.", ("ev-multi",), MetricVerification.VERIFIED)
         emp = EmploymentRecord("emp-m", "Org", "Title", date(2020, 1, 1), None, ("ev-multi",), achievements=(ach,))
@@ -414,6 +414,145 @@ class AdversarialTruthTests(unittest.TestCase):
             with self.subTest(val=val), self.assertRaises(ValueError):
                 BusinessCapacity("cap-test", ("ev-capacity",), min_project_value=val)
 
+    def test_structural_field_mismatch_rejection_cdo_vs_analyst(self):
+        from truth.models import EvidenceRecord, EmploymentRecord, CareerProfile
+        from truth.graph import TruthGraph
+
+        ev = EvidenceRecord("ev-analyst", "Data Analyst at Example Corp from 2020-01-01.", "cv", "title")
+        # Inconsistent title: Chief Data Officer vs evidence Data Analyst
+        emp = EmploymentRecord("emp-cdo", "Example Corp", "Chief Data Officer", date(2020, 1, 1), None, ("ev-analyst",))
+        profile = CareerProfile("prof-cdo", employment=(emp,))
+        graph = TruthGraph((ev,))
+        with self.assertRaises(ValueError) as ctx:
+            graph.add_career_profile(profile)
+        self.assertIn("employment.title", str(ctx.exception))
+
+    def test_structural_skill_mismatch_rejection(self):
+        from truth.models import EvidenceRecord, SkillRecord, CareerProfile
+        from truth.graph import TruthGraph
+
+        ev = EvidenceRecord("ev-py", "Expert in Python programming.", "cv", "skills")
+        skill = SkillRecord("sk-rust", "Rust", ("ev-py",))
+        profile = CareerProfile("prof-sk", skills=(skill,))
+        graph = TruthGraph((ev,))
+        with self.assertRaises(ValueError) as ctx:
+            graph.add_career_profile(profile)
+        self.assertIn("skill.name", str(ctx.exception))
+
+    def test_structural_language_mismatch_rejection(self):
+        from truth.models import EvidenceRecord, LanguageRecord, CareerProfile
+        from truth.graph import TruthGraph
+
+        ev = EvidenceRecord("ev-eng", "Fluent in English.", "cv", "lang")
+        lang = LanguageRecord("lang-jp", "Japanese", "fluent", ("ev-eng",))
+        profile = CareerProfile("prof-lang", languages=(lang,))
+        graph = TruthGraph((ev,))
+        with self.assertRaises(ValueError) as ctx:
+            graph.add_career_profile(profile)
+        self.assertIn("language.language", str(ctx.exception))
+
+    def test_structural_work_authorization_mismatch_rejection(self):
+        from truth.models import EvidenceRecord, WorkAuthorization, CareerProfile
+        from truth.graph import TruthGraph
+
+        ev = EvidenceRecord("ev-eg", "Authorized to work in Egypt.", "cv", "auth")
+        auth = WorkAuthorization("auth-de", "Germany", "citizen", ("ev-eg",))
+        profile = CareerProfile("prof-auth", work_authorizations=(auth,))
+        graph = TruthGraph((ev,))
+        with self.assertRaises(ValueError) as ctx:
+            graph.add_career_profile(profile)
+        self.assertIn("work_authorization.jurisdiction", str(ctx.exception))
+
+    def test_structural_capacity_mismatch_rejection(self):
+        from truth.models import EvidenceRecord, BusinessCapacity, CapabilityProfile
+        from truth.graph import TruthGraph
+
+        ev = EvidenceRecord("ev-cap", "Available 20 hours per week.", "cv", "cap")
+        cap = BusinessCapacity("cap-80", ("ev-cap",), hours_per_week=80)
+        profile = CapabilityProfile("prof-cap", capacity=cap)
+        graph = TruthGraph((ev,))
+        with self.assertRaises(ValueError) as ctx:
+            graph.add_capability_profile(profile)
+        self.assertIn("capacity.hours_per_week", str(ctx.exception))
+
+    def test_verified_assertion_without_evidence_rejected(self):
+        from truth.models import AtomicAssertion, VerificationStatus, AssertionType
+        from truth.graph import TruthGraph
+
+        # Model level
+        with self.assertRaises(ValueError):
+            AtomicAssertion("as-noev", "subj", "pred", "val", AssertionType.DIRECT_FACT, VerificationStatus.VERIFIED, evidence_ids=())
+
+        # Unverified user assertion can exist without evidence
+        as_unv = AtomicAssertion("as-noev2", "subj", "pred", "val", AssertionType.USER_ASSERTION, VerificationStatus.UNVERIFIED, evidence_ids=())
+        graph = TruthGraph()
+        graph.add_assertion(as_unv)
+        self.assertIn("as-noev2", graph.assertions)
+
+    def test_dangling_relation_endpoints_and_arbitrary_string_rejected(self):
+        from truth.models import TypedRelation, RelationType, VerificationStatus, EvidenceRecord
+        from truth.graph import TruthGraph
+
+        # Arbitrary string instead of RelationType enum is rejected at model level
+        with self.assertRaises(ValueError):
+            TypedRelation("rel-inv", "src", "arbitrary_string", "tgt", evidence_ids=("ev-1",))
+
+        # Dangling evidence reference rejected in graph
+        rel = TypedRelation("rel-dang", "src", RelationType.ACHIEVED_DURING, "tgt", evidence_ids=("ev-nonexistent",))
+        graph = TruthGraph()
+        with self.assertRaises(ValueError) as ctx:
+            graph.add_relation(rel)
+        self.assertIn("unknown evidence", str(ctx.exception))
+
+    def test_unverified_to_verified_upgrade_rejected(self):
+        from truth.models import EvidenceRecord, AtomicAssertion, VerificationStatus, AssertionType
+        from truth.graph import TruthGraph
+
+        ev_unv = EvidenceRecord("ev-unv", "Some fact.", "src", "loc", verification_status=VerificationStatus.UNVERIFIED)
+        graph = TruthGraph((ev_unv,))
+
+        as_ver = AtomicAssertion("as-up", "subj", "pred", "Some fact.", AssertionType.DIRECT_FACT, VerificationStatus.VERIFIED, ("ev-unv",))
+        with self.assertRaises(ValueError) as ctx:
+            graph.add_assertion(as_ver)
+        self.assertIn("cannot be VERIFIED when supported by UNVERIFIED evidence", str(ctx.exception))
+
+    def test_approximate_to_definite_upgrade_rejected(self):
+        from truth.models import EvidenceRecord, AtomicAssertion, VerificationStatus, AssertionType, Modality
+        from truth.graph import TruthGraph
+
+        ev_appr = EvidenceRecord("ev-appr", "Approx 20 items.", "src", "loc", verification_status=VerificationStatus.APPROXIMATE)
+        graph = TruthGraph((ev_appr,))
+
+        as_def = AtomicAssertion("as-def", "subj", "pred", "Approx 20 items.", AssertionType.DIRECT_FACT, VerificationStatus.VERIFIED, ("ev-appr",), modality=Modality.DEFINITE)
+        with self.assertRaises(ValueError) as ctx:
+            graph.add_assertion(as_def)
+        self.assertIn("cannot have DEFINITE modality when evidence is APPROXIMATE", str(ctx.exception))
+
+    def test_active_assertions_supersedes_and_conflicts_resolution(self):
+        from truth.models import EvidenceRecord, AtomicAssertion, AssertionType, VerificationStatus
+        from truth.graph import TruthGraph
+
+        ev1 = EvidenceRecord("ev-old", "Old role 2020.", "src", "loc")
+        ev2 = EvidenceRecord("ev-new", "New role 2024.", "src", "loc")
+        ev3 = EvidenceRecord("ev-conf1", "Conflicting 1.", "src", "loc")
+        ev4 = EvidenceRecord("ev-conf2", "Conflicting 2.", "src", "loc")
+
+        as_old = AtomicAssertion("as-old", "subj", "role", "Old role 2020.", AssertionType.DIRECT_FACT, VerificationStatus.VERIFIED, ("ev-old",))
+        as_new = AtomicAssertion("as-new", "subj", "role", "New role 2024.", AssertionType.DIRECT_FACT, VerificationStatus.VERIFIED, ("ev-new",), supersedes=("as-old",))
+        as_c1 = AtomicAssertion("as-c1", "subj", "data", "Conflicting 1.", AssertionType.DIRECT_FACT, VerificationStatus.VERIFIED, ("ev-conf1",), conflicts_with=("as-c2",))
+        as_c2 = AtomicAssertion("as-c2", "subj", "data", "Conflicting 2.", AssertionType.DIRECT_FACT, VerificationStatus.VERIFIED, ("ev-conf2",), conflicts_with=("as-c1",))
+
+        graph = TruthGraph((ev1, ev2, ev3, ev4), (as_old, as_new, as_c1, as_c2))
+        active = graph.active_assertions()
+        active_ids = {a.id for a in active}
+
+        # as_new is active; as_old is superseded; as_c1 & as_c2 are conflicting (both inactive)
+        self.assertIn("as-new", active_ids)
+        self.assertNotIn("as-old", active_ids)
+        self.assertNotIn("as-c1", active_ids)
+        self.assertNotIn("as-c2", active_ids)
+
 
 if __name__ == "__main__":
     unittest.main()
+
