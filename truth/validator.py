@@ -53,15 +53,31 @@ def _tokens(value: str) -> set[str]:
     return {match.group(0).casefold() for match in _WORD.finditer(value)}
 
 
+def _parse_structured_metrics(text: str) -> list[tuple[float | int, str]]:
+    results = []
+    metric_pattern = re.compile(
+        r"(?<![\w-])(?:(?P<curr>[$€£])\s*)?(?P<val>\d+(?:[.,]\d+)?)(?:\s*(?P<unit>%|[xX]\b|hours?|days?|weeks?|months?|users?|clients?|projects?|requests?|seconds?|minutes?|USD|EUR|GBP))?",
+        re.IGNORECASE,
+    )
+    for match in metric_pattern.finditer(text):
+        curr = match.group("curr") or ""
+        val_str = match.group("val").replace(",", "")
+        unit = (match.group("unit") or curr or "count").strip().casefold()
+        digits = re.sub(r"\D", "", val_str)
+        if re.fullmatch(r"(?:19|20)\d{2}", digits) and unit == "count":
+            continue
+        try:
+            val_num = float(val_str) if "." in val_str else int(val_str)
+            results.append((val_num, unit))
+        except ValueError:
+            continue
+    return results
+
+
 def _material_metrics(value: str) -> tuple[str, ...]:
     metrics = []
-    for match in _METRIC.finditer(value):
-        token = _SPACE.sub("", match.group(0).casefold()).replace(",", "")
-        digits = re.sub(r"\D", "", token)
-        # Standalone calendar years are not performance metrics.
-        if re.fullmatch(r"(?:19|20)\d{2}", digits) and not re.search(r"[%$€£x]", token):
-            continue
-        metrics.append(token)
+    for num, unit in _parse_structured_metrics(value):
+        metrics.append(f"{num}{unit}")
     return tuple(metrics)
 
 
@@ -81,15 +97,7 @@ class ClaimValidator:
         if not isinstance(candidate, ClaimCandidate):
             raise ValueError("candidate must be a ClaimCandidate")
 
-        # 1. Structural Policy Check: Autonomous candidates must specify material assertions or concept categories
-        if not candidate.material_assertion_ids and not candidate.concepts:
-            return self._result(
-                candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
-                VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
-                ("autonomous claim candidate must specify material_assertion_ids or concept categories",),
-            )
-
-        # 2. Structured Never-Claim policy evaluation: intersect candidate concepts with prohibited categories
+        # 1. Structured Never-Claim policy evaluation: intersect candidate concepts with prohibited categories
         red_lines, never_claims = self.graph.rules()
         prohibited_categories = {rule.concept for rule in never_claims if isinstance(rule, NeverClaimRule)}
         prohibited_intersection = candidate.concepts & prohibited_categories
@@ -101,84 +109,124 @@ class ClaimValidator:
                 (f"candidate asserts prohibited concept category: {prohibited_names}",),
             )
 
+        # 2. Structural Policy Check: Autonomous factual candidates MUST specify material_assertion_ids
+        if not candidate.material_assertion_ids:
+            return self._result(
+                candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
+                VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
+                ("autonomous claim candidate must specify material_assertion_ids",),
+            )
+
         # 3. Field-level atomic assertion verification & active state resolution
         supporting_assertion_evidence = []
+        assertion_values = []
         active_set = set(self.graph.active_assertions(candidate.as_of))
 
-        if candidate.material_assertion_ids:
-            for as_id in candidate.material_assertion_ids:
-                if as_id not in self.graph.assertions:
+        for as_id in candidate.material_assertion_ids:
+            if as_id not in self.graph.assertions:
+                return self._result(
+                    candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
+                    VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
+                    (f"unknown atomic assertion: {as_id}",),
+                )
+            assertion = self.graph.assertions[as_id]
+
+            # Check if active in graph as of candidate.as_of
+            if assertion not in active_set:
+                if assertion.conflicts_with:
                     return self._result(
                         candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
                         VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
-                        (f"unknown atomic assertion: {as_id}",),
+                        (f"assertion {as_id} has unresolved conflicts: {', '.join(assertion.conflicts_with)}",),
                     )
-                assertion = self.graph.assertions[as_id]
-
-                # Check if active in graph as of candidate.as_of
-                if assertion not in active_set:
-                    if assertion.conflicts_with:
-                        return self._result(
-                            candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
-                            VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
-                            (f"assertion {as_id} has unresolved conflicts: {', '.join(assertion.conflicts_with)}",),
-                        )
-                    if candidate.as_of is not None and assertion.effective_to and candidate.as_of > assertion.effective_to:
-                        return self._result(
-                            candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
-                            VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
-                            (f"assertion {as_id} expired on {assertion.effective_to} as of {candidate.as_of}",),
-                        )
+                if candidate.as_of is not None and assertion.effective_to and candidate.as_of > assertion.effective_to:
                     return self._result(
                         candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
                         VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
-                        (f"assertion {as_id} is inactive / superseded as of {candidate.as_of}",),
+                        (f"assertion {as_id} expired on {assertion.effective_to} as of {candidate.as_of}",),
                     )
+                return self._result(
+                    candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
+                    VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
+                    (f"assertion {as_id} is inactive / superseded as of {candidate.as_of}",),
+                )
 
-                supporting_assertion_evidence.extend(assertion.evidence_ids)
+            supporting_assertion_evidence.extend(assertion.evidence_ids)
+            if assertion.value is not None:
+                assertion_values.append(str(assertion.value))
 
-                # Polarity check
-                if assertion.polarity is Polarity.NEGATIVE and not _NEGATIVE_MARKERS.search(candidate.text):
+            # Polarity check
+            if assertion.polarity is Polarity.NEGATIVE and not _NEGATIVE_MARKERS.search(candidate.text):
+                return self._result(
+                    candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
+                    VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
+                    (f"assertion {as_id} has negative polarity but candidate text is positive",),
+                )
+
+            # Modality checks
+            if assertion.modality is Modality.AT_MOST:
+                if not _BOUND_AT_MOST.search(candidate.text) or _EXACT.search(candidate.text) or _BOUND_AT_LEAST.search(candidate.text):
                     return self._result(
                         candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
                         VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
-                        (f"assertion {as_id} has negative polarity but candidate text is positive",),
+                        (f"assertion {as_id} has AT_MOST modality and candidate text cannot strengthen it to exact or lower bound",),
                     )
 
-                # Modality checks
-                if assertion.modality is Modality.AT_MOST:
-                    if not _BOUND_AT_MOST.search(candidate.text) or _EXACT.search(candidate.text) or _BOUND_AT_LEAST.search(candidate.text):
-                        return self._result(
-                            candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
-                            VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
-                            (f"assertion {as_id} has AT_MOST modality and candidate text cannot strengthen it to exact or lower bound",),
-                        )
+            if assertion.modality is Modality.APPROXIMATE:
+                if _EXACT.search(candidate.text) or not _APPROXIMATION.search(candidate.text):
+                    return self._result(
+                        candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
+                        VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
+                        (f"assertion {as_id} has APPROXIMATE modality and candidate text cannot claim exact value",),
+                    )
 
-                if assertion.modality is Modality.APPROXIMATE:
-                    if _EXACT.search(candidate.text) or not _APPROXIMATION.search(candidate.text):
-                        return self._result(
-                            candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
-                            VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
-                            (f"assertion {as_id} has APPROXIMATE modality and candidate text cannot claim exact value",),
-                        )
+            if assertion.modality is Modality.CONDITIONAL:
+                if not _CONDITIONAL.search(candidate.text):
+                    return self._result(
+                        candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
+                        VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
+                        (f"assertion {as_id} has CONDITIONAL modality and candidate text cannot claim unconditional fact",),
+                    )
 
-                if assertion.modality is Modality.CONDITIONAL:
-                    if not _CONDITIONAL.search(candidate.text):
-                        return self._result(
-                            candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
-                            VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
-                            (f"assertion {as_id} has CONDITIONAL modality and candidate text cannot claim unconditional fact",),
-                        )
+            if assertion.modality is Modality.PLANNED:
+                if _HELD.search(candidate.text) or not _PLANNING.search(candidate.text):
+                    return self._result(
+                        candidate.text, False, AssertionType.PROHIBITED_CLAIM,
+                        VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
+                        (f"assertion {as_id} has planned modality and cannot be represented as held",),
+                    )
 
-                if assertion.modality is Modality.PLANNED:
-                    if _HELD.search(candidate.text) or not _PLANNING.search(candidate.text):
-                        return self._result(
-                            candidate.text, False, AssertionType.PROHIBITED_CLAIM,
-                            VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
-                            (f"assertion {as_id} has planned modality and cannot be represented as held",),
-                        )
+        authorized_evidence = set(supporting_assertion_evidence)
+
+        # 4. Check requested_evidence_ids is strictly authorized by selected material assertions
+        if candidate.requested_evidence_ids:
+            unauthorized = set(candidate.requested_evidence_ids) - authorized_evidence
+            if unauthorized:
+                return self._result(
+                    candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
+                    VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
+                    (f"requested evidence '{', '.join(sorted(unauthorized))}' is not authorized by the selected material assertions",),
+                )
 
         evidence_ids = candidate.requested_evidence_ids or tuple(dict.fromkeys(supporting_assertion_evidence))
+
+        # 5. Check that candidate text is authorized by the selected assertions
+        candidate_tokens = _tokens(_normalize(candidate.text)) - _NON_MATERIAL_WORDS
+        assertion_tokens = set()
+        for as_val in assertion_values:
+            assertion_tokens.update(_tokens(_normalize(as_val)) - _NON_MATERIAL_WORDS)
+        for ev_id in evidence_ids:
+            rec = self.graph.evidence_records.get(ev_id)
+            if rec and rec.content:
+                assertion_tokens.update(_tokens(_normalize(rec.content)) - _NON_MATERIAL_WORDS)
+
+        if candidate_tokens and not (candidate_tokens & assertion_tokens):
+            return self._result(
+                candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
+                VerificationStatus.UNVERIFIED, evidence_ids,
+                ("candidate text is not authorized by the selected material assertions",),
+            )
+
         return self.validate_claim(candidate.text, evidence_ids, as_of=candidate.as_of)
 
     def validate_claim(
@@ -432,44 +480,52 @@ class ClaimValidator:
 
     def _validate_metric_provenance(self, claim: str, supporting: tuple) -> str | None:
         """Verify that every numeric metric in the claim maps to an exact verified metric provenance node."""
-        claim_metrics = _material_metrics(claim)
-        if not claim_metrics:
+        structured_metrics = _parse_structured_metrics(claim)
+        if not structured_metrics:
             return None
 
-        for metric in claim_metrics:
-            matching_records = [
-                record for record in supporting
-                if record.content and metric in set(_material_metrics(record.content))
-            ]
-            if not matching_records:
-                return f"claim metric '{metric}' is absent from supporting evidence"
-
-            # Check if there is an exact MetricAssertion in graph with this numeric metric and VERIFIED status
-            # OR an achievement/portfolio whose own statement/outcome contains this metric AND has MetricVerification.VERIFIED
+        for num_val, unit in structured_metrics:
             metric_verified = False
-            for record in matching_records:
-                # 1. Check atomic MetricAssertions
+            for record in supporting:
+                if not record.content:
+                    continue
+
+                # 1. Check atomic MetricAssertions for this record
                 metric_assertions = self.graph.metric_assertions_for_evidence(record.id)
                 for ma in metric_assertions:
-                    if str(ma.numeric_value) in metric or metric.startswith(str(ma.numeric_value)):
-                        if ma.verification_status is MetricVerification.VERIFIED:
+                    if ma.numeric_value == num_val:
+                        unit_matches = False
+                        ma_unit = ma.unit.strip().casefold()
+                        if unit == "%" and ma_unit in {"%", "percent"}:
+                            unit_matches = True
+                        elif unit in {"$", "usd", "eur", "gbp", "€", "£"} and ma_unit in {"$", "usd", "eur", "gbp", "€", "£"}:
+                            unit_matches = True
+                        elif unit == ma_unit or (unit == "count" and ma_unit in {"count", ""}):
+                            unit_matches = True
+
+                        if unit_matches and ma.verification_status is MetricVerification.VERIFIED:
                             metric_verified = True
                             break
 
                 if metric_verified:
                     break
 
-                # 2. Check Achievement/Portfolio statements
+                # 2. Check Achievement / Portfolio statements
                 entities = self.graph.entities_for_evidence(record.id)
                 for ent in entities:
                     ent_stmt = getattr(ent, "statement", None) or getattr(ent, "outcome", None)
-                    if ent_stmt and metric in set(_material_metrics(ent_stmt)):
-                        if getattr(ent, "metric_verification", None) is MetricVerification.VERIFIED:
-                            metric_verified = True
-                            break
+                    if ent_stmt:
+                        ent_metrics = _parse_structured_metrics(ent_stmt)
+                        for ent_num, ent_unit in ent_metrics:
+                            if ent_num == num_val and (ent_unit == unit or unit == "count"):
+                                if getattr(ent, "metric_verification", None) is MetricVerification.VERIFIED:
+                                    metric_verified = True
+                                    break
+                    if metric_verified:
+                        break
 
             if not metric_verified:
-                return f"claim metric '{metric}' lacks an exact verified metric provenance node"
+                return f"claim metric '{num_val} {unit}' lacks an exact verified metric provenance node"
 
         return None
 

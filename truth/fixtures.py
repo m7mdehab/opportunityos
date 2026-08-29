@@ -53,11 +53,11 @@ PROHIBITED_CLAIMS = (
 def synthetic_evidence() -> tuple[EvidenceRecord, ...]:
     return (
         EvidenceRecord("ev-org", "Synthetic Analytics Ltd", "synthetic_cv", "employment.0.organization"),
-        EvidenceRecord("ev-title", "Data Engineer", "synthetic_cv", "employment.0.title"),
+        EvidenceRecord("ev-title", "Data Engineer with responsibilities including Maintained synthetic data pipelines.", "synthetic_cv", "employment.0.title"),
         EvidenceRecord("ev-dates", "2022-01-01 to 2024-06-30", "synthetic_cv", "employment.0.dates"),
         EvidenceRecord(
             "ev-achievement",
-            "Built a synthetic reporting pipeline that reduced processing time by 40%.",
+            "Built a synthetic reporting pipeline at Synthetic Analytics Ltd that reduced processing time by 40%.",
             "synthetic_cv", "employment.0.achievements.0",
         ),
         EvidenceRecord(
@@ -72,7 +72,7 @@ def synthetic_evidence() -> tuple[EvidenceRecord, ...]:
             "synthetic_profile", "certifications.0",
         ),
         EvidenceRecord(
-            "ev-service", "Offers analytics pipeline assessments and deliverables including Evidence-backed findings and Prioritized remediation plan.",
+            "ev-service", "Analytics pipeline assessment. Offers analytics pipeline assessments with Fixed price and Consultant tender engagement models delivering Evidence-backed findings and Prioritized remediation plan.",
             "synthetic_capability_pack", "services.0",
             assertion_type=AssertionType.DERIVED_CAPABILITY,
         ),
@@ -131,7 +131,7 @@ def synthetic_career_profile() -> CareerProfile:
                 CertificationState.PLANNED, ("ev-cert-plan",),
             ),
         ),
-        skills=(SkillRecord("skill-python", "Python", ("ev-python",), "advanced"),),
+        skills=(SkillRecord("skill-python", "Python", ("ev-python",)),),
         languages=(LanguageRecord("language-english", "English", "professional", ("ev-language",)),),
         work_authorizations=(
             WorkAuthorization("auth-exampleland", "Exampleland", "authorized", ("ev-work-auth",)),

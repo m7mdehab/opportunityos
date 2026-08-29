@@ -302,7 +302,7 @@ class AdversarialTruthTests(unittest.TestCase):
         from truth.models import EvidenceRecord, CertificationRecord, CertificationState, CareerProfile
         from truth.graph import TruthGraph
 
-        ev_cert = EvidenceRecord("ev-cert-exp", "Completed Example Cloud Architect", "cv", "cert")
+        ev_cert = EvidenceRecord("ev-cert-exp", "Completed Example Cloud Architect from Example Issuer on 2023-01-01 expiring on 2025-01-01.", "cv", "cert")
         cert = CertificationRecord(
             "cert-exp", "Example Cloud Architect", "Example Issuer",
             CertificationState.COMPLETED, ("ev-cert-exp",),
@@ -551,6 +551,189 @@ class AdversarialTruthTests(unittest.TestCase):
         self.assertNotIn("as-old", active_ids)
         self.assertNotIn("as-c1", active_ids)
         self.assertNotIn("as-c2", active_ids)
+
+    def test_terminal_case_1_cross_record_token_union_rejected(self):
+        from truth.models import EvidenceRecord, EmploymentRecord, CareerProfile
+        from truth.graph import TruthGraph
+
+        ev1 = EvidenceRecord("ev-ce", "Chief Executive at Example Corp", "cv", "emp")
+        ev2 = EvidenceRecord("ev-do", "Data Officer at Example Corp", "cv", "emp")
+        emp = EmploymentRecord("job-cdo", "Example Corp", "Chief Data Officer", date(2022, 1, 1), None, evidence_ids=("ev-ce", "ev-do"))
+        graph = TruthGraph((ev1, ev2))
+        with self.assertRaises(ValueError) as ctx:
+            graph.add_career_profile(CareerProfile("prof", employment=(emp,)))
+        self.assertIn("employment.title", str(ctx.exception))
+
+    def test_terminal_case_2_negated_field_evidence_rejected_at_ingestion(self):
+        from truth.models import EvidenceRecord, WorkAuthorization, CareerProfile
+        from truth.graph import TruthGraph
+
+        ev = EvidenceRecord("ev-neg", "Not authorized to work in Germany", "cv", "auth")
+        auth = WorkAuthorization("auth-de", "Germany", "authorized", ("ev-neg",))
+        graph = TruthGraph((ev,))
+        with self.assertRaises(ValueError) as ctx:
+            graph.add_career_profile(CareerProfile("prof", work_authorizations=(auth,)))
+        self.assertIn("work_authorization.status", str(ctx.exception))
+
+    def test_terminal_case_3_complete_material_field_coverage(self):
+        from truth.fixtures import synthetic_graph
+        graph = synthetic_graph()
+        # Ensure projected assertions exist for all material fields across CareerProfile & CapabilityProfile
+        predicates = {a.predicate for a in graph.assertions.values()}
+        required_preds = {
+            "employment.organization", "employment.title", "employment.start_date", "employment.end_date",
+            "employment.responsibility", "achievement.statement", "education.institution", "education.qualification",
+            "education.start_date", "education.end_date", "certification.name", "certification.issuer",
+            "certification.state", "skill.name", "language.language", "language.proficiency",
+            "work_authorization.jurisdiction", "work_authorization.status", "service.name", "service.description",
+            "service.deliverable", "portfolio.title", "portfolio.summary", "capacity.available_from",
+            "capacity.hours_per_week", "capacity.min_project_value", "capacity.max_project_value",
+            "capacity.legal_capacity", "tool.name"
+        }
+        for pred in required_preds:
+            self.assertIn(pred, predicates, f"missing projected assertion for material field: {pred}")
+
+    def test_terminal_case_4_nonexistent_source_target_rejected_in_add_relation(self):
+        from truth.models import EvidenceRecord, TypedRelation, RelationType
+        from truth.graph import TruthGraph
+
+        ev = EvidenceRecord("ev-1", "Some relation content", "src", "loc")
+        graph = TruthGraph((ev,))
+        rel = TypedRelation("rel-nonexistent", "missing-src", RelationType.ACHIEVED_DURING, "missing-tgt", evidence_ids=("ev-1",))
+        with self.assertRaises(ValueError) as ctx:
+            graph.add_relation(rel)
+        self.assertIn("nonexistent source", str(ctx.exception))
+
+    def test_terminal_case_5_nested_achievement_requires_relation_evidence(self):
+        from truth.models import EvidenceRecord, EmploymentRecord, Achievement, CareerProfile, VerificationStatus, AssertionType
+        from truth.graph import TruthGraph
+
+        ev_emp = EvidenceRecord("ev-emp", "Worked at Synthetic Corp as Data Engineer from 2022-01-01 to 2024-01-01.", "cv", "emp")
+        ev_ach = EvidenceRecord("ev-ach", "Built a tool reducing processing time by 40%.", "cv", "ach")
+        emp = EmploymentRecord(
+            "job-nested", "Synthetic Corp", "Data Engineer", date(2022, 1, 1), date(2024, 1, 1), ("ev-emp",),
+            achievements=(Achievement("ach-isolated", "Built a tool reducing processing time by 40%.", ("ev-ach",)),),
+        )
+        graph = TruthGraph((ev_emp, ev_ach))
+        graph.add_career_profile(CareerProfile("prof-nested", employment=(emp,)))
+
+        # Relation must NOT be VERIFIED because ev-ach does not mention Synthetic Corp or link to ev-emp
+        rel = graph.relations["rel_job-nested_ach-isolated"]
+        self.assertEqual(VerificationStatus.UNVERIFIED, rel.verification_status)
+        self.assertEqual(AssertionType.USER_ASSERTION, rel.assertion_type)
+        self.assertFalse(graph.are_relationally_linked(("ev-emp", "ev-ach")))
+
+    def test_terminal_case_6_multimetric_verification_order_independence(self):
+        from truth.models import EvidenceRecord, MetricAssertion, MetricVerification
+        from truth.validator import ClaimValidator
+        from truth.graph import TruthGraph
+
+        ev = EvidenceRecord("ev-metrics", "Revenue increased 200% and latency fell 40% at Corp.", "cv", "ach")
+
+        # Explicit MetricAssertion: only 40% latency is VERIFIED; 200% is UNAVAILABLE
+        ma_lat = MetricAssertion(id="m-lat", subject_id="ach-1", numeric_value=40.0, unit="%", context="latency fell 40%", verification_status=MetricVerification.VERIFIED, evidence_ids=("ev-metrics",))
+        ma_rev = MetricAssertion(id="m-rev", subject_id="ach-1", numeric_value=200.0, unit="%", context="revenue increased 200%", verification_status=MetricVerification.UNAVAILABLE, evidence_ids=("ev-metrics",))
+
+        graph = TruthGraph((ev,), metrics=(ma_lat, ma_rev))
+        validator = ClaimValidator(graph)
+
+        # Order A: validate latency 40% (allowed)
+        res_lat = validator.validate_claim("Latency fell 40%.", ("ev-metrics",))
+        self.assertTrue(res_lat.allowed)
+
+        # Order B: validate revenue 200% (rejected because metric assertion is UNAVAILABLE)
+        res_rev = validator.validate_claim("Revenue increased 200%.", ("ev-metrics",))
+        self.assertFalse(res_rev.allowed)
+
+    def test_terminal_case_7_numeric_substrings_do_not_verify_numbers(self):
+        from truth.models import EvidenceRecord, EmploymentRecord, Achievement, CareerProfile, MetricVerification
+        from truth.validator import ClaimValidator
+        from truth.graph import TruthGraph
+
+        ev_title = EvidenceRecord("ev-title", "Manager at Corp from 2022-01-01 to 2024-01-01.", "cv", "emp")
+        ev_120 = EvidenceRecord("ev-120", "Managed 120 client engagements at Corp.", "cv", "ach")
+        emp = EmploymentRecord(
+            "job-num", "Corp", "Manager", date(2022, 1, 1), date(2024, 1, 1), ("ev-title",),
+            achievements=(Achievement("ach-num", "Managed 120 client engagements.", ("ev-120",), MetricVerification.VERIFIED),),
+        )
+        graph = TruthGraph((ev_title, ev_120))
+        graph.add_career_profile(CareerProfile("prof-num", employment=(emp,)))
+        val = ClaimValidator(graph)
+
+        # 20 does NOT match 120
+        r_20 = val.validate_claim("Managed 20 client engagements.", ("ev-120",))
+        self.assertFalse(r_20.allowed)
+
+        # 4 does NOT match 40%
+        ev_40 = EvidenceRecord("ev-40", "Reduced latency by 40% at Corp.", "cv", "ach")
+        emp2 = EmploymentRecord(
+            "job-num2", "Corp", "Manager", date(2022, 1, 1), date(2024, 1, 1), ("ev-title",),
+            achievements=(Achievement("ach-num2", "Reduced latency by 40%.", ("ev-40",), MetricVerification.VERIFIED),),
+        )
+        graph2 = TruthGraph((ev_title, ev_40))
+        graph2.add_career_profile(CareerProfile("prof-num2", employment=(emp2,)))
+        val2 = ClaimValidator(graph2)
+
+        r_4 = val2.validate_claim("Reduced latency by 4%.", ("ev-40",))
+        self.assertFalse(r_4.allowed)
+
+        # 40 clients does NOT match 40% latency
+        r_clients = val2.validate_claim("Served 40 clients.", ("ev-40",))
+        self.assertFalse(r_clients.allowed)
+
+    def test_terminal_case_8_year_only_does_not_establish_exact_date(self):
+        from truth.models import EvidenceRecord, EmploymentRecord, CareerProfile
+        from truth.graph import TruthGraph
+
+        ev_yr = EvidenceRecord("ev-yr", "Worked at Example Corp as Engineer in 2024.", "cv", "emp")
+        emp = EmploymentRecord("job-dt", "Example Corp", "Engineer", date(2024, 12, 31), None, evidence_ids=("ev-yr",))
+        graph = TruthGraph((ev_yr,))
+        with self.assertRaises(ValueError) as ctx:
+            graph.add_career_profile(CareerProfile("prof-dt", employment=(emp,)))
+        self.assertIn("employment.start_date", str(ctx.exception))
+
+    def test_terminal_case_9_future_superseder_does_not_invalidate_current_truth(self):
+        from truth.models import EvidenceRecord, AtomicAssertion, AssertionType, VerificationStatus
+        from truth.graph import TruthGraph
+
+        ev1 = EvidenceRecord("ev-r1", "Staff Engineer in 2024.", "cv", "role")
+        ev2 = EvidenceRecord("ev-r2", "Principal Director in 2027.", "cv", "role")
+        as_a = AtomicAssertion("as-a", "person", "career.role", "Staff Engineer in 2024.", AssertionType.DIRECT_FACT, VerificationStatus.VERIFIED, ("ev-r1",), effective_from=date(2024, 1, 1))
+        as_b = AtomicAssertion("as-b", "person", "career.role", "Principal Director in 2027.", AssertionType.DIRECT_FACT, VerificationStatus.VERIFIED, ("ev-r2",), effective_from=date(2027, 1, 1), supersedes=("as-a",))
+
+        graph = TruthGraph((ev1, ev2), (as_a, as_b))
+
+        # Active in 2026: as_a is active, as_b is NOT active yet and does NOT suppress as_a
+        active_2026 = {a.id for a in graph.active_assertions(date(2026, 6, 1))}
+        self.assertIn("as-a", active_2026)
+        self.assertNotIn("as-b", active_2026)
+
+        # Active in 2027: as_b is active and suppresses as_a
+        active_2027 = {a.id for a in graph.active_assertions(date(2027, 6, 1))}
+        self.assertIn("as-b", active_2027)
+        self.assertNotIn("as-a", active_2027)
+
+    def test_terminal_case_10_candidate_bound_to_material_assertions(self):
+        from truth.models import EvidenceRecord, AtomicAssertion, ClaimCandidate, AssertionType, VerificationStatus
+        from truth.validator import ClaimValidator
+        from truth.graph import TruthGraph
+
+        ev_py = EvidenceRecord("ev-py", "Uses Python for engineering.", "cv", "skill")
+        ev_ceo = EvidenceRecord("ev-ceo", "Served as Chief Executive Officer", "cv", "emp")
+        as_py = AtomicAssertion("as-py", "skill-py", "skill.name", "Python", AssertionType.DIRECT_FACT, VerificationStatus.VERIFIED, ("ev-py",))
+
+        graph = TruthGraph((ev_py, ev_ceo), (as_py,))
+        validator = ClaimValidator(graph)
+
+        cand = ClaimCandidate(
+            text="Served as Chief Executive Officer",
+            material_assertion_ids=("as-py",),
+            requested_evidence_ids=("ev-ceo",),
+        )
+        res = validator.validate_candidate(cand)
+        self.assertFalse(res.allowed)
+        self.assertEqual(AssertionType.UNSUPPORTED_CLAIM, res.assertion_type)
+        self.assertTrue(any("not authorized" in r for r in res.reasons))
 
 
 if __name__ == "__main__":

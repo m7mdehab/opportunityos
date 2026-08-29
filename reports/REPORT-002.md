@@ -92,18 +92,9 @@ All eight acceptance criteria from committed `briefs/BRIEF-002.md` evaluated:
 | `truth/test_adversarial.py` | 37 | **PASS** | 0.150s | Structural field mismatches, metric isolation, relation laundering, modality/polarity bounds, active assertion resolution |
 | `truth/test_property.py` | 6 | **PASS** | 0.080s | Property-based randomized invariant fuzzing (epistemic monotonicity, polarity preservation, relational isolation, modality bounds) |
 | **`truth/` Package Total** | **85** | **PASS** | **0.308s** | **100% Passing** |
-| `recon/` Regression Suite | 67 | **PASS** | 0.095s | Geographic classification & source invariants |
-| `scripts/test_sync_mirror.py` | 2 | **PASS** | 0.038s | Mirror path relocation |
-| `scripts/check_guard.py` | — | **PASS** | 0.120s | Boundary guard: zero secrets, zero PII |
-| `scripts/check_repository.py` | — | **PASS** | 0.040s | Repository integrity clean |
-| **Total Automated Tests** | **154** | **PASS** | **0.561s** | **All suites green** |
-
----
-
 ## Independent Review & Blinding
 
 - **Structural Authority & Assertion Closure Audit:** `reports/AUDIT-002-STRUCTURAL-AUTHORITY.md`
-  - *Audited 10 Structural Authority Criteria:*
     1. Atomic Assertions Authoritative: **PASS**
     2. True Field-Specific Provenance: **PASS**
     3. No Verified Truth Without Provenance: **PASS**
@@ -112,19 +103,6 @@ All eight acceptance criteria from committed `briefs/BRIEF-002.md` evaluated:
     6. Polarity & Modality Bounds Safety: **PASS**
     7. Active Assertions & Conflict Resolution: **PASS**
     8. Atomic Metric Provenance & Isolation: **PASS**
-    9. Structured Claim Policy Non-Optional: **PASS**
-    10. Test & Ingestion Integrity: **PASS**
-  - *Verdict:* **10 / 10 PASS** on final remediation HEAD (`94c501351f6fcba0ec64872aa46cebc339be74ba`).
-- **Final Independent Auditor:** GitHub Copilot CLI 1.0.81 (blinded, strictly read-only session)
-  - *Audited 13 Vulnerability Classes:*
-    1. Absence of evidence -> evidence: **PASS**
-    2. Inference -> fact: **PASS**
-    3. Similar skill -> historical experience: **PASS**
-    4. Ambiguous evidence -> certainty: **PASS**
-    5. Derived capability -> achievement: **PASS**
-    6. NULL/UNVERIFIED/APPROX misuse: **PASS**
-    7. UNSUPPORTED/PROHIBITED eligibility: **PASS**
-    8. Numeric metric laundering: **PASS**
     9. Certification-state transitions: **PASS**
     10. Transactional rollback & consistency: **PASS**
     11. Provenance preservation through normalization: **PASS**
@@ -212,19 +190,43 @@ All eight acceptance criteria from committed `briefs/BRIEF-002.md` evaluated:
 | `truth/test_graph.py` | 9 | **PASS** | Assertion/relation indexing, auto-projection, temporal relation queries, metric lookup |
 | `truth/test_ingest.py` | 13 | **PASS** | Strict integer parsing, fractional string rejection, never-claim concept validation, assertion ingestion |
 | `truth/test_validator.py` | 10 | **PASS** | Gold-set claims, planned credential guards, red lines, case/spacing normalization |
-| `truth/test_adversarial.py` | 22 | **PASS** | Polarity inversion, bound strengthening, temporal expiration, field mismatch, multi-metric isolation |
+| `truth/test_adversarial.py` | 42 | **PASS** | Polarity inversion, bound strengthening, temporal expiration, field mismatch, multi-metric isolation, 10 terminal regressions |
 | `truth/test_property.py` | 6 | **PASS** | 500+ randomized iterations testing monotonicity, relational isolation, polarity preservation, numeric fuzzing |
-| **Total `truth/` Suite** | **75** | **PASS** | **100% Passing in 0.134s** |
+| **Total `truth/` Suite** | **95** | **PASS** | **100% Passing in 0.264s** |
 | `recon/` Regression Suite | 67 | **PASS** | Geographic classification & source invariants |
 | `scripts/test_sync_mirror.py` | 2 | **PASS** | Mirror relocation tests |
 | `scripts/check_guard.py` | — | **PASS** | Zero secrets, zero PII, boundary integrity |
 | `scripts/check_repository.py` | — | **PASS** | Repository integrity clean |
 
-### 3. Independent Truth-Integrity Audit Verdict
+---
 
-- **Auditor:** Blinded Independent Truth Auditor (Subagent session `7cf98c25-4cd0-4185-8f82-1a841213195e`)
-- **Scope:** 7 Hardening Criteria across all `truth/` modules.
-- **Verdict:** **FULL PASS (7/7 Criteria Met)**
+## Terminal Assertion-Authority Closure Addendum
+
+**Date:** 2026-08-29  
+**Trigger:** Terminal structural verification eliminating remaining heuristic, token-union, relational, and temporal gaps to make atomic assertions strictly authoritative over all domain fields and claim realization.
+
+### 1. Invariants Hardened & Enforced
+
+1. **Atomic Assertions Authoritative & Zero Cross-Record Token Union:** Every scalar material domain field must be grounded in a *single* cohesive evidence record. Combining disparate token sets across multiple records to construct an unbacked composite field value is strictly rejected.
+2. **Complete Material Field Set Coverage:** 100% of material domain fields across `CareerProfile` and `CapabilityProfile` are validated and projected into typed `AtomicAssertion` nodes (including responsibilities, market-facing title, education dates, certification issuer/state/dates/credential ID/URL, skill proficiency, work authorization expiry, portfolio outcome/url, capacity available_from/min/max project values, delivery languages, and tools).
+3. **Relational Invariant & Nonexistent Endpoint Rejection:** `TruthGraph.add_relation()` strictly validates that `source_id` and `target_id` exist in the graph. Nested achievements under employment nodes require explicit relational grounding before marking `ACHIEVED_DURING` `VERIFIED`. `are_relationally_linked()` rejects joining disconnected sub-entities without explicit verified relations.
+4. **Order-Independent Metric Isolation:** Automatically extracted metrics default to `UNAVAILABLE` unless an explicit `MetricAssertion` proves exact `(numeric_value, unit, context)`. Positional assumptions removed; multi-metric evaluations return identical verification states regardless of sentence order.
+5. **Exact Numeric & Date Provenance:** Substring numeric matching eliminated (`20` does not match `120`, `4` does not verify `40%`, `40 clients` does not verify `40% latency`). Calendar year evidence does not establish exact day/month dates (`2024` does not establish `2024-12-31`).
+6. **Temporal Supersession Evaluated As-Of:** Supersession and conflict suppression are evaluated as-of the query date: an assertion active in 2026 with a superseder effective in 2027 remains active in 2026 and is suppressed only in 2027+.
+7. **Strict Binding of ClaimCandidate to Material Assertions:** Autonomous factual candidates require `material_assertion_ids`. `requested_evidence_ids` is strictly restricted to the evidence authorized by the selected assertions. Free-text realizations cannot assert content unbacked by the selected assertions.
+
+### 2. Terminal Regression Test Verification (10/10 PASS)
+
+- **Test 1 (Cross-Record Token Union):** `test_terminal_case_1_cross_record_token_union_rejected` — **PASS**
+- **Test 2 (Negated Field Evidence):** `test_terminal_case_2_negated_field_evidence_rejected_at_ingestion` — **PASS**
+- **Test 3 (Complete Material Field Coverage):** `test_terminal_case_3_complete_material_field_coverage` — **PASS**
+- **Test 4 (Nonexistent Endpoints in add_relation):** `test_terminal_case_4_nonexistent_source_target_rejected_in_add_relation` — **PASS**
+- **Test 5 (Nested Achievement Relation Evidence):** `test_terminal_case_5_nested_achievement_requires_relation_evidence` — **PASS**
+- **Test 6 (Multi-Metric Order Independence):** `test_terminal_case_6_multimetric_verification_order_independence` — **PASS**
+- **Test 7 (Numeric Substring Prevention):** `test_terminal_case_7_numeric_substrings_do_not_verify_numbers` — **PASS**
+- **Test 8 (Year-Only Date Prevention):** `test_terminal_case_8_year_only_does_not_establish_exact_date` — **PASS**
+- **Test 9 (Future Superseder As-Of Validity):** `test_terminal_case_9_future_superseder_does_not_invalidate_current_truth` — **PASS**
+- **Test 10 (ClaimCandidate Assertion Binding):** `test_terminal_case_10_candidate_bound_to_material_assertions` — **PASS**
 
 ---
 
