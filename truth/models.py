@@ -34,6 +34,29 @@ class AssertionType(_StringEnum):
     PROHIBITED_CLAIM = "prohibited_claim"
 
 
+class Polarity(_StringEnum):
+    POSITIVE = "positive"
+    NEGATIVE = "negative"
+
+
+class Modality(_StringEnum):
+    DEFINITE = "definite"
+    APPROXIMATE = "approximate"
+    AT_LEAST = "at_least"
+    AT_MOST = "at_most"
+    CONDITIONAL = "conditional"
+    PLANNED = "planned"
+
+
+class RelationType(_StringEnum):
+    ACHIEVED_DURING = "achieved_during"
+    UTILIZES_SKILL = "utilizes_skill"
+    DELIVERED_SERVICE = "delivered_service"
+    APPLIED_TOOL = "applied_tool"
+    BELONGS_TO_ENTITY = "belongs_to_entity"
+    QUALIFIES_FOR = "qualifies_for"
+
+
 class ProhibitedConceptCategory(_StringEnum):
     GUARANTEED_OUTCOME = "guaranteed_outcome"
     FORTUNE_500_PRESTIGE = "fortune_500_prestige"
@@ -293,6 +316,130 @@ def _validate_finite_non_negative_number(value: Any, name: str) -> None:
         raise ValueError(f"{name} cannot be negative")
 
 
+def _validate_strict_non_negative_integer(value: Any, name: str) -> None:
+    if value is None:
+        return
+    if isinstance(value, bool):
+        raise ValueError(f"{name} cannot be a boolean")
+    if not isinstance(value, int):
+        raise ValueError(f"{name} must be an integer")
+    if value < 0:
+        raise ValueError(f"{name} cannot be negative")
+
+
+@dataclass(frozen=True, slots=True)
+class AtomicAssertion:
+    id: str
+    subject_id: str
+    predicate: str
+    value: Any
+    assertion_type: AssertionType = AssertionType.DIRECT_FACT
+    verification_status: VerificationStatus = VerificationStatus.VERIFIED
+    evidence_ids: tuple[str, ...] = ()
+    polarity: Polarity = Polarity.POSITIVE
+    modality: Modality = Modality.DEFINITE
+    qualifiers: tuple[str, ...] = ()
+    effective_from: date | None = None
+    effective_to: date | None = None
+    supersedes: tuple[str, ...] = ()
+    conflicts_with: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.id, "assertion.id")
+        _require_identifier(self.subject_id, "assertion.subject_id")
+        _require_text(self.predicate, "assertion.predicate")
+        if not isinstance(self.assertion_type, AssertionType):
+            raise ValueError("assertion_type must be an AssertionType")
+        if not isinstance(self.verification_status, VerificationStatus):
+            raise ValueError("verification_status must be a VerificationStatus")
+        _validate_evidence_ids(self.evidence_ids, allow_empty=True)
+        if not isinstance(self.polarity, Polarity):
+            raise ValueError("polarity must be a Polarity")
+        if not isinstance(self.modality, Modality):
+            raise ValueError("modality must be a Modality")
+        if not isinstance(self.qualifiers, tuple):
+            raise ValueError("qualifiers must be an immutable tuple")
+        if not isinstance(self.supersedes, tuple):
+            raise ValueError("supersedes must be an immutable tuple")
+        if not isinstance(self.conflicts_with, tuple):
+            raise ValueError("conflicts_with must be an immutable tuple")
+        if self.effective_from and self.effective_to and self.effective_to < self.effective_from:
+            raise ValueError("effective_to cannot precede effective_from")
+
+
+@dataclass(frozen=True, slots=True)
+class TypedRelation:
+    id: str
+    source_id: str
+    relation_type: str
+    target_id: str
+    evidence_ids: tuple[str, ...] = ()
+    assertion_type: AssertionType = AssertionType.DIRECT_FACT
+    verification_status: VerificationStatus = VerificationStatus.VERIFIED
+    effective_from: date | None = None
+    effective_to: date | None = None
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.id, "relation.id")
+        _require_identifier(self.source_id, "relation.source_id")
+        _require_text(self.relation_type, "relation.relation_type")
+        _require_identifier(self.target_id, "relation.target_id")
+        _validate_evidence_ids(self.evidence_ids, allow_empty=True)
+        if not isinstance(self.assertion_type, AssertionType):
+            raise ValueError("assertion_type must be an AssertionType")
+        if not isinstance(self.verification_status, VerificationStatus):
+            raise ValueError("verification_status must be a VerificationStatus")
+        if self.effective_from and self.effective_to and self.effective_to < self.effective_from:
+            raise ValueError("effective_to cannot precede effective_from")
+
+
+@dataclass(frozen=True, slots=True)
+class MetricAssertion:
+    id: str
+    subject_id: str
+    numeric_value: float | int
+    unit: str
+    context: str
+    modality: Modality = Modality.DEFINITE
+    verification_status: MetricVerification = MetricVerification.VERIFIED
+    evidence_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.id, "metric.id")
+        _require_identifier(self.subject_id, "metric.subject_id")
+        _validate_finite_non_negative_number(self.numeric_value, "metric.numeric_value")
+        _require_text(self.unit, "metric.unit")
+        _require_text(self.context, "metric.context")
+        if not isinstance(self.modality, Modality):
+            raise ValueError("modality must be a Modality")
+        if not isinstance(self.verification_status, MetricVerification):
+            raise ValueError("verification_status must be a MetricVerification")
+        _validate_evidence_ids(self.evidence_ids, allow_empty=True)
+
+
+@dataclass(frozen=True, slots=True)
+class ClaimCandidate:
+    text: str
+    material_assertion_ids: tuple[str, ...] = ()
+    concepts: frozenset[ProhibitedConceptCategory] = field(default_factory=frozenset)
+    requested_evidence_ids: tuple[str, ...] = ()
+    as_of: date | None = None
+
+    def __post_init__(self) -> None:
+        _require_text(self.text, "text")
+        if not isinstance(self.material_assertion_ids, tuple):
+            raise ValueError("material_assertion_ids must be an immutable tuple")
+        if not isinstance(self.concepts, (frozenset, set)):
+            raise ValueError("concepts must be a frozenset")
+        if isinstance(self.concepts, set):
+            object.__setattr__(self, "concepts", frozenset(self.concepts))
+        for concept in self.concepts:
+            if not isinstance(concept, ProhibitedConceptCategory):
+                raise ValueError("concepts must contain ProhibitedConceptCategory values")
+        if not isinstance(self.requested_evidence_ids, tuple):
+            raise ValueError("requested_evidence_ids must be an immutable tuple")
+
+
 @dataclass(frozen=True, slots=True)
 class NeverClaimRule:
     id: str
@@ -392,9 +539,9 @@ class BusinessCapacity:
     id: str
     evidence_ids: tuple[str, ...]
     available_from: date | None = None
-    hours_per_week: int | float | None = None
-    min_project_value: int | float | None = None
-    max_project_value: int | float | None = None
+    hours_per_week: int | None = None
+    min_project_value: int | None = None
+    max_project_value: int | None = None
     annual_turnover_usd: float | None = None
     bid_bond_capacity_usd: float | None = None
     currencies: tuple[str, ...] = ()
@@ -408,9 +555,9 @@ class BusinessCapacity:
         for name in ("currencies", "service_regions"):
             if not isinstance(getattr(self, name), tuple):
                 raise ValueError(f"{name} must be an immutable tuple")
-        _validate_finite_non_negative_number(self.hours_per_week, "hours_per_week")
-        _validate_finite_non_negative_number(self.min_project_value, "min_project_value")
-        _validate_finite_non_negative_number(self.max_project_value, "max_project_value")
+        _validate_strict_non_negative_integer(self.hours_per_week, "hours_per_week")
+        _validate_strict_non_negative_integer(self.min_project_value, "min_project_value")
+        _validate_strict_non_negative_integer(self.max_project_value, "max_project_value")
         _validate_finite_non_negative_number(self.annual_turnover_usd, "annual_turnover_usd")
         _validate_finite_non_negative_number(self.bid_bond_capacity_usd, "bid_bond_capacity_usd")
         if (

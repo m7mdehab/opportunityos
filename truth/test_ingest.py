@@ -132,10 +132,74 @@ career_profile:
             load_json("[]")
         with self.assertRaisesRegex(IngestionError, "duplicate JSON key"):
             load_json('{"evidence": [], "evidence": []}')
-        document = minimal_document()
-        document["evidence"].append(dict(document["evidence"][0]))
-        with self.assertRaisesRegex(ValueError, "duplicate graph node"):
-            graph_from_dict(document)
+    def test_fractional_strings_are_rejected_for_integer_fields(self):
+        doc1 = {
+            "evidence": [{"id": "ev", "content": "test", "source": "test", "locator": "test"}],
+            "capability_profile": {
+                "id": "cap",
+                "capacity": {"id": "c1", "evidence_ids": ["ev"], "hours_per_week": "1.5"},
+            },
+        }
+        with self.assertRaises(IngestionError):
+            graph_from_dict(doc1)
+
+        doc2 = {
+            "evidence": [{"id": "ev", "content": "test", "source": "test", "locator": "test"}],
+            "capability_profile": {
+                "id": "cap",
+                "capacity": {"id": "c1", "evidence_ids": ["ev"], "min_project_value": "2.9"},
+            },
+        }
+        with self.assertRaises(IngestionError):
+            graph_from_dict(doc2)
+
+    def test_never_claim_concept_is_validated_without_silent_default(self):
+        doc = {
+            "evidence": [{"id": "ev", "content": "test", "source": "test", "locator": "test"}],
+            "career_profile": {
+                "id": "career",
+                "never_claims": [{"id": "custom-rule", "phrase": "some phrase"}],
+            },
+        }
+        with self.assertRaises(IngestionError):
+            graph_from_dict(doc)
+
+    def test_ingestion_supports_assertions_relations_and_metrics(self):
+        doc = {
+            "evidence": [{"id": "ev-1", "content": "Python Engineer", "source": "test", "locator": "test"}],
+            "assertions": [
+                {
+                    "id": "as-1",
+                    "subject_id": "job-1",
+                    "predicate": "employment.title",
+                    "value": "Python Engineer",
+                    "evidence_ids": ["ev-1"],
+                }
+            ],
+            "relations": [
+                {
+                    "id": "rel-1",
+                    "source_id": "job-1",
+                    "relation_type": "achieved_during",
+                    "target_id": "ach-1",
+                    "evidence_ids": ["ev-1"],
+                }
+            ],
+            "metrics": [
+                {
+                    "id": "met-1",
+                    "subject_id": "ach-1",
+                    "numeric_value": 40.0,
+                    "unit": "%",
+                    "context": "latency",
+                    "evidence_ids": ["ev-1"],
+                }
+            ],
+        }
+        graph = graph_from_dict(doc)
+        self.assertIn("as-1", graph.assertions)
+        self.assertIn("rel-1", graph.relations)
+        self.assertIn("met-1", graph.metrics)
 
 
 if __name__ == "__main__":

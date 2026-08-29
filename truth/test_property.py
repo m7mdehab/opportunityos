@@ -174,6 +174,40 @@ class TruthGraphPropertyTests(unittest.TestCase):
                     hours_per_week=bad_val,
                 )
 
+    def test_polarity_preservation_property(self):
+        """Property: Negative particles in evidence strictly forbid positive claims under fuzzing."""
+        rng = random.Random(404)
+        negative_markers = ["not", "no", "never", "without", "cannot", "unauthorized"]
+        subjects = ["Kubernetes", "AWS architecture", "budget management", "direct client sales"]
+
+        for iteration in range(50):
+            neg = rng.choice(negative_markers)
+            subj = rng.choice(subjects)
+            ev = EvidenceRecord(f"ev-neg-{iteration}", f"Professional has {neg} experience in {subj}.", "cv", "loc")
+            graph = TruthGraph((ev,))
+            validator = ClaimValidator(graph)
+
+            positive_claim = f"Professional has experience in {subj}."
+            result = validator.validate_claim(positive_claim, (ev.id,))
+            self.assertFalse(result.allowed, f"Polarity leak: '{positive_claim}' allowed with negative evidence '{ev.content}'")
+
+    def test_modality_bound_monotonicity_property(self):
+        """Property: Upper-bound evidence records strictly forbid lower-bound or exact strengthening."""
+        rng = random.Random(505)
+        for iteration in range(50):
+            hours = rng.randint(5, 35)
+            ev = EvidenceRecord(f"ev-bound-{iteration}", f"Available at most {hours} hours per week.", "cv", "loc")
+            graph = TruthGraph((ev,))
+            validator = ClaimValidator(graph)
+
+            strengthened_lower = f"Available at least {hours} hours per week."
+            result_lower = validator.validate_claim(strengthened_lower, (ev.id,))
+            self.assertFalse(result_lower.allowed)
+
+            strengthened_exact = f"Available exactly {hours} hours per week."
+            result_exact = validator.validate_claim(strengthened_exact, (ev.id,))
+            self.assertFalse(result_exact.allowed)
+
 
 if __name__ == "__main__":
     unittest.main()

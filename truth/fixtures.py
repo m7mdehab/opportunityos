@@ -146,6 +146,13 @@ def synthetic_career_profile() -> CareerProfile:
         ),
         never_claims=(
             NeverClaimRule(
+                "never-guarantee",
+                ProhibitedConceptCategory.GUARANTEED_OUTCOME,
+                "outcomes cannot be guaranteed",
+                r"\b(?:guarantee\w*|100%\s*(?:success|satisfaction|result|roi)|unconditional\w*\s*(?:promise\w*|assur\w*)|zero\s*risk|assure\w*\s*(?:positive\s*)?(?:outcome|roi|results?)|promis\w*\s*(?:positive\s*)?(?:success|results?|outcome))\b",
+                ("guarantee", "100% success"),
+            ),
+            NeverClaimRule(
                 "never-f500",
                 ProhibitedConceptCategory.FORTUNE_500_PRESTIGE,
                 "no client evidence exists",

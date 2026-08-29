@@ -176,6 +176,46 @@ All eight acceptance criteria from committed `briefs/BRIEF-002.md` evaluated:
 
 ---
 
+## Final Structural Hardening & Atomic Provenance Addendum
+
+**Date:** 2026-08-29  
+**Trigger:** Autonomous outer-loop refactor migrating domain values and claims from entity/token matching to atomic, typed assertions and relations.
+
+### 1. Architectural Upgrades Implemented
+
+1. **Field-Level Atomic Assertions (`truth/models.py` & `truth/graph.py`):** Introduced `AtomicAssertion` (`id`, `subject_id`, `predicate`, `value`, `assertion_type`, `verification_status`, `evidence_ids`, `polarity`, `modality`, `qualifiers`, `effective_from`, `effective_to`, `supersedes`, `conflicts_with`). Profile nodes in `CareerProfile` and `CapabilityProfile` auto-project atomic field assertions during graph attachment.
+2. **Explicit Typed Relations (`truth/models.py` & `truth/graph.py`):** Introduced `TypedRelation` with `RelationType` (`ACHIEVED_DURING`, `UTILIZES_SKILL`, `DELIVERED_SERVICE`, `APPLIED_TOOL`, `BELONGS_TO_ENTITY`, `QUALIFIES_FOR`). `TruthGraph.has_relation()` and `are_relationally_linked()` verify that composite claims have explicit relational edges rather than co-presence under parent entities.
+3. **Polarity & Modality Bound Safety (`truth/validator.py`):** Enforced first-class `Polarity` (`POSITIVE`, `NEGATIVE`) and `Modality` (`DEFINITE`, `APPROXIMATE`, `AT_LEAST`, `AT_MOST`, `CONDITIONAL`, `PLANNED`). Negative evidence particles strictly reject positive claims; upper bounds (`at most N`) cannot be strengthened to exact or lower bounds (`at least N`); conditional assertions cannot become unconditional; planned credentials cannot use held verbs.
+4. **Temporal Validity & Deterministic As-Of Semantics (`truth/validator.py` & `truth/graph.py`):** Added explicit `as_of: date | None = None` parameter evaluating expiration of credentials, work authorizations, and assertions without nondeterministic clock dependency.
+5. **Structured Pre-Generation Intent Layer (`truth/models.py` & `truth/validator.py`):** Introduced `ClaimCandidate` containing material assertion IDs, requested evidence, and structured policy concepts (`concepts: frozenset[ProhibitedConceptCategory]`). Never-Claim policy evaluates structured concepts in Step 1 before free-text realization.
+6. **Per-Metric Atomic Assertions (`truth/models.py`, `truth/graph.py`, `truth/validator.py`):** Introduced `MetricAssertion` (`numeric_value`, `unit`, `context`, `modality`, `verification_status`, `evidence_ids`). Single-sentence multi-metric isolation ensures that verifying one metric does not blanket-certify unrelated metrics in the same evidence record.
+7. **Strict Numeric & Ingestion Typing (`truth/ingest.py` & `truth/models.py`):** Added `_strict_non_negative_int_or_none` rejecting fractional strings (`"1.5"`, `"2.9"`), booleans, NaN, Infinity, and overflow for integer fields (`hours_per_week`, `min_project_value`, `max_project_value`). Never-Claim ingestion strictly validates known concepts without silent default.
+8. **Automated CI Test Merge Gate (`.github/workflows/test.yml`):** Added GitHub Actions test workflow executing the truth suite, recon regression suite, mirror unit tests, and repository checker on all pull requests and pushes to `main`.
+
+### 2. Comprehensive Test Suites & Verification
+
+| Test Suite | Tests | Status | Description |
+|---|---:|:---:|---|
+| `truth/test_models.py` | 15 | **PASS** | Atomic assertions, typed relations, metric assertions, claim candidates, strict integer validation |
+| `truth/test_graph.py` | 9 | **PASS** | Assertion/relation indexing, auto-projection, temporal relation queries, metric lookup |
+| `truth/test_ingest.py` | 13 | **PASS** | Strict integer parsing, fractional string rejection, never-claim concept validation, assertion ingestion |
+| `truth/test_validator.py` | 10 | **PASS** | Gold-set claims, planned credential guards, red lines, case/spacing normalization |
+| `truth/test_adversarial.py` | 22 | **PASS** | Polarity inversion, bound strengthening, temporal expiration, field mismatch, multi-metric isolation |
+| `truth/test_property.py` | 6 | **PASS** | 500+ randomized iterations testing monotonicity, relational isolation, polarity preservation, numeric fuzzing |
+| **Total `truth/` Suite** | **75** | **PASS** | **100% Passing in 0.134s** |
+| `recon/` Regression Suite | 67 | **PASS** | Geographic classification & source invariants |
+| `scripts/test_sync_mirror.py` | 2 | **PASS** | Mirror relocation tests |
+| `scripts/check_guard.py` | — | **PASS** | Zero secrets, zero PII, boundary integrity |
+| `scripts/check_repository.py` | — | **PASS** | Repository integrity clean |
+
+### 3. Independent Truth-Integrity Audit Verdict
+
+- **Auditor:** Blinded Independent Truth Auditor (Subagent session `7cf98c25-4cd0-4185-8f82-1a841213195e`)
+- **Scope:** 7 Hardening Criteria across all `truth/` modules.
+- **Verdict:** **FULL PASS (7/7 Criteria Met)**
+
+---
+
 ## Known Limitations & Deferred Items
 
 - **Known Limitations:** Zero unbacked claim tolerance is strictly enforced; downstream CV and proposal generators must query the graph and cannot assert facts absent from evidence records.

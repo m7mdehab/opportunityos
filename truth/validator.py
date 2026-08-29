@@ -1,17 +1,19 @@
-"""Fail-closed claim validation against the professional truth graph."""
-
-from __future__ import annotations
-
+from datetime import date
 import re
 from collections.abc import Iterable
 
 from .graph import TruthGraph
 from .models import (
     AssertionType,
+    AtomicAssertion,
     CertificationState,
+    ClaimCandidate,
     ClaimVerificationResult,
     MetricVerification,
+    Modality,
     NeverClaimRule,
+    Polarity,
+    ProhibitedConceptCategory,
     RedLineRule,
     VerificationStatus,
 )
@@ -31,6 +33,16 @@ _NON_MATERIAL_WORDS = {
     "for", "from", "in", "is", "nearly", "of", "on", "roughly", "that", "the",
     "to", "was", "were", "with",
 }
+
+
+_NEGATIVE_MARKERS = re.compile(
+    r"\b(?:not|no|never|neither|nor|without|cannot|unauthorized|non-|ineligible|lacks?|lacking)\b",
+    re.I,
+)
+_BOUND_AT_MOST = re.compile(r"\b(?:at\s*most|up\s*to|less\s*than|under|maximum\s*of|no\s*more\s*than)\b", re.I)
+_BOUND_AT_LEAST = re.compile(r"\b(?:at\s*least|more\s*than|over|minimum\s*of|no\s*less\s*than)\b", re.I)
+_CONDITIONAL = re.compile(r"\b(?:subject\s*to|conditional\s*(?:on|upon)|depending\s*on|if\s*approved|contingent\s*on)\b", re.I)
+_EXACT = re.compile(r"\b(?:exactly|strictly|precisely)\b", re.I)
 
 
 def _normalize(value: str) -> str:
@@ -64,8 +76,84 @@ class ClaimValidator:
     def __init__(self, graph: TruthGraph) -> None:
         self.graph = graph
 
+    def validate_candidate(self, candidate: ClaimCandidate) -> ClaimVerificationResult:
+        """Validate a structured ClaimCandidate before or during free-text generation."""
+        if not isinstance(candidate, ClaimCandidate):
+            raise ValueError("candidate must be a ClaimCandidate")
+
+        # 1. Structured Never-Claim policy evaluation: intersect candidate concepts with prohibited categories
+        red_lines, never_claims = self.graph.rules()
+        prohibited_categories = {rule.concept for rule in never_claims if isinstance(rule, NeverClaimRule)}
+        prohibited_intersection = candidate.concepts & prohibited_categories
+        if prohibited_intersection:
+            prohibited_names = ", ".join(sorted(c.value for c in prohibited_intersection))
+            return self._result(
+                candidate.text, False, AssertionType.PROHIBITED_CLAIM,
+                VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
+                (f"candidate asserts prohibited concept category: {prohibited_names}",),
+            )
+
+        # 2. Field-level atomic assertion verification
+        supporting_assertion_evidence = []
+        if candidate.material_assertion_ids:
+            for as_id in candidate.material_assertion_ids:
+                if as_id not in self.graph.assertions:
+                    return self._result(
+                        candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
+                        VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
+                        (f"unknown atomic assertion: {as_id}",),
+                    )
+                assertion = self.graph.assertions[as_id]
+                supporting_assertion_evidence.extend(assertion.evidence_ids)
+
+                # Polarity check
+                if assertion.polarity is Polarity.NEGATIVE and not _NEGATIVE_MARKERS.search(candidate.text):
+                    return self._result(
+                        candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
+                        VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
+                        (f"assertion {as_id} has negative polarity but candidate text is positive",),
+                    )
+
+                # Modality check
+                if assertion.modality is Modality.PLANNED and (_HELD.search(candidate.text) or not _PLANNING.search(candidate.text)):
+                    return self._result(
+                        candidate.text, False, AssertionType.PROHIBITED_CLAIM,
+                        VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
+                        (f"assertion {as_id} has planned modality and cannot be represented as held",),
+                    )
+
+                # Temporal validity
+                if candidate.as_of is not None:
+                    if assertion.effective_to and candidate.as_of > assertion.effective_to:
+                        return self._result(
+                            candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
+                            VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
+                            (f"assertion {as_id} expired on {assertion.effective_to} as of {candidate.as_of}",),
+                        )
+                    if assertion.effective_from and candidate.as_of < assertion.effective_from:
+                        return self._result(
+                            candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
+                            VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
+                            (f"assertion {as_id} not yet effective on {candidate.as_of}",),
+                        )
+
+                # Conflict detection
+                if assertion.conflicts_with:
+                    return self._result(
+                        candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
+                        VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
+                        (f"assertion {as_id} has unresolved conflicts: {', '.join(assertion.conflicts_with)}",),
+                    )
+
+        evidence_ids = candidate.requested_evidence_ids or tuple(dict.fromkeys(supporting_assertion_evidence))
+        return self.validate_claim(candidate.text, evidence_ids, as_of=candidate.as_of)
+
     def validate_claim(
-        self, claim: str, evidence_ids: Iterable[str] | None = None
+        self,
+        claim: str,
+        evidence_ids: Iterable[str] | None = None,
+        *,
+        as_of: date | None = None,
     ) -> ClaimVerificationResult:
         if not isinstance(claim, str) or not claim.strip():
             raise ValueError("claim must be a non-empty string")
@@ -103,7 +191,29 @@ class ClaimValidator:
             else tuple(self.graph.evidence_records.values())
         )
 
-        # 4. Find supporting evidence records.
+        # 4. Polarity and Modality bounds safety on candidate/requested evidence
+        for record in candidates:
+            if record.content:
+                if _NEGATIVE_MARKERS.search(record.content) and not _NEGATIVE_MARKERS.search(claim):
+                    return self._result(
+                        claim, False, AssertionType.UNSUPPORTED_CLAIM,
+                        VerificationStatus.UNVERIFIED, requested or (record.id,),
+                        ("claim inverts negative evidence polarity into a positive assertion",),
+                    )
+                if _BOUND_AT_MOST.search(record.content) and (_BOUND_AT_LEAST.search(claim) or _EXACT.search(claim)):
+                    return self._result(
+                        claim, False, AssertionType.UNSUPPORTED_CLAIM,
+                        VerificationStatus.UNVERIFIED, requested or (record.id,),
+                        ("claim strengthens upper-bound modality to exact or lower-bound",),
+                    )
+                if _CONDITIONAL.search(record.content) and not _CONDITIONAL.search(claim):
+                    return self._result(
+                        claim, False, AssertionType.UNSUPPORTED_CLAIM,
+                        VerificationStatus.UNVERIFIED, requested or (record.id,),
+                        ("claim strengthens conditional evidence to unconditional assertion",),
+                    )
+
+        # 5. Find supporting evidence records.
         # Prefer single records that cover all material terms of the claim.
         full_matches = []
         claim_material_tokens = _tokens(claim) - _NON_MATERIAL_WORDS
@@ -125,11 +235,22 @@ class ClaimValidator:
                 ("no evidence record supports the material claim",),
             )
 
-        # 5. Relational composition guard:
+        supporting_ids = tuple(record.id for record in supporting)
+
+        # 6. Temporal validity as-of evaluation
+        if as_of is not None:
+            temporal_reason = self._validate_temporal_validity(claim, supporting, as_of)
+            if temporal_reason:
+                return self._result(
+                    claim, False, AssertionType.UNSUPPORTED_CLAIM,
+                    VerificationStatus.UNVERIFIED, supporting_ids,
+                    (temporal_reason,),
+                )
+
+        # 8. Relational composition guard:
         # Cross-evidence relationship laundering is prevented.
         # If multiple evidence records are required to cover the claim, they MUST be relationally linked
-        # by an explicit common entity node in the TruthGraph.
-        supporting_ids = tuple(record.id for record in supporting)
+        # by an explicit common entity node or TypedRelation in the TruthGraph.
         if len(supporting) > 1 and not self.graph.are_relationally_linked(supporting_ids):
             return self._result(
                 claim, False, AssertionType.UNSUPPORTED_CLAIM,
@@ -137,7 +258,7 @@ class ClaimValidator:
                 ("composite claim combines independent evidence records without an establishing graph relation",),
             )
 
-        # 6. Material lexical coverage check.
+        # 9. Material lexical coverage check.
         evidence_tokens = set().union(*(_tokens(record.content or "") for record in supporting))
         uncovered = sorted(_tokens(claim) - evidence_tokens - _NON_MATERIAL_WORDS)
         if uncovered:
@@ -148,7 +269,7 @@ class ClaimValidator:
                 (f"claim contains material terms absent from evidence: {', '.join(uncovered)}",),
             )
 
-        # 7. Verification status resolution: conservative weakest-link rule.
+        # 10. Verification status resolution: conservative weakest-link rule.
         status = self._resolve_verification_status(supporting, claim)
         if status is None:
             return self._result(
@@ -158,7 +279,7 @@ class ClaimValidator:
                 ("supporting evidence is unverified, explicit-null, or approximate without qualification",),
             )
 
-        # 8. Exact metric provenance validation.
+        # 11. Exact metric provenance validation.
         metric_reason = self._validate_metric_provenance(claim, supporting)
         if metric_reason:
             return self._result(
@@ -167,7 +288,7 @@ class ClaimValidator:
                 supporting_ids, (metric_reason,),
             )
 
-        # 9. Conservative epistemic assertion-type resolution.
+        # 12. Conservative epistemic assertion-type resolution.
         assertion_type = self._resolve_assertion_type(supporting)
         if assertion_type in {AssertionType.UNSUPPORTED_CLAIM, AssertionType.PROHIBITED_CLAIM}:
             return self._result(
@@ -180,6 +301,14 @@ class ClaimValidator:
             claim, True, assertion_type, status,
             supporting_ids, ("claim is traceable to supporting evidence",),
         )
+
+    def _validate_temporal_validity(self, claim: str, supporting: tuple, as_of: date) -> str | None:
+        """Evaluate whether certifications, work authorizations, or assertions are expired as of as_of."""
+        for cert in self.graph.certification_records():
+            if cert.expiry_date and as_of > cert.expiry_date:
+                if _normalize(cert.name) in _normalize(claim) and _HELD.search(claim):
+                    return f"certification {cert.id} expired on {cert.expiry_date} as of {as_of}"
+        return None
 
     def validate_claims(
         self, claims: Iterable[str | tuple[str, Iterable[str]]]
@@ -278,13 +407,29 @@ class ClaimValidator:
             if not matching_records:
                 return f"claim metric '{metric}' is absent from supporting evidence"
 
-            # For each matching record carrying this specific metric, verify if any attached entity has MetricVerification.VERIFIED
+            # Check if there is an exact MetricAssertion in graph with this numeric metric and VERIFIED status
+            # OR an achievement/portfolio whose own statement/outcome contains this metric AND has MetricVerification.VERIFIED
             metric_verified = False
             for record in matching_records:
-                statuses = self.graph.metric_status_for_evidence(record.id)
-                if MetricVerification.VERIFIED in statuses:
-                    metric_verified = True
+                # 1. Check atomic MetricAssertions
+                metric_assertions = self.graph.metric_assertions_for_evidence(record.id)
+                for ma in metric_assertions:
+                    if str(ma.numeric_value) in metric or metric.startswith(str(ma.numeric_value)):
+                        if ma.verification_status is MetricVerification.VERIFIED:
+                            metric_verified = True
+                            break
+
+                if metric_verified:
                     break
+
+                # 2. Check Achievement/Portfolio statements
+                entities = self.graph.entities_for_evidence(record.id)
+                for ent in entities:
+                    ent_stmt = getattr(ent, "statement", None) or getattr(ent, "outcome", None)
+                    if ent_stmt and metric in set(_material_metrics(ent_stmt)):
+                        if getattr(ent, "metric_verification", None) is MetricVerification.VERIFIED:
+                            metric_verified = True
+                            break
 
             if not metric_verified:
                 return f"claim metric '{metric}' lacks an exact verified metric provenance node"
