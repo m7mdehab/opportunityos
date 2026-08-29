@@ -10,8 +10,8 @@ Next: Claude Code independently adjudicates `out/audit-001.json` and records pre
 
 ## Repository
 
-- **Generated:** 2026-08-28T23:43:25Z
-- **State generated at commit:** `e6c8026` — fix(health): resolve Codex cross-review REQUEST_CHANGES
+- **Generated:** 2026-08-29T00:58:26Z
+- **State generated at commit:** `dbd4aba` — docs: update SOURCE_EVIDENCE and SOURCE_REGISTRY with refreshed reconnaissance corpus
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
