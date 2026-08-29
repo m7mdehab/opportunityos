@@ -31,10 +31,17 @@ PLACE_ALIASES = (
     _alias("QA", "qatar"), _alias("CY", "cyprus"), _alias("CO", "colombia"),
     _alias("IL", "israel"), _alias("SG", "singapore"), _alias("NZ", "new zealand"),
     _alias("AR", "argentina"), _alias("CL", "chile"), _alias("PE", "peru"),
+    _alias("ZA", "south africa"),
+    _alias("CN", "china"),
+    _alias("HK", "hong kong"),
+    _alias("IT", "italy"),
+    _alias("KH", "cambodia"),
+    _alias("TT", "trinidad and tobago|trinidad|tobago"),
     _alias("LATAM", "latam"),
     _alias("AMERICAS", "americas|north america|south america"),
     _alias("EEA", "eea"), _alias("EU", "eu"), _alias("EMEA", "emea"),
-    _alias("MENA", "mena|middle east"), _alias("AFRICA", "africa"),
+    _alias("MENA", "mena|middle east"),
+    _alias("AFRICA", r"(?<!south\s)africa"),
 )
 
 
@@ -46,16 +53,20 @@ CITIES = {
     "sf": "US", "nyc": "US", "new york city": "US", "new york": "US",
     "san francisco": "US", "chicago": "US", "boston": "US", "atlanta": "US",
     "denver": "US", "seattle": "US", "austin": "US", "washington dc": "US",
-    "washington, dc": "US",
+    "washington, dc": "US", "dallas": "US", "dallas warehouse": "US",
     "london": "GB", "sherborne": "GB", "glasgow": "GB", "newcastle upon tyne": "GB",
     "manchester": "GB", "edinburgh": "GB", "bristol": "GB",
     "bengaluru": "IN", "bangalore": "IN", "hyderabad": "IN", "mumbai": "IN",
     "new delhi": "IN", "chennai": "IN", "greater chennai area": "IN", "pune": "IN",
+    "gurugram": "IN",
     "toronto": "CA", "vancouver": "CA", "montreal": "CA", "quebec": "CA",
     "grand falls-windsor": "CA", "ottawa": "CA", "calgary": "CA",
     "sao paulo": "BR", "rio de janeiro": "BR", "tel aviv": "IL", "jerusalem": "IL",
     "sydney": "AU", "melbourne": "AU", "alice springs": "AU", "brisbane": "AU", "perth": "AU",
+    "parramatta": "AU", "rozelle": "AU",
     "tokyo": "JP", "osaka": "JP", "kyoto": "JP", "singapore": "SG", "seoul": "KR",
+    "beijing": "CN", "hong kong": "HK", "phnom penh": "KH", "milan": "IT",
+    "piarco": "TT", "limassol": "CY",
     "berlin": "DE", "munich": "DE", "frankfurt": "DE", "paris": "FR",
     "amsterdam": "NL", "dublin": "IE", "madrid": "ES", "barcelona": "ES",
     "lisbon": "PT", "stockholm": "SE", "warsaw": "PL",
@@ -91,20 +102,21 @@ IGNORE_WORDS = {
 
 WORLDWIDE_LOCATION = re.compile(r"(?<!\w)(?:worldwide|global|anywhere)(?!\w)", re.I)
 TIMEZONE_BOUNDARY = r"(?:eastern|central|mountain|pacific)\s+time\s*zone"
+WITHIN_RESTRICTION = r"(?:\s+within\s+(?:the\s+)?(?:united states|u\.s\.?|usa|US|canada|uk|europe|america|[a-z ]+time\s*zone))"
 WORLDWIDE_DESCRIPTION_PATTERNS = (
     re.compile(
         rf"\b(?:open to|available to|accepting)\s+(?:qualified\s+)?(?:candidates?|applicants?)\b"
-        rf"[^.!?;\r\n]{{0,120}}\b(?:anywhere(?!\s+(?:within|in)\s+(?:the\s+)?{TIMEZONE_BOUNDARY})"
+        rf"[^.!?;\r\n]{{0,120}}\b(?:anywhere(?!{WITHIN_RESTRICTION})(?!\s+(?:within|in)\s+(?:the\s+)?{TIMEZONE_BOUNDARY})"
         r"(?:\s+in\s+the\s+world)?|worldwide|globally|any country)\b", re.I,
     ),
     re.compile(r"\b(?:candidates?|applicants?)\s+from\s+(?:any country|anywhere(?: in the world)?|worldwide)\b", re.I),
     re.compile(r"\bwe\s+(?:hire|recruit|employ)\s+from\s+(?:any country|anywhere(?: in the world)?|worldwide)\b", re.I),
     re.compile(
         rf"\b(?:candidates?|applicants?|employees?|you)\b[^.!?;\r\n]{{0,80}}\b"
-        rf"(?:work|be based|be located)\s+(?:from\s+)?(?:anywhere(?!\s+(?:within|in)\s+(?:the\s+)?{TIMEZONE_BOUNDARY})"
+        rf"(?:work|be based|be located)\s+(?:from\s+)?(?:anywhere(?!{WITHIN_RESTRICTION})(?!\s+(?:within|in)\s+(?:the\s+)?{TIMEZONE_BOUNDARY})"
         r"(?:\s+(?:globally|in the world))?|worldwide)\b", re.I,
     ),
-    re.compile(r"\bwork from anywhere(?: globally| in the world)?\b", re.I),
+    re.compile(rf"\bwork from anywhere(?!{WITHIN_RESTRICTION})(?:\s+(?:globally|in the world))?\b", re.I),
     re.compile(r"\b(?:this|the)\s+(?:role|position|job)\s+is\s+(?:open|available)\s+(?:to\s+applicants?\s+)?(?:anywhere(?: in the world)?|worldwide|globally)\b", re.I),
 )
 PRODUCT_BOILERPLATE = re.compile(r"\b(?:products?|platform|software|users?|customers?|teams?|collaborat\w*|real[ -]time|empowers?)\b", re.I)
@@ -160,6 +172,7 @@ def _description_location_clauses(description: str) -> tuple[str, ...]:
     patterns = (
         re.compile(r"\b(?:eligible countries|hiring in|restricted to residents? of)\s*:?[ \t]*([^\r\n.!?;]+)", re.I),
         re.compile(r"\b(?:open to candidates?|candidates? from|we hire from|applicants? from)\s*:?[ \t]*([^\r\n.!?;]+)", re.I),
+        re.compile(r"\b(?:work|located|based)\s+(?:from\s+)?anywhere\s+within\s*:?[ \t]*([^\r\n.!?;]+)", re.I),
     )
     clauses = [match.group(0) for pattern in patterns for match in pattern.finditer(description)]
     return tuple(dict.fromkeys(clauses))
@@ -207,7 +220,7 @@ def _extract_unmapped(location_text: str, description: str, allow: list[tuple[st
 US_COUNTRY = r"(?:united states|u\.s\.?|usa|US)"
 CA_PROVINCE = r"(?:alberta|british columbia|manitoba|new brunswick|newfoundland(?: and labrador)?|nova scotia|ontario|prince edward island|quebec|saskatchewan)"
 DENY_PATTERNS = (
-    (re.compile(r"\b(?:no (?:visa )?sponsorship|sponsorship (?:is )?not available|without sponsorship for an export license)\b[^.\r\n]*", re.I), "NO_SPONSORSHIP"),
+    (re.compile(r"\b(?:no (?:visa )?sponsorship|sponsorship (?:is )?not available|without sponsorship for an employment visa|will not sponsor)\b[^.\r\n]*", re.I), "NO_SPONSORSHIP"),
     (re.compile(rf"\b(?:verify\s+(?:your|their)\s+eligibility\s+to\s+work\s+in|authorized\s+to\s+work\s+in|work\s+authorization\s+in|right\s+to\s+work\s+in)\s+(?:the\s+)?{US_COUNTRY}\b", re.I), "WORK_AUTH_REQUIRED:US"),
     (re.compile(rf"\b{US_COUNTRY}\s+work\s+authorization\b|\bwork\s+authorization\s+(?:is\s+)?required[^.\r\n]{{0,40}}\b{US_COUNTRY}\b", re.I), "WORK_AUTH_REQUIRED:US"),
     (re.compile(r"\bcanadian work authorization\b|\bauthorized to work in canada\b", re.I), "WORK_AUTH_REQUIRED:CA"),
@@ -216,7 +229,7 @@ DENY_PATTERNS = (
     (re.compile(r"\bschengen visa\b", re.I), "RESIDENCY_REQUIRED:EU"),
     (re.compile(rf"\b(?:candidates?|applicants?)\s+(?:residing|who reside|must reside)\s+in\s+[^.\r\n]{{0,180}}\b{CA_PROVINCE}\b", re.I), "RESIDENCY_REQUIRED:CA"),
     (re.compile(r"\bmust live in a state where\b[^.\r\n]{0,160}\bhas a registered entity\b", re.I), "RESIDENCY_REQUIRED:US"),
-    (re.compile(rf"\b{US_COUNTRY}\s+only\b|\bus-based\b", re.I), "RESIDENCY_REQUIRED:US"),
+    (re.compile(rf"\b{US_COUNTRY}\s+only\b|\bus-based\s+(?:role|position|job|candidate|applicant|employee)\b", re.I), "RESIDENCY_REQUIRED:US"),
     (re.compile(r"\bfrance\s+only\b", re.I), "RESIDENCY_REQUIRED:FR"),
     (re.compile(r"\bjapan\s+only\b", re.I), "RESIDENCY_REQUIRED:JP"),
     (re.compile(r"\bbrazil\s+only\b", re.I), "RESIDENCY_REQUIRED:BR"),
@@ -235,6 +248,7 @@ DENY_PATTERNS = (
 TIMEZONE_PATTERNS = (
     re.compile(r"\b(?:ET|EST|EDT|CT|CST|CDT|MT|MST|MDT|PT|PST|PDT|CET|CEST|EET|EEST|UTC|GMT)\b"),
     re.compile(r"\b(?:ET|EST|EDT|CT|CST|CDT|MT|MST|MDT|PT|PST|PDT|CET|CEST|EET|EEST|GMT)\s+time\s*zone\b", re.I),
+    re.compile(r"\b(?:US\s+)?(?:Eastern|Central|Mountain|Pacific)\s+Time\b", re.I),
     re.compile(r"\b(?:eastern|central|mountain|pacific|greenwich mean|central european)\s+time\s*(?:zone|time)\b", re.I),
     re.compile(r"\b(?:overlap|availability|working hours?|schedule)[^.\r\n]{0,80}\b(?:ET|EST|EDT|CT|CST|CDT|MT|MST|MDT|PT|PST|PDT|CET|CEST|EET|EEST|UTC|GMT)\b", re.I),
     re.compile(r"\b\d{1,2}(?::\d{2})?\s*(?:AM|PM)\s*[-–—]\s*\d{1,2}(?::\d{2})?\s*(?:AM|PM)\s*(?:ET|EST|EDT|CT|CST|CDT|MT|MST|MDT|PT|PST|PDT|CET|CEST|EET|EEST|UTC|GMT)\b", re.I),

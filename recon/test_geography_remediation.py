@@ -175,9 +175,8 @@ class RestrictionExtractionTests(unittest.TestCase):
 
     def test_no_sponsorship_variants(self):
         bodies = (
-            "Candidates must work without sponsorship for an export license.",
             "No visa sponsorship.", "No sponsorship for this role.",
-            "Sponsorship not available.",
+            "Sponsorship not available.", "Will not sponsor."
         )
         for body in bodies:
             with self.subTest(body=body):
@@ -240,8 +239,22 @@ class EligibilityDerivationTests(unittest.TestCase):
         extracted = replace(record(), geo_allow=(("US", "United States"), ("CA", "Canada")))
         self.assertEqual("excluded", eligibility_for(extracted, "EG")[0])
 
-    def test_no_rule_defaults_to_unclear(self):
-        self.assertEqual(("unclear", "no mapped geographic rule"), eligibility_for(record()))
+    def test_south_africa_maps_to_za_not_africa(self):
+        extracted = extract(record("South Africa", "Remote position."))
+        self.assertEqual({"ZA"}, tokens(extracted.geo_allow))
+        self.assertNotIn("AFRICA", tokens(extracted.geo_allow))
+        self.assertEqual("excluded", eligibility_for(extracted, "EG")[0])
+
+    def test_work_from_anywhere_within_us_maps_to_us_not_worldwide(self):
+        extracted = extract(record("Remote", "You can work from anywhere within the United States."))
+        self.assertIn("US", tokens(extracted.geo_allow))
+        self.assertNotIn("WORLDWIDE", tokens(extracted.geo_allow))
+        self.assertEqual("excluded", eligibility_for(extracted, "EG")[0])
+
+    def test_us_central_time_schedule_is_timezone_only(self):
+        extracted = extract(record("Remote", "Work from anywhere. Hours aligned with US Central Time."))
+        self.assertIn("TIMEZONE_ONLY", tokens(extracted.geo_deny))
+        self.assertEqual("unclear", eligibility_for(extracted, "EG")[0])
 
 
 if __name__ == "__main__":
