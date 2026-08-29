@@ -98,6 +98,79 @@ class ModelTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             ServiceRecord("service-1", "Assessment", "Performs assessments", ())
 
+    def test_atomic_assertion_model_invariants(self):
+        from truth.models import AtomicAssertion, Polarity, Modality
+        assertion = AtomicAssertion(
+            id="as-1",
+            subject_id="job-1",
+            predicate="employment.title",
+            value="Data Engineer",
+            assertion_type=AssertionType.DIRECT_FACT,
+            verification_status=VerificationStatus.VERIFIED,
+            evidence_ids=("ev-1",),
+            polarity=Polarity.POSITIVE,
+            modality=Modality.DEFINITE,
+        )
+        self.assertEqual("employment.title", assertion.predicate)
+        self.assertEqual("Data Engineer", assertion.value)
+        self.assertEqual(Polarity.POSITIVE, assertion.polarity)
+
+        with self.assertRaises(ValueError):
+            AtomicAssertion("as-bad", "job-1", "", "Val")
+        with self.assertRaises(ValueError):
+            AtomicAssertion("as-bad", "job-1", "pred", "Val", effective_from=date(2025, 1, 1), effective_to=date(2024, 1, 1))
+
+    def test_typed_relation_model_invariants(self):
+        from truth.models import TypedRelation, RelationType
+        relation = TypedRelation(
+            id="rel-1",
+            source_id="job-1",
+            relation_type=RelationType.ACHIEVED_DURING,
+            target_id="ach-1",
+            evidence_ids=("ev-1",),
+        )
+        self.assertEqual(RelationType.ACHIEVED_DURING, relation.relation_type)
+        with self.assertRaises(ValueError):
+            TypedRelation("rel-bad", "job-1", "type", "ach-1", effective_from=date(2025, 1, 1), effective_to=date(2024, 1, 1))
+
+    def test_metric_assertion_model_invariants(self):
+        from truth.models import MetricAssertion, Modality
+        metric = MetricAssertion(
+            id="met-1",
+            subject_id="ach-1",
+            numeric_value=40.0,
+            unit="%",
+            context="latency reduction",
+            modality=Modality.DEFINITE,
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-1",),
+        )
+        self.assertEqual(40.0, metric.numeric_value)
+        self.assertEqual("%", metric.unit)
+
+        with self.assertRaises(ValueError):
+            MetricAssertion("met-bad", "ach-1", -5, "%", "bad")
+        with self.assertRaises(ValueError):
+            MetricAssertion("met-bad", "ach-1", float("nan"), "%", "bad")
+
+    def test_claim_candidate_model_invariants(self):
+        from truth.models import ClaimCandidate, ProhibitedConceptCategory
+        candidate = ClaimCandidate(
+            text="Candidate text",
+            material_assertion_ids=("as-1",),
+            concepts=frozenset({ProhibitedConceptCategory.GUARANTEED_OUTCOME}),
+            requested_evidence_ids=("ev-1",),
+        )
+        self.assertIn(ProhibitedConceptCategory.GUARANTEED_OUTCOME, candidate.concepts)
+        with self.assertRaises(ValueError):
+            ClaimCandidate(text="", material_assertion_ids=())
+
+    def test_business_capacity_rejects_non_integer_for_int_fields(self):
+        with self.assertRaises(ValueError):
+            BusinessCapacity("cap-1", ("ev-1",), hours_per_week=1.5)
+        with self.assertRaises(ValueError):
+            BusinessCapacity("cap-1", ("ev-1",), min_project_value=1000.5)
+
 
 if __name__ == "__main__":
     unittest.main()

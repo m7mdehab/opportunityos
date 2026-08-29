@@ -248,9 +248,155 @@ class AdversarialTruthTests(unittest.TestCase):
         self.assertFalse(r_fake.allowed)
         self.assertEqual(AssertionType.PROHIBITED_CLAIM, r_fake.assertion_type)
 
+    def test_polarity_inversion_attacks(self):
+        from truth.models import EvidenceRecord
+        from truth.graph import TruthGraph
+
+        ev1 = EvidenceRecord("ev-neg-auth", "Not authorized to work in Exampleland", "cv", "auth")
+        ev2 = EvidenceRecord("ev-neg-skill", "No Kubernetes experience", "cv", "skill")
+        ev3 = EvidenceRecord("ev-neg-resp", "Not responsible for budget management", "cv", "resp")
+
+        graph = TruthGraph((ev1, ev2, ev3))
+        validator = ClaimValidator(graph)
+
+        # 1. Negative auth cannot become positive auth
+        r1 = validator.validate_claim("Authorized to work in Exampleland", ("ev-neg-auth",))
+        self.assertFalse(r1.allowed)
+        self.assertTrue(any("polarity" in reason for reason in r1.reasons))
+
+        # 2. Negative skill cannot become positive skill
+        r2 = validator.validate_claim("Kubernetes experience", ("ev-neg-skill",))
+        self.assertFalse(r2.allowed)
+        self.assertTrue(any("polarity" in reason for reason in r2.reasons))
+
+        # 3. Negative responsibility cannot become positive responsibility
+        r3 = validator.validate_claim("Responsible for budget management", ("ev-neg-resp",))
+        self.assertFalse(r3.allowed)
+        self.assertTrue(any("polarity" in reason for reason in r3.reasons))
+
+    def test_modality_bound_strengthening_attacks(self):
+        from truth.models import EvidenceRecord
+        from truth.graph import TruthGraph
+
+        ev_bound = EvidenceRecord("ev-bound", "At most 10 hours per week available", "cv", "cap")
+        ev_cond = EvidenceRecord("ev-cond", "Conditional on visa grant", "cv", "auth")
+
+        graph = TruthGraph((ev_bound, ev_cond))
+        validator = ClaimValidator(graph)
+
+        # 1. At most 10 cannot be claimed as exactly 10 or at least 10
+        r1 = validator.validate_claim("Available for at least 10 hours per week", ("ev-bound",))
+        self.assertFalse(r1.allowed)
+        self.assertTrue(any("upper-bound modality" in reason for reason in r1.reasons))
+
+        r1_exact = validator.validate_claim("Available exactly 10 hours per week", ("ev-bound",))
+        self.assertFalse(r1_exact.allowed)
+        self.assertTrue(any("upper-bound modality" in reason for reason in r1_exact.reasons))
+
+        # 2. Conditional cannot be claimed as unconditional
+        r2 = validator.validate_claim("Authorized unconditionally", ("ev-cond",))
+        self.assertFalse(r2.allowed)
+        self.assertTrue(any("conditional" in reason for reason in r2.reasons))
+
+    def test_temporal_validity_and_expiration(self):
+        from truth.models import EvidenceRecord, CertificationRecord, CertificationState, CareerProfile
+        from truth.graph import TruthGraph
+
+        ev_cert = EvidenceRecord("ev-cert-exp", "Completed Example Cloud Architect", "cv", "cert")
+        cert = CertificationRecord(
+            "cert-exp", "Example Cloud Architect", "Example Issuer",
+            CertificationState.COMPLETED, ("ev-cert-exp",),
+            issued_date=date(2023, 1, 1), expiry_date=date(2025, 1, 1),
+        )
+        profile = CareerProfile("prof-cert", certifications=(cert,))
+        graph = TruthGraph((ev_cert,))
+        graph.add_career_profile(profile)
+        validator = ClaimValidator(graph)
+
+        # 1. Valid before expiration
+        r_valid = validator.validate_claim(
+            "Completed Example Cloud Architect", ("ev-cert-exp",), as_of=date(2024, 6, 1)
+        )
+        self.assertTrue(r_valid.allowed)
+
+        # 2. Expired as of 2026 cannot be represented as currently held
+        r_expired = validator.validate_claim(
+            "Completed Example Cloud Architect", ("ev-cert-exp",), as_of=date(2026, 8, 1)
+        )
+        self.assertFalse(r_expired.allowed)
+        self.assertTrue(any("expired" in reason for reason in r_expired.reasons))
+
+    def test_field_level_atomic_mismatch_attacks(self):
+        from truth.models import EvidenceRecord, EmploymentRecord, SkillRecord, LanguageRecord, WorkAuthorization, CareerProfile
+        from truth.graph import TruthGraph
+
+        ev_analyst = EvidenceRecord("ev-analyst", "Data Analyst at Example Corp", "cv", "emp")
+        ev_python = EvidenceRecord("ev-python", "Uses Python", "cv", "skill")
+        ev_english = EvidenceRecord("ev-english", "English professional proficiency", "cv", "lang")
+        ev_auth = EvidenceRecord("ev-auth", "Authorized in Exampleland", "cv", "auth")
+
+        graph = TruthGraph((ev_analyst, ev_python, ev_english, ev_auth))
+        validator = ClaimValidator(graph)
+
+        # 1. Title CDO backed only by Data Analyst evidence
+        r1 = validator.validate_claim("Chief Data Officer at Example Corp", ("ev-analyst",))
+        self.assertFalse(r1.allowed)
+
+        # 2. Skill Kubernetes backed only by Python evidence
+        r2 = validator.validate_claim("Kubernetes developer", ("ev-python",))
+        self.assertFalse(r2.allowed)
+
+        # 3. Language Japanese backed only by English evidence
+        r3 = validator.validate_claim("Fluent in Japanese", ("ev-english",))
+        self.assertFalse(r3.allowed)
+
+        # 4. Work auth Japan backed only by Exampleland evidence
+        r4 = validator.validate_claim("Authorized to work in Japan", ("ev-auth",))
+        self.assertFalse(r4.allowed)
+
+    def test_same_parent_false_relationship_composition(self):
+        # Even under same parent, unsupported relations cannot be fabricated
+        result = self.validator.validate_claim(
+            "Reduced processing time by 40% continuously from 2022-01-01 to 2024-06-30.",
+            ("ev-dates", "ev-achievement"),
+        )
+        self.assertFalse(result.allowed)
+
+    def test_single_sentence_multi_metric_isolation(self):
+        from truth.models import EvidenceRecord, Achievement, MetricVerification, EmploymentRecord, CareerProfile
+        from truth.graph import TruthGraph
+
+        ev_multi = EvidenceRecord("ev-multi", "Reduced latency by 40% and increased revenue by 200%.", "cv", "ach")
+        # Only 40% is verified; 200% is unverified
+        ach = Achievement("ach-multi", "Reduced latency by 40%.", ("ev-multi",), MetricVerification.VERIFIED)
+        emp = EmploymentRecord("emp-m", "Org", "Title", date(2020, 1, 1), None, ("ev-multi",), achievements=(ach,))
+        profile = CareerProfile("prof-m", employment=(emp,))
+        graph = TruthGraph((ev_multi,))
+        graph.add_career_profile(profile)
+        validator = ClaimValidator(graph)
+
+        # Verified metric passes
+        r_good = validator.validate_claim("Reduced latency by 40%.", ("ev-multi",))
+        self.assertTrue(r_good.allowed)
+
+        # Unverified metric in same sentence fails
+        r_bad = validator.validate_claim("Increased revenue by 200%.", ("ev-multi",))
+        self.assertFalse(r_bad.allowed)
+
+    def test_structured_never_claim_candidate_dominance(self):
+        from truth.models import ClaimCandidate, ProhibitedConceptCategory
+
+        candidate = ClaimCandidate(
+            text="We provide high quality engineering.",
+            concepts=frozenset({ProhibitedConceptCategory.GUARANTEED_OUTCOME}),
+        )
+        result = self.validator.validate_candidate(candidate)
+        self.assertFalse(result.allowed)
+        self.assertEqual(AssertionType.PROHIBITED_CLAIM, result.assertion_type)
+        self.assertTrue(any("guaranteed_outcome" in reason for reason in result.reasons))
+
     def test_business_capacity_strict_numeric_validation(self):
         from truth.models import BusinessCapacity
-        import math
 
         invalid_values = (
             True, False, float("nan"), float("inf"), float("-inf"), -1, -0.001, -1000,

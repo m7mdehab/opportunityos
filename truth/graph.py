@@ -3,15 +3,35 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from datetime import date
+import re
 from types import MappingProxyType
-from typing import TypeAlias
+from typing import Any, TypeAlias
 
 from .models import (
+    Achievement,
     AssertionType,
+    AtomicAssertion,
     BusinessCapacity,
     CapabilityProfile,
     CareerProfile,
+    CertificationRecord,
+    CertificationState,
+    EducationRecord,
+    EmploymentRecord,
     EvidenceRecord,
+    LanguageRecord,
+    MetricAssertion,
+    MetricVerification,
+    Modality,
+    Polarity,
+    PortfolioItem,
+    RelationType,
+    ServiceRecord,
+    SkillRecord,
+    TypedRelation,
+    VerificationStatus,
+    WorkAuthorization,
 )
 
 
@@ -19,24 +39,52 @@ Profile: TypeAlias = CareerProfile | CapabilityProfile
 
 
 class TruthGraph:
-    """Owns atomic evidence and immutable profiles linked to that evidence.
+    """Owns atomic evidence, assertions, typed relations, and immutable profiles.
 
     Mutation is explicit and transactional: profile validation finishes before any
     graph index is changed. Returned mappings and records are immutable.
     """
 
-    def __init__(self, evidence: Iterable[EvidenceRecord] = ()) -> None:
+    def __init__(
+        self,
+        evidence: Iterable[EvidenceRecord] = (),
+        assertions: Iterable[AtomicAssertion] = (),
+        relations: Iterable[TypedRelation] = (),
+        metrics: Iterable[MetricAssertion] = (),
+    ) -> None:
         self._evidence: dict[str, EvidenceRecord] = {}
+        self._assertions: dict[str, AtomicAssertion] = {}
+        self._relations: dict[str, TypedRelation] = {}
+        self._metrics: dict[str, MetricAssertion] = {}
         self._profiles: dict[str, Profile] = {}
         self._entities: dict[str, object] = {}
         self._entity_evidence: dict[str, tuple[str, ...]] = {}
         self._evidence_entities: dict[str, list[str]] = {}
+
         for record in evidence:
             self.add_evidence(record)
+        for assertion in assertions:
+            self.add_assertion(assertion)
+        for relation in relations:
+            self.add_relation(relation)
+        for metric in metrics:
+            self.add_metric_assertion(metric)
 
     @property
     def evidence_records(self):
         return MappingProxyType(self._evidence)
+
+    @property
+    def assertions(self):
+        return MappingProxyType(self._assertions)
+
+    @property
+    def relations(self):
+        return MappingProxyType(self._relations)
+
+    @property
+    def metrics(self):
+        return MappingProxyType(self._metrics)
 
     @property
     def profiles(self):
@@ -47,6 +95,30 @@ class TruthGraph:
             raise ValueError(f"duplicate graph node id: {record.id}")
         self._evidence[record.id] = record
         self._evidence_entities.setdefault(record.id, [])
+
+    def add_assertion(self, assertion: AtomicAssertion) -> None:
+        if assertion.id in self._assertions:
+            raise ValueError(f"duplicate assertion id: {assertion.id}")
+        for ev_id in assertion.evidence_ids:
+            if ev_id not in self._evidence:
+                raise ValueError(f"assertion {assertion.id} references unknown evidence: {ev_id}")
+        self._assertions[assertion.id] = assertion
+
+    def add_relation(self, relation: TypedRelation) -> None:
+        if relation.id in self._relations:
+            raise ValueError(f"duplicate relation id: {relation.id}")
+        for ev_id in relation.evidence_ids:
+            if ev_id not in self._evidence:
+                raise ValueError(f"relation {relation.id} references unknown evidence: {ev_id}")
+        self._relations[relation.id] = relation
+
+    def add_metric_assertion(self, metric: MetricAssertion) -> None:
+        if metric.id in self._metrics:
+            raise ValueError(f"duplicate metric assertion id: {metric.id}")
+        for ev_id in metric.evidence_ids:
+            if ev_id not in self._evidence:
+                raise ValueError(f"metric assertion {metric.id} references unknown evidence: {ev_id}")
+        self._metrics[metric.id] = metric
 
     def add_career_profile(self, profile: CareerProfile) -> None:
         self._add_profile(profile)
@@ -78,6 +150,142 @@ class TruthGraph:
             self._entity_evidence[node.id] = links[node.id]
             for ev_id in links[node.id]:
                 self._evidence_entities.setdefault(ev_id, []).append(node.id)
+
+        # Auto-project field assertions and typed relations for profile entities
+        self._project_profile_assertions(profile)
+
+    def _project_profile_assertions(self, profile: Profile) -> None:
+        if isinstance(profile, CareerProfile):
+            for emp in profile.employment:
+                self._create_field_assertion(emp.id, "employment.organization", emp.organization, emp.evidence_ids, effective_from=emp.start_date, effective_to=emp.end_date)
+                self._create_field_assertion(emp.id, "employment.title", emp.title, emp.evidence_ids, effective_from=emp.start_date, effective_to=emp.end_date)
+                self._create_field_assertion(emp.id, "employment.start_date", emp.start_date, emp.evidence_ids, effective_from=emp.start_date, effective_to=emp.end_date)
+                if emp.end_date:
+                    self._create_field_assertion(emp.id, "employment.end_date", emp.end_date, emp.evidence_ids, effective_from=emp.start_date, effective_to=emp.end_date)
+                for idx, resp in enumerate(emp.responsibilities):
+                    self._create_field_assertion(f"{emp.id}.resp.{idx}", "employment.responsibility", resp, emp.evidence_ids, effective_from=emp.start_date, effective_to=emp.end_date)
+
+                for ach in emp.achievements:
+                    self._create_field_assertion(ach.id, "achievement.statement", ach.statement, ach.evidence_ids)
+                    rel_id = f"rel_{emp.id}_{ach.id}"
+                    if rel_id not in self._relations:
+                        self._relations[rel_id] = TypedRelation(
+                            id=rel_id,
+                            source_id=emp.id,
+                            relation_type=RelationType.ACHIEVED_DURING,
+                            target_id=ach.id,
+                            evidence_ids=ach.evidence_ids,
+                            effective_from=emp.start_date,
+                            effective_to=emp.end_date,
+                        )
+                    # Extract numeric metric assertions from achievement
+                    self._extract_metrics_from_text(ach.id, ach.statement, ach.evidence_ids, ach.metric_verification)
+
+            for edu in profile.education:
+                self._create_field_assertion(edu.id, "education.institution", edu.institution, edu.evidence_ids, effective_from=edu.start_date, effective_to=edu.end_date)
+                self._create_field_assertion(edu.id, "education.qualification", edu.qualification, edu.evidence_ids, effective_from=edu.start_date, effective_to=edu.end_date)
+
+            for cert in profile.certifications:
+                modality = Modality.PLANNED if cert.state is CertificationState.PLANNED else Modality.DEFINITE
+                self._create_field_assertion(cert.id, "certification.name", cert.name, cert.evidence_ids, modality=modality, effective_from=cert.issued_date, effective_to=cert.expiry_date)
+                self._create_field_assertion(cert.id, "certification.state", cert.state.value, cert.evidence_ids, modality=modality, effective_from=cert.issued_date, effective_to=cert.expiry_date)
+
+            for skill in profile.skills:
+                self._create_field_assertion(skill.id, "skill.name", skill.name, skill.evidence_ids)
+                if skill.proficiency:
+                    self._create_field_assertion(skill.id, "skill.proficiency", skill.proficiency, skill.evidence_ids)
+
+            for lang in profile.languages:
+                self._create_field_assertion(lang.id, "language.language", lang.language, lang.evidence_ids)
+                self._create_field_assertion(lang.id, "language.proficiency", lang.proficiency, lang.evidence_ids)
+
+            for auth in profile.work_authorizations:
+                self._create_field_assertion(auth.id, "work_authorization.jurisdiction", auth.jurisdiction, auth.evidence_ids, effective_to=auth.expiry_date)
+                self._create_field_assertion(auth.id, "work_authorization.status", auth.status, auth.evidence_ids, effective_to=auth.expiry_date)
+        else:
+            for srv in profile.services:
+                self._create_field_assertion(srv.id, "service.name", srv.name, srv.evidence_ids, assertion_type=AssertionType.DERIVED_CAPABILITY)
+                self._create_field_assertion(srv.id, "service.description", srv.description, srv.evidence_ids, assertion_type=AssertionType.DERIVED_CAPABILITY)
+
+            for port in profile.portfolio:
+                self._create_field_assertion(port.id, "portfolio.title", port.title, port.evidence_ids)
+                self._create_field_assertion(port.id, "portfolio.summary", port.summary, port.evidence_ids)
+                if port.outcome:
+                    self._create_field_assertion(port.id, "portfolio.outcome", port.outcome, port.evidence_ids)
+                    self._extract_metrics_from_text(port.id, port.outcome, port.evidence_ids, port.metric_verification)
+
+            if profile.capacity:
+                cap = profile.capacity
+                if cap.hours_per_week is not None:
+                    self._create_field_assertion(cap.id, "capacity.hours_per_week", cap.hours_per_week, cap.evidence_ids, effective_from=cap.available_from)
+                if cap.annual_turnover_usd is not None:
+                    self._create_field_assertion(cap.id, "capacity.annual_turnover_usd", cap.annual_turnover_usd, cap.evidence_ids, effective_from=cap.available_from)
+                if cap.bid_bond_capacity_usd is not None:
+                    self._create_field_assertion(cap.id, "capacity.bid_bond_capacity_usd", cap.bid_bond_capacity_usd, cap.evidence_ids, effective_from=cap.available_from)
+                if cap.legal_capacity is not None:
+                    self._create_field_assertion(cap.id, "capacity.legal_capacity", cap.legal_capacity, cap.evidence_ids, effective_from=cap.available_from)
+
+    def _create_field_assertion(
+        self,
+        subject_id: str,
+        predicate: str,
+        value: Any,
+        evidence_ids: tuple[str, ...],
+        *,
+        assertion_type: AssertionType = AssertionType.DIRECT_FACT,
+        verification_status: VerificationStatus = VerificationStatus.VERIFIED,
+        polarity: Polarity = Polarity.POSITIVE,
+        modality: Modality = Modality.DEFINITE,
+        effective_from: date | None = None,
+        effective_to: date | None = None,
+    ) -> None:
+        assertion_id = f"as_{subject_id}_{predicate.replace('.', '_')}"
+        if assertion_id not in self._assertions:
+            self._assertions[assertion_id] = AtomicAssertion(
+                id=assertion_id,
+                subject_id=subject_id,
+                predicate=predicate,
+                value=value,
+                assertion_type=assertion_type,
+                verification_status=verification_status,
+                evidence_ids=evidence_ids,
+                polarity=polarity,
+                modality=modality,
+                effective_from=effective_from,
+                effective_to=effective_to,
+            )
+
+    def _extract_metrics_from_text(
+        self,
+        subject_id: str,
+        text: str,
+        evidence_ids: tuple[str, ...],
+        verification: MetricVerification,
+    ) -> None:
+        metric_pattern = re.compile(
+            r"(?<![\w-])(?:(?P<curr>[$€£])\s*)?(?P<val>\d+(?:[.,]\d+)?)(?:\s*(?P<unit>%|[xX]\b|hours?|days?|weeks?|months?|users?|clients?|projects?|requests?|seconds?|minutes?|USD|EUR|GBP))?",
+            re.IGNORECASE,
+        )
+        for idx, match in enumerate(metric_pattern.finditer(text)):
+            curr = match.group("curr") or ""
+            val_str = match.group("val").replace(",", "")
+            unit = match.group("unit") or curr or "count"
+            try:
+                num_val = float(val_str) if "." in val_str else int(val_str)
+            except ValueError:
+                continue
+
+            metric_id = f"metric_{subject_id}_{idx}"
+            if metric_id not in self._metrics:
+                self._metrics[metric_id] = MetricAssertion(
+                    id=metric_id,
+                    subject_id=subject_id,
+                    numeric_value=num_val,
+                    unit=unit.strip(),
+                    context=text[:100],
+                    verification_status=verification,
+                    evidence_ids=evidence_ids,
+                )
 
     def entities_for_evidence(self, evidence_id: str) -> tuple[object, ...]:
         """Return all entity nodes supported by a given evidence record."""
@@ -200,6 +408,45 @@ class TruthGraph:
         return tuple(
             record for record in self._evidence.values() if record.assertion_type in inference_types
         )
+
+    def assertions_for_subject(self, subject_id: str) -> tuple[AtomicAssertion, ...]:
+        return tuple(a for a in self._assertions.values() if a.subject_id == subject_id)
+
+    def assertion_for_field(self, subject_id: str, predicate: str) -> AtomicAssertion | None:
+        for a in self._assertions.values():
+            if a.subject_id == subject_id and a.predicate == predicate:
+                return a
+        return None
+
+    def relations_for_source(self, source_id: str) -> tuple[TypedRelation, ...]:
+        return tuple(r for r in self._relations.values() if r.source_id == source_id)
+
+    def relations_between(self, source_id: str, target_id: str) -> tuple[TypedRelation, ...]:
+        return tuple(r for r in self._relations.values() if r.source_id == source_id and r.target_id == target_id)
+
+    def has_relation(
+        self,
+        source_id: str,
+        relation_type: str,
+        target_id: str,
+        *,
+        as_of: date | None = None,
+    ) -> bool:
+        for r in self._relations.values():
+            if r.source_id == source_id and r.relation_type == relation_type and r.target_id == target_id:
+                if as_of is not None:
+                    if r.effective_from and as_of < r.effective_from:
+                        continue
+                    if r.effective_to and as_of > r.effective_to:
+                        continue
+                return True
+        return False
+
+    def metric_assertions_for_evidence(self, evidence_id: str) -> tuple[MetricAssertion, ...]:
+        return tuple(m for m in self._metrics.values() if evidence_id in m.evidence_ids)
+
+    def metric_assertions_for_subject(self, subject_id: str) -> tuple[MetricAssertion, ...]:
+        return tuple(m for m in self._metrics.values() if m.subject_id == subject_id)
 
     def metric_status_for_evidence(self, evidence_id: str):
         """Find metric statuses of achievements/portfolio items linked to evidence."""

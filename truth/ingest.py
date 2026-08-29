@@ -14,6 +14,7 @@ from .graph import TruthGraph
 from .models import (
     Achievement,
     AssertionType,
+    AtomicAssertion,
     BusinessCapacity,
     CapabilityProfile,
     CareerProfile,
@@ -24,13 +25,17 @@ from .models import (
     EngagementType,
     EvidenceRecord,
     LanguageRecord,
+    MetricAssertion,
     MetricVerification,
+    Modality,
     NeverClaimRule,
+    Polarity,
     PortfolioItem,
     ProhibitedConceptCategory,
     RedLineRule,
     ServiceRecord,
     SkillRecord,
+    TypedRelation,
     VerificationStatus,
     WorkAuthorization,
 )
@@ -176,13 +181,37 @@ def _finite_non_negative_float_or_none(value: Any, field_name: str) -> float | N
     return val
 
 
-def _finite_non_negative_int_or_none(value: Any, field_name: str) -> int | None:
-    val = _finite_non_negative_float_or_none(value, field_name)
-    if val is None:
+def _strict_non_negative_int_or_none(value: Any, field_name: str) -> int | None:
+    if value is None:
         return None
-    if isinstance(value, float) and not val.is_integer():
-        raise IngestionError(f"{field_name} must be an integer")
-    return int(val)
+    if isinstance(value, bool):
+        raise IngestionError(f"{field_name} cannot be a boolean")
+    if isinstance(value, int):
+        val = value
+    elif isinstance(value, float):
+        if not value.is_integer():
+            raise IngestionError(f"{field_name} must be an integer (fractional float is forbidden)")
+        val = int(value)
+    elif isinstance(value, str):
+        cleaned = value.strip()
+        if not re.fullmatch(r"[+-]?\d+", cleaned):
+            raise IngestionError(f"{field_name} must be a valid integer string (fractional and non-decimal values forbidden)")
+        try:
+            val = int(cleaned)
+        except ValueError as error:
+            raise IngestionError(f"{field_name} must be a valid integer") from error
+    else:
+        raise IngestionError(f"{field_name} must be an integer or null")
+
+    if val < 0:
+        raise IngestionError(f"{field_name} cannot be negative")
+    if val > 10**14:
+        raise IngestionError(f"{field_name} exceeds maximum allowable integer limit")
+    return val
+
+
+def _positive_int_or_none(value: Any, field_name: str) -> int | None:
+    return _strict_non_negative_int_or_none(value, field_name)
 
 
 def parse_evidence(value: Any) -> EvidenceRecord:
@@ -327,11 +356,22 @@ def parse_never_claim(value: Any) -> NeverClaimRule:
         required={"id"},
         optional={"concept", "description", "reason", "pattern", "phrase", "forbidden_phrases"},
     )
-    concept = _enum(
-        ProhibitedConceptCategory,
-        data.get("concept", "guaranteed_outcome"),
-        "never_claim.concept",
-    )
+    if "concept" in data:
+        concept = _enum(
+            ProhibitedConceptCategory,
+            data["concept"],
+            "never_claim.concept",
+        )
+    else:
+        # Require explicit concept or derive predictably from id if valid enum value
+        concept_val = data["id"].replace("-", "_").lower()
+        try:
+            concept = ProhibitedConceptCategory(concept_val)
+        except ValueError:
+            raise IngestionError(
+                f"never_claim {data['id']} requires a valid concept from: {', '.join(sorted(item.value for item in ProhibitedConceptCategory))}"
+            )
+
     pattern = data.get("pattern") or ""
     phrase = data.get("phrase")
     forbidden_phrases = _strings(data.get("forbidden_phrases"), "never_claim.forbidden_phrases")
@@ -349,6 +389,70 @@ def parse_never_claim(value: Any) -> NeverClaimRule:
         description=description,
         pattern=pattern,
         forbidden_phrases=forbidden_phrases,
+    )
+
+
+def parse_assertion(value: Any) -> AtomicAssertion:
+    data = _mapping(value, "assertion")
+    _validate_keys(
+        data, "assertion",
+        required={"id", "subject_id", "predicate", "value"},
+        optional={"assertion_type", "verification_status", "evidence_ids", "polarity", "modality", "qualifiers", "effective_from", "effective_to", "supersedes", "conflicts_with"},
+    )
+    return AtomicAssertion(
+        id=data["id"],
+        subject_id=data["subject_id"],
+        predicate=data["predicate"],
+        value=data["value"],
+        assertion_type=_enum(AssertionType, data.get("assertion_type", "direct_fact"), "assertion.assertion_type"),
+        verification_status=_enum(VerificationStatus, data.get("verification_status", "verified"), "assertion.verification_status"),
+        evidence_ids=_strings(data.get("evidence_ids"), "assertion.evidence_ids"),
+        polarity=_enum(Polarity, data.get("polarity", "positive"), "assertion.polarity"),
+        modality=_enum(Modality, data.get("modality", "definite"), "assertion.modality"),
+        qualifiers=_strings(data.get("qualifiers"), "assertion.qualifiers"),
+        effective_from=parse_date(data.get("effective_from"), "assertion.effective_from"),
+        effective_to=parse_date(data.get("effective_to"), "assertion.effective_to"),
+        supersedes=_strings(data.get("supersedes"), "assertion.supersedes"),
+        conflicts_with=_strings(data.get("conflicts_with"), "assertion.conflicts_with"),
+    )
+
+
+def parse_relation(value: Any) -> TypedRelation:
+    data = _mapping(value, "relation")
+    _validate_keys(
+        data, "relation",
+        required={"id", "source_id", "relation_type", "target_id"},
+        optional={"evidence_ids", "assertion_type", "verification_status", "effective_from", "effective_to"},
+    )
+    return TypedRelation(
+        id=data["id"],
+        source_id=data["source_id"],
+        relation_type=data["relation_type"],
+        target_id=data["target_id"],
+        evidence_ids=_strings(data.get("evidence_ids"), "relation.evidence_ids"),
+        assertion_type=_enum(AssertionType, data.get("assertion_type", "direct_fact"), "relation.assertion_type"),
+        verification_status=_enum(VerificationStatus, data.get("verification_status", "verified"), "relation.verification_status"),
+        effective_from=parse_date(data.get("effective_from"), "relation.effective_from"),
+        effective_to=parse_date(data.get("effective_to"), "relation.effective_to"),
+    )
+
+
+def parse_metric_assertion(value: Any) -> MetricAssertion:
+    data = _mapping(value, "metric")
+    _validate_keys(
+        data, "metric",
+        required={"id", "subject_id", "numeric_value", "unit", "context"},
+        optional={"modality", "verification_status", "evidence_ids"},
+    )
+    return MetricAssertion(
+        id=data["id"],
+        subject_id=data["subject_id"],
+        numeric_value=_finite_non_negative_float_or_none(data["numeric_value"], "metric.numeric_value"),
+        unit=data["unit"],
+        context=data["context"],
+        modality=_enum(Modality, data.get("modality", "definite"), "metric.modality"),
+        verification_status=_enum(MetricVerification, data.get("verification_status", "verified"), "metric.verification_status"),
+        evidence_ids=_strings(data.get("evidence_ids"), "metric.evidence_ids"),
     )
 
 
@@ -419,9 +523,9 @@ def parse_capacity(value: Any) -> BusinessCapacity:
     return BusinessCapacity(
         id=data["id"], evidence_ids=_strings(data["evidence_ids"], "capacity.evidence_ids"),
         available_from=parse_date(data.get("available_from"), "capacity.available_from"),
-        hours_per_week=_finite_non_negative_int_or_none(data.get("hours_per_week"), "capacity.hours_per_week"),
-        min_project_value=_finite_non_negative_int_or_none(data.get("min_project_value"), "capacity.min_project_value"),
-        max_project_value=_finite_non_negative_int_or_none(data.get("max_project_value"), "capacity.max_project_value"),
+        hours_per_week=_strict_non_negative_int_or_none(data.get("hours_per_week"), "capacity.hours_per_week"),
+        min_project_value=_strict_non_negative_int_or_none(data.get("min_project_value"), "capacity.min_project_value"),
+        max_project_value=_strict_non_negative_int_or_none(data.get("max_project_value"), "capacity.max_project_value"),
         annual_turnover_usd=_finite_non_negative_float_or_none(data.get("annual_turnover_usd"), "capacity.annual_turnover_usd"),
         bid_bond_capacity_usd=_finite_non_negative_float_or_none(data.get("bid_bond_capacity_usd"), "capacity.bid_bond_capacity_usd"),
         currencies=_strings(data.get("currencies"), "capacity.currencies"),
@@ -454,9 +558,16 @@ def parse_capability_profile(value: Any) -> CapabilityProfile:
 def graph_from_dict(value: Any) -> TruthGraph:
     data = _mapping(value, "document")
     _validate_keys(
-        data, "document", required={"evidence"}, optional={"career_profile", "capability_profile"}
+        data, "document",
+        required={"evidence"},
+        optional={"career_profile", "capability_profile", "assertions", "relations", "metrics"},
     )
-    graph = TruthGraph(parse_evidence(item) for item in _tuple(data["evidence"], "evidence"))
+    evidence_nodes = tuple(parse_evidence(item) for item in _tuple(data["evidence"], "evidence"))
+    assertions = tuple(parse_assertion(item) for item in _tuple(data.get("assertions"), "assertions"))
+    relations = tuple(parse_relation(item) for item in _tuple(data.get("relations"), "relations"))
+    metrics = tuple(parse_metric_assertion(item) for item in _tuple(data.get("metrics"), "metrics"))
+
+    graph = TruthGraph(evidence=evidence_nodes, assertions=assertions, relations=relations, metrics=metrics)
     if data.get("career_profile") is not None:
         graph.add_career_profile(parse_career_profile(data["career_profile"]))
     if data.get("capability_profile") is not None:
