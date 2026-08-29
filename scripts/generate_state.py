@@ -144,7 +144,7 @@ def generated_at() -> str:
         existing = STATE_PATH.read_text(encoding="utf-8")
         match = re.search(r"(?m)^- \*\*Generated:\*\* (.+)$", existing)
         if match:
-            return match.group(1)
+            return match.group(1).strip()
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
