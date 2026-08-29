@@ -1,10 +1,10 @@
 # AUDIT-002 - Structural Authority and Assertion Closure Independent Audit
 
-**Date:** 2026-08-29
-**Auditor:** Independent Blinded Truth-Integrity and Structural Authority Auditor (Subagent `73055c7e-ef0d-4d9e-bac3-bace66e17a30`)
-**Audited Head:** `fix/brief-002-terminal-assertion-authority` (`2aa47af9f41fd13418ebe389ad3075f81f3833fa`)
+**Date:** 2026-08-30
+**Auditor:** Independent Blinded Truth-Integrity and Structural Authority Auditor (Subagent `65d24709-4f7c-4ec5-b5e4-d09095287703`)
+**Audited Head:** `fix/brief-002-three-invariants` (`1ac1f69b246d9a8181fba8d2d442a160d94d2ddb`)
 **Scope:** `truth/models.py`, `truth/graph.py`, `truth/ingest.py`, `truth/validator.py`, `truth/fixtures.py`, `truth/test_models.py`, `truth/test_graph.py`, `truth/test_ingest.py`, `truth/test_adversarial.py`, `truth/test_property.py`, `truth/test_validator.py`
-**Overall Verdict:** 10 / 10 CRITERIA SATISFIED - FULL PASS
+**Overall Verdict:** 10 / 10 CRITERIA SATISFIED + 3 / 3 MECHANICAL INVARIANTS SATISFIED - FULL PASS (BRIEF-002 CLOSED)
 
 ---
 
@@ -191,31 +191,33 @@ The OpportunityOS truth subsystem architecture meets the highest standard of str
 
 ---
 
-## Final Four-Invariant Closure Audit Addendum
+## Final Three-Invariant Mechanical Closure Audit Addendum
 
 **Date:** 2026-08-30  
-**Auditor:** Independent Blinded Truth-Integrity and Structural Authority Auditor (Subagent `a5df2bf5-9cf1-4383-9a27-24bbbff2ff1f`)  
-**Audited Target SHA:** `14e86430f40a7d671b0e2fd8cfa2624a4b0a1b6a`  
-**Overall Verdict:** **4 / 4 FINAL INVARIANTS SATISFIED - FULL PASS**
+**Auditor:** Independent Blinded Truth-Integrity and Structural Authority Auditor (Subagent `65d24709-4f7c-4ec5-b5e4-d09095287703`)  
+**Audited Target SHA:** `1ac1f69b246d9a8181fba8d2d442a160d94d2ddb`  
+**Overall Verdict:** **3 / 3 MECHANICAL INVARIANTS SATISFIED - FULL PASS (BRIEF-002 CLOSED)**
 
 ### Criteria & Verdicts:
 
-1. **Subject/Predicate-Safe Field Provenance:** **PASS**
-   - In `truth/graph.py` (`_single_record_supports_value`), supervisor/relational patterns (`reports to`, `managed by`, `supervised by`, etc.) strictly prevent supervisor titles from supporting the subject's title. Client names cannot establish employer organization, certification prerequisites cannot establish held credentials, and negated jurisdictions cannot establish work authorization.
-   - Verified by `truth/test_adversarial.py`: `test_invariant_1_subject_predicate_safe_field_provenance`.
+1. **Invariant 1: Subject/Predicate-Safe Field Provenance via Explicit Scope (No Phrase Regexes):** **PASS**
+   - In `truth/graph.py` (`_single_record_supports_value`), phrase-level regexes (`reports-to`, `managed-by`, `client-was`, `prerequisite`) are completely removed.
+   - `_IDENTITY_SENSITIVE_PREDICATES` strictly enforces that identity-sensitive fields (`employment.title`, `employment.market_facing_title`, `employment.organization`, `certification.name`, `certification.issuer`, `work_authorization.status`, `work_authorization.jurisdiction`) require either exact scalar content, explicit metadata scope, or field-specific locator scope. Unscoped prose fails closed.
+   - Concrete bypasses verified in `truth/test_adversarial.py:741-789`:
+     - `"Chief Data Officer manages the Data Engineer at Acme Corp from 2022-01-01."` with `EmploymentRecord.title = "Chief Data Officer"` strictly raises `ValueError`.
+     - `"Worked for client BetaCorp while employed by AlphaCorp from 2022-01-01."` with `EmploymentRecord.organization = "BetaCorp"` strictly raises `ValueError`.
 
-2. **Real Complete Material-Field Manifest & Reflection:** **PASS**
-   - In `truth/models.py`, `CANONICAL_MATERIAL_MANIFEST` authoritatively specifies all material fields across all 12 domain models.
-   - Reflection test `truth/test_adversarial.py`: `test_invariant_2_canonical_material_field_manifest_reflection` automatically tests all `dataclasses.fields()` across models and guarantees test failure if any domain field is added without manifest classification.
+2. **Invariant 2: CANONICAL_MATERIAL_MANIFEST as the Unified Executable Engine:** **PASS**
+   - In `truth/graph.py`, `_validate_entity_manifest()` and `_project_entity_manifest()` are unified generic visitors driven strictly by `CANONICAL_MATERIAL_MANIFEST`. Handwritten switch statements are eliminated.
+   - Synthetic/test-only material field spec mutation test in `truth/test_adversarial.py:790-856` proves the common manifest engine executes both validation and projection.
+   - Profile-level fallback to `self._evidence.values()` is eliminated when `profile.evidence_ids` is empty. Unbacked profile-level fields strictly raise `ValueError`.
 
-3. **Metric Assertions Are the Only Metric Authority:** **PASS**
-   - Direct authorization path from parent entity `metric_verification` to claim text is completely removed. Numeric claim validation in `truth/validator.py` (`_validate_metric_provenance`) requires matching an atomic `MetricAssertion` with exact numeric value, unit, semantic context, and `verification_status=MetricVerification.VERIFIED`.
-   - Multi-metric isolation verified across both sentence orders in `truth/test_adversarial.py`: `test_invariant_3_metric_assertions_are_sole_authority`.
-
-4. **ClaimCandidate Authorized by Assertions, Not Extra Text:** **PASS**
-   - In `truth/validator.py` (`ClaimValidator.validate_candidate`), candidate text facts must be authorized strictly by the selected material assertions' values and predicates, rather than unasserted extra facts present in evidence records.
-   - Verified by `truth/test_adversarial.py`: `test_invariant_4_candidate_authorized_by_assertions_not_extra_text`.
+3. **Invariant 3: MetricAssertion as the Sole Metric Authority:** **PASS**
+   - In `truth/graph.py` (`_extract_metrics_from_text`), auto-extracted candidate metrics unconditionally assign `MetricVerification.UNAVAILABLE`.
+   - Direct paths from parent `Achievement.metric_verification` or `PortfolioItem.metric_verification` to VERIFIED atomic metrics are completely removed.
+   - Verified via real profile auto-extraction in `truth/test_adversarial.py:857-937`:
+     - Statement `'Revenue increased 40% and latency fell 40%.'` with parent `VERIFIED` yields `UNAVAILABLE` metrics until an explicit `MetricAssertion` is supplied for `latency fell 40%`, allowing `'Latency fell 40%.'` and rejecting `'Revenue increased 40%.'` across both forward and reversed sentence orders.
 
 ### Final Audit Summary:
 
-Commit `14e86430f40a7d671b0e2fd8cfa2624a4b0a1b6a` satisfies all structural authority invariants completely and fail-closed. No bypass paths, unasserted text leaks, or metric inheritance vulnerabilities remain in the truth subsystem.
+Commit `1ac1f69b246d9a8181fba8d2d442a160d94d2ddb` satisfies all structural authority invariants completely and fail-closed. No bypass paths, unasserted text leaks, regex heuristics, or metric inheritance vulnerabilities remain in the truth subsystem. BRIEF-002 is definitively closed.

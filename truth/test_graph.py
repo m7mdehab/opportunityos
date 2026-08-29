@@ -34,7 +34,7 @@ class TruthGraphTests(unittest.TestCase):
         graph = synthetic_graph()
         direct = graph.evidence_for("career-synthetic")
         recursive = graph.evidence_for("career-synthetic", recursive=True)
-        self.assertEqual((), direct)
+        self.assertEqual(("ev-profile",), tuple(r.id for r in direct))
         self.assertIn("ev-achievement", {record.id for record in recursive})
         self.assertIn("ev-cert-plan", {record.id for record in recursive})
         self.assertEqual(len(recursive), len({record.id for record in recursive}))

@@ -23,7 +23,8 @@ def minimal_document():
             },
             {
                 "id": "ev-role", "content": "Example Engineer at Example Org from 2024-01-01", "source": "fixture",
-                "locator": "employment.0.title",
+                "locator": "employment.0",
+                "metadata": {"organization": "Example Org", "title": "Example Engineer"},
             },
         ],
         "career_profile": {
