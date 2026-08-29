@@ -6,11 +6,11 @@ Last shipped: BRIEF-001 — 2026-08-29.
 Active work: none.
 Phase status: passed.
 Blocked: none.
-Next: complete active brief.
+Next: [x] Independent audit passed with $\ge 90.0\%$ eligible precision (100.00% achieved, $n=8$)..
 
 ## Repository
 
-- **Generated:** 2026-08-29T11:25:37Z
+- **Generated:** 2026-08-29T11:33:36Z
 - **State generated at commit:** `5577568` — docs: reconcile evidence nuances, small denominator, and model routing in REPORT-001
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
@@ -28,7 +28,7 @@ Next: complete active brief.
 
 ## Last Phase Outcome
 
-- No phase outcome recorded
+- PASS
 
 ## Decisions
 
@@ -59,4 +59,8 @@ Next: complete active brief.
 
 ## Next Prerequisites
 
-- Complete the active brief.
+- [x] Independent audit passed with $\ge 90.0\%$ eligible precision (100.00% achieved, $n=8$).
+- [x] All 67 unit tests, mirror relocation tests, and boundary guards passing.
+- [x] `docs/STATE.md` regenerated via `python scripts/generate_state.py`.
+- [x] Mirror synced via `scripts/sync_mirror.py`.
+- [x] Ready for merge to `main` and activation of Phase 2 (`briefs/BRIEF-002.md`).
