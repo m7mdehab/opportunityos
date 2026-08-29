@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from enum import Enum
+import math
+import re
 from types import MappingProxyType
 from typing import Any, Mapping
 
@@ -30,6 +32,18 @@ class AssertionType(_StringEnum):
     USER_ASSERTION = "user_assertion"
     UNSUPPORTED_CLAIM = "unsupported_claim"
     PROHIBITED_CLAIM = "prohibited_claim"
+
+
+class ProhibitedConceptCategory(_StringEnum):
+    GUARANTEED_OUTCOME = "guaranteed_outcome"
+    FORTUNE_500_PRESTIGE = "fortune_500_prestige"
+    UNAUTHORIZED_LEGAL_PRACTICE = "unauthorized_legal_practice"
+    UNAUTHORIZED_MEDICAL_PRACTICE = "unauthorized_medical_practice"
+    SECURITY_CLEARANCE = "security_clearance"
+    IP_EXCLUSIVITY_WARRANTY = "ip_exclusivity_warranty"
+    FEE_CIRCUMVENTION = "fee_circumvention"
+    UNHELD_CREDENTIAL = "unheld_credential"
+    UNBACKED_COMMERCIAL_CAPACITY = "unbacked_commercial_capacity"
 
 
 class CertificationState(_StringEnum):
@@ -266,16 +280,41 @@ class RedLineRule:
         _require_text(self.reason, "reason")
 
 
+def _validate_finite_non_negative_number(value: Any, name: str) -> None:
+    if value is None:
+        return
+    if isinstance(value, bool):
+        raise ValueError(f"{name} cannot be a boolean")
+    if not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be a finite number")
+    if math.isnan(value) or math.isinf(value):
+        raise ValueError(f"{name} must be a finite number (NaN and Infinity are forbidden)")
+    if value < 0:
+        raise ValueError(f"{name} cannot be negative")
+
+
 @dataclass(frozen=True, slots=True)
 class NeverClaimRule:
     id: str
-    phrase: str
-    reason: str
+    concept: ProhibitedConceptCategory
+    description: str
+    pattern: str
+    forbidden_phrases: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         _require_identifier(self.id)
-        _require_text(self.phrase, "phrase")
-        _require_text(self.reason, "reason")
+        if not isinstance(self.concept, ProhibitedConceptCategory):
+            raise ValueError("concept must be a ProhibitedConceptCategory")
+        _require_text(self.description, "description")
+        _require_text(self.pattern, "pattern")
+        try:
+            re.compile(self.pattern, flags=re.IGNORECASE)
+        except re.error as error:
+            raise ValueError(f"invalid pattern in NeverClaimRule {self.id}: {error}") from error
+        if not isinstance(self.forbidden_phrases, tuple):
+            raise ValueError("forbidden_phrases must be an immutable tuple")
+        for phrase in self.forbidden_phrases:
+            _require_text(phrase, "forbidden_phrase")
 
 
 @dataclass(frozen=True, slots=True)
@@ -353,9 +392,9 @@ class BusinessCapacity:
     id: str
     evidence_ids: tuple[str, ...]
     available_from: date | None = None
-    hours_per_week: int | None = None
-    min_project_value: int | None = None
-    max_project_value: int | None = None
+    hours_per_week: int | float | None = None
+    min_project_value: int | float | None = None
+    max_project_value: int | float | None = None
     annual_turnover_usd: float | None = None
     bid_bond_capacity_usd: float | None = None
     currencies: tuple[str, ...] = ()
@@ -369,16 +408,11 @@ class BusinessCapacity:
         for name in ("currencies", "service_regions"):
             if not isinstance(getattr(self, name), tuple):
                 raise ValueError(f"{name} must be an immutable tuple")
-        if self.hours_per_week is not None and self.hours_per_week < 0:
-            raise ValueError("hours_per_week cannot be negative")
-        for value, name in (
-            (self.min_project_value, "min_project_value"),
-            (self.max_project_value, "max_project_value"),
-            (self.annual_turnover_usd, "annual_turnover_usd"),
-            (self.bid_bond_capacity_usd, "bid_bond_capacity_usd"),
-        ):
-            if value is not None and value < 0:
-                raise ValueError(f"{name} cannot be negative")
+        _validate_finite_non_negative_number(self.hours_per_week, "hours_per_week")
+        _validate_finite_non_negative_number(self.min_project_value, "min_project_value")
+        _validate_finite_non_negative_number(self.max_project_value, "max_project_value")
+        _validate_finite_non_negative_number(self.annual_turnover_usd, "annual_turnover_usd")
+        _validate_finite_non_negative_number(self.bid_bond_capacity_usd, "bid_bond_capacity_usd")
         if (
             self.min_project_value is not None
             and self.max_project_value is not None

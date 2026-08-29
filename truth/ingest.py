@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
@@ -26,6 +27,7 @@ from .models import (
     MetricVerification,
     NeverClaimRule,
     PortfolioItem,
+    ProhibitedConceptCategory,
     RedLineRule,
     ServiceRecord,
     SkillRecord,
@@ -150,12 +152,37 @@ def _strings(value: Any, field_name: str) -> tuple[str, ...]:
     return result
 
 
-def _positive_int_or_none(value: Any, field_name: str) -> int | None:
+def _finite_non_negative_float_or_none(value: Any, field_name: str) -> float | None:
     if value is None:
         return None
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise IngestionError(f"{field_name} must be an integer or null")
-    return value
+    if isinstance(value, bool):
+        raise IngestionError(f"{field_name} cannot be a boolean")
+    if isinstance(value, (int, float)):
+        val = float(value)
+    elif isinstance(value, str):
+        if value.strip().lower() in {"nan", "inf", "-inf", "+inf", "infinity", "-infinity"}:
+            raise IngestionError(f"{field_name} cannot be NaN or Infinity")
+        try:
+            val = float(value.strip())
+        except ValueError as error:
+            raise IngestionError(f"{field_name} must be a valid numeric value") from error
+    else:
+        raise IngestionError(f"{field_name} must be a number or null")
+
+    if math.isnan(val) or math.isinf(val):
+        raise IngestionError(f"{field_name} must be a finite number (NaN and Infinity are forbidden)")
+    if val < 0:
+        raise IngestionError(f"{field_name} cannot be negative")
+    return val
+
+
+def _finite_non_negative_int_or_none(value: Any, field_name: str) -> int | None:
+    val = _finite_non_negative_float_or_none(value, field_name)
+    if val is None:
+        return None
+    if isinstance(value, float) and not val.is_integer():
+        raise IngestionError(f"{field_name} must be an integer")
+    return int(val)
 
 
 def parse_evidence(value: Any) -> EvidenceRecord:
@@ -295,8 +322,34 @@ def parse_red_line(value: Any) -> RedLineRule:
 
 def parse_never_claim(value: Any) -> NeverClaimRule:
     data = _mapping(value, "never_claim")
-    _validate_keys(data, "never_claim", required={"id", "phrase", "reason"})
-    return NeverClaimRule(id=data["id"], phrase=data["phrase"], reason=data["reason"])
+    _validate_keys(
+        data, "never_claim",
+        required={"id"},
+        optional={"concept", "description", "reason", "pattern", "phrase", "forbidden_phrases"},
+    )
+    concept = _enum(
+        ProhibitedConceptCategory,
+        data.get("concept", "guaranteed_outcome"),
+        "never_claim.concept",
+    )
+    pattern = data.get("pattern") or ""
+    phrase = data.get("phrase")
+    forbidden_phrases = _strings(data.get("forbidden_phrases"), "never_claim.forbidden_phrases")
+    if phrase and not forbidden_phrases:
+        forbidden_phrases = (phrase,)
+    if not pattern and phrase:
+        pattern = r"\b" + re.escape(phrase) + r"\b"
+    if not pattern:
+        pattern = r"\b" + re.escape(data["id"]) + r"\b"
+
+    description = data.get("description") or data.get("reason") or "prohibited concept"
+    return NeverClaimRule(
+        id=data["id"],
+        concept=concept,
+        description=description,
+        pattern=pattern,
+        forbidden_phrases=forbidden_phrases,
+    )
 
 
 def parse_career_profile(value: Any) -> CareerProfile:
@@ -366,11 +419,11 @@ def parse_capacity(value: Any) -> BusinessCapacity:
     return BusinessCapacity(
         id=data["id"], evidence_ids=_strings(data["evidence_ids"], "capacity.evidence_ids"),
         available_from=parse_date(data.get("available_from"), "capacity.available_from"),
-        hours_per_week=_positive_int_or_none(data.get("hours_per_week"), "capacity.hours_per_week"),
-        min_project_value=_positive_int_or_none(data.get("min_project_value"), "capacity.min_project_value"),
-        max_project_value=_positive_int_or_none(data.get("max_project_value"), "capacity.max_project_value"),
-        annual_turnover_usd=float(data["annual_turnover_usd"]) if data.get("annual_turnover_usd") is not None else None,
-        bid_bond_capacity_usd=float(data["bid_bond_capacity_usd"]) if data.get("bid_bond_capacity_usd") is not None else None,
+        hours_per_week=_finite_non_negative_int_or_none(data.get("hours_per_week"), "capacity.hours_per_week"),
+        min_project_value=_finite_non_negative_int_or_none(data.get("min_project_value"), "capacity.min_project_value"),
+        max_project_value=_finite_non_negative_int_or_none(data.get("max_project_value"), "capacity.max_project_value"),
+        annual_turnover_usd=_finite_non_negative_float_or_none(data.get("annual_turnover_usd"), "capacity.annual_turnover_usd"),
+        bid_bond_capacity_usd=_finite_non_negative_float_or_none(data.get("bid_bond_capacity_usd"), "capacity.bid_bond_capacity_usd"),
         currencies=_strings(data.get("currencies"), "capacity.currencies"),
         service_regions=_strings(data.get("service_regions"), "capacity.service_regions"),
         onsite_willingness=data.get("onsite_willingness"), legal_capacity=data.get("legal_capacity"),
