@@ -10,8 +10,8 @@ Next: BRIEF-003: Opportunity Discovery & Ingestion Pipelines.
 
 ## Repository
 
-- **Generated:** 2026-08-29T23:44:52Z
-- **State generated at commit:** `c5110e8` — fix(truth): implement two-bypass terminal closure for direct assertions and verified metrics
+- **Generated:** 2026-08-29T23:45:11Z
+- **State generated at commit:** `d858719` — docs(report): record two-bypass terminal audit and update REPORT-002
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
