@@ -10,7 +10,7 @@ Next: BRIEF-003: Opportunity Discovery & Ingestion Pipelines.
 
 ## Repository
 
-- **Generated:** 2026-08-29T22:14:51Z
+- **Generated:** 2026-08-29T22:15:34Z
 - **State generated at commit:** `39d3470` — fix(scripts): strip CR from preserved timestamp in generate_state.py
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
