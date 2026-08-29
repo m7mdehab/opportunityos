@@ -10,7 +10,7 @@ Next: [x] Independent audit passed with $\ge 90.0\%$ eligible precision (100.00%
 
 ## Repository
 
-- **Generated:** 2026-08-29T11:33:50Z
+- **Generated:** 2026-08-29T11:34:32Z
 - **State generated at commit:** `899887b` — docs: finalize REPORT-001 section titles and decision outcome
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
