@@ -10,7 +10,7 @@ Next: complete active brief.
 
 ## Repository
 
-- **Generated:** 2026-08-29T02:12:28Z
+- **Generated:** 2026-08-29T11:25:26Z
 - **State generated at commit:** `a6a5955` — chore: finalize BRIEF-001 phase gate report and operational state
 - **Mirror sync:** `not yet recorded` at not yet recorded
 

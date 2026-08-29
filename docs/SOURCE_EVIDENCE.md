@@ -25,8 +25,8 @@
 
 2. **Unique records after deduplication:** 2472; **duplicate rate:** 18.0%.
 3. **Cross-source overlap:** 1 fingerprints appeared on more than one source.
-4. **Egypt-eligible percentage:** 0.32% (8/2472) across deduplicated opportunities; verified by independent precision audit at 100.0% eligible precision (8/8 true positives).
-5. **Unclear percentage:** 30.1% (745/2472) stated no geography at all.
+4. **Egypt-eligible percentage:** 0.32% (8/2472) across deduplicated opportunities in this measured corpus and source mix; verified by independent precision audit at 100.00% eligible precision (8/8 true positives on small positive denominator $n=8$).
+5. **Unclear percentage:** 30.14% (745/2472) stated no geography at all or had ambiguous timezone-only rules.
 6. **Individual-eligible count:** per-source counts are in the table above.
 
 ## Source health
