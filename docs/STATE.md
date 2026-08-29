@@ -10,8 +10,8 @@ Next: complete active brief.
 
 ## Repository
 
-- **Generated:** 2026-08-29T02:12:09Z
-- **State generated at commit:** `42c9c9e` — docs: update SOURCE_EVIDENCE and SOURCE_REGISTRY after remediation
+- **Generated:** 2026-08-29T02:12:28Z
+- **State generated at commit:** `a6a5955` — chore: finalize BRIEF-001 phase gate report and operational state
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
