@@ -10,8 +10,8 @@ Next: BRIEF-003: Opportunity Discovery & Ingestion Pipelines (aggregating and cl
 
 ## Repository
 
-- **Generated:** 2026-08-29T12:09:30Z
-- **State generated at commit:** `2c9b7df` — feat(truth): implement Professional Truth Graph and Capability Ingestion engine
+- **Generated:** 2026-08-29T12:09:46Z
+- **State generated at commit:** `6bfa684` — feat(brief-002): complete Professional Truth Graph & Capability Ingestion acceptance
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
