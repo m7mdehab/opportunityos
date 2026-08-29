@@ -10,8 +10,8 @@ Next: BRIEF-003: Opportunity Discovery & Ingestion Pipelines.
 
 ## Repository
 
-- **Generated:** 2026-08-29T22:12:44Z
-- **State generated at commit:** `1ac1f69` — fix(truth): implement final three-invariant mechanical closure
+- **Generated:** 2026-08-29T22:13:52Z
+- **State generated at commit:** `4a96de9` — docs(report): update REPORT-002, AUDIT-002, and STATE for final three-invariant mechanical closure
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
