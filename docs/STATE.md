@@ -2,16 +2,16 @@
 # OpportunityOS State
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
-Last shipped: BRIEF-001 — 2026-08-29.
+Last shipped: BRIEF-002 — 2026-08-29.
 Active work: none.
 Phase status: passed.
 Blocked: none.
-Next: [x] Independent audit passed with $\ge 90.0\%$ eligible precision (100.00% achieved, $n=8$)..
+Next: complete active brief.
 
 ## Repository
 
-- **Generated:** 2026-08-29T11:39:15Z
-- **State generated at commit:** `be05673` — docs: finalize Invariant 4 withholding accounting and mirror workflow status
+- **Generated:** 2026-08-29T13:58:02Z
+- **State generated at commit:** `c178b10` — feat(brief-002): finalize BRIEF-002 closure with verified private boundary and independent Copilot audit
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -25,10 +25,11 @@ Next: [x] Independent audit passed with $\ge 90.0\%$ eligible precision (100.00%
 
 - BRIEF-000 — 2026-08-27
 - BRIEF-001 — 2026-08-29
+- BRIEF-002 — 2026-08-29
 
 ## Last Phase Outcome
 
-- PASS
+- No phase outcome recorded
 
 ## Decisions
 
@@ -42,6 +43,7 @@ Next: [x] Independent audit passed with $\ge 90.0\%$ eligible precision (100.00%
 - [ADR-0004 — Mirror Does Not Execute](adr/ADR-0004-mirror-does-not-execute.md)
 - [ADR-0005 — TED Search Is a Read-Only Query](adr/ADR-0005-ted-search-read-only-post.md)
 - [ADR-0006 — Geographic Region Completion and Taxonomy Invariants](adr/ADR-0006-geographic-region-completion.md)
+- [ADR-0007 — Professional Truth Graph and Provenance Model](adr/ADR-0007-truth-graph-and-provenance-model.md)
 
 ## Blocked Items
 
@@ -59,8 +61,4 @@ Next: [x] Independent audit passed with $\ge 90.0\%$ eligible precision (100.00%
 
 ## Next Prerequisites
 
-- [x] Independent audit passed with $\ge 90.0\%$ eligible precision (100.00% achieved, $n=8$).
-- [x] All 67 unit tests, mirror relocation tests, and boundary guards passing.
-- [x] `docs/STATE.md` regenerated via `python scripts/generate_state.py`.
-- [x] Mirror synchronization workflow verified ready for post-merge publication.
-- [x] Ready for merge to `main` and activation of Phase 2 (`briefs/BRIEF-002.md`).
+- Complete the active brief.
