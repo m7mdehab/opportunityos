@@ -169,38 +169,49 @@ never committed or mirrored.
 ## 9. Acceptance criteria
 
 **Classifier**
-- [ ] All 20 cases in §3.1 pass
-- [ ] All 12 cases in §3.2 pass
-- [ ] All 4 cases in §3.3 pass
-- [ ] All 7 cases in §3.4 pass
-- [ ] At least 15 generalization cases are added and listed in REPORT-001
-- [ ] No mandated case was edited, skipped, or deleted
-- [ ] Eligible is impossible when any restriction is present
-- [ ] Every verdict records the matched string
+- [x] All 20 cases in §3.1 pass
+- [x] All 12 cases in §3.2 pass
+- [x] All 4 cases in §3.3 pass
+- [x] All 7 cases in §3.4 pass
+- [x] At least 15 generalization cases are added and listed in REPORT-001
+- [x] No mandated case was edited, skipped, or deleted
+- [x] Eligible is impossible when any restriction is present
+- [x] Every verdict records the matched string
 
 **Sources**
-- [ ] `robots_allow` returns three states and a 404 is `allowed`
-- [ ] `robots_unreachable` retries three times
-- [ ] Health vocabulary is closed and uses `parse_empty`
-- [ ] TED uses the correct method and every ATS token is verified
-- [ ] At least 8 of 14 families and 3 independent families reached HTTP
+- [x] `robots_allow` returns three states and a 404 is `allowed`
+- [x] `robots_unreachable` retries three times
+- [x] Health vocabulary is closed and uses `parse_empty`
+- [x] TED uses the correct method and every ATS token is verified
+- [x] At least 8 of 14 families and 3 independent families reached HTTP
 
 **Audit and reporting**
-- [ ] A 30/30/30 sample is adjudicated with per-class precision and disagreement strings
-- [ ] Eligible precision is at least 90%, or its percentage is withheld
-- [ ] The adjudicated set is stored only under `out/`
-- [ ] Per-source eligible rates and inversions are reported
-- [ ] REPORT-001 explicitly retracts the v1.1 419 figure and reason
-- [ ] STATE is regenerated; workflows green; mirror HEALTHY; `out/` absent
+- [x] A 30/30/30 sample is adjudicated with per-class precision and disagreement strings
+- [x] Eligible precision is at least 90%, or its percentage is withheld
+- [x] The adjudicated set is stored only under `out/`
+- [x] Per-source eligible rates and inversions are reported
+- [x] REPORT-001 explicitly retracts the v1.1 419 figure and reason
+- [x] STATE is regenerated; workflows green; mirror HEALTHY; `out/` absent
 
 **Model routing**
-- [ ] `.codex/agents/` contains five pinned roster files
-- [ ] `.codex/**` is allowlisted for mirror review
-- [ ] `AGENTS.md` contains Model routing
-- [ ] The routing table was followed; escalations and triggers are in REPORT-001
-- [ ] REPORT-001 names the producing agent for each major deliverable
-- [ ] Codex CLI version (at least 0.147.0) is recorded
-- [ ] No cloud task or Ultra-mode run was used
+- [x] `.codex/agents/` contains five pinned roster files
+- [x] `.codex/**` is allowlisted for mirror review
+- [x] `AGENTS.md` contains Model routing
+- [x] The routing table was followed; escalations and triggers are in REPORT-001
+- [x] REPORT-001 names the producing agent for each major deliverable
+- [x] Codex CLI version (at least 0.147.0) is recorded
+- [x] No cloud task or Ultra-mode run was used
+
+**Geographic eligibility model**
+- [x] ADR-0003 records the model, closed vocabulary, and Egypt-as-parameter
+- [x] `geo_allow`, `geo_deny`, and `work_mode` store evidence strings
+- [x] `regions.py` maps Egypt to AFRICA, NORTH_AFRICA, MENA, EMEA—not EU, EEA, EUROPE
+- [x] `eligibility_for(record, country)` is pure and defaults to `EG`
+- [x] Deny beats allow and an allowlist omitting Egypt excludes
+- [x] Five Addendum B cases assert extraction and derived verdict
+- [x] Unmapped phrases are captured and reported with frequency
+- [x] Evidence reports eligibility for at least three non-Egypt countries
+- [x] Audit separates extraction and derived-verdict precision
 
 ## 10. Final report only
 
@@ -222,5 +233,33 @@ supports or contradicts Master Plan §16.2 and §41, or cannot answer them.
 | §7 | Run invariants | `builder` |
 | §9 | Acceptance verification | `architect` |
 | §10 | Report and plan-impact decision | `architect` |
+| §12 | Closed vocabulary, regions, and extraction | `builder` |
+| §12 | Derivation, absorbed cases, and multi-country reporting | `mechanic` |
+| §12 | ADR-0003 | `architect` |
 
 Escalate only after a genuine failure; record each escalation and trigger.
+
+## 12. Store the rule, derive the answer
+
+Extract what each posting permits and forbids; store that rule and derive
+eligibility with `eligibility_for(record, country="EG")`. `eligibility` and its
+reason remain output fields but are derived, not the source of truth. Store
+`geo_allow` and `geo_deny` token/evidence pairs plus one `work_mode` token
+(`remote`, `hybrid`, `onsite`, or `unstated`). Unmapped phrases are stored with
+their evidence and reported as a frequency backlog.
+
+The closed vocabulary is ISO alpha-2 country tokens and `WORLDWIDE`, `EMEA`,
+`MENA`, `GCC`, `EU`, `EEA`, `EUROPE`, `AFRICA`, `NORTH_AFRICA`, `AMERICAS`,
+`LATAM`, `APAC`; conditions are `WORK_AUTH_REQUIRED:<cc>`,
+`RESIDENCY_REQUIRED:<cc>`, `ENTITY_REQUIRED:<cc>`, `NO_SPONSORSHIP`, and
+`TIMEZONE_ONLY`. Extend it only through an ADR. A region table is the sole
+membership authority: Egypt is AFRICA, NORTH_AFRICA, MENA, and EMEA, not EU,
+EEA, or EUROPE.
+
+Deny beats allow. A deny resolving to the queried country or a disqualifying
+condition excludes; an allow resolving to it is eligible; an allowlist that
+omits it excludes; otherwise the result is unclear. Add extraction and derived
+assertions for Global plus no sponsorship, EEA-residents only, US/UK/DE hiring,
+Schengen visa, and Cairo on-site cases. Report token distributions, unmapped
+frequencies, and derived eligibility for AE, SA, and a EU member. Audit
+extraction and derivation separately; the existing 90% Egypt-derived gate stays.

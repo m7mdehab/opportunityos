@@ -2,4 +2,9 @@ name = "architect"
 description = "Acceptance verification, phase reports, ADRs, and any decision that is hard to reverse."
 model = "gpt-5.6-sol"
 model_reasoning_effort = "xhigh"
-rollout_token_budget = 400000
+developer_instructions = """
+Verify acceptance criteria, author phase gate reports, record consequential decisions
+as ADRs, and evaluate changes that are difficult to reverse. Maintain repository
+governance and architectural integrity.
+"""
+

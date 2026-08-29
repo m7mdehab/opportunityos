@@ -9,3 +9,8 @@ Because Claude chat cannot see code, it can verify report consistency, acceptanc
 All three assistants read `docs/STATE.md` before advising. No assistant is authoritative over a committed ADR. If assistants disagree, the ADR log settles the issue; if no ADR applies, write one.
 
 `CLAUDE.md` could instead be created with `ln -s AGENTS.md CLAUDE.md`, but OpportunityOS uses Claude's `@AGENTS.md` import so Claude-specific notes can remain separate without duplicating vendor-neutral rules.
+# Mirror execution safety
+
+The public mirror is documentation only. Source workflow files are published
+under `ci-reference/workflows/`, never `.github/workflows/`, and are not
+executed in the mirror.

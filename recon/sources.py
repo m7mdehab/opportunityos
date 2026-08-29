@@ -18,9 +18,15 @@ class Source:
     url: str
     parser: Callable[[str, str], list[Record]]
     policy_url: str
+    method: str = "GET"
+    request_body: dict[str, Any] | None = None
+    action_classification: str = ""
 
 
 def _text(value: Any) -> str:
+    if isinstance(value, dict):
+        values = value.get("eng") or value.get("ENG") or next(iter(value.values()), [])
+        value = values[0] if isinstance(values, list) and values else values
     return re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", " ", str(value or "")))).strip()
 
 
@@ -28,18 +34,21 @@ def _record(source: str, track: str, item: dict[str, Any], pointer: str) -> Reco
     location = item.get("location") or item.get("candidate_required_location") or item.get("locations") or item.get("locationName") or ""
     if isinstance(location, list):
         location = ", ".join(str(part) for part in location)
-    organization = item.get("company_name") or item.get("company") or item.get("organization") or item.get("companyName") or item.get("team") or ""
+    elif isinstance(location, dict):
+        location = location.get("name") or location.get("location") or ""
+    organization = item.get("company_name") or item.get("company") or item.get("organization") or item.get("companyName") or item.get("team") or item.get("buyer-name") or ""
     if isinstance(organization, dict):
-        organization = organization.get("name") or ""
-    url = item.get("url") or item.get("url_redirect") or item.get("absolute_url") or item.get("hostedUrl") or item.get("applyUrl") or ""
+        organization = organization.get("name") or organization
+    links = item.get("links") if isinstance(item.get("links"), dict) else {}
+    url = item.get("url") or item.get("url_redirect") or item.get("absolute_url") or item.get("hostedUrl") or item.get("applyUrl") or links.get("htmlDirect", {}).get("ENG") or ""
     return Record(
         source=source,
         track=track,
-        title=_text(item.get("title") or item.get("name") or item.get("headline")),
+        title=_text(item.get("title") or item.get("name") or item.get("headline") or item.get("notice-title")),
         organization=_text(organization),
         location_text=_text(location),
         url=str(url),
-        posted_date=str(item.get("publication_date") or item.get("date") or item.get("created_at") or item.get("updatedAt") or ""),
+        posted_date=str(item.get("publication_date") or item.get("publication-date") or item.get("date") or item.get("created_at") or item.get("updatedAt") or ""),
         description=_text(item.get("description") or item.get("description_plain") or item.get("content") or item.get("snippet")),
         raw_payload_pointer=pointer,
     )
@@ -51,7 +60,7 @@ def json_jobs(source: str, track: str) -> Callable[[str, str], list[Record]]:
         if isinstance(parsed, list):
             items = parsed[1:] if source == "remote_ok" and parsed and not parsed[0].get("position") else parsed
         else:
-            items = next((parsed.get(key, []) for key in ("jobs", "data", "results", "projects")), [])
+            items = next((parsed[key] for key in ("jobs", "data", "results", "projects", "notices") if key in parsed), [])
             if isinstance(items, dict):
                 items = next((items.get(key, []) for key in ("jobs", "results", "items")), [])
         return [_record(source, track, item, pointer) for item in items if isinstance(item, dict)]
@@ -97,7 +106,7 @@ EMPLOYMENT_SOURCES = (
 INDEPENDENT_SOURCES = (
     Source("ungm", "independent", "https://www.ungm.org/Public/Notice", html_links("ungm", "independent"), "https://www.ungm.org/Public/Terms"),
     Source("world_bank", "independent", "https://projects.worldbank.org/en/projects-operations/opportunities", html_links("world_bank", "independent"), "https://www.worldbank.org/en/about/legal/terms-of-use"),
-    Source("eu_ted", "independent", "https://api.ted.europa.eu/v3/notices/search", json_jobs("eu_ted", "independent"), "https://docs.ted.europa.eu/legal-notice.html"),
+    Source("eu_ted", "independent", "https://api.ted.europa.eu/v3/notices/search", json_jobs("eu_ted", "independent"), "https://docs.ted.europa.eu/legal-notice.html", "POST", {"query": "FT=*", "fields": ["publication-number", "notice-title", "buyer-name", "publication-date"], "page": 1, "limit": 100}, "READ_ONLY_QUERY"),
     Source("afdb", "independent", "https://www.afdb.org/en/news-keywords/procurement-notices", html_links("afdb", "independent"), "https://www.afdb.org/en/terms-and-conditions"),
     Source("freelancer", "independent", "https://www.freelancer.com/api/projects/0.1/projects/active/?limit=50", json_jobs("freelancer", "independent"), "https://www.freelancer.com/about/terms"),
     Source("etimad", "independent", "https://tenders.etimad.sa/Tender/AllTendersForVisitor", html_links("etimad", "independent"), "https://tenders.etimad.sa/"),
@@ -108,15 +117,15 @@ ATS_WATCHLIST: dict[str, tuple[str, str]] = {
     "cloudflare": ("greenhouse", "cloudflare"), "datadog": ("greenhouse", "datadog"),
     "duolingo": ("greenhouse", "duolingo"), "figma": ("greenhouse", "figma"),
     "flexport": ("greenhouse", "flexport"), "coinbase": ("greenhouse", "coinbase"),
-    "hubspot": ("greenhouse", "hubspot"), "plaid": ("greenhouse", "plaid"),
     "stripe": ("greenhouse", "stripe"), "twilio": ("greenhouse", "twilio"),
-    "coursera": ("lever", "coursera"), "mixpanel": ("lever", "mixpanel"),
-    "postman": ("lever", "postman"), "samsara": ("lever", "samsara"),
-    "sourcegraph": ("lever", "sourcegraph"), "netlify": ("lever", "netlify"),
-    "sentry": ("lever", "sentry"), "docker": ("lever", "docker"),
-    "notion": ("ashby", "notion"), "ramp": ("ashby", "ramp"), "webflow": ("ashby", "webflow"),
-    "posthog": ("ashby", "posthog"), "deepl": ("ashby", "deepl"), "openai": ("ashby", "openai"),
-    "linear": ("ashby", "linear"), "vanta": ("ashby", "vanta"), "calendly": ("ashby", "calendly"),
+    "airbnb": ("greenhouse", "airbnb"), "affirm": ("greenhouse", "affirm"),
+    "shyftlabs": ("lever", "shyftlabs"), "ryz_labs": ("lever", "RyzLabs"),
+    "socket": ("ashby", "socket"), "paires": ("ashby", "paires"),
+    "jellyfish": ("ashby", "jellyfish"), "adaptive_innovations": ("ashby", "adaptive-innovations"),
+    "bedrock_robotics": ("ashby", "bedrock-robotics"), "cube": ("ashby", "CUBE"),
+    "bjak": ("ashby", "bjakcareer"), "farseer": ("ashby", "farseer"),
+    "regard": ("ashby", "regard"), "tessera_labs": ("ashby", "tessera-labs"),
+    "posthog": ("ashby", "posthog"), "openai": ("ashby", "openai"), "linear": ("ashby", "linear"),
 }
 
 

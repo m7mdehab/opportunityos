@@ -14,6 +14,10 @@ class Record:
     posted_date: str
     description: str
     raw_payload_pointer: str
+    geo_allow: tuple[tuple[str, str], ...] = ()
+    geo_deny: tuple[tuple[str, str], ...] = ()
+    work_mode: tuple[str, str] = ("unstated", "")
+    unmapped: tuple[str, ...] = ()
 
     def flat(self) -> dict[str, str]:
         return {key: str(value) for key, value in asdict(self).items()}
