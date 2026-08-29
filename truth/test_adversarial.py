@@ -740,27 +740,50 @@ class AdversarialTruthTests(unittest.TestCase):
         self.assertTrue(any("not authorized" in r for r in res.reasons))
 
     def test_invariant_1_subject_predicate_safe_field_provenance(self):
-        """Invariant 1: Subject/predicate-safe field provenance.
-        Prose cannot establish identity-sensitive fields without explicit deterministic scope.
+        """Invariant 1: Subject/predicate-safe field provenance via explicit scope.
+        Proves prose containing supervisor/relational text cannot establish identity-sensitive fields.
         """
         from truth.models import (
             EvidenceRecord, EmploymentRecord, CareerProfile, CertificationRecord,
-            CertificationState, WorkAuthorization,
+            CertificationState, WorkAuthorization, AtomicAssertion, AssertionType,
+            VerificationStatus,
         )
         from truth.graph import TruthGraph
 
-        # 1. Supervisor title in prose cannot establish employee's title
-        # Concrete bypass 1: "Chief Data Officer manages the Data Engineer at Acme Corp from 2022-01-01."
-        ev_rep = EvidenceRecord("ev-rep", "Chief Data Officer manages the Data Engineer at Acme Corp from 2022-01-01.", "cv", "role")
-        graph1 = TruthGraph((ev_rep,))
-
-        # Attempt supervisor title -> MUST FAIL
-        bad_emp = EmploymentRecord("emp-bad", "Acme Corp", "Chief Data Officer", date(2022, 1, 1), None, ("ev-rep",))
-        bad_prof = CareerProfile("prof-bad", employment=(bad_emp,))
+        # 1. Direct AtomicAssertion admission with supervisor title in prose MUST FAIL
+        # Required direct regression:
+        # Evidence: "Chief Data Officer manages the Data Engineer at Acme Corp."
+        # Attempt: AtomicAssertion(subject_id="employee", predicate="employment.title", value="Chief Data Officer", VERIFIED, DIRECT_FACT)
+        ev_direct = EvidenceRecord("ev-direct-mgmt", "Chief Data Officer manages the Data Engineer at Acme Corp.", "cv", "role")
+        as_bad_direct = AtomicAssertion(
+            id="as-bad-direct",
+            subject_id="employee",
+            predicate="employment.title",
+            value="Chief Data Officer",
+            assertion_type=AssertionType.DIRECT_FACT,
+            verification_status=VerificationStatus.VERIFIED,
+            evidence_ids=("ev-direct-mgmt",),
+        )
+        graph_direct = TruthGraph((ev_direct,))
         with self.assertRaises(ValueError):
-            graph1.add_career_profile(bad_prof)
+            graph_direct.add_assertion(as_bad_direct)
 
-        # 2. Client vs Employer ownership
+        # 2. Supervisor title in prose cannot establish employee's title in profile
+        # Strengthened regression: organization and start_date are independently valid,
+        # and the failure is specifically: employment.title
+        ev_rep = EvidenceRecord("ev-rep", "Chief Data Officer manages the Data Engineer at Acme Corp from 2022-01-01.", "cv", "role")
+        ev_org = EvidenceRecord("ev-org", "Acme Corp", "cv", "organization", metadata={"organization": "Acme Corp"})
+        ev_date = EvidenceRecord("ev-date", "2022-01-01", "cv", "start_date")
+        graph1 = TruthGraph((ev_rep, ev_org, ev_date))
+
+        # Attempt supervisor title -> MUST FAIL specifically on employment.title
+        bad_emp = EmploymentRecord("emp-bad", "Acme Corp", "Chief Data Officer", date(2022, 1, 1), None, ("ev-rep", "ev-org", "ev-date"))
+        bad_prof = CareerProfile("prof-bad", employment=(bad_emp,))
+        with self.assertRaises(ValueError) as cm:
+            graph1.add_career_profile(bad_prof)
+        self.assertIn("employment.title", str(cm.exception))
+
+        # 3. Client vs Employer ownership
         # Concrete bypass 2: "Worked for client BetaCorp while employed by AlphaCorp from 2022-01-01."
         ev_client = EvidenceRecord("ev-cl", "Worked for client BetaCorp while employed by AlphaCorp from 2022-01-01.", "cv", "role")
         graph2 = TruthGraph((ev_client,))
@@ -768,14 +791,14 @@ class AdversarialTruthTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             graph2.add_career_profile(CareerProfile("prof-bad-org", employment=(bad_org_emp,)))
 
-        # 3. Explicit deterministic scope (via metadata or field locator) -> MUST PASS
-        ev_good = EvidenceRecord("ev-good", "Data Engineer at Acme Corp from 2022-01-01.", "cv", "employment.0", metadata={"organization": "Acme Corp", "title": "Data Engineer"})
+        # 4. Explicit deterministic scope (via metadata or field locator) -> MUST PASS
+        ev_good = EvidenceRecord("ev-good", "Data Engineer at Acme Corp from 2022-01-01.", "cv", "title", metadata={"organization": "Acme Corp", "title": "Data Engineer"})
         graph3 = TruthGraph((ev_good,))
         good_emp = EmploymentRecord("emp-good", "Acme Corp", "Data Engineer", date(2022, 1, 1), None, ("ev-good",))
         graph3.add_career_profile(CareerProfile("prof-good", employment=(good_emp,)))
         self.assertIn("emp-good", graph3.entity_ids_for_evidence("ev-good"))
 
-        # 4. Work authorization negative scope
+        # 5. Work authorization negative scope
         ev_auth_neg = EvidenceRecord("ev-an", "Not authorized to work in Germany.", "cv", "auth")
         graph4 = TruthGraph((ev_auth_neg,))
         bad_auth = WorkAuthorization("auth-de", "Germany", "authorized", ("ev-an",))
@@ -934,6 +957,110 @@ class AdversarialTruthTests(unittest.TestCase):
         self.assertTrue(validator_b.validate_claim("Latency fell 40%.", ("ev-ach-b",)).allowed)
         # Revenue claim fails
         self.assertFalse(validator_b.validate_claim("Revenue increased 40%.", ("ev-ach-b",)).allowed)
+
+        # -------------------------------------------------------------
+        # Required Terminal Regression:
+        # Evidence: "Revenue increased 40% and latency fell 10%."
+        # -------------------------------------------------------------
+        from truth.models import ClaimCandidate, AtomicAssertion, AssertionType, VerificationStatus
+
+        ev_mixed = EvidenceRecord("ev-mixed", "Revenue increased 40% and latency fell 10% at Acme Corp from 2022-01-01.", "cv", "ach", metadata={"organization": "Acme Corp", "title": "Engineer"})
+        graph_metric = TruthGraph((ev_mixed,))
+
+        # Attempt: MetricAssertion(subject_id="lat-subject", numeric_value=40, unit="%", context="latency fell 40%", VERIFIED)
+        # MUST FAIL AT GRAPH ADMISSION
+        bad_metric = MetricAssertion(
+            id="m-bad-lat40",
+            subject_id="lat-subject",
+            numeric_value=40,
+            unit="%",
+            context="latency fell 40%",
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-mixed",),
+        )
+        with self.assertRaises(ValueError):
+            graph_metric.add_metric_assertion(bad_metric)
+
+        # These must pass:
+        # revenue +40%
+        metric_rev = MetricAssertion(
+            id="m-good-rev",
+            subject_id="rev-subject",
+            numeric_value=40,
+            unit="%",
+            context="revenue increased 40%",
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-mixed",),
+        )
+        graph_metric.add_metric_assertion(metric_rev)
+        self.assertIn("m-good-rev", graph_metric.metrics)
+
+        # latency -10%
+        metric_lat = MetricAssertion(
+            id="m-good-lat",
+            subject_id="lat-subject",
+            numeric_value=10,
+            unit="%",
+            context="latency fell 10%",
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-mixed",),
+        )
+        graph_metric.add_metric_assertion(metric_lat)
+        self.assertIn("m-good-lat", graph_metric.metrics)
+
+        # Also prove:
+        # 40 clients cannot establish 40%
+        ev_clients = EvidenceRecord("ev-clients", "Managed 40 clients at Acme Corp.", "cv", "ach")
+        graph_clients = TruthGraph((ev_clients,))
+        metric_client_percent = MetricAssertion(
+            id="m-client-pct",
+            subject_id="client-subject",
+            numeric_value=40,
+            unit="%",
+            context="increased 40%",
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-clients",),
+        )
+        with self.assertRaises(ValueError):
+            graph_clients.add_metric_assertion(metric_client_percent)
+
+        # $40 cannot establish 40%
+        ev_dollars = EvidenceRecord("ev-dollars", "Earned $40 per hour at Acme Corp.", "cv", "ach")
+        graph_dollars = TruthGraph((ev_dollars,))
+        metric_dollar_percent = MetricAssertion(
+            id="m-dollar-pct",
+            subject_id="dollar-subject",
+            numeric_value=40,
+            unit="%",
+            context="40%",
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-dollars",),
+        )
+        with self.assertRaises(ValueError):
+            graph_dollars.add_metric_assertion(metric_dollar_percent)
+
+        # a metric for subject B cannot authorize a ClaimCandidate bound to subject A
+        as_a = AtomicAssertion(
+            id="as-lat-a",
+            subject_id="lat-subject",
+            predicate="achievement.statement",
+            value="Latency fell 40%",
+            assertion_type=AssertionType.DIRECT_FACT,
+            verification_status=VerificationStatus.VERIFIED,
+            evidence_ids=("ev-mixed",),
+        )
+        # Graph has verified metric for rev-subject (subject B) but NOT for lat-subject (subject A)
+        graph_candidate = TruthGraph((ev_mixed,), (as_a,), metrics=(metric_rev,))
+        validator_candidate = ClaimValidator(graph_candidate)
+
+        cand_cross_subject = ClaimCandidate(
+            text="Latency fell 40%.",
+            material_assertion_ids=("as-lat-a",), # bound to subject A
+            requested_evidence_ids=("ev-mixed",),
+        )
+        res_cross = validator_candidate.validate_candidate(cand_cross_subject)
+        self.assertFalse(res_cross.allowed)
+        self.assertTrue(any("lacks an exact verified metric" in r for r in res_cross.reasons))
 
     def test_invariant_4_candidate_authorized_by_assertions_not_extra_text(self):
         """Invariant 4: ClaimCandidate must be authorized by assertions, not their extra text.

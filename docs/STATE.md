@@ -10,8 +10,8 @@ Next: BRIEF-003: Opportunity Discovery & Ingestion Pipelines.
 
 ## Repository
 
-- **Generated:** 2026-08-29T22:15:34Z
-- **State generated at commit:** `39d3470` — fix(scripts): strip CR from preserved timestamp in generate_state.py
+- **Generated:** 2026-08-29T23:45:11Z
+- **State generated at commit:** `d858719` — docs(report): record two-bypass terminal audit and update REPORT-002
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief

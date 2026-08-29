@@ -167,7 +167,7 @@ career_profile:
 
     def test_ingestion_supports_assertions_relations_and_metrics(self):
         doc = {
-            "evidence": [{"id": "ev-1", "content": "Python Engineer with 40% latency reduction", "source": "test", "locator": "test"}],
+            "evidence": [{"id": "ev-1", "content": "Python Engineer with 40% latency reduction", "source": "test", "locator": "title", "metadata": {"title": "Python Engineer"}}],
             "assertions": [
                 {
                     "id": "as-1",

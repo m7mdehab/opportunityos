@@ -60,10 +60,21 @@ def _parse_structured_metrics(text: str) -> list[tuple[float | int, str]]:
     return [(num, unit) for num, unit, _ in _parse_structured_metrics_with_context(text)]
 
 
+_CLAUSE_SPLIT = re.compile(r"[,;.\n]|\b(?:and|while|whereas|but|although)\b", re.IGNORECASE)
+
+
+def _get_clause_context(text: str, match_start: int, match_end: int) -> str:
+    prev_delims = [m.end() for m in _CLAUSE_SPLIT.finditer(text[:match_start])]
+    clause_start = prev_delims[-1] if prev_delims else 0
+    next_delim = _CLAUSE_SPLIT.search(text[match_end:])
+    clause_end = match_end + next_delim.start() if next_delim else len(text)
+    return text[clause_start:clause_end]
+
+
 def _parse_structured_metrics_with_context(text: str) -> list[tuple[float | int, str, str]]:
     results = []
     metric_pattern = re.compile(
-        r"(?<![\w-])(?:(?P<curr>[$€£])\s*)?(?P<val>\d+(?:[.,]\d+)?)(?:\s*(?P<unit>%|[xX]\b|hours?|days?|weeks?|months?|users?|clients?|projects?|requests?|seconds?|minutes?|USD|EUR|GBP))?",
+        r"(?<![\w-])(?:(?P<curr>[$€£])\s*)?(?P<val>\d+(?:[.,]\d+)?)(?:\s*(?P<unit>%|[xX]\b|hours?|days?|weeks?|months?|users?|clients?|projects?|engagements?|requests?|seconds?|minutes?|USD|EUR|GBP))?",
         re.IGNORECASE,
     )
     for match in metric_pattern.finditer(text):
@@ -75,9 +86,7 @@ def _parse_structured_metrics_with_context(text: str) -> list[tuple[float | int,
             continue
         try:
             val_num = float(val_str) if "." in val_str else int(val_str)
-            start_idx = max(0, match.start() - 30)
-            end_idx = min(len(text), match.end() + 30)
-            ctx = text[start_idx:end_idx].strip()
+            ctx = _get_clause_context(text, match.start(), match.end()).strip()
             results.append((val_num, unit, ctx))
         except ValueError:
             continue
@@ -245,7 +254,12 @@ class ClaimValidator:
                 (f"candidate text contains facts not authorized by the selected material assertions: {', '.join(sorted(unauthorized_tokens))}",),
             )
 
-        return self.validate_claim(candidate.text, evidence_ids, as_of=candidate.as_of)
+        selected_subjects = {
+            self.graph.assertions[as_id].subject_id
+            for as_id in candidate.material_assertion_ids
+            if as_id in self.graph.assertions
+        }
+        return self.validate_claim(candidate.text, evidence_ids, as_of=candidate.as_of, allowed_subject_ids=selected_subjects)
 
     def validate_claim(
         self,
@@ -253,6 +267,7 @@ class ClaimValidator:
         evidence_ids: Iterable[str] | None = None,
         *,
         as_of: date | None = None,
+        allowed_subject_ids: set[str] | None = None,
     ) -> ClaimVerificationResult:
         if not isinstance(claim, str) or not claim.strip():
             raise ValueError("claim must be a non-empty string")
@@ -379,7 +394,7 @@ class ClaimValidator:
             )
 
         # 11. Exact metric provenance validation.
-        metric_reason = self._validate_metric_provenance(claim, supporting)
+        metric_reason = self._validate_metric_provenance(claim, supporting, allowed_subject_ids=allowed_subject_ids)
         if metric_reason:
             return self._result(
                 claim, False, AssertionType.UNSUPPORTED_CLAIM,
@@ -496,7 +511,12 @@ class ClaimValidator:
             return True
         return False
 
-    def _validate_metric_provenance(self, claim: str, supporting: tuple) -> str | None:
+    def _validate_metric_provenance(
+        self,
+        claim: str,
+        supporting: tuple,
+        allowed_subject_ids: set[str] | None = None,
+    ) -> str | None:
         """Verify that every numeric metric in the claim maps to an exact verified MetricAssertion."""
         structured_metrics = _parse_structured_metrics_with_context(claim)
         if not structured_metrics:
@@ -512,6 +532,8 @@ class ClaimValidator:
                 metric_assertions = self.graph.metric_assertions_for_evidence(record.id)
                 for ma in metric_assertions:
                     if ma.verification_status is not MetricVerification.VERIFIED:
+                        continue
+                    if allowed_subject_ids is not None and ma.subject_id not in allowed_subject_ids:
                         continue
                     if ma.numeric_value != num_val:
                         continue

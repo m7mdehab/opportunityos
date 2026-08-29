@@ -137,10 +137,10 @@ def _single_record_supports_value(
                     loc == field_suffix
                     or loc.endswith(f".{field_suffix}")
                     or loc.endswith(predicate.casefold())
-                    or (field_suffix == "organization" and (loc == "org" or loc.endswith(".org")))
-                    or (field_suffix in {"title", "market_facing_title"} and (loc in {"title", "role", "position"} or loc.endswith(".title")))
-                    or (predicate.startswith("work_authorization") and (loc == "auth" or "work_authorization" in loc or "auth" in loc))
-                    or (predicate.startswith("certification") and (loc == "cert" or "certification" in loc))
+                    or (field_suffix == "organization" and (loc in {"org", "organization"} or loc.endswith(".org") or loc.endswith(".organization")))
+                    or (field_suffix in {"title", "market_facing_title"} and (loc in {"title", "market_facing_title"} or loc.endswith(".title") or loc.endswith(".market_facing_title")))
+                    or (predicate.startswith("work_authorization") and (loc in {"auth", "status", "jurisdiction", "work_authorization.status", "work_authorization.jurisdiction"} or loc.endswith(".status") or loc.endswith(".jurisdiction")))
+                    or (predicate.startswith("certification") and (loc in {"cert", "name", "issuer", "certification.name", "certification.issuer"} or loc.endswith(".name") or loc.endswith(".issuer")))
                 )
                 if loc_matches:
                     if val_lower in content_lower:
@@ -247,6 +247,128 @@ def _is_value_supported_by_evidence(
     return any(_single_record_supports_value(value, r, predicate=predicate, subject_id=subject_id) for r in evidence_records)
 
 
+_CLAUSE_SPLIT = re.compile(r"[,;.\n]|\b(?:and|while|whereas|but|although)\b", re.IGNORECASE)
+
+
+def _get_clause_context(text: str, match_start: int, match_end: int) -> str:
+    prev_delims = [m.end() for m in _CLAUSE_SPLIT.finditer(text[:match_start])]
+    clause_start = prev_delims[-1] if prev_delims else 0
+    next_delim = _CLAUSE_SPLIT.search(text[match_end:])
+    clause_end = match_end + next_delim.start() if next_delim else len(text)
+    return text[clause_start:clause_end]
+
+
+def _parse_metrics_with_context(text: str) -> list[tuple[float | int, str, str]]:
+    results = []
+    metric_pattern = re.compile(
+        r"(?<![\w-])(?:(?P<curr>[$€£])\s*)?(?P<val>\d+(?:[.,]\d+)?)(?:\s*(?P<unit>%|[xX]\b|hours?|days?|weeks?|months?|users?|clients?|projects?|engagements?|requests?|seconds?|minutes?|USD|EUR|GBP))?",
+        re.IGNORECASE,
+    )
+    for match in metric_pattern.finditer(text):
+        curr = match.group("curr") or ""
+        val_str = match.group("val").replace(",", "")
+        unit = (match.group("unit") or curr or "count").strip().casefold()
+        digits = re.sub(r"\D", "", val_str)
+        if re.fullmatch(r"(?:19|20)\d{2}", digits) and unit == "count":
+            continue
+        try:
+            val_num = float(val_str) if "." in val_str else int(val_str)
+            ctx = _get_clause_context(text, match.start(), match.end())
+            results.append((val_num, unit, ctx))
+        except ValueError:
+            continue
+    return results
+
+
+def _units_compatible(unit_a: str, unit_b: str, ev_ctx: str = "") -> bool:
+    ua = unit_a.strip().casefold()
+    ub = unit_b.strip().casefold()
+    if ua == ub:
+        return True
+    if ua in {"%", "percent", "percentage"}:
+        return ub in {"%", "percent", "percentage"}
+    if ub in {"%", "percent", "percentage"}:
+        return False
+    if ua in {"$", "usd"}:
+        return ub in {"$", "usd"}
+    if ub in {"$", "usd"}:
+        return False
+    if ua in {"€", "eur"}:
+        return ub in {"€", "eur"}
+    if ub in {"€", "eur"}:
+        return False
+    if ua in {"£", "gbp"}:
+        return ub in {"£", "gbp"}
+    if ub in {"£", "gbp"}:
+        return False
+    if ua.rstrip("s") == ub.rstrip("s") and len(ua.rstrip("s")) >= 3:
+        return True
+    if ua in ub or ub in ua:
+        return True
+    if ev_ctx and ua.rstrip("s") in ev_ctx.casefold():
+        return True
+    if ua in {"count", ""} or ub in {"count", ""}:
+        return True
+    return False
+
+
+def _metric_contexts_compatible(metric_ctx: str, ev_ctx: str, num_val: float | int) -> bool:
+    num_str = str(int(num_val) if isinstance(num_val, (int, float)) and float(num_val).is_integer() else num_val)
+    metric_tokens = _extract_tokens(metric_ctx) - _STOP_WORDS - {num_str.casefold()}
+    ev_tokens = _extract_tokens(ev_ctx) - _STOP_WORDS - {num_str.casefold()}
+    if not metric_tokens:
+        return True
+    return bool(metric_tokens & ev_tokens)
+
+
+def _single_record_supports_metric(metric: MetricAssertion, record: EvidenceRecord) -> bool:
+    if record.verification_status is VerificationStatus.UNVERIFIED or record.verification_status is VerificationStatus.EXPLICIT_NULL:
+        return False
+    if record.verification_status is VerificationStatus.APPROXIMATE and metric.modality is Modality.DEFINITE:
+        return False
+    if not record.content or not record.content.strip():
+        return False
+
+    if record.metadata:
+        rec_subj = record.metadata.get("subject_id") or record.metadata.get("subject")
+        if rec_subj and metric.subject_id and rec_subj != metric.subject_id:
+            return False
+        rec_val = record.metadata.get("numeric_value") or record.metadata.get("value")
+        if rec_val is not None:
+            try:
+                if float(rec_val) != float(metric.numeric_value):
+                    return False
+            except (ValueError, TypeError):
+                return False
+        rec_unit = record.metadata.get("unit")
+        if rec_unit is not None and not _units_compatible(metric.unit, str(rec_unit), record.content):
+            return False
+        rec_ctx = record.metadata.get("context")
+        if rec_ctx is not None and not _metric_contexts_compatible(metric.context, str(rec_ctx), metric.numeric_value):
+            return False
+
+    parsed = _parse_metrics_with_context(record.content)
+    for ev_val, ev_unit, ev_ctx in parsed:
+        val_match = False
+        try:
+            val_match = float(ev_val) == float(metric.numeric_value)
+        except (ValueError, TypeError):
+            pass
+        if not val_match:
+            continue
+        if not _units_compatible(metric.unit, ev_unit, ev_ctx):
+            continue
+        if not _metric_contexts_compatible(metric.context, ev_ctx, metric.numeric_value):
+            continue
+        if _BOUND_AT_MOST.search(ev_ctx) and metric.modality in {Modality.DEFINITE, Modality.AT_LEAST}:
+            continue
+        if _CONDITIONAL.search(ev_ctx) and metric.modality is Modality.DEFINITE:
+            continue
+        return True
+
+    return False
+
+
 class TruthGraph:
     """Owns atomic evidence, assertions, typed relations, and immutable profiles.
 
@@ -345,7 +467,12 @@ class TruthGraph:
 
         # Value support verification
         if assertion.value is not None and evidence_records:
-            if not _is_value_supported_by_evidence(assertion.value, evidence_records):
+            if not _is_value_supported_by_evidence(
+                assertion.value,
+                evidence_records,
+                predicate=assertion.predicate,
+                subject_id=assertion.subject_id,
+            ):
                 raise ValueError(f"assertion {assertion.id} value {assertion.value!r} is not supported by evidence {assertion.evidence_ids}")
 
         self._assertions[assertion.id] = assertion
@@ -401,9 +528,13 @@ class TruthGraph:
         if metric.verification_status is MetricVerification.VERIFIED:
             if not evidence_records:
                 raise ValueError(f"metric assertion {metric.id} is VERIFIED but has no evidence")
-            # Verify numeric value is in evidence
-            if not _is_value_supported_by_evidence(metric.numeric_value, evidence_records):
-                raise ValueError(f"metric assertion {metric.id} numeric value {metric.numeric_value} not in evidence {metric.evidence_ids}")
+            if any(r.verification_status is VerificationStatus.UNVERIFIED for r in evidence_records):
+                raise ValueError(f"metric assertion {metric.id} cannot be VERIFIED when supported by UNVERIFIED evidence")
+            if not any(_single_record_supports_metric(metric, r) for r in evidence_records):
+                raise ValueError(
+                    f"metric assertion {metric.id} (value={metric.numeric_value}, unit={metric.unit}, context={metric.context!r}) "
+                    f"is not supported by evidence {metric.evidence_ids}"
+                )
 
         self._metrics[metric.id] = metric
 
