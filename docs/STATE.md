@@ -2,66 +2,33 @@
 # OpportunityOS State
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
-Last shipped: BRIEF-000 — 2026-08-27.
-Active work: BRIEF-001.
-Phase status: READY_FOR_INDEPENDENT_AUDIT.
+Last shipped: BRIEF-001 — 2026-08-29.
+Active work: none.
+Phase status: passed.
 Blocked: none.
-Next: Claude Code independently adjudicates `out/audit-001.json` and records precision/disagreements..
+Next: complete active brief.
 
 ## Repository
 
-- **Generated:** 2026-08-29T00:58:26Z
-- **State generated at commit:** `dbd4aba` — docs: update SOURCE_EVIDENCE and SOURCE_REGISTRY with refreshed reconnaissance corpus
+- **Generated:** 2026-08-29T02:12:09Z
+- **State generated at commit:** `42c9c9e` — docs: update SOURCE_EVIDENCE and SOURCE_REGISTRY after remediation
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
 
-- **Brief:** BRIEF-001
-- **Phase status:** READY_FOR_INDEPENDENT_AUDIT
-- **Open acceptance items:** 35
-- All 20 cases in §3.1 pass
-- All 12 cases in §3.2 pass
-- All 4 cases in §3.3 pass
-- All 7 cases in §3.4 pass
-- At least 15 generalization cases are added and listed in REPORT-001
-- No mandated case was edited, skipped, or deleted
-- Eligible is impossible when any restriction is present
-- Every verdict records the matched string
-- `robots_allow` returns three states and a 404 is `allowed`
-- `robots_unreachable` retries three times
-- Health vocabulary is closed and uses `parse_empty`
-- TED uses the correct method and every ATS token is verified
-- At least 8 of 14 families and 3 independent families reached HTTP
-- A 30/30/30 sample is adjudicated with per-class precision and disagreement strings
-- Eligible precision is at least 90%, or its percentage is withheld
-- The adjudicated set is stored only under `out/`
-- Per-source eligible rates and inversions are reported
-- REPORT-001 explicitly retracts the v1.1 419 figure and reason
-- STATE is regenerated; workflows green; mirror HEALTHY; `out/` absent
-- `.codex/agents/` contains five pinned roster files
-- `.codex/**` is allowlisted for mirror review
-- `AGENTS.md` contains Model routing
-- The routing table was followed; escalations and triggers are in REPORT-001
-- REPORT-001 names the producing agent for each major deliverable
-- Codex CLI version (at least 0.147.0) is recorded
-- No cloud task or Ultra-mode run was used
-- ADR-0003 records the model, closed vocabulary, and Egypt-as-parameter
-- `geo_allow`, `geo_deny`, and `work_mode` store evidence strings
-- `regions.py` maps Egypt to AFRICA, NORTH_AFRICA, MENA, EMEA—not EU, EEA, EUROPE
-- `eligibility_for(record, country)` is pure and defaults to `EG`
-- Deny beats allow and an allowlist omitting Egypt excludes
-- Five Addendum B cases assert extraction and derived verdict
-- Unmapped phrases are captured and reported with frequency
-- Evidence reports eligibility for at least three non-Egypt countries
-- Audit separates extraction and derived-verdict precision
+- **Brief:** none
+- **Phase status:** passed
+- **Open acceptance items:** 0
+- None
 
 ## Completed Briefs
 
 - BRIEF-000 — 2026-08-27
+- BRIEF-001 — 2026-08-29
 
 ## Last Phase Outcome
 
-- READY_FOR_INDEPENDENT_AUDIT
+- No phase outcome recorded
 
 ## Decisions
 
@@ -82,16 +49,14 @@ Next: Claude Code independently adjudicates `out/audit-001.json` and records pre
 
 ## Source Status Counts
 
-- allowed_ok: 20
+- allowed_ok: 19
 - deliberately_not_fetched: 16
 - manual_only: 16
 - parse_empty: 2
 - review_required: 52
-- robots_unreachable: 14
+- robots_unreachable: 15
 - unknown_disable_actions: 36
 
 ## Next Prerequisites
 
-- Claude Code independently adjudicates `out/audit-001.json` and records precision/disagreements.
-- Codex remediates any audit finding, reruns invalidated evidence, and requests a fresh independent audit.
-- Architect verifies every v1.4 acceptance criterion; only then may the branch merge and synchronize the mirror.
+- Complete the active brief.
