@@ -3,23 +3,30 @@
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
 Last shipped: BRIEF-001 — 2026-08-29.
-Active work: none.
-Phase status: passed.
+Active work: BRIEF-002.
+Phase status: in progress.
 Blocked: none.
 Next: [x] Independent audit passed with $\ge 90.0\%$ eligible precision (100.00% achieved, $n=8$)..
 
 ## Repository
 
-- **Generated:** 2026-08-29T11:39:15Z
+- **Generated:** 2026-08-29T11:40:12Z
 - **State generated at commit:** `be05673` — docs: finalize Invariant 4 withholding accounting and mirror workflow status
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
 
-- **Brief:** none
-- **Phase status:** passed
-- **Open acceptance items:** 0
-- None
+- **Brief:** BRIEF-002
+- **Phase status:** in progress
+- **Open acceptance items:** 8
+- Career truth schema implemented with atomic evidence links (dates, titles, organizations, achievements).
+- Independent capability graph implemented with services, portfolio items, RFP qualification parameters, and delivery constraints.
+- Automated verification engine enforces "never claim" constraints and flags unbacked assertions.
+- Unit and property-based test suite covering truth ingestion, validation, and rejection.
+- Zero PII or private career data committed to public/mirrored directories; repository guards green.
+- ADR accepted for Truth Graph Architecture and Provenance Model.
+- Independent audit / checker passes acceptance gate.
+- `docs/STATE.md` regenerated and accurate.
 
 ## Completed Briefs
 
