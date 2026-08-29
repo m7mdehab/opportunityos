@@ -1,9 +1,9 @@
 # AUDIT-002 - Structural Authority and Assertion Closure Independent Audit
 
 **Date:** 2026-08-29
-**Auditor:** Independent Blinded Truth-Integrity and Structural Authority Auditor
-**Audited Head:** fix/brief-002-assertion-authority (94c501351f6fcba0ec64872aa46cebc339be74ba)
-**Scope:** truth/models.py, truth/graph.py, truth/ingest.py, truth/validator.py, truth/fixtures.py, truth/test_models.py, truth/test_graph.py, truth/test_ingest.py, truth/test_adversarial.py, truth/test_property.py, truth/test_validator.py
+**Auditor:** Independent Blinded Truth-Integrity and Structural Authority Auditor (Subagent `73055c7e-ef0d-4d9e-bac3-bace66e17a30`)
+**Audited Head:** `fix/brief-002-terminal-assertion-authority` (`2aa47af9f41fd13418ebe389ad3075f81f3833fa`)
+**Scope:** `truth/models.py`, `truth/graph.py`, `truth/ingest.py`, `truth/validator.py`, `truth/fixtures.py`, `truth/test_models.py`, `truth/test_graph.py`, `truth/test_ingest.py`, `truth/test_adversarial.py`, `truth/test_property.py`, `truth/test_validator.py`
 **Overall Verdict:** 10 / 10 CRITERIA SATISFIED - FULL PASS
 
 ---
