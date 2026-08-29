@@ -52,10 +52,15 @@ _CONDITIONAL = re.compile(r"\b(?:subject\s*to|conditional\s*(?:on|upon)|dependin
 
 
 def _extract_tokens(text: str) -> set[str]:
-    return {match.group(0).casefold() for match in _WORD_PATTERN.finditer(text)}
+    return {match.group(0).casefold() for match in _WORD_PATTERN.finditer(text.replace("_", " "))}
 
 
-def _single_record_supports_value(value: Any, record: EvidenceRecord) -> bool:
+def _single_record_supports_value(
+    value: Any,
+    record: EvidenceRecord,
+    predicate: str | None = None,
+    subject_id: str | None = None,
+) -> bool:
     if value is None:
         return True
 
@@ -67,6 +72,15 @@ def _single_record_supports_value(value: Any, record: EvidenceRecord) -> bool:
 
     content = record.content
     content_lower = content.casefold()
+
+    # Explicit locator/metadata scope checks if present
+    if record.metadata:
+        rec_subj = record.metadata.get("subject_id") or record.metadata.get("subject")
+        if rec_subj and subject_id and rec_subj != subject_id:
+            return False
+        rec_pred = record.metadata.get("predicate") or record.metadata.get("field")
+        if rec_pred and predicate and rec_pred != predicate:
+            return False
 
     if isinstance(value, str):
         val_str = value.strip()
@@ -83,6 +97,32 @@ def _single_record_supports_value(value: Any, record: EvidenceRecord) -> bool:
             # Check if negative prefix/phrase directly modifies this value
             neg_pattern = re.compile(rf"\b(?:not|no|never|without|unauthorized|non-|ineligible|lacks?|lacking)\s+(?:\w+\s+)?{re.escape(val_lower)}\b")
             if neg_pattern.search(content_lower):
+                return False
+
+        # Subject / Predicate Safety checks:
+        if predicate in {"employment.title", "employment.market_facing_title"}:
+            # If title is in a supervisory/relational phrase (e.g. "reports to Chief Data Officer"),
+            # then that title belongs to the manager/supervisor, NOT the employment subject!
+            if re.search(
+                rf"\b(?:reports?\s+to|reporting\s+to|reported\s+to|managed\s+by|supervised\s+by|assisting|under\s+(?:the\s+(?:direction|supervision)\s+of\s+)?|directed\s+by|advised\s+by)\s+{re.escape(val_lower)}\b",
+                content_lower,
+            ):
+                return False
+
+        if predicate == "employment.organization":
+            # If organization name is marked as a client/vendor/partner, it is not the employer
+            if re.search(
+                rf"\b(?:client\s+was|client\s*:\s*|partnered\s+with|vendor\s+was|vendor\s*:\s*)\s+{re.escape(val_lower)}\b",
+                content_lower,
+            ):
+                return False
+
+        if predicate == "certification.name":
+            # If certification is a prerequisite / requirement for others, it is not held
+            if re.search(
+                rf"\b(?:prerequisites?\s*(?:is|are|:)?|requires?|recommended\s*(?:is|:)?|client\s+mandated|supervised\s+holders?\s+of)\s+{re.escape(val_lower)}\b",
+                content_lower,
+            ):
                 return False
 
         if val_lower in content_lower:
@@ -138,12 +178,17 @@ def _single_record_supports_value(value: Any, record: EvidenceRecord) -> bool:
         return False
 
     if isinstance(value, (tuple, list, set, frozenset)):
-        return all(_single_record_supports_value(item, record) for item in value)
+        return all(_single_record_supports_value(item, record, predicate=predicate, subject_id=subject_id) for item in value)
 
     return False
 
 
-def _is_value_supported_by_evidence(value: Any, evidence_records: tuple[EvidenceRecord, ...]) -> bool:
+def _is_value_supported_by_evidence(
+    value: Any,
+    evidence_records: tuple[EvidenceRecord, ...],
+    predicate: str | None = None,
+    subject_id: str | None = None,
+) -> bool:
     if value is None:
         return True
     if not evidence_records:
@@ -156,12 +201,12 @@ def _is_value_supported_by_evidence(value: Any, evidence_records: tuple[Evidence
     # For collections: every item must be supported by at least one single evidence record
     if isinstance(value, (tuple, list, set, frozenset)):
         return all(
-            any(_single_record_supports_value(item, r) for r in evidence_records)
+            any(_single_record_supports_value(item, r, predicate=predicate, subject_id=subject_id) for r in evidence_records)
             for item in value
         )
 
     # For scalar values: at least one single evidence record must support the whole scalar value
-    return any(_single_record_supports_value(value, r) for r in evidence_records)
+    return any(_single_record_supports_value(value, r, predicate=predicate, subject_id=subject_id) for r in evidence_records)
 
 
 class TruthGraph:
@@ -362,115 +407,143 @@ class TruthGraph:
 
     def _validate_profile_field_provenance(self, profile: Profile, links: dict[str, tuple[str, ...]]) -> None:
         if isinstance(profile, CareerProfile):
+            if profile.approved_summaries:
+                evs = tuple(self._evidence[ev_id] for ev_id in links.get(profile.id, ()))
+                if not evs:
+                    evs = tuple(self._evidence.values())
+                for summary in profile.approved_summaries:
+                    if not _is_value_supported_by_evidence(summary, evs, predicate="profile.approved_summary", subject_id=profile.id):
+                        raise ValueError(f"field profile.approved_summary '{summary}' is not supported by evidence")
+
             for emp in profile.employment:
                 evs = tuple(self._evidence[ev_id] for ev_id in links[emp.id])
-                if not _is_value_supported_by_evidence(emp.organization, evs):
+                if not _is_value_supported_by_evidence(emp.organization, evs, predicate="employment.organization", subject_id=emp.id):
                     raise ValueError(f"field employment.organization '{emp.organization}' is not supported by evidence: {', '.join(links[emp.id])}")
-                if not _is_value_supported_by_evidence(emp.title, evs):
+                if not _is_value_supported_by_evidence(emp.title, evs, predicate="employment.title", subject_id=emp.id):
                     raise ValueError(f"field employment.title '{emp.title}' is not supported by evidence: {', '.join(links[emp.id])}")
-                if emp.market_facing_title and not _is_value_supported_by_evidence(emp.market_facing_title, evs):
+                if emp.market_facing_title and not _is_value_supported_by_evidence(emp.market_facing_title, evs, predicate="employment.market_facing_title", subject_id=emp.id):
                     raise ValueError(f"field employment.market_facing_title '{emp.market_facing_title}' is not supported by evidence: {', '.join(links[emp.id])}")
-                if not _is_value_supported_by_evidence(emp.start_date, evs):
+                if not _is_value_supported_by_evidence(emp.start_date, evs, predicate="employment.start_date", subject_id=emp.id):
                     raise ValueError(f"field employment.start_date '{emp.start_date}' is not supported by evidence: {', '.join(links[emp.id])}")
-                if emp.end_date and not _is_value_supported_by_evidence(emp.end_date, evs):
+                if emp.end_date and not _is_value_supported_by_evidence(emp.end_date, evs, predicate="employment.end_date", subject_id=emp.id):
                     raise ValueError(f"field employment.end_date '{emp.end_date}' is not supported by evidence: {', '.join(links[emp.id])}")
                 for resp in emp.responsibilities:
-                    if not _is_value_supported_by_evidence(resp, evs):
+                    if not _is_value_supported_by_evidence(resp, evs, predicate="employment.responsibility", subject_id=emp.id):
                         raise ValueError(f"field employment.responsibility '{resp}' is not supported by evidence: {', '.join(links[emp.id])}")
                 for ach in emp.achievements:
                     ach_evs = tuple(self._evidence[ev_id] for ev_id in links[ach.id])
-                    if not _is_value_supported_by_evidence(ach.statement, ach_evs):
+                    if not _is_value_supported_by_evidence(ach.statement, ach_evs, predicate="achievement.statement", subject_id=ach.id):
                         raise ValueError(f"field achievement.statement '{ach.statement}' is not supported by evidence: {', '.join(links[ach.id])}")
             for edu in profile.education:
                 evs = tuple(self._evidence[ev_id] for ev_id in links[edu.id])
-                if not _is_value_supported_by_evidence(edu.institution, evs):
+                if not _is_value_supported_by_evidence(edu.institution, evs, predicate="education.institution", subject_id=edu.id):
                     raise ValueError(f"field education.institution '{edu.institution}' is not supported by evidence: {', '.join(links[edu.id])}")
-                if not _is_value_supported_by_evidence(edu.qualification, evs):
+                if not _is_value_supported_by_evidence(edu.qualification, evs, predicate="education.qualification", subject_id=edu.id):
                     raise ValueError(f"field education.qualification '{edu.qualification}' is not supported by evidence: {', '.join(links[edu.id])}")
-                if edu.start_date and not _is_value_supported_by_evidence(edu.start_date, evs):
+                if edu.start_date and not _is_value_supported_by_evidence(edu.start_date, evs, predicate="education.start_date", subject_id=edu.id):
                     raise ValueError(f"field education.start_date '{edu.start_date}' is not supported by evidence: {', '.join(links[edu.id])}")
-                if edu.end_date and not _is_value_supported_by_evidence(edu.end_date, evs):
+                if edu.end_date and not _is_value_supported_by_evidence(edu.end_date, evs, predicate="education.end_date", subject_id=edu.id):
                     raise ValueError(f"field education.end_date '{edu.end_date}' is not supported by evidence: {', '.join(links[edu.id])}")
             for cert in profile.certifications:
                 evs = tuple(self._evidence[ev_id] for ev_id in links[cert.id])
-                if not _is_value_supported_by_evidence(cert.name, evs):
+                if not _is_value_supported_by_evidence(cert.name, evs, predicate="certification.name", subject_id=cert.id):
                     raise ValueError(f"field certification.name '{cert.name}' is not supported by evidence: {', '.join(links[cert.id])}")
-                if not _is_value_supported_by_evidence(cert.issuer, evs):
+                if not _is_value_supported_by_evidence(cert.issuer, evs, predicate="certification.issuer", subject_id=cert.id):
                     raise ValueError(f"field certification.issuer '{cert.issuer}' is not supported by evidence: {', '.join(links[cert.id])}")
-                if cert.issued_date and not _is_value_supported_by_evidence(cert.issued_date, evs):
+                if cert.issued_date and not _is_value_supported_by_evidence(cert.issued_date, evs, predicate="certification.issued_date", subject_id=cert.id):
                     raise ValueError(f"field certification.issued_date '{cert.issued_date}' is not supported by evidence: {', '.join(links[cert.id])}")
-                if cert.expiry_date and not _is_value_supported_by_evidence(cert.expiry_date, evs):
+                if cert.expiry_date and not _is_value_supported_by_evidence(cert.expiry_date, evs, predicate="certification.expiry_date", subject_id=cert.id):
                     raise ValueError(f"field certification.expiry_date '{cert.expiry_date}' is not supported by evidence: {', '.join(links[cert.id])}")
-                if cert.credential_id and not _is_value_supported_by_evidence(cert.credential_id, evs):
+                if cert.credential_id and not _is_value_supported_by_evidence(cert.credential_id, evs, predicate="certification.credential_id", subject_id=cert.id):
                     raise ValueError(f"field certification.credential_id '{cert.credential_id}' is not supported by evidence: {', '.join(links[cert.id])}")
-                if cert.credential_url and not _is_value_supported_by_evidence(cert.credential_url, evs):
+                if cert.credential_url and not _is_value_supported_by_evidence(cert.credential_url, evs, predicate="certification.credential_url", subject_id=cert.id):
                     raise ValueError(f"field certification.credential_url '{cert.credential_url}' is not supported by evidence: {', '.join(links[cert.id])}")
             for skill in profile.skills:
                 evs = tuple(self._evidence[ev_id] for ev_id in links[skill.id])
-                if not _is_value_supported_by_evidence(skill.name, evs):
+                if not _is_value_supported_by_evidence(skill.name, evs, predicate="skill.name", subject_id=skill.id):
                     raise ValueError(f"field skill.name '{skill.name}' is not supported by evidence: {', '.join(links[skill.id])}")
-                if skill.proficiency and not _is_value_supported_by_evidence(skill.proficiency, evs):
+                if skill.proficiency and not _is_value_supported_by_evidence(skill.proficiency, evs, predicate="skill.proficiency", subject_id=skill.id):
                     raise ValueError(f"field skill.proficiency '{skill.proficiency}' is not supported by evidence: {', '.join(links[skill.id])}")
             for lang in profile.languages:
                 evs = tuple(self._evidence[ev_id] for ev_id in links[lang.id])
-                if not _is_value_supported_by_evidence(lang.language, evs):
+                if not _is_value_supported_by_evidence(lang.language, evs, predicate="language.language", subject_id=lang.id):
                     raise ValueError(f"field language.language '{lang.language}' is not supported by evidence: {', '.join(links[lang.id])}")
-                if not _is_value_supported_by_evidence(lang.proficiency, evs):
+                if not _is_value_supported_by_evidence(lang.proficiency, evs, predicate="language.proficiency", subject_id=lang.id):
                     raise ValueError(f"field language.proficiency '{lang.proficiency}' is not supported by evidence: {', '.join(links[lang.id])}")
             for auth in profile.work_authorizations:
                 evs = tuple(self._evidence[ev_id] for ev_id in links[auth.id])
-                if not _is_value_supported_by_evidence(auth.jurisdiction, evs):
+                if not _is_value_supported_by_evidence(auth.jurisdiction, evs, predicate="work_authorization.jurisdiction", subject_id=auth.id):
                     raise ValueError(f"field work_authorization.jurisdiction '{auth.jurisdiction}' is not supported by evidence: {', '.join(links[auth.id])}")
-                if not _is_value_supported_by_evidence(auth.status, evs):
+                if not _is_value_supported_by_evidence(auth.status, evs, predicate="work_authorization.status", subject_id=auth.id):
                     raise ValueError(f"field work_authorization.status '{auth.status}' is not supported by evidence: {', '.join(links[auth.id])}")
-                if auth.expiry_date and not _is_value_supported_by_evidence(auth.expiry_date, evs):
+                if auth.expiry_date and not _is_value_supported_by_evidence(auth.expiry_date, evs, predicate="work_authorization.expiry_date", subject_id=auth.id):
                     raise ValueError(f"field work_authorization.expiry_date '{auth.expiry_date}' is not supported by evidence: {', '.join(links[auth.id])}")
         else:
+            cap_evs = tuple(self._evidence[ev_id] for ev_id in links.get(profile.id, ()))
+            if not cap_evs:
+                cap_evs = tuple(self._evidence.values())
+            if profile.target_industries:
+                for ind in profile.target_industries:
+                    if not _is_value_supported_by_evidence(ind, cap_evs, predicate="capability.target_industry", subject_id=profile.id):
+                        raise ValueError(f"field capability.target_industry '{ind}' is not supported by evidence")
+            if profile.excluded_industries:
+                for ind in profile.excluded_industries:
+                    if not _is_value_supported_by_evidence(ind, cap_evs, predicate="capability.excluded_industry", subject_id=profile.id):
+                        raise ValueError(f"field capability.excluded_industry '{ind}' is not supported by evidence")
+            if profile.delivery_languages:
+                for dlang in profile.delivery_languages:
+                    if not _is_value_supported_by_evidence(dlang, cap_evs, predicate="capability.delivery_language", subject_id=profile.id):
+                        raise ValueError(f"field capability.delivery_language '{dlang}' is not supported by evidence")
+
             for srv in profile.services:
                 evs = tuple(self._evidence[ev_id] for ev_id in links[srv.id])
-                if not _is_value_supported_by_evidence(srv.name, evs):
+                if not _is_value_supported_by_evidence(srv.name, evs, predicate="service.name", subject_id=srv.id):
                     raise ValueError(f"field service.name '{srv.name}' is not supported by evidence: {', '.join(links[srv.id])}")
-                if not _is_value_supported_by_evidence(srv.description, evs):
+                if not _is_value_supported_by_evidence(srv.description, evs, predicate="service.description", subject_id=srv.id):
                     raise ValueError(f"field service.description '{srv.description}' is not supported by evidence: {', '.join(links[srv.id])}")
-                if srv.deliverables and not _is_value_supported_by_evidence(srv.deliverables, evs):
+                if srv.engagement_types and not _is_value_supported_by_evidence([et.value for et in srv.engagement_types], evs, predicate="service.engagement_type", subject_id=srv.id):
+                    raise ValueError(f"field service.engagement_types is not supported by evidence: {', '.join(links[srv.id])}")
+                if srv.deliverables and not _is_value_supported_by_evidence(srv.deliverables, evs, predicate="service.deliverable", subject_id=srv.id):
                     raise ValueError(f"field service.deliverables '{srv.deliverables}' is not supported by evidence: {', '.join(links[srv.id])}")
             for port in profile.portfolio:
                 evs = tuple(self._evidence[ev_id] for ev_id in links[port.id])
-                if not _is_value_supported_by_evidence(port.title, evs):
+                if not _is_value_supported_by_evidence(port.title, evs, predicate="portfolio.title", subject_id=port.id):
                     raise ValueError(f"field portfolio.title '{port.title}' is not supported by evidence: {', '.join(links[port.id])}")
-                if not _is_value_supported_by_evidence(port.summary, evs):
+                if not _is_value_supported_by_evidence(port.summary, evs, predicate="portfolio.summary", subject_id=port.id):
                     raise ValueError(f"field portfolio.summary '{port.summary}' is not supported by evidence: {', '.join(links[port.id])}")
-                if port.outcome and not _is_value_supported_by_evidence(port.outcome, evs):
+                if port.outcome and not _is_value_supported_by_evidence(port.outcome, evs, predicate="portfolio.outcome", subject_id=port.id):
                     raise ValueError(f"field portfolio.outcome '{port.outcome}' is not supported by evidence: {', '.join(links[port.id])}")
-                if port.url and not _is_value_supported_by_evidence(port.url, evs):
+                if port.url and not _is_value_supported_by_evidence(port.url, evs, predicate="portfolio.url", subject_id=port.id):
                     raise ValueError(f"field portfolio.url '{port.url}' is not supported by evidence: {', '.join(links[port.id])}")
             if profile.capacity:
                 cap = profile.capacity
                 evs = tuple(self._evidence[ev_id] for ev_id in links[cap.id])
-                if cap.available_from and not _is_value_supported_by_evidence(cap.available_from, evs):
+                if cap.available_from and not _is_value_supported_by_evidence(cap.available_from, evs, predicate="capacity.available_from", subject_id=cap.id):
                     raise ValueError(f"field capacity.available_from '{cap.available_from}' is not supported by evidence: {', '.join(links[cap.id])}")
-                if cap.hours_per_week is not None and not _is_value_supported_by_evidence(cap.hours_per_week, evs):
+                if cap.hours_per_week is not None and not _is_value_supported_by_evidence(cap.hours_per_week, evs, predicate="capacity.hours_per_week", subject_id=cap.id):
                     raise ValueError(f"field capacity.hours_per_week '{cap.hours_per_week}' is not supported by evidence: {', '.join(links[cap.id])}")
-                if cap.min_project_value is not None and not _is_value_supported_by_evidence(cap.min_project_value, evs):
+                if cap.min_project_value is not None and not _is_value_supported_by_evidence(cap.min_project_value, evs, predicate="capacity.min_project_value", subject_id=cap.id):
                     raise ValueError(f"field capacity.min_project_value '{cap.min_project_value}' is not supported by evidence: {', '.join(links[cap.id])}")
-                if cap.max_project_value is not None and not _is_value_supported_by_evidence(cap.max_project_value, evs):
+                if cap.max_project_value is not None and not _is_value_supported_by_evidence(cap.max_project_value, evs, predicate="capacity.max_project_value", subject_id=cap.id):
                     raise ValueError(f"field capacity.max_project_value '{cap.max_project_value}' is not supported by evidence: {', '.join(links[cap.id])}")
-                if cap.annual_turnover_usd is not None and not _is_value_supported_by_evidence(cap.annual_turnover_usd, evs):
+                if cap.annual_turnover_usd is not None and not _is_value_supported_by_evidence(cap.annual_turnover_usd, evs, predicate="capacity.annual_turnover_usd", subject_id=cap.id):
                     raise ValueError(f"field capacity.annual_turnover_usd '{cap.annual_turnover_usd}' is not supported by evidence: {', '.join(links[cap.id])}")
-                if cap.bid_bond_capacity_usd is not None and not _is_value_supported_by_evidence(cap.bid_bond_capacity_usd, evs):
+                if cap.bid_bond_capacity_usd is not None and not _is_value_supported_by_evidence(cap.bid_bond_capacity_usd, evs, predicate="capacity.bid_bond_capacity_usd", subject_id=cap.id):
                     raise ValueError(f"field capacity.bid_bond_capacity_usd '{cap.bid_bond_capacity_usd}' is not supported by evidence: {', '.join(links[cap.id])}")
-                if cap.legal_capacity is not None and not _is_value_supported_by_evidence(cap.legal_capacity, evs):
+                if cap.legal_capacity is not None and not _is_value_supported_by_evidence(cap.legal_capacity, evs, predicate="capacity.legal_capacity", subject_id=cap.id):
                     raise ValueError(f"field capacity.legal_capacity '{cap.legal_capacity}' is not supported by evidence: {', '.join(links[cap.id])}")
-                if cap.currencies and not _is_value_supported_by_evidence(cap.currencies, evs):
+                if cap.currencies and not _is_value_supported_by_evidence(cap.currencies, evs, predicate="capacity.currency", subject_id=cap.id):
                     raise ValueError(f"field capacity.currencies '{cap.currencies}' is not supported by evidence: {', '.join(links[cap.id])}")
-                if cap.service_regions and not _is_value_supported_by_evidence(cap.service_regions, evs):
+                if cap.service_regions and not _is_value_supported_by_evidence(cap.service_regions, evs, predicate="capacity.service_region", subject_id=cap.id):
                     raise ValueError(f"field capacity.service_regions '{cap.service_regions}' is not supported by evidence: {', '.join(links[cap.id])}")
-                if cap.onsite_willingness and not _is_value_supported_by_evidence(cap.onsite_willingness, evs):
+                if cap.onsite_willingness and not _is_value_supported_by_evidence(cap.onsite_willingness, evs, predicate="capacity.onsite_willingness", subject_id=cap.id):
                     raise ValueError(f"field capacity.onsite_willingness '{cap.onsite_willingness}' is not supported by evidence: {', '.join(links[cap.id])}")
             for tool in profile.tools:
                 tool_evs = tuple(self._evidence[ev_id] for ev_id in links[tool.id])
-                if not _is_value_supported_by_evidence(tool.name, tool_evs):
+                if not _is_value_supported_by_evidence(tool.name, tool_evs, predicate="tool.name", subject_id=tool.id):
                     raise ValueError(f"field tool.name '{tool.name}' is not supported by evidence: {', '.join(links[tool.id])}")
+                if tool.proficiency and not _is_value_supported_by_evidence(tool.proficiency, tool_evs, predicate="tool.proficiency", subject_id=tool.id):
+                    raise ValueError(f"field tool.proficiency '{tool.proficiency}' is not supported by evidence: {', '.join(links[tool.id])}")
 
     def _derive_epistemic_status(
         self,
@@ -527,6 +600,9 @@ class TruthGraph:
 
     def _project_profile_assertions(self, profile: Profile) -> None:
         if isinstance(profile, CareerProfile):
+            for idx, summary in enumerate(profile.approved_summaries):
+                self._project_field_assertion(f"{profile.id}.summary.{idx}", "profile.approved_summary", summary, profile.evidence_ids)
+
             for emp in profile.employment:
                 self._project_field_assertion(emp.id, "employment.organization", emp.organization, emp.evidence_ids, effective_from=emp.start_date, effective_to=emp.end_date)
                 self._project_field_assertion(emp.id, "employment.title", emp.title, emp.evidence_ids, effective_from=emp.start_date, effective_to=emp.end_date)
@@ -566,7 +642,7 @@ class TruthGraph:
                             effective_from=emp.start_date,
                             effective_to=emp.end_date,
                         )
-                    # Extract numeric metric assertions from achievement
+                    # Extract candidate numeric metric assertions from achievement (default UNAVAILABLE)
                     self._extract_metrics_from_text(ach.id, ach.statement, ach.evidence_ids, ach.metric_verification)
 
             for edu in profile.education:
@@ -606,9 +682,18 @@ class TruthGraph:
                 if auth.expiry_date:
                     self._project_field_assertion(auth.id, "work_authorization.expiry_date", auth.expiry_date, auth.evidence_ids, effective_to=auth.expiry_date)
         else:
+            for idx, ind in enumerate(profile.target_industries):
+                self._project_field_assertion(f"{profile.id}.target_ind.{idx}", "capability.target_industry", ind, profile.evidence_ids, default_assertion_type=AssertionType.DERIVED_CAPABILITY)
+            for idx, ind in enumerate(profile.excluded_industries):
+                self._project_field_assertion(f"{profile.id}.excluded_ind.{idx}", "capability.excluded_industry", ind, profile.evidence_ids, default_assertion_type=AssertionType.DERIVED_CAPABILITY)
+            for idx, dlang in enumerate(profile.delivery_languages):
+                self._project_field_assertion(f"{profile.id}.delivery_lang.{idx}", "capability.delivery_language", dlang, profile.evidence_ids, default_assertion_type=AssertionType.DERIVED_CAPABILITY)
+
             for srv in profile.services:
                 self._project_field_assertion(srv.id, "service.name", srv.name, srv.evidence_ids, default_assertion_type=AssertionType.DERIVED_CAPABILITY)
                 self._project_field_assertion(srv.id, "service.description", srv.description, srv.evidence_ids, default_assertion_type=AssertionType.DERIVED_CAPABILITY)
+                for idx, eng in enumerate(srv.engagement_types):
+                    self._project_field_assertion(f"{srv.id}.eng.{idx}", "service.engagement_type", eng.value, srv.evidence_ids, default_assertion_type=AssertionType.DERIVED_CAPABILITY)
                 for idx, deliv in enumerate(srv.deliverables):
                     self._project_field_assertion(f"{srv.id}.deliv.{idx}", "service.deliverable", deliv, srv.evidence_ids, default_assertion_type=AssertionType.DERIVED_CAPABILITY)
 
@@ -635,10 +720,18 @@ class TruthGraph:
                     self._project_field_assertion(cap.id, "capacity.annual_turnover_usd", cap.annual_turnover_usd, cap.evidence_ids, effective_from=cap.available_from)
                 if cap.bid_bond_capacity_usd is not None:
                     self._project_field_assertion(cap.id, "capacity.bid_bond_capacity_usd", cap.bid_bond_capacity_usd, cap.evidence_ids, effective_from=cap.available_from)
+                for idx, curr in enumerate(cap.currencies):
+                    self._project_field_assertion(f"{cap.id}.curr.{idx}", "capacity.currency", curr, cap.evidence_ids, effective_from=cap.available_from)
+                for idx, reg in enumerate(cap.service_regions):
+                    self._project_field_assertion(f"{cap.id}.region.{idx}", "capacity.service_region", reg, cap.evidence_ids, effective_from=cap.available_from)
+                if cap.onsite_willingness:
+                    self._project_field_assertion(cap.id, "capacity.onsite_willingness", cap.onsite_willingness, cap.evidence_ids, effective_from=cap.available_from)
                 self._project_field_assertion(cap.id, "capacity.legal_capacity", cap.legal_capacity, cap.evidence_ids, effective_from=cap.available_from)
 
             for tool in profile.tools:
                 self._project_field_assertion(tool.id, "tool.name", tool.name, tool.evidence_ids)
+                if tool.proficiency:
+                    self._project_field_assertion(tool.id, "tool.proficiency", tool.proficiency, tool.evidence_ids)
 
     def _project_field_assertion(
         self,
@@ -665,7 +758,7 @@ class TruthGraph:
         else:
             field_ev_ids = tuple(
                 ev_id for ev_id in evidence_ids
-                if self._evidence.get(ev_id) and _single_record_supports_value(value, self._evidence[ev_id])
+                if self._evidence.get(ev_id) and _single_record_supports_value(value, self._evidence[ev_id], predicate=predicate, subject_id=subject_id)
             )
         if not field_ev_ids:
             field_ev_ids = evidence_ids

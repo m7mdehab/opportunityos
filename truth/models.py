@@ -634,3 +634,102 @@ class ClaimVerificationResult:
             AssertionType.PROHIBITED_CLAIM,
         }:
             raise ValueError("unsupported or prohibited claims cannot be allowed")
+
+
+@dataclass(frozen=True, slots=True)
+class MaterialFieldSpec:
+    model_cls: type
+    field_name: str
+    predicate: str
+    is_collection: bool = False
+    is_nested_entity: bool = False
+    optional: bool = False
+
+
+CANONICAL_MATERIAL_MANIFEST: tuple[MaterialFieldSpec, ...] = (
+    # EmploymentRecord
+    MaterialFieldSpec(EmploymentRecord, "organization", "employment.organization"),
+    MaterialFieldSpec(EmploymentRecord, "title", "employment.title"),
+    MaterialFieldSpec(EmploymentRecord, "market_facing_title", "employment.market_facing_title", optional=True),
+    MaterialFieldSpec(EmploymentRecord, "start_date", "employment.start_date"),
+    MaterialFieldSpec(EmploymentRecord, "end_date", "employment.end_date", optional=True),
+    MaterialFieldSpec(EmploymentRecord, "responsibilities", "employment.responsibility", is_collection=True, optional=True),
+    MaterialFieldSpec(EmploymentRecord, "achievements", "employment.achievement", is_nested_entity=True, optional=True),
+
+    # Achievement
+    MaterialFieldSpec(Achievement, "statement", "achievement.statement"),
+
+    # EducationRecord
+    MaterialFieldSpec(EducationRecord, "institution", "education.institution"),
+    MaterialFieldSpec(EducationRecord, "qualification", "education.qualification"),
+    MaterialFieldSpec(EducationRecord, "start_date", "education.start_date", optional=True),
+    MaterialFieldSpec(EducationRecord, "end_date", "education.end_date", optional=True),
+
+    # CertificationRecord
+    MaterialFieldSpec(CertificationRecord, "name", "certification.name"),
+    MaterialFieldSpec(CertificationRecord, "issuer", "certification.issuer"),
+    MaterialFieldSpec(CertificationRecord, "state", "certification.state"),
+    MaterialFieldSpec(CertificationRecord, "issued_date", "certification.issued_date", optional=True),
+    MaterialFieldSpec(CertificationRecord, "expiry_date", "certification.expiry_date", optional=True),
+    MaterialFieldSpec(CertificationRecord, "credential_id", "certification.credential_id", optional=True),
+    MaterialFieldSpec(CertificationRecord, "credential_url", "certification.credential_url", optional=True),
+
+    # SkillRecord
+    MaterialFieldSpec(SkillRecord, "name", "skill.name"),
+    MaterialFieldSpec(SkillRecord, "proficiency", "skill.proficiency", optional=True),
+
+    # LanguageRecord
+    MaterialFieldSpec(LanguageRecord, "language", "language.language"),
+    MaterialFieldSpec(LanguageRecord, "proficiency", "language.proficiency"),
+
+    # WorkAuthorization
+    MaterialFieldSpec(WorkAuthorization, "jurisdiction", "work_authorization.jurisdiction"),
+    MaterialFieldSpec(WorkAuthorization, "status", "work_authorization.status"),
+    MaterialFieldSpec(WorkAuthorization, "expiry_date", "work_authorization.expiry_date", optional=True),
+
+    # ServiceRecord
+    MaterialFieldSpec(ServiceRecord, "name", "service.name"),
+    MaterialFieldSpec(ServiceRecord, "description", "service.description"),
+    MaterialFieldSpec(ServiceRecord, "engagement_types", "service.engagement_type", is_collection=True, optional=True),
+    MaterialFieldSpec(ServiceRecord, "deliverables", "service.deliverable", is_collection=True, optional=True),
+
+    # PortfolioItem
+    MaterialFieldSpec(PortfolioItem, "title", "portfolio.title"),
+    MaterialFieldSpec(PortfolioItem, "summary", "portfolio.summary"),
+    MaterialFieldSpec(PortfolioItem, "outcome", "portfolio.outcome", optional=True),
+    MaterialFieldSpec(PortfolioItem, "url", "portfolio.url", optional=True),
+
+    # BusinessCapacity
+    MaterialFieldSpec(BusinessCapacity, "available_from", "capacity.available_from", optional=True),
+    MaterialFieldSpec(BusinessCapacity, "hours_per_week", "capacity.hours_per_week", optional=True),
+    MaterialFieldSpec(BusinessCapacity, "min_project_value", "capacity.min_project_value", optional=True),
+    MaterialFieldSpec(BusinessCapacity, "max_project_value", "capacity.max_project_value", optional=True),
+    MaterialFieldSpec(BusinessCapacity, "annual_turnover_usd", "capacity.annual_turnover_usd", optional=True),
+    MaterialFieldSpec(BusinessCapacity, "bid_bond_capacity_usd", "capacity.bid_bond_capacity_usd", optional=True),
+    MaterialFieldSpec(BusinessCapacity, "currencies", "capacity.currency", is_collection=True, optional=True),
+    MaterialFieldSpec(BusinessCapacity, "service_regions", "capacity.service_region", is_collection=True, optional=True),
+    MaterialFieldSpec(BusinessCapacity, "onsite_willingness", "capacity.onsite_willingness", optional=True),
+    MaterialFieldSpec(BusinessCapacity, "legal_capacity", "capacity.legal_capacity", optional=True),
+
+    # CareerProfile
+    MaterialFieldSpec(CareerProfile, "approved_summaries", "profile.approved_summary", is_collection=True, optional=True),
+    MaterialFieldSpec(CareerProfile, "employment", "career_profile.employment", is_nested_entity=True, optional=True),
+    MaterialFieldSpec(CareerProfile, "education", "career_profile.education", is_nested_entity=True, optional=True),
+    MaterialFieldSpec(CareerProfile, "certifications", "career_profile.certifications", is_nested_entity=True, optional=True),
+    MaterialFieldSpec(CareerProfile, "skills", "career_profile.skills", is_nested_entity=True, optional=True),
+    MaterialFieldSpec(CareerProfile, "languages", "career_profile.languages", is_nested_entity=True, optional=True),
+    MaterialFieldSpec(CareerProfile, "work_authorizations", "career_profile.work_authorizations", is_nested_entity=True, optional=True),
+    MaterialFieldSpec(CareerProfile, "red_lines", "career_profile.red_lines", is_nested_entity=True, optional=True),
+    MaterialFieldSpec(CareerProfile, "never_claims", "career_profile.never_claims", is_nested_entity=True, optional=True),
+
+    # CapabilityProfile
+    MaterialFieldSpec(CapabilityProfile, "target_industries", "capability.target_industry", is_collection=True, optional=True),
+    MaterialFieldSpec(CapabilityProfile, "excluded_industries", "capability.excluded_industry", is_collection=True, optional=True),
+    MaterialFieldSpec(CapabilityProfile, "delivery_languages", "capability.delivery_language", is_collection=True, optional=True),
+    MaterialFieldSpec(CapabilityProfile, "services", "capability_profile.services", is_nested_entity=True, optional=True),
+    MaterialFieldSpec(CapabilityProfile, "portfolio", "capability_profile.portfolio", is_nested_entity=True, optional=True),
+    MaterialFieldSpec(CapabilityProfile, "capacity", "capability_profile.capacity", is_nested_entity=True, optional=True),
+    MaterialFieldSpec(CapabilityProfile, "tools", "capability_profile.tools", is_nested_entity=True, optional=True),
+    MaterialFieldSpec(CapabilityProfile, "red_lines", "capability_profile.red_lines", is_nested_entity=True, optional=True),
+    MaterialFieldSpec(CapabilityProfile, "never_claims", "capability_profile.never_claims", is_nested_entity=True, optional=True),
+)

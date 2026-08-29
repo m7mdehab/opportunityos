@@ -29,9 +29,12 @@ _APPROXIMATION = re.compile(r"\b(?:about|approximately|approx\.?|around|roughly|
 _PLANNING = re.compile(r"\b(?:plan(?:ned|ning)?|pursu(?:e|ing)|intend(?:ed|ing)?|prepar(?:e|ing)|aspir(?:e|ing)|candidate)\b", re.I)
 _HELD = re.compile(r"\b(?:certified|credentialed|hold(?:s|ing)?|earned|obtained|completed|awarded)\b", re.I)
 _NON_MATERIAL_WORDS = {
-    "a", "an", "and", "approximately", "around", "as", "at", "about", "by",
-    "for", "from", "in", "is", "nearly", "of", "on", "roughly", "that", "the",
-    "to", "was", "were", "with",
+    "a", "an", "and", "or", "the", "is", "was", "were", "are", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did", "as", "at", "by", "for", "from", "in",
+    "into", "of", "on", "onto", "to", "with", "uses", "used", "using", "that", "this",
+    "these", "those", "approximately", "about", "around", "nearly", "roughly", "such",
+    "over", "under", "more", "less", "than", "per", "we", "i", "he", "she", "they", "our",
+    "served", "serves", "serving", "works", "worked", "working", "offers", "offered", "offering",
 }
 
 
@@ -54,6 +57,10 @@ def _tokens(value: str) -> set[str]:
 
 
 def _parse_structured_metrics(text: str) -> list[tuple[float | int, str]]:
+    return [(num, unit) for num, unit, _ in _parse_structured_metrics_with_context(text)]
+
+
+def _parse_structured_metrics_with_context(text: str) -> list[tuple[float | int, str, str]]:
     results = []
     metric_pattern = re.compile(
         r"(?<![\w-])(?:(?P<curr>[$€£])\s*)?(?P<val>\d+(?:[.,]\d+)?)(?:\s*(?P<unit>%|[xX]\b|hours?|days?|weeks?|months?|users?|clients?|projects?|requests?|seconds?|minutes?|USD|EUR|GBP))?",
@@ -68,7 +75,10 @@ def _parse_structured_metrics(text: str) -> list[tuple[float | int, str]]:
             continue
         try:
             val_num = float(val_str) if "." in val_str else int(val_str)
-            results.append((val_num, unit))
+            start_idx = max(0, match.start() - 30)
+            end_idx = min(len(text), match.end() + 30)
+            ctx = text[start_idx:end_idx].strip()
+            results.append((val_num, unit, ctx))
         except ValueError:
             continue
     return results
@@ -210,21 +220,29 @@ class ClaimValidator:
 
         evidence_ids = candidate.requested_evidence_ids or tuple(dict.fromkeys(supporting_assertion_evidence))
 
-        # 5. Check that candidate text is authorized by the selected assertions
-        candidate_tokens = _tokens(_normalize(candidate.text)) - _NON_MATERIAL_WORDS
-        assertion_tokens = set()
-        for as_val in assertion_values:
-            assertion_tokens.update(_tokens(_normalize(as_val)) - _NON_MATERIAL_WORDS)
-        for ev_id in evidence_ids:
-            rec = self.graph.evidence_records.get(ev_id)
-            if rec and rec.content:
-                assertion_tokens.update(_tokens(_normalize(rec.content)) - _NON_MATERIAL_WORDS)
+        # 5. Check that candidate text is authorized by the selected assertions (NOT arbitrary unasserted evidence text)
+        candidate_material_tokens = _tokens(_normalize(candidate.text)) - _NON_MATERIAL_WORDS
+        authorized_assertion_tokens = set()
+        for as_id in candidate.material_assertion_ids:
+            assertion = self.graph.assertions[as_id]
+            if assertion.value is not None:
+                authorized_assertion_tokens.update(_tokens(_normalize(str(assertion.value))) - _NON_MATERIAL_WORDS)
+            authorized_assertion_tokens.update(_tokens(_normalize(assertion.predicate)) - _NON_MATERIAL_WORDS)
+            authorized_assertion_tokens.update(_tokens(_normalize(assertion.subject_id)) - _NON_MATERIAL_WORDS)
+            for qual in assertion.qualifiers:
+                authorized_assertion_tokens.update(_tokens(_normalize(qual)) - _NON_MATERIAL_WORDS)
+            if assertion.predicate.startswith("skill.") or assertion.predicate.startswith("tool."):
+                from .ingest import CANONICAL_SKILL_ALIASES
+                val_key = str(assertion.value).casefold()
+                if val_key in CANONICAL_SKILL_ALIASES:
+                    authorized_assertion_tokens.update(_tokens(_normalize(CANONICAL_SKILL_ALIASES[val_key])) - _NON_MATERIAL_WORDS)
 
-        if candidate_tokens and not (candidate_tokens & assertion_tokens):
+        unauthorized_tokens = candidate_material_tokens - authorized_assertion_tokens
+        if unauthorized_tokens:
             return self._result(
                 candidate.text, False, AssertionType.UNSUPPORTED_CLAIM,
-                VerificationStatus.UNVERIFIED, evidence_ids,
-                ("candidate text is not authorized by the selected material assertions",),
+                VerificationStatus.UNVERIFIED, candidate.requested_evidence_ids,
+                (f"candidate text contains facts not authorized by the selected material assertions: {', '.join(sorted(unauthorized_tokens))}",),
             )
 
         return self.validate_claim(candidate.text, evidence_ids, as_of=candidate.as_of)
@@ -479,50 +497,50 @@ class ClaimValidator:
         return False
 
     def _validate_metric_provenance(self, claim: str, supporting: tuple) -> str | None:
-        """Verify that every numeric metric in the claim maps to an exact verified metric provenance node."""
-        structured_metrics = _parse_structured_metrics(claim)
+        """Verify that every numeric metric in the claim maps to an exact verified MetricAssertion."""
+        structured_metrics = _parse_structured_metrics_with_context(claim)
         if not structured_metrics:
             return None
 
-        for num_val, unit in structured_metrics:
+        for num_val, unit, claim_metric_ctx in structured_metrics:
             metric_verified = False
             for record in supporting:
                 if not record.content:
                     continue
 
-                # 1. Check atomic MetricAssertions for this record
+                # Check atomic MetricAssertions for this record
                 metric_assertions = self.graph.metric_assertions_for_evidence(record.id)
                 for ma in metric_assertions:
-                    if ma.numeric_value == num_val:
-                        unit_matches = False
-                        ma_unit = ma.unit.strip().casefold()
-                        if unit == "%" and ma_unit in {"%", "percent"}:
-                            unit_matches = True
-                        elif unit in {"$", "usd", "eur", "gbp", "€", "£"} and ma_unit in {"$", "usd", "eur", "gbp", "€", "£"}:
-                            unit_matches = True
-                        elif unit == ma_unit or (unit == "count" and ma_unit in {"count", ""}):
-                            unit_matches = True
+                    if ma.verification_status is not MetricVerification.VERIFIED:
+                        continue
+                    if ma.numeric_value != num_val:
+                        continue
 
-                        if unit_matches and ma.verification_status is MetricVerification.VERIFIED:
-                            metric_verified = True
-                            break
+                    # Unit matching
+                    ma_unit = ma.unit.strip().casefold()
+                    unit_matches = False
+                    if unit == "%" and ma_unit in {"%", "percent"}:
+                        unit_matches = True
+                    elif unit in {"$", "usd", "eur", "gbp", "€", "£"} and ma_unit in {"$", "usd", "eur", "gbp", "€", "£"}:
+                        unit_matches = True
+                    elif unit == ma_unit or (unit == "count" and ma_unit in {"count", ""}):
+                        unit_matches = True
+
+                    if not unit_matches:
+                        continue
+
+                    # Context semantic matching (e.g. latency vs revenue)
+                    claim_ctx_tokens = _tokens(_normalize(claim_metric_ctx)) - _NON_MATERIAL_WORDS - {str(num_val).casefold()}
+                    ma_ctx_tokens = _tokens(_normalize(ma.context)) - _NON_MATERIAL_WORDS - {str(num_val).casefold()}
+                    if claim_ctx_tokens and ma_ctx_tokens:
+                        if not (claim_ctx_tokens & ma_ctx_tokens):
+                            continue
+
+                    metric_verified = True
+                    break
 
                 if metric_verified:
                     break
-
-                # 2. Check Achievement / Portfolio statements
-                entities = self.graph.entities_for_evidence(record.id)
-                for ent in entities:
-                    ent_stmt = getattr(ent, "statement", None) or getattr(ent, "outcome", None)
-                    if ent_stmt:
-                        ent_metrics = _parse_structured_metrics(ent_stmt)
-                        for ent_num, ent_unit in ent_metrics:
-                            if ent_num == num_val and (ent_unit == unit or unit == "count"):
-                                if getattr(ent, "metric_verification", None) is MetricVerification.VERIFIED:
-                                    metric_verified = True
-                                    break
-                    if metric_verified:
-                        break
 
             if not metric_verified:
                 return f"claim metric '{num_val} {unit}' lacks an exact verified metric provenance node"

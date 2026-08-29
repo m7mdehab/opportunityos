@@ -46,10 +46,10 @@ from .models import (
 from .validator import ClaimValidator
 
 __all__ = (
-    "Achievement", "AssertionType", "AtomicAssertion", "BusinessCapacity", "CANONICAL_SKILL_ALIASES",
-    "CapabilityProfile", "CareerProfile", "CertificationRecord", "CertificationState",
+    "Achievement", "AssertionType", "AtomicAssertion", "BusinessCapacity", "CANONICAL_MATERIAL_MANIFEST",
+    "CANONICAL_SKILL_ALIASES", "CapabilityProfile", "CareerProfile", "CertificationRecord", "CertificationState",
     "ClaimCandidate", "ClaimValidator", "ClaimVerificationResult", "EducationRecord", "EmploymentRecord",
-    "EngagementType", "EvidenceRecord", "IngestionError", "LanguageRecord",
+    "EngagementType", "EvidenceRecord", "IngestionError", "LanguageRecord", "MaterialFieldSpec",
     "MetricAssertion", "MetricVerification", "Modality", "NeverClaimRule", "Polarity", "PortfolioItem", "ProhibitedConceptCategory",
     "RedLineRule", "RelationType", "ServiceRecord", "SkillRecord", "TruthGraph", "TypedRelation", "VerificationStatus",
     "WorkAuthorization", "canonicalize_skill", "graph_from_dict", "load_document",

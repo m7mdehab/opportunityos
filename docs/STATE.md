@@ -10,7 +10,7 @@ Next: BRIEF-003: Opportunity Discovery & Ingestion Pipelines.
 
 ## Repository
 
-- **Generated:** 2026-08-29T16:43:45Z
+- **Generated:** 2026-08-29T21:45:05Z
 - **State generated at commit:** `1794597` — docs: finalize AUDIT-002 and STATE with blinded audit pass
 - **Mirror sync:** `not yet recorded` at not yet recorded
 

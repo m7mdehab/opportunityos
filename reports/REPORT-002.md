@@ -230,6 +230,25 @@ All eight acceptance criteria from committed `briefs/BRIEF-002.md` evaluated:
 
 ---
 
+## Final Four-Invariant Structural Authority Hardening Addendum
+
+**Date:** 2026-08-30  
+**Trigger:** Outer-loop inspection and final four-invariant closure ensuring strict subject/predicate-safe field provenance, complete canonical material manifest coverage with automatic reflection testing, atomic metric assertions as the sole metric authority, and exact assertion value/predicate authorization of claim candidate realizations.
+
+### 1. The Four Invariants Enforced
+
+1. **Subject/Predicate-Safe Field Provenance:** Evidence stating supervisor/relational roles (e.g. `"Data Engineer reports to Chief Data Officer"`) strictly cannot establish supervisor titles for the subject. Ownership checks enforce that client names cannot establish employer organization, certification prerequisites cannot establish held certifications, and negated jurisdictions cannot establish work authorization.
+2. **Real Complete Material-Field Manifest:** `CANONICAL_MATERIAL_MANIFEST` in `truth/models.py` serves as the authoritative definition for provenance validation, assertion projection, and automated reflection testing (`test_invariant_2_canonical_material_field_manifest_reflection`).
+3. **Metric Assertions as the Sole Metric Authority:** Removed direct blanket authorization from parent entity `metric_verification`. Claim validation strictly requires matching verified atomic `MetricAssertion` nodes with exact numeric value, unit, semantic context, and evidence.
+4. **ClaimCandidate Assertion Authorization:** Factual candidate text must be authorized directly by the selected assertions' values and predicates, preventing unasserted extra facts in evidence records from leaking into candidate validation.
+
+### 2. Final Four-Invariant Regression Tests (4/4 PASS)
+
+- **Invariant 1:** `test_invariant_1_subject_predicate_safe_field_provenance` — **PASS**
+- **Invariant 2:** `test_invariant_2_canonical_material_field_manifest_reflection` — **PASS**
+- **Invariant 3:** `test_invariant_3_metric_assertions_are_sole_authority` — **PASS**
+- **Invariant 4:** `test_invariant_4_candidate_authorized_by_assertions_not_extra_text` — **PASS**
+
 ## Known Limitations & Deferred Items
 
 - **Known Limitations:** Zero unbacked claim tolerance is strictly enforced; downstream CV and proposal generators must query the graph and cannot assert facts absent from evidence records.
