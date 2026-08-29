@@ -735,7 +735,218 @@ class AdversarialTruthTests(unittest.TestCase):
         self.assertEqual(AssertionType.UNSUPPORTED_CLAIM, res.assertion_type)
         self.assertTrue(any("not authorized" in r for r in res.reasons))
 
+    def test_invariant_1_subject_predicate_safe_field_provenance(self):
+        """Invariant 1: Subject/predicate-safe field provenance.
+        Evidence: 'Data Engineer reports to Chief Data Officer.'
+        Attempt: EmploymentRecord.title = 'Chief Data Officer' MUST FAIL.
+        Attempt: EmploymentRecord.title = 'Data Engineer' MUST PASS.
+        Also verifies employer/client ownership and certification prerequisite isolation.
+        """
+        from truth.models import (
+            EvidenceRecord, EmploymentRecord, CareerProfile, CertificationRecord,
+            CertificationState, WorkAuthorization,
+        )
+        from truth.graph import TruthGraph
+
+        # 1. Supervisor title cannot become employee's title
+        ev_rep = EvidenceRecord("ev-rep", "Data Engineer reports to Chief Data Officer at Acme Corp from 2022-01-01.", "cv", "role")
+        graph1 = TruthGraph((ev_rep,))
+
+        # Attempt supervisor title -> MUST FAIL
+        bad_emp = EmploymentRecord("emp-bad", "Acme Corp", "Chief Data Officer", date(2022, 1, 1), None, ("ev-rep",))
+        bad_prof = CareerProfile("prof-bad", employment=(bad_emp,))
+        with self.assertRaises(ValueError):
+            graph1.add_career_profile(bad_prof)
+
+        # Subject title -> MUST PASS
+        good_emp = EmploymentRecord("emp-good", "Acme Corp", "Data Engineer", date(2022, 1, 1), None, ("ev-rep",))
+        good_prof = CareerProfile("prof-good", employment=(good_emp,))
+        graph1.add_career_profile(good_prof)
+        self.assertIn("emp-good", graph1.entity_ids_for_evidence("ev-rep"))
+
+        # 2. Client vs Employer ownership
+        ev_client = EvidenceRecord("ev-cl", "Data Engineer at AlphaCorp with client was BetaCorp from 2022-01-01.", "cv", "role")
+        graph2 = TruthGraph((ev_client,))
+        bad_org_emp = EmploymentRecord("emp-bad-org", "BetaCorp", "Data Engineer", date(2022, 1, 1), None, ("ev-client",))
+        with self.assertRaises(ValueError):
+            graph2.add_career_profile(CareerProfile("prof-bad-org", employment=(bad_org_emp,)))
+
+        # 3. Certification prerequisite / other party requirement
+        ev_cert_req = EvidenceRecord("ev-cr", "Prerequisite is AWS Certified Solutions Architect for applicants.", "cv", "cert")
+        graph3 = TruthGraph((ev_cert_req,))
+        bad_cert = CertificationRecord("cert-bad", "AWS Certified Solutions Architect", "AWS", CertificationState.COMPLETED, ("ev-cr",))
+        with self.assertRaises(ValueError):
+            graph3.add_career_profile(CareerProfile("prof-bad-cert", certifications=(bad_cert,)))
+
+        # 4. Work authorization negative scope
+        ev_auth_neg = EvidenceRecord("ev-an", "Not authorized to work in Germany.", "cv", "auth")
+        graph4 = TruthGraph((ev_auth_neg,))
+        bad_auth = WorkAuthorization("auth-de", "Germany", "authorized", ("ev-an",))
+        with self.assertRaises(ValueError):
+            graph4.add_career_profile(CareerProfile("prof-bad-auth", work_authorizations=(bad_auth,)))
+
+    def test_invariant_2_canonical_material_field_manifest_reflection(self):
+        """Invariant 2: Real complete material-field coverage and reflection test.
+        Every material domain model field must be classified in CANONICAL_MATERIAL_MANIFEST.
+        The test fails automatically if a field is added to any domain model without classification.
+        """
+        import dataclasses
+        from truth.models import (
+            CANONICAL_MATERIAL_MANIFEST, MaterialFieldSpec,
+            EmploymentRecord, Achievement, EducationRecord, CertificationRecord,
+            SkillRecord, LanguageRecord, WorkAuthorization, ServiceRecord,
+            PortfolioItem, BusinessCapacity, CareerProfile, CapabilityProfile,
+        )
+
+        domain_models = (
+            EmploymentRecord, Achievement, EducationRecord, CertificationRecord,
+            SkillRecord, LanguageRecord, WorkAuthorization, ServiceRecord,
+            PortfolioItem, BusinessCapacity, CareerProfile, CapabilityProfile,
+        )
+
+        manifest_map = {(spec.model_cls, spec.field_name): spec for spec in CANONICAL_MATERIAL_MANIFEST}
+        structural_fields = {"id", "evidence_ids", "metric_verification"}
+
+        for model_cls in domain_models:
+            for field in dataclasses.fields(model_cls):
+                if field.name in structural_fields:
+                    continue
+                key = (model_cls, field.name)
+                self.assertIn(
+                    key,
+                    manifest_map,
+                    f"Model {model_cls.__name__} field '{field.name}' is not classified in CANONICAL_MATERIAL_MANIFEST",
+                )
+                spec = manifest_map[key]
+                self.assertTrue(len(spec.predicate) > 0, f"Spec for {key} has empty predicate")
+
+        # Verify minimum required fields are in manifest
+        predicates = {spec.predicate for spec in CANONICAL_MATERIAL_MANIFEST}
+        required_predicates = {
+            "employment.market_facing_title",
+            "certification.issuer", "certification.state", "certification.issued_date",
+            "certification.expiry_date", "certification.credential_id", "certification.credential_url",
+            "skill.proficiency",
+            "work_authorization.expiry_date",
+            "portfolio.outcome", "portfolio.url",
+            "capacity.available_from", "capacity.hours_per_week", "capacity.min_project_value",
+            "capacity.max_project_value", "capacity.annual_turnover_usd", "capacity.bid_bond_capacity_usd",
+            "capacity.currency", "capacity.service_region", "capacity.onsite_willingness", "capacity.legal_capacity",
+            "service.engagement_type", "service.deliverable",
+            "capability.delivery_language",
+            "capability.target_industry",
+            "capability.excluded_industry",
+        }
+        for req in required_predicates:
+            self.assertIn(req, predicates, f"Required predicate '{req}' missing from manifest")
+
+    def test_invariant_3_metric_assertions_are_sole_authority(self):
+        """Invariant 3: Metric assertions are the ONLY metric authority.
+        Regression:
+          Evidence: 'Revenue increased 40% and latency fell 40%.'
+          Only: latency reduction = 40% VERIFIED
+          Then:
+            'Latency fell 40%' -> allowed
+            'Revenue increased 40%' -> rejected
+          Repeat with reversed sentence order.
+        """
+        from truth.models import EvidenceRecord, MetricAssertion, MetricVerification
+        from truth.validator import ClaimValidator
+        from truth.graph import TruthGraph
+
+        # Order A: "Revenue increased 40% and latency fell 40%."
+        ev_a = EvidenceRecord("ev-a", "Revenue increased 40% and latency fell 40%.", "report", "metrics")
+        ma_lat_a = MetricAssertion(
+            id="m-lat-a",
+            subject_id="proj-a",
+            numeric_value=40,
+            unit="%",
+            context="latency fell 40%",
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-a",),
+        )
+        graph_a = TruthGraph((ev_a,), metrics=(ma_lat_a,))
+        validator_a = ClaimValidator(graph_a)
+
+        res_good_a = validator_a.validate_claim("Latency fell 40%.", ("ev-a",))
+        self.assertTrue(res_good_a.allowed, res_good_a.reasons)
+
+        res_bad_a = validator_a.validate_claim("Revenue increased 40%.", ("ev-a",))
+        self.assertFalse(res_bad_a.allowed)
+        self.assertTrue(any("lacks an exact verified metric" in r for r in res_bad_a.reasons))
+
+        # Order B: Reversed sentence order: "Latency fell 40% and revenue increased 40%."
+        ev_b = EvidenceRecord("ev-b", "Latency fell 40% and revenue increased 40%.", "report", "metrics")
+        ma_lat_b = MetricAssertion(
+            id="m-lat-b",
+            subject_id="proj-b",
+            numeric_value=40,
+            unit="%",
+            context="Latency fell 40%",
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-b",),
+        )
+        graph_b = TruthGraph((ev_b,), metrics=(ma_lat_b,))
+        validator_b = ClaimValidator(graph_b)
+
+        res_good_b = validator_b.validate_claim("Latency fell 40%.", ("ev-b",))
+        self.assertTrue(res_good_b.allowed, res_good_b.reasons)
+
+        res_bad_b = validator_b.validate_claim("Revenue increased 40%.", ("ev-b",))
+        self.assertFalse(res_bad_b.allowed)
+        self.assertTrue(any("lacks an exact verified metric" in r for r in res_bad_b.reasons))
+
+    def test_invariant_4_candidate_authorized_by_assertions_not_extra_text(self):
+        """Invariant 4: ClaimCandidate must be authorized by assertions, not their extra text.
+        Regression:
+          Evidence: 'Uses Python and served as Chief Executive Officer.'
+          Selected assertion: skill.name = Python
+          Candidate: 'Served as Chief Executive Officer.' -> MUST FAIL
+          Candidate: 'Uses Python.' -> MUST PASS
+        """
+        from truth.models import (
+            EvidenceRecord, AtomicAssertion, ClaimCandidate, AssertionType,
+            VerificationStatus,
+        )
+        from truth.validator import ClaimValidator
+        from truth.graph import TruthGraph
+
+        ev_extra = EvidenceRecord("ev-extra", "Uses Python and served as Chief Executive Officer.", "cv", "skill")
+        as_py = AtomicAssertion(
+            id="as-py-skill",
+            subject_id="skill-py",
+            predicate="skill.name",
+            value="Python",
+            assertion_type=AssertionType.DIRECT_FACT,
+            verification_status=VerificationStatus.VERIFIED,
+            evidence_ids=("ev-extra",),
+        )
+        graph = TruthGraph((ev_extra,), (as_py,))
+        validator = ClaimValidator(graph)
+
+        # Candidate asserting unauthorized role -> MUST FAIL
+        cand_bad = ClaimCandidate(
+            text="Served as Chief Executive Officer.",
+            material_assertion_ids=("as-py-skill",),
+            requested_evidence_ids=("ev-extra",),
+        )
+        res_bad = validator.validate_candidate(cand_bad)
+        self.assertFalse(res_bad.allowed)
+        self.assertEqual(AssertionType.UNSUPPORTED_CLAIM, res_bad.assertion_type)
+        self.assertTrue(any("not authorized" in r for r in res_bad.reasons))
+
+        # Candidate asserting authorized skill -> MUST PASS
+        cand_good = ClaimCandidate(
+            text="Uses Python.",
+            material_assertion_ids=("as-py-skill",),
+            requested_evidence_ids=("ev-extra",),
+        )
+        res_good = validator.validate_candidate(cand_good)
+        self.assertTrue(res_good.allowed, res_good.reasons)
+        self.assertEqual(AssertionType.DIRECT_FACT, res_good.assertion_type)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

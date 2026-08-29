@@ -93,6 +93,14 @@ def synthetic_evidence() -> tuple[EvidenceRecord, ...]:
             "synthetic_cv", "employment.0.achievements.1",
             verification_status=VerificationStatus.APPROXIMATE,
         ),
+        EvidenceRecord(
+            "ev-profile", "Synthetic data engineer focused on reliable analytics systems.",
+            "synthetic_cv", "profile",
+        ),
+        EvidenceRecord(
+            "ev-cap-profile", "Target industries Technology and Development, excluded Weapons, delivering in English language.",
+            "synthetic_capability_pack", "capability",
+        ),
     )
 
 
