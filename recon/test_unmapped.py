@@ -5,7 +5,7 @@ from recon.models import Record
 
 
 class UnmappedPhraseTrackingTests(unittest.TestCase):
-    def test_unmapped_location_is_captured(self):
+    def test_newly_mapped_location_is_not_captured_as_unmapped(self):
         record = Record(
             source="test_source",
             track="employment",
@@ -18,8 +18,8 @@ class UnmappedPhraseTrackingTests(unittest.TestCase):
             raw_payload_pointer="fixtures/test.json",
         )
         extracted = extract(record)
-        self.assertIn("Singapore", extracted.unmapped)
-        self.assertEqual((), extracted.geo_allow)
+        self.assertNotIn("Singapore", extracted.unmapped)
+        self.assertIn(("SG", "Singapore"), extracted.geo_allow)
 
     def test_mapped_locations_are_not_marked_unmapped(self):
         record = Record(
@@ -37,7 +37,7 @@ class UnmappedPhraseTrackingTests(unittest.TestCase):
         self.assertEqual((), extracted.unmapped)
         self.assertIn(("WORLDWIDE", "Worldwide"), extracted.geo_allow)
 
-    def test_partially_mapped_compound_location_captures_unmapped_segment(self):
+    def test_compound_mapped_location_has_no_unmapped_segment(self):
         record = Record(
             source="test_source",
             track="employment",
@@ -50,7 +50,7 @@ class UnmappedPhraseTrackingTests(unittest.TestCase):
             raw_payload_pointer="fixtures/test.json",
         )
         extracted = extract(record)
-        self.assertIn("Singapore", extracted.unmapped)
+        self.assertNotIn("Singapore", extracted.unmapped)
         self.assertNotIn("Japan", extracted.unmapped)
         self.assertTrue(any(token == "JP" for token, _ in extracted.geo_allow))
 
