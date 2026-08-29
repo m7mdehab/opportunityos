@@ -226,6 +226,28 @@ All eight acceptance criteria from committed `briefs/BRIEF-002.md` evaluated:
 
 ---
 
+## Two-Bypass Terminal Closure Addendum
+
+**Date:** 2026-08-30  
+**Substantive Target SHA:** `c5110e8a7bfdc90900ec880cc6fb69b8a459fb89`  
+**Trigger:** Closing the direct AtomicAssertion scope validation bypass and the Verified MetricAssertion semantic tuple admission bypass.
+
+### 1. Bypass Remediations & Enforcement
+
+1. **Direct AtomicAssertion Subject/Predicate Scope Enforcement:**
+   - Direct assertion admission in `TruthGraph.add_assertion()` passes `predicate=assertion.predicate, subject_id=assertion.subject_id` to evidence validation.
+   - Generic locator aliases (`role`, `position`, `emp`) are strictly excluded from admitting identity-sensitive fields (`title`, `organization`, `work_authorization`, `certification.name`). Unscoped prose fails closed.
+   - Tested and verified: Direct `AtomicAssertion` with supervisor prose (`"Chief Data Officer manages Data Engineer"`) strictly fails admission.
+   - Profile regression strengthened so organization and start date are independently valid and the failure is specifically `employment.title`.
+
+2. **Verified MetricAssertion Semantic Tuple Proof & Candidate Subject Binding:**
+   - `TruthGraph.add_metric_assertion()` strictly validates the full semantic tuple `(subject, numeric_value, unit, context, modality, evidence)` against coordinate clause contexts in evidence.
+   - Multi-metric coordinate clauses (e.g. `"Revenue increased 40% and latency fell 10%."`) are isolated at graph admission: latency with `40%` fails admission, while `revenue +40%` and `latency -10%` pass.
+   - Unit incompatibilities (`40 clients != 40%`, `$40 != 40%`) are strictly rejected.
+   - `ClaimValidator.validate_candidate()` restricts metric authorization strictly to the selected material assertions' subjects, preventing a verified metric for subject B from authorizing a claim candidate bound to subject A.
+
+---
+
 ## Known Limitations & Deferred Items
 
 - **Known Limitations:** Zero unbacked claim tolerance is strictly enforced; downstream CV and proposal generators must query the graph and cannot assert facts absent from evidence records.

@@ -221,3 +221,38 @@ The OpportunityOS truth subsystem architecture meets the highest standard of str
 ### Final Audit Summary:
 
 Commit `1ac1f69b246d9a8181fba8d2d442a160d94d2ddb` satisfies all structural authority invariants completely and fail-closed. No bypass paths, unasserted text leaks, regex heuristics, or metric inheritance vulnerabilities remain in the truth subsystem. BRIEF-002 is definitively closed.
+
+---
+
+## Two-Bypass Terminal Closure Independent Audit Addendum
+
+**Date:** 2026-08-30  
+**Auditor:** Independent Blinded Truth-Integrity and Structural Authority Auditor (Subagent `e16f1563-f736-4961-8a69-f58493da281a`)  
+**Audited Target SHA:** `c5110e8a7bfdc90900ec880cc6fb69b8a459fb89`  
+**Overall Subsystem Verdict:** **PASS (ALL CRITERIA FULLY SATISFIED)**  
+**BRIEF-002 Closure Determination:** **APPROVED FOR FORMAL TERMINAL CLOSURE**
+
+### Audit Scope & Prompt:
+- **Audit Target:** Substantive commit `c5110e8a7bfdc90900ec880cc6fb69b8a459fb89`
+- **Criteria Evaluated:**
+  1. Direct `AtomicAssertion` Subject/Predicate Scope Enforcement (`TruthGraph.add_assertion`, rejection of generic locator aliases like `role`/`position`, supervisor title in prose rejection, strengthened profile regression).
+  2. Verified `MetricAssertion` Semantic Tuple Proof & Candidate Subject Binding (`TruthGraph.add_metric_assertion` semantic tuple proof, multi-metric graph admission isolation, unit/currency incompatibility, candidate subject scoping).
+
+### Findings & Technical Evidence:
+1. **Criterion 1 (Direct AtomicAssertion Subject/Predicate Scope Enforcement): PASS**
+   - In `TruthGraph.add_assertion()` (`truth/graph.py:469-477`), direct assertion admission checks `_is_value_supported_by_evidence` passing `predicate=assertion.predicate, subject_id=assertion.subject_id`.
+   - `_IDENTITY_SENSITIVE_PREDICATES` (`truth/graph.py:56-64`) strictly prevents generic locator aliases (`role`, `position`) from establishing identity-sensitive fields (`title`, `organization`, `work_authorization`, `certification.name`). Unscoped prose fails closed.
+   - Regression in `truth/test_adversarial.py:757-770`: Evidence `"Chief Data Officer manages the Data Engineer at Acme Corp."` with `AtomicAssertion(subject_id="employee", predicate="employment.title", value="Chief Data Officer", VERIFIED, DIRECT_FACT)` strictly raises `ValueError`.
+   - Strengthened profile regression in `truth/test_adversarial.py:771-785`: Organization and start date pass independently; failure specifically raises `ValueError: field employment.title 'Chief Data Officer' is not supported by evidence`.
+
+2. **Criterion 2 (Verified MetricAssertion Semantic Tuple Proof & Candidate Subject Binding): PASS**
+   - In `TruthGraph.add_metric_assertion()` (`truth/graph.py:528-538`), verified metric assertions require verification via `_single_record_supports_metric()` (`truth/graph.py:324-370`).
+   - `_parse_metrics_with_context()` (`truth/graph.py:261-280`) isolates coordinate clauses bounded by `[,;.\n]` and conjunctions `(?:and|while|whereas|but|although)`.
+   - For evidence `"Revenue increased 40% and latency fell 10%."`:
+     - Attempting to add `MetricAssertion(subject_id="lat-subject", numeric_value=40, unit="%", context="latency fell 40%", VERIFIED)` strictly raises `ValueError` at graph admission (`truth/test_adversarial.py:967-983`).
+     - `revenue +40%` and `latency -10%` pass admission (`truth/test_adversarial.py:984-1010`).
+     - `40 clients != 40%` and `$40 != 40%` are strictly rejected (`truth/test_adversarial.py:1011-1041`).
+     - In `ClaimValidator.validate_candidate()` (`truth/validator.py:257-262, 536-537`), metric authorization is strictly restricted to the selected material assertions' subjects; a verified metric on subject B cannot authorize a claim candidate bound to subject A (`truth/test_adversarial.py:1042-1064`).
+
+### Terminal Audit Determination:
+Commit `c5110e8a7bfdc90900ec880cc6fb69b8a459fb89` satisfies all authority, scoping, semantic tuple, and subject-binding constraints unconditionally. BRIEF-002 is fully unblocked and definitively closed.
