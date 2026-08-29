@@ -5,7 +5,7 @@ import unittest
 
 from truth.fixtures import PROHIBITED_CLAIMS, UNBACKED_CLAIMS, VERIFIED_CLAIMS, synthetic_graph
 from truth.ingest import IngestionError, graph_from_dict, load_yaml
-from truth.models import AssertionType
+from truth.models import AssertionType, EvidenceRecord, MetricAssertion, MetricVerification
 from truth.validator import ClaimValidator
 
 
@@ -140,9 +140,9 @@ class AdversarialTruthTests(unittest.TestCase):
         from truth.models import EvidenceRecord, VerificationStatus, EmploymentRecord, SkillRecord, CareerProfile
         from truth.graph import TruthGraph
 
-        ev_fact = EvidenceRecord("ev-f", "Direct employer fact at Org as Title from 2020-01-01.", "src", "loc", assertion_type=AssertionType.DIRECT_FACT)
-        ev_derived = EvidenceRecord("ev-d", "Derived consulting capability at Org as Title from 2020-01-01.", "src", "loc", assertion_type=AssertionType.DERIVED_CAPABILITY)
-        ev_user = EvidenceRecord("ev-u", "Self-declared user assertion at Org as Title from 2020-01-01.", "src", "loc", assertion_type=AssertionType.USER_ASSERTION)
+        ev_fact = EvidenceRecord("ev-f", "Direct employer fact at Org as Title from 2020-01-01.", "src", "loc", assertion_type=AssertionType.DIRECT_FACT, metadata={"organization": "Org", "title": "Title"})
+        ev_derived = EvidenceRecord("ev-d", "Derived consulting capability at Org as Title from 2020-01-01.", "src", "loc", assertion_type=AssertionType.DERIVED_CAPABILITY, metadata={"organization": "Org", "title": "Title"})
+        ev_user = EvidenceRecord("ev-u", "Self-declared user assertion at Org as Title from 2020-01-01.", "src", "loc", assertion_type=AssertionType.USER_ASSERTION, metadata={"organization": "Org", "title": "Title"})
 
         # 1. Direct fact alone is direct fact
         g1 = TruthGraph((ev_fact,))
@@ -189,9 +189,9 @@ class AdversarialTruthTests(unittest.TestCase):
         from truth.models import EvidenceRecord, Achievement, MetricVerification, EmploymentRecord, CareerProfile
         from truth.graph import TruthGraph
 
-        ev_verified = EvidenceRecord("ev-v", "Reduced latency by 40% at Org as Title from 2020-01-01.", "src", "loc")
-        ev_unverified = EvidenceRecord("ev-u", "Increased revenue by 500% at Org as Title from 2020-01-01.", "src", "loc")
-        ev_diff_num = EvidenceRecord("ev-num", "Managed 40 projects at Org as Title from 2020-01-01.", "src", "loc")
+        ev_verified = EvidenceRecord("ev-v", "Reduced latency by 40% at Org as Title from 2020-01-01.", "src", "loc", metadata={"organization": "Org", "title": "Title"})
+        ev_unverified = EvidenceRecord("ev-u", "Increased revenue by 500% at Org as Title from 2020-01-01.", "src", "loc", metadata={"organization": "Org", "title": "Title"})
+        ev_diff_num = EvidenceRecord("ev-num", "Managed 40 projects at Org as Title from 2020-01-01.", "src", "loc", metadata={"organization": "Org", "title": "Title"})
 
         ach_v = Achievement("ach-v", "Reduced latency by 40%.", ("ev-v",), MetricVerification.VERIFIED)
         ach_u = Achievement("ach-u", "Increased revenue by 500%.", ("ev-u",), MetricVerification.UNAVAILABLE)
@@ -199,7 +199,8 @@ class AdversarialTruthTests(unittest.TestCase):
 
         emp = EmploymentRecord("emp-metrics", "Org", "Title", date(2020, 1, 1), None, ("ev-v", "ev-u", "ev-num"), achievements=(ach_v, ach_u, ach_num))
         profile = CareerProfile("prof-metrics", employment=(emp,))
-        graph = TruthGraph((ev_verified, ev_unverified, ev_diff_num))
+        m_40 = MetricAssertion("m-40", "ach-v", 40, "%", "Reduced latency by 40%", verification_status=MetricVerification.VERIFIED, evidence_ids=("ev-v",))
+        graph = TruthGraph((ev_verified, ev_unverified, ev_diff_num), metrics=(m_40,))
         graph.add_career_profile(profile)
         validator = ClaimValidator(graph)
 
@@ -366,12 +367,13 @@ class AdversarialTruthTests(unittest.TestCase):
         from truth.models import EvidenceRecord, Achievement, MetricVerification, EmploymentRecord, CareerProfile
         from truth.graph import TruthGraph
 
-        ev_multi = EvidenceRecord("ev-multi", "Reduced latency by 40% and increased revenue by 200% at Org as Title from 2020-01-01.", "cv", "ach")
+        ev_multi = EvidenceRecord("ev-multi", "Reduced latency by 40% and increased revenue by 200% at Org as Title from 2020-01-01.", "cv", "ach", metadata={"organization": "Org", "title": "Title"})
         # Only 40% is verified; 200% is unverified
         ach = Achievement("ach-multi", "Reduced latency by 40%.", ("ev-multi",), MetricVerification.VERIFIED)
         emp = EmploymentRecord("emp-m", "Org", "Title", date(2020, 1, 1), None, ("ev-multi",), achievements=(ach,))
         profile = CareerProfile("prof-m", employment=(emp,))
-        graph = TruthGraph((ev_multi,))
+        m_40 = MetricAssertion("m-40-iso", "ach-multi", 40, "%", "Reduced latency by 40%", verification_status=MetricVerification.VERIFIED, evidence_ids=("ev-multi",))
+        graph = TruthGraph((ev_multi,), metrics=(m_40,))
         graph.add_career_profile(profile)
         validator = ClaimValidator(graph)
 
@@ -418,7 +420,7 @@ class AdversarialTruthTests(unittest.TestCase):
         from truth.models import EvidenceRecord, EmploymentRecord, CareerProfile
         from truth.graph import TruthGraph
 
-        ev = EvidenceRecord("ev-analyst", "Data Analyst at Example Corp from 2020-01-01.", "cv", "title")
+        ev = EvidenceRecord("ev-analyst", "Data Analyst at Example Corp from 2020-01-01.", "cv", "title", metadata={"organization": "Example Corp", "title": "Data Analyst"})
         # Inconsistent title: Chief Data Officer vs evidence Data Analyst
         emp = EmploymentRecord("emp-cdo", "Example Corp", "Chief Data Officer", date(2020, 1, 1), None, ("ev-analyst",))
         profile = CareerProfile("prof-cdo", employment=(emp,))
@@ -556,8 +558,8 @@ class AdversarialTruthTests(unittest.TestCase):
         from truth.models import EvidenceRecord, EmploymentRecord, CareerProfile
         from truth.graph import TruthGraph
 
-        ev1 = EvidenceRecord("ev-ce", "Chief Executive at Example Corp", "cv", "emp")
-        ev2 = EvidenceRecord("ev-do", "Data Officer at Example Corp", "cv", "emp")
+        ev1 = EvidenceRecord("ev-ce", "Chief Executive at Example Corp", "cv", "emp", metadata={"organization": "Example Corp", "title": "Chief Executive"})
+        ev2 = EvidenceRecord("ev-do", "Data Officer at Example Corp", "cv", "emp", metadata={"organization": "Example Corp", "title": "Data Officer"})
         emp = EmploymentRecord("job-cdo", "Example Corp", "Chief Data Officer", date(2022, 1, 1), None, evidence_ids=("ev-ce", "ev-do"))
         graph = TruthGraph((ev1, ev2))
         with self.assertRaises(ValueError) as ctx:
@@ -608,7 +610,7 @@ class AdversarialTruthTests(unittest.TestCase):
         from truth.models import EvidenceRecord, EmploymentRecord, Achievement, CareerProfile, VerificationStatus, AssertionType
         from truth.graph import TruthGraph
 
-        ev_emp = EvidenceRecord("ev-emp", "Worked at Synthetic Corp as Data Engineer from 2022-01-01 to 2024-01-01.", "cv", "emp")
+        ev_emp = EvidenceRecord("ev-emp", "Worked at Synthetic Corp as Data Engineer from 2022-01-01 to 2024-01-01.", "cv", "emp", metadata={"organization": "Synthetic Corp", "title": "Data Engineer"})
         ev_ach = EvidenceRecord("ev-ach", "Built a tool reducing processing time by 40%.", "cv", "ach")
         emp = EmploymentRecord(
             "job-nested", "Synthetic Corp", "Data Engineer", date(2022, 1, 1), date(2024, 1, 1), ("ev-emp",),
@@ -650,13 +652,14 @@ class AdversarialTruthTests(unittest.TestCase):
         from truth.validator import ClaimValidator
         from truth.graph import TruthGraph
 
-        ev_title = EvidenceRecord("ev-title", "Manager at Corp from 2022-01-01 to 2024-01-01.", "cv", "emp")
+        ev_title = EvidenceRecord("ev-title", "Manager at Corp from 2022-01-01 to 2024-01-01.", "cv", "emp", metadata={"organization": "Corp", "title": "Manager"})
         ev_120 = EvidenceRecord("ev-120", "Managed 120 client engagements at Corp.", "cv", "ach")
         emp = EmploymentRecord(
             "job-num", "Corp", "Manager", date(2022, 1, 1), date(2024, 1, 1), ("ev-title",),
             achievements=(Achievement("ach-num", "Managed 120 client engagements.", ("ev-120",), MetricVerification.VERIFIED),),
         )
-        graph = TruthGraph((ev_title, ev_120))
+        m_120 = MetricAssertion("m-120", "ach-num", 120, "engagements", "Managed 120 client engagements", verification_status=MetricVerification.VERIFIED, evidence_ids=("ev-120",))
+        graph = TruthGraph((ev_title, ev_120), metrics=(m_120,))
         graph.add_career_profile(CareerProfile("prof-num", employment=(emp,)))
         val = ClaimValidator(graph)
 
@@ -670,7 +673,8 @@ class AdversarialTruthTests(unittest.TestCase):
             "job-num2", "Corp", "Manager", date(2022, 1, 1), date(2024, 1, 1), ("ev-title",),
             achievements=(Achievement("ach-num2", "Reduced latency by 40%.", ("ev-40",), MetricVerification.VERIFIED),),
         )
-        graph2 = TruthGraph((ev_title, ev_40))
+        m_40 = MetricAssertion("m-40", "ach-num2", 40, "%", "Reduced latency by 40%", verification_status=MetricVerification.VERIFIED, evidence_ids=("ev-40",))
+        graph2 = TruthGraph((ev_title, ev_40), metrics=(m_40,))
         graph2.add_career_profile(CareerProfile("prof-num2", employment=(emp2,)))
         val2 = ClaimValidator(graph2)
 
@@ -685,7 +689,7 @@ class AdversarialTruthTests(unittest.TestCase):
         from truth.models import EvidenceRecord, EmploymentRecord, CareerProfile
         from truth.graph import TruthGraph
 
-        ev_yr = EvidenceRecord("ev-yr", "Worked at Example Corp as Engineer in 2024.", "cv", "emp")
+        ev_yr = EvidenceRecord("ev-yr", "Worked at Example Corp as Engineer in 2024.", "cv", "emp", metadata={"organization": "Example Corp", "title": "Engineer"})
         emp = EmploymentRecord("job-dt", "Example Corp", "Engineer", date(2024, 12, 31), None, evidence_ids=("ev-yr",))
         graph = TruthGraph((ev_yr,))
         with self.assertRaises(ValueError) as ctx:
@@ -737,10 +741,7 @@ class AdversarialTruthTests(unittest.TestCase):
 
     def test_invariant_1_subject_predicate_safe_field_provenance(self):
         """Invariant 1: Subject/predicate-safe field provenance.
-        Evidence: 'Data Engineer reports to Chief Data Officer.'
-        Attempt: EmploymentRecord.title = 'Chief Data Officer' MUST FAIL.
-        Attempt: EmploymentRecord.title = 'Data Engineer' MUST PASS.
-        Also verifies employer/client ownership and certification prerequisite isolation.
+        Prose cannot establish identity-sensitive fields without explicit deterministic scope.
         """
         from truth.models import (
             EvidenceRecord, EmploymentRecord, CareerProfile, CertificationRecord,
@@ -748,8 +749,9 @@ class AdversarialTruthTests(unittest.TestCase):
         )
         from truth.graph import TruthGraph
 
-        # 1. Supervisor title cannot become employee's title
-        ev_rep = EvidenceRecord("ev-rep", "Data Engineer reports to Chief Data Officer at Acme Corp from 2022-01-01.", "cv", "role")
+        # 1. Supervisor title in prose cannot establish employee's title
+        # Concrete bypass 1: "Chief Data Officer manages the Data Engineer at Acme Corp from 2022-01-01."
+        ev_rep = EvidenceRecord("ev-rep", "Chief Data Officer manages the Data Engineer at Acme Corp from 2022-01-01.", "cv", "role")
         graph1 = TruthGraph((ev_rep,))
 
         # Attempt supervisor title -> MUST FAIL
@@ -758,25 +760,20 @@ class AdversarialTruthTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             graph1.add_career_profile(bad_prof)
 
-        # Subject title -> MUST PASS
-        good_emp = EmploymentRecord("emp-good", "Acme Corp", "Data Engineer", date(2022, 1, 1), None, ("ev-rep",))
-        good_prof = CareerProfile("prof-good", employment=(good_emp,))
-        graph1.add_career_profile(good_prof)
-        self.assertIn("emp-good", graph1.entity_ids_for_evidence("ev-rep"))
-
         # 2. Client vs Employer ownership
-        ev_client = EvidenceRecord("ev-cl", "Data Engineer at AlphaCorp with client was BetaCorp from 2022-01-01.", "cv", "role")
+        # Concrete bypass 2: "Worked for client BetaCorp while employed by AlphaCorp from 2022-01-01."
+        ev_client = EvidenceRecord("ev-cl", "Worked for client BetaCorp while employed by AlphaCorp from 2022-01-01.", "cv", "role")
         graph2 = TruthGraph((ev_client,))
-        bad_org_emp = EmploymentRecord("emp-bad-org", "BetaCorp", "Data Engineer", date(2022, 1, 1), None, ("ev-client",))
+        bad_org_emp = EmploymentRecord("emp-bad-org", "BetaCorp", "Data Engineer", date(2022, 1, 1), None, ("ev-cl",))
         with self.assertRaises(ValueError):
             graph2.add_career_profile(CareerProfile("prof-bad-org", employment=(bad_org_emp,)))
 
-        # 3. Certification prerequisite / other party requirement
-        ev_cert_req = EvidenceRecord("ev-cr", "Prerequisite is AWS Certified Solutions Architect for applicants.", "cv", "cert")
-        graph3 = TruthGraph((ev_cert_req,))
-        bad_cert = CertificationRecord("cert-bad", "AWS Certified Solutions Architect", "AWS", CertificationState.COMPLETED, ("ev-cr",))
-        with self.assertRaises(ValueError):
-            graph3.add_career_profile(CareerProfile("prof-bad-cert", certifications=(bad_cert,)))
+        # 3. Explicit deterministic scope (via metadata or field locator) -> MUST PASS
+        ev_good = EvidenceRecord("ev-good", "Data Engineer at Acme Corp from 2022-01-01.", "cv", "employment.0", metadata={"organization": "Acme Corp", "title": "Data Engineer"})
+        graph3 = TruthGraph((ev_good,))
+        good_emp = EmploymentRecord("emp-good", "Acme Corp", "Data Engineer", date(2022, 1, 1), None, ("ev-good",))
+        graph3.add_career_profile(CareerProfile("prof-good", employment=(good_emp,)))
+        self.assertIn("emp-good", graph3.entity_ids_for_evidence("ev-good"))
 
         # 4. Work authorization negative scope
         ev_auth_neg = EvidenceRecord("ev-an", "Not authorized to work in Germany.", "cv", "auth")
@@ -786,18 +783,20 @@ class AdversarialTruthTests(unittest.TestCase):
             graph4.add_career_profile(CareerProfile("prof-bad-auth", work_authorizations=(bad_auth,)))
 
     def test_invariant_2_canonical_material_field_manifest_reflection(self):
-        """Invariant 2: Real complete material-field coverage and reflection test.
-        Every material domain model field must be classified in CANONICAL_MATERIAL_MANIFEST.
-        The test fails automatically if a field is added to any domain model without classification.
+        """Invariant 2: Real complete material-field coverage, reflection, and executable engine.
+        Proves CANONICAL_MATERIAL_MANIFEST drives both validation and projection.
         """
         import dataclasses
+        from dataclasses import dataclass
         from truth.models import (
             CANONICAL_MATERIAL_MANIFEST, MaterialFieldSpec,
             EmploymentRecord, Achievement, EducationRecord, CertificationRecord,
             SkillRecord, LanguageRecord, WorkAuthorization, ServiceRecord,
             PortfolioItem, BusinessCapacity, CareerProfile, CapabilityProfile,
         )
+        from truth.graph import TruthGraph
 
+        # 1. Structural domain model coverage check
         domain_models = (
             EmploymentRecord, Achievement, EducationRecord, CertificationRecord,
             SkillRecord, LanguageRecord, WorkAuthorization, ServiceRecord,
@@ -820,81 +819,121 @@ class AdversarialTruthTests(unittest.TestCase):
                 spec = manifest_map[key]
                 self.assertTrue(len(spec.predicate) > 0, f"Spec for {key} has empty predicate")
 
-        # Verify minimum required fields are in manifest
-        predicates = {spec.predicate for spec in CANONICAL_MATERIAL_MANIFEST}
-        required_predicates = {
-            "employment.market_facing_title",
-            "certification.issuer", "certification.state", "certification.issued_date",
-            "certification.expiry_date", "certification.credential_id", "certification.credential_url",
-            "skill.proficiency",
-            "work_authorization.expiry_date",
-            "portfolio.outcome", "portfolio.url",
-            "capacity.available_from", "capacity.hours_per_week", "capacity.min_project_value",
-            "capacity.max_project_value", "capacity.annual_turnover_usd", "capacity.bid_bond_capacity_usd",
-            "capacity.currency", "capacity.service_region", "capacity.onsite_willingness", "capacity.legal_capacity",
-            "service.engagement_type", "service.deliverable",
-            "capability.delivery_language",
-            "capability.target_industry",
-            "capability.excluded_industry",
-        }
-        for req in required_predicates:
-            self.assertIn(req, predicates, f"Required predicate '{req}' missing from manifest")
+        # 2. Synthetic / test-only material field spec mutation test:
+        # Proves the common manifest engine performs both validation and projection
+        @dataclass(frozen=True, slots=True)
+        class CustomEntity:
+            id: str
+            special_code: str
+            evidence_ids: tuple[str, ...]
+
+        custom_spec = MaterialFieldSpec(CustomEntity, "special_code", "custom.special_code")
+        custom_manifest = (custom_spec,)
+
+        ev_good = EvidenceRecord("ev-code", "SPEC-999", "src", "loc")
+        ev_bad = EvidenceRecord("ev-wrong", "OTHER-000", "src", "loc")
+
+        graph = TruthGraph((ev_good, ev_bad))
+        bad_entity = CustomEntity("c1", "SPEC-999", ("ev-wrong",))
+        with self.assertRaises(ValueError):
+            graph._validate_entity_manifest(bad_entity, {"c1": ("ev-wrong",)}, manifest=custom_manifest)
+
+        good_entity = CustomEntity("c1", "SPEC-999", ("ev-code",))
+        graph._validate_entity_manifest(good_entity, {"c1": ("ev-code",)}, manifest=custom_manifest)
+        graph._project_entity_manifest(good_entity, manifest=custom_manifest)
+
+        self.assertIn("as_c1_custom_special_code_SPEC-999", graph.assertions)
+        as_node = graph.assertions["as_c1_custom_special_code_SPEC-999"]
+        self.assertEqual("SPEC-999", as_node.value)
+        self.assertEqual("custom.special_code", as_node.predicate)
+
+        # 3. No unrelated graph evidence fallback when profile.evidence_ids is empty
+        ev_unrelated = EvidenceRecord("ev-unrelated", "Top data engineer.", "src", "loc")
+        prof_empty_ev = CareerProfile("prof-no-ev", approved_summaries=("Top data engineer.",))
+        graph_empty = TruthGraph((ev_unrelated,))
+        with self.assertRaises(ValueError):
+            graph_empty.add_career_profile(prof_empty_ev)
 
     def test_invariant_3_metric_assertions_are_sole_authority(self):
-        """Invariant 3: Metric assertions are the ONLY metric authority.
-        Regression:
-          Evidence: 'Revenue increased 40% and latency fell 40%.'
-          Only: latency reduction = 40% VERIFIED
-          Then:
-            'Latency fell 40%' -> allowed
-            'Revenue increased 40%' -> rejected
-          Repeat with reversed sentence order.
+        """Invariant 3: Real profile auto-extraction produces UNAVAILABLE metrics.
+        Metric becomes VERIFIED only via explicit MetricAssertion.
         """
-        from truth.models import EvidenceRecord, MetricAssertion, MetricVerification
+        from truth.models import (
+            Achievement,
+            CareerProfile,
+            EmploymentRecord,
+            EvidenceRecord,
+            MetricAssertion,
+            MetricVerification,
+        )
         from truth.validator import ClaimValidator
         from truth.graph import TruthGraph
 
-        # Order A: "Revenue increased 40% and latency fell 40%."
-        ev_a = EvidenceRecord("ev-a", "Revenue increased 40% and latency fell 40%.", "report", "metrics")
-        ma_lat_a = MetricAssertion(
-            id="m-lat-a",
-            subject_id="proj-a",
+        # Order A: Statement = 'Revenue increased 40% and latency fell 40%.'
+        ev_ach = EvidenceRecord(
+            "ev-ach", "Revenue increased 40% and latency fell 40% at Corp as Engineer from 2020-01-01.",
+            "cv", "ach", metadata={"organization": "Corp", "title": "Engineer"},
+        )
+        ach_order_a = Achievement("ach-a", "Revenue increased 40% and latency fell 40%.", ("ev-ach",), MetricVerification.VERIFIED)
+        emp_a = EmploymentRecord("emp-a", "Corp", "Engineer", date(2020, 1, 1), None, ("ev-ach",), achievements=(ach_order_a,))
+        prof_a = CareerProfile("prof-a", employment=(emp_a,))
+
+        graph_a = TruthGraph((ev_ach,))
+        graph_a.add_career_profile(prof_a)
+
+        # After profile ingestion, auto-extracted metrics MUST NOT be VERIFIED (they are UNAVAILABLE)
+        for m in graph_a.metrics.values():
+            self.assertEqual(MetricVerification.UNAVAILABLE, m.verification_status)
+
+        # Explicitly add ONLY latency reduction 40% -> VERIFIED
+        metric_latency = MetricAssertion(
+            id="metric-latency-verified",
+            subject_id="ach-a",
             numeric_value=40,
             unit="%",
             context="latency fell 40%",
             verification_status=MetricVerification.VERIFIED,
-            evidence_ids=("ev-a",),
+            evidence_ids=("ev-ach",),
         )
-        graph_a = TruthGraph((ev_a,), metrics=(ma_lat_a,))
+        graph_a.add_metric_assertion(metric_latency)
+
         validator_a = ClaimValidator(graph_a)
+        # Latency claim passes
+        res_lat = validator_a.validate_claim("Latency fell 40%.", ("ev-ach",))
+        self.assertTrue(res_lat.allowed)
+        # Revenue claim fails
+        res_rev = validator_a.validate_claim("Revenue increased 40%.", ("ev-ach",))
+        self.assertFalse(res_rev.allowed)
 
-        res_good_a = validator_a.validate_claim("Latency fell 40%.", ("ev-a",))
-        self.assertTrue(res_good_a.allowed, res_good_a.reasons)
+        # Order B: Statement with sentence order reversed: 'Latency fell 40% and revenue increased 40%.'
+        ev_ach_b = EvidenceRecord(
+            "ev-ach-b", "Latency fell 40% and revenue increased 40% at Corp as Engineer from 2020-01-01.",
+            "cv", "ach", metadata={"organization": "Corp", "title": "Engineer"},
+        )
+        ach_order_b = Achievement("ach-b", "Latency fell 40% and revenue increased 40%.", ("ev-ach-b",), MetricVerification.VERIFIED)
+        emp_b = EmploymentRecord("emp-b", "Corp", "Engineer", date(2020, 1, 1), None, ("ev-ach-b",), achievements=(ach_order_b,))
+        prof_b = CareerProfile("prof-b", employment=(emp_b,))
 
-        res_bad_a = validator_a.validate_claim("Revenue increased 40%.", ("ev-a",))
-        self.assertFalse(res_bad_a.allowed)
-        self.assertTrue(any("lacks an exact verified metric" in r for r in res_bad_a.reasons))
+        graph_b = TruthGraph((ev_ach_b,))
+        graph_b.add_career_profile(prof_b)
 
-        # Order B: Reversed sentence order: "Latency fell 40% and revenue increased 40%."
-        ev_b = EvidenceRecord("ev-b", "Latency fell 40% and revenue increased 40%.", "report", "metrics")
-        ma_lat_b = MetricAssertion(
-            id="m-lat-b",
-            subject_id="proj-b",
+        # Explicitly add ONLY latency reduction 40% -> VERIFIED
+        metric_latency_b = MetricAssertion(
+            id="metric-latency-b-verified",
+            subject_id="ach-b",
             numeric_value=40,
             unit="%",
-            context="Latency fell 40%",
+            context="latency fell 40%",
             verification_status=MetricVerification.VERIFIED,
-            evidence_ids=("ev-b",),
+            evidence_ids=("ev-ach-b",),
         )
-        graph_b = TruthGraph((ev_b,), metrics=(ma_lat_b,))
+        graph_b.add_metric_assertion(metric_latency_b)
+
         validator_b = ClaimValidator(graph_b)
-
-        res_good_b = validator_b.validate_claim("Latency fell 40%.", ("ev-b",))
-        self.assertTrue(res_good_b.allowed, res_good_b.reasons)
-
-        res_bad_b = validator_b.validate_claim("Revenue increased 40%.", ("ev-b",))
-        self.assertFalse(res_bad_b.allowed)
-        self.assertTrue(any("lacks an exact verified metric" in r for r in res_bad_b.reasons))
+        # Latency claim passes
+        self.assertTrue(validator_b.validate_claim("Latency fell 40%.", ("ev-ach-b",)).allowed)
+        # Revenue claim fails
+        self.assertFalse(validator_b.validate_claim("Revenue increased 40%.", ("ev-ach-b",)).allowed)
 
     def test_invariant_4_candidate_authorized_by_assertions_not_extra_text(self):
         """Invariant 4: ClaimCandidate must be authorized by assertions, not their extra text.

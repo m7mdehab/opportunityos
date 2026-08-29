@@ -18,6 +18,7 @@ from .models import (
     EngagementType,
     EvidenceRecord,
     LanguageRecord,
+    MetricAssertion,
     MetricVerification,
     NeverClaimRule,
     PortfolioItem,
@@ -52,8 +53,8 @@ PROHIBITED_CLAIMS = (
 
 def synthetic_evidence() -> tuple[EvidenceRecord, ...]:
     return (
-        EvidenceRecord("ev-org", "Synthetic Analytics Ltd", "synthetic_cv", "employment.0.organization"),
-        EvidenceRecord("ev-title", "Data Engineer with responsibilities including Maintained synthetic data pipelines.", "synthetic_cv", "employment.0.title"),
+        EvidenceRecord("ev-org", "Synthetic Analytics Ltd", "synthetic_cv", "employment.0.organization", metadata={"organization": "Synthetic Analytics Ltd"}),
+        EvidenceRecord("ev-title", "Data Engineer with responsibilities including Maintained synthetic data pipelines.", "synthetic_cv", "employment.0.title", metadata={"title": "Data Engineer"}),
         EvidenceRecord("ev-dates", "2022-01-01 to 2024-06-30", "synthetic_cv", "employment.0.dates"),
         EvidenceRecord(
             "ev-achievement",
@@ -66,10 +67,11 @@ def synthetic_evidence() -> tuple[EvidenceRecord, ...]:
         ),
         EvidenceRecord("ev-degree", "BSc in Example Systems from Example Institute from 2017-09-01 to 2021-06-30.", "synthetic_cv", "education.0"),
         EvidenceRecord("ev-language", "English professional proficiency", "synthetic_cv", "languages.0"),
-        EvidenceRecord("ev-work-auth", "Authorized to work in Exampleland", "synthetic_cv", "work_authorizations.0"),
+        EvidenceRecord("ev-work-auth", "Authorized to work in Exampleland", "synthetic_cv", "work_authorizations.0", metadata={"jurisdiction": "Exampleland", "status": "authorized"}),
         EvidenceRecord(
             "ev-cert-plan", "Planning to pursue the Example Cloud Architect certification from Example Cloud Foundation.",
             "synthetic_profile", "certifications.0",
+            metadata={"name": "Example Cloud Architect", "issuer": "Example Cloud Foundation"},
         ),
         EvidenceRecord(
             "ev-service", "Analytics pipeline assessment. Offers analytics pipeline assessments with Fixed price and Consultant tender engagement models delivering Evidence-backed findings and Prioritized remediation plan.",
@@ -107,6 +109,7 @@ def synthetic_evidence() -> tuple[EvidenceRecord, ...]:
 def synthetic_career_profile() -> CareerProfile:
     return CareerProfile(
         id="career-synthetic",
+        evidence_ids=("ev-profile",),
         employment=(
             EmploymentRecord(
                 id="job-synthetic", organization="Synthetic Analytics Ltd", title="Data Engineer",
@@ -174,10 +177,11 @@ def synthetic_career_profile() -> CareerProfile:
 def synthetic_capability_profile() -> CapabilityProfile:
     return CapabilityProfile(
         id="capability-synthetic",
+        evidence_ids=("ev-cap-profile",),
         services=(
             ServiceRecord(
                 "service-assessment", "Analytics pipeline assessment",
-                "Offers analytics pipeline assessments.", ("ev-service",),
+                "Offers analytics pipeline assessments with Fixed price and Consultant tender engagement models delivering Evidence-backed findings and Prioritized remediation plan.", ("ev-service",),
                 (EngagementType.FIXED_PRICE, EngagementType.CONSULTANT_TENDER),
                 ("Evidence-backed findings", "Prioritized remediation plan"),
             ),
@@ -213,7 +217,16 @@ def synthetic_capability_profile() -> CapabilityProfile:
 
 
 def synthetic_graph() -> TruthGraph:
-    graph = TruthGraph(synthetic_evidence())
+    metric_40 = MetricAssertion(
+        id="metric-synthetic-pipeline",
+        subject_id="achievement-verified",
+        numeric_value=40,
+        unit="%",
+        context="reduced processing time by 40%",
+        verification_status=MetricVerification.VERIFIED,
+        evidence_ids=("ev-achievement",),
+    )
+    graph = TruthGraph(synthetic_evidence(), metrics=(metric_40,))
     graph.add_career_profile(synthetic_career_profile())
     graph.add_capability_profile(synthetic_capability_profile())
     return graph

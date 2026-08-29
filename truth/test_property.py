@@ -60,6 +60,7 @@ class TruthGraphPropertyTests(unittest.TestCase):
                         "property_fixture",
                         f"loc-{i}",
                         assertion_type=t,
+                        metadata={"organization": "PropOrg", "title": "Title"},
                     )
                 )
 
@@ -92,7 +93,7 @@ class TruthGraphPropertyTests(unittest.TestCase):
             org_name = f"Company_{iteration}_{rng.randint(1000, 9999)}"
             skill_name = f"Skill_{iteration}_{rng.randint(1000, 9999)}"
 
-            ev_org = EvidenceRecord(f"ev-org-{iteration}", f"{org_name} Eng from 2020-01-01.", "cv", "org")
+            ev_org = EvidenceRecord(f"ev-org-{iteration}", f"{org_name} Eng from 2020-01-01.", "cv", "org", metadata={"organization": org_name, "title": "Eng"})
             ev_skill = EvidenceRecord(f"ev-skill-{iteration}", f"Expert in {skill_name}.", "cv", "skill")
 
             # Entity 1 has ev_org, Entity 2 has ev_skill (disconnected)
