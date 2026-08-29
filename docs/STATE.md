@@ -6,11 +6,11 @@ Last shipped: BRIEF-002 — 2026-08-29.
 Active work: none.
 Phase status: passed.
 Blocked: none.
-Next: BRIEF-003: Opportunity Discovery & Ingestion Pipelines (aggregating and classifying external procurement notices and employment postings against the truth graph)..
+Next: complete active brief.
 
 ## Repository
 
-- **Generated:** 2026-08-29T12:09:46Z
+- **Generated:** 2026-08-29T13:57:26Z
 - **State generated at commit:** `6bfa684` — feat(brief-002): complete Professional Truth Graph & Capability Ingestion acceptance
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
@@ -29,7 +29,7 @@ Next: BRIEF-003: Opportunity Discovery & Ingestion Pipelines (aggregating and cl
 
 ## Last Phase Outcome
 
-- PASS
+- No phase outcome recorded
 
 ## Decisions
 
@@ -61,4 +61,4 @@ Next: BRIEF-003: Opportunity Discovery & Ingestion Pipelines (aggregating and cl
 
 ## Next Prerequisites
 
-- BRIEF-003: Opportunity Discovery & Ingestion Pipelines (aggregating and classifying external procurement notices and employment postings against the truth graph).
+- Complete the active brief.

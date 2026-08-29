@@ -5,7 +5,6 @@ AGENTS.md
 .codex/**
 scripts/**
 recon/**
-truth/**
 .github/workflows/**
 .github/pii-patterns.txt
 .mirror-allowlist

@@ -21,7 +21,7 @@ Implement an atomic, dual-track Professional Truth Graph (`truth/` package):
    - **Employment Career Profile:** Employer history, canonical names, allowed market titles, responsibilities, quantifiable achievements with evidence-backed metric levels, skills, education, languages, work authorizations.
    - **Independent Capability Profile:** Consulting services, portfolio case studies, deliverables, target/excluded industries, engagement types, and business capacity (entity status, availability, turnover/bonding bounds).
 5. **Deterministic Claim & Red Line Validation:** Provide `ClaimValidator` to verify candidate CV bullets, statements, and proposal answers against the graph, rejecting unevidenced assertions and enforcing Red Lines / Never-Claim constraints.
-6. **Data Boundary & Mirror Safety:** Truth graph schema and validation code reside in `truth/` (allowlisted for documentation/code mirroring), while actual private founder personal data is strictly confined to gitignored `private/`.
+6. **Data Boundary & Private Code:** Truth graph schema and validation code reside in `truth/` within the private authoritative repository (not published to the public documentation mirror), while actual private founder personal data is strictly confined to gitignored `private/`.
 
 ## Consequences
 
