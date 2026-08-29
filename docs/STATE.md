@@ -10,8 +10,8 @@ Next: BRIEF-003: Opportunity Discovery & Ingestion Pipelines.
 
 ## Repository
 
-- **Generated:** 2026-08-29T14:01:41Z
-- **State generated at commit:** `22c4b19` — feat(brief-003): initialize BRIEF-003 Opportunity Discovery & Ingestion Pipelines
+- **Generated:** 2026-08-29T14:02:01Z
+- **State generated at commit:** `9653212` — feat(brief-003): initialize BRIEF-003 Opportunity Discovery & Ingestion Pipelines
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
