@@ -22,7 +22,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/jobs/api"
-      latency_ms: 297
+      latency_ms: 250
       record_count: 20
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -76,8 +76,8 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/api/remote-jobs"
-      latency_ms: 344
-      record_count: 18
+      latency_ms: 328
+      record_count: 19
     last_policy_reviewed: 2026-08-28
     policy_evidence:
       - https://remotive.com/terms
@@ -103,8 +103,8 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/api"
-      latency_ms: 891
-      record_count: 99
+      latency_ms: 1156
+      record_count: 100
     last_policy_reviewed: 2026-08-28
     policy_evidence:
       - https://remoteok.com/terms
@@ -130,7 +130,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/remote-jobs.rss"
-      latency_ms: 844
+      latency_ms: 1016
       record_count: 89
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -157,7 +157,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/Public/Notice"
-      latency_ms: 2030
+      latency_ms: 1703
       record_count: 163
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -184,7 +184,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/en/projects-operations/opportunities"
-      latency_ms: 219
+      latency_ms: 217
       record_count: 7
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -211,7 +211,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=POST; endpoint=/v3/notices/search; fields=fields,limit,page,query"
-      latency_ms: 593
+      latency_ms: 1875
       record_count: 100
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -238,7 +238,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/en/news-keywords/procurement-notices"
-      latency_ms: 2500
+      latency_ms: 2094
       record_count: 90
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -265,7 +265,7 @@ sources:
       status: parse_empty
       detail: "HTTP 200 parsed zero records"
       request_metadata: "method=GET; endpoint=/api/projects/0.1/projects/active/"
-      latency_ms: 718
+      latency_ms: 1313
       record_count: 0
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -292,7 +292,7 @@ sources:
       status: parse_empty
       detail: "HTTP 200 parsed zero records"
       request_metadata: "method=GET; endpoint=/Tender/AllTendersForVisitor"
-      latency_ms: 546
+      latency_ms: 562
       record_count: 0
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -319,8 +319,8 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/cloudflare/jobs"
-      latency_ms: 2343
-      record_count: 312
+      latency_ms: 2360
+      record_count: 309
     last_policy_reviewed: 2026-08-28
     policy_evidence:
       - https://www.greenhouse.com/terms-of-use
@@ -346,8 +346,8 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/datadog/jobs"
-      latency_ms: 3047
-      record_count: 450
+      latency_ms: 2328
+      record_count: 454
     last_policy_reviewed: 2026-08-28
     policy_evidence:
       - https://www.greenhouse.com/terms-of-use
@@ -373,7 +373,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/duolingo/jobs"
-      latency_ms: 563
+      latency_ms: 860
       record_count: 83
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -400,8 +400,8 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/figma/jobs"
-      latency_ms: 1859
-      record_count: 160
+      latency_ms: 1063
+      record_count: 163
     last_policy_reviewed: 2026-08-28
     policy_evidence:
       - https://www.greenhouse.com/terms-of-use
@@ -427,8 +427,8 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/flexport/jobs"
-      latency_ms: 827
-      record_count: 161
+      latency_ms: 764
+      record_count: 165
     last_policy_reviewed: 2026-08-28
     policy_evidence:
       - https://www.greenhouse.com/terms-of-use
@@ -454,8 +454,8 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/coinbase/jobs"
-      latency_ms: 922
-      record_count: 183
+      latency_ms: 1467
+      record_count: 188
     last_policy_reviewed: 2026-08-28
     policy_evidence:
       - https://www.greenhouse.com/terms-of-use
@@ -481,8 +481,8 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/stripe/jobs"
-      latency_ms: 2172
-      record_count: 580
+      latency_ms: 1391
+      record_count: 574
     last_policy_reviewed: 2026-08-28
     policy_evidence:
       - https://www.greenhouse.com/terms-of-use
@@ -508,7 +508,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/twilio/jobs"
-      latency_ms: 813
+      latency_ms: 782
       record_count: 144
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -535,8 +535,8 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/airbnb/jobs"
-      latency_ms: 1016
-      record_count: 183
+      latency_ms: 780
+      record_count: 172
     last_policy_reviewed: 2026-08-28
     policy_evidence:
       - https://www.greenhouse.com/terms-of-use
@@ -562,8 +562,8 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/affirm/jobs"
-      latency_ms: 1093
-      record_count: 205
+      latency_ms: 921
+      record_count: 210
     last_policy_reviewed: 2026-08-28
     policy_evidence:
       - https://www.greenhouse.com/terms-of-use
@@ -589,7 +589,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v0/postings/shyftlabs"
-      latency_ms: 1547
+      latency_ms: 1686
       record_count: 22
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -616,8 +616,8 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v0/postings/RyzLabs"
-      latency_ms: 1983
-      record_count: 44
+      latency_ms: 2125
+      record_count: 35
     last_policy_reviewed: 2026-08-28
     policy_evidence:
       - https://www.lever.co/terms
