@@ -137,7 +137,13 @@ All eight acceptance criteria from committed `briefs/BRIEF-002.md` evaluated:
 ## Known Limitations & Deferred Items
 
 - **Known Limitations:** Zero unbacked claim tolerance is strictly enforced; downstream CV and proposal generators must query the graph and cannot assert facts absent from evidence records.
-- **Deferred Items:** Multi-user tenant isolation beyond the single-founder baseline is explicitly deferred to later enterprise phases.
+## Decision
+
+PASS
+
+## Next phase prerequisites
+
+- BRIEF-003: Opportunity Discovery & Ingestion Pipelines
 
 ---
 

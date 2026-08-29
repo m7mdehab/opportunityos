@@ -3,23 +3,30 @@
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
 Last shipped: BRIEF-002 — 2026-08-29.
-Active work: none.
-Phase status: passed.
+Active work: BRIEF-003.
+Phase status: in progress.
 Blocked: none.
-Next: complete active brief.
+Next: BRIEF-003: Opportunity Discovery & Ingestion Pipelines.
 
 ## Repository
 
-- **Generated:** 2026-08-29T13:59:25Z
-- **State generated at commit:** `c178b10` — feat(brief-002): finalize BRIEF-002 closure with verified private boundary and independent Copilot audit
+- **Generated:** 2026-08-29T14:01:41Z
+- **State generated at commit:** `22c4b19` — feat(brief-003): initialize BRIEF-003 Opportunity Discovery & Ingestion Pipelines
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
 
-- **Brief:** none
-- **Phase status:** passed
-- **Open acceptance items:** 0
-- None
+- **Brief:** BRIEF-003
+- **Phase status:** in progress
+- **Open acceptance items:** 8
+- Unified Opportunity data model and schema implemented covering employment, contract, freelance, and procurement tracks.
+- Multi-source ingestion pipeline integrating authorized employment feeds (Greenhouse, Lever, Himalayas, Remotive, Remote OK, We Work Remotely) and independent procurement feeds (UNGM, World Bank, EU TED Search API).
+- Strict compliance with robots.txt, source registry, rate limits, and external action semantics (zero external mutations; allowlisted read-only TED POST queries).
+- Integration with geographic classification engine (`recon/geography.py`) and Professional Truth Graph (`truth/`).
+- Content hash deduplication and opportunity deduplication pipeline.
+- Unit and integration test suite covering feed parsing, normalization, error handling, and deduplication.
+- Independent audit / checker passes acceptance gate.
+- `docs/STATE.md` regenerated and accurate.
 
 ## Completed Briefs
 
@@ -29,7 +36,7 @@ Next: complete active brief.
 
 ## Last Phase Outcome
 
-- No phase outcome recorded
+- PASS
 
 ## Decisions
 
@@ -61,4 +68,6 @@ Next: complete active brief.
 
 ## Next Prerequisites
 
-- Complete the active brief.
+- BRIEF-003: Opportunity Discovery & Ingestion Pipelines
+
+---
