@@ -4,58 +4,58 @@
 
 ## Required numbers
 
-1. **Total raw records fetched:** 3107.
+1. **Total raw records fetched:** 3016.
 
 | Source family | Raw records | Unique eligible | Individual-eligible |
 |---|---:|---:|---:|
-| afdb | 90 | 0 | 0 |
+| afdb | 0 | 0 | 0 |
 | ashby | 0 | 0 | 0 |
 | etimad | 0 | 0 | 0 |
 | eu_ted | 100 | 0 | 0 |
 | freelancer | 0 | 0 | 0 |
-| greenhouse | 2462 | 172 | 0 |
+| greenhouse | 2461 | 1 | 0 |
 | himalayas | 20 | 0 | 0 |
 | jobicy | 0 | 0 | 0 |
 | lever | 57 | 0 | 0 |
 | remote_ok | 100 | 1 | 0 |
-| remotive | 19 | 8 | 0 |
+| remotive | 19 | 4 | 0 |
 | ungm | 163 | 0 | 0 |
-| we_work_remotely | 89 | 7 | 0 |
+| we_work_remotely | 89 | 5 | 0 |
 | world_bank | 7 | 0 | 0 |
 
-2. **Unique records after deduplication:** 2556; **duplicate rate:** 17.7%.
-3. **Cross-source overlap:** 2 fingerprints appeared on more than one source.
+2. **Unique records after deduplication:** 2472; **duplicate rate:** 18.0%.
+3. **Cross-source overlap:** 1 fingerprints appeared on more than one source.
 4. **Egypt-eligible percentage:** withheld pending the mandatory precision audit.
-5. **Unclear percentage:** 39.8% (1018/2556) stated no geography at all.
+5. **Unclear percentage:** 20.4% (505/2472) stated no geography at all.
 6. **Individual-eligible count:** per-source counts are in the table above.
 
 ## Source health
 
 | Source | Status | Latency ms | Records | Detail |
 |---|---|---:|---:|---|
-| himalayas | allowed_ok | 250 | 20 | HTTP 200 parsed records |
+| himalayas | allowed_ok | 266 | 20 | HTTP 200 parsed records |
 | jobicy | robots_unreachable | 0 | 0 | robots.txt could not be read after three attempts |
-| remotive | allowed_ok | 328 | 19 | HTTP 200 parsed records |
-| remote_ok | allowed_ok | 1156 | 100 | HTTP 200 parsed records |
-| we_work_remotely | allowed_ok | 1016 | 89 | HTTP 200 parsed records |
-| ungm | allowed_ok | 1703 | 163 | HTTP 200 parsed records |
-| world_bank | allowed_ok | 217 | 7 | HTTP 200 parsed records |
-| eu_ted | allowed_ok | 1875 | 100 | HTTP 200 parsed records |
-| afdb | allowed_ok | 2094 | 90 | HTTP 200 parsed records |
-| freelancer | parse_empty | 1313 | 0 | HTTP 200 parsed zero records |
-| etimad | parse_empty | 562 | 0 | HTTP 200 parsed zero records |
-| greenhouse:cloudflare | allowed_ok | 2360 | 309 | HTTP 200 parsed records |
-| greenhouse:datadog | allowed_ok | 2328 | 454 | HTTP 200 parsed records |
-| greenhouse:duolingo | allowed_ok | 860 | 83 | HTTP 200 parsed records |
-| greenhouse:figma | allowed_ok | 1063 | 163 | HTTP 200 parsed records |
-| greenhouse:flexport | allowed_ok | 764 | 165 | HTTP 200 parsed records |
-| greenhouse:coinbase | allowed_ok | 1467 | 188 | HTTP 200 parsed records |
-| greenhouse:stripe | allowed_ok | 1391 | 574 | HTTP 200 parsed records |
-| greenhouse:twilio | allowed_ok | 782 | 144 | HTTP 200 parsed records |
-| greenhouse:airbnb | allowed_ok | 780 | 172 | HTTP 200 parsed records |
-| greenhouse:affirm | allowed_ok | 921 | 210 | HTTP 200 parsed records |
-| lever:shyftlabs | allowed_ok | 1686 | 22 | HTTP 200 parsed records |
-| lever:ryz_labs | allowed_ok | 2125 | 35 | HTTP 200 parsed records |
+| remotive | allowed_ok | 344 | 19 | HTTP 200 parsed records |
+| remote_ok | allowed_ok | 1125 | 100 | HTTP 200 parsed records |
+| we_work_remotely | allowed_ok | 860 | 89 | HTTP 200 parsed records |
+| ungm | allowed_ok | 1625 | 163 | HTTP 200 parsed records |
+| world_bank | allowed_ok | 234 | 7 | HTTP 200 parsed records |
+| eu_ted | allowed_ok | 734 | 100 | HTTP 200 parsed records |
+| afdb | robots_unreachable | 0 | 0 | robots.txt could not be read after three attempts |
+| freelancer | parse_empty | 812 | 0 | HTTP 200 parsed zero records |
+| etimad | parse_empty | 577 | 0 | HTTP 200 parsed zero records |
+| greenhouse:cloudflare | allowed_ok | 2500 | 309 | HTTP 200 parsed records |
+| greenhouse:datadog | allowed_ok | 2030 | 454 | HTTP 200 parsed records |
+| greenhouse:duolingo | allowed_ok | 469 | 83 | HTTP 200 parsed records |
+| greenhouse:figma | allowed_ok | 1328 | 163 | HTTP 200 parsed records |
+| greenhouse:flexport | allowed_ok | 1250 | 165 | HTTP 200 parsed records |
+| greenhouse:coinbase | allowed_ok | 765 | 188 | HTTP 200 parsed records |
+| greenhouse:stripe | allowed_ok | 1421 | 573 | HTTP 200 parsed records |
+| greenhouse:twilio | allowed_ok | 1000 | 144 | HTTP 200 parsed records |
+| greenhouse:airbnb | allowed_ok | 796 | 172 | HTTP 200 parsed records |
+| greenhouse:affirm | allowed_ok | 875 | 210 | HTTP 200 parsed records |
+| lever:shyftlabs | allowed_ok | 1844 | 22 | HTTP 200 parsed records |
+| lever:ryz_labs | allowed_ok | 2328 | 35 | HTTP 200 parsed records |
 | ashby:socket | robots_unreachable | 0 | 0 | robots.txt could not be read after three attempts |
 | ashby:paires | robots_unreachable | 0 | 0 | robots.txt could not be read after three attempts |
 | ashby:jellyfish | robots_unreachable | 0 | 0 | robots.txt could not be read after three attempts |
@@ -74,10 +74,10 @@
 
 | Country | Eligible records |
 |---|---:|
-| EG | 188 |
-| AE | 189 |
-| SA | 189 |
-| DE | 194 |
+| EG | 11 |
+| AE | 12 |
+| SA | 12 |
+| DE | 25 |
 
 ## Per-source Egypt eligibility
 
@@ -105,47 +105,47 @@
 | greenhouse:cloudflare | 0.0% |
 | greenhouse:coinbase | 0.6% |
 | greenhouse:datadog | 0.0% |
-| greenhouse:duolingo | 1.9% |
-| greenhouse:figma | 100.0% |
+| greenhouse:duolingo | 0.0% |
+| greenhouse:figma | 0.0% |
 | greenhouse:flexport | 0.0% |
-| greenhouse:stripe | 1.5% |
+| greenhouse:stripe | 0.0% |
 | greenhouse:twilio | 0.0% |
 | himalayas | 0.0% |
 | jobicy | 0.0% |
 | lever:ryz_labs | 0.0% |
 | lever:shyftlabs | 0.0% |
 | remote_ok | 1.1% |
-| remotive | 42.1% |
+| remotive | 21.1% |
 | ungm | 0.0% |
-| we_work_remotely | 8.0% |
+| we_work_remotely | 5.7% |
 | world_bank | 0.0% |
 
 ## Unmapped geography
 
-Unmapped count: 1543.
+Unmapped count: 1051.
 
 | Phrase | Count |
 |---|---:|
 | NY | 141 |
-| CA | 116 |
-| Chicago | 80 |
-| Singapore | 72 |
-| London | 70 |
+| CA | 115 |
 | California | 66 |
 | Massachusetts | 51 |
-| Boston | 47 |
 | Distributed | 44 |
 | Colorado | 39 |
 | In-Office | 38 |
-| Denver | 34 |
-| NYC | 32 |
-| Atlanta | 31 |
-| Illinois | 31 |
-| SF | 29 |
+| Illinois | 30 |
 | China | 23 |
-| New York City | 23 |
 | Washington | 22 |
 | Texas | 18 |
+| Pittsburgh | 16 |
+| PA | 15 |
+| Georgia | 13 |
+| Bellevue | 12 |
+| SEA | 12 |
+| Dallas | 11 |
+| Los Angeles | 10 |
+| Maryland | 10 |
+| Beijing | 9 |
 
 ## ATS company watchlist
 

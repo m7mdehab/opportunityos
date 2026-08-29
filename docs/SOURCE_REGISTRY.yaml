@@ -22,7 +22,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/jobs/api"
-      latency_ms: 250
+      latency_ms: 266
       record_count: 20
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -76,7 +76,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/api/remote-jobs"
-      latency_ms: 328
+      latency_ms: 344
       record_count: 19
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -103,7 +103,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/api"
-      latency_ms: 1156
+      latency_ms: 1125
       record_count: 100
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -130,7 +130,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/remote-jobs.rss"
-      latency_ms: 1016
+      latency_ms: 860
       record_count: 89
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -157,7 +157,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/Public/Notice"
-      latency_ms: 1703
+      latency_ms: 1625
       record_count: 163
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -184,7 +184,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/en/projects-operations/opportunities"
-      latency_ms: 217
+      latency_ms: 234
       record_count: 7
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -211,7 +211,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=POST; endpoint=/v3/notices/search; fields=fields,limit,page,query"
-      latency_ms: 1875
+      latency_ms: 734
       record_count: 100
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -230,16 +230,16 @@ sources:
     commercial_use:
       status: review_required
     automation:
-      read: allowed
+      read: disabled
       prepare: disabled
       submit: disabled
     policy_status: unknown_disable_actions
     observed:
-      status: allowed_ok
-      detail: "HTTP 200 parsed records"
-      request_metadata: "method=GET; endpoint=/en/news-keywords/procurement-notices"
-      latency_ms: 2094
-      record_count: 90
+      status: robots_unreachable
+      detail: "robots.txt could not be read after three attempts"
+      request_metadata: ""
+      latency_ms: 0
+      record_count: 0
     last_policy_reviewed: 2026-08-28
     policy_evidence:
       - https://www.afdb.org/en/terms-and-conditions
@@ -265,7 +265,7 @@ sources:
       status: parse_empty
       detail: "HTTP 200 parsed zero records"
       request_metadata: "method=GET; endpoint=/api/projects/0.1/projects/active/"
-      latency_ms: 1313
+      latency_ms: 812
       record_count: 0
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -292,7 +292,7 @@ sources:
       status: parse_empty
       detail: "HTTP 200 parsed zero records"
       request_metadata: "method=GET; endpoint=/Tender/AllTendersForVisitor"
-      latency_ms: 562
+      latency_ms: 577
       record_count: 0
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -319,7 +319,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/cloudflare/jobs"
-      latency_ms: 2360
+      latency_ms: 2500
       record_count: 309
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -346,7 +346,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/datadog/jobs"
-      latency_ms: 2328
+      latency_ms: 2030
       record_count: 454
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -373,7 +373,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/duolingo/jobs"
-      latency_ms: 860
+      latency_ms: 469
       record_count: 83
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -400,7 +400,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/figma/jobs"
-      latency_ms: 1063
+      latency_ms: 1328
       record_count: 163
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -427,7 +427,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/flexport/jobs"
-      latency_ms: 764
+      latency_ms: 1250
       record_count: 165
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -454,7 +454,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/coinbase/jobs"
-      latency_ms: 1467
+      latency_ms: 765
       record_count: 188
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -481,8 +481,8 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/stripe/jobs"
-      latency_ms: 1391
-      record_count: 574
+      latency_ms: 1421
+      record_count: 573
     last_policy_reviewed: 2026-08-28
     policy_evidence:
       - https://www.greenhouse.com/terms-of-use
@@ -508,7 +508,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/twilio/jobs"
-      latency_ms: 782
+      latency_ms: 1000
       record_count: 144
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -535,7 +535,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/airbnb/jobs"
-      latency_ms: 780
+      latency_ms: 796
       record_count: 172
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -562,7 +562,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v1/boards/affirm/jobs"
-      latency_ms: 921
+      latency_ms: 875
       record_count: 210
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -589,7 +589,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v0/postings/shyftlabs"
-      latency_ms: 1686
+      latency_ms: 1844
       record_count: 22
     last_policy_reviewed: 2026-08-28
     policy_evidence:
@@ -616,7 +616,7 @@ sources:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/v0/postings/RyzLabs"
-      latency_ms: 2125
+      latency_ms: 2328
       record_count: 35
     last_policy_reviewed: 2026-08-28
     policy_evidence:
