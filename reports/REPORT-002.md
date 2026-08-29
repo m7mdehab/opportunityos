@@ -134,9 +134,53 @@ All eight acceptance criteria from committed `briefs/BRIEF-002.md` evaluated:
 
 ---
 
+## Post-Merge Truth-Integrity Remediation Addendum
+
+**Date:** 2026-08-29  
+**Trigger:** Post-merge Overseer inspection identified cross-evidence relationship laundering, epistemic status laundering, metric pooling, unstructured Never-Claim policy, and capacity validation defects.
+
+### 1. Defects Reproduced & Root Causes
+- **Cross-Evidence Relationship Laundering:** `ClaimValidator` used token-subset union across disparate evidence records, incorrectly allowing candidate claims like `"Uses Python for data engineering at Synthetic Analytics Ltd."` when `ev-python` and `ev-org` belonged to disconnected graph entities.
+  - *Root Cause:* Token-union validation lacked relational graph topology enforcement.
+- **Epistemic / Assertion-Type Laundering:** Multi-evidence claims used strongest-assertion priority rather than conservative propagation, allowing mixed `DERIVED_CAPABILITY` or `USER_ASSERTION` evidence to masquerade as `DIRECT_FACT`.
+  - *Root Cause:* Inverse hierarchy selection in `_strongest_assertion_type()`.
+- **Metric Provenance Laundering:** `_metric_rejection()` checked if any supporting record had `MetricVerification.VERIFIED` anywhere in the graph rather than binding each specific claimed metric to its exact evidence node.
+  - *Root Cause:* Global metric verification pooling.
+- **Unstructured Never-Claim Matching:** Prohibitions relied solely on exact string normalization without structured semantic policy categories.
+  - *Root Cause:* Lack of conceptual policy modeling (`ProhibitedConceptCategory`).
+- **Commercial Capacity Numeric Validation:** `BusinessCapacity` accepted non-finite numbers (booleans, NaN, Infinity).
+  - *Root Cause:* Missing strict finite-number type checks.
+
+### 2. Implementation Changes
+1. **Relational Composition Guard (`truth/graph.py` & `truth/validator.py`):** Added `TruthGraph.are_relationally_linked()`. Disparate evidence records cannot support a composite claim unless an explicit graph entity node connects them.
+2. **Weakest-Link Epistemic Propagation (`truth/validator.py`):** Added `_resolve_assertion_type()` enforcing conservative weakest-link rule (`USER_ASSERTION` < `DERIVED_CAPABILITY` < `NORMALIZED_FACT` < `DIRECT_FACT`).
+3. **Exact Metric Provenance Binding (`truth/validator.py`):** Added `_validate_metric_provenance()` binding every claimed metric to its exact evidence record and verified metric node.
+4. **Structured Never-Claim Policy (`truth/models.py` & `truth/fixtures.py`):** Added `ProhibitedConceptCategory` and structured regex patterns + forbidden phrases evaluated before evidence lookup.
+5. **Finite Number Validation (`truth/models.py` & `truth/ingest.py`):** Added `_validate_finite_non_negative_number()` rejecting booleans, NaN, Infinity, negative values, and non-numeric strings across all capacity quantities.
+
+### 3. Test Suites & Metrics Post-Remediation
+- `truth/test_models.py` (10 tests): **PASS**
+- `truth/test_graph.py` (9 tests): **PASS**
+- `truth/test_ingest.py` (10 tests): **PASS**
+- `truth/test_validator.py` (10 tests): **PASS**
+- `truth/test_adversarial.py` (15 tests): **PASS** (reproduced and verified all 6 counterexamples)
+- `truth/test_property.py` (4 randomized property tests with 350+ iterations): **PASS**
+- **Total `truth/` Suite:** **58 tests (100% passing in 0.084s)**
+- **Regression Suite (`recon/` + mirror):** **69 tests (100% passing)**
+
+### 4. Post-Remediation Independent Audit (GitHub Copilot CLI)
+- **Reviewer:** Fresh, blinded GitHub Copilot CLI 1.0.81 session against POST-REMEDIATION HEAD.
+- **Scope:** 6 core truth-integrity vectors (Relational Composition, Epistemic Laundering, Metric Provenance, Semantic Never-Claim Policy, Capacity Inputs, Model Immutability).
+- **Findings:** **0 vulnerabilities discovered across all 6 attack vectors.**
+- **Final Verdict:** **`PASS`**
+
+---
+
 ## Known Limitations & Deferred Items
 
 - **Known Limitations:** Zero unbacked claim tolerance is strictly enforced; downstream CV and proposal generators must query the graph and cannot assert facts absent from evidence records.
+- **Deferred Items:** Multi-user tenant isolation beyond the single-founder baseline is explicitly deferred to later enterprise phases.
+
 ## Decision
 
 PASS
@@ -152,3 +196,4 @@ PASS
 - **BRIEF-002 READY TO CLOSE:** **YES**
 - **READY FOR FINAL PR / MERGE:** **YES**
 - **Blockers:** **None**
+- **BRIEF-003 UNBLOCKED:** **YES**

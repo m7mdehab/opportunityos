@@ -21,6 +21,7 @@ from .models import (
     MetricVerification,
     NeverClaimRule,
     PortfolioItem,
+    ProhibitedConceptCategory,
     RedLineRule,
     ServiceRecord,
     SkillRecord,
@@ -136,8 +137,22 @@ def synthetic_career_profile() -> CareerProfile:
             WorkAuthorization("auth-exampleland", "Exampleland", "authorized", ("ev-work-auth",)),
         ),
         approved_summaries=("Synthetic data engineer focused on reliable analytics systems.",),
-        red_lines=(RedLineRule("red-guarantee", r"\bguarantee(?:d|s)?\b", "outcomes cannot be guaranteed"),),
-        never_claims=(NeverClaimRule("never-f500", "Fortune 500 clients", "no client evidence exists"),),
+        red_lines=(
+            RedLineRule(
+                "red-guarantee",
+                r"\b(?:guarantee\w*|100%\s*(?:success|satisfaction|result|roi)|unconditional\w*\s*(?:promise\w*|assur\w*)|zero\s*risk|assure\w*\s*(?:positive\s*)?(?:outcome|roi|results?)|promis\w*\s*(?:positive\s*)?(?:success|results?|outcome))\b",
+                "outcomes cannot be guaranteed",
+            ),
+        ),
+        never_claims=(
+            NeverClaimRule(
+                "never-f500",
+                ProhibitedConceptCategory.FORTUNE_500_PRESTIGE,
+                "no client evidence exists",
+                r"\b(?:fortune\s*500|global\s*2000|f500|top\s*fortune)\b",
+                ("Fortune 500 clients", "Fortune 500"),
+            ),
+        ),
     )
 
 
@@ -170,7 +185,15 @@ def synthetic_capability_profile() -> CapabilityProfile:
         excluded_industries=("Weapons",),
         delivery_languages=("English",),
         tools=(SkillRecord("tool-python", "Python", ("ev-python",)),),
-        never_claims=(NeverClaimRule("never-turnkey", "turnkey legal advice", "not a legal service"),),
+        never_claims=(
+            NeverClaimRule(
+                "never-turnkey",
+                ProhibitedConceptCategory.UNAUTHORIZED_LEGAL_PRACTICE,
+                "not a legal service",
+                r"\b(?:turnkey\s*legal\s*advice|licensed\s*legal\s*counsel|formal\s*legal\s*(?:advice|counsel|representation)|binding\s*counsel|licensed\s*attorney)\b",
+                ("turnkey legal advice",),
+            ),
+        ),
     )
 
 

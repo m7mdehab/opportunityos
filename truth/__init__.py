@@ -29,6 +29,7 @@ from .models import (
     MetricVerification,
     NeverClaimRule,
     PortfolioItem,
+    ProhibitedConceptCategory,
     RedLineRule,
     ServiceRecord,
     SkillRecord,
@@ -42,8 +43,8 @@ __all__ = (
     "CapabilityProfile", "CareerProfile", "CertificationRecord", "CertificationState",
     "ClaimValidator", "ClaimVerificationResult", "EducationRecord", "EmploymentRecord",
     "EngagementType", "EvidenceRecord", "IngestionError", "LanguageRecord",
-    "MetricVerification", "NeverClaimRule", "PortfolioItem", "RedLineRule",
-    "ServiceRecord", "SkillRecord", "TruthGraph", "VerificationStatus",
+    "MetricVerification", "NeverClaimRule", "PortfolioItem", "ProhibitedConceptCategory",
+    "RedLineRule", "ServiceRecord", "SkillRecord", "TruthGraph", "VerificationStatus",
     "WorkAuthorization", "canonicalize_skill", "graph_from_dict", "load_document",
     "load_json", "load_path", "load_yaml", "parse_date",
 )

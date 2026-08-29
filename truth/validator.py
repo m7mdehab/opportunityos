@@ -11,12 +11,14 @@ from .models import (
     CertificationState,
     ClaimVerificationResult,
     MetricVerification,
+    NeverClaimRule,
+    RedLineRule,
     VerificationStatus,
 )
 
 
 _SPACE = re.compile(r"\s+")
-_WORD = re.compile(r"[\w+#.%-]+", re.UNICODE)
+_WORD = re.compile(r"[\w+#]+", re.UNICODE)
 _METRIC = re.compile(
     r"(?<![\w-])(?:[$€£]\s*)?\d+(?:[.,]\d+)?(?:\s*%|\s*[xX]\b|\s*(?:hours?|days?|weeks?|months?|users?|clients?|projects?|requests?|seconds?|minutes?))?",
     re.IGNORECASE,
@@ -69,6 +71,7 @@ class ClaimValidator:
             raise ValueError("claim must be a non-empty string")
         claim = _SPACE.sub(" ", claim.strip())
 
+        # 1. Never-Claim policy and Red Lines evaluate FIRST and override evidence eligibility.
         prohibited_reasons = self._prohibited_reasons(claim)
         if prohibited_reasons:
             return self._result(
@@ -76,6 +79,7 @@ class ClaimValidator:
                 VerificationStatus.UNVERIFIED, (), prohibited_reasons,
             )
 
+        # 2. Planned credentials cannot be represented as held.
         credential_reasons = self._planned_credential_reasons(claim)
         if credential_reasons:
             return self._result(
@@ -83,6 +87,7 @@ class ClaimValidator:
                 VerificationStatus.UNVERIFIED, (), credential_reasons,
             )
 
+        # 3. Resolve requested evidence.
         requested = tuple(dict.fromkeys(evidence_ids or ()))
         unknown = tuple(item for item in requested if item not in self.graph.evidence_records)
         if unknown:
@@ -97,7 +102,22 @@ class ClaimValidator:
             if requested
             else tuple(self.graph.evidence_records.values())
         )
-        supporting = tuple(record for record in candidates if self._supports(record.content, claim))
+
+        # 4. Find supporting evidence records.
+        # Prefer single records that cover all material terms of the claim.
+        full_matches = []
+        claim_material_tokens = _tokens(claim) - _NON_MATERIAL_WORDS
+        for record in candidates:
+            if record.content:
+                rec_tokens = _tokens(record.content)
+                if claim_material_tokens and claim_material_tokens <= rec_tokens:
+                    full_matches.append(record)
+
+        if full_matches:
+            supporting = tuple(full_matches)
+        else:
+            supporting = tuple(record for record in candidates if self._supports(record.content, claim))
+
         if not supporting:
             return self._result(
                 claim, False, AssertionType.UNSUPPORTED_CLAIM,
@@ -105,51 +125,60 @@ class ClaimValidator:
                 ("no evidence record supports the material claim",),
             )
 
+        # 5. Relational composition guard:
+        # Cross-evidence relationship laundering is prevented.
+        # If multiple evidence records are required to cover the claim, they MUST be relationally linked
+        # by an explicit common entity node in the TruthGraph.
+        supporting_ids = tuple(record.id for record in supporting)
+        if len(supporting) > 1 and not self.graph.are_relationally_linked(supporting_ids):
+            return self._result(
+                claim, False, AssertionType.UNSUPPORTED_CLAIM,
+                VerificationStatus.UNVERIFIED, supporting_ids,
+                ("composite claim combines independent evidence records without an establishing graph relation",),
+            )
+
+        # 6. Material lexical coverage check.
         evidence_tokens = set().union(*(_tokens(record.content or "") for record in supporting))
         uncovered = sorted(_tokens(claim) - evidence_tokens - _NON_MATERIAL_WORDS)
         if uncovered:
             return self._result(
                 claim, False, AssertionType.UNSUPPORTED_CLAIM,
                 VerificationStatus.UNVERIFIED,
-                tuple(record.id for record in supporting),
+                supporting_ids,
                 (f"claim contains material terms absent from evidence: {', '.join(uncovered)}",),
             )
 
-        verified_support = tuple(
-            record for record in supporting
-            if record.verification_status is VerificationStatus.VERIFIED
-        )
-        approximate_support = tuple(
-            record for record in supporting
-            if record.verification_status is VerificationStatus.APPROXIMATE
-        )
-        if not verified_support:
-            if approximate_support and _APPROXIMATION.search(claim):
-                selected = approximate_support
-                status = VerificationStatus.APPROXIMATE
-            else:
-                return self._result(
-                    claim, False, AssertionType.UNSUPPORTED_CLAIM,
-                    VerificationStatus.UNVERIFIED,
-                    tuple(record.id for record in supporting),
-                    ("supporting evidence is not verified or explicitly qualified as approximate",),
-                )
-        else:
-            selected = verified_support
-            status = VerificationStatus.VERIFIED
+        # 7. Verification status resolution: conservative weakest-link rule.
+        status = self._resolve_verification_status(supporting, claim)
+        if status is None:
+            return self._result(
+                claim, False, AssertionType.UNSUPPORTED_CLAIM,
+                VerificationStatus.UNVERIFIED,
+                supporting_ids,
+                ("supporting evidence is unverified, explicit-null, or approximate without qualification",),
+            )
 
-        metric_reason = self._metric_rejection(claim, selected)
+        # 8. Exact metric provenance validation.
+        metric_reason = self._validate_metric_provenance(claim, supporting)
         if metric_reason:
             return self._result(
                 claim, False, AssertionType.UNSUPPORTED_CLAIM,
                 VerificationStatus.UNVERIFIED,
-                tuple(record.id for record in selected), (metric_reason,),
+                supporting_ids, (metric_reason,),
             )
 
-        assertion_type = self._strongest_assertion_type(selected)
+        # 9. Conservative epistemic assertion-type resolution.
+        assertion_type = self._resolve_assertion_type(supporting)
+        if assertion_type in {AssertionType.UNSUPPORTED_CLAIM, AssertionType.PROHIBITED_CLAIM}:
+            return self._result(
+                claim, False, assertion_type,
+                VerificationStatus.UNVERIFIED,
+                supporting_ids, ("claim resolves to unsupported or prohibited assertion type",),
+            )
+
         return self._result(
             claim, True, assertion_type, status,
-            tuple(record.id for record in selected), ("claim is traceable to supporting evidence",),
+            supporting_ids, ("claim is traceable to supporting evidence",),
         )
 
     def validate_claims(
@@ -183,11 +212,28 @@ class ClaimValidator:
                 raise ValueError(f"invalid red-line pattern {rule.id}: {error}") from error
             if matched:
                 reasons.append(f"red line {rule.id}: {rule.reason}")
+
         cleaned_claim = _clean_text_for_matching(claim)
         for rule in never_claims:
-            cleaned_phrase = _clean_text_for_matching(rule.phrase)
-            if cleaned_phrase and cleaned_phrase in cleaned_claim:
-                reasons.append(f"never-claim {rule.id}: {rule.reason}")
+            # Check concept pattern (semantic pattern)
+            matched_pattern = False
+            if rule.pattern:
+                try:
+                    matched_pattern = bool(re.search(rule.pattern, claim, flags=re.IGNORECASE))
+                except re.error as error:
+                    raise ValueError(f"invalid never-claim pattern {rule.id}: {error}") from error
+
+            # Check exact forbidden phrases as defense-in-depth
+            matched_phrase = False
+            for phrase in rule.forbidden_phrases:
+                cleaned_phrase = _clean_text_for_matching(phrase)
+                if cleaned_phrase and cleaned_phrase in cleaned_claim:
+                    matched_phrase = True
+                    break
+
+            if matched_pattern or matched_phrase:
+                reasons.append(f"never-claim {rule.id} [{rule.concept}]: {rule.description}")
+
         return tuple(reasons)
 
     def _planned_credential_reasons(self, claim: str) -> tuple[str, ...]:
@@ -218,34 +264,69 @@ class ClaimValidator:
         content_tokens = _tokens(normalized_content)
         return bool(content_tokens) and content_tokens <= claim_tokens
 
-    def _metric_rejection(self, claim: str, supporting) -> str | None:
+    def _validate_metric_provenance(self, claim: str, supporting: tuple) -> str | None:
+        """Verify that every numeric metric in the claim maps to an exact verified metric provenance node."""
         claim_metrics = _material_metrics(claim)
         if not claim_metrics:
             return None
-        evidence_text = " ".join(record.content or "" for record in supporting)
-        evidence_metrics = set(_material_metrics(evidence_text))
-        missing = tuple(metric for metric in claim_metrics if metric not in evidence_metrics)
-        if missing:
-            return f"claim metrics are absent from evidence: {', '.join(missing)}"
-        statuses = tuple(
-            status
-            for record in supporting
-            for status in self.graph.metric_status_for_evidence(record.id)
-        )
-        if MetricVerification.VERIFIED not in statuses:
-            return "numeric metric lacks a verified metric provenance node"
+
+        for metric in claim_metrics:
+            matching_records = [
+                record for record in supporting
+                if record.content and metric in set(_material_metrics(record.content))
+            ]
+            if not matching_records:
+                return f"claim metric '{metric}' is absent from supporting evidence"
+
+            # For each matching record carrying this specific metric, verify if any attached entity has MetricVerification.VERIFIED
+            metric_verified = False
+            for record in matching_records:
+                statuses = self.graph.metric_status_for_evidence(record.id)
+                if MetricVerification.VERIFIED in statuses:
+                    metric_verified = True
+                    break
+
+            if not metric_verified:
+                return f"claim metric '{metric}' lacks an exact verified metric provenance node"
+
         return None
 
     @staticmethod
-    def _strongest_assertion_type(supporting) -> AssertionType:
-        priority = (
-            AssertionType.DIRECT_FACT,
-            AssertionType.NORMALIZED_FACT,
-            AssertionType.DERIVED_CAPABILITY,
-            AssertionType.USER_ASSERTION,
-        )
+    def _resolve_verification_status(supporting: tuple, claim: str) -> VerificationStatus | None:
+        """Resolve verification status across supporting evidence using conservative weakest-link rule."""
+        statuses = {record.verification_status for record in supporting}
+        if VerificationStatus.EXPLICIT_NULL in statuses or VerificationStatus.UNVERIFIED in statuses:
+            return None
+        if VerificationStatus.APPROXIMATE in statuses:
+            if not _APPROXIMATION.search(claim):
+                return None
+            return VerificationStatus.APPROXIMATE
+        return VerificationStatus.VERIFIED
+
+    @staticmethod
+    def _resolve_assertion_type(supporting: tuple) -> AssertionType:
+        """Propagate epistemic status using the conservative weakest-link rule.
+
+        Epistemic hierarchy from strongest to weakest:
+        DIRECT_FACT > NORMALIZED_FACT > DERIVED_CAPABILITY > USER_ASSERTION.
+
+        A composite claim takes the weakest/most inferential status among all supporting evidence.
+        """
+        if not supporting:
+            return AssertionType.UNSUPPORTED_CLAIM
+
         present = {record.assertion_type for record in supporting}
-        return next(item for item in priority if item in present)
+        if AssertionType.PROHIBITED_CLAIM in present:
+            return AssertionType.PROHIBITED_CLAIM
+        if AssertionType.UNSUPPORTED_CLAIM in present:
+            return AssertionType.UNSUPPORTED_CLAIM
+        if AssertionType.USER_ASSERTION in present:
+            return AssertionType.USER_ASSERTION
+        if AssertionType.DERIVED_CAPABILITY in present:
+            return AssertionType.DERIVED_CAPABILITY
+        if AssertionType.NORMALIZED_FACT in present:
+            return AssertionType.NORMALIZED_FACT
+        return AssertionType.DIRECT_FACT
 
     @staticmethod
     def _result(

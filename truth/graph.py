@@ -92,6 +92,34 @@ class TruthGraph:
             raise KeyError(f"unknown evidence id: {evidence_id}")
         return tuple(dict.fromkeys(self._evidence_entities.get(evidence_id, [])))
 
+    def are_relationally_linked(self, evidence_ids: tuple[str, ...] | list[str] | set[str]) -> bool:
+        """Determine whether multiple evidence IDs share a common relational entity node in the graph.
+
+        Cross-evidence relationship laundering is prevented by requiring that any conjunction of
+        distinct evidence records must be explicitly grounded in a structured graph entity (such as
+        an EmploymentRecord with its sub-achievements, a PortfolioItem, ServiceRecord, etc.).
+        Root profile objects (CareerProfile, CapabilityProfile) represent the whole person/business
+        and do NOT establish relational link between independent sub-entities.
+        """
+        unique_ids = tuple(dict.fromkeys(evidence_ids))
+        if len(unique_ids) <= 1:
+            return True
+
+        target_set = set(unique_ids)
+        for entity_id, entity in self._entities.items():
+            if isinstance(entity, (CareerProfile, CapabilityProfile)):
+                continue
+
+            linked_ev_ids = set(self._entity_evidence.get(entity_id, ()))
+            if hasattr(entity, "achievements"):
+                for ach in getattr(entity, "achievements", ()):
+                    linked_ev_ids.update(self._entity_evidence.get(ach.id, ()))
+
+            if target_set.issubset(linked_ev_ids):
+                return True
+
+        return False
+
     @staticmethod
     def _direct_evidence_ids(node: object) -> tuple[str, ...]:
         value = getattr(node, "evidence_ids", ())
