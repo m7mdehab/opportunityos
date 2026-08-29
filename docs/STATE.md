@@ -10,8 +10,8 @@ Next: [x] Independent audit passed with $\ge 90.0\%$ eligible precision (100.00%
 
 ## Repository
 
-- **Generated:** 2026-08-29T11:34:32Z
-- **State generated at commit:** `899887b` — docs: finalize REPORT-001 section titles and decision outcome
+- **Generated:** 2026-08-29T11:38:06Z
+- **State generated at commit:** `be05673` — docs: finalize Invariant 4 withholding accounting and mirror workflow status
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -62,5 +62,5 @@ Next: [x] Independent audit passed with $\ge 90.0\%$ eligible precision (100.00%
 - [x] Independent audit passed with $\ge 90.0\%$ eligible precision (100.00% achieved, $n=8$).
 - [x] All 67 unit tests, mirror relocation tests, and boundary guards passing.
 - [x] `docs/STATE.md` regenerated via `python scripts/generate_state.py`.
-- [x] Mirror synced via `scripts/sync_mirror.py`.
+- [x] Mirror synchronization workflow verified ready for post-merge publication.
 - [x] Ready for merge to `main` and activation of Phase 2 (`briefs/BRIEF-002.md`).
