@@ -47,10 +47,9 @@ class WeWorkRemotelyAdapter(BaseAdapter):
         try:
             root = element_tree.fromstring(payload)
         except element_tree.ParseError as e:
-            raise ValueError(f"invalid XML in We Work Remotely RSS payload: {e}")
+            return ParseResult(opportunities=(), records_raw_count=0, parser_error=f"Invalid XML: {e}")
 
-        channel = root.find("channel")
-        if channel is None and root.tag != "rss":
+        if root.tag != "rss" and root.find("channel") is None:
             return ParseResult(opportunities=(), records_raw_count=0, has_schema_drift=True)
 
         items = root.findall(".//item")
@@ -77,7 +76,8 @@ class WeWorkRemotelyAdapter(BaseAdapter):
                 org_derivation = DerivationType.UNASSERTED_ABSENT
 
             url = clean_text(item.findtext("link") or item.findtext("guid"))
-            posted_date = parse_iso_date(item.findtext("pubDate"))
+            raw_pub = item.findtext("pubDate")
+            posted_date = parse_iso_date(raw_pub)
             raw_desc = item.findtext("description")
             description = clean_text(raw_desc) if raw_desc else ""
             desc_derivation = DerivationType.RAW_EXTRACTION if description else DerivationType.UNASSERTED_ABSENT
@@ -112,7 +112,7 @@ class WeWorkRemotelyAdapter(BaseAdapter):
                 payload=payload,
             )
 
-            field_provenances = (
+            prov_list: list[FieldProvenance] = [
                 create_field_provenance("track", location_raw, track.value, DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "extract_track"),
                 create_field_provenance("organization", organization, organization, org_derivation, f"{item_pointer}.title", record_checksum, "title_partition"),
                 create_field_provenance("title", raw_title, title, DerivationType.RAW_EXTRACTION, f"{item_pointer}.title", record_checksum, "title_partition"),
@@ -122,7 +122,18 @@ class WeWorkRemotelyAdapter(BaseAdapter):
                 create_field_provenance("employment_type", location_raw, emp_type.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.region", record_checksum, "extract_employment_type"),
                 create_field_provenance("remote_policy", raw_region, remote_policy.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.region", record_checksum, "extract_remote_policy"),
                 create_field_provenance("geographic_eligibility", location_raw, geo.status, DerivationType.RULE_DERIVATION, f"{item_pointer}.region", record_checksum, "classify_geography"),
-            )
+            ]
+
+            if skills:
+                prov_list.append(create_field_provenance("skills", f"{title} {description[:50]}", ", ".join(skills), DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "extract_skills"))
+            if responsibilities:
+                prov_list.append(create_field_provenance("responsibilities", (raw_desc or "")[:50], f"{len(responsibilities)} items", DerivationType.RULE_DERIVATION, f"{item_pointer}.description", record_checksum, "extract_responsibilities"))
+            if requirements:
+                prov_list.append(create_field_provenance("requirements", (raw_desc or "")[:50], f"{len(requirements)} items", DerivationType.RULE_DERIVATION, f"{item_pointer}.description", record_checksum, "extract_requirements"))
+            if comp is not None:
+                prov_list.append(create_field_provenance("compensation", description[:50], f"{comp.min_amount}-{comp.max_amount} {comp.currency}", DerivationType.RULE_DERIVATION, f"{item_pointer}.description", record_checksum, "extract_compensation"))
+            if posted_date:
+                prov_list.append(create_field_provenance("posted_date", raw_pub, posted_date, DerivationType.RAW_EXTRACTION, f"{item_pointer}.pubDate", record_checksum, "parse_iso_date"))
 
             opp_id = compute_deterministic_id(self.source_id, remote_id, title, organization, item_pointer)
 
@@ -148,7 +159,7 @@ class WeWorkRemotelyAdapter(BaseAdapter):
                 raw_provenance=provenance,
                 record_checksum=record_checksum,
                 raw_record_pointer=item_pointer,
-                field_provenances=field_provenances,
+                field_provenances=tuple(prov_list),
                 canonical_outbound_url=url,
             )
             opportunities.append(opp)

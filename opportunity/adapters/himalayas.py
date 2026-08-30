@@ -48,11 +48,11 @@ class HimalayasAdapter(BaseAdapter):
         if isinstance(data, dict):
             if "jobs" not in data:
                 return ParseResult(opportunities=(), records_raw_count=0, has_schema_drift=True)
-            jobs = data.get("jobs", [])
+            jobs = data["jobs"]
         elif isinstance(data, list):
             jobs = data
         else:
-            raise ValueError(f"expected Himalayas payload to be dict or list, got {type(data)}")
+            return ParseResult(opportunities=(), records_raw_count=0, has_schema_drift=True)
 
         raw_count = len(jobs)
         opportunities: list[Opportunity] = []
@@ -84,7 +84,8 @@ class HimalayasAdapter(BaseAdapter):
             location_raw = clean_text(raw_loc)
 
             url = str(job.get("applicationLink") or job.get("url") or "")
-            posted_date = parse_iso_date(job.get("pubDate") or job.get("createdAt") or job.get("publishedAt"))
+            raw_pub = job.get("pubDate") or job.get("createdAt") or job.get("publishedAt")
+            posted_date = parse_iso_date(raw_pub)
 
             # Compensation without default currency or interval
             min_sal = job.get("minSalary") or job.get("min_salary")
@@ -129,7 +130,7 @@ class HimalayasAdapter(BaseAdapter):
                 payload=payload,
             )
 
-            field_provenances = (
+            prov_list: list[FieldProvenance] = [
                 create_field_provenance("track", raw_emp, track.value, DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "extract_track"),
                 create_field_provenance("organization", raw_org, organization, DerivationType.RAW_EXTRACTION if organization else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.companyName", record_checksum, "clean_text"),
                 create_field_provenance("title", raw_title, title, DerivationType.RAW_EXTRACTION, f"{item_pointer}.title", record_checksum, "clean_text"),
@@ -139,7 +140,18 @@ class HimalayasAdapter(BaseAdapter):
                 create_field_provenance("employment_type", raw_emp, emp_type.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.employmentType", record_checksum, "extract_employment_type"),
                 create_field_provenance("remote_policy", raw_loc, remote_policy.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.location", record_checksum, "extract_remote_policy"),
                 create_field_provenance("geographic_eligibility", location_raw, geo.status, DerivationType.RULE_DERIVATION, f"{item_pointer}.location", record_checksum, "classify_geography"),
-            )
+            ]
+
+            if skills:
+                prov_list.append(create_field_provenance("skills", f"{title} {description[:50]}", ", ".join(skills), DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "extract_skills"))
+            if responsibilities:
+                prov_list.append(create_field_provenance("responsibilities", (raw_desc or "")[:50], f"{len(responsibilities)} items", DerivationType.RULE_DERIVATION, f"{item_pointer}.description", record_checksum, "extract_responsibilities"))
+            if requirements:
+                prov_list.append(create_field_provenance("requirements", (raw_desc or "")[:50], f"{len(requirements)} items", DerivationType.RULE_DERIVATION, f"{item_pointer}.description", record_checksum, "extract_requirements"))
+            if comp is not None:
+                prov_list.append(create_field_provenance("compensation", f"{min_sal}-{max_sal} {currency}", f"{comp.min_amount}-{comp.max_amount} {comp.currency}", DerivationType.RULE_DERIVATION, f"{item_pointer}.salary", record_checksum, "extract_compensation"))
+            if posted_date:
+                prov_list.append(create_field_provenance("posted_date", raw_pub, posted_date, DerivationType.RAW_EXTRACTION, f"{item_pointer}.pubDate", record_checksum, "parse_iso_date"))
 
             opp_id = compute_deterministic_id(self.source_id, remote_id, title, organization, item_pointer)
 
@@ -165,7 +177,7 @@ class HimalayasAdapter(BaseAdapter):
                 raw_provenance=provenance,
                 record_checksum=record_checksum,
                 raw_record_pointer=item_pointer,
-                field_provenances=field_provenances,
+                field_provenances=tuple(prov_list),
                 canonical_outbound_url=url,
             )
             opportunities.append(opp)

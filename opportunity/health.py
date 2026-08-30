@@ -43,7 +43,7 @@ class SourceHealthMonitor:
             transport_status = f"HTTP_{transport_status_code}"
             overall_status = SourceHealthStatus.TRANSIENT_FAILURE
         else:
-            transport_status = "OK_200"
+            transport_status = f"OK_{transport_status_code}"
             overall_status = None
 
         # 2. Determine parser status
@@ -55,7 +55,7 @@ class SourceHealthMonitor:
             parser_status = "SCHEMA_DRIFT_SUSPECTED"
             if overall_status is None:
                 overall_status = SourceHealthStatus.SCHEMA_DRIFT_SUSPECTED
-        elif records_raw_count == 0 and records_parsed == 0 and transport_status == "OK_200":
+        elif records_raw_count == 0 and records_parsed == 0 and transport_status.startswith("OK_"):
             parser_status = "EMPTY_PAYLOAD"
             if overall_status is None:
                 overall_status = SourceHealthStatus.EMPTY_RESULTS
@@ -98,7 +98,6 @@ class SourceHealthMonitor:
             error_message=parser_error or transport_error,
             diagnostics=tuple(diag_list),
         )
-
         self._reports[source_id] = report
         return report
 
@@ -108,11 +107,3 @@ class SourceHealthMonitor:
     @property
     def all_reports(self) -> tuple[SourceHealthReport, ...]:
         return tuple(self._reports.values())
-
-    @property
-    def healthy_sources(self) -> tuple[str, ...]:
-        return tuple(r.source_id for r in self._reports.values() if r.status is SourceHealthStatus.HEALTHY)
-
-    @property
-    def degraded_sources(self) -> tuple[str, ...]:
-        return tuple(r.source_id for r in self._reports.values() if r.status is not SourceHealthStatus.HEALTHY)

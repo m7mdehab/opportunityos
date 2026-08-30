@@ -48,13 +48,13 @@ class GreenhouseAdapter(BaseAdapter):
     ) -> ParseResult:
         data = json.loads(payload)
         if isinstance(data, dict):
-            if "jobs" not in data and not data:
+            if "jobs" not in data:
                 return ParseResult(opportunities=(), records_raw_count=0, has_schema_drift=True)
-            jobs = data.get("jobs", [])
+            jobs = data["jobs"]
         elif isinstance(data, list):
             jobs = data
         else:
-            raise ValueError(f"unexpected Greenhouse payload type: {type(data)}")
+            return ParseResult(opportunities=(), records_raw_count=0, has_schema_drift=True)
 
         raw_count = len(jobs)
         opportunities: list[Opportunity] = []
@@ -78,7 +78,8 @@ class GreenhouseAdapter(BaseAdapter):
             raw_loc = loc_dict.get("name") or job.get("location")
             location_raw = clean_text(raw_loc)
             url = str(job.get("absolute_url") or "")
-            updated_at = parse_iso_date(job.get("updated_at"))
+            raw_updated = job.get("updated_at")
+            updated_at = parse_iso_date(raw_updated)
 
             responsibilities = extract_list_sections(str(raw_content or ""), r"(?:responsibilit|what\s+you'?ll\s+do|the\s+role|duties)")
             requirements = extract_list_sections(str(raw_content or ""), r"(?:requirement|qualificat|what\s+we'?re\s+looking\s+for|what\s+you\s+bring)")
@@ -104,7 +105,7 @@ class GreenhouseAdapter(BaseAdapter):
                 payload=payload,
             )
 
-            field_provenances = (
+            prov_list: list[FieldProvenance] = [
                 create_field_provenance("track", job.get("employment_type"), track.value, DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "extract_track"),
                 create_field_provenance("organization", self.company_name, self.company_name, DerivationType.SOURCE_METADATA_DERIVATION, item_pointer, record_checksum, "greenhouse_board_metadata"),
                 create_field_provenance("title", raw_title, title, DerivationType.RAW_EXTRACTION, f"{item_pointer}.title", record_checksum, "clean_text"),
@@ -114,7 +115,18 @@ class GreenhouseAdapter(BaseAdapter):
                 create_field_provenance("employment_type", job.get("employment_type"), emp_type.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.employment_type", record_checksum, "extract_employment_type"),
                 create_field_provenance("remote_policy", raw_loc, remote_policy.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.location", record_checksum, "extract_remote_policy"),
                 create_field_provenance("geographic_eligibility", location_raw, geo.status, DerivationType.RULE_DERIVATION, f"{item_pointer}.location", record_checksum, "classify_geography"),
-            )
+            ]
+
+            if skills:
+                prov_list.append(create_field_provenance("skills", f"{title} {description[:50]}", ", ".join(skills), DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "extract_skills"))
+            if responsibilities:
+                prov_list.append(create_field_provenance("responsibilities", (raw_content or "")[:50], f"{len(responsibilities)} items", DerivationType.RULE_DERIVATION, f"{item_pointer}.content", record_checksum, "extract_responsibilities"))
+            if requirements:
+                prov_list.append(create_field_provenance("requirements", (raw_content or "")[:50], f"{len(requirements)} items", DerivationType.RULE_DERIVATION, f"{item_pointer}.content", record_checksum, "extract_requirements"))
+            if comp is not None:
+                prov_list.append(create_field_provenance("compensation", description[:50], f"{comp.min_amount}-{comp.max_amount} {comp.currency}", DerivationType.RULE_DERIVATION, f"{item_pointer}.content", record_checksum, "extract_compensation"))
+            if updated_at:
+                prov_list.append(create_field_provenance("posted_date", raw_updated, updated_at, DerivationType.RAW_EXTRACTION, f"{item_pointer}.updated_at", record_checksum, "parse_iso_date"))
 
             opp_id = compute_deterministic_id(self.source_id, remote_id, title, self.company_name, item_pointer)
 
@@ -140,7 +152,7 @@ class GreenhouseAdapter(BaseAdapter):
                 raw_provenance=provenance,
                 record_checksum=record_checksum,
                 raw_record_pointer=item_pointer,
-                field_provenances=field_provenances,
+                field_provenances=tuple(prov_list),
                 canonical_outbound_url=url,
             )
             opportunities.append(opp)

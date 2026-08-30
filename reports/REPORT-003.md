@@ -3,9 +3,9 @@
 **Phase ID:** BRIEF-003  
 **Status:** PASS  
 **Date:** 2026-08-30  
-**Substantive Commit SHA:** `ff4ee034c4f6cf873da637d54d9632126642723b`  
+**Substantive Commit SHA:** `b54ef5660329c73f10cb509edacd66d802f436b8`  
 **Author:** Antigravity Master Agent (Dual-Loop Autonomous Controller)  
-**Independent Auditor:** Blinded Discovery-Architecture & Structural-Authority Auditor (`d69bcf5e-5e41-4816-9247-1a2cd8f3b13b`)
+**Independent Auditor:** Blinded Discovery-Architecture & Structural-Authority Auditor (`8760ec90-69d5-4301-bfcc-02643158fcf6`)
 
 ---
 
@@ -13,7 +13,7 @@
 
 BRIEF-003 establishes the autonomous, dual-track opportunity acquisition engine for OpportunityOS. The subsystem (`opportunity/`) ingests authorized opportunities across employment (full-time remote, contract, international) and independent professional consulting / procurement tracks (UNGM, World Bank, EU TED Search API).
 
-All incoming opportunities are normalized into an immutable `Opportunity` schema driven by `MATERIAL_OPPORTUNITY_FIELD_MANIFEST` without data fabrication (preserving unknown values as `None` / `UNSPECIFIED` / `UNASSERTED_ABSENT`), linked to verified BRIEF-001 geographic classification rules, and processed through a two-layer deduplication engine (exact content-hash matching and conservative cross-source clustering with structured ATS identity). Source health diagnostics consume actual telemetry facts and prevent silent feed failures, parser schema drift, or false cleanliness.
+All incoming opportunities are normalized into an immutable `Opportunity` schema driven by `MATERIAL_OPPORTUNITY_FIELD_RULES` and `MATERIAL_OPPORTUNITY_FIELD_MANIFEST` without data fabrication (preserving unknown values as `None` / `UNSPECIFIED` / `UNASSERTED_ABSENT`), linked to verified BRIEF-001 geographic classification rules, and processed through a two-layer deduplication engine (exact content-hash matching and conservative cross-source clustering with structured ATS identity). Source health diagnostics consume actual telemetry facts and prevent silent feed failures, parser schema drift, or false cleanliness.
 
 ---
 
@@ -21,17 +21,17 @@ All incoming opportunities are normalized into an immutable `Opportunity` schema
 
 | Acceptance Criterion | Status | Evidence / Verification |
 | :--- | :---: | :--- |
-| **1. Exact Network Endpoint Authority** | **PASS** | `SourceRegistry.validate_preflight` strictly binds `SOURCE_ID + METHOD + EXACT HOST + ALLOWED PATH`. Refuses arbitrary host GET requests and query-parameter substring bypasses preflight. Verified in `test_acquisition.py`. |
+| **1. Exact Network Endpoint Authority** | **PASS** | `SourceRegistry.validate_preflight` strictly binds `SOURCE_ID + METHOD + EXACT HOST + EXACT BOARD/SITE TOKEN + ALLOWED PATH`. Refuses cross-board (`greenhouse:cloudflare` -> `/v1/boards/stripe/jobs`), cross-site (`lever:shyftlabs` -> `/v0/postings/ryz_labs`), HTTP downgrade, arbitrary host GET, and query-parameter substring bypasses preflight. Verified in `test_acquisition.py`. |
 | **2. Pacing & Rate Limiting** | **PASS** | `RateLimiter` enforces per-source interval pacing with an injectable clock and default conservative limit. Verified in `test_acquisition.py`. |
 | **3. Explicit Approved Search Query** | **PASS** | `EUTEDAdapter` configures `method="POST"` with `DEFAULT_TED_SEARCH_BODY` specifying approved query fields (`publication-number`, `notice-title`, `buyer-name`, `buyer-country`, `cpv`, etc.) under ADR-0005. |
-| **4. Executable Material Field Manifest** | **PASS** | `MATERIAL_OPPORTUNITY_FIELD_MANIFEST` in `models.py` drives `validate_opportunity_provenance()`. Populated material fields require valid lineage with single-record SHA-256 checksum and exact raw pointer. Verified in `test_models.py`. |
+| **4. Executable Material Field Manifest** | **PASS** | `MATERIAL_OPPORTUNITY_FIELD_RULES` in `models.py` drives `validate_opportunity_provenance()`. Populated material fields require valid lineage with single-record SHA-256 checksum and exact raw pointer. Individual removal of skills, responsibilities, requirements, compensation, posted_date, CPV, buyer, or deadline causes validation failure. Verified in `test_models.py`. |
 | **5. Accurate Pointer Paths & Zero Laundering** | **PASS** | Adapter pointers reflect actual source fields (`companyName`, `text`, `agency`, `borrower`). If EU TED / UNGM / World Bank description is absent, `description = ""` with `unasserted_absent` lineage; never laundered from title. Verified in `test_adversarial.py`. |
-| **6. Real Health Telemetry** | **PASS** | `SourceHealthReport` captures exact response latency (`187 ms`), decouples transport status from parser status, and distinguishes `EMPTY_RESULTS`, `SCHEMA_DRIFT_SUSPECTED`, and `PERSISTENT_FAILURE` without fake HTTP 500 codes. Verified in `test_adversarial.py`. |
+| **6. Real Health Telemetry** | **PASS** | `SourceHealthReport` captures exact response latency (`187 ms`) and actual status codes (`OK_206`), decouples transport status from parser status, and distinguishes `EMPTY_RESULTS`, `SCHEMA_DRIFT_SUSPECTED`, and `PERSISTENT_FAILURE` without fake HTTP 500 codes. Verified in `test_adversarial.py`. |
 | **7. Real Identity Deduplication** | **PASS** | Eliminated raw substring matching (`source_id in other.source_url`). Similarity without common stable identity preserves both records (`is_ambiguous=True`). Merges occur strictly with canonical outbound ATS URLs or structured ATS IDs. Same-source distinct requisition IDs never merge. Verified in `test_dedupe.py`. |
 | **8. Canonical Determinism & Zero Hash Nondeterminism** | **PASS** | Replaced `hash()` and `uuid4()` with SHA-256 digests. Multi-process tests across disparate `PYTHONHASHSEED` values (`0`, `42`, `12345`, `999999`) produce byte-for-byte identical output in `test_deterministic_replay.py`. |
 | **9. Four Real Tracks** | **PASS** | Direct deterministic emission of `Track.EMPLOYMENT`, `Track.CONTRACT`, `Track.FREELANCE`, and `Track.PROCUREMENT`. Verified in `test_normalization.py` and `test_adversarial.py`. |
 | **10. Architectural Decision Record** | **PASS** | Committed [ADR-0008](../docs/adr/ADR-0008-opportunity-data-model-and-ingestion-pipeline.md) documenting Opportunity Data Model and Ingestion Pipeline Architecture. |
-| **11. Independent Blinded Audit** | **PASS** | Independent auditor (`d69bcf5e-5e41-4816-9247-1a2cd8f3b13b`) verified commit `ff4ee034c4f6cf873da637d54d9632126642723b` against all 12 attack vectors with unanimous PASS. |
+| **11. Independent Blinded Audit** | **PASS** | Independent auditor (`8760ec90-69d5-4301-bfcc-02643158fcf6`) verified commit `b54ef5660329c73f10cb509edacd66d802f436b8` against all 10 criteria with unanimous PASS. |
 
 ---
 
@@ -85,78 +85,65 @@ Opportunity
 ### 4.1 Exact Verbatim Audit Prompt Sent to Reviewer
 ```
 You are an independent, blinded discovery-architecture and structural-authority auditor for OpportunityOS.
-Your audit target is the exact substantive remediation commit SHA: ff4ee034c4f6cf873da637d54d9632126642723b.
+Your audit target is the exact substantive remediation commit SHA: b54ef5660329c73f10cb509edacd66d802f436b8.
 
-Your task is to inspect the opportunity subsystem at C:\Users\norha\projects\system-diagnostics\opportunity (models.py, registry.py, transport.py, acquisition.py, normalization.py, dedupe.py, health.py, pipeline.py, adapters/base.py, adapters/greenhouse.py, adapters/lever.py, adapters/himalayas.py, adapters/remotive.py, adapters/remote_ok.py, adapters/we_work_remotely.py, adapters/ungm.py, adapters/world_bank.py, adapters/eu_ted.py, fixtures/, and test_*.py) and provide a rigorous independent audit report assessing whether the 12 attack vectors and structural authority criteria are fully and robustly satisfied on commit ff4ee034c4f6cf873da637d54d9632126642723b:
+Your task is to inspect the opportunity subsystem at C:\Users\norha\projects\system-diagnostics\opportunity (models.py, registry.py, transport.py, acquisition.py, normalization.py, dedupe.py, health.py, pipeline.py, adapters/base.py, adapters/greenhouse.py, adapters/lever.py, adapters/himalayas.py, adapters/remotive.py, adapters/remote_ok.py, adapters/we_work_remotely.py, adapters/ungm.py, adapters/world_bank.py, adapters/eu_ted.py, fixtures/, and test_*.py) and provide a rigorous independent audit report assessing whether the 10 structural authority criteria are fully and robustly satisfied on commit b54ef5660329c73f10cb509edacd66d802f436b8:
 
-1. REGISTERED-SOURCE ARBITRARY-HOST GET:
-   - Does SourceRegistry preflight authorization strictly bind source_id, method, exact allowed host, and allowed path prefix?
-   - Is a registered source (e.g. himalayas or greenhouse) strictly prevented from executing GET requests to arbitrary hosts (e.g. evil.example)?
+1. GREENHOUSE CROSS-BOARD AUTHORIZATION:
+   - Does SourceRegistry preflight authorization strictly bind Greenhouse sources to their exact board token?
+   - Does source_id="greenhouse:cloudflare" attempting to fetch url="https://boards-api.greenhouse.io/v1/boards/stripe/jobs?content=true" strictly fail before transport?
 
-2. TED SUBSTRING URL BYPASS:
-   - Does EU TED preflight authorization parse URL components and reject query substring bypasses (e.g. https://evil.example/?x=api.ted.europa.eu/v3/notices/search)?
-   - Does it strictly enforce HTTPS POST to api.ted.europa.eu/v3/notices/search?
+2. LEVER CROSS-SITE AUTHORIZATION:
+   - Does SourceRegistry preflight authorization strictly bind Lever sources to their exact site token?
+   - Does source_id="lever:shyftlabs" attempting to fetch url="https://api.lever.co/v0/postings/ryz_labs?mode=json" strictly fail before transport?
 
-3. MISSING RATE-LIMIT ENFORCEMENT:
-   - Does RateLimiter enforce pacing with an injectable clock and default conservative limit?
+3. HTTP DOWNGRADE ON DYNAMIC ATS ENDPOINTS:
+   - Are HTTP URLs (e.g. "http://boards-api.greenhouse.io/..." or "http://api.lever.co/...") strictly rejected before transport for Greenhouse and Lever sources?
 
-4. TED POST WITHOUT ACTUAL SEARCH BODY:
-   - Does the EU TED adapter and discovery execution send an explicit, approved read-only search POST query body (e.g. DEFAULT_TED_SEARCH_BODY) rather than bare GET fallback?
+4. POPULATED SKILLS WITHOUT PROVENANCE:
+   - Does validate_opportunity_provenance() fail if an Opportunity has populated skills but no corresponding FieldProvenance for skills?
 
-5. POPULATED MATERIAL FIELD WITH NO PROVENANCE:
-   - Is MATERIAL_OPPORTUNITY_FIELD_MANIFEST executable via validate_opportunity_provenance?
-   - Does every populated material field require valid FieldProvenance with record checksum and raw pointer?
-   - Does the reflection test verify that any new Opportunity field is classified in the manifest?
+5. POPULATED COMPENSATION.CURRENCY WITHOUT PROVENANCE:
+   - Does validate_opportunity_provenance() fail if an Opportunity has populated compensation (including currency/min/max) but missing compensation provenance?
 
-6. PROVENANCE POINTER CLAIMING WRONG SOURCE FIELD:
-   - Do provenance pointers across all 9 adapters accurately reflect the actual source fields used (e.g. companyName, text, agency, borrower) rather than generic placeholders?
+6. POPULATED POSTED_DATE WITHOUT PROVENANCE:
+   - Does validate_opportunity_provenance() fail if an Opportunity has a populated posted_date without corresponding FieldProvenance?
 
-7. TITLE -> DESCRIPTION LAUNDERING:
-   - When an EU TED notice (or UNGM / World Bank) has a title but no description, is description strictly kept as "" with unasserted_absent provenance, never silently populated with title text?
+7. POPULATED CPV/DEADLINE WITHOUT PROVENANCE:
+   - Does validate_opportunity_provenance() fail if a procurement Opportunity has populated CPV codes, buyer, or deadline without corresponding FieldProvenance?
 
-8. ACTUAL LATENCY REPLACED BY SYNTHETIC TELEMETRY:
-   - Does SourceHealthReport retain the actual fetch latency (e.g. 187 ms) rather than hardcoded 10 ms?
+8. GREENHOUSE NONEMPTY MISSING-JOBS SCHEMA:
+   - Does a Greenhouse payload with unexpected schema (e.g. '{"unexpected_schema":[1,2,3]}') get categorized as SCHEMA_DRIFT_SUSPECTED (and NOT falsely as EMPTY_RESULTS)?
 
-9. PARSED COUNT MASQUERADING AS RAW COUNT:
-   - Does ParseResult carry the actual records_raw_count from the source payload, correctly reporting differences when invalid items are skipped?
+9. TED NONEMPTY MISSING-RESULTS/NOTICES SCHEMA:
+   - Does an EU TED payload with unexpected schema (e.g. '{"unexpected_schema":[1,2,3]}') get categorized as SCHEMA_DRIFT_SUSPECTED (and NOT falsely as EMPTY_RESULTS)?
 
-10. PAYLOAD-LENGTH SCHEMA DRIFT HEURISTIC:
-    - Is payload-length heuristic (len > 50) completely removed, and is schema drift flagged deterministically when expected collections are missing or when raw > 0 and parsed == 0?
+10. SUCCESSFUL NON-200 HTTP STATUS PRESERVATION:
+    - When a transport response returns a successful non-200 HTTP status (e.g. status_code=206, latency_ms=187), does SourceHealthReport retain status_code=206 and latency_ms=187 without synthesizing a fake 200?
 
-11. SOURCE-ID SUBSTRING FALSE MERGE:
-    - Is raw substring source-ID matching ('source_id in other.source_url') completely removed?
-    - Does deduplication strictly prevent false merges where source_id="1" matches ".../jobs/12345"?
-
-12. SIMILARITY-ONLY DESTRUCTIVE MERGE:
-    - When two opportunities share same organization, title, and near-identical description across different sources WITHOUT common stable identity proof, does deduplication preserve both opportunities (linking as possible duplicate / is_ambiguous=True without destructive merge)?
-    - Do opportunities with proven common outbound ATS URLs merge cleanly?
-    - Are distinct same-source requisition IDs strictly prevented from merging?
-
-Perform your inspection read-only. Inspect the implementation directly, not merely test names. Report your detailed verdict (PASS/FAIL) with technical evidence and file citations for each of the 12 attack vectors on commit SHA ff4ee034c4f6cf873da637d54d9632126642723b.
+Perform your inspection read-only. Inspect the implementation directly, not merely test names. Report your detailed verdict (PASS/FAIL) with technical evidence and file citations for each of the 10 criteria on commit SHA b54ef5660329c73f10cb509edacd66d802f436b8.
 ```
 
 ### 4.2 Auditor Session Metadata & Findings
-- **Auditor Subagent Conversation ID:** `d69bcf5e-5e41-4816-9247-1a2cd8f3b13b`
-- **Target Commit SHA:** `ff4ee034c4f6cf873da637d54d9632126642723b`
-- **Overall Auditor Verdict:** **PASS (12 / 12 Invariants Satisfied)**
+- **Auditor Subagent Conversation ID:** `8760ec90-69d5-4301-bfcc-02643158fcf6`
+- **Target Commit SHA:** `b54ef5660329c73f10cb509edacd66d802f436b8`
+- **Overall Auditor Verdict:** **PASS (10 / 10 Criteria Satisfied)**
 
 ```
-1. Registered-Source Arbitrary-Host GET: PASS (validate_preflight binds source_id + method + exact host + allowed path)
-2. TED Substring URL Bypass: PASS (parsed URL components enforce exact scheme, host, path; reject substring bypasses)
-3. Missing Rate-Limit Enforcement: PASS (RateLimiter with injectable clock and conservative pacing default)
-4. TED POST Without Actual Search Body: PASS (DEFAULT_TED_SEARCH_BODY explicitly sent with Content-Type: application/json)
-5. Populated Material Field With No Provenance: PASS (MATERIAL_OPPORTUNITY_FIELD_MANIFEST executable via validate_opportunity_provenance)
-6. Provenance Pointer Claiming Wrong Source Field: PASS (pointers accurately reflect exact raw schema properties)
-7. Title -> Description Laundering: PASS (absent descriptions remain "" with unasserted_absent provenance)
-8. Actual Latency Replaced By Synthetic Telemetry: PASS (exact fetch latency preserved in SourceHealthReport)
-9. Parsed Count Masquerading As Raw Count: PASS (ParseResult carries raw_count decoupled from parsed count)
-10. Payload-Length Schema Drift Heuristic: PASS (zero len heuristics; deterministic key & count drift detection)
-11. Source-ID Substring False Merge: PASS (raw substring matching removed; exact URLs & structured ATS tuples used)
-12. Similarity-Only Destructive Merge: PASS (similarity without identity proof preserves both records as possible duplicates)
+1. Greenhouse Cross-Board Authorization: PASS (preflight binds to exact board token prefix /v1/boards/{board_token})
+2. Lever Cross-Site Authorization: PASS (preflight binds to exact site token prefix /v0/postings/{site_token})
+3. HTTP Downgrade on Dynamic ATS Endpoints: PASS (strictly requires HTTPS scheme before transport)
+4. Populated Skills Without Provenance: PASS (MATERIAL_OPPORTUNITY_FIELD_RULES validates skills provenance)
+5. Populated Compensation.Currency Without Provenance: PASS (validates compensation and currency provenance)
+6. Populated Posted_Date Without Provenance: PASS (validates posted_date provenance)
+7. Populated CPV/Deadline Without Provenance: PASS (validates CPV, buyer, and deadline provenance)
+8. Greenhouse Nonempty Missing-Jobs Schema: PASS (missing jobs key flags has_schema_drift -> SCHEMA_DRIFT_SUSPECTED)
+9. TED Nonempty Missing-Results/Notices Schema: PASS (missing results/notices flags has_schema_drift -> SCHEMA_DRIFT_SUSPECTED)
+10. Successful Non-200 HTTP Status Preservation: PASS (status_code=206, latency=187ms preserved in diagnostics and health report)
 ```
 
 ### 4.3 Master Disposition of Audit Findings
-- **Disposition:** All 12 criteria verified and accepted as **PASS**. No remediation or code modifications required.
+- **Disposition:** All 10 findings verified and accepted as **PASS**. No remediation or code modifications required.
 
 ---
 

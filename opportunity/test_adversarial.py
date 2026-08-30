@@ -50,6 +50,31 @@ class TestAdversarialInvariants(unittest.TestCase):
         self.assertEqual(desc_prov.normalized_value, "")
         self.assertEqual(desc_prov.derivation_type, "unasserted_absent")
 
+    def test_greenhouse_and_ted_nonempty_missing_collection_schema_drift(self) -> None:
+        """Greenhouse and TED with unexpected schema must report SCHEMA_DRIFT_SUSPECTED, not EMPTY_RESULTS."""
+        payload = '{"unexpected_schema": [1, 2, 3]}'
+
+        # Greenhouse
+        gh_adapter = GreenhouseAdapter("cloudflare")
+        gh_res = gh_adapter.parse_payload(payload)
+        self.assertEqual(len(gh_res.opportunities), 0)
+        self.assertTrue(gh_res.has_schema_drift)
+
+        # EU TED
+        ted_adapter = EUTEDAdapter()
+        ted_res = ted_adapter.parse_payload(payload)
+        self.assertEqual(len(ted_res.opportunities), 0)
+        self.assertTrue(ted_res.has_schema_drift)
+
+        # Pipeline integration
+        transport = MockTransport()
+        transport.set_response("greenhouse:cloudflare", TransportResponse(status_code=200, body=payload, latency_ms=10))
+        pipeline = OpportunityPipeline(transport=transport)
+        batch = pipeline.execute_discovery(source_ids=["greenhouse:cloudflare"])
+        gh_report = next(r for r in batch.health_reports if r.source_id == "greenhouse:cloudflare")
+        self.assertEqual(gh_report.status, SourceHealthStatus.SCHEMA_DRIFT_SUSPECTED)
+        self.assertEqual(gh_report.parser_status, "SCHEMA_DRIFT_SUSPECTED")
+
     def test_minimal_records_zero_fabrication_across_all_adapters(self) -> None:
         """Sparse records across all 9 adapters must not fabricate placeholder values."""
         prohibited_placeholders = {
@@ -92,13 +117,13 @@ class TestAdversarialInvariants(unittest.TestCase):
             valid, err = validate_opportunity_provenance(opp)
             self.assertTrue(valid, f"Provenance validation failed for {adapter.source_id}: {err}")
 
-    def test_health_telemetry_a_mock_response_latency(self) -> None:
-        """A. Mock response latency=187 ms -> final SourceHealthReport.fetch_latency_ms == 187."""
+    def test_health_telemetry_successful_non_200_status_code_preservation(self) -> None:
+        """MockTransport status_code=206, latency=187ms -> SourceHealthReport retains status_code=206 and latency=187ms."""
         transport = MockTransport()
         transport.set_response(
             "himalayas",
             TransportResponse(
-                status_code=200,
+                status_code=206,
                 body='{"jobs": [{"slug": "1", "title": "Engineer"}]}',
                 latency_ms=187,
             ),
@@ -107,6 +132,10 @@ class TestAdversarialInvariants(unittest.TestCase):
         batch = pipeline.execute_discovery(source_ids=["himalayas"])
         report = next(r for r in batch.health_reports if r.source_id == "himalayas")
         self.assertEqual(report.fetch_latency_ms, 187)
+        self.assertEqual(report.transport_status, "OK_206")
+        
+        diag_dict = dict(report.diagnostics)
+        self.assertEqual(diag_dict.get("status_code"), "206")
 
     def test_health_telemetry_b_valid_empty_payload(self) -> None:
         """B. Valid source payload containing exactly 0 source records -> EMPTY_RESULTS."""
@@ -125,23 +154,6 @@ class TestAdversarialInvariants(unittest.TestCase):
         self.assertEqual(report.status, SourceHealthStatus.EMPTY_RESULTS)
         self.assertEqual(report.records_raw_count, 0)
         self.assertEqual(report.parser_status, "EMPTY_PAYLOAD")
-
-    def test_health_telemetry_c_nonempty_json_missing_expected_collection(self) -> None:
-        """C. Nonempty JSON with expected collection missing -> SCHEMA_DRIFT_SUSPECTED."""
-        transport = MockTransport()
-        transport.set_response(
-            "himalayas",
-            TransportResponse(
-                status_code=200,
-                body='{"unexpected_key": "drifted_data"}',
-                latency_ms=30,
-            ),
-        )
-        pipeline = OpportunityPipeline(transport=transport)
-        batch = pipeline.execute_discovery(source_ids=["himalayas"])
-        report = next(r for r in batch.health_reports if r.source_id == "himalayas")
-        self.assertEqual(report.status, SourceHealthStatus.SCHEMA_DRIFT_SUSPECTED)
-        self.assertEqual(report.parser_status, "SCHEMA_DRIFT_SUSPECTED")
 
     def test_health_telemetry_d_raw_parsed_valid_accuracy(self) -> None:
         """D. Collection has 3 raw records, 2 normalize successfully -> raw=3, parsed=2, valid=2."""

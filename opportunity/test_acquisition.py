@@ -63,6 +63,60 @@ class TestAcquisitionAndRegistryAuthority(unittest.TestCase):
         self.assertFalse(authorized)
         self.assertIn("unauthorized", reason.lower())
 
+    def test_greenhouse_cross_board_and_http_downgrade_rejected(self) -> None:
+        # greenhouse:cloudflare accessing stripe board MUST FAIL
+        authorized, reason = self.registry.validate_preflight(
+            "greenhouse:cloudflare",
+            "https://boards-api.greenhouse.io/v1/boards/stripe/jobs?content=true",
+            method="GET",
+        )
+        self.assertFalse(authorized)
+        self.assertIn("unauthorized for Greenhouse board", reason)
+
+        # HTTP downgrade MUST FAIL
+        authorized, reason = self.registry.validate_preflight(
+            "greenhouse:cloudflare",
+            "http://boards-api.greenhouse.io/v1/boards/cloudflare/jobs?content=true",
+            method="GET",
+        )
+        self.assertFalse(authorized)
+        self.assertIn("requires https scheme", reason)
+
+        # Exact board and https MUST PASS
+        authorized, reason = self.registry.validate_preflight(
+            "greenhouse:cloudflare",
+            "https://boards-api.greenhouse.io/v1/boards/cloudflare/jobs?content=true",
+            method="GET",
+        )
+        self.assertTrue(authorized)
+
+    def test_lever_cross_site_and_http_downgrade_rejected(self) -> None:
+        # lever:shyftlabs accessing ryz_labs site MUST FAIL
+        authorized, reason = self.registry.validate_preflight(
+            "lever:shyftlabs",
+            "https://api.lever.co/v0/postings/ryz_labs?mode=json",
+            method="GET",
+        )
+        self.assertFalse(authorized)
+        self.assertIn("unauthorized for Lever site", reason)
+
+        # HTTP downgrade MUST FAIL
+        authorized, reason = self.registry.validate_preflight(
+            "lever:shyftlabs",
+            "http://api.lever.co/v0/postings/shyftlabs?mode=json",
+            method="GET",
+        )
+        self.assertFalse(authorized)
+        self.assertIn("requires https scheme", reason)
+
+        # Exact site and https MUST PASS
+        authorized, reason = self.registry.validate_preflight(
+            "lever:shyftlabs",
+            "https://api.lever.co/v0/postings/shyftlabs?mode=json",
+            method="GET",
+        )
+        self.assertTrue(authorized)
+
     def test_ted_endpoint_and_substring_bypass_rejection(self) -> None:
         # TED must require exact host and path
         authorized, reason = self.registry.validate_preflight(

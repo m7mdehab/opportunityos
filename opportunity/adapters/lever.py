@@ -47,14 +47,18 @@ class LeverAdapter(BaseAdapter):
         self, payload: str, raw_pointer: str = "", fetched_at: str = ""
     ) -> ParseResult:
         data = json.loads(payload)
-        if not isinstance(data, list):
-            if isinstance(data, dict) and "postings" not in data:
+        if isinstance(data, list):
+            postings = data
+        elif isinstance(data, dict):
+            if "postings" not in data:
                 return ParseResult(opportunities=(), records_raw_count=0, has_schema_drift=True)
-            raise ValueError(f"expected Lever payload to be a list, got {type(data)}")
+            postings = data["postings"]
+        else:
+            return ParseResult(opportunities=(), records_raw_count=0, has_schema_drift=True)
 
-        raw_count = len(data)
+        raw_count = len(postings)
         opportunities: list[Opportunity] = []
-        for idx, posting in enumerate(data):
+        for idx, posting in enumerate(postings):
             if not isinstance(posting, dict):
                 continue
             item_pointer = f"{raw_pointer or 'feed'}:postings[{idx}]"
@@ -75,7 +79,8 @@ class LeverAdapter(BaseAdapter):
             location_raw = clean_text(raw_loc)
             commitment = clean_text(categories.get("commitment"))
             url = str(posting.get("hostedUrl") or posting.get("applyUrl") or "")
-            created_at = parse_iso_date(posting.get("createdAt"))
+            raw_created = posting.get("createdAt")
+            created_at = parse_iso_date(raw_created)
 
             responsibilities = extract_list_sections(str(raw_desc or ""), r"(?:responsibilit|what\s+you'?ll\s+do|the\s+role|duties)")
             requirements = extract_list_sections(str(raw_desc or ""), r"(?:requirement|qualificat|what\s+we'?re\s+looking\s+for|what\s+you\s+bring)")
@@ -101,7 +106,7 @@ class LeverAdapter(BaseAdapter):
                 payload=payload,
             )
 
-            field_provenances = (
+            prov_list: list[FieldProvenance] = [
                 create_field_provenance("track", commitment, track.value, DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "extract_track"),
                 create_field_provenance("organization", self.company_name, self.company_name, DerivationType.SOURCE_METADATA_DERIVATION, item_pointer, record_checksum, "lever_site_metadata"),
                 create_field_provenance("title", raw_title, title, DerivationType.RAW_EXTRACTION, f"{item_pointer}.text", record_checksum, "clean_text"),
@@ -111,7 +116,18 @@ class LeverAdapter(BaseAdapter):
                 create_field_provenance("employment_type", commitment, emp_type.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.categories.commitment", record_checksum, "extract_employment_type"),
                 create_field_provenance("remote_policy", raw_loc, remote_policy.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.categories.location", record_checksum, "extract_remote_policy"),
                 create_field_provenance("geographic_eligibility", location_raw, geo.status, DerivationType.RULE_DERIVATION, f"{item_pointer}.categories.location", record_checksum, "classify_geography"),
-            )
+            ]
+
+            if skills:
+                prov_list.append(create_field_provenance("skills", f"{title} {description[:50]}", ", ".join(skills), DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "extract_skills"))
+            if responsibilities:
+                prov_list.append(create_field_provenance("responsibilities", (raw_desc or "")[:50], f"{len(responsibilities)} items", DerivationType.RULE_DERIVATION, f"{item_pointer}.description", record_checksum, "extract_responsibilities"))
+            if requirements:
+                prov_list.append(create_field_provenance("requirements", (raw_desc or "")[:50], f"{len(requirements)} items", DerivationType.RULE_DERIVATION, f"{item_pointer}.description", record_checksum, "extract_requirements"))
+            if comp is not None:
+                prov_list.append(create_field_provenance("compensation", description[:50], f"{comp.min_amount}-{comp.max_amount} {comp.currency}", DerivationType.RULE_DERIVATION, f"{item_pointer}.description", record_checksum, "extract_compensation"))
+            if created_at:
+                prov_list.append(create_field_provenance("posted_date", raw_created, created_at, DerivationType.RAW_EXTRACTION, f"{item_pointer}.createdAt", record_checksum, "parse_iso_date"))
 
             opp_id = compute_deterministic_id(self.source_id, remote_id, title, self.company_name, item_pointer)
 
@@ -137,7 +153,7 @@ class LeverAdapter(BaseAdapter):
                 raw_provenance=provenance,
                 record_checksum=record_checksum,
                 raw_record_pointer=item_pointer,
-                field_provenances=field_provenances,
+                field_provenances=tuple(prov_list),
                 canonical_outbound_url=url,
             )
             opportunities.append(opp)

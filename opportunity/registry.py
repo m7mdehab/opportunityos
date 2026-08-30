@@ -1,7 +1,7 @@
 """Authoritative Source Registry Policy Engine for OpportunityOS.
 
 Loads docs/SOURCE_REGISTRY.yaml and enforces strict pre-flight authorization
-binding SOURCE_ID + METHOD + EXACT ALLOWED HOST + ALLOWED PATH.
+binding SOURCE_ID + METHOD + EXACT ALLOWED HOST + EXACT BOARD/SITE TOKEN + ALLOWED PATH.
 Refuses unregistered, disabled, mutating, or unallowlisted endpoints before transport.
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ class EndpointRule:
     allowed_hosts: frozenset[str]
     allowed_path_prefix: str
     allowed_methods: frozenset[str]
-    require_https: bool = False
+    require_https: bool = True
 
 
 # Exact endpoint templates binding source to allowed host, path, and method
@@ -156,7 +156,7 @@ class SourceRegistry:
     def validate_preflight(
         self, source_id: str, url: str, method: str = "GET"
     ) -> tuple[bool, str]:
-        """Validate request authorization binding SOURCE_ID + METHOD + EXACT HOST + ALLOWED PATH."""
+        """Validate request authorization binding SOURCE_ID + METHOD + EXACT HOST + TOKEN + ALLOWED PATH."""
         policy = self.get_policy(source_id)
         if not policy:
             return False, f"Refused: Source '{source_id}' is not registered in docs/SOURCE_REGISTRY.yaml"
@@ -177,31 +177,40 @@ class SourceRegistry:
         except Exception:
             return False, f"Refused: Malformed URL '{url}'"
 
+        scheme = parsed.scheme.lower()
         host = parsed.netloc.lower().split(":")[0]  # remove port
         path = parsed.path or "/"
 
-        # Greenhouse dynamic rule
+        # Greenhouse dynamic rule: HTTPS + exact host + exact board token prefix
         if source_id.startswith("greenhouse:"):
+            if scheme != "https":
+                return False, f"Refused: Greenhouse source '{source_id}' requires https scheme, got '{scheme}'"
             if host not in {"boards-api.greenhouse.io", "boards.greenhouse.io"}:
                 return False, f"Refused: Host '{host}' is unauthorized for Greenhouse source '{source_id}'"
-            if not path.startswith("/v1/boards/"):
-                return False, f"Refused: Path '{path}' is unauthorized for Greenhouse source '{source_id}'"
+            board_token = source_id.partition(":")[2].lower()
+            expected_prefix = f"/v1/boards/{board_token}"
+            if not path.startswith(expected_prefix):
+                return False, f"Refused: Path '{path}' is unauthorized for Greenhouse board '{board_token}' (expected prefix: '{expected_prefix}')"
             return True, "Authorized"
 
-        # Lever dynamic rule
+        # Lever dynamic rule: HTTPS + exact host + exact site token prefix
         if source_id.startswith("lever:"):
+            if scheme != "https":
+                return False, f"Refused: Lever source '{source_id}' requires https scheme, got '{scheme}'"
             if host not in {"api.lever.co", "jobs.lever.co"}:
                 return False, f"Refused: Host '{host}' is unauthorized for Lever source '{source_id}'"
-            if not path.startswith("/v0/postings/"):
-                return False, f"Refused: Path '{path}' is unauthorized for Lever source '{source_id}'"
+            site_token = source_id.partition(":")[2].lower()
+            expected_prefix = f"/v0/postings/{site_token}"
+            if not path.startswith(expected_prefix):
+                return False, f"Refused: Path '{path}' is unauthorized for Lever site '{site_token}' (expected prefix: '{expected_prefix}')"
             return True, "Authorized"
 
         rule = SOURCE_ENDPOINT_RULES.get(source_id)
         if not rule:
             return False, f"Refused: No endpoint rule defined for source '{source_id}'"
 
-        if rule.require_https and parsed.scheme.lower() != "https":
-            return False, f"Refused: Source '{source_id}' requires https scheme, got '{parsed.scheme}'"
+        if rule.require_https and scheme != "https":
+            return False, f"Refused: Source '{source_id}' requires https scheme, got '{scheme}'"
 
         if host not in rule.allowed_hosts:
             return False, f"Refused: Host '{host}' is unauthorized for source '{source_id}' (allowed: {sorted(rule.allowed_hosts)})"
@@ -214,7 +223,7 @@ class SourceRegistry:
 
         # Strict ADR-0005 check for TED
         if source_id == "eu_ted":
-            if parsed.scheme.lower() != "https" or host != "api.ted.europa.eu" or path != "/v3/notices/search" or method_upper != "POST":
+            if scheme != "https" or host != "api.ted.europa.eu" or path != "/v3/notices/search" or method_upper != "POST":
                 return False, f"Refused: EU TED query must strictly be HTTPS POST to https://api.ted.europa.eu/v3/notices/search"
 
         return True, "Authorized"

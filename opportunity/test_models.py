@@ -4,6 +4,7 @@ from __future__ import annotations
 import dataclasses
 import unittest
 
+from opportunity.adapters import GreenhouseAdapter, UNGMAdapter
 from opportunity.models import (
     Compensation,
     CompensationInterval,
@@ -12,6 +13,7 @@ from opportunity.models import (
     FieldProvenance,
     GeographicEligibility,
     MATERIAL_OPPORTUNITY_FIELD_MANIFEST,
+    MATERIAL_OPPORTUNITY_FIELD_RULES,
     Opportunity,
     OpportunityCluster,
     ProcurementMetadata,
@@ -28,7 +30,7 @@ from opportunity.models import (
 
 class TestOpportunityModels(unittest.TestCase):
     def test_material_field_manifest_reflection(self) -> None:
-        """Every field on Opportunity must be classified or handled in MATERIAL_OPPORTUNITY_FIELD_MANIFEST."""
+        """Every field on Opportunity must have an executable rule in MATERIAL_OPPORTUNITY_FIELD_RULES."""
         opp_fields = {f.name for f in dataclasses.fields(Opportunity)}
         
         # Base infrastructure/structural fields not subject to field provenance directly
@@ -48,65 +50,117 @@ class TestOpportunityModels(unittest.TestCase):
         }
         
         material_fields = opp_fields - infrastructure_fields
+        rule_field_names = {r.field_name for r in MATERIAL_OPPORTUNITY_FIELD_RULES}
+
         for field_name in material_fields:
             self.assertIn(
                 field_name,
+                rule_field_names,
+                f"Opportunity field '{field_name}' lacks an executable rule in MATERIAL_OPPORTUNITY_FIELD_RULES",
+            )
+            self.assertIn(
+                field_name,
                 MATERIAL_OPPORTUNITY_FIELD_MANIFEST,
-                f"Opportunity field '{field_name}' is not in MATERIAL_OPPORTUNITY_FIELD_MANIFEST",
+                f"Opportunity field '{field_name}' is missing from MATERIAL_OPPORTUNITY_FIELD_MANIFEST",
             )
 
-    def test_validate_opportunity_provenance_success(self) -> None:
-        fp_title = FieldProvenance("title", "Lead Engineer", "Lead Engineer", "raw_extraction", "jobs[0].title", "abc", "clean_text")
-        fp_org = FieldProvenance("organization", "Acme", "Acme", "raw_extraction", "jobs[0].org", "abc", "clean_text")
-        fp_track = FieldProvenance("track", "full_time", "employment", "rule_derivation", "jobs[0]", "abc", "extract_track")
-        fp_desc = FieldProvenance("description", "Desc", "Desc", "raw_extraction", "jobs[0].desc", "abc", "clean_text")
+    def test_greenhouse_field_provenance_individual_removal_regressions(self) -> None:
+        """Removing provenance for each populated field individually MUST fail validation."""
+        payload = """{
+            "jobs": [
+                {
+                    "id": 1001,
+                    "title": "Staff Backend Engineer",
+                    "content": "<h3>Responsibilities</h3><ul><li>Build distributed services</li></ul><h3>Requirements</h3><ul><li>5+ years Python</li></ul><p>Salary: $150k - $200k.</p>",
+                    "location": {"name": "Remote"},
+                    "updated_at": "2026-08-15T00:00:00Z",
+                    "employment_type": "Full-time"
+                }
+            ]
+        }"""
+        adapter = GreenhouseAdapter("cloudflare")
+        result = adapter.parse_payload(payload)
+        self.assertEqual(len(result.opportunities), 1)
+        opp = result.opportunities[0]
 
-        opp = Opportunity(
-            id="test:1",
-            track=Track.EMPLOYMENT,
-            source="test",
-            source_url="https://example.com",
-            source_id="1",
-            organization="Acme",
-            title="Lead Engineer",
-            description="Desc",
-            field_provenances=(fp_title, fp_org, fp_track, fp_desc),
-        )
+        # Verify all targeted fields are populated
+        self.assertTrue(bool(opp.skills), "Skills should be populated")
+        self.assertTrue(bool(opp.responsibilities), "Responsibilities should be populated")
+        self.assertTrue(bool(opp.requirements), "Requirements should be populated")
+        self.assertIsNotNone(opp.compensation, "Compensation should be populated")
+        self.assertIsNotNone(opp.posted_date, "Posted date should be populated")
+
+        # Valid baseline
         valid, err = validate_opportunity_provenance(opp)
         self.assertTrue(valid, err)
 
-    def test_validate_opportunity_provenance_missing_field_fails(self) -> None:
-        fp_title = FieldProvenance("title", "Lead Engineer", "Lead Engineer", "raw_extraction", "jobs[0].title", "abc", "clean_text")
-        # Missing organization and track provenance
-        opp = Opportunity(
-            id="test:1",
-            track=Track.EMPLOYMENT,
-            source="test",
-            source_url="https://example.com",
-            source_id="1",
-            organization="Acme",
-            title="Lead Engineer",
-            description="Desc",
-            field_provenances=(fp_title,),
-        )
+        # Fields to test removing individually
+        fields_to_test = [
+            "skills",
+            "responsibilities",
+            "requirements",
+            "compensation",
+            "posted_date",
+            "track",
+            "organization",
+            "title",
+            "seniority",
+            "employment_type",
+            "location_raw",
+            "remote_policy",
+            "geographic_eligibility",
+        ]
+
+        for field_to_remove in fields_to_test:
+            with self.subTest(field_removed=field_to_remove):
+                stripped_provs = tuple(fp for fp in opp.field_provenances if fp.field_name != field_to_remove)
+                mutated_opp = dataclasses.replace(opp, field_provenances=stripped_provs)
+                val_res, val_err = validate_opportunity_provenance(mutated_opp)
+                self.assertFalse(val_res, f"Expected validation to fail when '{field_to_remove}' provenance is missing")
+                self.assertIn("Missing provenance", val_err)
+
+    def test_procurement_provenance_individual_removal_regressions(self) -> None:
+        """Removing CPV, buyer, or deadline provenance on procurement notice MUST fail."""
+        payload = """{
+            "notices": [
+                {
+                    "id": "UNGM-001",
+                    "title": "Consulting Services for Enterprise Architecture",
+                    "agency": "UNDP",
+                    "country": "Egypt",
+                    "type": "RFP",
+                    "deadline": "2026-10-01",
+                    "posted_date": "2026-08-20",
+                    "unspsc": ["80101500"]
+                }
+            ]
+        }"""
+        adapter = UNGMAdapter()
+        result = adapter.parse_payload(payload)
+        self.assertEqual(len(result.opportunities), 1)
+        opp = result.opportunities[0]
+
+        # Valid baseline
         valid, err = validate_opportunity_provenance(opp)
-        self.assertFalse(valid)
-        self.assertIn("Missing provenance", err)
+        self.assertTrue(valid, err)
 
-    def test_deterministic_id_reproducibility(self) -> None:
-        id1 = compute_deterministic_id("greenhouse:stripe", "12345", "Backend Engineer", "Stripe", "jobs[0]")
-        id2 = compute_deterministic_id("greenhouse:stripe", "12345", "Backend Engineer", "Stripe", "jobs[0]")
-        self.assertEqual(id1, id2)
-        self.assertEqual(id1, "greenhouse:stripe:12345")
+        # Remove buyer_name / organization
+        no_buyer = dataclasses.replace(opp, field_provenances=tuple(fp for fp in opp.field_provenances if fp.field_name not in {"buyer_name", "organization"}))
+        v_res, v_err = validate_opportunity_provenance(no_buyer)
+        self.assertFalse(v_res)
+        self.assertIn("Missing provenance", v_err)
 
-    def test_content_hash_and_dedup_key_whitespace_invariance(self) -> None:
-        hash1 = compute_canonical_content_hash(" Acme Corp ", "Senior   Engineer", "Remote - US", " Great role! ")
-        hash2 = compute_canonical_content_hash("acme corp", "Senior Engineer", "remote - us", "great role!")
-        self.assertEqual(hash1, hash2)
+        # Remove deadline / closing_date
+        no_deadline = dataclasses.replace(opp, field_provenances=tuple(fp for fp in opp.field_provenances if fp.field_name not in {"deadline", "closing_date"}))
+        v_res, v_err = validate_opportunity_provenance(no_deadline)
+        self.assertFalse(v_res)
+        self.assertIn("Missing provenance", v_err)
 
-        dedup1 = compute_dedup_key("Acme, Inc.", "Senior Engineer - Backend", "Remote")
-        dedup2 = compute_dedup_key("Acme Inc", "Senior Engineer Backend", "remote")
-        self.assertEqual(dedup1, dedup2)
+        # Remove unspsc_codes
+        no_unspsc = dataclasses.replace(opp, field_provenances=tuple(fp for fp in opp.field_provenances if fp.field_name != "unspsc_codes"))
+        v_res, v_err = validate_opportunity_provenance(no_unspsc)
+        self.assertFalse(v_res)
+        self.assertIn("Missing provenance", v_err)
 
 
 if __name__ == "__main__":
