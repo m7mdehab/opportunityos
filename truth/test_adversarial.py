@@ -189,7 +189,7 @@ class AdversarialTruthTests(unittest.TestCase):
         from truth.models import EvidenceRecord, Achievement, MetricVerification, EmploymentRecord, CareerProfile
         from truth.graph import TruthGraph
 
-        ev_verified = EvidenceRecord("ev-v", "Reduced latency by 40% at Org as Title from 2020-01-01.", "src", "loc", metadata={"organization": "Org", "title": "Title"})
+        ev_verified = EvidenceRecord("ev-v", "Reduced latency by 40% at Org as Title from 2020-01-01.", "src", "loc", metadata={"organization": "Org", "title": "Title", "subject_id": "ach-v"})
         ev_unverified = EvidenceRecord("ev-u", "Increased revenue by 500% at Org as Title from 2020-01-01.", "src", "loc", metadata={"organization": "Org", "title": "Title"})
         ev_diff_num = EvidenceRecord("ev-num", "Managed 40 projects at Org as Title from 2020-01-01.", "src", "loc", metadata={"organization": "Org", "title": "Title"})
 
@@ -367,13 +367,14 @@ class AdversarialTruthTests(unittest.TestCase):
         from truth.models import EvidenceRecord, Achievement, MetricVerification, EmploymentRecord, CareerProfile
         from truth.graph import TruthGraph
 
-        ev_multi = EvidenceRecord("ev-multi", "Reduced latency by 40% and increased revenue by 200% at Org as Title from 2020-01-01.", "cv", "ach", metadata={"organization": "Org", "title": "Title"})
+        ev_emp = EvidenceRecord("ev-emp", "Title at Org from 2020-01-01.", "cv", "emp", metadata={"organization": "Org", "title": "Title"})
+        ev_multi = EvidenceRecord("ev-multi", "Reduced latency by 40% and increased revenue by 200% at Org as Title from 2020-01-01.", "cv", "ach", metadata={"subject_id": "ach-multi"})
         # Only 40% is verified; 200% is unverified
         ach = Achievement("ach-multi", "Reduced latency by 40%.", ("ev-multi",), MetricVerification.VERIFIED)
-        emp = EmploymentRecord("emp-m", "Org", "Title", date(2020, 1, 1), None, ("ev-multi",), achievements=(ach,))
+        emp = EmploymentRecord("emp-m", "Org", "Title", date(2020, 1, 1), None, ("ev-emp",), achievements=(ach,))
         profile = CareerProfile("prof-m", employment=(emp,))
         m_40 = MetricAssertion("m-40-iso", "ach-multi", 40, "%", "Reduced latency by 40%", verification_status=MetricVerification.VERIFIED, evidence_ids=("ev-multi",))
-        graph = TruthGraph((ev_multi,), metrics=(m_40,))
+        graph = TruthGraph((ev_emp, ev_multi), metrics=(m_40,))
         graph.add_career_profile(profile)
         validator = ClaimValidator(graph)
 
@@ -630,7 +631,7 @@ class AdversarialTruthTests(unittest.TestCase):
         from truth.validator import ClaimValidator
         from truth.graph import TruthGraph
 
-        ev = EvidenceRecord("ev-metrics", "Revenue increased 200% and latency fell 40% at Corp.", "cv", "ach")
+        ev = EvidenceRecord("ev-metrics", "Revenue increased 200% and latency fell 40% at Corp.", "cv", "ach", metadata={"subject_id": "ach-1"})
 
         # Explicit MetricAssertion: only 40% latency is VERIFIED; 200% is UNAVAILABLE
         ma_lat = MetricAssertion(id="m-lat", subject_id="ach-1", numeric_value=40.0, unit="%", context="latency fell 40%", verification_status=MetricVerification.VERIFIED, evidence_ids=("ev-metrics",))
@@ -653,22 +654,22 @@ class AdversarialTruthTests(unittest.TestCase):
         from truth.graph import TruthGraph
 
         ev_title = EvidenceRecord("ev-title", "Manager at Corp from 2022-01-01 to 2024-01-01.", "cv", "emp", metadata={"organization": "Corp", "title": "Manager"})
-        ev_120 = EvidenceRecord("ev-120", "Managed 120 client engagements at Corp.", "cv", "ach")
+        ev_120 = EvidenceRecord("ev-120", "Managed 120 clients at Corp.", "cv", "ach", metadata={"subject_id": "ach-num"})
         emp = EmploymentRecord(
             "job-num", "Corp", "Manager", date(2022, 1, 1), date(2024, 1, 1), ("ev-title",),
-            achievements=(Achievement("ach-num", "Managed 120 client engagements.", ("ev-120",), MetricVerification.VERIFIED),),
+            achievements=(Achievement("ach-num", "Managed 120 clients.", ("ev-120",), MetricVerification.VERIFIED),),
         )
-        m_120 = MetricAssertion("m-120", "ach-num", 120, "engagements", "Managed 120 client engagements", verification_status=MetricVerification.VERIFIED, evidence_ids=("ev-120",))
+        m_120 = MetricAssertion("m-120", "ach-num", 120, "clients", "Managed 120 clients", verification_status=MetricVerification.VERIFIED, evidence_ids=("ev-120",))
         graph = TruthGraph((ev_title, ev_120), metrics=(m_120,))
         graph.add_career_profile(CareerProfile("prof-num", employment=(emp,)))
         val = ClaimValidator(graph)
 
         # 20 does NOT match 120
-        r_20 = val.validate_claim("Managed 20 client engagements.", ("ev-120",))
+        r_20 = val.validate_claim("Managed 20 clients.", ("ev-120",))
         self.assertFalse(r_20.allowed)
 
         # 4 does NOT match 40%
-        ev_40 = EvidenceRecord("ev-40", "Reduced latency by 40% at Corp.", "cv", "ach")
+        ev_40 = EvidenceRecord("ev-40", "Reduced latency by 40% at Corp.", "cv", "ach", metadata={"subject_id": "ach-num2"})
         emp2 = EmploymentRecord(
             "job-num2", "Corp", "Manager", date(2022, 1, 1), date(2024, 1, 1), ("ev-title",),
             achievements=(Achievement("ach-num2", "Reduced latency by 40%.", ("ev-40",), MetricVerification.VERIFIED),),
@@ -964,7 +965,10 @@ class AdversarialTruthTests(unittest.TestCase):
         # -------------------------------------------------------------
         from truth.models import ClaimCandidate, AtomicAssertion, AssertionType, VerificationStatus
 
-        ev_mixed = EvidenceRecord("ev-mixed", "Revenue increased 40% and latency fell 10% at Acme Corp from 2022-01-01.", "cv", "ach", metadata={"organization": "Acme Corp", "title": "Engineer"})
+        ev_mixed = EvidenceRecord(
+            "ev-mixed", "Revenue increased 40% and latency fell 10% at Acme Corp from 2022-01-01.",
+            "cv", "ach", metadata={"organization": "Acme Corp", "title": "Engineer", "subject_id": "rev-subject"},
+        )
         graph_metric = TruthGraph((ev_mixed,))
 
         # Attempt: MetricAssertion(subject_id="lat-subject", numeric_value=40, unit="%", context="latency fell 40%", VERIFIED)
@@ -982,7 +986,7 @@ class AdversarialTruthTests(unittest.TestCase):
             graph_metric.add_metric_assertion(bad_metric)
 
         # These must pass:
-        # revenue +40%
+        # revenue +40% (ev_mixed metadata has subject_id="rev-subject")
         metric_rev = MetricAssertion(
             id="m-good-rev",
             subject_id="rev-subject",
@@ -995,7 +999,12 @@ class AdversarialTruthTests(unittest.TestCase):
         graph_metric.add_metric_assertion(metric_rev)
         self.assertIn("m-good-rev", graph_metric.metrics)
 
-        # latency -10%
+        # latency -10% with subject bound via graph entity
+        ev_mixed_lat = EvidenceRecord(
+            "ev-mixed-lat", "Revenue increased 40% and latency fell 10% at Acme Corp from 2022-01-01.",
+            "cv", "ach", metadata={"organization": "Acme Corp", "title": "Engineer", "subject_id": "lat-subject"},
+        )
+        graph_metric.add_evidence(ev_mixed_lat)
         metric_lat = MetricAssertion(
             id="m-good-lat",
             subject_id="lat-subject",
@@ -1003,14 +1012,14 @@ class AdversarialTruthTests(unittest.TestCase):
             unit="%",
             context="latency fell 10%",
             verification_status=MetricVerification.VERIFIED,
-            evidence_ids=("ev-mixed",),
+            evidence_ids=("ev-mixed-lat",),
         )
         graph_metric.add_metric_assertion(metric_lat)
         self.assertIn("m-good-lat", graph_metric.metrics)
 
         # Also prove:
         # 40 clients cannot establish 40%
-        ev_clients = EvidenceRecord("ev-clients", "Managed 40 clients at Acme Corp.", "cv", "ach")
+        ev_clients = EvidenceRecord("ev-clients", "Managed 40 clients at Acme Corp.", "cv", "ach", metadata={"subject_id": "client-subject"})
         graph_clients = TruthGraph((ev_clients,))
         metric_client_percent = MetricAssertion(
             id="m-client-pct",
@@ -1025,7 +1034,7 @@ class AdversarialTruthTests(unittest.TestCase):
             graph_clients.add_metric_assertion(metric_client_percent)
 
         # $40 cannot establish 40%
-        ev_dollars = EvidenceRecord("ev-dollars", "Earned $40 per hour at Acme Corp.", "cv", "ach")
+        ev_dollars = EvidenceRecord("ev-dollars", "Earned $40 per hour at Acme Corp.", "cv", "ach", metadata={"subject_id": "dollar-subject"})
         graph_dollars = TruthGraph((ev_dollars,))
         metric_dollar_percent = MetricAssertion(
             id="m-dollar-pct",
@@ -1040,12 +1049,143 @@ class AdversarialTruthTests(unittest.TestCase):
             graph_dollars.add_metric_assertion(metric_dollar_percent)
 
         # -------------------------------------------------------------
-        # FINAL METRIC-IDENTITY CLOSURE REGRESSIONS
+        # FINAL TWO-LINE AUTHORITY CLOSURE REGRESSIONS
         # -------------------------------------------------------------
-        # 1. Exact semantic metric identity:
+        # 1. Subject proof must be structural (no generic locator / word stem / token overlap)
+        # Regression 1A: Evidence locator="ach", metric subject_id="achievement-unrelated" -> MUST FAIL
+        ev_ach_unrel = EvidenceRecord("ev-ach-unrel", "Revenue decreased 40%.", "cv", "ach")
+        graph_ach_unrel = TruthGraph((ev_ach_unrel,))
+        metric_ach_unrel = MetricAssertion(
+            id="m-ach-unrel",
+            subject_id="achievement-unrelated",
+            numeric_value=40,
+            unit="%",
+            context="Revenue decreased 40%",
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-ach-unrel",),
+        )
+        with self.assertRaises(ValueError):
+            graph_ach_unrel.add_metric_assertion(metric_ach_unrel)
+
+        # Regression 1B: Evidence id="ev-latency", locator="unscoped", metric subject_id="latency-unrelated" -> MUST FAIL
+        ev_lat_unrel = EvidenceRecord("ev-latency", "Latency fell 40%.", "cv", "unscoped")
+        graph_lat_unrel = TruthGraph((ev_lat_unrel,))
+        metric_lat_unrel = MetricAssertion(
+            id="m-lat-unrel",
+            subject_id="latency-unrelated",
+            numeric_value=40,
+            unit="%",
+            context="Latency fell 40%",
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-latency",),
+        )
+        with self.assertRaises(ValueError):
+            graph_lat_unrel.add_metric_assertion(metric_lat_unrel)
+
+        # Structural Subject Proof Positive Cases:
+        # A. metadata.subject_id explicitly equals metric subject -> MUST PASS
+        ev_meta_subj = EvidenceRecord(
+            "ev-meta-subj", "Revenue decreased 40%.", "cv", "ach",
+            metadata={"subject_id": "achievement-unrelated"},
+        )
+        graph_meta_subj = TruthGraph((ev_meta_subj,))
+        graph_meta_subj.add_metric_assertion(
+            MetricAssertion(
+                id="m-meta-pass",
+                subject_id="achievement-unrelated",
+                numeric_value=40,
+                unit="%",
+                context="Revenue decreased 40%",
+                verification_status=MetricVerification.VERIFIED,
+                evidence_ids=("ev-meta-subj",),
+            )
+        )
+        self.assertIn("m-meta-pass", graph_meta_subj.metrics)
+
+        # B. Real graph entity bound to that evidence -> MUST PASS
+        ev_ent_subj = EvidenceRecord(
+            "ev-ent-subj", "Latency fell 40% at Corp as Engineer from 2020-01-01.", "cv", "unscoped",
+            metadata={"organization": "Corp", "title": "Engineer"},
+        )
+        ach_ent = Achievement("latency-unrelated", "Latency fell 40%.", ("ev-ent-subj",), MetricVerification.VERIFIED)
+        emp_ent = EmploymentRecord("emp-ent", "Corp", "Engineer", date(2020, 1, 1), None, ("ev-ent-subj",), achievements=(ach_ent,))
+        prof_ent = CareerProfile("prof-ent", employment=(emp_ent,))
+        graph_ent_subj = TruthGraph((ev_ent_subj,))
+        graph_ent_subj.add_career_profile(prof_ent)
+        graph_ent_subj.add_metric_assertion(
+            MetricAssertion(
+                id="m-ent-pass",
+                subject_id="latency-unrelated",
+                numeric_value=40,
+                unit="%",
+                context="Latency fell 40%",
+                verification_status=MetricVerification.VERIFIED,
+                evidence_ids=("ev-ent-subj",),
+            )
+        )
+        self.assertIn("m-ent-pass", graph_ent_subj.metrics)
+
+        # 2. Unit equivalence must have NO context fallback
+        # Regression 2A: Evidence: "Processed 40 tickets in 5 hours."
+        # Attempt: numeric_value=40, unit="hours", context="Processed 40 hours for tickets" -> MUST FAIL
+        ev_multi_unit = EvidenceRecord(
+            "ev-multi-unit", "Processed 40 tickets in 5 hours.", "cv", "multi-subject",
+            metadata={"subject_id": "multi-subject"},
+        )
+        graph_multi_unit = TruthGraph((ev_multi_unit,))
+        metric_bad_unit = MetricAssertion(
+            id="m-bad-hours40",
+            subject_id="multi-subject",
+            numeric_value=40,
+            unit="hours",
+            context="Processed 40 hours for tickets",
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-multi-unit",),
+        )
+        with self.assertRaises(ValueError):
+            graph_multi_unit.add_metric_assertion(metric_bad_unit)
+
+        # Positive independent verification for tickets=40 and hours=5:
+        metric_tickets40 = MetricAssertion(
+            id="m-good-tickets40",
+            subject_id="multi-subject",
+            numeric_value=40,
+            unit="tickets",
+            context="Processed 40 tickets",
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-multi-unit",),
+        )
+        graph_multi_unit.add_metric_assertion(metric_tickets40)
+        self.assertIn("m-good-tickets40", graph_multi_unit.metrics)
+
+        metric_hours5 = MetricAssertion(
+            id="m-good-hours5",
+            subject_id="multi-subject",
+            numeric_value=5,
+            unit="hours",
+            context="Processed tickets in 5 hours",
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-multi-unit",),
+        )
+        graph_multi_unit.add_metric_assertion(metric_hours5)
+        self.assertIn("m-good-hours5", graph_multi_unit.metrics)
+
+        # Rejection of crossed unit-value assignments:
+        # hours=40 MUST FAIL
+        with self.assertRaises(ValueError):
+            graph_multi_unit.add_metric_assertion(
+                MetricAssertion("m-bad-h40", "multi-subject", 40, "hours", "in 40 hours", MetricVerification.VERIFIED, ("ev-multi-unit",))
+            )
+        # tickets=5 MUST FAIL
+        with self.assertRaises(ValueError):
+            graph_multi_unit.add_metric_assertion(
+                MetricAssertion("m-bad-t5", "multi-subject", 5, "tickets", "Processed 5 tickets", MetricVerification.VERIFIED, ("ev-multi-unit",))
+            )
+
+        # 3. Exact semantic metric identity regressions:
         # Evidence: "Revenue decreased 40%."
         # Attempt: context="Latency decreased 40%" -> MUST FAIL
-        ev_rev_dec = EvidenceRecord("ev-rev-dec", "Revenue decreased 40%.", "cv", "revenue-subject")
+        ev_rev_dec = EvidenceRecord("ev-rev-dec", "Revenue decreased 40%.", "cv", "ach", metadata={"subject_id": "revenue-subject"})
         graph_rev_dec = TruthGraph((ev_rev_dec,))
         metric_lat_on_rev = MetricAssertion(
             id="m-lat-on-rev",
@@ -1061,7 +1201,7 @@ class AdversarialTruthTests(unittest.TestCase):
 
         # Evidence: "Customer churn decreased 40%."
         # Attempt: context="Infrastructure cost decreased 40%" -> MUST FAIL
-        ev_churn = EvidenceRecord("ev-churn", "Customer churn decreased 40%.", "cv", "churn-subject")
+        ev_churn = EvidenceRecord("ev-churn", "Customer churn decreased 40%.", "cv", "ach", metadata={"subject_id": "churn-subject"})
         graph_churn = TruthGraph((ev_churn,))
         metric_infra_on_churn = MetricAssertion(
             id="m-infra-on-churn",
@@ -1075,42 +1215,9 @@ class AdversarialTruthTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             graph_churn.add_metric_assertion(metric_infra_on_churn)
 
-        # 2. Subject must be proven:
-        # Unscoped evidence: "Latency fell 40%."
-        # Attempt: arbitrary unrelated subject ID -> MUST FAIL
-        ev_unscoped = EvidenceRecord("ev-unscoped", "Latency fell 40%.", "cv", "unscoped")
-        graph_unscoped = TruthGraph((ev_unscoped,))
-        metric_unrelated = MetricAssertion(
-            id="m-unrelated",
-            subject_id="arbitrary-unrelated-subject",
-            numeric_value=40,
-            unit="%",
-            context="Latency fell 40%",
-            verification_status=MetricVerification.VERIFIED,
-            evidence_ids=("ev-unscoped",),
-        )
-        with self.assertRaises(ValueError):
-            graph_unscoped.add_metric_assertion(metric_unrelated)
-
-        # 3. Unit must be exactly compatible:
-        # Evidence: "Processed 40 tickets."
-        # Attempt: unit="hours", context="Processed 40 hours" -> MUST FAIL
-        ev_tickets = EvidenceRecord("ev-tickets", "Processed 40 tickets.", "cv", "ticket-subject")
-        graph_tickets = TruthGraph((ev_tickets,))
-        metric_hours_on_tickets = MetricAssertion(
-            id="m-hours-on-tickets",
-            subject_id="ticket-subject",
-            numeric_value=40,
-            unit="hours",
-            context="Processed 40 hours",
-            verification_status=MetricVerification.VERIFIED,
-            evidence_ids=("ev-tickets",),
-        )
-        with self.assertRaises(ValueError):
-            graph_tickets.add_metric_assertion(metric_hours_on_tickets)
-
+        # 4. Unit Incompatibilities:
         # 40 users != 40 projects
-        ev_users = EvidenceRecord("ev-users", "Onboarded 40 users.", "cv", "user-subject")
+        ev_users = EvidenceRecord("ev-users", "Onboarded 40 users.", "cv", "ach", metadata={"subject_id": "user-subject"})
         graph_users = TruthGraph((ev_users,))
         metric_projects_on_users = MetricAssertion(
             id="m-proj-on-users",
@@ -1125,7 +1232,7 @@ class AdversarialTruthTests(unittest.TestCase):
             graph_users.add_metric_assertion(metric_projects_on_users)
 
         # 40 hours != 40 requests
-        ev_hours = EvidenceRecord("ev-hours", "Delivered 40 hours of consulting.", "cv", "hour-subject")
+        ev_hours = EvidenceRecord("ev-hours", "Delivered 40 hours of consulting.", "cv", "ach", metadata={"subject_id": "hour-subject"})
         graph_hours = TruthGraph((ev_hours,))
         metric_req_on_hours = MetricAssertion(
             id="m-req-on-hours",
@@ -1140,7 +1247,7 @@ class AdversarialTruthTests(unittest.TestCase):
             graph_hours.add_metric_assertion(metric_req_on_hours)
 
         # USD 40 != EUR 40
-        ev_usd = EvidenceRecord("ev-usd", "Earned $40 revenue.", "cv", "usd-subject")
+        ev_usd = EvidenceRecord("ev-usd", "Earned $40 revenue.", "cv", "ach", metadata={"subject_id": "usd-subject"})
         graph_usd = TruthGraph((ev_usd,))
         metric_eur_on_usd = MetricAssertion(
             id="m-eur-on-usd",
@@ -1154,7 +1261,7 @@ class AdversarialTruthTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             graph_usd.add_metric_assertion(metric_eur_on_usd)
 
-        # 4. Valid positive cases:
+        # 5. Valid positive cases:
         # "Revenue decreased 40%" -> revenue / 40 / %
         metric_rev_pos = MetricAssertion(
             id="m-rev-pos",
@@ -1169,7 +1276,7 @@ class AdversarialTruthTests(unittest.TestCase):
         self.assertIn("m-rev-pos", graph_rev_dec.metrics)
 
         # "Latency fell 10%" -> latency / 10 / %
-        ev_lat10 = EvidenceRecord("ev-lat10", "Latency fell 10%.", "cv", "lat-subject")
+        ev_lat10 = EvidenceRecord("ev-lat10", "Latency fell 10%.", "cv", "ach", metadata={"subject_id": "lat-subject"})
         graph_lat10 = TruthGraph((ev_lat10,))
         metric_lat10_pos = MetricAssertion(
             id="m-lat10-pos",

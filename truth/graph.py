@@ -328,12 +328,7 @@ def _units_compatible(unit_a: str, unit_b: str, ev_ctx: str = "") -> bool:
     class_a = _canonical_unit_class(ua)
     class_b = _canonical_unit_class(ub)
     if class_a is not None and class_b is not None:
-        if class_a == class_b:
-            return True
-    if ev_ctx and ua not in {"%", "percent", "percentage", "$", "usd", "€", "eur", "£", "gbp", "count"}:
-        ev_words = _extract_tokens(ev_ctx)
-        if ua in ev_words or ua.rstrip("s") in {w.rstrip("s") for w in ev_words}:
-            return True
+        return class_a == class_b
     return False
 
 
@@ -398,45 +393,26 @@ def _is_subject_proven_for_metric(metric: MetricAssertion, record: EvidenceRecor
     if not metric.subject_id:
         return True
 
-    # 1. Explicit metadata on evidence record
+    # A. Evidence metadata explicitly naming subject_id
     if record.metadata:
         rec_subj = record.metadata.get("subject_id") or record.metadata.get("subject")
-        if rec_subj:
-            return str(rec_subj) == str(metric.subject_id)
+        if rec_subj and str(rec_subj) == str(metric.subject_id):
+            return True
         if metric.subject_id in record.metadata:
             return True
 
-    # 2. Explicit locator scope on evidence record
+    # B. Locator explicitly naming that exact subject/entity
     if record.locator:
         loc = record.locator.strip()
         if loc == metric.subject_id:
             return True
         if loc.startswith(f"{metric.subject_id}.") or loc.endswith(f".{metric.subject_id}"):
             return True
-        if loc.startswith(("achievements.", "portfolio.", "employment.", "services.")):
-            loc_sub = loc.split(".", 1)[1]
-            if loc_sub == metric.subject_id or loc_sub.startswith(metric.subject_id) or metric.subject_id.startswith(loc_sub):
-                return True
-        if loc in {"ach", "achievements", "portfolio", "employment", "service", "services"}:
-            if any(term in metric.subject_id.casefold() for term in ("ach", "achievement", "port", "portfolio", "job", "emp", "employment", "service")):
-                return True
+        parts = loc.split(".")
+        if metric.subject_id in parts:
+            return True
 
-    # 3. Evidence ID scope or naming binding
-    if record.id == metric.subject_id:
-        return True
-    if record.id.startswith(f"ev-{metric.subject_id}") or record.id.endswith(f"-{metric.subject_id}"):
-        return True
-    if metric.subject_id.startswith(f"ach-{record.id}") or metric.subject_id.startswith(f"sub-{record.id}"):
-        return True
-    if f"-{metric.subject_id}-" in record.id or f"-{record.id}-" in metric.subject_id:
-        return True
-
-    rec_stems = {tok.rstrip("s") for tok in _extract_tokens(record.id) if tok not in {"ev", "record", "test", "cv"}}
-    subj_stems = {tok.rstrip("s") for tok in _extract_tokens(metric.subject_id) if tok not in {"id", "node", "synthetic"}}
-    if rec_stems and subj_stems and (rec_stems & subj_stems):
-        return True
-
-    # 4. Graph entity evidence binding or assertions
+    # C. Graph entity -> evidence binding
     if graph is not None:
         if metric.subject_id in graph._entity_evidence:
             if record.id in graph._entity_evidence[metric.subject_id]:
@@ -445,17 +421,18 @@ def _is_subject_proven_for_metric(metric: MetricAssertion, record: EvidenceRecor
             entity = graph._entities[metric.subject_id]
             if hasattr(entity, "evidence_ids") and record.id in entity.evidence_ids:
                 return True
+
+    # D. An existing graph assertion/relation that explicitly binds that exact subject to the evidence
+    if graph is not None:
         for as_node in graph._assertions.values():
             if as_node.subject_id == metric.subject_id and record.id in as_node.evidence_ids:
                 return True
-
-    # 5. Semantic concept alignment between subject_id and evidence content
-    if record.content and subj_stems:
-        content_stems = {tok.rstrip("s") for tok in _extract_tokens(record.content) - _STOP_WORDS - _GENERIC_METRIC_FILLER}
-        meaningful_subj_stems = subj_stems - {"subject", "achievement", "item", "metric", "profile", "entity"}
-        if meaningful_subj_stems:
-            for s in meaningful_subj_stems:
-                if s in content_stems or any(s in c or c.startswith(s) for c in content_stems):
+        for rel in graph._relations.values():
+            if (rel.source_id == metric.subject_id or rel.target_id == metric.subject_id) and record.id in rel.evidence_ids:
+                return True
+        if hasattr(graph, "_pending_relations"):
+            for rel in graph._pending_relations:
+                if (rel.source_id == metric.subject_id or rel.target_id == metric.subject_id) and record.id in rel.evidence_ids:
                     return True
 
     return False
@@ -535,6 +512,7 @@ class TruthGraph:
         self._entity_evidence: dict[str, tuple[str, ...]] = {}
         self._evidence_entities: dict[str, list[str]] = {}
 
+        self._pending_relations = tuple(relations)
         for record in evidence:
             self.add_evidence(record)
         for assertion in assertions:
@@ -543,6 +521,7 @@ class TruthGraph:
             self.add_metric_assertion(metric)
         for relation in relations:
             self.add_relation(relation)
+        self._pending_relations = ()
 
     @property
     def evidence_records(self):
