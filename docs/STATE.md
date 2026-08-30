@@ -10,8 +10,8 @@ Next: BRIEF-004: Opportunity Matching & Proposal Tailoring.
 
 ## Repository
 
-- **Generated:** 2026-08-30T13:38:53Z
-- **State generated at commit:** `542917b` — feat(opportunity): micro-closure for exact ATS path segments and atomic compensation subfield provenance
+- **Generated:** 2026-08-30T13:39:01Z
+- **State generated at commit:** `1c8f927` — docs(report-003): update phase report with micro-closure audit metadata and refresh state
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
