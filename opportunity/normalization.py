@@ -28,52 +28,61 @@ from .models import (
 )
 
 
-def clean_text(text: Any) -> str:
-    """Strip HTML tags, unescape entities, and normalize whitespace."""
-    if text is None:
+def clean_text(raw: Any) -> str:
+    """Deterministically strip HTML tags, unescape HTML entities, and collapse whitespace."""
+    if raw is None:
         return ""
-    if isinstance(text, dict):
-        values = text.get("eng") or text.get("ENG") or next(iter(text.values()), [])
-        text = values[0] if isinstance(values, list) and values else values
-    val_str = str(text)
+    if isinstance(raw, dict):
+        vals = []
+        for v in raw.values():
+            if isinstance(v, (list, tuple)):
+                vals.extend(str(item) for item in v if item)
+            elif v:
+                vals.append(str(v))
+        text = " ".join(vals)
+    elif isinstance(raw, (list, tuple)):
+        text = " ".join(str(item) for item in raw if item)
+    else:
+        text = str(raw)
+
     # Strip HTML tags
-    val_no_html = re.sub(r"<[^>]+>", " ", val_str)
+    text = re.sub(r"<[^>]+>", " ", text)
     # Unescape HTML entities
-    unescaped = html.unescape(val_no_html)
-    # Collapse multiple whitespace
-    collapsed = re.sub(r"\s+", " ", unescaped).strip()
-    return collapsed
+    text = html.unescape(text)
+    # Collapse whitespace and strip
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
 
 
 def compute_record_checksum(raw_item: Any) -> str:
-    """Compute deterministic SHA-256 checksum for a single raw item payload."""
+    """Compute single-record SHA-256 checksum for atomic field lineage."""
     if isinstance(raw_item, str):
         payload = raw_item.encode("utf-8")
-    else:
+    elif isinstance(raw_item, (dict, list)):
         import json
-        try:
-            payload = json.dumps(raw_item, sort_keys=True).encode("utf-8")
-        except Exception:
-            payload = str(raw_item).encode("utf-8")
+        payload = json.dumps(raw_item, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    else:
+        payload = str(raw_item).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 
 def create_field_provenance(
     field_name: str,
-    raw_val: Any,
-    norm_val: Any,
-    derivation_type: DerivationType | str,
+    raw_value: Any,
+    normalized_value: Any,
+    derivation_type: DerivationType,
     raw_pointer: str,
     record_checksum: str,
     rule_id: str,
 ) -> FieldProvenance:
-    """Construct an immutable FieldProvenance record."""
-    dtype = derivation_type.value if isinstance(derivation_type, DerivationType) else str(derivation_type)
+    """Create FieldProvenance object with explicit typing and derivation metadata."""
+    raw_str = "" if raw_value is None else str(raw_value).strip()
+    norm_str = "" if normalized_value is None else str(normalized_value).strip()
     return FieldProvenance(
         field_name=field_name,
-        raw_value=str(raw_val) if raw_val is not None else "",
-        normalized_value=str(norm_val) if norm_val is not None else "",
-        derivation_type=dtype,
+        raw_value=raw_str,
+        normalized_value=norm_str,
+        derivation_type=derivation_type.value,
         raw_pointer=raw_pointer,
         record_checksum=record_checksum,
         rule_id=rule_id,
@@ -83,30 +92,27 @@ def create_field_provenance(
 _SENIORITY_PATTERNS: tuple[tuple[SeniorityLevel, re.Pattern[str]], ...] = (
     (
         SeniorityLevel.EXECUTIVE,
-        re.compile(
-            r"\b(?:chief\s+\w+\s+officer|cxo|cto|ceo|cfo|cio|cpo|vice\s+president|vp\b|head\s+of|director\b|managing\s+director)\b",
-            re.IGNORECASE,
-        ),
+        re.compile(r"\b(?:chief|c[a-z]o|vp|vice\s+president|director|head\s+of)\b", re.IGNORECASE),
     ),
     (
         SeniorityLevel.PRINCIPAL,
-        re.compile(r"\b(?:principal|staff|distinguished)\b", re.IGNORECASE),
+        re.compile(r"\b(?:principal|distinguished|fellow|architect)\b", re.IGNORECASE),
     ),
     (
         SeniorityLevel.LEAD,
-        re.compile(r"\b(?:lead|team\s+lead|tech\s+lead|technical\s+lead)\b", re.IGNORECASE),
+        re.compile(r"\b(?:lead|team\s+lead|tech\s+lead|manager|staff)\b", re.IGNORECASE),
     ),
     (
         SeniorityLevel.SENIOR,
-        re.compile(r"\b(?:senior|sr\.?)\b", re.IGNORECASE),
-    ),
-    (
-        SeniorityLevel.ENTRY,
-        re.compile(r"\b(?:junior|jr\.?|associate|entry\s*level|intern|internship|trainee|graduate)\b", re.IGNORECASE),
+        re.compile(r"\b(?:senior|sr\.?|snr)\b", re.IGNORECASE),
     ),
     (
         SeniorityLevel.MID,
-        re.compile(r"\b(?:mid[-_ ]?level|intermediate|mid[-_ ]?senior)\b", re.IGNORECASE),
+        re.compile(r"\b(?:mid|intermediate|experienced|level\s+2|ii)\b", re.IGNORECASE),
+    ),
+    (
+        SeniorityLevel.ENTRY,
+        re.compile(r"\b(?:junior|jr\.?|associate|entry[-_ ]?level|intern|graduate|fresh)\b", re.IGNORECASE),
     ),
 )
 
@@ -211,7 +217,6 @@ def extract_remote_policy(location_raw: str, text: str = "") -> RemotePolicy:
 
 
 _CURRENCY_MAP: dict[str, str] = {
-    "$": "USD",
     "€": "EUR",
     "£": "GBP",
     "usd": "USD",
@@ -226,14 +231,15 @@ _CURRENCY_MAP: dict[str, str] = {
 }
 
 _COMPENSATION_PATTERN = re.compile(
-    r"(?P<curr>[\$€£]|USD|EUR|GBP|CAD|AUD|CHF|AED|SAR|EGP)?\s*"
-    r"(?P<min>\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+k?)\s*"
+    r"(?:(?P<label>\b(?:salary|pay|rate|compensation|remuneration|stipend)\b[\s:]*)?"
+    r"(?P<curr>USD|EUR|GBP|CAD|AUD|CHF|AED|SAR|EGP|[\$€£])?\s*"
+    r"(?P<min>\d{1,3}(?:,\d{3})*(?:\.\d+)?k?|\d+k?)\s*"
     r"(?:-|–|—|to)\s*"
-    r"(?P<curr2>[\$€£]|USD|EUR|GBP|CAD|AUD|CHF|AED|SAR|EGP)?\s*"
-    r"(?P<max>\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+k?)\s*"
-    r"(?P<curr3>[\$€£]|USD|EUR|GBP|CAD|AUD|CHF|AED|SAR|EGP)?\s*"
-    r"(?:per|\/|\ba\b)?\s*"
-    r"(?P<interval>hour|hr|hourly|day|daily|week|weekly|month|monthly|year|yr|yearly|annual|annually)?",
+    r"(?P<curr2>USD|EUR|GBP|CAD|AUD|CHF|AED|SAR|EGP|[\$€£])?\s*"
+    r"(?P<max>\d{1,3}(?:,\d{3})*(?:\.\d+)?k?|\d+k?)\s*"
+    r"(?P<curr3>USD|EUR|GBP|CAD|AUD|CHF|AED|SAR|EGP|[\$€£])?\s*"
+    r"(?:(?:per|\/|\ba\b)\s*(?P<interval_per>hour|hr|day|week|month|year|yr)\b|(?P<interval_adv>\b(?:hourly|daily|weekly|monthly|yearly|annual|annually)\b))?)"
+    r"(?:\s*(?P<follower>years?(?:\s+(?:of\s+)?experience)?|yrs?(?:\s+(?:of\s+)?experience)?|engineers?|people|members?|developers?|clients?|customers?|tickets?|points?)\b)?",
     re.IGNORECASE,
 )
 
@@ -246,44 +252,56 @@ def _parse_num(val_str: str) -> float:
 
 
 def extract_compensation(text: str) -> Compensation | None:
-    """Extract explicit compensation range from structured text. Never defaults currency or interval."""
+    """Extract explicit compensation range from text. Never defaults currency or interval."""
     if not text:
         return None
-    match = _COMPENSATION_PATTERN.search(text)
-    if not match:
-        return None
 
-    curr_token = match.group("curr") or match.group("curr2") or match.group("curr3")
-    currency = _CURRENCY_MAP.get(curr_token.strip().casefold()) if curr_token else None
+    for match in _COMPENSATION_PATTERN.finditer(text):
+        follower = (match.group("follower") or "").casefold()
+        if follower and any(w in follower for w in ("year", "yr", "engineer", "people", "member", "developer", "client", "customer", "ticket", "point")):
+            continue
 
-    try:
-        min_val = _parse_num(match.group("min"))
-        max_val = _parse_num(match.group("max"))
-    except (ValueError, AttributeError):
-        return None
+        label = match.group("label")
+        curr_token = match.group("curr") or match.group("curr2") or match.group("curr3")
+        interval_per = (match.group("interval_per") or "").casefold()
+        interval_adv = (match.group("interval_adv") or "").casefold()
 
-    interval_str = (match.group("interval") or "").casefold()
-    interval = CompensationInterval.UNSPECIFIED
-    if interval_str in {"hour", "hr", "hourly"}:
-        interval = CompensationInterval.HOURLY
-    elif interval_str in {"day", "daily"}:
-        interval = CompensationInterval.DAILY
-    elif interval_str in {"week", "weekly"}:
-        interval = CompensationInterval.WEEKLY
-    elif interval_str in {"month", "monthly"}:
-        interval = CompensationInterval.MONTHLY
-    elif interval_str in {"year", "yr", "yearly", "annual", "annually"}:
-        interval = CompensationInterval.YEARLY
+        # Must have at least a currency token, a compensation label, or a clear rate interval
+        if not curr_token and not label and not interval_per and not interval_adv:
+            continue
 
-    if min_val > max_val:
-        min_val, max_val = max_val, min_val
+        currency = _CURRENCY_MAP.get(curr_token.strip().casefold()) if curr_token else None
 
-    return Compensation(
-        min_amount=min_val,
-        max_amount=max_val,
-        currency=currency,
-        interval=interval,
-    )
+        try:
+            min_val = _parse_num(match.group("min"))
+            max_val = _parse_num(match.group("max"))
+        except (ValueError, AttributeError):
+            continue
+
+        interval = CompensationInterval.UNSPECIFIED
+        interval_token = interval_per or interval_adv
+        if interval_token in {"hour", "hr", "hourly"}:
+            interval = CompensationInterval.HOURLY
+        elif interval_token in {"day", "daily"}:
+            interval = CompensationInterval.DAILY
+        elif interval_token in {"week", "weekly"}:
+            interval = CompensationInterval.WEEKLY
+        elif interval_token in {"month", "monthly"}:
+            interval = CompensationInterval.MONTHLY
+        elif interval_token in {"year", "yr", "yearly", "annual", "annually"}:
+            interval = CompensationInterval.YEARLY
+
+        if min_val > max_val:
+            min_val, max_val = max_val, min_val
+
+        return Compensation(
+            min_amount=min_val,
+            max_amount=max_val,
+            currency=currency,
+            interval=interval,
+        )
+
+    return None
 
 
 def parse_iso_date(raw_date: Any) -> str | None:

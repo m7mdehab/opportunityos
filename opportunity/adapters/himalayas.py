@@ -96,12 +96,11 @@ class HimalayasAdapter(BaseAdapter):
                 try:
                     c_min = float(min_sal) if min_sal is not None else None
                     c_max = float(max_sal) if max_sal is not None else None
-                    interval = CompensationInterval.YEARLY if (c_min or 0) > 10000 else CompensationInterval.UNSPECIFIED
                     comp = Compensation(
                         min_amount=c_min,
                         max_amount=c_max,
                         currency=currency,
-                        interval=interval,
+                        interval=CompensationInterval.UNSPECIFIED,
                     )
                 except ValueError:
                     comp = None

@@ -71,7 +71,7 @@ class TestOpportunityModels(unittest.TestCase):
                 {
                     "id": 1001,
                     "title": "Staff Backend Engineer",
-                    "content": "<h3>Responsibilities</h3><ul><li>Build distributed services</li></ul><h3>Requirements</h3><ul><li>5+ years Python</li></ul><p>Salary: $150k - $200k.</p>",
+                    "content": "<h3>Responsibilities</h3><ul><li>Build distributed services</li></ul><h3>Requirements</h3><ul><li>5+ years Python</li></ul><p>Salary: USD 150k - 200k.</p>",
                     "location": {"name": "Remote"},
                     "updated_at": "2026-08-15T00:00:00Z",
                     "employment_type": "Full-time"
