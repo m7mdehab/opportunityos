@@ -270,6 +270,42 @@ All eight acceptance criteria from committed `briefs/BRIEF-002.md` evaluated:
 
 ---
 
+## Final Two-Line Structural Authority Closure Addendum
+
+**Date:** 2026-08-30  
+**Substantive Target SHA:** `a19b472c2511c65aeba222c066e3b3ce0cfebb74`  
+**Trigger:** Removing all fallback branches after structural subject proof and canonical unit-class comparison.
+
+### 1. Hardened Two-Line Structural Authority Invariants
+
+1. **Strict Structural Subject Proof (`truth/graph.py`):**
+   - In `_is_subject_proven_for_metric()`, all non-structural fallback paths (generic locator categories `"ach"`, `"portfolio"`, `"employment"`, `"service"`; record-ID/subject-ID word stem intersection; semantic token overlap between subject ID and evidence content) are completely removed.
+   - A VERIFIED `MetricAssertion` subject is established strictly via:
+     - A: Evidence metadata explicitly naming `subject_id` (or `"subject"`).
+     - B: Locator explicitly naming that exact subject/entity.
+     - C: Graph entity -> evidence binding.
+     - D: Existing graph assertion/relation explicitly binding that exact subject to the evidence.
+   - Regressions verified:
+     - Evidence `content="Revenue decreased 40%."` with generic `locator="ach"` against `subject_id="achievement-unrelated"` strictly fails admission (`ValueError`).
+     - Evidence `id="ev-latency"`, `content="Latency fell 40%."` with `locator="unscoped"` against `subject_id="latency-unrelated"` strictly fails admission (`ValueError`).
+     - Proven to pass when `metadata.subject_id` matches or when subject is a real graph entity bound to the evidence.
+
+2. **Strict Canonical Unit Equivalence (`truth/graph.py`):**
+   - In `_units_compatible()`, all prose-context fallback branches that made different unit classes compatible based on nearby words in `ev_ctx` are completely removed.
+   - Unit compatibility is strictly:
+     - `unit_a == unit_b` OR `_canonical_unit_class(unit_a) == _canonical_unit_class(unit_b)` -> `True`; otherwise -> `False`.
+   - Regressions verified:
+     - Evidence `"Processed 40 tickets in 5 hours."` evaluated against `numeric_value=40, unit="hours", context="Processed 40 hours for tickets"` strictly fails admission (`ValueError`).
+     - `tickets=40` and `hours=5` independently verify and pass.
+     - Crossed assignments (`hours=40` and `tickets=5`) strictly fail admission (`ValueError`).
+
+### 2. Independent Blinded Audit
+- Conducted by Independent Blinded Auditor subagent (`29d1c5f4-5264-4a5b-aeef-878b75cf14ac`) on SHA `a19b472c2511c65aeba222c066e3b3ce0cfebb74`.
+- Inspected implementation directly for fallback branches after structural subject proof and canonical unit comparison.
+- Unanimous **PASS** across all criteria.
+
+---
+
 ## Known Limitations & Deferred Items
 
 - **Known Limitations:** Zero unbacked claim tolerance is strictly enforced; downstream CV and proposal generators must query the graph and cannot assert facts absent from evidence records.
@@ -291,3 +327,4 @@ PASS
 - **BRIEF-003 UNBLOCKED:** **YES**
 - **READY FOR FINAL PR / MERGE:** **YES**
 - **Blockers:** **None**
+

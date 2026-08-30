@@ -316,3 +316,92 @@ Perform your inspection read-only. Inspect the implementation directly, not only
 ### Master Disposition:
 **ACCEPTED FOR PERMANENT CLOSURE.** Commit `8c7d9fe9f1eb96607f530ddf8ee6cdebb611c14e` provides complete, fail-closed structural authority, deterministic subject scoping, disjoint unit equivalence classes, and directional semantic context verification. BRIEF-002 is definitively closed.
 
+---
+
+## Final Two-Line Structural Authority Independent Audit Addendum
+
+**Date:** 2026-08-30  
+**Auditor Metadata:**
+- **Auditor Role:** Independent, Blinded Truth-Integrity & Structural Authority Auditor
+- **Subagent Type / Conversation ID:** `research` / `29d1c5f4-5264-4a5b-aeef-878b75cf14ac`
+- **Provider Model:** Inherit (Antigravity Primary Agent Model)
+- **Audited Target SHA:** `a19b472c2511c65aeba222c066e3b3ce0cfebb74`
+
+### Verbatim Blind Audit Prompt:
+```text
+You are an independent, blinded truth-integrity and structural authority auditor for OpportunityOS.
+Your audit target is the substantive remediation commit SHA: a19b472c2511c65aeba222c066e3b3ce0cfebb74.
+
+Your task is to inspect the truth subsystem at C:\Users\norha\projects\system-diagnostics\truth (models.py, graph.py, ingest.py, validator.py, fixtures.py, test_models.py, test_graph.py, test_ingest.py, test_adversarial.py, test_property.py, test_validator.py) and provide a rigorous independent audit report assessing whether the final two-line structural authority closure criteria are fully and genuinely satisfied on commit a19b472c2511c65aeba222c066e3b3ce0cfebb74:
+
+1. CRITERION 1: STRICT STRUCTURAL SUBJECT PROOF IN _is_subject_proven_for_metric():
+   - Inspect _is_subject_proven_for_metric() for ANY fallback branch after structural subject proof.
+   - Confirm whether ALL of the following non-structural paths are completely removed:
+     * generic locator categories ("ach", "portfolio", "employment", "service");
+     * overlapping record-ID / subject-ID word stems;
+     * semantic token overlap between subject_id and evidence content.
+   - Confirm that a VERIFIED MetricAssertion subject is established ONLY by one of:
+     A. evidence metadata explicitly naming subject_id;
+     B. locator explicitly naming that exact subject/entity;
+     C. graph entity -> evidence binding;
+     D. an existing graph assertion/relation explicitly binding that exact subject to the evidence.
+   - Verify that the audit FAILS if any semantic/ID-name subject guessing remains.
+   - Verify that evidence content="Revenue decreased 40%." with locator="ach" against subject_id="achievement-unrelated" MUST FAIL.
+   - Verify that evidence id="ev-latency", content="Latency fell 40%." with locator="unscoped" against subject_id="latency-unrelated" MUST FAIL.
+   - Verify that the same metric passes when metadata.subject_id explicitly matches or when the subject is a real graph entity bound to the evidence.
+
+2. CRITERION 2: STRICT CANONICAL UNIT EQUIVALENCE (NO CONTEXT FALLBACK) IN _units_compatible():
+   - Inspect _units_compatible() for ANY context-based cross-class success path or prose fallback.
+   - Confirm that unit compatibility is strictly:
+     * same canonical equivalence class -> TRUE
+     * otherwise -> FALSE
+   - Confirm that prose-context exceptions are completely removed.
+   - Verify that the audit FAILS if _units_compatible() has any context-based cross-class success path.
+   - Verify that evidence "Processed 40 tickets in 5 hours." against numeric_value=40, unit="hours", context="Processed 40 hours for tickets" MUST FAIL.
+   - Verify that tickets=40 and hours=5 independently verify, while hours=40 and tickets=5 strictly fail.
+
+Perform your inspection read-only. Inspect the implementation directly, not only named test methods. Report your detailed verdict (PASS/FAIL) with technical evidence and file citations for each criterion and provide a definitive closure determination for BRIEF-002.
+```
+
+### Complete Auditor Findings & Technical Evidence:
+
+#### 1. CRITERION 1: STRICT STRUCTURAL SUBJECT PROOF IN `_is_subject_proven_for_metric()`
+- **Verdict:** **PASS**
+- **Technical Evidence & Implementation Analysis:**
+  - `truth/graph.py` lines 392–439 implement `_is_subject_proven_for_metric(metric, record, graph)`.
+  - **Complete Removal of Non-Structural Paths:**
+    - Generic locator categories (`"ach"`, `"portfolio"`, `"employment"`, `"service"`) are no longer accepted as proof of a specific subject ID.
+    - Word-stem matching / ID substring token intersection heuristics are completely eliminated.
+    - Semantic token overlap between `metric.subject_id` and `record.content` is completely removed.
+  - **Exhaustive Structural Admission Paths (A–D Only):**
+    - **A. Explicit Metadata (`lines 397–402`):** `record.metadata` explicitly defines `subject_id` (or `"subject"`) matching `metric.subject_id`, or contains `metric.subject_id` as a key.
+    - **B. Exact Locator (`lines 405–413`):** `record.locator` exactly equals `metric.subject_id` or an exact dot-delimited segment.
+    - **C. Graph Entity Binding (`lines 416–423`):** `graph._entity_evidence` or `graph._entities[subject_id].evidence_ids` contains `record.id`.
+    - **D. Existing Graph Assertion/Relation (`lines 426–436`):** Existing assertions or relations in the graph explicitly link `metric.subject_id` to `record.id`.
+    - If none of (A)–(D) are satisfied, the function strictly returns `False` (`line 438`), with zero fallback branches.
+  - **Adversarial & Structural Regressions Verified (`truth/test_adversarial.py` lines 1051–1126):**
+    - **Regression 1A (`lines 1056–1068`):** Evidence `locator="ach"` and `content="Revenue decreased 40%."` against `subject_id="achievement-unrelated"` strictly raises `ValueError` at graph admission.
+    - **Regression 1B (`lines 1071–1083`):** Evidence `id="ev-latency"`, `locator="unscoped"`, and `content="Latency fell 40%."` against `subject_id="latency-unrelated"` strictly raises `ValueError`.
+    - **Positive Case A (`lines 1087–1103`):** Evidence with `metadata={"subject_id": "achievement-unrelated"}` passes verification.
+    - **Positive Case B (`lines 1106–1126`):** Real graph entity (`Achievement` bound within `CareerProfile`) with `id="latency-unrelated"` bound to `ev-ent-subj` passes verification.
+
+#### 2. CRITERION 2: STRICT CANONICAL UNIT EQUIVALENCE (NO CONTEXT FALLBACK) IN `_units_compatible()`
+- **Verdict:** **PASS**
+- **Technical Evidence & Implementation Analysis:**
+  - `truth/graph.py` lines 309–333 implement `_units_compatible(unit_a, unit_b, ev_ctx="")`.
+  - **Elimination of Prose-Context Exceptions:**
+    - Any cross-class equivalence based on nearby prose keywords in `ev_ctx` has been completely stripped.
+    - `_units_compatible` evaluates strictly:
+      `ua == ub` OR `_canonical_unit_class(ua) == _canonical_unit_class(ub)` -> `True`; otherwise -> `False`.
+  - **Adversarial & Structural Regressions Verified (`truth/test_adversarial.py` lines 1128–1184):**
+    - **Regression 2A (`lines 1131–1146`):** Evidence `"Processed 40 tickets in 5 hours."` against `numeric_value=40, unit="hours", context="Processed 40 hours for tickets"` strictly raises `ValueError` and fails admission.
+    - **Independent Positive Proof (`lines 1149–1171`):** `tickets=40` (`m-good-tickets40`) and `hours=5` (`m-good-hours5`) independently verify and are admitted.
+    - **Crossed Assignment Rejection (`lines 1173–1183`):** Crossed assignments (`hours=40` and `tickets=5`) are strictly rejected with `ValueError`.
+
+### Overall Subsystem Verdict:
+**PASS (ALL FINAL TWO-LINE AUTHORITY CRITERIA SATISFIED)**
+
+### Master Disposition:
+**BRIEF-002 DEFINITIVELY CLOSED: YES**  
+**BRIEF-003 UNBLOCKED: YES**
+
