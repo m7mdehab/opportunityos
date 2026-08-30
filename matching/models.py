@@ -299,7 +299,7 @@ class TailoringPolicy:
     max_experience_bullets_per_role: int = 5
     default_hourly_rate: float | None = None
     default_daily_rate: float | None = None
-    default_currency: str = "USD"
+    default_currency: str | None = None
     default_availability_hours_per_week: int | None = None
     default_notice_period_days: int | None = None
     default_sponsorship_required: bool | None = None

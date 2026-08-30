@@ -1,3 +1,6 @@
+import json
+import tempfile
+from pathlib import Path
 """Tests for Central Action Authority."""
 import unittest
 from matching.models import (
@@ -80,8 +83,12 @@ class ActionAuthorityTests(unittest.TestCase):
         self.assertTrue("kill switch is ACTIVE" in reasons[0])
 
     def test_raw_artifact_blocks_controlled_submit(self) -> None:
-        adapter_reg = AdapterRegistry()
-        adapter_reg.enable_submit("greenhouse")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ev_dir = Path(temp_dir)
+            gh_file = ev_dir / "greenhouse_graduation_evidence.json"
+            gh_file.write_text(json.dumps({"run_id": "test-1", "success": True}), encoding="utf-8")
+            adapter_reg = AdapterRegistry(evidence_dir=ev_dir)
+            adapter_reg.enable_submit("greenhouse")
         src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
         auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
         dec, reasons = auth.evaluate_action(

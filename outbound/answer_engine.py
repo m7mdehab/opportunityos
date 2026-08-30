@@ -1,4 +1,4 @@
-"""Deterministic Application Answer Engine with Atomic Provenance and Non-Closed-World Work Auth."""
+"""Zero-Fabrication Application Answer Engine with strict TruthGraph and Policy Authority."""
 from __future__ import annotations
 
 import re
@@ -6,37 +6,16 @@ from typing import Any
 from matching.models import TailoringPolicy
 from opportunity.models import Opportunity
 from truth.graph import TruthGraph
-from truth.models import AtomicAssertion, Modality, Polarity, VerificationStatus
+from truth.models import Modality, Polarity, VerificationStatus
 from .models import AnswerClass, ApplicationAnswer, BoundArtifact, DetectedFormField, FieldOntologyType
 
 
 class ApplicationAnswerEngine:
-    """Derives answers strictly from verified TruthGraph assertions, versioned policy, and artifacts."""
+    """Answers detected form fields strictly from verified TruthGraph assertions or explicit policy."""
 
-    def __init__(self, truth_graph: TruthGraph, policy: TailoringPolicy) -> None:
+    def __init__(self, truth_graph: TruthGraph, policy: TailoringPolicy | None = None) -> None:
         self.truth_graph = truth_graph
-        self.policy = policy
-
-    def _extract_target_jurisdiction(self, label: str) -> str | None:
-        """Deterministically extract the question's target jurisdiction."""
-        norm = label.lower()
-        if any(w in norm for w in ("united states", "usa", "u.s.", "us citizen", "us work")):
-            return "United States"
-        if any(w in norm for w in ("egypt", "egyptian")):
-            return "Egypt"
-        if any(w in norm for w in ("united kingdom", "uk", "great britain")):
-            return "United Kingdom"
-        if any(w in norm for w in ("canada", "canadian")):
-            return "Canada"
-        if any(w in norm for w in ("germany", "german")):
-            return "Germany"
-        if any(w in norm for w in ("european union", "eu citizen", "eu work")):
-            return "European Union"
-        if any(w in norm for w in ("saudi", "ksa", "saudi arabia")):
-            return "Saudi Arabia"
-        if any(w in norm for w in ("uae", "emirates", "dubai", "abu dhabi")):
-            return "United Arab Emirates"
-        return None
+        self.policy = policy or TailoringPolicy()
 
     def answer_field(
         self,
@@ -45,32 +24,25 @@ class ApplicationAnswerEngine:
         action_id: str = "act-default",
         artifact: BoundArtifact | None = None,
     ) -> ApplicationAnswer:
-        """Derive an atomic answer for a single detected form field."""
+        """Derive answer for a detected form field with fail-closed provenance."""
         norm_label = field.normalized_label
 
-        # 1. ATTACHMENT / RESUME
-        if field.ontology_type == FieldOntologyType.ATTACHMENT:
+        # 1. ATTACHMENTS (Resume, CV, Cover Letter)
+        if field.ontology_type in (FieldOntologyType.RESUME_CV, FieldOntologyType.COVER_LETTER, FieldOntologyType.ATTACHMENT):
             if artifact is not None:
-                compiled_artifact = artifact.artifact
-                assertion_ids = tuple(
-                    aid for claim in compiled_artifact.generated_claims for aid in claim.assertion_ids
+                return ApplicationAnswer(
+                    opportunity_id=opportunity.id,
+                    opportunity_content_hash=opportunity.content_hash,
+                    action_id=action_id,
+                    field_type=field.ontology_type,
+                    original_label=field.label,
+                    normalized_question=field.normalized_label,
+                    answer=artifact.artifact_id,
+                    answer_class=AnswerClass.GREEN,
+                    answer_source="matching_artifact",
+                    artifact_ids=(artifact.artifact_id,),
+                    disposition="auto_fill",
                 )
-                if compiled_artifact.artifact_id:
-                    return ApplicationAnswer(
-                        opportunity_id=opportunity.id,
-                        opportunity_content_hash=opportunity.content_hash,
-                        action_id=action_id,
-                        field_type=field.ontology_type,
-                        original_label=field.label,
-                        normalized_question=field.normalized_label,
-                        answer=compiled_artifact.artifact_id,
-                        answer_class=AnswerClass.GREEN,
-                        answer_source=f"truth_graph:artifact:{compiled_artifact.artifact_id}",
-                        assertion_ids=assertion_ids,
-                        policy_source=f"TailoringPolicy.{self.policy.version}",
-                        artifact_ids=(compiled_artifact.artifact_id,),
-                        disposition="auto_fill",
-                    )
             return ApplicationAnswer(
                 opportunity_id=opportunity.id,
                 opportunity_content_hash=opportunity.content_hash,
@@ -80,15 +52,15 @@ class ApplicationAnswerEngine:
                 normalized_question=field.normalized_label,
                 answer=None,
                 answer_class=AnswerClass.RED,
-                answer_source="unresolved_attachment",
+                answer_source="unattached_artifact",
                 disposition="pause",
             )
 
-        # 2. IDENTITY
+        # 2. IDENTITY (Name, First Name, Last Name) - ZERO FABRICATION
         if field.ontology_type == FieldOntologyType.IDENTITY:
             name_assertions = [
                 a for a in self.truth_graph.assertions.values()
-                if a.predicate in ("identity.name", "identity.full_name", "founder.name")
+                if a.predicate in ("identity.name", "identity.full_name")
                 and a.verification_status == VerificationStatus.VERIFIED
             ]
             if not name_assertions:
@@ -104,16 +76,15 @@ class ApplicationAnswerEngine:
                     answer_source="unasserted_identity",
                     disposition="pause",
                 )
-
             full_name = str(name_assertions[0].value)
-            first_name = full_name.split()[0] if full_name else ""
-            last_name = " ".join(full_name.split()[1:]) if len(full_name.split()) > 1 else ""
+            parts = full_name.split()
 
-            ans_val = full_name
-            if any(k in norm_label for k in ("first", "given")):
-                ans_val = first_name
-            elif any(k in norm_label for k in ("last", "family", "surname")):
-                ans_val = last_name
+            if any(k in norm_label for k in ("first name", "given name")):
+                val = parts[0] if parts else full_name
+            elif any(k in norm_label for k in ("last name", "family name", "surname")):
+                val = parts[-1] if len(parts) > 1 else ""
+            else:
+                val = full_name
 
             return ApplicationAnswer(
                 opportunity_id=opportunity.id,
@@ -122,16 +93,16 @@ class ApplicationAnswerEngine:
                 field_type=field.ontology_type,
                 original_label=field.label,
                 normalized_question=field.normalized_label,
-                answer=ans_val,
+                answer=val,
                 answer_class=AnswerClass.GREEN,
                 answer_source=f"truth_graph:{name_assertions[0].id}",
                 assertion_ids=(name_assertions[0].id,),
                 disposition="auto_fill",
             )
 
-        # 3. CONTACT (Email & Phone)
+        # 3. CONTACT (Email, Phone, Country, City) - ZERO FABRICATION
         if field.ontology_type == FieldOntologyType.CONTACT:
-            if any(k in norm_label for k in ("email", "mail")):
+            if any(k in norm_label for k in ("email", "e-mail")):
                 email_assertions = [
                     a for a in self.truth_graph.assertions.values()
                     if a.predicate in ("identity.email", "contact.email")
@@ -199,91 +170,178 @@ class ApplicationAnswerEngine:
                     disposition="auto_fill",
                 )
 
-        # 4. ADDRESS_LOCATION
-        if field.ontology_type == FieldOntologyType.ADDRESS_LOCATION:
-            loc_assertions = [
-                a for a in self.truth_graph.assertions.values()
-                if a.predicate in ("identity.country", "identity.location", "contact.country", "contact.city")
-                and a.verification_status == VerificationStatus.VERIFIED
-            ]
-            if not loc_assertions:
-                return ApplicationAnswer(
-                    opportunity_id=opportunity.id,
-                    opportunity_content_hash=opportunity.content_hash,
-                    action_id=action_id,
-                    field_type=field.ontology_type,
-                    original_label=field.label,
-                    normalized_question=field.normalized_label,
-                    answer=None,
-                    answer_class=AnswerClass.RED,
-                    answer_source="unasserted_location",
-                    disposition="pause",
-                )
-            val = str(loc_assertions[0].value)
-            return ApplicationAnswer(
-                opportunity_id=opportunity.id,
-                opportunity_content_hash=opportunity.content_hash,
-                action_id=action_id,
-                field_type=field.ontology_type,
-                original_label=field.label,
-                normalized_question=field.normalized_label,
-                answer=val,
-                answer_class=AnswerClass.GREEN,
-                answer_source=f"truth_graph:{loc_assertions[0].id}",
-                assertion_ids=(loc_assertions[0].id,),
-                disposition="auto_fill",
-            )
-
-        # 5. LINKS
-        if field.ontology_type == FieldOntologyType.LINKS:
-            link_assertions = [
-                a for a in self.truth_graph.assertions.values()
-                if a.predicate in ("link.linkedin", "profile.linkedin", "link.github", "link.portfolio")
-                and a.verification_status == VerificationStatus.VERIFIED
-            ]
-            if not link_assertions:
-                return ApplicationAnswer(
-                    opportunity_id=opportunity.id,
-                    opportunity_content_hash=opportunity.content_hash,
-                    action_id=action_id,
-                    field_type=field.ontology_type,
-                    original_label=field.label,
-                    normalized_question=field.normalized_label,
-                    answer=None,
-                    answer_class=AnswerClass.RED,
-                    answer_source="unasserted_links",
-                    disposition="pause",
-                )
-            val = str(link_assertions[0].value)
-            return ApplicationAnswer(
-                opportunity_id=opportunity.id,
-                opportunity_content_hash=opportunity.content_hash,
-                action_id=action_id,
-                field_type=field.ontology_type,
-                original_label=field.label,
-                normalized_question=field.normalized_label,
-                answer=val,
-                answer_class=AnswerClass.GREEN,
-                answer_source=f"truth_graph:{link_assertions[0].id}",
-                assertion_ids=(link_assertions[0].id,),
-                disposition="auto_fill",
-            )
-
-        # 6. WORK_AUTHORIZATION (Strict Open-World / UNKNOWN != FALSE)
-        if field.ontology_type == FieldOntologyType.WORK_AUTHORIZATION:
-            target_jurisdiction = self._extract_target_jurisdiction(field.label)
-            auth_assertions = [
-                a for a in self.truth_graph.assertions.values()
-                if a.predicate in ("authorization.jurisdiction", "identity.work_authorization")
-                and a.verification_status == VerificationStatus.VERIFIED
-            ]
-
-            if target_jurisdiction is not None:
-                matching_pos = [
-                    a for a in auth_assertions
-                    if a.polarity == Polarity.POSITIVE and str(a.value).strip().lower() == target_jurisdiction.lower()
+            if "country" in norm_label:
+                country_assertions = [
+                    a for a in self.truth_graph.assertions.values()
+                    if a.predicate in ("identity.country", "location.country")
+                    and a.verification_status == VerificationStatus.VERIFIED
                 ]
-                if matching_pos:
+                if country_assertions:
+                    return ApplicationAnswer(
+                        opportunity_id=opportunity.id,
+                        opportunity_content_hash=opportunity.content_hash,
+                        action_id=action_id,
+                        field_type=field.ontology_type,
+                        original_label=field.label,
+                        normalized_question=field.normalized_label,
+                        answer=str(country_assertions[0].value),
+                        answer_class=AnswerClass.GREEN,
+                        answer_source=f"truth_graph:{country_assertions[0].id}",
+                        assertion_ids=(country_assertions[0].id,),
+                        disposition="auto_fill",
+                    )
+
+            if "city" in norm_label:
+                city_assertions = [
+                    a for a in self.truth_graph.assertions.values()
+                    if a.predicate in ("identity.city", "location.city")
+                    and a.verification_status == VerificationStatus.VERIFIED
+                ]
+                if city_assertions:
+                    return ApplicationAnswer(
+                        opportunity_id=opportunity.id,
+                        opportunity_content_hash=opportunity.content_hash,
+                        action_id=action_id,
+                        field_type=field.ontology_type,
+                        original_label=field.label,
+                        normalized_question=field.normalized_label,
+                        answer=str(city_assertions[0].value),
+                        answer_class=AnswerClass.GREEN,
+                        answer_source=f"truth_graph:{city_assertions[0].id}",
+                        assertion_ids=(city_assertions[0].id,),
+                        disposition="auto_fill",
+                    )
+
+            return ApplicationAnswer(
+                opportunity_id=opportunity.id,
+                opportunity_content_hash=opportunity.content_hash,
+                action_id=action_id,
+                field_type=field.ontology_type,
+                original_label=field.label,
+                normalized_question=field.normalized_label,
+                answer=None,
+                answer_class=AnswerClass.RED,
+                answer_source="unasserted_contact",
+                disposition="pause",
+            )
+
+        # 4. LINKS (LinkedIn, GitHub, Portfolio) - ZERO FABRICATION
+        if field.ontology_type == FieldOntologyType.LINKS:
+            if "linkedin" in norm_label:
+                li_assertions = [
+                    a for a in self.truth_graph.assertions.values()
+                    if a.predicate in ("link.linkedin", "profile.linkedin")
+                    and a.verification_status == VerificationStatus.VERIFIED
+                ]
+                if li_assertions:
+                    return ApplicationAnswer(
+                        opportunity_id=opportunity.id,
+                        opportunity_content_hash=opportunity.content_hash,
+                        action_id=action_id,
+                        field_type=field.ontology_type,
+                        original_label=field.label,
+                        normalized_question=field.normalized_label,
+                        answer=str(li_assertions[0].value),
+                        answer_class=AnswerClass.GREEN,
+                        answer_source=f"truth_graph:{li_assertions[0].id}",
+                        assertion_ids=(li_assertions[0].id,),
+                        disposition="auto_fill",
+                    )
+
+            if "github" in norm_label:
+                gh_assertions = [
+                    a for a in self.truth_graph.assertions.values()
+                    if a.predicate in ("link.github", "profile.github")
+                    and a.verification_status == VerificationStatus.VERIFIED
+                ]
+                if gh_assertions:
+                    return ApplicationAnswer(
+                        opportunity_id=opportunity.id,
+                        opportunity_content_hash=opportunity.content_hash,
+                        action_id=action_id,
+                        field_type=field.ontology_type,
+                        original_label=field.label,
+                        normalized_question=field.normalized_label,
+                        answer=str(gh_assertions[0].value),
+                        answer_class=AnswerClass.GREEN,
+                        answer_source=f"truth_graph:{gh_assertions[0].id}",
+                        assertion_ids=(gh_assertions[0].id,),
+                        disposition="auto_fill",
+                    )
+
+            return ApplicationAnswer(
+                opportunity_id=opportunity.id,
+                opportunity_content_hash=opportunity.content_hash,
+                action_id=action_id,
+                field_type=field.ontology_type,
+                original_label=field.label,
+                normalized_question=field.normalized_label,
+                answer=None,
+                answer_class=AnswerClass.RED,
+                answer_source="unasserted_links",
+                disposition="pause",
+            )
+
+        # 5. LOCATION PREFERENCE
+        if field.ontology_type == FieldOntologyType.LOCATION_PREFERENCE:
+            remote_assertions = [
+                a for a in self.truth_graph.assertions.values()
+                if a.predicate in ("preference.remote", "location.remote_ok")
+                and a.verification_status == VerificationStatus.VERIFIED
+            ]
+            if remote_assertions:
+                return ApplicationAnswer(
+                    opportunity_id=opportunity.id,
+                    opportunity_content_hash=opportunity.content_hash,
+                    action_id=action_id,
+                    field_type=field.ontology_type,
+                    original_label=field.label,
+                    normalized_question=field.normalized_label,
+                    answer="Remote / Worldwide",
+                    answer_class=AnswerClass.GREEN,
+                    answer_source=f"truth_graph:{remote_assertions[0].id}",
+                    assertion_ids=(remote_assertions[0].id,),
+                    disposition="auto_fill",
+                )
+            return ApplicationAnswer(
+                opportunity_id=opportunity.id,
+                opportunity_content_hash=opportunity.content_hash,
+                action_id=action_id,
+                field_type=field.ontology_type,
+                original_label=field.label,
+                normalized_question=field.normalized_label,
+                answer=None,
+                answer_class=AnswerClass.RED,
+                answer_source="unasserted_location_preference",
+                disposition="pause",
+            )
+
+        # 6. WORK AUTHORIZATION (Deterministic Open-World Semantics: UNKNOWN != FALSE)
+        if field.ontology_type == FieldOntologyType.WORK_AUTHORIZATION:
+            jurisdictions = {
+                "united states": "United States", "usa": "United States", "us": "United States",
+                "egypt": "Egypt", "germany": "Germany", "united kingdom": "United Kingdom", "uk": "United Kingdom",
+                "canada": "Canada", "france": "France", "uae": "United Arab Emirates",
+            }
+            target_jurisdiction = None
+            for key, canon in jurisdictions.items():
+                if re.search(r"\b" + re.escape(key) + r"\b", norm_label):
+                    target_jurisdiction = canon
+                    break
+
+            all_auth_assertions = [
+                a for a in self.truth_graph.assertions.values()
+                if a.predicate.startswith("authorization.")
+                and a.verification_status == VerificationStatus.VERIFIED
+            ]
+
+            if target_jurisdiction:
+                target_positive = [
+                    a for a in all_auth_assertions
+                    if str(a.value).lower() == target_jurisdiction.lower()
+                    and a.polarity == Polarity.POSITIVE
+                ]
+                if target_positive:
                     return ApplicationAnswer(
                         opportunity_id=opportunity.id,
                         opportunity_content_hash=opportunity.content_hash,
@@ -293,16 +351,17 @@ class ApplicationAnswerEngine:
                         normalized_question=field.normalized_label,
                         answer="Yes",
                         answer_class=AnswerClass.GREEN,
-                        answer_source=f"truth_graph:{matching_pos[0].id}",
-                        assertion_ids=(matching_pos[0].id,),
+                        answer_source=f"truth_graph:{target_positive[0].id}",
+                        assertion_ids=(target_positive[0].id,),
                         disposition="auto_fill",
                     )
 
-                matching_neg = [
-                    a for a in auth_assertions
-                    if a.polarity == Polarity.NEGATIVE and str(a.value).strip().lower() == target_jurisdiction.lower()
+                target_negative = [
+                    a for a in all_auth_assertions
+                    if str(a.value).lower() == target_jurisdiction.lower()
+                    and a.polarity == Polarity.NEGATIVE
                 ]
-                if matching_neg:
+                if target_negative:
                     return ApplicationAnswer(
                         opportunity_id=opportunity.id,
                         opportunity_content_hash=opportunity.content_hash,
@@ -312,8 +371,8 @@ class ApplicationAnswerEngine:
                         normalized_question=field.normalized_label,
                         answer="No",
                         answer_class=AnswerClass.GREEN,
-                        answer_source=f"truth_graph:{matching_neg[0].id}",
-                        assertion_ids=(matching_neg[0].id,),
+                        answer_source=f"truth_graph:{target_negative[0].id}",
+                        assertion_ids=(target_negative[0].id,),
                         disposition="auto_fill",
                     )
 
@@ -339,7 +398,7 @@ class ApplicationAnswerEngine:
                 normalized_question=field.normalized_label,
                 answer=None,
                 answer_class=AnswerClass.RED,
-                answer_source="unresolved_work_authorization_jurisdiction",
+                answer_source="unresolved_work_authorization",
                 disposition="pause",
             )
 
@@ -403,25 +462,40 @@ class ApplicationAnswerEngine:
                 disposition="pause",
             )
 
-        # 9. COMPENSATION (Yellow Answer ONLY if rate AND currency explicitly configured)
+        # 9. COMPENSATION (Yellow Answer ONLY if rate, currency, AND interval are all explicitly configured)
         if field.ontology_type == FieldOntologyType.COMPENSATION:
-            rate = self.policy.default_hourly_rate or self.policy.default_daily_rate
             currency = self.policy.default_currency
-            if rate is not None and currency:
-                ans = f"{currency} {rate}"
-                return ApplicationAnswer(
-                    opportunity_id=opportunity.id,
-                    opportunity_content_hash=opportunity.content_hash,
-                    action_id=action_id,
-                    field_type=field.ontology_type,
-                    original_label=field.label,
-                    normalized_question=field.normalized_label,
-                    answer=ans,
-                    answer_class=AnswerClass.YELLOW,
-                    answer_source="tailoring_policy:compensation",
-                    policy_source=f"TailoringPolicy.{self.policy.version}.default_rate",
-                    disposition="auto_fill",
-                )
+            if currency:
+                if self.policy.default_hourly_rate is not None:
+                    ans = f"{currency} {self.policy.default_hourly_rate}/hr"
+                    return ApplicationAnswer(
+                        opportunity_id=opportunity.id,
+                        opportunity_content_hash=opportunity.content_hash,
+                        action_id=action_id,
+                        field_type=field.ontology_type,
+                        original_label=field.label,
+                        normalized_question=field.normalized_label,
+                        answer=ans,
+                        answer_class=AnswerClass.YELLOW,
+                        answer_source="tailoring_policy:compensation_hourly",
+                        policy_source=f"TailoringPolicy.{self.policy.version}.default_hourly_rate",
+                        disposition="auto_fill",
+                    )
+                elif self.policy.default_daily_rate is not None:
+                    ans = f"{currency} {self.policy.default_daily_rate}/day"
+                    return ApplicationAnswer(
+                        opportunity_id=opportunity.id,
+                        opportunity_content_hash=opportunity.content_hash,
+                        action_id=action_id,
+                        field_type=field.ontology_type,
+                        original_label=field.label,
+                        normalized_question=field.normalized_label,
+                        answer=ans,
+                        answer_class=AnswerClass.YELLOW,
+                        answer_source="tailoring_policy:compensation_daily",
+                        policy_source=f"TailoringPolicy.{self.policy.version}.default_daily_rate",
+                        disposition="auto_fill",
+                    )
             return ApplicationAnswer(
                 opportunity_id=opportunity.id,
                 opportunity_content_hash=opportunity.content_hash,

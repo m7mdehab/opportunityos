@@ -10,8 +10,8 @@ Next: BRIEF-006: Operational Autonomy, Feedback Loops & Production Pipeline.
 
 ## Repository
 
-- **Generated:** 2026-08-30T22:00:14Z
-- **State generated at commit:** `6ee5b90` — docs: complete final authority audit report for brief-005 and update STATE.md
+- **Generated:** 2026-08-30T22:28:29Z
+- **State generated at commit:** `ea133f8` — docs: record terminal residual authority audit report for brief-005
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief

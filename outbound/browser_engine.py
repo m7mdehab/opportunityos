@@ -26,6 +26,7 @@ from .mock_harness import MockATSHarness
 from .models import (
     ActionAuthorityDecision,
     ActionStatus,
+    AdapterLifecycleState,
     AnswerClass,
     ApplicationAnswer,
     BoundArtifact,
@@ -35,6 +36,7 @@ from .models import (
     FieldOntologyType,
     OutboundActionRecord,
     PreSubmitManifest,
+    SourceActionPolicy,
 )
 from .registry import AdapterRegistry, SourceActionRegistry
 
@@ -140,6 +142,85 @@ class OutboundBrowserEngine:
         ]
         return hashlib.sha256(json.dumps(serialized, sort_keys=True).encode("utf-8")).hexdigest()
 
+    def prepare_manifest(
+        self,
+        opportunity: Opportunity,
+        artifact: Union[TailoredArtifact, BoundArtifact] | None,
+        driver: BrowserDriver,
+        adapter_name: str = "greenhouse",
+        workspace: str = "default",
+        candidate_id: str = "founder",
+        qualification_decision: QualificationDecision = QualificationDecision.QUALIFIED,
+        truth_graph: TruthGraph | None = None,
+        policy: TailoringPolicy | None = None,
+        action_id: str = "",
+    ) -> tuple[PreSubmitManifest, tuple[ApplicationAnswer, ...], int, int]:
+        """Inspect form and construct a genuine system-generated PreSubmitManifest snapshot."""
+        act_id = action_id or f"act-{uuid.uuid4().hex[:12]}"
+        action_type = "application"
+        created_at = datetime.now(timezone.utc).isoformat()
+        idempotency_key = IdempotencyLedger.compute_idempotency_key(
+            workspace, candidate_id, opportunity.id, action_type
+        )
+        tg = truth_graph or TruthGraph()
+        pol = policy or TailoringPolicy()
+        answer_engine = ApplicationAnswerEngine(tg, pol)
+
+        bound_artifact: BoundArtifact | None = None
+        if artifact is not None:
+            if isinstance(artifact, BoundArtifact):
+                bound_artifact = artifact
+            else:
+                bound_artifact = BoundArtifact(artifact=artifact, candidate_id=candidate_id, workspace=workspace)
+
+        step = 0
+        max_steps = 10
+        all_answers: list[ApplicationAnswer] = []
+        unresolved_mandatory_count = 0
+        has_more_steps = True
+
+        while has_more_steps and step < max_steps:
+            fields = driver.inspect_page_fields(step)
+            for fld in fields:
+                ans = answer_engine.answer_field(fld, opportunity, action_id=act_id, artifact=bound_artifact)
+                all_answers.append(ans)
+                if fld.required and (ans.answer is None or ans.answer_class == AnswerClass.RED):
+                    unresolved_mandatory_count += 1
+            has_more_steps = driver.advance_step()
+            step += 1
+
+        answers_tuple = tuple(all_answers)
+        answers_hash = self.compute_answers_hash(answers_tuple)
+        red_count = sum(1 for a in all_answers if a.answer_class == AnswerClass.RED)
+        grad_rec = self.adapter_registry.get_graduation_record(adapter_name)
+        grad_ver = grad_rec.version if grad_rec else "1.0.0"
+        grad_evidence_hash = grad_rec.evidence_hash if grad_rec else ""
+        source_policy_ver = self.source_registry.get_policy_version(opportunity.source)
+
+        manifest = PreSubmitManifest(
+            workspace=workspace,
+            candidate_id=candidate_id,
+            opportunity_id=opportunity.id,
+            opportunity_content_hash=opportunity.content_hash,
+            action_type=action_type,
+            adapter_name=adapter_name,
+            adapter_version=grad_ver,
+            graduation_record_version=grad_ver,
+            graduation_evidence_hash=grad_evidence_hash,
+            source_policy_version=source_policy_ver,
+            tailoring_policy_version=pol.version,
+            artifact_ids=tuple([bound_artifact.artifact_id]) if bound_artifact else (),
+            artifact_hashes=tuple([bound_artifact.artifact_hash]) if bound_artifact else (),
+            answers=answers_tuple,
+            answers_hash=answers_hash,
+            qualification_decision=qualification_decision,
+            unresolved_mandatory_count=unresolved_mandatory_count,
+            red_answers_count=red_count,
+            idempotency_key=idempotency_key,
+            compiled_at=created_at,
+        )
+        return manifest, answers_tuple, red_count, unresolved_mandatory_count
+
     def execute_application(
         self,
         opportunity: Opportunity,
@@ -170,6 +251,7 @@ class OutboundBrowserEngine:
         initial_source_policy_ver = self.source_registry.get_policy_version(opportunity.source)
         initial_grad_rec = self.adapter_registry.get_graduation_record(adapter_name)
         initial_grad_ver = initial_grad_rec.version if initial_grad_rec else "1.0.0"
+        initial_grad_evidence_hash = initial_grad_rec.evidence_hash if initial_grad_rec else ""
 
         bound_artifact: BoundArtifact | None = None
         if artifact is not None:
@@ -348,7 +430,7 @@ class OutboundBrowserEngine:
         answers_hash = self.compute_answers_hash(answers_tuple)
         red_count = sum(1 for a in all_answers if a.answer_class == AnswerClass.RED)
 
-        manifest = prepared_manifest or PreSubmitManifest(
+        current_manifest = PreSubmitManifest(
             workspace=workspace,
             candidate_id=candidate_id,
             opportunity_id=opportunity.id,
@@ -357,7 +439,9 @@ class OutboundBrowserEngine:
             adapter_name=adapter_name,
             adapter_version=initial_grad_ver,
             graduation_record_version=initial_grad_ver,
+            graduation_evidence_hash=initial_grad_evidence_hash,
             source_policy_version=initial_source_policy_ver,
+            tailoring_policy_version=pol.version,
             artifact_ids=tuple([bound_artifact.artifact_id]) if bound_artifact else (),
             artifact_hashes=tuple([bound_artifact.artifact_hash]) if bound_artifact else (),
             answers=answers_tuple,
@@ -368,6 +452,8 @@ class OutboundBrowserEngine:
             idempotency_key=idempotency_key,
             compiled_at=created_at,
         )
+
+        manifest = prepared_manifest or current_manifest
 
         if execution_mode == ExecutionMode.DRY_RUN:
             return OutboundActionRecord(
@@ -433,6 +519,8 @@ class OutboundBrowserEngine:
         fresh_red_count = sum(1 for a in fresh_answers if a.answer_class == AnswerClass.RED)
         fresh_grad_rec = self.adapter_registry.get_graduation_record(adapter_name)
         fresh_source_policy_ver = self.source_registry.get_policy_version(opportunity.source)
+        fresh_grad_ver = fresh_grad_rec.version if fresh_grad_rec else "1.0.0"
+        fresh_grad_evidence_hash = fresh_grad_rec.evidence_hash if fresh_grad_rec else ""
 
         fresh_manifest = PreSubmitManifest(
             workspace=workspace,
@@ -441,9 +529,11 @@ class OutboundBrowserEngine:
             opportunity_content_hash=opportunity.content_hash,
             action_type=action_type,
             adapter_name=adapter_name,
-            adapter_version=fresh_grad_rec.version if fresh_grad_rec else "1.0.0",
-            graduation_record_version=fresh_grad_rec.version if fresh_grad_rec else "1.0.0",
+            adapter_version=fresh_grad_ver,
+            graduation_record_version=fresh_grad_ver,
+            graduation_evidence_hash=fresh_grad_evidence_hash,
             source_policy_version=fresh_source_policy_ver,
+            tailoring_policy_version=pol.version,
             artifact_ids=tuple([bound_artifact.artifact_id]) if bound_artifact else (),
             artifact_hashes=tuple([bound_artifact.artifact_hash]) if bound_artifact else (),
             answers=fresh_answers_tuple,
@@ -465,7 +555,7 @@ class OutboundBrowserEngine:
                 track=opportunity.track,
                 source=opportunity.source,
                 adapter_name=adapter_name,
-                adapter_version=fresh_grad_rec.version if fresh_grad_rec else "1.0.0",
+                adapter_version=fresh_grad_ver,
                 execution_mode=execution_mode,
                 qualification_decision=qualification_decision,
                 match_score_snapshot=match_score_snapshot,
@@ -508,7 +598,7 @@ class OutboundBrowserEngine:
                 track=opportunity.track,
                 source=opportunity.source,
                 adapter_name=adapter_name,
-                adapter_version=fresh_grad_rec.version if fresh_grad_rec else "1.0.0",
+                adapter_version=fresh_grad_ver,
                 execution_mode=execution_mode,
                 qualification_decision=qualification_decision,
                 match_score_snapshot=match_score_snapshot,
@@ -531,7 +621,7 @@ class OutboundBrowserEngine:
             track=opportunity.track,
             source=opportunity.source,
             adapter_name=adapter_name,
-            adapter_version=fresh_grad_rec.version if fresh_grad_rec else "1.0.0",
+            adapter_version=fresh_grad_ver,
             execution_mode=execution_mode,
             qualification_decision=qualification_decision,
             match_score_snapshot=match_score_snapshot,
@@ -556,7 +646,7 @@ class OutboundBrowserEngine:
                 track=opportunity.track,
                 source=opportunity.source,
                 adapter_name=adapter_name,
-                adapter_version=fresh_grad_rec.version if fresh_grad_rec else "1.0.0",
+                adapter_version=fresh_grad_ver,
                 execution_mode=execution_mode,
                 qualification_decision=qualification_decision,
                 match_score_snapshot=match_score_snapshot,
@@ -570,7 +660,7 @@ class OutboundBrowserEngine:
                 blocker_reason=str(e),
             )
 
-        # FINAL Kill Switch Check immediately adjacent to irreversible external submit call
+        # FINAL Side-Effect Authority Check immediately adjacent to irreversible external submit call
         if not GlobalKillSwitch.is_enabled():
             self.ledger.transition_status(
                 idempotency_key=idempotency_key,
@@ -586,7 +676,7 @@ class OutboundBrowserEngine:
                 track=opportunity.track,
                 source=opportunity.source,
                 adapter_name=adapter_name,
-                adapter_version=fresh_grad_rec.version if fresh_grad_rec else "1.0.0",
+                adapter_version=fresh_grad_ver,
                 execution_mode=execution_mode,
                 qualification_decision=qualification_decision,
                 match_score_snapshot=match_score_snapshot,
@@ -598,6 +688,73 @@ class OutboundBrowserEngine:
                 created_at=created_at,
                 updated_at=created_at,
                 blocker_reason="Global kill switch disabled after reservation; submit aborted",
+            )
+
+        # Re-check source policy
+        current_source_pol = self.source_registry.get_policy(opportunity.source)
+        if current_source_pol not in (SourceActionPolicy.SUBMIT_ALLOWED, SourceActionPolicy.API_ACTION_ALLOWED):
+            self.ledger.transition_status(
+                idempotency_key=idempotency_key,
+                new_status=ActionStatus.BLOCKED,
+                blocker_reason=f"Source policy changed after reservation to {current_source_pol.value}; submit aborted",
+            )
+            return OutboundActionRecord(
+                action_id=action_id,
+                opportunity_id=opportunity.id,
+                opportunity_content_hash=opportunity.content_hash,
+                workspace=workspace,
+                candidate_id=candidate_id,
+                track=opportunity.track,
+                source=opportunity.source,
+                adapter_name=adapter_name,
+                adapter_version=fresh_grad_ver,
+                execution_mode=execution_mode,
+                qualification_decision=qualification_decision,
+                match_score_snapshot=match_score_snapshot,
+                artifact_ids=fresh_manifest.artifact_ids,
+                artifact_hashes=fresh_manifest.artifact_hashes,
+                manifest_hash=fresh_manifest.manifest_hash,
+                action_status=ActionStatus.BLOCKED,
+                idempotency_key=idempotency_key,
+                created_at=created_at,
+                updated_at=created_at,
+                blocker_reason=f"Source policy changed after reservation to {current_source_pol.value}; submit aborted",
+            )
+
+        # Re-check adapter graduation
+        current_grad_post = self.adapter_registry.get_graduation_record(adapter_name)
+        if (
+            not current_grad_post
+            or current_grad_post.lifecycle_state != AdapterLifecycleState.SUBMIT_ENABLED
+            or not current_grad_post.evidence_hash
+            or current_grad_post.evidence_hash != fresh_manifest.graduation_evidence_hash
+        ):
+            self.ledger.transition_status(
+                idempotency_key=idempotency_key,
+                new_status=ActionStatus.BLOCKED,
+                blocker_reason="Adapter graduation state or evidence invalidated after reservation; submit aborted",
+            )
+            return OutboundActionRecord(
+                action_id=action_id,
+                opportunity_id=opportunity.id,
+                opportunity_content_hash=opportunity.content_hash,
+                workspace=workspace,
+                candidate_id=candidate_id,
+                track=opportunity.track,
+                source=opportunity.source,
+                adapter_name=adapter_name,
+                adapter_version=fresh_grad_ver,
+                execution_mode=execution_mode,
+                qualification_decision=qualification_decision,
+                match_score_snapshot=match_score_snapshot,
+                artifact_ids=fresh_manifest.artifact_ids,
+                artifact_hashes=fresh_manifest.artifact_hashes,
+                manifest_hash=fresh_manifest.manifest_hash,
+                action_status=ActionStatus.BLOCKED,
+                idempotency_key=idempotency_key,
+                created_at=created_at,
+                updated_at=created_at,
+                blocker_reason="Adapter graduation state or evidence invalidated after reservation; submit aborted",
             )
 
         # FINAL Challenge Check
@@ -616,7 +773,7 @@ class OutboundBrowserEngine:
                 track=opportunity.track,
                 source=opportunity.source,
                 adapter_name=adapter_name,
-                adapter_version=fresh_grad_rec.version if fresh_grad_rec else "1.0.0",
+                adapter_version=fresh_grad_ver,
                 execution_mode=execution_mode,
                 qualification_decision=qualification_decision,
                 match_score_snapshot=match_score_snapshot,

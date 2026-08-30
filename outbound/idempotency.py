@@ -1,16 +1,13 @@
-"""Durable SQLite Idempotency & Duplicate Prevention Ledger."""
+"""Durable Idempotency Ledger with SQLite backing and atomic write isolation."""
 from __future__ import annotations
 
 import dataclasses
 import hashlib
 import json
-import os
 import sqlite3
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
-
 from matching.models import QualificationDecision, Track
 from .models import (
     ActionStatus,
@@ -19,26 +16,26 @@ from .models import (
     OutboundActionRecord,
 )
 
-DEFAULT_LEDGER_PATH = os.environ.get("OPPORTUNITYOS_LEDGER_PATH", "data/outbound_ledger.sqlite")
+DEFAULT_LEDGER_PATH = Path("private/idempotency_ledger.db")
 
 
-class DuplicateSubmissionError(ValueError):
-    """Raised when duplicate submission is attempted."""
+class DuplicateSubmissionError(RuntimeError):
+    """Raised when an active or confirmed submission already exists for an idempotency key."""
 
 
-class UnknownOutcomeFrozenError(ValueError):
-    """Raised when an attempt is made to execute an action with unresolved UNKNOWN_OUTCOME."""
+class UnknownOutcomeFrozenError(RuntimeError):
+    """Raised when an action is permanently frozen in UNKNOWN_OUTCOME requiring human reconciliation."""
 
 
 class IdempotencyLedger:
-    """Thread-safe and process-durable submission ledger preventing duplicate side effects."""
+    """Thread-safe and process-durable SQLite idempotency ledger."""
 
-    def __init__(self, db_path: str | None = None) -> None:
-        self.db_path = db_path if db_path is not None else DEFAULT_LEDGER_PATH
+    def __init__(self, db_path: str | Path | None = None) -> None:
+        self.db_path = str(db_path or DEFAULT_LEDGER_PATH)
         self._lock = threading.Lock()
         self._memory_conn: sqlite3.Connection | None = None
         if self.db_path == ":memory:":
-            self._memory_conn = sqlite3.connect(":memory:", timeout=30.0, check_same_thread=False, isolation_level=None)
+            self._memory_conn = sqlite3.connect(":memory:", check_same_thread=False, isolation_level=None)
             self._memory_conn.row_factory = sqlite3.Row
         else:
             Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -122,21 +119,21 @@ class IdempotencyLedger:
             "manual_edits": list(record.manual_edits),
             "external_reference_id": record.external_reference_id,
         }
-        return json.dumps(data)
+        return json.dumps(data, sort_keys=True)
 
-    def _json_to_record(self, data_str: str) -> OutboundActionRecord:
-        d = json.loads(data_str)
+    def _json_to_record(self, raw_json: str) -> OutboundActionRecord:
+        d = json.loads(raw_json)
         ev = None
         if d.get("confirmation_evidence"):
-            ev_data = d["confirmation_evidence"]
+            e = d["confirmation_evidence"]
             ev = ConfirmationEvidence(
-                confirmed=ev_data["confirmed"],
-                confirmation_text=ev_data["confirmation_text"],
-                application_id=ev_data.get("application_id", ""),
-                receipt_reference=ev_data.get("receipt_reference", ""),
-                final_url=ev_data.get("final_url", ""),
-                detected_at=ev_data.get("detected_at", ""),
-                evidence_checksum=ev_data.get("evidence_checksum", ""),
+                confirmed=e["confirmed"],
+                confirmation_text=e["confirmation_text"],
+                application_id=e.get("application_id", ""),
+                receipt_reference=e.get("receipt_reference", ""),
+                final_url=e.get("final_url", ""),
+                detected_at=e.get("detected_at", "2026-08-30T00:00:00Z"),
+                evidence_checksum=e.get("evidence_checksum", ""),
             )
 
         return OutboundActionRecord(
@@ -189,7 +186,7 @@ class IdempotencyLedger:
                         raise UnknownOutcomeFrozenError(
                             f"Submission permanently blocked: action '{key}' resulted in UNKNOWN_OUTCOME and requires explicit manual reconciliation before retry."
                         )
-                    if status in (ActionStatus.SUBMITTING.value, ActionStatus.SUBMITTED.value, ActionStatus.CONFIRMED.value):
+                    if status in (ActionStatus.SUBMITTING.value, ActionStatus.SUBMITTED.value, ActionStatus.CONFIRMED.value, ActionStatus.PLANNED.value):
                         conn.execute("ROLLBACK")
                         raise DuplicateSubmissionError(
                             f"Duplicate submission blocked for idempotency key '{key}' (current status: {status})"
@@ -229,94 +226,46 @@ class IdempotencyLedger:
         new_status: ActionStatus,
         evidence: ConfirmationEvidence | None = None,
         blocker_reason: str = "",
-        external_reference_id: str = "",
     ) -> OutboundActionRecord:
-        """Transition action record state with true UTC runtime timestamp."""
-        now_ts = datetime.now(timezone.utc).isoformat()
+        """Update record status in ledger atomically."""
         with self._lock:
             conn = self._get_connection()
             try:
-                conn.execute("BEGIN IMMEDIATE")
                 cur = conn.cursor()
                 cur.execute("SELECT record_json FROM idempotency_ledger WHERE idempotency_key = ?", (idempotency_key,))
                 row = cur.fetchone()
                 if row is None:
-                    conn.execute("ROLLBACK")
-                    raise KeyError(f"No record found for idempotency key '{idempotency_key}'")
+                    raise KeyError(f"No record found with idempotency_key: {idempotency_key}")
 
-                existing = self._json_to_record(row["record_json"])
-                updated = OutboundActionRecord(
-                    action_id=existing.action_id,
-                    opportunity_id=existing.opportunity_id,
-                    opportunity_content_hash=existing.opportunity_content_hash,
-                    workspace=existing.workspace,
-                    candidate_id=existing.candidate_id,
-                    track=existing.track,
-                    source=existing.source,
-                    adapter_name=existing.adapter_name,
-                    adapter_version=existing.adapter_version,
-                    execution_mode=existing.execution_mode,
-                    qualification_decision=existing.qualification_decision,
-                    match_score_snapshot=existing.match_score_snapshot,
-                    artifact_ids=existing.artifact_ids,
-                    artifact_hashes=existing.artifact_hashes,
-                    manifest_hash=existing.manifest_hash,
+                old_rec = self._json_to_record(row["record_json"])
+                updated_rec = dataclasses.replace(
+                    old_rec,
                     action_status=new_status,
-                    idempotency_key=existing.idempotency_key,
-                    created_at=existing.created_at,
-                    updated_at=now_ts,
-                    confirmation_evidence=evidence if evidence is not None else existing.confirmation_evidence,
-                    blocker_reason=blocker_reason or existing.blocker_reason,
-                    manual_edits=existing.manual_edits,
-                    external_reference_id=external_reference_id or existing.external_reference_id,
+                    confirmation_evidence=evidence or old_rec.confirmation_evidence,
+                    blocker_reason=blocker_reason or old_rec.blocker_reason,
+                    updated_at=datetime.now(timezone.utc).isoformat(),
                 )
-                updated_json = self._record_to_json(updated)
+                new_json = self._record_to_json(updated_rec)
+
                 cur.execute("""
                     UPDATE idempotency_ledger SET
                         action_status = ?,
                         record_json = ?,
                         updated_at = ?
                     WHERE idempotency_key = ?
-                """, (new_status.value, updated_json, now_ts, idempotency_key))
-                conn.execute("COMMIT")
-                return updated
-            except Exception:
-                try:
-                    conn.execute("ROLLBACK")
-                except Exception:
-                    pass
-                raise
+                """, (new_status.value, new_json, updated_rec.updated_at, idempotency_key))
+                return updated_rec
             finally:
                 if self._memory_conn is None:
                     conn.close()
 
-    def is_duplicate(self, workspace: str, candidate_id: str, opportunity_id: str, action_type: str) -> bool:
+    def get_record(self, workspace: str, candidate_id: str, opportunity_id: str, action_type: str = "application") -> OutboundActionRecord | None:
         key = self.compute_idempotency_key(workspace, candidate_id, opportunity_id, action_type)
         with self._lock:
             conn = self._get_connection()
             try:
                 cur = conn.cursor()
-                cur.execute("SELECT action_status FROM idempotency_ledger WHERE idempotency_key = ?", (key,))
-                row = cur.fetchone()
-                if row is None:
-                    return False
-                status = row["action_status"]
-                return status in (
-                    ActionStatus.SUBMITTING.value,
-                    ActionStatus.SUBMITTED.value,
-                    ActionStatus.CONFIRMED.value,
-                    ActionStatus.UNKNOWN_OUTCOME.value,
-                )
-            finally:
-                if self._memory_conn is None:
-                    conn.close()
-
-    def get_record(self, idempotency_key: str) -> OutboundActionRecord | None:
-        with self._lock:
-            conn = self._get_connection()
-            try:
-                cur = conn.cursor()
-                cur.execute("SELECT record_json FROM idempotency_ledger WHERE idempotency_key = ?", (idempotency_key,))
+                cur.execute("SELECT record_json FROM idempotency_ledger WHERE idempotency_key = ?", (key,))
                 row = cur.fetchone()
                 if row is None:
                     return None
@@ -325,15 +274,27 @@ class IdempotencyLedger:
                 if self._memory_conn is None:
                     conn.close()
 
+    def is_duplicate(self, workspace: str, candidate_id: str, opportunity_id: str, action_type: str = "application") -> bool:
+        rec = self.get_record(workspace, candidate_id, opportunity_id, action_type)
+        if rec is None:
+            return False
+        return rec.action_status in (
+            ActionStatus.SUBMITTING,
+            ActionStatus.SUBMITTED,
+            ActionStatus.CONFIRMED,
+            ActionStatus.UNKNOWN_OUTCOME,
+        )
+
     def reconcile_unknown_outcome(
         self,
         idempotency_key: str,
         new_status: ActionStatus,
-        reason: str = "manual reconciliation",
+        reason: str = "Manual founder reconciliation",
     ) -> OutboundActionRecord:
-        """Explicit founder reconciliation allowing recovery from UNKNOWN_OUTCOME."""
+        if new_status not in (ActionStatus.CONFIRMED, ActionStatus.FAILED, ActionStatus.BLOCKED):
+            raise ValueError(f"Can only reconcile UNKNOWN_OUTCOME to CONFIRMED, FAILED, or BLOCKED, not {new_status}")
         return self.transition_status(
             idempotency_key=idempotency_key,
             new_status=new_status,
-            blocker_reason=reason,
+            blocker_reason=f"Reconciled from UNKNOWN_OUTCOME: {reason}",
         )

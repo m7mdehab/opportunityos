@@ -1,68 +1,81 @@
-"""Outbound Application and Action Authority Data Models."""
+"""Data models for outbound application and engagement workflows."""
 from __future__ import annotations
 
 import hashlib
 import json
-import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Mapping
-
-from matching.models import QualificationDecision, TailoredArtifact, Track
-from truth.models import VerificationStatus
+from typing import Any
+from matching.models import (
+    ArtifactType,
+    QualificationDecision,
+    TailoredArtifact,
+    Track,
+)
 
 
 class ExecutionMode(str, Enum):
-    """Governed execution modes for outbound workflows."""
-    DRY_RUN = "dry_run"                     # Read-only preparation and planning; zero side effects
-    ASSISTED = "assisted"                   # Browser automation to fill forms & upload artifacts; ZERO submit
-    CONTROLLED_SUBMIT = "controlled_submit"  # Fully automated submission for graduated & enabled adapters
+    """Operational mode for outbound workflows."""
+    DRY_RUN = "dry_run"
+    ASSISTED = "assisted"
+    CONTROLLED_SUBMIT = "controlled_submit"
 
 
-class ActionAuthorityDecision(str, Enum):
-    """Decision emitted by the Central Action Authority."""
-    ALLOW_PREPARE = "allow_prepare"
-    ALLOW_FILL = "allow_fill"
-    ALLOW_SUBMIT = "allow_submit"
-    PAUSE_FOR_REVIEW = "pause_for_review"
-    BLOCK = "block"
-
-
-class SourceActionPolicy(str, Enum):
-    """Action permissions per platform / adapter with positive granularity."""
-    DISCOVERY_ALLOWED = "discovery_allowed"       # Read-only feed/job ingestion only; NO prepare/fill/submit
-    PREPARE_ALLOWED = "prepare_allowed"           # Preparation/manifest generation allowed; NO browser fill/submit
-    BROWSER_FILL_ALLOWED = "browser_fill_allowed" # Assisted browser fill allowed; NO autonomous submit
-    SUBMIT_ALLOWED = "submit_allowed"             # Controlled autonomous submission allowed
-    API_ACTION_ALLOWED = "api_action_allowed"     # Direct API mutation allowed
-    MANUAL_ONLY = "manual_only"                   # Manual portal upload only
-    PROHIBITED = "prohibited"                     # All outbound interactions prohibited
+class ActionStatus(str, Enum):
+    """Lifecycle status for outbound actions in the idempotency ledger."""
+    PLANNED = "planned"
+    PREPARED = "prepared"
+    AWAITING_REVIEW = "awaiting_review"
+    SUBMITTING = "submitting"
+    SUBMITTED = "submitted"
+    CONFIRMED = "confirmed"
+    FAILED = "failed"
+    UNKNOWN_OUTCOME = "unknown_outcome"
+    BLOCKED = "blocked"
 
 
 class AdapterLifecycleState(str, Enum):
-    """Formal graduation lifecycle states for outbound adapters."""
+    """Authoritative graduation lifecycle state for outbound adapters."""
     EXPERIMENTAL = "experimental"
     SHADOW_TESTED = "shadow_tested"
+    PROPOSED = "proposed"
+    DEVELOPED = "developed"
+    TESTED_OFFLINE = "tested_offline"
+    SHADOW_RUN_PASSING = "shadow_run_passing"
     ASSISTED_VERIFIED = "assisted_verified"
     SUBMIT_ELIGIBLE = "submit_eligible"
     SUBMIT_ENABLED = "submit_enabled"
-    SUSPENDED = "suspended"
     DEPRECATED = "deprecated"
 
 
+class SourceActionPolicy(str, Enum):
+    """Permission level for outbound external interactions on a per-source basis."""
+    PROHIBITED = "prohibited"
+    MANUAL_ONLY = "manual_only"
+    DISCOVERY_ALLOWED = "discovery_allowed"
+    PREPARE_ALLOWED = "prepare_allowed"
+    BROWSER_FILL_ALLOWED = "browser_fill_allowed"
+    SUBMIT_ALLOWED = "submit_allowed"
+    API_ACTION_ALLOWED = "api_action_allowed"
+
+
 class FieldOntologyType(str, Enum):
-    """Canonical 19-type field ontology for application form fields."""
+    """Canonical 19-type interactive form field ontology."""
     IDENTITY = "identity"
     CONTACT = "contact"
     ADDRESS_LOCATION = "address_location"
     EDUCATION = "education"
     EMPLOYMENT = "employment"
     LINKS = "links"
+    RESUME_CV = "resume_cv"
+    COVER_LETTER = "cover_letter"
+    ATTACHMENT = "attachment"
     WORK_AUTHORIZATION = "work_authorization"
     SPONSORSHIP = "sponsorship"
-    COMPENSATION = "compensation"
     AVAILABILITY = "availability"
+    COMPENSATION = "compensation"
+    LOCATION_PREFERENCE = "location_preference"
     TRAVEL = "travel"
     RELOCATION = "relocation"
     DEMOGRAPHIC_VOLUNTARY = "demographic_voluntary"
@@ -70,33 +83,28 @@ class FieldOntologyType(str, Enum):
     LEGAL_DECLARATION = "legal_declaration"
     SECURITY_CLEARANCE = "security_clearance"
     CONFLICT_OF_INTEREST = "conflict_of_interest"
-    ATTACHMENT = "attachment"
     OTHER_UNKNOWN = "other_unknown"
 
 
 class AnswerClass(str, Enum):
-    """Three-tier answer classification policy."""
-    GREEN = "green"    # Sourced strictly from verified TruthGraph assertions
-    YELLOW = "yellow"  # Sourced strictly from explicit TailoringPolicy preferences
-    RED = "red"        # Sensitive, legal, narrative, or ambiguous declarations -> PAUSE
+    """Sensitivity classification for form answers."""
+    GREEN = "green"
+    YELLOW = "yellow"
+    RED = "red"
 
 
-class ActionStatus(str, Enum):
-    """Lifecycle state of an outbound application action."""
-    PLANNED = "planned"
-    PREPARED = "prepared"
-    SUBMITTING = "submitting"
-    SUBMITTED = "submitted"
-    CONFIRMED = "confirmed"
-    UNKNOWN_OUTCOME = "unknown_outcome"
-    BLOCKED = "blocked"
-    AWAITING_REVIEW = "awaiting_review"
-    FAILED = "failed"
+class ActionAuthorityDecision(str, Enum):
+    """Pre-action evaluation decision by ActionAuthority."""
+    ALLOW_PREPARE = "allow_prepare"
+    ALLOW_FILL = "allow_fill"
+    ALLOW_SUBMIT = "allow_submit"
+    PAUSE_FOR_REVIEW = "pause_for_review"
+    BLOCK = "block"
 
 
 @dataclass(frozen=True, slots=True)
 class BoundArtifact:
-    """Artifact bound to non-bypassable candidate and workspace ownership."""
+    """A TailoredArtifact bound to an explicit candidate_id and workspace."""
     artifact: TailoredArtifact
     candidate_id: str
     workspace: str
@@ -228,7 +236,7 @@ class GraduationRecord:
 
 @dataclass(frozen=True, slots=True)
 class PreSubmitManifest:
-    """Cryptographic pre-submission manifest binding all 16 authorities."""
+    """Cryptographic pre-submission manifest binding all material authorities."""
     workspace: str
     candidate_id: str
     opportunity_id: str
@@ -246,10 +254,14 @@ class PreSubmitManifest:
     unresolved_mandatory_count: int
     red_answers_count: int
     idempotency_key: str
-    compiled_at: str
+    graduation_evidence_hash: str = ""
+    tailoring_policy_version: str = "1.0.0"
+    compiled_at: str = ""
     manifest_hash: str = ""
 
     def __post_init__(self) -> None:
+        if not self.compiled_at:
+            object.__setattr__(self, "compiled_at", datetime.now(timezone.utc).isoformat())
         if not self.manifest_hash:
             data = {
                 "workspace": self.workspace,
@@ -260,7 +272,9 @@ class PreSubmitManifest:
                 "adapter_name": self.adapter_name,
                 "adapter_version": self.adapter_version,
                 "graduation_record_version": self.graduation_record_version,
+                "graduation_evidence_hash": self.graduation_evidence_hash,
                 "source_policy_version": self.source_policy_version,
+                "tailoring_policy_version": self.tailoring_policy_version,
                 "artifact_ids": list(self.artifact_ids),
                 "artifact_hashes": list(self.artifact_hashes),
                 "answers_hash": self.answers_hash,
@@ -268,7 +282,6 @@ class PreSubmitManifest:
                 "unresolved_mandatory_count": self.unresolved_mandatory_count,
                 "red_answers_count": self.red_answers_count,
                 "idempotency_key": self.idempotency_key,
-                "compiled_at": self.compiled_at,
             }
             digest = hashlib.sha256(json.dumps(data, sort_keys=True).encode("utf-8")).hexdigest()
             object.__setattr__(self, "manifest_hash", digest)
