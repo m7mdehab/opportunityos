@@ -10,8 +10,8 @@ Next: BRIEF-004: Opportunity Matching & Proposal Tailoring.
 
 ## Repository
 
-- **Generated:** 2026-08-30T13:28:51Z
-- **State generated at commit:** `b54ef56` — feat(opportunity): terminal three-authority closure for endpoint identity, manifest validation, and schema drift
+- **Generated:** 2026-08-30T13:29:03Z
+- **State generated at commit:** `acc70cb` — docs(report-003): update phase report with terminal three-authority audit findings and refresh state
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
