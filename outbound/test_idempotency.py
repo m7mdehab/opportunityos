@@ -1,6 +1,7 @@
-"""Tests for Durable SQLite Idempotency Ledger."""
+"""Tests for Durable SQLite Idempotency Ledger and Cross-Instance Concurrency."""
 import os
 import tempfile
+import threading
 import unittest
 from matching.models import QualificationDecision, Track
 from outbound.idempotency import (
@@ -47,21 +48,49 @@ class IdempotencyLedgerTests(unittest.TestCase):
         self.ledger.reserve_submission(self.record)
         self.ledger.transition_status(self.record.idempotency_key, ActionStatus.UNKNOWN_OUTCOME)
 
-        # Simulate process restart by creating new ledger pointing to same DB
         restarted_ledger = IdempotencyLedger(self.db_path)
         self.assertTrue(restarted_ledger.is_duplicate("default", "founder", "opp-100", "application"))
 
-        # Automatic retry must raise UnknownOutcomeFrozenError
         with self.assertRaises(UnknownOutcomeFrozenError):
             restarted_ledger.reserve_submission(self.record)
 
-        # Founder reconciliation recovers
         reconciled = restarted_ledger.reconcile_unknown_outcome(
             self.record.idempotency_key,
             new_status=ActionStatus.FAILED,
             reason="Founder verified application was not received",
         )
         self.assertEqual(reconciled.action_status, ActionStatus.FAILED)
+
+    def test_cross_instance_concurrent_reservation_atomicity(self) -> None:
+        """Test two independent IdempotencyLedger instances racing on the same SQLite file."""
+        ledger1 = IdempotencyLedger(self.db_path)
+        ledger2 = IdempotencyLedger(self.db_path)
+
+        results: list[str] = []
+        errors: list[Exception] = []
+
+        def task(ledger_instance: IdempotencyLedger, name: str):
+            try:
+                ledger_instance.reserve_submission(self.record)
+                results.append(f"{name}_success")
+            except Exception as e:
+                errors.append(e)
+                results.append(f"{name}_error")
+
+        t1 = threading.Thread(target=task, args=(ledger1, "instance1"))
+        t2 = threading.Thread(target=task, args=(ledger2, "instance2"))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        # Exactly one reservation must succeed, the other must raise DuplicateSubmissionError
+        success_count = sum(1 for r in results if r.endswith("_success"))
+        error_count = sum(1 for r in results if r.endswith("_error"))
+        self.assertEqual(success_count, 1)
+        self.assertEqual(error_count, 1)
+        self.assertEqual(len(errors), 1)
+        self.assertIsInstance(errors[0], DuplicateSubmissionError)
 
 
 if __name__ == "__main__":

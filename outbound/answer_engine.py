@@ -279,7 +279,6 @@ class ApplicationAnswerEngine:
             ]
 
             if target_jurisdiction is not None:
-                # Check for explicit positive authorization
                 matching_pos = [
                     a for a in auth_assertions
                     if a.polarity == Polarity.POSITIVE and str(a.value).strip().lower() == target_jurisdiction.lower()
@@ -299,7 +298,6 @@ class ApplicationAnswerEngine:
                         disposition="auto_fill",
                     )
 
-                # Check for explicit verified negative authorization
                 matching_neg = [
                     a for a in auth_assertions
                     if a.polarity == Polarity.NEGATIVE and str(a.value).strip().lower() == target_jurisdiction.lower()
@@ -319,8 +317,6 @@ class ApplicationAnswerEngine:
                         disposition="auto_fill",
                     )
 
-                # Open-world: absence of positive evidence for target_jurisdiction is UNKNOWN, not FALSE.
-                # Must FAIL CLOSED to RED / PAUSE. Never manufacture "No" without verified negative authority!
                 return ApplicationAnswer(
                     opportunity_id=opportunity.id,
                     opportunity_content_hash=opportunity.content_hash,
@@ -334,7 +330,6 @@ class ApplicationAnswerEngine:
                     disposition="pause",
                 )
 
-            # Target jurisdiction could not be deterministically parsed from question
             return ApplicationAnswer(
                 opportunity_id=opportunity.id,
                 opportunity_content_hash=opportunity.content_hash,
@@ -348,9 +343,23 @@ class ApplicationAnswerEngine:
                 disposition="pause",
             )
 
-        # 7. SPONSORSHIP (Yellow Answer from TailoringPolicy)
+        # 7. SPONSORSHIP (Yellow Answer ONLY if explicitly configured in TailoringPolicy)
         if field.ontology_type == FieldOntologyType.SPONSORSHIP:
-            ans = "No"  # Standard default preference: candidate does not require sponsorship
+            if self.policy.default_sponsorship_required is not None:
+                ans = "Yes" if self.policy.default_sponsorship_required else "No"
+                return ApplicationAnswer(
+                    opportunity_id=opportunity.id,
+                    opportunity_content_hash=opportunity.content_hash,
+                    action_id=action_id,
+                    field_type=field.ontology_type,
+                    original_label=field.label,
+                    normalized_question=field.normalized_label,
+                    answer=ans,
+                    answer_class=AnswerClass.YELLOW,
+                    answer_source="tailoring_policy:sponsorship",
+                    policy_source=f"TailoringPolicy.{self.policy.version}.default_sponsorship_required",
+                    disposition="auto_fill",
+                )
             return ApplicationAnswer(
                 opportunity_id=opportunity.id,
                 opportunity_content_hash=opportunity.content_hash,
@@ -358,17 +367,29 @@ class ApplicationAnswerEngine:
                 field_type=field.ontology_type,
                 original_label=field.label,
                 normalized_question=field.normalized_label,
-                answer=ans,
-                answer_class=AnswerClass.YELLOW,
-                answer_source="tailoring_policy:sponsorship",
-                policy_source=f"TailoringPolicy.{self.policy.version}.default_sponsorship",
-                disposition="auto_fill",
+                answer=None,
+                answer_class=AnswerClass.RED,
+                answer_source="unconfigured_sponsorship_policy",
+                disposition="pause",
             )
 
-        # 8. AVAILABILITY & NOTICE PERIOD (Yellow Answer from TailoringPolicy)
+        # 8. AVAILABILITY & NOTICE PERIOD (Yellow Answer ONLY if explicitly configured)
         if field.ontology_type == FieldOntologyType.AVAILABILITY:
-            notice_days = self.policy.default_notice_period_days or 30
-            ans = f"{notice_days} days"
+            if self.policy.default_notice_period_days is not None:
+                ans = f"{self.policy.default_notice_period_days} days"
+                return ApplicationAnswer(
+                    opportunity_id=opportunity.id,
+                    opportunity_content_hash=opportunity.content_hash,
+                    action_id=action_id,
+                    field_type=field.ontology_type,
+                    original_label=field.label,
+                    normalized_question=field.normalized_label,
+                    answer=ans,
+                    answer_class=AnswerClass.YELLOW,
+                    answer_source="tailoring_policy:notice_period",
+                    policy_source=f"TailoringPolicy.{self.policy.version}.default_notice_period_days",
+                    disposition="auto_fill",
+                )
             return ApplicationAnswer(
                 opportunity_id=opportunity.id,
                 opportunity_content_hash=opportunity.content_hash,
@@ -376,18 +397,18 @@ class ApplicationAnswerEngine:
                 field_type=field.ontology_type,
                 original_label=field.label,
                 normalized_question=field.normalized_label,
-                answer=ans,
-                answer_class=AnswerClass.YELLOW,
-                answer_source="tailoring_policy:notice_period",
-                policy_source=f"TailoringPolicy.{self.policy.version}.default_notice_period_days",
-                disposition="auto_fill",
+                answer=None,
+                answer_class=AnswerClass.RED,
+                answer_source="unconfigured_notice_period_policy",
+                disposition="pause",
             )
 
-        # 9. COMPENSATION (Yellow Answer from TailoringPolicy)
+        # 9. COMPENSATION (Yellow Answer ONLY if rate AND currency explicitly configured)
         if field.ontology_type == FieldOntologyType.COMPENSATION:
             rate = self.policy.default_hourly_rate or self.policy.default_daily_rate
-            if rate is not None:
-                ans = f"{self.policy.default_currency} {rate}"
+            currency = self.policy.default_currency
+            if rate is not None and currency:
+                ans = f"{currency} {rate}"
                 return ApplicationAnswer(
                     opportunity_id=opportunity.id,
                     opportunity_content_hash=opportunity.content_hash,
@@ -401,6 +422,18 @@ class ApplicationAnswerEngine:
                     policy_source=f"TailoringPolicy.{self.policy.version}.default_rate",
                     disposition="auto_fill",
                 )
+            return ApplicationAnswer(
+                opportunity_id=opportunity.id,
+                opportunity_content_hash=opportunity.content_hash,
+                action_id=action_id,
+                field_type=field.ontology_type,
+                original_label=field.label,
+                normalized_question=field.normalized_label,
+                answer=None,
+                answer_class=AnswerClass.RED,
+                answer_source="unconfigured_compensation_policy",
+                disposition="pause",
+            )
 
         # 10. RED QUESTIONS (Legal, Demographics, Clearance, Conflict, Narrative, or Unknown)
         return ApplicationAnswer(

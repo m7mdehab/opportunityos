@@ -302,6 +302,7 @@ class TailoringPolicy:
     default_currency: str = "USD"
     default_availability_hours_per_week: int | None = None
     default_notice_period_days: int | None = None
+    default_sponsorship_required: bool | None = None
     business_legal_name: str | None = None
     business_registration_country: str | None = None
     tax_identifier_available: bool = False

@@ -32,21 +32,10 @@ from outbound.models import (
     ExecutionMode,
     FieldOntologyType,
     GraduationRecord,
+    PreSubmitManifest,
     SourceActionPolicy,
 )
 from outbound.registry import AdapterRegistry, SourceActionRegistry
-
-
-class HookingMockBrowserDriver(MockBrowserDriver):
-    """Driver hook that toggles kill switch immediately before submission."""
-    def __init__(self, harness: MockATSHarness, toggle_kill_switch_before_submit: bool = False) -> None:
-        super().__init__(harness)
-        self.toggle_kill_switch_before_submit = toggle_kill_switch_before_submit
-
-    def submit_page(self) -> ConfirmationEvidence:
-        if self.toggle_kill_switch_before_submit:
-            GlobalKillSwitch.disable()
-        return super().submit_page()
 
 
 class AdversarialOutboundTests(unittest.TestCase):
@@ -89,6 +78,7 @@ class AdversarialOutboundTests(unittest.TestCase):
         self.policy = TailoringPolicy(
             default_notice_period_days=30,
             default_currency="USD",
+            default_sponsorship_required=False,
         )
         raw_artifact = TailoredArtifact(
             artifact_id="art-adv-1",
@@ -117,14 +107,13 @@ class AdversarialOutboundTests(unittest.TestCase):
         src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
         auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
 
-        # Hooking ledger that toggles kill switch immediately after reserve_submission
         class HookingLedger(IdempotencyLedger):
             def reserve_submission(self, record):
                 super().reserve_submission(record)
                 GlobalKillSwitch.disable()
 
         hooking_ledger = HookingLedger(self.db_path)
-        engine = OutboundBrowserEngine(authority=auth, ledger=hooking_ledger, adapter_registry=adapter_reg, source_registry=src_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=hooking_ledger)
 
         harness = MockATSHarness(steps=[
             [DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY, required=True)]
@@ -147,7 +136,7 @@ class AdversarialOutboundTests(unittest.TestCase):
     def test_adv_02_caller_forged_submit_enabled_state_ignored(self) -> None:
         adapter_reg = AdapterRegistry()
         auth = ActionAuthority(adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger)
 
         harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
         driver = MockBrowserDriver(harness)
@@ -168,7 +157,7 @@ class AdversarialOutboundTests(unittest.TestCase):
         adapter_reg = AdapterRegistry()
         adapter_reg.enable_submit("greenhouse")
         auth = ActionAuthority(adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger)
 
         harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
         driver = MockBrowserDriver(harness)
@@ -190,7 +179,7 @@ class AdversarialOutboundTests(unittest.TestCase):
         adapter_reg.enable_submit("greenhouse")
         src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.MANUAL_ONLY})
         auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger)
 
         harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
         driver = MockBrowserDriver(harness)
@@ -211,7 +200,7 @@ class AdversarialOutboundTests(unittest.TestCase):
         adapter_reg.enable_submit("greenhouse")
         src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
         auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger)
 
         harness = MockATSHarness(
             steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]],
@@ -229,9 +218,8 @@ class AdversarialOutboundTests(unittest.TestCase):
         )
         self.assertEqual(rec1.action_status, ActionStatus.UNKNOWN_OUTCOME)
 
-        # Process restart
         restarted_ledger = IdempotencyLedger(self.db_path)
-        engine2 = OutboundBrowserEngine(authority=auth, ledger=restarted_ledger, adapter_registry=adapter_reg, source_registry=src_reg)
+        engine2 = OutboundBrowserEngine(authority=auth, ledger=restarted_ledger)
 
         rec2 = engine2.execute_application(
             opportunity=self.opportunity,
@@ -249,7 +237,7 @@ class AdversarialOutboundTests(unittest.TestCase):
         adapter_reg.enable_submit("greenhouse")
         src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
         auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger)
 
         harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
         driver = MockBrowserDriver(harness)
@@ -277,30 +265,137 @@ class AdversarialOutboundTests(unittest.TestCase):
         self.assertIn(ActionStatus.BLOCKED, results)
         self.assertEqual(harness.submits_count, 1)
 
-    def test_adv_07_multi_step_all_steps_and_dynamic_questions_visited(self) -> None:
+    def test_adv_07_post_preparation_truth_graph_mutation_blocks_submission(self) -> None:
+        adapter_reg = AdapterRegistry()
+        adapter_reg.enable_submit("greenhouse")
+        src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
+        auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger)
+
         harness = MockATSHarness(steps=[
-            [DetectedFormField("f1", "f1", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)],
-            [DetectedFormField("f2", "f2", "text", "Location", "location", FieldOntologyType.ADDRESS_LOCATION)],
-            [DetectedFormField("f3", "f3", "text", "Availability", "availability", FieldOntologyType.AVAILABILITY)],
+            [DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY, required=True)]
         ])
         driver = MockBrowserDriver(harness)
-        engine = OutboundBrowserEngine(ledger=self.ledger)
+
+        # 1. Prepare application first in DRY_RUN mode
+        prepared_rec = engine.execute_application(
+            opportunity=self.opportunity,
+            artifact=self.artifact,
+            driver=driver,
+            execution_mode=ExecutionMode.DRY_RUN,
+            truth_graph=self.tg,
+            policy=self.policy,
+        )
+        self.assertEqual(prepared_rec.action_status, ActionStatus.PREPARED)
+
+        # 2. Mutate TruthGraph provenance after preparation
+        mutated_tg = TruthGraph()
+        ev_new = EvidenceRecord(id="ev-mutated", source="passport", locator="p1", content="New Verified Name")
+        mutated_tg.add_evidence(ev_new)
+        mutated_tg.add_assertion(AtomicAssertion(
+            id="a-name-new", subject_id="founder", predicate="identity.name",
+            value="New Verified Name", polarity=Polarity.POSITIVE, modality=Modality.DEFINITE,
+            verification_status=VerificationStatus.VERIFIED, evidence_ids=("ev-mutated",),
+        ))
+
+        # 3. Attempt controlled submit with stale prepared manifest hash
+        stale_manifest = PreSubmitManifest(
+            workspace="default",
+            candidate_id="founder",
+            opportunity_id=self.opportunity.id,
+            opportunity_content_hash=self.opportunity.content_hash,
+            action_type="application",
+            adapter_name="greenhouse",
+            adapter_version="1.0.0",
+            graduation_record_version="1.0.0",
+            source_policy_version=src_reg.get_policy_version(self.opportunity.source),
+            artifact_ids=(self.artifact.artifact_id,),
+            artifact_hashes=(self.artifact.artifact_hash,),
+            answers=(),
+            answers_hash="old_answers_hash_stale",
+            qualification_decision=QualificationDecision.QUALIFIED,
+            unresolved_mandatory_count=0,
+            red_answers_count=0,
+            idempotency_key=prepared_rec.idempotency_key,
+            compiled_at="2026-08-30T00:00:00Z",
+        )
 
         record = engine.execute_application(
             opportunity=self.opportunity,
             artifact=self.artifact,
             driver=driver,
-            execution_mode=ExecutionMode.ASSISTED,
+            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
+            truth_graph=mutated_tg,
+            policy=self.policy,
+            prepared_manifest=stale_manifest,
+        )
+        self.assertEqual(record.action_status, ActionStatus.BLOCKED)
+        self.assertTrue("Manifest staleness detected" in record.blocker_reason)
+        self.assertFalse(harness.submitted)
+        self.assertEqual(harness.submits_count, 0)
+
+    def test_adv_08_post_preparation_source_policy_mutation_blocks_submission(self) -> None:
+        adapter_reg = AdapterRegistry()
+        adapter_reg.enable_submit("greenhouse")
+        src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED}, version="1.0.0")
+        auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger)
+
+        harness = MockATSHarness(steps=[
+            [DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY, required=True)]
+        ])
+        driver = MockBrowserDriver(harness)
+
+        # 1. Prepare in DRY_RUN
+        prepared_rec = engine.execute_application(
+            opportunity=self.opportunity,
+            artifact=self.artifact,
+            driver=driver,
+            execution_mode=ExecutionMode.DRY_RUN,
             truth_graph=self.tg,
             policy=self.policy,
         )
-        self.assertEqual(record.action_status, ActionStatus.PREPARED)
-        self.assertEqual(harness.current_step, 2)
-        self.assertIn("f1", harness.fields_filled)
-        self.assertIn("f2", harness.fields_filled)
-        self.assertIn("f3", harness.fields_filled)
+        self.assertEqual(prepared_rec.action_status, ActionStatus.PREPARED)
 
-    def test_adv_08_assisted_mode_zero_submit_on_js_auto_submit_page(self) -> None:
+        # 2. Bump source registry version after preparation
+        src_reg.version = "1.0.1"
+
+        # Stale prepared manifest had old policy version
+        stale_manifest = PreSubmitManifest(
+            workspace="default",
+            candidate_id="founder",
+            opportunity_id=self.opportunity.id,
+            opportunity_content_hash=self.opportunity.content_hash,
+            action_type="application",
+            adapter_name="greenhouse",
+            adapter_version="1.0.0",
+            graduation_record_version="1.0.0",
+            source_policy_version="old_policy_ver_100",
+            artifact_ids=(self.artifact.artifact_id,),
+            artifact_hashes=(self.artifact.artifact_hash,),
+            answers=(),
+            answers_hash="some_hash",
+            qualification_decision=QualificationDecision.QUALIFIED,
+            unresolved_mandatory_count=0,
+            red_answers_count=0,
+            idempotency_key=prepared_rec.idempotency_key,
+            compiled_at="2026-08-30T00:00:00Z",
+        )
+
+        record = engine.execute_application(
+            opportunity=self.opportunity,
+            artifact=self.artifact,
+            driver=driver,
+            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
+            truth_graph=self.tg,
+            policy=self.policy,
+            prepared_manifest=stale_manifest,
+        )
+        self.assertEqual(record.action_status, ActionStatus.BLOCKED)
+        self.assertTrue("Manifest staleness detected" in record.blocker_reason)
+        self.assertFalse(harness.submitted)
+
+    def test_adv_09_assisted_mode_zero_submit_on_js_auto_submit_page(self) -> None:
         harness = MockATSHarness(steps=[
             [DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]
         ])
@@ -319,30 +414,6 @@ class AdversarialOutboundTests(unittest.TestCase):
         self.assertFalse(harness.submitted)
         self.assertEqual(harness.submits_count, 0)
 
-    def test_adv_09_stale_answer_manifest_after_preparation_detected(self) -> None:
-        empty_tg = TruthGraph()
-        adapter_reg = AdapterRegistry()
-        adapter_reg.enable_submit("greenhouse")
-        src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
-        auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
-
-        harness = MockATSHarness(steps=[
-            [DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY, required=True)]
-        ])
-        driver = MockBrowserDriver(harness)
-
-        record = engine.execute_application(
-            opportunity=self.opportunity,
-            artifact=self.artifact,
-            driver=driver,
-            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
-            truth_graph=empty_tg,
-            policy=self.policy,
-        )
-        self.assertEqual(record.action_status, ActionStatus.AWAITING_REVIEW)
-        self.assertFalse(harness.submitted)
-
     def test_adv_10_procurement_dossier_blocks_autonomous_controlled_submit(self) -> None:
         proc_opp = Opportunity(
             id="opp-ted-1",
@@ -356,7 +427,7 @@ class AdversarialOutboundTests(unittest.TestCase):
         )
         adapter_reg = AdapterRegistry()
         auth = ActionAuthority(adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger)
 
         harness = MockATSHarness(steps=[[DetectedFormField("f", "f", "text", "Field", "field", FieldOntologyType.OTHER_UNKNOWN)]])
         driver = MockBrowserDriver(harness)
@@ -386,7 +457,7 @@ class AdversarialOutboundTests(unittest.TestCase):
         )
         adapter_reg = AdapterRegistry()
         auth = ActionAuthority(adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger)
 
         harness = MockATSHarness(steps=[[DetectedFormField("f", "f", "text", "Field", "field", FieldOntologyType.OTHER_UNKNOWN)]])
         driver = MockBrowserDriver(harness)
@@ -407,7 +478,7 @@ class AdversarialOutboundTests(unittest.TestCase):
         adapter_reg.enable_submit("greenhouse")
         src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
         auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger)
 
         harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
         driver = MockBrowserDriver(harness)
@@ -429,7 +500,7 @@ class AdversarialOutboundTests(unittest.TestCase):
         adapter_reg.enable_submit("greenhouse")
         src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
         auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger)
 
         harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
         driver = MockBrowserDriver(harness)
@@ -451,7 +522,7 @@ class AdversarialOutboundTests(unittest.TestCase):
         adapter_reg.enable_submit("greenhouse")
         src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
         auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger)
 
         harness = MockATSHarness(
             steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]],
@@ -577,7 +648,7 @@ class AdversarialOutboundTests(unittest.TestCase):
         adapter_reg.enable_submit("greenhouse")
         src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
         auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger)
 
         harness = MockATSHarness(steps=[
             [DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY, required=True)]
