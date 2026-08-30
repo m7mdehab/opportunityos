@@ -6,6 +6,7 @@ from typing import Any
 
 from opportunity.adapters.base import BaseAdapter
 from opportunity.models import (
+    CompensationInterval,
     DerivationType,
     FieldProvenance,
     Opportunity,
@@ -123,6 +124,14 @@ class RemotiveAdapter(BaseAdapter):
                 prov_list.append(create_field_provenance("requirements", (raw_desc or "")[:50], f"{len(requirements)} items", DerivationType.RULE_DERIVATION, f"{item_pointer}.description", record_checksum, "extract_requirements"))
             if comp is not None:
                 prov_list.append(create_field_provenance("compensation", str(job.get("salary") or description[:50]), f"{comp.min_amount}-{comp.max_amount} {comp.currency}", DerivationType.RULE_DERIVATION, f"{item_pointer}.salary", record_checksum, "extract_compensation"))
+                if comp.min_amount is not None:
+                    prov_list.append(create_field_provenance("compensation.min_amount", str(job.get("salary") or description[:50]), str(comp.min_amount), DerivationType.RULE_DERIVATION, f"{item_pointer}.salary", record_checksum, "extract_compensation"))
+                if comp.max_amount is not None:
+                    prov_list.append(create_field_provenance("compensation.max_amount", str(job.get("salary") or description[:50]), str(comp.max_amount), DerivationType.RULE_DERIVATION, f"{item_pointer}.salary", record_checksum, "extract_compensation"))
+                if comp.currency is not None:
+                    prov_list.append(create_field_provenance("compensation.currency", str(job.get("salary") or description[:50]), comp.currency, DerivationType.RULE_DERIVATION, f"{item_pointer}.salary", record_checksum, "extract_compensation"))
+                if comp.interval != CompensationInterval.UNSPECIFIED:
+                    prov_list.append(create_field_provenance("compensation.interval", str(job.get("salary") or description[:50]), comp.interval.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.salary", record_checksum, "extract_compensation"))
             if posted_date:
                 prov_list.append(create_field_provenance("posted_date", raw_pub, posted_date, DerivationType.RAW_EXTRACTION, f"{item_pointer}.publication_date", record_checksum, "parse_iso_date"))
 

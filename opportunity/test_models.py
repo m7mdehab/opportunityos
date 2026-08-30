@@ -100,6 +100,9 @@ class TestOpportunityModels(unittest.TestCase):
             "responsibilities",
             "requirements",
             "compensation",
+            "compensation.min_amount",
+            "compensation.max_amount",
+            "compensation.currency",
             "posted_date",
             "track",
             "organization",
@@ -118,6 +121,68 @@ class TestOpportunityModels(unittest.TestCase):
                 val_res, val_err = validate_opportunity_provenance(mutated_opp)
                 self.assertFalse(val_res, f"Expected validation to fail when '{field_to_remove}' provenance is missing")
                 self.assertIn("Missing provenance", val_err)
+
+    def test_compensation_atomic_subfield_provenance_regressions(self) -> None:
+        """Generic 'compensation' provenance cannot substitute for missing atomic subfield provenance."""
+        comp = Compensation(
+            min_amount=120000.0,
+            max_amount=180000.0,
+            currency="USD",
+            interval=CompensationInterval.YEARLY,
+        )
+        base_provs = (
+            FieldProvenance("track", "full_time", "employment", "rule_derivation", "p:0", "chk1", "r1"),
+            FieldProvenance("organization", "Acme", "Acme", "raw_extraction", "p:1", "chk1", "r1"),
+            FieldProvenance("title", "Engineer", "Engineer", "raw_extraction", "p:2", "chk1", "r1"),
+            FieldProvenance("description", "Desc", "Desc", "raw_extraction", "p:3", "chk1", "r1"),
+            FieldProvenance("compensation", "$120k-$180k USD", "120000-180000 USD", "rule_derivation", "p:4", "chk1", "r1"),
+            FieldProvenance("compensation.min_amount", "120000", "120000", "rule_derivation", "p:4", "chk1", "r1"),
+            FieldProvenance("compensation.max_amount", "180000", "180000", "rule_derivation", "p:4", "chk1", "r1"),
+            FieldProvenance("compensation.currency", "USD", "USD", "rule_derivation", "p:4", "chk1", "r1"),
+            FieldProvenance("compensation.interval", "yearly", "yearly", "rule_derivation", "p:4", "chk1", "r1"),
+        )
+        opp = Opportunity(
+            id="test:1",
+            track=Track.EMPLOYMENT,
+            source="test",
+            source_url="https://example.com",
+            source_id="1",
+            organization="Acme",
+            title="Engineer",
+            description="Desc",
+            compensation=comp,
+            field_provenances=base_provs,
+        )
+        valid, err = validate_opportunity_provenance(opp)
+        self.assertTrue(valid, err)
+
+        # 1. Remove ONLY compensation.currency while generic compensation remains
+        no_curr_provs = tuple(fp for fp in base_provs if fp.field_name != "compensation.currency")
+        no_curr_opp = dataclasses.replace(opp, field_provenances=no_curr_provs)
+        v_res, v_err = validate_opportunity_provenance(no_curr_opp)
+        self.assertFalse(v_res)
+        self.assertIn("compensation.currency", v_err)
+
+        # 2. Remove ONLY compensation.min_amount
+        no_min_provs = tuple(fp for fp in base_provs if fp.field_name != "compensation.min_amount")
+        no_min_opp = dataclasses.replace(opp, field_provenances=no_min_provs)
+        v_res, v_err = validate_opportunity_provenance(no_min_opp)
+        self.assertFalse(v_res)
+        self.assertIn("compensation.min_amount", v_err)
+
+        # 3. Remove ONLY compensation.max_amount
+        no_max_provs = tuple(fp for fp in base_provs if fp.field_name != "compensation.max_amount")
+        no_max_opp = dataclasses.replace(opp, field_provenances=no_max_provs)
+        v_res, v_err = validate_opportunity_provenance(no_max_opp)
+        self.assertFalse(v_res)
+        self.assertIn("compensation.max_amount", v_err)
+
+        # 4. Remove ONLY compensation.interval
+        no_int_provs = tuple(fp for fp in base_provs if fp.field_name != "compensation.interval")
+        no_int_opp = dataclasses.replace(opp, field_provenances=no_int_provs)
+        v_res, v_err = validate_opportunity_provenance(no_int_opp)
+        self.assertFalse(v_res)
+        self.assertIn("compensation.interval", v_err)
 
     def test_procurement_provenance_individual_removal_regressions(self) -> None:
         """Removing CPV, buyer, or deadline provenance on procurement notice MUST fail."""
