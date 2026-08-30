@@ -46,3 +46,4 @@ We establish the `matching/` package as the single authoritative subsystem for q
 
 - **Positive:** Guarantees zero hallucinated claims, explains every match score transparently, prevents destructive loss of viable opportunities due to missing data, and maintains an auditable bridge between opportunity requirements and verified evidence.
 - **Negative:** Requires rigorous maintenance of requirement-to-evidence mappings and strict adherence to claim validation rules.
+

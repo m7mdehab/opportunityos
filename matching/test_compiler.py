@@ -21,6 +21,7 @@ class TestArtifactCompilers(unittest.TestCase):
                 default_availability_hours_per_week=40,
                 business_legal_name="Advisory Services LLC",
                 business_registration_country="Egypt",
+                guarantees_policy="standard_commercial_warranty",
             )
         )
 

@@ -45,31 +45,6 @@ class EmploymentArtifactCompiler:
             a for a in truth_graph.assertions.values()
             if a.predicate == "employment.title" and a.verification_status == VerificationStatus.VERIFIED
         ]
-        top_title = str(title_assertions[0].value) if title_assertions else "Engineering Leader & Distributed Systems Architect"
-        summary_text = (
-            f"Accomplished {top_title} specializing in resilient cloud infrastructure, "
-            f"distributed systems, and scalable software platforms. Proven track record of delivering "
-            f"high-reliability technical solutions across complex international environments."
-        )
-        sec_summary = ArtifactSection(
-            section_id="summary",
-            heading="Professional Summary",
-            content=summary_text,
-            items=(),
-            assertion_ids=tuple(a.id for a in title_assertions),
-            evidence_ids=tuple(ev for a in title_assertions for ev in a.evidence_ids),
-        )
-        sections.append(sec_summary)
-        claims.append(GeneratedClaim(
-            claim_id="claim-summary-title",
-            text=summary_text,
-            section_id="summary",
-            assertion_ids=tuple(a.id for a in title_assertions),
-            evidence_ids=tuple(ev for a in title_assertions for ev in a.evidence_ids),
-            is_forward_commitment=False,
-        ))
-
-        # 2. Selected Relevant Technical Skills Section
         founder_skills = [
             a for a in truth_graph.assertions.values()
             if a.predicate == "skill.name" and a.verification_status == VerificationStatus.VERIFIED
@@ -80,25 +55,61 @@ class EmploymentArtifactCompiler:
         other_skills = [s for s in founder_skills if str(s.value).casefold() not in opp_skills_cf]
         ordered_skills = (relevant_skills + other_skills)[:self.policy.max_skills_highlighted]
 
-        skill_names = tuple(str(s.value) for s in ordered_skills)
-        sec_skills = ArtifactSection(
-            section_id="skills",
-            heading="Technical Skills & Competencies",
-            content=", ".join(skill_names),
-            items=skill_names,
-            assertion_ids=tuple(s.id for s in ordered_skills),
-            evidence_ids=tuple(ev for s in ordered_skills for ev in s.evidence_ids),
-        )
-        sections.append(sec_skills)
-        for s in ordered_skills:
+        if title_assertions:
+            top_title = str(title_assertions[0].value)
+            if ordered_skills:
+                skill_str = ", ".join(str(s.value) for s in ordered_skills[:3])
+                summary_text = f"Professional background as {top_title} with verified competencies in {skill_str}."
+                summary_aids = (title_assertions[0].id,) + tuple(s.id for s in ordered_skills[:3])
+                summary_eids = tuple(sorted(set(title_assertions[0].evidence_ids + tuple(ev for s in ordered_skills[:3] for ev in s.evidence_ids))))
+            else:
+                summary_text = f"Professional background as {top_title}."
+                summary_aids = (title_assertions[0].id,)
+                summary_eids = title_assertions[0].evidence_ids
+
+            sec_summary = ArtifactSection(
+                section_id="summary",
+                heading="Professional Summary",
+                content=summary_text,
+                items=(),
+                assertion_ids=summary_aids,
+                evidence_ids=summary_eids,
+            )
+            sections.append(sec_summary)
             claims.append(GeneratedClaim(
-                claim_id=f"claim-skill-{s.id}",
-                text=str(s.value),
-                section_id="skills",
-                assertion_ids=(s.id,),
-                evidence_ids=s.evidence_ids,
+                claim_id="claim-summary-title",
+                text=summary_text,
+                section_id="summary",
+                assertion_ids=summary_aids,
+                evidence_ids=summary_eids,
+                predicate="summary",
+                authorized_value=summary_text,
                 is_forward_commitment=False,
             ))
+
+        # 2. Selected Relevant Technical Skills Section
+        if ordered_skills:
+            skill_names = tuple(str(s.value) for s in ordered_skills)
+            sec_skills = ArtifactSection(
+                section_id="skills",
+                heading="Technical Skills & Competencies",
+                content=", ".join(skill_names),
+                items=skill_names,
+                assertion_ids=tuple(s.id for s in ordered_skills),
+                evidence_ids=tuple(sorted(set(ev for s in ordered_skills for ev in s.evidence_ids))),
+            )
+            sections.append(sec_skills)
+            for s in ordered_skills:
+                claims.append(GeneratedClaim(
+                    claim_id=f"claim-skill-{s.id}",
+                    text=str(s.value),
+                    section_id="skills",
+                    assertion_ids=(s.id,),
+                    evidence_ids=s.evidence_ids,
+                    predicate="skill.name",
+                    authorized_value=str(s.value),
+                    is_forward_commitment=False,
+                ))
 
         # 3. Relevant Professional Experience Section
         emp_records = {}
@@ -115,11 +126,27 @@ class EmploymentArtifactCompiler:
 
         for subj, assertions in emp_records.items():
             field_dict = {a.predicate.split(".", 1)[1]: str(a.value) for a in assertions}
-            title = field_dict.get("title", "Software Engineer")
-            org = field_dict.get("organization", "Technology Enterprise")
-            start = field_dict.get("start_date", "")
-            end = field_dict.get("end_date", "Present")
-            exp_header = f"{title} | {org} ({start} – {end})"
+            title = field_dict.get("title")
+            org = field_dict.get("organization")
+            start = field_dict.get("start_date")
+            end = field_dict.get("end_date")
+
+            if title and org:
+                exp_header = f"{title} | {org}"
+            elif title:
+                exp_header = title
+            elif org:
+                exp_header = org
+            else:
+                exp_header = f"Experience Record ({subj})"
+
+            if start and end:
+                exp_header += f" ({start} – {end})"
+            elif start:
+                exp_header += f" ({start} – )"
+            elif end:
+                exp_header += f" ( – {end})"
+
             exp_items.append(exp_header)
             exp_assertion_ids.extend(a.id for a in assertions)
             for a in assertions:
@@ -131,18 +158,21 @@ class EmploymentArtifactCompiler:
                 section_id="experience",
                 assertion_ids=tuple(a.id for a in assertions),
                 evidence_ids=tuple(ev for a in assertions for ev in a.evidence_ids),
+                predicate="employment.record",
+                authorized_value=exp_header,
                 is_forward_commitment=False,
             ))
 
-        sec_exp = ArtifactSection(
-            section_id="experience",
-            heading="Professional Experience",
-            content="\n".join(exp_items),
-            items=tuple(exp_items),
-            assertion_ids=tuple(exp_assertion_ids),
-            evidence_ids=tuple(sorted(set(exp_evidence_ids))),
-        )
-        sections.append(sec_exp)
+        if exp_items:
+            sec_exp = ArtifactSection(
+                section_id="experience",
+                heading="Professional Experience",
+                content="\n".join(exp_items),
+                items=tuple(exp_items),
+                assertion_ids=tuple(exp_assertion_ids),
+                evidence_ids=tuple(sorted(set(exp_evidence_ids))),
+            )
+            sections.append(sec_exp)
 
         # 4. Verified Metrics & Key Achievements Section
         metric_assertions = [
@@ -165,6 +195,8 @@ class EmploymentArtifactCompiler:
                 section_id="achievements",
                 assertion_ids=(m.id,),
                 evidence_ids=m.evidence_ids,
+                predicate="metric",
+                authorized_value=m_text,
                 is_forward_commitment=False,
             ))
 
@@ -218,60 +250,99 @@ class EmploymentArtifactCompiler:
             a for a in truth_graph.assertions.values()
             if a.predicate == "employment.title" and a.verification_status == VerificationStatus.VERIFIED
         ]
-        top_title = str(title_assertions[0].value) if title_assertions else "Engineering Leader"
+        founder_skills = [
+            a for a in truth_graph.assertions.values()
+            if a.predicate == "skill.name" and a.verification_status == VerificationStatus.VERIFIED
+        ]
 
-        intro_text = (
-            f"I am writing to express my strong interest in the {opp.title} position at {opp.organization}. "
-            f"As an experienced {top_title} with a background in designing high-reliability systems, "
-            f"I have led technical initiatives that directly address the core requirements of your engineering team."
-        )
+        if title_assertions:
+            top_title = str(title_assertions[0].value)
+            intro_text = (
+                f"I am writing to express my interest in the {opp.title} position at {opp.organization}. "
+                f"My verified professional background as {top_title} aligns with the requirements of this role."
+            )
+            intro_aids = (title_assertions[0].id,)
+            intro_eids = title_assertions[0].evidence_ids
+        else:
+            intro_text = f"I am writing to express my interest in the {opp.title} position at {opp.organization}."
+            intro_aids = ()
+            intro_eids = ()
+
         sections.append(ArtifactSection(
             section_id="introduction",
             heading="Introduction & Motivation",
             content=intro_text,
             items=(),
-            assertion_ids=tuple(a.id for a in title_assertions),
-            evidence_ids=tuple(ev for a in title_assertions for ev in a.evidence_ids),
+            assertion_ids=intro_aids,
+            evidence_ids=intro_eids,
         ))
         claims.append(GeneratedClaim(
             claim_id="claim-cover-intro",
             text=intro_text,
             section_id="introduction",
-            assertion_ids=tuple(a.id for a in title_assertions),
-            evidence_ids=tuple(ev for a in title_assertions for ev in a.evidence_ids),
+            assertion_ids=intro_aids,
+            evidence_ids=intro_eids,
+            predicate="employment.title" if intro_aids else "",
+            authorized_value=top_title if title_assertions else "",
+            is_forward_commitment=False,
         ))
 
         # Alignment Body Section
-        body_text = (
-            f"My technical expertise aligns closely with {opp.organization}'s scope. "
-            f"Throughout my career, I have prioritized operational rigor, architectural resilience, "
-            f"and maintainable engineering standards across international distributed environments."
-        )
+        opp_skills_cf = {s.casefold() for s in opp.skills}
+        relevant_skills = [s for s in founder_skills if str(s.value).casefold() in opp_skills_cf]
+        if relevant_skills:
+            skill_names = ", ".join(str(s.value) for s in relevant_skills)
+            body_text = f"My verified competencies in {skill_names} directly correspond to {opp.organization}'s technical scope."
+            body_aids = tuple(s.id for s in relevant_skills)
+            body_eids = tuple(sorted(set(ev for s in relevant_skills for ev in s.evidence_ids)))
+        elif title_assertions:
+            body_text = f"My verified experience as {top_title} provides solid background for this position."
+            body_aids = (title_assertions[0].id,)
+            body_eids = title_assertions[0].evidence_ids
+        else:
+            body_text = f"I look forward to discussing how my experience aligns with {opp.organization}'s engineering goals."
+            body_aids = ()
+            body_eids = ()
+
         sections.append(ArtifactSection(
             section_id="alignment",
             heading="Relevant Experience & Value Proposition",
             content=body_text,
             items=(),
-            assertion_ids=tuple(a.id for a in title_assertions),
-            evidence_ids=tuple(ev for a in title_assertions for ev in a.evidence_ids),
+            assertion_ids=body_aids,
+            evidence_ids=body_eids,
         ))
         claims.append(GeneratedClaim(
             claim_id="claim-cover-body",
             text=body_text,
             section_id="alignment",
-            assertion_ids=tuple(a.id for a in title_assertions),
-            evidence_ids=tuple(ev for a in title_assertions for ev in a.evidence_ids),
+            assertion_ids=body_aids,
+            evidence_ids=body_eids,
+            predicate="skill.name" if relevant_skills else ("employment.title" if title_assertions else ""),
+            authorized_value=body_text,
+            is_forward_commitment=False,
         ))
 
-        commitments = (
-            ForwardCommitment(
-                commitment_type="availability",
-                description="General full-time engagement availability",
-                status=CommitmentStatus.RESOLVED,
-                value="Full-time remote availability",
-                policy_source="TailoringPolicy",
-            ),
-        )
+        if self.policy.default_availability_hours_per_week is not None:
+            commitments = (
+                ForwardCommitment(
+                    commitment_type="availability",
+                    description="Weekly engagement availability",
+                    status=CommitmentStatus.RESOLVED,
+                    value=f"{self.policy.default_availability_hours_per_week} hours / week availability",
+                    policy_source="TailoringPolicy.default_availability_hours_per_week",
+                ),
+            )
+        else:
+            commitments = (
+                ForwardCommitment(
+                    commitment_type="availability",
+                    description="Weekly engagement availability",
+                    status=CommitmentStatus.UNRESOLVED,
+                    value="UNRESOLVED (RED): Availability not configured in policy",
+                    policy_source="",
+                ),
+            )
 
         return TailoredArtifact(
             artifact_id=f"artifact-cover-{opp.id}",

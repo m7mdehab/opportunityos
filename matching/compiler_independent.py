@@ -72,26 +72,30 @@ class IndependentArtifactCompiler:
             if a.predicate == "service.name" and a.verification_status == VerificationStatus.VERIFIED
         ]
         srv_names = tuple(str(s.value) for s in service_assertions)
-        srv_content = (
-            f"Professional advisory and engineering services available for this assignment:\n" +
-            "\n".join(f"- {s}" for s in srv_names)
-        )
-        sections.append(ArtifactSection(
-            section_id="capabilities",
-            heading="Verified Core Capabilities & Service Offerings",
-            content=srv_content,
-            items=srv_names,
-            assertion_ids=tuple(s.id for s in service_assertions),
-            evidence_ids=tuple(ev for s in service_assertions for ev in s.evidence_ids),
-        ))
-        for s in service_assertions:
-            claims.append(GeneratedClaim(
-                claim_id=f"claim-srv-{s.id}",
-                text=str(s.value),
+        if service_assertions:
+            srv_content = (
+                f"Professional advisory and engineering services available for this assignment:\n" +
+                "\n".join(f"- {s}" for s in srv_names)
+            )
+            sections.append(ArtifactSection(
                 section_id="capabilities",
-                assertion_ids=(s.id,),
-                evidence_ids=s.evidence_ids,
+                heading="Verified Core Capabilities & Service Offerings",
+                content=srv_content,
+                items=srv_names,
+                assertion_ids=tuple(s.id for s in service_assertions),
+                evidence_ids=tuple(sorted(set(ev for s in service_assertions for ev in s.evidence_ids))),
             ))
+            for s in service_assertions:
+                claims.append(GeneratedClaim(
+                    claim_id=f"claim-srv-{s.id}",
+                    text=str(s.value),
+                    section_id="capabilities",
+                    assertion_ids=(s.id,),
+                    evidence_ids=s.evidence_ids,
+                    predicate="service.name",
+                    authorized_value=str(s.value),
+                    is_forward_commitment=False,
+                ))
 
         # 3. Verified Portfolio & Case Studies
         portfolio_assertions = [
@@ -99,22 +103,26 @@ class IndependentArtifactCompiler:
             if a.predicate == "portfolio.item" and a.verification_status == VerificationStatus.VERIFIED
         ]
         port_items = tuple(str(p.value) for p in portfolio_assertions)
-        sections.append(ArtifactSection(
-            section_id="case_studies",
-            heading="Relevant Project Experience & Case Studies",
-            content="\n".join(f"- {p}" for p in port_items) if port_items else "Case studies available upon request.",
-            items=port_items,
-            assertion_ids=tuple(p.id for p in portfolio_assertions),
-            evidence_ids=tuple(ev for p in portfolio_assertions for ev in p.evidence_ids),
-        ))
-        for p in portfolio_assertions:
-            claims.append(GeneratedClaim(
-                claim_id=f"claim-port-{p.id}",
-                text=str(p.value),
+        if portfolio_assertions:
+            sections.append(ArtifactSection(
                 section_id="case_studies",
-                assertion_ids=(p.id,),
-                evidence_ids=p.evidence_ids,
+                heading="Relevant Project Experience & Case Studies",
+                content="\n".join(f"- {p}" for p in port_items),
+                items=port_items,
+                assertion_ids=tuple(p.id for p in portfolio_assertions),
+                evidence_ids=tuple(sorted(set(ev for p in portfolio_assertions for ev in p.evidence_ids))),
             ))
+            for p in portfolio_assertions:
+                claims.append(GeneratedClaim(
+                    claim_id=f"claim-port-{p.id}",
+                    text=str(p.value),
+                    section_id="case_studies",
+                    assertion_ids=(p.id,),
+                    evidence_ids=p.evidence_ids,
+                    predicate="portfolio.item",
+                    authorized_value=str(p.value),
+                    is_forward_commitment=False,
+                ))
 
         # 4. Forward Commitments Checklist (Strict policy enforcement)
         # Commercial / Rate Commitment
@@ -180,13 +188,22 @@ class IndependentArtifactCompiler:
             ))
 
         # Warranties & Guarantees
-        commitments.append(ForwardCommitment(
-            commitment_type="guarantee",
-            description="Professional performance warranty",
-            status=CommitmentStatus.RESOLVED,
-            value=self.policy.guarantees_policy,
-            policy_source="TailoringPolicy.guarantees_policy",
-        ))
+        if self.policy.guarantees_policy is not None:
+            commitments.append(ForwardCommitment(
+                commitment_type="guarantee",
+                description="Professional performance warranty",
+                status=CommitmentStatus.RESOLVED,
+                value=self.policy.guarantees_policy,
+                policy_source="TailoringPolicy.guarantees_policy",
+            ))
+        else:
+            commitments.append(ForwardCommitment(
+                commitment_type="guarantee",
+                description="Professional performance warranty",
+                status=CommitmentStatus.UNRESOLVED,
+                value="UNRESOLVED (RED): Guarantee policy not configured in policy",
+                policy_source="",
+            ))
 
         # 5. Commitments Section in Artifact
         com_items = tuple(f"[{c.status.value.upper()}] {c.commitment_type.title()}: {c.value}" for c in commitments)

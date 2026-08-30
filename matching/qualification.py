@@ -12,7 +12,7 @@ from typing import Any
 
 from opportunity.models import Opportunity, RemotePolicy, Track
 from truth.graph import TruthGraph
-from truth.models import VerificationStatus
+from truth.models import Modality, Polarity, VerificationStatus
 
 from .models import (
     HardConstraintResult,
@@ -61,7 +61,7 @@ class QualificationEngine:
                     passed=False,
                     reason=f"Geographically excluded: {geo.reason}",
                     required_field="geographic_eligibility",
-                    founder_fact="Founder residence: MENA/Egypt",
+                    founder_fact=f"Policy exclusion: {geo.reason}",
                     is_hard_failure=True,
                     provenance_pointer=opp.raw_record_pointer,
                 ))
@@ -71,7 +71,7 @@ class QualificationEngine:
                     passed=True,
                     reason=f"Geographically eligible: {geo.reason}",
                     required_field="geographic_eligibility",
-                    founder_fact="Founder residence: MENA/Egypt",
+                    founder_fact=f"Eligible status: {geo.reason}",
                     is_hard_failure=False,
                     provenance_pointer=opp.raw_record_pointer,
                 ))
@@ -81,7 +81,7 @@ class QualificationEngine:
                     passed=None,
                     reason=f"Geographic eligibility uncertain: {geo.reason}",
                     required_field="geographic_eligibility",
-                    founder_fact="Founder residence: MENA/Egypt",
+                    founder_fact="Geographic eligibility requires applicant confirmation",
                     is_hard_failure=False,
                     provenance_pointer=opp.raw_record_pointer,
                 ))
@@ -91,24 +91,27 @@ class QualificationEngine:
                 passed=None,
                 reason="Opportunity lacks geographic classification metadata",
                 required_field="geographic_eligibility",
-                founder_fact="Founder residence: MENA/Egypt",
+                founder_fact="Geographic metadata unasserted",
                 is_hard_failure=False,
                 provenance_pointer=opp.raw_record_pointer,
             ))
 
         # 2. Remote Policy / On-Site Mandate
         if opp.remote_policy == RemotePolicy.ON_SITE:
-            # Check if location is outside founder's resident city (e.g. Cairo/Egypt)
-            loc_lower = opp.location_raw.casefold()
-            founder_in_loc = any(place in loc_lower for place in ("egypt", "cairo", "giza", "alexandria"))
-            if not founder_in_loc and opp.location_raw:
+            founder_locs = [
+                str(a.value).casefold()
+                for a in truth_graph.assertions.values()
+                if a.predicate in ("residence.country", "residence.city", "location.city", "location.country", "residence.jurisdiction")
+                and a.verification_status == VerificationStatus.VERIFIED
+            ]
+            if not founder_locs:
                 results.append(HardConstraintResult(
                     constraint_name="work_mode_onsite",
-                    passed=False,
-                    reason=f"Mandatory on-site attendance required at remote location: '{opp.location_raw}'",
+                    passed=None,
+                    reason=f"Mandatory on-site attendance required at '{opp.location_raw or 'unspecified location'}'; founder physical location not asserted in truth graph",
                     required_field="remote_policy",
-                    founder_fact="Founder physical location: Egypt (remote-first)",
-                    is_hard_failure=True,
+                    founder_fact="Founder physical location unasserted in truth graph",
+                    is_hard_failure=False,
                     provenance_pointer=f"{opp.raw_record_pointer}.location",
                 ))
             elif not opp.location_raw:
@@ -117,52 +120,68 @@ class QualificationEngine:
                     passed=None,
                     reason="On-site policy specified but location text is absent",
                     required_field="remote_policy",
-                    founder_fact="Founder physical location: Egypt (remote-first)",
+                    founder_fact=f"Founder verified location: {', '.join(founder_locs)}",
                     is_hard_failure=False,
                     provenance_pointer=f"{opp.raw_record_pointer}.location",
                 ))
             else:
-                results.append(HardConstraintResult(
-                    constraint_name="work_mode_onsite",
-                    passed=True,
-                    reason=f"On-site requirement matches founder local jurisdiction: '{opp.location_raw}'",
-                    required_field="remote_policy",
-                    founder_fact="Founder physical location: Egypt",
-                    is_hard_failure=False,
-                    provenance_pointer=f"{opp.raw_record_pointer}.location",
-                ))
+                loc_lower = opp.location_raw.casefold()
+                founder_in_loc = any(fl in loc_lower or loc_lower in fl for fl in founder_locs)
+                if founder_in_loc:
+                    results.append(HardConstraintResult(
+                        constraint_name="work_mode_onsite",
+                        passed=True,
+                        reason=f"On-site requirement matches founder verified location: '{opp.location_raw}'",
+                        required_field="remote_policy",
+                        founder_fact=f"Founder verified location: {', '.join(founder_locs)}",
+                        is_hard_failure=False,
+                        provenance_pointer=f"{opp.raw_record_pointer}.location",
+                    ))
+                else:
+                    results.append(HardConstraintResult(
+                        constraint_name="work_mode_onsite",
+                        passed=False,
+                        reason=f"Mandatory on-site attendance required at '{opp.location_raw}', conflicting with verified founder location",
+                        required_field="remote_policy",
+                        founder_fact=f"Founder verified location: {', '.join(founder_locs)}",
+                        is_hard_failure=True,
+                        provenance_pointer=f"{opp.raw_record_pointer}.location",
+                    ))
         elif opp.remote_policy in {RemotePolicy.REMOTE, RemotePolicy.HYBRID}:
             results.append(HardConstraintResult(
                 constraint_name="work_mode_remote",
                 passed=True,
                 reason=f"Remote work permitted under policy '{opp.remote_policy.value}'",
                 required_field="remote_policy",
-                founder_fact="Founder available for remote engagement",
+                founder_fact="Opportunity permits remote/hybrid engagement",
                 is_hard_failure=False,
                 provenance_pointer=f"{opp.raw_record_pointer}.remote_policy",
             ))
 
         # 3. Explicit Work Authorization Requirements
-        auth_req_match = re.search(r"\b(?:must\s+have\s+valid\s+work\s+authorization\s+in|eligible\s+to\s+work\s+in|authorized\s+to\s+work\s+in)\s+([A-Za-z\s]+?)(?:\.|\bwithout\b|\band\b|$)", opp.description, re.IGNORECASE)
+        auth_req_match = re.search(
+            r"\b(?:must\s+have\s+valid\s+work\s+authorization\s+in|eligible\s+to\s+work\s+in|authorized\s+to\s+work\s+in)\s+([A-Za-z\s]+?)(?:\.|\bwithout\b|\band\b|$)",
+            opp.description,
+            re.IGNORECASE,
+        )
         if auth_req_match:
             required_jurisdiction = auth_req_match.group(1).strip()
-            # Check founder work authorizations in truth graph
-            founder_auths = [a for a in truth_graph.assertions.values() if a.predicate == "authorization.jurisdiction"]
+            founder_auths = [
+                a for a in truth_graph.assertions.values()
+                if a.predicate in ("authorization.jurisdiction", "work_authorization")
+                and a.verification_status == VerificationStatus.VERIFIED
+            ]
             auth_matches = [
                 a for a in founder_auths
-                if a.verification_status == VerificationStatus.VERIFIED and str(a.value).casefold() in required_jurisdiction.casefold()
+                if (str(a.value).casefold() in required_jurisdiction.casefold() or required_jurisdiction.casefold() in str(a.value).casefold())
+                and a.polarity != Polarity.NEGATIVE and str(a.value).casefold() != "none"
             ]
-            if not auth_matches and required_jurisdiction.casefold() in ("united states", "usa", "us", "germany", "uk", "canada", "european union"):
-                results.append(HardConstraintResult(
-                    constraint_name="work_authorization",
-                    passed=False,
-                    reason=f"Explicit work authorization required for '{required_jurisdiction}', which founder lacks",
-                    required_field="description",
-                    founder_fact="Founder verified work authorization: Egypt",
-                    is_hard_failure=True,
-                    provenance_pointer=f"{opp.raw_record_pointer}.description",
-                ))
-            elif auth_matches:
+            auth_negations = [
+                a for a in founder_auths
+                if (str(a.value).casefold() in required_jurisdiction.casefold() or required_jurisdiction.casefold() in str(a.value).casefold())
+                and (a.polarity == Polarity.NEGATIVE or str(a.value).casefold() in ("none", "ineligible", "unauthorized"))
+            ]
+            if auth_matches and not auth_negations:
                 results.append(HardConstraintResult(
                     constraint_name="work_authorization",
                     passed=True,
@@ -172,43 +191,78 @@ class QualificationEngine:
                     is_hard_failure=False,
                     provenance_pointer=f"{opp.raw_record_pointer}.description",
                 ))
+            elif auth_negations:
+                results.append(HardConstraintResult(
+                    constraint_name="work_authorization",
+                    passed=False,
+                    reason=f"Explicit work authorization required for '{required_jurisdiction}', which founder verified negative status for",
+                    required_field="description",
+                    founder_fact=f"Verified lack of work authorization for {required_jurisdiction}",
+                    is_hard_failure=True,
+                    provenance_pointer=f"{opp.raw_record_pointer}.description",
+                ))
             else:
                 results.append(HardConstraintResult(
                     constraint_name="work_authorization",
                     passed=None,
-                    reason=f"Work authorization requirement for '{required_jurisdiction}' requires verification",
+                    reason=f"Work authorization required for '{required_jurisdiction}'; founder authorization status for '{required_jurisdiction}' unasserted in truth graph",
                     required_field="description",
-                    founder_fact="Founder verified work authorization: Egypt",
+                    founder_fact="Founder work authorization unasserted in truth graph",
                     is_hard_failure=False,
                     provenance_pointer=f"{opp.raw_record_pointer}.description",
                 ))
 
         # 4. Mandatory Language Requirements
-        lang_match = re.search(r"\b(?:fluent\s+in|native|must\s+speak|required\s+language:)\s+(German|French|Spanish|Japanese|Mandarin|Russian|Italian)\b", f"{opp.title} {opp.description}", re.IGNORECASE)
+        lang_match = re.search(
+            r"\b(?:fluent\s+in|native|must\s+speak|required\s+language:)\s+(German|French|Spanish|Japanese|Mandarin|Russian|Italian)\b",
+            f"{opp.title} {opp.description}",
+            re.IGNORECASE,
+        )
         if lang_match:
             req_lang = lang_match.group(1).title()
-            founder_langs = [a for a in truth_graph.assertions.values() if a.predicate == "language.name"]
-            has_lang = any(
-                a.verification_status == VerificationStatus.VERIFIED and str(a.value).title() == req_lang
-                for a in founder_langs
-            )
-            if not has_lang:
-                results.append(HardConstraintResult(
-                    constraint_name="language_requirement",
-                    passed=False,
-                    reason=f"Explicit mandatory language required: '{req_lang}', which is not in founder verified languages",
-                    required_field="requirements",
-                    founder_fact="Founder verified languages: English (Fluent/C2), Arabic (Native)",
-                    is_hard_failure=True,
-                    provenance_pointer=f"{opp.raw_record_pointer}.requirements",
-                ))
-            else:
+            founder_langs = [
+                a for a in truth_graph.assertions.values()
+                if a.predicate in ("language.name", "language.proficiency")
+                and a.verification_status == VerificationStatus.VERIFIED
+            ]
+            matching_langs = [
+                a for a in founder_langs
+                if str(a.value).title() == req_lang
+                and a.polarity != Polarity.NEGATIVE
+                and str(a.value).casefold() != "none"
+            ]
+            negated_langs = [
+                a for a in founder_langs
+                if (str(a.value).title() == req_lang and a.polarity == Polarity.NEGATIVE)
+                or str(a.value).casefold() in (f"no {req_lang.casefold()}", f"not proficient in {req_lang.casefold()}")
+            ]
+            if matching_langs:
                 results.append(HardConstraintResult(
                     constraint_name="language_requirement",
                     passed=True,
                     reason=f"Founder verified in required language '{req_lang}'",
                     required_field="requirements",
                     founder_fact=f"Verified proficiency in {req_lang}",
+                    is_hard_failure=False,
+                    provenance_pointer=f"{opp.raw_record_pointer}.requirements",
+                ))
+            elif negated_langs:
+                results.append(HardConstraintResult(
+                    constraint_name="language_requirement",
+                    passed=False,
+                    reason=f"Mandatory language required: '{req_lang}', which founder explicitly lacks under verified truth graph",
+                    required_field="requirements",
+                    founder_fact=f"Verified lack of proficiency in {req_lang}",
+                    is_hard_failure=True,
+                    provenance_pointer=f"{opp.raw_record_pointer}.requirements",
+                ))
+            else:
+                results.append(HardConstraintResult(
+                    constraint_name="language_requirement",
+                    passed=None,
+                    reason=f"Mandatory language required: '{req_lang}'; founder proficiency unasserted in truth graph",
+                    required_field="requirements",
+                    founder_fact=f"Language proficiency for '{req_lang}' unasserted in truth graph",
                     is_hard_failure=False,
                     provenance_pointer=f"{opp.raw_record_pointer}.requirements",
                 ))
@@ -225,7 +279,7 @@ class QualificationEngine:
                 passed=None,
                 reason="Opportunity is in procurement track but lacks ProcurementMetadata",
                 required_field="procurement_metadata",
-                founder_fact="Founder independent consulting profile available",
+                founder_fact="Procurement metadata unasserted",
                 is_hard_failure=False,
                 provenance_pointer=opp.raw_record_pointer,
             ))
@@ -234,67 +288,81 @@ class QualificationEngine:
         # 1. Geographic / Buyer Delivery Country
         if pm.buyer_country:
             buyer_country = pm.buyer_country.strip()
-            # Check for sanctioned or excluded country constraints
-            if buyer_country.casefold() in ("north korea", "iran", "syria", "russia"):
+            prohibited = getattr(self.policy, "prohibited_jurisdictions", ("North Korea", "Iran", "Syria", "Russia"))
+            approved = getattr(self.policy, "approved_delivery_jurisdictions", ())
+            if any(p.casefold() in buyer_country.casefold() for p in prohibited):
                 results.append(HardConstraintResult(
                     constraint_name="buyer_country_policy",
                     passed=False,
-                    reason=f"Procurement buyer in sanctioned/prohibited jurisdiction '{buyer_country}'",
+                    reason=f"Procurement buyer in prohibited jurisdiction '{buyer_country}' under founder policy",
                     required_field="procurement_metadata.buyer_country",
-                    founder_fact="Founder compliance policy prohibits sanctioned jurisdictions",
+                    founder_fact=f"Policy prohibited jurisdictions: {', '.join(prohibited)}",
                     is_hard_failure=True,
+                    provenance_pointer=f"{opp.raw_record_pointer}.buyer_country",
+                ))
+            elif approved and any(a.casefold() in buyer_country.casefold() for a in approved):
+                results.append(HardConstraintResult(
+                    constraint_name="buyer_country_policy",
+                    passed=True,
+                    reason=f"Buyer jurisdiction '{buyer_country}' is in approved delivery list",
+                    required_field="procurement_metadata.buyer_country",
+                    founder_fact=f"Approved delivery jurisdiction: {buyer_country}",
+                    is_hard_failure=False,
                     provenance_pointer=f"{opp.raw_record_pointer}.buyer_country",
                 ))
             else:
                 results.append(HardConstraintResult(
                     constraint_name="buyer_country_policy",
-                    passed=True,
-                    reason=f"Buyer jurisdiction '{buyer_country}' is eligible for delivery",
+                    passed=None,
+                    reason=f"Procurement buyer in jurisdiction '{buyer_country}'; delivery compliance requires review",
                     required_field="procurement_metadata.buyer_country",
-                    founder_fact="Eligible international delivery jurisdiction",
+                    founder_fact="Buyer jurisdiction compliance unconfirmed",
                     is_hard_failure=False,
                     provenance_pointer=f"{opp.raw_record_pointer}.buyer_country",
                 ))
 
         # 2. Turnover / Minimum Financial Requirements
         if pm.turnover_required is not None and pm.turnover_required > 0:
-            # Founder baseline consulting entity turnover cap
-            founder_turnover_assertions = [a for a in truth_graph.assertions.values() if a.predicate == "business.annual_turnover"]
-            verified_turnover = 0.0
-            for a in founder_turnover_assertions:
-                if a.verification_status == VerificationStatus.VERIFIED and isinstance(a.value, (int, float)):
-                    verified_turnover = max(verified_turnover, float(a.value))
-
-            if pm.turnover_required > 500000.0 and verified_turnover < pm.turnover_required:
+            founder_turnover_assertions = [
+                a for a in truth_graph.assertions.values()
+                if a.predicate in ("business.annual_turnover", "capacity.annual_turnover")
+                and a.verification_status == VerificationStatus.VERIFIED
+            ]
+            if not founder_turnover_assertions:
                 results.append(HardConstraintResult(
                     constraint_name="financial_turnover_requirement",
-                    passed=False,
-                    reason=f"Procurement requires minimum annual turnover of {pm.turnover_required}, exceeding founder capacity ({verified_turnover})",
+                    passed=None,
+                    reason=f"Procurement requires minimum annual turnover of {pm.turnover_required}; founder annual turnover unasserted in truth graph",
                     required_field="procurement_metadata.turnover_required",
-                    founder_fact=f"Founder verified turnover capacity: {verified_turnover}",
-                    is_hard_failure=True,
-                    provenance_pointer=f"{opp.raw_record_pointer}.turnover_required",
-                ))
-            elif verified_turnover >= pm.turnover_required:
-                results.append(HardConstraintResult(
-                    constraint_name="financial_turnover_requirement",
-                    passed=True,
-                    reason=f"Founder turnover ({verified_turnover}) meets requirement ({pm.turnover_required})",
-                    required_field="procurement_metadata.turnover_required",
-                    founder_fact=f"Verified turnover: {verified_turnover}",
+                    founder_fact="Founder annual turnover unasserted in truth graph",
                     is_hard_failure=False,
                     provenance_pointer=f"{opp.raw_record_pointer}.turnover_required",
                 ))
             else:
-                results.append(HardConstraintResult(
-                    constraint_name="financial_turnover_requirement",
-                    passed=None,
-                    reason=f"Turnover requirement of {pm.turnover_required} requires consortium or verification",
-                    required_field="procurement_metadata.turnover_required",
-                    founder_fact="Founder turnover status under evaluation",
-                    is_hard_failure=False,
-                    provenance_pointer=f"{opp.raw_record_pointer}.turnover_required",
-                ))
+                verified_turnover = max(
+                    (float(a.value) for a in founder_turnover_assertions if isinstance(a.value, (int, float))),
+                    default=0.0,
+                )
+                if verified_turnover >= pm.turnover_required:
+                    results.append(HardConstraintResult(
+                        constraint_name="financial_turnover_requirement",
+                        passed=True,
+                        reason=f"Founder turnover ({verified_turnover}) meets requirement ({pm.turnover_required})",
+                        required_field="procurement_metadata.turnover_required",
+                        founder_fact=f"Verified turnover: {verified_turnover}",
+                        is_hard_failure=False,
+                        provenance_pointer=f"{opp.raw_record_pointer}.turnover_required",
+                    ))
+                else:
+                    results.append(HardConstraintResult(
+                        constraint_name="financial_turnover_requirement",
+                        passed=False,
+                        reason=f"Procurement requires minimum annual turnover of {pm.turnover_required}, exceeding founder verified capacity ({verified_turnover})",
+                        required_field="procurement_metadata.turnover_required",
+                        founder_fact=f"Founder verified turnover capacity: {verified_turnover}",
+                        is_hard_failure=True,
+                        provenance_pointer=f"{opp.raw_record_pointer}.turnover_required",
+                    ))
 
         # 3. Bid Bonding Requirement
         if pm.bid_bonding_required is True:
@@ -310,31 +378,47 @@ class QualificationEngine:
 
         # 4. Mandatory Languages in Procurement
         if pm.languages:
-            founder_langs = [a for a in truth_graph.assertions.values() if a.predicate == "language.name"]
-            verified_lang_names = {str(a.value).title() for a in founder_langs if a.verification_status == VerificationStatus.VERIFIED}
-            # Default verified fallback if not in graph explicitly: English, Arabic
-            verified_lang_names.update({"English", "Arabic"})
-
-            missing_langs = [l for l in pm.languages if l.title() not in verified_lang_names]
-            if missing_langs:
+            founder_langs = [
+                a for a in truth_graph.assertions.values()
+                if a.predicate in ("language.name", "language.proficiency")
+                and a.verification_status == VerificationStatus.VERIFIED
+            ]
+            verified_lang_names = {
+                str(a.value).title()
+                for a in founder_langs
+                if a.polarity != Polarity.NEGATIVE and str(a.value).casefold() != "none"
+            }
+            if not verified_lang_names:
                 results.append(HardConstraintResult(
                     constraint_name="procurement_language",
-                    passed=False,
-                    reason=f"Procurement documentation/submission mandatory in '{', '.join(missing_langs)}', which founder lacks",
+                    passed=None,
+                    reason=f"Procurement documentation requires language(s) '{', '.join(pm.languages)}'; founder languages unasserted in truth graph",
                     required_field="procurement_metadata.languages",
-                    founder_fact=f"Founder working languages: {', '.join(sorted(verified_lang_names))}",
-                    is_hard_failure=True,
-                    provenance_pointer=f"{opp.raw_record_pointer}.languages",
-                ))
-            else:
-                results.append(HardConstraintResult(
-                    constraint_name="procurement_language",
-                    passed=True,
-                    reason=f"Founder verified in procurement language(s) '{', '.join(pm.languages)}'",
-                    required_field="procurement_metadata.languages",
-                    founder_fact=f"Founder languages: {', '.join(sorted(verified_lang_names))}",
+                    founder_fact="Founder languages unasserted in truth graph",
                     is_hard_failure=False,
                     provenance_pointer=f"{opp.raw_record_pointer}.languages",
                 ))
+            else:
+                missing_langs = [l for l in pm.languages if l.title() not in verified_lang_names]
+                if missing_langs:
+                    results.append(HardConstraintResult(
+                        constraint_name="procurement_language",
+                        passed=None,
+                        reason=f"Procurement documentation requires language(s) '{', '.join(missing_langs)}'; founder proficiency unasserted in truth graph",
+                        required_field="procurement_metadata.languages",
+                        founder_fact=f"Founder verified languages: {', '.join(sorted(verified_lang_names))}",
+                        is_hard_failure=False,
+                        provenance_pointer=f"{opp.raw_record_pointer}.languages",
+                    ))
+                else:
+                    results.append(HardConstraintResult(
+                        constraint_name="procurement_language",
+                        passed=True,
+                        reason=f"Founder verified in procurement language(s) '{', '.join(pm.languages)}'",
+                        required_field="procurement_metadata.languages",
+                        founder_fact=f"Founder languages: {', '.join(sorted(verified_lang_names))}",
+                        is_hard_failure=False,
+                        provenance_pointer=f"{opp.raw_record_pointer}.languages",
+                    ))
 
         return results
