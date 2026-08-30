@@ -1,0 +1,17 @@
+{
+  "jobs": [
+    {
+      "id": 99201,
+      "url": "https://remotive.com/remote-jobs/software-dev/lead-devops-engineer-99201",
+      "title": "Lead DevOps Engineer",
+      "company_name": "InfraStack Ltd",
+      "category": "DevOps / Sysadmin",
+      "job_type": "full_time",
+      "publication_date": "2026-08-28T12:00:00",
+      "candidate_required_location": "Worldwide",
+      "salary": "$140,000 - $180,000 / year",
+      "description": "<p>Lead our cloud automation platform with Kubernetes, Terraform, and AWS.</p>",
+      "tags": ["kubernetes", "terraform", "aws", "docker"]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "notices": [
+    {
+      "id": "UNGM-RFP-2026-881",
+      "notice_title": "Consultancy on National Climate Adaptation Data Platform",
+      "agency": "United Nations Development Programme (UNDP)",
+      "country": "Egypt",
+      "deadline": "2026-09-30",
+      "published_date": "2026-08-25",
+      "notice_type": "Request for Proposal",
+      "category": "Consulting Services - IT & Climate",
+      "description": "UNDP Egypt is seeking individual consultants or specialized consulting firms to develop a centralized climate monitoring data platform using Python, SQL, and geospatial GIS tools."
+    }
+  ]
+}

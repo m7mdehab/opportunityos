@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>We Work Remotely: Remote Jobs</title>
+    <link>https://weworkremotely.com</link>
+    <description>The largest remote work community.</description>
+    <item>
+      <title>Datadog: Senior Backend Systems Engineer</title>
+      <link>https://weworkremotely.com/remote-jobs/datadog-senior-backend-systems-engineer</link>
+      <guid>https://weworkremotely.com/remote-jobs/datadog-senior-backend-systems-engineer</guid>
+      <pubDate>Sun, 28 Aug 2026 10:00:00 GMT</pubDate>
+      <description><![CDATA[<p>Build real-time monitoring infrastructure with Go and Python. Work from anywhere in the world.</p>]]></description>
+      <region>Anywhere in the World</region>
+    </item>
+  </channel>
+</rss>

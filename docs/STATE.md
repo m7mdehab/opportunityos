@@ -2,37 +2,31 @@
 # OpportunityOS State
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
-Last shipped: BRIEF-002 — 2026-08-29.
-Active work: BRIEF-003.
-Phase status: in progress.
+Last shipped: BRIEF-003 — 2026-08-30.
+Active work: none.
+Phase status: passed.
 Blocked: none.
-Next: BRIEF-003: Opportunity Discovery & Ingestion Pipelines.
+Next: BRIEF-004: Opportunity Matching & Proposal Tailoring.
 
 ## Repository
 
-- **Generated:** 2026-08-30T01:35:26Z
-- **State generated at commit:** `d9fff14` — docs(report): record final two-line structural authority independent audit
+- **Generated:** 2026-08-30T01:54:35Z
+- **State generated at commit:** `a8e3b2d` — docs(brief-003): record phase completion, acceptance criteria reconciliation, and generated state
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
 
-- **Brief:** BRIEF-003
-- **Phase status:** in progress
-- **Open acceptance items:** 8
-- Unified Opportunity data model and schema implemented covering employment, contract, freelance, and procurement tracks.
-- Multi-source ingestion pipeline integrating authorized employment feeds (Greenhouse, Lever, Himalayas, Remotive, Remote OK, We Work Remotely) and independent procurement feeds (UNGM, World Bank, EU TED Search API).
-- Strict compliance with robots.txt, source registry, rate limits, and external action semantics (zero external mutations; allowlisted read-only TED POST queries).
-- Integration with geographic classification engine (`recon/geography.py`) and Professional Truth Graph (`truth/`).
-- Content hash deduplication and opportunity deduplication pipeline.
-- Unit and integration test suite covering feed parsing, normalization, error handling, and deduplication.
-- Independent audit / checker passes acceptance gate.
-- `docs/STATE.md` regenerated and accurate.
+- **Brief:** none
+- **Phase status:** passed
+- **Open acceptance items:** 0
+- None
 
 ## Completed Briefs
 
 - BRIEF-000 — 2026-08-27
 - BRIEF-001 — 2026-08-29
 - BRIEF-002 — 2026-08-29
+- BRIEF-003 — 2026-08-30
 
 ## Last Phase Outcome
 
@@ -51,6 +45,7 @@ Next: BRIEF-003: Opportunity Discovery & Ingestion Pipelines.
 - [ADR-0005 — TED Search Is a Read-Only Query](adr/ADR-0005-ted-search-read-only-post.md)
 - [ADR-0006 — Geographic Region Completion and Taxonomy Invariants](adr/ADR-0006-geographic-region-completion.md)
 - [ADR-0007 — Professional Truth Graph and Provenance Model](adr/ADR-0007-truth-graph-and-provenance-model.md)
+- [ADR-0008 — Opportunity Data Model and Ingestion Pipeline](adr/ADR-0008-opportunity-data-model-and-ingestion-pipeline.md)
 
 ## Blocked Items
 
@@ -68,6 +63,4 @@ Next: BRIEF-003: Opportunity Discovery & Ingestion Pipelines.
 
 ## Next Prerequisites
 
-- BRIEF-003: Opportunity Discovery & Ingestion Pipelines
-
----
+- BRIEF-004: Opportunity Matching & Proposal Tailoring

@@ -1,0 +1,24 @@
+{
+  "jobs": [
+    {
+      "id": 5512301,
+      "title": "Senior Systems Engineer - Distributed Caching",
+      "updated_at": "2026-08-25T14:30:00Z",
+      "absolute_url": "https://boards.greenhouse.io/cloudflare/jobs/5512301",
+      "location": {
+        "name": "Remote - Worldwide"
+      },
+      "content": "<h2>About the Role</h2><p>Cloudflare is looking for a Senior Systems Engineer to build our edge caching layer. You will work with Rust, Go, and Python across global data centers.</p><h3>What you will do:</h3><ul><li>Design distributed caching services</li><li>Optimize edge packet throughput</li><li>Maintain high-availability infrastructure</li></ul><h3>Requirements:</h3><ul><li>5+ years of experience with distributed systems</li><li>Proficiency in Rust or Go</li><li>Deep understanding of HTTP, TCP, and DNS</li></ul><p>Salary range: $160,000 - $210,000 per year</p>"
+    },
+    {
+      "id": 5512302,
+      "title": "Data Analyst - Product Insights",
+      "updated_at": "2026-08-26T10:15:00Z",
+      "absolute_url": "https://boards.greenhouse.io/cloudflare/jobs/5512302",
+      "location": {
+        "name": "Remote - US Only"
+      },
+      "content": "<p>Must be located in the United States. Work with SQL and Python to build automated executive reporting dashboards.</p>"
+    }
+  ]
+}
