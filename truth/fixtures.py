@@ -60,6 +60,7 @@ def synthetic_evidence() -> tuple[EvidenceRecord, ...]:
             "ev-achievement",
             "Built a synthetic reporting pipeline at Synthetic Analytics Ltd that reduced processing time by 40%.",
             "synthetic_cv", "employment.0.achievements.0",
+            metadata={"subject_id": "achievement-verified"},
         ),
         EvidenceRecord(
             "ev-python", "Uses Python for data engineering.", "synthetic_cv", "skills.0",
