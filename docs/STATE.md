@@ -2,16 +2,16 @@
 # OpportunityOS State
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
-Last shipped: BRIEF-004 — 2026-08-30.
+Last shipped: BRIEF-005 — 2026-08-30.
 Active work: none.
 Phase status: passed.
 Blocked: none.
-Next: BRIEF-005: Outbound Application & Engagement Workflows.
+Next: complete active brief.
 
 ## Repository
 
-- **Generated:** 2026-08-30T19:31:23Z
-- **State generated at commit:** `9a2d380` — docs(report): update REPORT-004 for terminal three-path closure audit
+- **Generated:** 2026-08-30T20:08:23Z
+- **State generated at commit:** `fd4ee7b` — docs(brief): mark brief-005 acceptance criteria complete
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -28,10 +28,11 @@ Next: BRIEF-005: Outbound Application & Engagement Workflows.
 - BRIEF-002 — 2026-08-29
 - BRIEF-003 — 2026-08-30
 - BRIEF-004 — 2026-08-30
+- BRIEF-005 — 2026-08-30
 
 ## Last Phase Outcome
 
-- PASS
+- No phase outcome recorded
 
 ## Decisions
 
@@ -48,6 +49,7 @@ Next: BRIEF-005: Outbound Application & Engagement Workflows.
 - [ADR-0007 — Professional Truth Graph and Provenance Model](adr/ADR-0007-truth-graph-and-provenance-model.md)
 - [ADR-0008 — Opportunity Data Model and Ingestion Pipeline](adr/ADR-0008-opportunity-data-model-and-ingestion-pipeline.md)
 - [ADR-0009: Opportunity Matching, Qualification, and Truth-Locked Tailoring Architecture](adr/ADR-0009-opportunity-matching-and-tailoring-architecture.md)
+- [ADR-0010: Outbound Action Authority, Execution Modes, and Idempotency Architecture](adr/ADR-0010-outbound-action-authority-and-idempotency.md)
 
 ## Blocked Items
 
@@ -65,6 +67,4 @@ Next: BRIEF-005: Outbound Application & Engagement Workflows.
 
 ## Next Prerequisites
 
-- BRIEF-005: Outbound Application & Engagement Workflows
-
----
+- Complete the active brief.
