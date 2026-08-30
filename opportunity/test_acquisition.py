@@ -71,7 +71,16 @@ class TestAcquisitionAndRegistryAuthority(unittest.TestCase):
             method="GET",
         )
         self.assertFalse(authorized)
-        self.assertIn("unauthorized for Greenhouse board", reason)
+        self.assertIn("does not match exact Greenhouse board token", reason)
+
+        # Prefix collision: cloudflareevil MUST FAIL
+        authorized, reason = self.registry.validate_preflight(
+            "greenhouse:cloudflare",
+            "https://boards-api.greenhouse.io/v1/boards/cloudflareevil/jobs?content=true",
+            method="GET",
+        )
+        self.assertFalse(authorized)
+        self.assertIn("does not match exact Greenhouse board token", reason)
 
         # HTTP downgrade MUST FAIL
         authorized, reason = self.registry.validate_preflight(
@@ -98,7 +107,16 @@ class TestAcquisitionAndRegistryAuthority(unittest.TestCase):
             method="GET",
         )
         self.assertFalse(authorized)
-        self.assertIn("unauthorized for Lever site", reason)
+        self.assertIn("does not match exact Lever site token", reason)
+
+        # Prefix collision: shyftlabs2 MUST FAIL
+        authorized, reason = self.registry.validate_preflight(
+            "lever:shyftlabs",
+            "https://api.lever.co/v0/postings/shyftlabs2?mode=json",
+            method="GET",
+        )
+        self.assertFalse(authorized)
+        self.assertIn("does not match exact Lever site token", reason)
 
         # HTTP downgrade MUST FAIL
         authorized, reason = self.registry.validate_preflight(

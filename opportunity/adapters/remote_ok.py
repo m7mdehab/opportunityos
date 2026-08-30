@@ -139,6 +139,14 @@ class RemoteOKAdapter(BaseAdapter):
                 prov_list.append(create_field_provenance("requirements", (raw_desc or "")[:50], f"{len(requirements)} items", DerivationType.RULE_DERIVATION, f"{item_pointer}.description", record_checksum, "extract_requirements"))
             if comp is not None:
                 prov_list.append(create_field_provenance("compensation", f"{min_sal}-{max_sal}", f"{comp.min_amount}-{comp.max_amount} {comp.currency}", DerivationType.RULE_DERIVATION, f"{item_pointer}.salary_min", record_checksum, "extract_compensation"))
+                if comp.min_amount is not None:
+                    prov_list.append(create_field_provenance("compensation.min_amount", str(min_sal), str(comp.min_amount), DerivationType.RULE_DERIVATION, f"{item_pointer}.salary_min", record_checksum, "extract_compensation"))
+                if comp.max_amount is not None:
+                    prov_list.append(create_field_provenance("compensation.max_amount", str(max_sal), str(comp.max_amount), DerivationType.RULE_DERIVATION, f"{item_pointer}.salary_max", record_checksum, "extract_compensation"))
+                if comp.currency is not None:
+                    prov_list.append(create_field_provenance("compensation.currency", "USD", comp.currency, DerivationType.RULE_DERIVATION, f"{item_pointer}.salary", record_checksum, "extract_compensation"))
+                if comp.interval != CompensationInterval.UNSPECIFIED:
+                    prov_list.append(create_field_provenance("compensation.interval", "salary_range", comp.interval.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.salary", record_checksum, "extract_compensation"))
             if posted_date:
                 prov_list.append(create_field_provenance("posted_date", raw_date, posted_date, DerivationType.RAW_EXTRACTION, f"{item_pointer}.date", record_checksum, "parse_iso_date"))
 

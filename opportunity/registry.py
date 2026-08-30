@@ -180,29 +180,30 @@ class SourceRegistry:
         scheme = parsed.scheme.lower()
         host = parsed.netloc.lower().split(":")[0]  # remove port
         path = parsed.path or "/"
+        segments = [s for s in path.strip("/").split("/") if s]
 
-        # Greenhouse dynamic rule: HTTPS + exact host + exact board token prefix
+        # Greenhouse dynamic rule: HTTPS + exact host + exact board token path segment
         if source_id.startswith("greenhouse:"):
             if scheme != "https":
                 return False, f"Refused: Greenhouse source '{source_id}' requires https scheme, got '{scheme}'"
             if host not in {"boards-api.greenhouse.io", "boards.greenhouse.io"}:
                 return False, f"Refused: Host '{host}' is unauthorized for Greenhouse source '{source_id}'"
             board_token = source_id.partition(":")[2].lower()
-            expected_prefix = f"/v1/boards/{board_token}"
-            if not path.startswith(expected_prefix):
-                return False, f"Refused: Path '{path}' is unauthorized for Greenhouse board '{board_token}' (expected prefix: '{expected_prefix}')"
+            # Path must match /v1/boards/{board_token}/... with exact segment match
+            if len(segments) < 3 or segments[0].lower() != "v1" or segments[1].lower() != "boards" or segments[2].lower() != board_token:
+                return False, f"Refused: Path '{path}' does not match exact Greenhouse board token '{board_token}'"
             return True, "Authorized"
 
-        # Lever dynamic rule: HTTPS + exact host + exact site token prefix
+        # Lever dynamic rule: HTTPS + exact host + exact site token path segment
         if source_id.startswith("lever:"):
             if scheme != "https":
                 return False, f"Refused: Lever source '{source_id}' requires https scheme, got '{scheme}'"
             if host not in {"api.lever.co", "jobs.lever.co"}:
                 return False, f"Refused: Host '{host}' is unauthorized for Lever source '{source_id}'"
             site_token = source_id.partition(":")[2].lower()
-            expected_prefix = f"/v0/postings/{site_token}"
-            if not path.startswith(expected_prefix):
-                return False, f"Refused: Path '{path}' is unauthorized for Lever site '{site_token}' (expected prefix: '{expected_prefix}')"
+            # Path must match /v0/postings/{site_token}/... with exact segment match
+            if len(segments) < 3 or segments[0].lower() != "v0" or segments[1].lower() != "postings" or segments[2].lower() != site_token:
+                return False, f"Refused: Path '{path}' does not match exact Lever site token '{site_token}'"
             return True, "Authorized"
 
         rule = SOURCE_ENDPOINT_RULES.get(source_id)
