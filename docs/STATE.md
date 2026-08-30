@@ -10,8 +10,8 @@ Next: BRIEF-006: Operational Autonomy, Feedback Loops & Production Pipeline.
 
 ## Repository
 
-- **Generated:** 2026-08-30T22:28:13Z
-- **State generated at commit:** `8ec2a43` — fix(outbound): resolve terminal residual authority defects for brief-005
+- **Generated:** 2026-08-30T22:28:29Z
+- **State generated at commit:** `ea133f8` — docs: record terminal residual authority audit report for brief-005
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
