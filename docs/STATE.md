@@ -10,8 +10,8 @@ Next: BRIEF-004: Opportunity Matching & Proposal Tailoring.
 
 ## Repository
 
-- **Generated:** 2026-08-30T14:00:36Z
-- **State generated at commit:** `1d73c7a` — fix(opportunity): compensation normalization patch and non-blocking records
+- **Generated:** 2026-08-30T14:23:49Z
+- **State generated at commit:** `2be55c8` — fix(opportunity): revert non-compensation normalization logic to PR #41 state
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
