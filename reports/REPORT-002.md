@@ -248,6 +248,28 @@ All eight acceptance criteria from committed `briefs/BRIEF-002.md` evaluated:
 
 ---
 
+## Final Metric-Identity Closure Addendum
+
+**Date:** 2026-08-30  
+**Substantive Target SHA:** `8c7d9fe9f1eb96607f530ddf8ee6cdebb611c14e`  
+**Trigger:** Eliminating fuzzy one-token context overlap, enforcing subject proof, removing unit wildcards, and establishing disjoint unit equivalence classes.
+
+### 1. Hardened Metric Identity Invariants
+1. **Exact Semantic Metric Identity:**
+   - `_metric_contexts_compatible()` extracts substantive concept tokens by removing numbers, generic verbs, and filler terms.
+   - Cross-metric conflation is strictly rejected: `"Revenue decreased 40%"` fails for `context="Latency decreased 40%"`; `"Customer churn decreased 40%"` fails for `context="Infrastructure cost decreased 40%"`.
+   - Directional contradictions (`increased` vs `decreased` / `fell`) are strictly rejected.
+2. **Subject Must Be Proven:**
+   - `_is_subject_proven_for_metric()` validates subject scoping via metadata, locators, graph entities/assertions, or explicit naming/ID binding.
+   - Unscoped evidence (`"Latency fell 40%."`) is strictly prevented from verifying metrics for arbitrary unrelated subject IDs.
+3. **Exact Unit Compatibility (No Count Wildcard):**
+   - The generic rule permitting `count` as a wildcard was completely removed.
+   - Disjoint unit equivalence classes are enforced: `40 tickets != 40 hours`, `40 users != 40 projects`, `40 hours != 40 requests`, `USD 40 != EUR 40`.
+4. **Valid Positive Cases Preserved:**
+   - `Revenue decreased 40%` (revenue / 40 / %), `Latency fell 10%` (latency / 10 / %), `Managed 40 clients` (clients / 40), and `$40 revenue` (USD/$ 40) pass admission and validation cleanly.
+
+---
+
 ## Known Limitations & Deferred Items
 
 - **Known Limitations:** Zero unbacked claim tolerance is strictly enforced; downstream CV and proposal generators must query the graph and cannot assert facts absent from evidence records.

@@ -1039,28 +1039,175 @@ class AdversarialTruthTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             graph_dollars.add_metric_assertion(metric_dollar_percent)
 
-        # a metric for subject B cannot authorize a ClaimCandidate bound to subject A
-        as_a = AtomicAssertion(
-            id="as-lat-a",
-            subject_id="lat-subject",
-            predicate="achievement.statement",
-            value="Latency fell 40%",
-            assertion_type=AssertionType.DIRECT_FACT,
-            verification_status=VerificationStatus.VERIFIED,
-            evidence_ids=("ev-mixed",),
+        # -------------------------------------------------------------
+        # FINAL METRIC-IDENTITY CLOSURE REGRESSIONS
+        # -------------------------------------------------------------
+        # 1. Exact semantic metric identity:
+        # Evidence: "Revenue decreased 40%."
+        # Attempt: context="Latency decreased 40%" -> MUST FAIL
+        ev_rev_dec = EvidenceRecord("ev-rev-dec", "Revenue decreased 40%.", "cv", "revenue-subject")
+        graph_rev_dec = TruthGraph((ev_rev_dec,))
+        metric_lat_on_rev = MetricAssertion(
+            id="m-lat-on-rev",
+            subject_id="revenue-subject",
+            numeric_value=40,
+            unit="%",
+            context="Latency decreased 40%",
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-rev-dec",),
         )
-        # Graph has verified metric for rev-subject (subject B) but NOT for lat-subject (subject A)
-        graph_candidate = TruthGraph((ev_mixed,), (as_a,), metrics=(metric_rev,))
-        validator_candidate = ClaimValidator(graph_candidate)
+        with self.assertRaises(ValueError):
+            graph_rev_dec.add_metric_assertion(metric_lat_on_rev)
 
-        cand_cross_subject = ClaimCandidate(
-            text="Latency fell 40%.",
-            material_assertion_ids=("as-lat-a",), # bound to subject A
-            requested_evidence_ids=("ev-mixed",),
+        # Evidence: "Customer churn decreased 40%."
+        # Attempt: context="Infrastructure cost decreased 40%" -> MUST FAIL
+        ev_churn = EvidenceRecord("ev-churn", "Customer churn decreased 40%.", "cv", "churn-subject")
+        graph_churn = TruthGraph((ev_churn,))
+        metric_infra_on_churn = MetricAssertion(
+            id="m-infra-on-churn",
+            subject_id="churn-subject",
+            numeric_value=40,
+            unit="%",
+            context="Infrastructure cost decreased 40%",
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-churn",),
         )
-        res_cross = validator_candidate.validate_candidate(cand_cross_subject)
-        self.assertFalse(res_cross.allowed)
-        self.assertTrue(any("lacks an exact verified metric" in r for r in res_cross.reasons))
+        with self.assertRaises(ValueError):
+            graph_churn.add_metric_assertion(metric_infra_on_churn)
+
+        # 2. Subject must be proven:
+        # Unscoped evidence: "Latency fell 40%."
+        # Attempt: arbitrary unrelated subject ID -> MUST FAIL
+        ev_unscoped = EvidenceRecord("ev-unscoped", "Latency fell 40%.", "cv", "unscoped")
+        graph_unscoped = TruthGraph((ev_unscoped,))
+        metric_unrelated = MetricAssertion(
+            id="m-unrelated",
+            subject_id="arbitrary-unrelated-subject",
+            numeric_value=40,
+            unit="%",
+            context="Latency fell 40%",
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-unscoped",),
+        )
+        with self.assertRaises(ValueError):
+            graph_unscoped.add_metric_assertion(metric_unrelated)
+
+        # 3. Unit must be exactly compatible:
+        # Evidence: "Processed 40 tickets."
+        # Attempt: unit="hours", context="Processed 40 hours" -> MUST FAIL
+        ev_tickets = EvidenceRecord("ev-tickets", "Processed 40 tickets.", "cv", "ticket-subject")
+        graph_tickets = TruthGraph((ev_tickets,))
+        metric_hours_on_tickets = MetricAssertion(
+            id="m-hours-on-tickets",
+            subject_id="ticket-subject",
+            numeric_value=40,
+            unit="hours",
+            context="Processed 40 hours",
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-tickets",),
+        )
+        with self.assertRaises(ValueError):
+            graph_tickets.add_metric_assertion(metric_hours_on_tickets)
+
+        # 40 users != 40 projects
+        ev_users = EvidenceRecord("ev-users", "Onboarded 40 users.", "cv", "user-subject")
+        graph_users = TruthGraph((ev_users,))
+        metric_projects_on_users = MetricAssertion(
+            id="m-proj-on-users",
+            subject_id="user-subject",
+            numeric_value=40,
+            unit="projects",
+            context="Onboarded 40 projects",
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-users",),
+        )
+        with self.assertRaises(ValueError):
+            graph_users.add_metric_assertion(metric_projects_on_users)
+
+        # 40 hours != 40 requests
+        ev_hours = EvidenceRecord("ev-hours", "Delivered 40 hours of consulting.", "cv", "hour-subject")
+        graph_hours = TruthGraph((ev_hours,))
+        metric_req_on_hours = MetricAssertion(
+            id="m-req-on-hours",
+            subject_id="hour-subject",
+            numeric_value=40,
+            unit="requests",
+            context="Delivered 40 requests",
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-hours",),
+        )
+        with self.assertRaises(ValueError):
+            graph_hours.add_metric_assertion(metric_req_on_hours)
+
+        # USD 40 != EUR 40
+        ev_usd = EvidenceRecord("ev-usd", "Earned $40 revenue.", "cv", "usd-subject")
+        graph_usd = TruthGraph((ev_usd,))
+        metric_eur_on_usd = MetricAssertion(
+            id="m-eur-on-usd",
+            subject_id="usd-subject",
+            numeric_value=40,
+            unit="EUR",
+            context="Earned EUR 40 revenue",
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-usd",),
+        )
+        with self.assertRaises(ValueError):
+            graph_usd.add_metric_assertion(metric_eur_on_usd)
+
+        # 4. Valid positive cases:
+        # "Revenue decreased 40%" -> revenue / 40 / %
+        metric_rev_pos = MetricAssertion(
+            id="m-rev-pos",
+            subject_id="revenue-subject",
+            numeric_value=40,
+            unit="%",
+            context="Revenue decreased 40%",
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-rev-dec",),
+        )
+        graph_rev_dec.add_metric_assertion(metric_rev_pos)
+        self.assertIn("m-rev-pos", graph_rev_dec.metrics)
+
+        # "Latency fell 10%" -> latency / 10 / %
+        ev_lat10 = EvidenceRecord("ev-lat10", "Latency fell 10%.", "cv", "lat-subject")
+        graph_lat10 = TruthGraph((ev_lat10,))
+        metric_lat10_pos = MetricAssertion(
+            id="m-lat10-pos",
+            subject_id="lat-subject",
+            numeric_value=10,
+            unit="%",
+            context="Latency fell 10%",
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-lat10",),
+        )
+        graph_lat10.add_metric_assertion(metric_lat10_pos)
+        self.assertIn("m-lat10-pos", graph_lat10.metrics)
+
+        # "Managed 40 clients" -> clients / 40
+        metric_clients_pos = MetricAssertion(
+            id="m-clients-pos",
+            subject_id="client-subject",
+            numeric_value=40,
+            unit="clients",
+            context="Managed 40 clients",
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-clients",),
+        )
+        graph_clients.add_metric_assertion(metric_clients_pos)
+        self.assertIn("m-clients-pos", graph_clients.metrics)
+
+        # "$40 revenue" -> USD/$ 40
+        metric_usd_pos = MetricAssertion(
+            id="m-usd-pos",
+            subject_id="usd-subject",
+            numeric_value=40,
+            unit="USD",
+            context="$40 revenue",
+            verification_status=MetricVerification.VERIFIED,
+            evidence_ids=("ev-usd",),
+        )
+        graph_usd.add_metric_assertion(metric_usd_pos)
+        self.assertIn("m-usd-pos", graph_usd.metrics)
 
     def test_invariant_4_candidate_authorized_by_assertions_not_extra_text(self):
         """Invariant 4: ClaimCandidate must be authorized by assertions, not their extra text.

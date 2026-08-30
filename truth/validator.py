@@ -2,7 +2,7 @@ from datetime import date
 import re
 from collections.abc import Iterable
 
-from .graph import TruthGraph
+from .graph import TruthGraph, _units_compatible, _metric_contexts_compatible
 from .models import (
     AssertionType,
     AtomicAssertion,
@@ -538,25 +538,11 @@ class ClaimValidator:
                     if ma.numeric_value != num_val:
                         continue
 
-                    # Unit matching
-                    ma_unit = ma.unit.strip().casefold()
-                    unit_matches = False
-                    if unit == "%" and ma_unit in {"%", "percent"}:
-                        unit_matches = True
-                    elif unit in {"$", "usd", "eur", "gbp", "€", "£"} and ma_unit in {"$", "usd", "eur", "gbp", "€", "£"}:
-                        unit_matches = True
-                    elif unit == ma_unit or (unit == "count" and ma_unit in {"count", ""}):
-                        unit_matches = True
-
-                    if not unit_matches:
+                    if not _units_compatible(unit, ma.unit):
                         continue
 
-                    # Context semantic matching (e.g. latency vs revenue)
-                    claim_ctx_tokens = _tokens(_normalize(claim_metric_ctx)) - _NON_MATERIAL_WORDS - {str(num_val).casefold()}
-                    ma_ctx_tokens = _tokens(_normalize(ma.context)) - _NON_MATERIAL_WORDS - {str(num_val).casefold()}
-                    if claim_ctx_tokens and ma_ctx_tokens:
-                        if not (claim_ctx_tokens & ma_ctx_tokens):
-                            continue
+                    if not _metric_contexts_compatible(ma.context, claim_metric_ctx, num_val):
+                        continue
 
                     metric_verified = True
                     break
