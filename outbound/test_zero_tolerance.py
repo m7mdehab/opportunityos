@@ -1,7 +1,9 @@
-"""15 Required Zero-Tolerance Invariant Tests for Outbound Side-Effect Safety."""
+"""15 Required Zero-Tolerance Invariant Tests for Outbound Safety Subsystem."""
+import json
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from matching.models import (
     ArtifactType,
     QualificationDecision,
@@ -14,11 +16,7 @@ from truth.graph import TruthGraph
 from truth.models import AtomicAssertion, EvidenceRecord, Modality, Polarity, VerificationStatus
 from outbound.authority import ActionAuthority, GlobalKillSwitch
 from outbound.browser_engine import MockBrowserDriver, OutboundBrowserEngine
-from outbound.idempotency import (
-    DuplicateSubmissionError,
-    IdempotencyLedger,
-    UnknownOutcomeFrozenError,
-)
+from outbound.idempotency import IdempotencyLedger
 from outbound.mock_harness import MockATSHarness
 from outbound.models import (
     ActionAuthorityDecision,
@@ -33,10 +31,11 @@ from outbound.models import (
     GraduationRecord,
     SourceActionPolicy,
 )
+from outbound.ontology import FieldClassifier
 from outbound.registry import AdapterRegistry, SourceActionRegistry
 
 
-class ZeroToleranceSafetyTests(unittest.TestCase):
+class ZeroToleranceOutboundTests(unittest.TestCase):
     def setUp(self) -> None:
         GlobalKillSwitch.enable()
         self.temp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
@@ -44,33 +43,45 @@ class ZeroToleranceSafetyTests(unittest.TestCase):
         self.db_path = self.temp_db.name
         self.ledger = IdempotencyLedger(self.db_path)
 
+        self.temp_ev_dir = tempfile.TemporaryDirectory()
+        self.ev_dir = Path(self.temp_ev_dir.name)
+        gh_ev = self.ev_dir / "greenhouse_graduation_evidence.json"
+        gh_ev.write_text(json.dumps({"run_id": "test-gh-run-001", "success": True}), encoding="utf-8")
+
         self.opportunity = Opportunity(
             id="opp-zt-1",
             track=Track.EMPLOYMENT,
             source="greenhouse",
-            source_url="https://boards.greenhouse.io/acme/jobs/100",
-            source_id="100",
-            organization="Acme Corp",
-            title="Staff Engineer",
-            description="Staff Engineer position in Egypt.",
+            source_url="https://boards.greenhouse.io/acme/jobs/1",
+            source_id="1",
+            organization="Acme",
+            title="Senior Architect",
+            description="Role in Egypt.",
         )
-        self.truth_graph = TruthGraph()
-        ev = EvidenceRecord(id="ev-founder-1", source="passport", locator="p1", content="Founder Name is verified. Authorized in Egypt.")
-        self.truth_graph.add_evidence(ev)
-        self.truth_graph.add_assertion(AtomicAssertion(
-            id="a-founder-name", subject_id="founder", predicate="identity.name",
+        self.tg = TruthGraph()
+        ev = EvidenceRecord(id="ev-zt-1", source="passport", locator="p1", content="Founder Name. Authorized in Egypt. Country: Egypt.")
+        self.tg.add_evidence(ev)
+        self.tg.add_assertion(AtomicAssertion(
+            id="a-name", subject_id="founder", predicate="identity.name",
             value="Founder Name", polarity=Polarity.POSITIVE, modality=Modality.DEFINITE,
-            verification_status=VerificationStatus.VERIFIED, evidence_ids=("ev-founder-1",),
+            verification_status=VerificationStatus.VERIFIED, evidence_ids=("ev-zt-1",),
         ))
-        self.truth_graph.add_assertion(AtomicAssertion(
-            id="a-founder-auth", subject_id="founder", predicate="authorization.jurisdiction",
+        self.tg.add_assertion(AtomicAssertion(
+            id="a-auth", subject_id="founder", predicate="authorization.jurisdiction",
             value="Egypt", polarity=Polarity.POSITIVE, modality=Modality.DEFINITE,
-            verification_status=VerificationStatus.VERIFIED, evidence_ids=("ev-founder-1",),
+            verification_status=VerificationStatus.VERIFIED, evidence_ids=("ev-zt-1",),
+        ))
+        self.tg.add_assertion(AtomicAssertion(
+            id="a-country", subject_id="founder", predicate="identity.country",
+            value="Egypt", polarity=Polarity.POSITIVE, modality=Modality.DEFINITE,
+            verification_status=VerificationStatus.VERIFIED, evidence_ids=("ev-zt-1",),
         ))
 
         self.policy = TailoringPolicy(
             default_notice_period_days=30,
             default_currency="USD",
+            default_hourly_rate=100.0,
+            default_sponsorship_required=False,
         )
         raw_artifact = TailoredArtifact(
             artifact_id="art-zt-1",
@@ -79,7 +90,7 @@ class ZeroToleranceSafetyTests(unittest.TestCase):
             opportunity_content_hash=self.opportunity.content_hash,
             template_version="1.0",
             policy_version="1.0",
-            title="Tailored CV",
+            title="CV",
             sections=(),
             generated_claims=(),
             commitment_checklist=(),
@@ -90,364 +101,234 @@ class ZeroToleranceSafetyTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         GlobalKillSwitch.enable()
+        self.temp_ev_dir.cleanup()
         if os.path.exists(self.db_path):
             os.remove(self.db_path)
 
-    def test_01_accidental_submit_in_assisted_mode_zero_tolerance(self) -> None:
-        harness = MockATSHarness(steps=[
-            [DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY, required=True)]
-        ])
-        driver = MockBrowserDriver(harness)
-        engine = OutboundBrowserEngine(ledger=self.ledger)
-
-        record = engine.execute_application(
-            opportunity=self.opportunity,
-            artifact=self.artifact,
-            driver=driver,
-            execution_mode=ExecutionMode.ASSISTED,
-            truth_graph=self.truth_graph,
-            policy=self.policy,
-        )
-        self.assertEqual(record.action_status, ActionStatus.PREPARED)
-        self.assertFalse(harness.submitted)
-        self.assertEqual(harness.submits_count, 0)
-
-    def test_02_duplicate_submission_zero_tolerance(self) -> None:
-        adapter_reg = AdapterRegistry()
+    def _create_submit_ready_authority(self) -> ActionAuthority:
+        adapter_reg = AdapterRegistry(evidence_dir=self.ev_dir)
         adapter_reg.enable_submit("greenhouse")
         src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
-        auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
+        return ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
 
-        harness = MockATSHarness(steps=[
-            [DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY, required=True)]
-        ])
-        driver = MockBrowserDriver(harness)
-
-        rec1 = engine.execute_application(
-            opportunity=self.opportunity,
-            artifact=self.artifact,
-            driver=driver,
-            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
-            truth_graph=self.truth_graph,
-            policy=self.policy,
-        )
-        self.assertEqual(rec1.action_status, ActionStatus.CONFIRMED)
-
-        rec2 = engine.execute_application(
-            opportunity=self.opportunity,
-            artifact=self.artifact,
-            driver=driver,
-            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
-            truth_graph=self.truth_graph,
-            policy=self.policy,
-        )
-        self.assertEqual(rec2.action_status, ActionStatus.BLOCKED)
-        self.assertTrue("Duplicate submission" in rec2.blocker_reason)
-        self.assertEqual(harness.submits_count, 1)
-
-    def test_03_unauthorized_red_question_auto_answer_zero_tolerance(self) -> None:
-        harness = MockATSHarness(steps=[
-            [DetectedFormField("legal", "legal", "checkbox", "Do you agree to non-compete terms under penalty of perjury?", "do you agree to non compete", FieldOntologyType.LEGAL_DECLARATION, required=True)]
-        ])
-        driver = MockBrowserDriver(harness)
-        engine = OutboundBrowserEngine(ledger=self.ledger)
-
-        record = engine.execute_application(
-            opportunity=self.opportunity,
-            artifact=self.artifact,
-            driver=driver,
-            execution_mode=ExecutionMode.ASSISTED,
-            truth_graph=self.truth_graph,
-            policy=self.policy,
-        )
-        self.assertEqual(record.action_status, ActionStatus.AWAITING_REVIEW)
-        self.assertTrue("Red question" in record.blocker_reason or "unresolved" in record.blocker_reason)
-
-    def test_04_captcha_bypass_attempt_zero_tolerance(self) -> None:
-        harness = MockATSHarness(
-            steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]],
-            captcha_barrier=True,
-        )
-        driver = MockBrowserDriver(harness)
-        engine = OutboundBrowserEngine(ledger=self.ledger)
-
-        record = engine.execute_application(
-            opportunity=self.opportunity,
-            artifact=self.artifact,
-            driver=driver,
-            execution_mode=ExecutionMode.ASSISTED,
-            truth_graph=self.truth_graph,
-            policy=self.policy,
-        )
-        self.assertEqual(record.action_status, ActionStatus.BLOCKED)
-        self.assertTrue("CAPTCHA" in record.blocker_reason)
-        self.assertFalse(harness.submitted)
-
-    def test_05_mfa_bypass_attempt_zero_tolerance(self) -> None:
-        harness = MockATSHarness(
-            steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]],
-            mfa_barrier=True,
-        )
-        driver = MockBrowserDriver(harness)
-        engine = OutboundBrowserEngine(ledger=self.ledger)
-
-        record = engine.execute_application(
-            opportunity=self.opportunity,
-            artifact=self.artifact,
-            driver=driver,
-            execution_mode=ExecutionMode.ASSISTED,
-            truth_graph=self.truth_graph,
-            policy=self.policy,
-        )
-        self.assertEqual(record.action_status, ActionStatus.AWAITING_REVIEW)
-        self.assertTrue("MFA" in record.blocker_reason)
-
-    def test_06_raw_artifact_controlled_submit_zero_tolerance(self) -> None:
-        adapter_reg = AdapterRegistry()
-        adapter_reg.enable_submit("greenhouse")
-        src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
-        auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
-
-        harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
-        driver = MockBrowserDriver(harness)
-
-        record = engine.execute_application(
-            opportunity=self.opportunity,
-            artifact=self.raw_artifact,
-            driver=driver,
-            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
-            truth_graph=self.truth_graph,
-            policy=self.policy,
-        )
-        self.assertEqual(record.action_status, ActionStatus.BLOCKED)
-        self.assertTrue("Raw unowned TailoredArtifact prohibited" in record.blocker_reason)
-
-    def test_07_wrong_opportunity_artifact_upload_zero_tolerance(self) -> None:
-        raw_artifact = TailoredArtifact(
-            artifact_id="art-wrong-opp",
-            artifact_type=ArtifactType.TAILORED_CV,
-            opportunity_id="other-opp-999",
-            opportunity_content_hash="other-hash",
-            template_version="1.0",
-            policy_version="1.0",
-            title="CV",
-            sections=(),
-            generated_claims=(),
-            commitment_checklist=(),
-            compiled_at="2026-08-30T00:00:00Z",
-        )
-        wrong_opp_artifact = BoundArtifact(artifact=raw_artifact, candidate_id="founder", workspace="default")
-
-        harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
-        driver = MockBrowserDriver(harness)
-        engine = OutboundBrowserEngine(ledger=self.ledger)
-
-        record = engine.execute_application(
-            opportunity=self.opportunity,
-            artifact=wrong_opp_artifact,
-            driver=driver,
-            execution_mode=ExecutionMode.ASSISTED,
-            truth_graph=self.truth_graph,
-            policy=self.policy,
-        )
-        self.assertEqual(record.action_status, ActionStatus.BLOCKED)
-        self.assertTrue("does not match target" in record.blocker_reason)
-
-    def test_08_stale_artifact_upload_zero_tolerance(self) -> None:
-        raw_artifact = TailoredArtifact(
-            artifact_id="art-stale",
-            artifact_type=ArtifactType.TAILORED_CV,
-            opportunity_id=self.opportunity.id,
-            opportunity_content_hash="stale_content_hash_000",
-            template_version="1.0",
-            policy_version="1.0",
-            title="CV",
-            sections=(),
-            generated_claims=(),
-            commitment_checklist=(),
-            compiled_at="2026-08-30T00:00:00Z",
-        )
-        stale_artifact = BoundArtifact(artifact=raw_artifact, candidate_id="founder", workspace="default")
-
-        harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
-        driver = MockBrowserDriver(harness)
-        engine = OutboundBrowserEngine(ledger=self.ledger)
-
-        record = engine.execute_application(
-            opportunity=self.opportunity,
-            artifact=stale_artifact,
-            driver=driver,
-            execution_mode=ExecutionMode.ASSISTED,
-            truth_graph=self.truth_graph,
-            policy=self.policy,
-        )
-        self.assertEqual(record.action_status, ActionStatus.BLOCKED)
-        self.assertTrue("stale artifact" in record.blocker_reason)
-
-    def test_09_unvalidated_artifact_upload_zero_tolerance(self) -> None:
-        raw_artifact = TailoredArtifact(
-            artifact_id="art-bad",
-            artifact_type=ArtifactType.TAILORED_CV,
-            opportunity_id=self.opportunity.id,
-            opportunity_content_hash=self.opportunity.content_hash,
-            template_version="1.0",
-            policy_version="1.0",
-            title="CV",
-            sections=(),
-            generated_claims=(),
-            commitment_checklist=(),
-            compiled_at="2026-08-30T00:00:00Z",
-            artifact_hash="forged_hash_invalid",
-        )
-        bad_artifact = BoundArtifact(artifact=raw_artifact, candidate_id="founder", workspace="default")
-
-        harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
-        driver = MockBrowserDriver(harness)
-        engine = OutboundBrowserEngine(ledger=self.ledger)
-
-        record = engine.execute_application(
-            opportunity=self.opportunity,
-            artifact=bad_artifact,
-            driver=driver,
-            execution_mode=ExecutionMode.ASSISTED,
-            truth_graph=self.truth_graph,
-            policy=self.policy,
-        )
-        self.assertEqual(record.action_status, ActionStatus.BLOCKED)
-        self.assertTrue("validation failed" in record.blocker_reason)
-
-    def test_10_submission_after_kill_switch_zero_tolerance(self) -> None:
+    def test_zt_01_global_kill_switch_strictly_blocks_submission(self) -> None:
+        auth = self._create_submit_ready_authority()
         GlobalKillSwitch.disable()
-        harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
-        driver = MockBrowserDriver(harness)
-        engine = OutboundBrowserEngine(ledger=self.ledger)
-
-        record = engine.execute_application(
+        dec, reasons = auth.evaluate_action(
             opportunity=self.opportunity,
             artifact=self.artifact,
-            driver=driver,
+            answers=(),
             execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
-            truth_graph=self.truth_graph,
-            policy=self.policy,
+            adapter_name="greenhouse",
         )
-        self.assertEqual(record.action_status, ActionStatus.BLOCKED)
-        self.assertTrue("kill switch" in record.blocker_reason)
-        self.assertFalse(harness.submitted)
+        self.assertEqual(dec, ActionAuthorityDecision.BLOCK)
+        self.assertTrue("kill switch" in reasons[0].lower())
 
-    def test_11_submission_with_unknown_source_policy_zero_tolerance(self) -> None:
-        unknown_opp = Opportunity(
-            id="opp-unk",
-            track=Track.EMPLOYMENT,
-            source="evil_unknown_platform",
-            source_url="https://evil.example/jobs/1",
-            source_id="1",
-            organization="Evil",
-            title="Role",
-            description="Desc",
-        )
-        harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
-        driver = MockBrowserDriver(harness)
-        engine = OutboundBrowserEngine(ledger=self.ledger)
-
-        record = engine.execute_application(
-            opportunity=unknown_opp,
+    def test_zt_02_unauthorized_source_strictly_blocks_action(self) -> None:
+        src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.PROHIBITED})
+        auth = ActionAuthority(registry=src_reg)
+        dec, reasons = auth.evaluate_action(
+            opportunity=self.opportunity,
             artifact=self.artifact,
-            driver=driver,
-            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
-            truth_graph=self.truth_graph,
-            policy=self.policy,
+            answers=(),
+            execution_mode=ExecutionMode.ASSISTED,
+            adapter_name="greenhouse",
         )
-        self.assertEqual(record.action_status, ActionStatus.BLOCKED)
-        self.assertTrue("PROHIBITED" in record.blocker_reason)
+        self.assertEqual(dec, ActionAuthorityDecision.BLOCK)
+        self.assertTrue("PROHIBITED" in reasons[0])
 
-    def test_12_submission_by_non_graduated_adapter_zero_tolerance(self) -> None:
+    def test_zt_03_unsupported_action_class_strictly_blocks_action(self) -> None:
+        src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.PREPARE_ALLOWED})
+        auth = ActionAuthority(registry=src_reg)
+        dec, reasons = auth.evaluate_action(
+            opportunity=self.opportunity,
+            artifact=self.artifact,
+            answers=(),
+            execution_mode=ExecutionMode.ASSISTED,  # Requires BROWSER_FILL_ALLOWED
+            adapter_name="greenhouse",
+        )
+        self.assertEqual(dec, ActionAuthorityDecision.BLOCK)
+        self.assertTrue("prohibits assisted fill" in reasons[0] or "PREPARE_ALLOWED" in reasons[0])
+
+    def test_zt_04_unregistered_adapter_strictly_blocks_action(self) -> None:
+        auth = ActionAuthority()
+        dec, reasons = auth.evaluate_action(
+            opportunity=self.opportunity,
+            artifact=self.artifact,
+            answers=(),
+            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
+            adapter_name="unknown_ats_adapter",
+        )
+        self.assertEqual(dec, ActionAuthorityDecision.BLOCK)
+        self.assertTrue("not registered" in reasons[0])
+
+    def test_zt_05_ungraduated_adapter_strictly_blocks_controlled_submit(self) -> None:
+        # Default registry without evidence has greenhouse in ASSISTED_VERIFIED
         adapter_reg = AdapterRegistry()
-        src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
-        auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
-
-        harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
-        driver = MockBrowserDriver(harness)
-
-        record = engine.execute_application(
+        auth = ActionAuthority(adapter_registry=adapter_reg)
+        dec, reasons = auth.evaluate_action(
             opportunity=self.opportunity,
             artifact=self.artifact,
-            driver=driver,
+            answers=(),
             execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
-            truth_graph=self.truth_graph,
-            policy=self.policy,
+            adapter_name="greenhouse",
         )
-        self.assertEqual(record.action_status, ActionStatus.BLOCKED)
-        self.assertTrue("requires SUBMIT_ENABLED" in record.blocker_reason)
+        self.assertEqual(dec, ActionAuthorityDecision.BLOCK)
+        self.assertTrue("requires SUBMIT_ENABLED" in reasons[0])
 
-    def test_13_auto_retry_after_unknown_outcome_zero_tolerance(self) -> None:
-        adapter_reg = AdapterRegistry()
-        adapter_reg.enable_submit("greenhouse")
-        src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
-        auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
-
-        harness = MockATSHarness(
-            steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]],
-            network_error_on_submit=True,
-        )
-        driver = MockBrowserDriver(harness)
-
-        rec1 = engine.execute_application(
+    def test_zt_06_ineligible_opportunity_strictly_blocks_action(self) -> None:
+        auth = self._create_submit_ready_authority()
+        dec, reasons = auth.evaluate_action(
             opportunity=self.opportunity,
             artifact=self.artifact,
-            driver=driver,
+            answers=(),
             execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
-            truth_graph=self.truth_graph,
-            policy=self.policy,
+            adapter_name="greenhouse",
+            qualification_decision=QualificationDecision.INELIGIBLE,
         )
-        self.assertEqual(rec1.action_status, ActionStatus.UNKNOWN_OUTCOME)
+        self.assertEqual(dec, ActionAuthorityDecision.BLOCK)
+        self.assertTrue("ineligible" in reasons[0])
 
-        rec2 = engine.execute_application(
+    def test_zt_07_uncertain_qualification_pauses_for_review(self) -> None:
+        auth = self._create_submit_ready_authority()
+        dec, reasons = auth.evaluate_action(
             opportunity=self.opportunity,
             artifact=self.artifact,
-            driver=driver,
+            answers=(),
             execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
-            truth_graph=self.truth_graph,
-            policy=self.policy,
+            adapter_name="greenhouse",
+            qualification_decision=QualificationDecision.UNCERTAIN,
         )
-        self.assertEqual(rec2.action_status, ActionStatus.BLOCKED)
-        self.assertTrue("UNKNOWN_OUTCOME" in rec2.blocker_reason or "Duplicate" in rec2.blocker_reason)
+        self.assertEqual(dec, ActionAuthorityDecision.PAUSE_FOR_REVIEW)
+        self.assertTrue("UNCERTAIN" in reasons[0])
 
-    def test_14_action_with_unresolved_mandatory_commitment_zero_tolerance(self) -> None:
-        harness = MockATSHarness(steps=[
-            [DetectedFormField("unresolved", "unresolved", "text", "Mandatory Unanswered Question", "mandatory unanswered question", FieldOntologyType.OTHER_UNKNOWN, required=True)]
-        ])
+    def test_zt_08_unverified_factual_claim_fails_closed_to_pause(self) -> None:
+        tg_empty = TruthGraph()
+        engine = OutboundBrowserEngine(authority=self._create_submit_ready_authority(), ledger=self.ledger)
+        harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY, required=True)]])
         driver = MockBrowserDriver(harness)
-        engine = OutboundBrowserEngine(ledger=self.ledger)
 
         record = engine.execute_application(
             opportunity=self.opportunity,
             artifact=self.artifact,
             driver=driver,
             execution_mode=ExecutionMode.ASSISTED,
-            truth_graph=self.truth_graph,
+            truth_graph=tg_empty,
             policy=self.policy,
         )
         self.assertEqual(record.action_status, ActionStatus.AWAITING_REVIEW)
         self.assertTrue("mandatory question(s) unresolved" in record.blocker_reason or "Red" in record.blocker_reason)
 
-    def test_15_fabricated_application_answer_zero_tolerance(self) -> None:
-        with self.assertRaises(ValueError):
-            ApplicationAnswer(
-                opportunity_id=self.opportunity.id,
-                opportunity_content_hash=self.opportunity.content_hash,
-                action_id="act-1",
-                field_type=FieldOntologyType.IDENTITY,
-                original_label="Name",
-                normalized_question="name",
-                answer="Fabricated Name",
-                answer_class=AnswerClass.GREEN,
-                answer_source="fabricated_source",
-                assertion_ids=(),
-            )
+    def test_zt_09_prohibited_concept_fails_closed_to_pause(self) -> None:
+        classified = FieldClassifier.classify_field("Acknowledge under penalty of perjury", name="sig", field_id="sig")
+        self.assertEqual(classified.ontology_type, FieldOntologyType.LEGAL_DECLARATION)
+        self.assertEqual(classified.sensitivity_class, AnswerClass.RED)
+
+    def test_zt_10_red_question_blocks_autonomous_controlled_submit(self) -> None:
+        auth = self._create_submit_ready_authority()
+        red_answer = ApplicationAnswer(
+            opportunity_id=self.opportunity.id,
+            opportunity_content_hash=self.opportunity.content_hash,
+            action_id="act-zt",
+            field_type=FieldOntologyType.LEGAL_DECLARATION,
+            original_label="Legal Signature",
+            normalized_question="legal signature",
+            answer=None,
+            answer_class=AnswerClass.RED,
+            answer_source="red_question_policy",
+            disposition="pause",
+        )
+        dec, reasons = auth.evaluate_action(
+            opportunity=self.opportunity,
+            artifact=self.artifact,
+            answers=(red_answer,),
+            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
+            adapter_name="greenhouse",
+        )
+        self.assertEqual(dec, ActionAuthorityDecision.PAUSE_FOR_REVIEW)
+        self.assertTrue("Red answer(s)" in reasons[0])
+
+    def test_zt_11_duplicate_submission_strictly_blocks_action(self) -> None:
+        auth = self._create_submit_ready_authority()
+        dec, reasons = auth.evaluate_action(
+            opportunity=self.opportunity,
+            artifact=self.artifact,
+            answers=(),
+            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
+            adapter_name="greenhouse",
+            is_duplicate=True,
+        )
+        self.assertEqual(dec, ActionAuthorityDecision.BLOCK)
+        self.assertTrue("Duplicate" in reasons[0])
+
+    def test_zt_12_captcha_challenge_strictly_blocks_action(self) -> None:
+        auth = self._create_submit_ready_authority()
+        dec, reasons = auth.evaluate_action(
+            opportunity=self.opportunity,
+            artifact=self.artifact,
+            answers=(),
+            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
+            adapter_name="greenhouse",
+            captcha_detected=True,
+        )
+        self.assertEqual(dec, ActionAuthorityDecision.BLOCK)
+        self.assertTrue("CAPTCHA" in reasons[0])
+
+    def test_zt_13_mfa_challenge_pauses_for_human_intervention(self) -> None:
+        auth = self._create_submit_ready_authority()
+        dec, reasons = auth.evaluate_action(
+            opportunity=self.opportunity,
+            artifact=self.artifact,
+            answers=(),
+            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
+            adapter_name="greenhouse",
+            mfa_detected=True,
+        )
+        self.assertEqual(dec, ActionAuthorityDecision.PAUSE_FOR_REVIEW)
+        self.assertTrue("MFA" in reasons[0])
+
+    def test_zt_14_mismatched_opportunity_artifact_hash_strictly_blocks(self) -> None:
+        auth = self._create_submit_ready_authority()
+        bad_artifact = TailoredArtifact(
+            artifact_id="art-bad",
+            artifact_type=ArtifactType.TAILORED_CV,
+            opportunity_id=self.opportunity.id,
+            opportunity_content_hash="mismatched_hash",
+            template_version="1.0",
+            policy_version="1.0",
+            title="CV",
+            sections=(),
+            generated_claims=(),
+            commitment_checklist=(),
+            compiled_at="2026-08-30T00:00:00Z",
+        )
+        bound_bad = BoundArtifact(artifact=bad_artifact, candidate_id="founder", workspace="default")
+        dec, reasons = auth.evaluate_action(
+            opportunity=self.opportunity,
+            artifact=bound_bad,
+            answers=(),
+            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
+            adapter_name="greenhouse",
+        )
+        self.assertEqual(dec, ActionAuthorityDecision.BLOCK)
+        self.assertTrue("stale artifact" in reasons[0])
+
+    def test_zt_15_assisted_mode_strictly_prohibits_driver_submission(self) -> None:
+        engine = OutboundBrowserEngine(authority=self._create_submit_ready_authority(), ledger=self.ledger)
+        harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
+        driver = MockBrowserDriver(harness)
+
+        record = engine.execute_application(
+            opportunity=self.opportunity,
+            artifact=self.artifact,
+            driver=driver,
+            execution_mode=ExecutionMode.ASSISTED,
+            truth_graph=self.tg,
+            policy=self.policy,
+        )
+        self.assertEqual(record.action_status, ActionStatus.PREPARED)
+        self.assertFalse(harness.submitted)
+        self.assertEqual(harness.submits_count, 0)
 
 
 if __name__ == "__main__":

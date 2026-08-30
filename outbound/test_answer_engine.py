@@ -1,4 +1,4 @@
-"""Tests for ApplicationAnswerEngine with strict zero-fabrication and open-world work authorization."""
+"""Tests for ApplicationAnswerEngine with strict zero-fabrication and explicit compensation authority."""
 import unittest
 from matching.models import TailoringPolicy
 from opportunity.models import Opportunity, Track
@@ -23,6 +23,7 @@ class ApplicationAnswerEngineTests(unittest.TestCase):
         self.policy = TailoringPolicy(
             default_notice_period_days=30,
             default_currency="USD",
+            default_hourly_rate=100.0,
             default_sponsorship_required=False,
         )
 
@@ -137,6 +138,74 @@ class ApplicationAnswerEngineTests(unittest.TestCase):
         self.assertEqual(ans.answer, "14 days")
         self.assertEqual(ans.answer_class, AnswerClass.YELLOW)
         self.assertEqual(ans.policy_source, f"TailoringPolicy.{policy.version}.default_notice_period_days")
+
+    def test_compensation_hourly_rate_without_explicit_currency_fails_closed_to_pause(self) -> None:
+        policy = TailoringPolicy(default_hourly_rate=120.0, default_currency=None)
+        engine = ApplicationAnswerEngine(TruthGraph(), policy)
+        field = DetectedFormField(
+            field_id="rate", name="rate", field_type="text",
+            label="Desired Compensation / Rate", normalized_label="desired compensation",
+            ontology_type=FieldOntologyType.COMPENSATION,
+        )
+        ans = engine.answer_field(field, self.opportunity)
+        self.assertIsNone(ans.answer)
+        self.assertEqual(ans.answer_class, AnswerClass.RED)
+        self.assertEqual(ans.disposition, "pause")
+        self.assertEqual(ans.answer_source, "unconfigured_compensation_policy")
+
+    def test_compensation_daily_rate_without_explicit_currency_fails_closed_to_pause(self) -> None:
+        policy = TailoringPolicy(default_daily_rate=900.0, default_currency=None)
+        engine = ApplicationAnswerEngine(TruthGraph(), policy)
+        field = DetectedFormField(
+            field_id="rate", name="rate", field_type="text",
+            label="Desired Compensation / Rate", normalized_label="desired compensation",
+            ontology_type=FieldOntologyType.COMPENSATION,
+        )
+        ans = engine.answer_field(field, self.opportunity)
+        self.assertIsNone(ans.answer)
+        self.assertEqual(ans.answer_class, AnswerClass.RED)
+        self.assertEqual(ans.disposition, "pause")
+        self.assertEqual(ans.answer_source, "unconfigured_compensation_policy")
+
+    def test_compensation_empty_policy_fails_closed_to_pause(self) -> None:
+        empty_policy = TailoringPolicy()
+        engine = ApplicationAnswerEngine(TruthGraph(), empty_policy)
+        field = DetectedFormField(
+            field_id="rate", name="rate", field_type="text",
+            label="Desired Compensation", normalized_label="desired compensation",
+            ontology_type=FieldOntologyType.COMPENSATION,
+        )
+        ans = engine.answer_field(field, self.opportunity)
+        self.assertIsNone(ans.answer)
+        self.assertEqual(ans.answer_class, AnswerClass.RED)
+        self.assertEqual(ans.disposition, "pause")
+        self.assertEqual(ans.answer_source, "unconfigured_compensation_policy")
+
+    def test_compensation_explicit_hourly_rate_and_currency_yields_exact_yellow_answer(self) -> None:
+        policy = TailoringPolicy(default_hourly_rate=120.0, default_currency="USD")
+        engine = ApplicationAnswerEngine(TruthGraph(), policy)
+        field = DetectedFormField(
+            field_id="rate", name="rate", field_type="text",
+            label="Desired Compensation", normalized_label="desired compensation",
+            ontology_type=FieldOntologyType.COMPENSATION,
+        )
+        ans = engine.answer_field(field, self.opportunity)
+        self.assertEqual(ans.answer, "USD 120.0/hr")
+        self.assertEqual(ans.answer_class, AnswerClass.YELLOW)
+        self.assertEqual(ans.policy_source, f"TailoringPolicy.{policy.version}.default_hourly_rate")
+
+    def test_compensation_explicit_daily_rate_and_currency_yields_exact_yellow_answer(self) -> None:
+        policy = TailoringPolicy(default_daily_rate=850.0, default_currency="EUR")
+        engine = ApplicationAnswerEngine(TruthGraph(), policy)
+        field = DetectedFormField(
+            field_id="rate", name="rate", field_type="text",
+            label="Desired Compensation", normalized_label="desired compensation",
+            ontology_type=FieldOntologyType.COMPENSATION,
+        )
+        ans = engine.answer_field(field, self.opportunity)
+        self.assertEqual(ans.answer, "EUR 850.0/day")
+        self.assertEqual(ans.answer_class, AnswerClass.YELLOW)
+        self.assertEqual(ans.policy_source, f"TailoringPolicy.{policy.version}.default_daily_rate")
 
     def test_work_authorization_egypt_positive_with_us_question_yields_pause_not_no(self) -> None:
         tg = TruthGraph()

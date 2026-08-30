@@ -50,7 +50,7 @@ class SourceActionRegistry:
 
 
 class AdapterRegistry:
-    """Authoritative singleton/shared registry for outbound adapter graduation records."""
+    """Authoritative singleton/shared registry for outbound adapter graduation records with dynamic evidence validation."""
 
     def __init__(self, evidence_dir: Path | None = None) -> None:
         self._records: dict[str, GraduationRecord] = {}
@@ -64,97 +64,73 @@ class AdapterRegistry:
             return "", False
         try:
             content = evidence_file.read_bytes()
+            if not content:
+                return "", False
             # Validate JSON parseable
-            json.loads(content.decode("utf-8"))
+            parsed = json.loads(content.decode("utf-8"))
+            if not isinstance(parsed, dict) or not parsed:
+                return "", False
             digest = hashlib.sha256(content).hexdigest()
             return digest, True
         except Exception:
             return "", False
 
     def _init_default_graduations(self) -> None:
-        # 1. Greenhouse
-        gh_hash, gh_valid = self._compute_evidence_hash("greenhouse")
-        gh_state = AdapterLifecycleState.SUBMIT_ELIGIBLE if gh_valid else AdapterLifecycleState.ASSISTED_VERIFIED
-        self.register_adapter(GraduationRecord(
-            adapter_id="greenhouse",
-            version="1.0.0",
-            lifecycle_state=gh_state,
-            source_compatibility=("greenhouse",),
-            evidence_hash=gh_hash,
-            verified_at="2026-08-30T00:00:00Z" if gh_valid else "",
-            submit_enabled_by_founder=False,
-        ))
-
-        # 2. Lever
-        lever_hash, lever_valid = self._compute_evidence_hash("lever")
-        lever_state = AdapterLifecycleState.SUBMIT_ELIGIBLE if lever_valid else AdapterLifecycleState.ASSISTED_VERIFIED
-        self.register_adapter(GraduationRecord(
-            adapter_id="lever",
-            version="1.0.0",
-            lifecycle_state=lever_state,
-            source_compatibility=("lever",),
-            evidence_hash=lever_hash,
-            verified_at="2026-08-30T00:00:00Z" if lever_valid else "",
-            submit_enabled_by_founder=False,
-        ))
-
-        # 3. Ashby
-        ashby_hash, ashby_valid = self._compute_evidence_hash("ashby")
-        ashby_state = AdapterLifecycleState.SUBMIT_ELIGIBLE if ashby_valid else AdapterLifecycleState.ASSISTED_VERIFIED
-        self.register_adapter(GraduationRecord(
-            adapter_id="ashby",
-            version="1.0.0",
-            lifecycle_state=ashby_state,
-            source_compatibility=("ashby",),
-            evidence_hash=ashby_hash,
-            verified_at="2026-08-30T00:00:00Z" if ashby_valid else "",
-            submit_enabled_by_founder=False,
-        ))
-
-        # 4. Generic Form
-        self.register_adapter(GraduationRecord(
-            adapter_id="generic_form",
-            version="1.0.0",
-            lifecycle_state=AdapterLifecycleState.ASSISTED_VERIFIED,
-            source_compatibility=("generic_form", "web"),
-            evidence_hash="",
-            verified_at="2026-08-30T00:00:00Z",
-            submit_enabled_by_founder=False,
-        ))
-
-        # 5. Procurement Package
-        self.register_adapter(GraduationRecord(
-            adapter_id="procurement_package",
-            version="1.0.0",
-            lifecycle_state=AdapterLifecycleState.ASSISTED_VERIFIED,
-            source_compatibility=("ungm", "world_bank", "eu_ted", "procurement"),
-            evidence_hash="",
-            verified_at="2026-08-30T00:00:00Z",
-            submit_enabled_by_founder=False,
-        ))
-
-        # 6. Freelance Proposal
-        self.register_adapter(GraduationRecord(
-            adapter_id="freelance_proposal",
-            version="1.0.0",
-            lifecycle_state=AdapterLifecycleState.ASSISTED_VERIFIED,
-            source_compatibility=("direct", "freelance"),
-            evidence_hash="",
-            verified_at="2026-08-30T00:00:00Z",
-            submit_enabled_by_founder=False,
-        ))
+        # Default production state is ASSISTED_VERIFIED unless concrete persisted evidence exists
+        for adapter_id, comp in [
+            ("greenhouse", ("greenhouse",)),
+            ("lever", ("lever",)),
+            ("ashby", ("ashby",)),
+            ("generic_form", ("generic_form", "web")),
+            ("procurement_package", ("ungm", "world_bank", "eu_ted", "procurement")),
+            ("freelance_proposal", ("direct", "freelance")),
+        ]:
+            ev_hash, ev_valid = self._compute_evidence_hash(adapter_id)
+            state = AdapterLifecycleState.SUBMIT_ELIGIBLE if ev_valid else AdapterLifecycleState.ASSISTED_VERIFIED
+            self.register_adapter(GraduationRecord(
+                adapter_id=adapter_id,
+                version="1.0.0",
+                lifecycle_state=state,
+                source_compatibility=comp,
+                evidence_hash=ev_hash,
+                verified_at="2026-08-30T00:00:00Z" if ev_valid else "",
+                submit_enabled_by_founder=False,
+            ))
 
     def register_adapter(self, record: GraduationRecord) -> None:
         self._records[record.adapter_id] = record
 
     def get_graduation_record(self, adapter_id: str) -> GraduationRecord | None:
-        return self._records.get(adapter_id)
-
-    def enable_submit(self, adapter_id: str) -> None:
         rec = self._records.get(adapter_id)
         if rec is None:
+            return None
+
+        # Dynamic runtime evidence check: if record claims SUBMIT_ELIGIBLE or SUBMIT_ENABLED,
+        # re-verify that the backing evidence file exists, is valid, and matches the recorded evidence_hash
+        if rec.lifecycle_state in (AdapterLifecycleState.SUBMIT_ELIGIBLE, AdapterLifecycleState.SUBMIT_ENABLED):
+            current_hash, valid = self._compute_evidence_hash(adapter_id)
+            if not valid or not rec.evidence_hash or current_hash != rec.evidence_hash:
+                # Dynamically downgrade to ASSISTED_VERIFIED
+                downgraded = GraduationRecord(
+                    adapter_id=rec.adapter_id,
+                    version=rec.version,
+                    lifecycle_state=AdapterLifecycleState.ASSISTED_VERIFIED,
+                    source_compatibility=rec.source_compatibility,
+                    evidence_hash="",
+                    verified_at="",
+                    submit_enabled_by_founder=False,
+                )
+                self._records[adapter_id] = downgraded
+                return downgraded
+
+        return rec
+
+    def enable_submit(self, adapter_id: str) -> None:
+        rec = self.get_graduation_record(adapter_id)
+        if rec is None:
             raise KeyError(f"Adapter '{adapter_id}' is not registered")
-        if rec.lifecycle_state != AdapterLifecycleState.SUBMIT_ELIGIBLE or not rec.evidence_hash:
+        current_hash, valid = self._compute_evidence_hash(adapter_id)
+        if rec.lifecycle_state != AdapterLifecycleState.SUBMIT_ELIGIBLE or not valid or not rec.evidence_hash or current_hash != rec.evidence_hash:
             raise ValueError(f"Adapter '{adapter_id}' is not SUBMIT_ELIGIBLE with valid graduation evidence")
         updated = GraduationRecord(
             adapter_id=rec.adapter_id,
@@ -168,16 +144,17 @@ class AdapterRegistry:
         self._records[adapter_id] = updated
 
     def disable_submit(self, adapter_id: str) -> None:
-        rec = self._records.get(adapter_id)
+        rec = self.get_graduation_record(adapter_id)
         if rec is None:
             raise KeyError(f"Adapter '{adapter_id}' is not registered")
+        current_hash, valid = self._compute_evidence_hash(adapter_id)
         updated = GraduationRecord(
             adapter_id=rec.adapter_id,
             version=rec.version,
-            lifecycle_state=AdapterLifecycleState.SUBMIT_ELIGIBLE if rec.evidence_hash else AdapterLifecycleState.ASSISTED_VERIFIED,
+            lifecycle_state=AdapterLifecycleState.SUBMIT_ELIGIBLE if (valid and rec.evidence_hash) else AdapterLifecycleState.ASSISTED_VERIFIED,
             source_compatibility=rec.source_compatibility,
-            evidence_hash=rec.evidence_hash,
-            verified_at=rec.verified_at,
+            evidence_hash=rec.evidence_hash if valid else "",
+            verified_at=rec.verified_at if valid else "",
             submit_enabled_by_founder=False,
         )
         self._records[adapter_id] = updated
