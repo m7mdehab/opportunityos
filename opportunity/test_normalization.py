@@ -161,8 +161,8 @@ class NormalizationTests(unittest.TestCase):
     def test_create_field_provenance(self) -> None:
         fp = create_field_provenance(
             field_name="title",
-            raw_value="<p>Lead Engineer</p>",
-            normalized_value="Lead Engineer",
+            raw_val="<p>Lead Engineer</p>",
+            norm_val="Lead Engineer",
             derivation_type=DerivationType.RAW_EXTRACTION,
             raw_pointer="jobs[0].title",
             record_checksum="sha256abc",

@@ -28,61 +28,52 @@ from .models import (
 )
 
 
-def clean_text(raw: Any) -> str:
-    """Deterministically strip HTML tags, unescape HTML entities, and collapse whitespace."""
-    if raw is None:
+def clean_text(text: Any) -> str:
+    """Strip HTML tags, unescape entities, and normalize whitespace."""
+    if text is None:
         return ""
-    if isinstance(raw, dict):
-        vals = []
-        for v in raw.values():
-            if isinstance(v, (list, tuple)):
-                vals.extend(str(item) for item in v if item)
-            elif v:
-                vals.append(str(v))
-        text = " ".join(vals)
-    elif isinstance(raw, (list, tuple)):
-        text = " ".join(str(item) for item in raw if item)
-    else:
-        text = str(raw)
-
+    if isinstance(text, dict):
+        values = text.get("eng") or text.get("ENG") or next(iter(text.values()), [])
+        text = values[0] if isinstance(values, list) and values else values
+    val_str = str(text)
     # Strip HTML tags
-    text = re.sub(r"<[^>]+>", " ", text)
+    val_no_html = re.sub(r"<[^>]+>", " ", val_str)
     # Unescape HTML entities
-    text = html.unescape(text)
-    # Collapse whitespace and strip
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
+    unescaped = html.unescape(val_no_html)
+    # Collapse multiple whitespace
+    collapsed = re.sub(r"\s+", " ", unescaped).strip()
+    return collapsed
 
 
 def compute_record_checksum(raw_item: Any) -> str:
-    """Compute single-record SHA-256 checksum for atomic field lineage."""
+    """Compute deterministic SHA-256 checksum for a single raw item payload."""
     if isinstance(raw_item, str):
         payload = raw_item.encode("utf-8")
-    elif isinstance(raw_item, (dict, list)):
-        import json
-        payload = json.dumps(raw_item, sort_keys=True, separators=(",", ":")).encode("utf-8")
     else:
-        payload = str(raw_item).encode("utf-8")
+        import json
+        try:
+            payload = json.dumps(raw_item, sort_keys=True).encode("utf-8")
+        except Exception:
+            payload = str(raw_item).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 
 def create_field_provenance(
     field_name: str,
-    raw_value: Any,
-    normalized_value: Any,
-    derivation_type: DerivationType,
+    raw_val: Any,
+    norm_val: Any,
+    derivation_type: DerivationType | str,
     raw_pointer: str,
     record_checksum: str,
     rule_id: str,
 ) -> FieldProvenance:
-    """Create FieldProvenance object with explicit typing and derivation metadata."""
-    raw_str = "" if raw_value is None else str(raw_value).strip()
-    norm_str = "" if normalized_value is None else str(normalized_value).strip()
+    """Construct an immutable FieldProvenance record."""
+    dtype = derivation_type.value if isinstance(derivation_type, DerivationType) else str(derivation_type)
     return FieldProvenance(
         field_name=field_name,
-        raw_value=raw_str,
-        normalized_value=norm_str,
-        derivation_type=derivation_type.value,
+        raw_value=str(raw_val) if raw_val is not None else "",
+        normalized_value=str(norm_val) if norm_val is not None else "",
+        derivation_type=dtype,
         raw_pointer=raw_pointer,
         record_checksum=record_checksum,
         rule_id=rule_id,
@@ -92,27 +83,30 @@ def create_field_provenance(
 _SENIORITY_PATTERNS: tuple[tuple[SeniorityLevel, re.Pattern[str]], ...] = (
     (
         SeniorityLevel.EXECUTIVE,
-        re.compile(r"\b(?:chief|c[a-z]o|vp|vice\s+president|director|head\s+of)\b", re.IGNORECASE),
+        re.compile(
+            r"\b(?:chief\s+\w+\s+officer|cxo|cto|ceo|cfo|cio|cpo|vice\s+president|vp\b|head\s+of|director\b|managing\s+director)\b",
+            re.IGNORECASE,
+        ),
     ),
     (
         SeniorityLevel.PRINCIPAL,
-        re.compile(r"\b(?:principal|distinguished|fellow|architect)\b", re.IGNORECASE),
+        re.compile(r"\b(?:principal|staff|distinguished)\b", re.IGNORECASE),
     ),
     (
         SeniorityLevel.LEAD,
-        re.compile(r"\b(?:lead|team\s+lead|tech\s+lead|manager|staff)\b", re.IGNORECASE),
+        re.compile(r"\b(?:lead|team\s+lead|tech\s+lead|technical\s+lead)\b", re.IGNORECASE),
     ),
     (
         SeniorityLevel.SENIOR,
-        re.compile(r"\b(?:senior|sr\.?|snr)\b", re.IGNORECASE),
-    ),
-    (
-        SeniorityLevel.MID,
-        re.compile(r"\b(?:mid|intermediate|experienced|level\s+2|ii)\b", re.IGNORECASE),
+        re.compile(r"\b(?:senior|sr\.?)\b", re.IGNORECASE),
     ),
     (
         SeniorityLevel.ENTRY,
-        re.compile(r"\b(?:junior|jr\.?|associate|entry[-_ ]?level|intern|graduate|fresh)\b", re.IGNORECASE),
+        re.compile(r"\b(?:junior|jr\.?|associate|entry\s*level|intern|internship|trainee|graduate)\b", re.IGNORECASE),
+    ),
+    (
+        SeniorityLevel.MID,
+        re.compile(r"\b(?:mid[-_ ]?level|intermediate|mid[-_ ]?senior)\b", re.IGNORECASE),
     ),
 )
 
