@@ -42,7 +42,9 @@ class ArtifactClaimValidator:
         unresolved_commitments = 0
 
         # 1. Opportunity Binding Integrity
-        if opportunity is not None:
+        if opportunity is None:
+            errors.append("Opportunity binding is mandatory: target Opportunity was not supplied to validator")
+        else:
             if artifact.opportunity_id != opportunity.id:
                 errors.append(
                     f"Opportunity ID mismatch: artifact opportunity_id '{artifact.opportunity_id}' != target opportunity id '{opportunity.id}'"
@@ -77,10 +79,28 @@ class ArtifactClaimValidator:
                         errors.append(
                             f"Resolved forward commitment claim '{claim.claim_id}' lacks specific approved policy source (got '{claim.policy_source}')"
                         )
+                    elif policy is None:
+                        errors.append(
+                            f"TailoringPolicy object is required to validate resolved forward commitment claim '{claim.claim_id}'"
+                        )
+                    else:
+                        attr_name = claim.policy_source.removeprefix("TailoringPolicy.")
+                        if not hasattr(policy, attr_name):
+                            errors.append(
+                                f"Resolved forward commitment claim '{claim.claim_id}' cites non-existent policy field '{claim.policy_source}'"
+                            )
+                        else:
+                            val = getattr(policy, attr_name)
+                            if val is None or val == "":
+                                errors.append(
+                                    f"Resolved forward commitment claim '{claim.claim_id}' cites policy field '{claim.policy_source}' which is unconfigured in policy"
+                                )
                 continue
 
             # Pure organizational / scoping headers don't require truth assertions
-            if not claim.assertion_ids and claim.section_id in ("scope_understanding", "commitments"):
+            if not claim.assertion_ids and claim.section_id in ("scope_understanding", "commitments", "introduction", "alignment"):
+                if claim.predicate != "":
+                    errors.append(f"Unbacked header claim '{claim.claim_id}' in section '{claim.section_id}' must have empty predicate")
                 continue
 
             if not claim.assertion_ids:
@@ -122,7 +142,7 @@ class ArtifactClaimValidator:
                         str(a.value).casefold() for a in matched_assertions if getattr(a, "predicate", "") == "skill.name"
                     ]
                     target_val = (claim.authorized_value or claim.text).casefold()
-                    if not any(target_val == s for s in authorized_skills):
+                    if not authorized_skills or not any(target_val == s for s in authorized_skills):
                         errors.append(
                             f"Claim '{claim.claim_id}' asserts skill '{claim.authorized_value or claim.text}' which is not authorized by cited assertions '{authorized_skills}'"
                         )
@@ -133,7 +153,7 @@ class ArtifactClaimValidator:
                         str(a.value).casefold() for a in matched_assertions if getattr(a, "predicate", "") == "employment.title"
                     ]
                     target_val = (claim.authorized_value or claim.text).casefold()
-                    if not any(t in target_val or target_val in t for t in authorized_titles):
+                    if not authorized_titles or not any(t in target_val or target_val in t for t in authorized_titles):
                         errors.append(
                             f"Claim '{claim.claim_id}' asserts title '{claim.authorized_value or claim.text}' which is not authorized by cited assertions '{authorized_titles}'"
                         )
@@ -144,7 +164,7 @@ class ArtifactClaimValidator:
                         str(a.value).casefold() for a in matched_assertions if getattr(a, "predicate", "") == "service.name"
                     ]
                     target_val = (claim.authorized_value or claim.text).casefold()
-                    if not any(target_val == s for s in authorized_services):
+                    if not authorized_services or not any(target_val == s for s in authorized_services):
                         errors.append(
                             f"Claim '{claim.claim_id}' asserts service '{claim.authorized_value or claim.text}' which is not authorized by cited assertions '{authorized_services}'"
                         )
@@ -155,19 +175,82 @@ class ArtifactClaimValidator:
                         str(a.value).casefold() for a in matched_assertions if getattr(a, "predicate", "") == "portfolio.item"
                     ]
                     target_val = (claim.authorized_value or claim.text).casefold()
-                    if not any(target_val == p for p in authorized_ports):
+                    if not authorized_ports or not any(target_val == p for p in authorized_ports):
                         errors.append(
                             f"Claim '{claim.claim_id}' asserts portfolio item '{claim.authorized_value or claim.text}' which is not authorized by cited assertions '{authorized_ports}'"
                         )
                         claim_passed = False
 
                 elif claim.predicate == "metric":
+                    has_matching_metric = False
                     for a in matched_assertions:
                         if hasattr(a, "numeric_value"):
                             num_str = str(a.numeric_value)
-                            if num_str not in claim.text and num_str not in claim.authorized_value:
-                                errors.append(f"Metric claim '{claim.claim_id}' text does not contain authorized numeric value '{num_str}'")
+                            if num_str in claim.text or (claim.authorized_value and num_str in claim.authorized_value):
+                                has_matching_metric = True
+                                break
+                    if not has_matching_metric:
+                        errors.append(f"Metric claim '{claim.claim_id}' text does not contain authorized numeric value from matched assertions")
+                        claim_passed = False
+
+                elif claim.predicate == "summary":
+                    title_matches = [
+                        a for a in matched_assertions if getattr(a, "predicate", "") == "employment.title"
+                    ]
+                    skill_matches = [
+                        a for a in matched_assertions if getattr(a, "predicate", "") == "skill.name"
+                    ]
+                    non_summary_assertions = [
+                        a for a in matched_assertions if getattr(a, "predicate", "") not in ("employment.title", "skill.name")
+                    ]
+                    if not title_matches:
+                        errors.append(f"Summary claim '{claim.claim_id}' lacks supporting employment.title assertion in cited assertions")
+                        claim_passed = False
+                    elif non_summary_assertions:
+                        errors.append(f"Summary claim '{claim.claim_id}' cites invalid predicate assertions: {[getattr(a, 'predicate', '') for a in non_summary_assertions]}")
+                        claim_passed = False
+                    else:
+                        claim_text_cf = claim.text.casefold()
+                        top_title_val = str(title_matches[0].value).casefold()
+                        if top_title_val not in claim_text_cf:
+                            errors.append(f"Summary claim '{claim.claim_id}' text does not contain cited title '{top_title_val}'")
+                            claim_passed = False
+                        for s in skill_matches:
+                            s_val = str(s.value).casefold()
+                            if s_val not in claim_text_cf:
+                                errors.append(f"Summary claim '{claim.claim_id}' text does not contain cited skill '{s_val}'")
                                 claim_passed = False
+
+                elif claim.predicate == "employment.record":
+                    subjects = {getattr(a, "subject_id", "") for a in matched_assertions}
+                    if len(subjects) != 1 or not all(getattr(a, "predicate", "").startswith("employment.") for a in matched_assertions):
+                        errors.append(f"Employment record claim '{claim.claim_id}' cites cross-subject or non-employment assertions: {subjects}")
+                        claim_passed = False
+                    else:
+                        field_dict = {getattr(a, "predicate", "").split(".", 1)[1]: str(a.value) for a in matched_assertions if "." in getattr(a, "predicate", "")}
+                        claim_text_cf = claim.text.casefold()
+                        if "title" in field_dict and field_dict["title"].casefold() not in claim_text_cf:
+                            errors.append(f"Employment record claim '{claim.claim_id}' text does not match cited title '{field_dict['title']}'")
+                            claim_passed = False
+                        if "organization" in field_dict and field_dict["organization"].casefold() not in claim_text_cf:
+                            errors.append(f"Employment record claim '{claim.claim_id}' text does not match cited organization '{field_dict['organization']}'")
+                            claim_passed = False
+
+                elif claim.predicate in ("credential.status", "certification.state"):
+                    authorized_creds = [
+                        str(a.value).casefold() for a in matched_assertions if getattr(a, "predicate", "") in ("credential.status", "certification.state")
+                    ]
+                    target_val = (claim.authorized_value or claim.text).casefold()
+                    if not any(c in target_val for c in authorized_creds):
+                        errors.append(f"Credential claim '{claim.claim_id}' not authorized by cited assertions '{authorized_creds}'")
+                        claim_passed = False
+
+                elif claim.predicate == "":
+                    pass
+
+                else:
+                    errors.append(f"Unknown or unauthorized claim predicate '{claim.predicate}' in claim '{claim.claim_id}'")
+                    claim_passed = False
 
             if claim_passed:
                 verified_count += 1
@@ -192,11 +275,16 @@ class ArtifactClaimValidator:
             if c.status == CommitmentStatus.RESOLVED:
                 if not c.policy_source or not c.policy_source.startswith("TailoringPolicy.") or c.policy_source == "TailoringPolicy":
                     errors.append(f"Forward commitment '{c.commitment_type}' marked RESOLVED without specific approved policy source")
-                elif policy is not None:
+                elif policy is None:
+                    errors.append(f"TailoringPolicy object is required to validate resolved forward commitment '{c.commitment_type}'")
+                else:
                     attr_name = c.policy_source.removeprefix("TailoringPolicy.")
-                    val = getattr(policy, attr_name, None)
-                    if val is None or val == "":
-                        errors.append(f"Forward commitment '{c.commitment_type}' cites policy field '{c.policy_source}' which is unconfigured in policy")
+                    if not hasattr(policy, attr_name):
+                        errors.append(f"Forward commitment '{c.commitment_type}' cites non-existent policy field '{c.policy_source}'")
+                    else:
+                        val = getattr(policy, attr_name)
+                        if val is None or val == "":
+                            errors.append(f"Forward commitment '{c.commitment_type}' cites policy field '{c.policy_source}' which is unconfigured in policy")
             elif c.status == CommitmentStatus.UNRESOLVED:
                 unresolved_commitments += 1
                 if "UNRESOLVED" not in c.value:

@@ -505,24 +505,24 @@ class OpportunityScorer:
         ))
 
         # 2. Scope & Requirement Complexity
-        founder_caps = [
+        capacity_assertions = [
             a for a in truth_graph.assertions.values()
-            if a.predicate in ("service.name", "business.capacity", "capacity.annual_turnover")
+            if a.predicate in ("business.capacity", "capacity.team_size", "capacity.annual_turnover", "capacity.concurrent_projects", "capacity.headcount")
             and a.verification_status == VerificationStatus.VERIFIED
         ]
-        if not founder_caps:
+        if not capacity_assertions:
             scope_score = 0.50
             scope_strengths = ()
             scope_gaps = ()
-            scope_unknowns = ("Founder consulting delivery capacity unasserted in truth graph",)
+            scope_unknowns = ("Founder consulting delivery capacity / team size unasserted in truth graph",)
             scope_refs = ()
-            uncertainty_acc += 0.30
+            uncertainty_acc += 0.20
         else:
-            scope_score = 0.85
-            scope_strengths = ("Terms of reference within single-practitioner / boutique consulting delivery capacity",)
+            scope_score = 0.80
+            scope_strengths = (f"Verified delivery capacity in truth graph ({len(capacity_assertions)} records)",)
             scope_gaps = ()
             scope_unknowns = ()
-            scope_refs = tuple(a.id for a in founder_caps)
+            scope_refs = tuple(a.id for a in capacity_assertions)
 
         w_scope = weights.get("scope", 0.20)
         scores.append(MatchDimensionScore(
@@ -573,13 +573,29 @@ class OpportunityScorer:
 
         # 4. Budget & Financial Fit
         w_bud = weights.get("budget", 0.10)
+        min_econ = getattr(self.policy, "min_target_compensation", None) or getattr(self.policy, "min_target_daily_rate", None) or getattr(self.policy, "min_target_hourly_rate", None)
         if opp.compensation and opp.compensation.min_amount:
-            bud_score = 0.80
-            bud_strengths = (f"Procurement budget structured: {opp.compensation.min_amount}-{opp.compensation.max_amount or ''} {opp.compensation.currency or ''}",)
-            bud_unknowns = ()
+            if min_econ is not None:
+                if opp.compensation.min_amount >= min_econ:
+                    bud_score = 1.0
+                    bud_strengths = (f"Procurement compensation ({opp.compensation.min_amount} {opp.compensation.currency or ''}) meets founder target economics ({min_econ})",)
+                    bud_gaps = ()
+                    bud_unknowns = ()
+                else:
+                    bud_score = 0.20
+                    bud_strengths = ()
+                    bud_gaps = (f"Procurement compensation ({opp.compensation.min_amount}) below founder target economics ({min_econ})",)
+                    bud_unknowns = ()
+            else:
+                bud_score = 0.50
+                bud_strengths = ()
+                bud_gaps = ()
+                bud_unknowns = (f"Procurement budget stated ({opp.compensation.min_amount} {opp.compensation.currency or ''}); founder target economics unconfigured in policy",)
+                uncertainty_acc += 0.1
         else:
             bud_score = 0.50
             bud_strengths = ()
+            bud_gaps = ()
             bud_unknowns = ("Procurement budget unstated in notice metadata",)
             uncertainty_acc += 0.1
 
@@ -588,9 +604,9 @@ class OpportunityScorer:
             raw_score=bud_score,
             weight=w_bud,
             weighted_score=bud_score * w_bud,
-            explanation="Procurement budget evaluated from notice data.",
+            explanation="Procurement budget evaluated against founder economic policy.",
             strengths=bud_strengths,
-            gaps=(),
+            gaps=bud_gaps if opp.compensation and opp.compensation.min_amount and min_econ is not None and opp.compensation.min_amount < min_econ else (),
             unknowns=bud_unknowns,
             evidence_refs=(),
             opportunity_field_refs=("compensation", "procurement_metadata"),
@@ -605,9 +621,9 @@ class OpportunityScorer:
             deliv_unknowns = ("Buyer country unspecified in notice metadata",)
             uncertainty_acc += 0.1
         else:
-            prohibited = getattr(self.policy, "prohibited_jurisdictions", ("North Korea", "Iran", "Syria", "Russia"))
+            prohibited = getattr(self.policy, "prohibited_jurisdictions", ())
             approved = getattr(self.policy, "approved_delivery_jurisdictions", ())
-            if any(p.casefold() in buyer_loc.casefold() for p in prohibited):
+            if prohibited and any(p.casefold() in buyer_loc.casefold() for p in prohibited):
                 deliv_score = 0.0
                 deliv_strengths = ()
                 deliv_gaps = (f"Buyer country '{buyer_loc}' is in prohibited jurisdictions policy",)

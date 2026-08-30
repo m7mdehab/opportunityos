@@ -288,9 +288,9 @@ class QualificationEngine:
         # 1. Geographic / Buyer Delivery Country
         if pm.buyer_country:
             buyer_country = pm.buyer_country.strip()
-            prohibited = getattr(self.policy, "prohibited_jurisdictions", ("North Korea", "Iran", "Syria", "Russia"))
+            prohibited = getattr(self.policy, "prohibited_jurisdictions", ())
             approved = getattr(self.policy, "approved_delivery_jurisdictions", ())
-            if any(p.casefold() in buyer_country.casefold() for p in prohibited):
+            if prohibited and any(p.casefold() in buyer_country.casefold() for p in prohibited):
                 results.append(HardConstraintResult(
                     constraint_name="buyer_country_policy",
                     passed=False,
