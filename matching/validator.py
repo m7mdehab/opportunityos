@@ -108,6 +108,12 @@ class ArtifactClaimValidator:
                 unverified_count += 1
                 continue
 
+            # Material claims with assertion_ids MUST NOT have empty predicate
+            if not claim.predicate or not claim.predicate.strip():
+                errors.append(f"Material claim '{claim.claim_id}' citing assertion IDs {claim.assertion_ids} has empty predicate")
+                unverified_count += 1
+                continue
+
             # Verify referenced assertions
             claim_passed = True
             matched_assertions = []
@@ -244,9 +250,6 @@ class ArtifactClaimValidator:
                     if not any(c in target_val for c in authorized_creds):
                         errors.append(f"Credential claim '{claim.claim_id}' not authorized by cited assertions '{authorized_creds}'")
                         claim_passed = False
-
-                elif claim.predicate == "":
-                    pass
 
                 else:
                     errors.append(f"Unknown or unauthorized claim predicate '{claim.predicate}' in claim '{claim.claim_id}'")

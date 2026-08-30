@@ -268,6 +268,8 @@ class ScoringPolicy:
     prohibited_jurisdictions: tuple[str, ...] = ()
     approved_delivery_jurisdictions: tuple[str, ...] = ()
     min_target_compensation: float | None = None
+    min_target_yearly_compensation: float | None = None
+    min_target_project_budget: float | None = None
     min_target_daily_rate: float | None = None
     min_target_hourly_rate: float | None = None
     employment_weights: dict[str, float] = field(default_factory=lambda: {
@@ -307,5 +309,7 @@ class TailoringPolicy:
     prohibited_jurisdictions: tuple[str, ...] = ()
     approved_delivery_jurisdictions: tuple[str, ...] = ()
     min_target_compensation: float | None = None
+    min_target_yearly_compensation: float | None = None
+    min_target_project_budget: float | None = None
     min_target_daily_rate: float | None = None
     min_target_hourly_rate: float | None = None
