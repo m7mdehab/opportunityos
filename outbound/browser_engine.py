@@ -100,15 +100,22 @@ class OutboundBrowserEngine:
         adapter_registry: AdapterRegistry | None = None,
         source_registry: SourceActionRegistry | None = None,
     ) -> None:
-        shared_adapter_reg = adapter_registry or (authority.adapter_registry if authority else AdapterRegistry())
-        shared_source_reg = source_registry or (authority.registry if authority else SourceActionRegistry())
-        
-        self.adapter_registry = shared_adapter_reg
-        self.source_registry = shared_source_reg
-        self.authority = authority or ActionAuthority(
-            registry=self.source_registry,
-            adapter_registry=self.adapter_registry,
-        )
+        if authority is not None:
+            if adapter_registry is not None and adapter_registry is not authority.adapter_registry:
+                raise ValueError("Split adapter registry rejected: adapter_registry must be identity-equal to authority.adapter_registry")
+            if source_registry is not None and source_registry is not authority.registry:
+                raise ValueError("Split source registry rejected: source_registry must be identity-equal to authority.registry")
+            self.authority = authority
+            self.adapter_registry = authority.adapter_registry
+            self.source_registry = authority.registry
+        else:
+            self.adapter_registry = adapter_registry or AdapterRegistry()
+            self.source_registry = source_registry or SourceActionRegistry()
+            self.authority = ActionAuthority(
+                registry=self.source_registry,
+                adapter_registry=self.adapter_registry,
+            )
+
         self.ledger = ledger or IdempotencyLedger()
         self.confirmation_detector = ConfirmationDetector()
 
@@ -146,6 +153,7 @@ class OutboundBrowserEngine:
         truth_graph: TruthGraph | None = None,
         policy: TailoringPolicy | None = None,
         match_score_snapshot: float = 0.0,
+        prepared_manifest: PreSubmitManifest | None = None,
     ) -> OutboundActionRecord:
         """Orchestrate multi-step application workflow with non-bypassable pre-submit gate."""
         action_id = f"act-{uuid.uuid4().hex[:12]}"
@@ -158,13 +166,17 @@ class OutboundBrowserEngine:
         pol = policy or TailoringPolicy()
         answer_engine = ApplicationAnswerEngine(tg, pol)
 
+        # Snapshot initial environment state
+        initial_source_policy_ver = self.source_registry.get_policy_version(opportunity.source)
+        initial_grad_rec = self.adapter_registry.get_graduation_record(adapter_name)
+        initial_grad_ver = initial_grad_rec.version if initial_grad_rec else "1.0.0"
+
         bound_artifact: BoundArtifact | None = None
         if artifact is not None:
             if isinstance(artifact, BoundArtifact):
                 bound_artifact = artifact
             else:
                 if execution_mode in (ExecutionMode.ASSISTED, ExecutionMode.CONTROLLED_SUBMIT):
-                    # Raw TailoredArtifact without ownership must be rejected
                     return OutboundActionRecord(
                         action_id=action_id,
                         opportunity_id=opportunity.id,
@@ -187,13 +199,10 @@ class OutboundBrowserEngine:
                         updated_at=created_at,
                         blocker_reason="Raw unowned TailoredArtifact prohibited; BoundArtifact required",
                     )
-                # DRY_RUN allows inspection
                 bound_artifact = BoundArtifact(artifact=artifact, candidate_id=candidate_id, workspace=workspace)
 
-        # Pre-execution duplicate check
         is_dup = self.ledger.is_duplicate(workspace, candidate_id, opportunity.id, action_type)
 
-        # Initial Authority Gate
         dec, reasons = self.authority.evaluate_action(
             opportunity=opportunity,
             artifact=bound_artifact,
@@ -259,12 +268,13 @@ class OutboundBrowserEngine:
                 blocker_reason="; ".join(reasons),
             )
 
-        # Multi-Step Inspection & Population Loop
+        # Form Inspection & Population Loop
         step = 0
         max_steps = 10
         all_answers: list[ApplicationAnswer] = []
         unresolved_mandatory_count = 0
         has_more_steps = True
+        observed_fields: list[DetectedFormField] = []
 
         while has_more_steps and step < max_steps:
             if driver.is_captcha_present():
@@ -317,6 +327,7 @@ class OutboundBrowserEngine:
 
             fields = driver.inspect_page_fields(step)
             for fld in fields:
+                observed_fields.append(fld)
                 ans = answer_engine.answer_field(fld, opportunity, action_id=action_id, artifact=bound_artifact)
                 all_answers.append(ans)
 
@@ -333,23 +344,20 @@ class OutboundBrowserEngine:
             has_more_steps = driver.advance_step()
             step += 1
 
-        # PreSubmitManifest Compilation
         answers_tuple = tuple(all_answers)
         answers_hash = self.compute_answers_hash(answers_tuple)
         red_count = sum(1 for a in all_answers if a.answer_class == AnswerClass.RED)
-        grad_rec = self.adapter_registry.get_graduation_record(adapter_name)
-        source_policy_ver = self.source_registry.get_policy_version(opportunity.source)
 
-        manifest = PreSubmitManifest(
+        manifest = prepared_manifest or PreSubmitManifest(
             workspace=workspace,
             candidate_id=candidate_id,
             opportunity_id=opportunity.id,
             opportunity_content_hash=opportunity.content_hash,
             action_type=action_type,
             adapter_name=adapter_name,
-            adapter_version=grad_rec.version if grad_rec else "1.0.0",
-            graduation_record_version=grad_rec.version if grad_rec else "1.0.0",
-            source_policy_version=source_policy_ver,
+            adapter_version=initial_grad_ver,
+            graduation_record_version=initial_grad_ver,
+            source_policy_version=initial_source_policy_ver,
             artifact_ids=tuple([bound_artifact.artifact_id]) if bound_artifact else (),
             artifact_hashes=tuple([bound_artifact.artifact_hash]) if bound_artifact else (),
             answers=answers_tuple,
@@ -361,7 +369,6 @@ class OutboundBrowserEngine:
             compiled_at=created_at,
         )
 
-        # DRY_RUN and ASSISTED modes stop before submission
         if execution_mode == ExecutionMode.DRY_RUN:
             return OutboundActionRecord(
                 action_id=action_id,
@@ -372,7 +379,7 @@ class OutboundBrowserEngine:
                 track=opportunity.track,
                 source=opportunity.source,
                 adapter_name=adapter_name,
-                adapter_version=grad_rec.version if grad_rec else "1.0.0",
+                adapter_version=initial_grad_ver,
                 execution_mode=execution_mode,
                 qualification_decision=qualification_decision,
                 match_score_snapshot=match_score_snapshot,
@@ -397,7 +404,7 @@ class OutboundBrowserEngine:
                 track=opportunity.track,
                 source=opportunity.source,
                 adapter_name=adapter_name,
-                adapter_version=grad_rec.version if grad_rec else "1.0.0",
+                adapter_version=initial_grad_ver,
                 execution_mode=execution_mode,
                 qualification_decision=qualification_decision,
                 match_score_snapshot=match_score_snapshot,
@@ -411,12 +418,72 @@ class OutboundBrowserEngine:
                 blocker_reason=reason,
             )
 
-        # CONTROLLED_SUBMIT: Final Pre-Submit Re-evaluation Gate
+        # CONTROLLED_SUBMIT: Final Pre-Submit Staleness and Authority Re-evaluation Gate
+        fresh_answers: list[ApplicationAnswer] = []
+        fresh_unresolved_count = 0
+        fresh_answer_engine = ApplicationAnswerEngine(tg, pol)
+        for fld in observed_fields:
+            fa = fresh_answer_engine.answer_field(fld, opportunity, action_id=action_id, artifact=bound_artifact)
+            fresh_answers.append(fa)
+            if fld.required and (fa.answer is None or fa.answer_class == AnswerClass.RED):
+                fresh_unresolved_count += 1
+
+        fresh_answers_tuple = tuple(fresh_answers)
+        fresh_answers_hash = self.compute_answers_hash(fresh_answers_tuple)
+        fresh_red_count = sum(1 for a in fresh_answers if a.answer_class == AnswerClass.RED)
+        fresh_grad_rec = self.adapter_registry.get_graduation_record(adapter_name)
+        fresh_source_policy_ver = self.source_registry.get_policy_version(opportunity.source)
+
+        fresh_manifest = PreSubmitManifest(
+            workspace=workspace,
+            candidate_id=candidate_id,
+            opportunity_id=opportunity.id,
+            opportunity_content_hash=opportunity.content_hash,
+            action_type=action_type,
+            adapter_name=adapter_name,
+            adapter_version=fresh_grad_rec.version if fresh_grad_rec else "1.0.0",
+            graduation_record_version=fresh_grad_rec.version if fresh_grad_rec else "1.0.0",
+            source_policy_version=fresh_source_policy_ver,
+            artifact_ids=tuple([bound_artifact.artifact_id]) if bound_artifact else (),
+            artifact_hashes=tuple([bound_artifact.artifact_hash]) if bound_artifact else (),
+            answers=fresh_answers_tuple,
+            answers_hash=fresh_answers_hash,
+            qualification_decision=qualification_decision,
+            unresolved_mandatory_count=fresh_unresolved_count,
+            red_answers_count=fresh_red_count,
+            idempotency_key=idempotency_key,
+            compiled_at=created_at,
+        )
+
+        if fresh_manifest.manifest_hash != manifest.manifest_hash:
+            return OutboundActionRecord(
+                action_id=action_id,
+                opportunity_id=opportunity.id,
+                opportunity_content_hash=opportunity.content_hash,
+                workspace=workspace,
+                candidate_id=candidate_id,
+                track=opportunity.track,
+                source=opportunity.source,
+                adapter_name=adapter_name,
+                adapter_version=fresh_grad_rec.version if fresh_grad_rec else "1.0.0",
+                execution_mode=execution_mode,
+                qualification_decision=qualification_decision,
+                match_score_snapshot=match_score_snapshot,
+                artifact_ids=fresh_manifest.artifact_ids,
+                artifact_hashes=fresh_manifest.artifact_hashes,
+                manifest_hash=fresh_manifest.manifest_hash,
+                action_status=ActionStatus.BLOCKED,
+                idempotency_key=idempotency_key,
+                created_at=created_at,
+                updated_at=created_at,
+                blocker_reason="Manifest staleness detected: environment, policy, or provenance changed after preparation",
+            )
+
         is_dup_final = self.ledger.is_duplicate(workspace, candidate_id, opportunity.id, action_type)
         final_dec, final_reasons = self.authority.evaluate_action(
             opportunity=opportunity,
             artifact=bound_artifact,
-            answers=answers_tuple,
+            answers=fresh_answers_tuple,
             execution_mode=execution_mode,
             adapter_name=adapter_name,
             workspace=workspace,
@@ -427,7 +494,7 @@ class OutboundBrowserEngine:
             is_duplicate=is_dup_final,
             captcha_detected=driver.is_captcha_present(),
             mfa_detected=driver.is_mfa_present(),
-            unresolved_mandatory_count=unresolved_mandatory_count,
+            unresolved_mandatory_count=fresh_unresolved_count,
         )
 
         if final_dec != ActionAuthorityDecision.ALLOW_SUBMIT:
@@ -441,13 +508,13 @@ class OutboundBrowserEngine:
                 track=opportunity.track,
                 source=opportunity.source,
                 adapter_name=adapter_name,
-                adapter_version=grad_rec.version if grad_rec else "1.0.0",
+                adapter_version=fresh_grad_rec.version if fresh_grad_rec else "1.0.0",
                 execution_mode=execution_mode,
                 qualification_decision=qualification_decision,
                 match_score_snapshot=match_score_snapshot,
-                artifact_ids=manifest.artifact_ids,
-                artifact_hashes=manifest.artifact_hashes,
-                manifest_hash=manifest.manifest_hash,
+                artifact_ids=fresh_manifest.artifact_ids,
+                artifact_hashes=fresh_manifest.artifact_hashes,
+                manifest_hash=fresh_manifest.manifest_hash,
                 action_status=status,
                 idempotency_key=idempotency_key,
                 created_at=created_at,
@@ -464,13 +531,13 @@ class OutboundBrowserEngine:
             track=opportunity.track,
             source=opportunity.source,
             adapter_name=adapter_name,
-            adapter_version=grad_rec.version if grad_rec else "1.0.0",
+            adapter_version=fresh_grad_rec.version if fresh_grad_rec else "1.0.0",
             execution_mode=execution_mode,
             qualification_decision=qualification_decision,
             match_score_snapshot=match_score_snapshot,
-            artifact_ids=manifest.artifact_ids,
-            artifact_hashes=manifest.artifact_hashes,
-            manifest_hash=manifest.manifest_hash,
+            artifact_ids=fresh_manifest.artifact_ids,
+            artifact_hashes=fresh_manifest.artifact_hashes,
+            manifest_hash=fresh_manifest.manifest_hash,
             action_status=ActionStatus.PLANNED,
             idempotency_key=idempotency_key,
             created_at=created_at,
@@ -489,13 +556,13 @@ class OutboundBrowserEngine:
                 track=opportunity.track,
                 source=opportunity.source,
                 adapter_name=adapter_name,
-                adapter_version=grad_rec.version if grad_rec else "1.0.0",
+                adapter_version=fresh_grad_rec.version if fresh_grad_rec else "1.0.0",
                 execution_mode=execution_mode,
                 qualification_decision=qualification_decision,
                 match_score_snapshot=match_score_snapshot,
-                artifact_ids=manifest.artifact_ids,
-                artifact_hashes=manifest.artifact_hashes,
-                manifest_hash=manifest.manifest_hash,
+                artifact_ids=fresh_manifest.artifact_ids,
+                artifact_hashes=fresh_manifest.artifact_hashes,
+                manifest_hash=fresh_manifest.manifest_hash,
                 action_status=ActionStatus.BLOCKED,
                 idempotency_key=idempotency_key,
                 created_at=created_at,
@@ -519,13 +586,13 @@ class OutboundBrowserEngine:
                 track=opportunity.track,
                 source=opportunity.source,
                 adapter_name=adapter_name,
-                adapter_version=grad_rec.version if grad_rec else "1.0.0",
+                adapter_version=fresh_grad_rec.version if fresh_grad_rec else "1.0.0",
                 execution_mode=execution_mode,
                 qualification_decision=qualification_decision,
                 match_score_snapshot=match_score_snapshot,
-                artifact_ids=manifest.artifact_ids,
-                artifact_hashes=manifest.artifact_hashes,
-                manifest_hash=manifest.manifest_hash,
+                artifact_ids=fresh_manifest.artifact_ids,
+                artifact_hashes=fresh_manifest.artifact_hashes,
+                manifest_hash=fresh_manifest.manifest_hash,
                 action_status=ActionStatus.BLOCKED,
                 idempotency_key=idempotency_key,
                 created_at=created_at,
@@ -533,7 +600,7 @@ class OutboundBrowserEngine:
                 blocker_reason="Global kill switch disabled after reservation; submit aborted",
             )
 
-        # FINAL challenge check
+        # FINAL Challenge Check
         if driver.is_captcha_present() or driver.is_mfa_present():
             self.ledger.transition_status(
                 idempotency_key=idempotency_key,
@@ -549,13 +616,13 @@ class OutboundBrowserEngine:
                 track=opportunity.track,
                 source=opportunity.source,
                 adapter_name=adapter_name,
-                adapter_version=grad_rec.version if grad_rec else "1.0.0",
+                adapter_version=fresh_grad_rec.version if fresh_grad_rec else "1.0.0",
                 execution_mode=execution_mode,
                 qualification_decision=qualification_decision,
                 match_score_snapshot=match_score_snapshot,
-                artifact_ids=manifest.artifact_ids,
-                artifact_hashes=manifest.artifact_hashes,
-                manifest_hash=manifest.manifest_hash,
+                artifact_ids=fresh_manifest.artifact_ids,
+                artifact_hashes=fresh_manifest.artifact_hashes,
+                manifest_hash=fresh_manifest.manifest_hash,
                 action_status=ActionStatus.BLOCKED,
                 idempotency_key=idempotency_key,
                 created_at=created_at,
@@ -563,7 +630,6 @@ class OutboundBrowserEngine:
                 blocker_reason="Challenge detected immediately before submit call",
             )
 
-        # Irreversible Submission Call
         try:
             evidence = driver.submit_page()
         except Exception as err:

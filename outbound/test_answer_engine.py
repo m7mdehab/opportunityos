@@ -23,6 +23,7 @@ class ApplicationAnswerEngineTests(unittest.TestCase):
         self.policy = TailoringPolicy(
             default_notice_period_days=30,
             default_currency="USD",
+            default_sponsorship_required=False,
         )
 
     def test_empty_truth_graph_name_field_fails_closed_to_pause(self) -> None:
@@ -81,6 +82,62 @@ class ApplicationAnswerEngineTests(unittest.TestCase):
         self.assertEqual(ans.disposition, "pause")
         self.assertEqual(ans.answer_source, "unasserted_links")
 
+    def test_unconfigured_sponsorship_policy_fails_closed_to_pause(self) -> None:
+        empty_policy = TailoringPolicy()  # default_sponsorship_required is None
+        engine = ApplicationAnswerEngine(TruthGraph(), empty_policy)
+        field = DetectedFormField(
+            field_id="sponsorship", name="sponsorship", field_type="radio",
+            label="Will you now or in the future require visa sponsorship?",
+            normalized_label="will you require sponsorship",
+            ontology_type=FieldOntologyType.SPONSORSHIP,
+        )
+        ans = engine.answer_field(field, self.opportunity)
+        self.assertIsNone(ans.answer)
+        self.assertEqual(ans.answer_class, AnswerClass.RED)
+        self.assertEqual(ans.disposition, "pause")
+        self.assertEqual(ans.answer_source, "unconfigured_sponsorship_policy")
+
+    def test_explicit_sponsorship_policy_yields_exact_yellow_answer(self) -> None:
+        policy = TailoringPolicy(default_sponsorship_required=False)
+        engine = ApplicationAnswerEngine(TruthGraph(), policy)
+        field = DetectedFormField(
+            field_id="sponsorship", name="sponsorship", field_type="radio",
+            label="Will you now or in the future require visa sponsorship?",
+            normalized_label="will you require sponsorship",
+            ontology_type=FieldOntologyType.SPONSORSHIP,
+        )
+        ans = engine.answer_field(field, self.opportunity)
+        self.assertEqual(ans.answer, "No")
+        self.assertEqual(ans.answer_class, AnswerClass.YELLOW)
+        self.assertEqual(ans.policy_source, f"TailoringPolicy.{policy.version}.default_sponsorship_required")
+
+    def test_unconfigured_notice_period_policy_fails_closed_to_pause(self) -> None:
+        empty_policy = TailoringPolicy()  # default_notice_period_days is None
+        engine = ApplicationAnswerEngine(TruthGraph(), empty_policy)
+        field = DetectedFormField(
+            field_id="notice", name="notice", field_type="text",
+            label="Notice Period", normalized_label="notice period",
+            ontology_type=FieldOntologyType.AVAILABILITY,
+        )
+        ans = engine.answer_field(field, self.opportunity)
+        self.assertIsNone(ans.answer)
+        self.assertEqual(ans.answer_class, AnswerClass.RED)
+        self.assertEqual(ans.disposition, "pause")
+        self.assertEqual(ans.answer_source, "unconfigured_notice_period_policy")
+
+    def test_explicit_notice_period_policy_yields_exact_yellow_answer(self) -> None:
+        policy = TailoringPolicy(default_notice_period_days=14)
+        engine = ApplicationAnswerEngine(TruthGraph(), policy)
+        field = DetectedFormField(
+            field_id="notice", name="notice", field_type="text",
+            label="Notice Period", normalized_label="notice period",
+            ontology_type=FieldOntologyType.AVAILABILITY,
+        )
+        ans = engine.answer_field(field, self.opportunity)
+        self.assertEqual(ans.answer, "14 days")
+        self.assertEqual(ans.answer_class, AnswerClass.YELLOW)
+        self.assertEqual(ans.policy_source, f"TailoringPolicy.{policy.version}.default_notice_period_days")
+
     def test_work_authorization_egypt_positive_with_us_question_yields_pause_not_no(self) -> None:
         tg = TruthGraph()
         ev = EvidenceRecord(id="ev-auth-eg", source="passport", locator="p1", content="Authorized to work in Egypt indefinitely.")
@@ -99,7 +156,6 @@ class ApplicationAnswerEngineTests(unittest.TestCase):
             ontology_type=FieldOntologyType.WORK_AUTHORIZATION,
         )
         ans = engine.answer_field(field_us, self.opportunity)
-        # UNKNOWN != FALSE: absent evidence for US is unknown, so it must NOT infer "No" or "Yes"
         self.assertIsNone(ans.answer)
         self.assertEqual(ans.answer_class, AnswerClass.RED)
         self.assertEqual(ans.disposition, "pause")
