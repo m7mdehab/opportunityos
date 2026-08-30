@@ -8,6 +8,7 @@ from typing import Any
 
 from opportunity.models import (
     Opportunity,
+    ParseResult,
     SourceProvenance,
     Track,
 )
@@ -24,6 +25,7 @@ class BaseAdapter(abc.ABC):
         policy_url: str,
         rate_limit_rpm: int = 60,
         method: str = "GET",
+        default_body: dict[str, Any] | None = None,
     ) -> None:
         self.source_id = source_id
         self.track = track
@@ -31,12 +33,13 @@ class BaseAdapter(abc.ABC):
         self.policy_url = policy_url
         self.rate_limit_rpm = rate_limit_rpm
         self.method = method
+        self.default_body = default_body
 
     @abc.abstractmethod
     def parse_payload(
         self, payload: str, raw_pointer: str = "", fetched_at: str = ""
-    ) -> list[Opportunity]:
-        """Parse raw feed payload into typed Opportunity objects without network calls."""
+    ) -> ParseResult:
+        """Parse raw feed payload into a structured ParseResult containing Opportunities and raw count."""
         raise NotImplementedError
 
     def create_provenance(

@@ -1,7 +1,7 @@
 """Read-Only Acquisition and Transport Layer for OpportunityOS.
 
-Enforces source authorization, policy constraints, rate limits, and network safety.
-Provides injectable MockTransport for offline CI determinism.
+Enforces source authorization, exact host/path binding, pacing/rate limits, and network safety.
+Provides injectable MockTransport and injectable Clock for offline CI determinism.
 """
 from __future__ import annotations
 
@@ -12,9 +12,19 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from .registry import SourceRegistry
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveryRequest:
+    source_id: str
+    url: str
+    method: str = "GET"
+    body: dict[str, Any] | None = None
+    headers: tuple[tuple[str, str], ...] = ()
+    timeout_s: float = 10.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +39,10 @@ class TransportResponse:
     def is_success(self) -> bool:
         return 200 <= self.status_code < 300
 
+    @property
+    def is_nonempty(self) -> bool:
+        return bool(self.body and self.body.strip())
+
 
 @dataclass(frozen=True, slots=True)
 class AcquisitionResult:
@@ -41,16 +55,34 @@ class AcquisitionResult:
     refusal_reason: str | None = None
 
 
+class RateLimiter:
+    """Deterministic, injectable per-source rate limiter / pacer."""
+
+    def __init__(
+        self,
+        clock: Callable[[], float] | None = None,
+        default_min_interval_s: float = 1.0,
+    ) -> None:
+        self.clock = clock or time.monotonic
+        self.default_min_interval_s = default_min_interval_s
+        self._last_request_time: dict[str, float] = {}
+
+    def acquire(self, source_id: str, min_interval_s: float | None = None) -> float:
+        """Calculate wait time needed to respect pacing limit."""
+        interval = min_interval_s if min_interval_s is not None else self.default_min_interval_s
+        now = self.clock()
+        last = self._last_request_time.get(source_id, 0.0)
+        elapsed = now - last
+        wait_needed = max(0.0, interval - elapsed)
+        self._last_request_time[source_id] = now + wait_needed
+        return wait_needed
+
+
 class BaseTransport(abc.ABC):
     @abc.abstractmethod
     def fetch(
         self,
-        source_id: str,
-        url: str,
-        method: str = "GET",
-        body: dict[str, Any] | None = None,
-        headers: Mapping[str, str] | None = None,
-        timeout_s: float = 10.0,
+        request: DiscoveryRequest,
     ) -> TransportResponse:
         raise NotImplementedError
 
@@ -83,24 +115,19 @@ class MockTransport(BaseTransport):
 
     def fetch(
         self,
-        source_id: str,
-        url: str,
-        method: str = "GET",
-        body: dict[str, Any] | None = None,
-        headers: Mapping[str, str] | None = None,
-        timeout_s: float = 10.0,
+        request: DiscoveryRequest,
     ) -> TransportResponse:
         # Match by source_id first, then url
-        if source_id in self._responses:
-            return self._responses[source_id]
-        if url in self._responses:
-            return self._responses[url]
+        if request.source_id in self._responses:
+            return self._responses[request.source_id]
+        if request.url in self._responses:
+            return self._responses[request.url]
 
         return TransportResponse(
             status_code=404,
             body="",
             latency_ms=0,
-            error_message=f"MockTransport: No configured response for '{source_id}' ({url})",
+            error_message=f"MockTransport: No configured response for '{request.source_id}' ({request.url})",
         )
 
 
@@ -112,14 +139,9 @@ class HttpTransport(BaseTransport):
 
     def fetch(
         self,
-        source_id: str,
-        url: str,
-        method: str = "GET",
-        body: dict[str, Any] | None = None,
-        headers: Mapping[str, str] | None = None,
-        timeout_s: float = 10.0,
+        request: DiscoveryRequest,
     ) -> TransportResponse:
-        method_upper = method.upper()
+        method_upper = request.method.upper()
         if method_upper in {"PUT", "PATCH", "DELETE"}:
             return TransportResponse(
                 status_code=405,
@@ -132,16 +154,16 @@ class HttpTransport(BaseTransport):
             "User-Agent": self.user_agent,
             "Accept": "application/json, application/xml, text/xml, text/html, */*",
         }
-        if headers:
-            req_headers.update(headers)
+        if request.headers:
+            req_headers.update(dict(request.headers))
 
         data_bytes: bytes | None = None
-        if body is not None and method_upper == "POST":
-            data_bytes = json.dumps(body).encode("utf-8")
+        if request.body is not None and method_upper == "POST":
+            data_bytes = json.dumps(request.body).encode("utf-8")
             req_headers["Content-Type"] = "application/json"
 
         req = urllib.request.Request(
-            url=url,
+            url=request.url,
             data=data_bytes,
             headers=req_headers,
             method=method_upper,
@@ -149,7 +171,7 @@ class HttpTransport(BaseTransport):
 
         start_time = time.perf_counter()
         try:
-            with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+            with urllib.request.urlopen(req, timeout=request.timeout_s) as resp:
                 raw_bytes = resp.read()
                 latency_ms = int((time.perf_counter() - start_time) * 1000)
                 body_str = raw_bytes.decode("utf-8", errors="replace")
@@ -189,15 +211,17 @@ class HttpTransport(BaseTransport):
 
 
 class AcquisitionService:
-    """Central acquisition service that validates registry authority before execution."""
+    """Central acquisition service that validates registry authority and enforces pacing before execution."""
 
     def __init__(
         self,
         registry: SourceRegistry | None = None,
         transport: BaseTransport | None = None,
+        rate_limiter: RateLimiter | None = None,
     ) -> None:
         self.registry = registry or SourceRegistry()
         self.transport = transport or MockTransport()
+        self.rate_limiter = rate_limiter or RateLimiter()
 
     def acquire(
         self,
@@ -208,7 +232,7 @@ class AcquisitionService:
         headers: Mapping[str, str] | None = None,
         timeout_s: float = 10.0,
     ) -> AcquisitionResult:
-        # Pre-flight authorization check
+        # 1. Pre-flight authorization check binding SOURCE_ID + METHOD + EXACT HOST + ALLOWED PATH
         authorized, reason = self.registry.validate_preflight(source_id, url, method)
         if not authorized:
             return AcquisitionResult(
@@ -226,15 +250,24 @@ class AcquisitionService:
                 refusal_reason=reason,
             )
 
-        # Execute transport
-        response = self.transport.fetch(
+        # 2. Rate limiting pacing check
+        wait_needed = self.rate_limiter.acquire(source_id)
+        if wait_needed > 0 and isinstance(self.transport, HttpTransport):
+            time.sleep(wait_needed)
+
+        # 3. Construct explicit request
+        headers_tuple = tuple(headers.items()) if headers else ()
+        req = DiscoveryRequest(
             source_id=source_id,
             url=url,
             method=method,
             body=body,
-            headers=headers,
+            headers=headers_tuple,
             timeout_s=timeout_s,
         )
+
+        # 4. Execute transport
+        response = self.transport.fetch(req)
 
         feed_checksum = hashlib.sha256(response.body.encode("utf-8")).hexdigest() if response.body else ""
 

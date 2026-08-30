@@ -9,6 +9,7 @@ from opportunity.models import (
     DerivationType,
     FieldProvenance,
     Opportunity,
+    ParseResult,
     Track,
     compute_deterministic_id,
 )
@@ -41,12 +42,16 @@ class RemotiveAdapter(BaseAdapter):
 
     def parse_payload(
         self, payload: str, raw_pointer: str = "", fetched_at: str = ""
-    ) -> list[Opportunity]:
+    ) -> ParseResult:
         data = json.loads(payload)
         if not isinstance(data, dict):
             raise ValueError(f"expected Remotive payload to be dict, got {type(data)}")
 
+        if "jobs" not in data and not data:
+            return ParseResult(opportunities=(), records_raw_count=0, has_schema_drift=True)
+
         jobs = data.get("jobs", [])
+        raw_count = len(jobs)
         opportunities: list[Opportunity] = []
         for idx, job in enumerate(jobs):
             if not isinstance(job, dict):
@@ -62,8 +67,10 @@ class RemotiveAdapter(BaseAdapter):
 
             raw_org = job.get("company_name")
             organization = clean_text(raw_org)
-            raw_desc = str(job.get("description") or "")
-            description = clean_text(raw_desc)
+            raw_desc = job.get("description")
+            description = clean_text(raw_desc) if raw_desc else ""
+            desc_derivation = DerivationType.RAW_EXTRACTION if description else DerivationType.UNASSERTED_ABSENT
+
             raw_loc = job.get("candidate_required_location")
             location_raw = clean_text(raw_loc)
             url = str(job.get("url") or "")
@@ -74,8 +81,8 @@ class RemotiveAdapter(BaseAdapter):
             tags_text = " ".join(str(t) for t in tags)
             skills = extract_skills_from_text(f"{title} {description} {tags_text}")
 
-            responsibilities = extract_list_sections(raw_desc, r"(?:responsibilit|what\s+you'?ll\s+do|the\s+role|duties)")
-            requirements = extract_list_sections(raw_desc, r"(?:requirement|qualificat|what\s+we'?re\s+looking\s+for|what\s+you\s+bring)")
+            responsibilities = extract_list_sections(str(raw_desc or ""), r"(?:responsibilit|what\s+you'?ll\s+do|the\s+role|duties)")
+            requirements = extract_list_sections(str(raw_desc or ""), r"(?:requirement|qualificat|what\s+we'?re\s+looking\s+for|what\s+you\s+bring)")
             seniority = extract_seniority(title, description)
             raw_emp = str(job.get("job_type") or "")
             emp_type = extract_employment_type(raw_emp, title, description)
@@ -99,9 +106,10 @@ class RemotiveAdapter(BaseAdapter):
             )
 
             field_provenances = (
+                create_field_provenance("track", raw_emp, track.value, DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "extract_track"),
                 create_field_provenance("organization", raw_org, organization, DerivationType.RAW_EXTRACTION if organization else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.company_name", record_checksum, "clean_text"),
                 create_field_provenance("title", raw_title, title, DerivationType.RAW_EXTRACTION, f"{item_pointer}.title", record_checksum, "clean_text"),
-                create_field_provenance("description", raw_desc[:100], description[:100], DerivationType.RAW_EXTRACTION, f"{item_pointer}.description", record_checksum, "clean_text"),
+                create_field_provenance("description", (raw_desc or "")[:100], description[:100], desc_derivation, f"{item_pointer}.description", record_checksum, "clean_text"),
                 create_field_provenance("location_raw", raw_loc, location_raw, DerivationType.RAW_EXTRACTION if location_raw else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.candidate_required_location", record_checksum, "clean_text"),
                 create_field_provenance("seniority", title, seniority.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.title", record_checksum, "extract_seniority"),
                 create_field_provenance("employment_type", raw_emp, emp_type.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.job_type", record_checksum, "extract_employment_type"),
@@ -138,4 +146,4 @@ class RemotiveAdapter(BaseAdapter):
             )
             opportunities.append(opp)
 
-        return opportunities
+        return ParseResult(opportunities=tuple(opportunities), records_raw_count=raw_count)

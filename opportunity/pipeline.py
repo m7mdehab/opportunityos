@@ -13,9 +13,11 @@ from .health import SourceHealthMonitor
 from .models import (
     Opportunity,
     OpportunityCluster,
+    ParseResult,
     SourceHealthReport,
     SourceHealthStatus,
     Track,
+    validate_opportunity_provenance,
 )
 from .registry import SourceRegistry
 from .transport import AcquisitionResult, AcquisitionService, BaseTransport, MockTransport
@@ -70,6 +72,7 @@ class OpportunityPipeline:
         payload_map: Mapping[str, str],
         now_iso: str | None = None,
         run_id: str = "run_default",
+        latencies_ms: Mapping[str, int] | None = None,
     ) -> IngestionBatch:
         """Process pre-fetched or offline test payloads across registered adapters."""
         timestamp = now_iso or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
@@ -77,6 +80,7 @@ class OpportunityPipeline:
         total_raw = 0
 
         for source_id, payload in payload_map.items():
+            latency = (latencies_ms or {}).get(source_id, 15)
             adapter = self._adapters.get(source_id)
             if not adapter:
                 self.health_monitor.record_run(
@@ -86,6 +90,7 @@ class OpportunityPipeline:
                     records_raw_count=0,
                     records_parsed=0,
                     records_valid=0,
+                    fetch_latency_ms=latency,
                     now_iso=timestamp,
                 )
                 continue
@@ -100,26 +105,35 @@ class OpportunityPipeline:
                     records_raw_count=0,
                     records_parsed=0,
                     records_valid=0,
+                    fetch_latency_ms=latency,
                     now_iso=timestamp,
                 )
                 continue
 
             try:
-                parsed = adapter.parse_payload(payload, raw_pointer=f"payload:{source_id}", fetched_at=timestamp)
-                total_raw += len(parsed)
-                all_raw_opportunities.extend(parsed)
+                parse_result = adapter.parse_payload(payload, raw_pointer=f"payload:{source_id}", fetched_at=timestamp)
+                raw_count = parse_result.records_raw_count
+                parsed_opps = parse_result.opportunities
 
-                # Schema drift detection
-                is_drift = bool(payload.strip() and len(payload) > 50 and len(parsed) == 0)
+                # Validate provenance on each parsed opportunity
+                valid_opps: list[Opportunity] = []
+                for opp in parsed_opps:
+                    valid, prov_err = validate_opportunity_provenance(opp)
+                    if valid:
+                        valid_opps.append(opp)
+
+                total_raw += raw_count
+                all_raw_opportunities.extend(valid_opps)
 
                 self.health_monitor.record_run(
                     source_id=source_id,
                     transport_status_code=200,
-                    records_raw_count=len(parsed),
-                    records_parsed=len(parsed),
-                    records_valid=len(parsed),
-                    fetch_latency_ms=10,
-                    has_schema_drift=is_drift,
+                    records_raw_count=raw_count,
+                    records_parsed=len(parsed_opps),
+                    records_valid=len(valid_opps),
+                    fetch_latency_ms=latency,
+                    has_schema_drift=parse_result.has_schema_drift,
+                    parser_error=parse_result.parser_error,
                     now_iso=timestamp,
                 )
             except Exception as e:
@@ -129,6 +143,7 @@ class OpportunityPipeline:
                     records_raw_count=0,
                     records_parsed=0,
                     records_valid=0,
+                    fetch_latency_ms=latency,
                     parser_error=f"Parser exception: {str(e)}",
                     now_iso=timestamp,
                 )
@@ -184,6 +199,7 @@ class OpportunityPipeline:
         timestamp = now_iso or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
         target_ids = source_ids if source_ids is not None else list(self._adapters.keys())
         payload_map: dict[str, str] = {}
+        latencies_ms: dict[str, int] = {}
 
         for source_id in target_ids:
             adapter = self._adapters.get(source_id)
@@ -200,6 +216,7 @@ class OpportunityPipeline:
                 source_id=source_id,
                 url=adapter.feed_url,
                 method=adapter.method,
+                body=adapter.default_body,
             )
 
             if not acq_res.authorized:
@@ -220,5 +237,6 @@ class OpportunityPipeline:
                 )
             else:
                 payload_map[source_id] = acq_res.response.body
+                latencies_ms[source_id] = acq_res.response.latency_ms
 
-        return self.process_payloads(payload_map, now_iso=timestamp, run_id=run_id)
+        return self.process_payloads(payload_map, now_iso=timestamp, run_id=run_id, latencies_ms=latencies_ms)

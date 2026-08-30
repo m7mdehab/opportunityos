@@ -12,6 +12,7 @@ from opportunity.models import (
     DerivationType,
     FieldProvenance,
     Opportunity,
+    ParseResult,
     ProcurementMetadata,
     Track,
     compute_deterministic_id,
@@ -25,6 +26,24 @@ from opportunity.normalization import (
     parse_iso_date,
 )
 
+DEFAULT_TED_SEARCH_BODY: dict[str, Any] = {
+    "query": "ND=2026",
+    "fields": [
+        "publication-number",
+        "notice-title",
+        "buyer-name",
+        "buyer-country",
+        "publication-date",
+        "deadline",
+        "links",
+        "cpv",
+        "notice-type",
+        "category",
+        "description",
+    ],
+    "limit": 100,
+}
+
 
 class EUTEDAdapter(BaseAdapter):
     """Parses EU TED procurement notices search responses."""
@@ -36,14 +55,18 @@ class EUTEDAdapter(BaseAdapter):
             feed_url="https://api.ted.europa.eu/v3/notices/search",
             policy_url="https://docs.ted.europa.eu/legal-notice.html",
             method="POST",
+            default_body=DEFAULT_TED_SEARCH_BODY,
         )
 
     def parse_payload(
         self, payload: str, raw_pointer: str = "", fetched_at: str = ""
-    ) -> list[Opportunity]:
+    ) -> ParseResult:
         data = json.loads(payload)
         if not isinstance(data, dict):
             raise ValueError(f"expected EU TED payload to be dict, got {type(data)}")
+
+        if "notices" not in data and "results" not in data and not data:
+            return ParseResult(opportunities=(), records_raw_count=0, has_schema_drift=True)
 
         notices = data.get("notices") or data.get("results") or []
         if isinstance(notices, dict):
@@ -51,6 +74,7 @@ class EUTEDAdapter(BaseAdapter):
         if not isinstance(notices, list):
             raise ValueError(f"expected EU TED notices list, got {type(notices)}")
 
+        raw_count = len(notices)
         opportunities: list[Opportunity] = []
         for idx, notice in enumerate(notices):
             if not isinstance(notice, dict):
@@ -92,8 +116,11 @@ class EUTEDAdapter(BaseAdapter):
                 deadline=deadline,
             )
 
-            raw_desc = notice.get("description") or title
-            description = clean_text(raw_desc)
+            # Fix concrete TED bug: If description is absent, it MUST NOT become title
+            raw_desc = notice.get("description")
+            description = clean_text(raw_desc) if raw_desc else ""
+            desc_derivation = DerivationType.RAW_EXTRACTION if description else DerivationType.UNASSERTED_ABSENT
+
             skills = extract_skills_from_text(f"{title} {description}")
             geo = derive_geographic_eligibility(
                 title=title,
@@ -112,9 +139,10 @@ class EUTEDAdapter(BaseAdapter):
             )
 
             field_provenances = (
+                create_field_provenance("track", "", Track.PROCUREMENT.value, DerivationType.SOURCE_METADATA_DERIVATION, item_pointer, record_checksum, "eu_ted_track"),
                 create_field_provenance("organization", raw_buyer, buyer, DerivationType.RAW_EXTRACTION if buyer else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.buyer-name", record_checksum, "clean_text"),
                 create_field_provenance("title", raw_title, title, DerivationType.RAW_EXTRACTION, f"{item_pointer}.notice-title", record_checksum, "clean_text"),
-                create_field_provenance("description", raw_desc[:100], description[:100], DerivationType.RAW_EXTRACTION, f"{item_pointer}.description", record_checksum, "clean_text"),
+                create_field_provenance("description", (raw_desc or "")[:100], description[:100], desc_derivation, f"{item_pointer}.description", record_checksum, "clean_text"),
                 create_field_provenance("location_raw", raw_country, buyer_country, DerivationType.RAW_EXTRACTION if buyer_country else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.buyer-country", record_checksum, "clean_text"),
                 create_field_provenance("notice_type", raw_notice_type, notice_type, DerivationType.RAW_EXTRACTION if notice_type else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.notice-type", record_checksum, "clean_text"),
                 create_field_provenance("geographic_eligibility", buyer_country, geo.status, DerivationType.RULE_DERIVATION, f"{item_pointer}.buyer-country", record_checksum, "classify_geography"),
@@ -145,4 +173,4 @@ class EUTEDAdapter(BaseAdapter):
             )
             opportunities.append(opp)
 
-        return opportunities
+        return ParseResult(opportunities=tuple(opportunities), records_raw_count=raw_count)

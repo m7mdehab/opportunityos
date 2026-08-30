@@ -11,6 +11,7 @@ from opportunity.models import (
     DerivationType,
     FieldProvenance,
     Opportunity,
+    ParseResult,
     Track,
     compute_deterministic_id,
 )
@@ -42,13 +43,16 @@ class RemoteOKAdapter(BaseAdapter):
 
     def parse_payload(
         self, payload: str, raw_pointer: str = "", fetched_at: str = ""
-    ) -> list[Opportunity]:
+    ) -> ParseResult:
         data = json.loads(payload)
         if not isinstance(data, list):
+            if isinstance(data, dict) and "jobs" not in data:
+                return ParseResult(opportunities=(), records_raw_count=0, has_schema_drift=True)
             raise ValueError(f"expected Remote OK payload to be list, got {type(data)}")
 
-        # Skip non-job metadata/legal dictionaries
-        jobs = [item for item in data if isinstance(item, dict) and ("position" in item or "title" in item)]
+        # Filter out non-job legal notice / header dicts
+        jobs = [item for item in data if isinstance(item, dict) and ("position" in item or "title" in item or "company" in item)]
+        raw_count = len(jobs)
         opportunities: list[Opportunity] = []
         for idx, job in enumerate(jobs):
             item_pointer = f"{raw_pointer or 'feed'}:items[{idx}]"
@@ -62,8 +66,10 @@ class RemoteOKAdapter(BaseAdapter):
 
             raw_org = job.get("company")
             organization = clean_text(raw_org)
-            raw_desc = str(job.get("description") or "")
-            description = clean_text(raw_desc)
+            raw_desc = job.get("description")
+            description = clean_text(raw_desc) if raw_desc else ""
+            desc_derivation = DerivationType.RAW_EXTRACTION if description else DerivationType.UNASSERTED_ABSENT
+
             raw_loc = job.get("location")
             location_raw = clean_text(raw_loc)
             url = str(job.get("url") or (f"https://remoteok.com/l/{remote_id}" if remote_id else ""))
@@ -92,8 +98,8 @@ class RemoteOKAdapter(BaseAdapter):
                 except ValueError:
                     comp = None
 
-            responsibilities = extract_list_sections(raw_desc, r"(?:responsibilit|what\s+you'?ll\s+do|the\s+role|duties)")
-            requirements = extract_list_sections(raw_desc, r"(?:requirement|qualificat|what\s+we'?re\s+looking\s+for|what\s+you\s+bring)")
+            responsibilities = extract_list_sections(str(raw_desc or ""), r"(?:responsibilit|what\s+you'?ll\s+do|the\s+role|duties)")
+            requirements = extract_list_sections(str(raw_desc or ""), r"(?:requirement|qualificat|what\s+we'?re\s+looking\s+for|what\s+you\s+bring)")
             seniority = extract_seniority(title, description)
             emp_type = extract_employment_type(tags_text, title, description)
             track = extract_track(self.track, tags_text, title, description)
@@ -115,9 +121,10 @@ class RemoteOKAdapter(BaseAdapter):
             )
 
             field_provenances = (
+                create_field_provenance("track", tags_text, track.value, DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "extract_track"),
                 create_field_provenance("organization", raw_org, organization, DerivationType.RAW_EXTRACTION if organization else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.company", record_checksum, "clean_text"),
                 create_field_provenance("title", raw_title, title, DerivationType.RAW_EXTRACTION, f"{item_pointer}.position", record_checksum, "clean_text"),
-                create_field_provenance("description", raw_desc[:100], description[:100], DerivationType.RAW_EXTRACTION, f"{item_pointer}.description", record_checksum, "clean_text"),
+                create_field_provenance("description", (raw_desc or "")[:100], description[:100], desc_derivation, f"{item_pointer}.description", record_checksum, "clean_text"),
                 create_field_provenance("location_raw", raw_loc, location_raw, DerivationType.RAW_EXTRACTION if location_raw else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.location", record_checksum, "clean_text"),
                 create_field_provenance("seniority", title, seniority.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.position", record_checksum, "extract_seniority"),
                 create_field_provenance("employment_type", tags_text, emp_type.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.tags", record_checksum, "extract_employment_type"),
@@ -154,4 +161,4 @@ class RemoteOKAdapter(BaseAdapter):
             )
             opportunities.append(opp)
 
-        return opportunities
+        return ParseResult(opportunities=tuple(opportunities), records_raw_count=raw_count)
