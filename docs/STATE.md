@@ -10,8 +10,8 @@ Next: BRIEF-004: Opportunity Matching & Proposal Tailoring.
 
 ## Repository
 
-- **Generated:** 2026-08-30T02:21:43Z
-- **State generated at commit:** `1325e9a` — docs(report-003): update phase report with structural authority audit and generated state
+- **Generated:** 2026-08-30T11:56:45Z
+- **State generated at commit:** `ff4ee03` — feat(opportunity): five-authority closure for endpoint rules, manifest provenance, health telemetry, and deduplication
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
