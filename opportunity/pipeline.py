@@ -73,6 +73,7 @@ class OpportunityPipeline:
         now_iso: str | None = None,
         run_id: str = "run_default",
         latencies_ms: Mapping[str, int] | None = None,
+        status_codes: Mapping[str, int] | None = None,
     ) -> IngestionBatch:
         """Process pre-fetched or offline test payloads across registered adapters."""
         timestamp = now_iso or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
@@ -81,6 +82,7 @@ class OpportunityPipeline:
 
         for source_id, payload in payload_map.items():
             latency = (latencies_ms or {}).get(source_id, 15)
+            status_code = (status_codes or {}).get(source_id, 200)
             adapter = self._adapters.get(source_id)
             if not adapter:
                 self.health_monitor.record_run(
@@ -127,7 +129,7 @@ class OpportunityPipeline:
 
                 self.health_monitor.record_run(
                     source_id=source_id,
-                    transport_status_code=200,
+                    transport_status_code=status_code,
                     records_raw_count=raw_count,
                     records_parsed=len(parsed_opps),
                     records_valid=len(valid_opps),
@@ -139,7 +141,7 @@ class OpportunityPipeline:
             except Exception as e:
                 self.health_monitor.record_run(
                     source_id=source_id,
-                    transport_status_code=200,
+                    transport_status_code=status_code,
                     records_raw_count=0,
                     records_parsed=0,
                     records_valid=0,
@@ -200,6 +202,7 @@ class OpportunityPipeline:
         target_ids = source_ids if source_ids is not None else list(self._adapters.keys())
         payload_map: dict[str, str] = {}
         latencies_ms: dict[str, int] = {}
+        status_codes: dict[str, int] = {}
 
         for source_id in target_ids:
             adapter = self._adapters.get(source_id)
@@ -238,5 +241,12 @@ class OpportunityPipeline:
             else:
                 payload_map[source_id] = acq_res.response.body
                 latencies_ms[source_id] = acq_res.response.latency_ms
+                status_codes[source_id] = acq_res.response.status_code
 
-        return self.process_payloads(payload_map, now_iso=timestamp, run_id=run_id, latencies_ms=latencies_ms)
+        return self.process_payloads(
+            payload_map,
+            now_iso=timestamp,
+            run_id=run_id,
+            latencies_ms=latencies_ms,
+            status_codes=status_codes,
+        )

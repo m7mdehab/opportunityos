@@ -45,9 +45,15 @@ class WorldBankAdapter(BaseAdapter):
         if payload.strip().startswith("{") or payload.strip().startswith("["):
             try:
                 data = json.loads(payload)
-                if isinstance(data, dict) and "notices" not in data and "rows" not in data and "results" not in data and not data:
+                if isinstance(data, dict):
+                    if "notices" not in data and "rows" not in data and "results" not in data:
+                        return ParseResult(opportunities=(), records_raw_count=0, has_schema_drift=True)
+                    items = data.get("notices") or data.get("rows") or data.get("results") or []
+                elif isinstance(data, list):
+                    items = data
+                else:
                     return ParseResult(opportunities=(), records_raw_count=0, has_schema_drift=True)
-                items = data if isinstance(data, list) else data.get("notices") or data.get("rows") or data.get("results") or []
+
                 raw_count = len(items)
                 for idx, item in enumerate(items):
                     if not isinstance(item, dict):
@@ -65,8 +71,10 @@ class WorldBankAdapter(BaseAdapter):
                     buyer = clean_text(raw_buyer)
                     raw_country = item.get("country_name") or item.get("country")
                     country = clean_text(raw_country)
-                    deadline = parse_iso_date(item.get("submission_date") or item.get("deadline") or item.get("closing_date"))
-                    posted_date = parse_iso_date(item.get("published_date") or item.get("publication_date") or item.get("date"))
+                    raw_deadline = item.get("submission_date") or item.get("deadline") or item.get("closing_date")
+                    deadline = parse_iso_date(raw_deadline)
+                    raw_posted = item.get("published_date") or item.get("publication_date") or item.get("date")
+                    posted_date = parse_iso_date(raw_posted)
                     
                     raw_desc = item.get("description") or item.get("notice_text")
                     description = clean_text(raw_desc) if raw_desc else ""
@@ -103,7 +111,7 @@ class WorldBankAdapter(BaseAdapter):
                         payload=payload,
                     )
 
-                    field_provenances = (
+                    prov_list: list[FieldProvenance] = [
                         create_field_provenance("track", "", Track.PROCUREMENT.value, DerivationType.SOURCE_METADATA_DERIVATION, item_pointer, record_checksum, "world_bank_track"),
                         create_field_provenance("organization", raw_buyer, buyer, DerivationType.RAW_EXTRACTION if buyer else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.borrower", record_checksum, "clean_text"),
                         create_field_provenance("title", raw_title, title, DerivationType.RAW_EXTRACTION, f"{item_pointer}.title", record_checksum, "clean_text"),
@@ -111,7 +119,21 @@ class WorldBankAdapter(BaseAdapter):
                         create_field_provenance("location_raw", raw_country, country, DerivationType.RAW_EXTRACTION if country else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.country", record_checksum, "clean_text"),
                         create_field_provenance("notice_type", raw_type, notice_type, DerivationType.RAW_EXTRACTION if notice_type else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.notice_type", record_checksum, "clean_text"),
                         create_field_provenance("geographic_eligibility", country, geo.status, DerivationType.RULE_DERIVATION, f"{item_pointer}.country", record_checksum, "classify_geography"),
-                    )
+                    ]
+
+                    if skills:
+                        prov_list.append(create_field_provenance("skills", f"{title} {description[:50]}", ", ".join(skills), DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "extract_skills"))
+                    if buyer:
+                        prov_list.append(create_field_provenance("buyer_name", raw_buyer, buyer, DerivationType.RAW_EXTRACTION, f"{item_pointer}.borrower", record_checksum, "clean_text"))
+                    if country:
+                        prov_list.append(create_field_provenance("buyer_country", raw_country, country, DerivationType.RAW_EXTRACTION, f"{item_pointer}.country", record_checksum, "clean_text"))
+                    if category:
+                        prov_list.append(create_field_provenance("procurement_category", raw_cat, category, DerivationType.RAW_EXTRACTION, f"{item_pointer}.category", record_checksum, "clean_text"))
+                    if posted_date:
+                        prov_list.append(create_field_provenance("posted_date", raw_posted, posted_date, DerivationType.RAW_EXTRACTION, f"{item_pointer}.published_date", record_checksum, "parse_iso_date"))
+                    if deadline:
+                        prov_list.append(create_field_provenance("closing_date", raw_deadline, deadline, DerivationType.RAW_EXTRACTION, f"{item_pointer}.submission_date", record_checksum, "parse_iso_date"))
+                        prov_list.append(create_field_provenance("deadline", raw_deadline, deadline, DerivationType.RAW_EXTRACTION, f"{item_pointer}.submission_date", record_checksum, "parse_iso_date"))
 
                     opp_id = compute_deterministic_id(self.source_id, remote_id, title, buyer, item_pointer)
 
@@ -133,7 +155,7 @@ class WorldBankAdapter(BaseAdapter):
                         raw_provenance=provenance,
                         record_checksum=record_checksum,
                         raw_record_pointer=item_pointer,
-                        field_provenances=field_provenances,
+                        field_provenances=tuple(prov_list),
                         canonical_outbound_url=url,
                     )
                     opportunities.append(opp)
@@ -177,13 +199,17 @@ class WorldBankAdapter(BaseAdapter):
                 fetched_at=fetched_at,
                 payload=payload,
             )
-            field_provenances = (
+            skills = extract_skills_from_text(title)
+            prov_list = [
                 create_field_provenance("track", "", Track.PROCUREMENT.value, DerivationType.SOURCE_METADATA_DERIVATION, item_pointer, record_checksum, "world_bank_track"),
                 create_field_provenance("organization", "", "", DerivationType.UNASSERTED_ABSENT, item_pointer, record_checksum, "unasserted"),
                 create_field_provenance("title", inner, title, DerivationType.RAW_EXTRACTION, item_pointer, record_checksum, "clean_text"),
                 create_field_provenance("description", "", "", DerivationType.UNASSERTED_ABSENT, item_pointer, record_checksum, "unasserted"),
                 create_field_provenance("geographic_eligibility", "", geo.status, DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "classify_geography"),
-            )
+            ]
+            if skills:
+                prov_list.append(create_field_provenance("skills", title, ", ".join(skills), DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "extract_skills"))
+
             opp_id = compute_deterministic_id(self.source_id, "", title, "", item_pointer)
             opp = Opportunity(
                 id=opp_id,
@@ -194,13 +220,13 @@ class WorldBankAdapter(BaseAdapter):
                 organization="",
                 title=title,
                 description="",
-                skills=extract_skills_from_text(title),
+                skills=skills,
                 geographic_eligibility=geo,
                 procurement_metadata=proc_meta,
                 raw_provenance=provenance,
                 record_checksum=record_checksum,
                 raw_record_pointer=item_pointer,
-                field_provenances=field_provenances,
+                field_provenances=tuple(prov_list),
                 canonical_outbound_url=url,
             )
             opportunities.append(opp)

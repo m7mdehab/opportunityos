@@ -45,9 +45,15 @@ class UNGMAdapter(BaseAdapter):
         if payload.strip().startswith("{") or payload.strip().startswith("["):
             try:
                 data = json.loads(payload)
-                if isinstance(data, dict) and "notices" not in data and "data" not in data and "results" not in data and not data:
+                if isinstance(data, dict):
+                    if "notices" not in data and "data" not in data and "results" not in data:
+                        return ParseResult(opportunities=(), records_raw_count=0, has_schema_drift=True)
+                    items = data.get("notices") or data.get("data") or data.get("results") or []
+                elif isinstance(data, list):
+                    items = data
+                else:
                     return ParseResult(opportunities=(), records_raw_count=0, has_schema_drift=True)
-                items = data if isinstance(data, list) else data.get("notices") or data.get("data") or data.get("results") or []
+
                 raw_count = len(items)
                 for idx, item in enumerate(items):
                     if not isinstance(item, dict):
@@ -65,8 +71,10 @@ class UNGMAdapter(BaseAdapter):
                     buyer = clean_text(raw_buyer)
                     raw_country = item.get("country") or item.get("location")
                     country = clean_text(raw_country)
-                    deadline = parse_iso_date(item.get("deadline") or item.get("closing_date"))
-                    posted_date = parse_iso_date(item.get("posted_date") or item.get("published_date") or item.get("date"))
+                    raw_deadline = item.get("deadline") or item.get("closing_date")
+                    deadline = parse_iso_date(raw_deadline)
+                    raw_posted = item.get("posted_date") or item.get("published_date") or item.get("date")
+                    posted_date = parse_iso_date(raw_posted)
                     
                     raw_desc = item.get("description") or item.get("content")
                     description = clean_text(raw_desc) if raw_desc else ""
@@ -77,13 +85,15 @@ class UNGMAdapter(BaseAdapter):
                     notice_type = clean_text(raw_type)
                     raw_cat = item.get("category")
                     category = clean_text(raw_cat)
+                    raw_unspsc = item.get("unspsc") or ()
+                    unspsc_tuple = tuple(str(u) for u in raw_unspsc) if isinstance(raw_unspsc, (list, tuple)) else (str(raw_unspsc),) if raw_unspsc else ()
 
                     proc_meta = ProcurementMetadata(
                         notice_type=notice_type,
                         buyer_name=buyer,
                         buyer_country=country,
                         procurement_category=category,
-                        unspsc_codes=tuple(str(u) for u in item.get("unspsc", ())) if isinstance(item.get("unspsc"), (list, tuple)) else (),
+                        unspsc_codes=unspsc_tuple,
                         deadline=deadline,
                     )
 
@@ -104,7 +114,7 @@ class UNGMAdapter(BaseAdapter):
                         payload=payload,
                     )
 
-                    field_provenances = (
+                    prov_list: list[FieldProvenance] = [
                         create_field_provenance("track", "", Track.PROCUREMENT.value, DerivationType.SOURCE_METADATA_DERIVATION, item_pointer, record_checksum, "ungm_track"),
                         create_field_provenance("organization", raw_buyer, buyer, DerivationType.RAW_EXTRACTION if buyer else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.agency", record_checksum, "clean_text"),
                         create_field_provenance("title", raw_title, title, DerivationType.RAW_EXTRACTION, f"{item_pointer}.title", record_checksum, "clean_text"),
@@ -112,7 +122,23 @@ class UNGMAdapter(BaseAdapter):
                         create_field_provenance("location_raw", raw_country, country, DerivationType.RAW_EXTRACTION if country else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.country", record_checksum, "clean_text"),
                         create_field_provenance("notice_type", raw_type, notice_type, DerivationType.RAW_EXTRACTION if notice_type else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.type", record_checksum, "clean_text"),
                         create_field_provenance("geographic_eligibility", country, geo.status, DerivationType.RULE_DERIVATION, f"{item_pointer}.country", record_checksum, "classify_geography"),
-                    )
+                    ]
+
+                    if skills:
+                        prov_list.append(create_field_provenance("skills", f"{title} {description[:50]}", ", ".join(skills), DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "extract_skills"))
+                    if buyer:
+                        prov_list.append(create_field_provenance("buyer_name", raw_buyer, buyer, DerivationType.RAW_EXTRACTION, f"{item_pointer}.agency", record_checksum, "clean_text"))
+                    if country:
+                        prov_list.append(create_field_provenance("buyer_country", raw_country, country, DerivationType.RAW_EXTRACTION, f"{item_pointer}.country", record_checksum, "clean_text"))
+                    if category:
+                        prov_list.append(create_field_provenance("procurement_category", raw_cat, category, DerivationType.RAW_EXTRACTION, f"{item_pointer}.category", record_checksum, "clean_text"))
+                    if unspsc_tuple:
+                        prov_list.append(create_field_provenance("unspsc_codes", str(raw_unspsc), ", ".join(unspsc_tuple), DerivationType.RAW_EXTRACTION, f"{item_pointer}.unspsc", record_checksum, "extract_unspsc"))
+                    if posted_date:
+                        prov_list.append(create_field_provenance("posted_date", raw_posted, posted_date, DerivationType.RAW_EXTRACTION, f"{item_pointer}.posted_date", record_checksum, "parse_iso_date"))
+                    if deadline:
+                        prov_list.append(create_field_provenance("closing_date", raw_deadline, deadline, DerivationType.RAW_EXTRACTION, f"{item_pointer}.deadline", record_checksum, "parse_iso_date"))
+                        prov_list.append(create_field_provenance("deadline", raw_deadline, deadline, DerivationType.RAW_EXTRACTION, f"{item_pointer}.deadline", record_checksum, "parse_iso_date"))
 
                     opp_id = compute_deterministic_id(self.source_id, remote_id, title, buyer, item_pointer)
 
@@ -134,7 +160,7 @@ class UNGMAdapter(BaseAdapter):
                         raw_provenance=provenance,
                         record_checksum=record_checksum,
                         raw_record_pointer=item_pointer,
-                        field_provenances=field_provenances,
+                        field_provenances=tuple(prov_list),
                         canonical_outbound_url=url,
                     )
                     opportunities.append(opp)
@@ -185,13 +211,17 @@ class UNGMAdapter(BaseAdapter):
                 fetched_at=fetched_at,
                 payload=payload,
             )
-            field_provenances = (
+            skills = extract_skills_from_text(title)
+            prov_list = [
                 create_field_provenance("track", "", Track.PROCUREMENT.value, DerivationType.SOURCE_METADATA_DERIVATION, item_pointer, record_checksum, "ungm_track"),
                 create_field_provenance("organization", "", "", DerivationType.UNASSERTED_ABSENT, item_pointer, record_checksum, "unasserted"),
                 create_field_provenance("title", inner, title, DerivationType.RAW_EXTRACTION, item_pointer, record_checksum, "clean_text"),
                 create_field_provenance("description", "", "", DerivationType.UNASSERTED_ABSENT, item_pointer, record_checksum, "unasserted"),
                 create_field_provenance("geographic_eligibility", "", geo.status, DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "classify_geography"),
-            )
+            ]
+            if skills:
+                prov_list.append(create_field_provenance("skills", title, ", ".join(skills), DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "extract_skills"))
+
             opp_id = compute_deterministic_id(self.source_id, remote_id, title, buyer, item_pointer)
             opp = Opportunity(
                 id=opp_id,
@@ -202,13 +232,13 @@ class UNGMAdapter(BaseAdapter):
                 organization=buyer,
                 title=title,
                 description="",
-                skills=extract_skills_from_text(title),
+                skills=skills,
                 geographic_eligibility=geo,
                 procurement_metadata=proc_meta,
                 raw_provenance=provenance,
                 record_checksum=record_checksum,
                 raw_record_pointer=item_pointer,
-                field_provenances=field_provenances,
+                field_provenances=tuple(prov_list),
                 canonical_outbound_url=url,
             )
             opportunities.append(opp)

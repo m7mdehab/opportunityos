@@ -10,7 +10,7 @@ import hashlib
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 
 class Track(str, Enum):
@@ -75,36 +75,51 @@ class SourceHealthStatus(str, Enum):
     PERSISTENT_FAILURE = "persistent_failure"
 
 
-# Canonical manifest of all material fields subject to provenance validation
-MATERIAL_OPPORTUNITY_FIELD_MANIFEST: frozenset[str] = frozenset({
-    "track",
-    "organization",
-    "title",
-    "description",
-    "responsibilities",
-    "requirements",
-    "skills",
-    "seniority",
-    "employment_type",
-    "location_raw",
-    "remote_policy",
-    "geographic_eligibility",
-    "compensation",
-    "compensation.min_amount",
-    "compensation.max_amount",
-    "compensation.currency",
-    "compensation.interval",
-    "posted_date",
-    "closing_date",
-    "procurement_metadata",
-    "procurement_metadata.notice_type",
-    "procurement_metadata.buyer_name",
-    "procurement_metadata.buyer_country",
-    "procurement_metadata.procurement_category",
-    "procurement_metadata.cpv_codes",
-    "procurement_metadata.unspsc_codes",
-    "procurement_metadata.deadline",
-})
+@dataclass(frozen=True, slots=True)
+class MaterialFieldRule:
+    """Executable rule definition for a material opportunity field."""
+    field_name: str
+    is_populated: Callable[[Opportunity], bool]
+    provenance_field_names: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.provenance_field_names:
+            object.__setattr__(self, "provenance_field_names", (self.field_name,))
+
+
+# Authoritative executable rules driving material opportunity provenance validation
+MATERIAL_OPPORTUNITY_FIELD_RULES: tuple[MaterialFieldRule, ...] = (
+    MaterialFieldRule("track", lambda opp: bool(opp.track)),
+    MaterialFieldRule("organization", lambda opp: bool(opp.organization)),
+    MaterialFieldRule("title", lambda opp: bool(opp.title)),
+    MaterialFieldRule("description", lambda opp: bool(opp.description)),
+    MaterialFieldRule("responsibilities", lambda opp: bool(opp.responsibilities)),
+    MaterialFieldRule("requirements", lambda opp: bool(opp.requirements)),
+    MaterialFieldRule("skills", lambda opp: bool(opp.skills)),
+    MaterialFieldRule("seniority", lambda opp: opp.seniority != SeniorityLevel.UNSPECIFIED),
+    MaterialFieldRule("employment_type", lambda opp: opp.employment_type != EmploymentType.UNSPECIFIED),
+    MaterialFieldRule("location_raw", lambda opp: bool(opp.location_raw)),
+    MaterialFieldRule("remote_policy", lambda opp: opp.remote_policy != RemotePolicy.UNSPECIFIED),
+    MaterialFieldRule("geographic_eligibility", lambda opp: bool(opp.geographic_eligibility)),
+    MaterialFieldRule("compensation", lambda opp: opp.compensation is not None, ("compensation", "compensation.min_amount", "compensation.max_amount", "compensation.currency", "compensation.interval")),
+    MaterialFieldRule("compensation.min_amount", lambda opp: opp.compensation is not None and opp.compensation.min_amount is not None, ("compensation.min_amount", "compensation")),
+    MaterialFieldRule("compensation.max_amount", lambda opp: opp.compensation is not None and opp.compensation.max_amount is not None, ("compensation.max_amount", "compensation")),
+    MaterialFieldRule("compensation.currency", lambda opp: opp.compensation is not None and opp.compensation.currency is not None, ("compensation.currency", "compensation")),
+    MaterialFieldRule("compensation.interval", lambda opp: opp.compensation is not None and opp.compensation.interval != CompensationInterval.UNSPECIFIED, ("compensation.interval", "compensation")),
+    MaterialFieldRule("posted_date", lambda opp: bool(opp.posted_date)),
+    MaterialFieldRule("closing_date", lambda opp: bool(opp.closing_date)),
+    MaterialFieldRule("procurement_metadata", lambda opp: opp.procurement_metadata is not None, ("procurement_metadata", "notice_type", "buyer_name", "cpv_codes")),
+    MaterialFieldRule("procurement_metadata.notice_type", lambda opp: opp.procurement_metadata is not None and bool(opp.procurement_metadata.notice_type), ("notice_type", "procurement_metadata.notice_type")),
+    MaterialFieldRule("procurement_metadata.buyer_name", lambda opp: opp.procurement_metadata is not None and bool(opp.procurement_metadata.buyer_name), ("buyer_name", "organization", "procurement_metadata.buyer_name")),
+    MaterialFieldRule("procurement_metadata.buyer_country", lambda opp: opp.procurement_metadata is not None and bool(opp.procurement_metadata.buyer_country), ("buyer_country", "location_raw", "procurement_metadata.buyer_country")),
+    MaterialFieldRule("procurement_metadata.procurement_category", lambda opp: opp.procurement_metadata is not None and bool(opp.procurement_metadata.procurement_category), ("procurement_category", "procurement_metadata.procurement_category")),
+    MaterialFieldRule("procurement_metadata.cpv_codes", lambda opp: opp.procurement_metadata is not None and bool(opp.procurement_metadata.cpv_codes), ("cpv_codes", "procurement_metadata.cpv_codes")),
+    MaterialFieldRule("procurement_metadata.unspsc_codes", lambda opp: opp.procurement_metadata is not None and bool(opp.procurement_metadata.unspsc_codes), ("unspsc_codes", "procurement_metadata.unspsc_codes")),
+    MaterialFieldRule("procurement_metadata.deadline", lambda opp: opp.procurement_metadata is not None and bool(opp.procurement_metadata.deadline), ("deadline", "closing_date", "procurement_metadata.deadline")),
+)
+
+# Canonical manifest of all material fields
+MATERIAL_OPPORTUNITY_FIELD_MANIFEST: frozenset[str] = frozenset(r.field_name for r in MATERIAL_OPPORTUNITY_FIELD_RULES)
 
 
 @dataclass(frozen=True, slots=True)
@@ -289,31 +304,20 @@ class Opportunity:
 
 
 def validate_opportunity_provenance(opp: Opportunity) -> tuple[bool, str]:
-    """Executable validator driving provenance coverage from MATERIAL_OPPORTUNITY_FIELD_MANIFEST."""
+    """Mechanically authoritative validation driven by MATERIAL_OPPORTUNITY_FIELD_RULES."""
     prov_map = {fp.field_name: fp for fp in opp.field_provenances}
 
-    # Material fields that MUST have lineage when populated
-    checks = [
-        ("track", opp.track.value if opp.track else None),
-        ("title", opp.title),
-        ("organization", opp.organization if opp.organization else None),
-        ("description", opp.description if opp.description else None),
-        ("location_raw", opp.location_raw if opp.location_raw else None),
-        ("seniority", opp.seniority.value if opp.seniority != SeniorityLevel.UNSPECIFIED else None),
-        ("employment_type", opp.employment_type.value if opp.employment_type != EmploymentType.UNSPECIFIED else None),
-        ("remote_policy", opp.remote_policy.value if opp.remote_policy != RemotePolicy.UNSPECIFIED else None),
-        ("geographic_eligibility", opp.geographic_eligibility.status if opp.geographic_eligibility else None),
-    ]
-
-    for field_name, val in checks:
-        if val is not None:
-            if field_name not in prov_map:
-                return False, f"Missing provenance for populated material field '{field_name}'"
-            fp = prov_map[field_name]
-            if not fp.record_checksum:
-                return False, f"Empty record_checksum in provenance for field '{field_name}'"
-            if not fp.raw_pointer:
-                return False, f"Empty raw_pointer in provenance for field '{field_name}'"
+    for rule in MATERIAL_OPPORTUNITY_FIELD_RULES:
+        if rule.is_populated(opp):
+            matching_names = [pname for pname in rule.provenance_field_names if pname in prov_map]
+            if not matching_names:
+                return False, f"Missing provenance for populated material field '{rule.field_name}'"
+            for pname in matching_names:
+                fp = prov_map[pname]
+                if not fp.record_checksum:
+                    return False, f"Empty record_checksum in provenance for field '{pname}'"
+                if not fp.raw_pointer:
+                    return False, f"Empty raw_pointer in provenance for field '{pname}'"
 
     return True, "Valid"
 

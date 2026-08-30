@@ -44,13 +44,10 @@ class RemotiveAdapter(BaseAdapter):
         self, payload: str, raw_pointer: str = "", fetched_at: str = ""
     ) -> ParseResult:
         data = json.loads(payload)
-        if not isinstance(data, dict):
-            raise ValueError(f"expected Remotive payload to be dict, got {type(data)}")
-
-        if "jobs" not in data and not data:
+        if not isinstance(data, dict) or "jobs" not in data:
             return ParseResult(opportunities=(), records_raw_count=0, has_schema_drift=True)
 
-        jobs = data.get("jobs", [])
+        jobs = data["jobs"]
         raw_count = len(jobs)
         opportunities: list[Opportunity] = []
         for idx, job in enumerate(jobs):
@@ -74,7 +71,8 @@ class RemotiveAdapter(BaseAdapter):
             raw_loc = job.get("candidate_required_location")
             location_raw = clean_text(raw_loc)
             url = str(job.get("url") or "")
-            posted_date = parse_iso_date(job.get("publication_date"))
+            raw_pub = job.get("publication_date")
+            posted_date = parse_iso_date(raw_pub)
 
             # Tags & skills
             tags = job.get("tags") if isinstance(job.get("tags"), list) else []
@@ -105,7 +103,7 @@ class RemotiveAdapter(BaseAdapter):
                 payload=payload,
             )
 
-            field_provenances = (
+            prov_list: list[FieldProvenance] = [
                 create_field_provenance("track", raw_emp, track.value, DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "extract_track"),
                 create_field_provenance("organization", raw_org, organization, DerivationType.RAW_EXTRACTION if organization else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.company_name", record_checksum, "clean_text"),
                 create_field_provenance("title", raw_title, title, DerivationType.RAW_EXTRACTION, f"{item_pointer}.title", record_checksum, "clean_text"),
@@ -115,7 +113,18 @@ class RemotiveAdapter(BaseAdapter):
                 create_field_provenance("employment_type", raw_emp, emp_type.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.job_type", record_checksum, "extract_employment_type"),
                 create_field_provenance("remote_policy", raw_loc, remote_policy.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.candidate_required_location", record_checksum, "extract_remote_policy"),
                 create_field_provenance("geographic_eligibility", location_raw, geo.status, DerivationType.RULE_DERIVATION, f"{item_pointer}.candidate_required_location", record_checksum, "classify_geography"),
-            )
+            ]
+
+            if skills:
+                prov_list.append(create_field_provenance("skills", f"{title} {description[:50]} {tags_text}", ", ".join(skills), DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "extract_skills"))
+            if responsibilities:
+                prov_list.append(create_field_provenance("responsibilities", (raw_desc or "")[:50], f"{len(responsibilities)} items", DerivationType.RULE_DERIVATION, f"{item_pointer}.description", record_checksum, "extract_responsibilities"))
+            if requirements:
+                prov_list.append(create_field_provenance("requirements", (raw_desc or "")[:50], f"{len(requirements)} items", DerivationType.RULE_DERIVATION, f"{item_pointer}.description", record_checksum, "extract_requirements"))
+            if comp is not None:
+                prov_list.append(create_field_provenance("compensation", str(job.get("salary") or description[:50]), f"{comp.min_amount}-{comp.max_amount} {comp.currency}", DerivationType.RULE_DERIVATION, f"{item_pointer}.salary", record_checksum, "extract_compensation"))
+            if posted_date:
+                prov_list.append(create_field_provenance("posted_date", raw_pub, posted_date, DerivationType.RAW_EXTRACTION, f"{item_pointer}.publication_date", record_checksum, "parse_iso_date"))
 
             opp_id = compute_deterministic_id(self.source_id, remote_id, title, organization, item_pointer)
 
@@ -141,7 +150,7 @@ class RemotiveAdapter(BaseAdapter):
                 raw_provenance=provenance,
                 record_checksum=record_checksum,
                 raw_record_pointer=item_pointer,
-                field_provenances=field_provenances,
+                field_provenances=tuple(prov_list),
                 canonical_outbound_url=url,
             )
             opportunities.append(opp)
