@@ -10,8 +10,8 @@ Next: BRIEF-006: Operational Autonomy, Feedback Loops & Production Pipeline.
 
 ## Repository
 
-- **Generated:** 2026-08-30T20:28:23Z
-- **State generated at commit:** `bf2e736` — docs: finalize BRIEF-005 report and regenerate STATE.md
+- **Generated:** 2026-08-30T21:11:18Z
+- **State generated at commit:** `a24f87a` — fix(outbound): complete terminal authority closure for brief-005
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
