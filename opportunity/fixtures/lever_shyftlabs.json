@@ -1,0 +1,28 @@
+[
+  {
+    "id": "lever-shyft-001",
+    "text": "Senior Machine Learning Engineer",
+    "createdAt": 1724678400000,
+    "hostedUrl": "https://jobs.lever.co/shyftlabs/lever-shyft-001",
+    "categories": {
+      "location": "Remote - Global",
+      "commitment": "Full-time",
+      "team": "AI & Engineering"
+    },
+    "descriptionPlain": "We are looking for a Senior Machine Learning Engineer to scale our predictive data pipelines using Python, PyTorch, and AWS. Fully remote worldwide.",
+    "description": "<p>We are looking for a Senior Machine Learning Engineer to scale our predictive data pipelines using Python, PyTorch, and AWS. Fully remote worldwide.</p>"
+  },
+  {
+    "id": "lever-shyft-002",
+    "text": "Junior Frontend Developer",
+    "createdAt": 1724764800000,
+    "hostedUrl": "https://jobs.lever.co/shyftlabs/lever-shyft-002",
+    "categories": {
+      "location": "Canada Only",
+      "commitment": "Contract",
+      "team": "Web"
+    },
+    "descriptionPlain": "Must be legally authorized to work in Canada. Build React applications.",
+    "description": "<p>Must be legally authorized to work in Canada. Build React applications.</p>"
+  }
+]

@@ -1,0 +1,25 @@
+{
+  "notices": [
+    {
+      "publication-number": "2026/S 165-492100",
+      "notice-title": {
+        "ENG": ["Modernization of Enterprise Data Analytics & Cloud Services"]
+      },
+      "buyer-name": {
+        "ENG": ["European Union Agency for Cybersecurity (ENISA)"]
+      },
+      "buyer-country": "GR",
+      "publication-date": "2026-08-26",
+      "deadline": "2026-10-01",
+      "notice-type": "Contract Notice",
+      "category": "IT Services",
+      "cpv": ["72000000", "72200000"],
+      "links": {
+        "htmlDirect": {
+          "ENG": "https://ted.europa.eu/udl?uri=TED:NOTICE:492100-2026:TEXT:EN:HTML"
+        }
+      },
+      "description": "Public procurement for cloud architecture, cybersecurity telemetry pipelines, and infrastructure engineering consulting services."
+    }
+  ]
+}

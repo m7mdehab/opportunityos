@@ -1,0 +1,19 @@
+{
+  "jobs": [
+    {
+      "id": "him-job-101",
+      "slug": "backend-architect-python",
+      "title": "Principal Backend Architect",
+      "companyName": "CloudScale Inc",
+      "location": "Worldwide",
+      "locationRestrictions": ["Anywhere in the World"],
+      "description": "Architect scalable distributed systems using Python, PostgreSQL, and Docker. 100% remote across all timezones.",
+      "applicationLink": "https://himalayas.app/jobs/cloudscale/backend-architect",
+      "pubDate": "2026-08-27T08:00:00Z",
+      "minSalary": 180000,
+      "maxSalary": 240000,
+      "currency": "USD",
+      "employmentType": "Full-Time"
+    }
+  ]
+}
