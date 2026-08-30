@@ -174,6 +174,7 @@ def create_test_opportunity(
     skills: tuple[str, ...] = ("Python", "Go"),
     responsibilities: tuple[str, ...] = ("Build distributed systems", "Maintain cloud infrastructure"),
     procurement_metadata: ProcurementMetadata | None = None,
+    compensation: Any = None,
 ) -> Opportunity:
     prov = SourceProvenance(
         source_id="greenhouse:cloudflare",
@@ -203,7 +204,7 @@ def create_test_opportunity(
         location_raw=location_raw,
         remote_policy=remote_policy,
         geographic_eligibility=geo,
-        compensation=None,
+        compensation=compensation,
         posted_date="2026-08-15",
         closing_date=None,
         procurement_metadata=procurement_metadata,

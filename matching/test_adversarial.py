@@ -399,6 +399,203 @@ class TestArtifactValidatorAndAdversarial(unittest.TestCase):
         resp_mappings = [m for m in req_map.mappings if m.requirement_type == "responsibility"]
         self.assertTrue(all(m.status != RequirementSupportStatus.SUPPORTED for m in resp_mappings))
 
+    def test_default_policy_iran_buyer_country_is_uncertain(self) -> None:
+        # Default policy must not default to prohibited jurisdictions
+        qual_engine = QualificationEngine()
+        opp = create_test_opportunity(
+            track=Track.PROCUREMENT,
+            title="Statistical Consulting Services",
+            procurement_metadata=ProcurementMetadata(
+                buyer_name="Tehran Statistical Center",
+                buyer_country="Iran",
+                notice_type="RFP",
+            ),
+        )
+        decision, hard_results = qual_engine.evaluate(opp, self.truth_graph)
+        # Without explicit prohibited_jurisdictions, buyer country is UNCERTAIN (not hard failure / INELIGIBLE)
+        self.assertNotEqual(decision, QualificationDecision.INELIGIBLE)
+        buyer_results = [r for r in hard_results if r.constraint_name == "buyer_country_policy"]
+        self.assertTrue(all(not r.is_hard_failure for r in buyer_results))
+
+    def test_explicit_policy_prohibiting_iran_triggers_hard_rejection(self) -> None:
+        from matching.models import ScoringPolicy
+        qual_engine = QualificationEngine(policy=ScoringPolicy(prohibited_jurisdictions=("Iran", "Syria")))
+        opp = create_test_opportunity(
+            track=Track.PROCUREMENT,
+            title="Statistical Consulting Services",
+            procurement_metadata=ProcurementMetadata(
+                buyer_name="Tehran Statistical Center",
+                buyer_country="Iran",
+                notice_type="RFP",
+            ),
+        )
+        decision, hard_results = qual_engine.evaluate(opp, self.truth_graph)
+        self.assertEqual(decision, QualificationDecision.INELIGIBLE)
+        buyer_results = [r for r in hard_results if r.constraint_name == "buyer_country_policy"]
+        self.assertTrue(any(r.is_hard_failure and r.passed is False for r in buyer_results))
+
+    def test_unrelated_service_assertion_does_not_prove_manageable_scope(self) -> None:
+        scorer = OpportunityScorer()
+        opp = create_test_opportunity(
+            track=Track.PROCUREMENT,
+            title="Multi-Year Enterprise Transformation",
+            description="Massive 500-person multi-year migration project.",
+            procurement_metadata=ProcurementMetadata(
+                buyer_name="Enterprise Buyer",
+                buyer_country="Egypt",
+                notice_type="RFP",
+            ),
+        )
+        # self.truth_graph has service.name assertions but NO business/team capacity assertions
+        match = scorer.evaluate(opp, self.truth_graph)
+        dim_map = {d.dimension_name: d for d in match.dimension_scores}
+        # Scope dimension must not have "manageable" strength
+        self.assertEqual(len(dim_map["scope_complexity"].strengths), 0)
+        self.assertEqual(dim_map["scope_complexity"].raw_score, 0.50)
+
+    def test_stated_procurement_budget_without_founder_economics_is_neutral(self) -> None:
+        from opportunity.models import Compensation, CompensationInterval
+        scorer = OpportunityScorer()  # Default policy has min_target_compensation=None
+        opp = create_test_opportunity(
+            track=Track.PROCUREMENT,
+            title="Consulting Assignment",
+            compensation=Compensation(
+                min_amount=150000.0,
+                max_amount=200000.0,
+                currency="USD",
+                interval=CompensationInterval.PROJECT,
+            ),
+            procurement_metadata=ProcurementMetadata(
+                buyer_name="Client Corp",
+                buyer_country="Egypt",
+                notice_type="RFP",
+            ),
+        )
+        match = scorer.evaluate(opp, self.truth_graph)
+        dim_map = {d.dimension_name: d for d in match.dimension_scores}
+        # Stated budget without policy comparison produces zero strengths and neutral score
+        self.assertEqual(len(dim_map["budget_fit"].strengths), 0)
+        self.assertEqual(dim_map["budget_fit"].raw_score, 0.50)
+
+    def test_validate_stale_artifact_without_opportunity_fails_closed(self) -> None:
+        opp = create_test_opportunity()
+        cv = self.emp_compiler.compile_tailored_cv(opp, self.truth_graph)
+        result = self.validator.validate_artifact(cv, self.truth_graph, opportunity=None)
+        self.assertFalse(result.is_valid)
+        self.assertTrue(any("Opportunity binding is mandatory" in err for err in result.errors))
+
+    def test_resolved_commitment_without_policy_object_fails(self) -> None:
+        opp = create_test_opportunity()
+        policy = TailoringPolicy(default_notice_period_days=30)
+        compiler = EmploymentArtifactCompiler(policy=policy)
+        cv = compiler.compile_tailored_cv(opp, self.truth_graph)
+        # Validate without providing policy object
+        result = self.validator.validate_artifact(cv, self.truth_graph, opportunity=opp, policy=None)
+        self.assertFalse(result.is_valid)
+        self.assertTrue(any("TailoringPolicy object is required" in err for err in result.errors))
+
+    def test_fake_policy_field_in_resolved_commitment_fails(self) -> None:
+        opp = create_test_opportunity()
+        policy = TailoringPolicy(default_notice_period_days=30)
+        tampered_commitment = ForwardCommitment(
+            commitment_type="availability",
+            description="Notice period",
+            status=CommitmentStatus.RESOLVED,
+            value="30 days notice",
+            policy_source="TailoringPolicy.fake_nonexistent_field",
+        )
+        cv = self.emp_compiler.compile_tailored_cv(opp, self.truth_graph)
+        tampered_cv = TailoredArtifact(
+            artifact_id=cv.artifact_id,
+            artifact_type=cv.artifact_type,
+            opportunity_id=cv.opportunity_id,
+            opportunity_content_hash=cv.opportunity_content_hash,
+            template_version=cv.template_version,
+            policy_version=cv.policy_version,
+            title=cv.title,
+            sections=cv.sections,
+            generated_claims=cv.generated_claims,
+            commitment_checklist=(tampered_commitment,),
+            compiled_at=cv.compiled_at,
+        )
+        result = self.validator.validate_artifact(tampered_cv, self.truth_graph, opportunity=opp, policy=policy)
+        self.assertFalse(result.is_valid)
+        self.assertTrue(any("cites non-existent policy field" in err for err in result.errors))
+
+    def test_fabricated_summary_using_valid_unrelated_assertion_ids_fails(self) -> None:
+        opp = create_test_opportunity()
+        # Create a summary claim that cites valid Python skill assertion (a-skill-py) but makes title claim "Chief Executive Officer"
+        tampered_claim = GeneratedClaim(
+            claim_id="claim-summary-fabricated",
+            text="Professional background as Chief Executive Officer with verified competencies in Rust.",
+            section_id="summary",
+            assertion_ids=("a-skill-py",),
+            evidence_ids=("ev-py",),
+            predicate="summary",
+            authorized_value="Professional background as Chief Executive Officer with verified competencies in Rust.",
+        )
+        sec = ArtifactSection(
+            section_id="summary",
+            heading="Professional Summary",
+            content=tampered_claim.text,
+            items=(),
+            assertion_ids=("a-skill-py",),
+            evidence_ids=("ev-py",),
+        )
+        fabricated_cv = TailoredArtifact(
+            artifact_id=f"artifact-cv-{opp.id}",
+            artifact_type=ArtifactType.TAILORED_CV,
+            opportunity_id=opp.id,
+            opportunity_content_hash=opp.content_hash,
+            template_version="cv-v1.0",
+            policy_version="1.0.0",
+            title="Fabricated CV",
+            sections=(sec,),
+            generated_claims=(tampered_claim,),
+            commitment_checklist=(),
+            compiled_at="2026-08-30",
+        )
+        result = self.validator.validate_artifact(fabricated_cv, self.truth_graph, opportunity=opp)
+        self.assertFalse(result.is_valid)
+        self.assertTrue(any("lacks supporting employment.title" in err or "does not contain cited title" in err for err in result.errors))
+
+    def test_fabricated_employment_record_using_valid_unrelated_assertion_ids_fails(self) -> None:
+        opp = create_test_opportunity()
+        # Cite valid employment assertion a-title ("Senior Distributed Systems Architect"), but text claims "Chief Executive Officer | Google (2020 – 2024)"
+        tampered_claim = GeneratedClaim(
+            claim_id="claim-emp-fabricated",
+            text="Chief Executive Officer | Google (2020 – 2024)",
+            section_id="experience",
+            assertion_ids=("a-title",),
+            evidence_ids=("ev-title",),
+            predicate="employment.record",
+            authorized_value="Chief Executive Officer | Google (2020 – 2024)",
+        )
+        sec = ArtifactSection(
+            section_id="experience",
+            heading="Professional Experience",
+            content=tampered_claim.text,
+            items=(tampered_claim.text,),
+            assertion_ids=("a-title",),
+            evidence_ids=("ev-title",),
+        )
+        fabricated_cv = TailoredArtifact(
+            artifact_id=f"artifact-cv-{opp.id}",
+            artifact_type=ArtifactType.TAILORED_CV,
+            opportunity_id=opp.id,
+            opportunity_content_hash=opp.content_hash,
+            template_version="cv-v1.0",
+            policy_version="1.0.0",
+            title="Fabricated CV",
+            sections=(sec,),
+            generated_claims=(tampered_claim,),
+            commitment_checklist=(),
+            compiled_at="2026-08-30",
+        )
+        result = self.validator.validate_artifact(fabricated_cv, self.truth_graph, opportunity=opp)
+        self.assertFalse(result.is_valid)
+        self.assertTrue(any("does not match cited title" in err or "does not match cited organization" in err for err in result.errors))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -265,6 +265,11 @@ class ScoringPolicy:
     version: str = "1.0.0"
     auto_rejection_enabled: bool = False  # Disabled by default until >=95% founder precision demonstrated
     uncertainty_penalty_weight: float = 0.15
+    prohibited_jurisdictions: tuple[str, ...] = ()
+    approved_delivery_jurisdictions: tuple[str, ...] = ()
+    min_target_compensation: float | None = None
+    min_target_daily_rate: float | None = None
+    min_target_hourly_rate: float | None = None
     employment_weights: dict[str, float] = field(default_factory=lambda: {
         "skills": 0.35,
         "experience": 0.20,
@@ -299,6 +304,8 @@ class TailoringPolicy:
     business_registration_country: str | None = None
     tax_identifier_available: bool = False
     guarantees_policy: str | None = None
-    prohibited_jurisdictions: tuple[str, ...] = ("North Korea", "Iran", "Syria", "Russia")
+    prohibited_jurisdictions: tuple[str, ...] = ()
     approved_delivery_jurisdictions: tuple[str, ...] = ()
     min_target_compensation: float | None = None
+    min_target_daily_rate: float | None = None
+    min_target_hourly_rate: float | None = None
