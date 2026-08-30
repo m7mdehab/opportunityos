@@ -70,11 +70,11 @@ final_report_only: true
 
 ## Acceptance Criteria
 
-- [ ] Unified Opportunity data model and schema implemented covering employment, contract, freelance, and procurement tracks.
-- [ ] Multi-source ingestion pipeline integrating authorized employment feeds (Greenhouse, Lever, Himalayas, Remotive, Remote OK, We Work Remotely) and independent procurement feeds (UNGM, World Bank, EU TED Search API).
-- [ ] Strict compliance with robots.txt, source registry, rate limits, and external action semantics (zero external mutations; allowlisted read-only TED POST queries).
-- [ ] Integration with geographic classification engine (`recon/geography.py`) and Professional Truth Graph (`truth/`).
-- [ ] Content hash deduplication and opportunity deduplication pipeline.
-- [ ] Unit and integration test suite covering feed parsing, normalization, error handling, and deduplication.
-- [ ] Independent audit / checker passes acceptance gate.
-- [ ] `docs/STATE.md` regenerated and accurate.
+- [x] Unified Opportunity data model and schema implemented covering employment, contract, freelance, and procurement tracks.
+- [x] Multi-source ingestion pipeline integrating authorized employment feeds (Greenhouse, Lever, Himalayas, Remotive, Remote OK, We Work Remotely) and independent procurement feeds (UNGM, World Bank, EU TED Search API).
+- [x] Strict compliance with robots.txt, source registry, rate limits, and external action semantics (zero external mutations; allowlisted read-only TED POST queries).
+- [x] Integration with geographic classification engine (`recon/geography.py`) and Professional Truth Graph (`truth/`).
+- [x] Content hash deduplication and opportunity deduplication pipeline.
+- [x] Unit and integration test suite covering feed parsing, normalization, error handling, and deduplication.
+- [x] Independent audit / checker passes acceptance gate.
+- [x] `docs/STATE.md` regenerated and accurate.
