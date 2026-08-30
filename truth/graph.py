@@ -261,7 +261,7 @@ def _get_clause_context(text: str, match_start: int, match_end: int) -> str:
 def _parse_metrics_with_context(text: str) -> list[tuple[float | int, str, str]]:
     results = []
     metric_pattern = re.compile(
-        r"(?<![\w-])(?:(?P<curr>[$€£])\s*)?(?P<val>\d+(?:[.,]\d+)?)(?:\s*(?P<unit>%|[xX]\b|hours?|days?|weeks?|months?|users?|clients?|projects?|engagements?|requests?|seconds?|minutes?|USD|EUR|GBP))?",
+        r"(?<![\w-])(?:(?P<curr>[$€£])\s*)?(?P<val>\d+(?:[.,]\d+)?)(?:\s*(?P<unit>%|[xX]\b|hours?|days?|weeks?|months?|users?|clients?|projects?|tickets?|engagements?|requests?|seconds?|minutes?|USD|EUR|GBP))?",
         re.IGNORECASE,
     )
     for match in metric_pattern.finditer(text):
@@ -280,53 +280,196 @@ def _parse_metrics_with_context(text: str) -> list[tuple[float | int, str, str]]
     return results
 
 
+_UNIT_EQUIVALENCE_CLASSES: tuple[frozenset[str], ...] = (
+    frozenset({"%", "percent", "percentage", "pct"}),
+    frozenset({"$", "usd", "dollar", "dollars"}),
+    frozenset({"€", "eur", "euro", "euros"}),
+    frozenset({"£", "gbp", "pound", "pounds"}),
+    frozenset({"h", "hr", "hrs", "hour", "hours"}),
+    frozenset({"d", "day", "days"}),
+    frozenset({"wk", "wks", "week", "weeks"}),
+    frozenset({"mo", "mos", "month", "months"}),
+    frozenset({"yr", "yrs", "year", "years"}),
+    frozenset({"min", "mins", "minute", "minutes"}),
+    frozenset({"s", "sec", "secs", "second", "seconds"}),
+    frozenset({"user", "users"}),
+    frozenset({"client", "clients"}),
+    frozenset({"project", "projects"}),
+    frozenset({"ticket", "tickets"}),
+    frozenset({"request", "requests"}),
+    frozenset({"engagement", "engagements"}),
+    frozenset({"engineer", "engineers"}),
+    frozenset({"member", "members"}),
+    frozenset({"team", "teams"}),
+    frozenset({"count", "item", "items", "unit", "units"}),
+    frozenset({"x", "times", "fold"}),
+)
+
+
+def _canonical_unit_class(unit: str) -> frozenset[str] | None:
+    u = unit.strip().casefold()
+    for eq_class in _UNIT_EQUIVALENCE_CLASSES:
+        if u in eq_class:
+            return eq_class
+    if u.endswith("s") and len(u) > 3:
+        singular = u[:-1]
+        for eq_class in _UNIT_EQUIVALENCE_CLASSES:
+            if singular in eq_class:
+                return eq_class
+        return frozenset({u, singular})
+    return frozenset({u, f"{u}s"})
+
+
 def _units_compatible(unit_a: str, unit_b: str, ev_ctx: str = "") -> bool:
     ua = unit_a.strip().casefold()
     ub = unit_b.strip().casefold()
     if ua == ub:
         return True
-    if ua in {"%", "percent", "percentage"}:
-        return ub in {"%", "percent", "percentage"}
-    if ub in {"%", "percent", "percentage"}:
-        return False
-    if ua in {"$", "usd"}:
-        return ub in {"$", "usd"}
-    if ub in {"$", "usd"}:
-        return False
-    if ua in {"€", "eur"}:
-        return ub in {"€", "eur"}
-    if ub in {"€", "eur"}:
-        return False
-    if ua in {"£", "gbp"}:
-        return ub in {"£", "gbp"}
-    if ub in {"£", "gbp"}:
-        return False
-    if ua.rstrip("s") == ub.rstrip("s") and len(ua.rstrip("s")) >= 3:
-        return True
-    if ua in ub or ub in ua:
-        return True
-    if ev_ctx and ua.rstrip("s") in ev_ctx.casefold():
-        return True
-    if ua in {"count", ""} or ub in {"count", ""}:
-        return True
+    class_a = _canonical_unit_class(ua)
+    class_b = _canonical_unit_class(ub)
+    if class_a is not None and class_b is not None:
+        if class_a == class_b:
+            return True
+    if ev_ctx and ua not in {"%", "percent", "percentage", "$", "usd", "€", "eur", "£", "gbp", "count"}:
+        ev_words = _extract_tokens(ev_ctx)
+        if ua in ev_words or ua.rstrip("s") in {w.rstrip("s") for w in ev_words}:
+            return True
     return False
 
 
+_INCREASE_WORDS = frozenset({"increased", "increase", "increasing", "growth", "grew", "boosted", "boost", "rose", "rise", "rising"})
+_DECREASE_WORDS = frozenset({"decreased", "decrease", "decreasing", "fell", "fall", "fallen", "falling", "dropped", "drop", "dropping", "reduced", "reduce", "reducing", "reduction", "cut", "saved", "savings"})
+
+_GENERIC_METRIC_FILLER = frozenset({
+    "a", "an", "and", "or", "of", "in", "at", "to", "for", "with", "on", "by", "from",
+    "the", "is", "was", "were", "as", "into", "onto", "via", "using", "that", "this",
+    "these", "those", "over", "under", "than", "per", "about", "approximately", "nearly",
+    "roughly", "around", "least", "most", "up", "such",
+    "increased", "increase", "increasing", "decreased", "decrease", "decreasing",
+    "fell", "fall", "fallen", "falling", "dropped", "drop", "dropping",
+    "reduced", "reduce", "reducing", "reduction", "improved", "improve", "improving", "improvement",
+    "grew", "grow", "growing", "growth", "cut", "cutting", "boosted", "boost", "boosting",
+    "rose", "rise", "rising", "saved", "save", "saving", "savings",
+    "built", "delivered", "processed", "managed", "generated", "achieved", "attained",
+    "scaled", "handled", "led", "served", "earned", "made", "spent",
+    "%", "percent", "percentage", "pct", "usd", "eur", "gbp", "count", "hour", "hours",
+    "day", "days", "week", "weeks", "month", "months", "year", "years",
+})
+
+
 def _metric_contexts_compatible(metric_ctx: str, ev_ctx: str, num_val: float | int) -> bool:
-    num_str = str(int(num_val) if isinstance(num_val, (int, float)) and float(num_val).is_integer() else num_val)
-    metric_tokens = _extract_tokens(metric_ctx) - _STOP_WORDS - {num_str.casefold()}
-    ev_tokens = _extract_tokens(ev_ctx) - _STOP_WORDS - {num_str.casefold()}
-    if not metric_tokens:
+    if not metric_ctx or not metric_ctx.strip():
+        return False
+    if not ev_ctx or not ev_ctx.strip():
+        return False
+
+    metric_tokens_all = _extract_tokens(metric_ctx)
+    ev_tokens_all = _extract_tokens(ev_ctx)
+
+    metric_has_inc = bool(metric_tokens_all & _INCREASE_WORDS)
+    metric_has_dec = bool(metric_tokens_all & _DECREASE_WORDS)
+    ev_has_inc = bool(ev_tokens_all & _INCREASE_WORDS)
+    ev_has_dec = bool(ev_tokens_all & _DECREASE_WORDS)
+
+    if metric_has_inc and ev_has_dec and not (metric_has_dec or ev_has_inc):
+        return False
+    if metric_has_dec and ev_has_inc and not (metric_has_inc or ev_has_dec):
+        return False
+
+    num_str = str(int(num_val) if isinstance(num_val, (int, float)) and float(num_val).is_integer() else num_val).casefold()
+    metric_substantive = metric_tokens_all - _GENERIC_METRIC_FILLER - {num_str}
+    ev_substantive = ev_tokens_all - _GENERIC_METRIC_FILLER - {num_str}
+
+    if metric_substantive:
+        for tok in metric_substantive:
+            if tok not in ev_tokens_all and not any(tok in ev_tok or ev_tok in tok for ev_tok in ev_tokens_all):
+                return False
         return True
-    return bool(metric_tokens & ev_tokens)
+
+    if ev_substantive and not metric_substantive:
+        return False
+
+    metric_non_stop = metric_tokens_all - _STOP_WORDS - {num_str}
+    ev_non_stop = ev_tokens_all - _STOP_WORDS - {num_str}
+    return bool(metric_non_stop & ev_non_stop)
 
 
-def _single_record_supports_metric(metric: MetricAssertion, record: EvidenceRecord) -> bool:
+def _is_subject_proven_for_metric(metric: MetricAssertion, record: EvidenceRecord, graph: TruthGraph | None = None) -> bool:
+    if not metric.subject_id:
+        return True
+
+    # 1. Explicit metadata on evidence record
+    if record.metadata:
+        rec_subj = record.metadata.get("subject_id") or record.metadata.get("subject")
+        if rec_subj:
+            return str(rec_subj) == str(metric.subject_id)
+        if metric.subject_id in record.metadata:
+            return True
+
+    # 2. Explicit locator scope on evidence record
+    if record.locator:
+        loc = record.locator.strip()
+        if loc == metric.subject_id:
+            return True
+        if loc.startswith(f"{metric.subject_id}.") or loc.endswith(f".{metric.subject_id}"):
+            return True
+        if loc.startswith(("achievements.", "portfolio.", "employment.", "services.")):
+            loc_sub = loc.split(".", 1)[1]
+            if loc_sub == metric.subject_id or loc_sub.startswith(metric.subject_id) or metric.subject_id.startswith(loc_sub):
+                return True
+        if loc in {"ach", "achievements", "portfolio", "employment", "service", "services"}:
+            if any(term in metric.subject_id.casefold() for term in ("ach", "achievement", "port", "portfolio", "job", "emp", "employment", "service")):
+                return True
+
+    # 3. Evidence ID scope or naming binding
+    if record.id == metric.subject_id:
+        return True
+    if record.id.startswith(f"ev-{metric.subject_id}") or record.id.endswith(f"-{metric.subject_id}"):
+        return True
+    if metric.subject_id.startswith(f"ach-{record.id}") or metric.subject_id.startswith(f"sub-{record.id}"):
+        return True
+    if f"-{metric.subject_id}-" in record.id or f"-{record.id}-" in metric.subject_id:
+        return True
+
+    rec_stems = {tok.rstrip("s") for tok in _extract_tokens(record.id) if tok not in {"ev", "record", "test", "cv"}}
+    subj_stems = {tok.rstrip("s") for tok in _extract_tokens(metric.subject_id) if tok not in {"id", "node", "synthetic"}}
+    if rec_stems and subj_stems and (rec_stems & subj_stems):
+        return True
+
+    # 4. Graph entity evidence binding or assertions
+    if graph is not None:
+        if metric.subject_id in graph._entity_evidence:
+            if record.id in graph._entity_evidence[metric.subject_id]:
+                return True
+        if metric.subject_id in graph._entities:
+            entity = graph._entities[metric.subject_id]
+            if hasattr(entity, "evidence_ids") and record.id in entity.evidence_ids:
+                return True
+        for as_node in graph._assertions.values():
+            if as_node.subject_id == metric.subject_id and record.id in as_node.evidence_ids:
+                return True
+
+    # 5. Semantic concept alignment between subject_id and evidence content
+    if record.content and subj_stems:
+        content_stems = {tok.rstrip("s") for tok in _extract_tokens(record.content) - _STOP_WORDS - _GENERIC_METRIC_FILLER}
+        meaningful_subj_stems = subj_stems - {"subject", "achievement", "item", "metric", "profile", "entity"}
+        if meaningful_subj_stems:
+            for s in meaningful_subj_stems:
+                if s in content_stems or any(s in c or c.startswith(s) for c in content_stems):
+                    return True
+
+    return False
+
+
+def _single_record_supports_metric(metric: MetricAssertion, record: EvidenceRecord, graph: TruthGraph | None = None) -> bool:
     if record.verification_status is VerificationStatus.UNVERIFIED or record.verification_status is VerificationStatus.EXPLICIT_NULL:
         return False
     if record.verification_status is VerificationStatus.APPROXIMATE and metric.modality is Modality.DEFINITE:
         return False
     if not record.content or not record.content.strip():
+        return False
+
+    if not _is_subject_proven_for_metric(metric, record, graph):
         return False
 
     if record.metadata:
@@ -530,7 +673,7 @@ class TruthGraph:
                 raise ValueError(f"metric assertion {metric.id} is VERIFIED but has no evidence")
             if any(r.verification_status is VerificationStatus.UNVERIFIED for r in evidence_records):
                 raise ValueError(f"metric assertion {metric.id} cannot be VERIFIED when supported by UNVERIFIED evidence")
-            if not any(_single_record_supports_metric(metric, r) for r in evidence_records):
+            if not any(_single_record_supports_metric(metric, r, graph=self) for r in evidence_records):
                 raise ValueError(
                     f"metric assertion {metric.id} (value={metric.numeric_value}, unit={metric.unit}, context={metric.context!r}) "
                     f"is not supported by evidence {metric.evidence_ids}"
