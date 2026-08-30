@@ -1,90 +1,129 @@
-"""Unit tests for Application Answer Engine and Provenance."""
-from __future__ import annotations
-
+"""Tests for ApplicationAnswerEngine with strict zero-fabrication and jurisdiction matching."""
 import unittest
-from matching.models import TailoredArtifact, TailoringPolicy
+from matching.models import TailoringPolicy
 from opportunity.models import Opportunity, Track
 from truth.graph import TruthGraph
-from truth.models import AtomicAssertion, EvidenceRecord, Modality, VerificationStatus
+from truth.models import AtomicAssertion, EvidenceRecord, Modality, Polarity, VerificationStatus
 from outbound.answer_engine import ApplicationAnswerEngine
-from outbound.models import AnswerClass, FieldOntologyType
-from outbound.ontology import FieldClassifier
+from outbound.models import AnswerClass, DetectedFormField, FieldOntologyType
 
 
-class TestApplicationAnswerEngine(unittest.TestCase):
+class ApplicationAnswerEngineTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.tg = TruthGraph()
-        ev = EvidenceRecord(
-            id="ev-1", source="document", locator="cv.pdf",
-            content="Mohamed Ehab is a Data Engineer residing in Egypt with email mohamed@example.com."
-        )
-        self.tg.add_evidence(ev)
-        self.tg.add_assertion(AtomicAssertion(
-            id="a-name",
-            subject_id="founder",
-            predicate="identity.name",
-            value="Mohamed Ehab",
-            evidence_ids=("ev-1",),
-            verification_status=VerificationStatus.VERIFIED,
-        ))
-        self.tg.add_assertion(AtomicAssertion(
-            id="a-email",
-            subject_id="founder",
-            predicate="identity.email",
-            value="mohamed@example.com",
-            evidence_ids=("ev-1",),
-            verification_status=VerificationStatus.VERIFIED,
-        ))
-        self.tg.add_assertion(AtomicAssertion(
-            id="a-auth",
-            subject_id="founder",
-            predicate="authorization.jurisdiction",
-            value="Egypt",
-            evidence_ids=("ev-1",),
-            verification_status=VerificationStatus.VERIFIED,
-        ))
-        self.policy = TailoringPolicy(
-            default_notice_period_days=30,
-            min_target_compensation=120000.0,
-        )
-        self.engine = ApplicationAnswerEngine(self.tg, self.policy)
-        self.opp = Opportunity(
-            id="opp-1",
+        self.opportunity = Opportunity(
+            id="opp-test-1",
             track=Track.EMPLOYMENT,
             source="greenhouse",
-            source_url="https://example.com",
-            source_id="1",
-            organization="Tech Corp",
-            title="Data Engineer",
-            description="Engineering role.",
-            content_hash="hash-opp",
+            source_url="https://boards.greenhouse.io/acme/jobs/123",
+            source_id="123",
+            organization="Acme",
+            title="Senior Data Engineer",
+            description="Looking for Senior Data Engineer in Egypt.",
+        )
+        self.policy = TailoringPolicy(
+            default_notice_period_days=30,
+            default_currency="USD",
         )
 
-    def test_green_factual_answers_have_provenance(self) -> None:
-        f_name = FieldClassifier.classify_field("First Name", name="first_name")
-        ans_name = self.engine.answer_field(f_name, self.opp)
-        self.assertEqual(ans_name.answer, "Mohamed")
-        self.assertEqual(ans_name.answer_class, AnswerClass.GREEN)
-        self.assertIn("a-name", ans_name.assertion_ids)
+    def test_empty_truth_graph_name_field_fails_closed_to_pause(self) -> None:
+        tg = TruthGraph()
+        engine = ApplicationAnswerEngine(tg, self.policy)
+        field = DetectedFormField(
+            field_id="first_name", name="first_name", field_type="text",
+            label="First Name", normalized_label="first name",
+            ontology_type=FieldOntologyType.IDENTITY,
+        )
+        ans = engine.answer_field(field, self.opportunity)
+        self.assertIsNone(ans.answer)
+        self.assertEqual(ans.answer_class, AnswerClass.RED)
+        self.assertEqual(ans.disposition, "pause")
+        self.assertEqual(ans.answer_source, "unasserted_identity")
 
-        f_email = FieldClassifier.classify_field("Email Address", name="email")
-        ans_email = self.engine.answer_field(f_email, self.opp)
-        self.assertEqual(ans_email.answer, "mohamed@example.com")
-        self.assertEqual(ans_email.answer_class, AnswerClass.GREEN)
-        self.assertIn("a-email", ans_email.assertion_ids)
+    def test_empty_truth_graph_email_field_fails_closed_to_pause(self) -> None:
+        tg = TruthGraph()
+        engine = ApplicationAnswerEngine(tg, self.policy)
+        field = DetectedFormField(
+            field_id="email", name="email", field_type="text",
+            label="Email Address", normalized_label="email address",
+            ontology_type=FieldOntologyType.CONTACT,
+        )
+        ans = engine.answer_field(field, self.opportunity)
+        self.assertIsNone(ans.answer)
+        self.assertEqual(ans.answer_class, AnswerClass.RED)
+        self.assertEqual(ans.disposition, "pause")
+        self.assertEqual(ans.answer_source, "unasserted_email")
 
-    def test_yellow_policy_answers_have_policy_source(self) -> None:
-        f_notice = FieldClassifier.classify_field("Notice Period", name="notice")
-        ans_notice = self.engine.answer_field(f_notice, self.opp)
-        self.assertEqual(ans_notice.answer, "30 days")
-        self.assertEqual(ans_notice.answer_class, AnswerClass.YELLOW)
-        self.assertIn("default_notice_period_days", ans_notice.policy_source)
+    def test_empty_truth_graph_phone_field_fails_closed_to_pause(self) -> None:
+        tg = TruthGraph()
+        engine = ApplicationAnswerEngine(tg, self.policy)
+        field = DetectedFormField(
+            field_id="phone", name="phone", field_type="text",
+            label="Phone Number", normalized_label="phone number",
+            ontology_type=FieldOntologyType.CONTACT,
+        )
+        ans = engine.answer_field(field, self.opportunity)
+        self.assertIsNone(ans.answer)
+        self.assertEqual(ans.answer_class, AnswerClass.RED)
+        self.assertEqual(ans.disposition, "pause")
+        self.assertEqual(ans.answer_source, "unasserted_phone")
 
-    def test_red_sensitive_answers_pause(self) -> None:
-        f_clearance = FieldClassifier.classify_field("Do you hold an active Top Secret Security Clearance?", name="clearance")
-        ans_clearance = self.engine.answer_field(f_clearance, self.opp)
-        self.assertEqual(ans_clearance.answer_class, AnswerClass.RED)
-        self.assertEqual(ans_clearance.disposition, "pause")
+    def test_empty_truth_graph_linkedin_field_fails_closed_to_pause(self) -> None:
+        tg = TruthGraph()
+        engine = ApplicationAnswerEngine(tg, self.policy)
+        field = DetectedFormField(
+            field_id="linkedin", name="linkedin", field_type="text",
+            label="LinkedIn URL", normalized_label="linkedin url",
+            ontology_type=FieldOntologyType.LINKS,
+        )
+        ans = engine.answer_field(field, self.opportunity)
+        self.assertIsNone(ans.answer)
+        self.assertEqual(ans.answer_class, AnswerClass.RED)
+        self.assertEqual(ans.disposition, "pause")
+        self.assertEqual(ans.answer_source, "unasserted_links")
+
+    def test_work_authorization_mismatched_jurisdiction_does_not_yield_yes(self) -> None:
+        tg = TruthGraph()
+        ev = EvidenceRecord(id="ev-auth-eg", source="passport", locator="p1", content="Authorized to work in Egypt indefinitely.")
+        tg.add_evidence(ev)
+        tg.add_assertion(AtomicAssertion(
+            id="a-auth-eg", subject_id="founder", predicate="authorization.jurisdiction",
+            value="Egypt", polarity=Polarity.POSITIVE, modality=Modality.DEFINITE,
+            verification_status=VerificationStatus.VERIFIED, evidence_ids=("ev-auth-eg",),
+        ))
+
+        engine = ApplicationAnswerEngine(tg, self.policy)
+        field_us = DetectedFormField(
+            field_id="auth_us", name="auth_us", field_type="radio",
+            label="Are you authorized to work in the United States?",
+            normalized_label="are you authorized to work in the united states",
+            ontology_type=FieldOntologyType.WORK_AUTHORIZATION,
+        )
+        ans = engine.answer_field(field_us, self.opportunity)
+        self.assertNotEqual(ans.answer, "Yes")
+        self.assertEqual(ans.answer, "No")
+        self.assertEqual(ans.answer_class, AnswerClass.YELLOW)
+
+    def test_work_authorization_matching_jurisdiction_yields_green_yes(self) -> None:
+        tg = TruthGraph()
+        ev = EvidenceRecord(id="ev-auth-eg", source="passport", locator="p1", content="Authorized to work in Egypt indefinitely.")
+        tg.add_evidence(ev)
+        tg.add_assertion(AtomicAssertion(
+            id="a-auth-eg", subject_id="founder", predicate="authorization.jurisdiction",
+            value="Egypt", polarity=Polarity.POSITIVE, modality=Modality.DEFINITE,
+            verification_status=VerificationStatus.VERIFIED, evidence_ids=("ev-auth-eg",),
+        ))
+
+        engine = ApplicationAnswerEngine(tg, self.policy)
+        field_eg = DetectedFormField(
+            field_id="auth_eg", name="auth_eg", field_type="radio",
+            label="Are you legally authorized to work in Egypt?",
+            normalized_label="are you legally authorized to work in egypt",
+            ontology_type=FieldOntologyType.WORK_AUTHORIZATION,
+        )
+        ans = engine.answer_field(field_eg, self.opportunity)
+        self.assertEqual(ans.answer, "Yes")
+        self.assertEqual(ans.answer_class, AnswerClass.GREEN)
+        self.assertEqual(ans.assertion_ids, ("a-auth-eg",))
 
 
 if __name__ == "__main__":

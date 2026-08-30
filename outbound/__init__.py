@@ -7,20 +7,22 @@ from .models import (
     AdapterLifecycleState,
     AnswerClass,
     ApplicationAnswer,
+    BoundArtifact,
     ConfirmationEvidence,
     DetectedFormField,
     ExecutionMode,
     FieldOntologyType,
+    GraduationRecord,
     OutboundActionRecord,
     PreSubmitManifest,
     SourceActionPolicy,
 )
 from .authority import ActionAuthority, GlobalKillSwitch
-from .registry import SourceActionRegistry
+from .registry import AdapterRegistry, SourceActionRegistry
 from .ontology import FieldClassifier
 from .answer_engine import ApplicationAnswerEngine
 from .artifact_selector import ApplicationArtifactSelector
-from .idempotency import IdempotencyLedger
+from .idempotency import DuplicateSubmissionError, IdempotencyLedger, UnknownOutcomeFrozenError
 from .confirmation import ConfirmationDetector
 
 __all__ = [
@@ -29,19 +31,24 @@ __all__ = [
     "AdapterLifecycleState",
     "AnswerClass",
     "ApplicationAnswer",
+    "BoundArtifact",
     "ConfirmationEvidence",
     "DetectedFormField",
     "ExecutionMode",
     "FieldOntologyType",
+    "GraduationRecord",
     "OutboundActionRecord",
     "PreSubmitManifest",
     "SourceActionPolicy",
     "ActionAuthority",
     "GlobalKillSwitch",
+    "AdapterRegistry",
     "SourceActionRegistry",
     "FieldClassifier",
     "ApplicationAnswerEngine",
     "ApplicationArtifactSelector",
+    "DuplicateSubmissionError",
     "IdempotencyLedger",
+    "UnknownOutcomeFrozenError",
     "ConfirmationDetector",
 ]

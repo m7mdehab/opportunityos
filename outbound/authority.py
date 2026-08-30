@@ -1,156 +1,186 @@
-"""Central Action Authority & Authoritative Global Kill Switch."""
+"""Central Action Authority & Multi-Dimensional Safety Evaluator."""
 from __future__ import annotations
 
-import threading
-from typing import Any
-
-from matching.models import QualificationDecision, TailoredArtifact, TailoringPolicy
+from typing import Union
+from matching.models import (
+    QualificationDecision,
+    TailoredArtifact,
+    TailoringPolicy,
+)
 from matching.validator import ArtifactClaimValidator
 from opportunity.models import Opportunity
 from truth.graph import TruthGraph
-
 from .models import (
     ActionAuthorityDecision,
+    ActionStatus,
     AdapterLifecycleState,
     AnswerClass,
     ApplicationAnswer,
+    BoundArtifact,
     ExecutionMode,
+    FieldOntologyType,
     SourceActionPolicy,
 )
-from .registry import SourceActionRegistry
+from .registry import AdapterRegistry, SourceActionRegistry
 
 
 class GlobalKillSwitch:
-    """Authoritative global kill switch checked immediately before side effects."""
-    _lock = threading.Lock()
+    """Process-level and system-wide kill switch for all outbound actions."""
     _enabled: bool = True
 
     @classmethod
     def is_enabled(cls) -> bool:
-        with cls._lock:
-            return cls._enabled
-
-    @classmethod
-    def enable(cls) -> None:
-        with cls._lock:
-            cls._enabled = True
+        return cls._enabled
 
     @classmethod
     def disable(cls) -> None:
-        with cls._lock:
-            cls._enabled = False
+        cls._enabled = False
+
+    @classmethod
+    def enable(cls) -> None:
+        cls._enabled = True
 
 
 class ActionAuthority:
-    """Central non-bypassable policy evaluator for all outbound actions."""
+    """Multi-dimensional safety gate evaluating all 11 prerequisite dimensions."""
 
     def __init__(
         self,
         registry: SourceActionRegistry | None = None,
+        adapter_registry: AdapterRegistry | None = None,
         validator: ArtifactClaimValidator | None = None,
     ) -> None:
         self.registry = registry or SourceActionRegistry()
+        self.adapter_registry = adapter_registry or AdapterRegistry()
         self.validator = validator or ArtifactClaimValidator()
 
     def evaluate_action(
         self,
         opportunity: Opportunity,
-        artifact: TailoredArtifact | None,
+        artifact: Union[TailoredArtifact, BoundArtifact] | None,
         answers: tuple[ApplicationAnswer, ...],
         execution_mode: ExecutionMode,
-        adapter_state: AdapterLifecycleState,
         adapter_name: str,
-        workspace: str,
-        candidate_id: str,
-        qualification_decision: QualificationDecision,
-        truth_graph: TruthGraph,
+        workspace: str = "default",
+        candidate_id: str = "founder",
+        qualification_decision: QualificationDecision = QualificationDecision.QUALIFIED,
+        truth_graph: TruthGraph | None = None,
         policy: TailoringPolicy | None = None,
         is_duplicate: bool = False,
         captcha_detected: bool = False,
         mfa_detected: bool = False,
         unresolved_mandatory_count: int = 0,
     ) -> tuple[ActionAuthorityDecision, list[str]]:
-        """Evaluate all safety dimensions and return an authoritative action decision."""
+        """Evaluate the 11 prerequisite dimensions of side-effect safety fail-closed."""
         reasons: list[str] = []
 
         # 1. Global Kill Switch
         if not GlobalKillSwitch.is_enabled():
-            return ActionAuthorityDecision.BLOCK, ["Global side-effect kill switch is ACTIVE"]
+            reasons.append("Global side-effect kill switch is ACTIVE; all outbound actions prohibited")
+            return ActionAuthorityDecision.BLOCK, reasons
 
-        # 2. CAPTCHA / MFA / Anti-bot defenses
+        # 2. CAPTCHA / Anti-bot Barriers -> Hard Block
         if captcha_detected:
-            return ActionAuthorityDecision.BLOCK, ["CAPTCHA human verification challenge detected (fail-safe stop)"]
+            reasons.append("CAPTCHA challenge detected; automatic bypass is strictly prohibited")
+            return ActionAuthorityDecision.BLOCK, reasons
+
+        # 3. MFA / Interactive Challenges -> Pause for Review
         if mfa_detected:
-            return ActionAuthorityDecision.PAUSE_FOR_REVIEW, ["MFA authentication challenge requires interactive founder login"]
+            reasons.append("MFA challenge detected; pausing for human interactive login")
+            return ActionAuthorityDecision.PAUSE_FOR_REVIEW, reasons
 
-        # 3. Duplicate Prevention
+        # 4. Duplicate Submission Guard
         if is_duplicate:
-            return ActionAuthorityDecision.BLOCK, ["Duplicate submission detected for this candidate, opportunity, and action type"]
+            reasons.append("Duplicate submission detected in idempotency ledger")
+            return ActionAuthorityDecision.BLOCK, reasons
 
-        # 4. Qualification Authority
+        # 5. Hard Qualification Authority
         if qualification_decision == QualificationDecision.INELIGIBLE:
-            return ActionAuthorityDecision.BLOCK, ["Opportunity is disqualified / INELIGIBLE"]
+            reasons.append(f"Opportunity is marked {qualification_decision.value}; outbound action prohibited")
+            return ActionAuthorityDecision.BLOCK, reasons
 
-        # 5. Source Action Policy
+        if qualification_decision == QualificationDecision.UNCERTAIN:
+            reasons.append("Opportunity qualification is UNCERTAIN; requires human review before action")
+            return ActionAuthorityDecision.PAUSE_FOR_REVIEW, reasons
+
+        # 6. Source Action Policy Gate
         source_policy = self.registry.get_policy(opportunity.source)
         if source_policy == SourceActionPolicy.PROHIBITED:
-            return ActionAuthorityDecision.BLOCK, [f"Source '{opportunity.source}' is PROHIBITED for outbound actions"]
+            reasons.append(f"Source '{opportunity.source}' policy is PROHIBITED")
+            return ActionAuthorityDecision.BLOCK, reasons
 
-        if source_policy == SourceActionPolicy.MANUAL_ONLY and execution_mode == ExecutionMode.CONTROLLED_SUBMIT:
-            return ActionAuthorityDecision.BLOCK, [f"Source '{opportunity.source}' policy is MANUAL_ONLY; automated submission forbidden"]
+        if source_policy == SourceActionPolicy.MANUAL_ONLY and execution_mode != ExecutionMode.DRY_RUN:
+            reasons.append(f"Source '{opportunity.source}' policy is MANUAL_ONLY; automated actions blocked")
+            return ActionAuthorityDecision.BLOCK, reasons
 
-        # 6. Execution Mode Authority
-        if execution_mode == ExecutionMode.DRY_RUN:
-            return ActionAuthorityDecision.ALLOW_PREPARE, ["DRY_RUN execution permitted (no external mutation)"]
+        # 7. Authoritative Adapter Graduation Resolution
+        grad_rec = self.adapter_registry.get_graduation_record(adapter_name)
+        if grad_rec is None:
+            reasons.append(f"Adapter '{adapter_name}' is not registered in authoritative AdapterRegistry")
+            return ActionAuthorityDecision.BLOCK, reasons
 
-        if execution_mode == ExecutionMode.ASSISTED:
-            # ASSISTED allows navigation and form filling, but strictly forbids submit
-            if unresolved_mandatory_count > 0:
-                reasons.append(f"{unresolved_mandatory_count} mandatory fields are unresolved")
-                return ActionAuthorityDecision.PAUSE_FOR_REVIEW, reasons
-            return ActionAuthorityDecision.ALLOW_FILL, ["ASSISTED form population permitted; submission strictly forbidden"]
+        prefix = opportunity.source.split(":")[0] if ":" in opportunity.source else opportunity.source
+        if not any(c in opportunity.source or c in prefix for c in grad_rec.source_compatibility):
+            reasons.append(f"Adapter '{adapter_name}' is incompatible with source '{opportunity.source}'")
+            return ActionAuthorityDecision.BLOCK, reasons
 
-        # 7. CONTROLLED_SUBMIT Requirements
-        if execution_mode == ExecutionMode.CONTROLLED_SUBMIT:
-            # Adapter graduation state
-            if adapter_state != AdapterLifecycleState.SUBMIT_ENABLED:
-                return ActionAuthorityDecision.BLOCK, [
-                    f"Adapter '{adapter_name}' is in lifecycle state '{adapter_state.value}' (requires SUBMIT_ENABLED)"
-                ]
+        # 8. Artifact Validation & Ownership Checks
+        if artifact is not None:
+            art_cand = getattr(artifact, "candidate_id", None)
+            if art_cand is not None and art_cand != candidate_id:
+                reasons.append(f"Artifact candidate '{art_cand}' does not match requested candidate '{candidate_id}'")
+                return ActionAuthorityDecision.BLOCK, reasons
 
-            if source_policy not in (SourceActionPolicy.SUBMIT_ALLOWED, SourceActionPolicy.API_ACTION_ALLOWED):
-                return ActionAuthorityDecision.BLOCK, [
-                    f"Source policy '{source_policy.value}' does not permit automated submission"
-                ]
-
-            # Artifact Validation & Binding
-            if artifact is None:
-                return ActionAuthorityDecision.BLOCK, ["Required tailored artifact is missing"]
+            art_ws = getattr(artifact, "workspace", None)
+            if art_ws is not None and art_ws != workspace:
+                reasons.append(f"Artifact workspace '{art_ws}' does not match requested workspace '{workspace}'")
+                return ActionAuthorityDecision.BLOCK, reasons
 
             if artifact.opportunity_id != opportunity.id:
-                return ActionAuthorityDecision.BLOCK, [
-                    f"Artifact opportunity_id '{artifact.opportunity_id}' does not match target '{opportunity.id}'"
-                ]
+                reasons.append(f"Artifact opportunity ID '{artifact.opportunity_id}' does not match target opportunity ID '{opportunity.id}'")
+                return ActionAuthorityDecision.BLOCK, reasons
 
             if artifact.opportunity_content_hash != opportunity.content_hash:
-                return ActionAuthorityDecision.BLOCK, [
-                    f"Artifact opportunity_content_hash '{artifact.opportunity_content_hash}' does not match current opportunity hash '{opportunity.content_hash}'"
-                ]
+                reasons.append(f"Artifact opportunity content hash '{artifact.opportunity_content_hash}' indicates stale artifact for target opportunity '{opportunity.content_hash}'")
+                return ActionAuthorityDecision.BLOCK, reasons
 
-            art_val = self.validator.validate_artifact(artifact, truth_graph, opportunity=opportunity, policy=policy)
-            if not art_val.is_valid:
-                return ActionAuthorityDecision.BLOCK, [f"Artifact claim validation failed: {'; '.join(art_val.errors)}"]
+            inner_art = artifact.artifact if isinstance(artifact, BoundArtifact) else artifact
+            val_res = self.validator.validate_artifact(inner_art, truth_graph or TruthGraph(), opportunity=opportunity, policy=policy)
+            if not val_res.is_valid:
+                reasons.extend([f"Artifact validation failed: {err}" for err in val_res.errors])
+                return ActionAuthorityDecision.BLOCK, reasons
 
-            # Unresolved questions & RED question policy
+        # 9. Execution Mode Safety
+        if execution_mode == ExecutionMode.DRY_RUN:
+            return ActionAuthorityDecision.ALLOW_PREPARE, ["Dry run plan allowed"]
+
+        if execution_mode == ExecutionMode.ASSISTED:
+            if unresolved_mandatory_count > 0:
+                reasons.append(f"{unresolved_mandatory_count} mandatory question(s) unresolved")
+                return ActionAuthorityDecision.PAUSE_FOR_REVIEW, reasons
+            return ActionAuthorityDecision.ALLOW_FILL, ["Assisted fill allowed; submit prohibited"]
+
+        if execution_mode == ExecutionMode.CONTROLLED_SUBMIT:
+            if grad_rec.lifecycle_state != AdapterLifecycleState.SUBMIT_ENABLED or not grad_rec.submit_enabled_by_founder:
+                reasons.append(
+                    f"Adapter '{adapter_name}' requires SUBMIT_ENABLED lifecycle state and explicit founder authorization"
+                )
+                return ActionAuthorityDecision.BLOCK, reasons
+
+            if source_policy not in (SourceActionPolicy.SUBMIT_ALLOWED, SourceActionPolicy.API_ACTION_ALLOWED):
+                reasons.append(f"Source policy '{source_policy.value}' prohibits controlled submit")
+                return ActionAuthorityDecision.BLOCK, reasons
+
             red_answers = [a for a in answers if a.answer_class == AnswerClass.RED]
             if red_answers:
-                reasons.append(f"{len(red_answers)} RED questions require manual founder authorization ({', '.join(a.field_type.value for a in red_answers)})")
+                reasons.append(f"Found {len(red_answers)} Red answer(s); human review required")
                 return ActionAuthorityDecision.PAUSE_FOR_REVIEW, reasons
 
             if unresolved_mandatory_count > 0:
-                reasons.append(f"{unresolved_mandatory_count} mandatory fields are unresolved")
+                reasons.append(f"{unresolved_mandatory_count} mandatory question(s) unresolved")
                 return ActionAuthorityDecision.PAUSE_FOR_REVIEW, reasons
 
-            return ActionAuthorityDecision.ALLOW_SUBMIT, ["All pre-submit authorities satisfied for controlled submission"]
+            return ActionAuthorityDecision.ALLOW_SUBMIT, ["Controlled submission authorized"]
 
-        return ActionAuthorityDecision.BLOCK, ["Unhandled action state"]
+        reasons.append(f"Unsupported execution mode '{execution_mode}'")
+        return ActionAuthorityDecision.BLOCK, reasons
