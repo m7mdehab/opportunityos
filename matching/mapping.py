@@ -67,10 +67,18 @@ class RequirementMapper:
 
         for req in items_to_map:
             req_cf = req.casefold()
-            # Check for skill or responsibility keywords in truth graph
+            # Filter candidate assertions strictly to type-compatible predicates
             matched_assertions = []
             for a in truth_graph.assertions.values():
                 if a.verification_status != VerificationStatus.VERIFIED:
+                    continue
+                if a.predicate not in (
+                    "responsibility.item",
+                    "employment.role_description",
+                    "service.name",
+                    "experience.summary",
+                    "achievement.description",
+                ):
                     continue
                 val_str = str(a.value).casefold()
                 if len(val_str) > 3 and val_str in req_cf:

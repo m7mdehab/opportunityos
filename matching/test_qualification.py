@@ -14,7 +14,7 @@ from opportunity.models import (
     Track,
 )
 from truth.graph import TruthGraph
-from truth.models import AtomicAssertion, EvidenceRecord, VerificationStatus
+from truth.models import AtomicAssertion, EvidenceRecord, Modality, Polarity, VerificationStatus
 from matching.models import QualificationDecision
 from matching.qualification import QualificationEngine
 
@@ -70,9 +70,31 @@ def create_test_graph() -> TruthGraph:
         locator="service.name",
         metadata={"name": "Cloud Architecture Advisory"},
     )
-    for ev in (ev_title, ev_py, ev_go, ev_auth, ev_en, ev_ar, ev_srv):
+    ev_res = EvidenceRecord(
+        id="ev-res",
+        content="Egypt",
+        source="manual",
+        locator="residence.country",
+        metadata={"country": "Egypt"},
+    )
+    ev_auth_de_neg = EvidenceRecord(
+        id="ev-auth-de-neg",
+        content="Not authorized to work in Germany",
+        source="manual",
+        locator="authorization.jurisdiction",
+        metadata={"jurisdiction": "Germany"},
+    )
+    for ev in (ev_title, ev_py, ev_go, ev_auth, ev_en, ev_ar, ev_srv, ev_res, ev_auth_de_neg):
         g.add_evidence(ev)
 
+    g.add_assertion(AtomicAssertion(
+        id="a-residence",
+        subject_id="founder",
+        predicate="residence.country",
+        value="Egypt",
+        evidence_ids=("ev-res",),
+        verification_status=VerificationStatus.VERIFIED,
+    ))
     g.add_assertion(AtomicAssertion(
         id="a-title",
         subject_id="founder",
@@ -104,6 +126,15 @@ def create_test_graph() -> TruthGraph:
         value="Egypt",
         evidence_ids=("ev-auth",),
         verification_status=VerificationStatus.VERIFIED,
+    ))
+    g.add_assertion(AtomicAssertion(
+        id="a-auth-de-neg",
+        subject_id="founder",
+        predicate="authorization.jurisdiction",
+        value="Germany",
+        evidence_ids=("ev-auth-de-neg",),
+        verification_status=VerificationStatus.VERIFIED,
+        polarity=Polarity.NEGATIVE,
     ))
     g.add_assertion(AtomicAssertion(
         id="a-lang-en",
@@ -141,6 +172,8 @@ def create_test_opportunity(
     location_raw: str = "Remote, Worldwide",
     description: str = "Build distributed systems with Python.",
     skills: tuple[str, ...] = ("Python", "Go"),
+    responsibilities: tuple[str, ...] = ("Build distributed systems", "Maintain cloud infrastructure"),
+    procurement_metadata: ProcurementMetadata | None = None,
 ) -> Opportunity:
     prov = SourceProvenance(
         source_id="greenhouse:cloudflare",
@@ -162,7 +195,7 @@ def create_test_opportunity(
         organization="Cloudflare",
         title=title,
         description=description,
-        responsibilities=("Build distributed systems", "Maintain cloud infrastructure"),
+        responsibilities=responsibilities,
         requirements=("5+ years Python", "Go proficiency"),
         skills=skills,
         seniority=SeniorityLevel.SENIOR,
@@ -173,7 +206,7 @@ def create_test_opportunity(
         compensation=None,
         posted_date="2026-08-15",
         closing_date=None,
-        procurement_metadata=None,
+        procurement_metadata=procurement_metadata,
         raw_provenance=prov,
         record_checksum="sha256fake",
         raw_record_pointer="feed:jobs[0]",
@@ -233,6 +266,18 @@ class TestQualificationEngine(unittest.TestCase):
         )
         decision, constraints = self.engine.evaluate(opp, self.truth_graph)
         self.assertEqual(decision, QualificationDecision.QUALIFIED)
+
+    def test_uncertain_on_unstated_work_authorization(self) -> None:
+        # France auth required; founder graph has no assertion about France -> UNCERTAIN, not INELIGIBLE
+        opp = create_test_opportunity(
+            description="Must have valid work authorization in France without sponsorship.",
+        )
+        decision, constraints = self.engine.evaluate(opp, self.truth_graph)
+        self.assertEqual(decision, QualificationDecision.UNCERTAIN)
+        uncertain = [c for c in constraints if c.constraint_name == "work_authorization"]
+        self.assertTrue(len(uncertain) > 0)
+        self.assertIsNone(uncertain[0].passed)
+        self.assertFalse(uncertain[0].is_hard_failure)
 
 
 if __name__ == "__main__":

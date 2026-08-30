@@ -6,12 +6,12 @@ Last shipped: BRIEF-004 — 2026-08-30.
 Active work: none.
 Phase status: passed.
 Blocked: none.
-Next: complete active brief.
+Next: BRIEF-005: Outbound Application & Engagement Workflows.
 
 ## Repository
 
-- **Generated:** 2026-08-30T18:17:48Z
-- **State generated at commit:** `61ccc8e` — docs: add BRIEF-004 phase gate report
+- **Generated:** 2026-08-30T18:58:34Z
+- **State generated at commit:** `acbd386` — docs(report): record independent audit results for brief-004 and update state
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -31,7 +31,7 @@ Next: complete active brief.
 
 ## Last Phase Outcome
 
-- No phase outcome recorded
+- PASS
 
 ## Decisions
 
@@ -65,4 +65,6 @@ Next: complete active brief.
 
 ## Next Prerequisites
 
-- Complete the active brief.
+- BRIEF-005: Outbound Application & Engagement Workflows
+
+---

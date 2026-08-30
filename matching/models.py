@@ -150,6 +150,8 @@ class GeneratedClaim:
     section_id: str
     assertion_ids: tuple[str, ...] = ()
     evidence_ids: tuple[str, ...] = ()
+    predicate: str = ""
+    authorized_value: str = ""
     is_forward_commitment: bool = False
     commitment_status: CommitmentStatus = CommitmentStatus.RESOLVED
     policy_source: str = ""
@@ -182,13 +184,33 @@ def compute_artifact_hash(
     artifact_type: str,
     sections: tuple[ArtifactSection, ...],
     claims: tuple[GeneratedClaim, ...],
+    template_version: str = "",
+    policy_version: str = "",
+    commitment_checklist: tuple[ForwardCommitment, ...] = (),
 ) -> str:
     payload = {
         "opp_id": opportunity_id,
         "opp_hash": opportunity_content_hash,
         "type": artifact_type,
-        "sections": [(s.section_id, s.heading, s.content, s.items) for s in sections],
-        "claims": [(c.claim_id, c.text, c.assertion_ids, c.evidence_ids) for c in claims],
+        "template_version": template_version,
+        "policy_version": policy_version,
+        "sections": [(s.section_id, s.heading, s.content, s.items, s.assertion_ids, s.evidence_ids) for s in sections],
+        "claims": [
+            (
+                c.claim_id,
+                c.text,
+                c.section_id,
+                c.assertion_ids,
+                c.evidence_ids,
+                c.predicate,
+                c.authorized_value,
+                c.is_forward_commitment,
+                c.commitment_status.value,
+                c.policy_source,
+            )
+            for c in claims
+        ],
+        "commitments": [(fc.commitment_type, fc.description, fc.status.value, fc.value, fc.policy_source) for fc in commitment_checklist],
     }
     dumped = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(dumped).hexdigest()
@@ -218,6 +240,9 @@ class TailoredArtifact:
                 self.artifact_type.value,
                 self.sections,
                 self.generated_claims,
+                template_version=self.template_version,
+                policy_version=self.policy_version,
+                commitment_checklist=self.commitment_checklist,
             )
             object.__setattr__(self, "artifact_hash", computed)
 
@@ -273,4 +298,7 @@ class TailoringPolicy:
     business_legal_name: str | None = None
     business_registration_country: str | None = None
     tax_identifier_available: bool = False
-    guarantees_policy: str = "standard_professional_warranty"
+    guarantees_policy: str | None = None
+    prohibited_jurisdictions: tuple[str, ...] = ("North Korea", "Iran", "Syria", "Russia")
+    approved_delivery_jurisdictions: tuple[str, ...] = ()
+    min_target_compensation: float | None = None
