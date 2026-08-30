@@ -1,4 +1,4 @@
-"""OpportunityOS Opportunity Data Models and Ingestion Schemas.
+"""OpportunityOS Opportunity Data Models, Field Manifest, and Ingestion Schemas.
 
 Covers dual-track employment and independent consulting / procurement opportunities
 with strict typing, immutable records, atomic field-level provenance, deterministic
@@ -10,7 +10,7 @@ import hashlib
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import Any, Iterator
 
 
 class Track(str, Enum):
@@ -73,6 +73,38 @@ class SourceHealthStatus(str, Enum):
     RATE_LIMITED = "rate_limited"
     TRANSIENT_FAILURE = "transient_failure"
     PERSISTENT_FAILURE = "persistent_failure"
+
+
+# Canonical manifest of all material fields subject to provenance validation
+MATERIAL_OPPORTUNITY_FIELD_MANIFEST: frozenset[str] = frozenset({
+    "track",
+    "organization",
+    "title",
+    "description",
+    "responsibilities",
+    "requirements",
+    "skills",
+    "seniority",
+    "employment_type",
+    "location_raw",
+    "remote_policy",
+    "geographic_eligibility",
+    "compensation",
+    "compensation.min_amount",
+    "compensation.max_amount",
+    "compensation.currency",
+    "compensation.interval",
+    "posted_date",
+    "closing_date",
+    "procurement_metadata",
+    "procurement_metadata.notice_type",
+    "procurement_metadata.buyer_name",
+    "procurement_metadata.buyer_country",
+    "procurement_metadata.procurement_category",
+    "procurement_metadata.cpv_codes",
+    "procurement_metadata.unspsc_codes",
+    "procurement_metadata.deadline",
+})
 
 
 @dataclass(frozen=True, slots=True)
@@ -188,7 +220,6 @@ def compute_dedup_key(
 
 def compute_deterministic_id(source: str, remote_id: str, title: str, organization: str, raw_pointer: str) -> str:
     if remote_id and remote_id.strip():
-        # Clean alphanumeric + hyphen remote ID
         clean_remote = re.sub(r"[^\w\-.]", "_", remote_id.strip())
         return f"{source}:{clean_remote}"
     digest = hashlib.sha256(f"{organization}:{title}:{raw_pointer}".encode("utf-8")).hexdigest()[:16]
@@ -257,6 +288,36 @@ class Opportunity:
             object.__setattr__(self, "dedup_key", computed_dedup)
 
 
+def validate_opportunity_provenance(opp: Opportunity) -> tuple[bool, str]:
+    """Executable validator driving provenance coverage from MATERIAL_OPPORTUNITY_FIELD_MANIFEST."""
+    prov_map = {fp.field_name: fp for fp in opp.field_provenances}
+
+    # Material fields that MUST have lineage when populated
+    checks = [
+        ("track", opp.track.value if opp.track else None),
+        ("title", opp.title),
+        ("organization", opp.organization if opp.organization else None),
+        ("description", opp.description if opp.description else None),
+        ("location_raw", opp.location_raw if opp.location_raw else None),
+        ("seniority", opp.seniority.value if opp.seniority != SeniorityLevel.UNSPECIFIED else None),
+        ("employment_type", opp.employment_type.value if opp.employment_type != EmploymentType.UNSPECIFIED else None),
+        ("remote_policy", opp.remote_policy.value if opp.remote_policy != RemotePolicy.UNSPECIFIED else None),
+        ("geographic_eligibility", opp.geographic_eligibility.status if opp.geographic_eligibility else None),
+    ]
+
+    for field_name, val in checks:
+        if val is not None:
+            if field_name not in prov_map:
+                return False, f"Missing provenance for populated material field '{field_name}'"
+            fp = prov_map[field_name]
+            if not fp.record_checksum:
+                return False, f"Empty record_checksum in provenance for field '{field_name}'"
+            if not fp.raw_pointer:
+                return False, f"Empty raw_pointer in provenance for field '{field_name}'"
+
+    return True, "Valid"
+
+
 @dataclass(frozen=True, slots=True)
 class OpportunityCluster:
     canonical_id: str
@@ -293,3 +354,21 @@ class SourceHealthReport:
     @property
     def is_healthy(self) -> bool:
         return self.status is SourceHealthStatus.HEALTHY
+
+
+@dataclass(frozen=True, slots=True)
+class ParseResult:
+    """Explicit structured result of feed adapter parsing with sequence protocol support."""
+    opportunities: tuple[Opportunity, ...]
+    records_raw_count: int
+    has_schema_drift: bool = False
+    parser_error: str | None = None
+
+    def __len__(self) -> int:
+        return len(self.opportunities)
+
+    def __iter__(self) -> Iterator[Opportunity]:
+        return iter(self.opportunities)
+
+    def __getitem__(self, idx: int) -> Opportunity:
+        return self.opportunities[idx]

@@ -9,6 +9,7 @@ from opportunity.models import (
     DerivationType,
     FieldProvenance,
     Opportunity,
+    ParseResult,
     Track,
     compute_deterministic_id,
 )
@@ -44,15 +45,18 @@ class GreenhouseAdapter(BaseAdapter):
 
     def parse_payload(
         self, payload: str, raw_pointer: str = "", fetched_at: str = ""
-    ) -> list[Opportunity]:
+    ) -> ParseResult:
         data = json.loads(payload)
         if isinstance(data, dict):
+            if "jobs" not in data and not data:
+                return ParseResult(opportunities=(), records_raw_count=0, has_schema_drift=True)
             jobs = data.get("jobs", [])
         elif isinstance(data, list):
             jobs = data
         else:
             raise ValueError(f"unexpected Greenhouse payload type: {type(data)}")
 
+        raw_count = len(jobs)
         opportunities: list[Opportunity] = []
         for idx, job in enumerate(jobs):
             if not isinstance(job, dict):
@@ -66,16 +70,18 @@ class GreenhouseAdapter(BaseAdapter):
             if not title:
                 continue
 
-            raw_content = str(job.get("content") or "")
-            description = clean_text(raw_content)
+            raw_content = job.get("content")
+            description = clean_text(raw_content) if raw_content else ""
+            desc_derivation = DerivationType.RAW_EXTRACTION if description else DerivationType.UNASSERTED_ABSENT
+
             loc_dict = job.get("location") if isinstance(job.get("location"), dict) else {}
             raw_loc = loc_dict.get("name") or job.get("location")
             location_raw = clean_text(raw_loc)
             url = str(job.get("absolute_url") or "")
             updated_at = parse_iso_date(job.get("updated_at"))
 
-            responsibilities = extract_list_sections(raw_content, r"(?:responsibilit|what\s+you'?ll\s+do|the\s+role|duties)")
-            requirements = extract_list_sections(raw_content, r"(?:requirement|qualificat|what\s+we'?re\s+looking\s+for|what\s+you\s+bring)")
+            responsibilities = extract_list_sections(str(raw_content or ""), r"(?:responsibilit|what\s+you'?ll\s+do|the\s+role|duties)")
+            requirements = extract_list_sections(str(raw_content or ""), r"(?:requirement|qualificat|what\s+we'?re\s+looking\s+for|what\s+you\s+bring)")
             skills = extract_skills_from_text(f"{title} {description}")
             seniority = extract_seniority(title, description)
             emp_type = extract_employment_type(str(job.get("employment_type") or ""), title, description)
@@ -98,12 +104,12 @@ class GreenhouseAdapter(BaseAdapter):
                 payload=payload,
             )
 
-            # Field-level atomic lineage
             field_provenances = (
+                create_field_provenance("track", job.get("employment_type"), track.value, DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "extract_track"),
                 create_field_provenance("organization", self.company_name, self.company_name, DerivationType.SOURCE_METADATA_DERIVATION, item_pointer, record_checksum, "greenhouse_board_metadata"),
                 create_field_provenance("title", raw_title, title, DerivationType.RAW_EXTRACTION, f"{item_pointer}.title", record_checksum, "clean_text"),
-                create_field_provenance("description", raw_content[:100], description[:100], DerivationType.RAW_EXTRACTION, f"{item_pointer}.content", record_checksum, "clean_text"),
-                create_field_provenance("location_raw", raw_loc, location_raw, DerivationType.RAW_EXTRACTION, f"{item_pointer}.location", record_checksum, "clean_text"),
+                create_field_provenance("description", (raw_content or "")[:100], description[:100], desc_derivation, f"{item_pointer}.content", record_checksum, "clean_text"),
+                create_field_provenance("location_raw", raw_loc, location_raw, DerivationType.RAW_EXTRACTION if location_raw else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.location", record_checksum, "clean_text"),
                 create_field_provenance("seniority", title, seniority.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.title", record_checksum, "extract_seniority"),
                 create_field_provenance("employment_type", job.get("employment_type"), emp_type.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.employment_type", record_checksum, "extract_employment_type"),
                 create_field_provenance("remote_policy", raw_loc, remote_policy.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.location", record_checksum, "extract_remote_policy"),
@@ -139,4 +145,4 @@ class GreenhouseAdapter(BaseAdapter):
             )
             opportunities.append(opp)
 
-        return opportunities
+        return ParseResult(opportunities=tuple(opportunities), records_raw_count=raw_count)

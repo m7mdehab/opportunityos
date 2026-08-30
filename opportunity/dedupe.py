@@ -1,7 +1,7 @@
 """Conservative Two-Layer Deduplication Engine for OpportunityOS.
 
 Implements exact content-hash matching and deterministic opportunity-level clustering
-with strict identity-provenance constraints and zero destructive false merges.
+with strict identity-provenance constraints, structured ATS ID matching, and zero destructive false merges.
 """
 from __future__ import annotations
 
@@ -38,9 +38,12 @@ def _canonicalize_url(url: str) -> str:
         return ""
     try:
         parsed = urllib.parse.urlparse(url)
-        # Strip tracking params
+        # Strip tracking query params
         clean_query = urllib.parse.parse_qs(parsed.query)
-        filtered_query = {k: v for k, v in clean_query.items() if not k.startswith("utm_") and k not in {"ref", "source"}}
+        filtered_query = {
+            k: v for k, v in clean_query.items()
+            if not k.startswith("utm_") and k not in {"ref", "source", "gh_src", "gh_jid"}
+        }
         encoded_query = urllib.parse.urlencode(filtered_query, doseq=True)
         return urllib.parse.urlunparse((
             parsed.scheme.lower(),
@@ -54,8 +57,26 @@ def _canonicalize_url(url: str) -> str:
         return url.strip().rstrip("/").casefold()
 
 
-def _have_identical_outbound_identity(opp_a: Opportunity, opp_b: Opportunity) -> bool:
-    """Check if both opportunities point to the same outbound requisition or ATS URL."""
+_GREENHOUSE_URL_PATTERN = re.compile(r"boards(?:\-api)?\.greenhouse\.io/(?:v1/boards/)?([^/?#]+)/jobs/(\d+)", re.IGNORECASE)
+_LEVER_URL_PATTERN = re.compile(r"(?:api\.)?jobs\.lever\.co/(?:v0/postings/)?([^/?#]+)/([a-f0-9\-]+)", re.IGNORECASE)
+
+
+def _extract_ats_structured_identity(url: str) -> tuple[str, str, str] | None:
+    """Extract structured (provider, company, requisition_id) from an ATS URL."""
+    if not url:
+        return None
+    gh_match = _GREENHOUSE_URL_PATTERN.search(url)
+    if gh_match:
+        return ("greenhouse", gh_match.group(1).lower(), gh_match.group(2))
+    lever_match = _LEVER_URL_PATTERN.search(url)
+    if lever_match:
+        return ("lever", lever_match.group(1).lower(), lever_match.group(2))
+    return None
+
+
+def _have_proven_cross_source_identity(opp_a: Opportunity, opp_b: Opportunity) -> bool:
+    """Verify whether two opportunities have independently proven cross-source identity."""
+    # 1. Exact canonical URL equality
     urls_a = {
         _canonicalize_url(opp_a.canonical_outbound_url),
         _canonicalize_url(opp_a.source_url),
@@ -68,10 +89,26 @@ def _have_identical_outbound_identity(opp_a: Opportunity, opp_b: Opportunity) ->
     if common:
         return True
 
-    # Check if one URL contains greenhouse/lever path with the other's source_id
-    if opp_a.source_id and opp_b.source_url and opp_a.source_id in opp_b.source_url:
-        return True
-    if opp_b.source_id and opp_a.source_url and opp_b.source_id in opp_a.source_url:
+    # 2. Structured ATS provider identity matching
+    ats_identities_a = {_extract_ats_structured_identity(u) for u in urls_a} - {None}
+    ats_identities_b = {_extract_ats_structured_identity(u) for u in urls_b} - {None}
+
+    # Add source-based ATS identity if adapter is greenhouse/lever
+    if opp_a.source.startswith("greenhouse:") and opp_a.source_id:
+        company = opp_a.source.partition(":")[2].lower()
+        ats_identities_a.add(("greenhouse", company, opp_a.source_id))
+    if opp_b.source.startswith("greenhouse:") and opp_b.source_id:
+        company = opp_b.source.partition(":")[2].lower()
+        ats_identities_b.add(("greenhouse", company, opp_b.source_id))
+    if opp_a.source.startswith("lever:") and opp_a.source_id:
+        company = opp_a.source.partition(":")[2].lower()
+        ats_identities_a.add(("lever", company, opp_a.source_id))
+    if opp_b.source.startswith("lever:") and opp_b.source_id:
+        company = opp_b.source.partition(":")[2].lower()
+        ats_identities_b.add(("lever", company, opp_b.source_id))
+
+    common_ats = ats_identities_a & ats_identities_b
+    if common_ats:
         return True
 
     return False
@@ -81,7 +118,7 @@ def _evaluate_deduplication(opp_a: Opportunity, opp_b: Opportunity) -> tuple[boo
     """Evaluate whether two opportunities should merge or be flagged as possible duplicates.
     
     Returns: (can_merge, is_ambiguous)
-    - (True, False): Definitively same real-world opportunity. Safe to merge into cluster.
+    - (True, False): Definitively same real-world opportunity with PROVEN identity. Safe to merge.
     - (False, True): Plausible similarity but unproven identity. Preserve both; link as possible duplicate.
     - (False, False): Distinct opportunities. Never merge.
     """
@@ -93,10 +130,6 @@ def _evaluate_deduplication(opp_a: Opportunity, opp_b: Opportunity) -> tuple[boo
     if opp_a.source == opp_b.source and opp_a.source_id and opp_b.source_id:
         if opp_a.source_id != opp_b.source_id:
             return False, False
-
-    # Strong Identity Proof A: Common canonical outbound ATS URL
-    if _have_identical_outbound_identity(opp_a, opp_b):
-        return True, False
 
     # Invariant 3: Organization compatibility (non-empty orgs must match)
     org_a = re.sub(r"[^\w]", "", opp_a.organization.casefold())
@@ -116,6 +149,9 @@ def _evaluate_deduplication(opp_a: Opportunity, opp_b: Opportunity) -> tuple[boo
         if opp_a.geographic_eligibility.status != opp_b.geographic_eligibility.status:
             return False, False
 
+    # Check PROVEN identity
+    has_proven_identity = _have_proven_cross_source_identity(opp_a, opp_b)
+
     # Invariant 6: Title token intersection
     title_a_tokens = _normalize_token_bag(opp_a.title)
     title_b_tokens = _normalize_token_bag(opp_b.title)
@@ -124,19 +160,12 @@ def _evaluate_deduplication(opp_a: Opportunity, opp_b: Opportunity) -> tuple[boo
     intersection = title_a_tokens & title_b_tokens
     overlap_ratio = len(intersection) / max(len(title_a_tokens), len(title_b_tokens))
 
-    if overlap_ratio >= 0.85:
-        # Check description similarity / divergence
-        desc_a_tokens = _normalize_token_bag(opp_a.description)
-        desc_b_tokens = _normalize_token_bag(opp_b.description)
-        if desc_a_tokens and desc_b_tokens:
-            desc_intersection = desc_a_tokens & desc_b_tokens
-            desc_overlap = len(desc_intersection) / min(len(desc_a_tokens), len(desc_b_tokens))
-            if desc_overlap < 0.25 and opp_a.source_id != opp_b.source_id:
-                # Same title and org, but materially different descriptions without identity proof
-                return False, True
+    if has_proven_identity:
+        # Proven identity allows merge across formatting/location wording differences
         return True, False
-    elif overlap_ratio >= 0.6:
-        # Plausible but unproven
+
+    # WITHOUT proven identity, similarity alone MUST NOT merge destructively
+    if overlap_ratio >= 0.6:
         return False, True
 
     return False, False

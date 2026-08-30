@@ -1,123 +1,131 @@
-"""Tests for OpportunityOS Authorized Acquisition, Registry Policy, and Transport."""
+"""Unit and Authority Tests for SourceRegistry and Acquisition Transport."""
+from __future__ import annotations
+
 import unittest
+from opportunity.models import SourceHealthStatus
+from opportunity.pipeline import OpportunityPipeline
+from opportunity.registry import SourceRegistry
+from opportunity.transport import (
+    AcquisitionService,
+    DiscoveryRequest,
+    HttpTransport,
+    MockTransport,
+    RateLimiter,
+    TransportResponse,
+)
 
-from opportunity.acquisition import AcquisitionService, MockTransport, TransportResponse
-from opportunity.registry import SourcePolicy, SourceRegistry
 
-
-class AcquisitionAndRegistryTests(unittest.TestCase):
+class TestAcquisitionAndRegistryAuthority(unittest.TestCase):
     def setUp(self) -> None:
         self.registry = SourceRegistry()
         self.transport = MockTransport()
         self.service = AcquisitionService(registry=self.registry, transport=self.transport)
 
-    def test_registry_loads_and_verifies_authoritative_sources(self) -> None:
-        # Check standard registered sources
-        self.assertTrue(self.registry.is_source_registered("greenhouse:cloudflare"))
-        self.assertTrue(self.registry.is_source_registered("lever:shyftlabs"))
-        self.assertTrue(self.registry.is_source_registered("himalayas"))
-        self.assertTrue(self.registry.is_source_registered("remotive"))
-        self.assertTrue(self.registry.is_source_registered("remote_ok"))
-        self.assertTrue(self.registry.is_source_registered("we_work_remotely"))
-        self.assertTrue(self.registry.is_source_registered("ungm"))
-        self.assertTrue(self.registry.is_source_registered("world_bank"))
-        self.assertTrue(self.registry.is_source_registered("eu_ted"))
+    def test_unregistered_source_refused_preflight(self) -> None:
+        authorized, reason = self.registry.validate_preflight("unregistered_source", "https://example.com/api")
+        self.assertFalse(authorized)
+        self.assertIn("not registered", reason)
 
-        # Verify read permission states
-        self.assertTrue(self.registry.is_read_allowed("himalayas"))
-        self.assertFalse(self.registry.is_read_allowed("jobicy"))  # read: disabled
-        self.assertFalse(self.registry.is_read_allowed("afdb"))    # read: disabled
+        res = self.service.acquire("unregistered_source", "https://example.com/api")
+        self.assertFalse(res.authorized)
+        self.assertEqual(res.response.status_code, 403)
 
-    def test_unregistered_source_refused_before_transport(self) -> None:
-        result = self.service.acquire(
-            source_id="unregistered_feed_xyz",
-            url="https://example.com/jobs",
-            method="GET",
-        )
-        self.assertFalse(result.authorized)
-        self.assertEqual(result.response.status_code, 403)
-        self.assertIn("not registered", result.refusal_reason or "")
-        self.assertEqual(result.feed_checksum, "")
+    def test_disabled_source_refused_preflight(self) -> None:
+        # jobicy is disabled in docs/SOURCE_REGISTRY.yaml
+        authorized, reason = self.registry.validate_preflight("jobicy", "https://jobicy.com/api/v2/remote-jobs")
+        self.assertFalse(authorized)
+        self.assertIn("disabled by policy", reason)
 
-    def test_disabled_source_refused_before_transport(self) -> None:
-        result = self.service.acquire(
-            source_id="jobicy",
-            url="https://jobicy.com/api/v2/remote-jobs",
-            method="GET",
-        )
-        self.assertFalse(result.authorized)
-        self.assertEqual(result.response.status_code, 403)
-        self.assertIn("disabled by policy", result.refusal_reason or "")
+        res = self.service.acquire("jobicy", "https://jobicy.com/api/v2/remote-jobs")
+        self.assertFalse(res.authorized)
+        self.assertEqual(res.response.status_code, 403)
 
-    def test_forbidden_mutating_methods_blocked_before_transport(self) -> None:
-        for forbidden in ("PUT", "PATCH", "DELETE"):
-            result = self.service.acquire(
-                source_id="himalayas",
-                url="https://himalayas.app/jobs/api",
-                method=forbidden,
+    def test_mutating_methods_strictly_forbidden(self) -> None:
+        for method in ("PUT", "PATCH", "DELETE"):
+            authorized, reason = self.registry.validate_preflight(
+                "himalayas", "https://himalayas.app/jobs/api", method=method
             )
-            self.assertFalse(result.authorized)
-            self.assertIn(forbidden, result.refusal_reason or "")
+            self.assertFalse(authorized)
+            self.assertIn("forbidden", reason.lower())
 
-    def test_unauthorized_post_blocked_before_transport(self) -> None:
-        # POST is forbidden for standard GET discovery feeds
-        result = self.service.acquire(
-            source_id="himalayas",
-            url="https://himalayas.app/jobs/api",
-            method="POST",
-            body={"query": "test"},
+    def test_arbitrary_host_get_refused_preflight(self) -> None:
+        # A registered source ID is NOT permission to GET arbitrary URLs
+        authorized, reason = self.registry.validate_preflight(
+            "himalayas", "https://evil.example/jobs", method="GET"
         )
-        self.assertFalse(result.authorized)
-        self.assertIn("forbidden for source", result.refusal_reason or "")
+        self.assertFalse(authorized)
+        self.assertIn("unauthorized", reason.lower())
 
-    def test_allowlisted_eu_ted_post_search_authorized(self) -> None:
+        # Greenhouse arbitrary host
+        authorized, reason = self.registry.validate_preflight(
+            "greenhouse:cloudflare", "https://example.com/v1/boards/cloudflare/jobs", method="GET"
+        )
+        self.assertFalse(authorized)
+        self.assertIn("unauthorized", reason.lower())
+
+    def test_ted_endpoint_and_substring_bypass_rejection(self) -> None:
+        # TED must require exact host and path
+        authorized, reason = self.registry.validate_preflight(
+            "eu_ted", "https://api.ted.europa.eu/v3/notices/search", method="POST"
+        )
+        self.assertTrue(authorized)
+
+        # Substring bypass in query parameter MUST FAIL
+        authorized, reason = self.registry.validate_preflight(
+            "eu_ted", "https://evil.example/?x=api.ted.europa.eu/v3/notices/search", method="POST"
+        )
+        self.assertFalse(authorized)
+        self.assertIn("unauthorized", reason.lower())
+
+        # GET to TED search MUST FAIL
+        authorized, reason = self.registry.validate_preflight(
+            "eu_ted", "https://api.ted.europa.eu/v3/notices/search", method="GET"
+        )
+        self.assertFalse(authorized)
+
+        # POST to non-search TED endpoint MUST FAIL
+        authorized, reason = self.registry.validate_preflight(
+            "eu_ted", "https://api.ted.europa.eu/v3/notices/publish", method="POST"
+        )
+        self.assertFalse(authorized)
+
+    def test_pacing_rate_limiter_injectable_clock(self) -> None:
+        current_time = 1000.0
+
+        def mock_clock() -> float:
+            nonlocal current_time
+            return current_time
+
+        limiter = RateLimiter(clock=mock_clock, default_min_interval_s=2.0)
+
+        # First request at t=1000: 0 wait (recorded finish at 1000.0)
+        wait1 = limiter.acquire("himalayas")
+        self.assertEqual(wait1, 0.0)
+
+        # Immediate second request at t=1000: 2.0s wait (recorded finish at 1002.0)
+        wait2 = limiter.acquire("himalayas")
+        self.assertEqual(wait2, 2.0)
+
+        # Advance clock to t=1005.0 (> 1002.0 + 2.0s)
+        current_time = 1005.0
+        wait3 = limiter.acquire("himalayas")
+        self.assertEqual(wait3, 0.0)
+
+    def test_exact_latency_telemetry_preserved(self) -> None:
+        # Response with 187 ms latency
         self.transport.set_response(
-            "eu_ted",
+            "himalayas",
             TransportResponse(
                 status_code=200,
-                body='{"notices": []}',
-                latency_ms=25,
+                body='{"jobs": []}',
+                latency_ms=187,
             ),
         )
-        result = self.service.acquire(
-            source_id="eu_ted",
-            url="https://api.ted.europa.eu/v3/notices/search",
-            method="POST",
-            body={"query": "ND=2026"},
-        )
-        self.assertTrue(result.authorized)
-        self.assertEqual(result.response.status_code, 200)
-        self.assertNotEqual(result.feed_checksum, "")
+        pipeline = OpportunityPipeline(transport=self.transport)
+        batch = pipeline.execute_discovery(source_ids=["himalayas"])
 
-    def test_unallowlisted_post_to_other_ted_endpoint_refused(self) -> None:
-        result = self.service.acquire(
-            source_id="eu_ted",
-            url="https://api.ted.europa.eu/v3/notices/publish",
-            method="POST",
-            body={"data": "test"},
-        )
-        self.assertFalse(result.authorized)
-        self.assertIn("not an authorized read-only search endpoint", result.refusal_reason or "")
-
-    def test_mock_transport_latency_and_error_capture(self) -> None:
-        self.transport.set_response(
-            "remotive",
-            TransportResponse(
-                status_code=503,
-                body="",
-                latency_ms=120,
-                error_message="Service Temporarily Unavailable",
-            ),
-        )
-        result = self.service.acquire(
-            source_id="remotive",
-            url="https://remotive.com/api/remote-jobs",
-            method="GET",
-        )
-        self.assertTrue(result.authorized)
-        self.assertEqual(result.response.status_code, 503)
-        self.assertEqual(result.response.latency_ms, 120)
-        self.assertEqual(result.response.error_message, "Service Temporarily Unavailable")
+        report = next(r for r in batch.health_reports if r.source_id == "himalayas")
+        self.assertEqual(report.fetch_latency_ms, 187)
 
 
 if __name__ == "__main__":

@@ -1,14 +1,6 @@
 """OpportunityOS Opportunity Ingestion & Discovery Pipeline Package."""
 from __future__ import annotations
 
-from .acquisition import (
-    AcquisitionResult,
-    AcquisitionService,
-    BaseTransport,
-    HttpTransport,
-    MockTransport,
-    TransportResponse,
-)
 from .adapters import (
     BaseAdapter,
     EUTEDAdapter,
@@ -27,9 +19,7 @@ from .health import SourceHealthMonitor
 from .models import (
     Compensation,
     CompensationInterval,
-    DerivationType,
     EmploymentType,
-    FieldProvenance,
     GeographicEligibility,
     Opportunity,
     OpportunityCluster,
@@ -49,11 +39,9 @@ from .normalization import (
     extract_remote_policy,
     extract_seniority,
     extract_skills_from_text,
-    extract_track,
     parse_iso_date,
 )
 from .pipeline import IngestionBatch, OpportunityPipeline
-from .registry import SourcePolicy, SourceRegistry
 
 __all__ = [
     "Track",
@@ -61,8 +49,6 @@ __all__ = [
     "EmploymentType",
     "RemotePolicy",
     "CompensationInterval",
-    "DerivationType",
-    "FieldProvenance",
     "Compensation",
     "ProcurementMetadata",
     "SourceProvenance",
@@ -77,7 +63,6 @@ __all__ = [
     "clean_text",
     "extract_seniority",
     "extract_employment_type",
-    "extract_track",
     "extract_remote_policy",
     "extract_compensation",
     "parse_iso_date",
@@ -94,14 +79,7 @@ __all__ = [
     "WorldBankAdapter",
     "EUTEDAdapter",
     "get_all_standard_adapters",
-    "SourceRegistry",
-    "SourcePolicy",
-    "BaseTransport",
-    "MockTransport",
-    "HttpTransport",
-    "TransportResponse",
-    "AcquisitionService",
-    "AcquisitionResult",
     "IngestionBatch",
     "OpportunityPipeline",
 ]
+

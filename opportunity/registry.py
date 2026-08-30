@@ -1,17 +1,74 @@
 """Authoritative Source Registry Policy Engine for OpportunityOS.
 
-Loads docs/SOURCE_REGISTRY.yaml and enforces strict pre-flight authorization.
-Refuses unregistered, disabled, or mutating requests before transport.
+Loads docs/SOURCE_REGISTRY.yaml and enforces strict pre-flight authorization
+binding SOURCE_ID + METHOD + EXACT ALLOWED HOST + ALLOWED PATH.
+Refuses unregistered, disabled, mutating, or unallowlisted endpoints before transport.
 """
 from __future__ import annotations
 
 import re
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 # Default path to SOURCE_REGISTRY.yaml relative to repository root
 DEFAULT_REGISTRY_PATH = Path(__file__).resolve().parents[1] / "docs" / "SOURCE_REGISTRY.yaml"
+
+
+@dataclass(frozen=True, slots=True)
+class EndpointRule:
+    allowed_hosts: frozenset[str]
+    allowed_path_prefix: str
+    allowed_methods: frozenset[str]
+    require_https: bool = False
+
+
+# Exact endpoint templates binding source to allowed host, path, and method
+SOURCE_ENDPOINT_RULES: dict[str, EndpointRule] = {
+    "himalayas": EndpointRule(
+        allowed_hosts=frozenset({"himalayas.app"}),
+        allowed_path_prefix="/jobs/api",
+        allowed_methods=frozenset({"GET"}),
+        require_https=True,
+    ),
+    "remotive": EndpointRule(
+        allowed_hosts=frozenset({"remotive.com", "remotive.io"}),
+        allowed_path_prefix="/api/remote-jobs",
+        allowed_methods=frozenset({"GET"}),
+        require_https=True,
+    ),
+    "remote_ok": EndpointRule(
+        allowed_hosts=frozenset({"remoteok.com", "remoteok.io"}),
+        allowed_path_prefix="/api",
+        allowed_methods=frozenset({"GET"}),
+        require_https=True,
+    ),
+    "we_work_remotely": EndpointRule(
+        allowed_hosts=frozenset({"weworkremotely.com"}),
+        allowed_path_prefix="/remote-jobs.rss",
+        allowed_methods=frozenset({"GET"}),
+        require_https=True,
+    ),
+    "ungm": EndpointRule(
+        allowed_hosts=frozenset({"www.ungm.org", "ungm.org"}),
+        allowed_path_prefix="/Public/Notice",
+        allowed_methods=frozenset({"GET"}),
+        require_https=True,
+    ),
+    "world_bank": EndpointRule(
+        allowed_hosts=frozenset({"projects.worldbank.org", "www.worldbank.org"}),
+        allowed_path_prefix="/",
+        allowed_methods=frozenset({"GET"}),
+        require_https=True,
+    ),
+    "eu_ted": EndpointRule(
+        allowed_hosts=frozenset({"api.ted.europa.eu"}),
+        allowed_path_prefix="/v3/notices/search",
+        allowed_methods=frozenset({"POST"}),
+        require_https=True,
+    ),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,7 +156,7 @@ class SourceRegistry:
     def validate_preflight(
         self, source_id: str, url: str, method: str = "GET"
     ) -> tuple[bool, str]:
-        """Validate request authorization against authoritative policy before any network execution."""
+        """Validate request authorization binding SOURCE_ID + METHOD + EXACT HOST + ALLOWED PATH."""
         policy = self.get_policy(source_id)
         if not policy:
             return False, f"Refused: Source '{source_id}' is not registered in docs/SOURCE_REGISTRY.yaml"
@@ -108,15 +165,56 @@ class SourceRegistry:
             return False, f"Refused: Source '{source_id}' read automation is disabled by policy (status: {policy.policy_status})"
 
         method_upper = method.upper()
-        if method_upper not in policy.allowed_methods:
-            return False, f"Refused: Method '{method_upper}' is forbidden for source '{source_id}' (allowed: {policy.allowed_methods})"
-
         if method_upper in {"PUT", "PATCH", "DELETE"}:
             return False, f"Refused: Mutating HTTP method '{method_upper}' is strictly forbidden by Product Constitution"
 
-        if method_upper == "POST":
-            # Strict ADR-0005 enforcement
-            if source_id != "eu_ted" or "api.ted.europa.eu/v3/notices/search" not in url:
-                return False, f"Refused: POST query to '{url}' is not an authorized read-only search endpoint"
+        if method_upper not in policy.allowed_methods:
+            return False, f"Refused: Method '{method_upper}' is forbidden for source '{source_id}' (allowed: {policy.allowed_methods})"
+
+        # Parse URL components
+        try:
+            parsed = urllib.parse.urlparse(url)
+        except Exception:
+            return False, f"Refused: Malformed URL '{url}'"
+
+        host = parsed.netloc.lower().split(":")[0]  # remove port
+        path = parsed.path or "/"
+
+        # Greenhouse dynamic rule
+        if source_id.startswith("greenhouse:"):
+            if host not in {"boards-api.greenhouse.io", "boards.greenhouse.io"}:
+                return False, f"Refused: Host '{host}' is unauthorized for Greenhouse source '{source_id}'"
+            if not path.startswith("/v1/boards/"):
+                return False, f"Refused: Path '{path}' is unauthorized for Greenhouse source '{source_id}'"
+            return True, "Authorized"
+
+        # Lever dynamic rule
+        if source_id.startswith("lever:"):
+            if host not in {"api.lever.co", "jobs.lever.co"}:
+                return False, f"Refused: Host '{host}' is unauthorized for Lever source '{source_id}'"
+            if not path.startswith("/v0/postings/"):
+                return False, f"Refused: Path '{path}' is unauthorized for Lever source '{source_id}'"
+            return True, "Authorized"
+
+        rule = SOURCE_ENDPOINT_RULES.get(source_id)
+        if not rule:
+            return False, f"Refused: No endpoint rule defined for source '{source_id}'"
+
+        if rule.require_https and parsed.scheme.lower() != "https":
+            return False, f"Refused: Source '{source_id}' requires https scheme, got '{parsed.scheme}'"
+
+        if host not in rule.allowed_hosts:
+            return False, f"Refused: Host '{host}' is unauthorized for source '{source_id}' (allowed: {sorted(rule.allowed_hosts)})"
+
+        if not path.startswith(rule.allowed_path_prefix) and not (rule.allowed_path_prefix.endswith(".rss") and path.endswith(".rss")):
+            return False, f"Refused: Path '{path}' does not match allowed prefix '{rule.allowed_path_prefix}' for source '{source_id}'"
+
+        if method_upper not in rule.allowed_methods:
+            return False, f"Refused: Method '{method_upper}' not allowed by endpoint rule for '{source_id}'"
+
+        # Strict ADR-0005 check for TED
+        if source_id == "eu_ted":
+            if parsed.scheme.lower() != "https" or host != "api.ted.europa.eu" or path != "/v3/notices/search" or method_upper != "POST":
+                return False, f"Refused: EU TED query must strictly be HTTPS POST to https://api.ted.europa.eu/v3/notices/search"
 
         return True, "Authorized"

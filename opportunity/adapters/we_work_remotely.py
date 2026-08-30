@@ -10,6 +10,7 @@ from opportunity.models import (
     DerivationType,
     FieldProvenance,
     Opportunity,
+    ParseResult,
     Track,
     compute_deterministic_id,
 )
@@ -42,13 +43,18 @@ class WeWorkRemotelyAdapter(BaseAdapter):
 
     def parse_payload(
         self, payload: str, raw_pointer: str = "", fetched_at: str = ""
-    ) -> list[Opportunity]:
+    ) -> ParseResult:
         try:
             root = element_tree.fromstring(payload)
         except element_tree.ParseError as e:
             raise ValueError(f"invalid XML in We Work Remotely RSS payload: {e}")
 
+        channel = root.find("channel")
+        if channel is None and root.tag != "rss":
+            return ParseResult(opportunities=(), records_raw_count=0, has_schema_drift=True)
+
         items = root.findall(".//item")
+        raw_count = len(items)
         opportunities: list[Opportunity] = []
         for idx, item in enumerate(items):
             item_pointer = f"{raw_pointer or 'feed'}:item[{idx}]"
@@ -72,17 +78,18 @@ class WeWorkRemotelyAdapter(BaseAdapter):
 
             url = clean_text(item.findtext("link") or item.findtext("guid"))
             posted_date = parse_iso_date(item.findtext("pubDate"))
-            raw_desc = str(item.findtext("description") or "")
-            description = clean_text(raw_desc)
-            
+            raw_desc = item.findtext("description")
+            description = clean_text(raw_desc) if raw_desc else ""
+            desc_derivation = DerivationType.RAW_EXTRACTION if description else DerivationType.UNASSERTED_ABSENT
+
             raw_region = item.findtext("region") or item.findtext("category")
             location_raw = clean_text(raw_region)
 
             id_match = re.search(r"/remote-jobs/(\d+-[^/?#]+)", url)
             remote_id = id_match.group(1) if id_match else clean_text(item.findtext("guid"))
 
-            responsibilities = extract_list_sections(raw_desc, r"(?:responsibilit|what\s+you'?ll\s+do|the\s+role|duties)")
-            requirements = extract_list_sections(raw_desc, r"(?:requirement|qualificat|what\s+we'?re\s+looking\s+for|what\s+you\s+bring)")
+            responsibilities = extract_list_sections(str(raw_desc or ""), r"(?:responsibilit|what\s+you'?ll\s+do|the\s+role|duties)")
+            requirements = extract_list_sections(str(raw_desc or ""), r"(?:requirement|qualificat|what\s+we'?re\s+looking\s+for|what\s+you\s+bring)")
             skills = extract_skills_from_text(f"{title} {description}")
             seniority = extract_seniority(title, description)
             emp_type = extract_employment_type(location_raw, title, description)
@@ -106,9 +113,10 @@ class WeWorkRemotelyAdapter(BaseAdapter):
             )
 
             field_provenances = (
+                create_field_provenance("track", location_raw, track.value, DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "extract_track"),
                 create_field_provenance("organization", organization, organization, org_derivation, f"{item_pointer}.title", record_checksum, "title_partition"),
                 create_field_provenance("title", raw_title, title, DerivationType.RAW_EXTRACTION, f"{item_pointer}.title", record_checksum, "title_partition"),
-                create_field_provenance("description", raw_desc[:100], description[:100], DerivationType.RAW_EXTRACTION, f"{item_pointer}.description", record_checksum, "clean_text"),
+                create_field_provenance("description", (raw_desc or "")[:100], description[:100], desc_derivation, f"{item_pointer}.description", record_checksum, "clean_text"),
                 create_field_provenance("location_raw", raw_region, location_raw, DerivationType.RAW_EXTRACTION if location_raw else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.region", record_checksum, "clean_text"),
                 create_field_provenance("seniority", title, seniority.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.title", record_checksum, "extract_seniority"),
                 create_field_provenance("employment_type", location_raw, emp_type.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.region", record_checksum, "extract_employment_type"),
@@ -145,4 +153,4 @@ class WeWorkRemotelyAdapter(BaseAdapter):
             )
             opportunities.append(opp)
 
-        return opportunities
+        return ParseResult(opportunities=tuple(opportunities), records_raw_count=raw_count)

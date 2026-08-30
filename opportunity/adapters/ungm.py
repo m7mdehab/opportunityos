@@ -10,6 +10,7 @@ from opportunity.models import (
     DerivationType,
     FieldProvenance,
     Opportunity,
+    ParseResult,
     ProcurementMetadata,
     Track,
     compute_deterministic_id,
@@ -37,14 +38,17 @@ class UNGMAdapter(BaseAdapter):
 
     def parse_payload(
         self, payload: str, raw_pointer: str = "", fetched_at: str = ""
-    ) -> list[Opportunity]:
+    ) -> ParseResult:
         opportunities: list[Opportunity] = []
 
         # Structured JSON format
         if payload.strip().startswith("{") or payload.strip().startswith("["):
             try:
                 data = json.loads(payload)
+                if isinstance(data, dict) and "notices" not in data and "data" not in data and "results" not in data and not data:
+                    return ParseResult(opportunities=(), records_raw_count=0, has_schema_drift=True)
                 items = data if isinstance(data, list) else data.get("notices") or data.get("data") or data.get("results") or []
+                raw_count = len(items)
                 for idx, item in enumerate(items):
                     if not isinstance(item, dict):
                         continue
@@ -52,7 +56,7 @@ class UNGMAdapter(BaseAdapter):
                     record_checksum = compute_record_checksum(item)
 
                     remote_id = str(item.get("id") or item.get("notice_id") or item.get("reference") or "")
-                    raw_title = item.get("title") or item.get("notice_title") or item.get("description")
+                    raw_title = item.get("title") or item.get("notice_title")
                     title = clean_text(raw_title)
                     if not title:
                         continue
@@ -63,8 +67,11 @@ class UNGMAdapter(BaseAdapter):
                     country = clean_text(raw_country)
                     deadline = parse_iso_date(item.get("deadline") or item.get("closing_date"))
                     posted_date = parse_iso_date(item.get("posted_date") or item.get("published_date") or item.get("date"))
-                    raw_desc = str(item.get("description") or item.get("content") or title)
-                    description = clean_text(raw_desc)
+                    
+                    raw_desc = item.get("description") or item.get("content")
+                    description = clean_text(raw_desc) if raw_desc else ""
+                    desc_derivation = DerivationType.RAW_EXTRACTION if description else DerivationType.UNASSERTED_ABSENT
+
                     url = str(item.get("url") or (f"https://www.ungm.org/Public/Notice/{remote_id}" if remote_id else ""))
                     raw_type = item.get("type") or item.get("notice_type")
                     notice_type = clean_text(raw_type)
@@ -98,9 +105,10 @@ class UNGMAdapter(BaseAdapter):
                     )
 
                     field_provenances = (
+                        create_field_provenance("track", "", Track.PROCUREMENT.value, DerivationType.SOURCE_METADATA_DERIVATION, item_pointer, record_checksum, "ungm_track"),
                         create_field_provenance("organization", raw_buyer, buyer, DerivationType.RAW_EXTRACTION if buyer else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.agency", record_checksum, "clean_text"),
                         create_field_provenance("title", raw_title, title, DerivationType.RAW_EXTRACTION, f"{item_pointer}.title", record_checksum, "clean_text"),
-                        create_field_provenance("description", raw_desc[:100], description[:100], DerivationType.RAW_EXTRACTION, f"{item_pointer}.description", record_checksum, "clean_text"),
+                        create_field_provenance("description", (raw_desc or "")[:100], description[:100], desc_derivation, f"{item_pointer}.description", record_checksum, "clean_text"),
                         create_field_provenance("location_raw", raw_country, country, DerivationType.RAW_EXTRACTION if country else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.country", record_checksum, "clean_text"),
                         create_field_provenance("notice_type", raw_type, notice_type, DerivationType.RAW_EXTRACTION if notice_type else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.type", record_checksum, "clean_text"),
                         create_field_provenance("geographic_eligibility", country, geo.status, DerivationType.RULE_DERIVATION, f"{item_pointer}.country", record_checksum, "classify_geography"),
@@ -130,7 +138,7 @@ class UNGMAdapter(BaseAdapter):
                         canonical_outbound_url=url,
                     )
                     opportunities.append(opp)
-                return opportunities
+                return ParseResult(opportunities=tuple(opportunities), records_raw_count=raw_count)
             except json.JSONDecodeError:
                 pass
 
@@ -141,6 +149,7 @@ class UNGMAdapter(BaseAdapter):
             re.IGNORECASE | re.DOTALL,
         )
         seen_ids: set[str] = set()
+        raw_count = len(notice_links)
         for idx, match in enumerate(notice_links):
             path, id1, id2, inner = match
             remote_id = id1 or id2 or ""
@@ -165,7 +174,7 @@ class UNGMAdapter(BaseAdapter):
             geo = derive_geographic_eligibility(
                 title=title,
                 location_raw="",
-                description=title,
+                description="",
                 track=Track.PROCUREMENT,
                 source=self.source_id,
                 url=url,
@@ -177,8 +186,10 @@ class UNGMAdapter(BaseAdapter):
                 payload=payload,
             )
             field_provenances = (
+                create_field_provenance("track", "", Track.PROCUREMENT.value, DerivationType.SOURCE_METADATA_DERIVATION, item_pointer, record_checksum, "ungm_track"),
                 create_field_provenance("organization", "", "", DerivationType.UNASSERTED_ABSENT, item_pointer, record_checksum, "unasserted"),
                 create_field_provenance("title", inner, title, DerivationType.RAW_EXTRACTION, item_pointer, record_checksum, "clean_text"),
+                create_field_provenance("description", "", "", DerivationType.UNASSERTED_ABSENT, item_pointer, record_checksum, "unasserted"),
                 create_field_provenance("geographic_eligibility", "", geo.status, DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "classify_geography"),
             )
             opp_id = compute_deterministic_id(self.source_id, remote_id, title, buyer, item_pointer)
@@ -190,7 +201,7 @@ class UNGMAdapter(BaseAdapter):
                 source_id=remote_id,
                 organization=buyer,
                 title=title,
-                description=title,
+                description="",
                 skills=extract_skills_from_text(title),
                 geographic_eligibility=geo,
                 procurement_metadata=proc_meta,
@@ -202,4 +213,4 @@ class UNGMAdapter(BaseAdapter):
             )
             opportunities.append(opp)
 
-        return opportunities
+        return ParseResult(opportunities=tuple(opportunities), records_raw_count=raw_count)

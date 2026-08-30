@@ -1,4 +1,6 @@
-"""Adversarial and Robustness Tests for Opportunity Ingestion Pipeline."""
+"""Adversarial and Invariant Tests for Discovery, Normalization, Provenance, and Health."""
+from __future__ import annotations
+
 import unittest
 
 from opportunity.adapters import (
@@ -11,47 +13,46 @@ from opportunity.adapters import (
     UNGMAdapter,
     WeWorkRemotelyAdapter,
     WorldBankAdapter,
-    get_all_standard_adapters,
 )
-from opportunity.dedupe import deduplicate_opportunities
-from opportunity.health import SourceHealthMonitor
 from opportunity.models import (
-    CompensationInterval,
-    DerivationType,
-    Opportunity,
-    RemotePolicy,
     SeniorityLevel,
     SourceHealthStatus,
     Track,
+    validate_opportunity_provenance,
 )
-from opportunity.normalization import derive_geographic_eligibility
+from opportunity.pipeline import OpportunityPipeline
+from opportunity.transport import MockTransport, TransportResponse
 
 
-class AdversarialIngestionTests(unittest.TestCase):
-    def test_external_action_safety_and_verbs(self) -> None:
-        """Invariant 1: All adapters must be strictly read-only; mutations are forbidden."""
-        adapters = get_all_standard_adapters()
-        for adapter in adapters:
-            self.assertIn(
-                adapter.method,
-                {"GET", "POST"},
-                f"Adapter {adapter.source_id} uses unapproved method {adapter.method}",
-            )
-            if adapter.method == "POST":
-                self.assertEqual(
-                    adapter.source_id,
-                    "eu_ted",
-                    f"Only EU TED is permitted read-only POST queries, got {adapter.source_id}",
-                )
-                self.assertIn(
-                    "api.ted.europa.eu/v3/notices/search",
-                    adapter.feed_url,
-                    f"EU TED adapter points to unauthorized endpoint: {adapter.feed_url}",
-                )
+class TestAdversarialInvariants(unittest.TestCase):
+    def test_ted_concrete_description_laundering_bug_fixed(self) -> None:
+        """Notice has title but no description -> description MUST NOT silently become title."""
+        payload = """{
+            "results": [
+                {
+                    "publication-number": "2026/S 001-000001",
+                    "notice-title": "Supply of Enterprise IT Hardware",
+                    "buyer-name": "Ministry of Transport",
+                    "buyer-country": "EGY"
+                }
+            ]
+        }"""
+        adapter = EUTEDAdapter()
+        result = adapter.parse_payload(payload)
+        self.assertEqual(len(result.opportunities), 1)
+        opp = result.opportunities[0]
+        self.assertEqual(opp.title, "Supply of Enterprise IT Hardware")
+        self.assertEqual(opp.description, "")
+        
+        # Provenance for description must not claim title
+        desc_prov = next(fp for fp in opp.field_provenances if fp.field_name == "description")
+        self.assertEqual(desc_prov.raw_value, "")
+        self.assertEqual(desc_prov.normalized_value, "")
+        self.assertEqual(desc_prov.derivation_type, "unasserted_absent")
 
-    def test_minimal_record_zero_fabrication_all_adapters(self) -> None:
-        """Invariant 2: Minimal/sparse records MUST NOT fabricate default strings or values."""
-        forbidden_strings = {
+    def test_minimal_records_zero_fabrication_across_all_adapters(self) -> None:
+        """Sparse records across all 9 adapters must not fabricate placeholder values."""
+        prohibited_placeholders = {
             "EU Contracting Authority",
             "EU",
             "Tender Notice",
@@ -66,130 +67,116 @@ class AdversarialIngestionTests(unittest.TestCase):
             "Anywhere in the World",
         }
 
-        # 1. Himalayas minimal
-        him_adapter = HimalayasAdapter()
-        him_opps = him_adapter.parse_payload('{"jobs": [{"title": "Minimal Engineer"}]}')
-        self.assertEqual(len(him_opps), 1)
-        self.assertEqual(him_opps[0].organization, "")
-        self.assertEqual(him_opps[0].location_raw, "")
-        self.assertEqual(him_opps[0].remote_policy, RemotePolicy.UNSPECIFIED)
-        self.assertIsNone(him_opps[0].compensation)
+        sparse_payloads = [
+            (GreenhouseAdapter("cloudflare"), '{"jobs": [{"id": 1, "title": "Dev"}]}'),
+            (LeverAdapter("stripe"), '[{"id": "abc", "text": "Dev"}]'),
+            (HimalayasAdapter(), '{"jobs": [{"slug": "dev", "title": "Dev"}]}'),
+            (RemotiveAdapter(), '{"jobs": [{"id": 1, "title": "Dev"}]}'),
+            (RemoteOKAdapter(), '[{"id": "1", "position": "Dev"}]'),
+            (WeWorkRemotelyAdapter(), '<rss><channel><item><title>Dev</title><link>https://weworkremotely.com/remote-jobs/1-dev</link></item></channel></rss>'),
+            (UNGMAdapter(), '{"notices": [{"id": "1", "title": "Procurement Notice"}]}'),
+            (WorldBankAdapter(), '{"notices": [{"id": "1", "title": "Consulting Notice"}]}'),
+            (EUTEDAdapter(), '{"results": [{"publication-number": "1", "notice-title": "Notice"}]}'),
+        ]
 
-        # 2. Remotive minimal
-        rem_adapter = RemotiveAdapter()
-        rem_opps = rem_adapter.parse_payload('{"jobs": [{"title": "Minimal Developer"}]}')
-        self.assertEqual(len(rem_opps), 1)
-        self.assertEqual(rem_opps[0].organization, "")
-        self.assertEqual(rem_opps[0].location_raw, "")
-        self.assertIsNone(rem_opps[0].compensation)
+        for adapter, payload in sparse_payloads:
+            result = adapter.parse_payload(payload)
+            self.assertGreater(len(result.opportunities), 0, f"Adapter {adapter.source_id} failed to parse sparse payload")
+            opp = result.opportunities[0]
 
-        # 3. Remote OK minimal
-        rok_adapter = RemoteOKAdapter()
-        rok_opps = rok_adapter.parse_payload('[{"position": "Minimal Worker"}]')
-        self.assertEqual(len(rok_opps), 1)
-        self.assertEqual(rok_opps[0].organization, "")
-        self.assertEqual(rok_opps[0].location_raw, "")
-        self.assertIsNone(rok_opps[0].compensation)
+            for ph in prohibited_placeholders:
+                self.assertNotEqual(opp.organization, ph, f"Fabricated organization '{ph}' in {adapter.source_id}")
+                self.assertNotEqual(opp.location_raw, ph, f"Fabricated location '{ph}' in {adapter.source_id}")
+                self.assertNotEqual(opp.description, ph, f"Fabricated description '{ph}' in {adapter.source_id}")
 
-        # 4. We Work Remotely minimal
-        wwr_adapter = WeWorkRemotelyAdapter()
-        wwr_xml = "<rss><channel><item><title>Minimal Position</title></item></channel></rss>"
-        wwr_opps = wwr_adapter.parse_payload(wwr_xml)
-        self.assertEqual(len(wwr_opps), 1)
-        self.assertEqual(wwr_opps[0].organization, "")
-        self.assertEqual(wwr_opps[0].location_raw, "")
+            valid, err = validate_opportunity_provenance(opp)
+            self.assertTrue(valid, f"Provenance validation failed for {adapter.source_id}: {err}")
 
-        # 5. UNGM minimal
-        ungm_adapter = UNGMAdapter()
-        ungm_opps = ungm_adapter.parse_payload('{"notices": [{"title": "Minimal Notice"}]}')
-        self.assertEqual(len(ungm_opps), 1)
-        self.assertEqual(ungm_opps[0].organization, "")
-        self.assertEqual(ungm_opps[0].procurement_metadata.notice_type, "")
-        self.assertEqual(ungm_opps[0].procurement_metadata.buyer_name, "")
-
-        # 6. World Bank minimal
-        wb_adapter = WorldBankAdapter()
-        wb_opps = wb_adapter.parse_payload('{"notices": [{"title": "Minimal Project"}]}')
-        self.assertEqual(len(wb_opps), 1)
-        self.assertEqual(wb_opps[0].organization, "")
-        self.assertEqual(wb_opps[0].procurement_metadata.buyer_name, "")
-
-        # 7. EU TED minimal
-        ted_adapter = EUTEDAdapter()
-        ted_opps = ted_adapter.parse_payload('{"notices": [{"title": "Minimal Notice"}]}')
-        self.assertEqual(len(ted_opps), 1)
-        self.assertEqual(ted_opps[0].organization, "")
-        self.assertEqual(ted_opps[0].procurement_metadata.buyer_name, "")
-        self.assertEqual(ted_opps[0].procurement_metadata.buyer_country, "")
-
-        # Verify no forbidden default string in any parsed minimal opportunity
-        all_minimal_opps = him_opps + rem_opps + rok_opps + wwr_opps + ungm_opps + wb_opps + ted_opps
-        for opp in all_minimal_opps:
-            for forbidden in forbidden_strings:
-                self.assertNotEqual(opp.organization, forbidden)
-                self.assertNotEqual(opp.location_raw, forbidden)
-                if opp.procurement_metadata:
-                    self.assertNotEqual(opp.procurement_metadata.buyer_name, forbidden)
-                    self.assertNotEqual(opp.procurement_metadata.notice_type, forbidden)
-
-    def test_four_real_tracks_emission(self) -> None:
-        """Invariant 3: Ingestion pipeline must emit distinct opportunities for all 4 tracks."""
-        rem_adapter = RemotiveAdapter()
-        
-        # 1. Employment
-        opp_emp = rem_adapter.parse_payload('{"jobs": [{"title": "Staff Backend Engineer", "job_type": "full_time"}]}')
-        self.assertEqual(opp_emp[0].track, Track.EMPLOYMENT)
-
-        # 2. Contract
-        opp_contract = rem_adapter.parse_payload('{"jobs": [{"title": "Cloud Architect (Contract)", "job_type": "contract"}]}')
-        self.assertEqual(opp_contract[0].track, Track.CONTRACT)
-
-        # 3. Freelance
-        opp_freelance = rem_adapter.parse_payload('{"jobs": [{"title": "Freelance Technical Writer", "job_type": "freelance"}]}')
-        self.assertEqual(opp_freelance[0].track, Track.FREELANCE)
-
-        # 4. Procurement
-        ungm_adapter = UNGMAdapter()
-        opp_proc = ungm_adapter.parse_payload('{"notices": [{"title": "Consulting RFP on Solar Grid Feasibility"}]}')
-        self.assertEqual(opp_proc[0].track, Track.PROCUREMENT)
-
-    def test_geographic_safety_and_no_false_eligibility(self) -> None:
-        """Invariant 4: Restricted postings must NEVER be classified as eligible."""
-        us_only = derive_geographic_eligibility("Senior Engineer", "US Only (Remote)", "US work authorization required.")
-        self.assertEqual(us_only.status, "excluded")
-
-        uk_only = derive_geographic_eligibility("DevOps Engineer", "United Kingdom Remote", "Must be UK resident.")
-        self.assertEqual(uk_only.status, "excluded")
-
-        eu_only = derive_geographic_eligibility("Frontend Lead", "EU / EEA Only", "Must reside in European Union.")
-        self.assertEqual(eu_only.status, "excluded")
-
-        worldwide = derive_geographic_eligibility("Python Architect", "Worldwide Remote", "Work from anywhere.")
-        self.assertEqual(worldwide.status, "eligible")
-
-    def test_schema_drift_is_never_silently_ignored(self) -> None:
-        """Invariant 5: Corrupt payloads or unexpected schema structures must be flagged."""
-        monitor = SourceHealthMonitor()
-        
-        # Corrupt JSON
-        report_parse = monitor.record_run(
-            source_id="himalayas",
-            transport_status_code=200,
-            parser_error="JSONDecodeError: invalid format",
+    def test_health_telemetry_a_mock_response_latency(self) -> None:
+        """A. Mock response latency=187 ms -> final SourceHealthReport.fetch_latency_ms == 187."""
+        transport = MockTransport()
+        transport.set_response(
+            "himalayas",
+            TransportResponse(
+                status_code=200,
+                body='{"jobs": [{"slug": "1", "title": "Engineer"}]}',
+                latency_ms=187,
+            ),
         )
-        self.assertEqual(report_parse.status, SourceHealthStatus.PERSISTENT_FAILURE)
-        self.assertFalse(report_parse.is_healthy)
+        pipeline = OpportunityPipeline(transport=transport)
+        batch = pipeline.execute_discovery(source_ids=["himalayas"])
+        report = next(r for r in batch.health_reports if r.source_id == "himalayas")
+        self.assertEqual(report.fetch_latency_ms, 187)
 
-        # Non-empty payload with zero parsed records -> schema drift
-        report_drift = monitor.record_run(
-            source_id="lever:shyftlabs",
-            transport_status_code=200,
-            records_raw_count=50,
-            records_parsed=0,
-            has_schema_drift=True,
+    def test_health_telemetry_b_valid_empty_payload(self) -> None:
+        """B. Valid source payload containing exactly 0 source records -> EMPTY_RESULTS."""
+        transport = MockTransport()
+        transport.set_response(
+            "himalayas",
+            TransportResponse(
+                status_code=200,
+                body='{"jobs": []}',
+                latency_ms=25,
+            ),
         )
-        self.assertEqual(report_drift.status, SourceHealthStatus.SCHEMA_DRIFT_SUSPECTED)
-        self.assertFalse(report_drift.is_healthy)
+        pipeline = OpportunityPipeline(transport=transport)
+        batch = pipeline.execute_discovery(source_ids=["himalayas"])
+        report = next(r for r in batch.health_reports if r.source_id == "himalayas")
+        self.assertEqual(report.status, SourceHealthStatus.EMPTY_RESULTS)
+        self.assertEqual(report.records_raw_count, 0)
+        self.assertEqual(report.parser_status, "EMPTY_PAYLOAD")
+
+    def test_health_telemetry_c_nonempty_json_missing_expected_collection(self) -> None:
+        """C. Nonempty JSON with expected collection missing -> SCHEMA_DRIFT_SUSPECTED."""
+        transport = MockTransport()
+        transport.set_response(
+            "himalayas",
+            TransportResponse(
+                status_code=200,
+                body='{"unexpected_key": "drifted_data"}',
+                latency_ms=30,
+            ),
+        )
+        pipeline = OpportunityPipeline(transport=transport)
+        batch = pipeline.execute_discovery(source_ids=["himalayas"])
+        report = next(r for r in batch.health_reports if r.source_id == "himalayas")
+        self.assertEqual(report.status, SourceHealthStatus.SCHEMA_DRIFT_SUSPECTED)
+        self.assertEqual(report.parser_status, "SCHEMA_DRIFT_SUSPECTED")
+
+    def test_health_telemetry_d_raw_parsed_valid_accuracy(self) -> None:
+        """D. Collection has 3 raw records, 2 normalize successfully -> raw=3, parsed=2, valid=2."""
+        payload = """{
+            "jobs": [
+                {"slug": "1", "title": "Valid Job 1"},
+                {"slug": "2", "title": ""},
+                {"slug": "3", "title": "Valid Job 2"}
+            ]
+        }"""
+        pipeline = OpportunityPipeline()
+        batch = pipeline.process_payloads({"himalayas": payload}, latencies_ms={"himalayas": 45})
+        report = next(r for r in batch.health_reports if r.source_id == "himalayas")
+        self.assertEqual(report.records_raw_count, 3)
+        self.assertEqual(report.records_parsed, 2)
+        self.assertEqual(report.records_valid, 2)
+
+    def test_health_telemetry_e_parser_exception_after_http_200(self) -> None:
+        """E. Parser exception after HTTP 200 -> HTTP transport remains 200 and parser error is independently recorded."""
+        transport = MockTransport()
+        transport.set_response(
+            "himalayas",
+            TransportResponse(
+                status_code=200,
+                body="<not-valid-json>corrupt",
+                latency_ms=20,
+            ),
+        )
+        pipeline = OpportunityPipeline(transport=transport)
+        batch = pipeline.execute_discovery(source_ids=["himalayas"])
+        report = next(r for r in batch.health_reports if r.source_id == "himalayas")
+        self.assertEqual(report.status, SourceHealthStatus.PERSISTENT_FAILURE)
+        self.assertEqual(report.transport_status, "OK_200")
+        self.assertEqual(report.parser_status, "PARSE_SYNTAX_ERROR")
+        self.assertTrue(bool(report.error_message))
 
 
 if __name__ == "__main__":

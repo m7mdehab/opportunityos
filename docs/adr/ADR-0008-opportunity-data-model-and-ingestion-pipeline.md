@@ -53,3 +53,4 @@ Downstream opportunity matching, ranking, and proposal generation modules receiv
 ## Required tests and rollback
 
 Maintain deterministic unit, integration, and adversarial test suites covering all source adapters, schema normalization, two-layer deduplication, geographic eligibility, source health tracking, and zero-dollar budget compliance. Roll back by updating or disabling individual feed adapters without affecting core opportunity schema contracts.
+
