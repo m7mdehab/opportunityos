@@ -23,7 +23,7 @@ from matching.test_qualification import create_test_graph, create_test_opportuni
 from matching.validator import ArtifactClaimValidator
 from opportunity.models import Opportunity, ProcurementMetadata, RemotePolicy, Track
 from truth.graph import TruthGraph
-from truth.models import AtomicAssertion, Modality, Polarity, VerificationStatus
+from truth.models import AtomicAssertion, EvidenceRecord, Modality, Polarity, VerificationStatus
 
 
 class TestArtifactValidatorAndAdversarial(unittest.TestCase):
@@ -595,6 +595,206 @@ class TestArtifactValidatorAndAdversarial(unittest.TestCase):
         result = self.validator.validate_artifact(fabricated_cv, self.truth_graph, opportunity=opp)
         self.assertFalse(result.is_valid)
         self.assertTrue(any("does not match cited title" in err or "does not match cited organization" in err for err in result.errors))
+
+    def test_material_claim_with_empty_predicate_and_assertion_ids_fails(self) -> None:
+        opp = create_test_opportunity()
+        tampered_claim = GeneratedClaim(
+            claim_id="claim-empty-pred-bypass",
+            text="Arbitrary unverified factual claim with real assertion ID",
+            section_id="experience",
+            assertion_ids=("a-title",),
+            evidence_ids=("ev-title",),
+            predicate="",  # Empty predicate bypass attempt
+            authorized_value="Arbitrary unverified factual claim with real assertion ID",
+        )
+        sec = ArtifactSection(
+            section_id="experience",
+            heading="Experience",
+            content=tampered_claim.text,
+            items=(tampered_claim.text,),
+            assertion_ids=("a-title",),
+            evidence_ids=("ev-title",),
+        )
+        fabricated_cv = TailoredArtifact(
+            artifact_id=f"artifact-cv-{opp.id}",
+            artifact_type=ArtifactType.TAILORED_CV,
+            opportunity_id=opp.id,
+            opportunity_content_hash=opp.content_hash,
+            template_version="cv-v1.0",
+            policy_version="1.0.0",
+            title="Fabricated CV",
+            sections=(sec,),
+            generated_claims=(tampered_claim,),
+            commitment_checklist=(),
+            compiled_at="2026-08-30",
+        )
+        result = self.validator.validate_artifact(fabricated_cv, self.truth_graph, opportunity=opp)
+        self.assertFalse(result.is_valid)
+        self.assertTrue(any("empty predicate" in err for err in result.errors))
+
+    def test_scope_capacity_team_size_mismatch_fails_positive_fit(self) -> None:
+        scorer = OpportunityScorer()
+        g = create_test_graph()
+        # Add capacity assertion team_size=1
+        ev_cap = EvidenceRecord(
+            id="ev-cap-1",
+            content="Single practitioner team size 1",
+            source="manual",
+            locator="capacity.team_size",
+            metadata={"team_size": 1},
+        )
+        g.add_evidence(ev_cap)
+        g.add_assertion(AtomicAssertion(
+            id="a-team-1",
+            subject_id="founder",
+            predicate="capacity.team_size",
+            value=1,
+            evidence_ids=("ev-cap-1",),
+            verification_status=VerificationStatus.VERIFIED,
+        ))
+        opp = create_test_opportunity(
+            track=Track.PROCUREMENT,
+            title="Massive Infrastructure Transformation",
+            description="Requires an extensive delivery team of 500 engineers and consultants.",
+            procurement_metadata=ProcurementMetadata(
+                buyer_name="Enterprise Buyer",
+                buyer_country="Egypt",
+                notice_type="RFP",
+            ),
+        )
+        match = scorer.evaluate(opp, g)
+        dim_map = {d.dimension_name: d for d in match.dimension_scores}
+        # team_size=1 vs 500 engineers => NOT positive fit; gap recorded
+        self.assertEqual(len(dim_map["scope_complexity"].strengths), 0)
+        self.assertTrue(len(dim_map["scope_complexity"].gaps) > 0)
+        self.assertEqual(dim_map["scope_complexity"].raw_score, 0.15)
+
+    def test_arbitrary_annual_turnover_assertion_vs_unrelated_scope_is_neutral(self) -> None:
+        scorer = OpportunityScorer()
+        g = create_test_graph()
+        ev_to = EvidenceRecord(
+            id="ev-to-1",
+            content="Annual turnover 100000 USD",
+            source="manual",
+            locator="business.annual_turnover",
+            metadata={"turnover": 100000},
+        )
+        g.add_evidence(ev_to)
+        g.add_assertion(AtomicAssertion(
+            id="a-to-1",
+            subject_id="founder",
+            predicate="business.annual_turnover",
+            value=100000,
+            evidence_ids=("ev-to-1",),
+            verification_status=VerificationStatus.VERIFIED,
+        ))
+        opp = create_test_opportunity(
+            track=Track.PROCUREMENT,
+            title="General Advisory RFP",
+            description="Provide cloud advisory services for modernizing legacy applications.",
+            procurement_metadata=ProcurementMetadata(
+                buyer_name="Client Corp",
+                buyer_country="Egypt",
+                notice_type="RFP",
+            ),
+        )
+        match = scorer.evaluate(opp, g)
+        dim_map = {d.dimension_name: d for d in match.dimension_scores}
+        # No turnover requirement on opportunity => neutral score, zero strengths
+        self.assertEqual(len(dim_map["scope_complexity"].strengths), 0)
+        self.assertEqual(dim_map["scope_complexity"].raw_score, 0.50)
+
+    def test_capacity_evidence_with_no_comparable_opportunity_scope_is_neutral(self) -> None:
+        scorer = OpportunityScorer()
+        g = create_test_graph()
+        ev_cap = EvidenceRecord(
+            id="ev-cap-1",
+            content="Single practitioner team size 1",
+            source="manual",
+            locator="capacity.team_size",
+            metadata={"team_size": 1},
+        )
+        g.add_evidence(ev_cap)
+        g.add_assertion(AtomicAssertion(
+            id="a-team-1",
+            subject_id="founder",
+            predicate="capacity.team_size",
+            value=1,
+            evidence_ids=("ev-cap-1",),
+            verification_status=VerificationStatus.VERIFIED,
+        ))
+        opp = create_test_opportunity(
+            track=Track.PROCUREMENT,
+            title="Cloud Security Assessment",
+            description="Perform architecture assessment.",
+            procurement_metadata=ProcurementMetadata(
+                buyer_name="Client Corp",
+                buyer_country="Egypt",
+                notice_type="RFP",
+            ),
+        )
+        match = scorer.evaluate(opp, g)
+        dim_map = {d.dimension_name: d for d in match.dimension_scores}
+        self.assertEqual(len(dim_map["scope_complexity"].strengths), 0)
+        self.assertEqual(dim_map["scope_complexity"].raw_score, 0.50)
+
+    def test_unit_safe_economic_comparison(self) -> None:
+        from opportunity.models import Compensation, CompensationInterval
+        from matching.models import ScoringPolicy
+
+        # 1. $100,000 PROJECT is NOT directly compared to $500/day policy
+        policy_daily = ScoringPolicy(min_target_daily_rate=500.0)
+        scorer_daily = OpportunityScorer(policy=policy_daily)
+        opp_project = create_test_opportunity(
+            track=Track.PROCUREMENT,
+            title="Procurement Tender",
+            compensation=Compensation(
+                min_amount=100000.0,
+                max_amount=100000.0,
+                currency="USD",
+                interval=CompensationInterval.PROJECT,
+            ),
+            procurement_metadata=ProcurementMetadata(buyer_name="Client", buyer_country="Egypt", notice_type="RFP"),
+        )
+        match_proj = scorer_daily.evaluate(opp_project, self.truth_graph)
+        dim_proj = {d.dimension_name: d for d in match_proj.dimension_scores}
+        self.assertEqual(len(dim_proj["budget_fit"].strengths), 0)
+        self.assertEqual(dim_proj["budget_fit"].raw_score, 0.50)
+
+        # 2. $80/hour is NOT directly compared to $100,000/year policy
+        policy_yearly = ScoringPolicy(min_target_yearly_compensation=100000.0)
+        scorer_yearly = OpportunityScorer(policy=policy_yearly)
+        opp_hourly = create_test_opportunity(
+            track=Track.EMPLOYMENT,
+            title="Contract Engineer",
+            compensation=Compensation(
+                min_amount=80.0,
+                max_amount=80.0,
+                currency="USD",
+                interval=CompensationInterval.HOURLY,
+            ),
+        )
+        match_hourly = scorer_yearly.evaluate(opp_hourly, self.truth_graph)
+        dim_hourly = {d.dimension_name: d for d in match_hourly.dimension_scores}
+        self.assertEqual(len(dim_hourly["compensation_fit"].strengths), 0)
+        self.assertEqual(dim_hourly["compensation_fit"].raw_score, 0.50)
+
+        # 3. Compatible interval comparison works
+        policy_compatible = ScoringPolicy(
+            min_target_yearly_compensation=100000.0,
+            min_target_hourly_rate=70.0,
+            min_target_project_budget=80000.0,
+        )
+        scorer_compatible = OpportunityScorer(policy=policy_compatible)
+        match_compat_proj = scorer_compatible.evaluate(opp_project, self.truth_graph)
+        dim_compat_proj = {d.dimension_name: d for d in match_compat_proj.dimension_scores}
+        self.assertTrue(len(dim_compat_proj["budget_fit"].strengths) > 0)
+        self.assertEqual(dim_compat_proj["budget_fit"].raw_score, 1.0)
+
+        match_compat_hourly = scorer_compatible.evaluate(opp_hourly, self.truth_graph)
+        dim_compat_hourly = {d.dimension_name: d for d in match_compat_hourly.dimension_scores}
+        self.assertTrue(len(dim_compat_hourly["compensation_fit"].strengths) > 0)
+        self.assertEqual(dim_compat_hourly["compensation_fit"].raw_score, 0.90)
 
 
 if __name__ == "__main__":

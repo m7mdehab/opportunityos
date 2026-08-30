@@ -8,9 +8,10 @@ assertions without keyword dominance or false certainty.
 from __future__ import annotations
 
 import math
+import re
 from typing import Any
 
-from opportunity.models import Opportunity, SeniorityLevel, Track
+from opportunity.models import CompensationInterval, Opportunity, SeniorityLevel, Track
 from truth.graph import TruthGraph
 from truth.models import VerificationStatus
 
@@ -369,32 +370,43 @@ class OpportunityScorer:
 
         # 6. Compensation Fit
         comp = opp.compensation
-        min_target = getattr(self.policy, "min_target_compensation", None)
-        if min_target is None:
-            comp_score = 0.5
-            comp_strengths = ()
-            comp_gaps = ()
-            comp_unknowns = ("Founder target compensation unconfigured; market viability not evaluated",)
-            uncertainty_acc += 0.1
-        else:
-            if comp is not None and comp.min_amount is not None:
+        if comp is not None and comp.min_amount is not None:
+            matching_target: float | None = None
+            interval_name = comp.interval.value if hasattr(comp.interval, "value") else str(comp.interval)
+
+            if comp.interval == CompensationInterval.YEARLY:
+                matching_target = getattr(self.policy, "min_target_yearly_compensation", None) or getattr(self.policy, "min_target_compensation", None)
+            elif comp.interval == CompensationInterval.HOURLY:
+                matching_target = getattr(self.policy, "min_target_hourly_rate", None)
+            elif comp.interval == CompensationInterval.DAILY:
+                matching_target = getattr(self.policy, "min_target_daily_rate", None)
+            elif comp.interval == CompensationInterval.PROJECT:
+                matching_target = getattr(self.policy, "min_target_project_budget", None)
+
+            if matching_target is not None:
                 max_amt = comp.max_amount if comp.max_amount is not None else comp.min_amount
-                if max_amt >= min_target:
+                if max_amt >= matching_target:
                     comp_score = 0.90
-                    comp_strengths = (f"Opportunity compensation ({comp.min_amount}-{comp.max_amount} {comp.currency or ''}) meets target ({min_target})",)
+                    comp_strengths = (f"Opportunity compensation ({comp.min_amount}-{comp.max_amount or ''} {comp.currency or ''} {interval_name}) meets target ({matching_target})",)
                     comp_gaps = ()
                     comp_unknowns = ()
                 else:
                     comp_score = 0.30
                     comp_strengths = ()
-                    comp_gaps = (f"Opportunity compensation ({max_amt}) below founder target ({min_target})",)
+                    comp_gaps = (f"Opportunity compensation ({max_amt} {interval_name}) below founder target ({matching_target})",)
                     comp_unknowns = ()
             else:
                 comp_score = 0.50
                 comp_strengths = ()
                 comp_gaps = ()
-                comp_unknowns = ("Compensation unstated in opportunity posting",)
+                comp_unknowns = (f"Opportunity compensation stated ({comp.min_amount} {comp.currency or ''} {interval_name}); compatible founder target economics unconfigured in policy",)
                 uncertainty_acc += 0.1
+        else:
+            comp_score = 0.50
+            comp_strengths = ()
+            comp_gaps = ()
+            comp_unknowns = ("Compensation unstated in opportunity posting",)
+            uncertainty_acc += 0.1
 
         w_comp = weights.get("compensation", 0.05)
         scores.append(MatchDimensionScore(
@@ -402,7 +414,7 @@ class OpportunityScorer:
             raw_score=comp_score,
             weight=w_comp,
             weighted_score=comp_score * w_comp,
-            explanation="Compensation evaluated against founder target policy." if min_target else "Compensation unconfigured on founder side.",
+            explanation="Compensation evaluated against founder target policy.",
             strengths=comp_strengths,
             gaps=comp_gaps,
             unknowns=comp_unknowns,
@@ -505,24 +517,82 @@ class OpportunityScorer:
         ))
 
         # 2. Scope & Requirement Complexity
-        capacity_assertions = [
+        desc_and_reqs = (opp.description or "") + " " + " ".join(opp.requirements)
+        req_team_match = re.search(r"(\d+)\s*(?:[-+]?\s*person|consultants?|engineers?|team\s*members?|specialists?|staff|delivery\s*team)", desc_and_reqs, re.IGNORECASE)
+        req_team_size = int(req_team_match.group(1)) if req_team_match else None
+        turnover_req = pm.turnover_required if (pm and pm.turnover_required is not None and pm.turnover_required > 0) else None
+
+        team_assertions = [
             a for a in truth_graph.assertions.values()
-            if a.predicate in ("business.capacity", "capacity.team_size", "capacity.annual_turnover", "capacity.concurrent_projects", "capacity.headcount")
+            if a.predicate in ("capacity.team_size", "business.team_size", "capacity.headcount")
             and a.verification_status == VerificationStatus.VERIFIED
         ]
-        if not capacity_assertions:
+        turnover_assertions = [
+            a for a in truth_graph.assertions.values()
+            if a.predicate in ("business.annual_turnover", "capacity.annual_turnover")
+            and a.verification_status == VerificationStatus.VERIFIED
+        ]
+
+        if req_team_size is not None:
+            if team_assertions:
+                try:
+                    founder_team = int(team_assertions[0].value)
+                except (ValueError, TypeError):
+                    founder_team = 1
+                if founder_team >= req_team_size:
+                    scope_score = 0.85
+                    scope_strengths = (f"Founder delivery team size ({founder_team}) meets opportunity requirement ({req_team_size} staff)",)
+                    scope_gaps = ()
+                    scope_unknowns = ()
+                    scope_refs = (team_assertions[0].id,)
+                else:
+                    scope_score = 0.15
+                    scope_strengths = ()
+                    scope_gaps = (f"Opportunity requires delivery team of {req_team_size} staff, exceeding founder team size ({founder_team})",)
+                    scope_unknowns = ()
+                    scope_refs = (team_assertions[0].id,)
+            else:
+                scope_score = 0.50
+                scope_strengths = ()
+                scope_gaps = ()
+                scope_unknowns = (f"Opportunity requires delivery team of {req_team_size}; founder team size unasserted in truth graph",)
+                scope_refs = ()
+                uncertainty_acc += 0.20
+
+        elif turnover_req is not None:
+            if turnover_assertions:
+                try:
+                    founder_turnover = float(turnover_assertions[0].value)
+                except (ValueError, TypeError):
+                    founder_turnover = 0.0
+                if founder_turnover >= turnover_req:
+                    scope_score = 0.85
+                    scope_strengths = (f"Founder annual turnover ({founder_turnover}) meets opportunity requirement ({turnover_req})",)
+                    scope_gaps = ()
+                    scope_unknowns = ()
+                    scope_refs = (turnover_assertions[0].id,)
+                else:
+                    scope_score = 0.15
+                    scope_strengths = ()
+                    scope_gaps = (f"Opportunity requires annual turnover ({turnover_req}), exceeding founder turnover ({founder_turnover})",)
+                    scope_unknowns = ()
+                    scope_refs = (turnover_assertions[0].id,)
+            else:
+                scope_score = 0.50
+                scope_strengths = ()
+                scope_gaps = ()
+                scope_unknowns = (f"Opportunity requires annual turnover ({turnover_req}); founder turnover unasserted",)
+                scope_refs = ()
+                uncertainty_acc += 0.20
+
+        else:
+            # Opportunity has no explicit scope/team/turnover threshold to compare against
             scope_score = 0.50
             scope_strengths = ()
             scope_gaps = ()
-            scope_unknowns = ("Founder consulting delivery capacity / team size unasserted in truth graph",)
+            scope_unknowns = ("Opportunity terms do not specify explicit team/capacity thresholds for comparison",)
             scope_refs = ()
-            uncertainty_acc += 0.20
-        else:
-            scope_score = 0.80
-            scope_strengths = (f"Verified delivery capacity in truth graph ({len(capacity_assertions)} records)",)
-            scope_gaps = ()
-            scope_unknowns = ()
-            scope_refs = tuple(a.id for a in capacity_assertions)
+            uncertainty_acc += 0.10
 
         w_scope = weights.get("scope", 0.20)
         scores.append(MatchDimensionScore(
@@ -573,24 +643,37 @@ class OpportunityScorer:
 
         # 4. Budget & Financial Fit
         w_bud = weights.get("budget", 0.10)
-        min_econ = getattr(self.policy, "min_target_compensation", None) or getattr(self.policy, "min_target_daily_rate", None) or getattr(self.policy, "min_target_hourly_rate", None)
-        if opp.compensation and opp.compensation.min_amount:
-            if min_econ is not None:
-                if opp.compensation.min_amount >= min_econ:
+        comp = opp.compensation
+        if comp is not None and comp.min_amount is not None:
+            matching_target: float | None = None
+            interval_name = comp.interval.value if hasattr(comp.interval, "value") else str(comp.interval)
+
+            if comp.interval == CompensationInterval.PROJECT:
+                matching_target = getattr(self.policy, "min_target_project_budget", None)
+            elif comp.interval == CompensationInterval.DAILY:
+                matching_target = getattr(self.policy, "min_target_daily_rate", None)
+            elif comp.interval == CompensationInterval.HOURLY:
+                matching_target = getattr(self.policy, "min_target_hourly_rate", None)
+            elif comp.interval == CompensationInterval.YEARLY:
+                matching_target = getattr(self.policy, "min_target_yearly_compensation", None) or getattr(self.policy, "min_target_compensation", None)
+
+            if matching_target is not None:
+                max_amt = comp.max_amount if comp.max_amount is not None else comp.min_amount
+                if max_amt >= matching_target:
                     bud_score = 1.0
-                    bud_strengths = (f"Procurement compensation ({opp.compensation.min_amount} {opp.compensation.currency or ''}) meets founder target economics ({min_econ})",)
+                    bud_strengths = (f"Procurement compensation ({comp.min_amount}-{comp.max_amount or ''} {comp.currency or ''} {interval_name}) meets founder target ({matching_target})",)
                     bud_gaps = ()
                     bud_unknowns = ()
                 else:
                     bud_score = 0.20
                     bud_strengths = ()
-                    bud_gaps = (f"Procurement compensation ({opp.compensation.min_amount}) below founder target economics ({min_econ})",)
+                    bud_gaps = (f"Procurement compensation ({max_amt} {interval_name}) below founder target ({matching_target})",)
                     bud_unknowns = ()
             else:
                 bud_score = 0.50
                 bud_strengths = ()
                 bud_gaps = ()
-                bud_unknowns = (f"Procurement budget stated ({opp.compensation.min_amount} {opp.compensation.currency or ''}); founder target economics unconfigured in policy",)
+                bud_unknowns = (f"Procurement budget stated ({comp.min_amount} {comp.currency or ''} {interval_name}); compatible founder {interval_name} target economics unconfigured in policy",)
                 uncertainty_acc += 0.1
         else:
             bud_score = 0.50
@@ -606,7 +689,7 @@ class OpportunityScorer:
             weighted_score=bud_score * w_bud,
             explanation="Procurement budget evaluated against founder economic policy.",
             strengths=bud_strengths,
-            gaps=bud_gaps if opp.compensation and opp.compensation.min_amount and min_econ is not None and opp.compensation.min_amount < min_econ else (),
+            gaps=bud_gaps,
             unknowns=bud_unknowns,
             evidence_refs=(),
             opportunity_field_refs=("compensation", "procurement_metadata"),
