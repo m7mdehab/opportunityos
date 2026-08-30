@@ -6,12 +6,12 @@ Last shipped: BRIEF-005 — 2026-08-30.
 Active work: none.
 Phase status: passed.
 Blocked: none.
-Next: complete active brief.
+Next: BRIEF-006: Operational Autonomy, Feedback Loops & Production Pipeline.
 
 ## Repository
 
-- **Generated:** 2026-08-30T20:08:23Z
-- **State generated at commit:** `fd4ee7b` — docs(brief): mark brief-005 acceptance criteria complete
+- **Generated:** 2026-08-30T20:28:02Z
+- **State generated at commit:** `c3b9f8b` — fix(outbound): complete structural side-effect authority remediation for brief-005
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -32,7 +32,7 @@ Next: complete active brief.
 
 ## Last Phase Outcome
 
-- No phase outcome recorded
+- PASS
 
 ## Decisions
 
@@ -67,4 +67,4 @@ Next: complete active brief.
 
 ## Next Prerequisites
 
-- Complete the active brief.
+- BRIEF-006: Operational Autonomy, Feedback Loops & Production Pipeline
