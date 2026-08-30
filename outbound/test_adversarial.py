@@ -117,6 +117,30 @@ class AdversarialOutboundTests(unittest.TestCase):
         auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
         return auth, adapter_reg, src_reg
 
+    def test_adv_00_controlled_submit_missing_prepared_manifest_fails_closed(self) -> None:
+        """Requirement 1: CONTROLLED_SUBMIT with prepared_manifest=None MUST block and NEVER submit."""
+        auth, _, _ = self._create_submit_ready_authority()
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger)
+
+        harness = MockATSHarness(steps=[
+            [DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY, required=True)]
+        ])
+        driver = MockBrowserDriver(harness)
+
+        record = engine.execute_application(
+            opportunity=self.opportunity,
+            artifact=self.artifact,
+            driver=driver,
+            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
+            truth_graph=self.tg,
+            policy=self.policy,
+            prepared_manifest=None,
+        )
+        self.assertEqual(record.action_status, ActionStatus.BLOCKED)
+        self.assertTrue("prepared_manifest cannot be None" in record.blocker_reason)
+        self.assertFalse(harness.submitted)
+        self.assertEqual(harness.submits_count, 0)
+
     def test_adv_01_late_kill_switch_toggled_after_reservation_aborts_submit(self) -> None:
         auth, adapter_reg, src_reg = self._create_submit_ready_authority()
 
@@ -133,13 +157,20 @@ class AdversarialOutboundTests(unittest.TestCase):
         ])
         driver = MockBrowserDriver(harness)
 
+        prep_manifest, _, _, _ = engine.prepare_manifest(
+            opportunity=self.opportunity, artifact=self.artifact, driver=driver,
+            truth_graph=self.tg, policy=self.policy, adapter_name="greenhouse",
+        )
+
+        driver2 = MockBrowserDriver(harness)
         record = engine.execute_application(
             opportunity=self.opportunity,
             artifact=self.artifact,
-            driver=driver,
+            driver=driver2,
             execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
             truth_graph=self.tg,
             policy=self.policy,
+            prepared_manifest=prep_manifest,
         )
         self.assertEqual(record.action_status, ActionStatus.BLOCKED)
         self.assertTrue("kill switch disabled after reservation" in record.blocker_reason)
@@ -147,7 +178,6 @@ class AdversarialOutboundTests(unittest.TestCase):
         self.assertEqual(harness.submits_count, 0)
 
     def test_adv_02_caller_forged_submit_enabled_state_ignored(self) -> None:
-        # Default registry without graduation evidence is ASSISTED_VERIFIED
         adapter_reg = AdapterRegistry()
         auth = ActionAuthority(adapter_registry=adapter_reg)
         engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger)
@@ -155,14 +185,21 @@ class AdversarialOutboundTests(unittest.TestCase):
         harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
         driver = MockBrowserDriver(harness)
 
+        prep_manifest, _, _, _ = engine.prepare_manifest(
+            opportunity=self.opportunity, artifact=self.artifact, driver=driver,
+            truth_graph=self.tg, policy=self.policy, adapter_name="greenhouse",
+        )
+
+        driver2 = MockBrowserDriver(harness)
         record = engine.execute_application(
             opportunity=self.opportunity,
             artifact=self.artifact,
-            driver=driver,
+            driver=driver2,
             execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
             adapter_name="greenhouse",
             truth_graph=self.tg,
             policy=self.policy,
+            prepared_manifest=prep_manifest,
         )
         self.assertEqual(record.action_status, ActionStatus.BLOCKED)
         self.assertTrue("requires SUBMIT_ENABLED" in record.blocker_reason)
@@ -174,14 +211,21 @@ class AdversarialOutboundTests(unittest.TestCase):
         harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
         driver = MockBrowserDriver(harness)
 
+        prep_manifest, _, _, _ = engine.prepare_manifest(
+            opportunity=self.opportunity, artifact=self.artifact, driver=driver,
+            truth_graph=self.tg, policy=self.policy, adapter_name="greenhouse",
+        )
+
+        driver2 = MockBrowserDriver(harness)
         record = engine.execute_application(
             opportunity=self.opportunity,
             artifact=self.artifact,
-            driver=driver,
+            driver=driver2,
             execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
             adapter_name="greenhouse_unregistered_v2",
             truth_graph=self.tg,
             policy=self.policy,
+            prepared_manifest=prep_manifest,
         )
         self.assertEqual(record.action_status, ActionStatus.BLOCKED)
         self.assertTrue("not registered" in record.blocker_reason)
@@ -196,13 +240,20 @@ class AdversarialOutboundTests(unittest.TestCase):
         harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
         driver = MockBrowserDriver(harness)
 
+        prep_manifest, _, _, _ = engine.prepare_manifest(
+            opportunity=self.opportunity, artifact=self.artifact, driver=driver,
+            truth_graph=self.tg, policy=self.policy, adapter_name="greenhouse",
+        )
+
+        driver2 = MockBrowserDriver(harness)
         record = engine.execute_application(
             opportunity=self.opportunity,
             artifact=self.artifact,
-            driver=driver,
+            driver=driver2,
             execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
             truth_graph=self.tg,
             policy=self.policy,
+            prepared_manifest=prep_manifest,
         )
         self.assertEqual(record.action_status, ActionStatus.BLOCKED)
         self.assertTrue("MANUAL_ONLY" in record.blocker_reason)
@@ -217,26 +268,35 @@ class AdversarialOutboundTests(unittest.TestCase):
         )
         driver = MockBrowserDriver(harness)
 
+        prep_manifest, _, _, _ = engine.prepare_manifest(
+            opportunity=self.opportunity, artifact=self.artifact, driver=driver,
+            truth_graph=self.tg, policy=self.policy, adapter_name="greenhouse",
+        )
+
+        driver2 = MockBrowserDriver(harness)
         rec1 = engine.execute_application(
             opportunity=self.opportunity,
             artifact=self.artifact,
-            driver=driver,
+            driver=driver2,
             execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
             truth_graph=self.tg,
             policy=self.policy,
+            prepared_manifest=prep_manifest,
         )
         self.assertEqual(rec1.action_status, ActionStatus.UNKNOWN_OUTCOME)
 
         restarted_ledger = IdempotencyLedger(self.db_path)
         engine2 = OutboundBrowserEngine(authority=auth, ledger=restarted_ledger)
 
+        driver3 = MockBrowserDriver(harness)
         rec2 = engine2.execute_application(
             opportunity=self.opportunity,
             artifact=self.artifact,
-            driver=driver,
+            driver=driver3,
             execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
             truth_graph=self.tg,
             policy=self.policy,
+            prepared_manifest=prep_manifest,
         )
         self.assertEqual(rec2.action_status, ActionStatus.BLOCKED)
         self.assertTrue("UNKNOWN_OUTCOME" in rec2.blocker_reason or "Duplicate" in rec2.blocker_reason)
@@ -258,6 +318,11 @@ class AdversarialOutboundTests(unittest.TestCase):
         driver1 = MockBrowserDriver(harness)
         driver2 = MockBrowserDriver(harness)
 
+        prep_manifest, _, _, _ = engine1.prepare_manifest(
+            opportunity=self.opportunity, artifact=self.artifact, driver=driver1,
+            truth_graph=self.tg, policy=self.policy, adapter_name="greenhouse",
+        )
+
         results: list[tuple[str, ActionStatus]] = []
         def run_contender(engine: OutboundBrowserEngine, driver: MockBrowserDriver, name: str):
             rec = engine.execute_application(
@@ -268,6 +333,7 @@ class AdversarialOutboundTests(unittest.TestCase):
                 truth_graph=self.tg,
                 policy=self.policy,
                 adapter_name="greenhouse",
+                prepared_manifest=prep_manifest,
             )
             results.append((name, rec.action_status))
 
@@ -324,7 +390,7 @@ class AdversarialOutboundTests(unittest.TestCase):
             prepared_manifest=prep_manifest,
         )
         self.assertEqual(record.action_status, ActionStatus.BLOCKED)
-        self.assertTrue("Manifest staleness detected" in record.blocker_reason or "requires SUBMIT_ENABLED" in record.blocker_reason or "invalidated" in record.blocker_reason)
+        self.assertTrue("Manifest staleness detected" in record.blocker_reason)
         self.assertFalse(harness.submitted)
         self.assertEqual(harness.submits_count, 0)
 
@@ -361,7 +427,7 @@ class AdversarialOutboundTests(unittest.TestCase):
             prepared_manifest=prep_manifest,
         )
         self.assertEqual(record.action_status, ActionStatus.BLOCKED)
-        self.assertTrue("Manifest staleness detected" in record.blocker_reason or "requires SUBMIT_ENABLED" in record.blocker_reason or "invalidated" in record.blocker_reason)
+        self.assertTrue("Manifest staleness detected" in record.blocker_reason)
         self.assertFalse(harness.submitted)
 
     def test_adv_08b_real_prepare_then_adapter_evidence_mutation_blocks_submission(self) -> None:
@@ -440,7 +506,7 @@ class AdversarialOutboundTests(unittest.TestCase):
             prepared_manifest=prep_manifest,
         )
         self.assertEqual(record.action_status, ActionStatus.BLOCKED)
-        self.assertTrue("Manifest staleness detected" in record.blocker_reason or "requires SUBMIT_ENABLED" in record.blocker_reason or "invalidated" in record.blocker_reason)
+        self.assertTrue("Manifest staleness detected" in record.blocker_reason)
         self.assertFalse(harness.submitted)
 
     def test_adv_08d_real_prepare_no_material_change_submits_successfully(self) -> None:
@@ -476,14 +542,100 @@ class AdversarialOutboundTests(unittest.TestCase):
         self.assertTrue(harness.submitted)
         self.assertEqual(harness.submits_count, 1)
 
-    def test_adv_08e_post_reservation_authority_mutation_hook_aborts_submit(self) -> None:
-        """Adversarial hook: source policy changes during reservation -> submit_page() NEVER called."""
+    def test_adv_08e_post_reservation_source_version_mutation_hook_aborts_submit(self) -> None:
+        """Requirement 2B: Post-reservation source policy VERSION changes while policy remains SUBMIT_ALLOWED => BLOCK, 0 submit calls."""
         auth, adapter_reg, src_reg = self._create_submit_ready_authority()
 
         class MutatingLedger(IdempotencyLedger):
             def reserve_submission(self, record):
                 super().reserve_submission(record)
-                # Mutate source policy to MANUAL_ONLY after reservation
+                # Bump source registry version during/after reservation while policy remains SUBMIT_ALLOWED
+                src_reg.version = "2.0.0"
+
+        hooking_ledger = MutatingLedger(self.db_path)
+        engine = OutboundBrowserEngine(authority=auth, ledger=hooking_ledger)
+
+        harness = MockATSHarness(steps=[
+            [DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY, required=True)]
+        ])
+        driver = MockBrowserDriver(harness)
+
+        prep_manifest, _, _, _ = engine.prepare_manifest(
+            opportunity=self.opportunity, artifact=self.artifact, driver=driver,
+            truth_graph=self.tg, policy=self.policy, adapter_name="greenhouse",
+        )
+
+        driver2 = MockBrowserDriver(harness)
+        record = engine.execute_application(
+            opportunity=self.opportunity,
+            artifact=self.artifact,
+            driver=driver2,
+            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
+            truth_graph=self.tg,
+            policy=self.policy,
+            prepared_manifest=prep_manifest,
+        )
+        self.assertEqual(record.action_status, ActionStatus.BLOCKED)
+        self.assertTrue("Post-reservation manifest staleness detected" in record.blocker_reason)
+        self.assertFalse(harness.submitted)
+        self.assertEqual(harness.submits_count, 0)
+
+    def test_adv_08f_post_reservation_truth_graph_mutation_hook_aborts_submit(self) -> None:
+        """Requirement 2C: Post-reservation TruthGraph authority changes => BLOCK, 0 submit calls."""
+        auth, adapter_reg, src_reg = self._create_submit_ready_authority()
+
+        class MutatingLedger(IdempotencyLedger):
+            def __init__(self, db_path, tg):
+                super().__init__(db_path)
+                self.tg = tg
+
+            def reserve_submission(self, record):
+                super().reserve_submission(record)
+                # Mutate truth graph authority during/after reservation
+                self.tg._assertions.pop("a-name", None)
+                ev_mut = EvidenceRecord(id="ev-late", source="passport", locator="p1", content="Altered Late Name")
+                self.tg.add_evidence(ev_mut)
+                self.tg.add_assertion(AtomicAssertion(
+                    id="a-name", subject_id="founder", predicate="identity.name",
+                    value="Altered Late Name", polarity=Polarity.POSITIVE, modality=Modality.DEFINITE,
+                    verification_status=VerificationStatus.VERIFIED, evidence_ids=("ev-late",),
+                ))
+
+        hooking_ledger = MutatingLedger(self.db_path, self.tg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=hooking_ledger)
+
+        harness = MockATSHarness(steps=[
+            [DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY, required=True)]
+        ])
+        driver = MockBrowserDriver(harness)
+
+        prep_manifest, _, _, _ = engine.prepare_manifest(
+            opportunity=self.opportunity, artifact=self.artifact, driver=driver,
+            truth_graph=self.tg, policy=self.policy, adapter_name="greenhouse",
+        )
+
+        driver2 = MockBrowserDriver(harness)
+        record = engine.execute_application(
+            opportunity=self.opportunity,
+            artifact=self.artifact,
+            driver=driver2,
+            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
+            truth_graph=self.tg,
+            policy=self.policy,
+            prepared_manifest=prep_manifest,
+        )
+        self.assertEqual(record.action_status, ActionStatus.BLOCKED)
+        self.assertTrue("Post-reservation manifest staleness detected" in record.blocker_reason)
+        self.assertFalse(harness.submitted)
+        self.assertEqual(harness.submits_count, 0)
+
+    def test_adv_08g_post_reservation_manual_only_mutation_hook_aborts_submit(self) -> None:
+        """Adversarial hook: source policy changes to MANUAL_ONLY during reservation -> submit_page() NEVER called."""
+        auth, adapter_reg, src_reg = self._create_submit_ready_authority()
+
+        class MutatingLedger(IdempotencyLedger):
+            def reserve_submission(self, record):
+                super().reserve_submission(record)
                 src_reg.set_policy("greenhouse", SourceActionPolicy.MANUAL_ONLY)
 
         hooking_ledger = MutatingLedger(self.db_path)
@@ -494,13 +646,20 @@ class AdversarialOutboundTests(unittest.TestCase):
         ])
         driver = MockBrowserDriver(harness)
 
+        prep_manifest, _, _, _ = engine.prepare_manifest(
+            opportunity=self.opportunity, artifact=self.artifact, driver=driver,
+            truth_graph=self.tg, policy=self.policy, adapter_name="greenhouse",
+        )
+
+        driver2 = MockBrowserDriver(harness)
         record = engine.execute_application(
             opportunity=self.opportunity,
             artifact=self.artifact,
-            driver=driver,
+            driver=driver2,
             execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
             truth_graph=self.tg,
             policy=self.policy,
+            prepared_manifest=prep_manifest,
         )
         self.assertEqual(record.action_status, ActionStatus.BLOCKED)
         self.assertTrue("Source policy changed after reservation" in record.blocker_reason)
@@ -544,14 +703,21 @@ class AdversarialOutboundTests(unittest.TestCase):
         harness = MockATSHarness(steps=[[DetectedFormField("f", "f", "text", "Field", "field", FieldOntologyType.OTHER_UNKNOWN)]])
         driver = MockBrowserDriver(harness)
 
+        prep_manifest, _, _, _ = engine.prepare_manifest(
+            opportunity=proc_opp, artifact=self.artifact, driver=driver,
+            truth_graph=self.tg, policy=self.policy, adapter_name="procurement_package",
+        )
+
+        driver2 = MockBrowserDriver(harness)
         record = engine.execute_application(
             opportunity=proc_opp,
             artifact=self.artifact,
-            driver=driver,
+            driver=driver2,
             execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
             adapter_name="procurement_package",
             truth_graph=self.tg,
             policy=self.policy,
+            prepared_manifest=prep_manifest,
         )
         self.assertEqual(record.action_status, ActionStatus.BLOCKED)
         self.assertTrue("MANUAL_ONLY" in record.blocker_reason or "requires SUBMIT_ENABLED" in record.blocker_reason)
@@ -574,14 +740,21 @@ class AdversarialOutboundTests(unittest.TestCase):
         harness = MockATSHarness(steps=[[DetectedFormField("f", "f", "text", "Field", "field", FieldOntologyType.OTHER_UNKNOWN)]])
         driver = MockBrowserDriver(harness)
 
+        prep_manifest, _, _, _ = engine.prepare_manifest(
+            opportunity=fl_opp, artifact=self.artifact, driver=driver,
+            truth_graph=self.tg, policy=self.policy, adapter_name="freelance_proposal",
+        )
+
+        driver2 = MockBrowserDriver(harness)
         record = engine.execute_application(
             opportunity=fl_opp,
             artifact=self.artifact,
-            driver=driver,
+            driver=driver2,
             execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
             adapter_name="freelance_proposal",
             truth_graph=self.tg,
             policy=self.policy,
+            prepared_manifest=prep_manifest,
         )
         self.assertEqual(record.action_status, ActionStatus.BLOCKED)
 
@@ -592,14 +765,21 @@ class AdversarialOutboundTests(unittest.TestCase):
         harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
         driver = MockBrowserDriver(harness)
 
+        prep_manifest, _, _, _ = engine.prepare_manifest(
+            opportunity=self.opportunity, artifact=self.artifact, driver=driver,
+            truth_graph=self.tg, policy=self.policy, adapter_name="greenhouse",
+        )
+
+        driver2 = MockBrowserDriver(harness)
         record = engine.execute_application(
             opportunity=self.opportunity,
             artifact=self.artifact,
-            driver=driver,
+            driver=driver2,
             execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
             qualification_decision=QualificationDecision.INELIGIBLE,
             truth_graph=self.tg,
             policy=self.policy,
+            prepared_manifest=prep_manifest,
         )
         self.assertEqual(record.action_status, ActionStatus.BLOCKED)
         self.assertTrue("ineligible" in record.blocker_reason)
@@ -611,14 +791,21 @@ class AdversarialOutboundTests(unittest.TestCase):
         harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
         driver = MockBrowserDriver(harness)
 
+        prep_manifest, _, _, _ = engine.prepare_manifest(
+            opportunity=self.opportunity, artifact=self.artifact, driver=driver,
+            truth_graph=self.tg, policy=self.policy, adapter_name="greenhouse",
+        )
+
+        driver2 = MockBrowserDriver(harness)
         record = engine.execute_application(
             opportunity=self.opportunity,
             artifact=self.artifact,
-            driver=driver,
+            driver=driver2,
             execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
             qualification_decision=QualificationDecision.UNCERTAIN,
             truth_graph=self.tg,
             policy=self.policy,
+            prepared_manifest=prep_manifest,
         )
         self.assertEqual(record.action_status, ActionStatus.AWAITING_REVIEW)
         self.assertTrue("UNCERTAIN" in record.blocker_reason)
@@ -633,13 +820,20 @@ class AdversarialOutboundTests(unittest.TestCase):
         )
         driver = MockBrowserDriver(harness)
 
+        prep_manifest, _, _, _ = engine.prepare_manifest(
+            opportunity=self.opportunity, artifact=self.artifact, driver=driver,
+            truth_graph=self.tg, policy=self.policy, adapter_name="greenhouse",
+        )
+
+        driver2 = MockBrowserDriver(harness)
         record = engine.execute_application(
             opportunity=self.opportunity,
             artifact=self.artifact,
-            driver=driver,
+            driver=driver2,
             execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
             truth_graph=self.tg,
             policy=self.policy,
+            prepared_manifest=prep_manifest,
         )
         self.assertEqual(record.action_status, ActionStatus.UNKNOWN_OUTCOME)
         self.assertTrue("receipt not detected" in record.blocker_reason)
@@ -755,13 +949,20 @@ class AdversarialOutboundTests(unittest.TestCase):
         ])
         driver = MockBrowserDriver(harness)
 
+        prep_manifest, _, _, _ = engine.prepare_manifest(
+            opportunity=self.opportunity, artifact=self.artifact, driver=driver,
+            truth_graph=self.tg, policy=self.policy, adapter_name="greenhouse",
+        )
+
+        driver2 = MockBrowserDriver(harness)
         record = engine.execute_application(
             opportunity=self.opportunity,
             artifact=self.artifact,
-            driver=driver,
+            driver=driver2,
             execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
             truth_graph=self.tg,
             policy=self.policy,
+            prepared_manifest=prep_manifest,
         )
         self.assertEqual(record.action_status, ActionStatus.CONFIRMED)
         self.assertIsNotNone(record.confirmation_evidence)

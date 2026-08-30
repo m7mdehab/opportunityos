@@ -247,6 +247,31 @@ class OutboundBrowserEngine:
         pol = policy or TailoringPolicy()
         answer_engine = ApplicationAnswerEngine(tg, pol)
 
+        # 1. Non-Bypassable: CONTROLLED_SUBMIT MUST require a genuine prior PreSubmitManifest
+        if execution_mode == ExecutionMode.CONTROLLED_SUBMIT and prepared_manifest is None:
+            return OutboundActionRecord(
+                action_id=action_id,
+                opportunity_id=opportunity.id,
+                opportunity_content_hash=opportunity.content_hash,
+                workspace=workspace,
+                candidate_id=candidate_id,
+                track=opportunity.track,
+                source=opportunity.source,
+                adapter_name=adapter_name,
+                adapter_version="1.0.0",
+                execution_mode=execution_mode,
+                qualification_decision=qualification_decision,
+                match_score_snapshot=match_score_snapshot,
+                artifact_ids=(),
+                artifact_hashes=(),
+                manifest_hash="",
+                action_status=ActionStatus.BLOCKED,
+                idempotency_key=idempotency_key,
+                created_at=created_at,
+                updated_at=created_at,
+                blocker_reason="CONTROLLED_SUBMIT requires a genuine prior PreSubmitManifest; prepared_manifest cannot be None",
+            )
+
         # Snapshot initial environment state
         initial_source_policy_ver = self.source_registry.get_policy_version(opportunity.source)
         initial_grad_rec = self.adapter_registry.get_graduation_record(adapter_name)
@@ -545,7 +570,7 @@ class OutboundBrowserEngine:
             compiled_at=created_at,
         )
 
-        if fresh_manifest.manifest_hash != manifest.manifest_hash:
+        if fresh_manifest.manifest_hash != prepared_manifest.manifest_hash:
             return OutboundActionRecord(
                 action_id=action_id,
                 opportunity_id=opportunity.id,
@@ -660,7 +685,49 @@ class OutboundBrowserEngine:
                 blocker_reason=str(e),
             )
 
-        # FINAL Side-Effect Authority Check immediately adjacent to irreversible external submit call
+        # FINAL Post-Reservation Current-State Authority Revalidation
+        post_reserve_answers: list[ApplicationAnswer] = []
+        post_reserve_unresolved_count = 0
+        post_reserve_answer_engine = ApplicationAnswerEngine(tg, pol)
+        for fld in observed_fields:
+            fa = post_reserve_answer_engine.answer_field(fld, opportunity, action_id=action_id, artifact=bound_artifact)
+            post_reserve_answers.append(fa)
+            if fld.required and (fa.answer is None or fa.answer_class == AnswerClass.RED):
+                post_reserve_unresolved_count += 1
+
+        post_reserve_answers_tuple = tuple(post_reserve_answers)
+        post_reserve_answers_hash = self.compute_answers_hash(post_reserve_answers_tuple)
+        post_reserve_red_count = sum(1 for a in post_reserve_answers if a.answer_class == AnswerClass.RED)
+        post_reserve_grad_rec = self.adapter_registry.get_graduation_record(adapter_name)
+        post_reserve_source_policy_ver = self.source_registry.get_policy_version(opportunity.source)
+        post_reserve_source_policy = self.source_registry.get_policy(opportunity.source)
+        post_reserve_grad_ver = post_reserve_grad_rec.version if post_reserve_grad_rec else "1.0.0"
+        post_reserve_grad_evidence_hash = post_reserve_grad_rec.evidence_hash if post_reserve_grad_rec else ""
+
+        post_reserve_manifest = PreSubmitManifest(
+            workspace=workspace,
+            candidate_id=candidate_id,
+            opportunity_id=opportunity.id,
+            opportunity_content_hash=opportunity.content_hash,
+            action_type=action_type,
+            adapter_name=adapter_name,
+            adapter_version=post_reserve_grad_ver,
+            graduation_record_version=post_reserve_grad_ver,
+            graduation_evidence_hash=post_reserve_grad_evidence_hash,
+            source_policy_version=post_reserve_source_policy_ver,
+            tailoring_policy_version=pol.version,
+            artifact_ids=tuple([bound_artifact.artifact_id]) if bound_artifact else (),
+            artifact_hashes=tuple([bound_artifact.artifact_hash]) if bound_artifact else (),
+            answers=post_reserve_answers_tuple,
+            answers_hash=post_reserve_answers_hash,
+            qualification_decision=qualification_decision,
+            unresolved_mandatory_count=post_reserve_unresolved_count,
+            red_answers_count=post_reserve_red_count,
+            idempotency_key=idempotency_key,
+            compiled_at=created_at,
+        )
+
+        # 1. Global Kill switch
         if not GlobalKillSwitch.is_enabled():
             self.ledger.transition_status(
                 idempotency_key=idempotency_key,
@@ -676,7 +743,7 @@ class OutboundBrowserEngine:
                 track=opportunity.track,
                 source=opportunity.source,
                 adapter_name=adapter_name,
-                adapter_version=fresh_grad_ver,
+                adapter_version=post_reserve_grad_ver,
                 execution_mode=execution_mode,
                 qualification_decision=qualification_decision,
                 match_score_snapshot=match_score_snapshot,
@@ -690,13 +757,12 @@ class OutboundBrowserEngine:
                 blocker_reason="Global kill switch disabled after reservation; submit aborted",
             )
 
-        # Re-check source policy
-        current_source_pol = self.source_registry.get_policy(opportunity.source)
-        if current_source_pol not in (SourceActionPolicy.SUBMIT_ALLOWED, SourceActionPolicy.API_ACTION_ALLOWED):
+        # 2. Source policy value
+        if post_reserve_source_policy not in (SourceActionPolicy.SUBMIT_ALLOWED, SourceActionPolicy.API_ACTION_ALLOWED):
             self.ledger.transition_status(
                 idempotency_key=idempotency_key,
                 new_status=ActionStatus.BLOCKED,
-                blocker_reason=f"Source policy changed after reservation to {current_source_pol.value}; submit aborted",
+                blocker_reason=f"Source policy changed after reservation to {post_reserve_source_policy.value}; submit aborted",
             )
             return OutboundActionRecord(
                 action_id=action_id,
@@ -707,7 +773,7 @@ class OutboundBrowserEngine:
                 track=opportunity.track,
                 source=opportunity.source,
                 adapter_name=adapter_name,
-                adapter_version=fresh_grad_ver,
+                adapter_version=post_reserve_grad_ver,
                 execution_mode=execution_mode,
                 qualification_decision=qualification_decision,
                 match_score_snapshot=match_score_snapshot,
@@ -718,16 +784,15 @@ class OutboundBrowserEngine:
                 idempotency_key=idempotency_key,
                 created_at=created_at,
                 updated_at=created_at,
-                blocker_reason=f"Source policy changed after reservation to {current_source_pol.value}; submit aborted",
+                blocker_reason=f"Source policy changed after reservation to {post_reserve_source_policy.value}; submit aborted",
             )
 
-        # Re-check adapter graduation
-        current_grad_post = self.adapter_registry.get_graduation_record(adapter_name)
+        # 3. Adapter graduation
         if (
-            not current_grad_post
-            or current_grad_post.lifecycle_state != AdapterLifecycleState.SUBMIT_ENABLED
-            or not current_grad_post.evidence_hash
-            or current_grad_post.evidence_hash != fresh_manifest.graduation_evidence_hash
+            not post_reserve_grad_rec
+            or post_reserve_grad_rec.lifecycle_state != AdapterLifecycleState.SUBMIT_ENABLED
+            or not post_reserve_grad_evidence_hash
+            or post_reserve_grad_evidence_hash != prepared_manifest.graduation_evidence_hash
         ):
             self.ledger.transition_status(
                 idempotency_key=idempotency_key,
@@ -743,7 +808,7 @@ class OutboundBrowserEngine:
                 track=opportunity.track,
                 source=opportunity.source,
                 adapter_name=adapter_name,
-                adapter_version=fresh_grad_ver,
+                adapter_version=post_reserve_grad_ver,
                 execution_mode=execution_mode,
                 qualification_decision=qualification_decision,
                 match_score_snapshot=match_score_snapshot,
@@ -757,7 +822,37 @@ class OutboundBrowserEngine:
                 blocker_reason="Adapter graduation state or evidence invalidated after reservation; submit aborted",
             )
 
-        # FINAL Challenge Check
+        # 4. Post-reservation manifest staleness (TruthGraph provenance, Source policy version, TailoringPolicy changes)
+        if post_reserve_manifest.manifest_hash != prepared_manifest.manifest_hash:
+            self.ledger.transition_status(
+                idempotency_key=idempotency_key,
+                new_status=ActionStatus.BLOCKED,
+                blocker_reason="Post-reservation manifest staleness detected: environment, policy, or provenance changed after reservation; submit aborted",
+            )
+            return OutboundActionRecord(
+                action_id=action_id,
+                opportunity_id=opportunity.id,
+                opportunity_content_hash=opportunity.content_hash,
+                workspace=workspace,
+                candidate_id=candidate_id,
+                track=opportunity.track,
+                source=opportunity.source,
+                adapter_name=adapter_name,
+                adapter_version=post_reserve_grad_ver,
+                execution_mode=execution_mode,
+                qualification_decision=qualification_decision,
+                match_score_snapshot=match_score_snapshot,
+                artifact_ids=post_reserve_manifest.artifact_ids,
+                artifact_hashes=post_reserve_manifest.artifact_hashes,
+                manifest_hash=post_reserve_manifest.manifest_hash,
+                action_status=ActionStatus.BLOCKED,
+                idempotency_key=idempotency_key,
+                created_at=created_at,
+                updated_at=created_at,
+                blocker_reason="Post-reservation manifest staleness detected: environment, policy, or provenance changed after reservation; submit aborted",
+            )
+
+        # 5. Challenge Check
         if driver.is_captcha_present() or driver.is_mfa_present():
             self.ledger.transition_status(
                 idempotency_key=idempotency_key,
@@ -773,7 +868,7 @@ class OutboundBrowserEngine:
                 track=opportunity.track,
                 source=opportunity.source,
                 adapter_name=adapter_name,
-                adapter_version=fresh_grad_ver,
+                adapter_version=post_reserve_grad_ver,
                 execution_mode=execution_mode,
                 qualification_decision=qualification_decision,
                 match_score_snapshot=match_score_snapshot,
