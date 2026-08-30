@@ -1,11 +1,12 @@
-"""Deterministic Normalization Engine for OpportunityOS.
+"""Deterministic Normalization and Atomic Lineage Engine for OpportunityOS.
 
 Transforms raw feed records into normalized Opportunity representations without
-fabrication. All derived fields preserve provenance and fail closed to UNSPECIFIED.
+data fabrication. Material fields preserve atomic field-level provenance.
 """
 from __future__ import annotations
 
 import datetime
+import hashlib
 import html
 import re
 from typing import Any
@@ -17,7 +18,9 @@ from truth.ingest import CANONICAL_SKILL_ALIASES
 from .models import (
     Compensation,
     CompensationInterval,
+    DerivationType,
     EmploymentType,
+    FieldProvenance,
     GeographicEligibility,
     RemotePolicy,
     SeniorityLevel,
@@ -40,6 +43,41 @@ def clean_text(text: Any) -> str:
     # Collapse multiple whitespace
     collapsed = re.sub(r"\s+", " ", unescaped).strip()
     return collapsed
+
+
+def compute_record_checksum(raw_item: Any) -> str:
+    """Compute deterministic SHA-256 checksum for a single raw item payload."""
+    if isinstance(raw_item, str):
+        payload = raw_item.encode("utf-8")
+    else:
+        import json
+        try:
+            payload = json.dumps(raw_item, sort_keys=True).encode("utf-8")
+        except Exception:
+            payload = str(raw_item).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def create_field_provenance(
+    field_name: str,
+    raw_val: Any,
+    norm_val: Any,
+    derivation_type: DerivationType | str,
+    raw_pointer: str,
+    record_checksum: str,
+    rule_id: str,
+) -> FieldProvenance:
+    """Construct an immutable FieldProvenance record."""
+    dtype = derivation_type.value if isinstance(derivation_type, DerivationType) else str(derivation_type)
+    return FieldProvenance(
+        field_name=field_name,
+        raw_value=str(raw_val) if raw_val is not None else "",
+        normalized_value=str(norm_val) if norm_val is not None else "",
+        derivation_type=dtype,
+        raw_pointer=raw_pointer,
+        record_checksum=record_checksum,
+        rule_id=rule_id,
+    )
 
 
 _SENIORITY_PATTERNS: tuple[tuple[SeniorityLevel, re.Pattern[str]], ...] = (
@@ -68,7 +106,7 @@ _SENIORITY_PATTERNS: tuple[tuple[SeniorityLevel, re.Pattern[str]], ...] = (
     ),
     (
         SeniorityLevel.MID,
-        re.compile(r"\b(?:mid\s*level|intermediate|mid-senior)\b", re.IGNORECASE),
+        re.compile(r"\b(?:mid[-_ ]?level|intermediate|mid[-_ ]?senior)\b", re.IGNORECASE),
     ),
 )
 
@@ -124,6 +162,27 @@ def extract_employment_type(raw_type: str, title: str = "", text: str = "") -> E
         if pattern.search(search_space):
             return emp_type
     return EmploymentType.UNSPECIFIED
+
+
+def extract_track(
+    default_track: Track,
+    raw_type: str = "",
+    title: str = "",
+    text: str = "",
+) -> Track:
+    """Determine real track without collapsing contract or freelance into employment."""
+    if default_track == Track.PROCUREMENT:
+        return Track.PROCUREMENT
+
+    combined = f"{raw_type} {title} {text[:200]}".casefold()
+    if re.search(r"\b(?:freelance|freelancer)\b", combined):
+        return Track.FREELANCE
+    if re.search(r"\b(?:contract|contractor|c2c|1099|fixed[-_ ]?term)\b", combined):
+        return Track.CONTRACT
+    if re.search(r"\b(?:tender|procurement|rfp|eoi|rfq)\b", combined):
+        return Track.PROCUREMENT
+
+    return default_track
 
 
 _REMOTE_PATTERNS: tuple[tuple[RemotePolicy, re.Pattern[str]], ...] = (
@@ -187,7 +246,7 @@ def _parse_num(val_str: str) -> float:
 
 
 def extract_compensation(text: str) -> Compensation | None:
-    """Extract explicit compensation range from structured text."""
+    """Extract explicit compensation range from structured text. Never defaults currency or interval."""
     if not text:
         return None
     match = _COMPENSATION_PATTERN.search(text)
@@ -228,11 +287,10 @@ def extract_compensation(text: str) -> Compensation | None:
 
 
 def parse_iso_date(raw_date: Any) -> str | None:
-    """Deterministically parse dates into ISO 8601 calendar date YYYY-MM-DD or full UTC string."""
+    """Deterministically parse dates into ISO 8601 calendar date YYYY-MM-DD or None."""
     if raw_date is None:
         return None
     if isinstance(raw_date, (int, float)):
-        # Timestamp (seconds or milliseconds)
         ts = raw_date if raw_date < 1e11 else raw_date / 1000.0
         try:
             dt = datetime.datetime.fromtimestamp(ts, datetime.timezone.utc)
@@ -249,7 +307,6 @@ def parse_iso_date(raw_date: Any) -> str | None:
     if iso_match:
         return iso_match.group(1)
 
-    # Try standard string date formats (e.g. RSS / RFC 2822: Sun, 30 Aug 2026 12:00:00 GMT)
     formats = (
         "%a, %d %b %Y %H:%M:%S %Z",
         "%a, %d %b %Y %H:%M:%S %z",
@@ -295,7 +352,6 @@ def extract_skills_from_text(text: str) -> tuple[str, ...]:
     text_lower = text.casefold()
     found: set[str] = set()
     for alias, canonical in OPPORTUNITY_SKILL_CATALOG.items():
-        # Match whole words (handling C#, Go, etc.)
         if alias in {"c#", "go", "c"}:
             pattern = rf"(?<!\w){re.escape(alias)}(?!\w)"
         else:
@@ -313,17 +369,14 @@ def extract_list_sections(html_or_markdown: str, header_regex: str) -> tuple[str
     if not match:
         return ()
     subtext = html_or_markdown[match.end():]
-    # Stop at the next major heading
     next_header = re.search(r"<h[1-6][^>]*>|^(?:#{1,6}\s|[A-Z][A-Za-z\s]{3,20}:)", subtext, re.MULTILINE)
     if next_header:
         subtext = subtext[:next_header.start()]
 
-    # Extract <li> items
     li_items = re.findall(r"<li[^>]*>(.*?)</li>", subtext, re.IGNORECASE | re.DOTALL)
     if li_items:
         return tuple(clean_text(item) for item in li_items if clean_text(item))
 
-    # Extract lines starting with - or * or numbers
     bullets = re.findall(r"^\s*[-*•\d+.]\s+(.+)$", subtext, re.MULTILINE)
     if bullets:
         return tuple(clean_text(b) for b in bullets if clean_text(b))

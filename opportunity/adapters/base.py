@@ -46,6 +46,7 @@ class BaseAdapter(abc.ABC):
         fetched_at: str = "",
         payload: str = "",
         fetch_latency_ms: int = 0,
+        feed_checksum: str = "",
     ) -> SourceProvenance:
         """Create deterministic SourceProvenance."""
         now_iso = fetched_at or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
@@ -58,4 +59,5 @@ class BaseAdapter(abc.ABC):
             fetch_latency_ms=fetch_latency_ms,
             raw_pointer=raw_pointer,
             payload_checksum=checksum,
+            feed_checksum=feed_checksum or checksum,
         )

@@ -5,9 +5,18 @@ import re
 import xml.etree.ElementTree as element_tree
 from typing import Any
 
-from opportunity.models import Opportunity, Track
+from opportunity.adapters.base import BaseAdapter
+from opportunity.models import (
+    DerivationType,
+    FieldProvenance,
+    Opportunity,
+    Track,
+    compute_deterministic_id,
+)
 from opportunity.normalization import (
     clean_text,
+    compute_record_checksum,
+    create_field_provenance,
     derive_geographic_eligibility,
     extract_compensation,
     extract_employment_type,
@@ -15,9 +24,9 @@ from opportunity.normalization import (
     extract_remote_policy,
     extract_seniority,
     extract_skills_from_text,
+    extract_track,
     parse_iso_date,
 )
-from opportunity.adapters.base import BaseAdapter
 
 
 class WeWorkRemotelyAdapter(BaseAdapter):
@@ -41,7 +50,11 @@ class WeWorkRemotelyAdapter(BaseAdapter):
 
         items = root.findall(".//item")
         opportunities: list[Opportunity] = []
-        for item in items:
+        for idx, item in enumerate(items):
+            item_pointer = f"{raw_pointer or 'feed'}:item[{idx}]"
+            raw_item_str = element_tree.tostring(item, encoding="unicode")
+            record_checksum = compute_record_checksum(raw_item_str)
+
             raw_title = clean_text(item.findtext("title"))
             if not raw_title:
                 continue
@@ -51,20 +64,20 @@ class WeWorkRemotelyAdapter(BaseAdapter):
                 org_part, _, title_part = raw_title.partition(":")
                 organization = clean_text(org_part)
                 title = clean_text(title_part)
+                org_derivation = DerivationType.RAW_EXTRACTION
             else:
-                organization = "We Work Remotely Employer"
+                organization = ""
                 title = raw_title
+                org_derivation = DerivationType.UNASSERTED_ABSENT
 
             url = clean_text(item.findtext("link") or item.findtext("guid"))
             posted_date = parse_iso_date(item.findtext("pubDate"))
             raw_desc = str(item.findtext("description") or "")
             description = clean_text(raw_desc)
             
-            # Region tag or custom tag
-            region = clean_text(item.findtext("region") or item.findtext("category") or "Anywhere in the World")
-            location_raw = region
+            raw_region = item.findtext("region") or item.findtext("category")
+            location_raw = clean_text(raw_region)
 
-            # Extract remote ID from URL guid or link
             id_match = re.search(r"/remote-jobs/(\d+-[^/?#]+)", url)
             remote_id = id_match.group(1) if id_match else clean_text(item.findtext("guid"))
 
@@ -72,28 +85,42 @@ class WeWorkRemotelyAdapter(BaseAdapter):
             requirements = extract_list_sections(raw_desc, r"(?:requirement|qualificat|what\s+we'?re\s+looking\s+for|what\s+you\s+bring)")
             skills = extract_skills_from_text(f"{title} {description}")
             seniority = extract_seniority(title, description)
-            emp_type = extract_employment_type(region, title, description)
+            emp_type = extract_employment_type(location_raw, title, description)
+            track = extract_track(self.track, location_raw, title, description)
             remote_policy = extract_remote_policy(location_raw, description)
             comp = extract_compensation(description)
             geo = derive_geographic_eligibility(
                 title=title,
                 location_raw=location_raw,
                 description=description,
-                track=Track.EMPLOYMENT,
+                track=track,
                 source=self.source_id,
                 url=url,
             )
 
             provenance = self.create_provenance(
                 source_url=url,
-                raw_pointer=raw_pointer,
+                raw_pointer=item_pointer,
                 fetched_at=fetched_at,
                 payload=payload,
             )
 
+            field_provenances = (
+                create_field_provenance("organization", organization, organization, org_derivation, f"{item_pointer}.title", record_checksum, "title_partition"),
+                create_field_provenance("title", raw_title, title, DerivationType.RAW_EXTRACTION, f"{item_pointer}.title", record_checksum, "title_partition"),
+                create_field_provenance("description", raw_desc[:100], description[:100], DerivationType.RAW_EXTRACTION, f"{item_pointer}.description", record_checksum, "clean_text"),
+                create_field_provenance("location_raw", raw_region, location_raw, DerivationType.RAW_EXTRACTION if location_raw else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.region", record_checksum, "clean_text"),
+                create_field_provenance("seniority", title, seniority.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.title", record_checksum, "extract_seniority"),
+                create_field_provenance("employment_type", location_raw, emp_type.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.region", record_checksum, "extract_employment_type"),
+                create_field_provenance("remote_policy", raw_region, remote_policy.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.region", record_checksum, "extract_remote_policy"),
+                create_field_provenance("geographic_eligibility", location_raw, geo.status, DerivationType.RULE_DERIVATION, f"{item_pointer}.region", record_checksum, "classify_geography"),
+            )
+
+            opp_id = compute_deterministic_id(self.source_id, remote_id, title, organization, item_pointer)
+
             opp = Opportunity(
-                id=f"{self.source_id}:{remote_id}" if remote_id else f"{self.source_id}:{abs(hash(title + organization))}",
-                track=Track.EMPLOYMENT,
+                id=opp_id,
+                track=track,
                 source=self.source_id,
                 source_url=url,
                 source_id=remote_id,
@@ -111,6 +138,10 @@ class WeWorkRemotelyAdapter(BaseAdapter):
                 compensation=comp,
                 posted_date=posted_date,
                 raw_provenance=provenance,
+                record_checksum=record_checksum,
+                raw_record_pointer=item_pointer,
+                field_provenances=field_provenances,
+                canonical_outbound_url=url,
             )
             opportunities.append(opp)
 
