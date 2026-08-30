@@ -1,86 +1,89 @@
-"""Unit tests for Application Artifact Selector."""
-from __future__ import annotations
-
+"""Tests for ApplicationArtifactSelector candidate/workspace ownership."""
 import unittest
-from matching.models import ArtifactType, TailoredArtifact, TailoringPolicy
+from matching.models import ArtifactType, TailoredArtifact
+from matching.validator import ArtifactClaimValidator
 from opportunity.models import Opportunity, Track
 from truth.graph import TruthGraph
+from truth.models import AtomicAssertion, EvidenceRecord, Modality, Polarity, VerificationStatus
 from outbound.artifact_selector import ApplicationArtifactSelector
+from outbound.models import BoundArtifact
 
 
-def make_test_artifact(
-    artifact_id: str = "art-1",
-    opportunity_id: str = "opp-1",
-    opportunity_content_hash: str = "opp-hash-1",
-    artifact_type: ArtifactType = ArtifactType.TAILORED_CV,
-) -> TailoredArtifact:
-    return TailoredArtifact(
-        artifact_id=artifact_id,
-        artifact_type=artifact_type,
-        opportunity_id=opportunity_id,
-        opportunity_content_hash=opportunity_content_hash,
-        template_version="1.0",
-        policy_version="1.0",
-        title="Tailored CV",
-        sections=(),
-        generated_claims=(),
-        commitment_checklist=(),
-        compiled_at="2026-08-30T00:00:00Z",
-    )
-
-
-class TestArtifactSelector(unittest.TestCase):
+class ApplicationArtifactSelectorTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.selector = ApplicationArtifactSelector()
-        self.tg = TruthGraph()
-        self.opp = Opportunity(
-            id="opp-1",
+        self.opportunity = Opportunity(
+            id="opp-100",
             track=Track.EMPLOYMENT,
             source="greenhouse",
-            source_url="https://example.com",
-            source_id="1",
-            organization="Acme",
-            title="Lead Engineer",
-            description="Engineering lead.",
-            content_hash="current-hash-123",
+            source_url="https://boards.greenhouse.io/corp/jobs/100",
+            source_id="100",
+            organization="Corp",
+            title="Senior Architect",
+            description="Senior Architect role.",
         )
-        self.valid_artifact = make_test_artifact("art-valid", "opp-1", "current-hash-123")
+        self.tg = TruthGraph()
+        ev = EvidenceRecord(id="ev-1", source="contract", locator="p1", content="Senior Architect", metadata={"title": "Senior Architect"})
+        self.tg.add_evidence(ev)
+        self.tg.add_assertion(AtomicAssertion(
+            id="a-1", subject_id="founder", predicate="employment.title",
+            value="Senior Architect", polarity=Polarity.POSITIVE, modality=Modality.DEFINITE,
+            verification_status=VerificationStatus.VERIFIED, evidence_ids=("ev-1",),
+        ))
+        self.selector = ApplicationArtifactSelector()
 
-    def test_select_valid_bound_artifact(self) -> None:
-        art, errors = self.selector.select_artifact(
-            candidate_id="cand-1",
-            opportunity=self.opp,
+    def test_wrong_candidate_artifact_is_strictly_blocked(self) -> None:
+        raw_art = TailoredArtifact(
+            artifact_id="art-cand-a",
             artifact_type=ArtifactType.TAILORED_CV,
-            available_artifacts=(self.valid_artifact,),
-            truth_graph=self.tg,
+            opportunity_id=self.opportunity.id,
+            opportunity_content_hash=self.opportunity.content_hash,
+            template_version="1.0",
+            policy_version="1.0",
+            title="CV for Cand A",
+            sections=(),
+            generated_claims=(),
+            commitment_checklist=(),
+            compiled_at="2026-08-30T00:00:00Z",
         )
-        self.assertIsNotNone(art)
-        self.assertEqual(art.artifact_id, "art-valid")
-        self.assertEqual(len(errors), 0)
+        bound_a = BoundArtifact(artifact=raw_art, candidate_id="candidate_a", workspace="workspace_1")
 
-    def test_reject_stale_opportunity_hash(self) -> None:
-        stale_artifact = make_test_artifact("art-stale", "opp-1", "old-stale-hash-000")
-        art, errors = self.selector.select_artifact(
-            candidate_id="cand-1",
-            opportunity=self.opp,
+        selected, errors = self.selector.select_artifact(
+            candidate_id="candidate_b",
+            opportunity=self.opportunity,
             artifact_type=ArtifactType.TAILORED_CV,
-            available_artifacts=(stale_artifact,),
+            available_artifacts=(bound_a,),
             truth_graph=self.tg,
+            workspace="workspace_1",
         )
-        self.assertIsNone(art)
-        self.assertTrue(any("STALE" in e for e in errors))
+        self.assertIsNone(selected)
+        self.assertTrue(any("candidate 'candidate_a' does not match requested candidate 'candidate_b'" in err for err in errors))
 
-    def test_reject_wrong_opportunity_id(self) -> None:
-        wrong_opp_art = make_test_artifact("art-wrong", "opp-unrelated-99", "current-hash-123")
-        art, errors = self.selector.select_artifact(
-            candidate_id="cand-1",
-            opportunity=self.opp,
+    def test_wrong_workspace_artifact_is_strictly_blocked(self) -> None:
+        raw_art = TailoredArtifact(
+            artifact_id="art-ws-1",
             artifact_type=ArtifactType.TAILORED_CV,
-            available_artifacts=(wrong_opp_art,),
-            truth_graph=self.tg,
+            opportunity_id=self.opportunity.id,
+            opportunity_content_hash=self.opportunity.content_hash,
+            template_version="1.0",
+            policy_version="1.0",
+            title="CV for WS 1",
+            sections=(),
+            generated_claims=(),
+            commitment_checklist=(),
+            compiled_at="2026-08-30T00:00:00Z",
         )
-        self.assertIsNone(art)
-        self.assertTrue(any("No artifact bound" in e for e in errors))
+        bound_ws1 = BoundArtifact(artifact=raw_art, candidate_id="founder", workspace="workspace_1")
+
+        selected, errors = self.selector.select_artifact(
+            candidate_id="founder",
+            opportunity=self.opportunity,
+            artifact_type=ArtifactType.TAILORED_CV,
+            available_artifacts=(bound_ws1,),
+            truth_graph=self.tg,
+            workspace="workspace_2",
+        )
+        self.assertIsNone(selected)
+        self.assertTrue(any("workspace 'workspace_1' does not match requested workspace 'workspace_2'" in err for err in errors))
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
-"""Source Action Policy Registry."""
+"""Authoritative Source Action Policy and Adapter Graduation Registries."""
 from __future__ import annotations
 
-from .models import SourceActionPolicy
+from .models import AdapterLifecycleState, GraduationRecord, SourceActionPolicy
 
 
 class SourceActionRegistry:
@@ -43,3 +43,90 @@ class SourceActionRegistry:
 
     def set_policy(self, source_id: str, policy: SourceActionPolicy) -> None:
         self._policies[source_id] = policy
+
+
+class AdapterRegistry:
+    """Authoritative adapter graduation and lifecycle state registry."""
+
+    DEFAULT_GRADUATIONS: dict[str, GraduationRecord] = {
+        "greenhouse": GraduationRecord(
+            adapter_id="greenhouse",
+            version="1.0.0",
+            lifecycle_state=AdapterLifecycleState.ASSISTED_VERIFIED,
+            source_compatibility=("greenhouse", "boards.greenhouse.io"),
+            evidence_hash="grad-ev-greenhouse-001",
+            verified_at="2026-08-30T00:00:00Z",
+            submit_enabled_by_founder=False,
+        ),
+        "lever": GraduationRecord(
+            adapter_id="lever",
+            version="1.0.0",
+            lifecycle_state=AdapterLifecycleState.ASSISTED_VERIFIED,
+            source_compatibility=("lever", "jobs.lever.co"),
+            evidence_hash="grad-ev-lever-001",
+            verified_at="2026-08-30T00:00:00Z",
+            submit_enabled_by_founder=False,
+        ),
+        "ashby": GraduationRecord(
+            adapter_id="ashby",
+            version="1.0.0",
+            lifecycle_state=AdapterLifecycleState.ASSISTED_VERIFIED,
+            source_compatibility=("ashby", "jobs.ashbyhq.com"),
+            evidence_hash="grad-ev-ashby-001",
+            verified_at="2026-08-30T00:00:00Z",
+            submit_enabled_by_founder=False,
+        ),
+        "generic_form": GraduationRecord(
+            adapter_id="generic_form",
+            version="1.0.0",
+            lifecycle_state=AdapterLifecycleState.EXPERIMENTAL,
+            source_compatibility=("generic", "web"),
+            evidence_hash="grad-ev-generic-001",
+            verified_at="2026-08-30T00:00:00Z",
+            submit_enabled_by_founder=False,
+        ),
+        "procurement_package": GraduationRecord(
+            adapter_id="procurement_package",
+            version="1.0.0",
+            lifecycle_state=AdapterLifecycleState.ASSISTED_VERIFIED,
+            source_compatibility=("eu_ted", "ungm", "world_bank"),
+            evidence_hash="grad-ev-procurement-001",
+            verified_at="2026-08-30T00:00:00Z",
+            submit_enabled_by_founder=False,
+        ),
+        "freelance_proposal": GraduationRecord(
+            adapter_id="freelance_proposal",
+            version="1.0.0",
+            lifecycle_state=AdapterLifecycleState.ASSISTED_VERIFIED,
+            source_compatibility=("freelance", "direct"),
+            evidence_hash="grad-ev-freelance-001",
+            verified_at="2026-08-30T00:00:00Z",
+            submit_enabled_by_founder=False,
+        ),
+    }
+
+    def __init__(self, overrides: dict[str, GraduationRecord] | None = None) -> None:
+        self._records = dict(self.DEFAULT_GRADUATIONS)
+        if overrides:
+            self._records.update(overrides)
+
+    def get_graduation_record(self, adapter_id: str) -> GraduationRecord | None:
+        return self._records.get(adapter_id)
+
+    def register_graduation(self, record: GraduationRecord) -> None:
+        self._records[record.adapter_id] = record
+
+    def enable_submit(self, adapter_id: str) -> None:
+        rec = self._records.get(adapter_id)
+        if rec is None:
+            raise KeyError(f"Adapter '{adapter_id}' not registered")
+        updated = GraduationRecord(
+            adapter_id=rec.adapter_id,
+            version=rec.version,
+            lifecycle_state=AdapterLifecycleState.SUBMIT_ENABLED,
+            source_compatibility=rec.source_compatibility,
+            evidence_hash=rec.evidence_hash,
+            verified_at=rec.verified_at,
+            submit_enabled_by_founder=True,
+        )
+        self._records[adapter_id] = updated
