@@ -10,8 +10,8 @@ Next: BRIEF-003: Opportunity Discovery & Ingestion Pipelines.
 
 ## Repository
 
-- **Generated:** 2026-08-30T00:07:22Z
-- **State generated at commit:** `5c22587` — docs(report): record final metric-identity audit and update REPORT-002
+- **Generated:** 2026-08-30T00:07:56Z
+- **State generated at commit:** `9b8cbd5` — docs(report): record final metric-identity audit and update REPORT-002
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
