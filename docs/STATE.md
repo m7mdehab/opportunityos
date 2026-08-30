@@ -2,16 +2,16 @@
 # OpportunityOS State
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
-Last shipped: BRIEF-003 — 2026-08-30.
+Last shipped: BRIEF-004 — 2026-08-30.
 Active work: none.
 Phase status: passed.
 Blocked: none.
-Next: BRIEF-004: Opportunity Matching & Proposal Tailoring.
+Next: complete active brief.
 
 ## Repository
 
-- **Generated:** 2026-08-30T14:23:49Z
-- **State generated at commit:** `2be55c8` — fix(opportunity): revert non-compensation normalization logic to PR #41 state
+- **Generated:** 2026-08-30T18:17:48Z
+- **State generated at commit:** `61ccc8e` — docs: add BRIEF-004 phase gate report
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -27,10 +27,11 @@ Next: BRIEF-004: Opportunity Matching & Proposal Tailoring.
 - BRIEF-001 — 2026-08-29
 - BRIEF-002 — 2026-08-29
 - BRIEF-003 — 2026-08-30
+- BRIEF-004 — 2026-08-30
 
 ## Last Phase Outcome
 
-- PASS
+- No phase outcome recorded
 
 ## Decisions
 
@@ -46,6 +47,7 @@ Next: BRIEF-004: Opportunity Matching & Proposal Tailoring.
 - [ADR-0006 — Geographic Region Completion and Taxonomy Invariants](adr/ADR-0006-geographic-region-completion.md)
 - [ADR-0007 — Professional Truth Graph and Provenance Model](adr/ADR-0007-truth-graph-and-provenance-model.md)
 - [ADR-0008 — Opportunity Data Model and Ingestion Pipeline](adr/ADR-0008-opportunity-data-model-and-ingestion-pipeline.md)
+- [ADR-0009: Opportunity Matching, Qualification, and Truth-Locked Tailoring Architecture](adr/ADR-0009-opportunity-matching-and-tailoring-architecture.md)
 
 ## Blocked Items
 
@@ -63,4 +65,4 @@ Next: BRIEF-004: Opportunity Matching & Proposal Tailoring.
 
 ## Next Prerequisites
 
-- BRIEF-004: Opportunity Matching & Proposal Tailoring
+- Complete the active brief.
