@@ -152,7 +152,7 @@ class AdapterTests(unittest.TestCase):
         opp = opportunities[0]
         self.assertEqual("world_bank", opp.source)
         self.assertEqual(Track.PROCUREMENT, opp.track)
-        self.assertEqual("World Bank", opp.organization)
+        self.assertEqual("Ministry of Communications and Information Technology", opp.organization)
         self.assertIn("Digital Transformation", opp.title)
         self.assertIsNotNone(opp.procurement_metadata)
         self.assertEqual("2026-10-15", opp.closing_date)

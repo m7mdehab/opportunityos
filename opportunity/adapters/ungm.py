@@ -5,14 +5,23 @@ import json
 import re
 from typing import Any
 
-from opportunity.models import Opportunity, ProcurementMetadata, Track
+from opportunity.adapters.base import BaseAdapter
+from opportunity.models import (
+    DerivationType,
+    FieldProvenance,
+    Opportunity,
+    ProcurementMetadata,
+    Track,
+    compute_deterministic_id,
+)
 from opportunity.normalization import (
     clean_text,
+    compute_record_checksum,
+    create_field_provenance,
     derive_geographic_eligibility,
     extract_skills_from_text,
     parse_iso_date,
 )
-from opportunity.adapters.base import BaseAdapter
 
 
 class UNGMAdapter(BaseAdapter):
@@ -31,34 +40,43 @@ class UNGMAdapter(BaseAdapter):
     ) -> list[Opportunity]:
         opportunities: list[Opportunity] = []
 
-        # Payload may be structured JSON or HTML
+        # Structured JSON format
         if payload.strip().startswith("{") or payload.strip().startswith("["):
             try:
                 data = json.loads(payload)
                 items = data if isinstance(data, list) else data.get("notices") or data.get("data") or data.get("results") or []
-                for item in items:
+                for idx, item in enumerate(items):
                     if not isinstance(item, dict):
                         continue
+                    item_pointer = f"{raw_pointer or 'feed'}:notices[{idx}]"
+                    record_checksum = compute_record_checksum(item)
+
                     remote_id = str(item.get("id") or item.get("notice_id") or item.get("reference") or "")
-                    title = clean_text(item.get("title") or item.get("notice_title") or item.get("description"))
+                    raw_title = item.get("title") or item.get("notice_title") or item.get("description")
+                    title = clean_text(raw_title)
                     if not title:
                         continue
 
-                    buyer = clean_text(item.get("agency") or item.get("organization") or item.get("buyer") or "United Nations")
-                    country = clean_text(item.get("country") or item.get("location") or "")
+                    raw_buyer = item.get("agency") or item.get("organization") or item.get("buyer")
+                    buyer = clean_text(raw_buyer)
+                    raw_country = item.get("country") or item.get("location")
+                    country = clean_text(raw_country)
                     deadline = parse_iso_date(item.get("deadline") or item.get("closing_date"))
                     posted_date = parse_iso_date(item.get("posted_date") or item.get("published_date") or item.get("date"))
                     raw_desc = str(item.get("description") or item.get("content") or title)
                     description = clean_text(raw_desc)
-                    url = str(item.get("url") or f"https://www.ungm.org/Public/Notice/{remote_id}" if remote_id else "")
-                    notice_type = clean_text(item.get("type") or item.get("notice_type") or "RFP")
+                    url = str(item.get("url") or (f"https://www.ungm.org/Public/Notice/{remote_id}" if remote_id else ""))
+                    raw_type = item.get("type") or item.get("notice_type")
+                    notice_type = clean_text(raw_type)
+                    raw_cat = item.get("category")
+                    category = clean_text(raw_cat)
 
                     proc_meta = ProcurementMetadata(
                         notice_type=notice_type,
                         buyer_name=buyer,
                         buyer_country=country,
-                        procurement_category=clean_text(item.get("category") or "Consulting Services"),
-                        unspsc_codes=tuple(item.get("unspsc") or ()) if isinstance(item.get("unspsc"), list) else (),
+                        procurement_category=category,
+                        unspsc_codes=tuple(str(u) for u in item.get("unspsc", ())) if isinstance(item.get("unspsc"), (list, tuple)) else (),
                         deadline=deadline,
                     )
 
@@ -74,13 +92,24 @@ class UNGMAdapter(BaseAdapter):
 
                     provenance = self.create_provenance(
                         source_url=url,
-                        raw_pointer=raw_pointer,
+                        raw_pointer=item_pointer,
                         fetched_at=fetched_at,
                         payload=payload,
                     )
 
+                    field_provenances = (
+                        create_field_provenance("organization", raw_buyer, buyer, DerivationType.RAW_EXTRACTION if buyer else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.agency", record_checksum, "clean_text"),
+                        create_field_provenance("title", raw_title, title, DerivationType.RAW_EXTRACTION, f"{item_pointer}.title", record_checksum, "clean_text"),
+                        create_field_provenance("description", raw_desc[:100], description[:100], DerivationType.RAW_EXTRACTION, f"{item_pointer}.description", record_checksum, "clean_text"),
+                        create_field_provenance("location_raw", raw_country, country, DerivationType.RAW_EXTRACTION if country else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.country", record_checksum, "clean_text"),
+                        create_field_provenance("notice_type", raw_type, notice_type, DerivationType.RAW_EXTRACTION if notice_type else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.type", record_checksum, "clean_text"),
+                        create_field_provenance("geographic_eligibility", country, geo.status, DerivationType.RULE_DERIVATION, f"{item_pointer}.country", record_checksum, "classify_geography"),
+                    )
+
+                    opp_id = compute_deterministic_id(self.source_id, remote_id, title, buyer, item_pointer)
+
                     opp = Opportunity(
-                        id=f"{self.source_id}:{remote_id}" if remote_id else f"{self.source_id}:{abs(hash(title + buyer))}",
+                        id=opp_id,
                         track=Track.PROCUREMENT,
                         source=self.source_id,
                         source_url=url,
@@ -95,6 +124,10 @@ class UNGMAdapter(BaseAdapter):
                         closing_date=deadline,
                         procurement_metadata=proc_meta,
                         raw_provenance=provenance,
+                        record_checksum=record_checksum,
+                        raw_record_pointer=item_pointer,
+                        field_provenances=field_provenances,
+                        canonical_outbound_url=url,
                     )
                     opportunities.append(opp)
                 return opportunities
@@ -108,23 +141,26 @@ class UNGMAdapter(BaseAdapter):
             re.IGNORECASE | re.DOTALL,
         )
         seen_ids: set[str] = set()
-        for match in notice_links:
+        for idx, match in enumerate(notice_links):
             path, id1, id2, inner = match
             remote_id = id1 or id2 or ""
             if remote_id in seen_ids:
                 continue
             seen_ids.add(remote_id)
+            item_pointer = f"{raw_pointer or 'feed'}:html_link[{idx}]"
+            record_checksum = compute_record_checksum(f"{remote_id}:{inner}")
+
             title = clean_text(inner)
             if len(title) < 5:
                 continue
             url = f"https://www.ungm.org/Public/Notice/{remote_id}" if remote_id else "https://www.ungm.org/Public/Notice"
-            buyer = "United Nations"
+            buyer = ""
             
             proc_meta = ProcurementMetadata(
-                notice_type="RFP",
-                buyer_name=buyer,
+                notice_type="",
+                buyer_name="",
                 buyer_country="",
-                procurement_category="Consulting Services",
+                procurement_category="",
             )
             geo = derive_geographic_eligibility(
                 title=title,
@@ -136,12 +172,18 @@ class UNGMAdapter(BaseAdapter):
             )
             provenance = self.create_provenance(
                 source_url=url,
-                raw_pointer=raw_pointer,
+                raw_pointer=item_pointer,
                 fetched_at=fetched_at,
                 payload=payload,
             )
+            field_provenances = (
+                create_field_provenance("organization", "", "", DerivationType.UNASSERTED_ABSENT, item_pointer, record_checksum, "unasserted"),
+                create_field_provenance("title", inner, title, DerivationType.RAW_EXTRACTION, item_pointer, record_checksum, "clean_text"),
+                create_field_provenance("geographic_eligibility", "", geo.status, DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "classify_geography"),
+            )
+            opp_id = compute_deterministic_id(self.source_id, remote_id, title, buyer, item_pointer)
             opp = Opportunity(
-                id=f"{self.source_id}:{remote_id}" if remote_id else f"{self.source_id}:{abs(hash(title))}",
+                id=opp_id,
                 track=Track.PROCUREMENT,
                 source=self.source_id,
                 source_url=url,
@@ -153,6 +195,10 @@ class UNGMAdapter(BaseAdapter):
                 geographic_eligibility=geo,
                 procurement_metadata=proc_meta,
                 raw_provenance=provenance,
+                record_checksum=record_checksum,
+                raw_record_pointer=item_pointer,
+                field_provenances=field_provenances,
+                canonical_outbound_url=url,
             )
             opportunities.append(opp)
 

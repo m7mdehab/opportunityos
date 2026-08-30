@@ -7,14 +7,23 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from opportunity.models import Opportunity, ProcurementMetadata, Track
+from opportunity.adapters.base import BaseAdapter
+from opportunity.models import (
+    DerivationType,
+    FieldProvenance,
+    Opportunity,
+    ProcurementMetadata,
+    Track,
+    compute_deterministic_id,
+)
 from opportunity.normalization import (
     clean_text,
+    compute_record_checksum,
+    create_field_provenance,
     derive_geographic_eligibility,
     extract_skills_from_text,
     parse_iso_date,
 )
-from opportunity.adapters.base import BaseAdapter
 
 
 class EUTEDAdapter(BaseAdapter):
@@ -43,36 +52,48 @@ class EUTEDAdapter(BaseAdapter):
             raise ValueError(f"expected EU TED notices list, got {type(notices)}")
 
         opportunities: list[Opportunity] = []
-        for notice in notices:
+        for idx, notice in enumerate(notices):
             if not isinstance(notice, dict):
                 continue
+            item_pointer = f"{raw_pointer or 'feed'}:notices[{idx}]"
+            record_checksum = compute_record_checksum(notice)
+
             pub_num = str(notice.get("publication-number") or notice.get("id") or "")
-            title = clean_text(notice.get("notice-title") or notice.get("title"))
+            raw_title = notice.get("notice-title") or notice.get("title")
+            title = clean_text(raw_title)
             if not title:
                 continue
 
-            buyer = clean_text(notice.get("buyer-name") or "EU Contracting Authority")
-            buyer_country = clean_text(notice.get("buyer-country") or notice.get("country") or "EU")
+            raw_buyer = notice.get("buyer-name")
+            buyer = clean_text(raw_buyer)
+            raw_country = notice.get("buyer-country") or notice.get("country")
+            buyer_country = clean_text(raw_country)
             posted_date = parse_iso_date(notice.get("publication-date"))
             deadline = parse_iso_date(notice.get("deadline") or notice.get("closing-date"))
             
             links = notice.get("links") if isinstance(notice.get("links"), dict) else {}
             html_direct = links.get("htmlDirect") if isinstance(links.get("htmlDirect"), dict) else {}
-            url = str(html_direct.get("ENG") or notice.get("url") or f"https://ted.europa.eu/udl?uri=TED:NOTICE:{pub_num}:TEXT:EN:HTML" if pub_num else "")
+            url = str(html_direct.get("ENG") or notice.get("url") or (f"https://ted.europa.eu/udl?uri=TED:NOTICE:{pub_num}:TEXT:EN:HTML" if pub_num else ""))
             
             cpv = notice.get("cpv") or ()
             cpv_codes = tuple(str(c) for c in cpv) if isinstance(cpv, list) else (str(cpv),) if cpv else ()
 
+            raw_notice_type = notice.get("notice-type")
+            notice_type = clean_text(raw_notice_type)
+            raw_cat = notice.get("category")
+            category = clean_text(raw_cat)
+
             proc_meta = ProcurementMetadata(
-                notice_type=clean_text(notice.get("notice-type") or "Tender Notice"),
+                notice_type=notice_type,
                 buyer_name=buyer,
                 buyer_country=buyer_country,
-                procurement_category=clean_text(notice.get("category") or "Services"),
+                procurement_category=category,
                 cpv_codes=cpv_codes,
                 deadline=deadline,
             )
 
-            description = clean_text(notice.get("description") or title)
+            raw_desc = notice.get("description") or title
+            description = clean_text(raw_desc)
             skills = extract_skills_from_text(f"{title} {description}")
             geo = derive_geographic_eligibility(
                 title=title,
@@ -85,13 +106,24 @@ class EUTEDAdapter(BaseAdapter):
 
             provenance = self.create_provenance(
                 source_url=url,
-                raw_pointer=raw_pointer,
+                raw_pointer=item_pointer,
                 fetched_at=fetched_at,
                 payload=payload,
             )
 
+            field_provenances = (
+                create_field_provenance("organization", raw_buyer, buyer, DerivationType.RAW_EXTRACTION if buyer else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.buyer-name", record_checksum, "clean_text"),
+                create_field_provenance("title", raw_title, title, DerivationType.RAW_EXTRACTION, f"{item_pointer}.notice-title", record_checksum, "clean_text"),
+                create_field_provenance("description", raw_desc[:100], description[:100], DerivationType.RAW_EXTRACTION, f"{item_pointer}.description", record_checksum, "clean_text"),
+                create_field_provenance("location_raw", raw_country, buyer_country, DerivationType.RAW_EXTRACTION if buyer_country else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.buyer-country", record_checksum, "clean_text"),
+                create_field_provenance("notice_type", raw_notice_type, notice_type, DerivationType.RAW_EXTRACTION if notice_type else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.notice-type", record_checksum, "clean_text"),
+                create_field_provenance("geographic_eligibility", buyer_country, geo.status, DerivationType.RULE_DERIVATION, f"{item_pointer}.buyer-country", record_checksum, "classify_geography"),
+            )
+
+            opp_id = compute_deterministic_id(self.source_id, pub_num, title, buyer, item_pointer)
+
             opp = Opportunity(
-                id=f"{self.source_id}:{pub_num}" if pub_num else f"{self.source_id}:{abs(hash(title + buyer))}",
+                id=opp_id,
                 track=Track.PROCUREMENT,
                 source=self.source_id,
                 source_url=url,
@@ -106,6 +138,10 @@ class EUTEDAdapter(BaseAdapter):
                 closing_date=deadline,
                 procurement_metadata=proc_meta,
                 raw_provenance=provenance,
+                record_checksum=record_checksum,
+                raw_record_pointer=item_pointer,
+                field_provenances=field_provenances,
+                canonical_outbound_url=url,
             )
             opportunities.append(opp)
 

@@ -1,7 +1,8 @@
 """OpportunityOS Opportunity Data Models and Ingestion Schemas.
 
 Covers dual-track employment and independent consulting / procurement opportunities
-with strict typing, immutable records, provenance tracking, and geographic eligibility.
+with strict typing, immutable records, atomic field-level provenance, deterministic
+identifiers, and source-health diagnostics.
 """
 from __future__ import annotations
 
@@ -56,6 +57,14 @@ class CompensationInterval(str, Enum):
     UNSPECIFIED = "unspecified"
 
 
+class DerivationType(str, Enum):
+    RAW_EXTRACTION = "raw_extraction"
+    CANONICAL_NORMALIZATION = "canonical_normalization"
+    SOURCE_METADATA_DERIVATION = "source_metadata_derivation"
+    RULE_DERIVATION = "rule_derivation"
+    UNASSERTED_ABSENT = "unasserted_absent"
+
+
 class SourceHealthStatus(str, Enum):
     HEALTHY = "healthy"
     EMPTY_RESULTS = "empty_results"
@@ -64,6 +73,24 @@ class SourceHealthStatus(str, Enum):
     RATE_LIMITED = "rate_limited"
     TRANSIENT_FAILURE = "transient_failure"
     PERSISTENT_FAILURE = "persistent_failure"
+
+
+@dataclass(frozen=True, slots=True)
+class FieldProvenance:
+    """Atomic provenance and lineage for an individual material normalized field."""
+    field_name: str
+    raw_value: str
+    normalized_value: str
+    derivation_type: str
+    raw_pointer: str
+    record_checksum: str
+    rule_id: str
+
+    def __post_init__(self) -> None:
+        if not self.field_name:
+            raise ValueError("field_name cannot be empty")
+        if not self.derivation_type:
+            raise ValueError("derivation_type cannot be empty")
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,6 +134,7 @@ class SourceProvenance:
     fetch_latency_ms: int = 0
     raw_pointer: str = ""
     payload_checksum: str = ""
+    feed_checksum: str = ""
 
     def __post_init__(self) -> None:
         if not self.source_id or not self.source_id.strip():
@@ -117,7 +145,7 @@ class SourceProvenance:
 
 @dataclass(frozen=True, slots=True)
 class GeographicEligibility:
-    status: str  # "eligible", "ineligible", "unclear"
+    status: str  # "eligible", "excluded", "ineligible", "unclear"
     reason: str
     individual_eligibility: str = "unclear"  # "individual_ok", "entity_required", "unclear"
     individual_reason: str = ""
@@ -129,7 +157,7 @@ class GeographicEligibility:
             raise ValueError(f"invalid geographic eligibility status: '{self.status}'")
 
 
-def _compute_canonical_content_hash(
+def compute_canonical_content_hash(
     organization: str,
     title: str,
     location_raw: str,
@@ -143,7 +171,7 @@ def _compute_canonical_content_hash(
     return hashlib.sha256(payload).hexdigest()
 
 
-def _compute_dedup_key(
+def compute_dedup_key(
     organization: str,
     title: str,
     location_raw: str,
@@ -156,6 +184,15 @@ def _compute_dedup_key(
     norm_loc = re.sub(r"\s+", " ", norm_loc).strip()
     payload = f"{norm_org}:{norm_title}:{norm_loc}".encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def compute_deterministic_id(source: str, remote_id: str, title: str, organization: str, raw_pointer: str) -> str:
+    if remote_id and remote_id.strip():
+        # Clean alphanumeric + hyphen remote ID
+        clean_remote = re.sub(r"[^\w\-.]", "_", remote_id.strip())
+        return f"{source}:{clean_remote}"
+    digest = hashlib.sha256(f"{organization}:{title}:{raw_pointer}".encode("utf-8")).hexdigest()[:16]
+    return f"{source}:{digest}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,6 +218,10 @@ class Opportunity:
     closing_date: str | None = None
     procurement_metadata: ProcurementMetadata | None = None
     raw_provenance: SourceProvenance | None = None
+    record_checksum: str = ""
+    raw_record_pointer: str = ""
+    field_provenances: tuple[FieldProvenance, ...] = ()
+    canonical_outbound_url: str = ""
     content_hash: str = ""
     dedup_key: str = ""
     extra_attributes: tuple[tuple[str, str], ...] = ()
@@ -201,16 +242,16 @@ class Opportunity:
         if not isinstance(self.remote_policy, RemotePolicy):
             raise ValueError(f"remote_policy must be an instance of RemotePolicy enum, got {type(self.remote_policy)}")
 
-        # Ensure content_hash is populated
+        # Ensure content_hash is populated deterministically
         if not self.content_hash:
-            computed_hash = _compute_canonical_content_hash(
+            computed_hash = compute_canonical_content_hash(
                 self.organization, self.title, self.location_raw, self.description
             )
             object.__setattr__(self, "content_hash", computed_hash)
 
-        # Ensure dedup_key is populated
+        # Ensure dedup_key is populated deterministically
         if not self.dedup_key:
-            computed_dedup = _compute_dedup_key(
+            computed_dedup = compute_dedup_key(
                 self.organization, self.title, self.location_raw
             )
             object.__setattr__(self, "dedup_key", computed_dedup)
@@ -221,14 +262,16 @@ class OpportunityCluster:
     canonical_id: str
     primary_opportunity: Opportunity
     duplicate_opportunities: tuple[Opportunity, ...] = ()
-    dedup_layer: str = "exact"  # "exact" or "cross_source"
+    possible_duplicates: tuple[Opportunity, ...] = ()
+    dedup_layer: str = "exact"  # "exact", "cross_source", "ambiguous"
     sources: tuple[str, ...] = ()
     cluster_size: int = 1
+    is_ambiguous: bool = False
 
     def __post_init__(self) -> None:
         if not self.canonical_id:
             raise ValueError("canonical_id cannot be empty")
-        all_sources = tuple(sorted(set((self.primary_opportunity.source,) + tuple(d.source for d in self.duplicate_opportunities))))
+        all_sources = tuple(sorted(set((self.primary_opportunity.source,) + tuple(d.source for d in self.duplicate_opportunities) + tuple(p.source for p in self.possible_duplicates))))
         object.__setattr__(self, "sources", all_sources)
         object.__setattr__(self, "cluster_size", 1 + len(self.duplicate_opportunities))
 
@@ -237,7 +280,9 @@ class OpportunityCluster:
 class SourceHealthReport:
     source_id: str
     status: SourceHealthStatus
-    records_fetched: int
+    transport_status: str
+    parser_status: str
+    records_raw_count: int
     records_parsed: int
     records_valid: int
     fetch_latency_ms: int

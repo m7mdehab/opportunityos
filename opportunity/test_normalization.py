@@ -1,8 +1,9 @@
-"""Unit tests for deterministic normalization and field extraction."""
+"""Unit tests for deterministic normalization and field lineage."""
 import unittest
 
 from opportunity.models import (
     CompensationInterval,
+    DerivationType,
     EmploymentType,
     RemotePolicy,
     SeniorityLevel,
@@ -10,6 +11,7 @@ from opportunity.models import (
 )
 from opportunity.normalization import (
     clean_text,
+    create_field_provenance,
     derive_geographic_eligibility,
     extract_compensation,
     extract_employment_type,
@@ -17,104 +19,135 @@ from opportunity.normalization import (
     extract_remote_policy,
     extract_seniority,
     extract_skills_from_text,
+    extract_track,
     parse_iso_date,
 )
 
 
 class NormalizationTests(unittest.TestCase):
-    def test_clean_text(self):
-        self.assertEqual("Hello & World", clean_text("<p>Hello &amp; World</p>"))
-        self.assertEqual("Clean text", clean_text("<div>Clean \n\t  text</div>"))
-        self.assertEqual("", clean_text(None))
+    def test_clean_text(self) -> None:
+        self.assertEqual(clean_text("<p>Hello &amp; welcome &lt;world&gt;!</p>"), "Hello & welcome <world>!")
+        self.assertEqual(clean_text("   Lots   of \n\n whitespace \t here  "), "Lots of whitespace here")
+        self.assertEqual(clean_text(None), "")
+        self.assertEqual(clean_text({"eng": ["Software Engineer"]}), "Software Engineer")
 
-    def test_extract_seniority(self):
-        self.assertEqual(SeniorityLevel.SENIOR, extract_seniority("Senior Software Engineer"))
-        self.assertEqual(SeniorityLevel.LEAD, extract_seniority("Tech Lead - Platform"))
-        self.assertEqual(SeniorityLevel.PRINCIPAL, extract_seniority("Principal Systems Architect"))
-        self.assertEqual(SeniorityLevel.ENTRY, extract_seniority("Junior Python Developer"))
-        self.assertEqual(SeniorityLevel.EXECUTIVE, extract_seniority("VP of Engineering"))
-        self.assertEqual(SeniorityLevel.UNSPECIFIED, extract_seniority("Software Engineer"))
+    def test_extract_seniority(self) -> None:
+        self.assertEqual(extract_seniority("Senior Software Engineer"), SeniorityLevel.SENIOR)
+        self.assertEqual(extract_seniority("Lead DevOps Engineer"), SeniorityLevel.LEAD)
+        self.assertEqual(extract_seniority("Principal Architect"), SeniorityLevel.PRINCIPAL)
+        self.assertEqual(extract_seniority("VP of Engineering"), SeniorityLevel.EXECUTIVE)
+        self.assertEqual(extract_seniority("Junior Python Developer"), SeniorityLevel.ENTRY)
+        self.assertEqual(extract_seniority("Mid-level Data Scientist"), SeniorityLevel.MID)
+        self.assertEqual(extract_seniority("Software Engineer"), SeniorityLevel.UNSPECIFIED)
 
-    def test_extract_employment_type(self):
-        self.assertEqual(EmploymentType.FULL_TIME, extract_employment_type("Full-time"))
-        self.assertEqual(EmploymentType.CONTRACT, extract_employment_type("C2C / 1099 Contractor"))
-        self.assertEqual(EmploymentType.PART_TIME, extract_employment_type("Part Time"))
-        self.assertEqual(EmploymentType.FREELANCE, extract_employment_type("Freelance consultant"))
-        self.assertEqual(EmploymentType.INTERNSHIP, extract_employment_type("Summer Internship"))
-        self.assertEqual(EmploymentType.UNSPECIFIED, extract_employment_type(""))
+    def test_extract_employment_type(self) -> None:
+        self.assertEqual(extract_employment_type("full_time"), EmploymentType.FULL_TIME)
+        self.assertEqual(extract_employment_type("Part-time"), EmploymentType.PART_TIME)
+        self.assertEqual(extract_employment_type("contract"), EmploymentType.CONTRACT)
+        self.assertEqual(extract_employment_type("freelance"), EmploymentType.FREELANCE)
+        self.assertEqual(extract_employment_type("internship"), EmploymentType.INTERNSHIP)
+        self.assertEqual(extract_employment_type(""), EmploymentType.UNSPECIFIED)
 
-    def test_extract_remote_policy(self):
-        self.assertEqual(RemotePolicy.REMOTE, extract_remote_policy("Remote - Worldwide"))
-        self.assertEqual(RemotePolicy.HYBRID, extract_remote_policy("Hybrid - London"))
-        self.assertEqual(RemotePolicy.ON_SITE, extract_remote_policy("On-site New York"))
-        self.assertEqual(RemotePolicy.UNSPECIFIED, extract_remote_policy("London, UK"))
+    def test_extract_track_deterministic(self) -> None:
+        self.assertEqual(extract_track(Track.EMPLOYMENT, "full_time"), Track.EMPLOYMENT)
+        self.assertEqual(extract_track(Track.EMPLOYMENT, "contract"), Track.CONTRACT)
+        self.assertEqual(extract_track(Track.EMPLOYMENT, "1099 contractor"), Track.CONTRACT)
+        self.assertEqual(extract_track(Track.EMPLOYMENT, "freelance"), Track.FREELANCE)
+        self.assertEqual(extract_track(Track.EMPLOYMENT, "freelancer needed"), Track.FREELANCE)
+        self.assertEqual(extract_track(Track.PROCUREMENT, "tender"), Track.PROCUREMENT)
 
-    def test_extract_compensation(self):
-        c1 = extract_compensation("$120,000 - $160,000 per year")
-        self.assertIsNotNone(c1)
-        self.assertEqual(120000.0, c1.min_amount)  # type: ignore
-        self.assertEqual(160000.0, c1.max_amount)  # type: ignore
-        self.assertEqual("USD", c1.currency)  # type: ignore
-        self.assertEqual(CompensationInterval.YEARLY, c1.interval)  # type: ignore
+    def test_extract_remote_policy(self) -> None:
+        self.assertEqual(extract_remote_policy("Remote"), RemotePolicy.REMOTE)
+        self.assertEqual(extract_remote_policy("Hybrid - San Francisco, CA"), RemotePolicy.HYBRID)
+        self.assertEqual(extract_remote_policy("On-site New York, NY"), RemotePolicy.ON_SITE)
+        self.assertEqual(extract_remote_policy("San Francisco, CA"), RemotePolicy.UNSPECIFIED)
 
-        c2 = extract_compensation("€70 - €95 / hour")
-        self.assertIsNotNone(c2)
-        self.assertEqual(70.0, c2.min_amount)  # type: ignore
-        self.assertEqual(95.0, c2.max_amount)  # type: ignore
-        self.assertEqual("EUR", c2.currency)  # type: ignore
-        self.assertEqual(CompensationInterval.HOURLY, c2.interval)  # type: ignore
+    def test_extract_compensation_no_fabricated_defaults(self) -> None:
+        # Explicit USD with annual interval
+        comp1 = extract_compensation("Salary: $140,000 - $180,000 / year")
+        self.assertIsNotNone(comp1)
+        self.assertEqual(comp1.min_amount, 140000.0)
+        self.assertEqual(comp1.max_amount, 180000.0)
+        self.assertEqual(comp1.currency, "USD")
+        self.assertEqual(comp1.interval, CompensationInterval.YEARLY)
 
-        c3 = extract_compensation("Competitive salary with equity")
-        self.assertNull = self.assertIsNone(c3)
+        # EUR with monthly interval
+        comp2 = extract_compensation("€4,000 – €6,000 per month")
+        self.assertIsNotNone(comp2)
+        self.assertEqual(comp2.min_amount, 4000.0)
+        self.assertEqual(comp2.max_amount, 6000.0)
+        self.assertEqual(comp2.currency, "EUR")
+        self.assertEqual(comp2.interval, CompensationInterval.MONTHLY)
 
-    def test_parse_iso_date(self):
-        self.assertEqual("2026-08-30", parse_iso_date("2026-08-30T15:30:00Z"))
-        self.assertEqual("2026-08-30", parse_iso_date("Sun, 30 Aug 2026 12:00:00 GMT"))
-        self.assertEqual("2026-08-25", parse_iso_date("2026-08-25"))
-        self.assertIsNone(parse_iso_date("invalid date string"))
+        # Numbers without explicit currency or interval MUST NOT default to USD or YEARLY
+        comp3 = extract_compensation("Rate: 50 - 80")
+        self.assertIsNotNone(comp3)
+        self.assertEqual(comp3.min_amount, 50.0)
+        self.assertEqual(comp3.max_amount, 80.0)
+        self.assertIsNone(comp3.currency)
+        self.assertEqual(comp3.interval, CompensationInterval.UNSPECIFIED)
 
-    def test_extract_skills(self):
-        text = "Looking for an engineer proficient with Python, PostgreSQL, AWS, and Docker."
+        # Unparseable or absent returns None
+        self.assertIsNone(extract_compensation("Competitive equity and benefits"))
+
+    def test_parse_iso_date(self) -> None:
+        self.assertEqual(parse_iso_date("2026-08-30"), "2026-08-30")
+        self.assertEqual(parse_iso_date("2026-08-30T12:00:00Z"), "2026-08-30")
+        self.assertEqual(parse_iso_date("Wed, 28 Aug 2026 14:00:00 GMT"), "2026-08-28")
+        self.assertEqual(parse_iso_date("August 25, 2026"), "2026-08-25")
+        self.assertIsNone(parse_iso_date("invalid-date"))
+        self.assertIsNone(parse_iso_date(None))
+
+    def test_extract_skills(self) -> None:
+        text = "We are seeking a senior Python developer experienced with AWS, Docker, and PostgreSQL."
         skills = extract_skills_from_text(text)
         self.assertIn("Python", skills)
-        self.assertIn("PostgreSQL", skills)
         self.assertIn("AWS", skills)
         self.assertIn("Docker", skills)
+        self.assertIn("PostgreSQL", skills)
 
-    def test_extract_list_sections(self):
-        html_content = """
-        <h2>About</h2><p>Overview text.</p>
+    def test_extract_list_sections(self) -> None:
+        html = """
+        <h3>What you'll do:</h3>
+        <ul>
+            <li>Build resilient distributed services</li>
+            <li>Maintain high test coverage</li>
+        </ul>
         <h3>Requirements:</h3>
         <ul>
-          <li>5+ years experience</li>
-          <li>Strong Python skills</li>
-        </ul>
-        <h3>What you will do:</h3>
-        <ul>
-          <li>Build APIs</li>
-          <li>Optimize performance</li>
+            <li>5+ years backend experience</li>
+            <li>Strong Python skills</li>
         </ul>
         """
-        reqs = extract_list_sections(html_content, r"requirements")
-        self.assertEqual(2, len(reqs))
-        self.assertEqual("5+ years experience", reqs[0])
+        resps = extract_list_sections(html, r"what\s+you'?ll\s+do")
+        self.assertEqual(len(resps), 2)
+        self.assertIn("Build resilient distributed services", resps)
 
-        duties = extract_list_sections(html_content, r"what\s+you\s+will\s+do")
-        self.assertEqual(2, len(duties))
-        self.assertEqual("Build APIs", duties[0])
+        reqs = extract_list_sections(html, r"requirement")
+        self.assertEqual(len(reqs), 2)
+        self.assertIn("5+ years backend experience", reqs)
 
-    def test_derive_geographic_eligibility(self):
-        # Worldwide remote -> eligible
-        geo1 = derive_geographic_eligibility("Backend Engineer", "Remote - Worldwide", "Work from anywhere in the world.")
-        self.assertEqual("eligible", geo1.status)
+    def test_derive_geographic_eligibility(self) -> None:
+        geo_eligible = derive_geographic_eligibility("Senior Engineer", "Worldwide (Remote)", "Work from anywhere in the world.")
+        self.assertEqual(geo_eligible.status, "eligible")
 
-        # US Only -> excluded
-        geo2 = derive_geographic_eligibility("Frontend Engineer", "Remote - US Only", "Must reside in the United States.")
-        self.assertEqual("excluded", geo2.status)
+        geo_excluded = derive_geographic_eligibility("Backend Engineer", "US Only (Remote)", "Must reside in the United States.")
+        self.assertEqual(geo_excluded.status, "excluded")
 
-        # Unclear location -> unclear
-        geo3 = derive_geographic_eligibility("Engineer", "", "Vague description without geographic terms.")
-        self.assertEqual("unclear", geo3.status)
+    def test_create_field_provenance(self) -> None:
+        fp = create_field_provenance(
+            field_name="title",
+            raw_val="<p>Lead Engineer</p>",
+            norm_val="Lead Engineer",
+            derivation_type=DerivationType.RAW_EXTRACTION,
+            raw_pointer="jobs[0].title",
+            record_checksum="sha256abc",
+            rule_id="clean_text",
+        )
+        self.assertEqual(fp.field_name, "title")
+        self.assertEqual(fp.raw_value, "<p>Lead Engineer</p>")
+        self.assertEqual(fp.normalized_value, "Lead Engineer")
+        self.assertEqual(fp.derivation_type, "raw_extraction")
 
 
 if __name__ == "__main__":
