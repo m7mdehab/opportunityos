@@ -60,6 +60,7 @@ class ActionAuthorityTests(unittest.TestCase):
             commitment_checklist=(),
             compiled_at="2026-08-30T00:00:00Z",
         )
+        self.raw_artifact = raw_art
         self.artifact = BoundArtifact(artifact=raw_art, candidate_id="founder", workspace="default")
 
     def tearDown(self) -> None:
@@ -78,8 +79,36 @@ class ActionAuthorityTests(unittest.TestCase):
         self.assertEqual(dec, ActionAuthorityDecision.BLOCK)
         self.assertTrue("kill switch is ACTIVE" in reasons[0])
 
-    def test_dry_run_allows_prepare(self) -> None:
+    def test_raw_artifact_blocks_controlled_submit(self) -> None:
+        adapter_reg = AdapterRegistry()
+        adapter_reg.enable_submit("greenhouse")
+        src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
+        auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
+        dec, reasons = auth.evaluate_action(
+            opportunity=self.opportunity,
+            artifact=self.raw_artifact,
+            answers=(),
+            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
+            adapter_name="greenhouse",
+        )
+        self.assertEqual(dec, ActionAuthorityDecision.BLOCK)
+        self.assertTrue("Raw unowned TailoredArtifact prohibited" in reasons[0])
+
+    def test_raw_artifact_blocks_assisted_fill(self) -> None:
         auth = ActionAuthority()
+        dec, reasons = auth.evaluate_action(
+            opportunity=self.opportunity,
+            artifact=self.raw_artifact,
+            answers=(),
+            execution_mode=ExecutionMode.ASSISTED,
+            adapter_name="greenhouse",
+        )
+        self.assertEqual(dec, ActionAuthorityDecision.BLOCK)
+        self.assertTrue("Raw unowned TailoredArtifact prohibited" in reasons[0])
+
+    def test_discovery_allowed_alone_prohibits_fill_and_prepare(self) -> None:
+        src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.DISCOVERY_ALLOWED})
+        auth = ActionAuthority(registry=src_reg)
         dec, reasons = auth.evaluate_action(
             opportunity=self.opportunity,
             artifact=self.artifact,
@@ -87,32 +116,8 @@ class ActionAuthorityTests(unittest.TestCase):
             execution_mode=ExecutionMode.DRY_RUN,
             adapter_name="greenhouse",
         )
-        self.assertEqual(dec, ActionAuthorityDecision.ALLOW_PREPARE)
-
-    def test_assisted_mode_allows_fill(self) -> None:
-        auth = ActionAuthority()
-        dec, reasons = auth.evaluate_action(
-            opportunity=self.opportunity,
-            artifact=self.artifact,
-            answers=(),
-            execution_mode=ExecutionMode.ASSISTED,
-            adapter_name="greenhouse",
-        )
-        self.assertEqual(dec, ActionAuthorityDecision.ALLOW_FILL)
-
-    def test_controlled_submit_requires_submit_enabled(self) -> None:
-        adapter_reg = AdapterRegistry()
-        src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
-        auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        dec, reasons = auth.evaluate_action(
-            opportunity=self.opportunity,
-            artifact=self.artifact,
-            answers=(),
-            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
-            adapter_name="greenhouse",
-        )
         self.assertEqual(dec, ActionAuthorityDecision.BLOCK)
-        self.assertTrue("requires SUBMIT_ENABLED" in reasons[0])
+        self.assertTrue("DISCOVERY_ALLOWED" in reasons[0])
 
 
 if __name__ == "__main__":

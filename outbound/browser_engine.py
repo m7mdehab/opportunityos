@@ -1,27 +1,34 @@
-"""Outbound Browser Automation & Multi-Step Execution Engine."""
+"""Governed Outbound Browser Automation Engine with TOCTOU-Safe Pre-Submit Gate."""
 from __future__ import annotations
 
-import dataclasses
 import hashlib
 import json
+import uuid
 from datetime import datetime, timezone
-from typing import Any, Protocol
-
-from matching.models import QualificationDecision, TailoredArtifact, TailoringPolicy
+from typing import Any, Protocol, Union
+from matching.models import (
+    QualificationDecision,
+    TailoredArtifact,
+    TailoringPolicy,
+    Track,
+)
 from opportunity.models import Opportunity
 from truth.graph import TruthGraph
-
 from .answer_engine import ApplicationAnswerEngine
 from .authority import ActionAuthority, GlobalKillSwitch
 from .confirmation import ConfirmationDetector
-from .idempotency import IdempotencyLedger
+from .idempotency import (
+    DuplicateSubmissionError,
+    IdempotencyLedger,
+    UnknownOutcomeFrozenError,
+)
 from .mock_harness import MockATSHarness
 from .models import (
     ActionAuthorityDecision,
     ActionStatus,
-    AdapterLifecycleState,
     AnswerClass,
     ApplicationAnswer,
+    BoundArtifact,
     ConfirmationEvidence,
     DetectedFormField,
     ExecutionMode,
@@ -29,37 +36,49 @@ from .models import (
     OutboundActionRecord,
     PreSubmitManifest,
 )
-from .ontology import FieldClassifier
 from .registry import AdapterRegistry, SourceActionRegistry
 
 
 class BrowserDriver(Protocol):
-    """Protocol for form inspection, population, and submission drivers."""
-    def inspect_fields(self) -> tuple[DetectedFormField, ...]: ...
-    def fill_field(self, field_id: str, value: Any) -> None: ...
-    def upload_artifact(self, field_id: str, artifact: TailoredArtifact) -> None: ...
-    def next_page(self) -> bool: ...
-    def submit_page(self) -> ConfirmationEvidence: ...
-    def is_captcha_present(self) -> bool: ...
-    def is_mfa_present(self) -> bool: ...
+    """Protocol for browser drivers driving application form workflows."""
+    def inspect_page_fields(self, step_index: int = 0) -> tuple[DetectedFormField, ...]:
+        ...
+    def fill_field(self, field: DetectedFormField, value: Any) -> bool:
+        ...
+    def attach_artifact(self, field: DetectedFormField, artifact: BoundArtifact) -> bool:
+        ...
+    def advance_step(self) -> bool:
+        ...
+    def submit_page(self) -> ConfirmationEvidence:
+        ...
+    def is_captcha_present(self) -> bool:
+        ...
+    def is_mfa_present(self) -> bool:
+        ...
 
 
 class MockBrowserDriver:
-    """Deterministic in-memory driver wrapping MockATSHarness."""
+    """Mock implementation of BrowserDriver driven by MockATSHarness."""
     def __init__(self, harness: MockATSHarness) -> None:
         self.harness = harness
+        self.current_step = 0
 
-    def inspect_fields(self) -> tuple[DetectedFormField, ...]:
-        return self.harness.get_fields_for_step(self.harness.current_step)
+    def inspect_page_fields(self, step_index: int = 0) -> tuple[DetectedFormField, ...]:
+        return self.harness.get_fields_for_step(step_index)
 
-    def fill_field(self, field_id: str, value: Any) -> None:
-        self.harness.fill(field_id, value)
+    def fill_field(self, field: DetectedFormField, value: Any) -> bool:
+        self.harness.fill(field.field_id, value)
+        return True
 
-    def upload_artifact(self, field_id: str, artifact: TailoredArtifact) -> None:
-        self.harness.fill(field_id, artifact.artifact_id)
+    def attach_artifact(self, field: DetectedFormField, artifact: BoundArtifact) -> bool:
+        self.harness.fill(field.field_id, artifact.artifact_id)
+        return True
 
-    def next_page(self) -> bool:
-        return self.harness.next_step()
+    def advance_step(self) -> bool:
+        advanced = self.harness.next_step()
+        if advanced:
+            self.current_step += 1
+        return advanced
 
     def submit_page(self) -> ConfirmationEvidence:
         return self.harness.submit()
@@ -72,22 +91,52 @@ class MockBrowserDriver:
 
 
 class OutboundBrowserEngine:
-    """Executes governed outbound browser workflows across multi-step forms and execution modes."""
+    """Executes multi-step browser automation with cryptographic manifest binding and TOCTOU safety."""
 
     def __init__(
         self,
         authority: ActionAuthority | None = None,
         ledger: IdempotencyLedger | None = None,
         adapter_registry: AdapterRegistry | None = None,
+        source_registry: SourceActionRegistry | None = None,
     ) -> None:
-        self.authority = authority or ActionAuthority()
+        shared_adapter_reg = adapter_registry or (authority.adapter_registry if authority else AdapterRegistry())
+        shared_source_reg = source_registry or (authority.registry if authority else SourceActionRegistry())
+        
+        self.adapter_registry = shared_adapter_reg
+        self.source_registry = shared_source_reg
+        self.authority = authority or ActionAuthority(
+            registry=self.source_registry,
+            adapter_registry=self.adapter_registry,
+        )
         self.ledger = ledger or IdempotencyLedger()
-        self.adapter_registry = adapter_registry or AdapterRegistry()
+        self.confirmation_detector = ConfirmationDetector()
+
+    def compute_answers_hash(self, answers: tuple[ApplicationAnswer, ...]) -> str:
+        """Compute SHA-256 hash across all material answer fields."""
+        serialized = [
+            {
+                "field_type": a.field_type.value,
+                "original_label": a.original_label,
+                "normalized_question": a.normalized_question,
+                "answer": a.answer,
+                "answer_class": a.answer_class.value,
+                "answer_source": a.answer_source,
+                "assertion_ids": list(a.assertion_ids),
+                "policy_source": a.policy_source,
+                "generated_claim_ids": list(a.generated_claim_ids),
+                "artifact_ids": list(a.artifact_ids),
+                "confidence": a.confidence,
+                "disposition": a.disposition,
+            }
+            for a in sorted(answers, key=lambda x: (x.field_type.value, x.original_label))
+        ]
+        return hashlib.sha256(json.dumps(serialized, sort_keys=True).encode("utf-8")).hexdigest()
 
     def execute_application(
         self,
         opportunity: Opportunity,
-        artifact: TailoredArtifact | None,
+        artifact: Union[TailoredArtifact, BoundArtifact] | None,
         driver: BrowserDriver,
         execution_mode: ExecutionMode = ExecutionMode.DRY_RUN,
         adapter_name: str = "greenhouse",
@@ -96,137 +145,59 @@ class OutboundBrowserEngine:
         qualification_decision: QualificationDecision = QualificationDecision.QUALIFIED,
         truth_graph: TruthGraph | None = None,
         policy: TailoringPolicy | None = None,
-        action_type: str = "job_application",
+        match_score_snapshot: float = 0.0,
     ) -> OutboundActionRecord:
-        """Coordinate multi-step form inspection, answering, authority checks, and TOCTOU-safe execution."""
+        """Orchestrate multi-step application workflow with non-bypassable pre-submit gate."""
+        action_id = f"act-{uuid.uuid4().hex[:12]}"
+        action_type = "application"
+        created_at = datetime.now(timezone.utc).isoformat()
+        idempotency_key = IdempotencyLedger.compute_idempotency_key(
+            workspace, candidate_id, opportunity.id, action_type
+        )
         tg = truth_graph or TruthGraph()
         pol = policy or TailoringPolicy()
         answer_engine = ApplicationAnswerEngine(tg, pol)
 
-        idempotency_key = self.ledger.compute_idempotency_key(
-            workspace, candidate_id, opportunity.id, action_type
-        )
-        action_id = f"act-{opportunity.id}-{execution_mode.value}"
-
-        grad_rec = self.adapter_registry.get_graduation_record(adapter_name)
-        adapter_ver = grad_rec.version if grad_rec else "1.0.0"
-        grad_ver = grad_rec.evidence_hash if grad_rec else "unregistered"
-
-        # 1. Multi-Step Form Navigation & Field Population Loop
-        all_answers: list[ApplicationAnswer] = []
-        unresolved_mandatory = 0
-        step = 0
-        max_steps = 10
-
-        while step < max_steps:
-            # Check challenge barriers on every step
-            if driver.is_captcha_present():
-                return OutboundActionRecord(
-                    action_id=action_id, opportunity_id=opportunity.id,
-                    opportunity_content_hash=opportunity.content_hash,
-                    workspace=workspace, candidate_id=candidate_id, track=opportunity.track,
-                    source=opportunity.source, adapter_name=adapter_name, adapter_version=adapter_ver,
-                    execution_mode=execution_mode, qualification_decision=qualification_decision,
-                    match_score_snapshot=1.0, artifact_ids=(artifact.artifact_id,) if artifact else (),
-                    artifact_hashes=(artifact.artifact_hash,) if artifact else (),
-                    manifest_hash="captcha_blocked", action_status=ActionStatus.BLOCKED,
-                    idempotency_key=idempotency_key, created_at="2026-08-30T00:00:00Z",
-                    updated_at="2026-08-30T00:00:00Z", blocker_reason="CAPTCHA barrier detected during form step",
-                )
-
-            if driver.is_mfa_present():
-                return OutboundActionRecord(
-                    action_id=action_id, opportunity_id=opportunity.id,
-                    opportunity_content_hash=opportunity.content_hash,
-                    workspace=workspace, candidate_id=candidate_id, track=opportunity.track,
-                    source=opportunity.source, adapter_name=adapter_name, adapter_version=adapter_ver,
-                    execution_mode=execution_mode, qualification_decision=qualification_decision,
-                    match_score_snapshot=1.0, artifact_ids=(artifact.artifact_id,) if artifact else (),
-                    artifact_hashes=(artifact.artifact_hash,) if artifact else (),
-                    manifest_hash="mfa_pause", action_status=ActionStatus.AWAITING_REVIEW,
-                    idempotency_key=idempotency_key, created_at="2026-08-30T00:00:00Z",
-                    updated_at="2026-08-30T00:00:00Z", blocker_reason="MFA challenge detected during form step",
-                )
-
-            step_fields = driver.inspect_fields()
-            for f in step_fields:
-                ans = answer_engine.answer_field(f, opportunity, action_id, compiled_artifact=artifact)
-                all_answers.append(ans)
-                if f.required and (ans.answer is None or ans.disposition == "pause"):
-                    unresolved_mandatory += 1
-
-                # Fill field if in ASSISTED or CONTROLLED_SUBMIT
+        bound_artifact: BoundArtifact | None = None
+        if artifact is not None:
+            if isinstance(artifact, BoundArtifact):
+                bound_artifact = artifact
+            else:
                 if execution_mode in (ExecutionMode.ASSISTED, ExecutionMode.CONTROLLED_SUBMIT):
-                    if ans.answer is not None and ans.disposition == "auto_fill":
-                        if f.ontology_type == FieldOntologyType.ATTACHMENT and artifact:
-                            driver.upload_artifact(f.field_id, artifact)
-                        else:
-                            driver.fill_field(f.field_id, ans.answer)
+                    # Raw TailoredArtifact without ownership must be rejected
+                    return OutboundActionRecord(
+                        action_id=action_id,
+                        opportunity_id=opportunity.id,
+                        opportunity_content_hash=opportunity.content_hash,
+                        workspace=workspace,
+                        candidate_id=candidate_id,
+                        track=opportunity.track,
+                        source=opportunity.source,
+                        adapter_name=adapter_name,
+                        adapter_version="1.0.0",
+                        execution_mode=execution_mode,
+                        qualification_decision=qualification_decision,
+                        match_score_snapshot=match_score_snapshot,
+                        artifact_ids=(),
+                        artifact_hashes=(),
+                        manifest_hash="",
+                        action_status=ActionStatus.BLOCKED,
+                        idempotency_key=idempotency_key,
+                        created_at=created_at,
+                        updated_at=created_at,
+                        blocker_reason="Raw unowned TailoredArtifact prohibited; BoundArtifact required",
+                    )
+                # DRY_RUN allows inspection
+                bound_artifact = BoundArtifact(artifact=artifact, candidate_id=candidate_id, workspace=workspace)
 
-            # Check if next step is available
-            has_next = driver.next_page()
-            if not has_next:
-                break
-            step += 1
-
-        red_count = sum(1 for a in all_answers if a.answer_class == AnswerClass.RED)
-
-        # 2. Build PreSubmitManifest
-        answers_payload = [
-            (a.field_type.value, a.original_label, str(a.answer), a.answer_class.value, a.answer_source)
-            for a in all_answers
-        ]
-        answers_hash = hashlib.sha256(json.dumps(answers_payload, sort_keys=True).encode("utf-8")).hexdigest()
-
-        manifest = PreSubmitManifest(
-            workspace=workspace,
-            candidate_id=candidate_id,
-            opportunity_id=opportunity.id,
-            opportunity_content_hash=opportunity.content_hash,
-            action_type=action_type,
-            adapter_name=adapter_name,
-            adapter_version=adapter_ver,
-            graduation_record_version=grad_ver,
-            source_policy_version=pol.version,
-            artifact_ids=(artifact.artifact_id,) if artifact else (),
-            artifact_hashes=(artifact.artifact_hash,) if artifact else (),
-            answers=tuple(all_answers),
-            answers_hash=answers_hash,
-            qualification_decision=qualification_decision,
-            unresolved_mandatory_count=unresolved_mandatory,
-            red_answers_count=red_count,
-            idempotency_key=idempotency_key,
-            compiled_at="2026-08-30T00:00:00Z",
-        )
-
-        record = OutboundActionRecord(
-            action_id=action_id,
-            opportunity_id=opportunity.id,
-            opportunity_content_hash=opportunity.content_hash,
-            workspace=workspace,
-            candidate_id=candidate_id,
-            track=opportunity.track,
-            source=opportunity.source,
-            adapter_name=adapter_name,
-            adapter_version=adapter_ver,
-            execution_mode=execution_mode,
-            qualification_decision=qualification_decision,
-            match_score_snapshot=1.0,
-            artifact_ids=(artifact.artifact_id,) if artifact else (),
-            artifact_hashes=(artifact.artifact_hash,) if artifact else (),
-            manifest_hash=manifest.manifest_hash,
-            action_status=ActionStatus.PLANNED,
-            idempotency_key=idempotency_key,
-            created_at="2026-08-30T00:00:00Z",
-            updated_at="2026-08-30T00:00:00Z",
-        )
-
-        # 3. DRY_RUN & ASSISTED Return Points
+        # Pre-execution duplicate check
         is_dup = self.ledger.is_duplicate(workspace, candidate_id, opportunity.id, action_type)
-        decision, reasons = self.authority.evaluate_action(
+
+        # Initial Authority Gate
+        dec, reasons = self.authority.evaluate_action(
             opportunity=opportunity,
-            artifact=artifact,
-            answers=tuple(all_answers),
+            artifact=bound_artifact,
+            answers=(),
             execution_mode=execution_mode,
             adapter_name=adapter_name,
             workspace=workspace,
@@ -237,76 +208,381 @@ class OutboundBrowserEngine:
             is_duplicate=is_dup,
             captcha_detected=driver.is_captcha_present(),
             mfa_detected=driver.is_mfa_present(),
-            unresolved_mandatory_count=unresolved_mandatory,
+            unresolved_mandatory_count=0,
         )
 
-        if decision == ActionAuthorityDecision.BLOCK:
-            return dataclasses.replace(record, action_status=ActionStatus.BLOCKED, blocker_reason="; ".join(reasons))
-
-        if decision == ActionAuthorityDecision.PAUSE_FOR_REVIEW:
-            return dataclasses.replace(record, action_status=ActionStatus.AWAITING_REVIEW, blocker_reason="; ".join(reasons))
-
-        if execution_mode in (ExecutionMode.DRY_RUN, ExecutionMode.ASSISTED):
-            # DRY_RUN and ASSISTED strictly refrain from submit
-            return dataclasses.replace(record, action_status=ActionStatus.PREPARED)
-
-        # 4. CONTROLLED_SUBMIT — TOCTOU-Safe Final Gate
-        if execution_mode == ExecutionMode.CONTROLLED_SUBMIT:
-            # Re-evaluate all authorities and kill switch immediately before submit call
-            final_decision, final_reasons = self.authority.evaluate_action(
-                opportunity=opportunity,
-                artifact=artifact,
-                answers=tuple(all_answers),
-                execution_mode=execution_mode,
-                adapter_name=adapter_name,
+        if dec == ActionAuthorityDecision.BLOCK:
+            return OutboundActionRecord(
+                action_id=action_id,
+                opportunity_id=opportunity.id,
+                opportunity_content_hash=opportunity.content_hash,
                 workspace=workspace,
                 candidate_id=candidate_id,
+                track=opportunity.track,
+                source=opportunity.source,
+                adapter_name=adapter_name,
+                adapter_version="1.0.0",
+                execution_mode=execution_mode,
                 qualification_decision=qualification_decision,
-                truth_graph=tg,
-                policy=pol,
-                is_duplicate=self.ledger.is_duplicate(workspace, candidate_id, opportunity.id, action_type),
-                captcha_detected=driver.is_captcha_present(),
-                mfa_detected=driver.is_mfa_present(),
-                unresolved_mandatory_count=unresolved_mandatory,
+                match_score_snapshot=match_score_snapshot,
+                artifact_ids=tuple([bound_artifact.artifact_id]) if bound_artifact else (),
+                artifact_hashes=tuple([bound_artifact.artifact_hash]) if bound_artifact else (),
+                manifest_hash="",
+                action_status=ActionStatus.BLOCKED,
+                idempotency_key=idempotency_key,
+                created_at=created_at,
+                updated_at=created_at,
+                blocker_reason="; ".join(reasons),
             )
 
-            if final_decision != ActionAuthorityDecision.ALLOW_SUBMIT:
-                new_status = ActionStatus.BLOCKED if final_decision == ActionAuthorityDecision.BLOCK else ActionStatus.AWAITING_REVIEW
-                return dataclasses.replace(record, action_status=new_status, blocker_reason="; ".join(final_reasons))
+        if dec == ActionAuthorityDecision.PAUSE_FOR_REVIEW:
+            return OutboundActionRecord(
+                action_id=action_id,
+                opportunity_id=opportunity.id,
+                opportunity_content_hash=opportunity.content_hash,
+                workspace=workspace,
+                candidate_id=candidate_id,
+                track=opportunity.track,
+                source=opportunity.source,
+                adapter_name=adapter_name,
+                adapter_version="1.0.0",
+                execution_mode=execution_mode,
+                qualification_decision=qualification_decision,
+                match_score_snapshot=match_score_snapshot,
+                artifact_ids=tuple([bound_artifact.artifact_id]) if bound_artifact else (),
+                artifact_hashes=tuple([bound_artifact.artifact_hash]) if bound_artifact else (),
+                manifest_hash="",
+                action_status=ActionStatus.AWAITING_REVIEW,
+                idempotency_key=idempotency_key,
+                created_at=created_at,
+                updated_at=created_at,
+                blocker_reason="; ".join(reasons),
+            )
 
-            # Final check of kill switch immediately before irreversible call
-            if not GlobalKillSwitch.is_enabled():
-                return dataclasses.replace(record, action_status=ActionStatus.BLOCKED, blocker_reason="Global kill switch activated immediately before submission")
+        # Multi-Step Inspection & Population Loop
+        step = 0
+        max_steps = 10
+        all_answers: list[ApplicationAnswer] = []
+        unresolved_mandatory_count = 0
+        has_more_steps = True
 
-            # Atomic reservation in durable ledger
-            try:
-                self.ledger.reserve_submission(
-                    dataclasses.replace(record, action_status=ActionStatus.SUBMITTING)
-                )
-            except Exception as e:
-                return dataclasses.replace(record, action_status=ActionStatus.BLOCKED, blocker_reason=str(e))
-
-            # Execute Submit
-            try:
-                evidence = driver.submit_page()
-                if evidence and evidence.confirmed:
-                    return self.ledger.transition_status(
-                        idempotency_key=idempotency_key,
-                        new_status=ActionStatus.CONFIRMED,
-                        evidence=evidence,
-                        external_reference_id=evidence.receipt_reference,
-                    )
-                else:
-                    return self.ledger.transition_status(
-                        idempotency_key=idempotency_key,
-                        new_status=ActionStatus.UNKNOWN_OUTCOME,
-                        blocker_reason="Confirmation receipt not detected on final page",
-                    )
-            except Exception as e:
-                return self.ledger.transition_status(
+        while has_more_steps and step < max_steps:
+            if driver.is_captcha_present():
+                return OutboundActionRecord(
+                    action_id=action_id,
+                    opportunity_id=opportunity.id,
+                    opportunity_content_hash=opportunity.content_hash,
+                    workspace=workspace,
+                    candidate_id=candidate_id,
+                    track=opportunity.track,
+                    source=opportunity.source,
+                    adapter_name=adapter_name,
+                    adapter_version="1.0.0",
+                    execution_mode=execution_mode,
+                    qualification_decision=qualification_decision,
+                    match_score_snapshot=match_score_snapshot,
+                    artifact_ids=tuple([bound_artifact.artifact_id]) if bound_artifact else (),
+                    artifact_hashes=tuple([bound_artifact.artifact_hash]) if bound_artifact else (),
+                    manifest_hash="",
+                    action_status=ActionStatus.BLOCKED,
                     idempotency_key=idempotency_key,
-                    new_status=ActionStatus.UNKNOWN_OUTCOME,
-                    blocker_reason=f"Submission execution exception: {str(e)}",
+                    created_at=created_at,
+                    updated_at=created_at,
+                    blocker_reason="CAPTCHA challenge detected on step",
                 )
 
-        return record
+            if driver.is_mfa_present():
+                return OutboundActionRecord(
+                    action_id=action_id,
+                    opportunity_id=opportunity.id,
+                    opportunity_content_hash=opportunity.content_hash,
+                    workspace=workspace,
+                    candidate_id=candidate_id,
+                    track=opportunity.track,
+                    source=opportunity.source,
+                    adapter_name=adapter_name,
+                    adapter_version="1.0.0",
+                    execution_mode=execution_mode,
+                    qualification_decision=qualification_decision,
+                    match_score_snapshot=match_score_snapshot,
+                    artifact_ids=tuple([bound_artifact.artifact_id]) if bound_artifact else (),
+                    artifact_hashes=tuple([bound_artifact.artifact_hash]) if bound_artifact else (),
+                    manifest_hash="",
+                    action_status=ActionStatus.AWAITING_REVIEW,
+                    idempotency_key=idempotency_key,
+                    created_at=created_at,
+                    updated_at=created_at,
+                    blocker_reason="MFA challenge detected on step",
+                )
+
+            fields = driver.inspect_page_fields(step)
+            for fld in fields:
+                ans = answer_engine.answer_field(fld, opportunity, action_id=action_id, artifact=bound_artifact)
+                all_answers.append(ans)
+
+                if fld.required and (ans.answer is None or ans.answer_class == AnswerClass.RED):
+                    unresolved_mandatory_count += 1
+
+                if execution_mode in (ExecutionMode.ASSISTED, ExecutionMode.CONTROLLED_SUBMIT):
+                    if ans.disposition == "auto_fill" and ans.answer is not None:
+                        if fld.ontology_type == FieldOntologyType.ATTACHMENT and bound_artifact:
+                            driver.attach_artifact(fld, bound_artifact)
+                        else:
+                            driver.fill_field(fld, ans.answer)
+
+            has_more_steps = driver.advance_step()
+            step += 1
+
+        # PreSubmitManifest Compilation
+        answers_tuple = tuple(all_answers)
+        answers_hash = self.compute_answers_hash(answers_tuple)
+        red_count = sum(1 for a in all_answers if a.answer_class == AnswerClass.RED)
+        grad_rec = self.adapter_registry.get_graduation_record(adapter_name)
+        source_policy_ver = self.source_registry.get_policy_version(opportunity.source)
+
+        manifest = PreSubmitManifest(
+            workspace=workspace,
+            candidate_id=candidate_id,
+            opportunity_id=opportunity.id,
+            opportunity_content_hash=opportunity.content_hash,
+            action_type=action_type,
+            adapter_name=adapter_name,
+            adapter_version=grad_rec.version if grad_rec else "1.0.0",
+            graduation_record_version=grad_rec.version if grad_rec else "1.0.0",
+            source_policy_version=source_policy_ver,
+            artifact_ids=tuple([bound_artifact.artifact_id]) if bound_artifact else (),
+            artifact_hashes=tuple([bound_artifact.artifact_hash]) if bound_artifact else (),
+            answers=answers_tuple,
+            answers_hash=answers_hash,
+            qualification_decision=qualification_decision,
+            unresolved_mandatory_count=unresolved_mandatory_count,
+            red_answers_count=red_count,
+            idempotency_key=idempotency_key,
+            compiled_at=created_at,
+        )
+
+        # DRY_RUN and ASSISTED modes stop before submission
+        if execution_mode == ExecutionMode.DRY_RUN:
+            return OutboundActionRecord(
+                action_id=action_id,
+                opportunity_id=opportunity.id,
+                opportunity_content_hash=opportunity.content_hash,
+                workspace=workspace,
+                candidate_id=candidate_id,
+                track=opportunity.track,
+                source=opportunity.source,
+                adapter_name=adapter_name,
+                adapter_version=grad_rec.version if grad_rec else "1.0.0",
+                execution_mode=execution_mode,
+                qualification_decision=qualification_decision,
+                match_score_snapshot=match_score_snapshot,
+                artifact_ids=manifest.artifact_ids,
+                artifact_hashes=manifest.artifact_hashes,
+                manifest_hash=manifest.manifest_hash,
+                action_status=ActionStatus.PREPARED,
+                idempotency_key=idempotency_key,
+                created_at=created_at,
+                updated_at=created_at,
+            )
+
+        if execution_mode == ExecutionMode.ASSISTED:
+            status = ActionStatus.AWAITING_REVIEW if (red_count > 0 or unresolved_mandatory_count > 0) else ActionStatus.PREPARED
+            reason = f"{red_count} Red question(s) or {unresolved_mandatory_count} mandatory question(s) unresolved" if status == ActionStatus.AWAITING_REVIEW else ""
+            return OutboundActionRecord(
+                action_id=action_id,
+                opportunity_id=opportunity.id,
+                opportunity_content_hash=opportunity.content_hash,
+                workspace=workspace,
+                candidate_id=candidate_id,
+                track=opportunity.track,
+                source=opportunity.source,
+                adapter_name=adapter_name,
+                adapter_version=grad_rec.version if grad_rec else "1.0.0",
+                execution_mode=execution_mode,
+                qualification_decision=qualification_decision,
+                match_score_snapshot=match_score_snapshot,
+                artifact_ids=manifest.artifact_ids,
+                artifact_hashes=manifest.artifact_hashes,
+                manifest_hash=manifest.manifest_hash,
+                action_status=status,
+                idempotency_key=idempotency_key,
+                created_at=created_at,
+                updated_at=created_at,
+                blocker_reason=reason,
+            )
+
+        # CONTROLLED_SUBMIT: Final Pre-Submit Re-evaluation Gate
+        is_dup_final = self.ledger.is_duplicate(workspace, candidate_id, opportunity.id, action_type)
+        final_dec, final_reasons = self.authority.evaluate_action(
+            opportunity=opportunity,
+            artifact=bound_artifact,
+            answers=answers_tuple,
+            execution_mode=execution_mode,
+            adapter_name=adapter_name,
+            workspace=workspace,
+            candidate_id=candidate_id,
+            qualification_decision=qualification_decision,
+            truth_graph=tg,
+            policy=pol,
+            is_duplicate=is_dup_final,
+            captcha_detected=driver.is_captcha_present(),
+            mfa_detected=driver.is_mfa_present(),
+            unresolved_mandatory_count=unresolved_mandatory_count,
+        )
+
+        if final_dec != ActionAuthorityDecision.ALLOW_SUBMIT:
+            status = ActionStatus.AWAITING_REVIEW if final_dec == ActionAuthorityDecision.PAUSE_FOR_REVIEW else ActionStatus.BLOCKED
+            return OutboundActionRecord(
+                action_id=action_id,
+                opportunity_id=opportunity.id,
+                opportunity_content_hash=opportunity.content_hash,
+                workspace=workspace,
+                candidate_id=candidate_id,
+                track=opportunity.track,
+                source=opportunity.source,
+                adapter_name=adapter_name,
+                adapter_version=grad_rec.version if grad_rec else "1.0.0",
+                execution_mode=execution_mode,
+                qualification_decision=qualification_decision,
+                match_score_snapshot=match_score_snapshot,
+                artifact_ids=manifest.artifact_ids,
+                artifact_hashes=manifest.artifact_hashes,
+                manifest_hash=manifest.manifest_hash,
+                action_status=status,
+                idempotency_key=idempotency_key,
+                created_at=created_at,
+                updated_at=created_at,
+                blocker_reason="; ".join(final_reasons),
+            )
+
+        record_to_reserve = OutboundActionRecord(
+            action_id=action_id,
+            opportunity_id=opportunity.id,
+            opportunity_content_hash=opportunity.content_hash,
+            workspace=workspace,
+            candidate_id=candidate_id,
+            track=opportunity.track,
+            source=opportunity.source,
+            adapter_name=adapter_name,
+            adapter_version=grad_rec.version if grad_rec else "1.0.0",
+            execution_mode=execution_mode,
+            qualification_decision=qualification_decision,
+            match_score_snapshot=match_score_snapshot,
+            artifact_ids=manifest.artifact_ids,
+            artifact_hashes=manifest.artifact_hashes,
+            manifest_hash=manifest.manifest_hash,
+            action_status=ActionStatus.PLANNED,
+            idempotency_key=idempotency_key,
+            created_at=created_at,
+            updated_at=created_at,
+        )
+
+        try:
+            self.ledger.reserve_submission(record_to_reserve)
+        except (DuplicateSubmissionError, UnknownOutcomeFrozenError) as e:
+            return OutboundActionRecord(
+                action_id=action_id,
+                opportunity_id=opportunity.id,
+                opportunity_content_hash=opportunity.content_hash,
+                workspace=workspace,
+                candidate_id=candidate_id,
+                track=opportunity.track,
+                source=opportunity.source,
+                adapter_name=adapter_name,
+                adapter_version=grad_rec.version if grad_rec else "1.0.0",
+                execution_mode=execution_mode,
+                qualification_decision=qualification_decision,
+                match_score_snapshot=match_score_snapshot,
+                artifact_ids=manifest.artifact_ids,
+                artifact_hashes=manifest.artifact_hashes,
+                manifest_hash=manifest.manifest_hash,
+                action_status=ActionStatus.BLOCKED,
+                idempotency_key=idempotency_key,
+                created_at=created_at,
+                updated_at=created_at,
+                blocker_reason=str(e),
+            )
+
+        # FINAL Kill Switch Check immediately adjacent to irreversible external submit call
+        if not GlobalKillSwitch.is_enabled():
+            self.ledger.transition_status(
+                idempotency_key=idempotency_key,
+                new_status=ActionStatus.BLOCKED,
+                blocker_reason="Global kill switch disabled after reservation; submit aborted",
+            )
+            return OutboundActionRecord(
+                action_id=action_id,
+                opportunity_id=opportunity.id,
+                opportunity_content_hash=opportunity.content_hash,
+                workspace=workspace,
+                candidate_id=candidate_id,
+                track=opportunity.track,
+                source=opportunity.source,
+                adapter_name=adapter_name,
+                adapter_version=grad_rec.version if grad_rec else "1.0.0",
+                execution_mode=execution_mode,
+                qualification_decision=qualification_decision,
+                match_score_snapshot=match_score_snapshot,
+                artifact_ids=manifest.artifact_ids,
+                artifact_hashes=manifest.artifact_hashes,
+                manifest_hash=manifest.manifest_hash,
+                action_status=ActionStatus.BLOCKED,
+                idempotency_key=idempotency_key,
+                created_at=created_at,
+                updated_at=created_at,
+                blocker_reason="Global kill switch disabled after reservation; submit aborted",
+            )
+
+        # FINAL challenge check
+        if driver.is_captcha_present() or driver.is_mfa_present():
+            self.ledger.transition_status(
+                idempotency_key=idempotency_key,
+                new_status=ActionStatus.BLOCKED,
+                blocker_reason="Challenge detected immediately before submit call",
+            )
+            return OutboundActionRecord(
+                action_id=action_id,
+                opportunity_id=opportunity.id,
+                opportunity_content_hash=opportunity.content_hash,
+                workspace=workspace,
+                candidate_id=candidate_id,
+                track=opportunity.track,
+                source=opportunity.source,
+                adapter_name=adapter_name,
+                adapter_version=grad_rec.version if grad_rec else "1.0.0",
+                execution_mode=execution_mode,
+                qualification_decision=qualification_decision,
+                match_score_snapshot=match_score_snapshot,
+                artifact_ids=manifest.artifact_ids,
+                artifact_hashes=manifest.artifact_hashes,
+                manifest_hash=manifest.manifest_hash,
+                action_status=ActionStatus.BLOCKED,
+                idempotency_key=idempotency_key,
+                created_at=created_at,
+                updated_at=created_at,
+                blocker_reason="Challenge detected immediately before submit call",
+            )
+
+        # Irreversible Submission Call
+        try:
+            evidence = driver.submit_page()
+        except Exception as err:
+            return self.ledger.transition_status(
+                idempotency_key=idempotency_key,
+                new_status=ActionStatus.UNKNOWN_OUTCOME,
+                blocker_reason=f"Submission error: {err}",
+            )
+
+        if evidence and evidence.confirmed:
+            return self.ledger.transition_status(
+                idempotency_key=idempotency_key,
+                new_status=ActionStatus.CONFIRMED,
+                evidence=evidence,
+            )
+
+        return self.ledger.transition_status(
+            idempotency_key=idempotency_key,
+            new_status=ActionStatus.UNKNOWN_OUTCOME,
+            evidence=evidence,
+            blocker_reason="Submission completed but receipt not detected",
+        )

@@ -15,9 +15,9 @@ from truth.models import VerificationStatus
 
 class ExecutionMode(str, Enum):
     """Governed execution modes for outbound workflows."""
-    DRY_RUN = "dry_run"                    # Read-only preparation and planning; zero side effects
-    ASSISTED = "assisted"                  # Browser automation to fill forms & upload artifacts; ZERO submit
-    CONTROLLED_SUBMIT = "controlled_submit" # Fully automated submission for graduated & enabled adapters
+    DRY_RUN = "dry_run"                     # Read-only preparation and planning; zero side effects
+    ASSISTED = "assisted"                   # Browser automation to fill forms & upload artifacts; ZERO submit
+    CONTROLLED_SUBMIT = "controlled_submit"  # Fully automated submission for graduated & enabled adapters
 
 
 class ActionAuthorityDecision(str, Enum):
@@ -30,12 +30,14 @@ class ActionAuthorityDecision(str, Enum):
 
 
 class SourceActionPolicy(str, Enum):
-    """Action permissions per platform / adapter."""
-    PROHIBITED = "prohibited"
-    MANUAL_ONLY = "manual_only"
-    BROWSER_FILL_ALLOWED = "browser_fill_allowed"
-    SUBMIT_ALLOWED = "submit_allowed"
-    API_ACTION_ALLOWED = "api_action_allowed"
+    """Action permissions per platform / adapter with positive granularity."""
+    DISCOVERY_ALLOWED = "discovery_allowed"       # Read-only feed/job ingestion only; NO prepare/fill/submit
+    PREPARE_ALLOWED = "prepare_allowed"           # Preparation/manifest generation allowed; NO browser fill/submit
+    BROWSER_FILL_ALLOWED = "browser_fill_allowed" # Assisted browser fill allowed; NO autonomous submit
+    SUBMIT_ALLOWED = "submit_allowed"             # Controlled autonomous submission allowed
+    API_ACTION_ALLOWED = "api_action_allowed"     # Direct API mutation allowed
+    MANUAL_ONLY = "manual_only"                   # Manual portal upload only
+    PROHIBITED = "prohibited"                     # All outbound interactions prohibited
 
 
 class AdapterLifecycleState(str, Enum):
@@ -74,9 +76,9 @@ class FieldOntologyType(str, Enum):
 
 class AnswerClass(str, Enum):
     """Three-tier answer classification policy."""
-    GREEN = "green"   # Sourced strictly from verified TruthGraph assertions
-    YELLOW = "yellow" # Sourced strictly from explicit TailoringPolicy preferences
-    RED = "red"       # Sensitive, legal, narrative, or ambiguous declarations -> PAUSE
+    GREEN = "green"    # Sourced strictly from verified TruthGraph assertions
+    YELLOW = "yellow"  # Sourced strictly from explicit TailoringPolicy preferences
+    RED = "red"        # Sensitive, legal, narrative, or ambiguous declarations -> PAUSE
 
 
 class ActionStatus(str, Enum):
@@ -94,10 +96,16 @@ class ActionStatus(str, Enum):
 
 @dataclass(frozen=True, slots=True)
 class BoundArtifact:
-    """Artifact bound to explicit candidate and workspace ownership."""
+    """Artifact bound to non-bypassable candidate and workspace ownership."""
     artifact: TailoredArtifact
-    candidate_id: str = "founder"
-    workspace: str = "default"
+    candidate_id: str
+    workspace: str
+
+    def __post_init__(self) -> None:
+        if not self.candidate_id or not self.candidate_id.strip():
+            raise ValueError("BoundArtifact requires explicit non-empty candidate_id")
+        if not self.workspace or not self.workspace.strip():
+            raise ValueError("BoundArtifact requires explicit non-empty workspace")
 
     @property
     def artifact_id(self) -> str:
@@ -150,7 +158,7 @@ class BoundArtifact:
 
 @dataclass(frozen=True, slots=True)
 class ApplicationAnswer:
-    """Atomic answer to an application question with verified provenance."""
+    """Atomic answer to an application question with verified provenance and confidence."""
     opportunity_id: str
     opportunity_content_hash: str
     action_id: str
@@ -162,6 +170,10 @@ class ApplicationAnswer:
     answer_source: str
     assertion_ids: tuple[str, ...] = ()
     policy_source: str = ""
+    generated_claim_ids: tuple[str, ...] = ()
+    artifact_ids: tuple[str, ...] = ()
+    confidence: float = 1.0
+    timestamp: str = ""
     disposition: str = "auto_fill"
 
     def __post_init__(self) -> None:
@@ -169,6 +181,9 @@ class ApplicationAnswer:
             raise ValueError("opportunity_id is required")
         if not self.action_id:
             raise ValueError("action_id is required")
+        if not self.timestamp:
+            object.__setattr__(self, "timestamp", datetime.now(timezone.utc).isoformat())
+
         if self.answer_class == AnswerClass.GREEN:
             if not self.assertion_ids or not self.answer_source.startswith("truth_graph:"):
                 raise ValueError("Green answers must have atomic assertion_ids and truth_graph source")
@@ -213,7 +228,7 @@ class GraduationRecord:
 
 @dataclass(frozen=True, slots=True)
 class PreSubmitManifest:
-    """Cryptographic pre-submission manifest binding all authorities."""
+    """Cryptographic pre-submission manifest binding all 16 authorities."""
     workspace: str
     candidate_id: str
     opportunity_id: str

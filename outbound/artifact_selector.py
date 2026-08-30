@@ -24,8 +24,8 @@ class ApplicationArtifactSelector:
         truth_graph: TruthGraph,
         policy: TailoringPolicy | None = None,
         workspace: str = "default",
-    ) -> tuple[Union[TailoredArtifact, BoundArtifact] | None, list[str]]:
-        """Select exactly one validated artifact strictly bound to candidate, workspace, and opportunity."""
+    ) -> tuple[BoundArtifact | None, list[str]]:
+        """Select exactly one validated BoundArtifact strictly bound to candidate, workspace, and opportunity."""
         errors: list[str] = []
 
         matching_type = [a for a in available_artifacts if a.artifact_type == artifact_type]
@@ -33,16 +33,17 @@ class ApplicationArtifactSelector:
             errors.append(f"No artifact found matching type '{artifact_type.value}'")
             return None, errors
 
-        # 1. Candidate and Workspace Ownership Checks
-        owned_artifacts: list[Union[TailoredArtifact, BoundArtifact]] = []
+        # 1. Non-bypassable BoundArtifact Ownership Checks
+        owned_artifacts: list[BoundArtifact] = []
         for a in matching_type:
-            art_cand = getattr(a, "candidate_id", None)
-            if art_cand is not None and art_cand != candidate_id:
-                errors.append(f"Artifact candidate '{art_cand}' does not match requested candidate '{candidate_id}'")
+            if not isinstance(a, BoundArtifact):
+                errors.append("Raw unowned TailoredArtifact rejected; BoundArtifact required")
                 continue
-            art_ws = getattr(a, "workspace", None)
-            if art_ws is not None and art_ws != workspace:
-                errors.append(f"Artifact workspace '{art_ws}' does not match requested workspace '{workspace}'")
+            if a.candidate_id != candidate_id:
+                errors.append(f"Artifact candidate '{a.candidate_id}' does not match requested candidate '{candidate_id}'")
+                continue
+            if a.workspace != workspace:
+                errors.append(f"Artifact workspace '{a.workspace}' does not match requested workspace '{workspace}'")
                 continue
             owned_artifacts.append(a)
 
@@ -68,11 +69,10 @@ class ApplicationArtifactSelector:
             return None, errors
 
         candidate_item = bound_artifacts[0]
-        inner_artifact = candidate_item.artifact if isinstance(candidate_item, BoundArtifact) else candidate_item
 
         # 3. Truth Claim Validation
         val_result = self.validator.validate_artifact(
-            inner_artifact, truth_graph, opportunity=opportunity, policy=policy
+            candidate_item.artifact, truth_graph, opportunity=opportunity, policy=policy
         )
         if not val_result.is_valid:
             errors.extend([f"Claim validator rejected artifact: {err}" for err in val_result.errors])
