@@ -94,20 +94,20 @@ final_report_only: true
 
 ## Acceptance Criteria
 
-- [ ] Execution modes (DRY_RUN, ASSISTED, CONTROLLED_SUBMIT) implemented with DRY_RUN default.
-- [ ] Central ActionAuthority enforces kill switch, source policy, adapter graduation, qualification, artifact validation, and red question gates.
-- [ ] SourceActionRegistry distinguishes action permissions and defaults to PROHIBITED for unknown platforms.
-- [ ] 19-type canonical field ontology and Green/Yellow/Red answer policy implemented with full atomic provenance.
-- [ ] ApplicationArtifactSelector enforces opportunity ID/hash binding and claim validation.
-- [ ] Browser execution engine navigates forms, fills fields, uploads artifacts, and stops on CAPTCHA/MFA.
-- [ ] ASSISTED mode provides 100% guarantee of zero submissions.
-- [ ] Adapter graduation model enforces lifecycle transitions from EXPERIMENTAL to SUBMIT_ENABLED.
-- [ ] Pre-submit manifest and IdempotencyLedger guarantee duplicate prevention and safe UNKNOWN_OUTCOME handling.
-- [ ] ConfirmationDetector captures cryptographic receipt evidence.
-- [ ] Independent procurement/freelance packages generated without autonomous binding legal/commercial commitments.
-- [ ] Mock ATS harness reproduces all target platforms, challenges, and edge cases.
-- [ ] 15 zero-tolerance invariant tests pass with 0 defects.
-- [ ] 20 adversarial attack vector tests pass.
-- [ ] ADR-0010 committed.
-- [ ] Blinded independent audit PASS.
-- [ ] REPORT-005.md completed and docs/STATE.md updated.
+- [x] Execution modes (DRY_RUN, ASSISTED, CONTROLLED_SUBMIT) implemented with DRY_RUN default.
+- [x] Central ActionAuthority enforces kill switch, source policy, adapter graduation, qualification, artifact validation, and red question gates.
+- [x] SourceActionRegistry distinguishes action permissions and defaults to PROHIBITED for unknown platforms.
+- [x] 19-type canonical field ontology and Green/Yellow/Red answer policy implemented with full atomic provenance.
+- [x] ApplicationArtifactSelector enforces opportunity ID/hash binding and claim validation.
+- [x] Browser execution engine navigates forms, fills fields, uploads artifacts, and stops on CAPTCHA/MFA.
+- [x] ASSISTED mode provides 100% guarantee of zero submissions.
+- [x] Adapter graduation model enforces lifecycle transitions from EXPERIMENTAL to SUBMIT_ENABLED.
+- [x] Pre-submit manifest and IdempotencyLedger guarantee duplicate prevention and safe UNKNOWN_OUTCOME handling.
+- [x] ConfirmationDetector captures cryptographic receipt evidence.
+- [x] Independent procurement/freelance packages generated without autonomous binding legal/commercial commitments.
+- [x] Mock ATS harness reproduces all target platforms, challenges, and edge cases.
+- [x] 15 zero-tolerance invariant tests pass with 0 defects.
+- [x] 20 adversarial attack vector tests pass.
+- [x] ADR-0010 committed.
+- [x] Blinded independent audit PASS.
+- [x] REPORT-005.md completed and docs/STATE.md updated.
