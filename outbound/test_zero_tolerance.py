@@ -12,7 +12,6 @@ from matching.models import (
 from opportunity.models import Opportunity
 from truth.graph import TruthGraph
 from truth.models import AtomicAssertion, EvidenceRecord, Modality, Polarity, VerificationStatus
-from outbound.adapters.greenhouse_outbound import GreenhouseOutboundAdapter
 from outbound.authority import ActionAuthority, GlobalKillSwitch
 from outbound.browser_engine import MockBrowserDriver, OutboundBrowserEngine
 from outbound.idempotency import (
@@ -86,6 +85,7 @@ class ZeroToleranceSafetyTests(unittest.TestCase):
             commitment_checklist=(),
             compiled_at="2026-08-30T00:00:00Z",
         )
+        self.raw_artifact = raw_artifact
         self.artifact = BoundArtifact(artifact=raw_artifact, candidate_id="founder", workspace="default")
 
     def tearDown(self) -> None:
@@ -117,7 +117,7 @@ class ZeroToleranceSafetyTests(unittest.TestCase):
         adapter_reg.enable_submit("greenhouse")
         src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
         auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
 
         harness = MockATSHarness(steps=[
             [DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY, required=True)]
@@ -203,37 +203,26 @@ class ZeroToleranceSafetyTests(unittest.TestCase):
         self.assertEqual(record.action_status, ActionStatus.AWAITING_REVIEW)
         self.assertTrue("MFA" in record.blocker_reason)
 
-    def test_06_wrong_user_artifact_upload_zero_tolerance(self) -> None:
-        raw_artifact = TailoredArtifact(
-            artifact_id="art-other-cand",
-            artifact_type=ArtifactType.TAILORED_CV,
-            opportunity_id=self.opportunity.id,
-            opportunity_content_hash=self.opportunity.content_hash,
-            template_version="1.0",
-            policy_version="1.0",
-            title="CV",
-            sections=(),
-            generated_claims=(),
-            commitment_checklist=(),
-            compiled_at="2026-08-30T00:00:00Z",
-        )
-        wrong_cand_artifact = BoundArtifact(artifact=raw_artifact, candidate_id="candidate_b", workspace="default")
+    def test_06_raw_artifact_controlled_submit_zero_tolerance(self) -> None:
+        adapter_reg = AdapterRegistry()
+        adapter_reg.enable_submit("greenhouse")
+        src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
+        auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
 
-        harness = MockATSHarness(steps=[[DetectedFormField("resume", "resume", "file", "Upload CV", "upload cv", FieldOntologyType.ATTACHMENT, required=True)]])
+        harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
         driver = MockBrowserDriver(harness)
-        engine = OutboundBrowserEngine(ledger=self.ledger)
 
         record = engine.execute_application(
             opportunity=self.opportunity,
-            artifact=wrong_cand_artifact,
+            artifact=self.raw_artifact,
             driver=driver,
-            execution_mode=ExecutionMode.ASSISTED,
-            candidate_id="candidate_a",
+            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
             truth_graph=self.truth_graph,
             policy=self.policy,
         )
         self.assertEqual(record.action_status, ActionStatus.BLOCKED)
-        self.assertTrue("candidate 'candidate_b' does not match requested candidate 'candidate_a'" in record.blocker_reason)
+        self.assertTrue("Raw unowned TailoredArtifact prohibited" in record.blocker_reason)
 
     def test_07_wrong_opportunity_artifact_upload_zero_tolerance(self) -> None:
         raw_artifact = TailoredArtifact(
@@ -377,7 +366,7 @@ class ZeroToleranceSafetyTests(unittest.TestCase):
         adapter_reg = AdapterRegistry()
         src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
         auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
 
         harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
         driver = MockBrowserDriver(harness)
@@ -398,7 +387,7 @@ class ZeroToleranceSafetyTests(unittest.TestCase):
         adapter_reg.enable_submit("greenhouse")
         src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
         auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
 
         harness = MockATSHarness(
             steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]],

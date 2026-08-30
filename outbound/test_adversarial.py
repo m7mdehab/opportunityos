@@ -37,6 +37,18 @@ from outbound.models import (
 from outbound.registry import AdapterRegistry, SourceActionRegistry
 
 
+class HookingMockBrowserDriver(MockBrowserDriver):
+    """Driver hook that toggles kill switch immediately before submission."""
+    def __init__(self, harness: MockATSHarness, toggle_kill_switch_before_submit: bool = False) -> None:
+        super().__init__(harness)
+        self.toggle_kill_switch_before_submit = toggle_kill_switch_before_submit
+
+    def submit_page(self) -> ConfirmationEvidence:
+        if self.toggle_kill_switch_before_submit:
+            GlobalKillSwitch.disable()
+        return super().submit_page()
+
+
 class AdversarialOutboundTests(unittest.TestCase):
     def setUp(self) -> None:
         GlobalKillSwitch.enable()
@@ -91,6 +103,7 @@ class AdversarialOutboundTests(unittest.TestCase):
             commitment_checklist=(),
             compiled_at="2026-08-30T00:00:00Z",
         )
+        self.raw_artifact = raw_artifact
         self.artifact = BoundArtifact(artifact=raw_artifact, candidate_id="founder", workspace="default")
 
     def tearDown(self) -> None:
@@ -98,31 +111,38 @@ class AdversarialOutboundTests(unittest.TestCase):
         if os.path.exists(self.db_path):
             os.remove(self.db_path)
 
-    def test_adv_01_late_kill_switch_after_fill_prevents_submit(self) -> None:
+    def test_adv_01_late_kill_switch_toggled_after_reservation_aborts_submit(self) -> None:
         adapter_reg = AdapterRegistry()
         adapter_reg.enable_submit("greenhouse")
         src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
         auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg)
+
+        # Hooking ledger that toggles kill switch immediately after reserve_submission
+        class HookingLedger(IdempotencyLedger):
+            def reserve_submission(self, record):
+                super().reserve_submission(record)
+                GlobalKillSwitch.disable()
+
+        hooking_ledger = HookingLedger(self.db_path)
+        engine = OutboundBrowserEngine(authority=auth, ledger=hooking_ledger, adapter_registry=adapter_reg, source_registry=src_reg)
 
         harness = MockATSHarness(steps=[
             [DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY, required=True)]
         ])
-        raw_driver = MockBrowserDriver(harness)
-
-        GlobalKillSwitch.disable()
+        driver = MockBrowserDriver(harness)
 
         record = engine.execute_application(
             opportunity=self.opportunity,
             artifact=self.artifact,
-            driver=raw_driver,
+            driver=driver,
             execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
             truth_graph=self.tg,
             policy=self.policy,
         )
         self.assertEqual(record.action_status, ActionStatus.BLOCKED)
-        self.assertTrue("kill switch" in record.blocker_reason)
+        self.assertTrue("kill switch disabled after reservation" in record.blocker_reason)
         self.assertFalse(harness.submitted)
+        self.assertEqual(harness.submits_count, 0)
 
     def test_adv_02_caller_forged_submit_enabled_state_ignored(self) -> None:
         adapter_reg = AdapterRegistry()
@@ -170,7 +190,7 @@ class AdversarialOutboundTests(unittest.TestCase):
         adapter_reg.enable_submit("greenhouse")
         src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.MANUAL_ONLY})
         auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
 
         harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
         driver = MockBrowserDriver(harness)
@@ -191,7 +211,7 @@ class AdversarialOutboundTests(unittest.TestCase):
         adapter_reg.enable_submit("greenhouse")
         src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
         auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
 
         harness = MockATSHarness(
             steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]],
@@ -209,8 +229,9 @@ class AdversarialOutboundTests(unittest.TestCase):
         )
         self.assertEqual(rec1.action_status, ActionStatus.UNKNOWN_OUTCOME)
 
+        # Process restart
         restarted_ledger = IdempotencyLedger(self.db_path)
-        engine2 = OutboundBrowserEngine(authority=auth, ledger=restarted_ledger, adapter_registry=adapter_reg)
+        engine2 = OutboundBrowserEngine(authority=auth, ledger=restarted_ledger, adapter_registry=adapter_reg, source_registry=src_reg)
 
         rec2 = engine2.execute_application(
             opportunity=self.opportunity,
@@ -228,7 +249,7 @@ class AdversarialOutboundTests(unittest.TestCase):
         adapter_reg.enable_submit("greenhouse")
         src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
         auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
 
         harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
         driver = MockBrowserDriver(harness)
@@ -304,7 +325,7 @@ class AdversarialOutboundTests(unittest.TestCase):
         adapter_reg.enable_submit("greenhouse")
         src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
         auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
 
         harness = MockATSHarness(steps=[
             [DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY, required=True)]
@@ -386,7 +407,7 @@ class AdversarialOutboundTests(unittest.TestCase):
         adapter_reg.enable_submit("greenhouse")
         src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
         auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
 
         harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
         driver = MockBrowserDriver(harness)
@@ -408,7 +429,7 @@ class AdversarialOutboundTests(unittest.TestCase):
         adapter_reg.enable_submit("greenhouse")
         src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
         auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
 
         harness = MockATSHarness(steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]])
         driver = MockBrowserDriver(harness)
@@ -430,7 +451,7 @@ class AdversarialOutboundTests(unittest.TestCase):
         adapter_reg.enable_submit("greenhouse")
         src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
         auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
 
         harness = MockATSHarness(
             steps=[[DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY)]],
@@ -556,7 +577,7 @@ class AdversarialOutboundTests(unittest.TestCase):
         adapter_reg.enable_submit("greenhouse")
         src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
         auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
-        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg)
+        engine = OutboundBrowserEngine(authority=auth, ledger=self.ledger, adapter_registry=adapter_reg, source_registry=src_reg)
 
         harness = MockATSHarness(steps=[
             [DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY, required=True)]

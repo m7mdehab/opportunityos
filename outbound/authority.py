@@ -42,7 +42,7 @@ class GlobalKillSwitch:
 
 
 class ActionAuthority:
-    """Multi-dimensional safety gate evaluating all 11 prerequisite dimensions."""
+    """Multi-dimensional safety gate evaluating all 11 prerequisite dimensions fail-closed."""
 
     def __init__(
         self,
@@ -103,7 +103,7 @@ class ActionAuthority:
             reasons.append("Opportunity qualification is UNCERTAIN; requires human review before action")
             return ActionAuthorityDecision.PAUSE_FOR_REVIEW, reasons
 
-        # 6. Source Action Policy Gate
+        # 6. Source Action Policy Positive Granularity Gate
         source_policy = self.registry.get_policy(opportunity.source)
         if source_policy == SourceActionPolicy.PROHIBITED:
             reasons.append(f"Source '{opportunity.source}' policy is PROHIBITED")
@@ -111,6 +111,25 @@ class ActionAuthority:
 
         if source_policy == SourceActionPolicy.MANUAL_ONLY and execution_mode != ExecutionMode.DRY_RUN:
             reasons.append(f"Source '{opportunity.source}' policy is MANUAL_ONLY; automated actions blocked")
+            return ActionAuthorityDecision.BLOCK, reasons
+
+        if source_policy == SourceActionPolicy.DISCOVERY_ALLOWED:
+            reasons.append(f"Source '{opportunity.source}' policy is DISCOVERY_ALLOWED; prepare, fill, and submit prohibited")
+            return ActionAuthorityDecision.BLOCK, reasons
+
+        if execution_mode == ExecutionMode.ASSISTED and source_policy not in (
+            SourceActionPolicy.BROWSER_FILL_ALLOWED,
+            SourceActionPolicy.SUBMIT_ALLOWED,
+            SourceActionPolicy.API_ACTION_ALLOWED,
+        ):
+            reasons.append(f"Source policy '{source_policy.value}' prohibits assisted fill")
+            return ActionAuthorityDecision.BLOCK, reasons
+
+        if execution_mode == ExecutionMode.CONTROLLED_SUBMIT and source_policy not in (
+            SourceActionPolicy.SUBMIT_ALLOWED,
+            SourceActionPolicy.API_ACTION_ALLOWED,
+        ):
+            reasons.append(f"Source policy '{source_policy.value}' prohibits controlled submit")
             return ActionAuthorityDecision.BLOCK, reasons
 
         # 7. Authoritative Adapter Graduation Resolution
@@ -124,17 +143,21 @@ class ActionAuthority:
             reasons.append(f"Adapter '{adapter_name}' is incompatible with source '{opportunity.source}'")
             return ActionAuthorityDecision.BLOCK, reasons
 
-        # 8. Artifact Validation & Ownership Checks
+        # 8. Non-Bypassable Artifact Ownership & Validation Checks
         if artifact is not None:
-            art_cand = getattr(artifact, "candidate_id", None)
-            if art_cand is not None and art_cand != candidate_id:
-                reasons.append(f"Artifact candidate '{art_cand}' does not match requested candidate '{candidate_id}'")
-                return ActionAuthorityDecision.BLOCK, reasons
+            if execution_mode in (ExecutionMode.ASSISTED, ExecutionMode.CONTROLLED_SUBMIT):
+                if not isinstance(artifact, BoundArtifact):
+                    reasons.append("Raw unowned TailoredArtifact prohibited; BoundArtifact with explicit candidate_id and workspace required")
+                    return ActionAuthorityDecision.BLOCK, reasons
 
-            art_ws = getattr(artifact, "workspace", None)
-            if art_ws is not None and art_ws != workspace:
-                reasons.append(f"Artifact workspace '{art_ws}' does not match requested workspace '{workspace}'")
-                return ActionAuthorityDecision.BLOCK, reasons
+            if isinstance(artifact, BoundArtifact):
+                if artifact.candidate_id != candidate_id:
+                    reasons.append(f"Artifact candidate '{artifact.candidate_id}' does not match requested candidate '{candidate_id}'")
+                    return ActionAuthorityDecision.BLOCK, reasons
+
+                if artifact.workspace != workspace:
+                    reasons.append(f"Artifact workspace '{artifact.workspace}' does not match requested workspace '{workspace}'")
+                    return ActionAuthorityDecision.BLOCK, reasons
 
             if artifact.opportunity_id != opportunity.id:
                 reasons.append(f"Artifact opportunity ID '{artifact.opportunity_id}' does not match target opportunity ID '{opportunity.id}'")
@@ -165,10 +188,6 @@ class ActionAuthority:
                 reasons.append(
                     f"Adapter '{adapter_name}' requires SUBMIT_ENABLED lifecycle state and explicit founder authorization"
                 )
-                return ActionAuthorityDecision.BLOCK, reasons
-
-            if source_policy not in (SourceActionPolicy.SUBMIT_ALLOWED, SourceActionPolicy.API_ACTION_ALLOWED):
-                reasons.append(f"Source policy '{source_policy.value}' prohibits controlled submit")
                 return ActionAuthorityDecision.BLOCK, reasons
 
             red_answers = [a for a in answers if a.answer_class == AnswerClass.RED]

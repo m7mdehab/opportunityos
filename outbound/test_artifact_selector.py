@@ -1,4 +1,4 @@
-"""Tests for ApplicationArtifactSelector candidate/workspace ownership."""
+"""Tests for ApplicationArtifactSelector non-bypassable ownership."""
 import unittest
 from matching.models import ArtifactType, TailoredArtifact
 from matching.validator import ArtifactClaimValidator
@@ -30,6 +30,31 @@ class ApplicationArtifactSelectorTests(unittest.TestCase):
             verification_status=VerificationStatus.VERIFIED, evidence_ids=("ev-1",),
         ))
         self.selector = ApplicationArtifactSelector()
+
+    def test_raw_unowned_artifact_is_strictly_rejected(self) -> None:
+        raw_art = TailoredArtifact(
+            artifact_id="art-raw",
+            artifact_type=ArtifactType.TAILORED_CV,
+            opportunity_id=self.opportunity.id,
+            opportunity_content_hash=self.opportunity.content_hash,
+            template_version="1.0",
+            policy_version="1.0",
+            title="Raw CV",
+            sections=(),
+            generated_claims=(),
+            commitment_checklist=(),
+            compiled_at="2026-08-30T00:00:00Z",
+        )
+        selected, errors = self.selector.select_artifact(
+            candidate_id="founder",
+            opportunity=self.opportunity,
+            artifact_type=ArtifactType.TAILORED_CV,
+            available_artifacts=(raw_art,),
+            truth_graph=self.tg,
+            workspace="default",
+        )
+        self.assertIsNone(selected)
+        self.assertTrue(any("Raw unowned TailoredArtifact rejected" in err for err in errors))
 
     def test_wrong_candidate_artifact_is_strictly_blocked(self) -> None:
         raw_art = TailoredArtifact(

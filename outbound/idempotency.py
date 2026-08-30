@@ -18,6 +18,8 @@ from .models import (
     OutboundActionRecord,
 )
 
+DEFAULT_LEDGER_PATH = os.environ.get("OPPORTUNITYOS_LEDGER_PATH", "data/outbound_ledger.sqlite")
+
 
 class DuplicateSubmissionError(ValueError):
     """Raised when duplicate submission is attempted."""
@@ -30,8 +32,8 @@ class UnknownOutcomeFrozenError(ValueError):
 class IdempotencyLedger:
     """Thread-safe and process-durable submission ledger preventing duplicate side effects."""
 
-    def __init__(self, db_path: str = ":memory:") -> None:
-        self.db_path = db_path
+    def __init__(self, db_path: str | None = None) -> None:
+        self.db_path = db_path if db_path is not None else DEFAULT_LEDGER_PATH
         self._lock = threading.Lock()
         self._memory_conn: sqlite3.Connection | None = None
         if self.db_path == ":memory:":

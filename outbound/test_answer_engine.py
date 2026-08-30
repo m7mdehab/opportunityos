@@ -1,4 +1,4 @@
-"""Tests for ApplicationAnswerEngine with strict zero-fabrication and jurisdiction matching."""
+"""Tests for ApplicationAnswerEngine with strict zero-fabrication and open-world work authorization."""
 import unittest
 from matching.models import TailoringPolicy
 from opportunity.models import Opportunity, Track
@@ -81,7 +81,7 @@ class ApplicationAnswerEngineTests(unittest.TestCase):
         self.assertEqual(ans.disposition, "pause")
         self.assertEqual(ans.answer_source, "unasserted_links")
 
-    def test_work_authorization_mismatched_jurisdiction_does_not_yield_yes(self) -> None:
+    def test_work_authorization_egypt_positive_with_us_question_yields_pause_not_no(self) -> None:
         tg = TruthGraph()
         ev = EvidenceRecord(id="ev-auth-eg", source="passport", locator="p1", content="Authorized to work in Egypt indefinitely.")
         tg.add_evidence(ev)
@@ -99,31 +99,55 @@ class ApplicationAnswerEngineTests(unittest.TestCase):
             ontology_type=FieldOntologyType.WORK_AUTHORIZATION,
         )
         ans = engine.answer_field(field_us, self.opportunity)
-        self.assertNotEqual(ans.answer, "Yes")
-        self.assertEqual(ans.answer, "No")
-        self.assertEqual(ans.answer_class, AnswerClass.YELLOW)
+        # UNKNOWN != FALSE: absent evidence for US is unknown, so it must NOT infer "No" or "Yes"
+        self.assertIsNone(ans.answer)
+        self.assertEqual(ans.answer_class, AnswerClass.RED)
+        self.assertEqual(ans.disposition, "pause")
+        self.assertEqual(ans.answer_source, "unresolved_work_authorization")
 
-    def test_work_authorization_matching_jurisdiction_yields_green_yes(self) -> None:
+    def test_work_authorization_explicit_verified_positive_yields_green_yes(self) -> None:
         tg = TruthGraph()
-        ev = EvidenceRecord(id="ev-auth-eg", source="passport", locator="p1", content="Authorized to work in Egypt indefinitely.")
+        ev = EvidenceRecord(id="ev-auth-us", source="passport", locator="p1", content="Authorized to work in United States.")
         tg.add_evidence(ev)
         tg.add_assertion(AtomicAssertion(
-            id="a-auth-eg", subject_id="founder", predicate="authorization.jurisdiction",
-            value="Egypt", polarity=Polarity.POSITIVE, modality=Modality.DEFINITE,
-            verification_status=VerificationStatus.VERIFIED, evidence_ids=("ev-auth-eg",),
+            id="a-auth-us", subject_id="founder", predicate="authorization.jurisdiction",
+            value="United States", polarity=Polarity.POSITIVE, modality=Modality.DEFINITE,
+            verification_status=VerificationStatus.VERIFIED, evidence_ids=("ev-auth-us",),
         ))
 
         engine = ApplicationAnswerEngine(tg, self.policy)
-        field_eg = DetectedFormField(
-            field_id="auth_eg", name="auth_eg", field_type="radio",
-            label="Are you legally authorized to work in Egypt?",
-            normalized_label="are you legally authorized to work in egypt",
+        field_us = DetectedFormField(
+            field_id="auth_us", name="auth_us", field_type="radio",
+            label="Are you authorized to work in the United States?",
+            normalized_label="are you authorized to work in the united states",
             ontology_type=FieldOntologyType.WORK_AUTHORIZATION,
         )
-        ans = engine.answer_field(field_eg, self.opportunity)
+        ans = engine.answer_field(field_us, self.opportunity)
         self.assertEqual(ans.answer, "Yes")
         self.assertEqual(ans.answer_class, AnswerClass.GREEN)
-        self.assertEqual(ans.assertion_ids, ("a-auth-eg",))
+        self.assertEqual(ans.assertion_ids, ("a-auth-us",))
+
+    def test_work_authorization_explicit_verified_negative_yields_green_no(self) -> None:
+        tg = TruthGraph()
+        ev = EvidenceRecord(id="ev-neg-us", source="visa_refusal", locator="p1", content="Not authorized to work in United States.")
+        tg.add_evidence(ev)
+        tg.add_assertion(AtomicAssertion(
+            id="a-neg-us", subject_id="founder", predicate="authorization.jurisdiction",
+            value="United States", polarity=Polarity.NEGATIVE, modality=Modality.DEFINITE,
+            verification_status=VerificationStatus.VERIFIED, evidence_ids=("ev-neg-us",),
+        ))
+
+        engine = ApplicationAnswerEngine(tg, self.policy)
+        field_us = DetectedFormField(
+            field_id="auth_us", name="auth_us", field_type="radio",
+            label="Are you authorized to work in the United States?",
+            normalized_label="are you authorized to work in the united states",
+            ontology_type=FieldOntologyType.WORK_AUTHORIZATION,
+        )
+        ans = engine.answer_field(field_us, self.opportunity)
+        self.assertEqual(ans.answer, "No")
+        self.assertEqual(ans.answer_class, AnswerClass.GREEN)
+        self.assertEqual(ans.assertion_ids, ("a-neg-us",))
 
 
 if __name__ == "__main__":

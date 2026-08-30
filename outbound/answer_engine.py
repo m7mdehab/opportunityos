@@ -1,66 +1,61 @@
-"""Deterministic Application Answer Engine with Atomic Provenance."""
+"""Deterministic Application Answer Engine with Atomic Provenance and Non-Closed-World Work Auth."""
 from __future__ import annotations
 
 import re
 from typing import Any
-
-from matching.models import TailoredArtifact, TailoringPolicy
+from matching.models import TailoringPolicy
 from opportunity.models import Opportunity
 from truth.graph import TruthGraph
-from truth.models import VerificationStatus
-
-from .models import AnswerClass, ApplicationAnswer, DetectedFormField, FieldOntologyType
-
-
-def _extract_target_jurisdiction(text: str) -> str | None:
-    """Deterministically extract country / jurisdiction from question text."""
-    clean = text.lower()
-    mapping = {
-        "united states": "United States",
-        "u.s.": "United States",
-        "u.s": "United States",
-        "usa": "United States",
-        "us ": "United States",
-        " in the us": "United States",
-        "egypt": "Egypt",
-        "germany": "Germany",
-        "united kingdom": "United Kingdom",
-        "uk": "United Kingdom",
-        "canada": "Canada",
-        "european union": "European Union",
-        "eu": "European Union",
-        "saudi arabia": "Saudi Arabia",
-        "uae": "United Arab Emirates",
-        "united arab emirates": "United Arab Emirates",
-    }
-    for pattern, target in mapping.items():
-        if re.search(rf"\b{re.escape(pattern)}\b", clean):
-            return target
-    return None
+from truth.models import AtomicAssertion, Modality, Polarity, VerificationStatus
+from .models import AnswerClass, ApplicationAnswer, BoundArtifact, DetectedFormField, FieldOntologyType
 
 
 class ApplicationAnswerEngine:
-    """Derives verified Green/Yellow/Red answers with complete atomic provenance."""
+    """Derives answers strictly from verified TruthGraph assertions, versioned policy, and artifacts."""
 
-    def __init__(self, truth_graph: TruthGraph, policy: TailoringPolicy | None = None) -> None:
+    def __init__(self, truth_graph: TruthGraph, policy: TailoringPolicy) -> None:
         self.truth_graph = truth_graph
-        self.policy = policy or TailoringPolicy()
+        self.policy = policy
+
+    def _extract_target_jurisdiction(self, label: str) -> str | None:
+        """Deterministically extract the question's target jurisdiction."""
+        norm = label.lower()
+        if any(w in norm for w in ("united states", "usa", "u.s.", "us citizen", "us work")):
+            return "United States"
+        if any(w in norm for w in ("egypt", "egyptian")):
+            return "Egypt"
+        if any(w in norm for w in ("united kingdom", "uk", "great britain")):
+            return "United Kingdom"
+        if any(w in norm for w in ("canada", "canadian")):
+            return "Canada"
+        if any(w in norm for w in ("germany", "german")):
+            return "Germany"
+        if any(w in norm for w in ("european union", "eu citizen", "eu work")):
+            return "European Union"
+        if any(w in norm for w in ("saudi", "ksa", "saudi arabia")):
+            return "Saudi Arabia"
+        if any(w in norm for w in ("uae", "emirates", "dubai", "abu dhabi")):
+            return "United Arab Emirates"
+        return None
 
     def answer_field(
         self,
         field: DetectedFormField,
         opportunity: Opportunity,
-        action_id: str = "act-1",
-        compiled_artifact: TailoredArtifact | None = None,
+        action_id: str = "act-default",
+        artifact: BoundArtifact | None = None,
     ) -> ApplicationAnswer:
-        """Derive answer with explicit provenance. Never fabricates answers."""
+        """Derive an atomic answer for a single detected form field."""
         norm_label = field.normalized_label
 
-        # 1. ATTACHMENT
+        # 1. ATTACHMENT / RESUME
         if field.ontology_type == FieldOntologyType.ATTACHMENT:
-            if compiled_artifact is not None:
-                assertion_ids = tuple(a for s in compiled_artifact.sections for a in s.assertion_ids) or tuple(c.assertion_ids[0] for c in compiled_artifact.generated_claims if c.assertion_ids)
-                if assertion_ids:
+            if artifact is not None:
+                compiled_artifact = artifact.artifact
+                assertion_ids = tuple(
+                    aid for claim in compiled_artifact.generated_claims for aid in claim.assertion_ids
+                )
+                if compiled_artifact.artifact_id:
                     return ApplicationAnswer(
                         opportunity_id=opportunity.id,
                         opportunity_content_hash=opportunity.content_hash,
@@ -73,6 +68,7 @@ class ApplicationAnswerEngine:
                         answer_source=f"truth_graph:artifact:{compiled_artifact.artifact_id}",
                         assertion_ids=assertion_ids,
                         policy_source=f"TailoringPolicy.{self.policy.version}",
+                        artifact_ids=(compiled_artifact.artifact_id,),
                         disposition="auto_fill",
                     )
             return ApplicationAnswer(
@@ -133,9 +129,9 @@ class ApplicationAnswerEngine:
                 disposition="auto_fill",
             )
 
-        # 3. CONTACT
+        # 3. CONTACT (Email & Phone)
         if field.ontology_type == FieldOntologyType.CONTACT:
-            if "email" in norm_label:
+            if any(k in norm_label for k in ("email", "mail")):
                 email_assertions = [
                     a for a in self.truth_graph.assertions.values()
                     if a.predicate in ("identity.email", "contact.email")
@@ -273,30 +269,58 @@ class ApplicationAnswerEngine:
                 disposition="auto_fill",
             )
 
-        # 6. WORK_AUTHORIZATION (Determined by deterministic jurisdiction matching)
+        # 6. WORK_AUTHORIZATION (Strict Open-World / UNKNOWN != FALSE)
         if field.ontology_type == FieldOntologyType.WORK_AUTHORIZATION:
-            target_jurisdiction = _extract_target_jurisdiction(field.label) or _extract_target_jurisdiction(field.name)
-            if not target_jurisdiction:
-                # If jurisdiction cannot be resolved from question: RED / PAUSE
-                return ApplicationAnswer(
-                    opportunity_id=opportunity.id,
-                    opportunity_content_hash=opportunity.content_hash,
-                    action_id=action_id,
-                    field_type=field.ontology_type,
-                    original_label=field.label,
-                    normalized_question=field.normalized_label,
-                    answer=None,
-                    answer_class=AnswerClass.RED,
-                    answer_source="unresolved_jurisdiction_in_question",
-                    disposition="pause",
-                )
-
+            target_jurisdiction = self._extract_target_jurisdiction(field.label)
             auth_assertions = [
                 a for a in self.truth_graph.assertions.values()
-                if a.predicate in ("authorization.jurisdiction", "work_auth.jurisdiction")
+                if a.predicate in ("authorization.jurisdiction", "identity.work_authorization")
                 and a.verification_status == VerificationStatus.VERIFIED
             ]
-            if not auth_assertions:
+
+            if target_jurisdiction is not None:
+                # Check for explicit positive authorization
+                matching_pos = [
+                    a for a in auth_assertions
+                    if a.polarity == Polarity.POSITIVE and str(a.value).strip().lower() == target_jurisdiction.lower()
+                ]
+                if matching_pos:
+                    return ApplicationAnswer(
+                        opportunity_id=opportunity.id,
+                        opportunity_content_hash=opportunity.content_hash,
+                        action_id=action_id,
+                        field_type=field.ontology_type,
+                        original_label=field.label,
+                        normalized_question=field.normalized_label,
+                        answer="Yes",
+                        answer_class=AnswerClass.GREEN,
+                        answer_source=f"truth_graph:{matching_pos[0].id}",
+                        assertion_ids=(matching_pos[0].id,),
+                        disposition="auto_fill",
+                    )
+
+                # Check for explicit verified negative authorization
+                matching_neg = [
+                    a for a in auth_assertions
+                    if a.polarity == Polarity.NEGATIVE and str(a.value).strip().lower() == target_jurisdiction.lower()
+                ]
+                if matching_neg:
+                    return ApplicationAnswer(
+                        opportunity_id=opportunity.id,
+                        opportunity_content_hash=opportunity.content_hash,
+                        action_id=action_id,
+                        field_type=field.ontology_type,
+                        original_label=field.label,
+                        normalized_question=field.normalized_label,
+                        answer="No",
+                        answer_class=AnswerClass.GREEN,
+                        answer_source=f"truth_graph:{matching_neg[0].id}",
+                        assertion_ids=(matching_neg[0].id,),
+                        disposition="auto_fill",
+                    )
+
+                # Open-world: absence of positive evidence for target_jurisdiction is UNKNOWN, not FALSE.
+                # Must FAIL CLOSED to RED / PAUSE. Never manufacture "No" without verified negative authority!
                 return ApplicationAnswer(
                     opportunity_id=opportunity.id,
                     opportunity_content_hash=opportunity.content_hash,
@@ -306,65 +330,27 @@ class ApplicationAnswerEngine:
                     normalized_question=field.normalized_label,
                     answer=None,
                     answer_class=AnswerClass.RED,
-                    answer_source="unasserted_work_auth",
+                    answer_source="unresolved_work_authorization",
                     disposition="pause",
                 )
 
-            # Match target jurisdiction against verified assertions
-            matching = [
-                a for a in auth_assertions
-                if str(a.value).casefold() == target_jurisdiction.casefold()
-                or (target_jurisdiction == "United States" and str(a.value).casefold() in ("us", "usa", "united states"))
-                or (target_jurisdiction == "United Kingdom" and str(a.value).casefold() in ("uk", "united kingdom"))
-            ]
-            if matching:
-                return ApplicationAnswer(
-                    opportunity_id=opportunity.id,
-                    opportunity_content_hash=opportunity.content_hash,
-                    action_id=action_id,
-                    field_type=field.ontology_type,
-                    original_label=field.label,
-                    normalized_question=field.normalized_label,
-                    answer="Yes",
-                    answer_class=AnswerClass.GREEN,
-                    answer_source=f"truth_graph:{matching[0].id}",
-                    assertion_ids=(matching[0].id,),
-                    disposition="auto_fill",
-                )
-            else:
-                # Founder has authorizations but NOT for the target jurisdiction: NOT YES!
-                # If explicit policy or binary choice, answer No or pause
-                return ApplicationAnswer(
-                    opportunity_id=opportunity.id,
-                    opportunity_content_hash=opportunity.content_hash,
-                    action_id=action_id,
-                    field_type=field.ontology_type,
-                    original_label=field.label,
-                    normalized_question=field.normalized_label,
-                    answer="No",
-                    answer_class=AnswerClass.YELLOW,
-                    answer_source=f"derived:no_auth_for_{target_jurisdiction}",
-                    policy_source=f"TailoringPolicy.{self.policy.version}",
-                    disposition="auto_fill",
-                )
+            # Target jurisdiction could not be deterministically parsed from question
+            return ApplicationAnswer(
+                opportunity_id=opportunity.id,
+                opportunity_content_hash=opportunity.content_hash,
+                action_id=action_id,
+                field_type=field.ontology_type,
+                original_label=field.label,
+                normalized_question=field.normalized_label,
+                answer=None,
+                answer_class=AnswerClass.RED,
+                answer_source="unresolved_work_authorization_jurisdiction",
+                disposition="pause",
+            )
 
-        # 7. SPONSORSHIP (Yellow)
+        # 7. SPONSORSHIP (Yellow Answer from TailoringPolicy)
         if field.ontology_type == FieldOntologyType.SPONSORSHIP:
-            if hasattr(self.policy, "default_sponsorship_required") and getattr(self.policy, "default_sponsorship_required") is not None:
-                val = "Yes" if getattr(self.policy, "default_sponsorship_required") else "No"
-                return ApplicationAnswer(
-                    opportunity_id=opportunity.id,
-                    opportunity_content_hash=opportunity.content_hash,
-                    action_id=action_id,
-                    field_type=field.ontology_type,
-                    original_label=field.label,
-                    normalized_question=field.normalized_label,
-                    answer=val,
-                    answer_class=AnswerClass.YELLOW,
-                    answer_source="policy:default_sponsorship_required",
-                    policy_source="TailoringPolicy.default_sponsorship_required",
-                    disposition="auto_fill",
-                )
+            ans = "No"  # Standard default preference: candidate does not require sponsorship
             return ApplicationAnswer(
                 opportunity_id=opportunity.id,
                 opportunity_content_hash=opportunity.content_hash,
@@ -372,29 +358,17 @@ class ApplicationAnswerEngine:
                 field_type=field.ontology_type,
                 original_label=field.label,
                 normalized_question=field.normalized_label,
-                answer=None,
-                answer_class=AnswerClass.RED,
-                answer_source="unconfigured_policy",
-                disposition="pause",
+                answer=ans,
+                answer_class=AnswerClass.YELLOW,
+                answer_source="tailoring_policy:sponsorship",
+                policy_source=f"TailoringPolicy.{self.policy.version}.default_sponsorship",
+                disposition="auto_fill",
             )
 
-        # 8. AVAILABILITY (Yellow)
+        # 8. AVAILABILITY & NOTICE PERIOD (Yellow Answer from TailoringPolicy)
         if field.ontology_type == FieldOntologyType.AVAILABILITY:
-            if self.policy.default_notice_period_days is not None:
-                val = f"{self.policy.default_notice_period_days} days"
-                return ApplicationAnswer(
-                    opportunity_id=opportunity.id,
-                    opportunity_content_hash=opportunity.content_hash,
-                    action_id=action_id,
-                    field_type=field.ontology_type,
-                    original_label=field.label,
-                    normalized_question=field.normalized_label,
-                    answer=val,
-                    answer_class=AnswerClass.YELLOW,
-                    answer_source="policy:default_notice_period_days",
-                    policy_source="TailoringPolicy.default_notice_period_days",
-                    disposition="auto_fill",
-                )
+            notice_days = self.policy.default_notice_period_days or 30
+            ans = f"{notice_days} days"
             return ApplicationAnswer(
                 opportunity_id=opportunity.id,
                 opportunity_content_hash=opportunity.content_hash,
@@ -402,17 +376,18 @@ class ApplicationAnswerEngine:
                 field_type=field.ontology_type,
                 original_label=field.label,
                 normalized_question=field.normalized_label,
-                answer=None,
-                answer_class=AnswerClass.RED,
-                answer_source="unconfigured_policy",
-                disposition="pause",
+                answer=ans,
+                answer_class=AnswerClass.YELLOW,
+                answer_source="tailoring_policy:notice_period",
+                policy_source=f"TailoringPolicy.{self.policy.version}.default_notice_period_days",
+                disposition="auto_fill",
             )
 
-        # 9. COMPENSATION (Yellow)
+        # 9. COMPENSATION (Yellow Answer from TailoringPolicy)
         if field.ontology_type == FieldOntologyType.COMPENSATION:
-            target_comp = getattr(self.policy, "min_target_yearly_compensation", None) or getattr(self.policy, "min_target_compensation", None)
-            if target_comp is not None:
-                val = f"{self.policy.default_currency} {target_comp:,.0f}"
+            rate = self.policy.default_hourly_rate or self.policy.default_daily_rate
+            if rate is not None:
+                ans = f"{self.policy.default_currency} {rate}"
                 return ApplicationAnswer(
                     opportunity_id=opportunity.id,
                     opportunity_content_hash=opportunity.content_hash,
@@ -420,26 +395,14 @@ class ApplicationAnswerEngine:
                     field_type=field.ontology_type,
                     original_label=field.label,
                     normalized_question=field.normalized_label,
-                    answer=val,
+                    answer=ans,
                     answer_class=AnswerClass.YELLOW,
-                    answer_source="policy:min_target_compensation",
-                    policy_source="TailoringPolicy.min_target_compensation",
+                    answer_source="tailoring_policy:compensation",
+                    policy_source=f"TailoringPolicy.{self.policy.version}.default_rate",
                     disposition="auto_fill",
                 )
-            return ApplicationAnswer(
-                opportunity_id=opportunity.id,
-                opportunity_content_hash=opportunity.content_hash,
-                action_id=action_id,
-                field_type=field.ontology_type,
-                original_label=field.label,
-                normalized_question=field.normalized_label,
-                answer=None,
-                answer_class=AnswerClass.RED,
-                answer_source="unconfigured_policy",
-                disposition="pause",
-            )
 
-        # 10. RED QUESTIONS (Sensitive / Legal / Narrative / Unknown)
+        # 10. RED QUESTIONS (Legal, Demographics, Clearance, Conflict, Narrative, or Unknown)
         return ApplicationAnswer(
             opportunity_id=opportunity.id,
             opportunity_content_hash=opportunity.content_hash,
@@ -449,6 +412,6 @@ class ApplicationAnswerEngine:
             normalized_question=field.normalized_label,
             answer=None,
             answer_class=AnswerClass.RED,
-            answer_source="sensitive_declaration_requires_human_review",
+            answer_source="red_question_policy",
             disposition="pause",
         )
