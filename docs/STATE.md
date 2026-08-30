@@ -10,8 +10,8 @@ Next: BRIEF-004: Opportunity Matching & Proposal Tailoring.
 
 ## Repository
 
-- **Generated:** 2026-08-30T01:54:24Z
-- **State generated at commit:** `356a0a9` — feat(opportunity): implement unified opportunity ingestion pipeline, adapters, normalization, and deduplication
+- **Generated:** 2026-08-30T01:54:35Z
+- **State generated at commit:** `a8e3b2d` — docs(brief-003): record phase completion, acceptance criteria reconciliation, and generated state
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
