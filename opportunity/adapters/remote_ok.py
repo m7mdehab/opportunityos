@@ -79,7 +79,7 @@ class RemoteOKAdapter(BaseAdapter):
             tags_text = " ".join(str(t) for t in tags)
             skills = extract_skills_from_text(f"{title} {description} {tags_text}")
 
-            # Salary without defaulting currency
+            # Salary without defaulting currency or interval
             min_sal = job.get("salary_min")
             max_sal = job.get("salary_max")
             comp = None
@@ -87,12 +87,11 @@ class RemoteOKAdapter(BaseAdapter):
                 try:
                     c_min = float(min_sal) if min_sal is not None else None
                     c_max = float(max_sal) if max_sal is not None else None
-                    interval = CompensationInterval.YEARLY if (c_min or 0) > 10000 else CompensationInterval.UNSPECIFIED
                     comp = Compensation(
                         min_amount=c_min,
                         max_amount=c_max,
-                        currency="USD" if "$" in f"{raw_desc} {job.get('salary', '')}" else None,
-                        interval=interval,
+                        currency=None,
+                        interval=CompensationInterval.UNSPECIFIED,
                     )
                 except ValueError:
                     comp = None
@@ -138,7 +137,7 @@ class RemoteOKAdapter(BaseAdapter):
             if requirements:
                 prov_list.append(create_field_provenance("requirements", (raw_desc or "")[:50], f"{len(requirements)} items", DerivationType.RULE_DERIVATION, f"{item_pointer}.description", record_checksum, "extract_requirements"))
             if comp is not None:
-                prov_list.append(create_field_provenance("compensation", f"{min_sal}-{max_sal}", f"{comp.min_amount}-{comp.max_amount} {comp.currency}", DerivationType.RULE_DERIVATION, f"{item_pointer}.salary_min", record_checksum, "extract_compensation"))
+                prov_list.append(create_field_provenance("compensation", f"{min_sal}-{max_sal}", f"{comp.min_amount}-{comp.max_amount}", DerivationType.RULE_DERIVATION, f"{item_pointer}.salary_min", record_checksum, "extract_compensation"))
                 if comp.min_amount is not None:
                     prov_list.append(create_field_provenance("compensation.min_amount", str(min_sal), str(comp.min_amount), DerivationType.RULE_DERIVATION, f"{item_pointer}.salary_min", record_checksum, "extract_compensation"))
                 if comp.max_amount is not None:

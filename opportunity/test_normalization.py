@@ -63,21 +63,45 @@ class NormalizationTests(unittest.TestCase):
         self.assertEqual(extract_remote_policy("San Francisco, CA"), RemotePolicy.UNSPECIFIED)
 
     def test_extract_compensation_no_fabricated_defaults(self) -> None:
-        # Explicit USD with annual interval
-        comp1 = extract_compensation("Salary: $140,000 - $180,000 / year")
-        self.assertIsNotNone(comp1)
-        self.assertEqual(comp1.min_amount, 140000.0)
-        self.assertEqual(comp1.max_amount, 180000.0)
-        self.assertEqual(comp1.currency, "USD")
-        self.assertEqual(comp1.interval, CompensationInterval.YEARLY)
+        # 1. "5-10 years experience" -> NO compensation
+        self.assertIsNone(extract_compensation("Requires 5-10 years experience in distributed systems."))
+        self.assertIsNone(extract_compensation("5-10 years of experience with Python."))
+
+        # 2. "10-20 engineers" -> NO compensation
+        self.assertIsNone(extract_compensation("Managing a team of 10-20 engineers across MENA."))
+
+        # 3. "USD 120k-180k annually" -> 120000-180000 USD YEARLY
+        comp_usd = extract_compensation("Salary: USD 120k-180k annually")
+        self.assertIsNotNone(comp_usd)
+        self.assertEqual(comp_usd.min_amount, 120000.0)
+        self.assertEqual(comp_usd.max_amount, 180000.0)
+        self.assertEqual(comp_usd.currency, "USD")
+        self.assertEqual(comp_usd.interval, CompensationInterval.YEARLY)
+
+        # 4. Both k suffixes parse correctly: 120k-180k -> 120000 and 180000 (not 120000 and 180)
+        comp_k = extract_compensation("Rate: $120k - $180k")
+        self.assertIsNotNone(comp_k)
+        self.assertEqual(comp_k.min_amount, 120000.0)
+        self.assertEqual(comp_k.max_amount, 180000.0)
+
+        # 5. Bare "$" must NOT automatically prove USD unless source semantics explicitly guarantee USD
+        self.assertIsNone(comp_k.currency)
+
+        # 6. Do not infer YEARLY from numeric magnitude alone
+        comp_mag = extract_compensation("Salary: $140,000 - $180,000")
+        self.assertIsNotNone(comp_mag)
+        self.assertEqual(comp_mag.min_amount, 140000.0)
+        self.assertEqual(comp_mag.max_amount, 180000.0)
+        self.assertIsNone(comp_mag.currency)
+        self.assertEqual(comp_mag.interval, CompensationInterval.UNSPECIFIED)
 
         # EUR with monthly interval
-        comp2 = extract_compensation("€4,000 – €6,000 per month")
-        self.assertIsNotNone(comp2)
-        self.assertEqual(comp2.min_amount, 4000.0)
-        self.assertEqual(comp2.max_amount, 6000.0)
-        self.assertEqual(comp2.currency, "EUR")
-        self.assertEqual(comp2.interval, CompensationInterval.MONTHLY)
+        comp_eur = extract_compensation("€4,000 – €6,000 per month")
+        self.assertIsNotNone(comp_eur)
+        self.assertEqual(comp_eur.min_amount, 4000.0)
+        self.assertEqual(comp_eur.max_amount, 6000.0)
+        self.assertEqual(comp_eur.currency, "EUR")
+        self.assertEqual(comp_eur.interval, CompensationInterval.MONTHLY)
 
         # Numbers without explicit currency or interval MUST NOT default to USD or YEARLY
         comp3 = extract_compensation("Rate: 50 - 80")
@@ -137,8 +161,8 @@ class NormalizationTests(unittest.TestCase):
     def test_create_field_provenance(self) -> None:
         fp = create_field_provenance(
             field_name="title",
-            raw_val="<p>Lead Engineer</p>",
-            norm_val="Lead Engineer",
+            raw_value="<p>Lead Engineer</p>",
+            normalized_value="Lead Engineer",
             derivation_type=DerivationType.RAW_EXTRACTION,
             raw_pointer="jobs[0].title",
             record_checksum="sha256abc",

@@ -3,9 +3,11 @@
 **Phase ID:** BRIEF-003  
 **Status:** PASS  
 **Date:** 2026-08-30  
+**Merge Commit SHA (PR #41):** `c471df530daf0a8adc6342667e957ca0f798d721`  
 **Substantive Commit SHA:** `542917b6bbbed595811d460082a21479dd86ae98`  
 **Author:** Antigravity Master Agent (Dual-Loop Autonomous Controller)  
-**Independent Auditor:** Blinded Discovery-Architecture & Structural-Authority Auditor (`ea2b2e3d-773b-4721-bd90-9587e49535ea`)
+**Independent Auditor:** Blinded Discovery-Architecture & Structural-Authority Auditor (`ea2b2e3d-773b-4721-bd90-9587e49535ea`)  
+**Auditor Provider & Model:** Google Antigravity / Vertex AI (Tier: `inherit`)
 
 ---
 
@@ -25,13 +27,14 @@ All incoming opportunities are normalized into an immutable `Opportunity` schema
 | **2. Pacing & Rate Limiting** | **PASS** | `RateLimiter` enforces per-source interval pacing with an injectable clock and default conservative limit. Verified in `test_acquisition.py`. |
 | **3. Explicit Approved Search Query** | **PASS** | `EUTEDAdapter` configures `method="POST"` with `DEFAULT_TED_SEARCH_BODY` specifying approved query fields (`publication-number`, `notice-title`, `buyer-name`, `buyer-country`, `cpv`, etc.) under ADR-0005. |
 | **4. Executable Material Field Manifest & Atomic Compensation Provenance** | **PASS** | `MATERIAL_OPPORTUNITY_FIELD_RULES` in `models.py` drives `validate_opportunity_provenance()`. Populated material fields require valid lineage with single-record SHA-256 checksum and exact raw pointer. Each populated compensation subfield (`compensation.min_amount`, `compensation.max_amount`, `compensation.currency`, `compensation.interval`) requires its own atomic `FieldProvenance` (generic `compensation` cannot substitute). Verified in `test_models.py`. |
-| **5. Accurate Pointer Paths & Zero Laundering** | **PASS** | Adapter pointers reflect actual source fields (`companyName`, `text`, `agency`, `borrower`). If EU TED / UNGM / World Bank description is absent, `description = ""` with `unasserted_absent` lineage; never laundered from title. Verified in `test_adversarial.py`. |
-| **6. Real Health Telemetry** | **PASS** | `SourceHealthReport` captures exact response latency (`187 ms`) and actual status codes (`OK_206`), decouples transport status from parser status, and distinguishes `EMPTY_RESULTS`, `SCHEMA_DRIFT_SUSPECTED`, and `PERSISTENT_FAILURE` without fake HTTP 500 codes. Verified in `test_adversarial.py`. |
-| **7. Real Identity Deduplication** | **PASS** | Eliminated raw substring matching (`source_id in other.source_url`). Similarity without common stable identity preserves both records (`is_ambiguous=True`). Merges occur strictly with canonical outbound ATS URLs or structured ATS IDs. Same-source distinct requisition IDs never merge. Verified in `test_dedupe.py`. |
-| **8. Canonical Determinism & Zero Hash Nondeterminism** | **PASS** | Replaced `hash()` and `uuid4()` with SHA-256 digests. Multi-process tests across disparate `PYTHONHASHSEED` values (`0`, `42`, `12345`, `999999`) produce byte-for-byte identical output in `test_deterministic_replay.py`. |
-| **9. Four Real Tracks** | **PASS** | Direct deterministic emission of `Track.EMPLOYMENT`, `Track.CONTRACT`, `Track.FREELANCE`, and `Track.PROCUREMENT`. Verified in `test_normalization.py` and `test_adversarial.py`. |
-| **10. Architectural Decision Record** | **PASS** | Committed [ADR-0008](../docs/adr/ADR-0008-opportunity-data-model-and-ingestion-pipeline.md) documenting Opportunity Data Model and Ingestion Pipeline Architecture. |
-| **11. Independent Blinded Audit** | **PASS** | Independent auditor (`ea2b2e3d-773b-4721-bd90-9587e49535ea`) verified commit `542917b6bbbed595811d460082a21479dd86ae98` against all micro-closure criteria with unanimous PASS. |
+| **5. Strict Compensation Normalization & Non-Compensation Exclusion** | **PASS** | `extract_compensation()` ignores experience ranges (`5-10 years experience`) and team counts (`10-20 engineers`). Parses both `k` suffixes (`120k-180k` -> `120000` & `180000`). Bare `$` does not default to `USD`. No `YEARLY` interval inference from numeric magnitude alone. Structured salary fields preserve `None`/`UNSPECIFIED` for unstated currency/interval. Verified in `test_normalization.py`. |
+| **6. Accurate Pointer Paths & Zero Laundering** | **PASS** | Adapter pointers reflect actual source fields (`companyName`, `text`, `agency`, `borrower`). If EU TED / UNGM / World Bank description is absent, `description = ""` with `unasserted_absent` lineage; never laundered from title. Verified in `test_adversarial.py`. |
+| **7. Real Health Telemetry** | **PASS** | `SourceHealthReport` captures exact response latency (`187 ms`) and actual status codes (`OK_206`), decouples transport status from parser status, and distinguishes `EMPTY_RESULTS`, `SCHEMA_DRIFT_SUSPECTED`, and `PERSISTENT_FAILURE` without fake HTTP 500 codes. Verified in `test_adversarial.py`. |
+| **8. Real Identity Deduplication** | **PASS** | Eliminated raw substring matching (`source_id in other.source_url`). Similarity without common stable identity preserves both records (`is_ambiguous=True`). Merges occur strictly with canonical outbound ATS URLs or structured ATS IDs. Same-source distinct requisition IDs never merge. Verified in `test_dedupe.py`. |
+| **9. Canonical Determinism & Zero Hash Nondeterminism** | **PASS** | Replaced `hash()` and `uuid4()` with SHA-256 digests. Multi-process tests across disparate `PYTHONHASHSEED` values (`0`, `42`, `12345`, `999999`) produce byte-for-byte identical output in `test_deterministic_replay.py`. |
+| **10. Four Real Tracks** | **PASS** | Direct deterministic emission of `Track.EMPLOYMENT`, `Track.CONTRACT`, `Track.FREELANCE`, and `Track.PROCUREMENT`. Verified in `test_normalization.py` and `test_adversarial.py`. |
+| **11. Architectural Decision Record** | **PASS** | Committed [ADR-0008](../docs/adr/ADR-0008-opportunity-data-model-and-ingestion-pipeline.md) documenting Opportunity Data Model and Ingestion Pipeline Architecture. |
+| **12. Independent Blinded Audit** | **PASS** | Independent auditor (`ea2b2e3d-773b-4721-bd90-9587e49535ea`) verified commit `542917b6bbbed595811d460082a21479dd86ae98` against all micro-closure criteria with unanimous PASS. |
 
 ---
 
@@ -108,6 +111,7 @@ Perform your inspection read-only. Inspect the implementation directly, not mere
 
 ### 4.2 Auditor Session Metadata & Findings
 - **Auditor Subagent Conversation ID:** `ea2b2e3d-773b-4721-bd90-9587e49535ea`
+- **Auditor Provider & Model:** Google Antigravity / Vertex AI (Tier: `inherit`)
 - **Target Commit SHA:** `542917b6bbbed595811d460082a21479dd86ae98`
 - **Overall Auditor Verdict:** **PASS (4 / 4 Criteria Satisfied)**
 
