@@ -10,8 +10,8 @@ Next: BRIEF-006: Operational Autonomy, Feedback Loops & Production Pipeline.
 
 ## Repository
 
-- **Generated:** 2026-08-30T23:39:32Z
-- **State generated at commit:** `4e39717` — fix(outbound): require mandatory prepared_manifest and enforce complete post-reservation current-state gate
+- **Generated:** 2026-08-30T23:39:52Z
+- **State generated at commit:** `f314f6d` — docs: record final controlled submit manifest authority audit report for brief-005
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
