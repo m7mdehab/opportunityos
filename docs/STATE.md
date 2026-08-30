@@ -10,8 +10,8 @@ Next: BRIEF-006: Operational Autonomy, Feedback Loops & Production Pipeline.
 
 ## Repository
 
-- **Generated:** 2026-08-30T20:28:02Z
-- **State generated at commit:** `c3b9f8b` — fix(outbound): complete structural side-effect authority remediation for brief-005
+- **Generated:** 2026-08-30T20:28:23Z
+- **State generated at commit:** `bf2e736` — docs: finalize BRIEF-005 report and regenerate STATE.md
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
