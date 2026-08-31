@@ -10,8 +10,8 @@ Next: ORDERED SEQUENCE (C + A) -> B -> D.
 
 ## Repository
 
-- **Generated:** 2026-08-31T19:49:55Z
-- **State generated at commit:** `d504ca1` — docs: finalize REPORT-FR-001 with audit PASS and update generated state
+- **Generated:** 2026-08-31T23:13:50Z
+- **State generated at commit:** `9de1b3c` — docs: finalize REPORT-FR-001 with terminal Phase 0D audit PASS
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief

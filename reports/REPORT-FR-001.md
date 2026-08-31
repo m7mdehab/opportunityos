@@ -4,11 +4,11 @@
 **Date:** 2026-08-31  
 **Author:** Antigravity Master Agent (Dual-Loop Autonomous Controller)  
 **Authority:** ChatGPT Overseer Authorization  
-**Starting Repository SHA:** `7b6f5047f0f2bb307cfcdf43ea44b05f67bbbed0`  
-**Substantive Commit SHA:** `d0e3341e899ba809fc3a2da8cde9c44a60e85678`  
+**Starting Repository SHA:** `2917c41a7207c5e919ab4d45436ad416e410a5fe`  
+**Substantive Commit SHA:** `d16774a7cedb915c2530d7d3e45ea827ae36e5b3`  
 **Status:** FINAL / PASS  
-**Auditor Provider/Model/Session:** Google Antigravity / Vertex AI (pro) / `707c5de1-81a7-4621-b430-c2fc413e7070`  
-**Auditor Verdict:** PASS (All 12 targeted criteria verified; 100% count integrity across all 143 requirements; zero unearned runtime claims)  
+**Auditor Provider/Model/Session:** Google Antigravity / Vertex AI (pro) / `59444662-69f0-4791-9693-60aab9322f54`  
+**Auditor Verdict:** PASS (Phase 0D enforcement-truth verified across DEL-5, TST-B, TST-D; 100% count integrity across all 143 requirements; advisory CI and missing runtime middleware acknowledged)  
 
 ---
 
@@ -29,8 +29,10 @@ The fundamental question answered is:
    - **Inbound Signal Ingestion & Synchronization (`inbox`):** Read-only Gmail ingestion, 20-category dual-track response classifier, crash-safe `FETCHED -> PROCESSED` SQLite persistence lifecycle, and safe learning engine.
 
 2. **Phase 0D Agent Governance Honest Reconciliation:**
-   - Master-agent protocol, test-gate integration, and unauthorized action blocking are `DONE` and proven.
-   - Formal council schema runtimes, runtime permission enforcement of `AGENT_PERMISSIONS.yaml`, and `AgentRun` model/stores are not implemented (`PARTIAL` or `MISSING`).
+   - Master-agent protocol is `DONE` and proven.
+   - Under accepted **ADR-0002**, server-enforced branch protection and required status checks are absent (`rulesets = []`); CI execution is advisory and pull-request discipline is observed by convention. Accordingly, Test-Gate Integration (`REQ-P0D-DEL-5`) and Failing Test Blocks Merge (`REQ-P0D-TST-B`) are classified as `PARTIAL` rather than falsely claiming technical server enforcement.
+   - Repository secret/PII scanning and source transport verb checks exist, but `AGENT_PERMISSIONS.yaml` lacks a runtime enforcement middleware hook and general agent destructive-action escalation runtime is missing (`REQ-P0D-TST-D` is `PARTIAL`).
+   - Council schema runtimes (`REQ-P0D-DEL-2`, `PARTIAL`), `AgentRun` models/stores (`REQ-P0D-DEL-4`, `MISSING`), and budget controls (`REQ-P0D-DEL-6`, `MISSING`) are honestly classified.
 
 3. **Clean Runtime & Security Honest Reconciliation:**
    - Standard library test bootstrap, database schema initialization, and crash-safe restarts are proven (`DONE`). Packaging manifests (`pyproject.toml`) and single-command startup scripts are missing (`PARTIAL` / `MISSING`).
@@ -55,16 +57,16 @@ The fundamental question answered is:
 ## 2. Requirement Totals & Breakdown
 
 ### High-Level Status Totals (143 Total Requirements):
-- **`DONE`:** 64 (44.8%)
-- **`PARTIAL`:** 44 (30.8%)
+- **`DONE`:** 61 (42.7%)
+- **`PARTIAL`:** 47 (32.9%)
 - **`MISSING`:** 25 (17.5%)
 - **`INTENTIONALLY_DEFERRED`:** 9 (6.3%)
 - **`REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS`:** 1 (0.7%)
 
 ### Breakdown by Criticality:
 - **`P0` (Blocks Founder Core Usefulness):** 70 Total
-  - `DONE`: 56
-  - `PARTIAL`: 7 (LinkedIn alert parser, Upwork alert parser, Direct company crawler, Binary DOCX/PDF export, Prompt injection isolation)
+  - `DONE`: 53
+  - `PARTIAL`: 10 (LinkedIn alert parser, Upwork alert parser, Direct company crawler, Binary DOCX/PDF export, Prompt injection isolation, Advisory test gate, Advisory test block, Advisory secret guard)
   - `MISSING`: 6 (Opportunities Feed UI, Opportunity Detail UI, Dashboard UI, Needs Attention UI, Truth Graph UI, CV Viewer UI)
   - `REQUIRES_LIVE_INTEGRATION`: 1 (Private founder ground truth files)
 - **`P1` (Materially Reduces Founder Friction):** 55 Total
@@ -80,7 +82,7 @@ The fundamental question answered is:
 - **`P4` (Organization B2B Productization):** 3 Total (All 3 INTENTIONALLY_DEFERRED)
 
 ### Breakdown by Phase:
-- **`Phase 0` (Foundation, Governance & Architecture):** 42 Total (17 DONE, 10 PARTIAL, 14 MISSING, 1 REQ_LIVE)
+- **`Phase 0` (Foundation, Governance & Architecture):** 42 Total (14 DONE, 13 PARTIAL, 14 MISSING, 1 REQ_LIVE)
 - **`Phase 1` (Founder Alpha 0 Core):** 63 Total (27 DONE, 30 PARTIAL, 6 MISSING)
 - **`Phase 2` (Trusted Discovery Expansion):** 10 Total (2 DONE, 3 PARTIAL, 2 MISSING, 3 DEFERRED)
 - **`Phase 3` (Trusted Tailoring):** 2 Total (1 DONE, 1 PARTIAL)
@@ -151,7 +153,7 @@ Reconciliation of all 14 steps from Master Plan §43:
   - Ashby API standalone source adapter & Schema.org JSON-LD parser.
   - Stale-job pre-action re-verification pipeline.
   - Live agent prompt-injection evaluation suite.
-- **`PRODUCTION_INFRASTRUCTURE` (Bucket C - 16 Items):**
+- **`PRODUCTION_INFRASTRUCTURE` (Bucket C - 19 Items):**
   - PostgreSQL primary relational store schema & SQLAlchemy/Alembic migrations.
   - Background worker process runner (polling queue for ingestion, matching, and notifications).
   - Docker Compose and Caddy reverse proxy setup for local & staging HTTPS deployment.
@@ -159,11 +161,12 @@ Reconciliation of all 14 steps from Master Plan §43:
   - Automated database backup and restore scripts.
   - Single-command runtime entrypoint script.
   - Packaging manifests (`pyproject.toml` / `requirements.txt`).
-  - AgentRun model & persistence store; Agent spend budget tracking.
+  - Server-enforced branch protection & required status check rulesets (when revisit trigger fires).
+  - AgentRun model & persistence store; Agent spend budget tracking; Runtime permission middleware.
   - Centralized production logging and runtime sensitive-log redaction.
 - **`FOUNDER_WEB_INTEGRATION` (Bucket B - 15 Items):**
   - FastAPI Application API exposing domain services (`/truth`, `/opportunities`, `/matching`, `/outbound`, `/inbox`, `/analytics`).
-  - Next.js 14+ Web Application (Dashboard, Opportunities Feed, Opportunity Detail, Truth Graph Editor, CV Viewer, Engagement Pipeline, Watchlist, Settings, Admin).
+  - Next.js 14+ Web Application (Dashboard, Opportunities Feed, Detail view, Truth Graph Editor, CV Viewer, Engagement Pipeline, Watchlist, Settings, Admin).
 - **`LIVE_CONFIGURATION_OR_CREDENTIALS` (Bucket D - 4 Items):**
   - Adzuna API credentials setup.
   - Freelancer.com developer sandbox OAuth setup.
@@ -223,7 +226,7 @@ In accordance with Section 13 of the GATE-FR-001 specification:
 ## 7. Decision
 
 **FINAL / PASS**
-- **Substantive Target SHA:** `d0e3341e899ba809fc3a2da8cde9c44a60e85678`
-- **Independent Auditor:** Google Antigravity / Vertex AI (pro) / `707c5de1-81a7-4621-b430-c2fc413e7070`
-- **Audit Findings:** Unanimous PASS across all 12 targeted criteria, 100% requirement inventory completeness (143/143), perfect arithmetic/count integrity, honest Phase 0D decomposition, explicit distinction between repository PII scans and runtime log redaction, and strictly accurate First Founder Script (Step 13 NOT_POSSIBLE) and generated STATE metadata.
+- **Substantive Target SHA:** `d16774a7cedb915c2530d7d3e45ea827ae36e5b3`
+- **Independent Auditor:** Google Antigravity / Vertex AI (pro) / `59444662-69f0-4791-9693-60aab9322f54`
+- **Audit Findings:** Unanimous PASS across all Phase 0D enforcement-truth criteria; 100% requirement inventory completeness (143/143); perfect arithmetic/count integrity; advisory CI under ADR-0002 explicitly acknowledged for DEL-5 and TST-B; absence of general agent destructive-action escalation runtime honestly acknowledged for TST-D.
 
