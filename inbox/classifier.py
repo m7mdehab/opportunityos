@@ -58,13 +58,16 @@ class ResponseClassifier:
 
     @classmethod
     def extract_references(cls, text: str) -> tuple[str, ...]:
-        """Extract current requisition / application / proposal IDs, ignoring quoted threads where possible."""
-        clean_text = text.split("-----Original Message-----")[0].split("On ")[0]
+        """Extract current requisition / application / proposal IDs, including quoted thread references for ambiguity detection."""
         refs: set[str] = set()
-        for m in re.finditer(r"(?:req(?:uisition)?|app(?:lication)?|ref(?:erence)?|proposal|tender|notice)\s*(?:#|id|:)?\s*([A-Za-z0-9\-_]{4,30})", clean_text, re.IGNORECASE):
-            refs.add(m.group(1).strip())
-        for m in re.finditer(r"\b(?:APP|REQ|JOB|PROP|TED|UNGM|SOW|WB)-[A-Za-z0-9\-]+\b", clean_text):
+        # Explicit structured tokens: REQ-*, APP-*, etc.
+        for m in re.finditer(r"\b(?:APP|REQ|JOB|PROP|TED|UNGM|SOW|WB)-[A-Za-z0-9\-]+\b", text):
             refs.add(m.group(0).strip())
+        # Labeled IDs: Req #12345, Reference ID: XYZ, etc.
+        for m in re.finditer(r"\b(?:req(?:uisition)?|app(?:lication)?|ref(?:erence)?|proposal|tender|notice)\s*(?:#|id|:\s*)\s*([A-Za-z0-9\-_]{3,30})", text, re.IGNORECASE):
+            val = m.group(1).strip()
+            if val.lower() not in ("team", "qualifications", "process", "details", "update", "updates", "status", "application", "regarding", "for"):
+                refs.add(val)
         return tuple(sorted(refs))
 
     @classmethod

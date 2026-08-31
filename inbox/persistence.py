@@ -1,10 +1,9 @@
-"""Durable SQLite Persistence Layer for Inbound Ingestion, Pipeline Events, Notifications, and Checkpoints."""
+"""Durable SQLite Persistence Layer with Explicit Processing Lifecycle (FETCHED -> PROCESSED)."""
 from __future__ import annotations
 
 import json
 import sqlite3
 import threading
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Sequence
 from matching.models import Track
@@ -63,7 +62,9 @@ class DurableInboxStore:
                         body_html TEXT NOT NULL,
                         received_at TEXT NOT NULL,
                         headers_json TEXT NOT NULL,
-                        attachment_names_json TEXT NOT NULL
+                        attachment_names_json TEXT NOT NULL,
+                        processing_status TEXT NOT NULL DEFAULT 'FETCHED',
+                        processed_at TEXT
                     )
                 """)
                 conn.execute("""
@@ -124,27 +125,54 @@ class DurableInboxStore:
                 if self._memory_conn is None:
                     conn.close()
 
-    def store_evidence(self, msg: InboundMessageEvidence) -> bool:
-        """Store immutable inbound message evidence durably. Returns True if inserted, False if already exists."""
+    def store_evidence(self, msg: InboundMessageEvidence, status: str = "FETCHED") -> bool:
+        """Store immutable inbound message evidence durably."""
         with self._lock:
             conn = self._get_connection()
             try:
-                conn.execute(
+                cur = conn.execute(
                     """
                     INSERT OR IGNORE INTO inbound_evidence (
                         message_content_hash, provider, provider_message_id, thread_id,
                         sender_email, sender_name, recipient_email, subject, snippet,
-                        body_text, body_html, received_at, headers_json, attachment_names_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        body_text, body_html, received_at, headers_json, attachment_names_json,
+                        processing_status, processed_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
                     """,
                     (
                         msg.message_content_hash, msg.provider, msg.provider_message_id, msg.thread_id,
                         msg.sender_email, msg.sender_name, msg.recipient_email, msg.subject, msg.snippet,
                         msg.body_text, msg.body_html, msg.received_at,
                         json.dumps(msg.headers), json.dumps(msg.attachment_names),
+                        status,
                     ),
                 )
-                return True
+                return cur.rowcount > 0
+            finally:
+                if self._memory_conn is None:
+                    conn.close()
+
+    def mark_evidence_processed(self, content_hash: str, processed_at: str) -> None:
+        """Mark evidence as fully processed (all events/notifications/reconciliations committed)."""
+        with self._lock:
+            conn = self._get_connection()
+            try:
+                conn.execute(
+                    "UPDATE inbound_evidence SET processing_status = 'PROCESSED', processed_at = ? WHERE message_content_hash = ?",
+                    (processed_at, content_hash),
+                )
+            finally:
+                if self._memory_conn is None:
+                    conn.close()
+
+    def is_evidence_processed(self, content_hash: str) -> bool:
+        """Check if message has already completed full processing."""
+        with self._lock:
+            conn = self._get_connection()
+            try:
+                cur = conn.execute("SELECT processing_status FROM inbound_evidence WHERE message_content_hash = ?", (content_hash,))
+                row = cur.fetchone()
+                return bool(row and row["processing_status"] == "PROCESSED")
             finally:
                 if self._memory_conn is None:
                     conn.close()

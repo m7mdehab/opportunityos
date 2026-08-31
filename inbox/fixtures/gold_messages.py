@@ -2,7 +2,7 @@
 from inbox.models import InboundMessageEvidence
 
 GOLD_EMPLOYMENT_MESSAGES = (
-    # 1. Confirmation
+    # 1. APPLICATION_CONFIRMATION
     InboundMessageEvidence(
         provider="gmail", provider_message_id="msg-emp-001", thread_id="th-emp-001",
         sender_email="no-reply@greenhouse.io", sender_name="Acme Recruiting",
@@ -13,7 +13,7 @@ GOLD_EMPLOYMENT_MESSAGES = (
         body_html="<p>Dear Candidate, thank you for applying...</p>",
         received_at="2026-08-30T10:00:00Z",
     ),
-    # 2. Plain Rejection
+    # 2. REJECTION
     InboundMessageEvidence(
         provider="gmail", provider_message_id="msg-emp-002", thread_id="th-emp-002",
         sender_email="recruiting@beta.example", sender_name="Beta Labs Talent",
@@ -24,7 +24,7 @@ GOLD_EMPLOYMENT_MESSAGES = (
         body_html="<p>Dear Candidate...</p>",
         received_at="2026-08-30T11:00:00Z",
     ),
-    # 3. Recruiter Human Outreach
+    # 3. RECRUITER_OUTREACH
     InboundMessageEvidence(
         provider="gmail", provider_message_id="msg-emp-003", thread_id="th-emp-003",
         sender_email="sara.recruiter@gamma.example", sender_name="Sara Jenkins",
@@ -35,7 +35,7 @@ GOLD_EMPLOYMENT_MESSAGES = (
         body_html="<p>Hi there...</p>",
         received_at="2026-08-30T12:00:00Z",
     ),
-    # 4. Interview Request
+    # 4. INTERVIEW_REQUEST
     InboundMessageEvidence(
         provider="gmail", provider_message_id="msg-emp-004", thread_id="th-emp-004",
         sender_email="scheduler@delta.example", sender_name="Delta Talent Operations",
@@ -46,7 +46,7 @@ GOLD_EMPLOYMENT_MESSAGES = (
         body_html="<p>Hello...</p>",
         received_at="2026-08-30T13:00:00Z",
     ),
-    # 5. Interview Reschedule
+    # 5. INTERVIEW_REQUEST (Reschedule)
     InboundMessageEvidence(
         provider="gmail", provider_message_id="msg-emp-005", thread_id="th-emp-005",
         sender_email="scheduler@delta.example", sender_name="Delta Talent Operations",
@@ -57,7 +57,7 @@ GOLD_EMPLOYMENT_MESSAGES = (
         body_html="<p>Hi Candidate...</p>",
         received_at="2026-08-30T13:30:00Z",
     ),
-    # 6. Assessment with Deadline
+    # 6. ASSESSMENT
     InboundMessageEvidence(
         provider="gmail", provider_message_id="msg-emp-006", thread_id="th-emp-006",
         sender_email="evaluations@epsilon.example", sender_name="Epsilon Engineering",
@@ -68,7 +68,7 @@ GOLD_EMPLOYMENT_MESSAGES = (
         body_html="<p>Dear Candidate...</p>",
         received_at="2026-08-30T14:00:00Z",
     ),
-    # 7. Information Request
+    # 7. INFORMATION_REQUEST
     InboundMessageEvidence(
         provider="gmail", provider_message_id="msg-emp-007", thread_id="th-emp-007",
         sender_email="hr@theta.example", sender_name="Theta HR",
@@ -79,7 +79,7 @@ GOLD_EMPLOYMENT_MESSAGES = (
         body_html="<p>Dear Candidate...</p>",
         received_at="2026-08-30T14:30:00Z",
     ),
-    # 8. Offer
+    # 8. OFFER
     InboundMessageEvidence(
         provider="gmail", provider_message_id="msg-emp-008", thread_id="th-emp-008",
         sender_email="vp.talent@zeta.example", sender_name="Zeta Talent",
@@ -90,7 +90,7 @@ GOLD_EMPLOYMENT_MESSAGES = (
         body_html="<p>Dear Founder...</p>",
         received_at="2026-08-30T15:00:00Z",
     ),
-    # 9. Recruiter Marketing Disguised as Outreach (Noise)
+    # 9. MARKETING
     InboundMessageEvidence(
         provider="gmail", provider_message_id="msg-emp-009", thread_id="th-emp-009",
         sender_email="marketing@recruiterhub.example", sender_name="Recruiter Hub Digest",
@@ -101,21 +101,32 @@ GOLD_EMPLOYMENT_MESSAGES = (
         body_html="<p>Weekly digest...</p>",
         received_at="2026-08-30T15:30:00Z",
     ),
-    # 10. Automated Job Recommendations (Noise)
+    # 10. GENERIC_NON_ACTIONABLE_PLATFORM_NOTIFICATION
     InboundMessageEvidence(
         provider="gmail", provider_message_id="msg-emp-010", thread_id="th-emp-010",
         sender_email="alerts@jobboard.example", sender_name="Job Board Alerts",
         recipient_email="founder@example.com",
-        subject="New Job Alert: 10 jobs matching your preferences",
-        snippet="Here are new recommended jobs for you...",
-        body_text="Job Alert: 10 new positions match your search. Unsubscribe anytime.",
+        subject="Automated platform notice: Scheduled system maintenance",
+        snippet="Our job portal will undergo scheduled maintenance...",
+        body_text="Automated platform notice: Scheduled system maintenance this Saturday.",
         body_html="<p>Job alerts...</p>",
         received_at="2026-08-30T15:45:00Z",
+    ),
+    # 11. UNCLASSIFIED (Review Required)
+    InboundMessageEvidence(
+        provider="gmail", provider_message_id="msg-emp-011", thread_id="th-emp-011",
+        sender_email="random@contact.example", sender_name="Random Contact",
+        recipient_email="founder@example.com",
+        subject="Inquiry regarding software architecture consulting",
+        snippet="Hello, wanted to connect on general topics...",
+        body_text="Hello, hope this note finds you well. Reaching out to see if you are available to connect next quarter.",
+        body_html="<p>Inquiry...</p>",
+        received_at="2026-08-30T15:50:00Z",
     ),
 )
 
 GOLD_INDEPENDENT_MESSAGES = (
-    # 1. Proposal Confirmation
+    # 1. PROPOSAL_CONFIRMATION
     InboundMessageEvidence(
         provider="gmail", provider_message_id="msg-ind-001", thread_id="th-ind-001",
         sender_email="tenders@ted.europa.eu", sender_name="EU eTendering",
@@ -126,7 +137,7 @@ GOLD_INDEPENDENT_MESSAGES = (
         body_html="<p>Official confirmation...</p>",
         received_at="2026-08-30T16:00:00Z",
     ),
-    # 2. Genuine Client / Buyer Response
+    # 2. CLIENT_OR_BUYER_RESPONSE
     InboundMessageEvidence(
         provider="gmail", provider_message_id="msg-ind-002", thread_id="th-ind-002",
         sender_email="buyer@enterprise.example", sender_name="Enterprise Buyer",
@@ -137,7 +148,7 @@ GOLD_INDEPENDENT_MESSAGES = (
         body_html="<p>Dear Consultant...</p>",
         received_at="2026-08-30T16:30:00Z",
     ),
-    # 3. Clarification with Deadline
+    # 3. CLARIFICATION_REQUEST
     InboundMessageEvidence(
         provider="gmail", provider_message_id="msg-ind-003", thread_id="th-ind-003",
         sender_email="procurement@un.example", sender_name="UN Procurement Division",
@@ -148,7 +159,7 @@ GOLD_INDEPENDENT_MESSAGES = (
         body_html="<p>Dear Bidder...</p>",
         received_at="2026-08-30T17:00:00Z",
     ),
-    # 4. Shortlist / Invitation
+    # 4. SHORTLIST_OR_INVITATION
     InboundMessageEvidence(
         provider="gmail", provider_message_id="msg-ind-004", thread_id="th-ind-004",
         sender_email="tenders@gov.example", sender_name="Gov Tender Board",
@@ -159,7 +170,7 @@ GOLD_INDEPENDENT_MESSAGES = (
         body_html="<p>Official Notice...</p>",
         received_at="2026-08-30T17:30:00Z",
     ),
-    # 5. Discovery Call Request
+    # 5. DISCOVERY_CALL_OR_MEETING_REQUEST
     InboundMessageEvidence(
         provider="gmail", provider_message_id="msg-ind-005", thread_id="th-ind-005",
         sender_email="client@clientcorp.example", sender_name="Client Executive",
@@ -170,7 +181,7 @@ GOLD_INDEPENDENT_MESSAGES = (
         body_html="<p>Hi...</p>",
         received_at="2026-08-30T18:00:00Z",
     ),
-    # 6. Proposal Rejection
+    # 6. PROPOSAL_REJECTION
     InboundMessageEvidence(
         provider="gmail", provider_message_id="msg-ind-006", thread_id="th-ind-006",
         sender_email="eval@worldbank.example", sender_name="World Bank Tenders",
@@ -181,7 +192,7 @@ GOLD_INDEPENDENT_MESSAGES = (
         body_html="<p>Dear Bidder...</p>",
         received_at="2026-08-30T18:30:00Z",
     ),
-    # 7. Award / Win
+    # 7. AWARD_OR_WIN
     InboundMessageEvidence(
         provider="gmail", provider_message_id="msg-ind-007", thread_id="th-ind-007",
         sender_email="procurement@eu.example", sender_name="EU Contracting Authority",
@@ -192,7 +203,7 @@ GOLD_INDEPENDENT_MESSAGES = (
         body_html="<p>Official Notice...</p>",
         received_at="2026-08-30T19:00:00Z",
     ),
-    # 8. Contract Progress Signal
+    # 8. CONTRACT_PROGRESS
     InboundMessageEvidence(
         provider="gmail", provider_message_id="msg-ind-008", thread_id="th-ind-008",
         sender_email="pm@partnercorp.example", sender_name="Partner Corp PM",
@@ -203,9 +214,31 @@ GOLD_INDEPENDENT_MESSAGES = (
         body_html="<p>Hi Founder...</p>",
         received_at="2026-08-30T19:30:00Z",
     ),
-    # 9. Platform Marketing (Noise)
+    # 9. PROCUREMENT_AMENDMENT
     InboundMessageEvidence(
         provider="gmail", provider_message_id="msg-ind-009", thread_id="th-ind-009",
+        sender_email="tenders@ted.europa.eu", sender_name="TED Notice Amendment",
+        recipient_email="founder@example.com",
+        subject="Corrigendum / Amendment to Procurement Notice TED-2026-00987",
+        snippet="An amendment has been published for procurement notice...",
+        body_text="Procurement notice amendment published: Corrigendum to specifications on notice TED-2026-00987. Please review revised tender dossier.",
+        body_html="<p>Amendment...</p>",
+        received_at="2026-08-30T19:45:00Z",
+    ),
+    # 10. PROCUREMENT_DEADLINE_CHANGE
+    InboundMessageEvidence(
+        provider="gmail", provider_message_id="msg-ind-010", thread_id="th-ind-010",
+        sender_email="procurement@un.example", sender_name="UN Procurement",
+        recipient_email="founder@example.com",
+        subject="Submission deadline has been extended for RFP UNGM-9876",
+        snippet="The submission deadline is postponed to September 20...",
+        body_text="Procurement deadline extended: The deadline for RFP UNGM-9876 has been postponed to September 20 at 17:00 UTC.",
+        body_html="<p>Deadline extended...</p>",
+        received_at="2026-08-30T19:50:00Z",
+    ),
+    # 11. MARKETING
+    InboundMessageEvidence(
+        provider="gmail", provider_message_id="msg-ind-011", thread_id="th-ind-011",
         sender_email="promo@freelanceplatform.example", sender_name="Freelance Promo",
         recipient_email="founder@example.com",
         subject="Promoted bids and premium features available now",
@@ -214,9 +247,9 @@ GOLD_INDEPENDENT_MESSAGES = (
         body_html="<p>Promo...</p>",
         received_at="2026-08-30T20:00:00Z",
     ),
-    # 10. Generic Platform Notification (Noise)
+    # 12. GENERIC_NON_ACTIONABLE_PLATFORM_NOTIFICATION
     InboundMessageEvidence(
-        provider="gmail", provider_message_id="msg-ind-010", thread_id="th-ind-010",
+        provider="gmail", provider_message_id="msg-ind-012", thread_id="th-ind-012",
         sender_email="system@portal.example", sender_name="Portal Admin",
         recipient_email="founder@example.com",
         subject="Automated platform notice: Scheduled system maintenance",

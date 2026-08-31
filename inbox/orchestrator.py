@@ -1,10 +1,10 @@
-"""Production Operational Loop with Durable Checkpointing and UNKNOWN_OUTCOME Reconciliation."""
+"""Production Operational Loop with Durable Checkpointing and Crash-Safe Message Processing."""
 from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Sequence
+from typing import Any, Callable, Sequence
 from matching.models import Track
 from opportunity.models import Opportunity
 from outbound.models import ActionStatus, OutboundActionRecord
@@ -64,8 +64,12 @@ class ProductionOperationalOrchestrator:
         cur = self.store.get_checkpoint(self.checkpoint_key)
         return cur if cur is not None else "0"
 
-    def run_cycle(self, limit: int = 50) -> InboundProcessingCycleResult:
-        """Run a single polling and processing cycle with atomic durable commit before checkpointing."""
+    def run_cycle(
+        self,
+        limit: int = 50,
+        hook_after_message: Callable[[int, InboundMessageEvidence], None] | None = None,
+    ) -> InboundProcessingCycleResult:
+        """Run a single polling and processing cycle with exact-once message completion."""
         current_cursor = self.get_checkpoint_cursor()
         new_msgs, next_cursor = self.ingestion_service.poll_new_messages(current_cursor=current_cursor, limit=limit)
 
@@ -74,13 +78,12 @@ class ProductionOperationalOrchestrator:
         notifs_count = 0
         reconciliations_count = 0
 
-        for msg in new_msgs:
+        for idx, msg in enumerate(new_msgs, start=1):
             sig = self.classifier.classify(msg)
             signals_count += 1
 
             corr = self.correlation_engine.correlate(sig, msg)
             if corr.is_authoritative and corr.opportunity_id:
-                # Check for UNKNOWN_OUTCOME reconciliation requirement
                 act = next((r for r in self.outbound_records if r.opportunity_id == corr.opportunity_id), None)
                 if act and act.action_status == ActionStatus.UNKNOWN_OUTCOME and sig.category in (SignalCategory.APPLICATION_CONFIRMATION, SignalCategory.PROPOSAL_CONFIRMATION):
                     recon_id = f"recon-{hashlib.sha256(f'{act.action_id}:{sig.signal_id}'.encode('utf-8')).hexdigest()[:16]}"
@@ -101,7 +104,14 @@ class ProductionOperationalOrchestrator:
             if notif:
                 notifs_count += 1
 
-        # Durably commit cursor only after finishing processing of batch
+            # Mark this specific message as PROCESSED in durable store
+            self.store.mark_evidence_processed(msg.message_content_hash, datetime.now(timezone.utc).isoformat())
+
+            # Optional injection hook for crash simulation
+            if hook_after_message is not None:
+                hook_after_message(idx, msg)
+
+        # Durably commit cursor only when all messages in the batch are processed
         self.store.save_checkpoint(self.checkpoint_key, next_cursor, datetime.now(timezone.utc).isoformat())
 
         return InboundProcessingCycleResult(
@@ -118,4 +128,4 @@ class ProductionOperationalOrchestrator:
         return self.notification_engine.get_active_notifications()
 
     def get_analytics(self) -> dict:
-        return DualTrackAnalyticsEngine.compute_source_metrics(self.outbound_records, self.pipeline_store.all_events())
+        return DualTrackAnalyticsEngine.compute_multi_dimensional_metrics(self.outbound_records, self.pipeline_store.all_events())

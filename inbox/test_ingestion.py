@@ -12,16 +12,20 @@ class TestInboxIngestion(unittest.TestCase):
         transport = MockMailTransport(messages=GOLD_EMPLOYMENT_MESSAGES)
         service = InboundIngestionService(transport, store=store)
 
-        # First poll: ingests all 10
+        # First poll: ingests all messages in gold set
         msgs, next_cur = service.poll_new_messages()
-        self.assertEqual(len(msgs), 10)
-        self.assertEqual(next_cur, "10")
+        self.assertEqual(len(msgs), len(GOLD_EMPLOYMENT_MESSAGES))
+        self.assertEqual(next_cur, str(len(GOLD_EMPLOYMENT_MESSAGES)))
 
-        # Second poll: transport has no new messages
+        # Mark all messages as processed
+        for m in msgs:
+            store.mark_evidence_processed(m.message_content_hash, "2026-08-30T10:00:00Z")
+
+        # Second poll with same cursor: 0 new messages
         msgs2, next_cur2 = service.poll_new_messages(current_cursor=next_cur)
         self.assertEqual(len(msgs2), 0)
 
-        # Replay same messages: durable deduplication guarantees 0 duplicate stored evidence
+        # Replay from beginning: all are marked processed => 0 unprocessed messages returned
         transport2 = MockMailTransport(messages=GOLD_EMPLOYMENT_MESSAGES)
         service2 = InboundIngestionService(transport2, store=store)
         m_a, _ = service2.poll_new_messages(current_cursor="0")
