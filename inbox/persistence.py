@@ -1,4 +1,4 @@
-"""Durable SQLite Persistence Layer with Explicit Processing Lifecycle (FETCHED -> PROCESSED)."""
+"""Durable SQLite Persistence Layer with Explicit Processing Lifecycle (FETCHED -> PROCESSED) and Backward-Compatible Schema Migration."""
 from __future__ import annotations
 
 import json
@@ -23,7 +23,7 @@ DEFAULT_INBOX_DB_PATH = Path("private/inbox_store.db")
 
 
 class DurableInboxStore:
-    """Thread-safe and process-durable SQLite persistence store for inbox subsystem."""
+    """Thread-safe and process-durable SQLite persistence store with automatic idempotent migration."""
 
     def __init__(self, db_path: str | Path | None = None) -> None:
         self.db_path = str(db_path or DEFAULT_INBOX_DB_PATH)
@@ -47,6 +47,7 @@ class DurableInboxStore:
         with self._lock:
             conn = self._get_connection()
             try:
+                # 1. Base tables
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS inbound_evidence (
                         message_content_hash TEXT PRIMARY KEY,
@@ -121,6 +122,26 @@ class DurableInboxStore:
                         resolved_at TEXT
                     )
                 """)
+
+                # 2. Schema Migration: Detect and add missing columns if upgrading from legacy PR55 DB
+                cur = conn.execute("PRAGMA table_info(inbound_evidence)")
+                columns = [row["name"] for row in cur.fetchall()]
+                upgraded = False
+                if "processing_status" not in columns:
+                    conn.execute("ALTER TABLE inbound_evidence ADD COLUMN processing_status TEXT NOT NULL DEFAULT 'FETCHED'")
+                    upgraded = True
+                if "processed_at" not in columns:
+                    conn.execute("ALTER TABLE inbound_evidence ADD COLUMN processed_at TEXT")
+                    upgraded = True
+
+                # When upgrading a legacy DB, reconcile legacy evidence processing_status conservatively against pipeline events
+                if upgraded:
+                    conn.execute("""
+                        UPDATE inbound_evidence
+                        SET processing_status = 'PROCESSED'
+                        WHERE processing_status = 'FETCHED'
+                          AND message_content_hash IN (SELECT message_content_hash FROM pipeline_events)
+                    """)
             finally:
                 if self._memory_conn is None:
                     conn.close()

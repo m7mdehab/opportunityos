@@ -1,4 +1,5 @@
 """Adversarial attack vector tests for BRIEF-006 Operational Autonomy."""
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,6 +19,7 @@ from inbox.ingestion import InboundIngestionService, MockMailTransport
 from inbox.learning import SafeLearningEngine
 from inbox.models import (
     CorrelationEvidence,
+    PipelineEvent,
     CorrelationStatus,
     InboundMessageEvidence,
     OpportunityStage,
@@ -220,15 +222,16 @@ class AdversarialInboxTests(unittest.TestCase):
             ingest1 = InboundIngestionService(transport1, store=store1)
             orch1 = ProductionOperationalOrchestrator(ingestion_service=ingest1, opportunities=[opp], store=store1)
 
-            # Manually simulate pipeline event recorded, but crash before notification and mark_processed
-            sig = orch1.classifier.classify(test_batch[0])
-            corr = orch1.correlation_engine.correlate(sig, test_batch[0])
-            orch1.store.store_evidence(test_batch[0])
+            # Ingest & record event, then simulate crash before notification and mark_evidence_processed
+            msgs, _ = ingest1.poll_new_messages(limit=1)
+            sig = orch1.classifier.classify(msgs[0])
+            corr = orch1.correlation_engine.correlate(sig, msgs[0])
             orch1.pipeline_store.record_signal_event(sig, corr, Track.EMPLOYMENT)
             self.assertEqual(len(store1.get_all_pipeline_events()), 1)
             self.assertEqual(len(store1.get_all_notifications()), 0)
+            self.assertFalse(store1.is_evidence_processed(msgs[0].message_content_hash))
 
-            # Destroy instances
+            # Destroy instances completely
             del orch1, ingest1, transport1, store1
 
             # Restart fresh against same DB
@@ -237,10 +240,10 @@ class AdversarialInboxTests(unittest.TestCase):
             ingest2 = InboundIngestionService(transport2, store=store2)
             orch2 = ProductionOperationalOrchestrator(ingestion_service=ingest2, opportunities=[opp], store=store2)
 
-            # Re-run cycle
+            # Re-run cycle: unprocessed message resumes
             res = orch2.run_cycle(limit=1)
             self.assertEqual(res.messages_ingested, 1)
-            # Event was ignored on re-insert (0 duplicate events)
+            # Event was deduplicated on re-insert (0 duplicate events)
             self.assertEqual(len(store2.get_all_pipeline_events()), 1)
             # Notification is emitted exactly once
             self.assertEqual(len(store2.get_all_notifications()), 1)
@@ -326,6 +329,163 @@ class AdversarialInboxTests(unittest.TestCase):
         self.assertEqual(state.current_stage, OpportunityStage.INTERVIEWING)
         self.assertTrue(state.active_action_required)
 
+
+    def test_adv_09_legacy_schema_migration_and_idempotency(self) -> None:
+        """Prove that opening a real pre-PR56 BRIEF-006 legacy SQLite database upgrades cleanly without data loss or error."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "legacy_inbox.db"
+
+            # 1. Create exact legacy PR55 schema (without processing_status or processed_at)
+            conn = sqlite3.connect(str(db_path))
+            conn.execute("""
+                CREATE TABLE inbound_evidence (
+                    message_content_hash TEXT PRIMARY KEY,
+                    provider TEXT NOT NULL,
+                    provider_message_id TEXT NOT NULL,
+                    thread_id TEXT NOT NULL,
+                    sender_email TEXT NOT NULL,
+                    sender_name TEXT NOT NULL,
+                    recipient_email TEXT NOT NULL,
+                    subject TEXT NOT NULL,
+                    snippet TEXT NOT NULL,
+                    body_text TEXT NOT NULL,
+                    body_html TEXT NOT NULL,
+                    received_at TEXT NOT NULL,
+                    headers_json TEXT NOT NULL,
+                    attachment_names_json TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE pipeline_events (
+                    event_id TEXT PRIMARY KEY,
+                    opportunity_id TEXT NOT NULL,
+                    signal_id TEXT NOT NULL,
+                    previous_stage TEXT NOT NULL,
+                    new_stage TEXT NOT NULL,
+                    track TEXT NOT NULL,
+                    trigger_category TEXT NOT NULL,
+                    message_content_hash TEXT NOT NULL,
+                    occurred_at TEXT NOT NULL,
+                    recorded_at TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    notes TEXT NOT NULL,
+                    UNIQUE(signal_id, opportunity_id)
+                )
+            """)
+            # Insert representative legacy evidence (one processed via event, one unprocessed)
+            ev1 = GOLD_EMPLOYMENT_MESSAGES[0]
+            ev2 = GOLD_EMPLOYMENT_MESSAGES[1]
+            conn.execute(
+                "INSERT INTO inbound_evidence VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (ev1.message_content_hash, ev1.provider, ev1.provider_message_id, ev1.thread_id, ev1.sender_email, ev1.sender_name, ev1.recipient_email, ev1.subject, ev1.snippet, ev1.body_text, ev1.body_html, ev1.received_at, "[]", "[]"),
+            )
+            conn.execute(
+                "INSERT INTO inbound_evidence VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (ev2.message_content_hash, ev2.provider, ev2.provider_message_id, ev2.thread_id, ev2.sender_email, ev2.sender_name, ev2.recipient_email, ev2.subject, ev2.snippet, ev2.body_text, ev2.body_html, ev2.received_at, "[]", "[]"),
+            )
+            # Record pipeline event for ev1 only
+            conn.execute(
+                "INSERT INTO pipeline_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                ("ev-1", "opp-1", "sig-1", "no_events", "applied", "employment", "application_confirmation", ev1.message_content_hash, "2026-08-30T10:00:00Z", "2026-08-30T10:00:00Z", "agent", "notes"),
+            )
+            conn.commit()
+            conn.close()
+
+            # 2. Instantiate new DurableInboxStore against the legacy database
+            store = DurableInboxStore(db_path)
+
+            # 3. Prove migration succeeded: columns exist and data remains intact
+            all_ev = store.get_all_evidence()
+            self.assertEqual(len(all_ev), 2)
+
+            # ev1 (had pipeline event) is marked PROCESSED; ev2 (had no pipeline event) remains FETCHED (not lost)
+            self.assertTrue(store.is_evidence_processed(ev1.message_content_hash))
+            self.assertFalse(store.is_evidence_processed(ev2.message_content_hash))
+
+            # 4. Prove repeated startup is idempotent
+            store2 = DurableInboxStore(db_path)
+            self.assertEqual(len(store2.get_all_evidence()), 2)
+            self.assertTrue(store2.is_evidence_processed(ev1.message_content_hash))
+
+    def test_adv_10_strict_reference_prefix_collision_and_receipt_authority(self) -> None:
+        """Prove stored REQ-12345 + inbound REQ-1234 is NOT authoritative, and receipt_reference is a first-class exact authority."""
+        from outbound.models import ConfirmationEvidence
+        opp1 = Opportunity(id="opp-1", track=Track.EMPLOYMENT, source="greenhouse", source_url="u1", source_id="REQ-12345", organization="Acme", title="Engineer", description="d")
+        rec1 = OutboundActionRecord(
+            action_id="act-1", opportunity_id="opp-1", opportunity_content_hash="h1", workspace="w", candidate_id="c",
+            track=Track.EMPLOYMENT, source="greenhouse", adapter_name="greenhouse", adapter_version="1.0", execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
+            qualification_decision=QualificationDecision.QUALIFIED, match_score_snapshot=0.9, artifact_ids=(), artifact_hashes=(),
+            manifest_hash="m1", action_status=ActionStatus.CONFIRMED, idempotency_key="k1", created_at="2026-08-30T00:00:00Z", updated_at="2026-08-30T00:00:00Z",
+            external_reference_id="REQ-12345",
+            confirmation_evidence=ConfirmationEvidence(confirmed=True, confirmation_text="OK", receipt_reference="RECEIPT-EXACT-999"),
+        )
+        engine = OpportunityCorrelationEngine(opportunities=[opp1], outbound_records=[rec1])
+        classifier = ResponseClassifier()
+
+        # Inbound with prefix REQ-1234 (must NOT match REQ-12345)
+        m_prefix = InboundMessageEvidence(
+            provider="gmail", provider_message_id="m-p", thread_id="th-p",
+            sender_email="recruiting@acme.com", sender_name="Acme", recipient_email="f@ex.com",
+            subject="Update regarding Req #REQ-1234", snippet="", body_text="Regarding Req #REQ-1234", body_html="", received_at="2026-08-30T10:00:00Z",
+        )
+        corr_p = engine.correlate(classifier.classify(m_prefix), m_prefix)
+        self.assertFalse(corr_p.is_authoritative)
+        self.assertNotEqual(corr_p.status, CorrelationStatus.EXACT_REFERENCE_MATCH)
+
+        # Inbound with exact normalized REQ-12345 (MUST match)
+        m_exact = InboundMessageEvidence(
+            provider="gmail", provider_message_id="m-e", thread_id="th-e",
+            sender_email="recruiting@acme.com", sender_name="Acme", recipient_email="f@ex.com",
+            subject="Update regarding Req #REQ-12345", snippet="", body_text="Regarding Req #REQ-12345", body_html="", received_at="2026-08-30T10:00:00Z",
+        )
+        corr_e = engine.correlate(classifier.classify(m_exact), m_exact)
+        self.assertTrue(corr_e.is_authoritative)
+        self.assertEqual(corr_e.status, CorrelationStatus.EXACT_REFERENCE_MATCH)
+        self.assertEqual(corr_e.opportunity_id, "opp-1")
+
+        # Inbound with exact receipt_reference RECEIPT-EXACT-999 (MUST match)
+        m_receipt = InboundMessageEvidence(
+            provider="gmail", provider_message_id="m-r", thread_id="th-r",
+            sender_email="recruiting@acme.com", sender_name="Acme", recipient_email="f@ex.com",
+            subject="Submission Confirmation", snippet="", body_text="Receipt Reference: RECEIPT-EXACT-999 confirmed.", body_html="", received_at="2026-08-30T10:00:00Z",
+        )
+        corr_r = engine.correlate(classifier.classify(m_receipt), m_receipt)
+        self.assertTrue(corr_r.is_authoritative)
+        self.assertEqual(corr_r.status, CorrelationStatus.EXACT_REFERENCE_MATCH)
+        self.assertEqual(corr_r.opportunity_id, "opp-1")
+
+    def test_adv_11_qualified_conversation_analytics_derivation(self) -> None:
+        """Prove qualified_conversation analytics derives accurately from pipeline events while unobserved remain pending."""
+        rec_qual = OutboundActionRecord(
+            action_id="act-q", opportunity_id="opp-q", opportunity_content_hash="h1", workspace="w", candidate_id="c",
+            track=Track.EMPLOYMENT, source="greenhouse", adapter_name="greenhouse", adapter_version="1.0", execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
+            qualification_decision=QualificationDecision.QUALIFIED, match_score_snapshot=0.9, artifact_ids=(), artifact_hashes=(),
+            manifest_hash="m1", action_status=ActionStatus.CONFIRMED, idempotency_key="kq", created_at="2026-08-30T00:00:00Z", updated_at="2026-08-30T00:00:00Z",
+        )
+        rec_pending = OutboundActionRecord(
+            action_id="act-p", opportunity_id="opp-p", opportunity_content_hash="h2", workspace="w", candidate_id="c",
+            track=Track.EMPLOYMENT, source="greenhouse", adapter_name="greenhouse", adapter_version="1.0", execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
+            qualification_decision=QualificationDecision.QUALIFIED, match_score_snapshot=0.9, artifact_ids=(), artifact_hashes=(),
+            manifest_hash="m2", action_status=ActionStatus.CONFIRMED, idempotency_key="kp", created_at="2026-08-30T00:00:00Z", updated_at="2026-08-30T00:00:00Z",
+        )
+        # Event indicating interview invitation for opp-q
+        ev_interview = PipelineEvent(
+            event_id="ev-int-1", opportunity_id="opp-q", signal_id="sig-int",
+            previous_stage=OpportunityStage.NO_EVENTS, new_stage=OpportunityStage.INTERVIEWING,
+            track=Track.EMPLOYMENT, trigger_category=SignalCategory.INTERVIEW_REQUEST,
+            message_content_hash="h-int", occurred_at="2026-08-30T10:00:00Z", recorded_at="2026-08-30T10:00:00Z",
+            actor="agent", notes="",
+        )
+
+        dim_metrics = DualTrackAnalyticsEngine.compute_dimension_metrics(
+            outbound_records=[rec_qual, rec_pending],
+            events=[ev_interview],
+            dimension="qualified_conversation",
+        )
+        self.assertIn("qualified_conversation_achieved", dim_metrics)
+        self.assertIn("pending_outcome", dim_metrics)
+        self.assertEqual(dim_metrics["qualified_conversation_achieved"].total_submissions, 1)
+        self.assertEqual(dim_metrics["pending_outcome"].total_submissions, 1)
 
 if __name__ == "__main__":
     unittest.main()
