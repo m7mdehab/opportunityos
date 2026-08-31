@@ -10,8 +10,8 @@ Next: ORDERED SEQUENCE (C + A) -> B -> D.
 
 ## Repository
 
-- **Generated:** 2026-08-31T19:46:13Z
-- **State generated at commit:** `d483ee9` — docs: finalize REPORT-FR-001 with independent audit verdict PASS
+- **Generated:** 2026-08-31T19:49:44Z
+- **State generated at commit:** `d0e3341` — docs: GATE-FR-001 final evidence-truth correction and Phase 0D decomposition
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -33,7 +33,7 @@ Next: ORDERED SEQUENCE (C + A) -> B -> D.
 
 ## Last Phase Outcome
 
-- GATE-FR-001 — READY_FOR_INDEPENDENT_AUDIT
+- GATE-FR-001 — FINAL / PASS
 
 ## Decisions
 
