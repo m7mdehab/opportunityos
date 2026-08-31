@@ -1,11 +1,11 @@
 # Phase Brief: GATE-FR-001 — Founder-Readiness Reconciliation & Gap Map
 
 **Phase ID:** GATE-FR-001  
-**Status:** In Progress / Completed Gate  
+**Status:** In Progress / Completed Reconciliation Gate  
 **Date:** 2026-08-31  
 **Author:** Antigravity Master Agent (Dual-Loop Autonomous Controller)  
 **Authority:** ChatGPT Overseer Authorization  
-**Starting Main SHA:** `3303f1267c1325456ed8d4feef922a8923d2ff9a`  
+**Starting Main SHA:** `7e09f452023eaf010cfe232286a4cedb70d5f709`  
 
 ---
 
@@ -13,15 +13,15 @@
 
 BRIEF-000 through BRIEF-006 are CLOSED AND FROZEN. BRIEF-007 (Private Family Alpha) is NOT authorized.
 
-This gate is a comprehensive, requirement-by-requirement reconciliation of the original OpportunityOS Master Product Development Plan v0.2 against the actual merged repository truth, executable tests, persistence layers, and CI evidence after BRIEF-006.
+This gate is an exhaustive, requirement-by-requirement reconciliation of the original OpportunityOS Master Product Development Plan v0.2 against the actual merged repository truth, executable tests, persistence layers, and CI evidence after BRIEF-006.
 
-The goal is to determine, without status inflation:
+The core objective is to determine, comprehensively and without status inflation:
 - What was promised for the founder-ready OpportunityOS product through Founder Alpha 4 (Phase 5);
-- What genuinely exists today (DONE);
-- What only partially exists (PARTIAL);
-- What is missing (MISSING);
-- What was intentionally deferred (INTENTIONALLY_DEFERRED);
-- What exists in production shape but requires live credentials/integration (REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS).
+- What genuinely exists today (`DONE`);
+- What only partially exists (`PARTIAL`);
+- What is missing (`MISSING`);
+- What was intentionally deferred (`INTENTIONALLY_DEFERRED`);
+- What exists in production shape but requires live credentials/integration (`REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS`).
 
 ---
 
@@ -32,32 +32,34 @@ The goal is to determine, without status inflation:
 3. No premature implementation of web/FastAPI/Postgres layers during this reconciliation gate.
 4. No PII or private founder evidence in mirror-tracked artifacts.
 5. All 375 repository unit tests must remain 100% green.
-6. Independent blinded audit must evaluate the completeness and accuracy of the reconciliation.
+6. Independent blinded audit must evaluate the completeness, accuracy, and count integrity of the reconciliation.
 
 ---
 
-## 3. Scope of Reconciliation
+## 3. Full Scope of Reconciliation
 
 The reconciliation spans:
-1. Core Product Constitution & Safety Invariants (Truthfulness, Provenance, Side-Effect Safety, Privacy, Prohibited Automation).
-2. Production Architecture & Infrastructure (FastAPI, Next.js UI, PostgreSQL, Caddy, Docker Compose, DB workers).
-3. Founder Web Application UI / Pages (Dashboard, Feed, Detail, Truth Graph, CVs, Applications, Analytics, Watchlists, Settings).
-4. Founder Truth + Capability Pack Ingestion & Graph.
-5. Phase 1 Founder Source Pack (Every employment and independent source family evaluated).
-6. Universal Opportunity Ingestion, Normalization, and Deduplication.
-7. Eligibility & Qualification Engine.
-8. Fit & Bid/No-Bid Scoring Engine.
-9. Fact-Locked Artifact Compilers (CVs, Proposals, Statements).
-10. Outbound Action Execution & Idempotency Layer.
-11. Inbound Inbox, Signal Classification, and Pipeline Synchronization.
-12. Security, Privacy, and Operations Baselines.
-13. First Founder Acceptance Script Evaluation (14 steps).
-14. Final Actionable Recommendation for the next phase.
+1. **Product Constitution & Safety Invariants (§2, §31, §32):** Truthfulness, credential status, Green/Yellow/Red answer policy, source compliance, external mutation safety, secrets topology, side-effect safety, kill switch, CAPTCHA/bot defense, safe learning loop.
+2. **Phase 0 Foundation & Infrastructure (§5, §15):** Monorepo structure, Next.js web template, responsive/accessibility baselines, FastAPI REST API, PostgreSQL primary persistence, DB-backed workers, Docker/Caddy packaging, automated backups, agent governance, council schemas, permissions.
+3. **Phase 0E Actual Founder Configuration (§12, §15.5):** Career Truth Graph schema, Capability Pack schema, private ground truth population, opportunity preferences, answer library, company/buyer watchlists.
+4. **Founder UI / Web Application Pages (§5.3):** Sign in, Dual-Track Dashboard, Opportunities Feed, Opportunity Detail, Needs Attention, Professional Truth Graph, CV Viewer, Applications Pipeline, Watchlists, Analytics, Automation Rules, Founder Admin.
+5. **Universal Ingestion, Deduplication & Core Engine (§6, §16, §17):** Universal Opportunity model, atomic field provenance, deduplication, authorized transport, source health telemetry, salary/budget normalization, geographic scope taxonomy, stale-job re-verification, fraud risk.
+6. **Phase 1 Founder Source Pack (§8, §9, §40):** 42 individual source families evaluated across employment and independent tracks.
+7. **Eligibility & Qualification Engine (§16.4, §29.1):** Hard constraint separation, hard rejection proof, dual-track rules, open-world authorization, precision targets.
+8. **Fit & Bid/No-Bid Scoring Engine (§16.5, §29.2):** Multi-dimensional scoring rubrics, evidence-grounded scoring, explainability vectors, anti-keyword dominance.
+9. **Fact-Locked Artifact Compilers (§16.6, §18):** Tailored CV compiler, proposal compiler, 100% claim-to-evidence validator, binary DOCX/PDF export, ATS visual regression, narrative answering.
+10. **Action Handoff, Assist & Outbound Automation (§16.7, §19):** Assisted mode browser engine, answer engine, mock ATS harness, PreSubmitManifest authority guard, idempotency reservation ledger, canonical deep links.
+11. **Inbound Ingestion, Pipeline & Learning Loop (§20):** Read-only mail ingestion, 20-category signal classifier, priority notifications, deterministic correlation, crash-safe persistence lifecycle, outcome analytics, safe learning engine.
+12. **Security, Privacy & Operations (§2.4, §31):** Secure session auth, encrypted transport, encrypted backups, SSRF defense, prompt injection defense, log redaction.
+13. **Clean Runtime & Reproducibility (§7, §15):** Clone bootstrap, DB migrations, persistence restart, runtime entrypoint.
+14. **Later Productization (Phases 6–11):** Private Family Alpha, Public B2C, Freelancer B2C, Employer B2B, Agency B2B, Regional Scale.
+15. **First Founder Acceptance Script (§43) & Independent-Opportunity Journey.**
 
 ---
 
 ## 4. Deliverables
 
 - `briefs/GATE-FR-001.md`: This gate brief.
+- `reports/FOUNDER_READINESS_MATRIX.json`: Canonical machine-readable matrix of all 135 requirements.
 - `reports/FOUNDER_READINESS_MATRIX.md`: Exhaustive requirements reconciliation matrix.
 - `reports/REPORT-FR-001.md`: Comprehensive gate report, analysis, and final phase recommendation.
