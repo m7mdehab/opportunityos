@@ -2,30 +2,30 @@
 
 **Generated:** 2026-08-31  
 **Authority:** ChatGPT Overseer Authorization  
-**Baseline Starting SHA:** `7e09f452023eaf010cfe232286a4cedb70d5f709`  
+**Baseline Starting SHA:** `7b6f5047f0f2bb307cfcdf43ea44b05f67bbbed0`  
 **Evaluation Scope:** Master Product Development Plan v0.2 through Phase 5 (Founder Alpha 4) and Later Phases  
-**Total Canonical Requirements Evaluated:** 135  
+**Total Canonical Requirements Evaluated:** 143  
 
 ---
 
 ## 1. Summary Totals & Integrity Reconciliation
 
-### Primary Status Counts (Total = 135):
-- **`DONE`:** 65 (48.1%)
-- **`PARTIAL`:** 38 (28.1%)
-- **`MISSING`:** 22 (16.3%)
-- **`INTENTIONALLY_DEFERRED`:** 9 (6.7%)
+### Primary Status Counts (Total = 143):
+- **`DONE`:** 64 (44.8%)
+- **`PARTIAL`:** 44 (30.8%)
+- **`MISSING`:** 25 (17.5%)
+- **`INTENTIONALLY_DEFERRED`:** 9 (6.3%)
 - **`REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS`:** 1 (0.7%)
 
-### Criticality Counts (Total = 135):
-- **`P0` (Blocks Founder Core):** 67 (DONE: 55, PARTIAL: 5, MISSING: 6, REQ_LIVE: 1)
-- **`P1` (Material Friction Reduction):** 53 (DONE: 9, PARTIAL: 32, MISSING: 12)
-- **`P2` (Reliability, Health & Analytics):** 9 (DONE: 1, PARTIAL: 1, MISSING: 4, DEFERRED: 3)
+### Criticality Counts (Total = 143):
+- **`P0` (Blocks Founder Core):** 70 (DONE: 56, PARTIAL: 7, MISSING: 6, REQ_LIVE: 1)
+- **`P1` (Material Friction Reduction):** 55 (DONE: 8, PARTIAL: 34, MISSING: 13)
+- **`P2` (Reliability, Health & Governance):** 12 (DONE: 0, PARTIAL: 3, MISSING: 6, DEFERRED: 3)
 - **`P3` (Family / Public B2C):** 3 (All 3 INTENTIONALLY_DEFERRED)
 - **`P4` (Organization B2B):** 3 (All 3 INTENTIONALLY_DEFERRED)
 
-### Phase Counts (Total = 135):
-- **`Phase 0` (Foundation & Core Truth):** 34
+### Phase Counts (Total = 143):
+- **`Phase 0` (Foundation, Agent Governance & Core Truth):** 42
 - **`Phase 1` (Founder Alpha 0 Core Discovery & Compilers):** 63
 - **`Phase 2` (Trusted Discovery Expansion & Health):** 10
 - **`Phase 3` (Trusted Tailoring & Narrative):** 2
@@ -38,11 +38,11 @@
 - **`Phase 10` (Agency B2B):** 1
 - **`Phase 11` (Unified Platform):** 1
 
-### Next Work Bucket Counts (Total = 135):
-- **`NONE` (Already DONE):** 65
-- **`FOUNDER_ENGINE_BLOCKER` (Bucket A):** 34
+### Next Work Bucket Counts (Total = 143):
+- **`NONE` (Already DONE):** 64
+- **`FOUNDER_ENGINE_BLOCKER` (Bucket A):** 35
 - **`FOUNDER_WEB_INTEGRATION` (Bucket B):** 15
-- **`PRODUCTION_INFRASTRUCTURE` (Bucket C):** 8
+- **`PRODUCTION_INFRASTRUCTURE` (Bucket C):** 16
 - **`LIVE_CONFIGURATION_OR_CREDENTIALS` (Bucket D):** 4
 - **`INTENTIONALLY_LATER` (Bucket F):** 9
 
@@ -63,7 +63,7 @@
 | `REQ-SAF-009` | §2.5, §19.7 | Bot Challenge Fail-Closed: CAPTCHA, MFA, and bot challenges treated as hard stop gates without automated bypass. | P0 | Phase 4 | `DONE` | `TESTED_IMPLEMENTATION` | outbound/browser_engine.py | outbound/test_zero_tolerance.py, outbound/test_adversarial.py | None | None. Browser engine detects challenges and halts execution. | `NONE` |
 | `REQ-SAF-010` | §20.5 | Safe Learning Loop & Immutability: Strategy learning cannot alter TruthGraph assertions, verified evidence, or source permissions. | P1 | Phase 5 | `DONE` | `TESTED_IMPLEMENTATION` | inbox/learning.py:SafeLearningEngine | inbox/test_adversarial.py | None | None. Learning loop emits non-mutating recommendations with min sample sizes. | `NONE` |
 | `REQ-P0A-001` | §15.1 | Monorepo Structure, Governance & Product Constitution: Master Plan, Constitution, coding conventions, ADR templates committed. | P0 | Phase 0 | `DONE` | `PROVEN_RUNTIME` | AGENTS.md, docs/PRODUCT_CONSTITUTION.md, docs/adr/TEMPLATE.md, docs/MASTER_PLAN.md | scripts/check_repository.py | None | None. Complete repository governance structure established. | `NONE` |
-| `REQ-P0A-002` | §15.1 | Deterministic Tooling & Bootstrap: Repository bootstraps deterministically, clean secret scans, lint/test commands work. | P0 | Phase 0 | `DONE` | `PROVEN_RUNTIME` | scripts/check_guard.py, scripts/check_repository.py | scripts/check_guard.py, unittest discover | None | None. Standard python unittest suite runs in <5s deterministically. | `NONE` |
+| `REQ-P0A-002` | §15.1 | Deterministic Tooling & Secret Scanning: Deterministic lint/test commands and boundary security scans. | P0 | Phase 0 | `DONE` | `PROVEN_RUNTIME` | scripts/check_guard.py, scripts/check_repository.py | scripts/check_guard.py, unittest discover | None | None. Automated repository and guard scans execute cleanly. | `NONE` |
 | `REQ-P0B-001` | §5.3, §15.2 | Next.js Web Template & Design System: Next.js + TypeScript shell with shadcn/ui dashboard primitives. | P1 | Phase 0 | `MISSING` | `NONE` | None | None | Node.js / React / Next.js ecosystem | Web UI frontend codebase does not exist in repository. | `FOUNDER_WEB_INTEGRATION` |
 | `REQ-P0B-002` | §15.2 | Responsive Shell & Accessibility Baseline: Desktop/mobile layouts, keyboard navigation, WCAG checks, 0 page errors. | P2 | Phase 0 | `MISSING` | `NONE` | None | None | Web UI implementation | Cannot perform responsive/WCAG tests because Web UI is missing. | `FOUNDER_WEB_INTEGRATION` |
 | `REQ-P0C-001` | §5.2, §15.3 | FastAPI Application API Layer: FastAPI application exposing typed REST endpoints for domain services. | P1 | Phase 0 | `MISSING` | `NONE` | None | None | FastAPI / Uvicorn | Backend exists purely as direct Python library modules; no HTTP API layer exists. | `FOUNDER_WEB_INTEGRATION` |
@@ -71,9 +71,16 @@
 | `REQ-P0C-003` | §5.2, §15.3 | DB-Backed Worker Queue: Worker process handling asynchronous source polling and match evaluation. | P1 | Phase 0 | `PARTIAL` | `TESTED_IMPLEMENTATION` | opportunity/pipeline.py, inbox/orchestrator.py | opportunity/test_pipeline.py, inbox/test_adversarial.py | Background process runner | Pipeline orchestrators exist as Python classes, but background worker daemon runner is missing. | `PRODUCTION_INFRASTRUCTURE` |
 | `REQ-P0C-004` | §5.2, §15.3 | Packaging & Reverse Proxy Deployment: Docker Compose, Caddyfile, and automated HTTPS staging setup. | P2 | Phase 0 | `MISSING` | `NONE` | None | None | Docker / Caddy / Hosting VPS | No Dockerfile, compose file, or Caddy configuration present in repository. | `PRODUCTION_INFRASTRUCTURE` |
 | `REQ-P0C-005` | §5.2, §15.3 | Automated Database Backup & Restore: Automated DB backup routine and verified restore test. | P1 | Phase 0 | `MISSING` | `NONE` | None | None | Backup scripts / storage | No automated backup/restore scripts exist. | `PRODUCTION_INFRASTRUCTURE` |
-| `REQ-P0D-001` | §13, §15.4 | Master-Agent Protocol & Concurrency Governance: Brief contract, parallel-safe execution, maker/checker separation, autonomous repair. | P1 | Phase 0 | `DONE` | `PROVEN_RUNTIME` | AGENTS.md, .codex/agents/, briefs/, reports/ | scripts/generate_state.py, repository CI | None | None. Autonomous maker/checker workflow executed across BRIEF-000 through BRIEF-006. | `NONE` |
-| `REQ-P0D-002` | §13.2, §15.4 | Council Schemas & ADR Generation: Council triggers create structured decision packets and committed ADRs. | P2 | Phase 0 | `DONE` | `PROVEN_RUNTIME` | docs/adr/ (ADR-0001 through ADR-0011) | scripts/generate_state.py | None | None. 11 ADRs committed and tracked by generate_state.py. | `NONE` |
-| `REQ-P0D-003` | §15.4 | Traceable Agent Runs & Tool Permission Boundaries: Tool allowlists, spend controls, unauthorized actions blocked. | P1 | Phase 0 | `DONE` | `PROVEN_RUNTIME` | docs/AGENT_PERMISSIONS.yaml, AGENTS.md | scripts/check_guard.py | None | None. Tool permissions documented and verified by guard script. | `NONE` |
+| `REQ-P0D-DEL-1` | §15.4 | Phase 0D Deliverable 1: Master-Agent Protocol (Brief contract, dependency DAG, maker/checker delegation loop). | P1 | Phase 0 | `DONE` | `PROVEN_RUNTIME` | AGENTS.md, briefs/BRIEF-000.md through BRIEF-006.md | scripts/generate_state.py | None | None. Master-agent protocol operational and proven across 7 briefs. | `NONE` |
+| `REQ-P0D-DEL-2` | §15.4 | Phase 0D Deliverable 2: Council Schemas (Structured decision packet and voting schema runtime). | P2 | Phase 0 | `PARTIAL` | `DOCUMENTED_ONLY` | docs/MASTER_PLAN.md §13.2, §13.4 | None | None | Council protocol documented and ADRs recorded, but runtime schema model (DecisionRecord) not implemented. | `PRODUCTION_INFRASTRUCTURE` |
+| `REQ-P0D-DEL-3` | §15.4 | Phase 0D Deliverable 3: Tool / Permission Boundaries (Formal agent permissions specification). | P1 | Phase 0 | `PARTIAL` | `DOCUMENTED_ONLY` | docs/AGENT_PERMISSIONS.yaml, AGENTS.md | None (guard script does not parse AGENT_PERMISSIONS.yaml) | None | AGENT_PERMISSIONS.yaml exists as policy doc, but runtime enforcement hook is not implemented. | `PRODUCTION_INFRASTRUCTURE` |
+| `REQ-P0D-DEL-4` | §15.4 | Phase 0D Deliverable 4: Traceable AgentRun Records (Structured data model and persistence for agent runs). | P2 | Phase 0 | `MISSING` | `NONE` | None (Master Plan §6.4 AgentRun) | None | None | No AgentRun model or store implemented in repository; agent transcripts stored outside repo. | `PRODUCTION_INFRASTRUCTURE` |
+| `REQ-P0D-DEL-5` | §15.4 | Phase 0D Deliverable 5: Test-Gate Integration (Automated test suites blocking merge). | P0 | Phase 0 | `DONE` | `PROVEN_RUNTIME` | .github/workflows/test.yml, scripts/check_repository.py | scripts/test_sync_mirror.py, unittest discover | None | None. Mandatory CI workflow gates all PR merges. | `NONE` |
+| `REQ-P0D-DEL-6` | §15.4 | Phase 0D Deliverable 6: Budget Controls (Runtime tracking and hard caps on agent API spend). | P2 | Phase 0 | `MISSING` | `NONE` | None | None | None | No runtime agent spend tracking or programmatic budget capping implemented. | `PRODUCTION_INFRASTRUCTURE` |
+| `REQ-P0D-TST-A` | §15.4 | Phase 0D Acceptance Test A: Synthetic Issue -> Sub-Agent -> PR -> QA -> Staging without Founder Intervention. | P1 | Phase 0 | `PARTIAL` | `PROVEN_RUNTIME` | Brief execution history (BRIEF-000 through BRIEF-006) | None (staging deploy not implemented) | Staging environment | Sub-agent -> PR -> QA loop proven locally/in CI; staging deployment step is missing. | `PRODUCTION_INFRASTRUCTURE` |
+| `REQ-P0D-TST-B` | §15.4 | Phase 0D Acceptance Test B: Failing Test Blocks Merge (CI test failure blocks PR merge). | P0 | Phase 0 | `DONE` | `PROVEN_RUNTIME` | .github/workflows/test.yml | CI test workflow | None | None. Failing CI checks prevent PR merge. | `NONE` |
+| `REQ-P0D-TST-C` | §15.4 | Phase 0D Acceptance Test C: Council-Trigger Decision Creates an ADR. | P2 | Phase 0 | `PARTIAL` | `PROVEN_RUNTIME` | docs/adr/ (11 ADRs committed) | scripts/generate_state.py | None | 11 ADRs committed during briefs, but automated runtime triggering machinery is missing. | `PRODUCTION_INFRASTRUCTURE` |
+| `REQ-P0D-TST-D` | §15.4 | Phase 0D Acceptance Test D: Unauthorized Secret / Destructive Action Blocked and Escalated. | P0 | Phase 0 | `DONE` | `PROVEN_RUNTIME` | scripts/check_guard.py, opportunity/transport.py | scripts/check_guard.py, opportunity/test_acquisition.py | None | None. Guard script and transport preflight block unauthorized actions. | `NONE` |
 | `REQ-CFG-001` | §12.1, §15.5 | Founder Career Truth Pack Schema & Ingestion: Schema, validator, and JSON/YAML loader for career profile. | P0 | Phase 0 | `DONE` | `TESTED_IMPLEMENTATION` | truth/models.py, truth/ingest.py, truth/validator.py | truth/test_models.py, truth/test_ingest.py, truth/test_validator.py | None | None. Complete data models and ingestion parsers implemented. | `NONE` |
 | `REQ-CFG-002` | §12.1A, §15.5 | Founder Independent Capability Pack Schema: Schema, business capacity bounds, services, and portfolio models. | P0 | Phase 0 | `DONE` | `TESTED_IMPLEMENTATION` | truth/models.py:BusinessCapacity, truth/graph.py | truth/test_models.py, truth/test_property.py | None | None. Capability profile and capacity bounds implemented. | `NONE` |
 | `REQ-CFG-003` | §12.1, §12.1A | Actual Founder Private Career & Capability Data Population: Private founder ground truth populated in local store. | P0 | Phase 0 | `REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS` | `IMPLEMENTED_UNTESTED` | private/README.md | None (private data uncommitted) | Founder private CV and capability truth pack files | Schema exists, but actual founder truth data is stored locally in untracked private/ directory. | `LIVE_CONFIGURATION_OR_CREDENTIALS` |
@@ -175,9 +182,10 @@
 | `REQ-SEC-002` | §31.1 | Encrypted Transport (TLS/HTTPS Baseline): Strict HTTPS enforcement on all web and API routes. | P1 | Phase 0 | `MISSING` | `NONE` | None | None | Caddy / Domain TLS | No deployment reverse proxy exists. | `PRODUCTION_INFRASTRUCTURE` |
 | `REQ-SEC-003` | §31.1 | Encrypted Database Backups: Backups encrypted at rest with dedicated secret material. | P1 | Phase 0 | `MISSING` | `NONE` | None | None | Backup scripts | Automated backup routine missing. | `PRODUCTION_INFRASTRUCTURE` |
 | `REQ-SEC-004` | §31.1 | Source-Fetch SSRF Protection: Source registry preflight authorization enforces host/path allowlist. | P0 | Phase 1 | `DONE` | `TESTED_IMPLEMENTATION` | opportunity/registry.py, opportunity/transport.py | opportunity/test_acquisition.py, opportunity/test_adversarial.py | None | None. Strict host and path segment matching prevents SSRF. | `NONE` |
-| `REQ-SEC-005` | §31.2 | Prompt Injection Defenses: Untrusted opportunity/RFP text treated strictly as data, never system instructions. | P0 | Phase 0 | `DONE` | `TESTED_IMPLEMENTATION` | truth/ingest.py, truth/validator.py, matching/compiler_employment.py | truth/test_adversarial.py | None | None. Deterministic compilers and YAML parsers reject prompt injections. | `NONE` |
-| `REQ-SEC-006` | §2.4, §31.1 | Sensitive Data Minimization & Log Redaction: Production logs omit tokens, CV bodies, and PII. | P0 | Phase 0 | `DONE` | `TESTED_IMPLEMENTATION` | scripts/check_guard.py, inbox/persistence.py | scripts/check_guard.py | None | None. Guard script scans for PII leaks. | `NONE` |
-| `REQ-RUN-001` | §15.1 | Clean Clone Bootstrap & Dependency Installation: Standard python environment bootstraps without manual tweaks. | P0 | Phase 0 | `DONE` | `PROVEN_RUNTIME` | pyproject.toml / standard library | unittest discover | Python 3.10+ | None. Bootstraps cleanly. | `NONE` |
+| `REQ-SEC-005` | §31.2 | Prompt Injection Defenses (Data vs Instruction Isolation): Untrusted opportunity/RFP text isolated from system instructions. | P0 | Phase 0 | `PARTIAL` | `TESTED_IMPLEMENTATION` | truth/ingest.py, truth/validator.py, matching/compiler_employment.py | truth/test_adversarial.py | None | Current architecture isolates text as data; comprehensive live LLM agent prompt-injection defense harness pending. | `FOUNDER_ENGINE_BLOCKER` |
+| `REQ-SEC-006` | §2.4, §31.1 | Repository & Mirror PII Leak Protection: Pre-commit and CI scans prevent founder PII in mirror-safe artifacts. | P0 | Phase 0 | `DONE` | `PROVEN_RUNTIME` | scripts/check_guard.py, scripts/check_mirror.py | scripts/check_guard.py | None | None. Repository boundary scans verify PII absence. | `NONE` |
+| `REQ-SEC-007` | §2.4, §31.1 | Runtime Structured Logging & Sensitive Log Redaction: Production logs omit tokens, CV bodies, and PII. | P1 | Phase 0 | `MISSING` | `NONE` | None | None | None | No centralized production logging or runtime log redaction framework implemented. | `PRODUCTION_INFRASTRUCTURE` |
+| `REQ-RUN-001` | §15.1 | Clean Clone Bootstrap & Dependency Installation: Standard environment setup from committed repository files. | P0 | Phase 0 | `PARTIAL` | `PROVEN_RUNTIME` | .github/workflows/test.yml | unittest discover | Python 3.10+ standard library | CI runs standard library tests cleanly, but pyproject.toml / requirements.txt packaging manifests are not yet committed. | `PRODUCTION_INFRASTRUCTURE` |
 | `REQ-RUN-002` | §15.3 | Database Initialization & Migrations: Durable database initializes schema and runs clean migrations. | P0 | Phase 0 | `DONE` | `TESTED_IMPLEMENTATION` | inbox/persistence.py, outbound/idempotency.py | inbox/test_adversarial.py | None | None. SQLite schema migrations (ALTER TABLE) proven across PR55->PR58 databases. | `NONE` |
 | `REQ-RUN-003` | §15.3 | Persistence Across Process Restart: Inbound and outbound stores retain all states across crashes and restarts. | P0 | Phase 0 | `DONE` | `TESTED_IMPLEMENTATION` | inbox/persistence.py, outbound/idempotency.py | inbox/test_adversarial.py, outbound/test_idempotency.py | None | None. Durable SQLite persistence proven with zero duplicate actions on restart. | `NONE` |
 | `REQ-RUN-004` | §5.2, §15.3 | Local / Staging Runtime Entrypoint: Single command startup for web, API, workers, and database. | P1 | Phase 0 | `MISSING` | `NONE` | None | None | Docker / Compose / Process manager | No combined runtime entrypoint script exists. | `PRODUCTION_INFRASTRUCTURE` |
