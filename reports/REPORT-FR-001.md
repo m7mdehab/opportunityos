@@ -4,11 +4,11 @@
 **Date:** 2026-08-31  
 **Author:** Antigravity Master Agent (Dual-Loop Autonomous Controller)  
 **Authority:** ChatGPT Overseer Authorization  
-**Starting Repository SHA:** `7e09f452023eaf010cfe232286a4cedb70d5f709`  
-**Substantive Commit SHA:** `6934406fe2ffad6eaeb5bf09dcb306a805cbd5c0`  
+**Starting Repository SHA:** `7b6f5047f0f2bb307cfcdf43ea44b05f67bbbed0`  
+**Substantive Commit SHA:** `d0e3341e899ba809fc3a2da8cde9c44a60e85678`  
 **Status:** FINAL / PASS  
-**Auditor Provider/Model/Session:** Google Antigravity / Vertex AI (pro) / `6d55c4d0-da7c-4e9f-a92a-d4d05d4ec624`  
-**Auditor Verdict:** PASS (All 17 attack vectors verified; 100% count integrity across all 135 requirements)  
+**Auditor Provider/Model/Session:** Google Antigravity / Vertex AI (pro) / `707c5de1-81a7-4621-b430-c2fc413e7070`  
+**Auditor Verdict:** PASS (All 12 targeted criteria verified; 100% count integrity across all 143 requirements; zero unearned runtime claims)  
 
 ---
 
@@ -20,7 +20,7 @@ The fundamental question answered is:
 > *"What was promised for the founder-ready OpportunityOS product through Founder Alpha 4 (Phase 5), what genuinely exists today, what only partially exists, what is missing, what was intentionally deferred, and what merely needs real credentials/integration?"*
 
 ### Primary Findings:
-1. **Core Domain Engines are Mature & 100% Tested (375/375 Unit Tests Pass):**
+1. **Core Domain Engines are Mature & 100% Tested:**
    - **TruthGraph & Verification Invariants (`truth`):** Complete models for career and capability profiles, atomic assertion verification, direct metric proof, never-claim concept dominance, and open-world semantics.
    - **Universal Opportunity Ingestion & Deduplication (`opportunity`):** Universal Opportunity model supporting all 4 tracks (Employment, Contract, Freelance, Procurement), atomic field provenance, multi-source deduplication, source health telemetry, and 9 active source adapters (Greenhouse, Lever, Himalayas, We Work Remotely, Remotive, Remote OK, UNGM, World Bank, EU TED).
    - **Dual-Track Qualification & Scoring (`matching`):** Deterministic hard rejection vs fit scoring; multi-dimensional scoring rubrics for Employment and Procurement/Freelance with full explainability vectors.
@@ -28,14 +28,22 @@ The fundamental question answered is:
    - **Action Authority & Side-Effect Safety (`outbound`):** Assisted browser engine with mock ATS harness, PreSubmitManifest authority guard, durable SQLite reservation ledger, UNKNOWN_OUTCOME freeze, and global kill switch.
    - **Inbound Signal Ingestion & Synchronization (`inbox`):** Read-only Gmail ingestion, 20-category dual-track response classifier, crash-safe `FETCHED -> PROCESSED` SQLite persistence lifecycle, and safe learning engine.
 
-2. **The Primary Founder Blocker is Web UI & Production Platform Infrastructure:**
+2. **Phase 0D Agent Governance Honest Reconciliation:**
+   - Master-agent protocol, test-gate integration, and unauthorized action blocking are `DONE` and proven.
+   - Formal council schema runtimes, runtime permission enforcement of `AGENT_PERMISSIONS.yaml`, and `AgentRun` model/stores are not implemented (`PARTIAL` or `MISSING`).
+
+3. **Clean Runtime & Security Honest Reconciliation:**
+   - Standard library test bootstrap, database schema initialization, and crash-safe restarts are proven (`DONE`). Packaging manifests (`pyproject.toml`) and single-command startup scripts are missing (`PARTIAL` / `MISSING`).
+   - Repository PII leak scanning and source-fetch SSRF protection are proven (`DONE`). Future web prompt-injection defense and production runtime log redaction are `PARTIAL` / `MISSING`.
+
+4. **The Primary Founder Blocker is Web UI & Production Platform Infrastructure:**
    - The original Master Plan (§5.2, §5.3, §15.2, §15.3) promised a **Next.js + TypeScript web UI**, **FastAPI application API**, **PostgreSQL multi-tenant persistence**, **Docker Compose / Caddy deployment**, and **Auth.js session authentication**.
    - Currently, OpportunityOS exists as a **pure Python domain/engine library with local SQLite persistence**. There is no web frontend, no REST API endpoints, no Docker configuration, and no PostgreSQL schema.
 
-3. **Founder Private Configuration Status:**
+5. **Founder Private Configuration Status:**
    - Data models and schema parsers exist, but actual private founder ground truth (CV text, capability records, target preferences, answer overrides) is stored locally in the untracked `private/` directory and cannot be verified by CI.
 
-4. **Source Pack Usability:**
+6. **Source Pack Usability:**
    - 9 active source adapters have working, tested network/parser code.
    - 25 sources are documented in `SOURCE_REGISTRY.yaml` with explicit policies (`alert_ingestion`, `manual_deeplink`, `research_only`), but executable email alert parsers and first-party crawlers are not yet implemented as code modules.
    - 2 sources require developer credentials (Adzuna, Freelancer.com).
@@ -46,33 +54,33 @@ The fundamental question answered is:
 
 ## 2. Requirement Totals & Breakdown
 
-### High-Level Status Totals (135 Total Requirements):
-- **`DONE`:** 65 (48.1%)
-- **`PARTIAL`:** 38 (28.1%)
-- **`MISSING`:** 22 (16.3%)
-- **`INTENTIONALLY_DEFERRED`:** 9 (6.7%)
+### High-Level Status Totals (143 Total Requirements):
+- **`DONE`:** 64 (44.8%)
+- **`PARTIAL`:** 44 (30.8%)
+- **`MISSING`:** 25 (17.5%)
+- **`INTENTIONALLY_DEFERRED`:** 9 (6.3%)
 - **`REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS`:** 1 (0.7%)
 
 ### Breakdown by Criticality:
-- **`P0` (Blocks Founder Core Usefulness):** 67 Total
-  - `DONE`: 55
-  - `PARTIAL`: 5 (LinkedIn alert parser, Upwork alert parser, Direct company crawler, Binary DOCX/PDF export)
+- **`P0` (Blocks Founder Core Usefulness):** 70 Total
+  - `DONE`: 56
+  - `PARTIAL`: 7 (LinkedIn alert parser, Upwork alert parser, Direct company crawler, Binary DOCX/PDF export, Prompt injection isolation)
   - `MISSING`: 6 (Opportunities Feed UI, Opportunity Detail UI, Dashboard UI, Needs Attention UI, Truth Graph UI, CV Viewer UI)
   - `REQUIRES_LIVE_INTEGRATION`: 1 (Private founder ground truth files)
-- **`P1` (Materially Reduces Founder Friction):** 53 Total
-  - `DONE`: 9
-  - `PARTIAL`: 32 (Regional job board alerts, Ashby adapter, Schema.org parser, Adzuna adapter, Watchlist parser)
-  - `MISSING`: 12 (PostgreSQL schema, FastAPI REST API, Next.js Web Shell, Pipeline UI, Watchlist UI, Settings UI, Auth layer, Backup scripts)
-- **`P2` (Reliability, Health & Analytics):** 9 Total
-  - `DONE`: 1
-  - `PARTIAL`: 1 (Scam risk model)
-  - `MISSING`: 4 (Docker/Caddy deployment, Responsive/WCAG tests, Analytics UI, Admin UI)
+- **`P1` (Materially Reduces Founder Friction):** 55 Total
+  - `DONE`: 8
+  - `PARTIAL`: 34
+  - `MISSING`: 13 (PostgreSQL schema, FastAPI REST API, Next.js Web Shell, Pipeline UI, Watchlist UI, Settings UI, Auth layer, Backup scripts, Runtime logging, Entrypoint)
+- **`P2` (Reliability, Health & Governance):** 12 Total
+  - `DONE`: 0
+  - `PARTIAL`: 3
+  - `MISSING`: 6 (Docker/Caddy deployment, Responsive/WCAG tests, Analytics UI, Admin UI, AgentRun store, Budget controls)
   - `INTENTIONALLY_DEFERRED`: 3 (Workable, Workday, Glassdoor)
 - **`P3` (Family / Public B2C Productization):** 3 Total (All 3 INTENTIONALLY_DEFERRED)
 - **`P4` (Organization B2B Productization):** 3 Total (All 3 INTENTIONALLY_DEFERRED)
 
 ### Breakdown by Phase:
-- **`Phase 0` (Foundation & Architecture):** 34 Total (18 DONE, 4 PARTIAL, 11 MISSING, 1 REQ_LIVE)
+- **`Phase 0` (Foundation, Governance & Architecture):** 42 Total (17 DONE, 10 PARTIAL, 14 MISSING, 1 REQ_LIVE)
 - **`Phase 1` (Founder Alpha 0 Core):** 63 Total (27 DONE, 30 PARTIAL, 6 MISSING)
 - **`Phase 2` (Trusted Discovery Expansion):** 10 Total (2 DONE, 3 PARTIAL, 2 MISSING, 3 DEFERRED)
 - **`Phase 3` (Trusted Tailoring):** 2 Total (1 DONE, 1 PARTIAL)
@@ -100,10 +108,10 @@ Reconciliation of all 14 steps from Master Plan §43:
 | **10** | Apply manually. | `PASSABLE_NOW` | Manual application on canonical employer/procurement website is always possible by the founder. |
 | **11** | Mark applied. | `PARTIAL` | Action state recorded via Python API in SQLite store (`outbound/idempotency.py`); web UI toggle button missing. |
 | **12** | Repeat over real opportunities. | `PARTIAL` | Python batch pipelines handle arbitrary opportunity volumes; lacks web workspace. |
-| **13** | Label bad matches immediately. | `PARTIAL` | Feedback data models exist (`matching/models.py`), but durable feedback storage and UI button are missing. |
+| **13** | Label bad matches immediately. | `NOT_POSSIBLE` | No durable founder bad-match feedback data model, storage table, or UI label action exists in repository. |
 | **14** | Observe whether ranking improves. | `PARTIAL` | `inbox/learning.py` emits recommendation weights upon N>=5 outcomes, but automatic weight mutation is blocked and requires human review. |
 
-**Script Summary:** 3 steps `PASSABLE_NOW`, 1 step `REQUIRES_LIVE_CONFIGURATION`, 5 steps `PARTIAL`, 5 steps `NOT_POSSIBLE` (strictly due to headless status).
+**Script Summary:** 3 steps `PASSABLE_NOW`, 1 step `REQUIRES_LIVE_CONFIGURATION`, 4 steps `PARTIAL`, 6 steps `NOT_POSSIBLE` (Steps 1, 2, 4, 6, 9 due to headless status; Step 13 due to absence of bad-match feedback machinery).
 
 ### Analogous Independent-Opportunity Journey:
 - **Discover:** `PASSABLE_NOW` / `REQUIRES_LIVE_CONFIGURATION` (UNGM, World Bank, and EU TED active adapters ingest procurement notices).
@@ -136,19 +144,23 @@ Reconciliation of all 14 steps from Master Plan §43:
 ## 5. Next Work Gap Bucketing & Dependency DAG
 
 ### Work Buckets:
-- **`FOUNDER_ENGINE_BLOCKER` (Bucket A - 34 Items):**
+- **`FOUNDER_ENGINE_BLOCKER` (Bucket A - 35 Items):**
   - Binary DOCX/PDF export engine (`python-docx` / Weasyprint integration in `matching`).
   - ATS visual layout regression test harness.
   - Inbound Email Alert Ingestion Adapter (parsing job alerts from LinkedIn/Indeed/Wuzzuf into Opportunity records).
   - Ashby API standalone source adapter & Schema.org JSON-LD parser.
   - Stale-job pre-action re-verification pipeline.
-- **`PRODUCTION_INFRASTRUCTURE` (Bucket C - 8 Items):**
+  - Live agent prompt-injection evaluation suite.
+- **`PRODUCTION_INFRASTRUCTURE` (Bucket C - 16 Items):**
   - PostgreSQL primary relational store schema & SQLAlchemy/Alembic migrations.
   - Background worker process runner (polling queue for ingestion, matching, and notifications).
   - Docker Compose and Caddy reverse proxy setup for local & staging HTTPS deployment.
   - Session authentication layer (Auth.js or JWT-based auth).
   - Automated database backup and restore scripts.
   - Single-command runtime entrypoint script.
+  - Packaging manifests (`pyproject.toml` / `requirements.txt`).
+  - AgentRun model & persistence store; Agent spend budget tracking.
+  - Centralized production logging and runtime sensitive-log redaction.
 - **`FOUNDER_WEB_INTEGRATION` (Bucket B - 15 Items):**
   - FastAPI Application API exposing domain services (`/truth`, `/opportunities`, `/matching`, `/outbound`, `/inbox`, `/analytics`).
   - Next.js 14+ Web Application (Dashboard, Opportunities Feed, Opportunity Detail, Truth Graph Editor, CV Viewer, Engagement Pipeline, Watchlist, Settings, Admin).
@@ -165,6 +177,7 @@ graph TD
         C1[Bucket C: PostgreSQL Schema & Migrations]
         C2[Bucket C: Background Worker Runner]
         C3[Bucket C: Session Auth & Security Layer]
+        C4[Bucket C: Packaging & Logging Framework]
         A1[Bucket A: DOCX/PDF Exporter & Alert Parser]
     end
 
@@ -174,7 +187,7 @@ graph TD
 
     subgraph Web [Web Application UI]
         B2[Bucket B: Next.js Dashboard & Workspaces]
-        C4[Bucket C: Docker Compose & Caddy HTTPS]
+        C5[Bucket C: Docker Compose & Caddy HTTPS]
     end
 
     subgraph Live [Live Founder Operation]
@@ -184,9 +197,10 @@ graph TD
     C1 --> B1
     C2 --> B1
     C3 --> B1
+    C4 --> B1
     A1 --> B1
     B1 --> B2
-    C4 --> B2
+    C5 --> B2
     B2 --> D1
 ```
 
@@ -198,7 +212,7 @@ In accordance with Section 13 of the GATE-FR-001 specification:
 
 **FINAL RECOMMENDATION: ORDERED SEQUENCE (C + A) -> B -> D**
 - **Immediate Next Phase: PHASE 0/1 FOUNDATION & WEB INTEGRATION**
-  - **Step 1 (Infrastructure & Engine Foundation - Buckets C & A):** Establish the PostgreSQL persistence schema/migrations, background worker runner, and binary DOCX/PDF exporter.
+  - **Step 1 (Infrastructure & Engine Foundation - Buckets C & A):** Establish the PostgreSQL persistence schema/migrations, packaging manifests, background worker runner, and binary DOCX/PDF exporter.
   - **Step 2 (API & Web UI Integration - Bucket B):** Build the FastAPI REST API layer and the Next.js 14+ Web Application Dashboard shell, Opportunities Feed, Detail view, Truth Graph editor, and Pipeline tracker.
   - **Step 3 (Live Founder Operation - Bucket D):** Ingest private founder truth files and live API credentials for real-world dual-track opportunity acquisition.
 
@@ -209,7 +223,7 @@ In accordance with Section 13 of the GATE-FR-001 specification:
 ## 7. Decision
 
 **FINAL / PASS**
-- **Substantive Target SHA:** `6934406fe2ffad6eaeb5bf09dcb306a805cbd5c0`
-- **Independent Auditor:** Google Antigravity / Vertex AI (pro) / `6d55c4d0-da7c-4e9f-a92a-d4d05d4ec624`
-- **Audit Findings:** Unanimous PASS across all 17 adversarial attack vectors, 100% requirement inventory completeness (135/135), perfect arithmetic/count integrity, zero false-DONE / false-LIVE_CREDENTIAL classifications, and strictly accurate First Founder Script and Founder Source Pack evaluations.
+- **Substantive Target SHA:** `d0e3341e899ba809fc3a2da8cde9c44a60e85678`
+- **Independent Auditor:** Google Antigravity / Vertex AI (pro) / `707c5de1-81a7-4621-b430-c2fc413e7070`
+- **Audit Findings:** Unanimous PASS across all 12 targeted criteria, 100% requirement inventory completeness (143/143), perfect arithmetic/count integrity, honest Phase 0D decomposition, explicit distinction between repository PII scans and runtime log redaction, and strictly accurate First Founder Script (Step 13 NOT_POSSIBLE) and generated STATE metadata.
 

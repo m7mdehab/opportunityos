@@ -27,6 +27,8 @@ jobs:
         run: python -m unittest discover -s inbox -p "test_*.py" -v
       - name: Run Sync Mirror Unit Tests
         run: python scripts/test_sync_mirror.py -v
+      - name: Run State Generator Unit Tests
+        run: python scripts/test_generate_state.py -v
       - name: Check Guard Boundary & PII
         run: python scripts/check_guard.py --allow-missing-patterns
       - name: Check Repository Integrity

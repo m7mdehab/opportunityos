@@ -44,9 +44,18 @@ def numbered_files(directory: str, prefix: str) -> dict[int, Path]:
     return result
 
 
+def gate_files(directory: str, prefix: str) -> dict[str, Path]:
+    result: dict[str, Path] = {}
+    for path in (ROOT / directory).glob(f"{prefix}-*.md"):
+        match = re.fullmatch(rf"{prefix}-([A-Z0-9_-]+)\.md", path.name)
+        if match:
+            result[match.group(1)] = path
+    return result
+
+
 def section(text: str, title: str) -> str:
     match = re.search(
-        rf"(?ims)^##+\s+{re.escape(title)}\s*$\n(.*?)(?=^##+\s+|\Z)", text
+        rf"(?ims)^##+\s+(?:\d+\.\s+)?{re.escape(title)}\s*$\n(.*?)(?=^##+\s+|\Z)", text
     )
     return match.group(1).strip() if match else ""
 
@@ -60,8 +69,8 @@ def report_date(path: Path) -> str:
 def decision_line(text: str) -> str:
     value = section(text, "Decision")
     for line in value.splitlines():
-        cleaned = line.strip().lstrip("- ")
-        if re.match(r"(?i)^(PASS|CONDITIONAL PASS|FAIL|READY_FOR_INDEPENDENT_AUDIT)", cleaned):
+        cleaned = line.strip().strip("-*# ")
+        if re.match(r"(?i)^(PASS|CONDITIONAL PASS|FAIL|READY_FOR_INDEPENDENT_AUDIT|FINAL\s*/\s*PASS|FINAL\s*/\s*FAIL)", cleaned):
             return cleaned
     return "No phase outcome recorded"
 
@@ -159,6 +168,15 @@ def main() -> None:
     active_number = next(
         (number for number in sorted(briefs) if statuses[number] != "passed"), None
     )
+    
+    # Check for gate briefs/reports (e.g. GATE-FR-001)
+    gate_brief_files = gate_files("briefs", "GATE")
+    gate_report_files = gate_files("reports", "REPORT")
+    
+    latest_gate_report = None
+    if "FR-001" in gate_report_files:
+        latest_gate_report = gate_report_files["FR-001"]
+        
     active_label = f"BRIEF-{active_number:03d}" if active_number is not None else "none"
     phase_status = statuses[active_number] if active_number is not None else "passed"
     open_items = acceptance_items(briefs[active_number]) if active_number is not None else []
@@ -168,21 +186,38 @@ def main() -> None:
         for number in sorted(briefs)
         if statuses[number] == "passed"
     ]
+    
     latest_number = max(reports) if reports else None
     latest_text = (
         reports[latest_number].read_text(encoding="utf-8") if latest_number is not None else ""
     )
+    
+    gate_text = latest_gate_report.read_text(encoding="utf-8") if latest_gate_report else ""
+    
     outcome = decision_line(latest_text) if latest_text else "No phase report yet"
     prerequisites = section(latest_text, "Next phase prerequisites") if latest_text else ""
-
+    
     blocked: list[str] = []
-    for title in ("Blocked", "Hard gate", "Failures and known limitations"):
-        value = section(latest_text, title) if latest_text else ""
-        blocked.extend(
-            line.strip().lstrip("- ")
-            for line in value.splitlines()
-            if line.strip().startswith("-") and line.strip().lstrip("- ").lower() not in {"none", "none."}
-        )
+    
+    if gate_text:
+        gate_decision = decision_line(gate_text)
+        outcome = f"GATE-FR-001 — {gate_decision}"
+        
+        if re.search(r"(?i)BRIEF-007.*(?:BLOCKED|NOT AUTHORIZED)", gate_text):
+            blocked.append("BRIEF-007 / Phase 6: Multi-Tenant Family Alpha (strictly blocked until Founder Web Alpha is live and validated)")
+        
+        rec_match = re.search(r"(?m)^(?:\*\*)?FINAL RECOMMENDATION:(?:\*\*)?\s*(.+)$", gate_text)
+        if rec_match:
+            rec_line = rec_match.group(1).strip("* ")
+            prerequisites = f"- {rec_line}\n- Phase 0/1 Foundation & Web Integration (PostgreSQL, background workers, FastAPI API layer, Next.js Web Dashboard)."
+    else:
+        for title in ("Blocked", "Hard gate", "Failures and known limitations"):
+            value = section(latest_text, title) if latest_text else ""
+            blocked.extend(
+                line.strip().lstrip("- ")
+                for line in value.splitlines()
+                if line.strip().startswith("-") and line.strip().lstrip("- ").lower() not in {"none", "none."}
+            )
 
     proposed, accepted = adr_records()
     counts = source_counts()
