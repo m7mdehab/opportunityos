@@ -1,4 +1,4 @@
-"""Dual-Track Outcome Analytics with Real Application Denominators and Uncertainty-Aware Reporting."""
+"""Dual-Track Outcome Analytics with Multi-Dimensional Coverage and Real Application Denominators."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -27,15 +27,48 @@ class ConversionMetric:
 
 
 class DualTrackAnalyticsEngine:
-    """Calculates outcome and conversion metrics where denominator is real outbound submissions."""
+    """Calculates outcome and conversion metrics across multiple dimensions where denominator is real submissions."""
+
+    SUPPORTED_DIMENSIONS = (
+        "source",
+        "track",
+        "role_family",
+        "score_band",
+        "adapter_version",
+        "compensation_band",
+        "qualified_conversation",
+    )
 
     @classmethod
-    def compute_source_metrics(
+    def _extract_dimension_value(cls, record: OutboundActionRecord, dimension: str) -> str:
+        if dimension == "source":
+            return record.source or "UNAVAILABLE"
+        elif dimension == "track":
+            return record.track.value if record.track else "UNAVAILABLE"
+        elif dimension == "adapter_version":
+            return record.adapter_version or "UNAVAILABLE"
+        elif dimension == "score_band":
+            if record.match_score_snapshot is None:
+                return "UNAVAILABLE"
+            score = record.match_score_snapshot
+            if score >= 0.8:
+                return "high (>=0.80)"
+            elif score >= 0.5:
+                return "medium (0.50-0.79)"
+            else:
+                return "low (<0.50)"
+        else:
+            # Dimension not present in outbound record evidence
+            return "UNAVAILABLE"
+
+    @classmethod
+    def compute_dimension_metrics(
         cls,
         outbound_records: Sequence[OutboundActionRecord],
         events: Sequence[PipelineEvent],
+        dimension: str = "source",
     ) -> dict[str, ConversionMetric]:
-        """Aggregate conversion performance by outbound action source."""
+        """Aggregate conversion performance by a specific dimension."""
         submitted_actions = [
             r for r in outbound_records
             if r.action_status in (ActionStatus.CONFIRMED, ActionStatus.SUBMITTED, ActionStatus.UNKNOWN_OUTCOME)
@@ -44,12 +77,13 @@ class DualTrackAnalyticsEngine:
         for ev in events:
             events_by_opp.setdefault(ev.opportunity_id, []).append(ev)
 
-        actions_by_source: dict[str, list[OutboundActionRecord]] = {}
+        actions_by_dim: dict[str, list[OutboundActionRecord]] = {}
         for r in submitted_actions:
-            actions_by_source.setdefault(r.source, []).append(r)
+            dim_val = cls._extract_dimension_value(r, dimension)
+            actions_by_dim.setdefault(dim_val, []).append(r)
 
         results: dict[str, ConversionMetric] = {}
-        for source, act_list in actions_by_source.items():
+        for dim_val, act_list in actions_by_dim.items():
             total = len(act_list)
             conf_count = 0
             interview_count = 0
@@ -75,8 +109,8 @@ class DualTrackAnalyticsEngine:
             offer_rate = (offer_count / total) if total > 0 else None
             sufficient = total >= 5
 
-            results[source] = ConversionMetric(
-                dimension="source", dimension_value=source, total_submissions=total,
+            results[dim_val] = ConversionMetric(
+                dimension=dimension, dimension_value=dim_val, total_submissions=total,
                 confirmations_count=conf_count, interviews_count=interview_count,
                 offers_count=offer_count, rejections_count=rejection_count,
                 pending_count=pending_count,
@@ -85,3 +119,23 @@ class DualTrackAnalyticsEngine:
                 notes="Caution: small sample size (< 5)" if not sufficient else "",
             )
         return results
+
+    @classmethod
+    def compute_source_metrics(
+        cls,
+        outbound_records: Sequence[OutboundActionRecord],
+        events: Sequence[PipelineEvent],
+    ) -> dict[str, ConversionMetric]:
+        return cls.compute_dimension_metrics(outbound_records, events, dimension="source")
+
+    @classmethod
+    def compute_multi_dimensional_metrics(
+        cls,
+        outbound_records: Sequence[OutboundActionRecord],
+        events: Sequence[PipelineEvent],
+    ) -> dict[str, dict[str, ConversionMetric]]:
+        """Compute metrics across all supported dimensions."""
+        return {
+            dim: cls.compute_dimension_metrics(outbound_records, events, dimension=dim)
+            for dim in cls.SUPPORTED_DIMENSIONS
+        }

@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import base64
-import email
-from email import policy
 import json
 from typing import Any, Protocol, Sequence
 from .models import InboundMessageEvidence
@@ -72,7 +70,6 @@ class GmailReadOnlyAdapter:
             msg_id = stub.get("id")
             raw_msg = self.client.users().messages().get(userId="me", id=msg_id, format="full").execute()
             
-            # Map Gmail payload structure
             headers_list = raw_msg.get("payload", {}).get("headers", [])
             headers_dict = {h["name"].lower(): h["value"] for h in headers_list}
             headers_tuple = tuple([(h["name"], h["value"]) for h in headers_list])
@@ -84,7 +81,6 @@ class GmailReadOnlyAdapter:
             snippet = raw_msg.get("snippet", "")
             thread_id = raw_msg.get("threadId", msg_id)
 
-            # Body parsing
             body_text = snippet
             parts = raw_msg.get("payload", {}).get("parts", [])
             attachment_names = []
@@ -112,20 +108,21 @@ class GmailReadOnlyAdapter:
 
 
 class InboundIngestionService:
-    """Ingests messages from a transport, guarantees durable deduplication and persistence."""
+    """Ingests messages from a transport, guarantees durable storage and skippable-only-when-processed semantics."""
     def __init__(self, transport: InboundMailTransport, store: DurableInboxStore | None = None) -> None:
         self.transport = transport
         self.store = store or DurableInboxStore(":memory:")
 
     def poll_new_messages(self, current_cursor: str | None = None, limit: int = 50) -> tuple[tuple[InboundMessageEvidence, ...], str]:
         raw_messages, next_cursor = self.transport.fetch_messages(since_cursor=current_cursor, limit=limit)
-        deduped: list[InboundMessageEvidence] = []
+        unprocessed: list[InboundMessageEvidence] = []
         for msg in raw_messages:
-            existing = self.store.get_evidence(msg.message_content_hash)
-            if not existing:
-                self.store.store_evidence(msg)
-                deduped.append(msg)
-        return tuple(deduped), next_cursor
+            # Durably store evidence if new
+            self.store.store_evidence(msg, status="FETCHED")
+            # Only skip if this message has already completed full processing
+            if not self.store.is_evidence_processed(msg.message_content_hash):
+                unprocessed.append(msg)
+        return tuple(unprocessed), next_cursor
 
     def get_evidence_by_hash(self, content_hash: str) -> InboundMessageEvidence | None:
         return self.store.get_evidence(content_hash)

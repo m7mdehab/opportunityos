@@ -1,4 +1,4 @@
-"""Unit tests for Dual-Track Response Classifier on Complete Gold Set."""
+"""Unit tests for Dual-Track Response Classifier on Complete 23-Scenario Gold Set."""
 import unittest
 from inbox.classifier import ResponseClassifier
 from inbox.fixtures.gold_messages import GOLD_EMPLOYMENT_MESSAGES, GOLD_INDEPENDENT_MESSAGES
@@ -20,7 +20,8 @@ class TestResponseClassifier(unittest.TestCase):
             SignalCategory.INFORMATION_REQUEST,
             SignalCategory.OFFER,
             SignalCategory.MARKETING,
-            SignalCategory.MARKETING,
+            SignalCategory.GENERIC_NON_ACTIONABLE_PLATFORM_NOTIFICATION,
+            SignalCategory.UNCLASSIFIED,
         ]
         for msg, exp in zip(GOLD_EMPLOYMENT_MESSAGES, expected_cats):
             sig = self.classifier.classify(msg)
@@ -36,6 +37,8 @@ class TestResponseClassifier(unittest.TestCase):
             SignalCategory.PROPOSAL_REJECTION,
             SignalCategory.AWARD_OR_WIN,
             SignalCategory.CONTRACT_PROGRESS,
+            SignalCategory.PROCUREMENT_AMENDMENT,
+            SignalCategory.PROCUREMENT_DEADLINE_CHANGE,
             SignalCategory.MARKETING,
             SignalCategory.GENERIC_NON_ACTIONABLE_PLATFORM_NOTIFICATION,
         ]

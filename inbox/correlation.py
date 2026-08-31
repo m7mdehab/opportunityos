@@ -1,4 +1,4 @@
-"""Deterministic Opportunity and Outbound Action Correlation Engine."""
+"""Deterministic Opportunity Correlation Engine with Hardened Multi-Candidate Protection."""
 from __future__ import annotations
 
 import re
@@ -14,7 +14,7 @@ from .models import (
 
 
 class OpportunityCorrelationEngine:
-    """Correlates inbound signals to opportunities with zero tolerance for false correlation."""
+    """Correlates an InboundSignal with a known Opportunity and OutboundActionRecord."""
 
     def __init__(
         self,
@@ -24,44 +24,55 @@ class OpportunityCorrelationEngine:
     ) -> None:
         self.opportunities = list(opportunities)
         self.outbound_records = list(outbound_records)
-        self._action_by_opp_id = {r.opportunity_id: r for r in self.outbound_records}
-        self._thread_to_action = dict(thread_to_action_map or {})
+        self._thread_to_action = thread_to_action_map or {}
+        self._action_by_opp_id: dict[str, OutboundActionRecord] = {
+            r.opportunity_id: r for r in self.outbound_records if r.opportunity_id
+        }
+        self._opp_by_id: dict[str, Opportunity] = {o.id: o for o in self.opportunities}
 
     def correlate(self, signal: InboundSignal, evidence: InboundMessageEvidence) -> CorrelationEvidence:
-        """Correlate signal using strict deterministic hierarchy. Returns UNLINKED on any ambiguity."""
-        # 1. Explicit Reference / Receipt ID Match
-        if signal.extracted_references:
-            matched_records: list[OutboundActionRecord] = []
-            for ref in signal.extracted_references:
-                for rec in self.outbound_records:
-                    if rec.external_reference_id and rec.external_reference_id.lower() == ref.lower():
-                        if rec not in matched_records:
-                            matched_records.append(rec)
-                    if rec.confirmation_evidence and rec.confirmation_evidence.receipt_reference and rec.confirmation_evidence.receipt_reference.lower() == ref.lower():
-                        if rec not in matched_records:
-                            matched_records.append(rec)
+        """Deterministically correlate inbound signal against opportunities with zero false merges."""
+        # 1. Multiple extracted references in message/history fail closed
+        if len(signal.extracted_references) > 1:
+            matched_by_ref = [
+                r for r in self.outbound_records
+                if r.external_reference_id in signal.extracted_references or r.action_id in signal.extracted_references
+            ]
+            if len(matched_by_ref) > 1:
+                return CorrelationEvidence(
+                    signal_id=signal.signal_id, opportunity_id=None, outbound_action_id=None,
+                    status=CorrelationStatus.AMBIGUOUS_MULTI_CANDIDATE,
+                    matching_criteria=tuple([f"ref:{r.external_reference_id}" for r in matched_by_ref]),
+                    confidence=0.0, is_authoritative=False,
+                    reason=f"Ambiguous: multiple distinct outbound actions ({len(matched_by_ref)}) matched references in message history",
+                )
 
+        # Single explicit reference match
+        if len(signal.extracted_references) == 1:
+            ref = signal.extracted_references[0]
+            matched_records = [
+                r for r in self.outbound_records
+                if r.external_reference_id == ref or r.action_id == ref or (r.external_reference_id and ref in r.external_reference_id)
+            ]
             if len(matched_records) == 1:
                 rec = matched_records[0]
                 return CorrelationEvidence(
                     signal_id=signal.signal_id, opportunity_id=rec.opportunity_id,
                     outbound_action_id=rec.action_id, status=CorrelationStatus.EXACT_REFERENCE_MATCH,
-                    matching_criteria=(f"reference:{signal.extracted_references[0]}",),
-                    confidence=1.0, is_authoritative=True,
-                    reason=f"Matched exact external reference ID '{signal.extracted_references[0]}'",
+                    matching_criteria=(f"external_reference_id:{ref}",), confidence=1.0, is_authoritative=True,
+                    reason=f"Matched exact external reference ID '{ref}'",
                 )
             elif len(matched_records) > 1:
-                # Multiple matching records in quoted thread -> strictly fail toward review
                 return CorrelationEvidence(
                     signal_id=signal.signal_id, opportunity_id=None, outbound_action_id=None,
                     status=CorrelationStatus.AMBIGUOUS_MULTI_CANDIDATE,
                     matching_criteria=tuple([f"action_id:{r.action_id}" for r in matched_records]),
                     confidence=0.0, is_authoritative=False,
-                    reason=f"Ambiguous: {len(matched_records)} distinct outbound actions matched references in message/quoted text",
+                    reason=f"Ambiguous reference match: {len(matched_records)} actions share reference",
                 )
 
-            # Check opportunity source_id
-            matched_by_src_id = [opp for opp in self.opportunities if opp.source_id and opp.source_id.lower() in [r.lower() for r in signal.extracted_references]]
+            # Match against Opportunity.source_id
+            matched_by_src_id = [o for o in self.opportunities if o.source_id == ref or (o.source_id and ref in o.source_id)]
             if len(matched_by_src_id) == 1:
                 opp = matched_by_src_id[0]
                 act = self._action_by_opp_id.get(opp.id)
@@ -91,16 +102,20 @@ class OpportunityCorrelationEngine:
                     reason=f"Matched established provider thread ID '{evidence.thread_id}'",
                 )
 
-        # 3. Strong Multi-Field Deterministic Match (Org + Exact Role Title)
+        # 3. Strong Multi-Field Deterministic Match (Org + Title) OR Title-only collision detection
         norm_subj = evidence.subject.lower()
+        full_text = f"{norm_subj} {evidence.body_text[:500].lower()}"
         matched_opps: list[Opportunity] = []
+        title_only_matched: list[Opportunity] = []
 
         for opp in self.opportunities:
             org_match = opp.organization and (opp.organization.lower() in norm_subj or opp.organization.lower() in evidence.body_text[:500].lower())
             title_tokens = [t.lower() for t in re.split(r"[\s\-_/,]+", opp.title) if len(t) > 3]
-            title_match = opp.title.lower() in norm_subj or (title_tokens and all(tok in norm_subj for tok in title_tokens))
+            title_match = opp.title.lower() in full_text or (title_tokens and all(tok in full_text for tok in title_tokens))
             if org_match and title_match:
                 matched_opps.append(opp)
+            elif title_match:
+                title_only_matched.append(opp)
 
         if len(matched_opps) == 1:
             opp = matched_opps[0]
@@ -120,6 +135,14 @@ class OpportunityCorrelationEngine:
                 matching_criteria=tuple([f"opp_id:{o.id}" for o in matched_opps]),
                 confidence=0.0, is_authoritative=False,
                 reason=f"Ambiguous: {len(matched_opps)} distinct opportunities match organization and role tokens",
+            )
+        elif len(title_only_matched) > 1:
+            return CorrelationEvidence(
+                signal_id=signal.signal_id, opportunity_id=None, outbound_action_id=None,
+                status=CorrelationStatus.AMBIGUOUS_MULTI_CANDIDATE,
+                matching_criteria=tuple([f"opp_id:{o.id}" for o in title_only_matched]),
+                confidence=0.0, is_authoritative=False,
+                reason=f"Ambiguous: {len(title_only_matched)} distinct opportunities share identical/near-identical title without explicit org/reference",
             )
 
         # 4. Unlinked / Review Required
