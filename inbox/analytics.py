@@ -39,8 +39,22 @@ class DualTrackAnalyticsEngine:
         "qualified_conversation",
     )
 
+    QUALIFYING_CONVERSATION_CATEGORIES = (
+        SignalCategory.INTERVIEW_REQUEST,
+        SignalCategory.RECRUITER_OUTREACH,
+        SignalCategory.DISCOVERY_CALL_OR_MEETING_REQUEST,
+        SignalCategory.SHORTLIST_OR_INVITATION,
+        SignalCategory.CLIENT_OR_BUYER_RESPONSE,
+        SignalCategory.CLARIFICATION_REQUEST,
+    )
+
     @classmethod
-    def _extract_dimension_value(cls, record: OutboundActionRecord, dimension: str) -> str:
+    def _extract_dimension_value(
+        cls,
+        record: OutboundActionRecord,
+        events: Sequence[PipelineEvent],
+        dimension: str,
+    ) -> str:
         if dimension == "source":
             return record.source or "UNAVAILABLE"
         elif dimension == "track":
@@ -57,8 +71,14 @@ class DualTrackAnalyticsEngine:
                 return "medium (0.50-0.79)"
             else:
                 return "low (<0.50)"
+        elif dimension == "qualified_conversation":
+            opp_events = [e for e in events if e.opportunity_id == record.opportunity_id]
+            if not opp_events:
+                return "pending_outcome"
+            has_qual_conv = any(e.trigger_category in cls.QUALIFYING_CONVERSATION_CATEGORIES for e in opp_events)
+            return "qualified_conversation_achieved" if has_qual_conv else "no_qualified_conversation"
         else:
-            # Dimension not present in outbound record evidence
+            # Dimension genuinely not present in outbound record evidence
             return "UNAVAILABLE"
 
     @classmethod
@@ -79,7 +99,7 @@ class DualTrackAnalyticsEngine:
 
         actions_by_dim: dict[str, list[OutboundActionRecord]] = {}
         for r in submitted_actions:
-            dim_val = cls._extract_dimension_value(r, dimension)
+            dim_val = cls._extract_dimension_value(r, events_by_opp.get(r.opportunity_id, ()), dimension)
             actions_by_dim.setdefault(dim_val, []).append(r)
 
         results: dict[str, ConversionMetric] = {}

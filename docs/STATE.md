@@ -10,8 +10,8 @@ Next: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha Architecture & Productizati
 
 ## Repository
 
-- **Generated:** 2026-08-31T00:39:58Z
-- **State generated at commit:** `d7b2249` — docs: update report-006 and state for final crash safety and acceptance evidence
+- **Generated:** 2026-08-31T00:49:48Z
+- **State generated at commit:** `a00630e` — docs: update report-006 and state for terminal migration and correlation authority
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
