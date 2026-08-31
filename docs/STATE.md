@@ -10,8 +10,8 @@ Next: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha Architecture & Productizati
 
 ## Repository
 
-- **Generated:** 2026-08-31T00:39:51Z
-- **State generated at commit:** `5939ce6` — fix(inbox): implement durable processing lifecycle, full correlation attack set, 100% signal category coverage, and multi-dimensional analytics
+- **Generated:** 2026-08-31T00:39:58Z
+- **State generated at commit:** `d7b2249` — docs: update report-006 and state for final crash safety and acceptance evidence
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
