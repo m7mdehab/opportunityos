@@ -1,6 +1,6 @@
 """Unit tests for Inbound Operational Models."""
 import unittest
-from .models import (
+from inbox.models import (
     ExtractedDeadline,
     InboundMessageEvidence,
     InboundSignal,

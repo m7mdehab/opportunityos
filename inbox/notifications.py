@@ -1,8 +1,7 @@
-"""Priority & Action-Required Notification Engine with Idempotency."""
+"""Priority & Action-Required Notification Engine with Stable Key Idempotency and Durable Store."""
 from __future__ import annotations
 
 import hashlib
-import uuid
 from datetime import datetime, timezone
 from typing import Sequence
 from .models import (
@@ -11,20 +10,25 @@ from .models import (
     InboundSignal,
     SignalPriority,
 )
+from .persistence import DurableInboxStore
 
 
 class NotificationEngine:
     """Surfaces high-priority action-required alerts for founder with strict key idempotency."""
 
-    def __init__(self, workspace: str = "default", candidate_id: str = "founder") -> None:
+    def __init__(self, workspace: str = "default", candidate_id: str = "founder", store: DurableInboxStore | None = None) -> None:
         self.workspace = workspace
         self.candidate_id = candidate_id
-        self._notifications_by_key: dict[str, FounderNotificationRecord] = {}
+        self.store = store or DurableInboxStore(":memory:")
 
     @classmethod
     def compute_notification_key(cls, workspace: str, candidate_id: str, signal_id: str, category: str) -> str:
         payload = f"{workspace}:{candidate_id}:{signal_id}:{category}".encode("utf-8")
         return hashlib.sha256(payload).hexdigest()
+
+    @classmethod
+    def compute_notification_id(cls, notification_key: str) -> str:
+        return f"notif-{notification_key[:16]}"
 
     def process_signal(
         self,
@@ -32,40 +36,27 @@ class NotificationEngine:
         correlation: CorrelationEvidence | None = None,
     ) -> FounderNotificationRecord | None:
         """Generate notification record only for actionable or high-priority signals."""
-        # Routine confirmations, routine rejections, marketing -> silently processed (0 notification)
         if signal.priority in (SignalPriority.LOW, SignalPriority.NOISE) and not signal.requires_founder_action:
             return None
 
         key = self.compute_notification_key(self.workspace, self.candidate_id, signal.signal_id, signal.category.value)
-        if key in self._notifications_by_key:
-            return None  # Idempotent replay: zero duplicate alerts
-
+        notif_id = self.compute_notification_id(key)
         deadline_str = signal.deadline.raw_snippet if signal.deadline else None
+
         notif = FounderNotificationRecord(
-            notification_id=f"notif-{uuid.uuid4().hex[:12]}", notification_key=key,
+            notification_id=notif_id, notification_key=key,
             opportunity_id=correlation.opportunity_id if correlation and correlation.is_authoritative else None,
             signal_id=signal.signal_id, priority=signal.priority, category=signal.category,
             title=f"[{signal.priority.value.upper()}] {signal.category.value.replace('_', ' ').title()}",
             message=signal.summary, action_required=signal.requires_founder_action,
-            deadline=deadline_str, created_at=datetime.now(timezone.utc).isoformat(),
+            deadline=deadline_str, created_at=signal.detected_at,
         )
-        self._notifications_by_key[key] = notif
-        return notif
+        inserted = self.store.store_notification(notif)
+        return notif if inserted else None
 
     def get_active_notifications(self) -> tuple[FounderNotificationRecord, ...]:
-        return tuple([n for n in self._notifications_by_key.values() if not n.acknowledged])
+        return tuple([n for n in self.store.get_all_notifications() if not n.acknowledged])
 
-    def acknowledge_notification(self, notification_key: str) -> bool:
-        if notification_key in self._notifications_by_key:
-            old = self._notifications_by_key[notification_key]
-            updated = FounderNotificationRecord(
-                notification_id=old.notification_id, notification_key=old.notification_key,
-                opportunity_id=old.opportunity_id, signal_id=old.signal_id, priority=old.priority,
-                category=old.category, title=old.title, message=old.message,
-                action_required=old.action_required, deadline=old.deadline,
-                created_at=old.created_at, acknowledged=True,
-                acknowledged_at=datetime.now(timezone.utc).isoformat(),
-            )
-            self._notifications_by_key[notification_key] = updated
-            return True
-        return False
+    def acknowledge_notification(self, notification_key: str, acknowledged_at: str | None = None) -> bool:
+        ts = acknowledged_at or datetime.now(timezone.utc).isoformat()
+        return self.store.acknowledge_notification(notification_key, ts)

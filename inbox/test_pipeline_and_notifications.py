@@ -1,13 +1,14 @@
 """Unit tests for Pipeline Event Store and Notifications."""
 import unittest
 from matching.models import Track
-from .classifier import ResponseClassifier
-from .correlation import OpportunityCorrelationEngine
-from .fixtures.gold_messages import GOLD_EMPLOYMENT_MESSAGES
-from .models import OpportunityStage, SignalCategory, SignalPriority
-from .notifications import NotificationEngine
-from .pipeline import PipelineEventStore
 from opportunity.models import Opportunity
+from inbox.classifier import ResponseClassifier
+from inbox.correlation import OpportunityCorrelationEngine
+from inbox.fixtures.gold_messages import GOLD_EMPLOYMENT_MESSAGES
+from inbox.models import OpportunityStage, SignalCategory, SignalPriority
+from inbox.notifications import NotificationEngine
+from inbox.persistence import DurableInboxStore
+from inbox.pipeline import PipelineEventStore
 
 
 class TestPipelineAndNotifications(unittest.TestCase):
@@ -35,7 +36,8 @@ class TestPipelineAndNotifications(unittest.TestCase):
         self.assertEqual(state.event_history_count, 1)
 
     def test_notification_idempotency_on_repeated_signal(self) -> None:
-        engine = NotificationEngine(workspace="ws-test", candidate_id="founder")
+        db_store = DurableInboxStore(":memory:")
+        engine = NotificationEngine(workspace="ws-test", candidate_id="founder", store=db_store)
         msg = GOLD_EMPLOYMENT_MESSAGES[3]
         sig = ResponseClassifier().classify(msg)
 

@@ -1,11 +1,13 @@
-"""Production Operational Loop with Checkpoint and Replay Safety."""
+"""Production Operational Loop with Durable Checkpointing and UNKNOWN_OUTCOME Reconciliation."""
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Sequence
 from matching.models import Track
 from opportunity.models import Opportunity
-from outbound.models import OutboundActionRecord
+from outbound.models import ActionStatus, OutboundActionRecord
 from .analytics import DualTrackAnalyticsEngine
 from .classifier import ResponseClassifier
 from .correlation import OpportunityCorrelationEngine
@@ -17,8 +19,10 @@ from .models import (
     InboundMessageEvidence,
     InboundSignal,
     PipelineEvent,
+    SignalCategory,
 )
 from .notifications import NotificationEngine
+from .persistence import DurableInboxStore
 from .pipeline import PipelineEventStore
 
 
@@ -29,6 +33,7 @@ class InboundProcessingCycleResult:
     signals_detected: int
     events_recorded: int
     notifications_emitted: int
+    reconciliations_created: int
     cursor_checkpoint: str
 
 
@@ -42,24 +47,32 @@ class ProductionOperationalOrchestrator:
         outbound_records: Sequence[OutboundActionRecord] = (),
         workspace: str = "default",
         candidate_id: str = "founder",
+        store: DurableInboxStore | None = None,
+        thread_to_action_map: dict[str, str] | None = None,
     ) -> None:
+        self.store = store or (ingestion_service.store if hasattr(ingestion_service, "store") else DurableInboxStore(":memory:"))
         self.ingestion_service = ingestion_service
         self.opportunities = list(opportunities)
         self.outbound_records = list(outbound_records)
         self.classifier = ResponseClassifier()
-        self.correlation_engine = OpportunityCorrelationEngine(self.opportunities, self.outbound_records)
-        self.pipeline_store = PipelineEventStore()
-        self.notification_engine = NotificationEngine(workspace=workspace, candidate_id=candidate_id)
-        self.checkpoint_cursor = "0"
+        self.correlation_engine = OpportunityCorrelationEngine(self.opportunities, self.outbound_records, thread_to_action_map=thread_to_action_map)
+        self.pipeline_store = PipelineEventStore(store=self.store)
+        self.notification_engine = NotificationEngine(workspace=workspace, candidate_id=candidate_id, store=self.store)
+        self.checkpoint_key = f"cursor:{workspace}:{candidate_id}"
+
+    def get_checkpoint_cursor(self) -> str:
+        cur = self.store.get_checkpoint(self.checkpoint_key)
+        return cur if cur is not None else "0"
 
     def run_cycle(self, limit: int = 50) -> InboundProcessingCycleResult:
-        """Run a single polling and processing cycle."""
-        new_msgs, next_cursor = self.ingestion_service.poll_new_messages(current_cursor=self.checkpoint_cursor, limit=limit)
-        self.checkpoint_cursor = next_cursor
+        """Run a single polling and processing cycle with atomic durable commit before checkpointing."""
+        current_cursor = self.get_checkpoint_cursor()
+        new_msgs, next_cursor = self.ingestion_service.poll_new_messages(current_cursor=current_cursor, limit=limit)
 
         signals_count = 0
         events_count = 0
         notifs_count = 0
+        reconciliations_count = 0
 
         for msg in new_msgs:
             sig = self.classifier.classify(msg)
@@ -67,6 +80,19 @@ class ProductionOperationalOrchestrator:
 
             corr = self.correlation_engine.correlate(sig, msg)
             if corr.is_authoritative and corr.opportunity_id:
+                # Check for UNKNOWN_OUTCOME reconciliation requirement
+                act = next((r for r in self.outbound_records if r.opportunity_id == corr.opportunity_id), None)
+                if act and act.action_status == ActionStatus.UNKNOWN_OUTCOME and sig.category in (SignalCategory.APPLICATION_CONFIRMATION, SignalCategory.PROPOSAL_CONFIRMATION):
+                    recon_id = f"recon-{hashlib.sha256(f'{act.action_id}:{sig.signal_id}'.encode('utf-8')).hexdigest()[:16]}"
+                    self.store.record_reconciliation(
+                        reconciliation_id=recon_id, outbound_action_id=act.action_id,
+                        opportunity_id=corr.opportunity_id, signal_id=sig.signal_id,
+                        inbound_content_hash=msg.message_content_hash,
+                        reason="Inbound confirmation received for action in UNKNOWN_OUTCOME state; founder reconciliation required",
+                        created_at=sig.detected_at,
+                    )
+                    reconciliations_count += 1
+
                 ev = self.pipeline_store.record_signal_event(sig, corr, sig.track)
                 if ev:
                     events_count += 1
@@ -75,10 +101,14 @@ class ProductionOperationalOrchestrator:
             if notif:
                 notifs_count += 1
 
+        # Durably commit cursor only after finishing processing of batch
+        self.store.save_checkpoint(self.checkpoint_key, next_cursor, datetime.now(timezone.utc).isoformat())
+
         return InboundProcessingCycleResult(
             messages_ingested=len(new_msgs), signals_detected=signals_count,
             events_recorded=events_count, notifications_emitted=notifs_count,
-            cursor_checkpoint=self.checkpoint_cursor,
+            reconciliations_created=reconciliations_count,
+            cursor_checkpoint=next_cursor,
         )
 
     def get_opportunity_state(self, opportunity_id: str, track: Track = Track.EMPLOYMENT) -> DerivedOpportunityState:
@@ -88,4 +118,4 @@ class ProductionOperationalOrchestrator:
         return self.notification_engine.get_active_notifications()
 
     def get_analytics(self) -> dict:
-        return DualTrackAnalyticsEngine.compute_source_metrics(self.opportunities, self.pipeline_store.all_events())
+        return DualTrackAnalyticsEngine.compute_source_metrics(self.outbound_records, self.pipeline_store.all_events())
