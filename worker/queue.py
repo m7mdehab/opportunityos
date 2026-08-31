@@ -65,7 +65,7 @@ class BackgroundWorkerQueue:
             job.lease_expires_at = None
             self.session.commit()
 
-    def fail_job(self, job_id: str, error_message: str, backoff_seconds: int = 30):
+    def fail_job(self, job_id: str, error_message: str, base_backoff_seconds: int = 30, backoff_seconds: Optional[int] = None):
         job = self.session.query(WorkerJobRecord).filter_by(id=job_id).first()
         if job:
             job.retry_count += 1
@@ -76,7 +76,9 @@ class BackgroundWorkerQueue:
                 job.lease_expires_at = None
             else:
                 job.status = "RETRY"
-                job.run_after = datetime.now(timezone.utc) + timedelta(seconds=backoff_seconds)
+                base = backoff_seconds if backoff_seconds is not None else base_backoff_seconds
+                backoff_delay = base * (2 ** (job.retry_count - 1)) if base > 0 else 0
+                job.run_after = datetime.now(timezone.utc) + timedelta(seconds=backoff_delay)
                 job.lease_owner = None
                 job.lease_expires_at = None
             self.session.commit()

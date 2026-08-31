@@ -117,7 +117,7 @@ class BinaryArtifactExporter:
             if sec.content:
                 story.append(Paragraph(sec.content.replace("\n", "<br/>"), body_style))
             for item in sec.items:
-                story.append(Paragraph(f"&bull; {item}", bullet_style))
+                story.append(Paragraph(f"- {item}", bullet_style))
 
         doc.build(story)
         content = bio.getvalue()

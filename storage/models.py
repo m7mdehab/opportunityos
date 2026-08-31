@@ -40,7 +40,11 @@ class OpportunityRecord(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     provenances = relationship("FieldProvenanceRecord", back_populates="opportunity", cascade="all, delete-orphan")
-    feedback = relationship("FounderFeedbackRecord", back_populates="opportunity")
+    feedback = relationship("FounderFeedbackRecord", back_populates="opportunity", cascade="all, delete-orphan")
+    outbound_actions = relationship("OutboundActionRecord", back_populates="opportunity", cascade="all, delete-orphan")
+    idempotency_reservations = relationship("IdempotencyReservationRecord", back_populates="opportunity", cascade="all, delete-orphan")
+    pipeline_events = relationship("PipelineEventRecord", back_populates="opportunity", cascade="all, delete-orphan")
+    notifications = relationship("NotificationRecord", back_populates="opportunity", cascade="all, delete-orphan")
 
 
 class FieldProvenanceRecord(Base):
@@ -63,7 +67,7 @@ class OutboundActionRecord(Base):
     __tablename__ = "outbound_actions"
 
     id = Column(String(64), primary_key=True)
-    opportunity_id = Column(String(64), nullable=False, index=True)
+    opportunity_id = Column(String(64), ForeignKey("opportunities.id", ondelete="CASCADE"), nullable=False, index=True)
     execution_mode = Column(String(32), nullable=False)
     action_status = Column(String(32), nullable=False, index=True)
     idempotency_key = Column(String(128), unique=True, nullable=False, index=True)
@@ -75,15 +79,19 @@ class OutboundActionRecord(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
+    opportunity = relationship("OpportunityRecord", back_populates="outbound_actions")
+
 
 class IdempotencyReservationRecord(Base):
     __tablename__ = "idempotency_reservations"
 
     idempotency_key = Column(String(128), primary_key=True)
     action_id = Column(String(64), nullable=False, index=True)
-    opportunity_id = Column(String(64), nullable=False, index=True)
+    opportunity_id = Column(String(64), ForeignKey("opportunities.id", ondelete="CASCADE"), nullable=False, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     status = Column(String(32), nullable=False)
+
+    opportunity = relationship("OpportunityRecord", back_populates="idempotency_reservations")
 
 
 class InboundEvidenceRecord(Base):
@@ -105,7 +113,7 @@ class PipelineEventRecord(Base):
     __tablename__ = "pipeline_events"
 
     id = Column(String(64), primary_key=True)
-    opportunity_id = Column(String(64), nullable=False, index=True)
+    opportunity_id = Column(String(64), ForeignKey("opportunities.id", ondelete="CASCADE"), nullable=False, index=True)
     signal_id = Column(String(64), nullable=False, index=True)
     signal_category = Column(String(64), nullable=False, index=True)
     source_timestamp = Column(DateTime, nullable=False)
@@ -113,6 +121,8 @@ class PipelineEventRecord(Base):
     provenance_hash = Column(String(64), nullable=False)
     event_metadata_json = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    opportunity = relationship("OpportunityRecord", back_populates="pipeline_events")
 
     __table_args__ = (
         UniqueConstraint("opportunity_id", "signal_id", name="uq_pipeline_opp_signal"),
@@ -124,13 +134,15 @@ class NotificationRecord(Base):
 
     id = Column(String(64), primary_key=True)
     notification_key = Column(String(128), unique=True, nullable=False, index=True)
-    opportunity_id = Column(String(64), nullable=False, index=True)
+    opportunity_id = Column(String(64), ForeignKey("opportunities.id", ondelete="CASCADE"), nullable=False, index=True)
     priority = Column(String(32), nullable=False, index=True)
     headline = Column(String(255), nullable=False)
     body = Column(Text, nullable=False)
     action_required = Column(Boolean, default=False)
     deadline = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    opportunity = relationship("OpportunityRecord", back_populates="notifications")
 
 
 class WorkerJobRecord(Base):

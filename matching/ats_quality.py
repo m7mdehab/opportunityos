@@ -39,18 +39,29 @@ class AtsDocumentQualityHarness:
         docx_text = docx_info["full_text"]
         pdf_text = pdf_info["full_text"]
 
-        # Verify all sections and items appear in both outputs
+        # 1. Document Title Verification
+        if artifact.title not in docx_text or artifact.title not in pdf_text:
+            return False
+
+        # 2. Section Heading & Content Full Parity Verification
         for sec in artifact.sections:
             if sec.heading:
                 if sec.heading not in docx_text or sec.heading not in pdf_text:
                     return False
             if sec.content:
-                # Basic check for key fragments
-                words = sec.content.split()
-                if words and words[0] not in docx_text:
+                # Full substantive sentence verification
+                content_clean = sec.content.strip()
+                if content_clean not in docx_text or content_clean not in pdf_text:
                     return False
             for item in sec.items:
-                if item not in docx_text or item not in pdf_text:
+                item_clean = item.strip()
+                if item_clean not in docx_text or item_clean not in pdf_text:
                     return False
+
+        # 3. Generated Claims Parity
+        for claim in artifact.generated_claims:
+            claim_text = claim.text.strip()
+            if claim_text not in docx_text or claim_text not in pdf_text:
+                return False
 
         return True

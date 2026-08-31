@@ -51,7 +51,7 @@ class TestBinaryArtifactExport(unittest.TestCase):
             generated_claims=(
                 GeneratedClaim(
                     claim_id="cl-1",
-                    text="10+ years engineering high-scale distributed backend systems.",
+                    text="10+ years engineering high-scale distributed backend systems and real-time messaging architectures.",
                     section_id="summary",
                     assertion_ids=("as-1",),
                     evidence_ids=("ev-1",),

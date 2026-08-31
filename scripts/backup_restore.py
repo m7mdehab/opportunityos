@@ -42,7 +42,8 @@ def dump_database(db_url: str, output_file: str):
             "description": opp.description, "source_id": opp.source_id, "source_url": opp.source_url,
             "content_hash": opp.content_hash, "country": opp.country, "region": opp.region,
             "geographic_scope": opp.geographic_scope, "posted_date": opp.posted_date, "deadline": opp.deadline,
-            "is_stale": opp.is_stale, "raw_payload_json": opp.raw_payload_json,
+            "is_stale": opp.is_stale, "reverified_at": opp.reverified_at.isoformat() if opp.reverified_at else None,
+            "raw_payload_json": opp.raw_payload_json, "created_at": opp.created_at.isoformat() if opp.created_at else None,
         })
         for prov in opp.provenances:
             data["field_provenances"].append({
@@ -58,13 +59,15 @@ def dump_database(db_url: str, output_file: str):
             "action_status": act.action_status, "idempotency_key": act.idempotency_key,
             "prepared_manifest_hash": act.prepared_manifest_hash, "receipt_reference": act.receipt_reference,
             "confirmation_text": act.confirmation_text, "receipt_checksum": act.receipt_checksum,
-            "error_message": act.error_message,
+            "error_message": act.error_message, "created_at": act.created_at.isoformat() if act.created_at else None,
+            "updated_at": act.updated_at.isoformat() if act.updated_at else None,
         })
 
     for res in session.query(IdempotencyReservationRecord).all():
         data["idempotency_reservations"].append({
             "idempotency_key": res.idempotency_key, "action_id": res.action_id,
             "opportunity_id": res.opportunity_id, "status": res.status,
+            "created_at": res.created_at.isoformat() if res.created_at else None,
         })
 
     for ev in session.query(InboundEvidenceRecord).all():
@@ -74,6 +77,7 @@ def dump_database(db_url: str, output_file: str):
             "received_at": ev.received_at.isoformat() if ev.received_at else None,
             "processing_status": ev.processing_status,
             "processed_at": ev.processed_at.isoformat() if ev.processed_at else None,
+            "raw_headers_json": ev.raw_headers_json,
         })
 
     for evt in session.query(PipelineEventRecord).all():
@@ -82,6 +86,8 @@ def dump_database(db_url: str, output_file: str):
             "signal_category": evt.signal_category,
             "source_timestamp": evt.source_timestamp.isoformat() if evt.source_timestamp else None,
             "confidence": evt.confidence, "provenance_hash": evt.provenance_hash,
+            "event_metadata_json": evt.event_metadata_json,
+            "created_at": evt.created_at.isoformat() if evt.created_at else None,
         })
 
     for notif in session.query(NotificationRecord).all():
@@ -89,12 +95,24 @@ def dump_database(db_url: str, output_file: str):
             "id": notif.id, "notification_key": notif.notification_key, "opportunity_id": notif.opportunity_id,
             "priority": notif.priority, "headline": notif.headline, "body": notif.body,
             "action_required": notif.action_required, "deadline": notif.deadline,
+            "created_at": notif.created_at.isoformat() if notif.created_at else None,
+        })
+
+    for job in session.query(WorkerJobRecord).all():
+        data["worker_jobs"].append({
+            "id": job.id, "job_type": job.job_type, "payload_json": job.payload_json,
+            "status": job.status, "run_after": job.run_after.isoformat() if job.run_after else None,
+            "retry_count": job.retry_count, "max_retries": job.max_retries,
+            "lease_owner": job.lease_owner, "lease_expires_at": job.lease_expires_at.isoformat() if job.lease_expires_at else None,
+            "error_message": job.error_message, "created_at": job.created_at.isoformat() if job.created_at else None,
+            "updated_at": job.updated_at.isoformat() if job.updated_at else None,
         })
 
     for fb in session.query(FounderFeedbackRecord).all():
         data["founder_feedback"].append({
             "id": fb.id, "opportunity_id": fb.opportunity_id, "feedback_label": fb.feedback_label,
             "structured_reason": fb.structured_reason, "notes": fb.notes,
+            "created_at": fb.created_at.isoformat() if fb.created_at else None,
         })
 
     session.close()
@@ -115,6 +133,10 @@ def restore_database(dump_file: str, db_url: str):
     session = session_factory()
 
     for opp_dict in data.get("opportunities", []):
+        if opp_dict.get("reverified_at"):
+            opp_dict["reverified_at"] = datetime.fromisoformat(opp_dict["reverified_at"])
+        if opp_dict.get("created_at"):
+            opp_dict["created_at"] = datetime.fromisoformat(opp_dict["created_at"])
         opp = OpportunityRecord(**opp_dict)
         session.merge(opp)
 
@@ -123,10 +145,16 @@ def restore_database(dump_file: str, db_url: str):
         session.add(prov)
 
     for act_dict in data.get("outbound_actions", []):
+        if act_dict.get("created_at"):
+            act_dict["created_at"] = datetime.fromisoformat(act_dict["created_at"])
+        if act_dict.get("updated_at"):
+            act_dict["updated_at"] = datetime.fromisoformat(act_dict["updated_at"])
         act = OutboundActionRecord(**act_dict)
         session.merge(act)
 
     for res_dict in data.get("idempotency_reservations", []):
+        if res_dict.get("created_at"):
+            res_dict["created_at"] = datetime.fromisoformat(res_dict["created_at"])
         res = IdempotencyReservationRecord(**res_dict)
         session.merge(res)
 
@@ -141,14 +169,32 @@ def restore_database(dump_file: str, db_url: str):
     for evt_dict in data.get("pipeline_events", []):
         if evt_dict.get("source_timestamp"):
             evt_dict["source_timestamp"] = datetime.fromisoformat(evt_dict["source_timestamp"])
+        if evt_dict.get("created_at"):
+            evt_dict["created_at"] = datetime.fromisoformat(evt_dict["created_at"])
         evt = PipelineEventRecord(**evt_dict)
         session.merge(evt)
 
     for notif_dict in data.get("notifications", []):
+        if notif_dict.get("created_at"):
+            notif_dict["created_at"] = datetime.fromisoformat(notif_dict["created_at"])
         notif = NotificationRecord(**notif_dict)
         session.merge(notif)
 
+    for job_dict in data.get("worker_jobs", []):
+        if job_dict.get("run_after"):
+            job_dict["run_after"] = datetime.fromisoformat(job_dict["run_after"])
+        if job_dict.get("lease_expires_at"):
+            job_dict["lease_expires_at"] = datetime.fromisoformat(job_dict["lease_expires_at"])
+        if job_dict.get("created_at"):
+            job_dict["created_at"] = datetime.fromisoformat(job_dict["created_at"])
+        if job_dict.get("updated_at"):
+            job_dict["updated_at"] = datetime.fromisoformat(job_dict["updated_at"])
+        job = WorkerJobRecord(**job_dict)
+        session.merge(job)
+
     for fb_dict in data.get("founder_feedback", []):
+        if fb_dict.get("created_at"):
+            fb_dict["created_at"] = datetime.fromisoformat(fb_dict["created_at"])
         fb = FounderFeedbackRecord(**fb_dict)
         session.merge(fb)
 

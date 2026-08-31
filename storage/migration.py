@@ -43,6 +43,7 @@ class LegacySqliteToPostgresMigrator:
                     received_at=rec_at,
                     processing_status=row_dict.get("processing_status", "FETCHED"),
                     processed_at=proc_at,
+                    raw_headers_json=row_dict.get("raw_headers_json"),
                 )
                 self.session.merge(rec)
                 stats["evidence"] += 1
@@ -54,6 +55,7 @@ class LegacySqliteToPostgresMigrator:
             for row in cur.fetchall():
                 row_dict = dict(row)
                 src_time = datetime.fromisoformat(row_dict["source_timestamp"]) if "source_timestamp" in row_dict and row_dict["source_timestamp"] else datetime.now(timezone.utc)
+                created_at = datetime.fromisoformat(row_dict["created_at"]) if "created_at" in row_dict and row_dict["created_at"] else datetime.now(timezone.utc)
                 rec = PipelineEventRecord(
                     id=row_dict["id"],
                     opportunity_id=row_dict["opportunity_id"],
@@ -62,6 +64,8 @@ class LegacySqliteToPostgresMigrator:
                     source_timestamp=src_time,
                     confidence=float(row_dict.get("confidence", 1.0)),
                     provenance_hash=row_dict.get("provenance_hash", ""),
+                    event_metadata_json=row_dict.get("event_metadata_json"),
+                    created_at=created_at,
                 )
                 self.session.merge(rec)
                 stats["events"] += 1
@@ -72,6 +76,7 @@ class LegacySqliteToPostgresMigrator:
             cur.execute("SELECT * FROM notifications")
             for row in cur.fetchall():
                 row_dict = dict(row)
+                created_at = datetime.fromisoformat(row_dict["created_at"]) if "created_at" in row_dict and row_dict["created_at"] else datetime.now(timezone.utc)
                 rec = NotificationRecord(
                     id=row_dict["id"],
                     notification_key=row_dict["notification_key"],
@@ -81,6 +86,7 @@ class LegacySqliteToPostgresMigrator:
                     body=row_dict["body"],
                     action_required=bool(row_dict.get("action_required", False)),
                     deadline=row_dict.get("deadline"),
+                    created_at=created_at,
                 )
                 self.session.merge(rec)
                 stats["notifications"] += 1
@@ -104,11 +110,13 @@ class LegacySqliteToPostgresMigrator:
             cur.execute("SELECT * FROM idempotency_reservations")
             for row in cur.fetchall():
                 row_dict = dict(row)
+                created_at = datetime.fromisoformat(row_dict["created_at"]) if "created_at" in row_dict and row_dict["created_at"] else datetime.now(timezone.utc)
                 rec = IdempotencyReservationRecord(
                     idempotency_key=row_dict["idempotency_key"],
                     action_id=row_dict["action_id"],
                     opportunity_id=row_dict["opportunity_id"],
                     status=row_dict.get("status", "RESERVED"),
+                    created_at=created_at,
                 )
                 self.session.merge(rec)
                 stats["reservations"] += 1
@@ -118,16 +126,21 @@ class LegacySqliteToPostgresMigrator:
             cur.execute("SELECT * FROM outbound_actions")
             for row in cur.fetchall():
                 row_dict = dict(row)
+                created_at = datetime.fromisoformat(row_dict["created_at"]) if "created_at" in row_dict and row_dict["created_at"] else datetime.now(timezone.utc)
+                updated_at = datetime.fromisoformat(row_dict["updated_at"]) if "updated_at" in row_dict and row_dict["updated_at"] else datetime.now(timezone.utc)
                 rec = OutboundActionRecord(
                     id=row_dict["id"],
                     opportunity_id=row_dict["opportunity_id"],
                     execution_mode=row_dict["execution_mode"],
                     action_status=row_dict["action_status"],
                     idempotency_key=row_dict["idempotency_key"],
+                    prepared_manifest_hash=row_dict.get("prepared_manifest_hash"),
                     receipt_reference=row_dict.get("receipt_reference"),
                     confirmation_text=row_dict.get("confirmation_text"),
                     receipt_checksum=row_dict.get("receipt_checksum"),
                     error_message=row_dict.get("error_message"),
+                    created_at=created_at,
+                    updated_at=updated_at,
                 )
                 self.session.merge(rec)
                 stats["actions"] += 1
