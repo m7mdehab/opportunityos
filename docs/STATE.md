@@ -10,8 +10,8 @@ Next: ORDERED SEQUENCE (C + A) -> B -> D.
 
 ## Repository
 
-- **Generated:** 2026-08-31T23:11:51Z
-- **State generated at commit:** `d504ca1` — docs: finalize REPORT-FR-001 with audit PASS and update generated state
+- **Generated:** 2026-08-31T23:13:24Z
+- **State generated at commit:** `d16774a` — docs: correct Phase 0D enforcement-truth status for DEL-5, TST-B, TST-D
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -33,7 +33,7 @@ Next: ORDERED SEQUENCE (C + A) -> B -> D.
 
 ## Last Phase Outcome
 
-- GATE-FR-001 — READY_FOR_INDEPENDENT_AUDIT
+- GATE-FR-001 — FINAL / PASS
 
 ## Decisions
 
