@@ -10,8 +10,8 @@ Next: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha Architecture & Productizati
 
 ## Repository
 
-- **Generated:** 2026-08-31T05:19:57Z
-- **State generated at commit:** `0ec23a5` — fix(inbox): preserve legacy evidence as FETCHED on migration to guarantee event-before-notification replay
+- **Generated:** 2026-08-31T05:20:04Z
+- **State generated at commit:** `534ab0c` — docs: update report-006 and state for legacy completion-marker resolution
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
