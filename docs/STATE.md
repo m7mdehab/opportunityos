@@ -2,16 +2,16 @@
 # OpportunityOS State
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
-Last shipped: BRIEF-005 — 2026-08-30.
+Last shipped: BRIEF-006 — 2026-08-30.
 Active work: none.
 Phase status: passed.
 Blocked: none.
-Next: BRIEF-006: Operational Autonomy, Feedback Loops & Production Pipeline.
+Next: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha Architecture & Productization (pending Overseer authorization).
 
 ## Repository
 
-- **Generated:** 2026-08-30T23:39:52Z
-- **State generated at commit:** `f314f6d` — docs: record final controlled submit manifest authority audit report for brief-005
+- **Generated:** 2026-08-31T00:14:53Z
+- **State generated at commit:** `1fb223f` — feat(inbox): implement operational autonomy, response detection, pipeline sync, and safe learning for brief-006
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -29,6 +29,7 @@ Next: BRIEF-006: Operational Autonomy, Feedback Loops & Production Pipeline.
 - BRIEF-003 — 2026-08-30
 - BRIEF-004 — 2026-08-30
 - BRIEF-005 — 2026-08-30
+- BRIEF-006 — 2026-08-30
 
 ## Last Phase Outcome
 
@@ -50,6 +51,7 @@ Next: BRIEF-006: Operational Autonomy, Feedback Loops & Production Pipeline.
 - [ADR-0008 — Opportunity Data Model and Ingestion Pipeline](adr/ADR-0008-opportunity-data-model-and-ingestion-pipeline.md)
 - [ADR-0009: Opportunity Matching, Qualification, and Truth-Locked Tailoring Architecture](adr/ADR-0009-opportunity-matching-and-tailoring-architecture.md)
 - [ADR-0010: Outbound Action Authority, Execution Modes, and Idempotency Architecture](adr/ADR-0010-outbound-action-authority-and-idempotency.md)
+- [ADR-0011: Operational Autonomy, Inbound Signal Processing, Pipeline Synchronization, and Safe Learning](adr/ADR-0011-operational-autonomy-and-feedback-loops.md)
 
 ## Blocked Items
 
@@ -67,4 +69,4 @@ Next: BRIEF-006: Operational Autonomy, Feedback Loops & Production Pipeline.
 
 ## Next Prerequisites
 
-- BRIEF-006: Operational Autonomy, Feedback Loops & Production Pipeline
+- BRIEF-007 / Phase 6: Multi-Tenant Family Alpha Architecture & Productization (pending Overseer authorization)
