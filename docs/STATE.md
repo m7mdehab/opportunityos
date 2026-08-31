@@ -10,8 +10,8 @@ Next: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha Architecture & Productizati
 
 ## Repository
 
-- **Generated:** 2026-08-31T00:39:58Z
-- **State generated at commit:** `d7b2249` — docs: update report-006 and state for final crash safety and acceptance evidence
+- **Generated:** 2026-08-31T00:49:40Z
+- **State generated at commit:** `eba106e` — fix(inbox): implement backward-compatible SQLite migration, strict exact reference correlation, and real qualified-conversation analytics
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
