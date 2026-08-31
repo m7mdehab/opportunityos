@@ -2,7 +2,7 @@
 # OpportunityOS State
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
-Last shipped: BRIEF-006 — 2026-08-30.
+Last shipped: BRIEF-006 — 2026-08-31.
 Active work: none.
 Phase status: passed.
 Blocked: none.
@@ -10,8 +10,8 @@ Next: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha Architecture & Productizati
 
 ## Repository
 
-- **Generated:** 2026-08-31T00:27:03Z
-- **State generated at commit:** `dfa9fa9` — docs: record operational integrity audit report and updated specifications for brief-006
+- **Generated:** 2026-08-31T00:39:51Z
+- **State generated at commit:** `5939ce6` — fix(inbox): implement durable processing lifecycle, full correlation attack set, 100% signal category coverage, and multi-dimensional analytics
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -29,7 +29,7 @@ Next: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha Architecture & Productizati
 - BRIEF-003 — 2026-08-30
 - BRIEF-004 — 2026-08-30
 - BRIEF-005 — 2026-08-30
-- BRIEF-006 — 2026-08-30
+- BRIEF-006 — 2026-08-31
 
 ## Last Phase Outcome
 
