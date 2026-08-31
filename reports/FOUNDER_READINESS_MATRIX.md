@@ -2,7 +2,7 @@
 
 **Generated:** 2026-08-31  
 **Authority:** ChatGPT Overseer Authorization  
-**Baseline Starting SHA:** `7b6f5047f0f2bb307cfcdf43ea44b05f67bbbed0`  
+**Baseline Starting SHA:** `2917c41a7207c5e919ab4d45436ad416e410a5fe`  
 **Evaluation Scope:** Master Product Development Plan v0.2 through Phase 5 (Founder Alpha 4) and Later Phases  
 **Total Canonical Requirements Evaluated:** 143  
 
@@ -11,14 +11,14 @@
 ## 1. Summary Totals & Integrity Reconciliation
 
 ### Primary Status Counts (Total = 143):
-- **`DONE`:** 64 (44.8%)
-- **`PARTIAL`:** 44 (30.8%)
+- **`DONE`:** 61 (42.7%)
+- **`PARTIAL`:** 47 (32.9%)
 - **`MISSING`:** 25 (17.5%)
 - **`INTENTIONALLY_DEFERRED`:** 9 (6.3%)
 - **`REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS`:** 1 (0.7%)
 
 ### Criticality Counts (Total = 143):
-- **`P0` (Blocks Founder Core):** 70 (DONE: 56, PARTIAL: 7, MISSING: 6, REQ_LIVE: 1)
+- **`P0` (Blocks Founder Core):** 70 (DONE: 53, PARTIAL: 10, MISSING: 6, REQ_LIVE: 1)
 - **`P1` (Material Friction Reduction):** 55 (DONE: 8, PARTIAL: 34, MISSING: 13)
 - **`P2` (Reliability, Health & Governance):** 12 (DONE: 0, PARTIAL: 3, MISSING: 6, DEFERRED: 3)
 - **`P3` (Family / Public B2C):** 3 (All 3 INTENTIONALLY_DEFERRED)
@@ -39,10 +39,10 @@
 - **`Phase 11` (Unified Platform):** 1
 
 ### Next Work Bucket Counts (Total = 143):
-- **`NONE` (Already DONE):** 64
+- **`NONE` (Already DONE):** 61
 - **`FOUNDER_ENGINE_BLOCKER` (Bucket A):** 35
 - **`FOUNDER_WEB_INTEGRATION` (Bucket B):** 15
-- **`PRODUCTION_INFRASTRUCTURE` (Bucket C):** 16
+- **`PRODUCTION_INFRASTRUCTURE` (Bucket C):** 19
 - **`LIVE_CONFIGURATION_OR_CREDENTIALS` (Bucket D):** 4
 - **`INTENTIONALLY_LATER` (Bucket F):** 9
 
@@ -75,12 +75,12 @@
 | `REQ-P0D-DEL-2` | §15.4 | Phase 0D Deliverable 2: Council Schemas (Structured decision packet and voting schema runtime). | P2 | Phase 0 | `PARTIAL` | `DOCUMENTED_ONLY` | docs/MASTER_PLAN.md §13.2, §13.4 | None | None | Council protocol documented and ADRs recorded, but runtime schema model (DecisionRecord) not implemented. | `PRODUCTION_INFRASTRUCTURE` |
 | `REQ-P0D-DEL-3` | §15.4 | Phase 0D Deliverable 3: Tool / Permission Boundaries (Formal agent permissions specification). | P1 | Phase 0 | `PARTIAL` | `DOCUMENTED_ONLY` | docs/AGENT_PERMISSIONS.yaml, AGENTS.md | None (guard script does not parse AGENT_PERMISSIONS.yaml) | None | AGENT_PERMISSIONS.yaml exists as policy doc, but runtime enforcement hook is not implemented. | `PRODUCTION_INFRASTRUCTURE` |
 | `REQ-P0D-DEL-4` | §15.4 | Phase 0D Deliverable 4: Traceable AgentRun Records (Structured data model and persistence for agent runs). | P2 | Phase 0 | `MISSING` | `NONE` | None (Master Plan §6.4 AgentRun) | None | None | No AgentRun model or store implemented in repository; agent transcripts stored outside repo. | `PRODUCTION_INFRASTRUCTURE` |
-| `REQ-P0D-DEL-5` | §15.4 | Phase 0D Deliverable 5: Test-Gate Integration (Automated test suites blocking merge). | P0 | Phase 0 | `DONE` | `PROVEN_RUNTIME` | .github/workflows/test.yml, scripts/check_repository.py | scripts/test_sync_mirror.py, unittest discover | None | None. Mandatory CI workflow gates all PR merges. | `NONE` |
+| `REQ-P0D-DEL-5` | §15.4 | Phase 0D Deliverable 5: Test-Gate Integration (Automated test suites blocking merge). | P0 | Phase 0 | `PARTIAL` | `PROVEN_RUNTIME` | .github/workflows/test.yml, scripts/check_repository.py, docs/adr/ADR-0002-unenforced-branch-policy.md | scripts/test_sync_mirror.py, scripts/test_generate_state.py, unittest discover | GitHub Branch Protection / Rulesets (Server-Side Enforcement) | CI test suites exist and master agent obeys them by convention, but server-enforced branch protection is disabled (rulesets=[]) under ADR-0002. | `PRODUCTION_INFRASTRUCTURE` |
 | `REQ-P0D-DEL-6` | §15.4 | Phase 0D Deliverable 6: Budget Controls (Runtime tracking and hard caps on agent API spend). | P2 | Phase 0 | `MISSING` | `NONE` | None | None | None | No runtime agent spend tracking or programmatic budget capping implemented. | `PRODUCTION_INFRASTRUCTURE` |
 | `REQ-P0D-TST-A` | §15.4 | Phase 0D Acceptance Test A: Synthetic Issue -> Sub-Agent -> PR -> QA -> Staging without Founder Intervention. | P1 | Phase 0 | `PARTIAL` | `PROVEN_RUNTIME` | Brief execution history (BRIEF-000 through BRIEF-006) | None (staging deploy not implemented) | Staging environment | Sub-agent -> PR -> QA loop proven locally/in CI; staging deployment step is missing. | `PRODUCTION_INFRASTRUCTURE` |
-| `REQ-P0D-TST-B` | §15.4 | Phase 0D Acceptance Test B: Failing Test Blocks Merge (CI test failure blocks PR merge). | P0 | Phase 0 | `DONE` | `PROVEN_RUNTIME` | .github/workflows/test.yml | CI test workflow | None | None. Failing CI checks prevent PR merge. | `NONE` |
+| `REQ-P0D-TST-B` | §15.4 | Phase 0D Acceptance Test B: Failing Test Blocks Merge (CI test failure blocks PR merge). | P0 | Phase 0 | `PARTIAL` | `PROVEN_RUNTIME` | .github/workflows/test.yml, docs/adr/ADR-0002-unenforced-branch-policy.md | CI test workflow | GitHub Branch Protection (Server-Side Enforcement) | CI detects test failures and PR discipline is observed as convention, but server-side merge blocking is absent and ADR-0002 explicitly accepts this residual risk. | `PRODUCTION_INFRASTRUCTURE` |
 | `REQ-P0D-TST-C` | §15.4 | Phase 0D Acceptance Test C: Council-Trigger Decision Creates an ADR. | P2 | Phase 0 | `PARTIAL` | `PROVEN_RUNTIME` | docs/adr/ (11 ADRs committed) | scripts/generate_state.py | None | 11 ADRs committed during briefs, but automated runtime triggering machinery is missing. | `PRODUCTION_INFRASTRUCTURE` |
-| `REQ-P0D-TST-D` | §15.4 | Phase 0D Acceptance Test D: Unauthorized Secret / Destructive Action Blocked and Escalated. | P0 | Phase 0 | `DONE` | `PROVEN_RUNTIME` | scripts/check_guard.py, opportunity/transport.py | scripts/check_guard.py, opportunity/test_acquisition.py | None | None. Guard script and transport preflight block unauthorized actions. | `NONE` |
+| `REQ-P0D-TST-D` | §15.4 | Phase 0D Acceptance Test D: Unauthorized Secret / Destructive Action Blocked and Escalated. | P0 | Phase 0 | `PARTIAL` | `PROVEN_RUNTIME` | scripts/check_guard.py, opportunity/transport.py, docs/AGENT_PERMISSIONS.yaml | scripts/check_guard.py, opportunity/test_acquisition.py | Runtime agent permission & destructive-action escalation middleware | Repository secret/PII scanning and transport preflight exist, but AGENT_PERMISSIONS.yaml lacks runtime middleware enforcement and general agent destructive-action escalation runtime is missing. | `PRODUCTION_INFRASTRUCTURE` |
 | `REQ-CFG-001` | §12.1, §15.5 | Founder Career Truth Pack Schema & Ingestion: Schema, validator, and JSON/YAML loader for career profile. | P0 | Phase 0 | `DONE` | `TESTED_IMPLEMENTATION` | truth/models.py, truth/ingest.py, truth/validator.py | truth/test_models.py, truth/test_ingest.py, truth/test_validator.py | None | None. Complete data models and ingestion parsers implemented. | `NONE` |
 | `REQ-CFG-002` | §12.1A, §15.5 | Founder Independent Capability Pack Schema: Schema, business capacity bounds, services, and portfolio models. | P0 | Phase 0 | `DONE` | `TESTED_IMPLEMENTATION` | truth/models.py:BusinessCapacity, truth/graph.py | truth/test_models.py, truth/test_property.py | None | None. Capability profile and capacity bounds implemented. | `NONE` |
 | `REQ-CFG-003` | §12.1, §12.1A | Actual Founder Private Career & Capability Data Population: Private founder ground truth populated in local store. | P0 | Phase 0 | `REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS` | `IMPLEMENTED_UNTESTED` | private/README.md | None (private data uncommitted) | Founder private CV and capability truth pack files | Schema exists, but actual founder truth data is stored locally in untracked private/ directory. | `LIVE_CONFIGURATION_OR_CREDENTIALS` |
