@@ -11,6 +11,20 @@ from matching.ats_quality import AtsDocumentQualityHarness
 
 class TestBinaryArtifactExport(unittest.TestCase):
     def setUp(self):
+        long_summary = (
+            "10+ years engineering high-scale distributed backend systems, real-time messaging architectures, "
+            "and transactional ledger infrastructure across MENA and global remote teams. Specializing in fault-tolerant "
+            "consensus protocols, asynchronous event loops, low-latency stream processing, and hardened security boundaries."
+        )
+        long_bullet_1 = (
+            "Architected and deployed distributed high-throughput event processing pipeline scaling from 10k to 500k RPS "
+            "under production peak loads with sub-15ms p99 latency, active-active multi-region failover, and zero observed message loss."
+        )
+        long_bullet_2 = (
+            "Spearheaded database reliability engineering across PostgreSQL cluster topologies, achieving zero-data-loss point-in-time "
+            "recovery guarantees, automated streaming replication failover, and rigorous ACID transaction isolation."
+        )
+
         self.artifact = TailoredArtifact(
             artifact_id="ART-100",
             artifact_type=ArtifactType.TAILORED_CV,
@@ -23,7 +37,7 @@ class TestBinaryArtifactExport(unittest.TestCase):
                 ArtifactSection(
                     section_id="summary",
                     heading="Professional Summary",
-                    content="10+ years engineering high-scale distributed backend systems and real-time messaging architectures.",
+                    content=long_summary,
                     items=(),
                     assertion_ids=("as-1",),
                     evidence_ids=("ev-1",),
@@ -32,10 +46,7 @@ class TestBinaryArtifactExport(unittest.TestCase):
                     section_id="experience",
                     heading="Key Achievements",
                     content="",
-                    items=(
-                        "Scaled real-time streaming pipeline from 10k to 500k RPS with zero downtime.",
-                        "Designed multi-region PostgreSQL disaster recovery topology with 99.999% uptime.",
-                    ),
+                    items=(long_bullet_1, long_bullet_2),
                     assertion_ids=("as-2", "as-3"),
                     evidence_ids=("ev-2", "ev-3"),
                 ),
@@ -51,7 +62,7 @@ class TestBinaryArtifactExport(unittest.TestCase):
             generated_claims=(
                 GeneratedClaim(
                     claim_id="cl-1",
-                    text="10+ years engineering high-scale distributed backend systems and real-time messaging architectures.",
+                    text=long_summary,
                     section_id="summary",
                     assertion_ids=("as-1",),
                     evidence_ids=("ev-1",),
@@ -71,7 +82,7 @@ class TestBinaryArtifactExport(unittest.TestCase):
         self.assertTrue(info["has_content"])
         self.assertIn("Senior Distributed Systems Architect", info["full_text"])
         self.assertIn("Key Achievements", info["full_text"])
-        self.assertIn("Scaled real-time streaming pipeline", info["full_text"])
+        self.assertIn("Architected and deployed distributed high-throughput event processing pipeline", info["full_text"])
 
     def test_pdf_export_and_inspection(self):
         pdf_bytes = BinaryArtifactExporter.export_to_pdf(self.artifact)
@@ -82,6 +93,7 @@ class TestBinaryArtifactExport(unittest.TestCase):
         self.assertEqual(info["page_count"], 1)
         self.assertIn("Senior Distributed Systems Architect", info["full_text"])
         self.assertIn("Key Achievements", info["full_text"])
+        self.assertIn("Architected and deployed", info["full_text"])
 
     def test_claim_parity_verification(self):
         docx_bytes = BinaryArtifactExporter.export_to_docx(self.artifact)

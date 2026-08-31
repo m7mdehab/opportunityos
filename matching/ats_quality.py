@@ -1,10 +1,17 @@
 import io
+import re
 import docx
 import pdfplumber
 from typing import Dict, Any, List
 from matching.models import TailoredArtifact
 
 class AtsDocumentQualityHarness:
+    @staticmethod
+    def _normalize_whitespace(text: str) -> str:
+        if not text:
+            return ""
+        return re.sub(r"\s+", " ", text).strip()
+
     @staticmethod
     def inspect_docx(docx_bytes: bytes) -> Dict[str, Any]:
         doc = docx.Document(io.BytesIO(docx_bytes))
@@ -36,32 +43,33 @@ class AtsDocumentQualityHarness:
         docx_info = AtsDocumentQualityHarness.inspect_docx(docx_bytes)
         pdf_info = AtsDocumentQualityHarness.inspect_pdf(pdf_bytes)
 
-        docx_text = docx_info["full_text"]
-        pdf_text = pdf_info["full_text"]
+        docx_norm = AtsDocumentQualityHarness._normalize_whitespace(docx_info["full_text"])
+        pdf_norm = AtsDocumentQualityHarness._normalize_whitespace(pdf_info["full_text"])
 
         # 1. Document Title Verification
-        if artifact.title not in docx_text or artifact.title not in pdf_text:
+        title_norm = AtsDocumentQualityHarness._normalize_whitespace(artifact.title)
+        if title_norm not in docx_norm or title_norm not in pdf_norm:
             return False
 
         # 2. Section Heading & Content Full Parity Verification
         for sec in artifact.sections:
             if sec.heading:
-                if sec.heading not in docx_text or sec.heading not in pdf_text:
+                h_norm = AtsDocumentQualityHarness._normalize_whitespace(sec.heading)
+                if h_norm not in docx_norm or h_norm not in pdf_norm:
                     return False
             if sec.content:
-                # Full substantive sentence verification
-                content_clean = sec.content.strip()
-                if content_clean not in docx_text or content_clean not in pdf_text:
+                c_norm = AtsDocumentQualityHarness._normalize_whitespace(sec.content)
+                if c_norm not in docx_norm or c_norm not in pdf_norm:
                     return False
             for item in sec.items:
-                item_clean = item.strip()
-                if item_clean not in docx_text or item_clean not in pdf_text:
+                i_norm = AtsDocumentQualityHarness._normalize_whitespace(item)
+                if i_norm not in docx_norm or i_norm not in pdf_norm:
                     return False
 
         # 3. Generated Claims Parity
         for claim in artifact.generated_claims:
-            claim_text = claim.text.strip()
-            if claim_text not in docx_text or claim_text not in pdf_text:
+            cl_norm = AtsDocumentQualityHarness._normalize_whitespace(claim.text)
+            if cl_norm not in docx_norm or cl_norm not in pdf_norm:
                 return False
 
         return True
