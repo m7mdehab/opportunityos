@@ -168,7 +168,6 @@ def main() -> None:
     fr_reports = custom_files("reports", "REPORT-FR")
     
     gate_brief_files = gate_files("briefs", "GATE")
-    gate_report_files = gate_files("reports", "REPORT-FR")
     
     statuses = {number: brief_status(number, reports) for number in sorted(briefs)}
     active_number = next(
@@ -187,10 +186,6 @@ def main() -> None:
                 active_fr_tag = f"FR-{tag}"
                 break
                 
-    latest_gate_report = None
-    if "001" in gate_report_files:
-        latest_gate_report = gate_report_files["001"]
-        
     if active_fr_tag:
         active_label = f"BRIEF-{active_fr_tag}"
         tag_suffix = active_fr_tag.removeprefix("FR-")
@@ -210,38 +205,34 @@ def main() -> None:
         for number in sorted(briefs)
         if statuses[number] == "passed"
     ]
+    if "001" in fr_reports:
+        rep_001 = fr_reports["001"].read_text(encoding="utf-8")
+        if "pass" in decision_line(rep_001).lower():
+            completed.append(f"GATE-FR-001 — {report_date(fr_reports['001'])}")
+    for tag in sorted(fr_reports):
+        if tag == "001":
+            continue
+        rep_text = fr_reports[tag].read_text(encoding="utf-8")
+        if "pass" in decision_line(rep_text).lower():
+            completed.append(f"BRIEF-FR-{tag} — {report_date(fr_reports[tag])}")
     
-    latest_number = max(reports) if reports else None
-    latest_text = (
-        reports[latest_number].read_text(encoding="utf-8") if latest_number is not None else ""
-    )
+    latest_report_text = ""
+    latest_report_name = ""
+    if fr_reports:
+        latest_tag = max(fr_reports.keys())
+        latest_report_text = fr_reports[latest_tag].read_text(encoding="utf-8")
+        latest_report_name = f"BRIEF-FR-{latest_tag}" if latest_tag != "001" else "GATE-FR-001"
+    elif reports:
+        latest_number = max(reports)
+        latest_report_text = reports[latest_number].read_text(encoding="utf-8")
+        latest_report_name = f"BRIEF-{latest_number:03d}"
+
+    outcome = f"{latest_report_name} — {decision_line(latest_report_text)}" if latest_report_text else "No phase report yet"
+    prerequisites = section(latest_report_text, "Next phase prerequisites") if latest_report_text else ""
     
-    gate_text = latest_gate_report.read_text(encoding="utf-8") if latest_gate_report else ""
-    
-    outcome = decision_line(latest_text) if latest_text else "No phase report yet"
-    prerequisites = section(latest_text, "Next phase prerequisites") if latest_text else ""
-    
-    blocked: list[str] = []
-    
-    if gate_text:
-        gate_decision = decision_line(gate_text)
-        outcome = f"GATE-FR-001 — {gate_decision}"
-        
-        if re.search(r"(?i)BRIEF-007.*(?:BLOCKED|NOT AUTHORIZED)", gate_text):
-            blocked.append("BRIEF-007 / Phase 6: Multi-Tenant Family Alpha (strictly blocked until Founder Web Alpha is live and validated)")
-        
-        rec_match = re.search(r"(?m)^(?:\*\*)?FINAL RECOMMENDATION:(?:\*\*)?\s*(.+)$", gate_text)
-        if rec_match:
-            rec_line = rec_match.group(1).strip("* ")
-            prerequisites = f"- {rec_line}\n- Phase 0/1 Foundation & Web Integration (PostgreSQL, background workers, FastAPI API layer, Next.js Web Dashboard)."
-    else:
-        for title in ("Blocked", "Hard gate", "Failures and known limitations"):
-            value = section(latest_text, title) if latest_text else ""
-            blocked.extend(
-                line.strip().lstrip("- ")
-                for line in value.splitlines()
-                if line.strip().startswith("-") and line.strip().lstrip("- ").lower() not in {"none", "none."}
-            )
+    blocked: list[str] = [
+        "BRIEF-007 / Phase 6: Multi-Tenant Family Alpha (strictly blocked until Founder Web Alpha is live and validated)"
+    ]
 
     proposed, accepted = adr_records()
     counts = source_counts()
