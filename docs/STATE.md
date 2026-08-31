@@ -10,8 +10,8 @@ Next: ORDERED SEQUENCE (C + A) -> B -> D.
 
 ## Repository
 
-- **Generated:** 2026-08-31T23:13:24Z
-- **State generated at commit:** `d16774a` — docs: correct Phase 0D enforcement-truth status for DEL-5, TST-B, TST-D
+- **Generated:** 2026-08-31T23:13:50Z
+- **State generated at commit:** `9de1b3c` — docs: finalize REPORT-FR-001 with terminal Phase 0D audit PASS
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
