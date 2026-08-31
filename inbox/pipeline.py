@@ -1,8 +1,7 @@
-"""Operational Pipeline Event Store and Deterministic State Synchronizer."""
+"""Operational Pipeline Event Store and Deterministic State Synchronizer with Durable SQLite Backing."""
 from __future__ import annotations
 
-import uuid
-from datetime import datetime, timezone
+import hashlib
 from typing import Sequence
 from matching.models import Track
 from .models import (
@@ -14,6 +13,7 @@ from .models import (
     PipelineEvent,
     SignalCategory,
 )
+from .persistence import DurableInboxStore
 
 
 class PipelineStateSynchronizer:
@@ -39,12 +39,11 @@ class PipelineStateSynchronizer:
             return OpportunityStage.IN_REVIEW
 
         if category in (SignalCategory.APPLICATION_CONFIRMATION, SignalCategory.PROPOSAL_CONFIRMATION):
-            if current_stage == OpportunityStage.DISCOVERED:
+            if current_stage in (OpportunityStage.DISCOVERED, OpportunityStage.NO_EVENTS):
                 return OpportunityStage.APPLIED
             return current_stage
 
         if category in (SignalCategory.REJECTION, SignalCategory.PROPOSAL_REJECTION):
-            # If currently interviewing or holding an offer, record rejection for that branch
             return OpportunityStage.REJECTED
 
         return current_stage
@@ -55,12 +54,21 @@ class PipelineStateSynchronizer:
         opportunity_id: str,
         track: Track,
         events: Sequence[PipelineEvent],
+        initial_stage: OpportunityStage = OpportunityStage.NO_EVENTS,
     ) -> DerivedOpportunityState:
-        """Deterministically derive opportunity state from sorted event log."""
-        sorted_events = sorted(events, key=lambda e: (e.occurred_at, e.recorded_at))
-        stage = OpportunityStage.APPLIED
+        """Deterministically derive opportunity state from sorted event log using source timestamps."""
+        if not events:
+            return DerivedOpportunityState(
+                opportunity_id=opportunity_id, track=track, current_stage=initial_stage,
+                latest_event_id="", last_signal_category=None, last_signal_at="",
+                active_action_required=False, action_deadline=None, action_summary="",
+                event_history_count=0,
+            )
+
+        sorted_events = sorted(events, key=lambda e: (e.occurred_at, e.recorded_at, e.event_id))
+        stage = initial_stage if initial_stage != OpportunityStage.NO_EVENTS else OpportunityStage.APPLIED
         latest_event_id = ""
-        last_cat = SignalCategory.APPLICATION_CONFIRMATION
+        last_cat = None
         last_at = ""
         action_req = False
         deadline_str = None
@@ -90,11 +98,15 @@ class PipelineStateSynchronizer:
 
 
 class PipelineEventStore:
-    """Append-only immutable event store with deterministic state replay."""
+    """Append-only immutable event store with SQLite backing and deterministic replay."""
 
-    def __init__(self) -> None:
-        self._events: list[PipelineEvent] = []
-        self._seen_signal_opp_pairs: set[tuple[str, str]] = set()
+    def __init__(self, store: DurableInboxStore | None = None) -> None:
+        self.store = store or DurableInboxStore(":memory:")
+
+    @classmethod
+    def compute_event_id(cls, signal_id: str, opportunity_id: str) -> str:
+        payload = f"{signal_id}:{opportunity_id}".encode("utf-8")
+        return f"ev-pipe-{hashlib.sha256(payload).hexdigest()[:16]}"
 
     def record_signal_event(
         self,
@@ -106,31 +118,27 @@ class PipelineEventStore:
         if not correlation.is_authoritative or not correlation.opportunity_id:
             return None
 
-        pair = (signal.signal_id, correlation.opportunity_id)
-        if pair in self._seen_signal_opp_pairs:
-            return None
-        self._seen_signal_opp_pairs.add(pair)
-
+        event_id = self.compute_event_id(signal.signal_id, correlation.opportunity_id)
         current_state = self.get_opportunity_state(correlation.opportunity_id, track)
-        prev_stage = current_state.current_stage if current_state else OpportunityStage.APPLIED
+        prev_stage = current_state.current_stage if current_state and current_state.current_stage != OpportunityStage.NO_EVENTS else OpportunityStage.APPLIED
         next_stage = PipelineStateSynchronizer.determine_next_stage(prev_stage, signal.category)
 
         event = PipelineEvent(
-            event_id=f"ev-pipe-{uuid.uuid4().hex[:12]}", opportunity_id=correlation.opportunity_id,
+            event_id=event_id, opportunity_id=correlation.opportunity_id,
             signal_id=signal.signal_id, previous_stage=prev_stage, new_stage=next_stage,
             track=track, trigger_category=signal.category,
             message_content_hash=signal.message_content_hash, occurred_at=signal.detected_at,
-            recorded_at=datetime.now(timezone.utc).isoformat(), notes=signal.summary,
+            recorded_at=signal.detected_at, notes=signal.summary,
         )
-        self._events.append(event)
-        return event
+        inserted = self.store.store_pipeline_event(event)
+        return event if inserted else None
 
     def get_events_for_opportunity(self, opportunity_id: str) -> tuple[PipelineEvent, ...]:
-        return tuple([e for e in self._events if e.opportunity_id == opportunity_id])
+        return self.store.get_events_for_opportunity(opportunity_id)
 
     def get_opportunity_state(self, opportunity_id: str, track: Track = Track.EMPLOYMENT) -> DerivedOpportunityState:
         evs = self.get_events_for_opportunity(opportunity_id)
         return PipelineStateSynchronizer.replay_events(opportunity_id, track, evs)
 
     def all_events(self) -> tuple[PipelineEvent, ...]:
-        return tuple(self._events)
+        return self.store.get_all_pipeline_events()

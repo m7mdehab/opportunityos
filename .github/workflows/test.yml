@@ -23,10 +23,11 @@ jobs:
         run: python -m unittest discover recon -v
       - name: Run Opportunity Ingestion Test Suite
         run: python -m unittest discover -s opportunity -p "test_*.py" -v
+      - name: Run Inbox / Operational Autonomy Test Suite
+        run: python -m unittest discover -s inbox -p "test_*.py" -v
       - name: Run Sync Mirror Unit Tests
         run: python scripts/test_sync_mirror.py -v
       - name: Check Guard Boundary & PII
         run: python scripts/check_guard.py --allow-missing-patterns
       - name: Check Repository Integrity
         run: python scripts/check_repository.py
-

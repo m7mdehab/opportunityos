@@ -72,6 +72,8 @@ class OpportunityStage(str, Enum):
     REJECTED = "rejected"
     CLOSED_UNRESPONSIVE = "closed_unresponsive"
     WITHDRAWN = "withdrawn"
+    REVIEW_REQUIRED = "review_required"
+    NO_EVENTS = "no_events"
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,7 +178,7 @@ class DerivedOpportunityState:
     track: Track
     current_stage: OpportunityStage
     latest_event_id: str
-    last_signal_category: SignalCategory
+    last_signal_category: SignalCategory | None
     last_signal_at: str
     active_action_required: bool
     action_deadline: str | None = None

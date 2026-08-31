@@ -4,15 +4,14 @@ from matching.models import Track
 from opportunity.models import Opportunity
 from outbound.models import (
     ActionStatus,
-    ConfirmationEvidence,
     ExecutionMode,
     OutboundActionRecord,
     QualificationDecision,
 )
-from .classifier import ResponseClassifier
-from .correlation import OpportunityCorrelationEngine
-from .fixtures.gold_messages import GOLD_EMPLOYMENT_MESSAGES
-from .models import CorrelationStatus
+from inbox.classifier import ResponseClassifier
+from inbox.correlation import OpportunityCorrelationEngine
+from inbox.fixtures.gold_messages import GOLD_EMPLOYMENT_MESSAGES
+from inbox.models import CorrelationStatus
 
 
 class TestOpportunityCorrelation(unittest.TestCase):
@@ -45,7 +44,6 @@ class TestOpportunityCorrelation(unittest.TestCase):
         self.assertTrue(corr.is_authoritative)
 
     def test_ambiguous_same_company_distinct_opportunities_strictly_unlinked(self) -> None:
-        # Two applications at same company with identical title tokens
         opp_a = Opportunity(
             id="opp-gamma-1", track=Track.EMPLOYMENT, source="lever", source_url="https://jobs.lever.co/gamma/1",
             source_id="G1", organization="Gamma Systems", title="Lead Data Architect", description="Role 1",
