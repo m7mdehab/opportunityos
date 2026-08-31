@@ -10,8 +10,8 @@ Next: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha Architecture & Productizati
 
 ## Repository
 
-- **Generated:** 2026-08-31T00:26:51Z
-- **State generated at commit:** `0597c75` — fix(inbox): implement durable persistence, stable event identity, UNKNOWN_OUTCOME reconciliation, Gmail execution, and analytics denominator correction for brief-006
+- **Generated:** 2026-08-31T00:27:03Z
+- **State generated at commit:** `dfa9fa9` — docs: record operational integrity audit report and updated specifications for brief-006
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
