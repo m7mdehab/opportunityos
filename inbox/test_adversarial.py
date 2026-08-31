@@ -372,7 +372,7 @@ class AdversarialInboxTests(unittest.TestCase):
                     UNIQUE(signal_id, opportunity_id)
                 )
             """)
-            # Insert representative legacy evidence (one processed via event, one unprocessed)
+            # Insert representative legacy evidence
             ev1 = GOLD_EMPLOYMENT_MESSAGES[0]
             ev2 = GOLD_EMPLOYMENT_MESSAGES[1]
             conn.execute(
@@ -383,11 +383,6 @@ class AdversarialInboxTests(unittest.TestCase):
                 "INSERT INTO inbound_evidence VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (ev2.message_content_hash, ev2.provider, ev2.provider_message_id, ev2.thread_id, ev2.sender_email, ev2.sender_name, ev2.recipient_email, ev2.subject, ev2.snippet, ev2.body_text, ev2.body_html, ev2.received_at, "[]", "[]"),
             )
-            # Record pipeline event for ev1 only
-            conn.execute(
-                "INSERT INTO pipeline_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                ("ev-1", "opp-1", "sig-1", "no_events", "applied", "employment", "application_confirmation", ev1.message_content_hash, "2026-08-30T10:00:00Z", "2026-08-30T10:00:00Z", "agent", "notes"),
-            )
             conn.commit()
             conn.close()
 
@@ -397,15 +392,150 @@ class AdversarialInboxTests(unittest.TestCase):
             # 3. Prove migration succeeded: columns exist and data remains intact
             all_ev = store.get_all_evidence()
             self.assertEqual(len(all_ev), 2)
-
-            # ev1 (had pipeline event) is marked PROCESSED; ev2 (had no pipeline event) remains FETCHED (not lost)
-            self.assertTrue(store.is_evidence_processed(ev1.message_content_hash))
+            # Legacy evidence defaults conservatively to FETCHED to guarantee zero message/notification loss
+            self.assertFalse(store.is_evidence_processed(ev1.message_content_hash))
             self.assertFalse(store.is_evidence_processed(ev2.message_content_hash))
 
             # 4. Prove repeated startup is idempotent
             store2 = DurableInboxStore(db_path)
             self.assertEqual(len(store2.get_all_evidence()), 2)
-            self.assertTrue(store2.is_evidence_processed(ev1.message_content_hash))
+
+    def test_adv_09b_legacy_event_before_notification_migration_and_replay(self) -> None:
+        """Mandatory test: PR55 legacy DB with pipeline event persisted but NO founder notification and unadvanced cursor.
+        Prove:
+        1. store migrates and message is NOT considered fully processed (remains FETCHED);
+        2. replay from unchanged cursor does not duplicate existing pipeline event;
+        3. missing founder notification is emitted exactly once;
+        4. evidence becomes PROCESSED only after replay completes;
+        5. checkpoint then advances;
+        6. subsequent restart/replay has 0 duplicate events and 0 duplicate notifications.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "legacy_event_no_notif.db"
+            opp = Opportunity(id="opp-delta-1", track=Track.EMPLOYMENT, source="ashby", source_url="u", source_id="REQ-DELTA-101", organization="Delta Corp", title="Staff Engineer", description="d")
+            msg = GOLD_EMPLOYMENT_MESSAGES[3]  # Interview invitation
+
+            # Construct exact PR55 legacy DB
+            conn = sqlite3.connect(str(db_path))
+            conn.execute("""
+                CREATE TABLE inbound_evidence (
+                    message_content_hash TEXT PRIMARY KEY,
+                    provider TEXT NOT NULL,
+                    provider_message_id TEXT NOT NULL,
+                    thread_id TEXT NOT NULL,
+                    sender_email TEXT NOT NULL,
+                    sender_name TEXT NOT NULL,
+                    recipient_email TEXT NOT NULL,
+                    subject TEXT NOT NULL,
+                    snippet TEXT NOT NULL,
+                    body_text TEXT NOT NULL,
+                    body_html TEXT NOT NULL,
+                    received_at TEXT NOT NULL,
+                    headers_json TEXT NOT NULL,
+                    attachment_names_json TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE pipeline_events (
+                    event_id TEXT PRIMARY KEY,
+                    opportunity_id TEXT NOT NULL,
+                    signal_id TEXT NOT NULL,
+                    previous_stage TEXT NOT NULL,
+                    new_stage TEXT NOT NULL,
+                    track TEXT NOT NULL,
+                    trigger_category TEXT NOT NULL,
+                    message_content_hash TEXT NOT NULL,
+                    occurred_at TEXT NOT NULL,
+                    recorded_at TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    notes TEXT NOT NULL,
+                    UNIQUE(signal_id, opportunity_id)
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE founder_notifications (
+                    notification_key TEXT PRIMARY KEY,
+                    notification_id TEXT NOT NULL,
+                    opportunity_id TEXT,
+                    signal_id TEXT NOT NULL,
+                    priority TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    action_required INTEGER NOT NULL,
+                    deadline TEXT,
+                    created_at TEXT NOT NULL,
+                    acknowledged INTEGER NOT NULL,
+                    acknowledged_at TEXT
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE inbox_checkpoints (
+                    checkpoint_key TEXT PRIMARY KEY,
+                    cursor_value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            # Insert inbound evidence and pipeline event (persisted in PR55 before simulated crash), but NO notification, cursor="0"
+            conn.execute(
+                "INSERT INTO inbound_evidence VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (msg.message_content_hash, msg.provider, msg.provider_message_id, msg.thread_id, msg.sender_email, msg.sender_name, msg.recipient_email, msg.subject, msg.snippet, msg.body_text, msg.body_html, msg.received_at, "[]", "[]"),
+            )
+            sig = ResponseClassifier().classify(msg)
+            conn.execute(
+                "INSERT INTO pipeline_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                ("ev-legacy-1", "opp-delta-1", sig.signal_id, "applied", "interviewing", "employment", "interview_request", msg.message_content_hash, "2026-08-30T10:00:00Z", "2026-08-30T10:00:00Z", "agent", "legacy event"),
+            )
+            conn.execute(
+                "INSERT INTO inbox_checkpoints VALUES (?, ?, ?)",
+                ("inbox_checkpoint:gmail", "0", "2026-08-30T10:00:00Z"),
+            )
+            conn.commit()
+            conn.close()
+
+            # 1. Instantiate new DurableInboxStore and migrate
+            store = DurableInboxStore(db_path)
+
+            # 2. Prove the message is NOT considered fully processed (remains FETCHED)
+            self.assertFalse(store.is_evidence_processed(msg.message_content_hash))
+            self.assertEqual(len(store.get_all_notifications()), 0)
+            self.assertEqual(len(store.get_all_pipeline_events()), 1)
+
+            # 3. Create fresh ingestion / orchestrator instances against that DB
+            transport = MockMailTransport(messages=[msg])
+            ingest = InboundIngestionService(transport, store=store)
+            orch = ProductionOperationalOrchestrator(ingestion_service=ingest, opportunities=[opp], store=store)
+
+            # 4. Replay from unchanged cursor "0"
+            res = orch.run_cycle(limit=1)
+            self.assertEqual(res.messages_ingested, 1)
+
+            # 5. Prove existing pipeline event is not duplicated
+            self.assertEqual(len(store.get_all_pipeline_events()), 1)
+
+            # 6. Prove missing founder notification is emitted exactly once
+            notifs = store.get_all_notifications()
+            self.assertEqual(len(notifs), 1)
+            self.assertEqual(notifs[0].priority, SignalPriority.URGENT)
+
+            # 7. Prove evidence becomes PROCESSED only after replay completes
+            self.assertTrue(store.is_evidence_processed(msg.message_content_hash))
+
+            # 8. Prove checkpoint cursor advances to "1"
+            self.assertEqual(orch.get_checkpoint_cursor(), "1")
+
+            # 9. Destroy and restart again against same DB: prove 0 duplicate events and 0 duplicate notifications
+            del orch, ingest, transport, store
+
+            store_restart = DurableInboxStore(db_path)
+            transport_restart = MockMailTransport(messages=[msg])
+            ingest_restart = InboundIngestionService(transport_restart, store=store_restart)
+            orch_restart = ProductionOperationalOrchestrator(ingestion_service=ingest_restart, opportunities=[opp], store=store_restart)
+
+            res_restart = orch_restart.run_cycle(limit=1)
+            self.assertEqual(res_restart.messages_ingested, 0)
+            self.assertEqual(len(store_restart.get_all_pipeline_events()), 1)
+            self.assertEqual(len(store_restart.get_all_notifications()), 1)
 
     def test_adv_10_strict_reference_prefix_collision_and_receipt_authority(self) -> None:
         """Prove stored REQ-12345 + inbound REQ-1234 is NOT authoritative, and receipt_reference is a first-class exact authority."""

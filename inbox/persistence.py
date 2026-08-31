@@ -126,22 +126,12 @@ class DurableInboxStore:
                 # 2. Schema Migration: Detect and add missing columns if upgrading from legacy PR55 DB
                 cur = conn.execute("PRAGMA table_info(inbound_evidence)")
                 columns = [row["name"] for row in cur.fetchall()]
-                upgraded = False
                 if "processing_status" not in columns:
+                    # Legacy evidence defaults conservatively to 'FETCHED' so uncompleted processing (e.g. crash before notification)
+                    # is safely replayed rather than lost. Replay is fully idempotent on event/notification/reconciliation keys.
                     conn.execute("ALTER TABLE inbound_evidence ADD COLUMN processing_status TEXT NOT NULL DEFAULT 'FETCHED'")
-                    upgraded = True
                 if "processed_at" not in columns:
                     conn.execute("ALTER TABLE inbound_evidence ADD COLUMN processed_at TEXT")
-                    upgraded = True
-
-                # When upgrading a legacy DB, reconcile legacy evidence processing_status conservatively against pipeline events
-                if upgraded:
-                    conn.execute("""
-                        UPDATE inbound_evidence
-                        SET processing_status = 'PROCESSED'
-                        WHERE processing_status = 'FETCHED'
-                          AND message_content_hash IN (SELECT message_content_hash FROM pipeline_events)
-                    """)
             finally:
                 if self._memory_conn is None:
                     conn.close()
