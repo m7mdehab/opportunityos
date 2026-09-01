@@ -2,16 +2,16 @@
 # OpportunityOS State
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
-Last shipped: BRIEF-006 — 2026-08-31.
+Last shipped: BRIEF-FR-002 — 2026-09-01.
 Active work: none.
 Phase status: passed.
 Blocked: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha (strictly blocked until Founder Web Alpha is live and validated).
-Next: ORDERED SEQUENCE (C + A) -> B -> D.
+Next: With the engine foundation and production persistence backbone established:.
 
 ## Repository
 
-- **Generated:** 2026-08-31T23:13:50Z
-- **State generated at commit:** `9de1b3c` — docs: finalize REPORT-FR-001 with terminal Phase 0D audit PASS
+- **Generated:** 2026-09-01T00:04:17Z
+- **State generated at commit:** `2652f5c` — fix(state): restore exclude STATE.md in source_head to prevent commit-hash skew
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -30,10 +30,12 @@ Next: ORDERED SEQUENCE (C + A) -> B -> D.
 - BRIEF-004 — 2026-08-30
 - BRIEF-005 — 2026-08-30
 - BRIEF-006 — 2026-08-31
+- GATE-FR-001 — 2026-08-31
+- BRIEF-FR-002 — 2026-09-01
 
 ## Last Phase Outcome
 
-- GATE-FR-001 — FINAL / PASS
+- BRIEF-FR-002 — PASS
 
 ## Decisions
 
@@ -59,15 +61,12 @@ Next: ORDERED SEQUENCE (C + A) -> B -> D.
 
 ## Source Status Counts
 
-- allowed_ok: 19
-- deliberately_not_fetched: 16
-- manual_only: 16
-- parse_empty: 2
-- review_required: 52
-- robots_unreachable: 15
-- unknown_disable_actions: 36
+- None
 
 ## Next Prerequisites
 
-- ORDERED SEQUENCE (C + A) -> B -> D
-- Phase 0/1 Foundation & Web Integration (PostgreSQL, background workers, FastAPI API layer, Next.js Web Dashboard).
+With the engine foundation and production persistence backbone established:
+- **BRIEF-FR-003:** FastAPI REST API Service & Next.js 14+ Founder Web Alpha UI Integration.
+- **BRIEF-007 (Private Family Alpha):** Remains strictly BLOCKED until Founder Web Alpha is live and validated.
+
+---

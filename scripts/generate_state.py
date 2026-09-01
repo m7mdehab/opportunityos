@@ -44,13 +44,17 @@ def numbered_files(directory: str, prefix: str) -> dict[int, Path]:
     return result
 
 
-def gate_files(directory: str, prefix: str) -> dict[str, Path]:
+def custom_files(directory: str, prefix: str) -> dict[str, Path]:
     result: dict[str, Path] = {}
     for path in (ROOT / directory).glob(f"{prefix}-*.md"):
         match = re.fullmatch(rf"{prefix}-([A-Z0-9_-]+)\.md", path.name)
         if match:
             result[match.group(1)] = path
     return result
+
+
+def gate_files(directory: str, prefix: str) -> dict[str, Path]:
+    return custom_files(directory, prefix)
 
 
 def section(text: str, title: str) -> str:
@@ -60,83 +64,78 @@ def section(text: str, title: str) -> str:
     return match.group(1).strip() if match else ""
 
 
-def report_date(path: Path) -> str:
-    text = path.read_text(encoding="utf-8")
-    match = re.search(r"(?im)^\*\*Date:\*\*\s*(\d{4}-\d{2}-\d{2})", text)
-    return match.group(1) if match else "unknown date"
-
-
 def decision_line(text: str) -> str:
-    value = section(text, "Decision")
-    for line in value.splitlines():
-        cleaned = line.strip().strip("-*# ")
-        if re.match(r"(?i)^(PASS|CONDITIONAL PASS|FAIL|READY_FOR_INDEPENDENT_AUDIT|FINAL\s*/\s*PASS|FINAL\s*/\s*FAIL)", cleaned):
-            return cleaned
-    return "No phase outcome recorded"
-
-
-def acceptance_items(path: Path) -> list[str]:
-    items: list[str] = []
-    current: str | None = None
-    for line in path.read_text(encoding="utf-8").splitlines():
-        item = re.match(r"^\s*- \[ \]\s+(.+)$", line)
-        if item:
-            if current:
-                items.append(current)
-            current = item.group(1).strip()
+    decision_text = section(text, "Decision")
+    for raw in decision_text.splitlines():
+        line = raw.strip().lstrip("- ").strip()
+        if not line:
             continue
-        continuation = re.match(r"^\s{2,}(\S.*)$", line)
-        new_list_item = re.match(r"^\s*[-*+]\s+", line)
-        if current and continuation and not new_list_item:
-            current = f"{current} {continuation.group(1).strip()}"
-        elif current:
-            items.append(current)
-            current = None
-    if current:
-        items.append(current)
-    return items
+        cleaned = re.sub(r"[\*_`#]", "", line).strip()
+        if cleaned:
+            return cleaned
+    return "undecided"
+
+
+def report_date(path: Path) -> str:
+    match = re.search(r"(?m)^\*\*Date:\*\*\s*(.+)$", path.read_text(encoding="utf-8"))
+    return match.group(1).strip() if match else "undated"
 
 
 def brief_status(number: int, reports: dict[int, Path]) -> str:
-    report = reports.get(number)
-    if report is None:
+    if number not in reports:
         return "in progress"
-    decision = section(report.read_text(encoding="utf-8"), "Decision")
-    if re.search(r"READY_FOR_INDEPENDENT_AUDIT", decision):
-        return "READY_FOR_INDEPENDENT_AUDIT"
-    if re.search(r"(?i)\bFAIL\b", decision):
-        return "failed — remain in phase"
-    return "passed"
+    report = reports[number].read_text(encoding="utf-8")
+    decision = decision_line(report)
+    return "passed" if "pass" in decision.lower() else "in progress"
+
+
+def acceptance_items(brief_path: Path) -> list[str]:
+    text = brief_path.read_text(encoding="utf-8")
+    metrics_match = re.search(
+        r"(?ims)^required_acceptance_metrics:\s*\n(.*?)(?=^\w|\Z)", text
+    )
+    if not metrics_match:
+        return []
+    items: list[str] = []
+    for raw in metrics_match.group(1).splitlines():
+        line = raw.strip()
+        if line.startswith("-"):
+            items.append(line.lstrip("- ").strip())
+        elif ":" in line:
+            key, _, value = line.partition(":")
+            items.append(f"{key.strip()}: {value.strip()}")
+    return items
 
 
 def adr_records() -> tuple[list[str], list[str]]:
     proposed: list[str] = []
     accepted: list[str] = []
-    for path in sorted((ROOT / "docs" / "adr").glob("*.md")):
-        if "TEMPLATE" in path.name:
-            continue
+    for path in sorted((ROOT / "docs" / "adr").glob("ADR-*.md")):
         text = path.read_text(encoding="utf-8")
-        status_match = re.search(r"(?im)^-?\s*\*\*Status:\*\*\s*(\w+)", text)
+        status_match = re.search(r"(?m)^-\s+\*\*Status:\*\*\s*(.+)$", text)
         title_match = re.search(r"(?m)^#\s+(.+)$", text)
-        if not status_match:
+        if not (status_match and title_match):
             continue
-        entry = f"[{title_match.group(1) if title_match else path.stem}](adr/{path.name})"
-        status = status_match.group(1).lower()
-        if status == "proposed":
-            proposed.append(entry)
-        elif status == "accepted":
-            accepted.append(entry)
+        status = status_match.group(1).strip().lower()
+        title = title_match.group(1).strip()
+        rel_path = path.relative_to(ROOT / "docs").as_posix()
+        link = f"[{title}]({rel_path})"
+        if "accepted" in status:
+            accepted.append(link)
+        else:
+            proposed.append(link)
     return proposed, accepted
 
 
 def source_counts() -> Counter[str]:
     registry = ROOT / "docs" / "SOURCE_REGISTRY.yaml"
-    counts: Counter[str] = Counter()
     if not registry.exists():
-        return counts
-    text = registry.read_text(encoding="utf-8")
-    for status in re.findall(r"(?m)^\s{2,}(?:policy_)?status:\s*([^#\s]+)", text):
-        counts[status.strip("'\"")] += 1
+        return Counter()
+    counts: Counter[str] = Counter()
+    for raw in registry.read_text(encoding="utf-8").splitlines():
+        match = re.search(r"(?m)^\s*observed_status:\s*([a-z0-9_]+)\s*$", raw)
+        if match:
+            counts[match.group(1)] += 1
     return counts
 
 
@@ -164,60 +163,85 @@ def bullets(items: list[str], empty: str) -> str:
 def main() -> None:
     briefs = numbered_files("briefs", "BRIEF")
     reports = numbered_files("reports", "REPORT")
+    
+    fr_briefs = custom_files("briefs", "BRIEF-FR")
+    fr_reports = custom_files("reports", "REPORT-FR")
+    
+    gate_brief_files = gate_files("briefs", "GATE")
+    
     statuses = {number: brief_status(number, reports) for number in sorted(briefs)}
     active_number = next(
         (number for number in sorted(briefs) if statuses[number] != "passed"), None
     )
     
-    # Check for gate briefs/reports (e.g. GATE-FR-001)
-    gate_brief_files = gate_files("briefs", "GATE")
-    gate_report_files = gate_files("reports", "REPORT")
-    
-    latest_gate_report = None
-    if "FR-001" in gate_report_files:
-        latest_gate_report = gate_report_files["FR-001"]
-        
-    active_label = f"BRIEF-{active_number:03d}" if active_number is not None else "none"
-    phase_status = statuses[active_number] if active_number is not None else "passed"
-    open_items = acceptance_items(briefs[active_number]) if active_number is not None else []
+    # Check FR series active status
+    active_fr_tag = None
+    for tag in sorted(fr_briefs):
+        if tag not in fr_reports:
+            active_fr_tag = f"FR-{tag}"
+            break
+        else:
+            rep_text = fr_reports[tag].read_text(encoding="utf-8")
+            if "pass" not in decision_line(rep_text).lower():
+                active_fr_tag = f"FR-{tag}"
+                break
+                
+    if active_fr_tag:
+        active_label = f"BRIEF-{active_fr_tag}"
+        tag_suffix = active_fr_tag.removeprefix("FR-")
+        phase_status = "in progress"
+        open_items = acceptance_items(fr_briefs[tag_suffix])
+    elif active_number is not None:
+        active_label = f"BRIEF-{active_number:03d}"
+        phase_status = statuses[active_number]
+        open_items = acceptance_items(briefs[active_number])
+    else:
+        active_label = "none"
+        phase_status = "passed"
+        open_items = []
 
     completed = [
         f"BRIEF-{number:03d} — {report_date(reports[number])}"
         for number in sorted(briefs)
         if statuses[number] == "passed"
     ]
+    if "001" in fr_reports:
+        rep_001 = fr_reports["001"].read_text(encoding="utf-8")
+        if "pass" in decision_line(rep_001).lower():
+            completed.append(f"GATE-FR-001 — {report_date(fr_reports['001'])}")
+    for tag in sorted(fr_reports):
+        if tag == "001":
+            continue
+        rep_text = fr_reports[tag].read_text(encoding="utf-8")
+        if "pass" in decision_line(rep_text).lower():
+            completed.append(f"BRIEF-FR-{tag} — {report_date(fr_reports[tag])}")
     
-    latest_number = max(reports) if reports else None
-    latest_text = (
-        reports[latest_number].read_text(encoding="utf-8") if latest_number is not None else ""
-    )
+    latest_report_text = ""
+    latest_report_name = ""
+    if fr_reports:
+        latest_tag = max(fr_reports.keys())
+        latest_report_text = fr_reports[latest_tag].read_text(encoding="utf-8")
+        latest_report_name = f"BRIEF-FR-{latest_tag}" if latest_tag != "001" else "GATE-FR-001"
+    elif reports:
+        latest_number = max(reports)
+        latest_report_text = reports[latest_number].read_text(encoding="utf-8")
+        latest_report_name = f"BRIEF-{latest_number:03d}"
+
+    outcome = f"{latest_report_name} — {decision_line(latest_report_text)}" if latest_report_text else "No phase report yet"
     
-    gate_text = latest_gate_report.read_text(encoding="utf-8") if latest_gate_report else ""
-    
-    outcome = decision_line(latest_text) if latest_text else "No phase report yet"
-    prerequisites = section(latest_text, "Next phase prerequisites") if latest_text else ""
-    
-    blocked: list[str] = []
-    
-    if gate_text:
-        gate_decision = decision_line(gate_text)
-        outcome = f"GATE-FR-001 — {gate_decision}"
-        
-        if re.search(r"(?i)BRIEF-007.*(?:BLOCKED|NOT AUTHORIZED)", gate_text):
-            blocked.append("BRIEF-007 / Phase 6: Multi-Tenant Family Alpha (strictly blocked until Founder Web Alpha is live and validated)")
-        
-        rec_match = re.search(r"(?m)^(?:\*\*)?FINAL RECOMMENDATION:(?:\*\*)?\s*(.+)$", gate_text)
+    # Handle prerequisites & recommendations from report
+    prerequisites = section(latest_report_text, "Next phase prerequisites") if latest_report_text else ""
+    if not prerequisites and latest_report_text:
+        rec_match = re.search(r"(?m)^(?:\*\*)?FINAL RECOMMENDATION:(?:\*\*)?\s*(.+)$", latest_report_text)
         if rec_match:
             rec_line = rec_match.group(1).strip("* ")
             prerequisites = f"- {rec_line}\n- Phase 0/1 Foundation & Web Integration (PostgreSQL, background workers, FastAPI API layer, Next.js Web Dashboard)."
-    else:
-        for title in ("Blocked", "Hard gate", "Failures and known limitations"):
-            value = section(latest_text, title) if latest_text else ""
-            blocked.extend(
-                line.strip().lstrip("- ")
-                for line in value.splitlines()
-                if line.strip().startswith("-") and line.strip().lstrip("- ").lower() not in {"none", "none."}
-            )
+        else:
+            prerequisites = section(latest_report_text, "Next phase prerequisites")
+
+    blocked: list[str] = [
+        "BRIEF-007 / Phase 6: Multi-Tenant Family Alpha (strictly blocked until Founder Web Alpha is live and validated)"
+    ]
 
     proposed, accepted = adr_records()
     counts = source_counts()
@@ -276,13 +300,13 @@ Next: {next_summary}.
 
 ## Source Status Counts
 
-{bullets([f"{status}: {count}" for status, count in sorted(counts.items())], "No source entries")}
+{bullets([f"{k}: {v}" for k, v in sorted(counts.items())], "None")}
 
 ## Next Prerequisites
 
-{prerequisites or "- Complete the active brief."}
+{prerequisites if prerequisites else "- None"}
 """
-    STATE_PATH.write_text(output, encoding="utf-8", newline="\n")
+    STATE_PATH.write_text(output.strip() + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
