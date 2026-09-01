@@ -197,10 +197,32 @@ def _finalize_summary(text: str) -> str:
     return f"{text}." if text else f"{_NEXT_SUMMARY_FALLBACK}."
 
 
+def _join_lines_until_sentence(lines: list[str]) -> tuple[str | None, str]:
+    """Progressively join cleaned `lines` (non-empty) until a sentence
+    terminator is found — used both for a colon lead-in and for prose
+    hard-wrapped across physical lines with no terminator on the first
+    line. Returns (sentence, full_paragraph): `sentence` is the first
+    complete sentence found across line boundaries, or None if no line in
+    `lines` ever completes one; when None, `full_paragraph` is every line
+    joined (the loop only runs to completion, without an early break, in
+    that case), for use as the whole-paragraph fallback."""
+    joined = lines[0]
+    sentence = _first_sentence(joined)
+    for line in lines[1:]:
+        if sentence is not None:
+            break
+        joined = f"{joined} {line}"
+        sentence = _first_sentence(joined)
+    return sentence, joined
+
+
 def next_summary_from_prerequisites(prerequisites: str) -> str:
     """Render the first complete sentence (or whole first paragraph, capped
     at 300 chars) of a prerequisites section, never a fragment ending in
-    ':' or ':.'."""
+    ':' or ':.'. A sentence may span several physical lines — a lead-in
+    colon, or hard-wrapped prose with no terminator on its first line —
+    joining stops as soon as a terminator is reached; only a paragraph
+    with no terminator anywhere falls back to the whole joined text."""
     if not prerequisites.strip():
         return f"{_NEXT_SUMMARY_FALLBACK}."
 
@@ -213,21 +235,8 @@ def next_summary_from_prerequisites(prerequisites: str) -> str:
     if not clean_lines:
         return f"{_NEXT_SUMMARY_FALLBACK}."
 
-    candidate = clean_lines[0]
-    if candidate.endswith(":"):
-        # Lead-in colon: keep joining following lines/bullets until a
-        # sentence terminator is reached.
-        joined = candidate
-        sentence = _first_sentence(joined)
-        for line in clean_lines[1:]:
-            if sentence is not None:
-                break
-            joined = f"{joined} {line}"
-            sentence = _first_sentence(joined)
-        result = sentence if sentence is not None else joined
-    else:
-        sentence = _first_sentence(candidate)
-        result = sentence if sentence is not None else " ".join(clean_lines)
+    sentence, joined_paragraph = _join_lines_until_sentence(clean_lines)
+    result = sentence if sentence is not None else joined_paragraph
 
     result = _truncate_on_word_boundary(result)
     return _finalize_summary(result)

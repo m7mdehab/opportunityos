@@ -123,6 +123,45 @@ class NextSummaryTest(unittest.TestCase):
         self.assertTrue(next_summary.endswith("."))
         self.assertLessEqual(len(next_summary), 300)
 
+    def test_hard_wrapped_paragraph_stops_at_end_of_first_sentence(self) -> None:
+        # Reproduces reports/REPORT-FR-003.md ## 10. Next phase prerequisites:
+        # prose hard-wrapped at ~90 columns, so the first physical line has
+        # no sentence terminator. The naive "join whole paragraph, truncate
+        # at 300 chars" fallback lands mid-way through the *second*
+        # sentence; the fix must stop at the end of the first sentence
+        # instead, however many physical lines that takes.
+        line1 = (
+            "Alpha bravo charlie delta echo foxtrot golf hotel india juliett "
+            "kilo lima mike november oscar papa quebec romeo sierra tango "
+            "uniform victor"
+        )
+        line2 = (
+            "whiskey xray yankee zulu alpha bravo charlie delta echo foxtrot "
+            "golf hotel india juliett kilo lima mike november oscar papa "
+            "quebec romeo."
+        )
+        sentence_two = (
+            "Second sentence marker unique tail text that must never appear "
+            "truncated inside the rendered next summary line because it "
+            "belongs to the following sentence entirely and is here only to "
+            "prove the bug would have leaked into it if the fix were missing "
+            "from the generator implementation today."
+        )
+        prerequisites = f"{line1}\n{line2}\n{sentence_two}"
+        self.assertNotIn(".", line1)  # first physical line has no terminator
+        expected_first_sentence = f"{line1} {line2}"
+        # Sanity: a naive join-then-truncate-at-300 approach would slice
+        # into the second sentence, so this fixture actually exercises the
+        # bug rather than accidentally being safe either way.
+        naive_joined = f"{line1} {line2} {sentence_two}"
+        self.assertIn("Second sentence marker", naive_joined[:300])
+
+        next_summary = generate_state.next_summary_from_prerequisites(prerequisites)
+
+        self.assertEqual(next_summary, expected_first_sentence)
+        self.assertNotIn("Second sentence marker", next_summary)
+        self.assertTrue(next_summary.endswith("romeo."))
+
     def test_state_md_next_line_has_no_colon_fragment(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

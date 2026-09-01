@@ -2,22 +2,22 @@
 # OpportunityOS State
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
-Last shipped: BRIEF-FR-002 — 2026-09-01.
-Active work: BRIEF-FR-003.
-Phase status: in progress.
+Last shipped: BRIEF-FR-003 — 2026-09-02.
+Active work: none.
+Phase status: passed.
 Blocked: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha (strictly blocked until Founder Web Alpha is live and validated).
-Next: With the engine foundation, PostgreSQL relational persistence backbone, and Alembic versioned migrations established: BRIEF-FR-003: FastAPI REST API Service & Next.js 14+ Founder Web Alpha UI Integration.
+Next: BRIEF-FR-004 is the FastAPI REST service and Next.js Founder Web Alpha slice, renumbered from the provisional "FR-003" naming in the FR-002 handoff, and it must not begin until this brief's pull request has been reviewed and merged by the Overseer.
 
 ## Repository
 
-- **Generated:** 2026-09-01T22:47:46Z
-- **State generated at commit:** `020fe34` — docs(fr-003): write claim ledger before delegation
+- **Generated:** 2026-09-01T23:55:22Z
+- **State generated at commit:** `d81bae0` — docs(d14): add REPORT-FR-003 and fill Master verdicts in the claim ledger
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
 
-- **Brief:** BRIEF-FR-003
-- **Phase status:** in progress
+- **Brief:** none
+- **Phase status:** passed
 - **Open acceptance items:** 0
 - None
 
@@ -32,10 +32,11 @@ Next: With the engine foundation, PostgreSQL relational persistence backbone, an
 - BRIEF-006 — 2026-08-31
 - GATE-FR-001 — 2026-08-31
 - BRIEF-FR-002 — 2026-09-01
+- BRIEF-FR-003 — 2026-09-02
 
 ## Last Phase Outcome
 
-- BRIEF-FR-002 — PASS
+- BRIEF-FR-003 — PASS
 
 ## Decisions
 
@@ -54,6 +55,7 @@ Next: With the engine foundation, PostgreSQL relational persistence backbone, an
 - [ADR-0009: Opportunity Matching, Qualification, and Truth-Locked Tailoring Architecture](adr/ADR-0009-opportunity-matching-and-tailoring-architecture.md)
 - [ADR-0010: Outbound Action Authority, Execution Modes, and Idempotency Architecture](adr/ADR-0010-outbound-action-authority-and-idempotency.md)
 - [ADR-0011: Operational Autonomy, Inbound Signal Processing, Pipeline Synchronization, and Safe Learning](adr/ADR-0011-operational-autonomy-and-feedback-loops.md)
+- [ADR-0012 — Single-Founder Tenancy Through Phase 5](adr/ADR-0012-single-founder-tenancy.md)
 
 ## Blocked Items
 
@@ -68,8 +70,34 @@ Next: With the engine foundation, PostgreSQL relational persistence backbone, an
 
 ## Next Prerequisites
 
-With the engine foundation, PostgreSQL relational persistence backbone, and Alembic versioned migrations established:
-- **BRIEF-FR-003:** FastAPI REST API Service & Next.js 14+ Founder Web Alpha UI Integration.
-- **BRIEF-007 (Private Family Alpha):** Remains strictly BLOCKED until Founder Web Alpha is live and validated.
+BRIEF-FR-004 is the FastAPI REST service and Next.js Founder Web Alpha slice, renumbered from
+the provisional "FR-003" naming in the FR-002 handoff, and it must not begin until this brief's
+pull request has been reviewed and merged by the Overseer. Three results from this brief change
+how it should be scoped.
+
+First, the worker runner now exists, so the API layer must not grow its own inline job
+execution: anything slower than a request belongs on `BackgroundWorkerQueue` behind
+`WorkerRunner`, and FR-004 should state that rather than leave it to taste. Second, the council
+review of the runner surfaced a queue-level gap this brief could not close, because
+`worker/queue.py` is frozen here — a crashed claim is recovered by the stale-lease sweep
+*without* incrementing `retry_count`, so a process-killing poison job retries without bound.
+A web front end makes poison payloads far easier to create, so FR-004, or a small brief before
+it, should fix that where it belongs. Third, ADR-0012 records that persistence is
+single-workspace and that nine of eleven tables carry no tenant key; FR-004 must not add
+authentication that implies multi-tenancy, and its auth model should be explicitly
+single-founder so the Phase 6 tenancy migration brief stays the only place tenancy is
+introduced.
+
+Two constraints follow from what did not close here. `REQ-SEC-003` remains MISSING — backups
+are unencrypted plain JSON, now stated plainly in `scripts/backup_restore.py`'s own docstring —
+and a web-facing deployment is the point at which that stops being comfortable, so FR-004 should
+either carry backup encryption or say why it still defers it. And the seven
+`REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS` source rows are blocked on host access, not on code:
+the 2026-09-02 re-recon found every one of the fifteen re-checked registry entries still
+unreadable, so FR-004 should assume no new source becomes available and build its opportunity
+views against the sources whose `automation.read` is already `allowed`.
+
+- **BRIEF-FR-004:** FastAPI REST API service and Next.js Founder Web Alpha, scoped as above.
+- **BRIEF-007 (Private Family Alpha):** remains strictly BLOCKED until Founder Web Alpha is live and validated, and now additionally gated on the tenancy migration brief ADR-0012 requires.
 
 ---
