@@ -543,8 +543,8 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             source_id="gh-101",
             content_hash="ch-pg-out-1",
         )
-        harness = MockATSHarness(provider="greenhouse")
-        driver = harness.driver
+        harness = MockATSHarness(platform="greenhouse")
+        driver = MockBrowserDriver(harness)
 
         # Prepare manifest
         manifest, answers, red_cnt, unres_cnt = engine.prepare_manifest(
@@ -565,7 +565,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             prepared_manifest=None,
         )
         self.assertEqual(rec_no_manifest.action_status, ActionStatus.BLOCKED)
-        self.assertEqual(driver.submits_count, 0)
+        self.assertEqual(harness.submits_count, 0)
 
         # 2. Execution with prepared manifest -> CONFIRMED & persisted in PostgreSQL
         rec = engine.execute_application(
@@ -576,7 +576,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             prepared_manifest=manifest,
         )
         self.assertEqual(rec.action_status, ActionStatus.CONFIRMED)
-        self.assertEqual(driver.submits_count, 1)
+        self.assertEqual(harness.submits_count, 1)
 
         # Verify persisted in PostgreSQL
         stored_rec = pg_ledger.get_record("default", "founder", opp.id, "application")
@@ -592,7 +592,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             prepared_manifest=manifest,
         )
         self.assertEqual(rec_dup.action_status, ActionStatus.BLOCKED)
-        self.assertEqual(driver.submits_count, 1, "Duplicate must NOT trigger second submit_page call")
+        self.assertEqual(harness.submits_count, 1, "Duplicate must NOT trigger second submit_page call")
 
     def test_case_r_production_operational_orchestrator_with_postgres_store(self):
         """Case R: Real ProductionOperationalOrchestrator executes against PostgresInboxStore through full lifecycle."""
@@ -602,7 +602,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             provider="gmail", provider_message_id="msg-pg-1", thread_id="th-pg-1",
             sender_email="recruiter@acme.com", sender_name="Recruiter",
             recipient_email="founder@example.com", subject="Application Confirmation: Staff AI",
-            snippet="Thank you for applying to Staff AI at Acme", body_text="We have received your application for Staff AI.",
+            snippet="Thank you for applying to Staff AI at Acme. Reference: REQ-ASHBY-1", body_text="We have received your application for Staff AI. Reference: REQ-ASHBY-1",
             body_html="", received_at="2026-08-30T10:00:00Z",
             headers=(("From", "recruiter@acme.com"), ("Subject", "Application Confirmation: Staff AI")),
             attachment_names=(),
@@ -611,7 +611,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             provider="gmail", provider_message_id="msg-pg-2", thread_id="th-pg-1",
             sender_email="recruiter@acme.com", sender_name="Recruiter",
             recipient_email="founder@example.com", subject="Interview Invitation: Staff AI",
-            snippet="We would like to invite you for an interview", body_text="Let's schedule an interview for Staff AI.",
+            snippet="We would like to invite you for an interview. Reference: REQ-ASHBY-1", body_text="Let's schedule an interview for Staff AI. Reference: REQ-ASHBY-1",
             body_html="", received_at="2026-08-30T14:00:00Z",
             headers=(("From", "recruiter@acme.com"), ("Subject", "Interview Invitation: Staff AI")),
             attachment_names=(),
@@ -624,7 +624,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             id="opp-pg-inbox-1", title="Staff AI", organization="Acme",
             description="AI engineer role", track=Track.EMPLOYMENT,
             source="ashby", source_url="https://ashby.com/acme/1",
-            source_id="ashby-1",
+            source_id="REQ-ASHBY-1",
             content_hash="ch-pg-inbox-1",
         )
         out_rec = OutboundActionRecord(
@@ -638,6 +638,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             manifest_hash="man-pg-1", action_status=ActionStatus.CONFIRMED,
             idempotency_key="idemp-pg-1", created_at="2026-08-30T09:00:00Z",
             updated_at="2026-08-30T09:05:00Z",
+            external_reference_id="REQ-ASHBY-1",
         )
 
         orchestrator = ProductionOperationalOrchestrator(
