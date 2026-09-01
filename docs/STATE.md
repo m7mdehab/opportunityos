@@ -10,8 +10,8 @@ Next: With the engine foundation, PostgreSQL relational persistence backbone, an
 
 ## Repository
 
-- **Generated:** 2026-09-01T00:56:41Z
-- **State generated at commit:** `b1f5d9c` — fix(test): configure CI migrations, correct test Opportunity source_id, and fix InboundIngestionService __init__
+- **Generated:** 2026-09-01T00:59:55Z
+- **State generated at commit:** `b355821` — fix(storage): align MockATSHarness platform and exact reference correlation in integration tests
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
