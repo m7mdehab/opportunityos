@@ -318,7 +318,7 @@ class AdversarialInboxTests(unittest.TestCase):
         sig_rej = ResponseClassifier().classify(ev_early_rej)
         sig_int = ResponseClassifier().classify(ev_late_int)
 
-        store = PipelineEventStore()
+        store = PipelineEventStore(store=DurableInboxStore(":memory:"))
         corr_int = CorrelationEvidence(signal_id=sig_int.signal_id, opportunity_id=opp_id, outbound_action_id=None, status=CorrelationStatus.EXACT_REFERENCE_MATCH, matching_criteria=(), confidence=1.0, is_authoritative=True)
         corr_rej = CorrelationEvidence(signal_id=sig_rej.signal_id, opportunity_id=opp_id, outbound_action_id=None, status=CorrelationStatus.EXACT_REFERENCE_MATCH, matching_criteria=(), confidence=1.0, is_authoritative=True)
 

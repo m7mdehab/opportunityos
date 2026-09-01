@@ -540,6 +540,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             track=Track.EMPLOYMENT,
             source="greenhouse",
             source_url="https://boards.greenhouse.io/cloudtech/jobs/101",
+            source_id="gh-101",
             content_hash="ch-pg-out-1",
         )
         harness = MockATSHarness(provider="greenhouse")
@@ -623,6 +624,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             id="opp-pg-inbox-1", title="Staff AI", organization="Acme",
             description="AI engineer role", track=Track.EMPLOYMENT,
             source="ashby", source_url="https://ashby.com/acme/1",
+            source_id="ashby-1",
             content_hash="ch-pg-inbox-1",
         )
         out_rec = OutboundActionRecord(

@@ -108,9 +108,6 @@ class GmailReadOnlyAdapter:
         return tuple(evidence_list), str(next_token)
 
 
-from storage.engine import ProductionDatabaseConfigurationError
-
-
 class InboundIngestionService:
     """Ingests messages from a transport, guarantees durable storage and skippable-only-when-processed semantics."""
     def __init__(self, transport: InboundMailTransport, store: Union[DurableInboxStore, PostgresInboxStore] | None = None) -> None:
