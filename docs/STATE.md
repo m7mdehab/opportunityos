@@ -3,21 +3,21 @@
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
 Last shipped: BRIEF-FR-002 — 2026-09-01.
-Active work: none.
-Phase status: passed.
+Active work: BRIEF-FR-003.
+Phase status: in progress.
 Blocked: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha (strictly blocked until Founder Web Alpha is live and validated).
-Next: With the engine foundation, PostgreSQL relational persistence backbone, and Alembic versioned migrations established:.
+Next: With the engine foundation, PostgreSQL relational persistence backbone, and Alembic versioned migrations established: BRIEF-FR-003: FastAPI REST API Service & Next.js 14+ Founder Web Alpha UI Integration.
 
 ## Repository
 
-- **Generated:** 2026-09-01T19:33:08Z
-- **State generated at commit:** `82a2671` — fix(storage): refine orchestrator unconfigured fail-closed test in test_case_p
+- **Generated:** 2026-09-01T22:47:46Z
+- **State generated at commit:** `020fe34` — docs(fr-003): write claim ledger before delegation
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
 
-- **Brief:** none
-- **Phase status:** passed
+- **Brief:** BRIEF-FR-003
+- **Phase status:** in progress
 - **Open acceptance items:** 0
 - None
 
@@ -61,7 +61,10 @@ Next: With the engine foundation, PostgreSQL relational persistence backbone, an
 
 ## Source Status Counts
 
-- None
+- allowed_ok: 19
+- deliberately_not_fetched: 16
+- parse_empty: 2
+- robots_unreachable: 15
 
 ## Next Prerequisites
 
