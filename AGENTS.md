@@ -59,6 +59,8 @@ prohibited. PUT, PATCH, and DELETE remain prohibited for every external host.
 3. Run `python scripts/generate_state.py` and commit the generated `docs/STATE.md`.
 4. Run the narrow checks first, then all repository checks.
 
+Reports and ADRs name roles, not model vendors.
+
 ## Parallel Work Policy
 
 - Use one branch per brief and one worktree per parallel sub-agent.
