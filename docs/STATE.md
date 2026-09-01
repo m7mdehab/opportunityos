@@ -10,8 +10,8 @@ Next: With the engine foundation, PostgreSQL relational persistence backbone, an
 
 ## Repository
 
-- **Generated:** 2026-09-01T01:06:32Z
-- **State generated at commit:** `d37b104` — fix(storage): add missing test imports and configure submit authority for Case Q
+- **Generated:** 2026-09-01T01:08:52Z
+- **State generated at commit:** `5a960fb` — fix(ci): install package in editable mode so updated sources are imported
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
