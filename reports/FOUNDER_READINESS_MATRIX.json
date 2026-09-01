@@ -951,7 +951,7 @@
     "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "None",
     "live_dependency": "None",
-    "gap_explanation": "None. StaleOpportunityReverifier re-checks a posting URL and flags it stale on HTTP 404/410 before high-effort action; covered by opportunity/test_discovery_reverification.py::test_reverification_mock.",
+    "gap_explanation": "StaleOpportunityReverifier.reverify_url is implemented and unit-tested (opportunity/test_discovery_reverification.py::test_reverification_mock) to flag a URL stale on HTTP 404/410, but it is not called from anywhere in the pipeline, worker, or matching code \u2014 only from its own test \u2014 so the 'before high-effort action' re-check the requirement describes is not actually wired into any pre-action gate yet.",
     "bucket": "FOUNDER_ENGINE_BLOCKER",
     "status_history": [
       {
@@ -1020,13 +1020,13 @@
     "criticality": "P1",
     "phase": "Phase 1",
     "status": "REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS",
-    "evidence_strength": "DOCUMENTED_ONLY",
-    "implementation_evidence": "docs/SOURCE_REGISTRY.yaml:ashby",
-    "tests": "None (outbound mock exists)",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "opportunity/adapters/ashby.py, docs/SOURCE_REGISTRY.yaml:ashby",
+    "tests": "opportunity/test_discovery_reverification.py::test_ashby_adapter_parsing",
     "ci_evidence": "None",
     "later_authority": "None",
-    "live_dependency": "Live, authenticated access to the Ashby posting-API host api.ashbyhq.com. The 2026-09-02 re-recon (docs/SOURCE_EVIDENCE.md, 'Re-recon 2026-09-02 (BRIEF-FR-003 D11)') found GET /robots.txt returns HTTP 401 on all three attempts with no credentials supplied; automation.read stays disabled in docs/SOURCE_REGISTRY.yaml pending Ashby API access.",
-    "gap_explanation": "Registered in SOURCE_REGISTRY; dedicated discovery adapter module not created. 2026-09-02 re-recon confirmed api.ashbyhq.com robots.txt cannot be read unauthenticated (HTTP 401); automation.read remains disabled until Ashby API credentials/access are available.",
+    "live_dependency": "Live, authenticated access to the Ashby posting-API host api.ashbyhq.com. The 2026-09-02 re-recon (docs/SOURCE_EVIDENCE.md, 'Re-recon 2026-09-02 (BRIEF-FR-003 D11)') found GET /robots.txt returns HTTP 401 on all three attempts with no credentials supplied; automation.read stays disabled for all 13 ashby:* registry entries pending Ashby API access.",
+    "gap_explanation": "AshbyAdapter.parse_job_posting is implemented and unit-tested against a fixture job payload (opportunity/test_discovery_reverification.py::test_ashby_adapter_parsing), but it does not subclass BaseAdapter and is not registered in opportunity/adapters/__init__.py's get_all_standard_adapters(), so it cannot be invoked through OpportunityPipeline the way the Greenhouse/Lever/Himalayas adapters are. It has also never been exercised against the live host: the 2026-09-02 re-recon found api.ashbyhq.com/robots.txt returns HTTP 401 unauthenticated, so automation.read remains disabled for all 13 ashby:* registry entries pending Ashby API credentials.",
     "bucket": "FOUNDER_ENGINE_BLOCKER",
     "status_history": [
       {
@@ -1050,7 +1050,7 @@
     "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "None",
     "live_dependency": "None",
-    "gap_explanation": "None. SchemaOrgJobPostingExtractor parses schema.org JobPosting JSON-LD into an Opportunity with field provenance; covered by opportunity/test_discovery_reverification.py::test_schema_org_json_ld_extraction.",
+    "gap_explanation": "SchemaOrgJobPostingExtractor is implemented and unit-tested against a fixture JSON-LD payload (opportunity/test_discovery_reverification.py::test_schema_org_json_ld_extraction), but like AshbyAdapter it does not subclass BaseAdapter and is not registered in opportunity/adapters/__init__.py's get_all_standard_adapters(), so it is not invoked by OpportunityPipeline against any real site; it exists only as a standalone, directly-callable parser.",
     "bucket": "FOUNDER_ENGINE_BLOCKER",
     "status_history": [
       {
@@ -1170,13 +1170,13 @@
     "criticality": "P1",
     "phase": "Phase 1",
     "status": "REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS",
-    "evidence_strength": "DOCUMENTED_ONLY",
-    "implementation_evidence": "docs/SOURCE_REGISTRY.yaml:wuzzuf",
-    "tests": "None",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "opportunity/alert_ingestion.py",
+    "tests": "opportunity/test_alert_ingestion.py (exercises the shared AlertIngestionEngine via LinkedIn/Upwork/procurement fixtures; no WUZZUF-shaped fixture)",
     "ci_evidence": "None",
     "later_authority": "None",
     "live_dependency": "Live WUZZUF account with email job alerts enabled and inbox access, so the alert_ingestion policy and parser can be exercised against real alert messages.",
-    "gap_explanation": "Policy set to alert_ingestion; email alert parser not implemented, and validating it requires a live WUZZUF alert inbox that is not available in this environment.",
+    "gap_explanation": "A generic email-alert parser (opportunity/alert_ingestion.py::AlertIngestionEngine.parse_alert_message) is implemented and unit-tested, but only against LinkedIn/Upwork/procurement-shaped fixtures; no WUZZUF-shaped fixture exists, and there is no live WUZZUF alert inbox to validate its actual email format or exercise ingestion end-to-end.",
     "bucket": "FOUNDER_ENGINE_BLOCKER",
     "status_history": [
       {
@@ -1194,13 +1194,13 @@
     "criticality": "P1",
     "phase": "Phase 1",
     "status": "REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS",
-    "evidence_strength": "DOCUMENTED_ONLY",
-    "implementation_evidence": "docs/SOURCE_REGISTRY.yaml:bayt",
-    "tests": "None",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "opportunity/alert_ingestion.py",
+    "tests": "opportunity/test_alert_ingestion.py (exercises the shared AlertIngestionEngine via LinkedIn/Upwork/procurement fixtures; no Bayt-shaped fixture)",
     "ci_evidence": "None",
     "later_authority": "None",
     "live_dependency": "Live Bayt account with email job alerts enabled and inbox access, so the alert_ingestion policy and parser can be exercised against real alert messages.",
-    "gap_explanation": "Policy set to alert_ingestion; email alert parser not implemented, and validating it requires a live Bayt alert inbox that is not available in this environment.",
+    "gap_explanation": "A generic email-alert parser (opportunity/alert_ingestion.py::AlertIngestionEngine.parse_alert_message) is implemented and unit-tested, but only against LinkedIn/Upwork/procurement-shaped fixtures; no Bayt-shaped fixture exists, and there is no live Bayt alert inbox to validate its actual email format or exercise ingestion end-to-end.",
     "bucket": "FOUNDER_ENGINE_BLOCKER",
     "status_history": [
       {
@@ -1218,13 +1218,13 @@
     "criticality": "P1",
     "phase": "Phase 1",
     "status": "REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS",
-    "evidence_strength": "DOCUMENTED_ONLY",
-    "implementation_evidence": "docs/SOURCE_REGISTRY.yaml:naukrigulf",
-    "tests": "None",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "opportunity/alert_ingestion.py",
+    "tests": "opportunity/test_alert_ingestion.py (exercises the shared AlertIngestionEngine via LinkedIn/Upwork/procurement fixtures; no Naukrigulf-shaped fixture)",
     "ci_evidence": "None",
     "later_authority": "None",
     "live_dependency": "Live Naukrigulf account with email job alerts enabled and inbox access, so the alert_ingestion policy and parser can be exercised against real alert messages.",
-    "gap_explanation": "Policy set to alert_ingestion; email alert parser not implemented, and validating it requires a live Naukrigulf alert inbox that is not available in this environment.",
+    "gap_explanation": "A generic email-alert parser (opportunity/alert_ingestion.py::AlertIngestionEngine.parse_alert_message) is implemented and unit-tested, but only against LinkedIn/Upwork/procurement-shaped fixtures; no Naukrigulf-shaped fixture exists, and there is no live Naukrigulf alert inbox to validate its actual email format or exercise ingestion end-to-end.",
     "bucket": "FOUNDER_ENGINE_BLOCKER",
     "status_history": [
       {
@@ -1242,13 +1242,13 @@
     "criticality": "P1",
     "phase": "Phase 1",
     "status": "REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS",
-    "evidence_strength": "DOCUMENTED_ONLY",
-    "implementation_evidence": "docs/SOURCE_REGISTRY.yaml:gulftalent",
-    "tests": "None",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "opportunity/alert_ingestion.py",
+    "tests": "opportunity/test_alert_ingestion.py (exercises the shared AlertIngestionEngine via LinkedIn/Upwork/procurement fixtures; no GulfTalent-shaped fixture)",
     "ci_evidence": "None",
     "later_authority": "None",
     "live_dependency": "Live GulfTalent account with email job alerts enabled and inbox access, so the alert_ingestion policy and parser can be exercised against real alert messages.",
-    "gap_explanation": "Policy set to alert_ingestion; email alert parser not implemented, and validating it requires a live GulfTalent alert inbox that is not available in this environment.",
+    "gap_explanation": "A generic email-alert parser (opportunity/alert_ingestion.py::AlertIngestionEngine.parse_alert_message) is implemented and unit-tested, but only against LinkedIn/Upwork/procurement-shaped fixtures; no GulfTalent-shaped fixture exists, and there is no live GulfTalent alert inbox to validate its actual email format or exercise ingestion end-to-end.",
     "bucket": "FOUNDER_ENGINE_BLOCKER",
     "status_history": [
       {
@@ -1266,13 +1266,13 @@
     "criticality": "P0",
     "phase": "Phase 1",
     "status": "REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS",
-    "evidence_strength": "DOCUMENTED_ONLY",
-    "implementation_evidence": "docs/SOURCE_REGISTRY.yaml:linkedin",
-    "tests": "None",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "opportunity/alert_ingestion.py",
+    "tests": "opportunity/test_alert_ingestion.py::test_parse_linkedin_job_alert",
     "ci_evidence": "None",
     "later_authority": "None",
     "live_dependency": "Live LinkedIn account with job alert emails enabled and inbox access, so the deep-link/alert policy and parser can be exercised against real alert messages.",
-    "gap_explanation": "Manual deep link policy documented; alert email parser not implemented, and validating it requires a live LinkedIn alert inbox that is not available in this environment.",
+    "gap_explanation": "The generic email-alert parser (opportunity/alert_ingestion.py::AlertIngestionEngine.parse_alert_message) is implemented and directly unit-tested against a LinkedIn-shaped fixture (opportunity/test_alert_ingestion.py::test_parse_linkedin_job_alert), but it has never been exercised against a live LinkedIn alert inbox.",
     "bucket": "FOUNDER_ENGINE_BLOCKER",
     "status_history": [
       {
@@ -1290,13 +1290,13 @@
     "criticality": "P1",
     "phase": "Phase 1",
     "status": "REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS",
-    "evidence_strength": "DOCUMENTED_ONLY",
-    "implementation_evidence": "docs/SOURCE_REGISTRY.yaml:indeed",
-    "tests": "None",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "opportunity/alert_ingestion.py",
+    "tests": "opportunity/test_alert_ingestion.py (exercises the shared AlertIngestionEngine via LinkedIn/Upwork/procurement fixtures; no Indeed-shaped fixture)",
     "ci_evidence": "None",
     "later_authority": "None",
     "live_dependency": "Live Indeed account with job alert emails enabled and inbox access, so the deep-link/alert policy and parser can be exercised against real alert messages.",
-    "gap_explanation": "Manual deep link policy documented; alert email parser not implemented, and validating it requires a live Indeed alert inbox that is not available in this environment.",
+    "gap_explanation": "A generic email-alert parser (opportunity/alert_ingestion.py::AlertIngestionEngine.parse_alert_message) is implemented and unit-tested, but only against LinkedIn/Upwork/procurement-shaped fixtures; no Indeed-shaped fixture exists, and there is no live Indeed alert inbox to validate its actual email format or exercise ingestion end-to-end.",
     "bucket": "FOUNDER_ENGINE_BLOCKER",
     "status_history": [
       {
@@ -1990,7 +1990,7 @@
     "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "None",
     "live_dependency": "None",
-    "gap_explanation": "None. AtsDocumentQualityHarness extracts and inspects DOCX/PDF text and verifies claim parity between the rendered artifact and the source TailoredArtifact; covered by matching/test_binary_export.py.",
+    "gap_explanation": "AtsDocumentQualityHarness implements and matching/test_binary_export.py tests text extraction from DOCX/PDF and title/heading/content/claim substring parity between the two renders. It does not implement the visual/geometric side of the requirement: no heading-position/layout check, no glyph-level rendering check, and no page-overflow/clipping detection. This is a text-content parity harness, not a visual render regression suite.",
     "bucket": "FOUNDER_ENGINE_BLOCKER",
     "status_history": [
       {
