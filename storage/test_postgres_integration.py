@@ -130,7 +130,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
                 deadline=None, created_at="2026-08-30T10:01:00Z",
             )
             store.store_notification(notif)
-            store.save_checkpoint("gmail:cursor", "cursor-999")
+            store.save_checkpoint("gmail:cursor", "cursor-999", "2026-08-30T10:05:00Z")
             store.store_reconciliation("rec-101", "act-101", "opp-101", "sig-101", ev.message_content_hash, "Unknown outcome resolved")
 
             # Execute migration into PostgreSQL
@@ -191,7 +191,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
                 external_reference_id="ASH-99988",
             )
             ledger.reserve_submission(rec)
-            ledger.record_outcome(rec)
+            ledger.transition_status(rec.idempotency_key, ActionStatus.CONFIRMED, evidence=rec.confirmation_evidence)
 
             session = self.SessionFactory()
             migrator = LegacySqliteToPostgresMigrator(session)

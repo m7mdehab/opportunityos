@@ -10,8 +10,8 @@ Next: With the engine foundation, PostgreSQL relational persistence backbone, an
 
 ## Repository
 
-- **Generated:** 2026-09-01T00:29:16Z
-- **State generated at commit:** `1708554` — fix(postgres): align PostgresIdempotencyLedger, PostgresInboxStore, and tests with canonical model contracts
+- **Generated:** 2026-09-01T00:31:06Z
+- **State generated at commit:** `560d214` — fix(storage): update test_postgres_integration with exact method calls
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
