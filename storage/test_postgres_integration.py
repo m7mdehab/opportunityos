@@ -49,7 +49,7 @@ from outbound.models import (
     OutboundActionRecord,
     PreSubmitManifest,
 )
-from outbound.browser_engine import OutboundBrowserEngine
+from outbound.browser_engine import MockBrowserDriver, OutboundBrowserEngine
 from outbound.mock_harness import MockATSHarness
 from outbound.authority import ActionAuthority, GlobalKillSwitch
 from outbound.registry import AdapterRegistry, SourceActionRegistry
