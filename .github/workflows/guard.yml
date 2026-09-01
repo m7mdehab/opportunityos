@@ -14,6 +14,6 @@ jobs:
     env:
       FOUNDER_NAME_PATTERNS: ${{ secrets.FOUNDER_NAME_PATTERNS }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Scan secrets and mirrored PII
         run: python scripts/check_guard.py

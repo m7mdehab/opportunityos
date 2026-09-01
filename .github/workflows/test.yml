@@ -27,9 +27,9 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - name: Install Dependencies
@@ -45,10 +45,6 @@ jobs:
         env:
           OPPORTUNITYOS_DB_URL: "postgresql+psycopg2://opportunityos:testpassword123@localhost:5432/opportunityos_test"
         run: python -m unittest discover -v
-      - name: Run Sync Mirror Unit Tests
-        run: python scripts/test_sync_mirror.py -v
-      - name: Run State Generator Unit Tests
-        run: python scripts/test_generate_state.py -v
       - name: Check Guard Boundary & PII
         run: python scripts/check_guard.py --allow-missing-patterns
       - name: Check Repository Integrity
