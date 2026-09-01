@@ -6,12 +6,12 @@ Last shipped: BRIEF-FR-002 — 2026-09-01.
 Active work: none.
 Phase status: passed.
 Blocked: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha (strictly blocked until Founder Web Alpha is live and validated).
-Next: With the engine foundation and production persistence backbone established:.
+Next: With the engine foundation, PostgreSQL relational persistence backbone, and Alembic versioned migrations established:.
 
 ## Repository
 
-- **Generated:** 2026-09-01T00:04:17Z
-- **State generated at commit:** `2652f5c` — fix(state): restore exclude STATE.md in source_head to prevent commit-hash skew
+- **Generated:** 2026-09-01T00:34:33Z
+- **State generated at commit:** `d6df10f` — fix(storage): use record_reconciliation in test_postgres_integration
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -65,7 +65,7 @@ Next: With the engine foundation and production persistence backbone established
 
 ## Next Prerequisites
 
-With the engine foundation and production persistence backbone established:
+With the engine foundation, PostgreSQL relational persistence backbone, and Alembic versioned migrations established:
 - **BRIEF-FR-003:** FastAPI REST API Service & Next.js 14+ Founder Web Alpha UI Integration.
 - **BRIEF-007 (Private Family Alpha):** Remains strictly BLOCKED until Founder Web Alpha is live and validated.
 

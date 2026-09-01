@@ -1,4 +1,5 @@
 import json
+import hashlib
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from sqlalchemy import (
@@ -41,10 +42,6 @@ class OpportunityRecord(Base):
 
     provenances = relationship("FieldProvenanceRecord", back_populates="opportunity", cascade="all, delete-orphan")
     feedback = relationship("FounderFeedbackRecord", back_populates="opportunity", cascade="all, delete-orphan")
-    outbound_actions = relationship("OutboundActionRecord", back_populates="opportunity", cascade="all, delete-orphan")
-    idempotency_reservations = relationship("IdempotencyReservationRecord", back_populates="opportunity", cascade="all, delete-orphan")
-    pipeline_events = relationship("PipelineEventRecord", back_populates="opportunity", cascade="all, delete-orphan")
-    notifications = relationship("NotificationRecord", back_populates="opportunity", cascade="all, delete-orphan")
 
 
 class FieldProvenanceRecord(Base):
@@ -63,23 +60,36 @@ class FieldProvenanceRecord(Base):
     opportunity = relationship("OpportunityRecord", back_populates="provenances")
 
 
-class OutboundActionRecord(Base):
+class OutboundActionRecordModel(Base):
     __tablename__ = "outbound_actions"
 
     id = Column(String(64), primary_key=True)
-    opportunity_id = Column(String(64), ForeignKey("opportunities.id", ondelete="CASCADE"), nullable=False, index=True)
+    opportunity_id = Column(String(64), nullable=False, index=True)
+    opportunity_content_hash = Column(String(64), nullable=False)
+    workspace = Column(String(64), nullable=False, index=True)
+    candidate_id = Column(String(64), nullable=False, index=True)
+    track = Column(String(32), nullable=False)
+    source = Column(String(128), nullable=False)
+    adapter_name = Column(String(64), nullable=False)
+    adapter_version = Column(String(32), nullable=False)
     execution_mode = Column(String(32), nullable=False)
+    qualification_decision = Column(String(32), nullable=False)
+    match_score_snapshot = Column(Float, nullable=False)
+    artifact_ids_json = Column(Text, nullable=False)
+    artifact_hashes_json = Column(Text, nullable=False)
+    manifest_hash = Column(String(64), nullable=False)
     action_status = Column(String(32), nullable=False, index=True)
     idempotency_key = Column(String(128), unique=True, nullable=False, index=True)
-    prepared_manifest_hash = Column(String(64), nullable=True)
     receipt_reference = Column(String(128), nullable=True)
     confirmation_text = Column(Text, nullable=True)
     receipt_checksum = Column(String(64), nullable=True)
-    error_message = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-
-    opportunity = relationship("OpportunityRecord", back_populates="outbound_actions")
+    confirmation_evidence_json = Column(Text, nullable=True)
+    blocker_reason = Column(Text, nullable=True)
+    manual_edits_json = Column(Text, nullable=True)
+    external_reference_id = Column(String(128), nullable=True)
+    record_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class IdempotencyReservationRecord(Base):
@@ -87,62 +97,96 @@ class IdempotencyReservationRecord(Base):
 
     idempotency_key = Column(String(128), primary_key=True)
     action_id = Column(String(64), nullable=False, index=True)
-    opportunity_id = Column(String(64), ForeignKey("opportunities.id", ondelete="CASCADE"), nullable=False, index=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    status = Column(String(32), nullable=False)
-
-    opportunity = relationship("OpportunityRecord", back_populates="idempotency_reservations")
+    workspace = Column(String(64), nullable=False)
+    candidate_id = Column(String(64), nullable=False)
+    opportunity_id = Column(String(64), nullable=False, index=True)
+    action_type = Column(String(64), nullable=False)
+    action_status = Column(String(32), nullable=False)
+    record_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class InboundEvidenceRecord(Base):
     __tablename__ = "inbound_evidence"
 
-    id = Column(String(64), primary_key=True)
-    message_id = Column(String(128), nullable=False, index=True)
-    source_provider = Column(String(64), nullable=False)
-    sender = Column(String(255), nullable=False)
+    message_content_hash = Column(String(64), primary_key=True)
+    provider = Column(String(64), nullable=False)
+    provider_message_id = Column(String(128), nullable=False, index=True)
+    thread_id = Column(String(128), nullable=False, index=True)
+    sender_email = Column(String(255), nullable=False)
+    sender_name = Column(String(255), nullable=False)
+    recipient_email = Column(String(255), nullable=False)
     subject = Column(String(512), nullable=False)
-    body_hash = Column(String(64), nullable=False)
+    snippet = Column(Text, nullable=False)
+    body_text = Column(Text, nullable=False)
+    body_html = Column(Text, nullable=False)
     received_at = Column(DateTime, nullable=False)
+    headers_json = Column(Text, nullable=False)
+    attachment_names_json = Column(Text, nullable=False)
     processing_status = Column(String(32), default="FETCHED", nullable=False, index=True)
     processed_at = Column(DateTime, nullable=True)
-    raw_headers_json = Column(Text, nullable=True)
 
 
 class PipelineEventRecord(Base):
     __tablename__ = "pipeline_events"
 
-    id = Column(String(64), primary_key=True)
-    opportunity_id = Column(String(64), ForeignKey("opportunities.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_id = Column(String(64), primary_key=True)
+    opportunity_id = Column(String(64), nullable=False, index=True)
     signal_id = Column(String(64), nullable=False, index=True)
-    signal_category = Column(String(64), nullable=False, index=True)
-    source_timestamp = Column(DateTime, nullable=False)
-    confidence = Column(Float, nullable=False)
-    provenance_hash = Column(String(64), nullable=False)
-    event_metadata_json = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-
-    opportunity = relationship("OpportunityRecord", back_populates="pipeline_events")
+    previous_stage = Column(String(64), nullable=False)
+    new_stage = Column(String(64), nullable=False)
+    track = Column(String(32), nullable=False)
+    trigger_category = Column(String(64), nullable=False, index=True)
+    message_content_hash = Column(String(64), nullable=False, index=True)
+    occurred_at = Column(DateTime, nullable=False)
+    recorded_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    actor = Column(String(64), nullable=False)
+    notes = Column(Text, nullable=False)
 
     __table_args__ = (
-        UniqueConstraint("opportunity_id", "signal_id", name="uq_pipeline_opp_signal"),
+        UniqueConstraint("signal_id", "opportunity_id", name="uq_pipeline_signal_opp"),
     )
 
 
 class NotificationRecord(Base):
-    __tablename__ = "notifications"
+    __tablename__ = "founder_notifications"
 
-    id = Column(String(64), primary_key=True)
-    notification_key = Column(String(128), unique=True, nullable=False, index=True)
-    opportunity_id = Column(String(64), ForeignKey("opportunities.id", ondelete="CASCADE"), nullable=False, index=True)
+    notification_key = Column(String(128), primary_key=True)
+    notification_id = Column(String(64), nullable=False, index=True)
+    opportunity_id = Column(String(64), nullable=True, index=True)
+    signal_id = Column(String(64), nullable=False, index=True)
     priority = Column(String(32), nullable=False, index=True)
-    headline = Column(String(255), nullable=False)
-    body = Column(Text, nullable=False)
+    category = Column(String(64), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    message = Column(Text, nullable=False)
     action_required = Column(Boolean, default=False)
     deadline = Column(String(64), nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    acknowledged = Column(Boolean, default=False)
+    acknowledged_at = Column(DateTime, nullable=True)
 
-    opportunity = relationship("OpportunityRecord", back_populates="notifications")
+
+class InboxCheckpointRecord(Base):
+    __tablename__ = "inbox_checkpoints"
+
+    checkpoint_key = Column(String(128), primary_key=True)
+    cursor_value = Column(String(255), nullable=False)
+    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+class ReconciliationRecordModel(Base):
+    __tablename__ = "reconciliation_records"
+
+    reconciliation_id = Column(String(64), primary_key=True)
+    outbound_action_id = Column(String(64), nullable=False, index=True)
+    opportunity_id = Column(String(64), nullable=False, index=True)
+    signal_id = Column(String(64), nullable=False, index=True)
+    inbound_content_hash = Column(String(64), nullable=False, index=True)
+    reason = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    resolved = Column(Boolean, default=False)
+    resolved_at = Column(DateTime, nullable=True)
 
 
 class WorkerJobRecord(Base):
@@ -170,6 +214,7 @@ class FounderFeedbackRecord(Base):
     feedback_label = Column(String(64), nullable=False, index=True)
     structured_reason = Column(String(128), nullable=True)
     notes = Column(Text, nullable=True)
+    dedup_hash = Column(String(64), unique=True, nullable=False, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     opportunity = relationship("OpportunityRecord", back_populates="feedback")

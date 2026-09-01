@@ -6,7 +6,10 @@ from typing import Dict, Any, Optional, Callable
 from sqlalchemy.orm import Session
 from storage.models import WorkerJobRecord
 
+
 class BackgroundWorkerQueue:
+    """Production-ready transactional background worker queue with SKIP LOCKED and lease recovery."""
+
     def __init__(self, session: Session, worker_id: Optional[str] = None):
         self.session = session
         self.worker_id = worker_id or f"worker-{uuid.uuid4().hex[:8]}"
@@ -28,26 +31,35 @@ class BackgroundWorkerQueue:
 
     def claim_next_job(self, lease_duration_seconds: int = 60) -> Optional[WorkerJobRecord]:
         now = datetime.now(timezone.utc)
-        # Find pending or expired running jobs
-        job = (
+        bind = self.session.get_bind()
+        is_postgres = bind.dialect.name == "postgresql" if bind else False
+
+        query = (
             self.session.query(WorkerJobRecord)
             .filter(
                 WorkerJobRecord.status.in_(["PENDING", "RETRY"]),
                 WorkerJobRecord.run_after <= now,
             )
             .order_by(WorkerJobRecord.run_after.asc())
-            .first()
         )
+
+        if is_postgres:
+            query = query.with_for_update(skip_locked=True)
+
+        job = query.first()
+
         if not job:
             # Check for stale leased jobs
-            job = (
+            stale_query = (
                 self.session.query(WorkerJobRecord)
                 .filter(
                     WorkerJobRecord.status == "RUNNING",
                     WorkerJobRecord.lease_expires_at < now,
                 )
-                .first()
             )
+            if is_postgres:
+                stale_query = stale_query.with_for_update(skip_locked=True)
+            job = stale_query.first()
 
         if job:
             job.status = "RUNNING"
@@ -57,7 +69,7 @@ class BackgroundWorkerQueue:
             return job
         return None
 
-    def complete_job(self, job_id: str):
+    def complete_job(self, job_id: str) -> None:
         job = self.session.query(WorkerJobRecord).filter_by(id=job_id).first()
         if job:
             job.status = "COMPLETED"
@@ -65,7 +77,7 @@ class BackgroundWorkerQueue:
             job.lease_expires_at = None
             self.session.commit()
 
-    def fail_job(self, job_id: str, error_message: str, base_backoff_seconds: int = 30, backoff_seconds: Optional[int] = None):
+    def fail_job(self, job_id: str, error_message: str, base_backoff_seconds: int = 30, backoff_seconds: Optional[int] = None) -> None:
         job = self.session.query(WorkerJobRecord).filter_by(id=job_id).first()
         if job:
             job.retry_count += 1
