@@ -10,8 +10,8 @@ Next: With the engine foundation and production persistence backbone established
 
 ## Repository
 
-- **Generated:** 2026-09-01T00:01:24Z
-- **State generated at commit:** `9d05f79` — fix(ci): fix state generator git log parsing and test assertion compatibility
+- **Generated:** 2026-09-01T00:03:25Z
+- **State generated at commit:** `54cfb99` — fix(state): restore exclude STATE.md in source_head to prevent commit-hash skew
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief

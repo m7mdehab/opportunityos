@@ -27,6 +27,7 @@ def source_head() -> tuple[str, str]:
         "--format=%H%x00%s",
         "--",
         ".",
+        ":(exclude)docs/STATE.md",
     )
     if not commit:
         return "uncommitted", "repository foundation"
