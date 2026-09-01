@@ -54,7 +54,7 @@ was worked around, nothing was fabricated, and seven requirement rows moved to
 
 ## 2. Status
 
-**PASS.** All fifteen deliverables D0–D14 are closed with no `NOT_CLOSED` and no `BLOCKED_ENV`; A-0 through A-6 pass for both the Master and the independent verifier; every council finding on D5 and D10 is fixed or explicitly dispositioned; and the four required workflows are green on the pull-request head.
+__STATUS__
 
 ---
 
@@ -240,7 +240,7 @@ is closed only where both say PASS.
 | D11-2 | D11 | `python -m unittest discover -s recon -t . -v 2>&1 \| tail -3` | `Ran 67 tests`, `OK` | d11-recon.txt | PASS | |
 | D12-1 | D12 | `grep -n "actions/checkout@\|actions/setup-python@" .github/workflows/*.yml` | current latest majors, verified against GitHub | d12-ci-hygiene.txt | PASS | |
 | D12-2 | D12 | `Mandatory Governance & Test Suite` conclusion on the PR head | `success`, no `Node.js 20 is deprecated` warning | d12-ci-hygiene.txt | CI_PENDING | CI_PENDING |
-| D13-1 | D13 | `grep -rniE "antigravity\|chatgpt\|codex\|copilot\|gemini" reports/REPORT-FR-003.md docs/adr/ADR-0012*.md` | no output (exit 1) | d13-vendor-neutral.txt | PASS | |
+| D13-1 | D13 | the five-vendor-name `grep -rniE` from BRIEF-FR-003 D13 (pattern given verbatim in `briefs/BRIEF-FR-003.md` D13), run over `reports/REPORT-FR-003.md` and `docs/adr/ADR-0012*.md`. The pattern is referenced rather than quoted here because this ledger is reproduced inside `reports/REPORT-FR-003.md`, and an inline copy would make the check match itself. | no output (exit 1) | d13-vendor-neutral.txt | PASS | |
 | D13-2 | D13 | `grep -n "Reports and ADRs name roles, not model vendors." AGENTS.md` | one match | d13-vendor-neutral.txt | PASS | |
 | D14-1 | D14 | `ls reports/REPORT-FR-003.md reports/evidence/FR-003/CLAIMS.md` | both exist | d14-close.txt | PENDING | |
 | D14-2 | D14 | fresh render of `docs/STATE.md` diffed against the committed file | no drift | a5-state-sync.txt | PENDING | |
@@ -402,6 +402,15 @@ brief's own arithmetic is recorded in §8.
     per-column dumps with no check firing. Out of scope — D5 scopes the check to the
     table set, and column-level dump generation is a redesign of the dump format that
     the frozen-brief rule places outside this brief. Recorded for a future brief.
+
+**12.** D13's acceptance grep is scoped, and its own pattern is referenced rather than quoted in the
+    claim ledger. §10 item 5 requires the report to reproduce `CLAIMS.md`, and D13's acceptance
+    command greps `reports/REPORT-FR-003.md` for five vendor names. A ledger row quoting that
+    command inline therefore makes the check match itself — the report would fail D13 solely
+    because it documents D13. The ledger row now names the check and points at
+    `briefs/BRIEF-FR-003.md` D13, where the pattern is given verbatim, so the command remains
+    exactly the brief's and runs mechanically over the two files D13 names. No vendor name is
+    used as an attribution anywhere in a document written by this brief.
 
 ---
 

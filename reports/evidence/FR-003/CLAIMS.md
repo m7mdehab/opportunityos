@@ -44,7 +44,7 @@ Verdict columns: `PASS` / `FAIL` / `BLOCKED_ENV` / `CI_VERIFIED_ONLY`.
 | D11-2 | D11 | `python -m unittest discover -s recon -t . -v 2>&1 \| tail -3` | `Ran 67 tests`, `OK` | d11-recon.txt | PASS | |
 | D12-1 | D12 | `grep -n "actions/checkout@\|actions/setup-python@" .github/workflows/*.yml` | current latest majors, verified against GitHub | d12-ci-hygiene.txt | PASS | |
 | D12-2 | D12 | `Mandatory Governance & Test Suite` conclusion on the PR head | `success`, no `Node.js 20 is deprecated` warning | d12-ci-hygiene.txt | CI_PENDING | CI_PENDING |
-| D13-1 | D13 | `grep -rniE "antigravity\|chatgpt\|codex\|copilot\|gemini" reports/REPORT-FR-003.md docs/adr/ADR-0012*.md` | no output (exit 1) | d13-vendor-neutral.txt | PASS | |
+| D13-1 | D13 | the five-vendor-name `grep -rniE` from BRIEF-FR-003 D13 (pattern given verbatim in `briefs/BRIEF-FR-003.md` D13), run over `reports/REPORT-FR-003.md` and `docs/adr/ADR-0012*.md`. The pattern is referenced rather than quoted here because this ledger is reproduced inside `reports/REPORT-FR-003.md`, and an inline copy would make the check match itself. | no output (exit 1) | d13-vendor-neutral.txt | PASS | |
 | D13-2 | D13 | `grep -n "Reports and ADRs name roles, not model vendors." AGENTS.md` | one match | d13-vendor-neutral.txt | PASS | |
 | D14-1 | D14 | `ls reports/REPORT-FR-003.md reports/evidence/FR-003/CLAIMS.md` | both exist | d14-close.txt | PENDING | |
 | D14-2 | D14 | fresh render of `docs/STATE.md` diffed against the committed file | no drift | a5-state-sync.txt | PENDING | |
