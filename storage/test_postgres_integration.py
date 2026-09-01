@@ -54,7 +54,7 @@ from outbound.models import (
     PreSubmitManifest,
     SourceActionPolicy,
 )
-from outbound.browser_engine import OutboundBrowserEngine
+from outbound.browser_engine import MockBrowserDriver, OutboundBrowserEngine
 from outbound.mock_harness import MockATSHarness
 from outbound.authority import ActionAuthority, GlobalKillSwitch
 from outbound.registry import AdapterRegistry, SourceActionRegistry
@@ -534,70 +534,133 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
 
     def test_case_q_outbound_browser_engine_with_postgres_ledger(self):
         """Case Q: Real OutboundBrowserEngine executes against PostgresIdempotencyLedger through full lifecycle."""
-        pg_ledger = PostgresIdempotencyLedger(db_url=self.db_url)
-        engine = OutboundBrowserEngine(ledger=pg_ledger)
+        GlobalKillSwitch.enable()
+        with tempfile.TemporaryDirectory() as ev_dir_str:
+            ev_dir = Path(ev_dir_str)
+            gh_ev = ev_dir / "greenhouse_graduation_evidence.json"
+            gh_ev.write_text(json.dumps({"run_id": "test-gh-run-pg", "success": True}), encoding="utf-8")
 
-        opp = Opportunity(
-            id="opp-pg-outbound-1",
-            title="Senior Systems Architect",
-            organization="CloudTech",
-            description="Looking for Senior Architect",
-            track=Track.EMPLOYMENT,
-            source="greenhouse",
-            source_url="https://boards.greenhouse.io/cloudtech/jobs/101",
-            source_id="gh-101",
-            content_hash="ch-pg-out-1",
-        )
-        harness = MockATSHarness(provider="greenhouse")
-        driver = harness.driver
+            adapter_reg = AdapterRegistry(evidence_dir=ev_dir)
+            adapter_reg.enable_submit("greenhouse")
+            src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
+            auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
 
-        # Prepare manifest
-        manifest, answers, red_cnt, unres_cnt = engine.prepare_manifest(
-            opportunity=opp,
-            driver=driver,
-            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
-            adapter_name="greenhouse",
-        )
-        self.assertIsNotNone(manifest)
-        self.assertEqual(red_cnt, 0)
+            pg_ledger = PostgresIdempotencyLedger(db_url=self.db_url)
+            engine = OutboundBrowserEngine(authority=auth, ledger=pg_ledger)
 
-        # 1. Missing prepared manifest under CONTROLLED_SUBMIT -> BLOCKED
-        rec_no_manifest = engine.execute_application(
-            opportunity=opp,
-            artifact=None,
-            driver=driver,
-            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
-            prepared_manifest=None,
-        )
-        self.assertEqual(rec_no_manifest.action_status, ActionStatus.BLOCKED)
-        self.assertEqual(driver.submits_count, 0)
+            opp = Opportunity(
+                id="opp-pg-outbound-1",
+                title="Senior Systems Architect",
+                organization="CloudTech",
+                description="Looking for Senior Architect",
+                track=Track.EMPLOYMENT,
+                source="greenhouse",
+                source_url="https://boards.greenhouse.io/cloudtech/jobs/101",
+                source_id="gh-101",
+                content_hash="ch-pg-out-1",
+            )
+            tg = TruthGraph()
+            ev = EvidenceRecord(id="ev-pg-1", source="passport", locator="p1", content="Founder Name. Authorized in Egypt. Country: Egypt.")
+            tg.add_evidence(ev)
+            tg.add_assertion(AtomicAssertion(
+                id="a-name", subject_id="founder", predicate="identity.name",
+                value="Founder Name", polarity=Polarity.POSITIVE, modality=Modality.DEFINITE,
+                verification_status=VerificationStatus.VERIFIED, evidence_ids=("ev-pg-1",),
+            ))
+            tg.add_assertion(AtomicAssertion(
+                id="a-auth", subject_id="founder", predicate="authorization.jurisdiction",
+                value="Egypt", polarity=Polarity.POSITIVE, modality=Modality.DEFINITE,
+                verification_status=VerificationStatus.VERIFIED, evidence_ids=("ev-pg-1",),
+            ))
+            tg.add_assertion(AtomicAssertion(
+                id="a-country", subject_id="founder", predicate="identity.country",
+                value="Egypt", polarity=Polarity.POSITIVE, modality=Modality.DEFINITE,
+                verification_status=VerificationStatus.VERIFIED, evidence_ids=("ev-pg-1",),
+            ))
 
-        # 2. Execution with prepared manifest -> CONFIRMED & persisted in PostgreSQL
-        rec = engine.execute_application(
-            opportunity=opp,
-            artifact=None,
-            driver=driver,
-            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
-            prepared_manifest=manifest,
-        )
-        self.assertEqual(rec.action_status, ActionStatus.CONFIRMED)
-        self.assertEqual(driver.submits_count, 1)
+            policy = TailoringPolicy(
+                default_notice_period_days=30,
+                default_currency="USD",
+                default_hourly_rate=100.0,
+                default_sponsorship_required=False,
+            )
+            raw_artifact = TailoredArtifact(
+                artifact_id="art-pg-1",
+                artifact_type=ArtifactType.TAILORED_CV,
+                opportunity_id=opp.id,
+                opportunity_content_hash=opp.content_hash,
+                template_version="1.0",
+                policy_version="1.0",
+                title="CV",
+                sections=(),
+                generated_claims=(),
+                commitment_checklist=(),
+                compiled_at="2026-08-30T00:00:00Z",
+            )
+            artifact = BoundArtifact(artifact=raw_artifact, candidate_id="founder", workspace="default")
 
-        # Verify persisted in PostgreSQL
-        stored_rec = pg_ledger.get_record("default", "founder", opp.id, "application")
-        self.assertIsNotNone(stored_rec)
-        self.assertEqual(stored_rec.action_status, ActionStatus.CONFIRMED)
+            harness = MockATSHarness(steps=[
+                [DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY, required=True)]
+            ])
+            driver = MockBrowserDriver(harness)
 
-        # 3. Duplicate submission attempt -> BLOCKED by PostgreSQL ledger
-        rec_dup = engine.execute_application(
-            opportunity=opp,
-            artifact=None,
-            driver=driver,
-            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
-            prepared_manifest=manifest,
-        )
-        self.assertEqual(rec_dup.action_status, ActionStatus.BLOCKED)
-        self.assertEqual(driver.submits_count, 1, "Duplicate must NOT trigger second submit_page call")
+            # Prepare manifest
+            manifest, answers, red_cnt, unres_cnt = engine.prepare_manifest(
+                opportunity=opp,
+                artifact=artifact,
+                driver=driver,
+                truth_graph=tg,
+                policy=policy,
+                adapter_name="greenhouse",
+            )
+            self.assertIsNotNone(manifest)
+            self.assertEqual(red_cnt, 0)
+
+            # 1. Missing prepared manifest under CONTROLLED_SUBMIT -> BLOCKED
+            rec_no_manifest = engine.execute_application(
+                opportunity=opp,
+                artifact=artifact,
+                driver=driver,
+                execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
+                truth_graph=tg,
+                policy=policy,
+                prepared_manifest=None,
+            )
+            self.assertEqual(rec_no_manifest.action_status, ActionStatus.BLOCKED)
+            self.assertEqual(harness.submits_count, 0)
+
+            # 2. Execution with prepared manifest -> CONFIRMED & persisted in PostgreSQL
+            driver2 = MockBrowserDriver(harness)
+            rec = engine.execute_application(
+                opportunity=opp,
+                artifact=artifact,
+                driver=driver2,
+                execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
+                truth_graph=tg,
+                policy=policy,
+                prepared_manifest=manifest,
+            )
+            self.assertEqual(rec.action_status, ActionStatus.CONFIRMED)
+            self.assertEqual(harness.submits_count, 1)
+
+            # Verify persisted in PostgreSQL
+            stored_rec = pg_ledger.get_record("default", "founder", opp.id, "application")
+            self.assertIsNotNone(stored_rec)
+            self.assertEqual(stored_rec.action_status, ActionStatus.CONFIRMED)
+
+            # 3. Duplicate submission attempt -> BLOCKED by PostgreSQL ledger
+            driver3 = MockBrowserDriver(harness)
+            rec_dup = engine.execute_application(
+                opportunity=opp,
+                artifact=artifact,
+                driver=driver3,
+                execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
+                truth_graph=tg,
+                policy=policy,
+                prepared_manifest=manifest,
+            )
+            self.assertEqual(rec_dup.action_status, ActionStatus.BLOCKED)
+            self.assertEqual(harness.submits_count, 1, "Duplicate must NOT trigger second submit_page call")
 
     def test_case_r_production_operational_orchestrator_with_postgres_store(self):
         """Case R: Real ProductionOperationalOrchestrator executes against PostgresInboxStore through full lifecycle."""
@@ -607,7 +670,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             provider="gmail", provider_message_id="msg-pg-1", thread_id="th-pg-1",
             sender_email="recruiter@acme.com", sender_name="Recruiter",
             recipient_email="founder@example.com", subject="Application Confirmation: Staff AI",
-            snippet="Thank you for applying to Staff AI at Acme", body_text="We have received your application for Staff AI.",
+            snippet="Thank you for applying to Staff AI at Acme. Reference: REQ-ASHBY-1", body_text="We have received your application for Staff AI. Reference: REQ-ASHBY-1",
             body_html="", received_at="2026-08-30T10:00:00Z",
             headers=(("From", "recruiter@acme.com"), ("Subject", "Application Confirmation: Staff AI")),
             attachment_names=(),
@@ -616,7 +679,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             provider="gmail", provider_message_id="msg-pg-2", thread_id="th-pg-1",
             sender_email="recruiter@acme.com", sender_name="Recruiter",
             recipient_email="founder@example.com", subject="Interview Invitation: Staff AI",
-            snippet="We would like to invite you for an interview", body_text="Let's schedule an interview for Staff AI.",
+            snippet="We would like to invite you for an interview. Reference: REQ-ASHBY-1", body_text="Let's schedule an interview for Staff AI. Reference: REQ-ASHBY-1",
             body_html="", received_at="2026-08-30T14:00:00Z",
             headers=(("From", "recruiter@acme.com"), ("Subject", "Interview Invitation: Staff AI")),
             attachment_names=(),
@@ -629,7 +692,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             id="opp-pg-inbox-1", title="Staff AI", organization="Acme",
             description="AI engineer role", track=Track.EMPLOYMENT,
             source="ashby", source_url="https://ashby.com/acme/1",
-            source_id="ashby-1",
+            source_id="REQ-ASHBY-1",
             content_hash="ch-pg-inbox-1",
         )
         out_rec = OutboundActionRecord(
@@ -643,6 +706,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             manifest_hash="man-pg-1", action_status=ActionStatus.CONFIRMED,
             idempotency_key="idemp-pg-1", created_at="2026-08-30T09:00:00Z",
             updated_at="2026-08-30T09:05:00Z",
+            external_reference_id="REQ-ASHBY-1",
         )
 
         orchestrator = ProductionOperationalOrchestrator(
