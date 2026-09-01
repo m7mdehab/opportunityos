@@ -10,8 +10,8 @@ Next: With the engine foundation, PostgreSQL relational persistence backbone, an
 
 ## Repository
 
-- **Generated:** 2026-09-01T19:28:21Z
-- **State generated at commit:** `5788ccb` — fix(runtime): eliminate implicit SQLite fallbacks and enforce fail-closed PostgreSQL authority
+- **Generated:** 2026-09-01T19:28:52Z
+- **State generated at commit:** `37ba909` — docs: record terminal fail-closed auditor results in REPORT-FR-002 and sync STATE.md
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
