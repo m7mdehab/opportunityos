@@ -538,8 +538,11 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
                 NotificationEngine()
 
             # F. production orchestrator default/fallback path cannot create a SQLite store
+            class IngestionWithoutStore:
+                pass
+
             with self.assertRaises(ProductionDatabaseConfigurationError):
-                ProductionOperationalOrchestrator(ingestion_service=InboundIngestionService(MockMailTransport(), store=DurableInboxStore(":memory:")), store=None)
+                ProductionOperationalOrchestrator(ingestion_service=IngestionWithoutStore(), store=None)
             with self.assertRaises(ProductionDatabaseConfigurationError):
                 ProductionOperationalOrchestrator(ingestion_service=None, store=None)
 
