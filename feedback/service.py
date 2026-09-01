@@ -1,10 +1,12 @@
-import hashlib
 from datetime import datetime, timezone
 from typing import Optional, List
 from feedback.models import FounderFeedbackEvent, FeedbackLabel
 from storage.repository import StorageRepository
 
+
 class FounderFeedbackService:
+    """Provides founder feedback capture, deduplication, and persistence without mutating TruthGraph facts."""
+
     def __init__(self, repository: StorageRepository):
         self.repo = repository
 
@@ -15,20 +17,18 @@ class FounderFeedbackService:
         reason: Optional[str] = None,
         notes: Optional[str] = None,
     ) -> FounderFeedbackEvent:
-        now_iso = datetime.now(timezone.utc).isoformat()
-        rec_id = hashlib.sha256(f"{opportunity_id}:{label.value}:{now_iso}".encode("utf-8")).hexdigest()[:16]
-        
-        self.repo.record_feedback(
+        db_record = self.repo.record_feedback(
             opp_id=opportunity_id,
             label=label.value,
             reason=reason,
             notes=notes,
         )
+        # Fix split identity bug: Return exact persisted record ID
         return FounderFeedbackEvent(
-            id=rec_id,
-            opportunity_id=opportunity_id,
-            feedback_label=label,
-            structured_reason=reason,
-            notes=notes,
-            created_at=now_iso,
+            id=db_record.id,
+            opportunity_id=db_record.opportunity_id,
+            feedback_label=FeedbackLabel(db_record.feedback_label),
+            structured_reason=db_record.structured_reason,
+            notes=db_record.notes,
+            created_at=db_record.created_at.isoformat() if db_record.created_at else "",
         )

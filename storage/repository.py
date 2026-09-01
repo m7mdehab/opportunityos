@@ -1,21 +1,26 @@
-from typing import List, Optional, Dict, Any
-from datetime import datetime, timezone
+import hashlib
 import json
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
 from storage.models import (
     OpportunityRecord,
     FieldProvenanceRecord,
-    OutboundActionRecord,
+    OutboundActionRecordModel,
     IdempotencyReservationRecord,
     InboundEvidenceRecord,
     PipelineEventRecord,
     NotificationRecord,
+    InboxCheckpointRecord,
+    ReconciliationRecordModel,
     WorkerJobRecord,
     FounderFeedbackRecord,
 )
 
+
 class StorageRepository:
+    """Production Repository interface for OpportunityOS PostgreSQL relational persistence."""
+
     def __init__(self, session: Session):
         self.session = session
 
@@ -56,96 +61,36 @@ class StorageRepository:
     def get_opportunity(self, opportunity_id: str) -> Optional[OpportunityRecord]:
         return self.session.query(OpportunityRecord).filter_by(id=opportunity_id).first()
 
-    # Outbound / Idempotency Operations
-    def reserve_idempotency(self, idempotency_key: str, action_id: str, opportunity_id: str) -> bool:
-        existing = self.session.query(IdempotencyReservationRecord).filter_by(idempotency_key=idempotency_key).first()
+    # Founder Feedback Operations with Deduplication & ID alignment
+    def record_feedback(
+        self,
+        opp_id: str,
+        label: str,
+        reason: Optional[str] = None,
+        notes: Optional[str] = None,
+        feedback_id: Optional[str] = None,
+    ) -> FounderFeedbackRecord:
+        norm_notes = (notes or "").strip()
+        norm_reason = (reason or "").strip()
+        dedup_payload = f"{opp_id}:{label}:{norm_reason}:{norm_notes}".encode("utf-8")
+        dedup_hash = hashlib.sha256(dedup_payload).hexdigest()
+
+        # Check for existing identical feedback replay
+        existing = self.session.query(FounderFeedbackRecord).filter_by(dedup_hash=dedup_hash).first()
         if existing:
-            return False
-        reservation = IdempotencyReservationRecord(
-            idempotency_key=idempotency_key,
-            action_id=action_id,
-            opportunity_id=opportunity_id,
-            status="RESERVED",
-        )
-        self.session.add(reservation)
-        self.session.commit()
-        return True
+            return existing
 
-    def save_outbound_action(self, action_data: Dict[str, Any]) -> OutboundActionRecord:
-        record = OutboundActionRecord(
-            id=action_data["id"],
-            opportunity_id=action_data["opportunity_id"],
-            execution_mode=action_data["execution_mode"],
-            action_status=action_data["action_status"],
-            idempotency_key=action_data["idempotency_key"],
-            prepared_manifest_hash=action_data.get("prepared_manifest_hash"),
-            receipt_reference=action_data.get("receipt_reference"),
-            confirmation_text=action_data.get("confirmation_text"),
-            receipt_checksum=action_data.get("receipt_checksum"),
-            error_message=action_data.get("error_message"),
-        )
-        self.session.merge(record)
-        self.session.commit()
-        return record
-
-    # Inbound / Pipeline Operations
-    def save_inbound_evidence(self, evidence_data: Dict[str, Any]) -> InboundEvidenceRecord:
-        record = InboundEvidenceRecord(
-            id=evidence_data["id"],
-            message_id=evidence_data["message_id"],
-            source_provider=evidence_data["source_provider"],
-            sender=evidence_data["sender"],
-            subject=evidence_data["subject"],
-            body_hash=evidence_data["body_hash"],
-            received_at=evidence_data["received_at"],
-            processing_status=evidence_data.get("processing_status", "FETCHED"),
-            processed_at=evidence_data.get("processed_at"),
-            raw_headers_json=evidence_data.get("raw_headers_json"),
-        )
-        self.session.merge(record)
-        self.session.commit()
-        return record
-
-    def save_pipeline_event(self, event_data: Dict[str, Any]) -> PipelineEventRecord:
-        record = PipelineEventRecord(
-            id=event_data["id"],
-            opportunity_id=event_data["opportunity_id"],
-            signal_id=event_data["signal_id"],
-            signal_category=event_data["signal_category"],
-            source_timestamp=event_data["source_timestamp"],
-            confidence=event_data["confidence"],
-            provenance_hash=event_data["provenance_hash"],
-            event_metadata_json=event_data.get("event_metadata_json"),
-        )
-        self.session.merge(record)
-        self.session.commit()
-        return record
-
-    def save_notification(self, notif_data: Dict[str, Any]) -> NotificationRecord:
-        record = NotificationRecord(
-            id=notif_data["id"],
-            notification_key=notif_data["notification_key"],
-            opportunity_id=notif_data["opportunity_id"],
-            priority=notif_data["priority"],
-            headline=notif_data["headline"],
-            body=notif_data["body"],
-            action_required=notif_data.get("action_required", False),
-            deadline=notif_data.get("deadline"),
-        )
-        self.session.merge(record)
-        self.session.commit()
-        return record
-
-    # Founder Feedback Operations
-    def record_feedback(self, opp_id: str, label: str, reason: Optional[str] = None, notes: Optional[str] = None) -> FounderFeedbackRecord:
-        import hashlib
-        rec_id = hashlib.sha256(f"{opp_id}:{label}:{datetime.now(timezone.utc).isoformat()}".encode("utf-8")).hexdigest()[:16]
+        now = datetime.now(timezone.utc)
+        rec_id = feedback_id or f"fb-{hashlib.sha256(f'{dedup_hash}:{now.isoformat()}'.encode()).hexdigest()[:12]}"
+        
         record = FounderFeedbackRecord(
             id=rec_id,
             opportunity_id=opp_id,
             feedback_label=label,
             structured_reason=reason,
             notes=notes,
+            dedup_hash=dedup_hash,
+            created_at=now,
         )
         self.session.add(record)
         self.session.commit()

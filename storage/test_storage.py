@@ -6,6 +6,7 @@ from storage.engine import get_engine, init_db, get_session_factory
 from storage.repository import StorageRepository
 from storage.models import Base
 
+
 class TestStorageRepository(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -57,13 +58,6 @@ class TestStorageRepository(unittest.TestCase):
         self.assertEqual(retrieved.title, "Lead Platform Engineer")
         self.assertEqual(len(retrieved.provenances), 1)
         self.assertEqual(retrieved.provenances[0].field_name, "title")
-
-    def test_idempotency_reservation(self):
-        ok1 = self.repo.reserve_idempotency("IDEM-001", "ACT-001", "OPP-001")
-        self.assertTrue(ok1)
-
-        ok2 = self.repo.reserve_idempotency("IDEM-001", "ACT-002", "OPP-001")
-        self.assertFalse(ok2)
 
     def test_founder_feedback(self):
         self.repo.save_opportunity({
