@@ -812,5 +812,131 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         self.assertEqual(res2.notifications_emitted, 0)
 
 
+    def test_case_s_worker_runner_end_to_end(self):
+        """Case S: two concurrent WorkerRunners drain a mixed job queue against real PostgreSQL.
+
+        Enqueues 3 noop jobs, 1 poll_source job targeting a read-disabled source
+        (ashby:openai), and 1 always-failing job with max_retries=1. Runs two
+        WorkerRunners concurrently in threads and asserts: every job reaches a
+        terminal state exactly once (no double-dispatch), the failing job reaches
+        DEAD_LETTER, and the poll_source job records a refusal instead of fetching.
+        """
+        from collections import Counter
+
+        from opportunity.registry import SourceRegistry
+        from opportunity.transport import MockTransport
+        from worker.handlers import default_handler_registry
+        from worker.runner import WorkerRunner
+
+        registry = SourceRegistry()
+        self.assertFalse(
+            registry.is_read_allowed("ashby:openai"),
+            "ashby:openai must be read-disabled for this test to be meaningful",
+        )
+
+        refusals = []
+        refusal_lock = threading.Lock()
+
+        def refusal_sink(record):
+            with refusal_lock:
+                refusals.append(dict(record))
+
+        # No fixture response is configured: ashby:openai must be refused before any
+        # fetch is attempted, so MockTransport must never be asked to serve a response.
+        mock_transport = MockTransport()
+
+        base_handlers = default_handler_registry(
+            registry=registry, transport=mock_transport, refusal_sink=refusal_sink
+        )
+
+        expected_markers = {"noop-1", "noop-2", "noop-3", "poll-ashby", "always-fail"}
+        processed_markers = []
+        processed_lock = threading.Lock()
+        stop_event = threading.Event()
+
+        def track(inner_handler):
+            def wrapped(payload):
+                marker = payload.get("marker")
+                with processed_lock:
+                    processed_markers.append(marker)
+                    should_stop = expected_markers.issubset(set(processed_markers))
+                if should_stop:
+                    stop_event.set()
+                # Let the underlying handler's outcome (success or exception) propagate
+                # unchanged so WorkerRunner still drives complete_job / fail_job.
+                inner_handler(payload)
+
+            return wrapped
+
+        def always_failing(payload):
+            raise RuntimeError("induced permanent failure")
+
+        handlers = {
+            "noop": track(base_handlers["noop"]),
+            "poll_source": track(base_handlers["poll_source"]),
+            "always_failing": track(always_failing),
+        }
+
+        enqueue_session = self.SessionFactory()
+        enqueue_queue = BackgroundWorkerQueue(enqueue_session, worker_id="s-enqueue")
+        job_ids = {
+            "noop-1": enqueue_queue.enqueue_job("noop", {"marker": "noop-1"}),
+            "noop-2": enqueue_queue.enqueue_job("noop", {"marker": "noop-2"}),
+            "noop-3": enqueue_queue.enqueue_job("noop", {"marker": "noop-3"}),
+            "poll-ashby": enqueue_queue.enqueue_job(
+                "poll_source", {"source_id": "ashby:openai", "marker": "poll-ashby"}
+            ),
+            "always-fail": enqueue_queue.enqueue_job(
+                "always_failing", {"marker": "always-fail"}, max_retries=1
+            ),
+        }
+        enqueue_session.close()
+        self.assertEqual(set(job_ids.keys()), expected_markers)
+
+        runner1 = WorkerRunner(
+            self.SessionFactory, handlers, worker_id="s-runner-1", poll_interval=0.05, stop_event=stop_event
+        )
+        runner2 = WorkerRunner(
+            self.SessionFactory, handlers, worker_id="s-runner-2", poll_interval=0.05, stop_event=stop_event
+        )
+
+        t1 = threading.Thread(target=runner1.run_forever, kwargs={"max_jobs": 5})
+        t2 = threading.Thread(target=runner2.run_forever, kwargs={"max_jobs": 5})
+        t1.start()
+        t2.start()
+        t1.join(timeout=30)
+        t2.join(timeout=30)
+
+        self.assertFalse(t1.is_alive(), "runner1 did not finish within the test timeout")
+        self.assertFalse(t2.is_alive(), "runner2 did not finish within the test timeout")
+
+        # Load-bearing concurrency assertion: the multiset of processed job markers has
+        # no duplicates, i.e. no job was dispatched to a handler more than once even
+        # though two WorkerRunners raced for the same queue via SKIP LOCKED.
+        marker_counts = Counter(processed_markers)
+        self.assertEqual(
+            set(marker_counts.keys()), expected_markers, "every enqueued job must be processed exactly once"
+        )
+        for marker, count in marker_counts.items():
+            self.assertEqual(count, 1, f"job '{marker}' was dispatched {count} times, expected exactly 1")
+
+        verify_session = self.SessionFactory()
+        try:
+            for marker, job_id in job_ids.items():
+                job = verify_session.query(WorkerJobRecord).filter_by(id=job_id).first()
+                self.assertIsNotNone(job, f"job '{marker}' ({job_id}) missing from database")
+                if marker == "always-fail":
+                    self.assertEqual(job.status, "DEAD_LETTER")
+                    self.assertEqual(job.retry_count, 1)
+                else:
+                    self.assertEqual(job.status, "COMPLETED", f"job '{marker}' did not complete: {job.status}")
+        finally:
+            verify_session.close()
+
+        # The read-disabled source must have been refused, not fetched.
+        self.assertEqual(len(refusals), 1)
+        self.assertEqual(refusals[0]["source_id"], "ashby:openai")
+
+
 if __name__ == "__main__":
     unittest.main()
