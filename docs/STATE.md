@@ -10,8 +10,8 @@ Next: With the engine foundation, PostgreSQL relational persistence backbone, an
 
 ## Repository
 
-- **Generated:** 2026-09-01T01:13:58Z
-- **State generated at commit:** `53fd9f8` — fix(storage): ensure clean Cases Q and R implementation in test_postgres_integration.py
+- **Generated:** 2026-09-01T19:28:21Z
+- **State generated at commit:** `5788ccb` — fix(runtime): eliminate implicit SQLite fallbacks and enforce fail-closed PostgreSQL authority
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
