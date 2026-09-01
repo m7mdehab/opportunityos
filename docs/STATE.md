@@ -10,8 +10,8 @@ Next: With the engine foundation, PostgreSQL relational persistence backbone, an
 
 ## Repository
 
-- **Generated:** 2026-09-01T00:52:53Z
-- **State generated at commit:** `f444226` — docs: finalize REPORT-FR-002 and sync STATE.md for substantive SHA ae3b374
+- **Generated:** 2026-09-01T00:56:41Z
+- **State generated at commit:** `b1f5d9c` — fix(test): configure CI migrations, correct test Opportunity source_id, and fix InboundIngestionService __init__
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
