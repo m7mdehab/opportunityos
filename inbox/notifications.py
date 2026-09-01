@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime, timezone
-from typing import Sequence
+from typing import Sequence, Union
 from .models import (
     CorrelationEvidence,
     FounderNotificationRecord,
@@ -11,15 +11,25 @@ from .models import (
     SignalPriority,
 )
 from .persistence import DurableInboxStore
+from .postgres_persistence import PostgresInboxStore
+
+
+from storage.engine import ProductionDatabaseConfigurationError
 
 
 class NotificationEngine:
     """Surfaces high-priority action-required alerts for founder with strict key idempotency."""
 
-    def __init__(self, workspace: str = "default", candidate_id: str = "founder", store: DurableInboxStore | None = None) -> None:
+    def __init__(self, workspace: str = "default", candidate_id: str = "founder", store: Union[DurableInboxStore, PostgresInboxStore] | None = None) -> None:
         self.workspace = workspace
         self.candidate_id = candidate_id
-        self.store = store or DurableInboxStore(":memory:")
+        if store is not None:
+            self.store = store
+        else:
+            try:
+                self.store = PostgresInboxStore()
+            except ProductionDatabaseConfigurationError:
+                self.store = DurableInboxStore(":memory:")
 
     @classmethod
     def compute_notification_key(cls, workspace: str, candidate_id: str, signal_id: str, category: str) -> str:

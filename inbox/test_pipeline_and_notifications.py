@@ -19,7 +19,7 @@ class TestPipelineAndNotifications(unittest.TestCase):
         )
         classifier = ResponseClassifier()
         corr_engine = OpportunityCorrelationEngine(opportunities=[opp])
-        store = PipelineEventStore()
+        store = PipelineEventStore(store=DurableInboxStore(":memory:"))
 
         # Interview request signal
         msg = GOLD_EMPLOYMENT_MESSAGES[3]  # Delta interview

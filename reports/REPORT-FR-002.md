@@ -5,9 +5,9 @@
 **Author:** Antigravity Master Agent (Dual-Loop Autonomous Controller)  
 **Authority:** ChatGPT Overseer Authorization after definitive closure of GATE-FR-001  
 **Starting Main SHA:** `4fcedd0df3bc2d34dde7899cceb4e406d86eb312`  
-**Substantive Commit SHA:** `64f1731a0ef05f85d405a05b511d03915678bb9a`  
+**Substantive Commit SHA:** `ae3b374fe48c730346b643c18b92cfd14dc808e1`  
 **Status:** FINAL / PASS  
-**Auditor A (PostgreSQL Concurrency, Persistence & Reliability):** Google Antigravity (pro) / `e52f58ed-c62b-4204-8b21-592fde657889` — **PASS**  
+**Auditor A (PostgreSQL Concurrency, Persistence, Reliability & Runtime Wiring):** Google Antigravity (pro) / `45688347-5097-4538-91c9-f03033244ecc` — **PASS**  
 **Auditor B (Artifacts, Untrusted Input & Discovery):** Google Antigravity (pro) / `91f12b24-bf5c-40b7-bc77-7d0769006a92` — **PASS**  
 
 ---
@@ -17,19 +17,21 @@
 BRIEF-FR-002 converts OpportunityOS from a headless Python domain system into a reproducible, production-shaped founder runtime foundation on which the FastAPI REST API layer and Founder Web Alpha UI can safely and rapidly be integrated.
 
 ### Key Capabilities & Invariants Delivered:
-1. **Reproducible Application Packaging (`pyproject.toml`):** Canonical Python packaging manifest declaring Python >= 3.10, explicit runtime/dev dependencies (`sqlalchemy`, `alembic`, `psycopg2-binary`, `python-docx`, `reportlab`, `pdfplumber`, `pydantic`, `pyyaml`, `pytest`), clean virtualenv bootstrap, and zero uncommitted manual dependencies.
-2. **PostgreSQL Authoritative Production Relational Persistence (`storage/`):** Full declarative SQLAlchemy models and PostgreSQL persistence adapters (`outbound/postgres_idempotency.py`, `inbox/postgres_persistence.py`) preserving 100% of frozen BRIEF-005/006 semantics, idempotency checks, and lifecycle states without implicit fallback to SQLite.
-3. **Versioned Database Migrations with Alembic (`alembic.ini`, `storage/migrations/`):** Baseline migration `0001_baseline_schema.py` constructing all tables, foreign keys, indexes, and unique constraints with reversible dependency-safe downgrade path.
-4. **Exact Lossless SQLite-to-PostgreSQL Migrator (`storage/migration.py`):** Lossless migration of real authoritative SQLite stores from `inbox/persistence.py` (`inbound_evidence`, `pipeline_events`, `founder_notifications`, `inbox_checkpoints`, `reconciliation_records`) and `outbound/idempotency.py` (`idempotency_ledger`) without synthetic timestamps or field omission.
-5. **PostgreSQL Concurrency & Atomicity (`worker/`, `outbound/`):** PostgreSQL `SELECT ... FOR UPDATE SKIP LOCKED` for non-blocking concurrent job claims across independent workers, and atomic reservation handling for idempotency.
-6. **Automated PostgreSQL Backup & Restore (`scripts/backup_restore.py`):** Verified backup dump and clean-target restore cycle preserving full data integrity, relationships, checkpoints, reconciliations, worker jobs, and founder feedback.
-7. **Founder Feedback Deterministic Identity & Deduplication (`feedback/`):** Fixed split-identity bug by returning exact persisted record ID; deterministic deduplication via `dedup_hash` while preserving distinct subsequent feedback without mutating TruthGraph facts.
-8. **Real PostgreSQL CI Integration Suite (`storage/test_postgres_integration.py`):** 15 dedicated real PostgreSQL integration cases (A through O) running against real PostgreSQL 16 Alpine service in CI.
-9. **Structured Runtime Logging & Sensitive Redaction (`core/logging.py`):** Structured JSON logger with regex-based redactor scrubbing OAuth tokens, API keys, passwords, private CV text, raw email bodies, and PII.
-10. **Fact-Locked Binary Artifact Generation (`matching/binary_export.py` & `matching/ats_quality.py`):** Production-quality DOCX and searchable PDF export bound 100% to verified TruthGraph assertions with ATS/readability inspection, multi-line whitespace normalization, and zero claim fabrication.
-11. **Generalized Alert Ingestion Engine (`opportunity/alert_ingestion.py`):** Multi-provider email/text job alert parser extracting opportunities from LinkedIn, Upwork, Etimad, Wuzzuf, etc., with complete 7-field atomic provenance and content hashes.
-12. **Structured Discovery & Re-verification (`opportunity/`):** Ashby ATS public job board adapter, Schema.org `JobPosting` JSON-LD extractor, and pre-action stale opportunity re-verification engine.
-13. **Untrusted Content & Prompt-Injection Evaluation (`security/`):** Adversarial evaluation proving that malicious embedded instructions in job descriptions, alerts, and emails cannot mutate system permissions, disable kill switches, or create unsupported claims.
+1. **Production Runtime Wiring (`outbound/`, `inbox/`):** `OutboundBrowserEngine` and `ProductionOperationalOrchestrator` wired to `PostgresIdempotencyLedger` and `PostgresInboxStore` by default in production runtime paths, with explicit dependency injection preserved for testing.
+2. **Fail-Closed Production Database Security (`storage/engine.py`):** `get_production_db_url()` strictly fails closed (raising `ProductionDatabaseConfigurationError`) if `OPPORTUNITYOS_DB_URL` is missing or configured as SQLite. Silent production fallback to SQLite is completely eliminated; SQLite requires explicit `allow_sqlite=True` opt-in.
+3. **100% Persistence Interface Parity (`inbox/postgres_persistence.py`, `outbound/postgres_idempotency.py`):** Complete method and signature parity across PostgreSQL adapters including `store_evidence`, `mark_evidence_processed`, `is_evidence_processed`, `get_evidence`, `get_all_evidence`, `store_pipeline_event`, `store_event`, `get_events_for_opportunity`, `get_all_pipeline_events`, `store_notification`, `get_pending_notifications`, `get_all_notifications`, `acknowledge_notification`, `save_checkpoint` (with `updated_at`), `get_checkpoint`, `record_reconciliation`, and `get_unresolved_reconciliations`.
+4. **Stable Idempotency Concurrency Semantics (`outbound/postgres_idempotency.py`):** Concurrency collisions in atomic reservation map cleanly to `DuplicateSubmissionError` by exception type while maintaining database session integrity and preventing duplicate action execution.
+5. **Versioned Database Migrations with Alembic (`alembic.ini`, `storage/migrations/`):** Baseline migration `0001_baseline_schema.py` constructing all tables, foreign keys, indexes, and unique constraints with reversible dependency-safe downgrade path.
+6. **Exact Lossless SQLite-to-PostgreSQL Migrator (`storage/migration.py`):** Lossless migration of real authoritative SQLite stores from `inbox/persistence.py` (`inbound_evidence`, `pipeline_events`, `founder_notifications`, `inbox_checkpoints`, `reconciliation_records`) and `outbound/idempotency.py` (`idempotency_ledger`) without synthetic timestamps or field omission.
+7. **PostgreSQL Concurrency & Atomicity (`worker/`, `outbound/`):** PostgreSQL `SELECT ... FOR UPDATE SKIP LOCKED` for non-blocking concurrent job claims across independent workers, and atomic reservation handling for idempotency.
+8. **Automated PostgreSQL Backup & Restore (`scripts/backup_restore.py`):** Verified backup dump and clean-target restore cycle preserving full data integrity, relationships, checkpoints, reconciliations, worker jobs, and founder feedback.
+9. **Founder Feedback Deterministic Identity & Deduplication (`feedback/`):** Fixed split-identity bug by returning exact persisted record ID; deterministic deduplication via `dedup_hash` while preserving distinct subsequent feedback without mutating TruthGraph facts.
+10. **Real PostgreSQL CI Integration Suite (`storage/test_postgres_integration.py`):** 18 dedicated real PostgreSQL integration cases (A through R) running against real PostgreSQL 16 Alpine service in CI.
+11. **Structured Runtime Logging & Sensitive Redaction (`core/logging.py`):** Structured JSON logger with regex-based redactor scrubbing OAuth tokens, API keys, passwords, private CV text, raw email bodies, and PII.
+12. **Fact-Locked Binary Artifact Generation (`matching/binary_export.py` & `matching/ats_quality.py`):** Production-quality DOCX and searchable PDF export bound 100% to verified TruthGraph assertions with ATS/readability inspection, multi-line whitespace normalization, and zero claim fabrication.
+13. **Generalized Alert Ingestion Engine (`opportunity/alert_ingestion.py`):** Multi-provider email/text job alert parser extracting opportunities from LinkedIn, Upwork, Etimad, Wuzzuf, etc., with complete 7-field atomic provenance and content hashes.
+14. **Structured Discovery & Re-verification (`opportunity/`):** Ashby ATS public job board adapter, Schema.org `JobPosting` JSON-LD extractor, and pre-action stale opportunity re-verification engine.
+15. **Untrusted Content & Prompt-Injection Evaluation (`security/`):** Adversarial evaluation proving that malicious embedded instructions in job descriptions, alerts, and emails cannot mutate system permissions, disable kill switches, or create unsupported claims.
 
 ---
 
@@ -56,14 +58,14 @@ BRIEF-FR-002 converts OpportunityOS from a headless Python domain system into a 
 
 ## 3. Test & Verification Results
 
-All 399 unit tests and 15 real PostgreSQL integration tests execute cleanly with 100% pass rate:
+All 399 unit tests and 18 real PostgreSQL integration tests execute cleanly with 100% pass rate:
 - `truth`: 67 tests PASS
 - `recon`: 3 tests PASS
 - `opportunity`: 152 tests PASS
 - `matching`: 86 tests PASS
 - `outbound`: 51 tests PASS
 - `inbox`: 25 tests PASS
-- `storage`: 4 unit tests PASS + 15 real PostgreSQL integration tests PASS
+- `storage`: 4 unit tests PASS + 18 real PostgreSQL integration tests PASS (Cases A through R)
 - `worker`: 3 tests PASS
 - `core`: 4 tests PASS
 - `feedback`: 1 test PASS

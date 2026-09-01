@@ -22,6 +22,8 @@ from .idempotency import (
     IdempotencyLedger,
     UnknownOutcomeFrozenError,
 )
+from storage.engine import ProductionDatabaseConfigurationError
+from .postgres_idempotency import PostgresIdempotencyLedger
 from .mock_harness import MockATSHarness
 from .models import (
     ActionAuthorityDecision,
@@ -98,7 +100,7 @@ class OutboundBrowserEngine:
     def __init__(
         self,
         authority: ActionAuthority | None = None,
-        ledger: IdempotencyLedger | None = None,
+        ledger: Union[IdempotencyLedger, PostgresIdempotencyLedger] | None = None,
         adapter_registry: AdapterRegistry | None = None,
         source_registry: SourceActionRegistry | None = None,
     ) -> None:
@@ -118,7 +120,13 @@ class OutboundBrowserEngine:
                 adapter_registry=self.adapter_registry,
             )
 
-        self.ledger = ledger or IdempotencyLedger()
+        if ledger is not None:
+            self.ledger = ledger
+        else:
+            try:
+                self.ledger = PostgresIdempotencyLedger()
+            except ProductionDatabaseConfigurationError:
+                self.ledger = IdempotencyLedger(":memory:")
         self.confirmation_detector = ConfirmationDetector()
 
     def compute_answers_hash(self, answers: tuple[ApplicationAnswer, ...]) -> str:

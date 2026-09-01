@@ -35,8 +35,12 @@ jobs:
       - name: Install Dependencies
         run: |
           pip install --upgrade pip
-          pip install .
+          pip install -e .
           pip install pytest
+      - name: Run Database Migrations
+        env:
+          OPPORTUNITYOS_DB_URL: "postgresql+psycopg2://opportunityos:testpassword123@localhost:5432/opportunityos_test"
+        run: alembic upgrade head
       - name: Run Full Subsystem Test Suite
         env:
           OPPORTUNITYOS_DB_URL: "postgresql+psycopg2://opportunityos:testpassword123@localhost:5432/opportunityos_test"

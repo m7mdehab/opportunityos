@@ -5,6 +5,7 @@ import uuid
 import tempfile
 import threading
 import time
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from alembic import command
 from alembic.config import Config
@@ -25,7 +26,12 @@ from storage.models import (
     WorkerJobRecord,
     FounderFeedbackRecord,
 )
-from storage.engine import get_engine, get_session_factory
+from storage.engine import (
+    get_engine,
+    get_session_factory,
+    get_production_db_url,
+    ProductionDatabaseConfigurationError,
+)
 from storage.repository import StorageRepository
 from storage.migration import LegacySqliteToPostgresMigrator
 from outbound.postgres_idempotency import PostgresIdempotencyLedger
@@ -33,13 +39,26 @@ from inbox.postgres_persistence import PostgresInboxStore
 from worker.queue import BackgroundWorkerQueue
 from feedback.service import FounderFeedbackService
 from feedback.models import FeedbackLabel
-from matching.models import Track, QualificationDecision
+from matching.models import ArtifactType, QualificationDecision, TailoredArtifact, TailoringPolicy, Track
+from opportunity.models import Opportunity
+from truth.graph import TruthGraph
+from truth.models import AtomicAssertion, EvidenceRecord, Modality, Polarity, VerificationStatus
 from outbound.models import (
     ActionStatus,
+    BoundArtifact,
     ConfirmationEvidence,
+    DetectedFormField,
     ExecutionMode,
+    FieldOntologyType,
     OutboundActionRecord,
+    PreSubmitManifest,
+    SourceActionPolicy,
 )
+from outbound.browser_engine import MockBrowserDriver, OutboundBrowserEngine
+from outbound.mock_harness import MockATSHarness
+from outbound.authority import ActionAuthority, GlobalKillSwitch
+from outbound.registry import AdapterRegistry, SourceActionRegistry
+from outbound.idempotency import DuplicateSubmissionError, UnknownOutcomeFrozenError
 from inbox.models import (
     InboundMessageEvidence,
     PipelineEvent,
@@ -48,6 +67,8 @@ from inbox.models import (
     FounderNotificationRecord,
     SignalPriority,
 )
+from inbox.ingestion import InboundIngestionService, MockMailTransport
+from inbox.orchestrator import ProductionOperationalOrchestrator
 from scripts.backup_restore import dump_database, restore_database
 
 
@@ -230,7 +251,6 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         pg_ledger.reserve_submission(rec)
         pg_ledger.record_outcome(rec)
 
-        from outbound.idempotency import UnknownOutcomeFrozenError
         with self.assertRaises(UnknownOutcomeFrozenError):
             pg_ledger.reserve_submission(rec)
 
@@ -301,7 +321,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
 
         self.assertEqual(len(winners), 1, "Exactly one thread must win reservation")
         self.assertEqual(len(errors), 1, "Exactly one thread must fail reservation")
-        self.assertIn("duplicate", str(errors[0]).lower())
+        self.assertIsInstance(errors[0], DuplicateSubmissionError, f"Loser must raise DuplicateSubmissionError, got: {type(errors[0])}")
 
     def test_case_j_two_independent_workers_racing_with_skip_locked(self):
         """Case J: Two independent workers racing for one job with SKIP LOCKED."""
@@ -478,6 +498,242 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         # Simulate process restart by creating a completely new store instance
         pg_store2 = PostgresInboxStore(db_url=self.db_url)
         self.assertEqual(pg_store2.get_checkpoint("cursor:main"), "12345")
+
+    def test_case_p_no_implicit_production_sqlite_fallback(self):
+        """Case P: Storage engine fails closed if production DB configuration is absent or SQLite."""
+        orig_env = os.environ.get("OPPORTUNITYOS_DB_URL")
+        try:
+            # 1. Missing environment variable -> fails closed
+            if "OPPORTUNITYOS_DB_URL" in os.environ:
+                del os.environ["OPPORTUNITYOS_DB_URL"]
+            with self.assertRaises(ProductionDatabaseConfigurationError):
+                get_production_db_url()
+
+            with self.assertRaises(ProductionDatabaseConfigurationError):
+                get_engine()  # default production constructor
+
+            # 2. Explicit SQLite in production URL -> rejected
+            os.environ["OPPORTUNITYOS_DB_URL"] = "sqlite:///production_attempt.db"
+            with self.assertRaises(ProductionDatabaseConfigurationError):
+                get_production_db_url()
+
+            # 3. Explicit test/local SQLite opt-in allowed with allow_sqlite=True
+            del os.environ["OPPORTUNITYOS_DB_URL"]
+            sqlite_engine = get_engine(allow_sqlite=True)
+            self.assertTrue(str(sqlite_engine.url).startswith("sqlite"))
+
+            # 4. PostgreSQL accepted
+            os.environ["OPPORTUNITYOS_DB_URL"] = self.db_url
+            pg_url = get_production_db_url()
+            self.assertTrue(pg_url.startswith("postgresql"))
+        finally:
+            if orig_env is not None:
+                os.environ["OPPORTUNITYOS_DB_URL"] = orig_env
+            elif "OPPORTUNITYOS_DB_URL" in os.environ:
+                del os.environ["OPPORTUNITYOS_DB_URL"]
+
+    def test_case_q_outbound_browser_engine_with_postgres_ledger(self):
+        """Case Q: Real OutboundBrowserEngine executes against PostgresIdempotencyLedger through full lifecycle."""
+        GlobalKillSwitch.enable()
+        with tempfile.TemporaryDirectory() as ev_dir_str:
+            ev_dir = Path(ev_dir_str)
+            gh_ev = ev_dir / "greenhouse_graduation_evidence.json"
+            gh_ev.write_text(json.dumps({"run_id": "test-gh-run-pg", "success": True}), encoding="utf-8")
+
+            adapter_reg = AdapterRegistry(evidence_dir=ev_dir)
+            adapter_reg.enable_submit("greenhouse")
+            src_reg = SourceActionRegistry({"greenhouse": SourceActionPolicy.SUBMIT_ALLOWED})
+            auth = ActionAuthority(registry=src_reg, adapter_registry=adapter_reg)
+
+            pg_ledger = PostgresIdempotencyLedger(db_url=self.db_url)
+            engine = OutboundBrowserEngine(authority=auth, ledger=pg_ledger)
+
+            opp = Opportunity(
+                id="opp-pg-outbound-1",
+                title="Senior Systems Architect",
+                organization="CloudTech",
+                description="Looking for Senior Architect",
+                track=Track.EMPLOYMENT,
+                source="greenhouse",
+                source_url="https://boards.greenhouse.io/cloudtech/jobs/101",
+                source_id="gh-101",
+                content_hash="ch-pg-out-1",
+            )
+            tg = TruthGraph()
+            ev = EvidenceRecord(id="ev-pg-1", source="passport", locator="p1", content="Founder Name. Authorized in Egypt. Country: Egypt.")
+            tg.add_evidence(ev)
+            tg.add_assertion(AtomicAssertion(
+                id="a-name", subject_id="founder", predicate="identity.name",
+                value="Founder Name", polarity=Polarity.POSITIVE, modality=Modality.DEFINITE,
+                verification_status=VerificationStatus.VERIFIED, evidence_ids=("ev-pg-1",),
+            ))
+            tg.add_assertion(AtomicAssertion(
+                id="a-auth", subject_id="founder", predicate="authorization.jurisdiction",
+                value="Egypt", polarity=Polarity.POSITIVE, modality=Modality.DEFINITE,
+                verification_status=VerificationStatus.VERIFIED, evidence_ids=("ev-pg-1",),
+            ))
+            tg.add_assertion(AtomicAssertion(
+                id="a-country", subject_id="founder", predicate="identity.country",
+                value="Egypt", polarity=Polarity.POSITIVE, modality=Modality.DEFINITE,
+                verification_status=VerificationStatus.VERIFIED, evidence_ids=("ev-pg-1",),
+            ))
+
+            policy = TailoringPolicy(
+                default_notice_period_days=30,
+                default_currency="USD",
+                default_hourly_rate=100.0,
+                default_sponsorship_required=False,
+            )
+            raw_artifact = TailoredArtifact(
+                artifact_id="art-pg-1",
+                artifact_type=ArtifactType.TAILORED_CV,
+                opportunity_id=opp.id,
+                opportunity_content_hash=opp.content_hash,
+                template_version="1.0",
+                policy_version="1.0",
+                title="CV",
+                sections=(),
+                generated_claims=(),
+                commitment_checklist=(),
+                compiled_at="2026-08-30T00:00:00Z",
+            )
+            artifact = BoundArtifact(artifact=raw_artifact, candidate_id="founder", workspace="default")
+
+            harness = MockATSHarness(steps=[
+                [DetectedFormField("name", "name", "text", "Full Name", "full name", FieldOntologyType.IDENTITY, required=True)]
+            ])
+            driver = MockBrowserDriver(harness)
+
+            # Prepare manifest
+            manifest, answers, red_cnt, unres_cnt = engine.prepare_manifest(
+                opportunity=opp,
+                artifact=artifact,
+                driver=driver,
+                truth_graph=tg,
+                policy=policy,
+                adapter_name="greenhouse",
+            )
+            self.assertIsNotNone(manifest)
+            self.assertEqual(red_cnt, 0)
+
+            # 1. Missing prepared manifest under CONTROLLED_SUBMIT -> BLOCKED
+            rec_no_manifest = engine.execute_application(
+                opportunity=opp,
+                artifact=artifact,
+                driver=driver,
+                execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
+                truth_graph=tg,
+                policy=policy,
+                prepared_manifest=None,
+            )
+            self.assertEqual(rec_no_manifest.action_status, ActionStatus.BLOCKED)
+            self.assertEqual(harness.submits_count, 0)
+
+            # 2. Execution with prepared manifest -> CONFIRMED & persisted in PostgreSQL
+            driver2 = MockBrowserDriver(harness)
+            rec = engine.execute_application(
+                opportunity=opp,
+                artifact=artifact,
+                driver=driver2,
+                execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
+                truth_graph=tg,
+                policy=policy,
+                prepared_manifest=manifest,
+            )
+            self.assertEqual(rec.action_status, ActionStatus.CONFIRMED)
+            self.assertEqual(harness.submits_count, 1)
+
+            # Verify persisted in PostgreSQL
+            stored_rec = pg_ledger.get_record("default", "founder", opp.id, "application")
+            self.assertIsNotNone(stored_rec)
+            self.assertEqual(stored_rec.action_status, ActionStatus.CONFIRMED)
+
+            # 3. Duplicate submission attempt -> BLOCKED by PostgreSQL ledger
+            driver3 = MockBrowserDriver(harness)
+            rec_dup = engine.execute_application(
+                opportunity=opp,
+                artifact=artifact,
+                driver=driver3,
+                execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
+                truth_graph=tg,
+                policy=policy,
+                prepared_manifest=manifest,
+            )
+            self.assertEqual(rec_dup.action_status, ActionStatus.BLOCKED)
+            self.assertEqual(harness.submits_count, 1, "Duplicate must NOT trigger second submit_page call")
+
+    def test_case_r_production_operational_orchestrator_with_postgres_store(self):
+        """Case R: Real ProductionOperationalOrchestrator executes against PostgresInboxStore through full lifecycle."""
+        pg_store = PostgresInboxStore(db_url=self.db_url)
+
+        msg1 = InboundMessageEvidence(
+            provider="gmail", provider_message_id="msg-pg-1", thread_id="th-pg-1",
+            sender_email="recruiter@acme.com", sender_name="Recruiter",
+            recipient_email="founder@example.com", subject="Application Confirmation: Staff AI",
+            snippet="Thank you for applying to Staff AI at Acme. Reference: REQ-ASHBY-1", body_text="We have received your application for Staff AI. Reference: REQ-ASHBY-1",
+            body_html="", received_at="2026-08-30T10:00:00Z",
+            headers=(("From", "recruiter@acme.com"), ("Subject", "Application Confirmation: Staff AI")),
+            attachment_names=(),
+        )
+        msg2 = InboundMessageEvidence(
+            provider="gmail", provider_message_id="msg-pg-2", thread_id="th-pg-1",
+            sender_email="recruiter@acme.com", sender_name="Recruiter",
+            recipient_email="founder@example.com", subject="Interview Invitation: Staff AI",
+            snippet="We would like to invite you for an interview. Reference: REQ-ASHBY-1", body_text="Let's schedule an interview for Staff AI. Reference: REQ-ASHBY-1",
+            body_html="", received_at="2026-08-30T14:00:00Z",
+            headers=(("From", "recruiter@acme.com"), ("Subject", "Interview Invitation: Staff AI")),
+            attachment_names=(),
+        )
+
+        transport = MockMailTransport([msg1, msg2])
+        ingestion = InboundIngestionService(transport=transport, store=pg_store)
+
+        opp = Opportunity(
+            id="opp-pg-inbox-1", title="Staff AI", organization="Acme",
+            description="AI engineer role", track=Track.EMPLOYMENT,
+            source="ashby", source_url="https://ashby.com/acme/1",
+            source_id="REQ-ASHBY-1",
+            content_hash="ch-pg-inbox-1",
+        )
+        out_rec = OutboundActionRecord(
+            action_id="act-pg-1", opportunity_id="opp-pg-inbox-1",
+            opportunity_content_hash="ch-pg-inbox-1", workspace="default",
+            candidate_id="founder", track=Track.EMPLOYMENT, source="ashby",
+            adapter_name="ashby_outbound", adapter_version="1.0.0",
+            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
+            qualification_decision=QualificationDecision.QUALIFIED,
+            match_score_snapshot=95.0, artifact_ids=(), artifact_hashes=(),
+            manifest_hash="man-pg-1", action_status=ActionStatus.CONFIRMED,
+            idempotency_key="idemp-pg-1", created_at="2026-08-30T09:00:00Z",
+            updated_at="2026-08-30T09:05:00Z",
+            external_reference_id="REQ-ASHBY-1",
+        )
+
+        orchestrator = ProductionOperationalOrchestrator(
+            ingestion_service=ingestion,
+            opportunities=[opp],
+            outbound_records=[out_rec],
+            store=pg_store,
+        )
+
+        # Run cycle 1: Processes msg1 and msg2
+        res = orchestrator.run_cycle(limit=10)
+        self.assertEqual(res.messages_ingested, 2)
+        self.assertEqual(res.signals_detected, 2)
+        self.assertEqual(res.events_recorded, 2)
+        self.assertEqual(res.cursor_checkpoint, "2")
+
+        # Verify state in PostgreSQL
+        state = orchestrator.get_opportunity_state("opp-pg-inbox-1")
+        self.assertEqual(state.current_stage, OpportunityStage.INTERVIEWING)
+        self.assertTrue(pg_store.is_evidence_processed(msg1.message_content_hash))
+        self.assertTrue(pg_store.is_evidence_processed(msg2.message_content_hash))
+
+        # Run cycle 2: No new messages, 0 duplicates emitted
+        res2 = orchestrator.run_cycle(limit=10)
+        self.assertEqual(res2.messages_ingested, 0)
+        self.assertEqual(res2.events_recorded, 0)
+        self.assertEqual(res2.notifications_emitted, 0)
 
 
 if __name__ == "__main__":
