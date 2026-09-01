@@ -850,10 +850,16 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         """Case S: two concurrent WorkerRunners drain a mixed job queue against real PostgreSQL.
 
         Enqueues 3 noop jobs, 1 poll_source job targeting a read-disabled source
-        (ashby:openai), and 1 always-failing job with max_retries=1. Runs two
-        WorkerRunners concurrently in threads and asserts: every job reaches a
-        terminal state exactly once (no double-dispatch), the failing job reaches
-        DEAD_LETTER, and the poll_source job records a refusal instead of fetching.
+        (ashby:openai), and 1 always-failing job with max_retries=1. Both
+        WorkerRunners are released from a shared barrier at the same instant (so
+        the FOR UPDATE SKIP LOCKED race is actually exercised rather than one
+        runner draining the queue before the other starts), and each tracked
+        handler sleeps briefly so multiple jobs remain PENDING while both workers
+        are active. Asserts: every job reaches a terminal state exactly once (no
+        double-dispatch), both runners actually dispatched at least one job (so a
+        silently-serialised run fails this test instead of passing it), the
+        failing job reaches DEAD_LETTER, and the poll_source job records a
+        refusal instead of fetching.
         """
         from collections import Counter
 
@@ -884,18 +890,26 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         )
 
         expected_markers = {"noop-1", "noop-2", "noop-3", "poll-ashby", "always-fail"}
-        processed_markers = []
+        # (worker_id, marker) per dispatch -- attributes each dispatch to the runner
+        # that actually claimed it, so we can assert both runners did real work and
+        # that no job was ever dispatched more than once (to either runner).
+        processed_records = []
         processed_lock = threading.Lock()
         stop_event = threading.Event()
 
-        def track(inner_handler):
+        def track(inner_handler, owner_worker_id):
             def wrapped(payload):
                 marker = payload.get("marker")
                 with processed_lock:
-                    processed_markers.append(marker)
-                    should_stop = expected_markers.issubset(set(processed_markers))
+                    processed_records.append((owner_worker_id, marker))
+                    should_stop = expected_markers.issubset({m for _, m in processed_records})
                 if should_stop:
                     stop_event.set()
+                # Hold the job "in flight" a little so other PENDING jobs remain
+                # claimable by the other runner while this one is still working --
+                # otherwise a fast runner can drain the whole queue solo before the
+                # other runner's first claim attempt even executes.
+                time.sleep(0.03)
                 # Let the underlying handler's outcome (success or exception) propagate
                 # unchanged so WorkerRunner still drives complete_job / fail_job.
                 inner_handler(payload)
@@ -905,11 +919,12 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         def always_failing(payload):
             raise RuntimeError("induced permanent failure")
 
-        handlers = {
-            "noop": track(base_handlers["noop"]),
-            "poll_source": track(base_handlers["poll_source"]),
-            "always_failing": track(always_failing),
-        }
+        def handlers_for(owner_worker_id):
+            return {
+                "noop": track(base_handlers["noop"], owner_worker_id),
+                "poll_source": track(base_handlers["poll_source"], owner_worker_id),
+                "always_failing": track(always_failing, owner_worker_id),
+            }
 
         enqueue_session = self.SessionFactory()
         enqueue_queue = BackgroundWorkerQueue(enqueue_session, worker_id="s-enqueue")
@@ -928,14 +943,25 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         self.assertEqual(set(job_ids.keys()), expected_markers)
 
         runner1 = WorkerRunner(
-            self.SessionFactory, handlers, worker_id="s-runner-1", poll_interval=0.05, stop_event=stop_event
+            self.SessionFactory, handlers_for("s-runner-1"), worker_id="s-runner-1",
+            poll_interval=0.05, stop_event=stop_event,
         )
         runner2 = WorkerRunner(
-            self.SessionFactory, handlers, worker_id="s-runner-2", poll_interval=0.05, stop_event=stop_event
+            self.SessionFactory, handlers_for("s-runner-2"), worker_id="s-runner-2",
+            poll_interval=0.05, stop_event=stop_event,
         )
 
-        t1 = threading.Thread(target=runner1.run_forever, kwargs={"max_jobs": 5})
-        t2 = threading.Thread(target=runner2.run_forever, kwargs={"max_jobs": 5})
+        # Release both runners at (as close to) the same instant so both begin
+        # claiming against the same PENDING rows -- without this, one thread can
+        # simply be scheduled first and drain the queue before the other starts.
+        start_barrier = threading.Barrier(2, timeout=10)
+
+        def _drive(runner):
+            start_barrier.wait()
+            runner.run_forever(max_jobs=5)
+
+        t1 = threading.Thread(target=_drive, args=(runner1,))
+        t2 = threading.Thread(target=_drive, args=(runner2,))
         t1.start()
         t2.start()
         t1.join(timeout=30)
@@ -944,15 +970,27 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         self.assertFalse(t1.is_alive(), "runner1 did not finish within the test timeout")
         self.assertFalse(t2.is_alive(), "runner2 did not finish within the test timeout")
 
-        # Load-bearing concurrency assertion: the multiset of processed job markers has
-        # no duplicates, i.e. no job was dispatched to a handler more than once even
+        # Load-bearing concurrency assertion #1: the multiset of processed job markers
+        # has no duplicates, i.e. no job was dispatched to a handler more than once even
         # though two WorkerRunners raced for the same queue via SKIP LOCKED.
-        marker_counts = Counter(processed_markers)
+        marker_counts = Counter(marker for _, marker in processed_records)
         self.assertEqual(
             set(marker_counts.keys()), expected_markers, "every enqueued job must be processed exactly once"
         )
         for marker, count in marker_counts.items():
             self.assertEqual(count, 1, f"job '{marker}' was dispatched {count} times, expected exactly 1")
+
+        # Load-bearing concurrency assertion #2: both runners must actually have
+        # claimed and dispatched at least one job. If SKIP LOCKED contention were not
+        # really exercised (e.g. one runner silently drained the whole queue before
+        # the other's first claim), this fails instead of the test passing vacuously.
+        worker_id_counts = Counter(worker_id for worker_id, _ in processed_records)
+        self.assertGreater(
+            worker_id_counts.get("s-runner-1", 0), 0, f"runner1 processed no jobs: {worker_id_counts}"
+        )
+        self.assertGreater(
+            worker_id_counts.get("s-runner-2", 0), 0, f"runner2 processed no jobs: {worker_id_counts}"
+        )
 
         verify_session = self.SessionFactory()
         try:

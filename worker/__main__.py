@@ -3,8 +3,10 @@
 Reads the production database URL through ``get_production_db_url`` (fail-closed:
 missing or non-PostgreSQL DSNs raise ``ProductionDatabaseConfigurationError``
 and exit non-zero), builds the default handler registry, and runs the worker
-loop. ``--once`` processes at most one job (or one idle poll) and exits 0;
-``--max-jobs N`` stops after N jobs are processed.
+loop. ``--once`` processes at most one job (or one idle poll) and exits 0
+unconditionally (regardless of that job's outcome); ``--max-jobs N`` runs
+continuously and stops after N jobs are processed. The two are mutually
+exclusive.
 """
 from __future__ import annotations
 
@@ -22,8 +24,23 @@ logger = get_logger("opportunityos.worker.main")
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m worker", description="OpportunityOS background worker runner.")
-    parser.add_argument("--once", action="store_true", help="Process at most one job (or one idle poll), then exit.")
-    parser.add_argument("--max-jobs", type=int, default=None, help="Stop after processing N jobs.")
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
+        "--once",
+        action="store_true",
+        help=(
+            "Process at most one job -- or perform exactly one idle poll if the queue is empty -- "
+            "then exit 0. Exit code 0 is unconditional: it does not reflect whether the one job "
+            "processed succeeded, was retried, or was dead-lettered; check the structured logs or "
+            "the job's row for that. Mutually exclusive with --max-jobs (which runs continuously)."
+        ),
+    )
+    mode_group.add_argument(
+        "--max-jobs",
+        type=int,
+        default=None,
+        help="Run continuously (polling on --poll-interval when idle) and stop after processing N jobs. Mutually exclusive with --once.",
+    )
     parser.add_argument("--worker-id", default=None, help="Override the worker id (default: a generated id).")
     parser.add_argument("--poll-interval", type=float, default=1.0, help="Idle poll interval in seconds.")
     parser.add_argument("--lease-seconds", type=int, default=60, help="Job lease duration in seconds.")
