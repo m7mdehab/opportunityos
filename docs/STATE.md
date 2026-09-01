@@ -10,8 +10,8 @@ Next: With the engine foundation, PostgreSQL relational persistence backbone, an
 
 ## Repository
 
-- **Generated:** 2026-09-01T00:59:55Z
-- **State generated at commit:** `b355821` — fix(storage): align MockATSHarness platform and exact reference correlation in integration tests
+- **Generated:** 2026-09-01T01:01:46Z
+- **State generated at commit:** `36ccb9c` — fix(storage): import MockBrowserDriver in test_postgres_integration.py
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
