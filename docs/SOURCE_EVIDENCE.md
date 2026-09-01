@@ -160,3 +160,21 @@ Only unauthenticated HTTP GET requests, plus the ADR-0005 TED read-only query PO
 ## What this changes about the plan
 
 This is a one-pass availability measurement, not a validation of the 37-source Phase 1 build-out or the regional-eligibility moat. The measured eligible share and the number of policy-blocked or unreadable routes should determine whether to build any adapter next. It contradicts any assumption that all 37 source families should be implemented before their permitted access and Egypt eligibility are measured.
+
+## Re-recon 2026-09-02 (BRIEF-FR-003 D11)
+
+**What was requested:** BRIEF-FR-003 D11 asked for a robots.txt re-check of the 15 registry entries that were previously `robots_unreachable` — `jobicy`, `afdb`, and the 13 `ashby:*` posting-API entries (`ashby:socket`, `ashby:paires`, `ashby:jellyfish`, `ashby:adaptive_innovations`, `ashby:bedrock_robotics`, `ashby:cube`, `ashby:bjak`, `ashby:farseer`, `ashby:regard`, `ashby:tessera_labs`, `ashby:posthog`, `ashby:openai`, `ashby:linear`) — using only the existing `recon.__main__.robots_allow(url, cache)` helper (no new crawler was written). The 13 ashby entries share one host, `api.ashbyhq.com`, so a single `robots_allow` call against that host — reused through the same cache dict — covered all 13; jobicy.com and www.afdb.org each got their own call. All requests were unauthenticated `GET`, one per host per check, spaced at least two seconds apart, using the project's existing truthful user agent (`OpportunityOS-SourceRecon/1.1`).
+
+**Verdict per host:**
+
+| Host (covers) | robots_allow verdict | HTTP status / exception actually observed (3 attempts each, per the tool's built-in retry) |
+|---|---|---|
+| `jobicy.com` (jobicy) | `robots_unreachable` | `GET /robots.txt` → **HTTP 403** on all three attempts. Per AGENTS.md, 403 is a stop condition: no further request of any kind was made to this host beyond the robots.txt checks the existing tool itself performs. |
+| `www.afdb.org` (afdb) | `robots_unreachable` | `GET /robots.txt` → TLS handshake failure on all three attempts: `SSL: CERTIFICATE_VERIFY_FAILED: certificate has expired`. This is a technical/TLS failure at the remote host, not an access-control response; it is recorded truthfully as `robots_unreachable` because robots.txt could not be read. |
+| `api.ashbyhq.com` (all 13 `ashby:*` entries) | `robots_unreachable` | `GET /robots.txt` → **HTTP 401** on all three attempts. No credentials were supplied or attempted; the endpoint itself rejects the unauthenticated robots.txt request. No workaround was attempted. |
+
+No host returned `allowed`. Session outbound HTTPS worked for all three hosts (TCP/TLS reached jobicy.com and api.ashbyhq.com and produced HTTP responses; the afdb.org connection reached the server but failed TLS validation on the server's own expired certificate) — none of the three is a `BLOCKED_ENV` (local network outage) case.
+
+**What changed in `docs/SOURCE_REGISTRY.yaml`:** for all 15 entries, `last_policy_reviewed` was updated to `2026-09-02`, and each entry's `observed.detail` and `observed.request_metadata` were updated to describe the request actually made (`method=GET; endpoint=/robots.txt`) and its outcome, per the table above. `observed.status` remains `robots_unreachable` for all 15, matching the newly observed result. `observed.latency_ms` and `observed.record_count` were left at `0` — no job feed or listing endpoint was fetched for any of the 15 entries in this pass, only `robots.txt`.
+
+**What did not change, and why:** `automation.read` stays `disabled` for all 15 entries. None of the three robots verdicts was `allowed`, so the flip condition in D11 ("only if the recon result and the registry's own policy rules permit it") is not met on the robots signal alone, and no entry's `policy_status` (`unknown_disable_actions`) changed — the registry header's own rule ("status records observed read access, not future action permission") and the still-`review_required` `commercial_use.status` / `attribution.required` fields mean a favorable robots verdict would not by itself have been sufficient either. `access`, `attribution`, `rate_limits`, `commercial_use`, `automation.prepare`/`automation.submit`, `policy_status`, and `policy_evidence` were left untouched for all 15 entries. No entry was fetched beyond its robots.txt.
