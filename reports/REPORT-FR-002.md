@@ -4,21 +4,22 @@
 **Date:** 2026-09-01  
 **Author:** Antigravity Master Agent (Dual-Loop Autonomous Controller)  
 **Authority:** ChatGPT Overseer Authorization after definitive closure of GATE-FR-001  
-**Starting Main SHA:** `4fcedd0df3bc2d34dde7899cceb4e406d86eb312`  
-**Substantive Commit SHA:** `ae3b374fe48c730346b643c18b92cfd14dc808e1`  
+**Starting Main SHA:** `6934ebac672421d59539a2788ec5974ecafa9dbe`  
+**Substantive Commit SHA:** `5788ccbf9fe4279b9d63713439147058890031d1`  
 **Status:** FINAL / PASS  
-**Auditor A (PostgreSQL Concurrency, Persistence, Reliability & Runtime Wiring):** Google Antigravity (pro) / `45688347-5097-4538-91c9-f03033244ecc` — **PASS**  
-**Auditor B (Artifacts, Untrusted Input & Discovery):** Google Antigravity (pro) / `91f12b24-bf5c-40b7-bc77-7d0769006a92` — **PASS**  
+**Auditor (Fail-Closed Persistence & Terminal Runtime Invariant):** Google Antigravity (pro) / `09840133-51a3-4648-b9d0-f3ecf00a02a5` — **PASS (10/10)**  
 
 ---
 
 ## 1. Executive Summary
 
-BRIEF-FR-002 converts OpportunityOS from a headless Python domain system into a reproducible, production-shaped founder runtime foundation on which the FastAPI REST API layer and Founder Web Alpha UI can safely and rapidly be integrated.
+BRIEF-FR-002 establishes the production-grade runtime persistence backbone for OpportunityOS, converting the system from local SQLite stores into a strict PostgreSQL-authoritative foundation. In this terminal correction, all implicit fallbacks from PostgreSQL to SQLite or `:memory:` have been completely removed across the system.
 
 ### Key Capabilities & Invariants Delivered:
-1. **Production Runtime Wiring (`outbound/`, `inbox/`):** `OutboundBrowserEngine` and `ProductionOperationalOrchestrator` wired to `PostgresIdempotencyLedger` and `PostgresInboxStore` by default in production runtime paths, with explicit dependency injection preserved for testing.
-2. **Fail-Closed Production Database Security (`storage/engine.py`):** `get_production_db_url()` strictly fails closed (raising `ProductionDatabaseConfigurationError`) if `OPPORTUNITYOS_DB_URL` is missing or configured as SQLite. Silent production fallback to SQLite is completely eliminated; SQLite requires explicit `allow_sqlite=True` opt-in.
+1. **Strict Fail-Closed Production Runtime (`outbound/`, `inbox/`):** `OutboundBrowserEngine`, `InboundIngestionService`, `PipelineEventStore`, `NotificationEngine`, and `ProductionOperationalOrchestrator` strictly require PostgreSQL and fail closed with `ProductionDatabaseConfigurationError` if `OPPORTUNITYOS_DB_URL` is missing or invalid. All implicit catches and silent fallbacks to `IdempotencyLedger(":memory:")` or `DurableInboxStore(":memory:")` have been eradicated.
+2. **PostgreSQL Adapter SQLite URL Rejection (`outbound/postgres_idempotency.py`, `inbox/postgres_persistence.py`):** `PostgresIdempotencyLedger` and `PostgresInboxStore` route all connection strings through `get_production_db_url()`, rejecting explicit SQLite URLs (`sqlite:///...`) with `ProductionDatabaseConfigurationError`. SQLite usage is restricted exclusively to explicit unit-test dependency injection of legacy compatibility classes.
+3. **Preserved Explicit Dependency Injection:** Explicit injection of `IdempotencyLedger` and `DurableInboxStore` into constructors remains fully supported for isolated unit tests and local compatibility harnesses without polluting production paths.
+4. **Comprehensive Case P Fail-Closed Verification (`storage/test_postgres_integration.py`):** Exhaustive test cases (A through J) verifying fail-closed behavior across all five components, rejection of SQLite URLs, and continuous functionality under valid PostgreSQL configuration.
 3. **100% Persistence Interface Parity (`inbox/postgres_persistence.py`, `outbound/postgres_idempotency.py`):** Complete method and signature parity across PostgreSQL adapters including `store_evidence`, `mark_evidence_processed`, `is_evidence_processed`, `get_evidence`, `get_all_evidence`, `store_pipeline_event`, `store_event`, `get_events_for_opportunity`, `get_all_pipeline_events`, `store_notification`, `get_pending_notifications`, `get_all_notifications`, `acknowledge_notification`, `save_checkpoint` (with `updated_at`), `get_checkpoint`, `record_reconciliation`, and `get_unresolved_reconciliations`.
 4. **Stable Idempotency Concurrency Semantics (`outbound/postgres_idempotency.py`):** Concurrency collisions in atomic reservation map cleanly to `DuplicateSubmissionError` by exception type while maintaining database session integrity and preventing duplicate action execution.
 5. **Versioned Database Migrations with Alembic (`alembic.ini`, `storage/migrations/`):** Baseline migration `0001_baseline_schema.py` constructing all tables, foreign keys, indexes, and unique constraints with reversible dependency-safe downgrade path.

@@ -102,20 +102,11 @@ class PipelineStateSynchronizer:
         )
 
 
-from storage.engine import ProductionDatabaseConfigurationError
-
-
 class PipelineEventStore:
     """Append-only immutable event store with SQLite backing and deterministic replay."""
 
     def __init__(self, store: Union[DurableInboxStore, PostgresInboxStore] | None = None) -> None:
-        if store is not None:
-            self.store = store
-        else:
-            try:
-                self.store = PostgresInboxStore()
-            except ProductionDatabaseConfigurationError:
-                self.store = DurableInboxStore(":memory:")
+        self.store = store or PostgresInboxStore()
 
     @classmethod
     def compute_event_id(cls, signal_id: str, opportunity_id: str) -> str:

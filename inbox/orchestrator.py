@@ -38,9 +38,6 @@ class InboundProcessingCycleResult:
     cursor_checkpoint: str
 
 
-from storage.engine import ProductionDatabaseConfigurationError
-
-
 class ProductionOperationalOrchestrator:
     """Coordinates polling, classification, correlation, pipeline update, notifications, and analytics."""
 
@@ -59,10 +56,7 @@ class ProductionOperationalOrchestrator:
         elif hasattr(ingestion_service, "store") and ingestion_service.store is not None:
             self.store = ingestion_service.store
         else:
-            try:
-                self.store = PostgresInboxStore()
-            except ProductionDatabaseConfigurationError:
-                self.store = DurableInboxStore(":memory:")
+            self.store = PostgresInboxStore()
 
         self.ingestion_service = ingestion_service
         self.opportunities = list(opportunities)

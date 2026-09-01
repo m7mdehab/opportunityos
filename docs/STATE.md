@@ -10,8 +10,8 @@ Next: With the engine foundation, PostgreSQL relational persistence backbone, an
 
 ## Repository
 
-- **Generated:** 2026-09-01T01:13:58Z
-- **State generated at commit:** `53fd9f8` — fix(storage): ensure clean Cases Q and R implementation in test_postgres_integration.py
+- **Generated:** 2026-09-01T19:31:15Z
+- **State generated at commit:** `82a2671` — fix(storage): refine orchestrator unconfigured fail-closed test in test_case_p
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
