@@ -9,6 +9,7 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
@@ -80,8 +81,15 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.db_url = os.environ.get("OPPORTUNITYOS_DB_URL", "sqlite:///opportunityos.db")
-        if not cls.db_url.startswith("postgresql"):
+        cls.db_url = os.environ.get("OPPORTUNITYOS_DB_URL")
+        if not cls.db_url or not cls.db_url.startswith("postgresql"):
+            if os.environ.get("CI"):
+                raise AssertionError(
+                    "CI is set but OPPORTUNITYOS_DB_URL is missing or not a "
+                    "PostgreSQL URL (postgresql+psycopg2://...). PostgreSQL "
+                    "integration tests must fail loudly in CI, not skip. Got: "
+                    f"{cls.db_url!r}."
+                )
             # Enforce that in CI or when running integration tests, backend MUST be real PostgreSQL
             raise unittest.SkipTest(f"PostgreSQL integration tests require real PostgreSQL backend, got: {cls.db_url}")
 
@@ -459,6 +467,32 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             self.assertEqual(len(ret_opp.feedback), 1)
             self.assertEqual(ret_opp.feedback[0].feedback_label, FeedbackLabel.GOOD_MATCH.value)
             verify_session.close()
+
+            # restore_database runs the Alembic upgrade to head against the
+            # target (see scripts/backup_restore.py), not init_db/create_all;
+            # verify the restored database is actually stamped at head, read
+            # from the script directory rather than hard-coded.
+            alembic_cfg = Config("alembic.ini")
+            alembic_cfg.set_main_option("sqlalchemy.url", self.db_url)
+            script_dir = ScriptDirectory.from_config(alembic_cfg)
+            head_revision = script_dir.get_current_head()
+            with self.engine.connect() as conn:
+                stamped_revision = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+            self.assertEqual(stamped_revision, head_revision)
+
+            # The restored table set equals the full set of model tables
+            # (i.e. dump_database's completeness check covered everything).
+            with self.engine.connect() as conn:
+                actual_tables = {
+                    row[0]
+                    for row in conn.execute(
+                        text(
+                            "SELECT table_name FROM information_schema.tables "
+                            "WHERE table_schema = 'public' AND table_name != 'alembic_version'"
+                        )
+                    )
+                }
+            self.assertEqual(actual_tables, set(Base.metadata.tables.keys()))
         finally:
             if os.path.exists(dump_path):
                 os.remove(dump_path)

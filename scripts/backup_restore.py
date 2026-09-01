@@ -1,9 +1,23 @@
+"""OpportunityOS database backup and restore.
+
+SECURITY NOTE: the backup produced by ``dump_database`` is written as
+**unencrypted** plain JSON. Encryption at rest is not implemented anywhere in
+this script or its callers. As a direct consequence, requirement
+``REQ-SEC-003`` (backup encryption at rest) remains **MISSING** in the
+founder readiness matrix until a future brief adds it. Anyone handling a
+backup file produced by this script is handling founder data in the clear.
+"""
 import os
 import sys
 import json
 import argparse
 from datetime import datetime, timezone
-from storage.engine import get_engine, init_db, get_session_factory
+from pathlib import Path
+
+from alembic.config import Config
+from alembic import command
+
+from storage.engine import get_engine, get_session_factory
 from storage.models import (
     Base,
     OpportunityRecord,
@@ -19,8 +33,66 @@ from storage.models import (
     FounderFeedbackRecord,
 )
 
+# Repository root, derived from this file's location (not the process CWD),
+# so that alembic.ini (script_location = storage/migrations, relative to the
+# repo root) resolves correctly regardless of where this script is invoked
+# from.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+ALEMBIC_INI_PATH = REPO_ROOT / "alembic.ini"
+
+
+class BackupCompletenessError(RuntimeError):
+    """Raised when the dump's covered tables and the ORM metadata's tables disagree.
+
+    This guards against a model table being added without a corresponding
+    dump/restore section (silent data loss on backup), and against a dump
+    section naming a table that no longer exists in the metadata (silent
+    data loss on restore).
+    """
+
+
+# Explicit mapping from each JSON section key in the dump to the database
+# table it covers. This is the single source of truth the completeness
+# check is measured against; it intentionally is NOT derived from the loop
+# bodies below so that adding a new `data[...]` section without updating
+# this map still gets caught.
+DUMP_SECTION_TABLE_MAP = {
+    "opportunities": "opportunities",
+    "field_provenances": "field_provenances",
+    "outbound_actions": "outbound_actions",
+    "idempotency_reservations": "idempotency_reservations",
+    "inbound_evidence": "inbound_evidence",
+    "pipeline_events": "pipeline_events",
+    "founder_notifications": "founder_notifications",
+    "inbox_checkpoints": "inbox_checkpoints",
+    "reconciliation_records": "reconciliation_records",
+    "worker_jobs": "worker_jobs",
+    "founder_feedback": "founder_feedback",
+}
+
+
+def _check_dump_completeness() -> None:
+    """Raise BackupCompletenessError if DUMP_SECTION_TABLE_MAP and
+    Base.metadata.sorted_tables disagree on the set of tables covered."""
+    covered_tables = set(DUMP_SECTION_TABLE_MAP.values())
+    model_tables = {table.name for table in Base.metadata.sorted_tables}
+
+    missing_from_dump = model_tables - covered_tables
+    unknown_in_dump = covered_tables - model_tables
+
+    if missing_from_dump or unknown_in_dump:
+        raise BackupCompletenessError(
+            "Backup completeness check failed: "
+            f"model tables missing from dump map: {sorted(missing_from_dump)}; "
+            f"dump map tables not present in model metadata: {sorted(unknown_in_dump)}. "
+            "Update DUMP_SECTION_TABLE_MAP (and the corresponding dump/restore "
+            "sections) to keep the backup complete."
+        )
+
 
 def dump_database(db_url: str, output_file: str) -> int:
+    _check_dump_completeness()
+
     engine = get_engine(db_url)
     session_factory = get_session_factory(engine)
     session = session_factory()
@@ -175,12 +247,49 @@ def dump_database(db_url: str, output_file: str) -> int:
     return len(data["opportunities"])
 
 
+def _upgrade_to_head(db_url: str) -> None:
+    """Run the Alembic upgrade to head programmatically against db_url.
+
+    storage/migrations/env.py reads OPPORTUNITYOS_DB_URL from the environment
+    and, when present, OVERRIDES whatever sqlalchemy.url was set via
+    `set_main_option` (see `db_url = os.environ.get("OPPORTUNITYOS_DB_URL",
+    config.get_main_option("sqlalchemy.url"))` in that file). If this
+    function is called to restore into a target URL that differs from
+    whatever OPPORTUNITYOS_DB_URL currently holds (e.g. restoring into a
+    second scratch database while the environment still points at the
+    primary one), a naive `set_main_option("sqlalchemy.url", db_url)` would
+    be silently overridden by env.py and the migration would run against the
+    WRONG database. That is the central correctness risk of this function:
+    getting it wrong means restore silently migrates data into place against
+    one database while the schema is stamped on another.
+    """
+    # To make the target URL authoritative, OPPORTUNITYOS_DB_URL is set to
+    # db_url for the duration of the upgrade (so env.py's override resolves
+    # to the same URL we intend), and the previous value is restored in a
+    # `finally` block so this function never leaks environment state into
+    # the caller.
+    alembic_cfg = Config(str(ALEMBIC_INI_PATH))
+    alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+
+    had_env_override = "OPPORTUNITYOS_DB_URL" in os.environ
+    previous_env_value = os.environ.get("OPPORTUNITYOS_DB_URL")
+    os.environ["OPPORTUNITYOS_DB_URL"] = db_url
+    try:
+        command.upgrade(alembic_cfg, "head")
+    finally:
+        if had_env_override:
+            os.environ["OPPORTUNITYOS_DB_URL"] = previous_env_value
+        else:
+            del os.environ["OPPORTUNITYOS_DB_URL"]
+
+
 def restore_database(dump_file: str, db_url: str) -> None:
     with open(dump_file, "r", encoding="utf-8") as f:
         data = json.load(f)
 
+    _upgrade_to_head(db_url)
+
     engine = get_engine(db_url)
-    init_db(engine)
     session_factory = get_session_factory(engine)
     session = session_factory()
 
