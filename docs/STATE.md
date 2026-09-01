@@ -10,8 +10,8 @@ Next: With the engine foundation, PostgreSQL relational persistence backbone, an
 
 ## Repository
 
-- **Generated:** 2026-09-01T01:03:29Z
-- **State generated at commit:** `d6a121d` — fix(storage): align prepare_manifest argument list in test_postgres_integration.py
+- **Generated:** 2026-09-01T01:06:32Z
+- **State generated at commit:** `d37b104` — fix(storage): add missing test imports and configure submit authority for Case Q
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
