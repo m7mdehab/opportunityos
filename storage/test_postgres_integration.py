@@ -446,15 +446,27 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         try:
             dump_database(self.db_url, dump_path)
 
-            # Wipe database
+            # Wipe database: drop the schema entirely, not just its rows.
+            # TRUNCATE (the previous approach) removes rows but leaves the
+            # schema -- including alembic_version, which lives outside
+            # Base.metadata and so survives a TRUNCATE loop over
+            # Base.metadata.sorted_tables untouched. With only a row-level
+            # wipe, the alembic-head and restored-table-set assertions below
+            # would pass even if restore_database() ran no migration at all
+            # (e.g. if it were reverted to init_db()/create_all()) -- that is
+            # exactly the regression D5 exists to prevent, so the wipe must
+            # actually destroy the schema for those assertions to be
+            # load-bearing.
+            Base.metadata.drop_all(self.engine)
             with self.engine.begin() as conn:
-                for table in reversed(Base.metadata.sorted_tables):
-                    conn.execute(text(f'TRUNCATE TABLE "{table.name}" CASCADE;'))
+                conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
 
-            # Verify empty
-            check_session = self.SessionFactory()
-            self.assertEqual(check_session.query(OpportunityRecord).count(), 0)
-            check_session.close()
+            # Verify empty: no tables at all remain in the schema.
+            with self.engine.connect() as conn:
+                remaining_table_count = conn.execute(
+                    text("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'")
+                ).scalar()
+            self.assertEqual(remaining_table_count, 0)
 
             # Restore
             restore_database(dump_path, self.db_url)

@@ -11,9 +11,11 @@ import os
 import sys
 import json
 import argparse
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
+from sqlalchemy import func
 from alembic.config import Config
 from alembic import command
 
@@ -33,12 +35,19 @@ from storage.models import (
     FounderFeedbackRecord,
 )
 
-# Repository root, derived from this file's location (not the process CWD),
-# so that alembic.ini (script_location = storage/migrations, relative to the
-# repo root) resolves correctly regardless of where this script is invoked
-# from.
+# Repository root, derived from this file's location (not the process CWD).
+# Used to resolve alembic.ini itself AND (see _build_alembic_config) to make
+# the script_location/version_locations options and the sys.path entry
+# env.py needs absolute, since Alembic resolves relative ini options against
+# the process's CWD, not the ini file's own directory.
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ALEMBIC_INI_PATH = REPO_ROOT / "alembic.ini"
+
+# Serialises _upgrade_to_head()'s OPPORTUNITYOS_DB_URL environment-variable
+# swap (see its docstring): that swap mutates process-global os.environ, so
+# without this lock a second, concurrent call in another thread of the same
+# process could observe or overwrite the wrong value mid-upgrade.
+_RESTORE_ENV_LOCK = threading.Lock()
 
 
 class BackupCompletenessError(RuntimeError):
@@ -90,12 +99,54 @@ def _check_dump_completeness() -> None:
         )
 
 
+def _check_dump_row_counts(session, data: dict) -> None:
+    """Raise BackupCompletenessError if any DUMP_SECTION_TABLE_MAP section's
+    row count disagrees with its table's actual row count in `session`.
+
+    `_check_dump_completeness()` only proves the *set of tables* covered by
+    DUMP_SECTION_TABLE_MAP matches Base.metadata; it says nothing about
+    whether the per-table query loop below that map actually ran. Someone
+    who adds a model table plus a map entry but forgets to write (or wire
+    up) the loop would still pass that check while silently dropping every
+    row of that table from the backup. Comparing row counts, in the same
+    session/transaction the dump itself ran in, catches exactly that.
+    """
+    for section, table_name in DUMP_SECTION_TABLE_MAP.items():
+        if section not in data:
+            raise BackupCompletenessError(
+                f"Backup completeness check failed: dump section '{section}' "
+                f"(mapped to table '{table_name}') was never populated."
+            )
+        expected_count = len(data[section])
+        actual_count = session.query(func.count()).select_from(Base.metadata.tables[table_name]).scalar()
+        if expected_count != actual_count:
+            raise BackupCompletenessError(
+                f"Backup completeness check failed: dump section '{section}' "
+                f"contains {expected_count} row(s) but table '{table_name}' has "
+                f"{actual_count} row(s) in the same snapshot. A dump loop is out "
+                "of sync with DUMP_SECTION_TABLE_MAP."
+            )
+
+
 def dump_database(db_url: str, output_file: str) -> int:
     _check_dump_completeness()
 
     engine = get_engine(db_url)
     session_factory = get_session_factory(engine)
     session = session_factory()
+
+    if engine.dialect.name == "postgresql":
+        # Each table below is read with its own SELECT. Left at the default
+        # READ COMMITTED isolation level, a write concurrent with the dump
+        # could land between two of those SELECTs and produce a
+        # foreign-key-inconsistent backup (e.g. a provenance row dumped for
+        # an opportunity that a later SELECT in this same dump no longer
+        # sees, or vice versa). Pinning the session's connection to
+        # REPEATABLE READ before the first query gives the whole dump one
+        # consistent snapshot. This must happen before any query executes,
+        # so the session's connection is established with the isolation
+        # level already in effect.
+        session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
 
     data = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -124,7 +175,7 @@ def dump_database(db_url: str, output_file: str) -> int:
         })
         for prov in opp.provenances:
             data["field_provenances"].append({
-                "opportunity_id": prov.opportunity_id, "field_name": prov.field_name,
+                "id": prov.id, "opportunity_id": prov.opportunity_id, "field_name": prov.field_name,
                 "raw_value": prov.raw_value, "normalized_value": prov.normalized_value,
                 "derivation_type": prov.derivation_type, "raw_pointer": prov.raw_pointer,
                 "record_checksum": prov.record_checksum, "rule_id": prov.rule_id,
@@ -238,6 +289,10 @@ def dump_database(db_url: str, output_file: str) -> int:
             "created_at": fb.created_at.isoformat() if fb.created_at else None,
         })
 
+    # Row-count completeness check, run in the same session/transaction the
+    # dump itself used, before that transaction is closed out.
+    _check_dump_row_counts(session, data)
+
     session.close()
     engine.dispose()
 
@@ -245,6 +300,32 @@ def dump_database(db_url: str, output_file: str) -> int:
         json.dump(data, f, indent=2)
 
     return len(data["opportunities"])
+
+
+def _build_alembic_config(db_url: str) -> Config:
+    """Build an Alembic Config whose script_location/version_locations are
+    absolute, not resolved against the process's current working directory.
+
+    alembic.ini's `script_location = storage/migrations` and
+    `version_locations = storage/migrations/versions` are written relative to
+    the repository root, but Alembic resolves relative paths found in the ini
+    file against the process CWD, not the ini file's own directory. Called
+    from any other CWD this either raises `CommandError: Path doesn't exist`,
+    or -- worse -- silently resolves against an unrelated directory that
+    happens to contain its own storage/migrations tree and runs the WRONG
+    migration scripts. Setting both options to paths derived from REPO_ROOT,
+    and ensuring REPO_ROOT is on sys.path so env.py's `from storage.models
+    import Base` resolves regardless of CWD, makes this CWD-independent.
+    """
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+
+    migrations_dir = REPO_ROOT / "storage" / "migrations"
+    cfg = Config(str(ALEMBIC_INI_PATH))
+    cfg.set_main_option("script_location", str(migrations_dir))
+    cfg.set_main_option("version_locations", str(migrations_dir / "versions"))
+    cfg.set_main_option("sqlalchemy.url", db_url)
+    return cfg
 
 
 def _upgrade_to_head(db_url: str) -> None:
@@ -262,31 +343,69 @@ def _upgrade_to_head(db_url: str) -> None:
     WRONG database. That is the central correctness risk of this function:
     getting it wrong means restore silently migrates data into place against
     one database while the schema is stamped on another.
-    """
-    # To make the target URL authoritative, OPPORTUNITYOS_DB_URL is set to
-    # db_url for the duration of the upgrade (so env.py's override resolves
-    # to the same URL we intend), and the previous value is restored in a
-    # `finally` block so this function never leaks environment state into
-    # the caller.
-    alembic_cfg = Config(str(ALEMBIC_INI_PATH))
-    alembic_cfg.set_main_option("sqlalchemy.url", db_url)
 
-    had_env_override = "OPPORTUNITYOS_DB_URL" in os.environ
-    previous_env_value = os.environ.get("OPPORTUNITYOS_DB_URL")
-    os.environ["OPPORTUNITYOS_DB_URL"] = db_url
-    try:
-        command.upgrade(alembic_cfg, "head")
-    finally:
-        if had_env_override:
-            os.environ["OPPORTUNITYOS_DB_URL"] = previous_env_value
-        else:
-            del os.environ["OPPORTUNITYOS_DB_URL"]
+    This function mutates process-global os.environ["OPPORTUNITYOS_DB_URL"]
+    for the duration of the upgrade (see below) and is serialised with
+    _RESTORE_ENV_LOCK as a result: it is NOT safe to call concurrently from
+    multiple threads within one process -- a second, concurrent call (or any
+    other in-process code resolving OPPORTUNITYOS_DB_URL, such as
+    storage.engine.get_engine(None) on another thread) would otherwise race
+    the env var and could be silently redirected to this call's target
+    database mid-upgrade. Concurrent restores from separate *processes* are
+    unaffected, since each process has its own environment.
+    """
+    with _RESTORE_ENV_LOCK:
+        alembic_cfg = _build_alembic_config(db_url)
+
+        # To make the target URL authoritative, OPPORTUNITYOS_DB_URL is set
+        # to db_url for the duration of the upgrade (so env.py's override
+        # resolves to the same URL we intend), and the previous value is
+        # restored in a `finally` block so this function never leaks
+        # environment state into the caller.
+        had_env_override = "OPPORTUNITYOS_DB_URL" in os.environ
+        previous_env_value = os.environ.get("OPPORTUNITYOS_DB_URL")
+        os.environ["OPPORTUNITYOS_DB_URL"] = db_url
+        try:
+            command.upgrade(alembic_cfg, "head")
+        finally:
+            if had_env_override:
+                os.environ["OPPORTUNITYOS_DB_URL"] = previous_env_value
+            else:
+                del os.environ["OPPORTUNITYOS_DB_URL"]
+
+
+def _check_restore_completeness(data: dict) -> None:
+    """Raise BackupCompletenessError unless `data`'s sections exactly match
+    DUMP_SECTION_TABLE_MAP's keys.
+
+    BackupCompletenessError's contract includes guarding "against a dump
+    section naming a table that no longer exists in the metadata (silent
+    data loss on restore)" -- but every load loop below reads via
+    `data.get(section, [])`, so without this check a dump taken before a
+    schema change (missing a section the current code expects) restores
+    silently with those tables left empty, and a dump section this restore
+    code no longer recognises is silently ignored rather than raising.
+    """
+    dump_sections = set(data.keys()) - {"timestamp"}
+    expected_sections = set(DUMP_SECTION_TABLE_MAP.keys())
+    if dump_sections != expected_sections:
+        missing = expected_sections - dump_sections
+        unknown = dump_sections - expected_sections
+        raise BackupCompletenessError(
+            "Restore completeness check failed: dump sections do not match "
+            "the sections this restore code knows how to load. "
+            f"missing from dump (would restore empty): {sorted(missing)}; "
+            f"unknown in dump (would be silently ignored): {sorted(unknown)}. "
+            "This dump likely predates a schema/format change; restoring it "
+            "as-is would silently lose or ignore data."
+        )
 
 
 def restore_database(dump_file: str, db_url: str) -> None:
     with open(dump_file, "r", encoding="utf-8") as f:
         data = json.load(f)
 
+    _check_restore_completeness(data)
     _upgrade_to_head(db_url)
 
     engine = get_engine(db_url)
@@ -303,8 +422,12 @@ def restore_database(dump_file: str, db_url: str) -> None:
         session.merge(opp)
 
     for prov_dict in data.get("field_provenances", []):
+        # merge() (not add()): the provenance dump now includes the
+        # autoincrement primary key `id`, so re-restoring the same dump into
+        # an already-restored database upserts by identity instead of
+        # inserting duplicate rows.
         prov = FieldProvenanceRecord(**prov_dict)
-        session.add(prov)
+        session.merge(prov)
 
     # 2. Outbound Actions
     for act_dict in data.get("outbound_actions", []):

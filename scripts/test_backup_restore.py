@@ -20,6 +20,7 @@ completeness check runs before scripts.backup_restore.dump_database opens
 any database connection, so it is exercised unconditionally.
 """
 import os
+import json
 import unittest
 import tempfile
 from urllib.parse import urlsplit, urlunsplit
@@ -77,6 +78,42 @@ class TestBackupCompleteness(unittest.TestCase):
                 dump_database("postgresql+psycopg2://unused/unused", os.devnull)
         finally:
             backup_restore.DUMP_SECTION_TABLE_MAP = original_map
+
+
+class TestRestoreCompleteness(unittest.TestCase):
+    """restore_database's completeness check, exercised without any database
+    connection (it runs before the restore touches Alembic or the DB at
+    all -- see _check_restore_completeness, called before _upgrade_to_head)."""
+
+    @staticmethod
+    def _write_dump(sections: dict) -> str:
+        fd, path = tempfile.mkstemp(suffix=".json")
+        os.close(fd)
+        payload = {"timestamp": "2026-01-01T00:00:00Z"}
+        payload.update(sections)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+        return path
+
+    def test_restore_database_raises_when_dump_missing_a_known_section(self):
+        sections = {key: [] for key in backup_restore.DUMP_SECTION_TABLE_MAP}
+        del sections["opportunities"]
+        path = self._write_dump(sections)
+        try:
+            with self.assertRaises(BackupCompletenessError):
+                restore_database(path, "postgresql+psycopg2://unused/unused")
+        finally:
+            os.remove(path)
+
+    def test_restore_database_raises_when_dump_has_an_unknown_section(self):
+        sections = {key: [] for key in backup_restore.DUMP_SECTION_TABLE_MAP}
+        sections["not_a_real_section"] = []
+        path = self._write_dump(sections)
+        try:
+            with self.assertRaises(BackupCompletenessError):
+                restore_database(path, "postgresql+psycopg2://unused/unused")
+        finally:
+            os.remove(path)
 
 
 class TestBackupRestorePostgres(unittest.TestCase):
@@ -228,8 +265,33 @@ class TestBackupRestorePostgres(unittest.TestCase):
             stamped_revision = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
         self.assertEqual(stamped_revision, head_revision)
 
+        # 6. Restoring the same dump a second time must not duplicate the
+        # provenance row: field_provenances is now dumped with its
+        # autoincrement `id` and restored with merge() (not add()), so a
+        # second restore upserts by identity instead of inserting a
+        # duplicate.
+        restore_database(self.dump_file, self.target_url)
+        opp_after_second_restore = dst_session.query(OpportunityRecord).filter_by(id="OPP-BACKUP-1").first()
+        self.assertEqual(len(opp_after_second_restore.provenances), 1)
+
         dst_session.close()
         dst_engine.dispose()
+
+    def test_upgrade_to_head_is_independent_of_process_cwd(self):
+        # alembic.ini's script_location/version_locations are written
+        # relative to the repo root but Alembic resolves them against the
+        # process CWD; from a scratch directory containing no
+        # storage/migrations tree of its own, an unfixed _upgrade_to_head
+        # raises CommandError. Running this from a CWD outside the repo
+        # proves the fix is CWD-independent rather than accidentally
+        # relying on the caller's working directory being the repo root.
+        original_cwd = os.getcwd()
+        scratch_dir = tempfile.mkdtemp()
+        try:
+            os.chdir(scratch_dir)
+            backup_restore._upgrade_to_head(self.source_url)
+        finally:
+            os.chdir(original_cwd)
 
 
 if __name__ == "__main__":
