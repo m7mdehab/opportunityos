@@ -23,11 +23,14 @@ class PostgresIdempotencyLedger:
     def __init__(self, db_url: Optional[str] = None, session: Optional[Session] = None):
         self._external_session = session
         if self._external_session is None:
-            self.db_url = db_url or get_production_db_url()
+            self.db_url = get_production_db_url(db_url)
             self.engine = get_engine(self.db_url)
             self.session_factory = get_session_factory(self.engine)
         else:
-            self.db_url = db_url
+            if db_url is not None:
+                self.db_url = get_production_db_url(db_url)
+            else:
+                self.db_url = None
             self.engine = None
             self.session_factory = None
 

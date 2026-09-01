@@ -58,7 +58,10 @@ from outbound.browser_engine import MockBrowserDriver, OutboundBrowserEngine
 from outbound.mock_harness import MockATSHarness
 from outbound.authority import ActionAuthority, GlobalKillSwitch
 from outbound.registry import AdapterRegistry, SourceActionRegistry
-from outbound.idempotency import DuplicateSubmissionError, UnknownOutcomeFrozenError
+from outbound.idempotency import DuplicateSubmissionError, IdempotencyLedger, UnknownOutcomeFrozenError
+from inbox.persistence import DurableInboxStore
+from inbox.pipeline import PipelineEventStore
+from inbox.notifications import NotificationEngine
 from inbox.models import (
     InboundMessageEvidence,
     PipelineEvent,
@@ -500,7 +503,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         self.assertEqual(pg_store2.get_checkpoint("cursor:main"), "12345")
 
     def test_case_p_no_implicit_production_sqlite_fallback(self):
-        """Case P: Storage engine fails closed if production DB configuration is absent or SQLite."""
+        """Case P: Storage engine and all production components fail closed to PostgreSQL with no silent SQLite fallback."""
         orig_env = os.environ.get("OPPORTUNITYOS_DB_URL")
         try:
             # 1. Missing environment variable -> fails closed
@@ -512,6 +515,61 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             with self.assertRaises(ProductionDatabaseConfigurationError):
                 get_engine()  # default production constructor
 
+            # A. unset OPPORTUNITYOS_DB_URL -> OutboundBrowserEngine() fails closed (no :memory: created)
+            with self.assertRaises(ProductionDatabaseConfigurationError):
+                OutboundBrowserEngine()
+
+            # B. OPPORTUNITYOS_DB_URL=sqlite:///x.db -> OutboundBrowserEngine() fails closed
+            os.environ["OPPORTUNITYOS_DB_URL"] = "sqlite:///x.db"
+            with self.assertRaises(ProductionDatabaseConfigurationError):
+                OutboundBrowserEngine()
+            del os.environ["OPPORTUNITYOS_DB_URL"]
+
+            # C. unset OPPORTUNITYOS_DB_URL -> InboundIngestionService(MockMailTransport()) fails closed (no :memory:)
+            with self.assertRaises(ProductionDatabaseConfigurationError):
+                InboundIngestionService(MockMailTransport())
+
+            # D. unset OPPORTUNITYOS_DB_URL -> PipelineEventStore() fails closed
+            with self.assertRaises(ProductionDatabaseConfigurationError):
+                PipelineEventStore()
+
+            # E. unset OPPORTUNITYOS_DB_URL -> NotificationEngine() fails closed
+            with self.assertRaises(ProductionDatabaseConfigurationError):
+                NotificationEngine()
+
+            # F. production orchestrator default/fallback path cannot create a SQLite store
+            with self.assertRaises(ProductionDatabaseConfigurationError):
+                ProductionOperationalOrchestrator(ingestion_service=InboundIngestionService(MockMailTransport(), store=DurableInboxStore(":memory:")), store=None)
+            with self.assertRaises(ProductionDatabaseConfigurationError):
+                ProductionOperationalOrchestrator(ingestion_service=None, store=None)
+
+            # G. PostgresInboxStore(db_url="sqlite:///x.db") fails closed
+            with self.assertRaises(ProductionDatabaseConfigurationError):
+                PostgresInboxStore(db_url="sqlite:///x.db")
+
+            # H. PostgresIdempotencyLedger(db_url="sqlite:///x.db") fails closed
+            with self.assertRaises(ProductionDatabaseConfigurationError):
+                PostgresIdempotencyLedger(db_url="sqlite:///x.db")
+
+            # I. Explicit dependency injection still works for SQLite compatibility / unit tests
+            explicit_ledger = IdempotencyLedger(":memory:")
+            engine = OutboundBrowserEngine(ledger=explicit_ledger)
+            self.assertIs(engine.ledger, explicit_ledger)
+            self.assertIsInstance(engine.ledger, IdempotencyLedger)
+
+            explicit_store = DurableInboxStore(":memory:")
+            ingest = InboundIngestionService(MockMailTransport(), store=explicit_store)
+            self.assertIs(ingest.store, explicit_store)
+
+            pipe = PipelineEventStore(store=explicit_store)
+            self.assertIs(pipe.store, explicit_store)
+
+            notif = NotificationEngine(store=explicit_store)
+            self.assertIs(notif.store, explicit_store)
+
+            orch = ProductionOperationalOrchestrator(ingestion_service=ingest, store=explicit_store)
+            self.assertIs(orch.store, explicit_store)
+
             # 2. Explicit SQLite in production URL -> rejected
             os.environ["OPPORTUNITYOS_DB_URL"] = "sqlite:///production_attempt.db"
             with self.assertRaises(ProductionDatabaseConfigurationError):
@@ -522,10 +580,25 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             sqlite_engine = get_engine(allow_sqlite=True)
             self.assertTrue(str(sqlite_engine.url).startswith("sqlite"))
 
-            # 4. PostgreSQL accepted
+            # J. Normal PostgreSQL defaults still work when OPPORTUNITYOS_DB_URL is a valid PostgreSQL URL
             os.environ["OPPORTUNITYOS_DB_URL"] = self.db_url
             pg_url = get_production_db_url()
             self.assertTrue(pg_url.startswith("postgresql"))
+
+            engine_pg = OutboundBrowserEngine()
+            self.assertIsInstance(engine_pg.ledger, PostgresIdempotencyLedger)
+
+            ingest_pg = InboundIngestionService(MockMailTransport())
+            self.assertIsInstance(ingest_pg.store, PostgresInboxStore)
+
+            pipe_pg = PipelineEventStore()
+            self.assertIsInstance(pipe_pg.store, PostgresInboxStore)
+
+            notif_pg = NotificationEngine()
+            self.assertIsInstance(notif_pg.store, PostgresInboxStore)
+
+            orch_pg = ProductionOperationalOrchestrator(ingestion_service=ingest_pg)
+            self.assertIsInstance(orch_pg.store, PostgresInboxStore)
         finally:
             if orig_env is not None:
                 os.environ["OPPORTUNITYOS_DB_URL"] = orig_env

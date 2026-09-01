@@ -3,7 +3,6 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
 from storage.models import Base
-from storage.engine import DEFAULT_DB_URL
 
 config = context.config
 

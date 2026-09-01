@@ -22,7 +22,6 @@ from .idempotency import (
     IdempotencyLedger,
     UnknownOutcomeFrozenError,
 )
-from storage.engine import ProductionDatabaseConfigurationError
 from .postgres_idempotency import PostgresIdempotencyLedger
 from .mock_harness import MockATSHarness
 from .models import (
@@ -120,13 +119,7 @@ class OutboundBrowserEngine:
                 adapter_registry=self.adapter_registry,
             )
 
-        if ledger is not None:
-            self.ledger = ledger
-        else:
-            try:
-                self.ledger = PostgresIdempotencyLedger()
-            except ProductionDatabaseConfigurationError:
-                self.ledger = IdempotencyLedger(":memory:")
+        self.ledger = ledger or PostgresIdempotencyLedger()
         self.confirmation_detector = ConfirmationDetector()
 
     def compute_answers_hash(self, answers: tuple[ApplicationAnswer, ...]) -> str:

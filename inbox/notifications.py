@@ -14,22 +14,13 @@ from .persistence import DurableInboxStore
 from .postgres_persistence import PostgresInboxStore
 
 
-from storage.engine import ProductionDatabaseConfigurationError
-
-
 class NotificationEngine:
     """Surfaces high-priority action-required alerts for founder with strict key idempotency."""
 
     def __init__(self, workspace: str = "default", candidate_id: str = "founder", store: Union[DurableInboxStore, PostgresInboxStore] | None = None) -> None:
         self.workspace = workspace
         self.candidate_id = candidate_id
-        if store is not None:
-            self.store = store
-        else:
-            try:
-                self.store = PostgresInboxStore()
-            except ProductionDatabaseConfigurationError:
-                self.store = DurableInboxStore(":memory:")
+        self.store = store or PostgresInboxStore()
 
     @classmethod
     def compute_notification_key(cls, workspace: str, candidate_id: str, signal_id: str, category: str) -> str:

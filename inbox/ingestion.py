@@ -112,13 +112,7 @@ class InboundIngestionService:
     """Ingests messages from a transport, guarantees durable storage and skippable-only-when-processed semantics."""
     def __init__(self, transport: InboundMailTransport, store: Union[DurableInboxStore, PostgresInboxStore] | None = None) -> None:
         self.transport = transport
-        if store is not None:
-            self.store = store
-        else:
-            try:
-                self.store = PostgresInboxStore()
-            except ProductionDatabaseConfigurationError:
-                self.store = DurableInboxStore(":memory:")
+        self.store = store or PostgresInboxStore()
 
     def poll_new_messages(self, current_cursor: str | None = None, limit: int = 50) -> tuple[tuple[InboundMessageEvidence, ...], str]:
         raw_messages, next_cursor = self.transport.fetch_messages(since_cursor=current_cursor, limit=limit)
