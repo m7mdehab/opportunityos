@@ -10,8 +10,8 @@ Next: With the engine foundation, PostgreSQL relational persistence backbone, an
 
 ## Repository
 
-- **Generated:** 2026-09-01T19:28:52Z
-- **State generated at commit:** `37ba909` — docs: record terminal fail-closed auditor results in REPORT-FR-002 and sync STATE.md
+- **Generated:** 2026-09-01T19:31:15Z
+- **State generated at commit:** `82a2671` — fix(storage): refine orchestrator unconfigured fail-closed test in test_case_p
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
