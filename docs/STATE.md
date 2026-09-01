@@ -10,8 +10,8 @@ Next: With the engine foundation, PostgreSQL relational persistence backbone, an
 
 ## Repository
 
-- **Generated:** 2026-09-01T00:31:06Z
-- **State generated at commit:** `560d214` — fix(storage): update test_postgres_integration with exact method calls
+- **Generated:** 2026-09-01T00:33:10Z
+- **State generated at commit:** `214af23` — fix(storage): use record_reconciliation in test_postgres_integration
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief

@@ -131,7 +131,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             )
             store.store_notification(notif)
             store.save_checkpoint("gmail:cursor", "cursor-999", "2026-08-30T10:05:00Z")
-            store.store_reconciliation("rec-101", "act-101", "opp-101", "sig-101", ev.message_content_hash, "Unknown outcome resolved")
+            store.record_reconciliation("rec-101", "act-101", "opp-101", "sig-101", ev.message_content_hash, "Unknown outcome resolved", "2026-08-30T10:05:00Z")
 
             # Execute migration into PostgreSQL
             session = self.SessionFactory()
