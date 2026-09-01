@@ -1,6 +1,6 @@
 import json
 import hashlib
-import threading
+import dataclasses
 from datetime import datetime, timezone
 from typing import Optional, Sequence, List
 from sqlalchemy.orm import Session
@@ -46,16 +46,16 @@ class PostgresIdempotencyLedger:
         payload = f"{workspace}:{candidate_id}:{opportunity_id}:{action_type}".encode("utf-8")
         return hashlib.sha256(payload).hexdigest()
 
-    def reserve_submission(
-        self,
-        workspace: str,
-        candidate_id: str,
-        opportunity_id: str,
-        action_type: str,
-        action_id: str,
-        initial_record: OutboundActionRecord,
-    ) -> str:
-        idempotency_key = self.compute_idempotency_key(workspace, candidate_id, opportunity_id, action_type)
+    def reserve_submission(self, record: OutboundActionRecord) -> None:
+        """Atomically reserve submission intent across independent ledger instances."""
+        idempotency_key = record.idempotency_key
+        submitting_record = dataclasses.replace(
+            record,
+            action_status=ActionStatus.SUBMITTING,
+            updated_at=datetime.now(timezone.utc).isoformat(),
+        )
+        rec_json = self._record_to_json(submitting_record)
+
         session = self._get_session()
         owns_session = self._external_session is None
 
@@ -67,30 +67,28 @@ class PostgresIdempotencyLedger:
                     raise UnknownOutcomeFrozenError(
                         f"Action {existing.action_id} is permanently frozen in UNKNOWN_OUTCOME. Automatic replay blocked."
                     )
-                if existing.action_status in (ActionStatus.RESERVED.value, ActionStatus.SUBMITTED.value):
+                if existing.action_status in (ActionStatus.SUBMITTING.value, ActionStatus.SUBMITTED.value, ActionStatus.CONFIRMED.value):
                     raise DuplicateSubmissionError(
                         f"Submission already {existing.action_status} for idempotency key {idempotency_key}"
                     )
 
             now = datetime.now(timezone.utc)
-            rec_json = self._record_to_json(initial_record)
 
             # 2. Atomic insert
             reservation = IdempotencyReservationRecord(
                 idempotency_key=idempotency_key,
-                action_id=action_id,
-                workspace=workspace,
-                candidate_id=candidate_id,
-                opportunity_id=opportunity_id,
-                action_type=action_type,
-                action_status=ActionStatus.RESERVED.value,
+                action_id=record.action_id,
+                workspace=record.workspace,
+                candidate_id=record.candidate_id,
+                opportunity_id=record.opportunity_id,
+                action_type="submit",
+                action_status=ActionStatus.SUBMITTING.value,
                 record_json=rec_json,
                 created_at=now,
                 updated_at=now,
             )
             session.add(reservation)
             session.commit()
-            return idempotency_key
         except Exception as e:
             session.rollback()
             if "duplicate" in str(e).lower() or "unique" in str(e).lower() or "integrityerror" in str(e).lower() or "uniqueconstraint" in str(e).lower():
@@ -121,6 +119,20 @@ class PostgresIdempotencyLedger:
                 reservation.action_status = record.action_status.value
                 reservation.record_json = rec_json
                 reservation.updated_at = now
+            else:
+                reservation = IdempotencyReservationRecord(
+                    idempotency_key=record.idempotency_key,
+                    action_id=record.action_id,
+                    workspace=record.workspace,
+                    candidate_id=record.candidate_id,
+                    opportunity_id=record.opportunity_id,
+                    action_type="submit",
+                    action_status=record.action_status.value,
+                    record_json=rec_json,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(reservation)
 
             ev_dict = None
             if record.confirmation_evidence:

@@ -126,7 +126,7 @@ class PostgresInboxStore:
             if owns_session:
                 session.close()
 
-    def store_event(self, event: PipelineEvent) -> bool:
+    def store_pipeline_event(self, event: PipelineEvent) -> bool:
         session = self._get_session()
         owns_session = self._external_session is None
         try:
@@ -155,6 +155,9 @@ class PostgresInboxStore:
         finally:
             if owns_session:
                 session.close()
+
+    def store_event(self, event: PipelineEvent) -> bool:
+        return self.store_pipeline_event(event)
 
     def get_events_for_opportunity(self, opportunity_id: str) -> tuple[PipelineEvent, ...]:
         session = self._get_session()
@@ -186,7 +189,7 @@ class PostgresInboxStore:
                 title=notif.title,
                 message=notif.message,
                 action_required=notif.action_required,
-                deadline=notif.deadline.raw_text if notif.deadline else None,
+                deadline=notif.deadline,
                 created_at=c_at,
                 acknowledged=notif.acknowledged,
                 acknowledged_at=None,
@@ -309,7 +312,6 @@ class PostgresInboxStore:
         )
 
     def _row_to_notification(self, r: NotificationRecord) -> FounderNotificationRecord:
-        deadline_obj = ExtractedDeadline(is_strict=True, raw_text=r.deadline) if r.deadline else None
         return FounderNotificationRecord(
             notification_key=r.notification_key,
             notification_id=r.notification_id,
@@ -320,7 +322,7 @@ class PostgresInboxStore:
             title=r.title,
             message=r.message,
             action_required=r.action_required,
-            deadline=deadline_obj,
+            deadline=r.deadline,
             created_at=r.created_at.isoformat() if r.created_at else "2026-08-30T00:00:00Z",
             acknowledged=r.acknowledged,
         )

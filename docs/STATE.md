@@ -10,8 +10,8 @@ Next: With the engine foundation, PostgreSQL relational persistence backbone, an
 
 ## Repository
 
-- **Generated:** 2026-09-01T00:26:57Z
-- **State generated at commit:** `4e88bb1` — fix(storage): ensure test_postgres_integration runs Alembic baseline in setUpClass
+- **Generated:** 2026-09-01T00:29:16Z
+- **State generated at commit:** `1708554` — fix(postgres): align PostgresIdempotencyLedger, PostgresInboxStore, and tests with canonical model contracts
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief

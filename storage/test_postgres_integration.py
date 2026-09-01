@@ -119,14 +119,15 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
                 message_content_hash=ev.message_content_hash, occurred_at="2026-08-30T10:00:00Z",
                 recorded_at="2026-08-30T10:01:00Z", actor="system", notes="Auto correlated",
             )
-            store.store_event(event)
+            store.store_pipeline_event(event)
 
             # Store notification
             notif = FounderNotificationRecord(
-                notification_key="notif-key-101", notification_id="notif-101",
+                notification_id="notif-101", notification_key="notif-key-101",
                 opportunity_id="opp-101", signal_id="sig-101", priority=SignalPriority.HIGH,
                 category=SignalCategory.INTERVIEW_REQUEST, title="Interview Invited",
                 message="Invitation for opp-101", action_required=True,
+                deadline=None, created_at="2026-08-30T10:01:00Z",
             )
             store.store_notification(notif)
             store.save_checkpoint("gmail:cursor", "cursor-999")
@@ -189,7 +190,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
                 ),
                 external_reference_id="ASH-99988",
             )
-            ledger.reserve_submission("default", "founder", "opp-201", "submit", "act-201", rec)
+            ledger.reserve_submission(rec)
             ledger.record_outcome(rec)
 
             session = self.SessionFactory()
@@ -226,21 +227,21 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             idempotency_key="idemp-301", created_at="2026-08-30T14:00:00Z",
             updated_at="2026-08-30T14:02:00Z", blocker_reason="Browser crashed during submit",
         )
-        pg_ledger.reserve_submission("default", "founder", "opp-301", "submit", "act-301", rec)
+        pg_ledger.reserve_submission(rec)
         pg_ledger.record_outcome(rec)
 
         from outbound.idempotency import UnknownOutcomeFrozenError
         with self.assertRaises(UnknownOutcomeFrozenError):
-            pg_ledger.reserve_submission("default", "founder", "opp-301", "submit", "act-301-replay", rec)
+            pg_ledger.reserve_submission(rec)
 
     def test_case_h_duplicate_notification_event_replay(self):
         """Case H: Duplicate notification and pipeline event replay produces 0 duplicate records."""
         pg_store = PostgresInboxStore(db_url=self.db_url)
         notif = FounderNotificationRecord(
-            notification_key="notif-dup-1", notification_id="nid-1",
+            notification_id="nid-1", notification_key="notif-dup-1",
             opportunity_id="opp-1", signal_id="sig-1", priority=SignalPriority.URGENT,
             category=SignalCategory.OFFER, title="Offer Received", message="Great news!",
-            action_required=True,
+            action_required=True, deadline=None, created_at="2026-08-30T14:00:00Z",
         )
         first_store = pg_store.store_notification(notif)
         second_store = pg_store.store_notification(notif)
@@ -255,7 +256,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         pg_ledger_1 = PostgresIdempotencyLedger(db_url=self.db_url)
         pg_ledger_2 = PostgresIdempotencyLedger(db_url=self.db_url)
 
-        rec = OutboundActionRecord(
+        rec1 = OutboundActionRecord(
             action_id="act-race-1", opportunity_id="opp-race-1",
             opportunity_content_hash="h-race", workspace="default",
             candidate_id="founder", track=Track.EMPLOYMENT, source="ashby",
@@ -263,7 +264,19 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
             qualification_decision=QualificationDecision.QUALIFIED,
             match_score_snapshot=90.0, artifact_ids=(), artifact_hashes=(),
-            manifest_hash="man-race", action_status=ActionStatus.PENDING,
+            manifest_hash="man-race", action_status=ActionStatus.SUBMITTING,
+            idempotency_key="race-key-1", created_at="2026-08-30T15:00:00Z",
+            updated_at="2026-08-30T15:00:00Z",
+        )
+        rec2 = OutboundActionRecord(
+            action_id="act-race-2", opportunity_id="opp-race-1",
+            opportunity_content_hash="h-race", workspace="default",
+            candidate_id="founder", track=Track.EMPLOYMENT, source="ashby",
+            adapter_name="ashby_outbound", adapter_version="1.0.0",
+            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
+            qualification_decision=QualificationDecision.QUALIFIED,
+            match_score_snapshot=90.0, artifact_ids=(), artifact_hashes=(),
+            manifest_hash="man-race", action_status=ActionStatus.SUBMITTING,
             idempotency_key="race-key-1", created_at="2026-08-30T15:00:00Z",
             updated_at="2026-08-30T15:00:00Z",
         )
@@ -271,15 +284,15 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         winners = []
         errors = []
 
-        def worker_fn(ledger_instance, action_id):
+        def worker_fn(ledger_instance, record):
             try:
-                ledger_instance.reserve_submission("default", "founder", "opp-race-1", "submit", action_id, rec)
-                winners.append(action_id)
+                ledger_instance.reserve_submission(record)
+                winners.append(record.action_id)
             except Exception as e:
                 errors.append(e)
 
-        t1 = threading.Thread(target=worker_fn, args=(pg_ledger_1, "act-winner-1"))
-        t2 = threading.Thread(target=worker_fn, args=(pg_ledger_2, "act-winner-2"))
+        t1 = threading.Thread(target=worker_fn, args=(pg_ledger_1, rec1))
+        t2 = threading.Thread(target=worker_fn, args=(pg_ledger_2, rec2))
 
         t1.start()
         t2.start()
