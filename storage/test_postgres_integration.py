@@ -64,6 +64,11 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         cls.engine = get_engine(cls.db_url)
         cls.SessionFactory = get_session_factory(cls.engine)
 
+        # Run baseline migration once for the test class
+        alembic_cfg = Config("alembic.ini")
+        alembic_cfg.set_main_option("sqlalchemy.url", cls.db_url)
+        command.upgrade(alembic_cfg, "head")
+
     def setUp(self):
         # Clean test tables between runs
         with self.engine.begin() as conn:
@@ -75,10 +80,10 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         alembic_cfg = Config("alembic.ini")
         alembic_cfg.set_main_option("sqlalchemy.url", self.db_url)
         
-        # Test upgrade
+        # Test upgrade to head
         command.upgrade(alembic_cfg, "head")
         
-        # Verify table exists in postgres
+        # Verify tables exist in postgres
         with self.engine.connect() as conn:
             res = conn.execute(text("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'"))
             count = res.scalar()

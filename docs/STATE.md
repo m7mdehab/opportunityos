@@ -10,8 +10,8 @@ Next: With the engine foundation, PostgreSQL relational persistence backbone, an
 
 ## Repository
 
-- **Generated:** 2026-09-01T00:24:57Z
-- **State generated at commit:** `679aed0` — docs: finalize REPORT-FR-002 and STATE.md with PostgreSQL audit verdict
+- **Generated:** 2026-09-01T00:26:57Z
+- **State generated at commit:** `4e88bb1` — fix(storage): ensure test_postgres_integration runs Alembic baseline in setUpClass
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
