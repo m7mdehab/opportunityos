@@ -27,7 +27,6 @@ def source_head() -> tuple[str, str]:
         "--format=%H%x00%s",
         "--",
         ".",
-        ":(exclude)docs/STATE.md",
     )
     if not commit:
         return "uncommitted", "repository foundation"
@@ -228,8 +227,17 @@ def main() -> None:
         latest_report_name = f"BRIEF-{latest_number:03d}"
 
     outcome = f"{latest_report_name} — {decision_line(latest_report_text)}" if latest_report_text else "No phase report yet"
-    prerequisites = section(latest_report_text, "Next phase prerequisites") if latest_report_text else ""
     
+    # Handle prerequisites & recommendations from report
+    prerequisites = section(latest_report_text, "Next phase prerequisites") if latest_report_text else ""
+    if not prerequisites and latest_report_text:
+        rec_match = re.search(r"(?m)^(?:\*\*)?FINAL RECOMMENDATION:(?:\*\*)?\s*(.+)$", latest_report_text)
+        if rec_match:
+            rec_line = rec_match.group(1).strip("* ")
+            prerequisites = f"- {rec_line}\n- Phase 0/1 Foundation & Web Integration (PostgreSQL, background workers, FastAPI API layer, Next.js Web Dashboard)."
+        else:
+            prerequisites = section(latest_report_text, "Next phase prerequisites")
+
     blocked: list[str] = [
         "BRIEF-007 / Phase 6: Multi-Tenant Family Alpha (strictly blocked until Founder Web Alpha is live and validated)"
     ]

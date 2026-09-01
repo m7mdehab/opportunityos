@@ -10,8 +10,8 @@ Next: With the engine foundation and production persistence backbone established
 
 ## Repository
 
-- **Generated:** 2026-08-31T23:58:41Z
-- **State generated at commit:** `8b9c0d8` — docs: finalize REPORT-FR-002 and STATE.md with dual auditor PASS
+- **Generated:** 2026-09-01T00:01:24Z
+- **State generated at commit:** `9d05f79` — fix(ci): fix state generator git log parsing and test assertion compatibility
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
