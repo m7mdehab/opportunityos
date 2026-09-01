@@ -549,8 +549,8 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         # Prepare manifest
         manifest, answers, red_cnt, unres_cnt = engine.prepare_manifest(
             opportunity=opp,
+            artifact=None,
             driver=driver,
-            execution_mode=ExecutionMode.CONTROLLED_SUBMIT,
             adapter_name="greenhouse",
         )
         self.assertIsNotNone(manifest)
