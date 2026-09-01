@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import hashlib
-from typing import Sequence
+from typing import Sequence, Union
 from matching.models import Track
 from .models import (
     CorrelationEvidence,
@@ -14,6 +14,7 @@ from .models import (
     SignalCategory,
 )
 from .persistence import DurableInboxStore
+from .postgres_persistence import PostgresInboxStore
 
 
 class PipelineStateSynchronizer:
@@ -59,49 +60,62 @@ class PipelineStateSynchronizer:
         """Deterministically derive opportunity state from sorted event log using source timestamps."""
         if not events:
             return DerivedOpportunityState(
-                opportunity_id=opportunity_id, track=track, current_stage=initial_stage,
-                latest_event_id="", last_signal_category=None, last_signal_at="",
-                active_action_required=False, action_deadline=None, action_summary="",
-                event_history_count=0,
+                opportunity_id=opportunity_id, track=track,
+                current_stage=initial_stage, latest_event_id="",
+                last_signal_category=None, last_signal_at="",
+                active_action_required=False,
             )
 
+        # Sort strictly by occurred_at ASC, then recorded_at ASC
         sorted_events = sorted(events, key=lambda e: (e.occurred_at, e.recorded_at, e.event_id))
-        stage = initial_stage if initial_stage != OpportunityStage.NO_EVENTS else OpportunityStage.APPLIED
+
+        curr_stage = initial_stage
         latest_event_id = ""
-        last_cat = None
-        last_at = ""
+        last_sig_cat = None
+        last_sig_at = ""
         action_req = False
-        deadline_str = None
-        action_sum = ""
+        action_desc = ""
 
         for ev in sorted_events:
-            stage = ev.new_stage
+            curr_stage = cls.determine_next_stage(curr_stage, ev.trigger_category)
             latest_event_id = ev.event_id
-            last_cat = ev.trigger_category
-            last_at = ev.occurred_at
+            last_sig_cat = ev.trigger_category
+            last_sig_at = ev.occurred_at
             if ev.trigger_category in (
-                SignalCategory.INTERVIEW_REQUEST, SignalCategory.OFFER, SignalCategory.ASSESSMENT,
-                SignalCategory.CLARIFICATION_REQUEST, SignalCategory.DISCOVERY_CALL_OR_MEETING_REQUEST,
-                SignalCategory.RECRUITER_OUTREACH, SignalCategory.PROCUREMENT_AMENDMENT,
+                SignalCategory.INTERVIEW_REQUEST, SignalCategory.ASSESSMENT,
+                SignalCategory.DISCOVERY_CALL_OR_MEETING_REQUEST, SignalCategory.CLARIFICATION_REQUEST,
+                SignalCategory.OFFER, SignalCategory.AWARD_OR_WIN
             ):
                 action_req = True
-                action_sum = f"Action required: {ev.trigger_category.value}"
-            elif ev.trigger_category in (SignalCategory.REJECTION, SignalCategory.PROPOSAL_REJECTION):
-                action_req = False
+                action_desc = ev.notes
 
         return DerivedOpportunityState(
-            opportunity_id=opportunity_id, track=track, current_stage=stage,
-            latest_event_id=latest_event_id, last_signal_category=last_cat, last_signal_at=last_at,
-            active_action_required=action_req, action_deadline=deadline_str, action_summary=action_sum,
+            opportunity_id=opportunity_id,
+            track=track,
+            current_stage=curr_stage,
+            latest_event_id=latest_event_id,
+            last_signal_category=last_sig_cat,
+            last_signal_at=last_sig_at,
+            active_action_required=action_req,
+            action_summary=action_desc,
             event_history_count=len(sorted_events),
         )
+
+
+from storage.engine import ProductionDatabaseConfigurationError
 
 
 class PipelineEventStore:
     """Append-only immutable event store with SQLite backing and deterministic replay."""
 
-    def __init__(self, store: DurableInboxStore | None = None) -> None:
-        self.store = store or DurableInboxStore(":memory:")
+    def __init__(self, store: Union[DurableInboxStore, PostgresInboxStore] | None = None) -> None:
+        if store is not None:
+            self.store = store
+        else:
+            try:
+                self.store = PostgresInboxStore()
+            except ProductionDatabaseConfigurationError:
+                self.store = DurableInboxStore(":memory:")
 
     @classmethod
     def compute_event_id(cls, signal_id: str, opportunity_id: str) -> str:

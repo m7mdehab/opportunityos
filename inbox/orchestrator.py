@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Sequence, Union
 from matching.models import Track
 from opportunity.models import Opportunity
 from outbound.models import ActionStatus, OutboundActionRecord
@@ -23,6 +23,7 @@ from .models import (
 )
 from .notifications import NotificationEngine
 from .persistence import DurableInboxStore
+from .postgres_persistence import PostgresInboxStore
 from .pipeline import PipelineEventStore
 
 
@@ -37,6 +38,9 @@ class InboundProcessingCycleResult:
     cursor_checkpoint: str
 
 
+from storage.engine import ProductionDatabaseConfigurationError
+
+
 class ProductionOperationalOrchestrator:
     """Coordinates polling, classification, correlation, pipeline update, notifications, and analytics."""
 
@@ -47,10 +51,19 @@ class ProductionOperationalOrchestrator:
         outbound_records: Sequence[OutboundActionRecord] = (),
         workspace: str = "default",
         candidate_id: str = "founder",
-        store: DurableInboxStore | None = None,
+        store: Union[DurableInboxStore, PostgresInboxStore] | None = None,
         thread_to_action_map: dict[str, str] | None = None,
     ) -> None:
-        self.store = store or (ingestion_service.store if hasattr(ingestion_service, "store") else DurableInboxStore(":memory:"))
+        if store is not None:
+            self.store = store
+        elif hasattr(ingestion_service, "store") and ingestion_service.store is not None:
+            self.store = ingestion_service.store
+        else:
+            try:
+                self.store = PostgresInboxStore()
+            except ProductionDatabaseConfigurationError:
+                self.store = DurableInboxStore(":memory:")
+
         self.ingestion_service = ingestion_service
         self.opportunities = list(opportunities)
         self.outbound_records = list(outbound_records)

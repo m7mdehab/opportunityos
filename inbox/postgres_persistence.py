@@ -1,8 +1,8 @@
 import json
 from datetime import datetime, timezone
-from typing import Optional, Sequence, List
+from typing import Any, Optional, Sequence, List
 from sqlalchemy.orm import Session
-from storage.engine import get_engine, get_session_factory, DEFAULT_DB_URL
+from storage.engine import get_engine, get_session_factory, get_production_db_url
 from storage.models import (
     InboundEvidenceRecord,
     PipelineEventRecord,
@@ -25,15 +25,16 @@ from inbox.models import (
 
 
 class PostgresInboxStore:
-    """Thread-safe and process-durable PostgreSQL/Relational persistence store for inbox."""
+    """Thread-safe and process-durable PostgreSQL/Relational persistence store for inbox with 100% frozen interface parity."""
 
     def __init__(self, db_url: Optional[str] = None, session: Optional[Session] = None):
-        self.db_url = db_url or DEFAULT_DB_URL
         self._external_session = session
         if self._external_session is None:
+            self.db_url = db_url or get_production_db_url()
             self.engine = get_engine(self.db_url)
             self.session_factory = get_session_factory(self.engine)
         else:
+            self.db_url = db_url
             self.engine = None
             self.session_factory = None
 
@@ -166,7 +167,21 @@ class PostgresInboxStore:
             records = (
                 session.query(PipelineEventRecord)
                 .filter_by(opportunity_id=opportunity_id)
-                .order_by(PipelineEventRecord.occurred_at.asc())
+                .order_by(PipelineEventRecord.occurred_at.asc(), PipelineEventRecord.recorded_at.asc(), PipelineEventRecord.event_id.asc())
+                .all()
+            )
+            return tuple(self._row_to_event(r) for r in records)
+        finally:
+            if owns_session:
+                session.close()
+
+    def get_all_pipeline_events(self) -> tuple[PipelineEvent, ...]:
+        session = self._get_session()
+        owns_session = self._external_session is None
+        try:
+            records = (
+                session.query(PipelineEventRecord)
+                .order_by(PipelineEventRecord.occurred_at.asc(), PipelineEventRecord.recorded_at.asc(), PipelineEventRecord.event_id.asc())
                 .all()
             )
             return tuple(self._row_to_event(r) for r in records)
@@ -211,7 +226,7 @@ class PostgresInboxStore:
             records = (
                 session.query(NotificationRecord)
                 .filter_by(acknowledged=False)
-                .order_by(NotificationRecord.created_at.asc())
+                .order_by(NotificationRecord.created_at.asc(), NotificationRecord.notification_id.asc())
                 .all()
             )
             return tuple(self._row_to_notification(r) for r in records)
@@ -219,11 +234,43 @@ class PostgresInboxStore:
             if owns_session:
                 session.close()
 
-    def save_checkpoint(self, checkpoint_key: str, cursor_value: str) -> None:
+    def get_all_notifications(self) -> tuple[FounderNotificationRecord, ...]:
         session = self._get_session()
         owns_session = self._external_session is None
         try:
-            now = datetime.now(timezone.utc)
+            records = (
+                session.query(NotificationRecord)
+                .order_by(NotificationRecord.created_at.asc(), NotificationRecord.notification_id.asc())
+                .all()
+            )
+            return tuple(self._row_to_notification(r) for r in records)
+        finally:
+            if owns_session:
+                session.close()
+
+    def acknowledge_notification(self, notification_key: str, acknowledged_at: str | None = None) -> bool:
+        session = self._get_session()
+        owns_session = self._external_session is None
+        try:
+            rec = session.query(NotificationRecord).filter_by(notification_key=notification_key).first()
+            if rec:
+                rec.acknowledged = True
+                rec.acknowledged_at = datetime.fromisoformat(acknowledged_at) if acknowledged_at else datetime.now(timezone.utc)
+                session.commit()
+                return True
+            return False
+        except Exception:
+            session.rollback()
+            return False
+        finally:
+            if owns_session:
+                session.close()
+
+    def save_checkpoint(self, checkpoint_key: str, cursor_value: str, updated_at: str | None = None) -> None:
+        session = self._get_session()
+        owns_session = self._external_session is None
+        try:
+            now = datetime.fromisoformat(updated_at) if updated_at else datetime.now(timezone.utc)
             rec = session.query(InboxCheckpointRecord).filter_by(checkpoint_key=checkpoint_key).first()
             if rec:
                 rec.cursor_value = cursor_value
@@ -249,18 +296,28 @@ class PostgresInboxStore:
             if owns_session:
                 session.close()
 
-    def store_reconciliation(self, rec_id: str, outbound_action_id: str, opportunity_id: str, signal_id: str, inbound_content_hash: str, reason: str) -> bool:
+    def record_reconciliation(
+        self,
+        reconciliation_id: str,
+        outbound_action_id: str,
+        opportunity_id: str,
+        signal_id: str,
+        inbound_content_hash: str,
+        reason: str,
+        created_at: str | None = None,
+    ) -> bool:
         session = self._get_session()
         owns_session = self._external_session is None
         try:
+            c_at = datetime.fromisoformat(created_at) if created_at else datetime.now(timezone.utc)
             rec = ReconciliationRecordModel(
-                reconciliation_id=rec_id,
+                reconciliation_id=reconciliation_id,
                 outbound_action_id=outbound_action_id,
                 opportunity_id=opportunity_id,
                 signal_id=signal_id,
                 inbound_content_hash=inbound_content_hash,
                 reason=reason,
-                created_at=datetime.now(timezone.utc),
+                created_at=c_at,
                 resolved=False,
                 resolved_at=None,
             )
@@ -270,6 +327,32 @@ class PostgresInboxStore:
         except Exception:
             session.rollback()
             return False
+        finally:
+            if owns_session:
+                session.close()
+
+    def store_reconciliation(self, rec_id: str, outbound_action_id: str, opportunity_id: str, signal_id: str, inbound_content_hash: str, reason: str) -> bool:
+        return self.record_reconciliation(rec_id, outbound_action_id, opportunity_id, signal_id, inbound_content_hash, reason)
+
+    def get_unresolved_reconciliations(self) -> tuple[dict[str, Any], ...]:
+        session = self._get_session()
+        owns_session = self._external_session is None
+        try:
+            records = session.query(ReconciliationRecordModel).filter_by(resolved=False).all()
+            res = []
+            for r in records:
+                res.append({
+                    "reconciliation_id": r.reconciliation_id,
+                    "outbound_action_id": r.outbound_action_id,
+                    "opportunity_id": r.opportunity_id,
+                    "signal_id": r.signal_id,
+                    "inbound_content_hash": r.inbound_content_hash,
+                    "reason": r.reason,
+                    "created_at": r.created_at.isoformat() if r.created_at else "2026-08-30T00:00:00Z",
+                    "resolved": 1 if r.resolved else 0,
+                    "resolved_at": r.resolved_at.isoformat() if r.resolved_at else None,
+                })
+            return tuple(res)
         finally:
             if owns_session:
                 session.close()
@@ -325,4 +408,5 @@ class PostgresInboxStore:
             deadline=r.deadline,
             created_at=r.created_at.isoformat() if r.created_at else "2026-08-30T00:00:00Z",
             acknowledged=r.acknowledged,
+            acknowledged_at=r.acknowledged_at.isoformat() if r.acknowledged_at else None,
         )

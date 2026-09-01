@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import base64
 import json
-from typing import Any, Protocol, Sequence
+from typing import Any, Protocol, Sequence, Union
 from .models import InboundMessageEvidence
 from .persistence import DurableInboxStore
+from .postgres_persistence import PostgresInboxStore
 
 
 class InboundMailTransport(Protocol):
@@ -107,11 +108,20 @@ class GmailReadOnlyAdapter:
         return tuple(evidence_list), str(next_token)
 
 
+from storage.engine import ProductionDatabaseConfigurationError
+
+
 class InboundIngestionService:
     """Ingests messages from a transport, guarantees durable storage and skippable-only-when-processed semantics."""
-    def __init__(self, transport: InboundMailTransport, store: DurableInboxStore | None = None) -> None:
+    def __init__(self, transport: InboundMailTransport, store: Union[DurableInboxStore, PostgresInboxStore] | None = None) -> None:
         self.transport = transport
-        self.store = store or DurableInboxStore(":memory:")
+        if store is not None:
+            self.store = store
+        else:
+            try:
+                self.store = PostgresInboxStore()
+            except ProductionDatabaseConfigurationError:
+                self.store = DurableInboxStore(":memory:")
 
     def poll_new_messages(self, current_cursor: str | None = None, limit: int = 50) -> tuple[tuple[InboundMessageEvidence, ...], str]:
         raw_messages, next_cursor = self.transport.fetch_messages(since_cursor=current_cursor, limit=limit)

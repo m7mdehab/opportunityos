@@ -6,7 +6,7 @@ from typing import Optional, Sequence, List
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy import select, and_
-from storage.engine import get_engine, get_session_factory, DEFAULT_DB_URL
+from storage.engine import get_engine, get_session_factory, get_production_db_url
 from storage.models import IdempotencyReservationRecord, OutboundActionRecordModel
 from outbound.models import (
     ActionStatus,
@@ -21,12 +21,13 @@ class PostgresIdempotencyLedger:
     """Thread-safe and process-durable PostgreSQL/Relational Idempotency Ledger with atomic concurrency."""
 
     def __init__(self, db_url: Optional[str] = None, session: Optional[Session] = None):
-        self.db_url = db_url or DEFAULT_DB_URL
         self._external_session = session
         if self._external_session is None:
+            self.db_url = db_url or get_production_db_url()
             self.engine = get_engine(self.db_url)
             self.session_factory = get_session_factory(self.engine)
         else:
+            self.db_url = db_url
             self.engine = None
             self.session_factory = None
 
@@ -67,9 +68,9 @@ class PostgresIdempotencyLedger:
                     raise UnknownOutcomeFrozenError(
                         f"Action {existing.action_id} is permanently frozen in UNKNOWN_OUTCOME. Automatic replay blocked."
                     )
-                if existing.action_status in (ActionStatus.SUBMITTING.value, ActionStatus.SUBMITTED.value, ActionStatus.CONFIRMED.value):
+                if existing.action_status in (ActionStatus.SUBMITTING.value, ActionStatus.SUBMITTED.value, ActionStatus.CONFIRMED.value, ActionStatus.PLANNED.value):
                     raise DuplicateSubmissionError(
-                        f"Submission already {existing.action_status} for idempotency key {idempotency_key}"
+                        f"Duplicate submission blocked for idempotency key {idempotency_key} (current status: {existing.action_status})"
                     )
 
             now = datetime.now(timezone.utc)
@@ -81,7 +82,7 @@ class PostgresIdempotencyLedger:
                 workspace=record.workspace,
                 candidate_id=record.candidate_id,
                 opportunity_id=record.opportunity_id,
-                action_type="submit",
+                action_type="application",
                 action_status=ActionStatus.SUBMITTING.value,
                 record_json=rec_json,
                 created_at=now,
@@ -91,6 +92,8 @@ class PostgresIdempotencyLedger:
             session.commit()
         except Exception as e:
             session.rollback()
+            if isinstance(e, (DuplicateSubmissionError, UnknownOutcomeFrozenError)):
+                raise
             if "duplicate" in str(e).lower() or "unique" in str(e).lower() or "integrityerror" in str(e).lower() or "uniqueconstraint" in str(e).lower():
                 # Re-query status to raise appropriate domain exception
                 existing = session.query(IdempotencyReservationRecord).filter_by(idempotency_key=idempotency_key).first()
@@ -101,6 +104,93 @@ class PostgresIdempotencyLedger:
                 raise DuplicateSubmissionError(
                     f"Concurrent duplicate submission prevented for idempotency key {idempotency_key}"
                 )
+            raise
+        finally:
+            if owns_session:
+                session.close()
+
+    def transition_status(
+        self,
+        idempotency_key: str,
+        new_status: ActionStatus,
+        evidence: Optional[ConfirmationEvidence] = None,
+        blocker_reason: str = "",
+    ) -> OutboundActionRecord:
+        """Update record status in PostgreSQL ledger atomically."""
+        session = self._get_session()
+        owns_session = self._external_session is None
+
+        try:
+            res = session.query(IdempotencyReservationRecord).filter_by(idempotency_key=idempotency_key).first()
+            if not res or not res.record_json:
+                raise KeyError(f"No record found with idempotency_key: {idempotency_key}")
+
+            old_rec = self._json_to_record(res.record_json)
+            now_iso = datetime.now(timezone.utc).isoformat()
+            now_dt = datetime.now(timezone.utc)
+            updated_rec = dataclasses.replace(
+                old_rec,
+                action_status=new_status,
+                confirmation_evidence=evidence or old_rec.confirmation_evidence,
+                blocker_reason=blocker_reason or old_rec.blocker_reason,
+                updated_at=now_iso,
+            )
+            new_json = self._record_to_json(updated_rec)
+
+            res.action_status = new_status.value
+            res.record_json = new_json
+            res.updated_at = now_dt
+
+            # Sync to OutboundActionRecordModel
+            ev_dict = None
+            if updated_rec.confirmation_evidence:
+                ev_dict = {
+                    "confirmed": updated_rec.confirmation_evidence.confirmed,
+                    "confirmation_text": updated_rec.confirmation_evidence.confirmation_text,
+                    "application_id": updated_rec.confirmation_evidence.application_id,
+                    "receipt_reference": updated_rec.confirmation_evidence.receipt_reference,
+                    "final_url": updated_rec.confirmation_evidence.final_url,
+                    "detected_at": updated_rec.confirmation_evidence.detected_at,
+                    "evidence_checksum": updated_rec.confirmation_evidence.evidence_checksum,
+                }
+
+            c_at = datetime.fromisoformat(updated_rec.created_at) if updated_rec.created_at else now_dt
+            u_at = now_dt
+
+            act_model = OutboundActionRecordModel(
+                id=updated_rec.action_id,
+                opportunity_id=updated_rec.opportunity_id,
+                opportunity_content_hash=updated_rec.opportunity_content_hash,
+                workspace=updated_rec.workspace,
+                candidate_id=updated_rec.candidate_id,
+                track=updated_rec.track.value,
+                source=updated_rec.source,
+                adapter_name=updated_rec.adapter_name,
+                adapter_version=updated_rec.adapter_version,
+                execution_mode=updated_rec.execution_mode.value,
+                qualification_decision=updated_rec.qualification_decision.value,
+                match_score_snapshot=float(updated_rec.match_score_snapshot),
+                artifact_ids_json=json.dumps(list(updated_rec.artifact_ids)),
+                artifact_hashes_json=json.dumps(list(updated_rec.artifact_hashes)),
+                manifest_hash=updated_rec.manifest_hash,
+                action_status=updated_rec.action_status.value,
+                idempotency_key=updated_rec.idempotency_key,
+                receipt_reference=updated_rec.confirmation_evidence.receipt_reference if updated_rec.confirmation_evidence else None,
+                confirmation_text=updated_rec.confirmation_evidence.confirmation_text if updated_rec.confirmation_evidence else None,
+                receipt_checksum=updated_rec.confirmation_evidence.evidence_checksum if updated_rec.confirmation_evidence else None,
+                confirmation_evidence_json=json.dumps(ev_dict) if ev_dict else None,
+                blocker_reason=updated_rec.blocker_reason,
+                manual_edits_json=json.dumps(list(updated_rec.manual_edits)),
+                external_reference_id=updated_rec.external_reference_id,
+                record_json=new_json,
+                created_at=c_at,
+                updated_at=u_at,
+            )
+            session.merge(act_model)
+            session.commit()
+            return updated_rec
+        except Exception:
+            session.rollback()
             raise
         finally:
             if owns_session:
@@ -126,7 +216,7 @@ class PostgresIdempotencyLedger:
                     workspace=record.workspace,
                     candidate_id=record.candidate_id,
                     opportunity_id=record.opportunity_id,
-                    action_type="submit",
+                    action_type="application",
                     action_status=record.action_status.value,
                     record_json=rec_json,
                     created_at=now,
@@ -187,7 +277,14 @@ class PostgresIdempotencyLedger:
             if owns_session:
                 session.close()
 
-    def get_record(self, idempotency_key: str) -> Optional[OutboundActionRecord]:
+    def get_record(self, workspace: str, candidate_id: str | None = None, opportunity_id: str | None = None, action_type: str = "application") -> Optional[OutboundActionRecord]:
+        """Support querying by (workspace, candidate_id, opportunity_id, action_type) or directly by idempotency_key."""
+        if candidate_id is None and opportunity_id is None:
+            # Called with idempotency_key directly
+            idempotency_key = workspace
+        else:
+            idempotency_key = self.compute_idempotency_key(workspace, candidate_id, opportunity_id, action_type)
+
         session = self._get_session()
         owns_session = self._external_session is None
         try:
@@ -199,6 +296,17 @@ class PostgresIdempotencyLedger:
             if owns_session:
                 session.close()
 
+    def is_duplicate(self, workspace: str, candidate_id: str, opportunity_id: str, action_type: str = "application") -> bool:
+        rec = self.get_record(workspace, candidate_id, opportunity_id, action_type)
+        if rec is None:
+            return False
+        return rec.action_status in (
+            ActionStatus.SUBMITTING,
+            ActionStatus.SUBMITTED,
+            ActionStatus.CONFIRMED,
+            ActionStatus.UNKNOWN_OUTCOME,
+        )
+
     def is_known(self, idempotency_key: str) -> bool:
         session = self._get_session()
         owns_session = self._external_session is None
@@ -207,6 +315,20 @@ class PostgresIdempotencyLedger:
         finally:
             if owns_session:
                 session.close()
+
+    def reconcile_unknown_outcome(
+        self,
+        idempotency_key: str,
+        new_status: ActionStatus,
+        reason: str = "Manual founder reconciliation",
+    ) -> OutboundActionRecord:
+        if new_status not in (ActionStatus.CONFIRMED, ActionStatus.FAILED, ActionStatus.BLOCKED):
+            raise ValueError(f"Can only reconcile UNKNOWN_OUTCOME to CONFIRMED, FAILED, or BLOCKED, not {new_status}")
+        return self.transition_status(
+            idempotency_key=idempotency_key,
+            new_status=new_status,
+            blocker_reason=f"Reconciled from UNKNOWN_OUTCOME: {reason}",
+        )
 
     def _record_to_json(self, record: OutboundActionRecord) -> str:
         evidence_dict = None
