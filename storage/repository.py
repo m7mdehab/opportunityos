@@ -54,6 +54,27 @@ class StorageRepository:
                 rule_id=prov.get("rule_id"),
             )
             record.provenances.append(prov_rec)
+
+        # Delete any provenance rows already stored for this opportunity
+        # before merging in the fresh set built above. `Session.merge()`
+        # cannot match the incoming `FieldProvenanceRecord` children to
+        # already-persisted rows -- they carry no natural key of their own
+        # until they are inserted, only a DB-assigned autoincrement `id` that
+        # a freshly-built child never has -- so left to itself it would
+        # insert every incoming child as new *before* the unit of work gets
+        # around to orphaning the old ones, which now that
+        # (opportunity_id, field_name, record_checksum) is a real unique
+        # constraint (see migration 0003_provenance_identity) raises
+        # IntegrityError instead of upserting. Running this DELETE first, as
+        # its own statement in the same transaction, guarantees the old rows
+        # are gone before the merge below ever emits its INSERTs, so a
+        # re-persist (identical or changed content, same opportunity id) is
+        # genuinely idempotent: the row count for this opportunity ends up
+        # exactly matching `provenances` again, with no exception raised.
+        self.session.query(FieldProvenanceRecord).filter_by(
+            opportunity_id=opp_data["id"]
+        ).delete(synchronize_session=False)
+
         self.session.merge(record)
         self.session.commit()
         return record
