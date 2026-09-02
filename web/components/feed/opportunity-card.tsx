@@ -27,6 +27,7 @@ export function OpportunityCard({
         type="button"
         onClick={onOpen}
         aria-haspopup="dialog"
+        data-testid={`opportunity-card-${o.id}`}
         className={cn(
           "flex w-full flex-col gap-2 rounded-lg border border-border bg-card p-4 text-left transition-colors",
           "hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:border-ring"
