@@ -1,0 +1,40 @@
+### FR-005 pre-integration baseline (Master, before any implementer work merged)
+
+Branch base: dc8badc (feat/brief-fr-005-truthful-documents, D6 + ledger + A-6 set only;
+no engine code changed yet). Real PostgreSQL 16.10, portable cluster at %LOCALAPPDATA%\opos-pg.
+
+Toolchain note: bare `python` on this machine is 3.10.3, but CI pins 3.12 and FR-004's
+evidence was 3.12.10. All Master evidence for FR-005 is produced with `py -3.12`
+(Python 3.12.10). Implementers were instructed to do the same after this was discovered.
+
+--- A-0 fail-closed probe (module is storage.test_fail_closed_probe, not test_fail_closed) ---
+$ py -3.12 -m unittest storage.test_fail_closed_probe
+Ran 12 tests
+OK
+
+--- A-1 baseline suite ---
+$ py -3.12 -m unittest discover
+Ran 585 tests in 226.099s
+OK (skipped=2)
+
+Repeated twice more to check determinism:
+  run 1: Ran 585 tests in 220.952s  OK (skipped=2)
+  run 2: Ran 585 tests in 208.880s  OK (skipped=2)
+
+--- The two skips, named ---
+Both are the same test, one entry per docstring line:
+  scripts.test_alpha.TestProcessLifecycleHelpers.test_is_zombie_detects_an_unreaped_exited_child
+  skipped: 'zombie process state is POSIX-specific; Windows has no equivalent'
+
+This is a genuine platform inapplicability, not a masked failure. A-1's expected result says
+"0 skipped"; that is a CI (Linux) property and cannot hold on the Master's Windows host. The
+row is therefore evidenced in two halves -- the Windows count with the skip named here, and
+the CI count from the workflow run. The expected result is NOT rewritten; see the report.
+
+--- One observation recorded, not yet explained ---
+A single verbose run during Batch A execution printed "FAILED (failures=1, skipped=2)".
+Three subsequent full runs on the same commit were OK, and a re-run grepping for "^FAIL:"
+produced no match. Three implementer agents were hammering the same PostgreSQL server at the
+time, each on its own database. The Master does not claim the suite is deterministic on the
+strength of three green runs; this is re-tested at integration and the outcome is reported
+either way.
