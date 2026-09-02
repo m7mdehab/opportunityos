@@ -110,19 +110,72 @@ test.describe("D3 founder-controlled filters", () => {
     const drawer = page.getByRole("dialog")
     await expect(drawer).toBeVisible()
 
-    // `stale_postings` defaults to enabled + label_only: its chip must read
-    // as a label, not a hide, and never carry the hide styling class.
-    const staleRow = drawer.getByTestId("filter-row-stale_postings")
-    const staleChip = staleRow.locator("[data-affected-count]")
-    await expect(staleChip).toHaveAttribute("data-filter-effect", "label_only")
-    const staleClass = (await staleChip.getAttribute("class")) ?? ""
-    expect(staleClass).not.toContain("red-")
+    // `geo_eligibility` defaults to enabled + label_only (and is available):
+    // its chip must read as a label, not a hide, and never carry the hide
+    // styling class.
+    const geoRow = drawer.getByTestId("filter-row-geo_eligibility")
+    const geoChip = geoRow.locator("[data-affected-count]")
+    await expect(geoChip).toHaveAttribute("data-filter-effect", "label_only")
+    const geoClass = (await geoChip.getAttribute("class")) ?? ""
+    expect(geoClass).not.toContain("red-")
 
-    // `track_preference` defaults to enabled + rank_only: same guarantee.
-    const trackRow = drawer.getByTestId("filter-row-track_preference")
-    const trackChip = trackRow.locator("[data-affected-count]")
-    await expect(trackChip).toHaveAttribute("data-filter-effect", "rank_only")
-    const trackClass = (await trackChip.getAttribute("class")) ?? ""
-    expect(trackClass).not.toContain("red-")
+    // `compensation_floor` is rank_only and available, but starts disabled;
+    // enable it and confirm the same guarantee holds once it is actually
+    // acting, not just when it happens to be off.
+    const compRow = drawer.getByTestId("filter-row-compensation_floor")
+    await compRow.getByRole("switch").click()
+    const compChip = compRow.locator("[data-affected-count]")
+    await expect(compChip).toHaveAttribute("data-filter-effect", "rank_only")
+    const compClass = (await compChip.getAttribute("class")) ?? ""
+    expect(compClass).not.toContain("red-")
+  })
+
+  test("an unavailable filter renders as inert, shows its reason, and stays switchable", async ({
+    page,
+  }) => {
+    // Council finding, FR-005 D3 repair: `stale_postings` can never match
+    // anything (nothing outside tests writes `is_stale=True`), but before
+    // this repair it read as an ordinary enabled label_only filter with
+    // `affected_count: 0` — indistinguishable from "no stale postings
+    // right now". This asserts that ambiguity is gone.
+    await login(page)
+    await expect(page.getByTestId("opportunity-card-opp-001")).toBeVisible()
+
+    await page.getByRole("button", { name: "Filters" }).click()
+    const drawer = page.getByRole("dialog")
+    await expect(drawer).toBeVisible()
+
+    // Unavailable filters get their own section, surfaced first.
+    await expect(
+      drawer.getByRole("heading", { name: /Unavailable/ })
+    ).toBeVisible()
+
+    const row = drawer.getByTestId("filter-row-stale_postings")
+    await expect(row).toBeVisible()
+
+    // Distinct inert state: icon + colour + text together, never a bare
+    // suppressed "0" and never colour alone.
+    const notice = row.locator('[data-filter-effect="unavailable"]')
+    await expect(notice).toBeVisible()
+    await expect(notice).toContainText("Unavailable")
+    await expect(notice).toContainText(
+      "No source-polling code path outside tests"
+    )
+
+    // The affected-count chip must not render at all for this row — a
+    // suppressed "0" is exactly the misleading signal this repair removes.
+    await expect(row.locator("[data-affected-count]")).toHaveCount(0)
+
+    // Still switchable: `enabled`/`mode` remain a real, durable founder
+    // preference here (see the reasoning documented in
+    // filters-drawer.tsx), so the control is not disabled.
+    const toggle = row.getByRole("switch")
+    await expect(toggle).toBeEnabled()
+    const wasChecked = (await toggle.getAttribute("aria-checked")) === "true"
+    await toggle.click()
+    await expect(toggle).toHaveAttribute(
+      "aria-checked",
+      wasChecked ? "false" : "true"
+    )
   })
 })

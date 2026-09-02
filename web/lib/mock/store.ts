@@ -221,7 +221,11 @@ export class MockStore {
 
   /** Per-item `hidden_by` / `flagged_by`, evaluated against the store's
    * live `filterSettings`. A disabled filter is not evaluated at all, per
-   * the contract (§4): it contributes to neither list. */
+   * the contract (§4): it contributes to neither list. Neither is a filter
+   * with `default_unavailable_reason` set (council finding, D3 repair): its
+   * predicate can never match anything in production regardless of
+   * `enabled`/`mode`, so it never contributes here either — matching that
+   * reality is what makes `flagged_by` chips trustworthy. */
   private matchingFilterIds(o: SeedOpportunity): {
     hidden_by: string[]
     flagged_by: string[]
@@ -231,6 +235,7 @@ export class MockStore {
     const flagged_by: string[] = []
     let rankDemoted = false
     for (const def of FOUNDER_FILTER_DEFINITIONS) {
+      if (def.default_unavailable_reason !== null) continue
       const setting = this.filterSettings.get(def.filter_id)!
       if (!setting.enabled) continue
       if (!evaluateFounderFilter(def.filter_id, o, setting.params)) continue
@@ -452,11 +457,17 @@ export class MockStore {
           mode: setting.mode,
           params: { ...setting.params },
           // Computed regardless of `enabled`, per the contract, so the
-          // drawer can show what enabling a disabled filter would do.
-          affected_count: items.filter((o) =>
-            evaluateFounderFilter(def.filter_id, o, setting.params)
-          ).length,
+          // drawer can show what enabling a disabled filter would do. Held
+          // at 0 (never shown by the drawer either way) when unavailable,
+          // since the predicate cannot fire at all in that case.
+          affected_count:
+            def.default_unavailable_reason !== null
+              ? 0
+              : items.filter((o) =>
+                  evaluateFounderFilter(def.filter_id, o, setting.params)
+                ).length,
           description: def.description,
+          unavailable_reason: def.default_unavailable_reason,
         }
       }),
     }
@@ -493,10 +504,14 @@ export class MockStore {
       enabled: setting.enabled,
       mode: setting.mode,
       params: { ...setting.params },
-      affected_count: items.filter((o) =>
-        evaluateFounderFilter(filterId, o, setting.params)
-      ).length,
+      affected_count:
+        def.default_unavailable_reason !== null
+          ? 0
+          : items.filter((o) =>
+              evaluateFounderFilter(filterId, o, setting.params)
+            ).length,
       description: def.description,
+      unavailable_reason: def.default_unavailable_reason,
     }
   }
 
