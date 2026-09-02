@@ -1,0 +1,37 @@
+### D5 — truth pack loading, template and checker (Master re-run)
+$ python -m unittest truth.test_pack -v 2>&1 | tail -3
+Ran 12 tests in 7.816s
+
+OK
+
+$ python -m unittest truth.test_pack.TruthPackTemplateTest 2>&1 | tail -1
+OK
+
+--- A finding from the real-stack phase: the shipped template cannot produce a CV ---
+
+The template loads cleanly and truth_check reports it valid, but compiling a
+tailored document from it is refused by the claim validator. Two guards stack:
+
+  truth/validator.py:368  refuses a composite claim whose cited evidence records
+                          are not relationally linked
+  truth/validator.py:378  refuses any claim whose material terms are absent from
+                          that evidence
+
+Measured against the shipped template:
+  cv            claims=3 rejected=1
+     e.g. Professional background as Senior Widget Engineer with verified competen
+       -> composite claim combines independent evidence records without an establishing graph relation
+  cover_letter  claims=2 rejected=2
+     e.g. I am writing to express my interest in the Principal Backend Architect p
+       -> claim contains material terms absent from evidence: aligns, am, architect, backend, background, clou
+
+This is the guard working, not failing: the API returns 409 with the findings and
+NEVER produces document bytes for a rejected claim. The system refuses to put an
+unsupported claim in a document carrying the founder's name.
+
+It was deliberately NOT forced closed. The only way to make the template pass is
+to write the compiler's vocabulary into the founder's evidence text -- phrasing
+evidence to match generated prose -- which in a project whose first hard rule is
+'never fabricate a claim about the founder' is exactly backwards. An agent was
+mid-task on that approach and was stopped. Reconciling the compiler with the
+validator is the first item in the report's section 10.

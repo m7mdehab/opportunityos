@@ -1,0 +1,13 @@
+    112 truth
+     81 outbound
+     72 scripts
+     67 recon
+     64 opportunity
+     61 matching
+     36 storage
+     29 api
+     27 worker
+     25 inbox
+      4 core
+      3 security
+      1 feedback

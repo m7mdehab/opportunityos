@@ -1,0 +1,9 @@
+### D5 addendum — truth pack loading (Master re-run after the template documentation)
+
+$ python -m unittest truth.test_pack -v 2>&1 | tail -3
+Ran 13 tests in 3.062s
+
+OK
+
+$ python scripts/truth_check.py --path docs/templates/truth_pack.template.yaml
+  exit=0

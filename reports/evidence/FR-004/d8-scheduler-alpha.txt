@@ -1,0 +1,21 @@
+### D8 — scheduler and the one-command local runner (Master re-run)
+
+$ python -m unittest worker.test_scheduler -v 2>&1 | tail -3
+Ran 11 tests in 2.309s
+
+OK
+
+$ python -m unittest scripts.test_alpha 2>&1 | grep -E '^Ran|^OK'
+Ran 44 tests in 17.508s
+OK
+
+--- D8-2: only read-allowed sources are ever enqueued ---
+  registered sources        : 52
+  automation.read = allowed : 21
+  --poll-now enqueues       : 21  (matches exactly; no read-disabled source scheduled)
+
+--- the founder's most likely first mistake now has a real answer ---
+  Copying the env template and forgetting to edit it used to produce a raw
+  SQLAlchemy traceback from alembic. It now produces:
+
+    alpha up: FAILED: C:\Users\M7mdEhab\AppData\Local\Temp\tmp.YLi6mTH336\alpha.env still contains template placeholders for OPPORTUNITYOS_DB_URL, OPPORTUNITYOS_FOUNDER_PASSWORD, OPPORTUNITYOS_SESSION_SECRET. Edit that file and replace every REPLACE_WITH_* value, then retry `up`.

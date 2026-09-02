@@ -1,21 +1,60 @@
 """Job handlers for the background worker runner.
 
-Exactly two job types are supported:
+Three job types are supported:
   - ``noop``: does nothing; used for smoke tests / queue plumbing checks.
   - ``poll_source``: invokes the governed opportunity acquisition path for one
     source, after checking the SourceRegistry read policy. A source whose read
     automation is disabled is refused (never fetched) and the refusal is
-    recorded via a structured log line and, when provided, an injectable
-    refusal sink -- this is the mechanism the end-to-end test observes.
+    recorded via a structured log line, a ``source_poll_runs`` row
+    (``status="refused"``), and, when provided, an injectable refusal sink --
+    this is the mechanism the end-to-end test observes. A source that is
+    allowed is fetched, normalized, and persisted (via
+    ``opportunity.persistence.persist_batch``) to the ``opportunities`` /
+    ``field_provenances`` tables, then evaluated INLINE, at full fidelity,
+    from the batch's own in-memory ``Opportunity`` objects (not a
+    reconstruction -- see ``make_poll_source_handler``'s docstring), a
+    ``source_poll_runs`` row is written (``status="ok"``, with the batch and
+    persist counts), and an ``evaluate_new`` job is enqueued as a backfill
+    safety net for whatever the inline pass missed.
+  - ``evaluate_new``: evaluates every opportunity that has no
+    ``match_evaluations`` row for the *current* founder truth-pack hash (see
+    ``matching.evaluate_persist.evaluate_and_store``), reconstructing each
+    ``Opportunity`` best-effort from ``OpportunityRecord``/
+    ``field_provenances`` (see ``_reconstruct_opportunity`` -- this is
+    strictly a backfill path now; ``poll_source`` evaluates its own fresh
+    batch inline at full fidelity, see above). Loads the pack via
+    ``truth.pack.load_founder_pack`` (path injectable so tests never touch
+    ``private/``); refuses cleanly (logs and returns, no partial writes) if no
+    valid pack is available.
 """
 from __future__ import annotations
 
-from typing import Callable, Mapping, MutableMapping, Optional
+import json
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Callable, Mapping, MutableMapping, Optional
 
 from core.logging import get_logger, redact_data
+from matching.evaluate_persist import evaluate_and_store
+from matching.scorer import OpportunityScorer
+from opportunity.models import (
+    Compensation,
+    CompensationInterval,
+    EmploymentType,
+    GeographicEligibility,
+    Opportunity,
+    RemotePolicy,
+    SeniorityLevel,
+    Track,
+)
+from opportunity.persistence import persist_batch
 from opportunity.pipeline import OpportunityPipeline
 from opportunity.registry import SourceRegistry
 from opportunity.transport import BaseTransport, HttpTransport
+from storage.models import FieldProvenanceRecord, MatchEvaluationRecord, OpportunityRecord, SourcePollRunRecord
+from storage.repository import StorageRepository
+from truth.pack import LoadedPack, TruthPackInvalid, TruthPackMissing, load_founder_pack
+from worker.queue import BackgroundWorkerQueue
 
 logger = get_logger("opportunityos.worker.handlers")
 
@@ -23,11 +62,40 @@ logger = get_logger("opportunityos.worker.handlers")
 REFUSAL_REASON_READ_DISABLED = "read_disabled_by_policy"
 
 RefusalSink = Callable[[Mapping[str, str]], None]
+#: A zero-arg callable returning a new SQLAlchemy ``Session`` (i.e. a
+#: ``sessionmaker``/``storage.engine.get_session_factory(engine)`` result).
+SessionFactory = Callable[[], Any]
+#: A one-arg callable ``(path) -> LoadedPack`` (or raising
+#: ``TruthPackMissing``/``TruthPackInvalid``), matching
+#: ``truth.pack.load_founder_pack``'s own signature. Used by ``evaluate_new``
+#: so tests can inject a pack without touching ``private/truth_pack.yaml``.
+PackLoader = Callable[[Any], LoadedPack]
 
 
 def noop(payload: dict) -> None:
     """Smoke-test handler: accepts any payload and does nothing."""
     return None
+
+
+def _to_utc_naive(value: datetime) -> datetime:
+    """Normalize to a naive ``datetime`` carrying UTC wall-clock time, for
+    writing into any of this module's ``DateTime`` (i.e. PostgreSQL
+    ``TIMESTAMP WITHOUT TIME ZONE``) columns -- ``source_poll_runs.started_at``/
+    ``finished_at`` here, mirroring the identical fix (and identical
+    reasoning) in ``matching.evaluate_persist._to_utc_naive``.
+
+    psycopg2 does not simply drop the tzinfo off a tz-aware ``datetime``
+    written into such a column: PostgreSQL converts it to the *session's*
+    ``timezone`` GUC first and only then stores it naive. On a session whose
+    timezone isn't UTC (this project's own local dev database defaults to
+    ``Africa/Cairo``), a tz-aware UTC value written straight through comes
+    back several hours off from what was actually passed in. Converting to
+    UTC and stripping tzinfo before the value reaches psycopg2 avoids the
+    conversion entirely.
+    """
+    if value.tzinfo is not None:
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value
 
 
 def _record_refusal(source_id: str, refusal_sink: Optional[RefusalSink]) -> None:
@@ -40,37 +108,499 @@ def _record_refusal(source_id: str, refusal_sink: Optional[RefusalSink]) -> None
         refusal_sink(record)
 
 
+def _production_session_factory() -> Any:
+    """Lazily build the production (real ``OPPORTUNITYOS_DB_URL``) session factory.
+
+    Deferred import + deferred construction: importing ``worker.handlers`` (or
+    building a handler with an explicitly injected ``session_factory``, as
+    every test does) must never require database configuration to be present.
+    This mirrors exactly what ``worker/__main__.py`` already does for the
+    ``WorkerRunner`` itself (``get_production_db_url`` -> ``get_engine`` ->
+    ``get_session_factory``), so ``python -m worker`` persists poll_source
+    results through the same fail-closed production configuration path
+    without ``worker/__main__.py`` needing any change.
+    """
+    from storage.engine import get_engine, get_production_db_url, get_session_factory
+
+    engine = get_engine(get_production_db_url())
+    return get_session_factory(engine)
+
+
+def _write_poll_run_record(
+    resolve_session_factory: Callable[[], SessionFactory],
+    *,
+    source_id: str,
+    job_id: Optional[str],
+    started_at: datetime,
+    status: str,
+    refusal_reason: Optional[str] = None,
+    raw_ingested: int = 0,
+    unique_opportunities: int = 0,
+    inserted: int = 0,
+    unchanged: int = 0,
+    updated: int = 0,
+    error_message: Optional[str] = None,
+) -> None:
+    """Write one ``source_poll_runs`` row on its own, independent session.
+
+    Used for the ``refused`` and ``error`` outcomes, which must not depend on
+    (or be entangled with) the main fetch/persist session -- a refusal never
+    opens that session at all, and an error may have already rolled it back.
+    The ``ok`` outcome is instead written on the same session as the persist
+    (see ``make_poll_source_handler``) so it commits atomically with the
+    batch it describes.
+
+    Only a missing/invalid production database configuration is swallowed
+    (logged, then this function simply returns): that lets a handler built
+    with no injected ``session_factory`` and no ``OPPORTUNITYOS_DB_URL`` set
+    -- e.g. a narrow unit test exercising only the refusal branch, as
+    ``worker/test_runner.py::TestPollSourceHandler`` already does -- keep
+    working exactly as before, without requiring database setup just to
+    observe a refusal. Any other error (a genuinely configured but failing
+    database) propagates rather than being silently dropped.
+    """
+    from storage.engine import ProductionDatabaseConfigurationError
+
+    try:
+        session_factory = resolve_session_factory()
+    except ProductionDatabaseConfigurationError:
+        logger.warning(
+            "worker.source_poll_run_record_skipped_no_db",
+            extra={"component": "worker.handlers", "extra_data": {"source_id": source_id, "status": status}},
+        )
+        return
+
+    session = session_factory()
+    try:
+        record = SourcePollRunRecord(
+            id=f"spr-{uuid.uuid4().hex[:16]}",
+            source_id=source_id,
+            job_id=job_id,
+            started_at=_to_utc_naive(started_at),
+            finished_at=_to_utc_naive(datetime.now(timezone.utc)),
+            status=status,
+            refusal_reason=refusal_reason,
+            raw_ingested=raw_ingested,
+            unique_opportunities=unique_opportunities,
+            inserted=inserted,
+            unchanged=unchanged,
+            updated=updated,
+            error_message=error_message,
+        )
+        session.add(record)
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
 def make_poll_source_handler(
     *,
     registry: Optional[SourceRegistry] = None,
     transport: Optional[BaseTransport] = None,
     adapters=None,
     refusal_sink: Optional[RefusalSink] = None,
+    session_factory: Optional[SessionFactory] = None,
+    truth_pack_path: Optional[Any] = None,
+    pack_loader: Optional[PackLoader] = None,
+    scorer: Optional[OpportunityScorer] = None,
 ) -> Callable[[dict], None]:
     """Build a ``poll_source`` handler bound to the given (injectable) dependencies.
 
     ``transport`` is the injectable fetcher: production code should pass nothing
     (defaults to the real ``HttpTransport``); tests must inject a ``MockTransport``
     with fixture data so no network I/O occurs.
+
+    ``session_factory`` is the injectable session source used to persist a
+    fetched batch (``opportunity.persistence.persist_batch``). It defaults to
+    the real production database (built lazily, on first use, from
+    ``OPPORTUNITYOS_DB_URL``) so tests must inject their own (e.g. a SQLite or
+    test-Postgres ``sessionmaker``) to avoid touching production data. The
+    read-disabled refusal path never calls ``transport`` and never resolves
+    the fetch/persist session at all -- it still, as of this deliverable,
+    writes a ``source_poll_runs`` row (``status="refused"``), but that write
+    happens on its own independent session via ``_write_poll_run_record``, so
+    the fetch/persist session lifecycle described above is unaffected.
+
+    After a successful persist, this handler evaluates the batch's own
+    in-memory ``Opportunity`` objects -- the ones ``execute_discovery`` just
+    produced, with real ``responsibilities``/``requirements`` populated --
+    directly via ``matching.evaluate_persist.evaluate_and_store``, at full
+    fidelity. This is deliberately NOT the same code path as
+    ``evaluate_new``'s ``_reconstruct_opportunity``, which rebuilds an
+    ``Opportunity`` from ``OpportunityRecord``/``field_provenances`` and can
+    only recover ``responsibilities``/``requirements`` as empty tuples (see
+    its own docstring) -- every opportunity evaluated that way has its
+    ``fit_score`` systematically depressed on any dimension that scores those
+    fields (the scorer weights ``responsibilities`` at 0.15 and parses
+    ``requirements`` for scope). Evaluating the fresh in-memory batch here
+    means the founder's measured fit scores are never taken from the lossy
+    path for opportunities freshly discovered by this handler.
+    ``truth_pack_path``/``pack_loader`` mirror ``evaluate_new``'s: production
+    passes neither (defaults to ``truth.pack.load_founder_pack``, reading
+    ``private/truth_pack.yaml``); tests must inject a ``pack_loader`` so no
+    test touches ``private/``. If no valid pack is available
+    (``TruthPackMissing``/``TruthPackInvalid``), this handler skips the
+    inline evaluation (logs and continues) rather than failing the whole
+    poll -- persistence and the ``evaluate_new`` enqueue still happen, so
+    those opportunities are picked up as backfill once the pack is fixed.
+    ``evaluate_new`` is still enqueued unconditionally after a successful
+    persist, exactly as the brief requires: it is now a backfill/safety net
+    for whatever this inline pass missed (a failed individual evaluation, a
+    pack that was unavailable at poll time, or any pre-existing unevaluated
+    row), not the primary scoring path for a fresh poll.
     """
     reg = registry or SourceRegistry()
     fetch_transport = transport or HttpTransport()
+    pack_loader_fn = pack_loader or load_founder_pack
+    _session_factory_holder: list[Optional[SessionFactory]] = [session_factory]
+
+    def _resolve_session_factory() -> SessionFactory:
+        if _session_factory_holder[0] is None:
+            _session_factory_holder[0] = _production_session_factory()
+        return _session_factory_holder[0]
 
     def handler(payload: dict) -> None:
         source_id = payload.get("source_id") if payload else None
         if not source_id:
             raise ValueError("poll_source payload requires a non-empty 'source_id'")
+        job_id = payload.get("job_id") if payload else None
+        started_at = datetime.now(timezone.utc)
 
         if not reg.is_read_allowed(source_id):
+            # Refusal is decided and logged/sunk before any DB write is even
+            # attempted; the DB write below never touches the network and is
+            # itself best-effort (see _write_poll_run_record).
             _record_refusal(source_id, refusal_sink)
+            _write_poll_run_record(
+                _resolve_session_factory,
+                source_id=source_id,
+                job_id=job_id,
+                started_at=started_at,
+                status="refused",
+                refusal_reason=REFUSAL_REASON_READ_DISABLED,
+            )
             return
 
         logger.info(
             "worker.poll_source_fetching",
             extra={"component": "worker.handlers", "extra_data": {"source_id": source_id}},
         )
-        pipeline = OpportunityPipeline(adapters=adapters, registry=reg, transport=fetch_transport)
-        pipeline.execute_discovery(source_ids=[source_id])
+        try:
+            pipeline = OpportunityPipeline(adapters=adapters, registry=reg, transport=fetch_transport)
+            batch = pipeline.execute_discovery(source_ids=[source_id])
+        except Exception as exc:
+            _write_poll_run_record(
+                _resolve_session_factory,
+                source_id=source_id,
+                job_id=job_id,
+                started_at=started_at,
+                status="error",
+                error_message=str(exc),
+            )
+            raise
+
+        session = _resolve_session_factory()()
+        try:
+            repository = StorageRepository(session)
+            result = persist_batch(batch, repository)
+
+            # Inline, full-fidelity evaluation of THIS batch's own in-memory
+            # Opportunity objects (real responsibilities/requirements) --
+            # see this function's docstring for why this must not be the
+            # lossy _reconstruct_opportunity path evaluate_new uses.
+            evaluated_inline_count = 0
+            try:
+                pack = pack_loader_fn(truth_pack_path)
+            except (TruthPackMissing, TruthPackInvalid) as exc:
+                pack = None
+                logger.warning(
+                    "worker.poll_source_evaluate_skipped_no_pack",
+                    extra={
+                        "component": "worker.handlers",
+                        "extra_data": {"source_id": source_id, "reason": type(exc).__name__},
+                    },
+                )
+
+            if pack is not None:
+                inline_evaluated_at = datetime.now(timezone.utc)
+                for opp in batch.opportunities:
+                    evaluate_and_store(
+                        opp,
+                        pack.graph,
+                        repository,
+                        truth_pack_hash=pack.truth_pack_hash,
+                        evaluated_at=inline_evaluated_at,
+                        scorer=scorer,
+                    )
+                    evaluated_inline_count += 1
+
+            # evaluate_new remains the backfill/safety net -- it will only
+            # find work here if the inline pass above was skipped (no valid
+            # pack yet) or missed something; every opportunity this handler
+            # just evaluated inline already has a match_evaluations row for
+            # the current truth-pack hash, so evaluate_new is a fast no-op
+            # for them.
+            queue = BackgroundWorkerQueue(session)
+            queue.enqueue_job("evaluate_new", {})
+
+            poll_run = SourcePollRunRecord(
+                id=f"spr-{uuid.uuid4().hex[:16]}",
+                source_id=source_id,
+                job_id=job_id,
+                started_at=_to_utc_naive(started_at),
+                finished_at=_to_utc_naive(datetime.now(timezone.utc)),
+                status="ok",
+                raw_ingested=batch.total_raw_ingested,
+                unique_opportunities=batch.total_unique_opportunities,
+                inserted=result.inserted_count,
+                unchanged=result.unchanged_count,
+                updated=result.updated_count,
+            )
+            session.add(poll_run)
+            session.commit()
+            logger.info(
+                "worker.poll_source_persisted",
+                extra={
+                    "component": "worker.handlers",
+                    "extra_data": {
+                        "source_id": source_id,
+                        "inserted": result.inserted_count,
+                        "unchanged": result.unchanged_count,
+                        "updated": result.updated_count,
+                        "evaluated_inline": evaluated_inline_count,
+                    },
+                },
+            )
+        except Exception as exc:
+            session.rollback()
+            session.close()
+            _write_poll_run_record(
+                _resolve_session_factory,
+                source_id=source_id,
+                job_id=job_id,
+                started_at=started_at,
+                status="error",
+                error_message=str(exc),
+            )
+            raise
+        else:
+            session.close()
+
+    return handler
+
+
+def _first_field_provenance_map(session: Any, opportunity_id: str) -> dict[str, str]:
+    """Map ``field_name -> normalized_value`` for one opportunity's provenance rows.
+
+    Ordered by primary-key ascending so that if more than one row exists for
+    the same ``field_name`` (e.g. after a content-changed re-poll rewrote
+    provenance), the most recently written row wins.
+    """
+    rows = (
+        session.query(FieldProvenanceRecord)
+        .filter_by(opportunity_id=opportunity_id)
+        .order_by(FieldProvenanceRecord.id.asc())
+        .all()
+    )
+    prov_map: dict[str, str] = {}
+    for row in rows:
+        if row.normalized_value is not None:
+            prov_map[row.field_name] = row.normalized_value
+    return prov_map
+
+
+def _enum_or_default(enum_cls: Any, value: Optional[str], default: Any) -> Any:
+    if not value:
+        return default
+    try:
+        return enum_cls(value)
+    except ValueError:
+        return default
+
+
+def _reconstruct_opportunity(session: Any, record: OpportunityRecord) -> Opportunity:
+    """Best-effort reconstruction of an ``Opportunity`` from a persisted row.
+
+    ``title``, ``description``, and ``organization`` are stored with full
+    fidelity on ``OpportunityRecord`` itself and are used verbatim here.
+    ``skills`` (stored as a single comma-joined provenance value),
+    ``seniority``, ``employment_type``, ``remote_policy``,
+    ``geographic_eligibility`` (status only), and ``compensation`` are
+    recovered on a best-effort basis from ``field_provenances``.
+
+    Known, honest limitation: ``opportunity.persistence`` (frozen for this
+    deliverable) stores ``responsibilities``/``requirements`` provenance only
+    as an item *count* (e.g. ``create_field_provenance("responsibilities",
+    ..., f"{len(responsibilities)} items", ...)`` in every adapter under
+    ``opportunity/adapters/``) -- the underlying requirement/responsibility
+    text itself is not persisted anywhere the schema currently exposes. There
+    is therefore no faithful way to recover it here, and this function
+    deliberately leaves those two tuples empty rather than fabricate content
+    (per this project's hard rule against fabricated claims). The
+    qualification/scoring engines already treat missing fields as unknown
+    rather than as a hard failure, so this degrades to more
+    "gap"/"unknown"-flagged dimensions for a reconstructed opportunity, never
+    a crash or a fabricated pass.
+    """
+    prov = _first_field_provenance_map(session, record.id)
+
+    source = record.source_id
+    if record.raw_payload_json:
+        try:
+            raw_provenance = json.loads(record.raw_payload_json)
+            source = raw_provenance.get("source_id") or source
+        except (TypeError, ValueError):
+            pass
+
+    skills_raw = prov.get("skills", "")
+    skills = tuple(s.strip() for s in skills_raw.split(",") if s.strip())
+
+    geo = None
+    geo_status = prov.get("geographic_eligibility")
+    if geo_status:
+        geo = GeographicEligibility(status=geo_status, reason="")
+
+    compensation = None
+    comp_min_raw = prov.get("compensation.min_amount")
+    comp_max_raw = prov.get("compensation.max_amount")
+    comp_currency = prov.get("compensation.currency") or None
+    comp_interval = _enum_or_default(
+        CompensationInterval, prov.get("compensation.interval"), CompensationInterval.UNSPECIFIED
+    )
+    if comp_min_raw or comp_max_raw or comp_currency or comp_interval != CompensationInterval.UNSPECIFIED:
+        try:
+            compensation = Compensation(
+                min_amount=float(comp_min_raw) if comp_min_raw else None,
+                max_amount=float(comp_max_raw) if comp_max_raw else None,
+                currency=comp_currency,
+                interval=comp_interval,
+            )
+        except ValueError:
+            compensation = None
+
+    return Opportunity(
+        id=record.id,
+        track=_enum_or_default(Track, record.track, Track.EMPLOYMENT),
+        source=source or "unknown",
+        source_url=record.source_url,
+        source_id=record.source_id,
+        organization=record.organization,
+        title=record.title,
+        description=record.description,
+        responsibilities=(),
+        requirements=(),
+        skills=skills,
+        seniority=_enum_or_default(SeniorityLevel, prov.get("seniority"), SeniorityLevel.UNSPECIFIED),
+        employment_type=_enum_or_default(EmploymentType, prov.get("employment_type"), EmploymentType.UNSPECIFIED),
+        location_raw=prov.get("location_raw", ""),
+        remote_policy=_enum_or_default(RemotePolicy, prov.get("remote_policy"), RemotePolicy.UNSPECIFIED),
+        geographic_eligibility=geo,
+        compensation=compensation,
+        posted_date=record.posted_date,
+        closing_date=record.deadline,
+        content_hash=record.content_hash,
+    )
+
+
+def make_evaluate_new_handler(
+    *,
+    session_factory: Optional[SessionFactory] = None,
+    truth_pack_path: Optional[Any] = None,
+    pack_loader: Optional[PackLoader] = None,
+    scorer: Optional[OpportunityScorer] = None,
+) -> Callable[[dict], None]:
+    """Build an ``evaluate_new`` handler bound to the given (injectable) dependencies.
+
+    Evaluates every opportunity that has no ``match_evaluations`` row for the
+    *current* founder truth-pack hash, via
+    ``matching.evaluate_persist.evaluate_and_store``.
+
+    ``pack_loader`` / ``truth_pack_path`` are the injectable pack source:
+    production code should pass neither (defaults to
+    ``truth.pack.load_founder_pack``, which reads
+    ``private/truth_pack.yaml``); tests must inject a ``pack_loader`` (or a
+    ``truth_pack_path`` pointing at a fixture file) so no test ever reads
+    ``private/``.
+
+    Refusal semantics: if no truth pack is present (``TruthPackMissing``) or
+    the pack fails to load/validate (``TruthPackInvalid``), the handler logs
+    a structured refusal line and returns -- it never raises for this
+    condition. No database session is opened before this check, so a refusal
+    here writes nothing at all (no partial evaluation rows). This mirrors
+    ``poll_source``'s read-disabled refusal: the job is treated as handled
+    (``WorkerRunner`` calls ``complete_job``, not ``fail_job``), because a
+    missing/invalid truth pack is a founder-side condition retrying cannot
+    fix -- dead-lettering it after ``max_retries`` would just be a slower way
+    of doing nothing, and every subsequent ``poll_source`` run would keep
+    re-enqueueing ``evaluate_new`` regardless of this job's outcome.
+    """
+    loader = pack_loader or load_founder_pack
+    _session_factory_holder: list[Optional[SessionFactory]] = [session_factory]
+
+    def _resolve_session_factory() -> SessionFactory:
+        if _session_factory_holder[0] is None:
+            _session_factory_holder[0] = _production_session_factory()
+        return _session_factory_holder[0]
+
+    def handler(payload: dict) -> None:
+        try:
+            pack = loader(truth_pack_path)
+        except (TruthPackMissing, TruthPackInvalid) as exc:
+            logger.warning(
+                "worker.evaluate_new_refused",
+                extra={
+                    "component": "worker.handlers",
+                    "extra_data": {"reason": type(exc).__name__, "detail": str(exc)},
+                },
+            )
+            return
+
+        truth_graph = pack.graph
+        truth_pack_hash = pack.truth_pack_hash
+
+        session = _resolve_session_factory()()
+        try:
+            repository = StorageRepository(session)
+
+            already_evaluated_ids = {
+                row[0]
+                for row in session.query(MatchEvaluationRecord.opportunity_id)
+                .filter_by(truth_pack_hash=truth_pack_hash)
+                .all()
+            }
+            pending_records = [
+                r for r in session.query(OpportunityRecord).all() if r.id not in already_evaluated_ids
+            ]
+
+            for record in pending_records:
+                opportunity = _reconstruct_opportunity(session, record)
+                evaluate_and_store(
+                    opportunity,
+                    truth_graph,
+                    repository,
+                    truth_pack_hash=truth_pack_hash,
+                    evaluated_at=datetime.now(timezone.utc),
+                    scorer=scorer,
+                )
+
+            logger.info(
+                "worker.evaluate_new_completed",
+                extra={
+                    "component": "worker.handlers",
+                    "extra_data": {
+                        "truth_pack_hash": truth_pack_hash,
+                        "evaluated_count": len(pending_records),
+                    },
+                },
+            )
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
 
     return handler
 
@@ -81,11 +611,18 @@ def default_handler_registry(
     transport: Optional[BaseTransport] = None,
     adapters=None,
     refusal_sink: Optional[RefusalSink] = None,
+    session_factory: Optional[SessionFactory] = None,
+    truth_pack_path: Optional[Any] = None,
+    pack_loader: Optional[PackLoader] = None,
+    scorer: Optional[OpportunityScorer] = None,
 ) -> MutableMapping[str, Callable[[dict], None]]:
     """Build the default job_type -> handler mapping used by ``python -m worker``.
 
-    Tests should call this with an injected ``transport`` (a ``MockTransport``)
-    and/or ``refusal_sink`` rather than relying on the real-network default.
+    Tests should call this with an injected ``transport`` (a ``MockTransport``),
+    an injected ``session_factory`` (pointed at an isolated test database), and
+    (for ``evaluate_new`` coverage) an injected ``pack_loader``/``truth_pack_path``
+    rather than relying on the real-network, real-database, real-``private/``
+    defaults.
     """
     return {
         "noop": noop,
@@ -94,5 +631,15 @@ def default_handler_registry(
             transport=transport,
             adapters=adapters,
             refusal_sink=refusal_sink,
+            session_factory=session_factory,
+            truth_pack_path=truth_pack_path,
+            pack_loader=pack_loader,
+            scorer=scorer,
+        ),
+        "evaluate_new": make_evaluate_new_handler(
+            session_factory=session_factory,
+            truth_pack_path=truth_pack_path,
+            pack_loader=pack_loader,
+            scorer=scorer,
         ),
     }

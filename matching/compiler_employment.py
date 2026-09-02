@@ -184,7 +184,7 @@ class EmploymentArtifactCompiler:
         metric_evidence_ids: list[str] = []
         for m in metric_assertions:
             unit_str = f" {m.unit}" if m.unit and m.unit not in ("count", "number") else ""
-            m_text = f"{m.semantic_context}: {m.numeric_value}{unit_str}"
+            m_text = f"{m.context}: {m.numeric_value}{unit_str}"
             metric_items.append(m_text)
             metric_assertion_ids.append(m.id)
             metric_evidence_ids.extend(m.evidence_ids)

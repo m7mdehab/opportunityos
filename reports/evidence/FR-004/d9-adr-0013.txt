@@ -1,0 +1,13 @@
+### D9 — ADR-0013 (Master re-run)
+$ sed -n '1,7p' docs/adr/ADR-0013-alpha-grade-auth-and-local-only-posture.md
+# ADR-0013 — Alpha-Grade Auth and Local-Only Posture
+
+- **Status:** Accepted
+- **Date:** 2026-09-02
+- **Phase:** BRIEF-FR-004
+- **Supersedes:** none
+- **Superseded by:** none
+
+$ grep -niE 'claude|gpt|opus|sonnet|gemini|anthropic|openai' docs/adr/ADR-0013-*.md ; echo exit=$?
+exit=1
+  (no vendor or model name; AGENTS.md requires roles, not vendors)

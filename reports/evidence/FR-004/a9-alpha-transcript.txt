@@ -1,0 +1,42 @@
+### A-9 — alpha.py up -> logged-in feed -> down -> no processes (Master transcript)
+
+Run against a temp copy of the shipped alpha.env template filled with synthetic
+values via --env-file. private/ was never read or written at any point.
+
+$ python scripts/alpha.py up
+PostgreSQL: already listening on 127.0.0.1:5432 (not started by alpha.py).
+Migrations: running `alembic upgrade head` ...
+Migrations: up to date.
+Worker: started (pid 5124), logging to C:\Users\M7mdEhab\projects\OpportunityOS\out\alpha_run\logs\worker.log.
+API: listening on 127.0.0.1:8000 (pid 10796), logging to C:\Users\M7mdEhab\projects\OpportunityOS\out\alpha_run\logs\api.log.
+Web: listening on 127.0.0.1:3000 (pid 3212), logging to C:\Users\M7mdEhab\projects\OpportunityOS\out\alpha_run\logs\web.log.
+Opening http://localhost:3000 ...
+alpha: up.
+  elapsed to 'alpha: up': 26s   (the brief allows 120s)
+
+--- both pages serve, and /api/* is proxied same-origin to :8000 ---
+  GET  :3000/login -> HTTP 200
+  GET  :3000/      -> HTTP 200
+
+--- log in THROUGH the web tier, not against the API directly ---
+  POST :3000/api/auth/login (good) -> HTTP 200
+  POST :3000/api/auth/login (bad)  -> HTTP 401
+  GET  :3000/api/auth/me (session) -> HTTP 200
+
+--- the logged-in feed, over really-polled data ---
+{"page":1,"page_size":25,"total":138,"items":[{"id":"opp-uq-1","title":"Backend Engineer","organization":"Acme Corp","source_id":"src-1","source_url":"https://example.com/job/1","track":"employment","decision":"qualified","fit_score":88.5,"top_reasons":[],"deadline":null,"posted_date":null,"is_stale
+
+--- the measured number ---
+{"days":1,"high_fit_threshold":70.0,"series":[{"date":"2026-09-02","fetched":139,"unique_new":138,"qualified":1,"high_fit":1,"opened":0,"labelled":0,"applied":0}]}
+
+$ python scripts/alpha.py down
+worker: stopped (was pid 5124).
+api: stopped (was pid 10796).
+web: stopped (was pid 3212).
+PostgreSQL: left running (alpha.py did not start it).
+alpha: down.
+
+--- nothing left on the ports alpha.py started ---
+  listeners on 8000: 0
+  listeners on 3000: 0
+  PostgreSQL, which alpha.py did not start, correctly remains: :5432 - accepting connections

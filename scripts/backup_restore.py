@@ -33,6 +33,10 @@ from storage.models import (
     ReconciliationRecordModel,
     WorkerJobRecord,
     FounderFeedbackRecord,
+    MatchEvaluationRecord,
+    SourcePollRunRecord,
+    FounderOpportunityViewRecord,
+    FounderTriageStateRecord,
 )
 
 # Repository root, derived from this file's location (not the process CWD).
@@ -77,7 +81,26 @@ DUMP_SECTION_TABLE_MAP = {
     "reconciliation_records": "reconciliation_records",
     "worker_jobs": "worker_jobs",
     "founder_feedback": "founder_feedback",
+    "match_evaluations": "match_evaluations",
+    "source_poll_runs": "source_poll_runs",
+    "founder_opportunity_views": "founder_opportunity_views",
+    "founder_triage_states": "founder_triage_states",
 }
+
+
+def _table_columns_snapshot() -> dict:
+    """Return {table_name: [column_name, ...]} derived from
+    Base.metadata.sorted_tables, in each table's column-definition order.
+
+    This is the single source of truth for both writing the dump header's
+    per-table column list (dump_database) and checking a dump's recorded
+    column list against the *current* model schema at restore time
+    (_check_restore_column_completeness) -- deriving both from `table.columns`
+    keeps them from drifting apart, and (being derived from the table
+    definition rather than from any row) still records columns for a table
+    that has zero rows.
+    """
+    return {table.name: [c.name for c in table.columns] for table in Base.metadata.sorted_tables}
 
 
 def _check_dump_completeness() -> None:
@@ -150,6 +173,12 @@ def dump_database(db_url: str, output_file: str) -> int:
 
     data = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        # Per-table column list, derived from table.columns (not from the
+        # rows below, so an empty table's columns are still recorded here) --
+        # this is what lets a restore into a newer/older model schema detect
+        # a column-level delta instead of only a table-level one. See
+        # _check_restore_column_completeness.
+        "table_columns": _table_columns_snapshot(),
         "opportunities": [],
         "field_provenances": [],
         "outbound_actions": [],
@@ -161,6 +190,10 @@ def dump_database(db_url: str, output_file: str) -> int:
         "reconciliation_records": [],
         "worker_jobs": [],
         "founder_feedback": [],
+        "match_evaluations": [],
+        "source_poll_runs": [],
+        "founder_opportunity_views": [],
+        "founder_triage_states": [],
     }
 
     # 1. Opportunities & Field Provenances
@@ -289,6 +322,46 @@ def dump_database(db_url: str, output_file: str) -> int:
             "created_at": fb.created_at.isoformat() if fb.created_at else None,
         })
 
+    # 11. Match Evaluations (FK -> opportunities, already dumped in section 1)
+    for me in session.query(MatchEvaluationRecord).all():
+        data["match_evaluations"].append({
+            "id": me.id, "opportunity_id": me.opportunity_id, "truth_pack_hash": me.truth_pack_hash,
+            "qualification_decision": me.qualification_decision, "fit_score": me.fit_score,
+            "dimension_scores_json": me.dimension_scores_json, "reasons_json": me.reasons_json,
+            "evaluation_detail_json": me.evaluation_detail_json,
+            "policy_version": me.policy_version,
+            "evaluated_at": me.evaluated_at.isoformat() if me.evaluated_at else None,
+            "created_at": me.created_at.isoformat() if me.created_at else None,
+        })
+
+    # 12. Source Poll Runs (no FK dependency)
+    for spr in session.query(SourcePollRunRecord).all():
+        data["source_poll_runs"].append({
+            "id": spr.id, "source_id": spr.source_id, "job_id": spr.job_id,
+            "started_at": spr.started_at.isoformat() if spr.started_at else None,
+            "finished_at": spr.finished_at.isoformat() if spr.finished_at else None,
+            "status": spr.status, "refusal_reason": spr.refusal_reason,
+            "raw_ingested": spr.raw_ingested, "unique_opportunities": spr.unique_opportunities,
+            "inserted": spr.inserted, "unchanged": spr.unchanged, "updated": spr.updated,
+            "error_message": spr.error_message,
+        })
+
+    # 13. Founder Opportunity Views (FK -> opportunities, already dumped in section 1)
+    for view in session.query(FounderOpportunityViewRecord).all():
+        data["founder_opportunity_views"].append({
+            "id": view.id, "opportunity_id": view.opportunity_id,
+            "viewed_at": view.viewed_at.isoformat() if view.viewed_at else None,
+        })
+
+    # 14. Founder Triage States (FK -> opportunities, already dumped in section 1)
+    for triage in session.query(FounderTriageStateRecord).all():
+        data["founder_triage_states"].append({
+            "opportunity_id": triage.opportunity_id, "state": triage.state,
+            "snoozed_until": triage.snoozed_until.isoformat() if triage.snoozed_until else None,
+            "created_at": triage.created_at.isoformat() if triage.created_at else None,
+            "updated_at": triage.updated_at.isoformat() if triage.updated_at else None,
+        })
+
     # Row-count completeness check, run in the same session/transaction the
     # dump itself used, before that transaction is closed out.
     _check_dump_row_counts(session, data)
@@ -386,7 +459,7 @@ def _check_restore_completeness(data: dict) -> None:
     silently with those tables left empty, and a dump section this restore
     code no longer recognises is silently ignored rather than raising.
     """
-    dump_sections = set(data.keys()) - {"timestamp"}
+    dump_sections = set(data.keys()) - {"timestamp", "table_columns"}
     expected_sections = set(DUMP_SECTION_TABLE_MAP.keys())
     if dump_sections != expected_sections:
         missing = expected_sections - dump_sections
@@ -401,11 +474,78 @@ def _check_restore_completeness(data: dict) -> None:
         )
 
 
+def _check_restore_column_completeness(data: dict) -> None:
+    """Raise BackupCompletenessError unless every table's column list, as
+    recorded in the dump's `table_columns` header, matches that table's
+    columns in the *current* model (Base.metadata) exactly.
+
+    This closes the gap _check_restore_completeness leaves open: that check
+    only proves the dump and the current model agree on the *set of tables*
+    covered; it says nothing about each table's *columns*. A column added to
+    a model after a dump was taken produces a dump whose table set still
+    matches (so _check_restore_completeness passes) but whose per-row dicts
+    silently lack that column -- restoring it would leave the new column at
+    whatever default the schema provides (or fail confusingly) with no
+    warning that the dump predates the column.
+
+    A dump written before this check existed has no `table_columns` header
+    at all. That case is refused outright (fail closed): there is no way to
+    verify after the fact that such a dump captured every column of the
+    schema it was taken against, so treating its absence as "trust it" would
+    silently reintroduce exactly the gap this check exists to close. The fix
+    is to take a fresh dump with the current code, not to restore the old one.
+    """
+    if "table_columns" not in data:
+        raise BackupCompletenessError(
+            "Restore completeness check failed: dump has no 'table_columns' "
+            "header, so its per-table column set cannot be verified against "
+            "the current model schema. This dump predates column-level "
+            "backup completeness tracking; restoring it could silently drop "
+            "or default columns the dump never recorded. Refusing to restore "
+            "it -- take a fresh dump with the current code and restore that "
+            "instead."
+        )
+
+    dumped_columns_by_table = data["table_columns"]
+    problems = []
+    for table_name, model_columns in _table_columns_snapshot().items():
+        model_set = set(model_columns)
+        dumped_columns = dumped_columns_by_table.get(table_name)
+        dumped_set = set(dumped_columns) if dumped_columns is not None else set()
+
+        missing_from_dump = model_set - dumped_set
+        unknown_in_dump = dumped_set - model_set
+        if not missing_from_dump and not unknown_in_dump:
+            continue
+
+        detail = [f"table '{table_name}':"]
+        if missing_from_dump:
+            detail.append(
+                "columns in the current model but missing from the dump "
+                f"(dump is stale; this data would be lost or defaulted on "
+                f"restore): {sorted(missing_from_dump)}."
+            )
+        if unknown_in_dump:
+            detail.append(
+                "columns present in the dump but not in the current model "
+                f"(dump is from a newer schema than this code; this data "
+                f"would be dropped on restore): {sorted(unknown_in_dump)}."
+            )
+        problems.append(" ".join(detail))
+
+    if problems:
+        raise BackupCompletenessError(
+            "Restore completeness check failed: dump column set does not "
+            "match the current model schema.\n" + "\n".join(problems)
+        )
+
+
 def restore_database(dump_file: str, db_url: str) -> None:
     with open(dump_file, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     _check_restore_completeness(data)
+    _check_restore_column_completeness(data)
     _upgrade_to_head(db_url)
 
     engine = get_engine(db_url)
@@ -428,6 +568,21 @@ def restore_database(dump_file: str, db_url: str) -> None:
         # inserting duplicate rows.
         prov = FieldProvenanceRecord(**prov_dict)
         session.merge(prov)
+
+    # Flush section 1 to the database NOW, before any FK-dependent section
+    # below is even merged. This is load-bearing, not cosmetic: every
+    # section here is merge()d into one unit-of-work with a single commit()
+    # at the end of this function, and SQLAlchemy's flush orders INSERTs by
+    # mapper configuration order, not by merge() call order or by comment
+    # order -- a FK column with no relationship() (match_evaluations,
+    # founder_opportunity_views, founder_triage_states all have an
+    # `opportunity_id` FK *column* but no `relationship()` back to
+    # OpportunityRecord, so the unit of work has no dependency edge for
+    # them) can and does get flushed before its parent `opportunities` row,
+    # raising ForeignKeyViolation on a real restore. An explicit flush here
+    # makes the opportunities rows visible to every later INSERT in this
+    # same transaction regardless of mapper order.
+    session.flush()
 
     # 2. Outbound Actions
     for act_dict in data.get("outbound_actions", []):
@@ -511,6 +666,46 @@ def restore_database(dump_file: str, db_url: str) -> None:
             fb_dict["created_at"] = datetime.fromisoformat(fb_dict["created_at"])
         fb = FounderFeedbackRecord(**fb_dict)
         session.merge(fb)
+
+    # 11. Match Evaluations -- FK -> opportunities. No relationship() edge
+    # exists for this FK, so ordering here relies on the explicit
+    # session.flush() after section 1 above, not on merge()/mapper order.
+    for me_dict in data.get("match_evaluations", []):
+        if me_dict.get("evaluated_at"):
+            me_dict["evaluated_at"] = datetime.fromisoformat(me_dict["evaluated_at"])
+        if me_dict.get("created_at"):
+            me_dict["created_at"] = datetime.fromisoformat(me_dict["created_at"])
+        me = MatchEvaluationRecord(**me_dict)
+        session.merge(me)
+
+    # 12. Source Poll Runs -- no FK dependency.
+    for spr_dict in data.get("source_poll_runs", []):
+        if spr_dict.get("started_at"):
+            spr_dict["started_at"] = datetime.fromisoformat(spr_dict["started_at"])
+        if spr_dict.get("finished_at"):
+            spr_dict["finished_at"] = datetime.fromisoformat(spr_dict["finished_at"])
+        spr = SourcePollRunRecord(**spr_dict)
+        session.merge(spr)
+
+    # 13. Founder Opportunity Views -- FK -> opportunities. No relationship()
+    # edge exists for this FK either; see the flush() note after section 1.
+    for view_dict in data.get("founder_opportunity_views", []):
+        if view_dict.get("viewed_at"):
+            view_dict["viewed_at"] = datetime.fromisoformat(view_dict["viewed_at"])
+        view = FounderOpportunityViewRecord(**view_dict)
+        session.merge(view)
+
+    # 14. Founder Triage States -- FK -> opportunities. No relationship() edge
+    # exists for this FK either; see the flush() note after section 1.
+    for triage_dict in data.get("founder_triage_states", []):
+        if triage_dict.get("snoozed_until"):
+            triage_dict["snoozed_until"] = datetime.fromisoformat(triage_dict["snoozed_until"])
+        if triage_dict.get("created_at"):
+            triage_dict["created_at"] = datetime.fromisoformat(triage_dict["created_at"])
+        if triage_dict.get("updated_at"):
+            triage_dict["updated_at"] = datetime.fromisoformat(triage_dict["updated_at"])
+        triage = FounderTriageStateRecord(**triage_dict)
+        session.merge(triage)
 
     session.commit()
     session.close()

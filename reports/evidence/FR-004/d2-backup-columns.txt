@@ -1,0 +1,8 @@
+### D2 — column-level backup completeness (Master re-run)
+$ python -m unittest scripts.test_backup_restore -v 2>&1 | tail -3
+Ran 7 tests in 9.840s
+
+OK
+
+$ python -m unittest storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_m_backup_wipe_restore_postgres_cycle 2>&1 | tail -1
+OK

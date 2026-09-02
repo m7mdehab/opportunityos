@@ -1,0 +1,334 @@
+# OpportunityOS founder truth pack template.
+#
+# Copy this file to private/truth_pack.yaml and edit the example values in
+# place. Every value in this shipped copy is synthetic (a fake founder named
+# "Jane Q. Example" at a fake employer, "Example Industries Ltd") so that the
+# template loads cleanly through truth.pack.load_founder_pack() as shipped;
+# replace the synthetic values with real, evidence-backed ones.
+#
+# This file is parsed by truth.ingest.load_path(), which accepts a strict,
+# deliberately small YAML subset (no anchors, no tags, no block scalars, no
+# tabs -- only plain mappings, plain lists, quoted strings, and JSON-syntax
+# inline collections such as ["a", "b"] or {"k": "v"}). Keep that in mind if
+# you add entries: prefer copying the shape of an existing entry over
+# inventing new YAML syntax.
+#
+# The graph enforces evidence-backed claims: almost every fact you enter
+# (an employer name, a job title, a certification, a date, a claimed skill)
+# must be textually supported by at least one "evidence" record you also
+# provide. This is not decorative -- entries whose values are not supported
+# by their evidence_ids will be rejected at load time with an error naming
+# the unsupported field.
+#
+# ---------------------------------------------------------------------------
+# Section mapping notes (read once, then delete this block if you like):
+#
+# This loader accepts exactly six top-level sections: evidence,
+# career_profile, capability_profile, assertions, relations, metrics. Some
+# concepts a founder truth pack needs do not have a top-level section of
+# their own; here is where they actually live, and what is deliberately
+# left out:
+#
+#   - "Identity" (legal name, email, phone, address): NOT represented in
+#     this schema at all. The truth graph models verifiable career and
+#     capability claims, not contact/identity data, and there is no
+#     identity section this loader will accept -- adding one would make the
+#     file fail to load. Keep founder contact/identity data in a separate,
+#     non-truth-pack file (for example private/identity.yaml) outside this
+#     loader's schema. The synthetic name used in this template's evidence
+#     text ("Jane Q. Example") is illustrative content inside evidence
+#     records, not a schema field.
+#   - "Preferences" (availability, rates, regions, industries willing to
+#     work in/with): map onto capability_profile.capacity (availability,
+#     hours, project value range, currencies, service regions, onsite
+#     willingness) and capability_profile.target_industries /
+#     excluded_industries / delivery_languages. There is no separate
+#     "preferences" section.
+#   - "Red list" (things never to claim or say): maps directly onto the
+#     red_lines arrays inside career_profile and capability_profile (each
+#     entry is an id, a regex pattern, and a reason). This is the one
+#     brief-named concept with an exact schema equivalent.
+#   - "Answer library" (canned answers to recurring questions): there is no
+#     question-to-answer structure in this schema. The closest honest
+#     analog is career_profile.approved_summaries, a flat list of
+#     pre-approved free-text summary strings the founder has signed off on
+#     for reuse. It is not a Q&A library and should not be treated as one;
+#     a real answer library (mapping a question to a canonical answer) is
+#     not representable here and is intentionally omitted rather than
+#     faked.
+# ---------------------------------------------------------------------------
+
+# evidence (required top-level section; at least one record is required by
+# the loader, though in practice you will have many). Each record is the
+# atomic, textual provenance for one or more claims below. Required fields:
+# id, content, source, locator. Optional: assertion_type (default
+# direct_fact), verification_status (default verified), observed_at (ISO
+# date or datetime, "Z" suffix allowed), metadata (a flat string-keyed map
+# used to scope a record to one specific field, e.g. {"organization": "..."}
+# so one evidence record can unambiguously support both an employer name and
+# a job title without the two being confused with each other).
+evidence:
+  - id: ev-employment-current
+    content: "Jane Q. Example worked as Senior Widget Engineer at Example Industries Ltd from 2021-01-15 to 2023-06-30."
+    source: "self_reported"
+    locator: "employment.0"
+    assertion_type: "direct_fact"
+    verification_status: "verified"
+    observed_at: "2026-01-01T00:00:00Z"
+    metadata: {"organization": "Example Industries Ltd", "title": "Senior Widget Engineer"}
+  - id: ev-employment-achievement
+    content: "Reduced example processing time by 40 percent for the widget pipeline."
+    source: "self_reported"
+    locator: "employment.0.achievements.0"
+  - id: ev-education
+    content: "Earned a Bachelor of Science in Widget Engineering from Example State University, 2016-06-01 to 2020-05-30."
+    source: "self_reported"
+    locator: "education.0"
+  - id: ev-certification
+    content: "Holds the Certified Widget Professional credential, issued by Example Certifying Body. Completed 2021-03-01."
+    source: "self_reported"
+    locator: "certifications.0"
+    metadata: {"name": "Certified Widget Professional", "issuer": "Example Certifying Body"}
+  - id: ev-skill
+    content: "Demonstrated advanced Widget Design proficiency across three delivery engagements."
+    source: "self_reported"
+    locator: "skills.0"
+  - id: ev-language
+    content: "Reads, writes, and speaks English at a professional working proficiency level."
+    source: "self_reported"
+    locator: "languages.0"
+  - id: ev-work-authorization
+    content: "Authorized to work in Exampleland without sponsorship."
+    source: "self_reported"
+    locator: "work_authorizations.0"
+    metadata: {"jurisdiction": "Exampleland", "status": "authorized"}
+  - id: ev-career-summary
+    content: "Approved summary: Widget engineering leader with cross-functional delivery experience."
+    source: "self_reported"
+    locator: "career_profile.approved_summaries.0"
+  - id: ev-service
+    content: "Widget Systems Consulting: scoped discovery through delivery for widget systems modernization engagements. Delivered as fixed price and retainer, using time and materials billing for extensions."
+    source: "self_reported"
+    locator: "capability_profile.services.0"
+  - id: ev-portfolio
+    content: "Example Industries Modernization: replaced a legacy widget platform, cutting processing time by half."
+    source: "self_reported"
+    locator: "capability_profile.portfolio.0"
+  - id: ev-capacity
+    content: "Available from 2026-01-01. Offers 20 hours per week. The minimum project value is 5000 USD. The maximum project value is 50000 USD. Annual turnover is approximately 120000 USD. Serves clients across the MENA region."
+    source: "self_reported"
+    locator: "capability_profile.capacity"
+  - id: ev-capability-summary
+    content: "Targets the Widget Manufacturing and Logistics Technology industries, excludes the Gambling industry, and delivers in English."
+    source: "self_reported"
+    locator: "capability_profile.summary"
+  - id: ev-tool
+    content: "Uses Example PM Suite daily to plan and track delivery."
+    source: "self_reported"
+    locator: "capability_profile.tools.0"
+
+# career_profile (optional top-level section; include it if the founder has
+# employment-track history to represent). Only "id" is strictly required;
+# every list below is optional and may be left as an empty list ([]) or
+# omitted entirely if it does not apply.
+career_profile:
+  id: career-jane-example
+
+  # evidence_ids: evidence that backs the profile-level fields directly
+  # below (currently just approved_summaries). Optional, but required if
+  # approved_summaries is non-empty.
+  evidence_ids: ["ev-career-summary"]
+
+  # employment: work history. Each entry needs organization, title,
+  # start_date, and evidence_ids; end_date, achievements, responsibilities,
+  # and market_facing_title are optional.
+  employment:
+    - id: job-example-1
+      organization: "Example Industries Ltd"
+      title: "Senior Widget Engineer"
+      start_date: "2021-01-15"
+      end_date: "2023-06-30"
+      evidence_ids: ["ev-employment-current"]
+      achievements:
+        - id: ach-example-1
+          statement: "Reduced example processing time by 40 percent for the widget pipeline."
+          evidence_ids: ["ev-employment-achievement"]
+          metric_verification: "unavailable"
+
+  # education: optional. institution, qualification, and evidence_ids are
+  # required per entry; start_date/end_date are optional.
+  education:
+    - id: edu-example-1
+      institution: "Example State University"
+      qualification: "Bachelor of Science in Widget Engineering"
+      start_date: "2016-06-01"
+      end_date: "2020-05-30"
+      evidence_ids: ["ev-education"]
+
+  # certifications: optional. state must be one of completed, in_progress,
+  # expired, planned.
+  certifications:
+    - id: cert-example-1
+      name: "Certified Widget Professional"
+      issuer: "Example Certifying Body"
+      state: "completed"
+      evidence_ids: ["ev-certification"]
+      issued_date: "2021-03-01"
+
+  # skills: optional. Names are canonicalized (e.g. "python" -> "Python").
+  skills:
+    - id: skill-example-1
+      name: "Widget Design"
+      evidence_ids: ["ev-skill"]
+      proficiency: "advanced"
+
+  # languages: optional.
+  languages:
+    - id: lang-example-1
+      language: "English"
+      proficiency: "professional working proficiency"
+      evidence_ids: ["ev-language"]
+
+  # work_authorizations: optional.
+  work_authorizations:
+    - id: auth-example-1
+      jurisdiction: "Exampleland"
+      status: "authorized"
+      evidence_ids: ["ev-work-authorization"]
+
+  # approved_summaries: optional. See the "answer library" mapping note
+  # above -- this is a flat list of pre-approved reusable summary strings,
+  # not a question/answer library. Each string must be textually supported
+  # by evidence referenced in this profile's own evidence_ids (above).
+  approved_summaries: ["Approved summary: Widget engineering leader with cross-functional delivery experience."]
+
+  # red_lines: optional. See the "Red list" mapping note above -- each
+  # entry is a regex the generation layer must never let a claim match.
+  red_lines:
+    - id: redline-example-1
+      pattern: "(?i)guarantee(d)? placement"
+      reason: "Never imply guaranteed employment outcomes."
+
+  # never_claims: optional. Structured prohibited-concept rules; "concept"
+  # must be one of the ProhibitedConceptCategory values (for example
+  # guaranteed_outcome, fortune_500_prestige, security_clearance).
+  never_claims:
+    - id: never-claim-example-1
+      concept: "guaranteed_outcome"
+      description: "Never claim guaranteed results for clients or employers."
+
+# capability_profile (optional top-level section; include it if the founder
+# also pursues independent/consulting work). Only "id" is strictly
+# required.
+capability_profile:
+  id: capability-jane-example
+
+  # evidence_ids: evidence backing this profile's own fields, i.e.
+  # target_industries / excluded_industries / delivery_languages below.
+  evidence_ids: ["ev-capability-summary"]
+
+  # services: optional. engagement_types values must be one of fixed_price,
+  # time_and_materials, retainer, fractional, consultant_tender.
+  services:
+    - id: service-example-1
+      name: "Widget Systems Consulting"
+      description: "scoped discovery through delivery for widget systems modernization engagements"
+      evidence_ids: ["ev-service"]
+      engagement_types: ["fixed_price", "retainer", "time_and_materials"]
+
+  # portfolio: optional. Illustrative past-work items.
+  portfolio:
+    - id: portfolio-example-1
+      title: "Example Industries Modernization"
+      summary: "replaced a legacy widget platform, cutting processing time by half"
+      evidence_ids: ["ev-portfolio"]
+
+  # capacity: optional, singular (not a list). This is where founder
+  # availability/rate/region "preferences" actually live -- see the
+  # "Preferences" mapping note above.
+  capacity:
+    id: capacity-example-1
+    evidence_ids: ["ev-capacity"]
+    available_from: "2026-01-01"
+    hours_per_week: 20
+    min_project_value: 5000
+    max_project_value: 50000
+    annual_turnover_usd: 120000
+    currencies: ["USD"]
+    service_regions: ["MENA"]
+
+  # target_industries / excluded_industries / delivery_languages: optional.
+  # Also part of "preferences" -- see the mapping note above. A name may not
+  # appear in both target_industries and excluded_industries.
+  target_industries: ["Widget Manufacturing", "Logistics Technology"]
+  excluded_industries: ["Gambling"]
+  delivery_languages: ["English"]
+
+  # tools: optional. Uses the same record shape as career_profile.skills.
+  tools:
+    - id: tool-example-1
+      name: "Example PM Suite"
+      evidence_ids: ["ev-tool"]
+
+  # red_lines / never_claims: optional, same shape as under career_profile
+  # above. Independent-work red lines are usually different from
+  # employment red lines (e.g. guaranteed ROI vs. guaranteed placement).
+  red_lines:
+    - id: redline-example-2
+      pattern: "(?i)guaranteed roi"
+      reason: "Never promise guaranteed return on investment."
+  never_claims:
+    - id: never-claim-example-2
+      concept: "unbacked_commercial_capacity"
+      description: "Never claim capacity beyond what capacity records support."
+
+# assertions / relations / metrics: optional, advanced top-level sections
+# for atomic claims, typed relations between entities, and standalone
+# numeric metric assertions that do not belong to a single employment,
+# education, or service record. Most founder truth packs can leave these
+# empty; they exist for cases the structured sections above cannot express.
+# Note: the graph automatically derives its own internal assertions,
+# relations, and metrics from career_profile/capability_profile fields when
+# it is built, so a validation report may show non-zero assertion/relation/
+# metric counts even when these three lists are left empty here -- that
+# reflects the graph's derived content, not anything missing from this file.
+#
+# ---------------------------------------------------------------------------
+# Why "Download tailored CV" or "Download cover letter" can still return a
+# 409 even though this file loads cleanly (read this before you file a bug):
+#
+# Loading cleanly only proves every fact you entered is evidence-backed.
+# Generating a document is a second, independent check: `ClaimValidator`
+# re-verifies every sentence the compiler writes against your evidence, and
+# it can refuse a sentence for two different reasons --
+#
+#   1. Relational composition: a generated sentence that names two separate
+#      facts together (e.g. a job title and a skill in one "Professional
+#      Summary" line) is refused unless those two facts are connected in the
+#      graph by an explicit relation or a shared record, not just by both
+#      belonging to your overall profile. This stops a generator from
+#      silently implying a connection you never evidenced.
+#   2. Material lexical coverage: separately, every non-trivial word in a
+#      generated sentence must literally appear in the evidence cited for
+#      it. Ordinary connective prose the compiler writes on its own --
+#      words like "professional", "background", "verified", or a target
+#      opportunity's own job title and company name -- will usually not
+#      appear verbatim in your evidence text, because your evidence
+#      describes what happened to you, not the sentence the compiler will
+#      eventually write about it.
+#
+# A 409 with findings under either reason is the system correctly refusing
+# to emit a document it cannot fully stand behind -- it is not a crash, and
+# it is not something this template's data can be edited around: rewording
+# or padding your evidence text to happen to contain the compiler's own
+# phrasing would mean writing the generator's vocabulary into your evidence,
+# which is fabrication, not provenance, and is exactly what this system
+# exists to prevent (see the Hard Rules in AGENTS.md: "Never fabricate a
+# claim about the founder"). If you hit this, the correct response is to
+# treat the 409's findings as accurate information about what the generator
+# could not support -- not to chase the specific wording that would make the
+# check pass.
+# ---------------------------------------------------------------------------
+assertions: []
+relations: []
+metrics: []

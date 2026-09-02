@@ -209,16 +209,23 @@
     "text": "Next.js Web Template & Design System: Next.js + TypeScript shell with shadcn/ui dashboard primitives.",
     "criticality": "P1",
     "phase": "Phase 0",
-    "status": "MISSING",
-    "evidence_strength": "NONE",
-    "implementation_evidence": "None",
-    "tests": "None",
-    "ci_evidence": "None",
+    "status": "PARTIAL",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "web/app/layout.tsx, web/app/page.tsx, web/app/login/page.tsx, web/components/ui/*, web/package.json",
+    "tests": "web/tests/e2e/smoke.spec.ts, web/tests/e2e/axe.spec.ts",
+    "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "None",
     "live_dependency": "Node.js / React / Next.js ecosystem",
-    "gap_explanation": "Web UI frontend codebase does not exist in repository.",
+    "gap_explanation": "A Next.js App Router shell with TypeScript, Tailwind, and shadcn/ui primitives (badge, button, card, checkbox, dialog, input, label, select, separator, sheet, textarea, tooltip) is real and built/linted clean, but it renders exactly two routes (/login and /) by BRIEF-FR-004's own scope decision (Appendix item 2); the other ten founder-facing pages the master plan names (dashboard page, artifact viewer, applications pipeline page, etc.) do not exist as routes.",
     "bucket": "FOUNDER_WEB_INTEGRATION",
-    "status_history": []
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-004",
+        "from": "MISSING",
+        "to": "PARTIAL",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-P0B-002",
@@ -226,16 +233,23 @@
     "text": "Responsive Shell & Accessibility Baseline: Desktop/mobile layouts, keyboard navigation, WCAG checks, 0 page errors.",
     "criticality": "P2",
     "phase": "Phase 0",
-    "status": "MISSING",
-    "evidence_strength": "NONE",
-    "implementation_evidence": "None",
-    "tests": "None",
-    "ci_evidence": "None",
+    "status": "PARTIAL",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "web/app/layout.tsx, web/app/page.tsx, web/app/login/page.tsx",
+    "tests": "web/tests/e2e/axe.spec.ts, web/tests/e2e/screenshots.spec.ts",
+    "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "None",
     "live_dependency": "Web UI implementation",
-    "gap_explanation": "Cannot perform responsive/WCAG tests because Web UI is missing.",
+    "gap_explanation": "The two shipped routes (/login, /) are responsive down to 360px, keyboard reachable, carry visible focus states, and are axe-clean per web/tests/e2e/axe.spec.ts (reports/evidence/FR-004/d7-feed-360.png, d7-feed-1280.png, d7-login-360.png, d7-login-1280.png). This is a real, tested baseline, but it covers only the two pages this brief shipped, not the full application surface the requirement's 'desktop/mobile layouts' language implies once more pages exist.",
     "bucket": "FOUNDER_WEB_INTEGRATION",
-    "status_history": []
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-004",
+        "from": "MISSING",
+        "to": "PARTIAL",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-P0C-001",
@@ -243,16 +257,23 @@
     "text": "FastAPI Application API Layer: FastAPI application exposing typed REST endpoints for domain services.",
     "criticality": "P1",
     "phase": "Phase 0",
-    "status": "MISSING",
-    "evidence_strength": "NONE",
-    "implementation_evidence": "None",
-    "tests": "None",
-    "ci_evidence": "None",
+    "status": "DONE",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "api/app.py, api/routes_api.py, api/routes_auth.py, api/security.py, api/deps.py, api/serialization.py, api/settings.py",
+    "tests": "api/test_api.py",
+    "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "None",
     "live_dependency": "FastAPI / Uvicorn",
-    "gap_explanation": "Backend exists purely as direct Python library modules; no HTTP API layer exists.",
+    "gap_explanation": "A FastAPI application (api/app.py::create_app) exposes typed REST endpoints over opportunities, artifacts, feedback, actions, the daily dashboard, source health, worker poll-now, and truth status/reload, covered by api/test_api.py against real PostgreSQL. Auth on this API layer is alpha-grade and single-founder only (tracked separately at REQ-SEC-001); the API is not hosted or exposed off localhost (FR-005 non-goal).",
     "bucket": "FOUNDER_WEB_INTEGRATION",
-    "status_history": []
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-004",
+        "from": "MISSING",
+        "to": "DONE",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-P0C-002",
@@ -621,16 +642,23 @@
     "text": "UI Page: Sign In / Account Page",
     "criticality": "P1",
     "phase": "Phase 0",
-    "status": "MISSING",
-    "evidence_strength": "NONE",
-    "implementation_evidence": "None",
-    "tests": "None",
-    "ci_evidence": "None",
+    "status": "DONE",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "web/app/login/page.tsx, api/routes_auth.py",
+    "tests": "web/tests/e2e/smoke.spec.ts, web/tests/e2e/axe.spec.ts, api/test_api.py",
+    "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "None",
     "live_dependency": "Web UI implementation",
-    "gap_explanation": "No web UI exists.",
+    "gap_explanation": "None for the single-founder scope this brief authorizes. The /login page collects the founder password, calls POST /api/auth/login, and lands on the feed on success; covered end-to-end by the Playwright smoke and axe-clean per web/tests/e2e/axe.spec.ts. There is no registration or password-reset flow because ADR-0013 deliberately has no user table (single-founder, alpha-grade).",
     "bucket": "FOUNDER_WEB_INTEGRATION",
-    "status_history": []
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-004",
+        "from": "MISSING",
+        "to": "DONE",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-UIP-002",
@@ -638,16 +666,23 @@
     "text": "UI Page: Founder Dual-Track Dashboard (Top jobs, top client opportunities, attention items, health summary).",
     "criticality": "P0",
     "phase": "Phase 1",
-    "status": "MISSING",
-    "evidence_strength": "NONE",
-    "implementation_evidence": "None (Analytics data model exists in inbox/analytics.py)",
-    "tests": "None",
-    "ci_evidence": "None",
+    "status": "PARTIAL",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "web/components/feed/header-strip.tsx, api/routes_api.py (GET /api/dashboard/daily, GET /api/sources/health)",
+    "tests": "web/tests/e2e/smoke.spec.ts",
+    "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "None",
     "live_dependency": "Web UI implementation",
-    "gap_explanation": "Underlying data models exist, but UI dashboard page does not exist.",
+    "gap_explanation": "Only a header strip shipped, not a dashboard page: it shows today's fetched/new/qualified/high_fit/opened/labelled/applied numbers and a source-health dot per registered source (both real, tested via the Playwright smoke's dashboard-count assertions), plus a Poll now button. It does not show 'top jobs' or 'top client opportunities' as distinct dual-track panels, nor a dedicated attention-items list -- those are folded into the single feed page instead of a standalone dashboard, which is a deliberate BRIEF-FR-004 scope cut (Appendix item 2), not an oversight.",
     "bucket": "FOUNDER_WEB_INTEGRATION",
-    "status_history": []
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-004",
+        "from": "MISSING",
+        "to": "PARTIAL",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-UIP-003",
@@ -655,16 +690,23 @@
     "text": "UI Page: Opportunities Feed (Dual-track filterable list with scores, eligibility badges, match reasons).",
     "criticality": "P0",
     "phase": "Phase 1",
-    "status": "MISSING",
-    "evidence_strength": "NONE",
-    "implementation_evidence": "None",
-    "tests": "None",
-    "ci_evidence": "None",
+    "status": "DONE",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "web/app/page.tsx, web/components/feed/opportunity-card.tsx, web/components/feed/filter-bar.tsx, web/components/feed/decision-badge.tsx",
+    "tests": "web/tests/e2e/smoke.spec.ts, web/tests/e2e/axe.spec.ts",
+    "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "None",
     "live_dependency": "Web UI implementation",
-    "gap_explanation": "Feed data computable via Python; web UI feed missing.",
+    "gap_explanation": "None. The feed is a dual-track filterable list (track, decision, min score, free-text search) of ranked cards showing title, organization, source, fit score, decision badge, top-3 match reasons, deadline, stale flag, and action/feedback state, backed by GET /api/opportunities and covered end-to-end by web/tests/e2e/smoke.spec.ts.",
     "bucket": "FOUNDER_WEB_INTEGRATION",
-    "status_history": []
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-004",
+        "from": "MISSING",
+        "to": "DONE",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-UIP-004",
@@ -672,16 +714,23 @@
     "text": "UI Page: Opportunity Detail View (Provenance, requirements breakdown, match explanation, action buttons).",
     "criticality": "P0",
     "phase": "Phase 1",
-    "status": "MISSING",
-    "evidence_strength": "NONE",
-    "implementation_evidence": "None",
-    "tests": "None",
-    "ci_evidence": "None",
+    "status": "DONE",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "web/components/feed/detail-drawer.tsx, web/components/feed/constraint-outcome.tsx, api/routes_api.py (GET /api/opportunities/{id})",
+    "tests": "web/tests/e2e/smoke.spec.ts",
+    "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "None",
     "live_dependency": "Web UI implementation",
-    "gap_explanation": "Detail structures exist in models; web UI detail page missing.",
+    "gap_explanation": "Implemented as an in-page detail drawer over the feed route rather than a separate URL (a deliberate BRIEF-FR-004 scope cut, Appendix item 2), but every piece of content the requirement names is present and tested: field-by-field provenance, the qualification checklist with UNKNOWN rendered distinctly from FAIL (web/tests/e2e/smoke.spec.ts asserts different label text and colour class), dimension scores with strengths/gaps/unknowns and an explanation, and action buttons (download CV/cover letter, feedback, mark applied/dismiss/snooze).",
     "bucket": "FOUNDER_WEB_INTEGRATION",
-    "status_history": []
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-004",
+        "from": "MISSING",
+        "to": "DONE",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-UIP-005",
@@ -723,16 +772,23 @@
     "text": "UI Page: CV / Generated Artifacts Viewer (Document preview, claim inspector, DOCX/PDF download).",
     "criticality": "P0",
     "phase": "Phase 1",
-    "status": "MISSING",
-    "evidence_strength": "NONE",
-    "implementation_evidence": "None",
-    "tests": "None",
-    "ci_evidence": "None",
+    "status": "PARTIAL",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "web/components/feed/detail-drawer.tsx (download section), api/routes_api.py (GET /api/opportunities/{id}/artifacts/cv.docx, /cover-letter.docx)",
+    "tests": "web/tests/e2e/smoke.spec.ts",
+    "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "None",
     "live_dependency": "Web UI implementation",
-    "gap_explanation": "Artifact compilers exist in matching/; web UI viewer missing.",
+    "gap_explanation": "DOCX download works end-to-end and is tested (the Playwright smoke downloads a real cv-opp-001 file), and a blocked download surfaces the claim-validator's rejection reasons inline as an error message. That is not a claim inspector: there is no browsable UI for reviewing claims independent of a failed download, no in-browser document preview, and no PDF export -- D6 only implements .docx endpoints.",
     "bucket": "FOUNDER_WEB_INTEGRATION",
-    "status_history": []
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-004",
+        "from": "MISSING",
+        "to": "PARTIAL",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-UIP-008",
@@ -740,16 +796,23 @@
     "text": "UI Page: Applications / Engagement Pipeline (Visual stage tracker for submitted applications and proposals).",
     "criticality": "P1",
     "phase": "Phase 1",
-    "status": "MISSING",
-    "evidence_strength": "NONE",
-    "implementation_evidence": "None",
-    "tests": "None",
-    "ci_evidence": "None",
+    "status": "PARTIAL",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "web/components/feed/triage-actions.tsx, api/routes_api.py (POST /api/opportunities/{id}/actions)",
+    "tests": "web/tests/e2e/smoke.spec.ts",
+    "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "None",
     "live_dependency": "Web UI implementation",
-    "gap_explanation": "Pipeline state machine exists in inbox/pipeline.py; visual UI Kanban missing.",
+    "gap_explanation": "A founder can mark an opportunity applied, dismiss it, or snooze it, and the current state (submitted/dismissed/snoozed) is shown as a badge on the card and in the drawer -- tested end-to-end by the Playwright smoke. That is not the 'visual stage tracker for submitted applications and proposals' the requirement describes: there is no pipeline page, no multi-stage progression (e.g. applied -> interviewing -> offer -> rejected), and inbox/pipeline.py's richer state machine is not surfaced here at all.",
     "bucket": "FOUNDER_WEB_INTEGRATION",
-    "status_history": []
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-004",
+        "from": "MISSING",
+        "to": "PARTIAL",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-UIP-009",
@@ -2245,16 +2308,23 @@
     "text": "Secure Session Management & Web Auth: Secure cookies, CSRF protection, session tokens.",
     "criticality": "P1",
     "phase": "Phase 0",
-    "status": "MISSING",
-    "evidence_strength": "NONE",
-    "implementation_evidence": "None",
-    "tests": "None",
-    "ci_evidence": "None",
-    "later_authority": "None",
+    "status": "PARTIAL",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "api/routes_auth.py, api/security.py, api/deps.py, docs/adr/ADR-0013-alpha-grade-auth-and-local-only-posture.md",
+    "tests": "api/test_api.py",
+    "ci_evidence": "Mandatory Governance & Test Suite",
+    "later_authority": "ADR-0013",
     "live_dependency": "Web auth implementation",
-    "gap_explanation": "No web auth attack surface currently exists.",
+    "gap_explanation": "Session tokens exist (signed HttpOnly cookie, SameSite=Lax, constant-time password compare, every route 401 without a valid session, in-memory 5/min login rate limit) and are tested. This is deliberately alpha-grade per ADR-0013: the cookie is 'Secure' only when not on localhost, there is no explicit CSRF defence beyond SameSite=Lax, no session expiry/revocation, and the in-memory rate limit does not survive a process restart -- all recorded in ADR-0013 as deferred to FR-005 hosting work, not implemented here.",
     "bucket": "PRODUCTION_INFRASTRUCTURE",
-    "status_history": []
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-004",
+        "from": "MISSING",
+        "to": "PARTIAL",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-SEC-002",
@@ -2436,16 +2506,23 @@
     "text": "Local / Staging Runtime Entrypoint: Single command startup for web, API, workers, and database.",
     "criticality": "P1",
     "phase": "Phase 0",
-    "status": "MISSING",
-    "evidence_strength": "NONE",
-    "implementation_evidence": "None",
-    "tests": "None",
-    "ci_evidence": "None",
+    "status": "DONE",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "scripts/alpha.py, worker/scheduler.py, docs/templates/alpha.env.template",
+    "tests": "scripts/test_alpha.py, worker/test_scheduler.py",
+    "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "None",
     "live_dependency": "Docker / Compose / Process manager",
-    "gap_explanation": "No combined runtime entrypoint script exists.",
+    "gap_explanation": "scripts/alpha.py up|down|status|logs starts PostgreSQL, runs alembic upgrade head, and starts the worker (--schedule), the API, and the web app as one command, reading secrets from private/alpha.env; down stops everything cleanly. Verified end-to-end on the Master's machine (reports/evidence/FR-004/a9-alpha-transcript.txt). Docker/Compose packaging is out of scope (FR-005 non-goal); this is a local process-manager entrypoint, not a container runtime.",
     "bucket": "PRODUCTION_INFRASTRUCTURE",
-    "status_history": []
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-004",
+        "from": "MISSING",
+        "to": "DONE",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-LAT-001",

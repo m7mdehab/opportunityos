@@ -1,0 +1,81 @@
+### D4 part A / A-3 — migration 0002 round trip (Master re-run)
+
+The brief names one new table. Three D6 routes it also names cannot be answered
+from the committed schema, so 0002 creates four. The ruling and its reasoning are
+in CLAIMS.md, recorded before D4 was delegated.
+
+$ alembic upgrade head        -> four-table count: 4
+$ alembic downgrade 0001_...  -> four-table count: 0
+
+--- orphan index / constraint check while downgraded (empty == genuinely reversible) ---
+(no rows)
+
+$ alembic upgrade head        -> four-table count: 4
+
+--- D4-3: the unique constraint is enforced by the database, not just indexed ---
+uq_match_evaluations_opportunity_truth_pack|u
+
+$ python -m unittest storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_a_and_b_alembic_upgrade_downgrade_smoke 2>&1 | tail -3
+Ran 1 test in 1.966s
+
+OK
+
+--- all four tables are covered by the backup dump and restore path ---
+84:    "match_evaluations": "match_evaluations",
+85:    "source_poll_runs": "source_poll_runs",
+86:    "founder_opportunity_views": "founder_opportunity_views",
+87:    "founder_triage_states": "founder_triage_states",
+193:        "match_evaluations": [],
+194:        "source_poll_runs": [],
+195:        "founder_opportunity_views": [],
+196:        "founder_triage_states": [],
+
+### D4 part B — evaluation persistence (Master re-run)
+
+$ python -m unittest matching.test_evaluate_persist -v 2>&1 | tail -3
+Ran 6 tests in 2.179s
+
+OK
+
+$ python -m unittest ...test_case_v_evaluate_new_persists_match_evaluations 2>&1 | tail -3
+Ran 1 test in 1.496s
+
+OK
+
+--- D4-6: 'uncertain' is stored verbatim; the only occurrences in the module
+    are its docstring and a comment, not a coercion branch ---
+24:verbatim -- ``"qualified"``, ``"ineligible"``, or ``"uncertain"`` -- for every
+25:branch. There is no coercion anywhere in this module: an ``uncertain``
+26:decision is never rewritten to ``ineligible`` (or anything else) on the way
+144:    # Stored verbatim: "qualified" | "ineligible" | "uncertain". No branch here
+145:    # (or anywhere else in this module) rewrites "uncertain" to any other value.
+
+--- Reload fidelity, measured rather than assumed ---
+
+D4b reported that a persisted OpportunityRecord cannot reconstruct an
+Opportunity faithfully: adapters store responsibilities/requirements
+provenance as an item COUNT ('3 items'), not the text, and re-deriving them
+from the stored description would not reproduce fetch-time results either,
+because description = clean_text(raw_desc) while the adapters extract from
+the UNCLEANED raw_desc. Leaving them empty rather than re-deriving is
+therefore correct: re-derivation would yield two different scores for the
+same posting depending on which path produced it.
+
+Measured impact on the one source with a committed fixture:
+
+                      fetched    reloaded
+decision           : qualified  qualified
+overall_fit_score  : 41.67      41.67
+unknowns / gaps    : 4/3        4/3
+  core_skills                0.333 -> 0.333
+  seniority_and_experience   0.500 -> 0.500
+  responsibility_scope       0.500 -> 0.500
+  domain_fit                 0.550 -> 0.550
+  geography_and_remote       0.800 -> 0.800
+  compensation_fit           0.500 -> 0.500
+  career_trajectory          0.500 -> 0.500
+
+Every dimension is identical for this fixture, because it contains no
+parseable responsibility or requirement sections to lose. The divergence
+would appear only for postings that do, which no committed fixture
+exercises. Recorded as a bounded, disclosed gap for a future brief.

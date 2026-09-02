@@ -1,0 +1,15 @@
+### D1 — queue crash-recovery retry bound and deterministic Case S (Master re-run)
+$ python -m unittest worker.test_worker -v 2>&1 | tail -3
+Ran 4 tests in 2.445s
+
+OK
+
+$ grep -c claim_hook worker/queue.py worker/runner.py worker/__main__.py
+worker/queue.py:8
+worker/runner.py:0
+worker/__main__.py:0
+  (present in queue.py only; runner.py and __main__.py are 0 — production callers pass nothing)
+
+$ grep -nE 'time\.sleep' storage/test_postgres_integration.py ; echo exit=$?
+exit=1
+  (no in-flight sleep remains; Case S synchronises through claim_hook)

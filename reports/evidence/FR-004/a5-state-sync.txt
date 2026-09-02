@@ -1,0 +1,27 @@
+### A-5 — docs/STATE.md regenerates with zero drift
+
+generate_state.py has no --check flag, so A-5 uses the alternative the brief
+permits: a fresh render compared against the committed file.
+
+It also records the last commit that changed something OTHER than docs/STATE.md.
+So the final commit of this brief touches STATE.md alone -- otherwise that line
+advances every time and manufactures a diff that looks like drift but is not.
+An earlier attempt showed exactly that:
+    - **State generated at commit:** `95d9de8` -- docs(fr-004): phase gate report
+    + **State generated at commit:** `c0e427e` -- docs(fr-004): regenerate STATE.md
+
+With the STATE-only commit in place:
+
+$ STATE_PRESERVE_TIMESTAMP=1 python scripts/generate_state.py
+$ diff <(git show HEAD:docs/STATE.md) docs/STATE.md   # line endings normalised
+  ZERO DRIFT -- the regenerated file is identical to the committed one
+
+--- D9-2: ADR-0013 is picked up by the generator ---
+  60:- [ADR-0013 — Alpha-Grade Auth and Local-Only Posture](adr/ADR-0013-alpha-grade-auth-and-local-only-posture.md)
+
+--- the phase reads as passed ---
+  Last shipped: BRIEF-FR-004 — 2026-09-02.
+  Active work: none.
+  Phase status: passed.
+  Blocked: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha (strictly blocked until Founder Web Alpha is live and validated).
+  Next: The measured number decides the shape of the next brief, and it does not exist yet — it is produced by the founder running §9, not by this brief.

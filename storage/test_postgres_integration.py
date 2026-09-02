@@ -4,7 +4,6 @@ import json
 import uuid
 import tempfile
 import threading
-import time
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from alembic import command
@@ -12,6 +11,7 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import IntegrityError
 
 from storage.models import (
     Base,
@@ -26,6 +26,7 @@ from storage.models import (
     ReconciliationRecordModel,
     WorkerJobRecord,
     FounderFeedbackRecord,
+    MatchEvaluationRecord,
 )
 from storage.engine import (
     get_engine,
@@ -111,15 +112,112 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         """Case A & B: empty DB -> Alembic head -> downgrade smoke -> upgrade to head."""
         alembic_cfg = Config("alembic.ini")
         alembic_cfg.set_main_option("sqlalchemy.url", self.db_url)
-        
+
+        migration_0002_tables = (
+            "match_evaluations",
+            "source_poll_runs",
+            "founder_opportunity_views",
+            "founder_triage_states",
+        )
+
         # Test upgrade to head
         command.upgrade(alembic_cfg, "head")
-        
+
         # Verify tables exist in postgres
         with self.engine.connect() as conn:
             res = conn.execute(text("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'"))
             count = res.scalar()
             self.assertGreater(count, 5)
+
+            res = conn.execute(
+                text("SELECT count(*) FROM information_schema.tables WHERE table_name = ANY(:names)"),
+                {"names": list(migration_0002_tables)},
+            )
+            self.assertEqual(res.scalar(), 4, "all four 0002 tables must exist at head")
+
+        # Downgrade to 0001_baseline_schema: the four 0002 tables, and every
+        # index/constraint belonging to them, must be gone.
+        command.downgrade(alembic_cfg, "0001_baseline_schema")
+
+        with self.engine.connect() as conn:
+            res = conn.execute(
+                text("SELECT count(*) FROM information_schema.tables WHERE table_name = ANY(:names)"),
+                {"names": list(migration_0002_tables)},
+            )
+            self.assertEqual(res.scalar(), 0, "all four 0002 tables must be absent after downgrade to 0001")
+
+            res = conn.execute(text(
+                "SELECT indexname FROM pg_indexes WHERE "
+                "indexname ILIKE '%match_evaluations%' OR indexname ILIKE '%source_poll_runs%' OR "
+                "indexname ILIKE '%founder_opportunity_views%' OR indexname ILIKE '%founder_triage_states%'"
+            ))
+            self.assertEqual(res.fetchall(), [], "no orphan index belonging to the 0002 tables may survive downgrade")
+
+            res = conn.execute(text(
+                "SELECT conname FROM pg_constraint WHERE "
+                "conname ILIKE '%match_evaluations%' OR conname ILIKE '%source_poll_runs%' OR "
+                "conname ILIKE '%founder_opportunity_views%' OR conname ILIKE '%founder_triage_states%'"
+            ))
+            self.assertEqual(res.fetchall(), [], "no orphan constraint belonging to the 0002 tables may survive downgrade")
+
+        # Upgrade again: the four tables must come back.
+        command.upgrade(alembic_cfg, "head")
+
+        with self.engine.connect() as conn:
+            res = conn.execute(
+                text("SELECT count(*) FROM information_schema.tables WHERE table_name = ANY(:names)"),
+                {"names": list(migration_0002_tables)},
+            )
+            self.assertEqual(res.scalar(), 4, "all four 0002 tables must exist again after re-upgrading to head")
+
+    def test_match_evaluations_unique_constraint_enforced_by_database(self):
+        """(opportunity_id, truth_pack_hash) duplicates are rejected by PostgreSQL itself."""
+        session = self.SessionFactory()
+        try:
+            opp = OpportunityRecord(
+                id="opp-uq-1",
+                track=Track.EMPLOYMENT.value,
+                title="Backend Engineer",
+                organization="Acme Corp",
+                description="Build things.",
+                source_id="src-1",
+                source_url="https://example.com/job/1",
+                content_hash="hash-1",
+            )
+            session.add(opp)
+            session.commit()
+
+            first = MatchEvaluationRecord(
+                id="me-1",
+                opportunity_id="opp-uq-1",
+                truth_pack_hash="tph-1",
+                qualification_decision="qualified",
+                fit_score=88.5,
+                dimension_scores_json="{}",
+                reasons_json="[]",
+                policy_version="v1",
+                evaluated_at=datetime.now(timezone.utc),
+            )
+            session.add(first)
+            session.commit()
+
+            duplicate = MatchEvaluationRecord(
+                id="me-2",
+                opportunity_id="opp-uq-1",
+                truth_pack_hash="tph-1",
+                qualification_decision="uncertain",
+                fit_score=50.0,
+                dimension_scores_json="{}",
+                reasons_json="[]",
+                policy_version="v1",
+                evaluated_at=datetime.now(timezone.utc),
+            )
+            session.add(duplicate)
+            with self.assertRaises(IntegrityError):
+                session.commit()
+        finally:
+            session.rollback()
+            session.close()
 
     def test_case_c_exact_historical_inbox_sqlite_to_postgres(self):
         """Case C: Exact historical inbox SQLite -> PostgreSQL migration with 100% fidelity."""
@@ -917,11 +1015,6 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
                     should_stop = expected_markers.issubset({m for _, m in processed_records})
                 if should_stop:
                     stop_event.set()
-                # Hold the job "in flight" a little so other PENDING jobs remain
-                # claimable by the other runner while this one is still working --
-                # otherwise a fast runner can drain the whole queue solo before the
-                # other runner's first claim attempt even executes.
-                time.sleep(0.03)
                 # Let the underlying handler's outcome (success or exception) propagate
                 # unchanged so WorkerRunner still drives complete_job / fail_job.
                 inner_handler(payload)
@@ -963,21 +1056,67 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             poll_interval=0.05, stop_event=stop_event,
         )
 
-        # Release both runners at (as close to) the same instant so both begin
-        # claiming against the same PENDING rows -- without this, one thread can
-        # simply be scheduled first and drain the queue before the other starts.
-        start_barrier = threading.Barrier(2, timeout=10)
+        # Deterministic two-runner synchronisation via claim_next_job's claim_hook
+        # (worker/queue.py D1), replacing the previous thread-start barrier plus
+        # in-handler sleep. The hook fires after a row has been selected and
+        # mutated in-session but before commit, so gating the *first two* hook
+        # invocations (system-wide, whichever runner reaches them first) on a
+        # 2-party barrier forces those two claim_next_job calls to overlap: the
+        # second, concurrent claim is forced to run its own SELECT ... FOR UPDATE
+        # SKIP LOCKED against the first (still row-locked, uncommitted) claim, so
+        # it necessarily picks a *different* job row. A single thread cannot
+        # supply both barrier parties itself -- it stays blocked inside its own
+        # claim_next_job call until a second party arrives -- so the two gated
+        # claims are necessarily one from each runner. That guarantees both
+        # runners claim distinct jobs before either is allowed to proceed, with no
+        # in-flight sleep. This also makes the previous thread-start barrier
+        # redundant: a thread blocked at the claim gate cannot race ahead and
+        # drain the queue solo regardless of exactly when the other thread's
+        # runner loop starts, so it is removed rather than kept alongside this.
+        original_claim_next_job = BackgroundWorkerQueue.claim_next_job
+        gate_barrier = threading.Barrier(2, timeout=10)
+        gate_lock = threading.Lock()
+        gate_remaining = [2]
 
-        def _drive(runner):
-            start_barrier.wait()
-            runner.run_forever(max_jobs=5)
+        def _gated_claim_hook():
+            with gate_lock:
+                should_wait = gate_remaining[0] > 0
+                if should_wait:
+                    gate_remaining[0] -= 1
+            if should_wait:
+                gate_barrier.wait()
 
-        t1 = threading.Thread(target=_drive, args=(runner1,))
-        t2 = threading.Thread(target=_drive, args=(runner2,))
-        t1.start()
-        t2.start()
-        t1.join(timeout=30)
-        t2.join(timeout=30)
+        def _synchronized_claim_next_job(self, lease_duration_seconds=60):
+            return original_claim_next_job(
+                self, lease_duration_seconds=lease_duration_seconds, claim_hook=_gated_claim_hook
+            )
+
+        BackgroundWorkerQueue.claim_next_job = _synchronized_claim_next_job
+        try:
+            def _drive(runner):
+                runner.run_forever(max_jobs=5)
+
+            t1 = threading.Thread(target=_drive, args=(runner1,))
+            t2 = threading.Thread(target=_drive, args=(runner2,))
+            t1.start()
+            t2.start()
+            t1.join(timeout=30)
+            t2.join(timeout=30)
+        finally:
+            BackgroundWorkerQueue.claim_next_job = original_claim_next_job
+
+        # If either runner raised before reaching its first gated claim (or the
+        # barrier otherwise timed out), threading.Barrier.wait raises
+        # BrokenBarrierError -- which run_forever's broad `except Exception` around
+        # run_once swallows, so both runners would silently fall back to ungated,
+        # merely-probabilistic claiming instead of the guaranteed overlap this test
+        # is meant to prove. Assert the barrier was never broken so this test
+        # cannot pass by accident via that silent degradation.
+        self.assertFalse(
+            gate_barrier.broken,
+            "gate_barrier broke -- Case S's deterministic claim overlap was never "
+            "actually exercised; this run degraded to the old probabilistic regime",
+        )
 
         self.assertFalse(t1.is_alive(), "runner1 did not finish within the test timeout")
         self.assertFalse(t2.is_alive(), "runner2 did not finish within the test timeout")
@@ -1020,6 +1159,381 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         # The read-disabled source must have been refused, not fetched.
         self.assertEqual(len(refusals), 1)
         self.assertEqual(refusals[0]["source_id"], "ashby:openai")
+
+    def test_case_u_poll_source_persists_idempotently(self):
+        """Case U: poll_source persists a fixture batch idempotently against real PostgreSQL.
+
+        Runs the ``poll_source`` handler twice for one read-allowed fixture
+        source (``himalayas``, offline ``MockTransport`` fixture -- no network
+        access, ever): asserts rows appear on the first run, the
+        ``opportunities`` row count is unchanged on the second (identical)
+        run, ``field_provenances`` rows exist for the persisted opportunity,
+        and a third run with a mutated payload (same identity, different
+        content) takes the re-verification path -- updating ``is_stale`` /
+        ``reverified_at`` in place -- rather than inserting a duplicate row.
+        """
+        import json as _json
+
+        from opportunity.registry import SourceRegistry
+        from opportunity.transport import MockTransport, TransportResponse
+        from worker.handlers import default_handler_registry
+
+        registry = SourceRegistry()
+        self.assertTrue(
+            registry.is_read_allowed("himalayas"),
+            "himalayas must be read-allowed for this test to be meaningful",
+        )
+
+        fixture_path = Path(__file__).resolve().parents[1] / "opportunity" / "fixtures" / "himalayas.json"
+        fixture_payload = fixture_path.read_text(encoding="utf-8")
+
+        mock_transport = MockTransport(
+            {"himalayas": TransportResponse(status_code=200, body=fixture_payload, latency_ms=5)}
+        )
+
+        refusals = []
+        handlers = default_handler_registry(
+            registry=registry,
+            transport=mock_transport,
+            refusal_sink=refusals.append,
+            session_factory=self.SessionFactory,
+        )
+        poll_source = handlers["poll_source"]
+
+        # First run: rows must appear.
+        poll_source({"source_id": "himalayas"})
+
+        verify_session = self.SessionFactory()
+        try:
+            opp_rows = verify_session.query(OpportunityRecord).all()
+            self.assertEqual(len(opp_rows), 1, "fixture has exactly one job posting")
+            opp_id = opp_rows[0].id
+            original_content_hash = opp_rows[0].content_hash
+            self.assertFalse(opp_rows[0].is_stale)
+            self.assertIsNone(opp_rows[0].reverified_at)
+
+            prov_rows = (
+                verify_session.query(FieldProvenanceRecord)
+                .filter_by(opportunity_id=opp_id)
+                .all()
+            )
+            self.assertGreater(len(prov_rows), 0, "field_provenances rows must exist for the persisted opportunity")
+        finally:
+            verify_session.close()
+
+        # Second run: identical payload -- row count must be unchanged (idempotent).
+        poll_source({"source_id": "himalayas"})
+
+        verify_session = self.SessionFactory()
+        try:
+            opp_count = verify_session.query(OpportunityRecord).count()
+            self.assertEqual(opp_count, 1, "re-running the same batch must insert nothing")
+            unchanged_row = verify_session.query(OpportunityRecord).filter_by(id=opp_id).first()
+            self.assertEqual(unchanged_row.content_hash, original_content_hash)
+            self.assertIsNone(unchanged_row.reverified_at, "an unchanged posting must not be re-verified")
+        finally:
+            verify_session.close()
+
+        # Third run: mutated payload under the same identity -- must update in
+        # place (re-verification path), not insert a duplicate.
+        fixture_data = _json.loads(fixture_payload)
+        fixture_data["jobs"][0]["title"] = "Principal Backend Architect (Updated)"
+        mutated_payload = _json.dumps(fixture_data)
+        mock_transport.set_response(
+            "himalayas", TransportResponse(status_code=200, body=mutated_payload, latency_ms=5)
+        )
+
+        poll_source({"source_id": "himalayas"})
+
+        verify_session = self.SessionFactory()
+        try:
+            opp_count = verify_session.query(OpportunityRecord).count()
+            self.assertEqual(opp_count, 1, "a changed posting under the same identity must update, not duplicate")
+            updated_row = verify_session.query(OpportunityRecord).filter_by(id=opp_id).first()
+            self.assertIsNotNone(updated_row)
+            self.assertEqual(updated_row.title, "Principal Backend Architect (Updated)")
+            self.assertNotEqual(updated_row.content_hash, original_content_hash)
+            self.assertFalse(updated_row.is_stale)
+            self.assertIsNotNone(updated_row.reverified_at, "a changed posting must set reverified_at")
+        finally:
+            verify_session.close()
+
+        self.assertEqual(refusals, [], "a read-allowed source must never record a refusal")
+
+
+    def test_case_v_evaluate_new_persists_match_evaluations(self):
+        """Case V: evaluate_new persists match_evaluations rows against real PostgreSQL.
+
+        Persists two fixture opportunities through the sanctioned
+        opportunity.persistence.persist_batch seam, then runs the
+        evaluate_new worker handler with an injected truth pack (a
+        pack_loader returning a canned LoadedPack -- private/ is never
+        touched). Asserts one match_evaluations row per opportunity with a
+        real qualification_decision, a fit_score on the 0-100 scale, and a
+        real evaluated_at timestamp.
+
+        Then changes the (injected) truth-pack hash and reruns evaluate_new:
+        asserts a second row appears per opportunity under the new hash,
+        while the first row's own stored fields (id, decision, fit_score,
+        dimension_scores_json, evaluated_at) are read back unchanged -- so
+        this actually distinguishes "inserted a second row" from "overwrote
+        the first row and left only one row behind under the wrong hash".
+        """
+        from matching.test_qualification import create_test_graph, create_test_opportunity
+        from opportunity.persistence import persist_batch
+        from opportunity.pipeline import IngestionBatch
+        from truth.pack import LoadedPack, PackValidationReport
+        from worker.handlers import make_evaluate_new_handler
+
+        opportunities = (
+            create_test_opportunity(opp_id="case-v-opp-1", title="Senior Backend Engineer"),
+            create_test_opportunity(opp_id="case-v-opp-2", title="Staff Platform Engineer"),
+        )
+        batch = IngestionBatch(
+            batch_id="batch-case-v",
+            run_id="run-case-v",
+            ingested_at="2026-09-02",
+            opportunities=opportunities,
+            clusters=(),
+            health_reports=(),
+            total_raw_ingested=len(opportunities),
+            total_unique_opportunities=len(opportunities),
+            exact_duplicates_removed=0,
+            cross_source_duplicates_clustered=0,
+            ambiguous_duplicates_count=0,
+            track_counts=(),
+            eligibility_counts=(),
+        )
+
+        session = self.SessionFactory()
+        try:
+            repository = StorageRepository(session)
+            persist_result = persist_batch(batch, repository)
+            self.assertEqual(persist_result.inserted_count, 2, "both fixture opportunities must be freshly inserted")
+        finally:
+            session.close()
+
+        truth_graph = create_test_graph()
+        report = PackValidationReport(valid=True, section_counts=(("evidence", 1),), findings=())
+
+        def _pack_loader_for(hash_value):
+            loaded = LoadedPack(graph=truth_graph, report=report, truth_pack_hash=hash_value)
+            return lambda path: loaded
+
+        handler_v1 = make_evaluate_new_handler(
+            session_factory=self.SessionFactory,
+            pack_loader=_pack_loader_for("truth-pack-hash-v1"),
+        )
+        handler_v1({})
+
+        verify_session = self.SessionFactory()
+        try:
+            rows_v1 = (
+                verify_session.query(MatchEvaluationRecord)
+                .filter_by(truth_pack_hash="truth-pack-hash-v1")
+                .order_by(MatchEvaluationRecord.opportunity_id.asc())
+                .all()
+            )
+            self.assertEqual(len(rows_v1), 2, "one match_evaluations row per opportunity under the first hash")
+            for row in rows_v1:
+                self.assertIn(row.qualification_decision, {"qualified", "ineligible", "uncertain"})
+                self.assertGreaterEqual(row.fit_score, 0.0)
+                self.assertLessEqual(row.fit_score, 100.0)
+                self.assertIsNotNone(row.evaluated_at)
+
+            first_row_snapshot = {
+                "id": rows_v1[0].id,
+                "opportunity_id": rows_v1[0].opportunity_id,
+                "qualification_decision": rows_v1[0].qualification_decision,
+                "fit_score": rows_v1[0].fit_score,
+                "dimension_scores_json": rows_v1[0].dimension_scores_json,
+                "evaluated_at": rows_v1[0].evaluated_at,
+            }
+
+            total_rows_after_v1 = verify_session.query(MatchEvaluationRecord).count()
+            self.assertEqual(total_rows_after_v1, 2, "no rows must exist yet under any other hash")
+        finally:
+            verify_session.close()
+
+        # Re-running evaluate_new under the SAME hash must not duplicate rows
+        # (idempotent upsert on (opportunity_id, truth_pack_hash)).
+        handler_v1({})
+        verify_session = self.SessionFactory()
+        try:
+            unchanged_count = (
+                verify_session.query(MatchEvaluationRecord)
+                .filter_by(truth_pack_hash="truth-pack-hash-v1")
+                .count()
+            )
+            self.assertEqual(unchanged_count, 2, "re-running evaluate_new under the same hash must not duplicate rows")
+        finally:
+            verify_session.close()
+
+        # Now the founder's truth pack changes (new hash): evaluate_new must
+        # add a second row per opportunity, and must leave the first hash's
+        # rows completely untouched.
+        handler_v2 = make_evaluate_new_handler(
+            session_factory=self.SessionFactory,
+            pack_loader=_pack_loader_for("truth-pack-hash-v2"),
+        )
+        handler_v2({})
+
+        verify_session = self.SessionFactory()
+        try:
+            rows_v2 = (
+                verify_session.query(MatchEvaluationRecord)
+                .filter_by(truth_pack_hash="truth-pack-hash-v2")
+                .all()
+            )
+            self.assertEqual(len(rows_v2), 2, "one new match_evaluations row per opportunity under the second hash")
+
+            total_rows = verify_session.query(MatchEvaluationRecord).count()
+            self.assertEqual(total_rows, 4, "the second hash must add rows, not replace the first hash's rows")
+
+            first_row_reloaded = (
+                verify_session.query(MatchEvaluationRecord)
+                .filter_by(id=first_row_snapshot["id"])
+                .first()
+            )
+            self.assertIsNotNone(first_row_reloaded, "the first hash's row must still exist by its original id")
+            self.assertEqual(first_row_reloaded.opportunity_id, first_row_snapshot["opportunity_id"])
+            self.assertEqual(first_row_reloaded.truth_pack_hash, "truth-pack-hash-v1")
+            self.assertEqual(first_row_reloaded.qualification_decision, first_row_snapshot["qualification_decision"])
+            self.assertEqual(first_row_reloaded.fit_score, first_row_snapshot["fit_score"])
+            self.assertEqual(first_row_reloaded.dimension_scores_json, first_row_snapshot["dimension_scores_json"])
+            self.assertEqual(first_row_reloaded.evaluated_at, first_row_snapshot["evaluated_at"])
+
+            rows_v1_after = (
+                verify_session.query(MatchEvaluationRecord)
+                .filter_by(truth_pack_hash="truth-pack-hash-v1")
+                .count()
+            )
+            self.assertEqual(rows_v1_after, 2, "the first hash's rows must still number exactly 2, untouched")
+        finally:
+            verify_session.close()
+    def _race_two_claims(self, job_id, *, lease_duration_seconds=30):
+        """Race two independent sessions' claim_next_job calls against one job,
+        releasing both from a 2-party barrier at (as close to) the same instant so
+        the underlying SELECT ... FOR UPDATE SKIP LOCKED contention is actually
+        exercised rather than one call simply running to completion before the
+        other starts. Returns the two results as claimed-job-id-or-None, in call
+        order (r1, r2) -- not the ORM objects, which would be detached once this
+        method closes both sessions below and thus unsafe for the caller to touch.
+        """
+        session1 = self.SessionFactory()
+        session2 = self.SessionFactory()
+        q1 = BackgroundWorkerQueue(session1, worker_id="race-1")
+        q2 = BackgroundWorkerQueue(session2, worker_id="race-2")
+
+        start_barrier = threading.Barrier(2, timeout=10)
+        results = {}
+
+        def _claim(q, key):
+            start_barrier.wait()
+            claimed = q.claim_next_job(lease_duration_seconds=lease_duration_seconds)
+            results[key] = claimed.id if claimed is not None else None
+
+        t1 = threading.Thread(target=_claim, args=(q1, "r1"))
+        t2 = threading.Thread(target=_claim, args=(q2, "r2"))
+        t1.start()
+        t2.start()
+        t1.join(timeout=15)
+        t2.join(timeout=15)
+
+        self.assertFalse(t1.is_alive(), "racer 1 did not finish within the test timeout")
+        self.assertFalse(t2.is_alive(), "racer 2 did not finish within the test timeout")
+        self.assertFalse(start_barrier.broken, "start_barrier broke -- the race was never actually exercised")
+
+        session1.close()
+        session2.close()
+        return results["r1"], results["r2"]
+
+    def test_case_t_stale_lease_reclaim_race(self):
+        """Case T: two sessions race to reclaim one job whose lease has already
+        expired -- simulating two workers both sweeping for a job left behind by a
+        crashed third worker. SELECT ... FOR UPDATE SKIP LOCKED must guarantee
+        exactly one winner even under real contention, and the winner's reclaim
+        must increment retry_count exactly once (not twice, and not zero times).
+
+        This is then extended (same test, second phase) to the dead-letter
+        threshold race: with max_retries=1, a single reclaim exhausts the budget,
+        so neither racer may be handed the job -- both must see None -- and the
+        job must end up DEAD_LETTER with retry_count == 1, not RUNNING for either
+        racer and not retried a second time.
+        """
+        # --- Phase 1: a plain reclaim race (max_retries well above the threshold). ---
+        enqueue_session = self.SessionFactory()
+        enqueue_queue = BackgroundWorkerQueue(enqueue_session, worker_id="t-enqueue")
+        job_id = enqueue_queue.enqueue_job(
+            "export_binary", {"artifact_id": "art-case-t-1"}, max_retries=5
+        )
+        enqueue_session.close()
+
+        # Simulate a dead worker: claim the job once, then force the lease into the
+        # past directly -- never calling complete_job/fail_job, exactly as a
+        # process that died mid-handler would not.
+        setup_session = self.SessionFactory()
+        setup_queue = BackgroundWorkerQueue(setup_session, worker_id="t-dead-1")
+        dead_claim = setup_queue.claim_next_job(lease_duration_seconds=1)
+        self.assertIsNotNone(dead_claim)
+        with self.engine.begin() as conn:
+            conn.execute(
+                text("UPDATE worker_jobs SET lease_expires_at = :past WHERE id = :jid"),
+                {"past": datetime.now(timezone.utc) - timedelta(seconds=10), "jid": job_id},
+            )
+        setup_session.close()
+
+        r1, r2 = self._race_two_claims(job_id)
+
+        winners = [r for r in (r1, r2) if r is not None]
+        self.assertEqual(
+            len(winners), 1, f"exactly one racer must reclaim the stale-leased job, got r1={r1!r} r2={r2!r}"
+        )
+        self.assertEqual(winners[0], job_id)
+
+        verify_session = self.SessionFactory()
+        try:
+            job = verify_session.query(WorkerJobRecord).filter_by(id=job_id).first()
+            self.assertIsNotNone(job)
+            self.assertEqual(job.status, "RUNNING")
+            self.assertEqual(job.retry_count, 1, "retry_count must be incremented exactly once by the race, not twice")
+        finally:
+            verify_session.close()
+
+        # --- Phase 2: the dead-letter threshold race (max_retries == 1). ---
+        enqueue_session2 = self.SessionFactory()
+        enqueue_queue2 = BackgroundWorkerQueue(enqueue_session2, worker_id="t-enqueue-2")
+        job_id_2 = enqueue_queue2.enqueue_job(
+            "export_binary", {"artifact_id": "art-case-t-2"}, max_retries=1
+        )
+        enqueue_session2.close()
+
+        setup_session2 = self.SessionFactory()
+        setup_queue2 = BackgroundWorkerQueue(setup_session2, worker_id="t-dead-2")
+        dead_claim_2 = setup_queue2.claim_next_job(lease_duration_seconds=1)
+        self.assertIsNotNone(dead_claim_2)
+        with self.engine.begin() as conn:
+            conn.execute(
+                text("UPDATE worker_jobs SET lease_expires_at = :past WHERE id = :jid"),
+                {"past": datetime.now(timezone.utc) - timedelta(seconds=10), "jid": job_id_2},
+            )
+        setup_session2.close()
+
+        r1_dl, r2_dl = self._race_two_claims(job_id_2)
+
+        self.assertIsNone(r1_dl, "a reclaim that exhausts max_retries must not be handed to either racer")
+        self.assertIsNone(r2_dl, "a reclaim that exhausts max_retries must not be handed to either racer")
+
+        verify_session2 = self.SessionFactory()
+        try:
+            job2 = verify_session2.query(WorkerJobRecord).filter_by(id=job_id_2).first()
+            self.assertIsNotNone(job2)
+            self.assertEqual(job2.status, "DEAD_LETTER")
+            self.assertEqual(job2.retry_count, 1)
+            self.assertIsNone(job2.lease_owner)
+            self.assertIsNone(job2.lease_expires_at)
+        finally:
+            verify_session2.close()
 
 
 if __name__ == "__main__":

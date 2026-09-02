@@ -1,0 +1,19 @@
+### A-7 — web build and lint (Master re-run)
+
+$ cd web && npm run build
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+└ ○ /login
+
+
+○  (Static)  prerendered as static content
+
+  build exit=0
+
+$ cd web && npm run lint     (script is 'eslint . --max-warnings=0')
+
+> web@0.1.0 lint
+> eslint . --max-warnings=0
+
+  lint exit=0

@@ -1,0 +1,27 @@
+### A-1 / A-2 — final full suite on real PostgreSQL 16.10, Python 3.12.10
+
+$ python -m unittest discover -v 2>&1 | tail -4
+----------------------------------------------------------------------
+Ran 582 tests in 123.001s
+
+OK
+
+The brief requires N > 466 with zero skips. A bare 'OK' with no '(skipped=N)'
+suffix is what proves the skip count is zero.
+
+--- A-2: per-module counts, reconciling exactly to the suite total ---
+    112 truth
+     81 outbound
+     72 scripts
+     67 recon
+     64 opportunity
+     61 matching
+     36 storage
+     29 api
+     27 worker
+     25 inbox
+      4 core
+      3 security
+      1 feedback
+  module sum : 582
+  suite total: Ran 582 tests

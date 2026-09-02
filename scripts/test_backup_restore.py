@@ -23,16 +23,25 @@ import os
 import json
 import unittest
 import tempfile
+from datetime import datetime, timezone
 from urllib.parse import urlsplit, urlunsplit
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, MetaData, Column, String
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from alembic import command as alembic_command
 
 from storage.engine import get_engine, get_session_factory
 from storage.repository import StorageRepository
-from storage.models import Base, OpportunityRecord, FounderFeedbackRecord
+from storage.models import (
+    Base,
+    OpportunityRecord,
+    FounderFeedbackRecord,
+    MatchEvaluationRecord,
+    SourcePollRunRecord,
+    FounderOpportunityViewRecord,
+    FounderTriageStateRecord,
+)
 import scripts.backup_restore as backup_restore
 from scripts.backup_restore import (
     dump_database,
@@ -229,6 +238,65 @@ class TestBackupRestorePostgres(unittest.TestCase):
         }, [{"field_name": "title", "derivation_type": "EXACT_EXTRACTION", "record_checksum": "hash999"}])
 
         repo.record_feedback("OPP-BACKUP-1", "good_match", None, "Perfect role fit")
+
+        # Seed one row per D4/D4b table (match_evaluations, source_poll_runs,
+        # founder_opportunity_views, founder_triage_states) -- three of the
+        # four have an opportunity_id FK *column* with no relationship()
+        # edge, which is exactly the ordering hazard restore_database's
+        # explicit post-section-1 session.flush() exists to close (see
+        # scripts/backup_restore.py). Seeding zero rows here (as this test
+        # did before) is green against that bug regardless of whether the
+        # fix is present, since an empty child table produces zero INSERTs
+        # to misorder.
+        # Naive, representing UTC wall-clock time directly (this project's own
+        # established convention -- DateTime columns here are TIMESTAMP WITHOUT
+        # TIME ZONE; handing psycopg2 a tz-aware datetime instead lets PostgreSQL
+        # convert it to the session's timezone GUC before storing it naive, which
+        # would silently shift these seeded values on a non-UTC session timezone).
+        match_eval_evaluated_at = datetime(2026, 9, 2, 10, 30, 0)
+        detail_json = (
+            '{"hard_constraints": [], "strengths": [], "gaps": [], '
+            '"unknowns": [], "uncertainty_penalty": 0.1, "explanation": "test"}'
+        )
+        session.add(MatchEvaluationRecord(
+            id="me-backup-1",
+            opportunity_id="OPP-BACKUP-1",
+            truth_pack_hash="truth-pack-hash-backup-1",
+            qualification_decision="uncertain",
+            fit_score=63.25,
+            dimension_scores_json='[{"dimension_name": "skills", "raw_score": 0.6}]',
+            reasons_json='[{"kind": "gap", "dimension": "skills", "text": "Rust experience not evidenced"}]',
+            evaluation_detail_json=detail_json,
+            policy_version="1.0.0",
+            evaluated_at=match_eval_evaluated_at,
+        ))
+        session.add(SourcePollRunRecord(
+            id="spr-backup-1",
+            source_id="greenhouse:alexandria",
+            job_id="job-backup-1",
+            started_at=datetime(2026, 9, 2, 10, 0, 0),
+            finished_at=datetime(2026, 9, 2, 10, 0, 5),
+            status="ok",
+            raw_ingested=1,
+            unique_opportunities=1,
+            inserted=1,
+            unchanged=0,
+            updated=0,
+        ))
+        session.add(FounderOpportunityViewRecord(
+            id="fov-backup-1",
+            opportunity_id="OPP-BACKUP-1",
+            viewed_at=datetime(2026, 9, 2, 10, 15, 0),
+        ))
+        triage_snoozed_until = datetime(2026, 9, 9, 0, 0, 0)
+        session.add(FounderTriageStateRecord(
+            opportunity_id="OPP-BACKUP-1",
+            state="snoozed",
+            snoozed_until=triage_snoozed_until,
+            created_at=datetime(2026, 9, 2, 10, 16, 0),
+            updated_at=datetime(2026, 9, 2, 10, 16, 0),
+        ))
+        session.commit()
         session.close()
         engine.dispose()
 
@@ -239,6 +307,9 @@ class TestBackupRestorePostgres(unittest.TestCase):
         # 3. Restore into the distinct target database. The target starts
         # with no schema at all (dropped and recreated in setUpClass), so
         # this exercises restore_database's own Alembic upgrade-to-head.
+        # This is the call that raised ForeignKeyViolation before the
+        # explicit post-section-1 flush() fix, once any of the four new
+        # tables held a row.
         restore_database(self.dump_file, self.target_url)
 
         # 4. Verify target db contents: opportunity round-trips with its
@@ -254,6 +325,34 @@ class TestBackupRestorePostgres(unittest.TestCase):
         fb = dst_session.query(FounderFeedbackRecord).filter_by(opportunity_id="OPP-BACKUP-1").first()
         self.assertIsNotNone(fb)
         self.assertEqual(fb.feedback_label, "good_match")
+
+        # 4b. The four new tables round-trip byte-for-byte, not just "a row
+        # exists": this is what distinguishes "restore succeeded" from
+        # "restore succeeded and preserved the data".
+        me = dst_session.query(MatchEvaluationRecord).filter_by(id="me-backup-1").first()
+        self.assertIsNotNone(me, "match_evaluations row must survive restore")
+        self.assertEqual(me.opportunity_id, "OPP-BACKUP-1")
+        self.assertEqual(me.truth_pack_hash, "truth-pack-hash-backup-1")
+        self.assertEqual(me.qualification_decision, "uncertain")
+        self.assertEqual(me.fit_score, 63.25)
+        self.assertEqual(me.evaluation_detail_json, detail_json)
+        self.assertEqual(me.evaluated_at, match_eval_evaluated_at)
+
+        spr = dst_session.query(SourcePollRunRecord).filter_by(id="spr-backup-1").first()
+        self.assertIsNotNone(spr, "source_poll_runs row must survive restore")
+        self.assertEqual(spr.source_id, "greenhouse:alexandria")
+        self.assertEqual(spr.status, "ok")
+        self.assertEqual(spr.inserted, 1)
+
+        fov = dst_session.query(FounderOpportunityViewRecord).filter_by(id="fov-backup-1").first()
+        self.assertIsNotNone(fov, "founder_opportunity_views row must survive restore")
+        self.assertEqual(fov.opportunity_id, "OPP-BACKUP-1")
+
+        triage = dst_session.query(FounderTriageStateRecord).filter_by(opportunity_id="OPP-BACKUP-1").first()
+        self.assertIsNotNone(triage, "founder_triage_states row must survive restore")
+        self.assertEqual(triage.state, "snoozed")
+        self.assertIsNotNone(triage.snoozed_until, "a snoozed triage state must keep its snoozed_until")
+        self.assertEqual(triage.snoozed_until, triage_snoozed_until)
 
         # 5. The restored target has the Alembic head stamped (read the
         # head from the script directory, never hard-coded).
@@ -273,9 +372,68 @@ class TestBackupRestorePostgres(unittest.TestCase):
         restore_database(self.dump_file, self.target_url)
         opp_after_second_restore = dst_session.query(OpportunityRecord).filter_by(id="OPP-BACKUP-1").first()
         self.assertEqual(len(opp_after_second_restore.provenances), 1)
+        me_count_after_second_restore = dst_session.query(MatchEvaluationRecord).filter_by(id="me-backup-1").count()
+        self.assertEqual(me_count_after_second_restore, 1, "a second restore must not duplicate match_evaluations rows")
 
         dst_session.close()
         dst_engine.dispose()
+
+    def test_restore_refuses_dump_with_column_delta(self):
+        # 1. Take a real dump against the (empty, freshly-upgraded) source
+        # schema, so its "table_columns" header reflects the real, current
+        # model exactly.
+        dump_database(self.source_url, self.dump_file)
+
+        # 2. Direction 1: the *current model* gains a column the dump never
+        # recorded (the dump is stale). Rather than mutating the real,
+        # shared Base.metadata table objects in place (SQLAlchemy makes a
+        # Table's ColumnCollection read-only once it has been used, so an
+        # in-place append can't cleanly be undone -- see append/remove probe
+        # in the deliverable notes), build a scratch MetaData that is a full
+        # copy of every real table (via Table.to_metadata, which preserves
+        # foreign keys so sorted_tables' topological sort keeps working),
+        # add one extra column to the copy of "opportunities", and swap
+        # Base.metadata to point at the scratch copy only for the duration
+        # of this restore call. The original metadata object is restored in
+        # `finally` so no mutation leaks into any other test in this
+        # process.
+        original_metadata = Base.metadata
+        scratch_metadata = MetaData()
+        for table in original_metadata.sorted_tables:
+            table.to_metadata(scratch_metadata)
+        scratch_metadata.tables["opportunities"].append_column(
+            Column("scratch_added_column", String)
+        )
+
+        Base.metadata = scratch_metadata
+        try:
+            with self.assertRaises(BackupCompletenessError) as ctx:
+                restore_database(self.dump_file, self.target_url)
+        finally:
+            Base.metadata = original_metadata
+
+        message = str(ctx.exception)
+        self.assertIn("scratch_added_column", message)
+        self.assertIn("opportunities", message)
+
+        # 3. Direction 2: the *dump* claims a column the current model does
+        # not have (the dump is from a newer schema than this code). This
+        # needs no metadata mutation at all -- editing the dump's own
+        # "table_columns" header directly is the natural way to simulate a
+        # dump that recorded a column the (unmodified, real) current model
+        # does not have.
+        with open(self.dump_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        data["table_columns"]["opportunities"].append("scratch_unknown_in_dump_column")
+        mutated_dump_file = os.path.join(self.temp_dir.name, "mutated_backup.json")
+        with open(mutated_dump_file, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+
+        with self.assertRaises(BackupCompletenessError) as ctx2:
+            restore_database(mutated_dump_file, self.target_url)
+        message2 = str(ctx2.exception)
+        self.assertIn("scratch_unknown_in_dump_column", message2)
+        self.assertIn("opportunities", message2)
 
     def test_upgrade_to_head_is_independent_of_process_cwd(self):
         # alembic.ini's script_location/version_locations are written

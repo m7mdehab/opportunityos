@@ -1,0 +1,23 @@
+### A-4 — guard boundary, PII and repository integrity (Master re-run)
+
+This was RED when the independent verifier ran it, on three files:
+  api/test_api.py           12+ char literal assigned to a name containing 'secret'
+  web/lib/mock/store.ts     same shape, a mock password constant
+  web/.env.example          the only tracked .env-shaped file in the repository
+
+All three values were synthetic and nothing leaked, but the shapes are exactly
+what the rule exists to reject. No exception was added to the guard: the API
+values are now generated per run so no literal appears on the assignment line,
+the mock stops enforcing a magic password at all, and the tracked dotenv file
+is deleted. The code was fixed, not the rule.
+
+$ python scripts/check_guard.py --allow-missing-patterns
+Guard checks passed for repository and mirror boundary.
+  exit=0
+
+$ python scripts/check_repository.py
+Repository integrity checks passed.
+  exit=0
+
+--- no .env-shaped file is tracked except the placeholder-only template ---
+  docs/templates/alpha.env.template
