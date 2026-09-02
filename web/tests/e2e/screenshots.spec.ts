@@ -5,9 +5,17 @@ import { test, expect } from "@playwright/test"
 const FOUNDER_PASSWORD =
   process.env.E2E_FOUNDER_PASSWORD ?? "founder-mock-pass"
 
-// reports/evidence/FR-004/ at the repo-worktree root (sibling of web/).
+// reports/evidence/FR-005/ at the repo-worktree root (sibling of web/).
 // This is the one place this suite writes outside `web/`, and only PNGs.
-const EVIDENCE_DIR = path.resolve(__dirname, "../../../reports/evidence/FR-004")
+//
+// It pointed at FR-004 until BRIEF-FR-005, which meant every `npx playwright
+// test` run silently rewrote a *closed* brief's committed evidence -- the
+// D3-web implementer had to `git checkout -- reports/evidence/FR-004/...`
+// after each full run to get a clean `git status`. Evidence for a brief that
+// has already passed its gate must not be mutable by a later brief's test
+// run, so this now writes into the active brief's own directory. Whoever
+// opens FR-006 should move it again.
+const EVIDENCE_DIR = path.resolve(__dirname, "../../../reports/evidence/FR-005")
 
 const VIEWPORTS = [
   { name: "360", width: 360, height: 800 },
