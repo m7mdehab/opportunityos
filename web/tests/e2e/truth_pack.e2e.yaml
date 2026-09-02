@@ -1,0 +1,42 @@
+# Test-only, obviously synthetic truth pack for the D7 phase 2 real-stack
+# Playwright config (see playwright.real.config.ts). Loaded via
+# OPPORTUNITYOS_TRUTH_PACK_PATH, never private/.
+#
+# Deliberately NOT docs/templates/truth_pack.template.yaml: that shipped
+# template's career_profile has both an employment-title assertion
+# (evidence "ev-employment-current") and a skill assertion (evidence
+# "ev-skill") that are never relationally linked in the graph (no shared
+# entity node, no TypedRelation). matching/compiler_employment.py's
+# "Professional Summary" section unconditionally cites both in one
+# composite claim, which truth/validator.py's ClaimValidator step 8
+# ("Relational composition guard") correctly refuses --
+# "composite claim combines independent evidence records without an
+# establishing graph relation" -- so downloading a tailored CV against the
+# shipped template, through the real API, fails every time with a 409.
+# See REPORT-FR-004 (D7 phase 2) for the write-up; this is a genuine
+# integration defect surfaced by running against the real service, not
+# something to route around silently.
+#
+# This fixture sidesteps the same combination api/test_api.py's own
+# `_clean_truth_pack_graph()` sidesteps for the identical reason (see that
+# function's docstring): a single evidence-supported skill, no employment
+# record, so the compiler never builds a multi-evidence composite claim
+# and the artifact export's clean-approval path is exercised end to end.
+
+evidence:
+  - id: ev-skill-e2e
+    content: "Demonstrated advanced Program Management proficiency across multiple synthetic engagements."
+    source: "self_reported"
+    locator: "skills.0"
+
+career_profile:
+  id: career-e2e-synthetic
+  skills:
+    - id: skill-e2e-1
+      name: "Program Management"
+      evidence_ids: ["ev-skill-e2e"]
+      proficiency: "advanced"
+
+assertions: []
+relations: []
+metrics: []

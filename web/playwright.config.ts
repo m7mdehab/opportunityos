@@ -1,10 +1,15 @@
 import { defineConfig, devices } from "@playwright/test"
+import { definedProcessEnv } from "./tests/e2e/env"
 
 /**
- * Phase 1: runs against the mock layer (NEXT_PUBLIC_USE_MOCK_API=1, set in
- * .env.local) served by a production build (`next build && next start`).
- * Phase 2 changes only `use.baseURL` / `webServer` (pointing at the real API
- * + seeded PostgreSQL) — the test files and their assertions do not change.
+ * Phase 1: runs against the mock layer served by a production build
+ * (`next build && next start`). `NEXT_PUBLIC_USE_MOCK_API=1` is set
+ * directly on `webServer.env` below (not via a gitignored `.env.local`)
+ * so a fresh clone with `npm ci` is green with no manual file creation —
+ * an untracked dotenv file is not reproducible for anyone else. See
+ * `playwright.real.config.ts` for phase 2 (the real API + seeded
+ * PostgreSQL) — the test files and their assertions do not change between
+ * the two.
  *
  * Production, not `next dev`, deliberately: React does not double-invoke
  * effects outside Strict Mode's dev-only behaviour, so this sidesteps a
@@ -39,6 +44,10 @@ export default defineConfig({
     url: `http://localhost:${PORT}`,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
+    env: {
+      ...definedProcessEnv(),
+      NEXT_PUBLIC_USE_MOCK_API: "1",
+    },
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
 })

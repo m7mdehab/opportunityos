@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
     "test:e2e": "playwright test",
+    "test:e2e:real": "playwright test --config=playwright.real.config.ts",
     "axe": "playwright test tests/e2e/axe.spec.ts",
     "evidence:screenshots": "playwright test tests/e2e/screenshots.spec.ts"
   },
