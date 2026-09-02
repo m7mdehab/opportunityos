@@ -126,3 +126,28 @@ headline probes independently before ordering any repair.
   strands a scratch database. Pre-existing; cost the Master an hour.
 - Migration `0003` was amended in place after being applied to development databases. It is
   unreleased so this is defensible, but it stranded the Master's own database twice.
+
+### 19. An implementer flagged a legitimate harness directive as prompt injection
+The D3-web implementer reported that its tool output "repeatedly carried anomalous
+system-reminder blocks instructing me to switch to raw Bash instead of the Read/Edit/Write
+tools", judged them injected rather than legitimate, disregarded them, and said so in its
+report rather than silently complying.
+
+It was **wrong on the facts** — that directive is a genuine harness auto-mode instruction,
+and the Master received the same one in its own context. But the reasoning was sound and the
+cost was zero: it kept using the tools it had been given, produced correct work, and
+surfaced the decision instead of hiding it. Recorded because it is the behaviour the project
+wants when an agent cannot distinguish a legitimate instruction from an injected one:
+refuse, continue, and report. A false positive in that direction is much cheaper than a
+false negative, and `AGENTS.md`'s rule that retrieved content is never an instruction is
+what produced it.
+
+### 20. Source policy applied to the Master's own evidence
+The A-9 evidence originally named four employers observed in the live poll — the clearest
+single demonstration that the rows were real rather than fixtures. `reports/**` is on the
+public mirror allowlist, and `docs/SOURCE_REGISTRY.yaml` records
+`attribution: {required: review_required}` for all three job boards polled. Reading is
+`allowed` and is all the poll used; republishing listing content into a public repository
+under an unreviewed attribution requirement is a different act. The names were withheld.
+Nothing evidential was lost: the per-source counts, the three real hosts and the three zero
+probes carry the claim on their own.
