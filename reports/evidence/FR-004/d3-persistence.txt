@@ -1,0 +1,42 @@
+### D3 — discovery persistence seam (Master re-run on the integrated branch)
+
+$ python -m unittest opportunity.test_persistence -v 2>&1 | tail -3
+Ran 4 tests in 2.147s
+
+OK
+
+$ python -m unittest storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_u_poll_source_persists_idempotently -v 2>&1 | tail -3
+Ran 1 test in 1.417s
+
+OK
+
+--- D3-5: real subprocess, real CLI entrypoint, fixture transport, no network ---
+The read path is offline by construction: only worker.handlers.HttpTransport is
+replaced, by the committed opportunity/fixtures/himalayas.json fixture. Argument
+parsing, DSN resolution, the queue, the runner and the handler registry are the
+same code 'python -m worker --once' executes.
+
+enqueued job_id=job-6edda79701f4
+`worker --once` exit_code=0
+SELECT count(*) FROM opportunities     -> 1
+SELECT count(*) FROM field_provenances -> 15
+job status                             -> COMPLETED
+
+--- refusal path for a read-disabled source is unchanged: it returns before
+    any session is opened and before any request is made ---
+            raise ValueError("poll_source payload requires a non-empty 'source_id'")
+
+        if not reg.is_read_allowed(source_id):
+            _record_refusal(source_id, refusal_sink)
+            return
+
+        logger.info(
+            "worker.poll_source_fetching",
+            extra={"component": "worker.handlers", "extra_data": {"source_id": source_id}},
+        )
+        pipeline = OpportunityPipeline(adapters=adapters, registry=reg, transport=fetch_transport)
+        batch = pipeline.execute_discovery(source_ids=[source_id])
+
+        session = _resolve_session_factory()()
+        try:
+            repository = StorageRepository(session)
