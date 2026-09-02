@@ -11,6 +11,8 @@ from __future__ import annotations
 import uuid
 
 from fastapi import FastAPI, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from core.logging import get_logger
@@ -33,7 +35,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     """
     resolved_settings = settings or load_settings()
 
-    app = FastAPI(title="OpportunityOS Founder Alpha API")
+    # Finding 1 (council, auth review): FastAPI's own doc routes
+    # (/openapi.json, /docs, /redoc) are unauthenticated by default and
+    # were reachable with no cookie at all, returning 200 with the full
+    # route schema in the body -- a direct violation of "every other
+    # route 401s without a valid session." There is no founder-facing
+    # use for interactive API docs on a single-user local alpha, so they
+    # are disabled outright rather than gated: disabled means 404, which
+    # cannot leak a schema no matter what auth code runs later.
+    app = FastAPI(
+        title="OpportunityOS Founder Alpha API",
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
 
     app.state.settings = resolved_settings
     app.state.session_serializer = make_serializer(resolved_settings.session_secret)
@@ -67,6 +82,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
         )
         return response
+
+    @app.exception_handler(RequestValidationError)
+    async def login_validation_exception_handler(request: Request, exc: RequestValidationError):
+        # Finding 4 (council, auth review): FastAPI's default 422 body
+        # echoes each field's submitted value back in an "input" key --
+        # for POST /api/auth/login that means a malformed request (e.g. a
+        # non-string password) reflected the founder's own password back
+        # into the response body and, from there, into any log or proxy
+        # that records response payloads. Scoped to the login route only:
+        # every other route's validation errors carry no secret and keep
+        # FastAPI's normal, more helpful default behaviour.
+        if request.url.path == "/api/auth/login":
+            redacted = []
+            for error in exc.errors():
+                error = dict(error)
+                error.pop("input", None)
+                redacted.append(error)
+            return JSONResponse(status_code=422, content={"detail": redacted})
+        return await request_validation_exception_handler(request, exc)
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):

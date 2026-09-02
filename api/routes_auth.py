@@ -10,7 +10,7 @@ from core.logging import get_logger
 
 from .security import (
     constant_time_password_check,
-    is_localhost_request,
+    is_localhost_bind,
     sign_session,
     verify_session,
 )
@@ -26,7 +26,10 @@ class LoginRequest(BaseModel):
 
 
 def _set_session_cookie(response: Response, request: Request, token: str) -> None:
-    secure = not is_localhost_request(request.headers.get("host") or request.client and request.client.host)
+    # Server-side signal only (ASGI scope["server"], the transport-reported
+    # bind address) -- never a client-supplied header. See
+    # api.security.is_localhost_bind for why.
+    secure = not is_localhost_bind(request.scope.get("server"))
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=token,
@@ -42,9 +45,13 @@ def _set_session_cookie(response: Response, request: Request, token: str) -> Non
 def login(payload: LoginRequest, request: Request, response: Response):
     settings = request.app.state.settings
     limiter = request.app.state.login_rate_limiter
-    client_key = (request.client.host if request.client else "unknown") or "unknown"
 
-    retry_after = limiter.check_and_record(client_key)
+    # Finding 2 (council, auth review): a limiter keyed by client address is
+    # trivially bypassable on loopback (the client picks its own source
+    # address there). This is a single-founder service with no legitimate
+    # second client to distinguish, so the budget is one global bucket --
+    # see api.security.LoginRateLimiter.
+    retry_after = limiter.check_and_record()
     if retry_after is not None:
         logger.info(
             "login rate limited",

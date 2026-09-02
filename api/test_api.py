@@ -194,20 +194,20 @@ class ApiTestCase(unittest.TestCase):
         fit_score: float | None,
         evaluated_at: datetime | None = None,
         reasons: list[dict] | None = None,
+        evaluation_detail: dict | None = None,
         truth_pack_hash: str = "hash-fixture",
     ) -> MatchEvaluationRecord:
-        """Seed a `match_evaluations` row using the canonical shapes D4b's
-        writer (`matching/evaluate_persist.py`) actually produces:
+        """Seed a `match_evaluations` row using the canonical shapes
+        `matching/evaluate_persist.py` actually writes:
         `dimension_scores_json` a JSON list of `MatchDimensionScore`-shaped
-        dicts, and `reasons_json` a JSON **list** of
-        `{"kind", "dimension", "text"}` entries -- not the object shape D6
-        used before D4b's writer landed. There is deliberately no
-        `evaluation_detail_json` kwarg here: that column (hard constraints,
-        uncertainty_penalty, full explanation) has not been migrated in yet
-        on this schema, so tests that need hard-constraint data patch
-        `api.routes_api.unpack_evaluation_detail` directly (see
-        `test_detail_reaches_pass_fail_unknown_and_uncertain`) rather than
-        pretending it round-trips through a column that does not exist.
+        dicts, `reasons_json` a JSON list of `{"kind", "dimension", "text"}`
+        entries, and `evaluation_detail_json` (nullable) the
+        `{"hard_constraints", "strengths", "gaps", "unknowns",
+        "uncertainty_penalty", "explanation"}` object. `evaluation_detail`
+        defaults to `None`, i.e. an unpopulated column -- exactly the state
+        of a row persisted before this column existed -- so tests that need
+        hard-constraint data pass it explicitly rather than relying on a
+        default that would mask the null case.
         """
         dimension_scores = [
             {
@@ -235,6 +235,7 @@ class ApiTestCase(unittest.TestCase):
             fit_score=fit_score if fit_score is not None else 0.0,
             dimension_scores_json=json.dumps(dimension_scores),
             reasons_json=json.dumps(reasons_payload),
+            evaluation_detail_json=json.dumps(evaluation_detail) if evaluation_detail is not None else None,
             policy_version="policy-v1",
             evaluated_at=evaluated_at or datetime.now(timezone.utc),
         )
@@ -248,32 +249,47 @@ class ApiTestCase(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
+def _iter_app_routes(router_or_app):
+    """Recursively flatten every route reachable from an app/router's own
+    `.routes`, including FastAPI's own built-in doc routes (`/openapi.json`,
+    `/docs`, `/redoc`, ...) that are attached directly to `app.router` and
+    every `include_router`-mounted sub-router.
+
+    The installed FastAPI wraps each `include_router` call in an opaque
+    `_IncludedRouter(original_router=..., ...)` object rather than exposing
+    a flat list of `APIRoute`s at `app.routes` (an internal representation
+    change in this FastAPI version) -- so walking only `app.routes` misses
+    every route mounted that way, and walking only a sub-router (as this
+    test used to) misses everything mounted directly on the app itself,
+    which is exactly how the docs routes slipped through. This walks both:
+    it is the actual, complete, authoritative route table this app serves,
+    council-verified to catch app-level routes a sub-router enumeration is
+    structurally blind to.
+    """
+    routes = getattr(router_or_app, "routes", None)
+    if routes is None:
+        return
+    for route in routes:
+        original_router = getattr(route, "original_router", None)
+        if original_router is not None:
+            yield from _iter_app_routes(original_router)
+            continue
+        path = getattr(route, "path", None)
+        methods = getattr(route, "methods", None)
+        if path and methods:
+            yield path, methods
+
+
 class AuthFailClosedTest(ApiTestCase):
     def test_every_non_auth_route_401s_without_a_session(self):
-        # `app.routes` in the installed FastAPI wraps each `include_router`
-        # call in an opaque `_IncludedRouter` object rather than exposing a
-        # flat list of `APIRoute`s (an internal representation change in
-        # this FastAPI version). The authoritative, non-hand-maintained
-        # route table is therefore the actual `api_router` this app mounts
-        # wholesale via `app.include_router(api_router)` in `api/app.py` --
-        # every route added to it (now or in the future) is enumerated here
-        # automatically, with no separate list to fall out of date. Requests
-        # are still made against the real, fully-constructed `app` via
-        # `TestClient`, so this exercises the live fail-closed behaviour,
-        # not just the router's declared shape.
-        from api.routes_api import router as protected_router
-
         app = self.make_app()
         client = TestClient(app)
 
         checked = 0
-        for route in protected_router.routes:
-            path = getattr(route, "path", None)
-            methods = getattr(route, "methods", None)
-            if not path or not methods:
-                continue
-            self.assertTrue(path.startswith("/api/"), path)
-            self.assertFalse(path.startswith("/api/auth/"), path)
+        seen_paths = set()
+        for path, methods in _iter_app_routes(app):
+            seen_paths.add(path)
+            is_auth_route = path.startswith("/api/auth/")
 
             concrete_path = path
             while "{" in concrete_path and "}" in concrete_path:
@@ -295,13 +311,55 @@ class AuthFailClosedTest(ApiTestCase):
                     response = client.put(concrete_path, json={})
                 else:
                     continue
-                self.assertEqual(
+
+                if is_auth_route:
+                    continue
+
+                # Every non-auth route in the app -- API routes and FastAPI's
+                # own built-in ones alike -- must never answer 200 without a
+                # session. `/api/*` routes are gated to exactly 401; the
+                # built-in doc routes are disabled entirely (docs_url=None
+                # etc. in api/app.py) and so 404, which is equally not "200
+                # with the schema in the body."
+                self.assertNotEqual(
                     response.status_code,
-                    401,
-                    f"{method} {concrete_path} did not fail closed: {response.status_code} {response.text}",
+                    200,
+                    f"{method} {concrete_path} answered 200 without a session: {response.text[:200]}",
                 )
+                if path.startswith("/api/"):
+                    self.assertEqual(
+                        response.status_code,
+                        401,
+                        f"{method} {concrete_path} did not fail closed with 401: {response.status_code} {response.text}",
+                    )
 
         self.assertGreater(checked, 0, "route enumeration found nothing to check")
+        # `_iter_app_routes` walks `app.router.routes` (not a sub-router),
+        # so it is not structurally blind to routes mounted directly on the
+        # app -- which is exactly how FastAPI's own doc routes slipped past
+        # the previous version of this test (council finding). Now that
+        # `api/app.py` disables those routes outright, they are correctly
+        # absent from what this enumeration finds -- `test_docs_routes_are_disabled_entirely`
+        # is the direct proof that they answer 404, not a silent 200.
+        self.assertNotIn("/openapi.json", seen_paths)
+        self.assertNotIn("/docs", seen_paths)
+        self.assertNotIn("/redoc", seen_paths)
+
+    def test_docs_routes_are_disabled_entirely(self):
+        """Finding 1 (council, auth review): FastAPI's own `/openapi.json`,
+        `/docs`, and `/redoc` were unauthenticated and returned 200 with the
+        full route schema in the body, with no cookie at all -- a direct
+        violation of "every other route 401s without a valid session."
+        `api/app.py` now disables them outright (`docs_url=None,
+        redoc_url=None, openapi_url=None`), so they must 404, not 401 and
+        not 200: there is nothing behind them to gate."""
+        app = self.make_app()
+        client = TestClient(app)
+
+        for path in ("/openapi.json", "/docs", "/redoc", "/docs/oauth2-redirect"):
+            response = client.get(path)
+            self.assertEqual(response.status_code, 404, f"{path} -> {response.status_code}")
+            self.assertNotEqual(response.status_code, 200)
 
 
 class AuthSessionTest(ApiTestCase):
@@ -334,6 +392,25 @@ class AuthSessionTest(ApiTestCase):
 
         me_final = client.get("/api/auth/me")
         self.assertEqual(me_final.status_code, 401)
+
+    def test_login_validation_error_does_not_echo_submitted_password(self):
+        """Finding 4 (council, auth review): FastAPI's default 422 body
+        echoes each field's submitted value back in an "input" key. For
+        POST /api/auth/login that means a malformed request reflects the
+        founder's own submitted password back into the response body (and
+        from there, into any log or proxy that records response payloads).
+        A non-string password fails type validation and is exactly the
+        shape a real client bug would produce."""
+        app = self.make_app()
+        client = TestClient(app)
+
+        marker = "secret-marker-should-never-appear-9182"
+        response = client.post("/api/auth/login", json={"password": {"nested": marker}})
+
+        self.assertEqual(response.status_code, 422)
+        self.assertNotIn(marker, response.text)
+        for error in response.json()["detail"]:
+            self.assertNotIn("input", error)
 
 
 class AuthRateLimitTest(ApiTestCase):
@@ -398,58 +475,67 @@ class OpportunityRoutesTest(ApiTestCase):
         self.assertEqual(len(paged.json()["items"]), 1)
 
     def test_detail_reaches_pass_fail_unknown_and_uncertain(self):
-        # `evaluation_detail_json` (hard constraints, uncertainty_penalty,
-        # full explanation) is a column D4b is adding but has not landed on
-        # this schema yet -- there is nowhere to persist hard-constraint
-        # data through a real INSERT today. This test instead patches
-        # `api.routes_api.unpack_evaluation_detail`, the single seam D6 owns
-        # for reading that column, so it exercises the real HTTP route and
-        # D6's own PASS/FAIL/UNKNOWN mapping end-to-end, independent of
-        # whether the persistence column exists yet.
-        import unittest.mock as mock
-
+        """`UNKNOWN` being structurally distinct from `FAIL` is the brief's
+        single most emphatic requirement, so this proves it against real
+        persisted data, not a mocked reader: a real `match_evaluations` row
+        is inserted with a real `evaluation_detail_json` payload (constraints
+        with `passed` true, false, and null), read back through the actual
+        HTTP route, and asserted PASS/FAIL/UNKNOWN. The `null` case must not
+        come back as `FAIL`."""
         self.seed_opportunity("opp-uncertain")
-        self.seed_evaluation("opp-uncertain", decision="uncertain", fit_score=55.5)
+        self.seed_evaluation(
+            "opp-uncertain",
+            decision="uncertain",
+            fit_score=55.5,
+            evaluation_detail={
+                "hard_constraints": [
+                    {
+                        "constraint_name": "work_authorization",
+                        "passed": True,
+                        "reason": "authorized",
+                        "required_field": "work_authorization",
+                        "founder_fact": "authorized in Exampleland",
+                        "is_hard_failure": False,
+                        "provenance_pointer": "career_profile.work_authorizations.0",
+                    },
+                    {
+                        "constraint_name": "minimum_experience_years",
+                        "passed": False,
+                        "reason": "insufficient years",
+                        "required_field": "employment.experience_years",
+                        "founder_fact": "2 years",
+                        "is_hard_failure": True,
+                        "provenance_pointer": "career_profile.employment.0",
+                    },
+                    {
+                        "constraint_name": "security_clearance",
+                        "passed": None,
+                        "reason": "no evidence either way",
+                        "required_field": "security_clearance",
+                        "founder_fact": "",
+                        "is_hard_failure": False,
+                        "provenance_pointer": "",
+                    },
+                ],
+                "strengths": ["strength one"],
+                "gaps": ["gap one"],
+                "unknowns": ["unknown one"],
+                "uncertainty_penalty": 0.1,
+                "explanation": "synthetic evaluation for API tests",
+            },
+        )
 
-        detail_payload = {
-            "hard_constraints": [
-                {
-                    "constraint_name": "work_authorization",
-                    "passed": True,
-                    "reason": "authorized",
-                    "required_field": "work_authorization",
-                    "founder_fact": "authorized in Exampleland",
-                    "is_hard_failure": False,
-                    "provenance_pointer": "career_profile.work_authorizations.0",
-                },
-                {
-                    "constraint_name": "minimum_experience_years",
-                    "passed": False,
-                    "reason": "insufficient years",
-                    "required_field": "employment.experience_years",
-                    "founder_fact": "2 years",
-                    "is_hard_failure": True,
-                    "provenance_pointer": "career_profile.employment.0",
-                },
-                {
-                    "constraint_name": "security_clearance",
-                    "passed": None,
-                    "reason": "no evidence either way",
-                    "required_field": "security_clearance",
-                    "founder_fact": "",
-                    "is_hard_failure": False,
-                    "provenance_pointer": "",
-                },
-            ],
-            "strengths": ["strength one"],
-            "gaps": ["gap one"],
-            "unknowns": ["unknown one"],
-            "uncertainty_penalty": 0.1,
-            "explanation": "synthetic evaluation for API tests",
-        }
+        # Confirm the row actually landed with a real evaluation_detail_json
+        # payload before trusting the HTTP response derived from it.
+        persisted = (
+            self.session.query(MatchEvaluationRecord)
+            .filter_by(opportunity_id="opp-uncertain")
+            .one()
+        )
+        self.assertIsNotNone(persisted.evaluation_detail_json)
+        self.assertIn("security_clearance", persisted.evaluation_detail_json)
 
-        with mock.patch("api.routes_api.unpack_evaluation_detail", return_value=detail_payload):
-            response = self.client.get("/api/opportunities/opp-uncertain")
+        response = self.client.get("/api/opportunities/opp-uncertain")
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
@@ -464,6 +550,9 @@ class OpportunityRoutesTest(ApiTestCase):
 
         self.assertEqual(body["scoring"]["fit_score"], 55.5)
         self.assertEqual(body["scoring"]["uncertainty_penalty"], 0.1)
+        self.assertEqual(body["scoring"]["strengths"], ["strength one"])
+        self.assertEqual(body["scoring"]["gaps"], ["gap one"])
+        self.assertEqual(body["scoring"]["unknowns"], ["unknown one"])
         self.assertEqual(len(body["scoring"]["dimension_scores"]), 1)
         self.assertEqual(body["scoring"]["dimension_scores"][0]["dimension"], "core_skills")
         self.assertIn("score", body["scoring"]["dimension_scores"][0])
@@ -471,10 +560,11 @@ class OpportunityRoutesTest(ApiTestCase):
         self.assertEqual(len(body["fields"]), 1)
         self.assertEqual(body["fields"][0]["field_name"], "title")
 
-    def test_detail_falls_back_to_reasons_derived_strengths_when_detail_column_absent(self):
-        """The real, current runtime behaviour (no mock): with no
-        `evaluation_detail_json` column, `strengths`/`gaps`/`unknowns` must
-        still be populated by deriving them from `reasons_json`'s
+    def test_detail_falls_back_to_reasons_derived_strengths_when_detail_is_null(self):
+        """Legitimate backward compatibility for a row persisted before
+        `evaluation_detail_json` existed (or simply never populated for it):
+        with that column `NULL`, `strengths`/`gaps`/`unknowns` must still be
+        populated by deriving them from `reasons_json`'s
         `{"kind", "dimension", "text"}` list, and `top_reasons` on the list
         route must read from that same list shape."""
         self.seed_opportunity("opp-fallback")
@@ -487,7 +577,15 @@ class OpportunityRoutesTest(ApiTestCase):
                 {"kind": "gap", "dimension": "domain_experience", "text": "no prior nonprofit work"},
                 {"kind": "unknown", "dimension": "compensation_fit", "text": "salary range not disclosed"},
             ],
+            # evaluation_detail intentionally omitted -> evaluation_detail_json is NULL.
         )
+
+        persisted = (
+            self.session.query(MatchEvaluationRecord)
+            .filter_by(opportunity_id="opp-fallback")
+            .one()
+        )
+        self.assertIsNone(persisted.evaluation_detail_json)
 
         detail = self.client.get("/api/opportunities/opp-fallback")
         self.assertEqual(detail.status_code, 200)
@@ -495,8 +593,8 @@ class OpportunityRoutesTest(ApiTestCase):
         self.assertEqual(scoring["strengths"], ["strong python background"])
         self.assertEqual(scoring["gaps"], ["no prior nonprofit work"])
         self.assertEqual(scoring["unknowns"], ["salary range not disclosed"])
-        # No evaluation_detail_json -> hard_constraints has nowhere to come
-        # from yet, so it is empty rather than fabricated.
+        # evaluation_detail_json is NULL -> hard_constraints has nowhere to
+        # come from for this row, so it is empty rather than fabricated.
         self.assertEqual(detail.json()["qualification"]["constraints"], [])
 
         listing = self.client.get("/api/opportunities")
