@@ -917,11 +917,6 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
                     should_stop = expected_markers.issubset({m for _, m in processed_records})
                 if should_stop:
                     stop_event.set()
-                # Hold the job "in flight" a little so other PENDING jobs remain
-                # claimable by the other runner while this one is still working --
-                # otherwise a fast runner can drain the whole queue solo before the
-                # other runner's first claim attempt even executes.
-                time.sleep(0.03)
                 # Let the underlying handler's outcome (success or exception) propagate
                 # unchanged so WorkerRunner still drives complete_job / fail_job.
                 inner_handler(payload)
@@ -963,21 +958,54 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             poll_interval=0.05, stop_event=stop_event,
         )
 
-        # Release both runners at (as close to) the same instant so both begin
-        # claiming against the same PENDING rows -- without this, one thread can
-        # simply be scheduled first and drain the queue before the other starts.
-        start_barrier = threading.Barrier(2, timeout=10)
+        # Deterministic two-runner synchronisation via claim_next_job's claim_hook
+        # (worker/queue.py D1), replacing the previous thread-start barrier plus
+        # in-handler sleep. The hook fires after a row has been selected and
+        # mutated in-session but before commit, so gating the *first two* hook
+        # invocations (system-wide, whichever runner reaches them first) on a
+        # 2-party barrier forces those two claim_next_job calls to overlap: the
+        # second, concurrent claim is forced to run its own SELECT ... FOR UPDATE
+        # SKIP LOCKED against the first (still row-locked, uncommitted) claim, so
+        # it necessarily picks a *different* job row. A single thread cannot
+        # supply both barrier parties itself -- it stays blocked inside its own
+        # claim_next_job call until a second party arrives -- so the two gated
+        # claims are necessarily one from each runner. That guarantees both
+        # runners claim distinct jobs before either is allowed to proceed, with no
+        # in-flight sleep. This also makes the previous thread-start barrier
+        # redundant: a thread blocked at the claim gate cannot race ahead and
+        # drain the queue solo regardless of exactly when the other thread's
+        # runner loop starts, so it is removed rather than kept alongside this.
+        original_claim_next_job = BackgroundWorkerQueue.claim_next_job
+        gate_barrier = threading.Barrier(2, timeout=10)
+        gate_lock = threading.Lock()
+        gate_remaining = [2]
 
-        def _drive(runner):
-            start_barrier.wait()
-            runner.run_forever(max_jobs=5)
+        def _gated_claim_hook():
+            with gate_lock:
+                should_wait = gate_remaining[0] > 0
+                if should_wait:
+                    gate_remaining[0] -= 1
+            if should_wait:
+                gate_barrier.wait()
 
-        t1 = threading.Thread(target=_drive, args=(runner1,))
-        t2 = threading.Thread(target=_drive, args=(runner2,))
-        t1.start()
-        t2.start()
-        t1.join(timeout=30)
-        t2.join(timeout=30)
+        def _synchronized_claim_next_job(self, lease_duration_seconds=60):
+            return original_claim_next_job(
+                self, lease_duration_seconds=lease_duration_seconds, claim_hook=_gated_claim_hook
+            )
+
+        BackgroundWorkerQueue.claim_next_job = _synchronized_claim_next_job
+        try:
+            def _drive(runner):
+                runner.run_forever(max_jobs=5)
+
+            t1 = threading.Thread(target=_drive, args=(runner1,))
+            t2 = threading.Thread(target=_drive, args=(runner2,))
+            t1.start()
+            t2.start()
+            t1.join(timeout=30)
+            t2.join(timeout=30)
+        finally:
+            BackgroundWorkerQueue.claim_next_job = original_claim_next_job
 
         self.assertFalse(t1.is_alive(), "runner1 did not finish within the test timeout")
         self.assertFalse(t2.is_alive(), "runner2 did not finish within the test timeout")
