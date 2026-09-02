@@ -29,6 +29,24 @@ class BackgroundWorkerQueue:
         self.session.commit()
         return job_id
 
+    def _invoke_claim_hook(self, claim_hook: Optional[Callable[[], None]]) -> None:
+        """Run claim_hook (if any) with the invariant that a raising hook never
+        leaves an uncommitted, in-session mutation behind. Without this, a
+        direct queue user with a persistent session that swallowed the
+        exception and called claim_next_job again would autoflush the
+        phantom (never-committed) status="RUNNING" claim alongside its next
+        write. The runner path is immune (it opens/closes a session per
+        call), but the invariant is enforced unconditionally here rather than
+        relying on every caller's session lifecycle to save it.
+        """
+        if claim_hook is None:
+            return
+        try:
+            claim_hook()
+        except Exception:
+            self.session.rollback()
+            raise
+
     def claim_next_job(
         self,
         lease_duration_seconds: int = 60,
@@ -77,8 +95,7 @@ class BackgroundWorkerQueue:
                 job.status = "RUNNING"
                 job.lease_owner = self.worker_id
                 job.lease_expires_at = now + timedelta(seconds=lease_duration_seconds)
-                if claim_hook is not None:
-                    claim_hook()
+                self._invoke_claim_hook(claim_hook)
                 self.session.commit()
                 return job
 
@@ -106,8 +123,7 @@ class BackgroundWorkerQueue:
                     "Lease expired without completion (worker presumed dead); "
                     f"retry_count {stale_job.retry_count} reached max_retries {stale_job.max_retries}"
                 )
-                if claim_hook is not None:
-                    claim_hook()
+                self._invoke_claim_hook(claim_hook)
                 self.session.commit()
                 # A dead-lettered job must not be handed to a worker; keep looking.
                 continue
@@ -115,33 +131,98 @@ class BackgroundWorkerQueue:
             stale_job.status = "RUNNING"
             stale_job.lease_owner = self.worker_id
             stale_job.lease_expires_at = now + timedelta(seconds=lease_duration_seconds)
-            if claim_hook is not None:
-                claim_hook()
+            self._invoke_claim_hook(claim_hook)
             self.session.commit()
             return stale_job
 
-    def complete_job(self, job_id: str) -> None:
-        job = self.session.query(WorkerJobRecord).filter_by(id=job_id).first()
-        if job:
-            job.status = "COMPLETED"
-            job.lease_owner = None
-            job.lease_expires_at = None
-            self.session.commit()
+    def complete_job(self, job_id: str) -> bool:
+        """Guarded UPDATE: marks the job COMPLETED only if this worker still holds
+        an apparently-valid RUNNING lease on it (lease_owner == self.worker_id AND
+        status == 'RUNNING'). This is a plain UPDATE ... WHERE ..., not a
+        load-then-mutate-then-commit, so it cannot clobber a job that another
+        worker's stale-lease sweep has already reclaimed out from under this one
+        (the sweep changes lease_owner and/or status, so the WHERE clause simply
+        stops matching).
 
-    def fail_job(self, job_id: str, error_message: str, base_backoff_seconds: int = 30, backoff_seconds: Optional[int] = None) -> None:
-        job = self.session.query(WorkerJobRecord).filter_by(id=job_id).first()
-        if job:
-            job.retry_count += 1
-            job.error_message = error_message
-            if job.retry_count >= job.max_retries:
-                job.status = "DEAD_LETTER"
-                job.lease_owner = None
-                job.lease_expires_at = None
-            else:
-                job.status = "RETRY"
-                base = backoff_seconds if backoff_seconds is not None else base_backoff_seconds
-                backoff_delay = base * (2 ** (job.retry_count - 1)) if base > 0 else 0
-                job.run_after = datetime.now(timezone.utc) + timedelta(seconds=backoff_delay)
-                job.lease_owner = None
-                job.lease_expires_at = None
-            self.session.commit()
+        Returns True if the write applied, False if no row matched -- i.e. the
+        lease had already been lost by the time this call reached the database.
+        A caller that gets False must not assume the job was completed; the job
+        is now some other worker's responsibility (or already dead-lettered).
+        """
+        updated = (
+            self.session.query(WorkerJobRecord)
+            .filter(
+                WorkerJobRecord.id == job_id,
+                WorkerJobRecord.lease_owner == self.worker_id,
+                WorkerJobRecord.status == "RUNNING",
+            )
+            .update(
+                {"status": "COMPLETED", "lease_owner": None, "lease_expires_at": None},
+                synchronize_session=False,
+            )
+        )
+        self.session.commit()
+        return bool(updated)
+
+    def fail_job(
+        self,
+        job_id: str,
+        error_message: str,
+        base_backoff_seconds: int = 30,
+        backoff_seconds: Optional[int] = None,
+    ) -> bool:
+        """Guarded UPDATE: records the failure only if this worker still holds an
+        apparently-valid RUNNING lease on the job (lease_owner == self.worker_id
+        AND status == 'RUNNING'), applying the same increment-then-threshold
+        policy as the stale-lease reclaim path in claim_next_job.
+
+        retry_count/max_retries are read via a column-only query rather than
+        through the mapped entity, so the decision is never taken from a
+        stale identity-map-cached instance (a persistent session that already
+        loaded this row -- e.g. via the runner's lease-fence check -- would
+        otherwise hand back that cached object's attributes instead of a fresh
+        read). Freshness of this read is a courtesy, not the safety mechanism,
+        though: the guard on the write itself is what actually prevents a lost
+        update or a double-increment against a job another worker's stale-lease
+        sweep has since reclaimed. If the row changed between the read and the
+        write -- including via a concurrent reclaim -- the guarded UPDATE's
+        WHERE clause matches zero rows, so no incorrect value is ever written;
+        this call just reports False.
+
+        Returns True if the write applied, False if no row matched -- i.e. the
+        lease had already been lost by the time this call reached the database.
+        """
+        row = (
+            self.session.query(WorkerJobRecord.retry_count, WorkerJobRecord.max_retries)
+            .filter(WorkerJobRecord.id == job_id)
+            .first()
+        )
+        if row is None:
+            return False
+        current_retry_count, max_retries = row
+        new_retry_count = current_retry_count + 1
+
+        values: Dict[str, Any] = {"retry_count": new_retry_count, "error_message": error_message}
+        if new_retry_count >= max_retries:
+            values.update(status="DEAD_LETTER", lease_owner=None, lease_expires_at=None)
+        else:
+            base = backoff_seconds if backoff_seconds is not None else base_backoff_seconds
+            backoff_delay = base * (2 ** (new_retry_count - 1)) if base > 0 else 0
+            values.update(
+                status="RETRY",
+                run_after=datetime.now(timezone.utc) + timedelta(seconds=backoff_delay),
+                lease_owner=None,
+                lease_expires_at=None,
+            )
+
+        updated = (
+            self.session.query(WorkerJobRecord)
+            .filter(
+                WorkerJobRecord.id == job_id,
+                WorkerJobRecord.lease_owner == self.worker_id,
+                WorkerJobRecord.status == "RUNNING",
+            )
+            .update(values, synchronize_session=False)
+        )
+        self.session.commit()
+        return bool(updated)
