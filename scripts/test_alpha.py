@@ -12,6 +12,7 @@ nothing is up. Do not start the real web or API in unit tests").
 from __future__ import annotations
 
 import contextlib
+import inspect
 import io
 import json
 import os
@@ -27,6 +28,7 @@ from pathlib import Path
 from unittest import mock
 
 import scripts.alpha as alpha
+import storage.engine as storage_engine
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ALPHA_SCRIPT = REPO_ROOT / "scripts" / "alpha.py"
@@ -342,6 +344,138 @@ class TestUpRejectsATestDatabase(unittest.TestCase):
             "postgresql+psycopg2://opportunityos@127.0.0.1:5432/opportunityos_test?sslmode=disable",
             "opportunityos_test",
         )
+
+
+class TestStatusRefusesATestDatabase(unittest.TestCase):
+    """`status` must refuse a database name ending in `_test` too -- not
+    just `up`. Regression coverage for the Master's own re-run finding:
+    `status --env-file <env naming opportunityos_test>` previously exited 0
+    and (against a properly migrated opportunityos_test -- the normal state,
+    since that is the suite's own database) would have printed that
+    database's poll history to the founder as though it were their own,
+    the exact FR-004 defect in milder form. The refusal is enforced inside
+    `load_alpha_env` itself (see `AlphaTestDatabaseRefusalError`'s own
+    docstring), so this is regression coverage for that shared code path
+    from `status`'s own call site, not a re-test of `_refuse_test_database`
+    itself (already covered by TestRefuseTestDatabase).
+    """
+
+    def _env_file(self, tmp: str, db_url: str) -> Path:
+        env_path = Path(tmp) / "alpha.env"
+        env_path.write_text(
+            f"OPPORTUNITYOS_FOUNDER_PASSWORD={_synthetic_value('pw-', 12)}\n"
+            f"OPPORTUNITYOS_SESSION_SECRET={_synthetic_value('sig-', 24)}\n"
+            f"OPPORTUNITYOS_DB_URL={db_url}\n",
+            encoding="utf-8",
+        )
+        return env_path
+
+    def test_status_refuses_and_exits_nonzero_naming_the_database(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            env_path = self._env_file(
+                tmp, "postgresql+psycopg2://opportunityos@127.0.0.1:5432/opportunityos_test"
+            )
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = alpha.cmd_status(env_path, run_dir)
+
+        self.assertEqual(exit_code, 1)
+        output = stdout.getvalue()
+        self.assertIn("opportunityos_test", output)
+        self.assertIn("refused", output)
+        # Never falls through to the generic "could not query the database"
+        # degrade path below the refusal -- that would mean a connection
+        # was actually attempted.
+        self.assertNotIn("could not query the database", output)
+
+    def test_status_with_a_query_string_test_database_is_still_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            env_path = self._env_file(
+                tmp,
+                "postgresql+psycopg2://opportunityos@127.0.0.1:5432/opportunityos_test?sslmode=disable",
+            )
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = alpha.cmd_status(env_path, run_dir)
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("opportunityos_test", stdout.getvalue())
+
+    def test_status_never_calls_get_engine_when_the_database_is_refused(self):
+        """Placement proof, mirroring TestUpRejectsATestDatabase's own
+        technique: `storage.engine.get_engine` is the only thing in
+        `cmd_status` that ever opens a database connection (see
+        cmd_status's own `from storage.engine import get_engine, ...`,
+        executed only after the refusal check). Mocking the attribute on
+        the real module `cmd_status` imports from and asserting it was
+        never called is direct proof no connection was ever attempted --
+        stronger than checking output alone.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            env_path = self._env_file(
+                tmp, "postgresql+psycopg2://opportunityos@127.0.0.1:5432/opportunityos_test"
+            )
+            with mock.patch.object(storage_engine, "get_engine") as get_engine_mock, \
+                 contextlib.redirect_stdout(io.StringIO()):
+                exit_code = alpha.cmd_status(env_path, run_dir)
+
+        self.assertEqual(exit_code, 1)
+        get_engine_mock.assert_not_called()
+
+    def test_status_on_an_opportunityos_alpha_database_is_not_refused(self):
+        """The accepted name must not be refused either -- status then
+        proceeds to (and fails gracefully within) the real DB-query
+        section, since nothing is actually listening at this fake
+        host/port in this test; the point here is only that it is not
+        refused before that.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            # Port 1 is a reserved, never-listening port, so the DB-query
+            # section fails fast with a connection error rather than
+            # hanging -- this test is only about the refusal *not* firing,
+            # not about a real database.
+            env_path = self._env_file(
+                tmp, "postgresql+psycopg2://opportunityos@127.0.0.1:1/opportunityos_alpha"
+            )
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = alpha.cmd_status(env_path, run_dir)
+
+        # Exit 0 either way (status degrades gracefully on a real connection
+        # failure) -- what matters is the message is the generic
+        # "unavailable: could not query the database", not this module's
+        # own "(refused: ...)" line. (Not a bare `assertNotIn("refused", ...)`
+        # -- psycopg2's own OperationalError text contains "Connection
+        # refused", which would make that a false positive here.)
+        self.assertEqual(exit_code, 0)
+        output = stdout.getvalue()
+        self.assertIn("could not query the database", output)
+        self.assertNotIn("(refused:", output)
+
+
+class TestDownAndLogsNeverResolveTheDatabaseUrl(unittest.TestCase):
+    """`down` and `logs` are deliberately exempt from the `_test` refusal --
+    not silently, but because they never call `load_alpha_env` (and so
+    never resolve OPPORTUNITYOS_DB_URL) at all: both act purely on the
+    run-dir state file recording what `up` itself already started. A stray
+    previous session must still be stoppable (or its logs still readable)
+    even if the founder's env file currently names a test database --
+    refusing here would actively prevent cleanup rather than protect
+    anything. This is an executable version of that argument: their own
+    signatures take no `env_file` parameter, so a future change that made
+    them start resolving OPPORTUNITYOS_DB_URL would show up here as a
+    parameter-list change, not silently.
+    """
+
+    def test_cmd_down_takes_no_env_file_parameter(self):
+        self.assertNotIn("env_file", inspect.signature(alpha.cmd_down).parameters)
+
+    def test_cmd_logs_takes_no_env_file_parameter(self):
+        self.assertNotIn("env_file", inspect.signature(alpha.cmd_logs).parameters)
 
 
 class TestStateFile(unittest.TestCase):
@@ -1017,6 +1151,26 @@ class TestCliSmoke(unittest.TestCase):
         self.assertIn("web: down", result.stdout)
         # Missing env-file must not crash status; it degrades gracefully.
         self.assertIn("unavailable", result.stdout)
+
+    def test_status_exits_nonzero_against_a_test_database_as_a_real_subprocess(self):
+        """Regression test for the Master's own re-run finding: reproduces
+        the exact repro steps reported (`status --env-file <env naming
+        opportunityos_test>`), as a real subprocess exactly like the
+        Master ran it -- not just via a direct `cmd_status` call.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            env_file = Path(tmp) / "alpha.env"
+            env_file.write_text(
+                f"OPPORTUNITYOS_FOUNDER_PASSWORD={_synthetic_value('pw-', 12)}\n"
+                f"OPPORTUNITYOS_SESSION_SECRET={_synthetic_value('sig-', 24)}\n"
+                "OPPORTUNITYOS_DB_URL=postgresql+psycopg2://opportunityos@127.0.0.1:5432/opportunityos_test\n",
+                encoding="utf-8",
+            )
+            result = self._run_alpha("status", "--run-dir", str(run_dir), "--env-file", str(env_file))
+        self.assertNotEqual(result.returncode, 0, msg=f"stdout={result.stdout!r} stderr={result.stderr!r}")
+        self.assertIn("opportunityos_test", result.stdout)
+        self.assertNotIn("could not query the database", result.stdout)
 
     def test_down_is_safe_and_exits_zero_when_nothing_is_up(self):
         with tempfile.TemporaryDirectory() as tmp:
