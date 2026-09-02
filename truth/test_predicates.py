@@ -84,7 +84,16 @@ _GENERATED_CLAIM_VAR_NAMES = frozenset({"claim"})
 # module docstring. `test_out_of_scope_allowlist_is_exact` keeps this from
 # going stale.
 _KNOWN_OUT_OF_SCOPE_ORPHANS: dict[str, frozenset[str]] = {
-    "compiler_independent.py": frozenset({"portfolio.item"}),
+    # `compiler_independent.py`'s "portfolio.item" was on this list when D2
+    # wrote it. D1 fixed the truth-graph read to "portfolio.title" in the same
+    # brief, so the entry went stale and
+    # `test_out_of_scope_allowlist_is_exact_not_a_ceiling` failed at
+    # integration demanding its removal -- which is precisely what that test
+    # exists to do. Removed by the Master at integration, not by either
+    # implementer. The surviving `GeneratedClaim(predicate="portfolio.item")`
+    # in that file is the compiler's own claim-type tag consumed by
+    # `matching/validator.py::ArtifactClaimValidator`, not a truth-graph
+    # predicate, and the scanner correctly does not count it.
     "validator.py": frozenset({"credential.status"}),
 }
 
