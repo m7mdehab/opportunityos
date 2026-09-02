@@ -227,9 +227,19 @@ class MatchEvaluationRecord(Base):
     opportunity_id = Column(String(64), ForeignKey("opportunities.id", ondelete="CASCADE"), nullable=False, index=True)
     truth_pack_hash = Column(String(64), nullable=False, index=True)
     qualification_decision = Column(String(32), nullable=False)
+    #: 0.0-100.0 (NOT 0.0-1.0). See matching.models.MatchEvaluation.overall_fit_score,
+    #: which this column stores verbatim -- any threshold compared against this
+    #: column (e.g. a "high_fit" cutoff) must be on the same 0-100 scale.
     fit_score = Column(Float, nullable=False)
     dimension_scores_json = Column(Text, nullable=False)
     reasons_json = Column(Text, nullable=False)
+    #: JSON: {"hard_constraints": [{"constraint_name", "passed" (true|false|null,
+    #: null=UNKNOWN, never coerced to false), "reason", "required_field",
+    #: "founder_fact", "is_hard_failure", "provenance_pointer"}], "strengths": [str],
+    #: "gaps": [str], "unknowns": [str], "uncertainty_penalty": float, "explanation": str}.
+    #: Nullable: rows written before this column existed (there are none yet --
+    #: migration 0002 is unreleased) have no detail payload.
+    evaluation_detail_json = Column(Text, nullable=True)
     policy_version = Column(String(32), nullable=False)
     evaluated_at = Column(DateTime, nullable=False, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
@@ -255,6 +265,12 @@ class SourcePollRunRecord(Base):
     unchanged = Column(Integer, default=0, nullable=False)
     updated = Column(Integer, default=0, nullable=False)
     error_message = Column(Text, nullable=True)
+
+    __table_args__ = (
+        # Supports "latest run per source" lookups (e.g. /api/sources/health)
+        # without a full table scan.
+        Index("ix_source_poll_runs_source_id_started_at", "source_id", started_at.desc()),
+    )
 
 
 class FounderOpportunityViewRecord(Base):

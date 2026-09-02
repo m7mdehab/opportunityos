@@ -33,6 +33,9 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
+
 from matching.models import MatchEvaluation
 from matching.scorer import OpportunityScorer
 from opportunity.models import Opportunity
@@ -44,6 +47,31 @@ from truth.graph import TruthGraph
 #: ``reasons_json``. Keeps the payload UI-sized without needing prose
 #: summarization -- the founder-facing dashboard renders these directly.
 _MAX_REASONS_PER_KIND = 5
+
+
+def _to_utc_naive(value: datetime) -> datetime:
+    """Normalize to a naive ``datetime`` carrying UTC wall-clock time, for
+    writing into ``MatchEvaluationRecord.evaluated_at`` (``DateTime``, i.e.
+    PostgreSQL ``TIMESTAMP WITHOUT TIME ZONE`` -- the whole codebase's
+    documented convention, see ``worker/runner.py``'s ``_as_aware_utc``, is
+    "naive but always UTC").
+
+    This matters because psycopg2 does not simply drop the tzinfo off a
+    tz-aware ``datetime`` when writing it into such a column: PostgreSQL
+    converts the value to the *session's* ``timezone`` GUC first and only
+    then stores it naive. On a session whose timezone isn't UTC (verified
+    against this project's own local dev database, which defaults to
+    ``Africa/Cairo``), a tz-aware UTC value written straight through comes
+    back several hours off from what was actually passed in -- exactly the
+    kind of silent corruption of ``evaluated_at`` that would misdate rows on
+    the founder-facing dashboard. Converting to UTC and stripping tzinfo
+    *before* the value reaches psycopg2 avoids the conversion entirely: the
+    naive value handed to the driver already IS the intended UTC wall-clock
+    time, so there is nothing left for PostgreSQL to convert.
+    """
+    if value.tzinfo is not None:
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value
 
 
 def _dimension_scores_to_json(evaluation: MatchEvaluation) -> str:
@@ -109,6 +137,114 @@ def _build_reasons(evaluation: MatchEvaluation) -> list[dict[str, Any]]:
     return reasons
 
 
+def _evaluation_detail_json(evaluation: MatchEvaluation) -> str:
+    """Serialize the D6 detail-route payload: full hard-constraint checklist
+    plus the evaluation-level strengths/gaps/unknowns/uncertainty_penalty/
+    explanation. ``passed`` is written as the literal JSON ``true``/``false``/
+    ``null`` -- ``null`` means UNKNOWN (``HardConstraintResult.passed is
+    None``) and is never coerced to ``false``.
+    """
+    payload = {
+        "hard_constraints": [
+            {
+                "constraint_name": hc.constraint_name,
+                "passed": hc.passed,
+                "reason": hc.reason,
+                "required_field": hc.required_field,
+                "founder_fact": hc.founder_fact,
+                "is_hard_failure": hc.is_hard_failure,
+                "provenance_pointer": hc.provenance_pointer,
+            }
+            for hc in evaluation.hard_constraints
+        ],
+        "strengths": list(evaluation.strengths),
+        "gaps": list(evaluation.gaps),
+        "unknowns": list(evaluation.unknowns),
+        "uncertainty_penalty": evaluation.uncertainty_penalty,
+        "explanation": evaluation.explanation,
+    }
+    return json.dumps(payload, sort_keys=True)
+
+
+def _upsert_match_evaluation(
+    session: Any,
+    *,
+    record_id: str,
+    opportunity_id: str,
+    truth_pack_hash: str,
+    values: dict[str, Any],
+) -> MatchEvaluationRecord:
+    """Race-safe upsert on ``(opportunity_id, truth_pack_hash)``.
+
+    The plain SELECT-then-write this replaced had a race: two concurrent
+    ``evaluate_and_store`` calls for the same opportunity+hash (e.g. two
+    ``evaluate_new`` jobs claimed by different workers, or ``poll_source``'s
+    inline evaluation racing a backfill ``evaluate_new`` run) could both miss
+    on the SELECT, then both attempt to INSERT the same deterministic primary
+    key -- the loser got an uncaught ``IntegrityError`` and burned a retry
+    for no reason, since the row it wanted written already exists in
+    substance.
+
+    On PostgreSQL this uses a real ``INSERT ... ON CONFLICT ON CONSTRAINT
+    uq_match_evaluations_opportunity_truth_pack DO UPDATE`` (atomic, no
+    SELECT-then-write window at all). On any other dialect (SQLite, used by
+    this module's own unit tests) there is no portable equivalent available
+    through the ORM/Core in the same statement, so this falls back to
+    SELECT-then-write but catches a lost-race ``IntegrityError`` and
+    converts it into an ``UPDATE`` of the row the winner just inserted,
+    instead of propagating.
+    """
+    bind = session.get_bind()
+    dialect_name = bind.dialect.name if bind is not None else ""
+
+    if dialect_name == "postgresql":
+        table = MatchEvaluationRecord.__table__
+        insert_values = {"id": record_id, "opportunity_id": opportunity_id, "truth_pack_hash": truth_pack_hash, **values}
+        stmt = pg_insert(table).values(**insert_values)
+        update_cols = {key: stmt.excluded[key] for key in values}
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_match_evaluations_opportunity_truth_pack",
+            set_=update_cols,
+        )
+        session.execute(stmt)
+        session.commit()
+        return (
+            session.query(MatchEvaluationRecord)
+            .filter_by(opportunity_id=opportunity_id, truth_pack_hash=truth_pack_hash)
+            .one()
+        )
+
+    existing = (
+        session.query(MatchEvaluationRecord)
+        .filter_by(opportunity_id=opportunity_id, truth_pack_hash=truth_pack_hash)
+        .first()
+    )
+    if existing is not None:
+        for key, value in values.items():
+            setattr(existing, key, value)
+        session.commit()
+        return existing
+
+    record = MatchEvaluationRecord(id=record_id, opportunity_id=opportunity_id, truth_pack_hash=truth_pack_hash, **values)
+    session.add(record)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        existing = (
+            session.query(MatchEvaluationRecord)
+            .filter_by(opportunity_id=opportunity_id, truth_pack_hash=truth_pack_hash)
+            .first()
+        )
+        if existing is None:
+            raise
+        for key, value in values.items():
+            setattr(existing, key, value)
+        session.commit()
+        return existing
+    return record
+
+
 def evaluate_and_store(
     opportunity: Opportunity,
     truth_graph: TruthGraph,
@@ -147,38 +283,28 @@ def evaluate_and_store(
 
     dimension_scores_json = _dimension_scores_to_json(evaluation)
     reasons_json = json.dumps(_build_reasons(evaluation), sort_keys=True)
-
-    session = repository.session
-    existing = (
-        session.query(MatchEvaluationRecord)
-        .filter_by(opportunity_id=opportunity.id, truth_pack_hash=truth_pack_hash)
-        .first()
-    )
-
-    if existing is not None:
-        existing.qualification_decision = decision_value
-        existing.fit_score = evaluation.overall_fit_score
-        existing.dimension_scores_json = dimension_scores_json
-        existing.reasons_json = reasons_json
-        existing.policy_version = evaluation.policy_version
-        existing.evaluated_at = resolved_evaluated_at
-        session.commit()
-        return existing
+    evaluation_detail_json = _evaluation_detail_json(evaluation)
 
     record_id = hashlib.sha256(
         f"{opportunity.id}:{truth_pack_hash}".encode("utf-8")
     ).hexdigest()[:32]
-    record = MatchEvaluationRecord(
-        id=record_id,
+
+    values = {
+        "qualification_decision": decision_value,
+        "fit_score": evaluation.overall_fit_score,
+        "dimension_scores_json": dimension_scores_json,
+        "reasons_json": reasons_json,
+        "evaluation_detail_json": evaluation_detail_json,
+        "policy_version": evaluation.policy_version,
+        # Converted to naive UTC right before it reaches the DB column -- see
+        # _to_utc_naive's docstring for why this is load-bearing, not cosmetic.
+        "evaluated_at": _to_utc_naive(resolved_evaluated_at),
+    }
+
+    return _upsert_match_evaluation(
+        repository.session,
+        record_id=record_id,
         opportunity_id=opportunity.id,
         truth_pack_hash=truth_pack_hash,
-        qualification_decision=decision_value,
-        fit_score=evaluation.overall_fit_score,
-        dimension_scores_json=dimension_scores_json,
-        reasons_json=reasons_json,
-        policy_version=evaluation.policy_version,
-        evaluated_at=resolved_evaluated_at,
+        values=values,
     )
-    session.add(record)
-    session.commit()
-    return record

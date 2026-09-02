@@ -10,13 +10,19 @@ Three job types are supported:
     this is the mechanism the end-to-end test observes. A source that is
     allowed is fetched, normalized, and persisted (via
     ``opportunity.persistence.persist_batch``) to the ``opportunities`` /
-    ``field_provenances`` tables, a ``source_poll_runs`` row is written
-    (``status="ok"``, with the batch and persist counts), and an
-    ``evaluate_new`` job is enqueued so newly-persisted opportunities get
-    scored without the caller having to remember to ask.
+    ``field_provenances`` tables, then evaluated INLINE, at full fidelity,
+    from the batch's own in-memory ``Opportunity`` objects (not a
+    reconstruction -- see ``make_poll_source_handler``'s docstring), a
+    ``source_poll_runs`` row is written (``status="ok"``, with the batch and
+    persist counts), and an ``evaluate_new`` job is enqueued as a backfill
+    safety net for whatever the inline pass missed.
   - ``evaluate_new``: evaluates every opportunity that has no
     ``match_evaluations`` row for the *current* founder truth-pack hash (see
-    ``matching.evaluate_persist.evaluate_and_store``). Loads the pack via
+    ``matching.evaluate_persist.evaluate_and_store``), reconstructing each
+    ``Opportunity`` best-effort from ``OpportunityRecord``/
+    ``field_provenances`` (see ``_reconstruct_opportunity`` -- this is
+    strictly a backfill path now; ``poll_source`` evaluates its own fresh
+    batch inline at full fidelity, see above). Loads the pack via
     ``truth.pack.load_founder_pack`` (path injectable so tests never touch
     ``private/``); refuses cleanly (logs and returns, no partial writes) if no
     valid pack is available.
@@ -69,6 +75,27 @@ PackLoader = Callable[[Any], LoadedPack]
 def noop(payload: dict) -> None:
     """Smoke-test handler: accepts any payload and does nothing."""
     return None
+
+
+def _to_utc_naive(value: datetime) -> datetime:
+    """Normalize to a naive ``datetime`` carrying UTC wall-clock time, for
+    writing into any of this module's ``DateTime`` (i.e. PostgreSQL
+    ``TIMESTAMP WITHOUT TIME ZONE``) columns -- ``source_poll_runs.started_at``/
+    ``finished_at`` here, mirroring the identical fix (and identical
+    reasoning) in ``matching.evaluate_persist._to_utc_naive``.
+
+    psycopg2 does not simply drop the tzinfo off a tz-aware ``datetime``
+    written into such a column: PostgreSQL converts it to the *session's*
+    ``timezone`` GUC first and only then stores it naive. On a session whose
+    timezone isn't UTC (this project's own local dev database defaults to
+    ``Africa/Cairo``), a tz-aware UTC value written straight through comes
+    back several hours off from what was actually passed in. Converting to
+    UTC and stripping tzinfo before the value reaches psycopg2 avoids the
+    conversion entirely.
+    """
+    if value.tzinfo is not None:
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value
 
 
 def _record_refusal(source_id: str, refusal_sink: Optional[RefusalSink]) -> None:
@@ -149,8 +176,8 @@ def _write_poll_run_record(
             id=f"spr-{uuid.uuid4().hex[:16]}",
             source_id=source_id,
             job_id=job_id,
-            started_at=started_at,
-            finished_at=datetime.now(timezone.utc),
+            started_at=_to_utc_naive(started_at),
+            finished_at=_to_utc_naive(datetime.now(timezone.utc)),
             status=status,
             refusal_reason=refusal_reason,
             raw_ingested=raw_ingested,
@@ -176,6 +203,9 @@ def make_poll_source_handler(
     adapters=None,
     refusal_sink: Optional[RefusalSink] = None,
     session_factory: Optional[SessionFactory] = None,
+    truth_pack_path: Optional[Any] = None,
+    pack_loader: Optional[PackLoader] = None,
+    scorer: Optional[OpportunityScorer] = None,
 ) -> Callable[[dict], None]:
     """Build a ``poll_source`` handler bound to the given (injectable) dependencies.
 
@@ -192,13 +222,39 @@ def make_poll_source_handler(
     the fetch/persist session at all -- it still, as of this deliverable,
     writes a ``source_poll_runs`` row (``status="refused"``), but that write
     happens on its own independent session via ``_write_poll_run_record``, so
-    the fetch/persist session lifecycle described above is unaffected. A
-    successful fetch+persist also enqueues one ``evaluate_new`` job on the
-    same session it just committed, so newly-persisted opportunities are
-    picked up for scoring without a separate trigger.
+    the fetch/persist session lifecycle described above is unaffected.
+
+    After a successful persist, this handler evaluates the batch's own
+    in-memory ``Opportunity`` objects -- the ones ``execute_discovery`` just
+    produced, with real ``responsibilities``/``requirements`` populated --
+    directly via ``matching.evaluate_persist.evaluate_and_store``, at full
+    fidelity. This is deliberately NOT the same code path as
+    ``evaluate_new``'s ``_reconstruct_opportunity``, which rebuilds an
+    ``Opportunity`` from ``OpportunityRecord``/``field_provenances`` and can
+    only recover ``responsibilities``/``requirements`` as empty tuples (see
+    its own docstring) -- every opportunity evaluated that way has its
+    ``fit_score`` systematically depressed on any dimension that scores those
+    fields (the scorer weights ``responsibilities`` at 0.15 and parses
+    ``requirements`` for scope). Evaluating the fresh in-memory batch here
+    means the founder's measured fit scores are never taken from the lossy
+    path for opportunities freshly discovered by this handler.
+    ``truth_pack_path``/``pack_loader`` mirror ``evaluate_new``'s: production
+    passes neither (defaults to ``truth.pack.load_founder_pack``, reading
+    ``private/truth_pack.yaml``); tests must inject a ``pack_loader`` so no
+    test touches ``private/``. If no valid pack is available
+    (``TruthPackMissing``/``TruthPackInvalid``), this handler skips the
+    inline evaluation (logs and continues) rather than failing the whole
+    poll -- persistence and the ``evaluate_new`` enqueue still happen, so
+    those opportunities are picked up as backfill once the pack is fixed.
+    ``evaluate_new`` is still enqueued unconditionally after a successful
+    persist, exactly as the brief requires: it is now a backfill/safety net
+    for whatever this inline pass missed (a failed individual evaluation, a
+    pack that was unavailable at poll time, or any pre-existing unevaluated
+    row), not the primary scoring path for a fresh poll.
     """
     reg = registry or SourceRegistry()
     fetch_transport = transport or HttpTransport()
+    pack_loader_fn = pack_loader or load_founder_pack
     _session_factory_holder: list[Optional[SessionFactory]] = [session_factory]
 
     def _resolve_session_factory() -> SessionFactory:
@@ -251,6 +307,42 @@ def make_poll_source_handler(
             repository = StorageRepository(session)
             result = persist_batch(batch, repository)
 
+            # Inline, full-fidelity evaluation of THIS batch's own in-memory
+            # Opportunity objects (real responsibilities/requirements) --
+            # see this function's docstring for why this must not be the
+            # lossy _reconstruct_opportunity path evaluate_new uses.
+            evaluated_inline_count = 0
+            try:
+                pack = pack_loader_fn(truth_pack_path)
+            except (TruthPackMissing, TruthPackInvalid) as exc:
+                pack = None
+                logger.warning(
+                    "worker.poll_source_evaluate_skipped_no_pack",
+                    extra={
+                        "component": "worker.handlers",
+                        "extra_data": {"source_id": source_id, "reason": type(exc).__name__},
+                    },
+                )
+
+            if pack is not None:
+                inline_evaluated_at = datetime.now(timezone.utc)
+                for opp in batch.opportunities:
+                    evaluate_and_store(
+                        opp,
+                        pack.graph,
+                        repository,
+                        truth_pack_hash=pack.truth_pack_hash,
+                        evaluated_at=inline_evaluated_at,
+                        scorer=scorer,
+                    )
+                    evaluated_inline_count += 1
+
+            # evaluate_new remains the backfill/safety net -- it will only
+            # find work here if the inline pass above was skipped (no valid
+            # pack yet) or missed something; every opportunity this handler
+            # just evaluated inline already has a match_evaluations row for
+            # the current truth-pack hash, so evaluate_new is a fast no-op
+            # for them.
             queue = BackgroundWorkerQueue(session)
             queue.enqueue_job("evaluate_new", {})
 
@@ -258,8 +350,8 @@ def make_poll_source_handler(
                 id=f"spr-{uuid.uuid4().hex[:16]}",
                 source_id=source_id,
                 job_id=job_id,
-                started_at=started_at,
-                finished_at=datetime.now(timezone.utc),
+                started_at=_to_utc_naive(started_at),
+                finished_at=_to_utc_naive(datetime.now(timezone.utc)),
                 status="ok",
                 raw_ingested=batch.total_raw_ingested,
                 unique_opportunities=batch.total_unique_opportunities,
@@ -278,6 +370,7 @@ def make_poll_source_handler(
                         "inserted": result.inserted_count,
                         "unchanged": result.unchanged_count,
                         "updated": result.updated_count,
+                        "evaluated_inline": evaluated_inline_count,
                     },
                 },
             )
@@ -539,6 +632,9 @@ def default_handler_registry(
             adapters=adapters,
             refusal_sink=refusal_sink,
             session_factory=session_factory,
+            truth_pack_path=truth_pack_path,
+            pack_loader=pack_loader,
+            scorer=scorer,
         ),
         "evaluate_new": make_evaluate_new_handler(
             session_factory=session_factory,
