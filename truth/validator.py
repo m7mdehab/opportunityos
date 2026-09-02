@@ -1,4 +1,5 @@
 from datetime import date
+from pathlib import Path
 import re
 from collections.abc import Iterable
 
@@ -36,6 +37,51 @@ _NON_MATERIAL_WORDS = {
     "over", "under", "more", "less", "than", "per", "we", "i", "he", "she", "they", "our",
     "served", "serves", "serving", "works", "worked", "working", "offers", "offered", "offering",
 }
+
+
+_CONNECTIVE_TERMS_PATH = Path(__file__).with_name("connective_terms.txt")
+
+
+def _load_connective_terms(path: Path) -> frozenset[str]:
+    """Load the committed class-(c) connective-boilerplate stop-list.
+
+    Blank lines and lines starting with ``#`` are comments/documentation
+    (see the file itself for why each entry is factually weightless). Every
+    other line is exactly one lower-case word. Loaded once at import.
+    """
+    terms: set[str] = set()
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
+        return frozenset()
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        terms.add(stripped.casefold())
+    return frozenset(terms)
+
+
+CONNECTIVE_TERMS: frozenset[str] = _load_connective_terms(_CONNECTIVE_TERMS_PATH)
+
+
+def opportunity_terms_from_values(*values: str | None) -> set[str]:
+    """Build the class-(b) opportunity-provenanced term set from real field values.
+
+    The CALLER (e.g. `api/routes_api.py::_compile_and_export`) is responsible
+    for passing only actual `Opportunity` field values that carry their own
+    field provenance (employer name, role title, ...) -- this function only
+    tokenizes whatever it is given. It never inspects a claim or an
+    opportunity object itself, so it cannot be used to launder an arbitrary
+    word into admissibility: the validator only ever excuses a token that is
+    literally present in a value the caller asserts is real opportunity data.
+    """
+    terms: set[str] = set()
+    for value in values:
+        if not value:
+            continue
+        terms.update(_tokens(_normalize(str(value))))
+    return terms - _NON_MATERIAL_WORDS
 
 
 _NEGATIVE_MARKERS = re.compile(
@@ -268,6 +314,7 @@ class ClaimValidator:
         *,
         as_of: date | None = None,
         allowed_subject_ids: set[str] | None = None,
+        opportunity_terms: set[str] | None = None,
     ) -> ClaimVerificationResult:
         if not isinstance(claim, str) or not claim.strip():
             raise ValueError("claim must be a non-empty string")
@@ -373,8 +420,30 @@ class ClaimValidator:
             )
 
         # 9. Material lexical coverage check.
+        #
+        # Three term classes are recognised (ADR-0014). Only class (a) --
+        # founder-claim terms, i.e. anything not covered below -- can ever
+        # cause a rejection here:
+        #   (a) founder-claim terms: must be covered by `evidence_tokens`
+        #       (the cited, relationally-linked supporting evidence). This is
+        #       unchanged from before ADR-0014.
+        #   (b) opportunity-provenanced terms: `opportunity_terms`, supplied
+        #       explicitly by the CALLER from real `Opportunity` field values
+        #       (see `opportunity_terms_from_values`). The validator never
+        #       guesses these; it only ever subtracts exactly the tokens the
+        #       caller asserts are real opportunity data.
+        #   (c) connective boilerplate: `CONNECTIVE_TERMS`, the committed,
+        #       fixed stop-list loaded from `truth/connective_terms.txt`.
+        # Because (b) and (c) are pure set subtractions applied on top of (a),
+        # neither can ever cause a term to be excused unless it is literally
+        # a member of that class's fixed vocabulary -- there is no code path
+        # by which an arbitrary unsupported founder-specific word can be
+        # marked class (b) or (c) to pass; the sets are closed and supplied
+        # from a fixed file or from the caller's real field values, never
+        # from the claim text itself.
         evidence_tokens = set().union(*(_tokens(record.content or "") for record in supporting))
-        uncovered = sorted(_tokens(claim) - evidence_tokens - _NON_MATERIAL_WORDS)
+        admissible_non_founder_terms = CONNECTIVE_TERMS | (opportunity_terms or set())
+        uncovered = sorted(_tokens(claim) - evidence_tokens - _NON_MATERIAL_WORDS - admissible_non_founder_terms)
         if uncovered:
             return self._result(
                 claim, False, AssertionType.UNSUPPORTED_CLAIM,
@@ -414,6 +483,47 @@ class ClaimValidator:
         return self._result(
             claim, True, assertion_type, status,
             supporting_ids, ("claim is traceable to supporting evidence",),
+        )
+
+    def validate_narrative(self, text: str) -> ClaimVerificationResult:
+        """Validate a NARRATIVE segment (ADR-0014): connective prose that
+        asserts no founder-specific fact and therefore cites no evidence.
+
+        Only the guards that do not depend on evidence apply: Never-Claim /
+        red-line prohibition and the planned-credential guard, run on the
+        FULL narrative text exactly as they run on claim text in
+        `validate_claim`. The evidence-coverage, relational-composition, and
+        metric-provenance guards (`validate_claim` steps 3-12) are not
+        meaningful for text that makes no evidentiary claim about the
+        founder, so they do not run here -- this method never grants an
+        exemption from any of those guards for text that *does* contain a
+        founder-specific assertion; the compiler is responsible for only
+        ever routing genuinely connective, fact-free text through this path
+        (see `matching/compiler_employment.py` and
+        `matching/compiler_independent.py`).
+        """
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("narrative text must be a non-empty string")
+        text = _SPACE.sub(" ", text.strip())
+
+        prohibited_reasons = self._prohibited_reasons(text)
+        if prohibited_reasons:
+            return self._result(
+                text, False, AssertionType.PROHIBITED_CLAIM,
+                VerificationStatus.UNVERIFIED, (), prohibited_reasons,
+            )
+
+        credential_reasons = self._planned_credential_reasons(text)
+        if credential_reasons:
+            return self._result(
+                text, False, AssertionType.PROHIBITED_CLAIM,
+                VerificationStatus.UNVERIFIED, (), credential_reasons,
+            )
+
+        return self._result(
+            text, True, AssertionType.USER_ASSERTION,
+            VerificationStatus.UNVERIFIED, (),
+            ("narrative segment: connective text only, not an evidence-checked founder claim",),
         )
 
     def _validate_temporal_validity(self, claim: str, supporting: tuple, as_of: date) -> str | None:

@@ -56,16 +56,20 @@ class EmploymentArtifactCompiler:
         ordered_skills = (relevant_skills + other_skills)[:self.policy.max_skills_highlighted]
 
         if title_assertions:
+            # ADR-0014: atomic claim -- a single founder fact (the title),
+            # backed by exactly the evidence that supports it. The prior
+            # version of this claim also named the founder's top skills in
+            # the same sentence, combining evidence from unrelated skill
+            # assertions with the title assertion; `ClaimValidator` guard 8
+            # correctly refuses that unless the combined evidence is
+            # relationally linked, which title and skill evidence generally
+            # is not. Skills remain fully covered -- they are still listed,
+            # each as its own atomic claim, in the Technical Skills section
+            # immediately below.
             top_title = str(title_assertions[0].value)
-            if ordered_skills:
-                skill_str = ", ".join(str(s.value) for s in ordered_skills[:3])
-                summary_text = f"Professional background as {top_title} with verified competencies in {skill_str}."
-                summary_aids = (title_assertions[0].id,) + tuple(s.id for s in ordered_skills[:3])
-                summary_eids = tuple(sorted(set(title_assertions[0].evidence_ids + tuple(ev for s in ordered_skills[:3] for ev in s.evidence_ids))))
-            else:
-                summary_text = f"Professional background as {top_title}."
-                summary_aids = (title_assertions[0].id,)
-                summary_eids = title_assertions[0].evidence_ids
+            summary_text = f"Professional background: {top_title}."
+            summary_aids = (title_assertions[0].id,)
+            summary_eids = title_assertions[0].evidence_ids
 
             sec_summary = ArtifactSection(
                 section_id="summary",
@@ -242,7 +246,22 @@ class EmploymentArtifactCompiler:
         truth_graph: TruthGraph,
         compiled_at: str = "2026-08-30",
     ) -> TailoredArtifact:
-        """Compile an opportunity-specific cover letter narrative locked to truth graph."""
+        """Compile an opportunity-specific cover letter narrative locked to truth graph.
+
+        ADR-0014: every founder-specific fact is an atomic claim citing exactly
+        the evidence that supports it. Connective prose -- the greeting, the
+        expression of interest, naming the target role/employer with no
+        founder fact attached, generic closing sentences -- carries no
+        founder-specific fact and is emitted as a NARRATIVE segment
+        (`policy_source="NARRATIVE"`), which `ClaimValidator.validate_narrative`
+        checks only for prohibited concepts and red lines, never for evidence
+        coverage. Where a sentence combines a founder fact (the title) with
+        the target role/employer name, it stays one claim that cites the
+        title's own evidence; the role/employer words are then admissible
+        under ADR-0014's class (b) -- `opportunity_terms`, populated by the
+        caller (`api/routes_api.py::_compile_and_export`) from the real
+        `Opportunity` field values, never guessed here or in the validator.
+        """
         sections: list[ArtifactSection] = []
         claims: list[GeneratedClaim] = []
 
@@ -255,72 +274,138 @@ class EmploymentArtifactCompiler:
             if a.predicate == "skill.name" and a.verification_status == VerificationStatus.VERIFIED
         ]
 
+        # --- Introduction: a NARRATIVE greeting plus one atomic claim -------
+        greeting_text = "I am writing to express my interest in the following opportunity."
+        intro_parts = [greeting_text]
+        claims.append(GeneratedClaim(
+            claim_id="claim-cover-greeting",
+            text=greeting_text,
+            section_id="introduction",
+            assertion_ids=(),
+            evidence_ids=(),
+            predicate="",
+            authorized_value="",
+            is_forward_commitment=False,
+            policy_source="NARRATIVE",
+        ))
+
         if title_assertions:
             top_title = str(title_assertions[0].value)
-            intro_text = (
-                f"I am writing to express my interest in the {opp.title} position at {opp.organization}. "
-                f"My verified professional background as {top_title} aligns with the requirements of this role."
+            role_text = (
+                f"Professional background: {top_title}, applying for the "
+                f"{opp.title} role at {opp.organization}."
             )
+            intro_parts.append(role_text)
             intro_aids = (title_assertions[0].id,)
             intro_eids = title_assertions[0].evidence_ids
+            claims.append(GeneratedClaim(
+                claim_id="claim-cover-role",
+                text=role_text,
+                section_id="introduction",
+                assertion_ids=intro_aids,
+                evidence_ids=intro_eids,
+                predicate="employment.title",
+                authorized_value=top_title,
+                is_forward_commitment=False,
+            ))
         else:
-            intro_text = f"I am writing to express my interest in the {opp.title} position at {opp.organization}."
+            role_text = f"Applying for the {opp.title} role at {opp.organization}."
+            intro_parts.append(role_text)
             intro_aids = ()
             intro_eids = ()
+            claims.append(GeneratedClaim(
+                claim_id="claim-cover-role-narrative",
+                text=role_text,
+                section_id="introduction",
+                assertion_ids=(),
+                evidence_ids=(),
+                predicate="",
+                authorized_value="",
+                is_forward_commitment=False,
+                policy_source="NARRATIVE",
+            ))
 
         sections.append(ArtifactSection(
             section_id="introduction",
             heading="Introduction & Motivation",
-            content=intro_text,
+            content=" ".join(intro_parts),
             items=(),
             assertion_ids=intro_aids,
             evidence_ids=intro_eids,
         ))
-        claims.append(GeneratedClaim(
-            claim_id="claim-cover-intro",
-            text=intro_text,
-            section_id="introduction",
-            assertion_ids=intro_aids,
-            evidence_ids=intro_eids,
-            predicate="employment.title" if intro_aids else "",
-            authorized_value=top_title if title_assertions else "",
-            is_forward_commitment=False,
-        ))
 
-        # Alignment Body Section
+        # --- Alignment Body Section: one atomic claim per cited skill -------
         opp_skills_cf = {s.casefold() for s in opp.skills}
         relevant_skills = [s for s in founder_skills if str(s.value).casefold() in opp_skills_cf]
+
+        alignment_items: tuple[str, ...] = ()
+        alignment_aids: tuple[str, ...] = ()
+        alignment_eids: tuple[str, ...] = ()
+
         if relevant_skills:
-            skill_names = ", ".join(str(s.value) for s in relevant_skills)
-            body_text = f"My verified competencies in {skill_names} directly correspond to {opp.organization}'s technical scope."
-            body_aids = tuple(s.id for s in relevant_skills)
-            body_eids = tuple(sorted(set(ev for s in relevant_skills for ev in s.evidence_ids)))
+            lead_text = "My relevant competencies for this role include the following:"
+            alignment_parts = [lead_text]
+            claims.append(GeneratedClaim(
+                claim_id="claim-cover-skills-lead",
+                text=lead_text,
+                section_id="alignment",
+                assertion_ids=(),
+                evidence_ids=(),
+                predicate="",
+                authorized_value="",
+                is_forward_commitment=False,
+                policy_source="NARRATIVE",
+            ))
+            alignment_items = tuple(str(s.value) for s in relevant_skills)
+            alignment_aids = tuple(s.id for s in relevant_skills)
+            alignment_eids = tuple(sorted(set(ev for s in relevant_skills for ev in s.evidence_ids)))
+            for s in relevant_skills:
+                claims.append(GeneratedClaim(
+                    claim_id=f"claim-cover-skill-{s.id}",
+                    text=str(s.value),
+                    section_id="alignment",
+                    assertion_ids=(s.id,),
+                    evidence_ids=s.evidence_ids,
+                    predicate="skill.name",
+                    authorized_value=str(s.value),
+                    is_forward_commitment=False,
+                ))
         elif title_assertions:
-            body_text = f"My verified experience as {top_title} provides solid background for this position."
-            body_aids = (title_assertions[0].id,)
-            body_eids = title_assertions[0].evidence_ids
+            lead_text = "My background outlined above provides a foundation for this role."
+            alignment_parts = [lead_text]
+            claims.append(GeneratedClaim(
+                claim_id="claim-cover-alignment-fallback",
+                text=lead_text,
+                section_id="alignment",
+                assertion_ids=(),
+                evidence_ids=(),
+                predicate="",
+                authorized_value="",
+                is_forward_commitment=False,
+                policy_source="NARRATIVE",
+            ))
         else:
-            body_text = f"I look forward to discussing how my experience aligns with {opp.organization}'s engineering goals."
-            body_aids = ()
-            body_eids = ()
+            lead_text = f"I look forward to discussing how my experience aligns with {opp.organization}'s goals."
+            alignment_parts = [lead_text]
+            claims.append(GeneratedClaim(
+                claim_id="claim-cover-alignment-empty",
+                text=lead_text,
+                section_id="alignment",
+                assertion_ids=(),
+                evidence_ids=(),
+                predicate="",
+                authorized_value="",
+                is_forward_commitment=False,
+                policy_source="NARRATIVE",
+            ))
 
         sections.append(ArtifactSection(
             section_id="alignment",
             heading="Relevant Experience & Value Proposition",
-            content=body_text,
-            items=(),
-            assertion_ids=body_aids,
-            evidence_ids=body_eids,
-        ))
-        claims.append(GeneratedClaim(
-            claim_id="claim-cover-body",
-            text=body_text,
-            section_id="alignment",
-            assertion_ids=body_aids,
-            evidence_ids=body_eids,
-            predicate="skill.name" if relevant_skills else ("employment.title" if title_assertions else ""),
-            authorized_value=body_text,
-            is_forward_commitment=False,
+            content=" ".join(alignment_parts),
+            items=alignment_items,
+            assertion_ids=alignment_aids,
+            evidence_ids=alignment_eids,
         ))
 
         if self.policy.default_availability_hours_per_week is not None:

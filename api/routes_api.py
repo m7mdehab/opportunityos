@@ -34,7 +34,7 @@ from storage.models import (
 )
 from storage.repository import StorageRepository
 from truth.pack import TruthPackInvalid, TruthPackMissing, load_founder_pack
-from truth.validator import ClaimValidator
+from truth.validator import ClaimValidator, opportunity_terms_from_values
 from worker.queue import BackgroundWorkerQueue
 
 from .deps import get_db, get_repository, require_session
@@ -406,9 +406,20 @@ def _compile_and_export(request: Request, opportunity_id: str, kind: str, sessio
         artifact = compiler.compile_cover_letter(domain_opp, loaded_pack.graph, compiled_at=compiled_at)
 
     validator = ClaimValidator(loaded_pack.graph)
+    # Class (b) opportunity-provenanced terms (ADR-0014): derived here, by the
+    # caller, from the real Opportunity's own field values -- never guessed
+    # inside the validator. Only these two fields carry independent field
+    # provenance on the domain Opportunity today (employer name, role title).
+    opportunity_terms = opportunity_terms_from_values(domain_opp.organization, domain_opp.title)
     findings: list[dict[str, Any]] = []
     for claim in artifact.generated_claims:
-        result = validator.validate_claim(claim.text, claim.evidence_ids)
+        if claim.policy_source == "NARRATIVE":
+            # NARRATIVE segments (ADR-0014) assert no founder-specific fact
+            # and cite no evidence; only the prohibited-concept / red-line
+            # guards apply, run on the full narrative text.
+            result = validator.validate_narrative(claim.text)
+        else:
+            result = validator.validate_claim(claim.text, claim.evidence_ids, opportunity_terms=opportunity_terms)
         if not result.allowed:
             findings.append(
                 {
