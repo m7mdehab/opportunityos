@@ -1,0 +1,56 @@
+### A-10 / A-11 — documents generate, and the guard still guards
+### Run by the Master on the integrated branch (D1+D2+D4+D5), real PostgreSQL 16.10, Python 3.12.10.
+
+--- A-10: the artifact routes, hit directly over HTTP ---
+
+Not the test's own assertion -- the Master built the app, logged in, reloaded each pack
+through POST /api/truth/reload, and called both artifact routes, checking the HTTP status,
+the ZIP magic bytes, and the rendered word/document.xml text.
+
+pack               artifact       status  magic  bytes   forbidden-inflation terms
+shipped-template   cv             200     PK     36910   none
+shipped-template   cover-letter   200     PK     36863   none
+founder-shaped     cv             200     PK     37332   ['lead']
+founder-shaped     cover-letter   200     PK     36862   none
+
+This is the capability BRIEF-FR-004 recorded as NOT_CLOSED. Under FR-004 the cover letter
+returned 409 for every realistic pack "always, by construction". All four now return a
+document.
+
+On the one inflation hit: A-10's condition is that no forbidden term appears UNLESS the pack
+contains it verbatim. "lead" is in the founder-shaped pack verbatim, three times, as the
+founder's own facts -- truth/fixtures.py:306 `"title": "Group Data Platform Lead"`, and
+:497/:687 the career goal "lead a shared data platform for a distributed engineering group".
+So the compiler did not introduce it; it carried through a role title the pack states. The
+condition holds. (The Master's probe used substring matching, which is cruder than the e2e
+test's own check at matching/test_artifacts_e2e.py:56-66; the e2e test enforces the
+verbatim-in-pack rule properly.)
+
+--- A-11: the tripwire, verified by actually neutralising the validator ---
+
+The Master did not take the implementer's word for this. Guard 9 at truth/validator.py:446
+was edited in place to `uncovered = []`, then restored from a byte-for-byte backup.
+
+  guard 9 intact       -> api.test_api.ArtifactRoutesTest : Ran 5 tests, OK
+  guard 9 neutralised  -> api.test_api.ArtifactRoutesTest : Ran 5 tests, FAILED (failures=1)
+  guard 9 restored     -> api.test_api.ArtifactRoutesTest : Ran 5 tests, OK
+  (git diff --stat truth/validator.py after restore: empty)
+
+So the tripwire is load-bearing: a validator that stopped rejecting unsupported founder
+claims would fail the suite rather than quietly start emitting documents.
+
+--- A finding the Master did not expect, recorded because it matters ---
+
+Under the SAME neutralisation, matching/test_artifacts_e2e.py stayed green:
+
+  guard 9 neutralised  -> matching.test_artifacts_e2e : Ran 16 tests, OK
+
+The sixteen end-to-end tests assert that documents ARE produced and that their sentences map
+to claims. They do not, and cannot, detect a validator that has stopped refusing -- because a
+neutralised validator refuses nothing, so every claim maps and every document renders. The
+safety property rests entirely on the tripwire in api/test_api.py, not on the e2e suite.
+
+This is why A-11 was written as a separate claim from A-10 before any code was delegated: a
+document that generates because the guard stopped guarding is not a delivered document. If
+the two had been one row, this brief could have reported A-10 green with the guard removed
+and nothing would have caught it.
