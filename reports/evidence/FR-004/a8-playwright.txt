@@ -1,0 +1,34 @@
+### A-8 — Playwright smoke, both configurations (Master re-run)
+
+The brief requires the smoke to run 'against the local API + PostgreSQL'. It
+originally ran only against the MSW mock, so it proved the UI agreed with
+fixtures the test itself controlled. That was the Master's own commissioning
+error, caught by the independent verifier. Both configurations now run.
+
+--- 1. mock configuration, with the untracked web/.env.local ABSENT ---
+    The verifier found the previously recorded green depended on that
+    gitignored file, and measured 4 failed / 3 passed on a clean checkout.
+
+    $ mv web/.env.local aside && cd web && npx playwright test
+      7 passed (2.2m)   [axe x2, screenshots x4, smoke x1]   EXIT=0
+
+--- 2. real stack: uvicorn on :8210 + seeded PostgreSQL, mock off, web :3210 ---
+    $ cd web && npx playwright test --config=playwright.real.config.ts
+      1 passed (59.2s)   EXIT=0
+
+    Proof it hit the real service rather than the mock -- uvicorn's own access
+    log for requests the test made. MSW is in-browser only and cannot write to
+    PostgreSQL, so these rows could not exist under the mock:
+      POST /api/opportunities/opp-001/feedback HTTP/1.1" 200 OK
+      POST /api/opportunities/opp-001/actions  HTTP/1.1" 200 OK
+      GET  /api/dashboard/daily?days=7         HTTP/1.1" 200 OK
+
+    The config fails closed rather than defaulting to a hard-coded DSN:
+      Error: playwright.real.config.ts requires OPPORTUNITYOS_DB_URL to be set
+      ... Refusing to default to a hard-coded connection string.
+
+--- what the real run proved that the mock could not ---
+UNKNOWN vs FAIL and uncertain vs ineligible behaved identically against both,
+so no assertion needed weakening. But the real path surfaced a founder-facing
+blocker the mock could never have shown: the shipped truth pack template cannot
+produce a tailored CV. See d5-truth-pack.txt.

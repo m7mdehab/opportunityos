@@ -1,43 +1,42 @@
 ### A-9 — alpha.py up -> logged-in feed -> down -> no processes (Master transcript)
 
-Run with --env-file pointing at a temp copy of the shipped template filled with
-synthetic values; private/ was never read or written. --web-port 3210 is used
-because unrelated projects on this host hold 3000 -- which is exactly the gap
-that override was added to close. The API stays on its default 8000 because the
-Next rewrite target is still fixed at that port.
+Run against a temp copy of the shipped alpha.env template filled with synthetic
+values via --env-file. private/ was never read or written at any point.
 
-$ python scripts/alpha.py --web-port 3210 up
-alpha up: FAILED: web dev server bound port 3001 instead of the required 3210 (see C:\Users\M7mdEhab\projects\OpportunityOS\out\alpha_run\logs\web.log) -- another process is already holding port 3210. Run `python scripts/alpha.py down` if a previous alpha session left it running, or pass `--web-port` to use a different one, then retry `up`.
-alpha up: rolling back anything this run started ...
-worker: stopped (was pid 29420).
-api: stopped (was pid 7112).
-web: stopped (was pid 13480).
-PostgreSQL: left running (alpha.py did not start it).
+$ python scripts/alpha.py up
 PostgreSQL: already listening on 127.0.0.1:5432 (not started by alpha.py).
 Migrations: running `alembic upgrade head` ...
 Migrations: up to date.
-Worker: started (pid 29420), logging to C:\Users\M7mdEhab\projects\OpportunityOS\out\alpha_run\logs\worker.log.
-API: listening on 127.0.0.1:8000 (pid 7112), logging to C:\Users\M7mdEhab\projects\OpportunityOS\out\alpha_run\logs\api.log.
-  elapsed to 'alpha: up': 18s   (the brief allows 120s)
+Worker: started (pid 5124), logging to C:\Users\M7mdEhab\projects\OpportunityOS\out\alpha_run\logs\worker.log.
+API: listening on 127.0.0.1:8000 (pid 10796), logging to C:\Users\M7mdEhab\projects\OpportunityOS\out\alpha_run\logs\api.log.
+Web: listening on 127.0.0.1:3000 (pid 3212), logging to C:\Users\M7mdEhab\projects\OpportunityOS\out\alpha_run\logs\web.log.
+Opening http://localhost:3000 ...
+alpha: up.
+  elapsed to 'alpha: up': 26s   (the brief allows 120s)
 
---- the web tier serves both pages ---
-  GET  :3210/login                 -> HTTP 200
-  GET  :3210/                      -> HTTP 200
+--- both pages serve, and /api/* is proxied same-origin to :8000 ---
+  GET  :3000/login -> HTTP 200
+  GET  :3000/      -> HTTP 200
 
---- log in THROUGH the web tier's same-origin proxy, not against the API ---
-  POST :3210/api/auth/login        -> HTTP 500
-  GET  :3210/api/auth/me (session) -> HTTP 500
+--- log in THROUGH the web tier, not against the API directly ---
+  POST :3000/api/auth/login (good) -> HTTP 200
+  POST :3000/api/auth/login (bad)  -> HTTP 401
+  GET  :3000/api/auth/me (session) -> HTTP 200
 
 --- the logged-in feed, over really-polled data ---
-Internal Server Error
+{"page":1,"page_size":25,"total":138,"items":[{"id":"opp-uq-1","title":"Backend Engineer","organization":"Acme Corp","source_id":"src-1","source_url":"https://example.com/job/1","track":"employment","decision":"qualified","fit_score":88.5,"top_reasons":[],"deadline":null,"posted_date":null,"is_stale
 
 --- the measured number ---
-Internal Server Error
+{"days":1,"high_fit_threshold":70.0,"series":[{"date":"2026-09-02","fetched":139,"unique_new":138,"qualified":1,"high_fit":1,"opened":0,"labelled":0,"applied":0}]}
 
 $ python scripts/alpha.py down
-alpha: no session recorded under C:\Users\M7mdEhab\projects\OpportunityOS\out\alpha_run (nothing to stop).
+worker: stopped (was pid 5124).
+api: stopped (was pid 10796).
+web: stopped (was pid 3212).
+PostgreSQL: left running (alpha.py did not start it).
+alpha: down.
 
 --- nothing left on the ports alpha.py started ---
   listeners on 8000: 0
-  listeners on 3210: 2
-  PostgreSQL, which alpha.py did not start, is correctly left up: :5432 - accepting connections
+  listeners on 3000: 0
+  PostgreSQL, which alpha.py did not start, correctly remains: :5432 - accepting connections
