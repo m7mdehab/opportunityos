@@ -80,6 +80,21 @@ DUMP_SECTION_TABLE_MAP = {
 }
 
 
+def _table_columns_snapshot() -> dict:
+    """Return {table_name: [column_name, ...]} derived from
+    Base.metadata.sorted_tables, in each table's column-definition order.
+
+    This is the single source of truth for both writing the dump header's
+    per-table column list (dump_database) and checking a dump's recorded
+    column list against the *current* model schema at restore time
+    (_check_restore_column_completeness) -- deriving both from `table.columns`
+    keeps them from drifting apart, and (being derived from the table
+    definition rather than from any row) still records columns for a table
+    that has zero rows.
+    """
+    return {table.name: [c.name for c in table.columns] for table in Base.metadata.sorted_tables}
+
+
 def _check_dump_completeness() -> None:
     """Raise BackupCompletenessError if DUMP_SECTION_TABLE_MAP and
     Base.metadata.sorted_tables disagree on the set of tables covered."""
@@ -150,6 +165,12 @@ def dump_database(db_url: str, output_file: str) -> int:
 
     data = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        # Per-table column list, derived from table.columns (not from the
+        # rows below, so an empty table's columns are still recorded here) --
+        # this is what lets a restore into a newer/older model schema detect
+        # a column-level delta instead of only a table-level one. See
+        # _check_restore_column_completeness.
+        "table_columns": _table_columns_snapshot(),
         "opportunities": [],
         "field_provenances": [],
         "outbound_actions": [],
@@ -386,7 +407,7 @@ def _check_restore_completeness(data: dict) -> None:
     silently with those tables left empty, and a dump section this restore
     code no longer recognises is silently ignored rather than raising.
     """
-    dump_sections = set(data.keys()) - {"timestamp"}
+    dump_sections = set(data.keys()) - {"timestamp", "table_columns"}
     expected_sections = set(DUMP_SECTION_TABLE_MAP.keys())
     if dump_sections != expected_sections:
         missing = expected_sections - dump_sections
@@ -401,11 +422,78 @@ def _check_restore_completeness(data: dict) -> None:
         )
 
 
+def _check_restore_column_completeness(data: dict) -> None:
+    """Raise BackupCompletenessError unless every table's column list, as
+    recorded in the dump's `table_columns` header, matches that table's
+    columns in the *current* model (Base.metadata) exactly.
+
+    This closes the gap _check_restore_completeness leaves open: that check
+    only proves the dump and the current model agree on the *set of tables*
+    covered; it says nothing about each table's *columns*. A column added to
+    a model after a dump was taken produces a dump whose table set still
+    matches (so _check_restore_completeness passes) but whose per-row dicts
+    silently lack that column -- restoring it would leave the new column at
+    whatever default the schema provides (or fail confusingly) with no
+    warning that the dump predates the column.
+
+    A dump written before this check existed has no `table_columns` header
+    at all. That case is refused outright (fail closed): there is no way to
+    verify after the fact that such a dump captured every column of the
+    schema it was taken against, so treating its absence as "trust it" would
+    silently reintroduce exactly the gap this check exists to close. The fix
+    is to take a fresh dump with the current code, not to restore the old one.
+    """
+    if "table_columns" not in data:
+        raise BackupCompletenessError(
+            "Restore completeness check failed: dump has no 'table_columns' "
+            "header, so its per-table column set cannot be verified against "
+            "the current model schema. This dump predates column-level "
+            "backup completeness tracking; restoring it could silently drop "
+            "or default columns the dump never recorded. Refusing to restore "
+            "it -- take a fresh dump with the current code and restore that "
+            "instead."
+        )
+
+    dumped_columns_by_table = data["table_columns"]
+    problems = []
+    for table_name, model_columns in _table_columns_snapshot().items():
+        model_set = set(model_columns)
+        dumped_columns = dumped_columns_by_table.get(table_name)
+        dumped_set = set(dumped_columns) if dumped_columns is not None else set()
+
+        missing_from_dump = model_set - dumped_set
+        unknown_in_dump = dumped_set - model_set
+        if not missing_from_dump and not unknown_in_dump:
+            continue
+
+        detail = [f"table '{table_name}':"]
+        if missing_from_dump:
+            detail.append(
+                "columns in the current model but missing from the dump "
+                f"(dump is stale; this data would be lost or defaulted on "
+                f"restore): {sorted(missing_from_dump)}."
+            )
+        if unknown_in_dump:
+            detail.append(
+                "columns present in the dump but not in the current model "
+                f"(dump is from a newer schema than this code; this data "
+                f"would be dropped on restore): {sorted(unknown_in_dump)}."
+            )
+        problems.append(" ".join(detail))
+
+    if problems:
+        raise BackupCompletenessError(
+            "Restore completeness check failed: dump column set does not "
+            "match the current model schema.\n" + "\n".join(problems)
+        )
+
+
 def restore_database(dump_file: str, db_url: str) -> None:
     with open(dump_file, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     _check_restore_completeness(data)
+    _check_restore_column_completeness(data)
     _upgrade_to_head(db_url)
 
     engine = get_engine(db_url)

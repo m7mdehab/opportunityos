@@ -25,7 +25,7 @@ import unittest
 import tempfile
 from urllib.parse import urlsplit, urlunsplit
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, MetaData, Column, String
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from alembic import command as alembic_command
@@ -276,6 +276,63 @@ class TestBackupRestorePostgres(unittest.TestCase):
 
         dst_session.close()
         dst_engine.dispose()
+
+    def test_restore_refuses_dump_with_column_delta(self):
+        # 1. Take a real dump against the (empty, freshly-upgraded) source
+        # schema, so its "table_columns" header reflects the real, current
+        # model exactly.
+        dump_database(self.source_url, self.dump_file)
+
+        # 2. Direction 1: the *current model* gains a column the dump never
+        # recorded (the dump is stale). Rather than mutating the real,
+        # shared Base.metadata table objects in place (SQLAlchemy makes a
+        # Table's ColumnCollection read-only once it has been used, so an
+        # in-place append can't cleanly be undone -- see append/remove probe
+        # in the deliverable notes), build a scratch MetaData that is a full
+        # copy of every real table (via Table.to_metadata, which preserves
+        # foreign keys so sorted_tables' topological sort keeps working),
+        # add one extra column to the copy of "opportunities", and swap
+        # Base.metadata to point at the scratch copy only for the duration
+        # of this restore call. The original metadata object is restored in
+        # `finally` so no mutation leaks into any other test in this
+        # process.
+        original_metadata = Base.metadata
+        scratch_metadata = MetaData()
+        for table in original_metadata.sorted_tables:
+            table.to_metadata(scratch_metadata)
+        scratch_metadata.tables["opportunities"].append_column(
+            Column("scratch_added_column", String)
+        )
+
+        Base.metadata = scratch_metadata
+        try:
+            with self.assertRaises(BackupCompletenessError) as ctx:
+                restore_database(self.dump_file, self.target_url)
+        finally:
+            Base.metadata = original_metadata
+
+        message = str(ctx.exception)
+        self.assertIn("scratch_added_column", message)
+        self.assertIn("opportunities", message)
+
+        # 3. Direction 2: the *dump* claims a column the current model does
+        # not have (the dump is from a newer schema than this code). This
+        # needs no metadata mutation at all -- editing the dump's own
+        # "table_columns" header directly is the natural way to simulate a
+        # dump that recorded a column the (unmodified, real) current model
+        # does not have.
+        with open(self.dump_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        data["table_columns"]["opportunities"].append("scratch_unknown_in_dump_column")
+        mutated_dump_file = os.path.join(self.temp_dir.name, "mutated_backup.json")
+        with open(mutated_dump_file, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+
+        with self.assertRaises(BackupCompletenessError) as ctx2:
+            restore_database(mutated_dump_file, self.target_url)
+        message2 = str(ctx2.exception)
+        self.assertIn("scratch_unknown_in_dump_column", message2)
+        self.assertIn("opportunities", message2)
 
     def test_upgrade_to_head_is_independent_of_process_cwd(self):
         # alembic.ini's script_location/version_locations are written
