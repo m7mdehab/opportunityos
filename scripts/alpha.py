@@ -46,6 +46,20 @@ this module or constructing that default) -- filesystem access only happens
 when ``load_alpha_env`` actually runs, which callers (including tests) can
 redirect with ``--env-file``.
 
+``up`` never attaches to a database whose name ends in ``_test`` (see
+``_refuse_test_database``): the FR-004 erratum (``reports/REPORT-FR-004.md``)
+records that ``alpha.py up`` once attached, silently, to the automated test
+suite's own ``opportunityos_test`` -- because that is what a stale env file
+happened to name -- and served its synthetic fixtures (``src-1``,
+``opp-uq-*``, ``example.com``) to the founder as though they were real
+polled data. ``docs/templates/alpha.env.template`` now points a fresh copy
+at ``opportunityos_alpha`` (``ALPHA_DB_NAME`` below); ``_ensure_postgres``
+creates that database if it does not already exist (``CREATE DATABASE``
+against the ``postgres`` maintenance database, autocommit) and always
+reports, in ``up``'s own printed output, exactly which database name is
+about to be used -- "already listening" is no longer concluded from an open
+port alone.
+
 PID/log/state tracking lives under ``out/alpha_run/`` rather than
 ``private/``: ``out/`` is already excluded in full by the repository's
 ``.gitignore`` ("Third-party reconnaissance payloads and derived corpus"),
@@ -62,6 +76,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.parse
 import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
@@ -87,6 +102,15 @@ REQUIRED_ENV_KEYS = (
 #: those fail with a raw SQLAlchemy/psycopg2 traceback that does not say
 #: what is actually wrong. load_alpha_env checks for this marker itself.
 PLACEHOLDER_MARKER = "REPLACE_WITH_"
+
+#: The database alpha.py's shipped template (docs/templates/alpha.env.template)
+#: points a freshly-copied private/alpha.env at. Never hard-coded as a fallback
+#: or default URL anywhere (that would violate the same fail-closed invariant
+#: storage/engine.py enforces for production persistence) -- this constant is
+#: only ever used to (a) create the database if it is missing, per
+#: `_ensure_database_exists`, and (b) word `_refuse_test_database`'s own
+#: message. The database actually used always comes from OPPORTUNITYOS_DB_URL.
+ALPHA_DB_NAME = "opportunityos_alpha"
 
 API_HOST = "127.0.0.1"
 DEFAULT_API_PORT = 8000
@@ -601,19 +625,135 @@ def _clear_state(run_dir: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# database name / _test refusal
+# ---------------------------------------------------------------------------
+
+
+def _extract_db_name(db_url: str) -> str:
+    """Return the database name (the path component) of a PostgreSQL
+    SQLAlchemy URL. Handles every shape this project actually produces:
+    ``postgresql+psycopg2://user@host:port/dbname``,
+    ``postgresql+psycopg2://user:password@host:port/dbname``, and either of
+    those followed by a query string (e.g. ``?sslmode=disable``).
+    ``urllib.parse.urlparse`` already separates a URL's query from its path,
+    so a trailing ``?...`` can never be mistaken for part of the database
+    name -- the parser is not fooled by
+    ``.../opportunityos_test?sslmode=disable``.
+    """
+    parsed = urllib.parse.urlparse(db_url)
+    name = parsed.path.lstrip("/")
+    if not name:
+        raise AlphaError(
+            f"OPPORTUNITYOS_DB_URL has no database name in its path: {db_url!r}. Expected "
+            "postgresql+psycopg2://user[:password]@host:port/dbname."
+        )
+    return name
+
+
+def _refuse_test_database(db_url: str) -> None:
+    """Refuse loudly if ``db_url`` names a database ending in ``_test``.
+
+    Called from ``cmd_up`` immediately after ``load_alpha_env`` returns --
+    before ``_ensure_postgres`` (PostgreSQL detection), before
+    ``_run_alembic_upgrade`` (migrations), and before any process is spawned.
+    See this module's own docstring and briefs/BRIEF-FR-005.md D4: the
+    FR-004 erratum (reports/REPORT-FR-004.md) records ``alpha.py up`` once
+    attaching, silently, to the automated test suite's own
+    ``opportunityos_test`` database and serving its synthetic fixtures
+    (``src-1``, ``opp-uq-*``, ``example.com``) to the founder as though they
+    were real. A database ending ``_test`` is refused outright, by name,
+    rather than ever connected to.
+    """
+    db_name = _extract_db_name(db_url)
+    if db_name.endswith("_test"):
+        raise AlphaError(
+            f"OPPORTUNITYOS_DB_URL names database '{db_name}', which ends in '_test' -- alpha.py "
+            "refuses to start against it. A database ending '_test' is the automated test suite's "
+            "own database, populated with synthetic fixtures -- this is exactly the FR-004 defect "
+            "(see the erratum in reports/REPORT-FR-004.md): alpha.py must never serve those rows to "
+            f"the founder as though they were real. Point OPPORTUNITYOS_DB_URL at '{ALPHA_DB_NAME}' "
+            "instead (see docs/templates/alpha.env.template), then retry `up`."
+        )
+
+
+def _with_db_name(db_url: str, db_name: str) -> str:
+    """Return ``db_url`` with its database name replaced by ``db_name`` --
+    host, port, credentials, and query string all preserved. Used by
+    ``_ensure_database_exists`` to derive the maintenance-database
+    connection (the ``postgres`` database, which always exists) it needs to
+    run ``CREATE DATABASE`` against, from whatever host/credentials the
+    founder's own ``OPPORTUNITYOS_DB_URL`` already specifies.
+    """
+    parsed = urllib.parse.urlparse(db_url)
+    return urllib.parse.urlunparse(parsed._replace(path="/" + db_name))
+
+
+def _ensure_database_exists(db_url: str) -> None:
+    """Create the database ``db_url`` names if it does not already exist.
+
+    Connects to the ``postgres`` maintenance database on the same
+    host/credentials -- never the target database itself, since
+    ``CREATE DATABASE`` cannot run against the database being created --
+    with an autocommit connection: ``CREATE DATABASE`` cannot run inside a
+    transaction block, which is what a plain (non-autocommit) SQLAlchemy
+    connection would otherwise wrap every statement in.
+    """
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.exc import SQLAlchemyError
+
+    db_name = _extract_db_name(db_url)
+    maintenance_url = _with_db_name(db_url, "postgres")
+    engine = create_engine(maintenance_url, isolation_level="AUTOCOMMIT")
+    try:
+        with engine.connect() as conn:
+            exists = conn.execute(
+                text("SELECT 1 FROM pg_database WHERE datname = :name"), {"name": db_name}
+            ).scalar()
+            if exists:
+                print(f"PostgreSQL: database '{db_name}' already exists.")
+                return
+            print(f"PostgreSQL: database '{db_name}' does not exist; creating it ...")
+            # db_name is a SQL identifier here, not a bind parameter -- CREATE DATABASE
+            # does not accept one. It comes from OPPORTUNITYOS_DB_URL's own path
+            # component (the founder's own local config, not external/attacker input),
+            # double-quoted below as a SQL identifier.
+            conn.execute(text(f'CREATE DATABASE "{db_name}"'))
+            print(f"PostgreSQL: database '{db_name}' created.")
+    except SQLAlchemyError as exc:
+        raise AlphaError(
+            f"Could not create or verify database '{db_name}' (connected to the maintenance "
+            f"database 'postgres' at the same host/credentials as OPPORTUNITYOS_DB_URL): {exc}"
+        ) from exc
+    finally:
+        engine.dispose()
+
+
+# ---------------------------------------------------------------------------
 # PostgreSQL bring-up / stop
 # ---------------------------------------------------------------------------
 
 
-def _ensure_postgres(run_dir: Path) -> dict:
+def _ensure_postgres(run_dir: Path, db_url: str) -> dict:
     """Detect an already-listening PostgreSQL first; only start the portable
     cluster if nothing is listening on 127.0.0.1:5432. Returns a dict
     recording whether alpha.py itself started it (and how), so ``down``
     never stops a server it did not start.
+
+    Either way, before returning, also confirms (creating if absent -- see
+    ``_ensure_database_exists``) the database ``db_url`` names, and records
+    that name in the returned dict under ``"database"``. Previously,
+    "already listening" was concluded from an open port alone, with no
+    check at all of which database was about to be used -- exactly what let
+    the FR-004 defect happen silently. ``cmd_up`` also prints this name
+    explicitly in its own output, so a future transcript can never again be
+    ambiguous about where the rows it shows came from.
     """
+    db_name = _extract_db_name(db_url)
     if _port_open(PG_HOST, PG_PORT, timeout=1.0):
         print(f"PostgreSQL: already listening on {PG_HOST}:{PG_PORT} (not started by alpha.py).")
-        return {"started_by_alpha": False}
+        _ensure_database_exists(db_url)
+        print(f"PostgreSQL: using database '{db_name}'.")
+        return {"started_by_alpha": False, "database": db_name}
 
     local_appdata = os.environ.get("LOCALAPPDATA")
     if not local_appdata:
@@ -665,7 +805,9 @@ def _ensure_postgres(run_dir: Path) -> dict:
             f"See {log_path}."
         )
     print(f"PostgreSQL: started (data dir {data_dir}).")
-    return {"started_by_alpha": True, "pg_ctl": str(pg_ctl), "data_dir": str(data_dir)}
+    _ensure_database_exists(db_url)
+    print(f"PostgreSQL: using database '{db_name}'.")
+    return {"started_by_alpha": True, "pg_ctl": str(pg_ctl), "data_dir": str(data_dir), "database": db_name}
 
 
 def _stop_postgres(pg_info: dict) -> tuple[str, bool]:
@@ -805,7 +947,14 @@ def cmd_up(
     try:
         alpha_env_values = load_alpha_env(env_file)
 
-        pg_info = _ensure_postgres(run_dir)
+        db_url = alpha_env_values["OPPORTUNITYOS_DB_URL"]
+        # Checked before any PostgreSQL detection, before migrations, and
+        # before any process is spawned -- see _refuse_test_database's own
+        # docstring and briefs/BRIEF-FR-005.md D4.
+        _refuse_test_database(db_url)
+
+        pg_info = _ensure_postgres(run_dir, db_url)
+        print(f"Database: {pg_info['database']} (PostgreSQL {PG_HOST}:{PG_PORT}).")
 
         env = os.environ.copy()
         env.update(alpha_env_values)
