@@ -13,9 +13,10 @@ reports\FOUNDER_READINESS_MATRIX.md is up to date with reports\FOUNDER_READINESS
   TOTAL                                      143
 
 --- D10-3: every row changed by this brief carries status_history ---
-    (before the flips this claim passed vacuously, because zero rows had
-     been flipped -- caught by the independent verifier)
-  rows changed: 11
+    Before the flips landed this claim passed VACUOUSLY, because zero rows
+    had been flipped. The independent verifier caught that; it is only
+    meaningful now that there are eleven changed rows to check.
+  rows changed          : 11
   without status_history: none
     REQ-P0B-001    MISSING  -> PARTIAL
     REQ-P0B-002    MISSING  -> PARTIAL
@@ -29,12 +30,8 @@ reports\FOUNDER_READINESS_MATRIX.md is up to date with reports\FOUNDER_READINESS
     REQ-UIP-007    MISSING  -> PARTIAL
     REQ-UIP-008    MISSING  -> PARTIAL
 
---- every path token cited in the matrix exists ---
-  path tokens checked: 347
-  non-existent: ['github/workflows/guard.yml', 'github/workflows/test.yml', 'web/app/layout.ts', 'web/app/login/page.ts', 'web/app/page.ts', 'web/components/feed/constraint-outcome.ts', 'web/components/feed/decision-badge.ts', 'web/components/feed/detail-drawer.ts', 'web/components/feed/filter-bar.ts', 'web/components/feed/header-strip.ts', 'web/components/feed/opportunity-card.ts', 'web/components/feed/triage-actions.ts']
-
---- every path token cited in the matrix exists (corrected sweep) ---
+--- every path token cited across all 143 rows resolves to a real file ---
     The previous brief shipped two rows citing opportunity/test_registry.py,
-    which does not exist. This sweep is here so that cannot recur.
+    which does not exist. This sweep exists so that cannot recur.
   path tokens checked: 347
-  non-existent      : none
+  non-existent       : none
