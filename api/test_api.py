@@ -675,12 +675,12 @@ def _clean_truth_pack_graph() -> TruthGraph:
     employment record.
 
     Deliberately does not use `truth.fixtures.synthetic_graph()` (which
-    includes a `MetricAssertion`): `EmploymentArtifactCompiler.compile_tailored_cv`'s
-    metrics section reads `MetricAssertion.semantic_context`, an attribute
-    that does not exist on `truth.models.MetricAssertion` (the real field is
-    `context`). That is a pre-existing bug in `matching/compiler_employment.py`,
-    which is out of D6's file scope to fix; this fixture avoids the metrics
-    codepath entirely so the clean 200 case does not trip over it.
+    includes a `MetricAssertion`): exercising the metrics section of
+    `EmploymentArtifactCompiler.compile_tailored_cv` pulls in
+    `MetricAssertion.context` and the metric-specific validation path in
+    `ClaimValidator`, which is unrelated to what this fixture needs to prove.
+    This fixture avoids the metrics codepath entirely so the clean 200 case
+    stays a single, minimal claim.
 
     Also deliberately has no employment/title assertion: the compiler's
     "Professional Summary" section cites both the title assertion's
