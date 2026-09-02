@@ -1,0 +1,71 @@
+### A-7 (build + lint) and A-8 (Playwright, mock config)
+### Run by the Master on the integrated branch. Node v24.18.0, npm 11.16.0.
+
+--- A-7: build ---
+$ npm run build
+✓ Compiled successfully
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+└ ○ /login
+
+The founder-navigable route set is unchanged: exactly `/` and `/login`. `/_not-found` is
+Next's own built-in special route and was present before this brief. The Filters drawer is a
+component on `/`, not a new route, as A-7 requires.
+
+--- A-7: lint ---
+$ npm run lint          # eslint . --max-warnings=0
+EXIT=0
+
+This did not pass first time, and the reason is worth recording. On the Master's first run it
+reported 514 errors and 5548 warnings across 14 files -- every one of them inside Playwright's
+own bundled HTML-report viewer (codeMirrorModule, defaultSettingsView, sw.bundle.js, ...).
+The three generated report directories are gitignored, but ESLint keeps its own ignore list,
+so `npm run lint` was order-dependent: clean on a fresh checkout, and thousands of problems
+once anyone had run `npx playwright test`. CI lints before it runs Playwright, which is the
+only reason it never saw this. Fixed by ignoring playwright-report/, playwright-report-real/
+and test-results/ explicitly. Lint now exits 0 regardless of run order.
+
+--- A-8: Playwright, mock configuration ---
+$ rm -rf playwright-report playwright-report-real test-results
+$ npx playwright test
+PASS (9) FAIL (0)      Time: 92553ms
+
+Nine specs, including the two new filter specs required by A-8: one toggles a filter and
+asserts the affected-count moves, the switch flips, and the feed re-queries without a reload;
+the other asserts that rank_only and label_only chips never carry hide styling.
+
+--- The FR-004 defect this row exists to catch, checked explicitly ---
+$ git status --porcelain
+?? reports/evidence/FR-005/d7-feed-1280.png
+?? reports/evidence/FR-005/d7-feed-360.png
+?? reports/evidence/FR-005/d7-login-1280.png
+?? reports/evidence/FR-005/d7-login-360.png
+
+No `web/.env.local`, and nothing else untracked. FR-004 recorded a green Playwright run that
+reproduced only on the Master's machine because it needed a gitignored env file; the verifier
+refused to create that file and was right to. This green needs no untracked file.
+
+--- A second latent defect found while doing this ---
+`screenshots.spec.ts` wrote its PNGs into reports/evidence/FR-004/, so every full Playwright
+run silently rewrote a closed brief's committed evidence. The D3-web implementer hit it and
+worked around it by running `git checkout -- reports/evidence/FR-004/...` after each run.
+Evidence for a brief that has already passed its gate must not be mutable by a later brief's
+test run, so it now writes into the active brief's directory. Verified after the fix:
+
+$ git diff --stat reports/evidence/FR-004/
+(empty -- FR-004's evidence is untouched by this brief's test runs)
+
+--- What the screenshot shows (d7-feed-1280.png) ---
+The dashboard strip carries a HIDDEN count (3). A "Show 3 hidden" control sits at the foot of
+the feed. Cards carry outlined flag chips (Track preference, Stale postings, Target roles,
+Premium full-time on-site) that are visually distinct from the filled decision badges
+(Qualified, Uncertain), so a ranked-or-labelled row cannot be mistaken for a hidden one.
+Every organization in the mock is suffixed "(synthetic)" and every source id is an obvious
+placeholder -- which is exactly the confusion that produced the FR-004 erratum, made
+impossible to repeat by eye.
+
+--- Not yet done at the time of this run ---
+This is the MOCK configuration. The real-stack switch (playwright.real.config.ts) is
+commissioned separately once the D3 API half merges, and is recorded in its own evidence.
+A-8 does not close on this run alone.
