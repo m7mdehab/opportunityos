@@ -72,6 +72,88 @@ class TestLoadAlphaEnv(unittest.TestCase):
                 alpha.load_alpha_env(env_path)
             self.assertIn(f"{env_path}:1:", str(ctx.exception))
 
+    # -- unedited placeholder detection ------------------------------------------
+
+    def test_unedited_template_copy_is_rejected_naming_every_placeholder_key(self):
+        """The most common first mistake: copy the shipped template to
+        private/alpha.env and forget to edit it. Every key is present (so
+        the missing-key check alone would say nothing is wrong), but every
+        value is still REPLACE_WITH_* -- this must be caught here, by name,
+        rather than surfacing later as a raw SQLAlchemy/psycopg2 traceback
+        out of `alembic upgrade head`.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            env_path = Path(tmp) / "alpha.env"
+            # A real, unedited copy of the shipped template -- not a
+            # hand-written fixture -- so this test tracks the actual
+            # template's placeholder wording.
+            env_path.write_text(alpha.ENV_TEMPLATE_PATH.read_text(encoding="utf-8"), encoding="utf-8")
+
+            with self.assertRaises(alpha.AlphaError) as ctx:
+                alpha.load_alpha_env(env_path)
+            message = str(ctx.exception)
+            self.assertIn(str(env_path), message)
+            self.assertIn("placeholders", message)
+            self.assertIn("OPPORTUNITYOS_FOUNDER_PASSWORD", message)
+            self.assertIn("OPPORTUNITYOS_SESSION_SECRET", message)
+            self.assertIn("OPPORTUNITYOS_DB_URL", message)
+
+    def test_partially_edited_template_names_only_the_still_unedited_keys(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env_path = Path(tmp) / "alpha.env"
+            env_path.write_text(
+                "OPPORTUNITYOS_FOUNDER_PASSWORD=a-real-password\n"
+                "OPPORTUNITYOS_SESSION_SECRET=REPLACE_WITH_A_RANDOM_SESSION_SECRET\n"
+                "OPPORTUNITYOS_DB_URL=postgresql+psycopg2://REPLACE_WITH_DB_USER:REPLACE_WITH_DB_PASSWORD"
+                "@127.0.0.1:5432/REPLACE_WITH_DB_NAME\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(alpha.AlphaError) as ctx:
+                alpha.load_alpha_env(env_path)
+            message = str(ctx.exception)
+            self.assertNotIn("OPPORTUNITYOS_FOUNDER_PASSWORD", message)
+            self.assertIn("OPPORTUNITYOS_SESSION_SECRET", message)
+            self.assertIn("OPPORTUNITYOS_DB_URL", message)
+
+    def test_fully_edited_values_are_accepted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env_path = Path(tmp) / "alpha.env"
+            env_path.write_text(
+                "OPPORTUNITYOS_FOUNDER_PASSWORD=a-real-password\n"
+                "OPPORTUNITYOS_SESSION_SECRET=a-real-session-secret\n"
+                "OPPORTUNITYOS_DB_URL=postgresql+psycopg2://opportunityos:pw@127.0.0.1:5432/oos\n",
+                encoding="utf-8",
+            )
+            values = alpha.load_alpha_env(env_path)  # must not raise
+            self.assertEqual(values["OPPORTUNITYOS_FOUNDER_PASSWORD"], "a-real-password")
+
+
+class TestUpRejectsAnUneditedTemplate(unittest.TestCase):
+    """`up` must reject an unedited private/alpha.env before it ever touches
+    PostgreSQL detection, migrations, or spawns anything -- not partway
+    through, and not by letting `alembic upgrade head` fail first with an
+    opaque connection traceback.
+    """
+
+    def test_nothing_is_started_when_the_template_is_unedited(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            env_path = Path(tmp) / "alpha.env"
+            env_path.write_text(alpha.ENV_TEMPLATE_PATH.read_text(encoding="utf-8"), encoding="utf-8")
+
+            with mock.patch.object(alpha, "_ensure_postgres") as ensure_postgres_mock, \
+                 mock.patch.object(alpha, "_run_alembic_upgrade") as alembic_mock, \
+                 mock.patch.object(alpha, "_spawn") as spawn_mock:
+                exit_code = alpha.cmd_up(env_path, run_dir)
+
+            self.assertEqual(exit_code, 1)
+            ensure_postgres_mock.assert_not_called()
+            alembic_mock.assert_not_called()
+            spawn_mock.assert_not_called()
+            # No partial run state should exist either -- this failure
+            # happens before anything is tracked.
+            self.assertEqual(alpha._load_state(run_dir), {})
+
 
 class TestStateFile(unittest.TestCase):
     def test_save_load_clear_roundtrip(self):

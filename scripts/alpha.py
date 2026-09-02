@@ -80,6 +80,14 @@ REQUIRED_ENV_KEYS = (
     "OPPORTUNITYOS_DB_URL",
 )
 
+#: Every value in docs/templates/alpha.env.template contains this marker
+#: (e.g. REPLACE_WITH_A_LOCAL_FOUNDER_PASSWORD). A founder who copies the
+#: template to private/alpha.env but forgets to edit it must never reach
+#: PostgreSQL detection or `alembic upgrade head` with an unedited value --
+#: those fail with a raw SQLAlchemy/psycopg2 traceback that does not say
+#: what is actually wrong. load_alpha_env checks for this marker itself.
+PLACEHOLDER_MARKER = "REPLACE_WITH_"
+
 API_HOST = "127.0.0.1"
 DEFAULT_API_PORT = 8000
 WEB_HOST = "127.0.0.1"
@@ -109,7 +117,13 @@ class AlphaError(RuntimeError):
 
 def load_alpha_env(path: Path) -> dict[str, str]:
     """Parse ``KEY=VALUE`` lines from ``path``. Raises ``AlphaError`` with a
-    clear, actionable message if the file is missing or incomplete.
+    clear, actionable message if the file is missing, incomplete, or still
+    contains unedited template placeholders (``PLACEHOLDER_MARKER``) -- the
+    most common first mistake with any env template, and one that would
+    otherwise surface as a raw SQLAlchemy/psycopg2 connection traceback out
+    of ``alembic upgrade head`` instead of a message that says what is
+    actually wrong. All three checks happen here, before ``up`` ever
+    touches PostgreSQL detection or migrations.
     """
     if not path.exists():
         raise AlphaError(
@@ -129,6 +143,20 @@ def load_alpha_env(path: Path) -> dict[str, str]:
         if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
             value = value[1:-1]
         values[key] = value
+
+    # Checked before the missing-key check below: a freshly-copied,
+    # unedited template has every key present (so "missing" would say
+    # nothing is wrong) but every value is still a placeholder -- this is
+    # the actual common case, so it must be the first, most specific error
+    # a founder sees, naming every unedited key at once rather than one per
+    # re-run.
+    placeholder_keys = sorted(key for key, value in values.items() if PLACEHOLDER_MARKER in value)
+    if placeholder_keys:
+        raise AlphaError(
+            f"{path} still contains template placeholders for {', '.join(placeholder_keys)}. Edit "
+            "that file and replace every REPLACE_WITH_* value, then retry `up`."
+        )
+
     missing = [key for key in REQUIRED_ENV_KEYS if not values.get(key)]
     if missing:
         raise AlphaError(
