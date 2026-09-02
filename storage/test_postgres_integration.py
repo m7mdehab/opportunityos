@@ -1105,6 +1105,19 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         finally:
             BackgroundWorkerQueue.claim_next_job = original_claim_next_job
 
+        # If either runner raised before reaching its first gated claim (or the
+        # barrier otherwise timed out), threading.Barrier.wait raises
+        # BrokenBarrierError -- which run_forever's broad `except Exception` around
+        # run_once swallows, so both runners would silently fall back to ungated,
+        # merely-probabilistic claiming instead of the guaranteed overlap this test
+        # is meant to prove. Assert the barrier was never broken so this test
+        # cannot pass by accident via that silent degradation.
+        self.assertFalse(
+            gate_barrier.broken,
+            "gate_barrier broke -- Case S's deterministic claim overlap was never "
+            "actually exercised; this run degraded to the old probabilistic regime",
+        )
+
         self.assertFalse(t1.is_alive(), "runner1 did not finish within the test timeout")
         self.assertFalse(t2.is_alive(), "runner2 did not finish within the test timeout")
 
@@ -1398,6 +1411,129 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             self.assertEqual(rows_v1_after, 2, "the first hash's rows must still number exactly 2, untouched")
         finally:
             verify_session.close()
+    def _race_two_claims(self, job_id, *, lease_duration_seconds=30):
+        """Race two independent sessions' claim_next_job calls against one job,
+        releasing both from a 2-party barrier at (as close to) the same instant so
+        the underlying SELECT ... FOR UPDATE SKIP LOCKED contention is actually
+        exercised rather than one call simply running to completion before the
+        other starts. Returns the two results as claimed-job-id-or-None, in call
+        order (r1, r2) -- not the ORM objects, which would be detached once this
+        method closes both sessions below and thus unsafe for the caller to touch.
+        """
+        session1 = self.SessionFactory()
+        session2 = self.SessionFactory()
+        q1 = BackgroundWorkerQueue(session1, worker_id="race-1")
+        q2 = BackgroundWorkerQueue(session2, worker_id="race-2")
+
+        start_barrier = threading.Barrier(2, timeout=10)
+        results = {}
+
+        def _claim(q, key):
+            start_barrier.wait()
+            claimed = q.claim_next_job(lease_duration_seconds=lease_duration_seconds)
+            results[key] = claimed.id if claimed is not None else None
+
+        t1 = threading.Thread(target=_claim, args=(q1, "r1"))
+        t2 = threading.Thread(target=_claim, args=(q2, "r2"))
+        t1.start()
+        t2.start()
+        t1.join(timeout=15)
+        t2.join(timeout=15)
+
+        self.assertFalse(t1.is_alive(), "racer 1 did not finish within the test timeout")
+        self.assertFalse(t2.is_alive(), "racer 2 did not finish within the test timeout")
+        self.assertFalse(start_barrier.broken, "start_barrier broke -- the race was never actually exercised")
+
+        session1.close()
+        session2.close()
+        return results["r1"], results["r2"]
+
+    def test_case_t_stale_lease_reclaim_race(self):
+        """Case T: two sessions race to reclaim one job whose lease has already
+        expired -- simulating two workers both sweeping for a job left behind by a
+        crashed third worker. SELECT ... FOR UPDATE SKIP LOCKED must guarantee
+        exactly one winner even under real contention, and the winner's reclaim
+        must increment retry_count exactly once (not twice, and not zero times).
+
+        This is then extended (same test, second phase) to the dead-letter
+        threshold race: with max_retries=1, a single reclaim exhausts the budget,
+        so neither racer may be handed the job -- both must see None -- and the
+        job must end up DEAD_LETTER with retry_count == 1, not RUNNING for either
+        racer and not retried a second time.
+        """
+        # --- Phase 1: a plain reclaim race (max_retries well above the threshold). ---
+        enqueue_session = self.SessionFactory()
+        enqueue_queue = BackgroundWorkerQueue(enqueue_session, worker_id="t-enqueue")
+        job_id = enqueue_queue.enqueue_job(
+            "export_binary", {"artifact_id": "art-case-t-1"}, max_retries=5
+        )
+        enqueue_session.close()
+
+        # Simulate a dead worker: claim the job once, then force the lease into the
+        # past directly -- never calling complete_job/fail_job, exactly as a
+        # process that died mid-handler would not.
+        setup_session = self.SessionFactory()
+        setup_queue = BackgroundWorkerQueue(setup_session, worker_id="t-dead-1")
+        dead_claim = setup_queue.claim_next_job(lease_duration_seconds=1)
+        self.assertIsNotNone(dead_claim)
+        with self.engine.begin() as conn:
+            conn.execute(
+                text("UPDATE worker_jobs SET lease_expires_at = :past WHERE id = :jid"),
+                {"past": datetime.now(timezone.utc) - timedelta(seconds=10), "jid": job_id},
+            )
+        setup_session.close()
+
+        r1, r2 = self._race_two_claims(job_id)
+
+        winners = [r for r in (r1, r2) if r is not None]
+        self.assertEqual(
+            len(winners), 1, f"exactly one racer must reclaim the stale-leased job, got r1={r1!r} r2={r2!r}"
+        )
+        self.assertEqual(winners[0], job_id)
+
+        verify_session = self.SessionFactory()
+        try:
+            job = verify_session.query(WorkerJobRecord).filter_by(id=job_id).first()
+            self.assertIsNotNone(job)
+            self.assertEqual(job.status, "RUNNING")
+            self.assertEqual(job.retry_count, 1, "retry_count must be incremented exactly once by the race, not twice")
+        finally:
+            verify_session.close()
+
+        # --- Phase 2: the dead-letter threshold race (max_retries == 1). ---
+        enqueue_session2 = self.SessionFactory()
+        enqueue_queue2 = BackgroundWorkerQueue(enqueue_session2, worker_id="t-enqueue-2")
+        job_id_2 = enqueue_queue2.enqueue_job(
+            "export_binary", {"artifact_id": "art-case-t-2"}, max_retries=1
+        )
+        enqueue_session2.close()
+
+        setup_session2 = self.SessionFactory()
+        setup_queue2 = BackgroundWorkerQueue(setup_session2, worker_id="t-dead-2")
+        dead_claim_2 = setup_queue2.claim_next_job(lease_duration_seconds=1)
+        self.assertIsNotNone(dead_claim_2)
+        with self.engine.begin() as conn:
+            conn.execute(
+                text("UPDATE worker_jobs SET lease_expires_at = :past WHERE id = :jid"),
+                {"past": datetime.now(timezone.utc) - timedelta(seconds=10), "jid": job_id_2},
+            )
+        setup_session2.close()
+
+        r1_dl, r2_dl = self._race_two_claims(job_id_2)
+
+        self.assertIsNone(r1_dl, "a reclaim that exhausts max_retries must not be handed to either racer")
+        self.assertIsNone(r2_dl, "a reclaim that exhausts max_retries must not be handed to either racer")
+
+        verify_session2 = self.SessionFactory()
+        try:
+            job2 = verify_session2.query(WorkerJobRecord).filter_by(id=job_id_2).first()
+            self.assertIsNotNone(job2)
+            self.assertEqual(job2.status, "DEAD_LETTER")
+            self.assertEqual(job2.retry_count, 1)
+            self.assertIsNone(job2.lease_owner)
+            self.assertIsNone(job2.lease_expires_at)
+        finally:
+            verify_session2.close()
 
 
 if __name__ == "__main__":
