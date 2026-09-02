@@ -10,8 +10,8 @@ Next: The measured number decides the shape of the next brief, and it does not e
 
 ## Repository
 
-- **Generated:** 2026-09-02T06:26:04Z
-- **State generated at commit:** `877b972` — evidence(fr-004): capture A-5 zero drift and the reason for a STATE-only commit
+- **Generated:** 2026-09-02T07:07:09Z
+- **State generated at commit:** `680d64d` — merge(revfix): close the re-verification's documentation and test defects
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -37,7 +37,7 @@ Next: The measured number decides the shape of the next brief, and it does not e
 
 ## Last Phase Outcome
 
-- BRIEF-FR-004 — PASS.
+- BRIEF-FR-004 — PASSWITHNOTCLOSED.
 
 ## Decisions
 
