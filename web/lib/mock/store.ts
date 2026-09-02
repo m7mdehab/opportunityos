@@ -9,6 +9,9 @@ import type {
   DashboardDay,
   DashboardResponse,
   FeedbackLabel,
+  FilterMode,
+  FiltersResponse,
+  FounderFilter,
   OpportunityDetail,
   OpportunityListItem,
   OpportunityListResponse,
@@ -20,12 +23,20 @@ import {
   buildDefaultOpportunities,
   buildNoTruthPackOpportunities,
   buildSourcesHealth,
+  evaluateFounderFilter,
+  FOUNDER_FILTER_DEFINITIONS,
   truthSectionsComplete,
   truthSectionsMissing,
   truthValidatorOk,
   type SeedOpportunity,
 } from "@/lib/mock/fixtures"
 import type { MockScenario } from "@/lib/mock/scenario"
+
+interface FilterSetting {
+  enabled: boolean
+  mode: FilterMode
+  params: Record<string, unknown>
+}
 
 const HIGH_FIT_THRESHOLD = 70
 
@@ -49,8 +60,23 @@ export class MockStore {
   /** per-day counters, most recent first (today at index 0) */
   dailyCounters: DashboardDay[]
 
+  /** D3 founder filter settings, one entry per `FOUNDER_FILTER_DEFINITIONS`
+   * row, seeded from that table's defaults and mutated by `PUT
+   * /api/filters/{filter_id}`. */
+  filterSettings: Map<string, FilterSetting>
+
   constructor(scenario: MockScenario) {
     this.scenario = scenario
+    this.filterSettings = new Map(
+      FOUNDER_FILTER_DEFINITIONS.map((f) => [
+        f.filter_id,
+        {
+          enabled: f.default_enabled,
+          mode: f.default_mode,
+          params: { ...f.default_params },
+        },
+      ])
+    )
 
     switch (scenario) {
       case "no-truth-pack": {
@@ -141,6 +167,7 @@ export class MockStore {
           labelled: evaluated.filter((o) => o.feedback_label !== null).length,
           applied: evaluated.filter((o) => o.action_state === "submitted")
             .length,
+          hidden_by_filters: this.hiddenCount(evaluated),
         })
       } else {
         days.push({
@@ -152,6 +179,7 @@ export class MockStore {
           opened: 0,
           labelled: 0,
           applied: 0,
+          hidden_by_filters: 0,
         })
       }
     }
@@ -191,6 +219,36 @@ export class MockStore {
 
   // ---- opportunities ----
 
+  /** Per-item `hidden_by` / `flagged_by`, evaluated against the store's
+   * live `filterSettings`. A disabled filter is not evaluated at all, per
+   * the contract (§4): it contributes to neither list. */
+  private matchingFilterIds(o: SeedOpportunity): {
+    hidden_by: string[]
+    flagged_by: string[]
+    rankDemoted: boolean
+  } {
+    const hidden_by: string[] = []
+    const flagged_by: string[] = []
+    let rankDemoted = false
+    for (const def of FOUNDER_FILTER_DEFINITIONS) {
+      const setting = this.filterSettings.get(def.filter_id)!
+      if (!setting.enabled) continue
+      if (!evaluateFounderFilter(def.filter_id, o, setting.params)) continue
+      if (setting.mode === "hide") {
+        hidden_by.push(def.filter_id)
+      } else {
+        flagged_by.push(def.filter_id)
+        if (setting.mode === "rank_only") rankDemoted = true
+      }
+    }
+    return { hidden_by, flagged_by, rankDemoted }
+  }
+
+  private hiddenCount(items: SeedOpportunity[]): number {
+    return items.filter((o) => this.matchingFilterIds(o).hidden_by.length > 0)
+      .length
+  }
+
   listOpportunities(filters: {
     track?: string
     decision?: string
@@ -198,6 +256,9 @@ export class MockStore {
     q?: string
     page?: number
     page_size?: number
+    /** Default `false`. `true` includes items an enabled `hide`-mode
+     * filter matched, with `hidden_by` populated on them. */
+    include_hidden?: boolean
   }): OpportunityListResponse {
     let items = [...this.opportunities.values()]
 
@@ -221,28 +282,52 @@ export class MockStore {
       )
     }
 
-    items.sort((a, b) => {
-      if (a.fit_score === null && b.fit_score !== null) return 1
-      if (a.fit_score !== null && b.fit_score === null) return -1
-      if (a.fit_score !== null && b.fit_score !== null && a.fit_score !== b.fit_score) {
-        return b.fit_score - a.fit_score
+    // Decorate every item with its current hidden_by/flagged_by before
+    // deciding visibility, so hidden_count always reflects the full
+    // filtered set regardless of include_hidden (contract §5's
+    // "total"/"hidden_count" semantics).
+    const decorated = items.map((o) => ({ o, ...this.matchingFilterIds(o) }))
+    const hiddenCount = decorated.filter((d) => d.hidden_by.length > 0).length
+
+    const visible = filters.include_hidden
+      ? decorated
+      : decorated.filter((d) => d.hidden_by.length === 0)
+
+    // Existing key (fit_score desc nulls last, posted_date desc, id),
+    // with a rank-adjustment term so rank_only-demoted items sort after
+    // non-demoted ones at an equal score, per the contract's §4 sorting
+    // rule. decision and fit_score themselves are never touched by any
+    // filter — only this sort position and hidden_by/flagged_by are.
+    visible.sort((a, b) => {
+      const ao = a.o
+      const bo = b.o
+      if (ao.fit_score === null && bo.fit_score !== null) return 1
+      if (ao.fit_score !== null && bo.fit_score === null) return -1
+      if (
+        ao.fit_score !== null &&
+        bo.fit_score !== null &&
+        ao.fit_score !== bo.fit_score
+      ) {
+        return bo.fit_score - ao.fit_score
       }
-      const ad = a.posted_date ?? ""
-      const bd = b.posted_date ?? ""
+      if (a.rankDemoted !== b.rankDemoted) return a.rankDemoted ? 1 : -1
+      const ad = ao.posted_date ?? ""
+      const bd = bo.posted_date ?? ""
       if (ad !== bd) return ad < bd ? 1 : -1
-      return a.id < b.id ? -1 : 1
+      return ao.id < bo.id ? -1 : 1
     })
 
     const page = filters.page ?? 1
     const pageSize = filters.page_size ?? 25
     const start = (page - 1) * pageSize
-    const paged = items.slice(start, start + pageSize)
+    const paged = visible.slice(start, start + pageSize)
 
     return {
       page,
       page_size: pageSize,
-      total: items.length,
-      items: paged.map(toListItem),
+      total: visible.length,
+      hidden_count: hiddenCount,
+      items: paged.map((d) => toListItem(d.o, d.hidden_by, d.flagged_by)),
     }
   }
 
@@ -354,6 +439,67 @@ export class MockStore {
     return this.opportunities.get(id)?.artifact_claims_rejected ?? false
   }
 
+  // ---- filters (D3) ----
+
+  listFilters(): FiltersResponse {
+    const items = [...this.opportunities.values()]
+    return {
+      filters: FOUNDER_FILTER_DEFINITIONS.map((def) => {
+        const setting = this.filterSettings.get(def.filter_id)!
+        return {
+          filter_id: def.filter_id,
+          enabled: setting.enabled,
+          mode: setting.mode,
+          params: { ...setting.params },
+          // Computed regardless of `enabled`, per the contract, so the
+          // drawer can show what enabling a disabled filter would do.
+          affected_count: items.filter((o) =>
+            evaluateFounderFilter(def.filter_id, o, setting.params)
+          ).length,
+          description: def.description,
+        }
+      }),
+    }
+  }
+
+  /** Returns the updated filter, or a string error tag the handler maps to
+   * the contract's 404 / 422 responses. */
+  updateFilter(
+    filterId: string,
+    body: { enabled?: boolean; mode?: string; params?: Record<string, unknown> }
+  ): FounderFilter | "not_found" | "invalid_mode" {
+    const def = FOUNDER_FILTER_DEFINITIONS.find((f) => f.filter_id === filterId)
+    const setting = this.filterSettings.get(filterId)
+    if (!def || !setting) return "not_found"
+
+    if (
+      body.mode !== undefined &&
+      !(["hide", "rank_only", "label_only"] as const).includes(
+        body.mode as FilterMode
+      )
+    ) {
+      return "invalid_mode"
+    }
+
+    if (body.enabled !== undefined) setting.enabled = body.enabled
+    if (body.mode !== undefined) setting.mode = body.mode as FilterMode
+    if (body.params !== undefined) {
+      setting.params = { ...setting.params, ...body.params }
+    }
+
+    const items = [...this.opportunities.values()]
+    return {
+      filter_id: filterId,
+      enabled: setting.enabled,
+      mode: setting.mode,
+      params: { ...setting.params },
+      affected_count: items.filter((o) =>
+        evaluateFounderFilter(filterId, o, setting.params)
+      ).length,
+      description: def.description,
+    }
+  }
+
   // ---- dashboard / sources / worker / truth ----
 
   dashboard(days: number): DashboardResponse {
@@ -402,7 +548,11 @@ export class MockStore {
   }
 }
 
-function toListItem(o: SeedOpportunity): OpportunityListItem {
+function toListItem(
+  o: SeedOpportunity,
+  hidden_by: string[],
+  flagged_by: string[]
+): OpportunityListItem {
   return {
     id: o.id,
     title: o.title,
@@ -418,6 +568,8 @@ function toListItem(o: SeedOpportunity): OpportunityListItem {
     is_stale: o.is_stale,
     action_state: o.action_state,
     feedback_label: o.feedback_label,
+    hidden_by,
+    flagged_by,
   }
 }
 

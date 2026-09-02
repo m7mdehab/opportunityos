@@ -10,6 +10,7 @@ import type {
   Decision,
   FeedbackHistoryEntry,
   FeedbackLabel,
+  FilterMode,
   OpportunityField,
   QualificationConstraint,
   DimensionScore,
@@ -713,4 +714,149 @@ export function truthSectionsMissing(): TruthSection[] {
     { section: "red_list", present: false, count: 0 },
     { section: "answer_library", present: false, count: 0 },
   ]
+}
+
+/**
+ * D3 — founder-controlled filters (contract: `reports/evidence/FR-005/
+ * d3-contract.md` §3). Named filters, seeded with the exact defaults the
+ * Master specified: only `red_lines` and `excluded_industries` hide by
+ * default, everything else labels or ranks, and `min_fit_score` /
+ * `compensation_floor` start disabled.
+ *
+ * The mock's per-opportunity match predicates below are a synthetic stand
+ * -in for the real API's Python evaluation loop (`api/routes_api.py`,
+ * evaluated per the contract doc) — they exist only so the drawer has
+ * something true and internally consistent to show against the fixture
+ * set, not as a claim about real filter semantics. Each predicate is
+ * derived from a real field already on `SeedOpportunity` (never a bare
+ * hard-coded id list) so toggling params (e.g. `min_fit_score.threshold`)
+ * visibly changes the affected set, the same way it will against the real
+ * API.
+ */
+export interface FounderFilterDefinition {
+  filter_id: string
+  description: string
+  default_enabled: boolean
+  default_mode: FilterMode
+  default_params: Record<string, unknown>
+}
+
+export const FOUNDER_FILTER_DEFINITIONS: FounderFilterDefinition[] = [
+  {
+    filter_id: "geo_eligibility",
+    description:
+      "Opportunities that fail the qualifier's geographic eligibility constraint.",
+    default_enabled: true,
+    default_mode: "label_only",
+    default_params: {},
+  },
+  {
+    filter_id: "work_mode_onsite",
+    description:
+      "Opportunities that fail the qualifier's on-site work-mode constraint.",
+    default_enabled: true,
+    default_mode: "label_only",
+    default_params: {},
+  },
+  {
+    filter_id: "red_lines",
+    description: "Opportunities matching a red line in your truth pack.",
+    default_enabled: true,
+    default_mode: "hide",
+    default_params: {},
+  },
+  {
+    filter_id: "excluded_industries",
+    description: "Opportunities in an industry your truth pack excludes.",
+    default_enabled: true,
+    default_mode: "hide",
+    default_params: {},
+  },
+  {
+    filter_id: "track_preference",
+    description: "Opportunities outside your preferred track order.",
+    default_enabled: true,
+    default_mode: "rank_only",
+    default_params: {},
+  },
+  {
+    filter_id: "target_roles",
+    description: "Opportunities that do not match a career target role.",
+    default_enabled: true,
+    default_mode: "rank_only",
+    default_params: {},
+  },
+  {
+    filter_id: "premium_fulltime_onsite",
+    description:
+      "Full-time, on-site opportunities below your premium compensation threshold.",
+    default_enabled: true,
+    default_mode: "rank_only",
+    default_params: {},
+  },
+  {
+    filter_id: "stale_postings",
+    description: "Opportunities not recently reverified by their source.",
+    default_enabled: true,
+    default_mode: "label_only",
+    default_params: {},
+  },
+  {
+    filter_id: "min_fit_score",
+    description: "Opportunities below a minimum fit score you set.",
+    default_enabled: false,
+    default_mode: "hide",
+    default_params: { threshold: 50 },
+  },
+  {
+    filter_id: "compensation_floor",
+    description: "Opportunities below a compensation floor you set.",
+    default_enabled: false,
+    default_mode: "rank_only",
+    default_params: { monthly_minimum: 50000, currency: "EGP" },
+  },
+]
+
+function dimensionScore(o: SeedOpportunity, dimension: string): number | null {
+  const d = o.dimension_scores.find((d) => d.dimension === dimension)
+  return d ? d.score : null
+}
+
+/** Returns whether `filterId` currently matches `o`, given the live
+ * `params` for that filter (only `min_fit_score.threshold` varies the
+ * result today). See the module doc above for what this stands in for. */
+export function evaluateFounderFilter(
+  filterId: string,
+  o: SeedOpportunity,
+  params: Record<string, unknown>
+): boolean {
+  switch (filterId) {
+    case "geo_eligibility":
+    case "work_mode_onsite":
+      return /relocate|on-site/i.test(o.description)
+    case "red_lines":
+      return o.constraints.some((c) => c.outcome === "FAIL" && c.is_hard_failure)
+    case "excluded_industries":
+      return o.track === "procurement"
+    case "track_preference":
+      return o.track !== "employment"
+    case "target_roles":
+      return o.decision !== "qualified"
+    case "premium_fulltime_onsite": {
+      const comp = dimensionScore(o, "compensation_alignment")
+      return o.track === "employment" && comp !== null && comp < 0.5
+    }
+    case "compensation_floor": {
+      const comp = dimensionScore(o, "compensation_alignment")
+      return comp !== null && comp < 0.5
+    }
+    case "stale_postings":
+      return o.is_stale
+    case "min_fit_score": {
+      const threshold = Number(params.threshold ?? 50)
+      return o.fit_score !== null && o.fit_score < threshold
+    }
+    default:
+      return false
+  }
 }

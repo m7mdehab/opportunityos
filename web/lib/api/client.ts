@@ -15,6 +15,9 @@ import type {
   DashboardResponse,
   FeedbackLabel,
   FeedbackResponse,
+  FilterUpdateRequest,
+  FiltersResponse,
+  FounderFilter,
   OpportunityDetail,
   OpportunityListResponse,
   PollNowResponse,
@@ -69,6 +72,10 @@ export const api = {
       q?: string
       page?: number
       page_size?: number
+      /** Default `false`. When `true`, items hidden by an enabled
+       * `hide`-mode filter are included in `items` (and `hidden_by` is
+       * populated on them) instead of being omitted. */
+      include_hidden?: boolean
     }) => {
       const search = new URLSearchParams()
       for (const [key, value] of Object.entries(params)) {
@@ -100,6 +107,15 @@ export const api = {
   dashboard: {
     daily: (days = 7) =>
       request<DashboardResponse>(`/api/dashboard/daily?days=${days}`),
+  },
+
+  filters: {
+    list: () => request<FiltersResponse>("/api/filters"),
+    update: (filterId: string, body: FilterUpdateRequest) =>
+      request<FounderFilter>(`/api/filters/${filterId}`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
   },
 
   sources: {

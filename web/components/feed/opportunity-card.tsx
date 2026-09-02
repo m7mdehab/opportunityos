@@ -2,7 +2,8 @@
 
 import { Badge } from "@/components/ui/badge"
 import { DecisionBadge } from "@/components/feed/decision-badge"
-import { AlertTriangle } from "lucide-react"
+import { filterTitle } from "@/components/feed/filter-labels"
+import { AlertTriangle, EyeOff, Tag } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { OpportunityListItem } from "@/lib/contract/types"
 
@@ -20,6 +21,7 @@ export function OpportunityCard({
   onOpen: () => void
 }) {
   const o = opportunity
+  const isHidden = o.hidden_by.length > 0
 
   return (
     <li>
@@ -28,9 +30,18 @@ export function OpportunityCard({
         onClick={onOpen}
         aria-haspopup="dialog"
         data-testid={`opportunity-card-${o.id}`}
+        data-hidden={isHidden}
         className={cn(
-          "flex w-full flex-col gap-2 rounded-lg border border-border bg-card p-4 text-left transition-colors",
-          "hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:border-ring"
+          "flex w-full flex-col gap-2 rounded-lg border p-4 text-left transition-colors",
+          "hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:border-ring",
+          // A row only ever appears here via the founder's own "Show
+          // hidden" control (see page.tsx) — it must never blend in with
+          // an ordinary visible card, so it gets a dashed border and a
+          // muted fill in addition to the badge below (never colour or
+          // border alone).
+          isHidden
+            ? "border-dashed border-amber-600/40 bg-amber-50/40 dark:bg-amber-950/20"
+            : "border-border bg-card"
         )}
       >
         <div className="flex flex-wrap items-start justify-between gap-2">
@@ -53,6 +64,16 @@ export function OpportunityCard({
         <div className="flex flex-wrap items-center gap-1.5">
           <DecisionBadge decision={o.decision} />
           <Badge variant="outline">{o.track}</Badge>
+          {isHidden && (
+            <Badge
+              data-testid={`hidden-badge-${o.id}`}
+              variant="outline"
+              className="gap-1 border-amber-600/40 bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-200"
+            >
+              <EyeOff aria-hidden="true" className="size-3" />
+              Hidden by {o.hidden_by.map(filterTitle).join(", ")}
+            </Badge>
+          )}
           {o.is_stale && (
             <Badge
               variant="outline"
@@ -71,6 +92,25 @@ export function OpportunityCard({
             <Badge variant="outline">{o.feedback_label.replaceAll("_", " ")}</Badge>
           )}
         </div>
+
+        {o.flagged_by.length > 0 && (
+          <div
+            aria-label="Ranked or labelled by"
+            className="flex flex-wrap items-center gap-1.5"
+          >
+            {o.flagged_by.map((filterId) => (
+              <Badge
+                key={filterId}
+                data-testid={`flag-chip-${o.id}-${filterId}`}
+                variant="outline"
+                className="gap-1 text-muted-foreground"
+              >
+                <Tag aria-hidden="true" className="size-3" />
+                {filterTitle(filterId)}
+              </Badge>
+            ))}
+          </div>
+        )}
 
         {o.top_reasons.length > 0 && (
           <ul className="space-y-0.5 text-xs text-muted-foreground">
