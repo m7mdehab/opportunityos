@@ -59,6 +59,21 @@ class FieldProvenanceRecord(Base):
 
     opportunity = relationship("OpportunityRecord", back_populates="provenances")
 
+    __table_args__ = (
+        # Natural identity for a provenance row (see migration
+        # 0003_provenance_identity for why this tuple, not the brief's
+        # ("opportunity_id", "field_name", "source_locator") -- there is no
+        # source_locator column, and raw_pointer, the closest analogue, is
+        # nullable and therefore unusable in a PostgreSQL unique constraint).
+        # The surrogate ``id`` stays the primary key so ``Session.merge()``
+        # (storage/repository.py) has a stable target; this constraint is
+        # what gives the row its natural identity and prevents a re-poll
+        # from accumulating duplicate provenance rows for the same field.
+        UniqueConstraint(
+            "opportunity_id", "field_name", "record_checksum", name="uq_field_provenances_identity"
+        ),
+    )
+
 
 class OutboundActionRecordModel(Base):
     __tablename__ = "outbound_actions"

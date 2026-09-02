@@ -1218,6 +1218,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
                 .all()
             )
             self.assertGreater(len(prov_rows), 0, "field_provenances rows must exist for the persisted opportunity")
+            original_prov_count = len(prov_rows)
         finally:
             verify_session.close()
 
@@ -1231,6 +1232,19 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             unchanged_row = verify_session.query(OpportunityRecord).filter_by(id=opp_id).first()
             self.assertEqual(unchanged_row.content_hash, original_content_hash)
             self.assertIsNone(unchanged_row.reverified_at, "an unchanged posting must not be re-verified")
+
+            prov_count_after_run2 = (
+                verify_session.query(FieldProvenanceRecord)
+                .filter_by(opportunity_id=opp_id)
+                .count()
+            )
+            self.assertEqual(
+                prov_count_after_run2,
+                original_prov_count,
+                "an identical re-poll must not accumulate duplicate field_provenances rows "
+                "(D5: (opportunity_id, field_name, record_checksum) is a natural-identity "
+                "unique constraint, and re-persist must be idempotent against it)",
+            )
         finally:
             verify_session.close()
 
@@ -1255,6 +1269,18 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             self.assertNotEqual(updated_row.content_hash, original_content_hash)
             self.assertFalse(updated_row.is_stale)
             self.assertIsNotNone(updated_row.reverified_at, "a changed posting must set reverified_at")
+
+            prov_count_after_run3 = (
+                verify_session.query(FieldProvenanceRecord)
+                .filter_by(opportunity_id=opp_id)
+                .count()
+            )
+            self.assertEqual(
+                prov_count_after_run3,
+                original_prov_count,
+                "a changed posting under the same identity must replace field_provenances rows "
+                "in place, not accumulate duplicates alongside the old ones",
+            )
         finally:
             verify_session.close()
 
