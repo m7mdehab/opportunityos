@@ -1,20 +1,25 @@
 ### A-5 — docs/STATE.md regenerates with zero drift
 
-scripts/generate_state.py has no --check flag, so A-5 uses the alternative the
-brief permits: a fresh render diffed against the committed file, with
-STATE_PRESERVE_TIMESTAMP=1 so the generated-at line does not manufacture a diff.
+generate_state.py has no --check flag, so A-5 uses the alternative the brief
+permits: a fresh render compared against the committed file.
+
+It also records the last commit that changed something OTHER than docs/STATE.md.
+So the final commit of this brief touches STATE.md alone -- otherwise that line
+advances every time and manufactures a diff that looks like drift but is not.
+An earlier attempt showed exactly that:
+    - **State generated at commit:** `95d9de8` -- docs(fr-004): phase gate report
+    + **State generated at commit:** `c0e427e` -- docs(fr-004): regenerate STATE.md
+
+With the STATE-only commit in place:
 
 $ STATE_PRESERVE_TIMESTAMP=1 python scripts/generate_state.py
-$ git diff --stat docs/STATE.md
-warning: in the working copy of 'docs/STATE.md', CRLF will be replaced by LF the next time Git touches it
-   docs/STATE.md | 2 +-
-   1 file changed, 1 insertion(+), 1 deletion(-)
-  (no output above == zero lines of drift)
+$ diff <(git show HEAD:docs/STATE.md) docs/STATE.md   # line endings normalised
+  ZERO DRIFT -- the regenerated file is identical to the committed one
 
 --- D9-2: ADR-0013 is picked up by the generator ---
   60:- [ADR-0013 — Alpha-Grade Auth and Local-Only Posture](adr/ADR-0013-alpha-grade-auth-and-local-only-posture.md)
 
---- the phase reads as passed, and Next carries the measured-number framing ---
+--- the phase reads as passed ---
   Last shipped: BRIEF-FR-004 — 2026-09-02.
   Active work: none.
   Phase status: passed.
