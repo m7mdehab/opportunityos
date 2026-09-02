@@ -25,7 +25,7 @@ at `http://localhost:3000` and sees a ranked feed with scores, decisions, field-
 provenance, feedback capture and applied/dismiss/snooze triage. The strip across the top is
 the measured number.
 
-Ten deliverables closed. The suite went from 466 tests to **582**, all passing on real
+Ten deliverables closed. The suite went from 466 tests to **585**, all passing on real
 PostgreSQL with zero skips. Three council reviews returned **1 BLOCKER, 5 MAJOR, 6 MINOR and
 5 NIT**; fifteen fixed, two dispositioned. An independent verifier re-ran the ledger in a
 fresh context and returned **nine defects**, four of them the Master's own.
@@ -51,28 +51,47 @@ number would have been bucketed into the wrong days, silently and plausibly.
 
 ## 2. Status
 
-**PASS.**
+**PASS_WITH_NOT_CLOSED.**
 
-All ten deliverables are closed. A-0 through A-9 pass with Master evidence, and the claims
-the verifier failed were fixed and re-verified afterwards. Three council reviews are fixed or
-dispositioned with reasons. `docs/STATE.md` regenerates with zero drift, the guard and
-repository-integrity checks exit 0, and the readiness matrix regenerates cleanly with MISSING
-falling from 22 to 11.
+Nine deliverables are closed. **D6 is partially `NOT_CLOSED`** and **A-6 is `NOT_CLOSED`**,
+both on the independent verifier's judgement, which this report accepts rather than argues
+with.
 
-**PASS here means what §8 says it means: ready for the founder to run the acceptance
-script.** It does not mean every step of that script will succeed. Steps 6 to 8 will report a
-known limitation, documented in §9 so the founder meets it as information rather than as a
-failure. The brief's real outcome — the measured daily number — is produced by the founder
-after merge, not by this brief.
+**D6 — the artifact routes.** §2 D6 names `GET /api/opportunities/{id}/artifacts/cv.docx`
+and `/cover-letter.docx` as deliverables. The cover-letter route returns 409 for **every**
+realistic truth pack, always, by construction: the compiler's generated prose necessarily
+names the target role and company, and the validator refuses any claim whose material terms
+are absent from the founder's own evidence, where those words can never appear. The CV route
+returns 409 for any pack containing an employment record. §8 defines PASS as "ready for the
+founder to run the acceptance script", and steps 6, 7 and 8 of that script are Generate CV,
+verify the claims, and open the CV. Those steps cannot pass. Recording D6 as closed with a
+template footnote would have overstated it.
 
-Two things a reader should weigh when deciding whether to trust this PASS. First, four of the
-nine verifier defects were the Master's own, including a recorded green that reproduced only
-on one machine; they are listed in §5 and §8 in the same voice as everyone else's. Second,
-the four-table schema ruling is presented for the Overseer to disposition rather than as
-settled, because the verifier's reservation about it is reasonable and this report does not
-overrule it.
+**A-6 — the scope diff.** Its expected result is a closed set of paths. Two files sit outside
+it: `matching/compiler_employment.py` and `matching/test_compiler.py`, carrying the one-word
+fix that turns a crash into a refusal. The change itself is right and is not reverted. But as
+the verifier put it, marking the claim PASS "retro-fits the expected result to the
+observation, which is the one thing a claim ledger exists to prevent". It is a justified
+scope deviation, dispositioned with a reason — a category §5 provides for — and not a pass.
 
----
+Everything else holds. A-0 through A-5 and A-7 through A-9 pass with Master evidence and were
+re-verified independently after the fixes. Three council reviews are fixed or dispositioned.
+`docs/STATE.md` regenerates with zero drift, guard and repository integrity exit 0, and the
+readiness matrix regenerates cleanly with MISSING falling 22 → 11 and every flipped row
+carrying `status_history` — which the verifier confirmed is now non-vacuous, having been a
+vacuous pass when zero rows had changed.
+
+**What PASS_WITH_NOT_CLOSED means here.** The engine, the API, the front end, the scheduler
+and the one-command runner all work, and the founder can log in and see a ranked feed over
+real polled data. One named capability does not work and is documented rather than disguised.
+The measured daily number — the brief's actual outcome — is still obtainable, because it
+depends on the feed and the dashboard, not on document generation.
+
+Two things a reader should weigh. Four of the nine findings in the first verification pass
+were the Master's own errors, including a recorded green that reproduced only on one machine;
+they are in §5 and §8 in the same voice as everyone else's. And the four-table schema ruling
+is presented for the Overseer to disposition rather than as settled.
+
 ## 3. Deliverables
 
 "Loops" counts implementer cycles under §5 step 3; 1 means accepted on the first return.
@@ -86,7 +105,7 @@ again by an independent verifier afterwards.
 | D3 | Discovery persistence seam | CLOSED | `d3-persistence.txt` | PASS | PASS | n/a | 2 |
 | D4 | Match evaluation persistence, migration `0002` | CLOSED | `d4-match-evaluations.txt` | PASS | PASS | 8 findings: 7 fixed, 1 dispositioned | 4 |
 | D5 | Truth pack loading and founder template | CLOSED | `d5-truth-pack.txt` | PASS | PASS | n/a | 1 |
-| D6 | FastAPI service | CLOSED | `d6-api.txt` | PASS | PASS | 4 findings, all fixed | 4 |
+| D6 | FastAPI service | **PARTIALLY NOT_CLOSED** | `d6-api.txt` | PASS | PASS except the artifact routes | 4 findings, all fixed | 5 |
 | D7 | Next.js shell and the one page | CLOSED | screenshots, trace | PASS | PARTIAL — see §5 | n/a | 6 |
 | D8 | Scheduler and local runner | CLOSED | `d8-scheduler-alpha.txt` | PASS | PASS (D8-4/5 N/A) | n/a | 5 |
 | D9 | ADR-0013 alpha-grade auth | CLOSED | `d9-adr-0013.txt` | PASS | PASS | n/a | 1 |
@@ -136,12 +155,12 @@ Every figure below was produced by the Master on this machine, against real Post
 | Claim | Result |
 |---|---|
 | A-0 fail-closed probe | `Ran 12 tests`, `OK` — unchanged from `main`, byte-identical |
-| A-1 full suite on real PostgreSQL | `Ran 581 tests`, `OK`, **zero skips** (466 at FR-003) |
-| A-2 per-module counts | reconcile exactly to 581; table in `a2-module-counts.txt` |
+| A-1 full suite on real PostgreSQL | `Ran 585 tests`, `OK` (466 at FR-003); 2 platform-inapplicable skips on Windows, 0 on CI |
+| A-2 per-module counts | reconcile exactly to the suite total; table in `a2-module-counts.txt` |
 | A-3 migration round-trip through `0002` | exit 0 at each step; four tables 4 → 0 → 4 |
 | A-4 guard, PII and repository integrity | both exit 0 |
 | A-5 `STATE.md` drift | zero lines under `STATE_PRESERVE_TIMESTAMP=1` |
-| A-6 scope diff | inside §2's paths plus `pyproject.toml` and `test.yml`; one disposition, below |
+| A-6 scope diff | **NOT_CLOSED** — two `matching/` files outside the closed set; dispositioned below |
 | A-7 `npm run build` / `npm run lint` | both exit 0, lint at `--max-warnings=0` |
 | A-8 Playwright | mock config **7 passed** with `.env.local` absent; real stack **1 passed** at 3210/8210 |
 | A-9 `alpha.py` transcript | up in **26 s**, logged-in feed of 138 opportunities, clean teardown |
@@ -159,7 +178,7 @@ requires.
 
 ### Two figures worth reading carefully
 
-**581 tests, not 466.** The suite grew by 115. That is not padding: it includes a
+**585 tests, not 466.** The suite grew by 119. That is not padding: it includes a
 two-session PostgreSQL race on an expired lease (Case T), a backup round-trip that seeds all
 four new tables and asserts them field-by-field after restore, an API fail-closed test that
 enumerates the application's own route table, and a Playwright smoke that now runs in two
@@ -172,14 +191,23 @@ fallback, a stale log misread, and success inferred from a log line rather than 
 liveness — plus one collision the Master caused by assigning two agents the same port. Only
 the final uninterrupted run is published.
 
-### A-6 disposition
+### A-6 disposition — recorded as NOT_CLOSED, not as a pass
 
 `matching/compiler_employment.py` and `matching/test_compiler.py` are outside §2's named
 paths. The change is one word — `m.semantic_context` → `m.context` — and without it any
 truth graph containing a metric raised `AttributeError`, so D6's named "Download tailored
-CV" route returned 500 for any founder who recorded a quantified achievement. The Master
-ruled it into D6's scope on the ground that the deliverable whose named route crashes owns
-the crash. Raised by the verifier; recorded here rather than passed silently.
+CV" route returned 500 for any founder who recorded a quantified achievement. The Master ruled the *change* into D6's scope on the ground that the deliverable whose named
+route crashes owns the crash, and the independent verifier agreed the change is defensible and
+should not be reverted.
+
+It also judged the **claim** failed, and this report accepts that. §1 of the brief names a
+closed list of three unfrozen paths and A-6's expected result is a closed set; an observed set
+that is larger does not pass, however good the reason. Marking it PASS would retro-fit the
+expected result to the observation, which is precisely what a ledger prevents.
+
+One correction to an earlier overstatement: the fix converts a **500 into a 409**, not into a
+working download. With a metric-bearing graph the CV still rejects its composite summary
+claim. "The route was crashing" is true; "and now it works" is not.
 
 ---
 ## 5. Claim ledger
@@ -849,6 +877,74 @@ are recorded in the same voice as everyone else's.
     packet rather than discovered by them, and reconciling the compiler with the validator
     is named as the top item for the next brief. Both files are frozen here.
 
+48. **The re-verification overturned two of the Master's own verdicts, and this report
+    accepts both.** A-6 was going to be reported PASS with a disposition; the verifier
+    judged the claim simply failed, because §1 names a closed list of three unfrozen paths
+    and A-6's expected result is a closed set — an observed set that is larger does not
+    pass, however good the reason, and marking it PASS retro-fits the expected result to the
+    observation. D6 was going to be reported closed with a template footnote; the verifier
+    judged the artifact routes partially `NOT_CLOSED`, because §2 names them as deliverables
+    and §8 defines PASS as ready to run the acceptance script, whose steps 6 to 8 cannot
+    pass. Both corrections are adopted. The terminal gate moved from PASS to
+    PASS_WITH_NOT_CLOSED as a result.
+
+49. **The `semantic_context` fix was oversold in an earlier draft.** It converts a **500
+    into a 409**, not into a working download: with a metric-bearing graph the CV still
+    rejects its composite summary claim. "The route was crashing" is true; "and now it
+    works" is not, and the first draft of §4 implied the latter.
+
+50. **A tautological assertion in the limitation test, found by the re-verification.**
+    `truth/test_pack.py` set `docx_bytes = None` and then asserted it was None, testing its
+    own arithmetic rather than the API's gate — it would have passed whatever
+    `api/routes_api.py` did. The real gate is genuinely covered by
+    `ArtifactRoutesTest.test_artifact_409_never_returns_docx_bytes`, which asserts a real 409
+    and that the body does not begin with the `PK` zip signature. The dead assertion is
+    removed; the two load-bearing ones — every rejection carries a reason, and at least one
+    rejection is observed — remain, and that second one is the tripwire that stops anyone
+    closing this defect by weakening the validator.
+
+51. **A docstring that overstated impossibility.** The limitation test claimed the only route
+    to zero rejections was writing the compiler's vocabulary into the founder's evidence. Two
+    files on this branch disprove it — `web/tests/e2e/truth_pack.e2e.yaml` and
+    `api/test_api.py::_clean_truth_pack_graph()` both reach zero by **omitting the employment
+    record**. That is no use to a founder, since a CV with no job history is not a CV, but it
+    is a counter-example, and the docstring also identified an ingest **ordering bug** as
+    though it were a law of nature. Corrected to say precisely what is true: no change to
+    template *data* fixes it, the cover letter is unfixable by data because it must name the
+    target employer, and both underlying causes are fixable in code that is frozen here.
+
+52. **Two artifact tests are degenerate, and the report says so rather than leaning on them.**
+    `api/test_api.py::test_artifact_200_on_clean_fixture` passes only because its fixture has
+    one skill, no employment record and no metrics — the exact shape that dodges both guards.
+    The real-stack Playwright CV download uses `web/tests/e2e/truth_pack.e2e.yaml`, which is
+    the same shape. Both files say so candidly in their own headers, which is to their credit,
+    but **no test anywhere exercises a 200 against a pack a founder would plausibly write**,
+    because no such pack can currently produce one. That is the substance of D6's partial
+    `NOT_CLOSED`.
+
+53. **A claim command that did not test its own claim.** D10-4's grep matched first inside the
+    ledger table the report reproduces, several hundred lines before the real Founder
+    Acceptance section — so it would have exited 0 even if that section had never been
+    written. The claim was true; the command did not establish it. Corrected. This is the same
+    self-match hazard FR-003 hit with its vendor-name grep, recurring in a different place.
+
+54. **A vocabulary binding in the pre-delegation ledger was wrong.** `CLAIMS.md` bound artifact
+    rejection to `ClaimVerificationResult.verified` / `.rejection_reasons`; the real fields are
+    `.allowed` / `.reasons`. Every implementation used the real ones — the Master hit the same
+    error live and corrected it mid-flight — but the ledger's authoritative binding was wrong
+    for the whole brief. Corrected, with the correction marked as after-the-fact so a reader
+    is not misled about a document written before delegation.
+
+55. **A governance observation from the verifier, surfaced rather than absorbed.** Its words:
+    a branch under review modified the governing brief to widen the authority of the agent
+    working that branch, and `briefs/**` sits inside A-6's allowed path list, so the scope
+    claim does not surface the change. That is an accurate description of what happened. The
+    authority is real and came from the founder's own session turn, the Addendum is
+    self-labelled as granting nothing, and three separate agents independently refused to act
+    on it — but the *mechanism* deserves to be seen rather than inherited. Whoever signs this
+    off should read `briefs/BRIEF-FR-004.md`'s Addendum deliberately.
+
+
 ---
 
 ## 9. Founder acceptance packet
@@ -1062,9 +1158,9 @@ rediscovered:**
 
 ## Decision
 
-**PASS.**
+**PASS_WITH_NOT_CLOSED.**
 
-Ten deliverables closed; A-0 through A-9 evidenced by the Master and re-verified
+Nine deliverables closed, D6 partially NOT_CLOSED and A-6 NOT_CLOSED; the remaining claims evidenced by the Master and re-verified
 after fixes; three council reviews fixed or dispositioned; STATE regenerates with
 zero drift. One capability — tailored document generation — is documented as a known
 limitation rather than forced to a false green, and the founder is told so in §9
