@@ -40,7 +40,8 @@ from storage.models import (
     WorkerJobRecord,
 )
 from truth.graph import TruthGraph
-from truth.models import CareerProfile, EvidenceRecord, SkillRecord
+from truth.models import CareerProfile, EmploymentRecord, EvidenceRecord, SkillRecord
+from truth.validator import ClaimValidator
 
 from api.app import create_app
 from api.settings import Settings
@@ -705,6 +706,82 @@ def _clean_truth_pack_graph() -> TruthGraph:
     return graph
 
 
+def _unsupported_skill_term_graph() -> TruthGraph:
+    """ADR-0014 tripwire fixture: an unsupported FOUNDER-specific term must
+    still be rejected once classes (b)/(c) are wired into
+    `ClaimValidator.validate_claim`.
+
+    This exploits a documented, pre-existing gap the same shape as
+    `_mismatched_truth_pack_graph`'s polarity gap, but for lexical coverage
+    instead of negation: `TruthGraph.add_career_profile`'s field-provenance
+    check resolves a skill name through `truth.ingest.CANONICAL_SKILL_ALIASES`
+    (so a skill literally named "K8s" is accepted against evidence that only
+    ever says "Kubernetes" -- "k8s" -> "Kubernetes" is a known alias, and the
+    canonical form's tokens are what the graph checks against the evidence).
+    `ClaimValidator.validate_claim` has no such alias fallback: it requires
+    the claim text's own literal words to be covered by cited evidence,
+    `CONNECTIVE_TERMS`, or caller-supplied opportunity terms -- none of
+    which is "k8s" here. The compiler's atomic skill claim (bare
+    `str(skill.value)`, i.e. "K8s") is therefore rejected, proving classes
+    (b)/(c) cannot rescue a term that is not genuinely evidence-backed,
+    connective boilerplate, or a real opportunity field value.
+    """
+    evidence = (
+        EvidenceRecord("ev-k8s", "Has hands-on Kubernetes experience.", "synthetic_cv", "skills.0"),
+    )
+    graph = TruthGraph(evidence)
+    profile = CareerProfile(
+        id="career-alias-gap",
+        evidence_ids=(),
+        skills=(SkillRecord("skill-k8s", "K8s", ("ev-k8s",)),),
+    )
+    graph.add_career_profile(profile)
+    return graph
+
+
+def _class_b_c_admissible_graph() -> TruthGraph:
+    """ADR-0014 tripwire fixture: a claim whose only "uncovered" terms are
+    class (b) (opportunity-provenanced, e.g. the target role/employer name)
+    or class (c) (the committed `truth/connective_terms.txt` stop-list) must
+    NOT be rejected.
+
+    A single, evidence-backed employment title ("Data Engineer", cited to
+    its own evidence) is enough to make `EmploymentArtifactCompiler.
+    compile_cover_letter` emit the `claim-cover-role` claim, which by design
+    (see `matching/compiler_employment.py`) combines that one founder fact
+    with the target opportunity's own title/organization words -- admissible
+    only because `_compile_and_export` derives `opportunity_terms` from this
+    exact `Opportunity`'s real field values -- and generic letter-structure
+    words ("professional", "background", "applying", "role") on the
+    committed connective stop-list.
+    """
+    evidence = (
+        EvidenceRecord(
+            "ev-cb-org", "Prior Employer Ltd", "synthetic_cv", "employment.0.organization",
+            metadata={"organization": "Prior Employer Ltd"},
+        ),
+        EvidenceRecord(
+            "ev-cb-title", "Data Engineer", "synthetic_cv", "employment.0.title",
+            metadata={"title": "Data Engineer"},
+        ),
+        EvidenceRecord("ev-cb-dates", "2020-01-01 to 2022-01-01", "synthetic_cv", "employment.0.dates"),
+    )
+    graph = TruthGraph(evidence)
+    profile = CareerProfile(
+        id="career-class-bc",
+        evidence_ids=(),
+        employment=(
+            EmploymentRecord(
+                id="job-class-bc", organization="Prior Employer Ltd", title="Data Engineer",
+                start_date=date(2020, 1, 1), end_date=date(2022, 1, 1),
+                evidence_ids=("ev-cb-org", "ev-cb-title", "ev-cb-dates"),
+            ),
+        ),
+    )
+    graph.add_career_profile(profile)
+    return graph
+
+
 class ArtifactRoutesTest(ApiTestCase):
     def setUp(self):
         super().setUp()
@@ -773,6 +850,108 @@ class ArtifactRoutesTest(ApiTestCase):
         self.assertIn("claim", finding)
         self.assertIn("assertion_type", finding)
         self.assertIn("rejection_reasons", finding)
+
+        # ADR-0014 tripwire, "saw_rejection" style: classes (b)/(c) must be
+        # structurally incapable of rescuing an unsupported FOUNDER-specific
+        # term. This calls `ClaimValidator.validate_claim` directly (fresh,
+        # single-evidence graph, isolated from the polarity gap the HTTP
+        # assertions above exercise) and would FAIL if guard 9 (material
+        # lexical coverage) were ever neutralised, or if the boundary of
+        # class (b)/(c) admissibility were ever loosened from "this exact,
+        # closed set of words" to "any unrecognised word".
+        clean_evidence = EvidenceRecord(
+            "ev-tripwire-title", "Data Engineer with distributed systems background.",
+            "synthetic_cv", "employment.title",
+        )
+        direct_graph = TruthGraph((clean_evidence,))
+        direct_validator = ClaimValidator(direct_graph)
+        fabricated_term = "zorbaflex"  # not a real word: cannot coincidentally
+        # be evidence-backed, on the committed connective stop-list, or a real
+        # opportunity field value.
+        fabricated_claim = f"Data Engineer with {fabricated_term} background."
+
+        rejected = direct_validator.validate_claim(fabricated_claim, ("ev-tripwire-title",))
+        saw_rejection = not rejected.allowed and any(
+            fabricated_term in reason for reason in rejected.reasons
+        )
+        self.assertTrue(
+            saw_rejection,
+            f"expected the validator to reject an unsupported founder term; got {rejected}",
+        )
+
+        # The SAME claim passes once (and only once) the fabricated term is
+        # explicitly declared class (b) -- proving admissibility is scoped
+        # exactly to the caller-supplied set, not a general escape hatch.
+        rescued = direct_validator.validate_claim(
+            fabricated_claim, ("ev-tripwire-title",), opportunity_terms={fabricated_term},
+        )
+        self.assertTrue(rescued.allowed, rescued.reasons)
+
+    def test_artifact_409_on_unsupported_founder_term_via_skill_alias_gap(self):
+        """ADR-0014: an unsupported FOUNDER-specific term still 409s and
+        never returns docx bytes through the real HTTP path, even with
+        classes (b)/(c) wired into `_compile_and_export`'s validation loop.
+        See `_unsupported_skill_term_graph` for the exact mechanism."""
+        import unittest.mock as mock
+
+        self.seed_opportunity("opp-alias-gap")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            from truth.pack import LoadedPack, PackValidationReport
+
+            graph = _unsupported_skill_term_graph()
+            loader.return_value = LoadedPack(
+                graph=graph,
+                report=PackValidationReport(valid=True, section_counts=(("evidence", 1),)),
+                truth_pack_hash="alias-gap-hash",
+            )
+            client.post("/api/truth/reload")
+
+            response = client.get("/api/opportunities/opp-alias-gap/artifacts/cv.docx")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(response.content.startswith(b"PK"))
+        body = response.json()
+        self.assertGreaterEqual(len(body["findings"]), 1)
+        self.assertTrue(
+            any("k8s" in finding["claim"].casefold() for finding in body["findings"]),
+            body["findings"],
+        )
+
+    def test_artifact_200_when_only_uncovered_terms_are_opportunity_or_connective(self):
+        """ADR-0014: a claim whose only uncovered terms are class (b)
+        (opportunity-provenanced -- the target role/employer name, derived
+        by `_compile_and_export` from this exact Opportunity's real field
+        values) or class (c) (the committed connective stop-list) is not
+        rejected. See `_class_b_c_admissible_graph` for the exact claim this
+        exercises."""
+        import unittest.mock as mock
+
+        self.seed_opportunity("opp-class-bc")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            from truth.pack import LoadedPack, PackValidationReport
+
+            graph = _class_b_c_admissible_graph()
+            loader.return_value = LoadedPack(
+                graph=graph,
+                report=PackValidationReport(valid=True, section_counts=(("evidence", 1),)),
+                truth_pack_hash="class-bc-hash",
+            )
+            client.post("/api/truth/reload")
+
+            response = client.get("/api/opportunities/opp-class-bc/artifacts/cover-letter.docx")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.headers["content-type"],
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+        self.assertTrue(response.content.startswith(b"PK"), "response body is not a docx/zip payload")
 
     def test_artifact_412_when_no_truth_pack_loaded(self):
         self.seed_opportunity("opp-nopack")

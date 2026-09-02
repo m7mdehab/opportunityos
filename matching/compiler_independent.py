@@ -45,6 +45,11 @@ class IndependentArtifactCompiler:
         pm = opp.procurement_metadata
 
         # 1. Understanding of Scope & Terms of Reference
+        # ADR-0014: pure boilerplate carrying no founder-specific fact (it
+        # names only the opportunity, via opp.organization/opp.title, and
+        # generic proposal-structure language) -- a NARRATIVE segment, not a
+        # claim `ClaimValidator` has to (and structurally cannot) verify
+        # against founder evidence.
         scope_text = (
             f"Technical response to {opp.organization} tender: '{opp.title}'. "
             f"This proposal establishes the technical approach, capability evidence, and delivery framework "
@@ -64,6 +69,7 @@ class IndependentArtifactCompiler:
             section_id="scope_understanding",
             assertion_ids=(),
             evidence_ids=(),
+            policy_source="NARRATIVE",
         ))
 
         # 2. Institutional / Practitioner Capabilities & Relevant Services
@@ -73,10 +79,11 @@ class IndependentArtifactCompiler:
         ]
         srv_names = tuple(str(s.value) for s in service_assertions)
         if service_assertions:
-            srv_content = (
-                f"Professional advisory and engineering services available for this assignment:\n" +
-                "\n".join(f"- {s}" for s in srv_names)
-            )
+            # Content mirrors the atomic per-service claims below exactly (one
+            # bullet per claim's bare, evidence-covered text) -- no lead
+            # sentence is injected here so every word rendered into the DOCX
+            # traces to an evidence-backed claim (ADR-0014).
+            srv_content = "\n".join(f"- {s}" for s in srv_names)
             sections.append(ArtifactSection(
                 section_id="capabilities",
                 heading="Verified Core Capabilities & Service Offerings",
@@ -98,9 +105,18 @@ class IndependentArtifactCompiler:
                 ))
 
         # 3. Verified Portfolio & Case Studies
+        # NOTE: `CANONICAL_MATERIAL_MANIFEST` (truth/models.py, frozen) projects
+        # `portfolio.title` and `portfolio.summary` for a `PortfolioItem` -- it
+        # has never projected a `portfolio.item` predicate. The prior read
+        # here (`a.predicate == "portfolio.item"`) matched nothing for any
+        # pack, shipped template included, so this section never rendered.
+        # Reading `portfolio.title` (short, name-like, consistent with how
+        # `service.name` is already read just above) is the minimal in-scope
+        # fix that makes this section -- and its atomic, evidence-backed
+        # claims -- actually generate.
         portfolio_assertions = [
             a for a in truth_graph.assertions.values()
-            if a.predicate == "portfolio.item" and a.verification_status == VerificationStatus.VERIFIED
+            if a.predicate == "portfolio.title" and a.verification_status == VerificationStatus.VERIFIED
         ]
         port_items = tuple(str(p.value) for p in portfolio_assertions)
         if portfolio_assertions:
@@ -119,6 +135,14 @@ class IndependentArtifactCompiler:
                     section_id="case_studies",
                     assertion_ids=(p.id,),
                     evidence_ids=p.evidence_ids,
+                    # NOTE: this is the compiler's own GeneratedClaim
+                    # claim-type tag (matched by `matching/validator.py`'s
+                    # `ArtifactClaimValidator`, a separate, frozen, out-of-
+                    # scope consumer keyed on this exact string) -- NOT a
+                    # truth-graph predicate. It is deliberately left as
+                    # "portfolio.item" and must not be confused with the
+                    # `a.predicate == "portfolio.title"` truth-graph lookup
+                    # fixed just above.
                     predicate="portfolio.item",
                     authorized_value=str(p.value),
                     is_forward_commitment=False,

@@ -1,0 +1,72 @@
+# Connective boilerplate stop-list (BRIEF-FR-005 D1 / ADR-0014, term class (c)).
+#
+# Every entry here is a single lower-case word that `truth/validator.py`
+# subtracts from a claim's "material" token set during the guard-9 lexical
+# coverage check, in addition to `_NON_MATERIAL_WORDS`. An entry belongs on
+# this list only if it is structural, letter-form, or CV/cover-letter label
+# vocabulary that carries no verifiable, founder-specific factual weight by
+# itself -- i.e. removing the word changes how a sentence reads, never what
+# fact it asserts. A proper noun, a skill name, a quantity, an employer name,
+# a role title, or any other value that could vary between two true and two
+# false claims must never appear here; those stay class (a) (founder-claim,
+# evidence-checked) or class (b) (opportunity-provenanced, passed explicitly
+# by the caller from real `Opportunity` field values -- never guessed here).
+#
+# This file is loaded once at import and only ever *widens* what guard 9
+# excuses from the "uncovered material term" rejection. It can never cause an
+# unsupported founder-specific claim to pass: guard 9 still requires every
+# other token in the claim to appear in the cited evidence or in the
+# caller-supplied opportunity-term set.
+
+# --- Letter-form greeting / closing vocabulary --------------------------
+# Salutation and sign-off words. They identify the document as a letter;
+# they assert nothing about the founder or the opportunity.
+dear
+sincerely
+regards
+faithfully
+yours
+truly
+warmly
+respectfully
+hello
+hi
+
+# --- Structural / label vocabulary for CV and cover-letter sections -----
+# Generic words that introduce or frame a fact that is *separately* claimed
+# and evidence-checked elsewhere (e.g. "Professional background: {title}."
+# still requires {title} itself to be covered by cited evidence).
+professional
+background
+summary
+application
+applying
+apply
+role
+position
+
+# --- Cover-letter narrative connective vocabulary ------------------------
+# Words used only to connect a greeting, a closing, or a generic expression
+# of interest -- never to state a specific fact.
+writing
+express
+interest
+interested
+consideration
+opportunity
+opportunities
+discuss
+discussing
+looking
+forward
+hear
+hearing
+welcome
+contribute
+team
+hiring
+manager
+please
+thank
+time
+consider
