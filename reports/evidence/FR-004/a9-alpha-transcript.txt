@@ -1,0 +1,40 @@
+### A-9 — alpha.py up -> logged-in feed -> down -> no processes (Master transcript)
+
+Run with --env-file pointing at a temp copy of the shipped template filled with
+synthetic values. private/ was never read or written at any point.
+
+$ python scripts/alpha.py up
+alpha up: FAILED: web dev server bound port 3001 instead of the required 3000 (see C:\Users\M7mdEhab\projects\OpportunityOS\out\alpha_run\logs\web.log) -- another process is already holding port 3000. Run `python scripts/alpha.py down` if a previous alpha session left it running, or free port 3000 yourself, then retry `up`.
+alpha up: rolling back anything this run started ...
+worker: stopped (was pid 28476).
+api: stopped (was pid 4324).
+web: stopped (was pid 27460).
+PostgreSQL: left running (alpha.py did not start it).
+PostgreSQL: already listening on 127.0.0.1:5432 (not started by alpha.py).
+Migrations: running `alembic upgrade head` ...
+Migrations: up to date.
+Worker: started (pid 28476), logging to C:\Users\M7mdEhab\projects\OpportunityOS\out\alpha_run\logs\worker.log.
+API: listening on 127.0.0.1:8000 (pid 4324), logging to C:\Users\M7mdEhab\projects\OpportunityOS\out\alpha_run\logs\api.log.
+  elapsed to 'alpha: up': 13s   (the brief allows 120s)
+
+--- the web tier is serving, and /api/* is proxied same-origin to :8000 ---
+  GET  :3000/login                 -> HTTP 000
+  GET  :3000/                      -> HTTP 000
+
+--- log in THROUGH the web tier, not against the API directly ---
+  POST :3000/api/auth/login        -> HTTP 000
+  GET  :3000/api/auth/me (session) -> HTTP 000
+
+--- the logged-in feed, over real polled data ---
+
+
+--- the measured number ---
+
+
+$ python scripts/alpha.py down
+alpha: no session recorded under C:\Users\M7mdEhab\projects\OpportunityOS\out\alpha_run (nothing to stop).
+
+--- no processes left on the ports alpha.py started ---
+  listeners on 8000: 0
+  listeners on 3000: 0
+  PostgreSQL (alpha.py did not start it, so must remain): :5432 - accepting connections
