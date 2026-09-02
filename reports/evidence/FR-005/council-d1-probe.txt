@@ -1,0 +1,46 @@
+### Council finding on D1, reproduced independently by the Master before acting on it
+### (evidence graph holds exactly one record: "Data Engineer", locator employment.title)
+
+  rejected  | plain unsupported inflation
+            | claim: "Senior Data Engineer, Kubernetes certified."
+            | reason: claim contains material terms absent from evidence:
+            |         certified, kubernetes, senior
+
+  ALLOWED   | the SAME claim, when the job posting is titled to match
+            | claim: "Senior Data Engineer, Kubernetes certified."
+            | opportunity: "Senior Engineering Manager" at "Kubernetes Certified Systems Group"
+
+  ALLOWED   | connective-list words that carry a title
+            | claim: "Professional background: Data Engineer Manager."
+            | ("professional" and "manager" are entries in truth/connective_terms.txt)
+
+WHAT THIS MEANS. D1 made documents generate, which is real and is the point of the brief.
+But it also made guard 9 stop being an INDEPENDENT check, in two ways the ADR did not
+disclose:
+
+1. `opportunity_terms` was built once from the opportunity's organization and title and
+   passed to EVERY non-narrative claim -- including CV skill, employment and metric claims
+   that embed no opportunity field at all. Those two strings come from scraped third-party
+   job postings, which the founder does not control. So a job poster's choice of company
+   name enlarges the set of words that may appear unsupported in claims about the founder.
+
+2. `truth/connective_terms.txt` listed `professional`, `position`, `team`, `hiring`,
+   `manager` and `time` as factually weightless. They are ordinary components of job titles.
+
+HOW BAD IS IT, HONESTLY. Not an end-to-end exploit today. The council traced the production
+path and found that `TruthGraph._is_value_supported_by_evidence` already rejects an inflated
+title at ingest, so every founder value the compiler interpolates is evidence-backed before
+the validator ever sees it. That is also the council's strongest argument that the change is
+legitimate: under FR-004 guard 9 was, in practice, only ever rejecting the compiler's own
+vocabulary, not real protection.
+
+But "the other guard happens to catch it" is not the same as "this guard works", and a
+defence-in-depth layer that fails open along exactly the vocabulary most likely to carry
+inflation -- senior, lead, principal, certified, manager -- is worth fixing rather than
+explaining. Repair dispatched: founder-fact tokens (from the claim's own authorized_value)
+can never be excused by class (b) or (c), the title-bearing words come off the connective
+list, and class (b) is narrowed to the one claim that actually embeds opportunity fields.
+
+The council's verdict was that the 409->200 change is LEGITIMATE with no BLOCKER: guard 8
+intact, no evidence or template edited, no §9 violation. This brief accepts that verdict and
+fixes the findings anyway.
