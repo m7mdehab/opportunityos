@@ -1,15 +1,14 @@
 """Background worker runner: claims and dispatches queued jobs to registered handlers.
 
-Known gap, documented rather than fixed here (``worker/queue.py`` is frozen for
-this deliverable): if a worker process crashes between claiming a job
-(status=RUNNING) and calling ``complete_job``/``fail_job``, the stale-lease
-sweep inside ``BackgroundWorkerQueue.claim_next_job`` recovers the job for
-another worker once its lease expires -- but that recovery path does not
-increment ``retry_count``. A job whose handler reliably crashes the *process*
-(a "poison" job, as opposed to one that merely raises) is therefore retried
-indefinitely rather than ever being counted against ``max_retries`` and
-dead-lettered. Fixing that would require changing ``worker/queue.py``, which
-is out of scope here.
+If a worker process crashes between claiming a job (status=RUNNING) and
+calling ``complete_job``/``fail_job``, the stale-lease sweep inside
+``BackgroundWorkerQueue.claim_next_job`` recovers the job for another worker
+once its lease expires. That sweep increments ``retry_count`` on each
+reclaim and dead-letters the job once ``max_retries`` is reached, exactly as
+``fail_job`` would for a handler that raises. A job whose handler reliably
+crashes the *process* (a "poison" job, as opposed to one that merely raises)
+is therefore bounded by ``max_retries`` and eventually dead-lettered the same
+way a repeatedly-raising job is, rather than being retried indefinitely.
 """
 from __future__ import annotations
 

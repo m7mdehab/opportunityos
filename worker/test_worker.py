@@ -69,6 +69,54 @@ class TestBackgroundWorkerQueue(unittest.TestCase):
         self.assertEqual(recovered_job.id, job_id)
         self.assertEqual(recovered_job.lease_owner, "w-2")
 
+    def test_stale_lease_reclaim_dead_letters_poison_job(self):
+        """A poison job (its handler always kills the worker process before
+        complete_job/fail_job can run) must still be bounded by max_retries: the
+        stale-lease reclaim path has to increment retry_count exactly as fail_job
+        would, and dead-letter the job once the threshold is reached instead of
+        reclaiming it forever (council C10-2).
+        """
+        max_retries = 3
+        job_id = self.queue.enqueue_job("POISON", {}, max_retries=max_retries)
+
+        # Simulate a dead worker: claim the job, then only ever expire its lease
+        # directly -- never call complete_job or fail_job, because a process that
+        # died mid-handler calls neither.
+        initial = self.queue.claim_next_job(lease_duration_seconds=1)
+        self.assertIsNotNone(initial, "expected the initial (non-reclaim) claim to succeed")
+        self.assertEqual(initial.id, job_id)
+        self.assertEqual(initial.status, "RUNNING")
+        self.assertEqual(initial.retry_count, 0)
+        initial.lease_expires_at = datetime.now(timezone.utc) - timedelta(seconds=10)
+        self.session.commit()
+
+        # The job is now RUNNING with an expired lease and was never completed or
+        # failed -- exactly `max_retries` stale-lease reclaims should be needed to
+        # dead-letter it (the last one must not hand the poison job back out).
+        for reclaim_attempt in range(1, max_retries + 1):
+            result = self.queue.claim_next_job(lease_duration_seconds=1)
+            if reclaim_attempt < max_retries:
+                self.assertIsNotNone(result, f"expected reclaim #{reclaim_attempt} to succeed")
+                self.assertEqual(result.id, job_id)
+                self.assertEqual(result.status, "RUNNING")
+                self.assertEqual(result.retry_count, reclaim_attempt)
+                result.lease_expires_at = datetime.now(timezone.utc) - timedelta(seconds=10)
+                self.session.commit()
+            else:
+                # The final reclaim pushes retry_count to max_retries: the job must
+                # be dead-lettered, not handed back to a worker.
+                self.assertIsNone(result, "a dead-lettered poison job must not be returned to a caller")
+
+        job = self.session.query(WorkerJobRecord).filter_by(id=job_id).first()
+        self.assertEqual(job.status, "DEAD_LETTER")
+        self.assertEqual(job.retry_count, max_retries)
+        self.assertIsNone(job.lease_owner)
+        self.assertIsNone(job.lease_expires_at)
+        self.assertIsNotNone(job.error_message)
+
+        # The dead-lettered poison job must never be handed back out.
+        self.assertIsNone(self.queue.claim_next_job(lease_duration_seconds=1))
+
 
 if __name__ == "__main__":
     unittest.main()
