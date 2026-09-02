@@ -18,3 +18,37 @@ export function definedProcessEnv(): Record<string, string> {
   }
   return result
 }
+
+/**
+ * A synthetic, non-credential value for a local-only alpha service secret
+ * (session signing key, founder password for a throwaway test database).
+ * Built at runtime from `Math.random()`, never a literal, so no assignment
+ * site here can ever match `scripts/check_guard.py`'s
+ * `ASSIGNED_SECRET` rule (a 12+ character quoted literal directly assigned
+ * to a name containing api-key/secret/token/password) -- the rule is
+ * right to reject that shape regardless of whether the value is real.
+ */
+export function syntheticSecret(prefix: string): string {
+  return (
+    `${prefix}-` +
+    Math.random().toString(36).slice(2) +
+    Math.random().toString(36).slice(2)
+  )
+}
+
+/**
+ * Ensures `process.env[name]` is set for the remainder of this process
+ * (used for `E2E_FOUNDER_PASSWORD`, which `tests/e2e/smoke.spec.ts` reads
+ * directly and which must equal the real API's configured founder
+ * password for the real-stack config's login step to succeed). Returns
+ * the resolved value either way.
+ */
+export function ensureEnv(name: string, fallback: () => string): string {
+  const existing = process.env[name]
+  if (existing) {
+    return existing
+  }
+  const value = fallback()
+  process.env[name] = value
+  return value
+}
