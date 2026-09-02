@@ -1,0 +1,40 @@
+### D6 — FastAPI service (Master re-run on the integrated branch)
+
+--- D6-1..3: refuses to start with any one of the three variables missing ---
+  $ env -u OPPORTUNITYOS_DB_URL python -c 'import api.app; api.app.app'   -> exit=1
+  $ env -u OPPORTUNITYOS_FOUNDER_PASSWORD python -c 'import api.app; api.app.app'   -> exit=1
+  $ env -u OPPORTUNITYOS_SESSION_SECRET python -c 'import api.app; api.app.app'   -> exit=1
+
+--- importing api.app must NOT require the environment, or unittest discover
+    cannot collect the suite at all (this was a blocker, caught pre-merge) ---
+  $ env -u ... python -c 'import api.app'   -> exit=0
+
+--- D6-6: constant-time password comparison ---
+api/security.py:36:    return hmac.compare_digest(candidate.encode("utf-8"), expected.encode("utf-8"))
+
+--- D6-2: the Case W family ---
+$ python -m unittest api.test_api 2>&1 | tail -3
+Ran 27 tests in 19.916s
+
+OK
+
+--- D6-14: live smoke against a real uvicorn server (Master run) ---
+  GET  /api/auth/me     (no session) -> HTTP 401
+  POST /api/auth/login  (correct pw) -> HTTP 200
+  POST /api/auth/login  (wrong pw)   -> HTTP 401
+  GET  /api/opportunities (session)  -> HTTP 200
+
+--- council finding 1, after the fix: the FastAPI docs routes were 200
+    with no session, contradicting 'every other route 401'. Now: ---
+  /openapi.json    (no session) -> HTTP 404
+  /docs            (no session) -> HTTP 404
+  /redoc           (no session) -> HTTP 404
+
+--- council finding 4: a login 422 no longer echoes the submitted value ---
+  $ curl -X POST /api/auth/login -d '{"password":98765}'
+  {"detail":[{"type":"string_type","loc":["body","password"],"msg":"Input should be a valid string"}]}
+  (the submitted 98765 does not appear in the response)
+
+--- D6-15: the captured server log leaks neither credential ---
+  password occurrences in log: 0
+  cookie   occurrences in log: 0
