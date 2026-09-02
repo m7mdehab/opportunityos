@@ -1,0 +1,44 @@
+=== A-6 ===
+$ git diff --stat main...HEAD | cat
+ .claude/agents/Explore.md                    |   7 +
+ .claude/agents/council-reviewer.md           |  13 +
+ .claude/agents/evidence-runner.md            |  10 +
+ .claude/agents/implementer.md                |  18 +
+ .claude/agents/verifier.md                   |  15 +
+ .claude/settings.json                        |  13 +
+ .github/workflows/guard.yml                  |   2 +-
+ .github/workflows/heartbeat.yml              |   2 +-
+ .github/workflows/mirror.yml                 |   2 +-
+ .github/workflows/state.yml                  |   2 +-
+ .github/workflows/test.yml                   |   8 +-
+ AGENTS.md                                    |   3 +
+ briefs/BRIEF-FR-003.md                       | 380 ++++++++++++++
+ docs/SOURCE_EVIDENCE.md                      |  18 +
+ docs/SOURCE_REGISTRY.yaml                    |  90 ++--
+ docs/STATE.md                                |  49 +-
+ docs/adr/ADR-0012-single-founder-tenancy.md  | 117 +++++
+ reports/FOUNDER_READINESS_MATRIX.json        | 740 ++++++++++++++++++---------
+ reports/FOUNDER_READINESS_MATRIX.md          | 360 ++++++-------
+ reports/REPORT-FR-002.md                     |  88 ++++
+ reports/REPORT-FR-003.md                     | 472 +++++++++++++++++
+ reports/evidence/FR-003/CLAIMS.md            |  58 +++
+ reports/evidence/FR-003/a2-module-counts.txt |  28 +
+ scripts/__init__.py                          |   1 +
+ scripts/backup_restore.py                    | 240 ++++++++-
+ scripts/generate_ci_status.py                |  20 +-
+ scripts/generate_readiness_matrix.py         | 228 +++++++++
+ scripts/generate_state.py                    | 102 +++-
+ scripts/test_backup_restore.py               | 263 +++++++++-
+ scripts/test_generate_ci_status.py           |  53 ++
+ scripts/test_generate_state.py               | 160 +++++-
+ scripts/test_readiness_matrix.py             | 127 +++++
+ scripts/test_sync_mirror.py                  |   5 +-
+ storage/test_fail_closed_probe.py            | 226 ++++++++
+ storage/test_postgres_integration.py         | 228 ++++++++-
+ worker/__main__.py                           |  85 +++
+ worker/handlers.py                           |  98 ++++
+ worker/runner.py                             | 384 ++++++++++++++
+ worker/test_runner.py                        | 325 ++++++++++++
+ 39 files changed, 4505 insertions(+), 535 deletions(-)
+exit=0
+

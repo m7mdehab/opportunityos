@@ -1,0 +1,29 @@
+=== D11-1 ===
+$ python -c "import yaml;d=yaml.safe_load(open('docs/SOURCE_REGISTRY.yaml',encoding='utf-8'));t={'jobicy','afdb'}|{s['source_id'] for s in d['sources'] if s['source_id'].startswith('ashby:')};r=[(s['source_id'],str(s.get('last_policy_reviewed')),s.get('observed',{}).get('status'),s.get('automation',{}).get('read')) for s in d['sources'] if s['source_id'] in t];print('n_targets',len(r));[print(x) for x in sorted(r)];print('min_last_policy_reviewed',min(x[1] for x in r));print('total_sources',len(d['sources']))"
+n_targets 15
+('afdb', '2026-09-02', 'robots_unreachable', 'disabled')
+('ashby:adaptive_innovations', '2026-09-02', 'robots_unreachable', 'disabled')
+('ashby:bedrock_robotics', '2026-09-02', 'robots_unreachable', 'disabled')
+('ashby:bjak', '2026-09-02', 'robots_unreachable', 'disabled')
+('ashby:cube', '2026-09-02', 'robots_unreachable', 'disabled')
+('ashby:farseer', '2026-09-02', 'robots_unreachable', 'disabled')
+('ashby:jellyfish', '2026-09-02', 'robots_unreachable', 'disabled')
+('ashby:linear', '2026-09-02', 'robots_unreachable', 'disabled')
+('ashby:openai', '2026-09-02', 'robots_unreachable', 'disabled')
+('ashby:paires', '2026-09-02', 'robots_unreachable', 'disabled')
+('ashby:posthog', '2026-09-02', 'robots_unreachable', 'disabled')
+('ashby:regard', '2026-09-02', 'robots_unreachable', 'disabled')
+('ashby:socket', '2026-09-02', 'robots_unreachable', 'disabled')
+('ashby:tessera_labs', '2026-09-02', 'robots_unreachable', 'disabled')
+('jobicy', '2026-09-02', 'robots_unreachable', 'disabled')
+min_last_policy_reviewed 2026-09-02
+total_sources 52
+exit=0
+
+=== D11-2 ===
+$ python -m unittest discover -s recon -t . -v 2>&1 | tail -3
+Ran 67 tests in 0.124s
+
+OK
+exit=0
+

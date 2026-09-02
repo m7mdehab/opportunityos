@@ -1,0 +1,12 @@
+=== D7-1 ===
+$ grep -n "## Erratum (2026-09-02, BRIEF-FR-003)" reports/REPORT-FR-002.md
+92:## Erratum (2026-09-02, BRIEF-FR-003)
+exit=0
+
+=== D7-2 ===
+$ python -m unittest scripts.test_readiness_matrix -v 2>&1 | tail -3
+Ran 6 tests in 0.046s
+
+OK
+exit=0
+

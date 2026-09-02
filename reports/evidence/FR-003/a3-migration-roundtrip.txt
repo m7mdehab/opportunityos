@@ -1,0 +1,14 @@
+=== A-3 ===
+$ OPPORTUNITYOS_DB_URL=$PGURL python -m alembic upgrade head; echo "upgrade_head_exit=$?"; OPPORTUNITYOS_DB_URL=$PGURL python -m alembic downgrade base; echo "downgrade_base_exit=$?"; OPPORTUNITYOS_DB_URL=$PGURL python -m alembic upgrade head; echo "upgrade_head_exit=$?"
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+upgrade_head_exit=0
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running downgrade 0001_baseline_schema -> , 0001_baseline_schema
+downgrade_base_exit=0
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001_baseline_schema, 0001_baseline_schema
+upgrade_head_exit=0
+

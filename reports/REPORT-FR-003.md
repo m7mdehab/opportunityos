@@ -137,7 +137,7 @@ FR-002 cited was never exercised in CI. Captured in `reports/evidence/FR-003/a2-
 ```
 $ OPPORTUNITYOS_DB_URL=$PGURL python -m unittest discover -v 2>&1 | tail -4
 ----------------------------------------------------------------------
-Ran 465 tests in 18.804s
+Ran 466 tests in 19.093s
 
 OK
 ```
@@ -156,16 +156,16 @@ log — no count is typed from memory:
 | opportunity | 60 | — |
 | matching | 52 | — |
 | storage | 32 | +13 (fail-closed probe ×12, Case S) |
-| scripts | 26 | +26 (previously collected by nothing) |
+| scripts | 27 | +27 (previously collected by nothing) |
 | inbox | 25 | — |
 | worker | 15 | +12 (`worker/test_runner.py`) |
 | core | 4 | — |
 | security | 3 | — |
 | feedback | 1 | — |
-| **total** | **465** | **+51** |
+| **total** | **466** | **+52** |
 
-The `scripts` row is the point of D4: those 26 tests existed but were collected by nothing,
-because `scripts/` was not a package. Twenty-six tests that never ran are now running, and one
+The `scripts` row is the point of D4: 26 of those 27 tests already existed and were collected by
+nothing, because `scripts/` was not a package. Twenty-six tests that never ran are now running, and one
 of them — `scripts.test_backup_restore` — is the evidence FR-002 cited for `REQ-P0C-005`.
 
 **Migration round-trip (A-3),** against the same database:

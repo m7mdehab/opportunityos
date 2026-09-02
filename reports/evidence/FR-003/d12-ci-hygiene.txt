@@ -1,0 +1,13 @@
+=== D12-1 ===
+$ grep -n "actions/checkout@|actions/setup-python@" .github/workflows/*.yml
+.github/workflows/guard.yml:17:      - uses: actions/checkout@v7
+.github/workflows/heartbeat.yml:27:      - uses: actions/checkout@v7
+.github/workflows/mirror.yml:24:      - uses: actions/checkout@v7
+.github/workflows/state.yml:15:      - uses: actions/checkout@v7
+.github/workflows/test.yml:30:      - uses: actions/checkout@v7
+.github/workflows/test.yml:32:        uses: actions/setup-python@v7
+exit=0
+
+=== D12-2 ===
+PENDING: conclusion of the Mandatory Governance & Test Suite run on the pull-request head; not determinable before the PR exists.
+

@@ -1,0 +1,6 @@
+=== D9-1 ===
+$ ls docs/adr/ADR-0012-single-founder-tenancy.md && python scripts/check_repository.py
+docs/adr/ADR-0012-single-founder-tenancy.md
+Repository integrity checks passed.
+exit=0
+

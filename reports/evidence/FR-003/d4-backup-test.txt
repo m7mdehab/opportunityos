@@ -1,0 +1,23 @@
+=== D4-1 ===
+$ ls scripts/__init__.py
+scripts/__init__.py
+exit=0
+
+=== D4-2 ===
+$ env -u OPPORTUNITYOS_DB_URL CI=true python -m unittest scripts.test_backup_restore 2>&1 | tail -5; echo exit=$?
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.046s
+
+FAILED (errors=1)
+exit=0
+
+=== D4-3 ===
+$ OPPORTUNITYOS_DB_URL=$PGURL python -m unittest scripts.test_backup_restore -v 2>&1 | tail -5
+
+----------------------------------------------------------------------
+Ran 6 tests in 4.322s
+
+OK
+exit=0
+

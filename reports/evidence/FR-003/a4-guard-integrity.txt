@@ -1,0 +1,7 @@
+=== A-4 ===
+$ python scripts/check_guard.py --allow-missing-patterns; echo "guard_exit=$?"; python scripts/check_repository.py; echo "integrity_exit=$?"
+Guard checks passed for repository and mirror boundary.
+guard_exit=0
+Repository integrity checks passed.
+integrity_exit=0
+

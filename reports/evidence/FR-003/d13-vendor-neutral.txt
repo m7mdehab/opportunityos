@@ -1,0 +1,9 @@
+=== D13-1 ===
+$ grep -rniE "antigravity|chatgpt|codex|copilot|gemini" reports/REPORT-FR-003.md docs/adr/ADR-0012-single-founder-tenancy.md; echo "exit=$?"
+exit=0
+
+=== D13-2 ===
+$ grep -n "Reports and ADRs name roles, not model vendors." AGENTS.md
+62:Reports and ADRs name roles, not model vendors.
+exit=0
+
