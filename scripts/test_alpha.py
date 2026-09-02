@@ -17,6 +17,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -255,6 +256,74 @@ class TestWaitWebReady(unittest.TestCase):
                     proc.kill()
                 proc.wait(timeout=5)
 
+    # -- log_offset: web.log is append-only across `up` attempts ----------------
+
+    def test_ignores_a_stale_local_line_written_before_this_spawns_offset(self):
+        """The real defect this project hit on a second `up`: web.log is
+        opened in append mode and survives across attempts, so a stale
+        "- Local:" line from an *earlier* run (a different port) sits
+        before this run's own line. Without log_offset, the first match in
+        the whole file wins -- the stale one -- producing a confident,
+        specific, wrong "bound the wrong port" failure on a run that
+        actually succeeded. This test fails against a call that omits
+        log_offset (i.e. today's default of 0), and passes once the byte
+        offset recorded right before spawning is threaded through.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "web.log"
+            # A previous, unrelated `up` attempt's own ready line.
+            log_path.write_text(
+                "  Next.js 16.3.4\n"
+                "  - Local:         http://localhost:3001\n",
+                encoding="utf-8",
+            )
+            log_offset = log_path.stat().st_size  # recorded "immediately before this spawn"
+            # This run's own line, appended after the offset was captured --
+            # exactly what _spawn's append-mode open produces in practice.
+            with open(log_path, "a", encoding="utf-8") as handle:
+                handle.write("  Next.js 16.3.4\n")
+                handle.write("  - Local:         http://localhost:3210\n")
+
+            proc = self._spawn_long_lived()
+            try:
+                # Must not raise: 3210 (after the offset) matches what was
+                # requested; the stale 3001 line (before the offset) must
+                # never be considered.
+                alpha._wait_web_ready(
+                    proc, log_path, expected_port=3210, timeout_seconds=5, log_offset=log_offset
+                )
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                proc.wait(timeout=5)
+
+    def test_without_the_offset_the_stale_line_causes_a_false_failure(self):
+        """Documents the defect directly: the same log/ports as the test
+        above, but called without log_offset (today's default, 0) -- the
+        stale 3001 line wins and a perfectly successful 3210 bind is
+        reported as a mismatch.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "web.log"
+            log_path.write_text(
+                "  Next.js 16.3.4\n"
+                "  - Local:         http://localhost:3001\n",
+                encoding="utf-8",
+            )
+            with open(log_path, "a", encoding="utf-8") as handle:
+                handle.write("  Next.js 16.3.4\n")
+                handle.write("  - Local:         http://localhost:3210\n")
+
+            proc = self._spawn_long_lived()
+            try:
+                with self.assertRaises(alpha.AlphaError) as ctx:
+                    alpha._wait_web_ready(proc, log_path, expected_port=3210, timeout_seconds=5)
+                self.assertIn("3001", str(ctx.exception))
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                proc.wait(timeout=5)
+
 
 class TestPortOverrideCli(unittest.TestCase):
     """--web-port/--api-port must actually reach cmd_up, with correct defaults."""
@@ -307,6 +376,71 @@ class TestProcessLifecycleHelpers(unittest.TestCase):
         self.assertFalse(alpha._pid_alive(999999999))
 
 
+class TestStopProcessesPortVerification(unittest.TestCase):
+    """Regression coverage for the orphan-survivor defect: killing the
+    tracked pid is not sufficient proof the port is free -- npm/Next can
+    reparent a grandchild that survives ``taskkill /T``. ``_stop_processes``
+    must verify the port itself, not just the tracked pid's exit.
+    """
+
+    def test_reports_warning_and_not_all_stopped_when_the_port_stays_occupied(self):
+        # A real bound-and-listening socket, actively accepting connections
+        # on a background thread, stands in for "the grandchild survivor" --
+        # the tracked pid (an implausible one, standing in for "already
+        # gone") has nothing to do with what is actually holding the port,
+        # exactly like the reported defect. A backlog of 1 with nothing
+        # calling accept() would only answer the *first* connect attempt
+        # (the OS-level backlog fills and refuses the rest) -- not
+        # representative of a real listening server, and not what
+        # _wait_port_freed polls with repeatedly -- so this accepts (and
+        # immediately drops) connections in a loop for the test's duration.
+        survivor = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        survivor.bind(("127.0.0.1", 0))
+        survivor.listen(5)
+        port = survivor.getsockname()[1]
+        stop_accepting = threading.Event()
+
+        def _accept_loop():
+            survivor.settimeout(0.2)
+            while not stop_accepting.is_set():
+                try:
+                    conn, _ = survivor.accept()
+                except socket.timeout:
+                    continue
+                conn.close()
+
+        accept_thread = threading.Thread(target=_accept_loop, daemon=True)
+        accept_thread.start()
+        try:
+            processes = {"web": {"pid": 999999999, "log": "web.log", "port": port}}
+            messages, all_stopped = alpha._stop_processes(processes, port_freed_timeout=1.0)
+            self.assertFalse(all_stopped)
+            joined = "\n".join(messages)
+            self.assertIn("WARNING", joined)
+            self.assertIn(str(port), joined)
+        finally:
+            stop_accepting.set()
+            accept_thread.join(timeout=5)
+            survivor.close()
+
+    def test_all_stopped_true_when_the_recorded_port_is_actually_free(self):
+        srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        srv.bind(("127.0.0.1", 0))
+        port = srv.getsockname()[1]
+        srv.close()  # now genuinely free
+        processes = {"web": {"pid": 999999999, "log": "web.log", "port": port}}
+        messages, all_stopped = alpha._stop_processes(processes, port_freed_timeout=1.0)
+        self.assertTrue(all_stopped)
+        self.assertNotIn("WARNING", "\n".join(messages))
+
+    def test_all_stopped_true_for_a_process_with_no_port_to_verify(self):
+        # The worker has no port at all -- nothing to verify beyond the pid.
+        processes = {"worker": {"pid": 999999999, "log": "worker.log"}}
+        messages, all_stopped = alpha._stop_processes(processes)
+        self.assertTrue(all_stopped)
+        self.assertIn("already stopped", "\n".join(messages))
+
+
 class TestEnsureAndStopPostgres(unittest.TestCase):
     def test_already_listening_is_detected_and_not_restarted(self):
         with mock.patch.object(alpha, "_port_open", return_value=True):
@@ -330,20 +464,33 @@ class TestEnsureAndStopPostgres(unittest.TestCase):
         self.assertIn("BRIEF-FR-003.md", str(ctx.exception))
 
     def test_stop_postgres_leaves_a_server_it_did_not_start(self):
-        message = alpha._stop_postgres({"started_by_alpha": False})
+        message, stopped = alpha._stop_postgres({"started_by_alpha": False})
         self.assertIn("did not start it", message)
+        self.assertTrue(stopped)
 
     def test_stop_postgres_calls_pg_ctl_stop_when_alpha_started_it(self):
         with mock.patch("subprocess.run") as run_mock:
             run_mock.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
-            message = alpha._stop_postgres(
+            message, stopped = alpha._stop_postgres(
                 {"started_by_alpha": True, "pg_ctl": "pg_ctl.exe", "data_dir": "D:/data"}
             )
         self.assertIn("stopped", message)
+        self.assertTrue(stopped)
         run_mock.assert_called_once()
         called_cmd = run_mock.call_args[0][0]
         self.assertIn("stop", called_cmd)
         self.assertIn("D:/data", called_cmd)
+
+    def test_stop_postgres_reports_not_stopped_when_pg_ctl_stop_fails(self):
+        with mock.patch("subprocess.run") as run_mock:
+            run_mock.return_value = subprocess.CompletedProcess(
+                args=[], returncode=1, stdout="", stderr="pg_ctl: server does not shut down"
+            )
+            message, stopped = alpha._stop_postgres(
+                {"started_by_alpha": True, "pg_ctl": "pg_ctl.exe", "data_dir": "D:/data"}
+            )
+        self.assertIn("failed", message)
+        self.assertFalse(stopped)
 
 
 class TestCliSmoke(unittest.TestCase):
@@ -430,6 +577,129 @@ class TestCliSmoke(unittest.TestCase):
                 proc.wait(timeout=5)
         self.assertEqual(result.returncode, 0, msg=f"stdout={result.stdout!r} stderr={result.stderr!r}")
         self.assertIn("port 3005", result.stdout)
+
+
+class _FakePopen:
+    """Stands in for subprocess.Popen in TestFailedUpLeavesStateForDown --
+    cmd_up only ever touches .pid and .poll()/.returncode on what _spawn
+    returns, so a real process is unnecessary for exercising the
+    persist-state-on-failed-rollback branch in isolation.
+    """
+
+    _next_pid = 424242
+
+    def __init__(self):
+        _FakePopen._next_pid += 1
+        self.pid = _FakePopen._next_pid
+        self.returncode = None
+
+    def poll(self):
+        return None
+
+
+def _free_port() -> int:
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.bind(("127.0.0.1", 0))
+    port = srv.getsockname()[1]
+    srv.close()
+    return port
+
+
+class TestFailedUpLeavesStateForDown(unittest.TestCase):
+    """Regression coverage for the second orphan defect: a failed `up`
+    previously cleared out/alpha_run/state.json unconditionally during
+    rollback, so if rollback itself could not confirm everything had
+    actually stopped, a later `down` had nothing left to find the survivor
+    with ("no session recorded ... nothing to stop") even though something
+    was still running. cmd_up must keep the state file whenever rollback
+    could not confirm success, and only clear it when rollback is confirmed.
+
+    Runs entirely against mocked internals (_ensure_postgres,
+    _run_alembic_upgrade, _spawn, _wait_process_alive, _wait_for_port,
+    _stop_processes, _stop_postgres) -- no real PostgreSQL, npm, or API
+    process -- both per this module's "do not start the real web or API in
+    unit tests" rule and because the behaviour under test is entirely
+    about cmd_up's own state-file bookkeeping on the failure path.
+    """
+
+    def test_state_file_is_kept_not_cleared_when_rollback_cannot_confirm_success(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            env_file = Path(tmp) / "alpha.env"
+            env_file.write_text(
+                "OPPORTUNITYOS_FOUNDER_PASSWORD=hunter2\n"
+                "OPPORTUNITYOS_SESSION_SECRET=abc123\n"
+                "OPPORTUNITYOS_DB_URL=postgresql+psycopg2://u:p@127.0.0.1:5432/db\n",
+                encoding="utf-8",
+            )
+            api_port = _free_port()
+
+            with mock.patch.object(alpha, "_ensure_postgres", return_value={"started_by_alpha": False}), \
+                 mock.patch.object(alpha, "_run_alembic_upgrade", return_value=None), \
+                 mock.patch.object(alpha, "_spawn", side_effect=lambda *a, **k: _FakePopen()), \
+                 mock.patch.object(alpha, "_wait_process_alive", return_value=None), \
+                 mock.patch.object(
+                     alpha, "_wait_for_port", side_effect=alpha.AlphaError("simulated: API never became healthy")
+                 ), \
+                 mock.patch.object(
+                     alpha, "_stop_processes", return_value=(["mocked: rollback could not confirm"], False)
+                 ) as stop_processes_mock, \
+                 mock.patch.object(
+                     alpha, "_stop_postgres", return_value=("mocked: postgres left running", True)
+                 ):
+                exit_code = alpha.cmd_up(env_file, run_dir, web_port=_free_port(), api_port=api_port)
+
+            self.assertEqual(exit_code, 1)
+            stop_processes_mock.assert_called_once()
+
+            # The whole point: state must still be there for `down` to act on.
+            state = alpha._load_state(run_dir)
+            self.assertIn("processes", state)
+            self.assertIn("worker", state["processes"])
+            self.assertIn("api", state["processes"])
+
+            # And `down`, run fresh afterwards, must be able to see it --
+            # not report "no session recorded ... nothing to stop" the way
+            # the reported defect did.
+            with mock.patch.object(alpha, "_stop_processes", return_value=([], True)), \
+                 mock.patch.object(alpha, "_stop_postgres", return_value=("stopped", True)):
+                down_exit_code = alpha.cmd_down(run_dir)
+            self.assertEqual(down_exit_code, 0)
+            self.assertEqual(alpha._load_state(run_dir), {})
+
+    def test_state_file_is_cleared_when_rollback_confirms_success(self):
+        """The mirror-image case: when rollback genuinely confirms
+        everything stopped, the state file should still be cleared (no
+        change from the previous, correct behaviour for the clean case).
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            env_file = Path(tmp) / "alpha.env"
+            env_file.write_text(
+                "OPPORTUNITYOS_FOUNDER_PASSWORD=hunter2\n"
+                "OPPORTUNITYOS_SESSION_SECRET=abc123\n"
+                "OPPORTUNITYOS_DB_URL=postgresql+psycopg2://u:p@127.0.0.1:5432/db\n",
+                encoding="utf-8",
+            )
+            api_port = _free_port()
+
+            with mock.patch.object(alpha, "_ensure_postgres", return_value={"started_by_alpha": False}), \
+                 mock.patch.object(alpha, "_run_alembic_upgrade", return_value=None), \
+                 mock.patch.object(alpha, "_spawn", side_effect=lambda *a, **k: _FakePopen()), \
+                 mock.patch.object(alpha, "_wait_process_alive", return_value=None), \
+                 mock.patch.object(
+                     alpha, "_wait_for_port", side_effect=alpha.AlphaError("simulated: API never became healthy")
+                 ), \
+                 mock.patch.object(
+                     alpha, "_stop_processes", return_value=(["mocked: rollback confirmed"], True)
+                 ), \
+                 mock.patch.object(
+                     alpha, "_stop_postgres", return_value=("mocked: postgres left running", True)
+                 ):
+                exit_code = alpha.cmd_up(env_file, run_dir, web_port=_free_port(), api_port=api_port)
+
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(alpha._load_state(run_dir), {})
 
 
 if __name__ == "__main__":
