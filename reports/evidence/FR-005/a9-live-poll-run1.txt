@@ -58,7 +58,7 @@ WHAT PASSED. This is a genuine live poll. Twelve sources were attempted through 
 empty moments earlier, and the three fixture-residue probes A-9 named are all ZERO:
 no example.com URL, no `opp-uq-*` id, no `src-*` source id. The rows are real postings from
 remoteOK.com, himalayas.app, remotive.com and three Greenhouse boards, with real employers
-(Talent Sam, Lemon.io, A.Team, Benzinga) and real titles. `we_work_remotely` returned an
+(named in the run, withheld here -- see the note below) and real titles. `we_work_remotely` returned an
 error and was recorded, not retried, as AGENTS.md requires. `world_bank` ingested 15 raw
 records and yielded 0 opportunities -- recorded as observed.
 
@@ -90,3 +90,21 @@ on registry ids.
 A-9 is therefore recorded as PASS on the provenance half and NOT_CLOSED on the registry-id
 half pending run 2. A repair task was opened rather than the expected result being softened;
 see a9-live-poll-run2.txt for the re-run after the fix.
+
+
+--- Why no employer names appear above ---
+
+The Master's live run did show real employer names, and they were the clearest single
+demonstration that these are genuine postings rather than fixtures. They are withheld from
+this file anyway.
+
+`reports/**` is on the public documentation mirror allowlist (`.mirror-allowlist`), and
+`docs/SOURCE_REGISTRY.yaml` records `attribution: {required: review_required}` for all three
+of remote_ok, himalayas and remotive. Read access is `allowed`, which is what the poll used
+and all the poll needed. Redistributing listing content into a public repository under an
+attribution requirement that is explicitly unreviewed is a different act from reading it,
+and "coverage is not permission" is the rule that separates the two.
+
+Nothing is lost evidentially: the claim A-9 binds is that the rows are real and carry no
+fixture residue, and that is established by the per-source counts, the three real hosts, and
+the three zero probes above -- none of which needs a company's name.
