@@ -11,6 +11,7 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import IntegrityError
 
 from storage.models import (
     Base,
@@ -25,6 +26,7 @@ from storage.models import (
     ReconciliationRecordModel,
     WorkerJobRecord,
     FounderFeedbackRecord,
+    MatchEvaluationRecord,
 )
 from storage.engine import (
     get_engine,
@@ -110,15 +112,112 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         """Case A & B: empty DB -> Alembic head -> downgrade smoke -> upgrade to head."""
         alembic_cfg = Config("alembic.ini")
         alembic_cfg.set_main_option("sqlalchemy.url", self.db_url)
-        
+
+        migration_0002_tables = (
+            "match_evaluations",
+            "source_poll_runs",
+            "founder_opportunity_views",
+            "founder_triage_states",
+        )
+
         # Test upgrade to head
         command.upgrade(alembic_cfg, "head")
-        
+
         # Verify tables exist in postgres
         with self.engine.connect() as conn:
             res = conn.execute(text("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'"))
             count = res.scalar()
             self.assertGreater(count, 5)
+
+            res = conn.execute(
+                text("SELECT count(*) FROM information_schema.tables WHERE table_name = ANY(:names)"),
+                {"names": list(migration_0002_tables)},
+            )
+            self.assertEqual(res.scalar(), 4, "all four 0002 tables must exist at head")
+
+        # Downgrade to 0001_baseline_schema: the four 0002 tables, and every
+        # index/constraint belonging to them, must be gone.
+        command.downgrade(alembic_cfg, "0001_baseline_schema")
+
+        with self.engine.connect() as conn:
+            res = conn.execute(
+                text("SELECT count(*) FROM information_schema.tables WHERE table_name = ANY(:names)"),
+                {"names": list(migration_0002_tables)},
+            )
+            self.assertEqual(res.scalar(), 0, "all four 0002 tables must be absent after downgrade to 0001")
+
+            res = conn.execute(text(
+                "SELECT indexname FROM pg_indexes WHERE "
+                "indexname ILIKE '%match_evaluations%' OR indexname ILIKE '%source_poll_runs%' OR "
+                "indexname ILIKE '%founder_opportunity_views%' OR indexname ILIKE '%founder_triage_states%'"
+            ))
+            self.assertEqual(res.fetchall(), [], "no orphan index belonging to the 0002 tables may survive downgrade")
+
+            res = conn.execute(text(
+                "SELECT conname FROM pg_constraint WHERE "
+                "conname ILIKE '%match_evaluations%' OR conname ILIKE '%source_poll_runs%' OR "
+                "conname ILIKE '%founder_opportunity_views%' OR conname ILIKE '%founder_triage_states%'"
+            ))
+            self.assertEqual(res.fetchall(), [], "no orphan constraint belonging to the 0002 tables may survive downgrade")
+
+        # Upgrade again: the four tables must come back.
+        command.upgrade(alembic_cfg, "head")
+
+        with self.engine.connect() as conn:
+            res = conn.execute(
+                text("SELECT count(*) FROM information_schema.tables WHERE table_name = ANY(:names)"),
+                {"names": list(migration_0002_tables)},
+            )
+            self.assertEqual(res.scalar(), 4, "all four 0002 tables must exist again after re-upgrading to head")
+
+    def test_match_evaluations_unique_constraint_enforced_by_database(self):
+        """(opportunity_id, truth_pack_hash) duplicates are rejected by PostgreSQL itself."""
+        session = self.SessionFactory()
+        try:
+            opp = OpportunityRecord(
+                id="opp-uq-1",
+                track=Track.EMPLOYMENT.value,
+                title="Backend Engineer",
+                organization="Acme Corp",
+                description="Build things.",
+                source_id="src-1",
+                source_url="https://example.com/job/1",
+                content_hash="hash-1",
+            )
+            session.add(opp)
+            session.commit()
+
+            first = MatchEvaluationRecord(
+                id="me-1",
+                opportunity_id="opp-uq-1",
+                truth_pack_hash="tph-1",
+                qualification_decision="qualified",
+                fit_score=88.5,
+                dimension_scores_json="{}",
+                reasons_json="[]",
+                policy_version="v1",
+                evaluated_at=datetime.now(timezone.utc),
+            )
+            session.add(first)
+            session.commit()
+
+            duplicate = MatchEvaluationRecord(
+                id="me-2",
+                opportunity_id="opp-uq-1",
+                truth_pack_hash="tph-1",
+                qualification_decision="uncertain",
+                fit_score=50.0,
+                dimension_scores_json="{}",
+                reasons_json="[]",
+                policy_version="v1",
+                evaluated_at=datetime.now(timezone.utc),
+            )
+            session.add(duplicate)
+            with self.assertRaises(IntegrityError):
+                session.commit()
+        finally:
+            session.rollback()
+            session.close()
 
     def test_case_c_exact_historical_inbox_sqlite_to_postgres(self):
         """Case C: Exact historical inbox SQLite -> PostgreSQL migration with 100% fidelity."""
