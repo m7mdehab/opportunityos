@@ -11,7 +11,15 @@ import math
 import re
 from typing import Any
 
-from opportunity.models import CompensationInterval, Opportunity, SeniorityLevel, Track
+from opportunity.models import (
+    CompensationInterval,
+    EmploymentType,
+    Opportunity,
+    RemotePolicy,
+    SeniorityLevel,
+    Track,
+)
+from truth import predicates
 from truth.graph import TruthGraph
 from truth.models import VerificationStatus
 
@@ -23,6 +31,44 @@ from .models import (
     ScoringPolicy,
 )
 from .qualification import QualificationEngine
+
+_CURRENCY_THRESHOLD_RE = re.compile(r"^\s*([\d,]+(?:\.\d+)?)\s*([A-Za-z]{3})\s*$")
+
+
+def _parse_currency_threshold(value: Any) -> tuple[float, str] | None:
+    """Parse a pack-supplied '<amount> <ISO currency>' monthly threshold string.
+
+    Returns None if the value is absent or not in the expected currency-aware shape,
+    so callers never mistake an unparseable threshold for a comparable one.
+    """
+    if value is None:
+        return None
+    match = _CURRENCY_THRESHOLD_RE.match(str(value))
+    if not match:
+        return None
+    amount_str, currency = match.groups()
+    try:
+        amount = float(amount_str.replace(",", ""))
+    except ValueError:
+        return None
+    return amount, currency.upper()
+
+
+def _monthly_compensation(comp: Any) -> float | None:
+    """Normalize stated compensation to a monthly figure, or None if not safely comparable.
+
+    Only MONTHLY and YEARLY intervals are normalized; hourly/daily/project figures depend
+    on hours worked, which the opportunity record does not reliably state, so those remain
+    unresolved (UNKNOWN) rather than guessed at.
+    """
+    if comp is None or comp.min_amount is None:
+        return None
+    amount = comp.max_amount if comp.max_amount is not None else comp.min_amount
+    if comp.interval == CompensationInterval.MONTHLY:
+        return amount
+    if comp.interval == CompensationInterval.YEARLY:
+        return amount / 12.0
+    return None
 
 
 class OpportunityScorer:
@@ -106,7 +152,7 @@ class OpportunityScorer:
         founder_skills = {
             str(a.value).casefold(): a
             for a in truth_graph.assertions.values()
-            if a.predicate == "skill.name" and a.verification_status == VerificationStatus.VERIFIED
+            if a.predicate == predicates.SKILL_NAME and a.verification_status == VerificationStatus.VERIFIED
         }
         opp_skills = [s.casefold() for s in opp.skills]
         if not founder_skills:
@@ -158,7 +204,7 @@ class OpportunityScorer:
         # 2. Experience & Seniority Fit
         emp_title_assertions = [
             a for a in truth_graph.assertions.values()
-            if a.predicate == "employment.title" and a.verification_status == VerificationStatus.VERIFIED
+            if a.predicate == predicates.EMPLOYMENT_TITLE and a.verification_status == VerificationStatus.VERIFIED
         ]
         opp_level = opp.seniority
         if not emp_title_assertions:
@@ -230,7 +276,7 @@ class OpportunityScorer:
         # 3. Responsibility & Scope Fit
         founder_resp_assertions = [
             a for a in truth_graph.assertions.values()
-            if a.predicate in ("responsibility.item", "employment.role_description", "service.name", "experience.summary", "achievement.description")
+            if a.predicate in predicates.RESPONSIBILITY_SCOPE_PREDICATES
             and a.verification_status == VerificationStatus.VERIFIED
         ]
         if not founder_resp_assertions:
@@ -279,7 +325,7 @@ class OpportunityScorer:
         # 4. Domain / Industry Fit
         founder_domain_assertions = [
             a for a in truth_graph.assertions.values()
-            if a.predicate in ("skill.name", "service.name", "employment.title", "achievement.description")
+            if a.predicate in predicates.DOMAIN_FIT_PREDICATES
             and a.verification_status == VerificationStatus.VERIFIED
         ]
         if not founder_domain_assertions:
@@ -324,7 +370,7 @@ class OpportunityScorer:
         geo_status = opp.geographic_eligibility.status if opp.geographic_eligibility else "unclear"
         founder_res_assertions = [
             a for a in truth_graph.assertions.values()
-            if a.predicate in ("residence.country", "authorization.jurisdiction")
+            if a.predicate in predicates.RESIDENCE_LOCATION_PREDICATES
             and a.verification_status == VerificationStatus.VERIFIED
         ]
         if geo_status == "eligible" and founder_res_assertions:
@@ -408,6 +454,38 @@ class OpportunityScorer:
             comp_unknowns = ("Compensation unstated in opportunity posting",)
             uncertainty_acc += 0.1
 
+        # Premium full-time/on-site rule: a RANKING signal only, never a hard constraint
+        # and never a penalty for unstated compensation. It only ever adds a gap note and
+        # nudges raw_score down when compensation is both stated and currency-comparable
+        # to the founder's threshold; qualification is untouched (compensation_fit never
+        # feeds a hard constraint).
+        premium_ev_refs: tuple[str, ...] = ()
+        if opp.employment_type == EmploymentType.FULL_TIME and opp.remote_policy == RemotePolicy.ON_SITE:
+            premium_assertions = [
+                a for a in truth_graph.assertions.values()
+                if a.predicate == predicates.PREFERENCE_FULLTIME_ONSITE_PREMIUM_MONTHLY
+                and a.verification_status == VerificationStatus.VERIFIED
+            ]
+            threshold = _parse_currency_threshold(premium_assertions[0].value) if premium_assertions else None
+            if threshold is not None:
+                threshold_amount, threshold_currency = threshold
+                monthly = _monthly_compensation(comp)
+                if (
+                    monthly is not None
+                    and comp is not None
+                    and comp.currency
+                    and comp.currency.strip().upper() == threshold_currency
+                ):
+                    premium_ev_refs = (premium_assertions[0].id,)
+                    if monthly < threshold_amount:
+                        comp_gaps = comp_gaps + (
+                            f"Full-time on-site compensation (~{monthly:.0f} {threshold_currency}/month) is below the "
+                            f"founder's full-time on-site premium threshold ({threshold_amount:.0f} {threshold_currency}/month)",
+                        )
+                        comp_score = min(comp_score, 0.35)
+                # else: compensation unstated, non-monthly/yearly, or a different currency
+                # than the threshold -> UNKNOWN for this rule, never a penalty.
+
         w_comp = weights.get("compensation", 0.05)
         scores.append(MatchDimensionScore(
             dimension_name="compensation_fit",
@@ -418,14 +496,14 @@ class OpportunityScorer:
             strengths=comp_strengths,
             gaps=comp_gaps,
             unknowns=comp_unknowns,
-            evidence_refs=(),
+            evidence_refs=premium_ev_refs,
             opportunity_field_refs=("compensation",),
         ))
 
         # 7. Career Trajectory
         target_role_assertions = [
             a for a in truth_graph.assertions.values()
-            if a.predicate in ("career.target_role", "preference.track", "career.goal")
+            if a.predicate in predicates.CAREER_TRAJECTORY_PREDICATES
             and a.verification_status == VerificationStatus.VERIFIED
         ]
         if not target_role_assertions:
@@ -476,7 +554,7 @@ class OpportunityScorer:
         founder_services = {
             str(a.value).casefold(): a
             for a in truth_graph.assertions.values()
-            if a.predicate == "service.name" and a.verification_status == VerificationStatus.VERIFIED
+            if a.predicate == predicates.SERVICE_NAME and a.verification_status == VerificationStatus.VERIFIED
         }
         if not founder_services:
             srv_score = 0.0
@@ -524,12 +602,12 @@ class OpportunityScorer:
 
         team_assertions = [
             a for a in truth_graph.assertions.values()
-            if a.predicate in ("capacity.team_size", "business.team_size", "capacity.headcount")
+            if a.predicate == predicates.CAPACITY_TEAM_SIZE
             and a.verification_status == VerificationStatus.VERIFIED
         ]
         turnover_assertions = [
             a for a in truth_graph.assertions.values()
-            if a.predicate in ("business.annual_turnover", "capacity.annual_turnover")
+            if a.predicate == predicates.CAPACITY_ANNUAL_TURNOVER_USD
             and a.verification_status == VerificationStatus.VERIFIED
         ]
 
@@ -611,7 +689,7 @@ class OpportunityScorer:
         # 3. Portfolio & Case Study Evidence Sufficiency
         portfolio_assertions = [
             a for a in truth_graph.assertions.values()
-            if a.predicate == "portfolio.item" and a.verification_status == VerificationStatus.VERIFIED
+            if a.predicate == predicates.PORTFOLIO_TITLE and a.verification_status == VerificationStatus.VERIFIED
         ]
         if not portfolio_assertions:
             port_score = 0.0
