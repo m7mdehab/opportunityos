@@ -3,7 +3,7 @@
 - **Brief:** `briefs/BRIEF-FR-004.md`
 - **Branch:** `feat/brief-fr-004-founder-alpha-local`
 - **Starting `main`:** `8423fcb` — the FR-003 merge commit, all five workflows green on it
-- **Date:** 2026-09-02
+**Date:** 2026-09-02
 - **Master:** Claude Code main session
 - **Environment:** Windows 11, Python 3.12.10, PostgreSQL 16.10 (portable cluster under
   `%LOCALAPPDATA%\opos-pg\`), Node v24.18.0, npm 11.16.0, Next.js 16.3.4, React 19.2.8,

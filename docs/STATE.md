@@ -2,16 +2,16 @@
 # OpportunityOS State
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
-Last shipped: BRIEF-FR-003 — 2026-09-02.
+Last shipped: BRIEF-FR-004 — 2026-09-02.
 Active work: none.
 Phase status: passed.
 Blocked: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha (strictly blocked until Founder Web Alpha is live and validated).
-Next: BRIEF-FR-004 is the FastAPI REST service and Next.js Founder Web Alpha slice, renumbered from the provisional "FR-003" naming in the FR-002 handoff, and it must not begin until this brief's pull request has been reviewed and merged by the Overseer.
+Next: The measured number decides the shape of the next brief, and it does not exist yet — it is produced by the founder running §9, not by this brief.
 
 ## Repository
 
-- **Generated:** 2026-09-02T00:39:04Z
-- **State generated at commit:** `b458c2b` — docs(d14): state precisely how the final head differs from the CI-cited head
+- **Generated:** 2026-09-02T06:20:37Z
+- **State generated at commit:** `95d9de8` — docs(fr-004): phase gate report
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -33,10 +33,11 @@ Next: BRIEF-FR-004 is the FastAPI REST service and Next.js Founder Web Alpha sli
 - GATE-FR-001 — 2026-08-31
 - BRIEF-FR-002 — 2026-09-01
 - BRIEF-FR-003 — 2026-09-02
+- BRIEF-FR-004 — 2026-09-02
 
 ## Last Phase Outcome
 
-- BRIEF-FR-003 — PASS
+- BRIEF-FR-004 — PASS.
 
 ## Decisions
 
@@ -56,6 +57,7 @@ Next: BRIEF-FR-004 is the FastAPI REST service and Next.js Founder Web Alpha sli
 - [ADR-0010: Outbound Action Authority, Execution Modes, and Idempotency Architecture](adr/ADR-0010-outbound-action-authority-and-idempotency.md)
 - [ADR-0011: Operational Autonomy, Inbound Signal Processing, Pipeline Synchronization, and Safe Learning](adr/ADR-0011-operational-autonomy-and-feedback-loops.md)
 - [ADR-0012 — Single-Founder Tenancy Through Phase 5](adr/ADR-0012-single-founder-tenancy.md)
+- [ADR-0013 — Alpha-Grade Auth and Local-Only Posture](adr/ADR-0013-alpha-grade-auth-and-local-only-posture.md)
 
 ## Blocked Items
 
@@ -70,34 +72,84 @@ Next: BRIEF-FR-004 is the FastAPI REST service and Next.js Founder Web Alpha sli
 
 ## Next Prerequisites
 
-BRIEF-FR-004 is the FastAPI REST service and Next.js Founder Web Alpha slice, renumbered from
-the provisional "FR-003" naming in the FR-002 handoff, and it must not begin until this brief's
-pull request has been reviewed and merged by the Overseer. Three results from this brief change
-how it should be scoped.
+The measured number decides the shape of the next brief, and it does not exist yet — it is
+produced by the founder running §9, not by this brief. Nothing below should be scoped until
+that number is in hand.
 
-First, the worker runner now exists, so the API layer must not grow its own inline job
-execution: anything slower than a request belongs on `BackgroundWorkerQueue` behind
-`WorkerRunner`, and FR-004 should state that rather than leave it to taste. Second, the council
-review of the runner surfaced a queue-level gap this brief could not close, because
-`worker/queue.py` is frozen here — a crashed claim is recovered by the stale-lease sweep
-*without* incrementing `retry_count`, so a process-killing poison job retries without bound.
-A web front end makes poison payloads far easier to create, so FR-004, or a small brief before
-it, should fix that where it belongs. Third, ADR-0012 records that persistence is
-single-workspace and that nine of eleven tables carry no tenant key; FR-004 must not add
-authentication that implies multi-tenancy, and its auth model should be explicitly
-single-founder so the Phase 6 tenancy migration brief stays the only place tenancy is
-introduced.
+**If the number is low because too little arrives**, the next brief is supply, not interface.
+Only 21 of 52 registered sources are readable and the most recent reconnaissance found none of
+the remainder had become permissible, so a supply brief means new adapters under their own
+access policies, not re-litigating blocked hosts.
 
-Two constraints follow from what did not close here. `REQ-SEC-003` remains MISSING — backups
-are unencrypted plain JSON, now stated plainly in `scripts/backup_restore.py`'s own docstring —
-and a web-facing deployment is the point at which that stops being comfortable, so FR-004 should
-either carry backup encryption or say why it still defers it. And the seven
-`REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS` source rows are blocked on host access, not on code:
-the 2026-09-02 re-recon found every one of the fifteen re-checked registry entries still
-unreadable, so FR-004 should assume no new source becomes available and build its opportunity
-views against the sources whose `automation.read` is already `allowed`.
+**If the number is reasonable but the founder still cannot act on it**, the next brief is the
+remaining pages — the dual-track dashboard, the applications pipeline, and the document
+inspector — which this brief deliberately reduced to a header strip, an action badge, and an
+inline error respectively. Those three matrix rows are `PARTIAL` for exactly that reason.
 
-- **BRIEF-FR-004:** FastAPI REST API service and Next.js Founder Web Alpha, scoped as above.
-- **BRIEF-007 (Private Family Alpha):** remains strictly BLOCKED until Founder Web Alpha is live and validated, and now additionally gated on the tenancy migration brief ADR-0012 requires.
+**FR-005 inherits a specific, non-optional list from ADR-0013**, and it should be treated as a
+checklist rather than rediscovered: TLS termination; `Secure` and `__Host-` cookie posture;
+password hashing at rest if a user table ever appears; explicit CSRF defence, since
+`SameSite=Lax` alone stops being sufficient once the origin is public; session expiry and
+per-session revocation; rate limiting that survives a restart, because the current limiter is
+in-memory and resets; and an audit trail for login attempts. The current posture is authorised
+for localhost only, and this brief did nothing to earn a network.
+
+**The first item for the next brief is the artifact path, and it is more than a defect.**
+The tailored-document feature does not work for a naturally-written truth pack. Two guards
+stack: `truth/validator.py:368` refuses a composite claim whose cited evidence is not
+relationally linked, and `:378` refuses any claim containing material terms absent from that
+evidence. Against the shipped template the CV rejects 1 of 3 claims and the cover letter 2 of
+2, and the cover letter is structurally unsatisfiable because it names the target role and
+company, which cannot appear in the founder's evidence.
+
+Note that a `relations:` entry cannot fix it — `truth/ingest.py:571-573` builds the graph with
+relations before `add_career_profile`, so relations referencing profile entities fail to load.
+That ordering is itself worth fixing.
+
+**The wrong resolution is to write the compiler's vocabulary into the founder's evidence.**
+That was attempted during this brief and stopped: it would make the validator decorative and
+put unsupported claims into documents carrying the founder's name. The right resolution is to
+make the compiler generate claims strictly from evidence vocabulary, or to give the validator a
+defensible notion of which terms are material for a document that is by nature addressed to a
+third party. Either is a design decision, not a patch, and both files are frozen here.
+
+**Five further defects are real, out of scope, and should be owned rather than
+rediscovered:**
+
+1. **The timezone hazard is systemic, not local.** Aware datetimes written to naive
+   `TIMESTAMP` columns are silently shifted by the session timezone. It was fixed where D4b
+   owned the code, but the same exposure remains in frozen files — `worker/queue.py`'s
+   `run_after` and `lease_expires_at`, `OpportunityRecord.reverified_at`. A brief should
+   normalise this across the schema, or move the columns to `timestamptz`.
+2. **`truth/graph.py:192`'s numeric matcher rejects a number at the end of a sentence.**
+   `(?<![\d.])…(?![\d.])` means "the value is 5000." fails to match its own evidence. The
+   template phrases around it; the founder's own pack will not.
+3. **The truth loader accepts an unknown top-level section silently**, so a mistyped heading
+   yields a clean bill of health for a pack missing that block.
+4. **Provenance duplication on re-poll is untested.** `field_provenances` rows carry no primary
+   key, so the `session.merge()` that independently prevents opportunity duplication does not
+   protect them, and Case U asserts the provenance count only after the first run.
+5. **Persisted opportunities cannot be faithfully reconstructed.** Adapters store
+   responsibilities and requirements as an item *count*, not text, and the stored description
+   is `clean_text`-normalised while adapters extract from the raw. `poll_source` now evaluates
+   fresh objects so this no longer biases the measured number, but any future consumer reading
+   opportunities back from the database inherits the gap.
+
+**Two process obligations for whoever runs the next brief:**
+
+- **Do not accept a claim whose evidence depends on an untracked file.** This brief recorded a
+  green Playwright run that only reproduced on the Master's own machine, because it needed a
+  gitignored `web/.env.local`. The verifier caught it. Every claim must reproduce from a clean
+  clone.
+- **Commission the phase-2 switch when a deliverable is allowed to start against a mock.** The
+  brief permitted D7 to begin against a mocked API; the Master never scheduled the switch back,
+  and the smoke proved the UI agreed with fixtures it also controlled.
+
+- **BRIEF-FR-005:** hosted staging with HTTPS, inheriting ADR-0013's checklist in full.
+- **BRIEF-FR-006+:** the remaining founder pages, gated on the measured number.
+- **BRIEF-007 (Private Family Alpha):** still strictly BLOCKED until the Founder Web Alpha is
+  live and validated, and additionally gated on the tenancy migration ADR-0012 requires. This
+  brief added four more single-workspace tables with no tenant key, which that migration
+  inherits.
 
 ---
