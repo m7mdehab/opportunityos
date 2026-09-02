@@ -192,11 +192,23 @@ class ApiTestCase(unittest.TestCase):
         *,
         decision: str,
         fit_score: float | None,
-        hard_constraints: list[dict] | None = None,
         evaluated_at: datetime | None = None,
-        top_reasons: list[str] | None = None,
+        reasons: list[dict] | None = None,
         truth_pack_hash: str = "hash-fixture",
     ) -> MatchEvaluationRecord:
+        """Seed a `match_evaluations` row using the canonical shapes D4b's
+        writer (`matching/evaluate_persist.py`) actually produces:
+        `dimension_scores_json` a JSON list of `MatchDimensionScore`-shaped
+        dicts, and `reasons_json` a JSON **list** of
+        `{"kind", "dimension", "text"}` entries -- not the object shape D6
+        used before D4b's writer landed. There is deliberately no
+        `evaluation_detail_json` kwarg here: that column (hard constraints,
+        uncertainty_penalty, full explanation) has not been migrated in yet
+        on this schema, so tests that need hard-constraint data patch
+        `api.routes_api.unpack_evaluation_detail` directly (see
+        `test_detail_reaches_pass_fail_unknown_and_uncertain`) rather than
+        pretending it round-trips through a column that does not exist.
+        """
         dimension_scores = [
             {
                 "dimension_name": "core_skills",
@@ -206,16 +218,14 @@ class ApiTestCase(unittest.TestCase):
                 "explanation": "partial skill overlap",
             }
         ]
-        reasons_json = json.dumps(
-            {
-                "top_reasons": top_reasons or ["reason one", "reason two", "reason three"],
-                "hard_constraints": hard_constraints or [],
-                "strengths": ["strength one"],
-                "gaps": ["gap one"],
-                "unknowns": ["unknown one"],
-                "uncertainty_penalty": 0.1,
-                "explanation": "synthetic evaluation for API tests",
-            }
+        reasons_payload = (
+            reasons
+            if reasons is not None
+            else [
+                {"kind": "strength", "dimension": "core_skills", "text": "reason one"},
+                {"kind": "gap", "dimension": "core_skills", "text": "reason two"},
+                {"kind": "unknown", "dimension": "core_skills", "text": "reason three"},
+            ]
         )
         record = MatchEvaluationRecord(
             id=f"eval-{uuid.uuid4().hex[:12]}",
@@ -224,7 +234,7 @@ class ApiTestCase(unittest.TestCase):
             qualification_decision=decision,
             fit_score=fit_score if fit_score is not None else 0.0,
             dimension_scores_json=json.dumps(dimension_scores),
-            reasons_json=reasons_json,
+            reasons_json=json.dumps(reasons_payload),
             policy_version="policy-v1",
             evaluated_at=evaluated_at or datetime.now(timezone.utc),
         )
@@ -388,12 +398,21 @@ class OpportunityRoutesTest(ApiTestCase):
         self.assertEqual(len(paged.json()["items"]), 1)
 
     def test_detail_reaches_pass_fail_unknown_and_uncertain(self):
+        # `evaluation_detail_json` (hard constraints, uncertainty_penalty,
+        # full explanation) is a column D4b is adding but has not landed on
+        # this schema yet -- there is nowhere to persist hard-constraint
+        # data through a real INSERT today. This test instead patches
+        # `api.routes_api.unpack_evaluation_detail`, the single seam D6 owns
+        # for reading that column, so it exercises the real HTTP route and
+        # D6's own PASS/FAIL/UNKNOWN mapping end-to-end, independent of
+        # whether the persistence column exists yet.
+        import unittest.mock as mock
+
         self.seed_opportunity("opp-uncertain")
-        self.seed_evaluation(
-            "opp-uncertain",
-            decision="uncertain",
-            fit_score=55.5,
-            hard_constraints=[
+        self.seed_evaluation("opp-uncertain", decision="uncertain", fit_score=55.5)
+
+        detail_payload = {
+            "hard_constraints": [
                 {
                     "constraint_name": "work_authorization",
                     "passed": True,
@@ -422,9 +441,16 @@ class OpportunityRoutesTest(ApiTestCase):
                     "provenance_pointer": "",
                 },
             ],
-        )
+            "strengths": ["strength one"],
+            "gaps": ["gap one"],
+            "unknowns": ["unknown one"],
+            "uncertainty_penalty": 0.1,
+            "explanation": "synthetic evaluation for API tests",
+        }
 
-        response = self.client.get("/api/opportunities/opp-uncertain")
+        with mock.patch("api.routes_api.unpack_evaluation_detail", return_value=detail_payload):
+            response = self.client.get("/api/opportunities/opp-uncertain")
+
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["qualification"]["decision"], "uncertain")
@@ -437,12 +463,49 @@ class OpportunityRoutesTest(ApiTestCase):
         self.assertNotEqual(outcomes["security_clearance"], "FAIL")
 
         self.assertEqual(body["scoring"]["fit_score"], 55.5)
+        self.assertEqual(body["scoring"]["uncertainty_penalty"], 0.1)
         self.assertEqual(len(body["scoring"]["dimension_scores"]), 1)
         self.assertEqual(body["scoring"]["dimension_scores"][0]["dimension"], "core_skills")
         self.assertIn("score", body["scoring"]["dimension_scores"][0])
 
         self.assertEqual(len(body["fields"]), 1)
         self.assertEqual(body["fields"][0]["field_name"], "title")
+
+    def test_detail_falls_back_to_reasons_derived_strengths_when_detail_column_absent(self):
+        """The real, current runtime behaviour (no mock): with no
+        `evaluation_detail_json` column, `strengths`/`gaps`/`unknowns` must
+        still be populated by deriving them from `reasons_json`'s
+        `{"kind", "dimension", "text"}` list, and `top_reasons` on the list
+        route must read from that same list shape."""
+        self.seed_opportunity("opp-fallback")
+        self.seed_evaluation(
+            "opp-fallback",
+            decision="qualified",
+            fit_score=72.0,
+            reasons=[
+                {"kind": "strength", "dimension": "core_skills", "text": "strong python background"},
+                {"kind": "gap", "dimension": "domain_experience", "text": "no prior nonprofit work"},
+                {"kind": "unknown", "dimension": "compensation_fit", "text": "salary range not disclosed"},
+            ],
+        )
+
+        detail = self.client.get("/api/opportunities/opp-fallback")
+        self.assertEqual(detail.status_code, 200)
+        scoring = detail.json()["scoring"]
+        self.assertEqual(scoring["strengths"], ["strong python background"])
+        self.assertEqual(scoring["gaps"], ["no prior nonprofit work"])
+        self.assertEqual(scoring["unknowns"], ["salary range not disclosed"])
+        # No evaluation_detail_json -> hard_constraints has nowhere to come
+        # from yet, so it is empty rather than fabricated.
+        self.assertEqual(detail.json()["qualification"]["constraints"], [])
+
+        listing = self.client.get("/api/opportunities")
+        self.assertEqual(listing.status_code, 200)
+        item = next(i for i in listing.json()["items"] if i["id"] == "opp-fallback")
+        self.assertEqual(
+            item["top_reasons"],
+            ["strong python background", "no prior nonprofit work", "salary range not disclosed"],
+        )
 
     def test_detail_records_a_founder_opportunity_view(self):
         self.seed_opportunity("opp-viewed")
@@ -686,6 +749,55 @@ class FeedbackAndActionTest(ApiTestCase):
         response_past = self.client.post("/api/opportunities/opp-fb/actions", json={"type": "snooze", "until": past})
         self.assertEqual(response_past.status_code, 422)
 
+    def test_expired_snooze_resurfaces_instead_of_raising(self):
+        """Council-flagged timezone hazard: every `DateTime` column is naive
+        while every value this codebase writes is aware UTC
+        (`datetime.now(timezone.utc)`), so a value read back through the ORM
+        is naive but represents a UTC instant. Comparing that naive value
+        directly against `datetime.now(timezone.utc)` used to raise
+        `TypeError: can't compare offset-naive and offset-aware datetimes`.
+        This seeds an already-expired `snoozed_until` (bypassing the
+        actions route's own future-date validation, which cannot itself
+        create an expired snooze) and proves the comparison neither raises
+        nor keeps suppressing the opportunity forever."""
+        expired_until = datetime.now(timezone.utc) - timedelta(days=1)
+        self.session.add(
+            FounderTriageStateRecord(
+                opportunity_id="opp-fb",
+                state="snoozed",
+                snoozed_until=expired_until,
+                created_at=datetime.now(timezone.utc) - timedelta(days=10),
+                updated_at=datetime.now(timezone.utc) - timedelta(days=10),
+            )
+        )
+        self.session.commit()
+
+        detail = self.client.get("/api/opportunities/opp-fb")
+        self.assertEqual(detail.status_code, 200)  # not a 500 from a naive/aware TypeError
+
+        listing = self.client.get("/api/opportunities")
+        self.assertEqual(listing.status_code, 200)
+        item = next(i for i in listing.json()["items"] if i["id"] == "opp-fb")
+        self.assertIsNone(item["action_state"], "an expired snooze must resurface the opportunity, not suppress it forever")
+
+    def test_active_snooze_still_reports_snoozed(self):
+        future_until = datetime.now(timezone.utc) + timedelta(days=3)
+        self.session.add(
+            FounderTriageStateRecord(
+                opportunity_id="opp-fb",
+                state="snoozed",
+                snoozed_until=future_until,
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
+        self.session.commit()
+
+        listing = self.client.get("/api/opportunities")
+        self.assertEqual(listing.status_code, 200)
+        item = next(i for i in listing.json()["items"] if i["id"] == "opp-fb")
+        self.assertEqual(item["action_state"], "snoozed")
+
 
 # ---------------------------------------------------------------------------
 # Dashboard
@@ -877,6 +989,63 @@ class SourcesAndWorkerTest(ApiTestCase):
 
         job_count = self.session.query(WorkerJobRecord).count()
         self.assertEqual(job_count, len(body["enqueued"]))
+
+
+# ---------------------------------------------------------------------------
+# High-fit threshold default
+# ---------------------------------------------------------------------------
+
+
+class HighFitThresholdDefaultTest(unittest.TestCase):
+    """`fit_score` is stored 0-100 (`MatchEvaluation.overall_fit_score`).
+    The brief's own prose says 'default 0.7', which on a 0-100 column would
+    make nearly every scored row count as high-fit and silently break the
+    founder's measured daily number. Pins the real default at 70.0. Does
+    not need PostgreSQL connectivity: `Settings`/`load_settings` only
+    validate the URL's scheme string, and `get_engine` does not connect
+    until a query is actually issued.
+    """
+
+    def test_settings_module_constant_is_70(self):
+        from api.settings import DEFAULT_HIGH_FIT_THRESHOLD
+
+        self.assertEqual(DEFAULT_HIGH_FIT_THRESHOLD, 70.0)
+
+    def test_load_settings_defaults_to_70_when_env_var_unset(self):
+        keys = (
+            "OPPORTUNITYOS_DB_URL",
+            "OPPORTUNITYOS_FOUNDER_PASSWORD",
+            "OPPORTUNITYOS_SESSION_SECRET",
+            "OPPORTUNITYOS_HIGH_FIT_THRESHOLD",
+        )
+        saved = {key: os.environ.get(key) for key in keys}
+        try:
+            os.environ["OPPORTUNITYOS_DB_URL"] = "postgresql+psycopg2://user:pw@localhost:5432/db"
+            os.environ["OPPORTUNITYOS_FOUNDER_PASSWORD"] = "x"
+            os.environ["OPPORTUNITYOS_SESSION_SECRET"] = "y"
+            os.environ.pop("OPPORTUNITYOS_HIGH_FIT_THRESHOLD", None)
+
+            from api.settings import load_settings
+
+            settings = load_settings()
+            self.assertEqual(settings.high_fit_threshold, 70.0)
+            self.assertNotEqual(settings.high_fit_threshold, 0.7)
+        finally:
+            for key, value in saved.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+
+    def test_settings_dataclass_default_is_70(self):
+        from api.settings import Settings
+
+        settings = Settings(
+            db_url="postgresql+psycopg2://user:pw@localhost:5432/db",
+            founder_password="x",
+            session_secret="y",
+        )
+        self.assertEqual(settings.high_fit_threshold, 70.0)
 
 
 if __name__ == "__main__":

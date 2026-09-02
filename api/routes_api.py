@@ -39,10 +39,12 @@ from worker.queue import BackgroundWorkerQueue
 
 from .deps import get_db, get_repository, require_session
 from .serialization import (
-    pack_reasons,
     serialize_constraint,
     serialize_dimension_score,
+    strengths_gaps_unknowns_from_reasons,
+    top_reasons_from_list,
     unpack_dimension_scores,
+    unpack_evaluation_detail,
     unpack_reasons,
 )
 
@@ -51,6 +53,38 @@ logger = get_logger("api.routes")
 router = APIRouter(prefix="/api", dependencies=[Depends(require_session)])
 
 DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+# --------------------------------------------------------------------------
+# Timezone convention
+#
+# Every `DateTime` column in `storage/migrations` (0001 and 0002) is naive
+# (`sa.DateTime()`, no `timezone=True`) -- but every value this codebase
+# writes into one is `datetime.now(timezone.utc)`. So a value read back
+# through the ORM is naive but always represents a UTC instant; comparing it
+# directly against an aware `datetime.now(timezone.utc)` raises
+# `TypeError: can't compare offset-naive and offset-aware datetimes`
+# (council-flagged: this was a real, reachable crash in snooze-expiry
+# handling). `_as_aware_utc` is the single place that convention is made
+# explicit: every DB-read datetime passes through it before either being
+# compared against an aware value or serialised via `_iso`, so this module
+# never mixes naive and aware datetimes. SQLAlchemy `.filter(...)` query
+# expressions (e.g. the dashboard's day-bucket filters) are unaffected --
+# those comparisons happen server-side in SQL, not between two Python
+# `datetime` objects, so they carry no such hazard.
+# --------------------------------------------------------------------------
+
+def _as_aware_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
+
+
+def _iso(value: datetime | None) -> str | None:
+    aware = _as_aware_utc(value)
+    return aware.isoformat() if aware is not None else None
 
 
 # --------------------------------------------------------------------------
@@ -69,9 +103,16 @@ def _latest_evaluation(session: Session, opportunity_id: str) -> MatchEvaluation
 def _latest_action_state(session: Session, opportunity_id: str) -> str | None:
     triage = session.query(FounderTriageStateRecord).filter_by(opportunity_id=opportunity_id).first()
     if triage is not None:
-        if triage.state == "snoozed" and triage.snoozed_until and triage.snoozed_until <= datetime.now(timezone.utc):
-            pass  # expired snooze still reported as its last known state; the UI decides re-surfacing
-        return triage.state
+        if triage.state == "snoozed":
+            snoozed_until = _as_aware_utc(triage.snoozed_until)
+            snooze_still_active = snoozed_until is None or snoozed_until > datetime.now(timezone.utc)
+            if snooze_still_active:
+                return "snoozed"
+            # Expired snooze: no longer suppress the opportunity from the
+            # feed -- fall through to check for a submitted action instead
+            # of reporting a stale "snoozed" state forever.
+        else:
+            return triage.state
     submitted = (
         session.query(OutboundActionRecordModel)
         .filter_by(opportunity_id=opportunity_id, action_status=ActionStatus.SUBMITTED.value)
@@ -140,7 +181,7 @@ def list_opportunities(
                 "track": opp.track,
                 "decision": opp_decision,
                 "fit_score": fit_score,
-                "top_reasons": (reasons["top_reasons"] or [])[:3],
+                "top_reasons": top_reasons_from_list(reasons),
                 "deadline": opp.deadline,
                 "posted_date": opp.posted_date,
                 "is_stale": bool(opp.is_stale),
@@ -193,20 +234,26 @@ def _build_opportunity_detail(session: Session, opp: OpportunityRecord) -> dict[
     if evaluation is not None:
         reasons = unpack_reasons(evaluation.reasons_json)
         dims = unpack_dimension_scores(evaluation.dimension_scores_json)
+        # `evaluation_detail_json` may not exist yet on every deployed schema
+        # (a column D4b is adding) -- `getattr` with a default keeps this
+        # forward-compatible instead of raising `AttributeError`.
+        detail = unpack_evaluation_detail(getattr(evaluation, "evaluation_detail_json", None))
+        fallback_strengths, fallback_gaps, fallback_unknowns = strengths_gaps_unknowns_from_reasons(reasons)
+
         qualification = {
             "decision": evaluation.qualification_decision,
-            "constraints": [serialize_constraint(c) for c in reasons["hard_constraints"]],
+            "constraints": [serialize_constraint(c) for c in detail["hard_constraints"]],
         }
         scoring = {
             "fit_score": evaluation.fit_score,
             "dimension_scores": [serialize_dimension_score(d) for d in dims],
-            "strengths": reasons["strengths"],
-            "gaps": reasons["gaps"],
-            "unknowns": reasons["unknowns"],
-            "uncertainty_penalty": reasons["uncertainty_penalty"],
-            "explanation": reasons["explanation"],
+            "strengths": detail["strengths"] or fallback_strengths,
+            "gaps": detail["gaps"] or fallback_gaps,
+            "unknowns": detail["unknowns"] or fallback_unknowns,
+            "uncertainty_penalty": detail["uncertainty_penalty"],
+            "explanation": detail["explanation"],
             "policy_version": evaluation.policy_version,
-            "evaluated_at": evaluation.evaluated_at.isoformat() if evaluation.evaluated_at else None,
+            "evaluated_at": _iso(evaluation.evaluated_at),
             "truth_pack_hash": evaluation.truth_pack_hash,
         }
 
@@ -217,8 +264,8 @@ def _build_opportunity_detail(session: Session, opp: OpportunityRecord) -> dict[
             "action_id": a.id,
             "action_status": a.action_status,
             "execution_mode": a.execution_mode,
-            "created_at": a.created_at.isoformat() if a.created_at else None,
-            "updated_at": a.updated_at.isoformat() if a.updated_at else None,
+            "created_at": _iso(a.created_at),
+            "updated_at": _iso(a.updated_at),
             "notes": a.blocker_reason,
         }
         for a in session.query(OutboundActionRecordModel)
@@ -233,7 +280,7 @@ def _build_opportunity_detail(session: Session, opp: OpportunityRecord) -> dict[
             "feedback_label": f.feedback_label,
             "structured_reason": f.structured_reason,
             "notes": f.notes,
-            "created_at": f.created_at.isoformat() if f.created_at else None,
+            "created_at": _iso(f.created_at),
         }
         for f in session.query(FounderFeedbackRecord)
         .filter_by(opportunity_id=opp.id)
@@ -252,7 +299,7 @@ def _build_opportunity_detail(session: Session, opp: OpportunityRecord) -> dict[
         "deadline": opp.deadline,
         "posted_date": opp.posted_date,
         "is_stale": bool(opp.is_stale),
-        "reverified_at": opp.reverified_at.isoformat() if opp.reverified_at else None,
+        "reverified_at": _iso(opp.reverified_at),
         "fields": [
             {
                 "field_name": p.field_name,
@@ -646,7 +693,7 @@ def sources_health(session: Session = Depends(get_db)):
                 "name": policy.name,
                 "category": policy.category,
                 "read_policy": "allowed" if policy.read_allowed else "disabled",
-                "last_poll": last_run.started_at.isoformat() if last_run else None,
+                "last_poll": _iso(last_run.started_at) if last_run else None,
                 "last_status": last_run.status if last_run else None,
                 "last_record_count": last_run.raw_ingested if last_run else None,
             }

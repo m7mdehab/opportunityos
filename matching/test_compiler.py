@@ -34,6 +34,31 @@ class TestArtifactCompilers(unittest.TestCase):
         self.assertTrue(len(cv.generated_claims) > 0)
         self.assertTrue(bool(cv.artifact_hash))
 
+    def test_compile_tailored_cv_with_metric_bearing_graph(self) -> None:
+        """Regression (BRIEF-FR-004 D6 council finding): `MetricAssertion`
+        has a `context` field, not `semantic_context`. The achievements
+        section of `compile_tailored_cv` used to read the wrong attribute
+        name and raise `AttributeError` for any truth graph containing a
+        metric -- which a real founder pack, with a quantified achievement,
+        is very likely to have. `truth.fixtures.synthetic_graph()` includes
+        exactly such a metric (evidence-supported, so it survives graph
+        construction); this must compile cleanly and the metric's `context`
+        text must actually appear in the output."""
+        from truth.fixtures import synthetic_graph
+
+        metric_graph = synthetic_graph()
+        opp = create_test_opportunity()
+
+        cv = self.emp_compiler.compile_tailored_cv(opp, metric_graph)
+
+        self.assertTrue(len(cv.sections) >= 1)
+        metric_claims = [c for c in cv.generated_claims if c.predicate == "metric"]
+        self.assertTrue(metric_claims, "expected at least one metric-derived claim")
+        self.assertTrue(
+            any("reduced processing time by 40%" in claim.text for claim in metric_claims),
+            [c.text for c in metric_claims],
+        )
+
     def test_compile_cover_letter(self) -> None:
         opp = create_test_opportunity()
         cover = self.emp_compiler.compile_cover_letter(opp, self.truth_graph)
