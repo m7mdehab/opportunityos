@@ -304,3 +304,35 @@ class FounderTriageStateRecord(Base):
     snoozed_until = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, nullable=False)
+
+
+class FounderFilterSettingRecord(Base):
+    """D3 (BRIEF-FR-005) -- one row per named founder-controlled filter.
+
+    Table and defaults live in migration ``0003_provenance_identity`` (D3's
+    marked block), shared with D5's provenance work in that revision. Every
+    fresh database has all ten filters seeded by the migration itself, so the
+    API never has to invent a default on first read.
+
+    ``mode`` is one of ``hide`` | ``rank_only`` | ``label_only`` (see
+    ``api/filters.py``). ``params_json`` is nullable free-form JSON for the
+    handful of filters that take founder-supplied parameters (``min_fit_score``,
+    ``compensation_floor``); every other filter's params are ``{}``.
+
+    Timezone convention for ``updated_at``: this column is naive (no
+    ``timezone=True``), matching every other ``DateTime`` column in this
+    module (e.g. ``MatchEvaluationRecord.evaluated_at``). Writers must strip
+    tzinfo from an already-UTC value before writing (see
+    ``matching/evaluate_persist.py::_to_naive_utc`` and
+    ``api/filters.py::to_naive_utc``) rather than handing psycopg2 a tz-aware
+    datetime, which PostgreSQL would silently convert using the session's
+    ``timezone`` GUC before storing it naive.
+    """
+
+    __tablename__ = "founder_filter_settings"
+
+    filter_id = Column(String(64), primary_key=True)
+    enabled = Column(Boolean, nullable=False)
+    mode = Column(String(16), nullable=False)
+    params_json = Column(Text, nullable=True)
+    updated_at = Column(DateTime, nullable=False)
