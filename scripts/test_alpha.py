@@ -11,6 +11,7 @@ nothing is up. Do not start the real web or API in unit tests").
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import socket
@@ -27,6 +28,52 @@ import scripts.alpha as alpha
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ALPHA_SCRIPT = REPO_ROOT / "scripts" / "alpha.py"
+
+
+@contextlib.contextmanager
+def _listening_on(port: int):
+    """Bind and actively accept-and-drop connections on 127.0.0.1:``port``
+    for the duration of the with-block -- stands in for the real web dev
+    server actually being reachable, which _wait_web_ready's TCP
+    confirmation check (added after the "ready line printed, then Next
+    detected another dev server and exited" defect) now requires before
+    reporting success. A bare listen() backlog with nothing calling
+    accept() only answers the very first connect attempt and then refuses
+    the rest (see TestStopProcessesPortVerification's own note on this) --
+    not representative of a real listening server, and not what
+    _wait_web_ready polls with repeatedly -- so this accepts (and
+    immediately drops) connections in a loop for as long as the block runs.
+    """
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.bind(("127.0.0.1", port))
+    srv.listen(5)
+    srv.settimeout(0.2)
+    stop_accepting = threading.Event()
+
+    def _accept_loop():
+        while not stop_accepting.is_set():
+            try:
+                conn, _ = srv.accept()
+            except socket.timeout:
+                continue
+            conn.close()
+
+    thread = threading.Thread(target=_accept_loop, daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop_accepting.set()
+        thread.join(timeout=5)
+        srv.close()
+
+
+def _free_port() -> int:
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.bind(("127.0.0.1", 0))
+    port = srv.getsockname()[1]
+    srv.close()
+    return port
 
 
 class TestLoadAlphaEnv(unittest.TestCase):
@@ -249,17 +296,23 @@ class TestWaitWebReady(unittest.TestCase):
                 proc.wait(timeout=5)
 
     def test_returns_cleanly_when_the_child_bound_the_expected_port(self):
+        # A real listener on the expected port -- success requires not just
+        # a matching ready line but a genuine, still-answering TCP endpoint
+        # (see the "ready line printed, then exited" defect this class also
+        # covers further down).
+        port = _free_port()
         with tempfile.TemporaryDirectory() as tmp:
             log_path = Path(tmp) / "web.log"
             log_path.write_text(
                 "  ▲ Next.js 16.3.4\n"
-                "  - Local:         http://localhost:3000\n",
+                f"  - Local:         http://localhost:{port}\n",
                 encoding="utf-8",
             )
             proc = self._spawn_long_lived()
             try:
-                # Must not raise.
-                alpha._wait_web_ready(proc, log_path, expected_port=3000, timeout_seconds=5)
+                with _listening_on(port):
+                    # Must not raise.
+                    alpha._wait_web_ready(proc, log_path, expected_port=port, timeout_seconds=5)
             finally:
                 if proc.poll() is None:
                     proc.kill()
@@ -293,20 +346,23 @@ class TestWaitWebReady(unittest.TestCase):
     # -- --web-port override path: same shape, non-default port -----------------
 
     def test_honours_a_non_default_expected_port_end_to_end(self):
-        """`--web-port 3005` must be verified exactly like the default: the
-        child reporting 3005 in its own ready line must be accepted.
+        """`--web-port` must be verified exactly like the default: a child
+        reporting the requested (non-default) port in its own ready line,
+        and genuinely reachable there, must be accepted.
         """
+        port = _free_port()
         with tempfile.TemporaryDirectory() as tmp:
             log_path = Path(tmp) / "web.log"
             log_path.write_text(
                 "  Next.js 16.3.4\n"
-                "  - Local:         http://localhost:3005\n",
+                f"  - Local:         http://localhost:{port}\n",
                 encoding="utf-8",
             )
             proc = self._spawn_long_lived()
             try:
-                # Must not raise.
-                alpha._wait_web_ready(proc, log_path, expected_port=3005, timeout_seconds=5)
+                with _listening_on(port):
+                    # Must not raise.
+                    alpha._wait_web_ready(proc, log_path, expected_port=port, timeout_seconds=5)
             finally:
                 if proc.poll() is None:
                     proc.kill()
@@ -350,13 +406,21 @@ class TestWaitWebReady(unittest.TestCase):
         actually succeeded. This test fails against a call that omits
         log_offset (i.e. today's default of 0), and passes once the byte
         offset recorded right before spawning is threaded through.
+
+        The "stale" port below (a fixed, deliberately never-dialed number)
+        is never actually bound by this test -- it only ever appears as
+        text in the log, exactly like a real prior run's ready line would
+        be. Only the real, current-run port is a genuine free port obtained
+        dynamically, and only that one is ever listened on.
         """
+        stale_port = 39501  # never dialed -- see docstring
+        real_port = _free_port()
         with tempfile.TemporaryDirectory() as tmp:
             log_path = Path(tmp) / "web.log"
             # A previous, unrelated `up` attempt's own ready line.
             log_path.write_text(
                 "  Next.js 16.3.4\n"
-                "  - Local:         http://localhost:3001\n",
+                f"  - Local:         http://localhost:{stale_port}\n",
                 encoding="utf-8",
             )
             log_offset = log_path.stat().st_size  # recorded "immediately before this spawn"
@@ -364,16 +428,18 @@ class TestWaitWebReady(unittest.TestCase):
             # exactly what _spawn's append-mode open produces in practice.
             with open(log_path, "a", encoding="utf-8") as handle:
                 handle.write("  Next.js 16.3.4\n")
-                handle.write("  - Local:         http://localhost:3210\n")
+                handle.write(f"  - Local:         http://localhost:{real_port}\n")
 
             proc = self._spawn_long_lived()
             try:
-                # Must not raise: 3210 (after the offset) matches what was
-                # requested; the stale 3001 line (before the offset) must
-                # never be considered.
-                alpha._wait_web_ready(
-                    proc, log_path, expected_port=3210, timeout_seconds=5, log_offset=log_offset
-                )
+                with _listening_on(real_port):
+                    # Must not raise: real_port (after the offset) matches
+                    # what was requested and is genuinely reachable; the
+                    # stale line (before the offset) must never be
+                    # considered.
+                    alpha._wait_web_ready(
+                        proc, log_path, expected_port=real_port, timeout_seconds=5, log_offset=log_offset
+                    )
             finally:
                 if proc.poll() is None:
                     proc.kill()
@@ -382,25 +448,99 @@ class TestWaitWebReady(unittest.TestCase):
     def test_without_the_offset_the_stale_line_causes_a_false_failure(self):
         """Documents the defect directly: the same log/ports as the test
         above, but called without log_offset (today's default, 0) -- the
-        stale 3001 line wins and a perfectly successful 3210 bind is
-        reported as a mismatch.
+        stale line wins and a perfectly successful bind is reported as a
+        mismatch. Never dials either port (the mismatch is raised before
+        any liveness check), so neither needs to be a genuinely free port.
         """
+        stale_port = 39501
+        real_port = 39502
         with tempfile.TemporaryDirectory() as tmp:
             log_path = Path(tmp) / "web.log"
             log_path.write_text(
                 "  Next.js 16.3.4\n"
-                "  - Local:         http://localhost:3001\n",
+                f"  - Local:         http://localhost:{stale_port}\n",
                 encoding="utf-8",
             )
             with open(log_path, "a", encoding="utf-8") as handle:
                 handle.write("  Next.js 16.3.4\n")
-                handle.write("  - Local:         http://localhost:3210\n")
+                handle.write(f"  - Local:         http://localhost:{real_port}\n")
 
             proc = self._spawn_long_lived()
             try:
                 with self.assertRaises(alpha.AlphaError) as ctx:
-                    alpha._wait_web_ready(proc, log_path, expected_port=3210, timeout_seconds=5)
-                self.assertIn("3001", str(ctx.exception))
+                    alpha._wait_web_ready(proc, log_path, expected_port=real_port, timeout_seconds=5)
+                self.assertIn(str(stale_port), str(ctx.exception))
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                proc.wait(timeout=5)
+
+    # -- ready line is not proof by itself (Next's "another dev server" lock) ---
+
+    def test_a_correct_ready_line_followed_by_exit_is_treated_as_a_failure(self):
+        """The exact real-world defect this class was extended for: Next
+        can print a fully correct "- Local:" ready line for the requested
+        port, then -- moments later -- notice a pre-existing dev server for
+        the same project directory and exit, having never actually served
+        anything. Matching the ready line text is not proof by itself; this
+        must be reported as a failure, not success. A test that would fail
+        against the pre-fix behaviour, which returned as soon as the ready
+        line matched, without ever checking the process was still alive or
+        the port still answering.
+        """
+        port = _free_port()  # deliberately never listened on: nothing should ever accept here
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "web.log"
+            log_path.write_text(
+                "  Next.js 16.3.4\n"
+                f"  - Local:         http://localhost:{port}\n"
+                "  Ready in 4.4s\n",
+                encoding="utf-8",
+            )
+            # Exits shortly after the ready line was already written --
+            # mirrors Next printing "ready", then noticing the lock, then
+            # exiting a moment later.
+            proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(1)"])
+            try:
+                with self.assertRaises(alpha.AlphaError) as ctx:
+                    alpha._wait_web_ready(proc, log_path, expected_port=port, timeout_seconds=5)
+                message = str(ctx.exception)
+                self.assertIn("reported it was ready", message)
+                self.assertIn(str(port), message)
+                self.assertIn("exited", message)
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                proc.wait(timeout=5)
+
+    def test_names_the_existing_pid_and_port_when_another_dev_server_holds_the_lock(self):
+        """Next has already diagnosed this precisely -- surface it verbatim
+        (naming the *existing* server's pid and port, not this run's)
+        instead of a generic "the child exited".
+        """
+        this_run_port = _free_port()  # never listened on -- the point is this run's own bind is moot
+        existing_port = 3210
+        existing_pid = 21856
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "web.log"
+            log_path.write_text(
+                "  Next.js 16.3.4\n"
+                f"  - Local:         http://localhost:{this_run_port}\n"
+                "  Ready in 4.4s\n"
+                "  Another next dev server is already running.\n"
+                f"  - Local:         http://localhost:{existing_port}\n"
+                f"  - PID:           {existing_pid}\n",
+                encoding="utf-8",
+            )
+            proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(1)"])
+            try:
+                with self.assertRaises(alpha.AlphaError) as ctx:
+                    alpha._wait_web_ready(proc, log_path, expected_port=this_run_port, timeout_seconds=5)
+                message = str(ctx.exception)
+                self.assertIn("already running", message)
+                self.assertIn(str(existing_pid), message)
+                self.assertIn(str(existing_port), message)
+                self.assertIn("--web-port", message)
             finally:
                 if proc.poll() is None:
                     proc.kill()
@@ -677,14 +817,6 @@ class _FakePopen:
 
     def poll(self):
         return None
-
-
-def _free_port() -> int:
-    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    srv.bind(("127.0.0.1", 0))
-    port = srv.getsockname()[1]
-    srv.close()
-    return port
 
 
 class TestFailedUpLeavesStateForDown(unittest.TestCase):

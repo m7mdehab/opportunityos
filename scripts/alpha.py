@@ -211,6 +211,88 @@ def _read_log_since(log_path: Path, offset: int) -> str:
         return handle.read().decode("utf-8", errors="replace")
 
 
+#: Next prints exactly this line (see next/dist/cli/next-dev.js) when a
+#: second dev server for the same project directory (web/.next/dev/lock)
+#: starts up: it briefly prints its own ready line, notices the lock, prints
+#: this banner plus the *existing* server's own "- Local:"/"- PID:" lines,
+#: and exits. See _diagnose_web_exit's docstring.
+_ALREADY_RUNNING_MARKER = "Another next dev server is already running"
+
+_PID_LINE_RE = re.compile(r"-\s*PID:\s*(\d+)")
+
+
+def _parse_already_running_block(text: str) -> Optional[tuple[Optional[str], Optional[str]]]:
+    """Return ``(existing_port, existing_pid)`` parsed from Next's own
+    "Another next dev server is already running" banner, or None if that
+    banner is not present anywhere in ``text``. Only the few lines
+    immediately following the banner are scanned, mirroring exactly how
+    Next itself prints the block (banner, then "- Local:", then "- PID:").
+    """
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if _ALREADY_RUNNING_MARKER not in line:
+            continue
+        existing_port: Optional[str] = None
+        existing_pid: Optional[str] = None
+        for follow in lines[i + 1 : i + 6]:
+            if existing_port is None:
+                port_match = _NEXT_LOCAL_URL_RE.search(follow)
+                if port_match:
+                    existing_port = port_match.group(1)
+            if existing_pid is None:
+                pid_match = _PID_LINE_RE.search(follow)
+                if pid_match:
+                    existing_pid = pid_match.group(1)
+        if existing_port or existing_pid:
+            return existing_port, existing_pid
+    return None
+
+
+def _diagnose_web_exit(proc: "subprocess.Popen", log_path: Path, text: str, expected_port: int) -> AlphaError:
+    """Build the error for a web child that has exited -- either right away,
+    or (see ``_wait_web_ready``) after printing a ready line that turned out
+    not to mean it was actually serving anything. Never returns normally;
+    always returns an ``AlphaError`` for the caller to raise (a plain
+    function, not `raise` itself, so callers can add their own context if
+    ever needed without a bare re-raise).
+
+    Checked first: Next 16 allows only one dev server per project directory
+    (it holds a lock at ``web/.next/dev/lock``); a second one prints its own
+    ready line, then notices the existing lock, prints "Another next dev
+    server is already running" plus the *existing* server's own port/pid,
+    and exits. A founder who left a dev server running from an earlier
+    session (or their editor) will hit exactly this, and Next has already
+    diagnosed it precisely -- surfacing that verbatim (naming the existing
+    pid/port) beats a generic "the child exited" that would leave them
+    guessing at something already known.
+    """
+    already_running = _parse_already_running_block(text)
+    if already_running is not None:
+        existing_port, existing_pid = already_running
+        where_bits = []
+        if existing_pid:
+            where_bits.append(f"pid {existing_pid}")
+        if existing_port:
+            where_bits.append(f"port {existing_port}")
+        where = " on ".join(where_bits) if where_bits else "another process"
+        return AlphaError(
+            f"Next detected another dev server already running for this project ({where}) and exited "
+            "-- Next allows only one dev server per project directory (it holds a lock at "
+            f"web/.next/dev/lock). The process just spawned for this `up` (pid {proc.pid}) briefly "
+            f"printed a ready line for port {expected_port} before Next noticed that lock and shut it "
+            "down again; it was never actually serving anything. Stop the pre-existing dev server "
+            f"yourself (e.g. a session left running from an earlier `up` outside this alpha session, "
+            f"or from an editor/IDE), or pass `--web-port` to use a different port. See {log_path} for "
+            "the full log."
+        )
+    tail = "\n".join(text.strip().splitlines()[-20:])
+    return AlphaError(
+        f"web dev server (pid {proc.pid}) reported it was ready on port {expected_port} but then exited "
+        f"(exit code {proc.returncode}) before this could confirm it was actually accepting connections "
+        f"-- a ready line in the log is not proof by itself. See {log_path}. Last lines:\n{tail}"
+    )
+
+
 def _wait_web_ready(
     proc: "subprocess.Popen",
     log_path: Path,
@@ -220,7 +302,9 @@ def _wait_web_ready(
     log_offset: int = 0,
 ) -> None:
     """Wait for the web dev server to report ready, then verify it actually
-    bound ``expected_port`` -- not just that *something* answers there.
+    bound ``expected_port`` -- not just that *something* answers there --
+    and is still genuinely serving it, not just that a ready line was
+    printed at some point.
 
     Next's dev server, when its requested port is free to auto-retry (i.e.
     no explicit ``-p`` was passed, or a race let it start before this
@@ -241,6 +325,19 @@ def _wait_web_ready(
     ever bypassed (e.g. a future Next version, or a differently-invoked
     dev server) rather than trusting an external TCP probe alone.
 
+    A *third*, independent problem this function also closes: Next allows
+    only one dev server per project directory. A second one (this one, if
+    the founder left an earlier dev server running) briefly binds the
+    requested port, prints a completely correct-looking "- Local:
+    http://host:PORT" ready line, *then* notices the existing lock and
+    exits. Matching that ready line is therefore not proof of anything by
+    itself -- after a match, this function keeps polling until it can
+    additionally confirm the process is still alive (``proc.poll() is
+    None``) AND a real TCP connect to the port succeeds, before reporting
+    success. If the process exits after a match instead, ``_diagnose_web_exit``
+    distinguishes the "another dev server" case (named precisely, since
+    Next already diagnosed it) from any other post-ready exit.
+
     ``log_offset`` is the byte size of ``log_path`` immediately before this
     spawn (0 if it did not exist yet). ``web.log`` is append-only across
     every ``up`` attempt (see ``_spawn``), so without this offset the first
@@ -251,8 +348,12 @@ def _wait_web_ready(
     with ``log_path.stat().st_size`` right before calling ``_spawn``.
     """
     deadline = time.monotonic() + timeout_seconds
+    matched = False
     while time.monotonic() < deadline:
-        if proc.poll() is not None:
+        exited = proc.poll() is not None
+        text = _read_log_since(log_path, log_offset)
+
+        if exited and not matched:
             raise AlphaError(
                 f"web (npm run dev) exited immediately (exit code {proc.returncode}) while starting on "
                 f"port {expected_port} -- port {expected_port} is likely already in use by another "
@@ -260,20 +361,41 @@ def _wait_web_ready(
                 f"running, or pass `--web-port` to use a different one, then retry `up`. See {log_path} "
                 "for details."
             )
-        text = _read_log_since(log_path, log_offset)
-        match = _NEXT_LOCAL_URL_RE.search(text)
-        if match:
-            actual_port = int(match.group(1))
-            if actual_port != expected_port:
-                raise AlphaError(
-                    f"web dev server bound port {actual_port} instead of the required "
-                    f"{expected_port} (see {log_path}) -- another process is already holding "
-                    f"port {expected_port}. Run `python scripts/alpha.py down` if a previous alpha "
-                    f"session left it running, or pass `--web-port` to use a different one, then "
-                    "retry `up`."
-                )
-            return
-        time.sleep(0.5)
+
+        if not matched:
+            match = _NEXT_LOCAL_URL_RE.search(text)
+            if match:
+                actual_port = int(match.group(1))
+                if actual_port != expected_port:
+                    raise AlphaError(
+                        f"web dev server bound port {actual_port} instead of the required "
+                        f"{expected_port} (see {log_path}) -- another process is already holding "
+                        f"port {expected_port}. Run `python scripts/alpha.py down` if a previous alpha "
+                        f"session left it running, or pass `--web-port` to use a different one, then "
+                        "retry `up`."
+                    )
+                matched = True
+
+        if matched:
+            # A ready line is not proof by itself -- see this function's own
+            # docstring on the "another dev server" case. Only report
+            # success once the process is still alive AND the port is
+            # actually accepting connections; if it has exited instead,
+            # diagnose exactly why (re-reading the log first, so a banner
+            # written in the same instant the process exits is not missed).
+            if proc.poll() is not None:
+                raise _diagnose_web_exit(proc, log_path, _read_log_since(log_path, log_offset), expected_port)
+            if _port_open(WEB_HOST, expected_port, timeout=0.5):
+                return
+
+        time.sleep(0.3)
+
+    if matched:
+        raise AlphaError(
+            f"Timed out after {timeout_seconds:.0f}s confirming the web dev server (pid {proc.pid}) is "
+            f"actually accepting connections on port {expected_port} after it reported ready. See "
+            f"{log_path}."
+        )
     raise AlphaError(
         f"Timed out after {timeout_seconds:.0f}s waiting for the web dev server to report it is ready "
         f"on port {expected_port}. See {log_path}."
