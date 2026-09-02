@@ -1021,6 +1021,106 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         self.assertEqual(len(refusals), 1)
         self.assertEqual(refusals[0]["source_id"], "ashby:openai")
 
+    def test_case_u_poll_source_persists_idempotently(self):
+        """Case U: poll_source persists a fixture batch idempotently against real PostgreSQL.
+
+        Runs the ``poll_source`` handler twice for one read-allowed fixture
+        source (``himalayas``, offline ``MockTransport`` fixture -- no network
+        access, ever): asserts rows appear on the first run, the
+        ``opportunities`` row count is unchanged on the second (identical)
+        run, ``field_provenances`` rows exist for the persisted opportunity,
+        and a third run with a mutated payload (same identity, different
+        content) takes the re-verification path -- updating ``is_stale`` /
+        ``reverified_at`` in place -- rather than inserting a duplicate row.
+        """
+        import json as _json
+
+        from opportunity.registry import SourceRegistry
+        from opportunity.transport import MockTransport, TransportResponse
+        from worker.handlers import default_handler_registry
+
+        registry = SourceRegistry()
+        self.assertTrue(
+            registry.is_read_allowed("himalayas"),
+            "himalayas must be read-allowed for this test to be meaningful",
+        )
+
+        fixture_path = Path(__file__).resolve().parents[1] / "opportunity" / "fixtures" / "himalayas.json"
+        fixture_payload = fixture_path.read_text(encoding="utf-8")
+
+        mock_transport = MockTransport(
+            {"himalayas": TransportResponse(status_code=200, body=fixture_payload, latency_ms=5)}
+        )
+
+        refusals = []
+        handlers = default_handler_registry(
+            registry=registry,
+            transport=mock_transport,
+            refusal_sink=refusals.append,
+            session_factory=self.SessionFactory,
+        )
+        poll_source = handlers["poll_source"]
+
+        # First run: rows must appear.
+        poll_source({"source_id": "himalayas"})
+
+        verify_session = self.SessionFactory()
+        try:
+            opp_rows = verify_session.query(OpportunityRecord).all()
+            self.assertEqual(len(opp_rows), 1, "fixture has exactly one job posting")
+            opp_id = opp_rows[0].id
+            original_content_hash = opp_rows[0].content_hash
+            self.assertFalse(opp_rows[0].is_stale)
+            self.assertIsNone(opp_rows[0].reverified_at)
+
+            prov_rows = (
+                verify_session.query(FieldProvenanceRecord)
+                .filter_by(opportunity_id=opp_id)
+                .all()
+            )
+            self.assertGreater(len(prov_rows), 0, "field_provenances rows must exist for the persisted opportunity")
+        finally:
+            verify_session.close()
+
+        # Second run: identical payload -- row count must be unchanged (idempotent).
+        poll_source({"source_id": "himalayas"})
+
+        verify_session = self.SessionFactory()
+        try:
+            opp_count = verify_session.query(OpportunityRecord).count()
+            self.assertEqual(opp_count, 1, "re-running the same batch must insert nothing")
+            unchanged_row = verify_session.query(OpportunityRecord).filter_by(id=opp_id).first()
+            self.assertEqual(unchanged_row.content_hash, original_content_hash)
+            self.assertIsNone(unchanged_row.reverified_at, "an unchanged posting must not be re-verified")
+        finally:
+            verify_session.close()
+
+        # Third run: mutated payload under the same identity -- must update in
+        # place (re-verification path), not insert a duplicate.
+        fixture_data = _json.loads(fixture_payload)
+        fixture_data["jobs"][0]["title"] = "Principal Backend Architect (Updated)"
+        mutated_payload = _json.dumps(fixture_data)
+        mock_transport.set_response(
+            "himalayas", TransportResponse(status_code=200, body=mutated_payload, latency_ms=5)
+        )
+
+        poll_source({"source_id": "himalayas"})
+
+        verify_session = self.SessionFactory()
+        try:
+            opp_count = verify_session.query(OpportunityRecord).count()
+            self.assertEqual(opp_count, 1, "a changed posting under the same identity must update, not duplicate")
+            updated_row = verify_session.query(OpportunityRecord).filter_by(id=opp_id).first()
+            self.assertIsNotNone(updated_row)
+            self.assertEqual(updated_row.title, "Principal Backend Architect (Updated)")
+            self.assertNotEqual(updated_row.content_hash, original_content_hash)
+            self.assertFalse(updated_row.is_stale)
+            self.assertIsNotNone(updated_row.reverified_at, "a changed posting must set reverified_at")
+        finally:
+            verify_session.close()
+
+        self.assertEqual(refusals, [], "a read-allowed source must never record a refusal")
+
 
 if __name__ == "__main__":
     unittest.main()
