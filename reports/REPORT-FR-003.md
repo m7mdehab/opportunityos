@@ -461,11 +461,12 @@ same class of defect this brief was written to close.
   `Mandatory Governance & Test Suite`. That log is the authority for the `Ran N tests` line, the
   per-module counts in §4, and the zero-skip claim.
 - **A note on which head the cited run IDs belong to.** The four run IDs in the header are the
-  checks on `3484cdd`, the head that carries every code, test, and data change in this brief.
-  One further commit follows it, adding the verifier's verdict column to the claim ledger and
-  this report — documentation only, no code — and its own four checks are green as well. Confirm
-  against whatever the PR's current head is; the two heads differ by documentation alone, and
-  `git diff 3484cdd..HEAD --stat` shows exactly that. The three other workflows (State, Guard, Mirror)
+  checks on `3484cdd`, the head that carries every executable change in this brief. The commits
+  after it touch only prose and matrix data — `docs/STATE.md`, the readiness matrix JSON and its
+  rendered `.md`, this report, and three evidence files — as `git diff 3484cdd..HEAD --stat`
+  shows: no `.py` file, no workflow, and no test differs between the two heads. Confirm the
+  checks against whatever the PR's current head is; both are green, and the diff between them is
+  the reason the earlier run IDs remain the right citation for the test evidence in §4. The three other workflows (State, Guard, Mirror)
   are the authority for A-4 and A-5 under the repository secrets, which are not available locally.
 - **Claim ledger:** `reports/evidence/FR-003/CLAIMS.md`, with both verdict columns filled, and one
   captured output file per claim alongside it.
