@@ -48,3 +48,18 @@ jobs:
         run: python scripts/check_guard.py --allow-missing-patterns
       - name: Check Repository Integrity
         run: python scripts/check_repository.py
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install Web Dependencies
+        working-directory: web
+        run: npm ci
+      - name: Build Web
+        working-directory: web
+        run: npm run build
+      - name: Lint Web
+        working-directory: web
+        run: npm run lint
