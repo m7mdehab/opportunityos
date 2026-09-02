@@ -46,14 +46,25 @@ this module or constructing that default) -- filesystem access only happens
 when ``load_alpha_env`` actually runs, which callers (including tests) can
 redirect with ``--env-file``.
 
-``up`` never attaches to a database whose name ends in ``_test`` (see
-``_refuse_test_database``): the FR-004 erratum (``reports/REPORT-FR-004.md``)
-records that ``alpha.py up`` once attached, silently, to the automated test
-suite's own ``opportunityos_test`` -- because that is what a stale env file
-happened to name -- and served its synthetic fixtures (``src-1``,
-``opp-uq-*``, ``example.com``) to the founder as though they were real
-polled data. ``docs/templates/alpha.env.template`` now points a fresh copy
-at ``opportunityos_alpha`` (``ALPHA_DB_NAME`` below); ``_ensure_postgres``
+Neither ``up`` nor ``status`` -- the two subcommands that resolve
+OPPORTUNITYOS_DB_URL at all -- ever attaches to a database whose name ends
+in ``_test`` (see ``_refuse_test_database``, enforced centrally inside
+``load_alpha_env`` itself so no caller can forget): the FR-004 erratum
+(``reports/REPORT-FR-004.md``) records that ``alpha.py up`` once attached,
+silently, to the automated test suite's own ``opportunityos_test`` --
+because that is what a stale env file happened to name -- and served its
+synthetic fixtures (``src-1``, ``opp-uq-*``, ``example.com``) to the founder
+as though they were real polled data; ``status`` reading the same stale env
+file and printing that database's poll history is the identical defect in
+milder form. ``down`` and ``logs`` never call ``load_alpha_env`` and so are
+unaffected by this check entirely -- both act purely on the run-dir state
+file (``out/alpha_run/state.json``) recording what ``up`` itself already
+started, never on OPPORTUNITYOS_DB_URL, and a stray previous session must
+still be stoppable (or its logs still readable) even if the founder's env
+file currently names a test database.
+
+``docs/templates/alpha.env.template`` now points a fresh copy at
+``opportunityos_alpha`` (``ALPHA_DB_NAME`` below); ``_ensure_postgres``
 creates that database if it does not already exist (``CREATE DATABASE``
 against the ``postgres`` maintenance database, autocommit) and always
 reports, in ``up``'s own printed output, exactly which database name is
@@ -134,6 +145,21 @@ class AlphaError(RuntimeError):
     """Any ``up``/``down``/``status`` failure, with a founder-readable message."""
 
 
+class AlphaTestDatabaseRefusalError(AlphaError):
+    """Raised specifically when OPPORTUNITYOS_DB_URL names a database whose
+    name ends in ``_test`` -- see ``_refuse_test_database``. A distinct
+    subclass of ``AlphaError`` (rather than a plain one) so a caller that
+    otherwise degrades gracefully on a generic ``AlphaError`` (e.g.
+    ``cmd_status`` on a missing or unedited env file, which must still show
+    process/port state even when the env file is not fully set up yet) can
+    still tell this specific, more dangerous case apart and refuse loudly
+    (non-zero exit) instead of silently degrading. Raised from inside
+    ``load_alpha_env`` itself -- not left to each caller to remember to
+    check separately -- so every current and future subcommand that resolves
+    OPPORTUNITYOS_DB_URL through ``load_alpha_env`` is covered automatically.
+    """
+
+
 # ---------------------------------------------------------------------------
 # private/alpha.env
 # ---------------------------------------------------------------------------
@@ -186,6 +212,15 @@ def load_alpha_env(path: Path) -> dict[str, str]:
         raise AlphaError(
             f"{path} is missing required key(s): {', '.join(missing)}. See {ENV_TEMPLATE_PATH}."
         )
+
+    # Refused here, inside load_alpha_env itself, rather than left to each
+    # caller (`up`, `status`, and any future subcommand) to remember to
+    # check separately -- see AlphaTestDatabaseRefusalError's own docstring.
+    # This runs after the placeholder/missing-key checks above so a founder
+    # who has not finished editing the file yet sees that error first, not
+    # this one.
+    _refuse_test_database(values["OPPORTUNITYOS_DB_URL"])
+
     return values
 
 
@@ -653,26 +688,36 @@ def _extract_db_name(db_url: str) -> str:
 def _refuse_test_database(db_url: str) -> None:
     """Refuse loudly if ``db_url`` names a database ending in ``_test``.
 
-    Called from ``cmd_up`` immediately after ``load_alpha_env`` returns --
-    before ``_ensure_postgres`` (PostgreSQL detection), before
-    ``_run_alembic_upgrade`` (migrations), and before any process is spawned.
-    See this module's own docstring and briefs/BRIEF-FR-005.md D4: the
-    FR-004 erratum (reports/REPORT-FR-004.md) records ``alpha.py up`` once
-    attaching, silently, to the automated test suite's own
-    ``opportunityos_test`` database and serving its synthetic fixtures
-    (``src-1``, ``opp-uq-*``, ``example.com``) to the founder as though they
-    were real. A database ending ``_test`` is refused outright, by name,
-    rather than ever connected to.
+    Called from inside ``load_alpha_env`` itself (after the placeholder and
+    missing-key checks there), so every subcommand that resolves
+    OPPORTUNITYOS_DB_URL through ``load_alpha_env`` -- currently ``up`` and
+    ``status`` -- is covered automatically, before that subcommand ever
+    opens a socket or database connection: for ``up``, before
+    ``_ensure_postgres`` (PostgreSQL detection), before
+    ``_run_alembic_upgrade`` (migrations), and before any process is
+    spawned; for ``status``, before ``storage.engine.get_engine`` is ever
+    imported or called. ``down`` and ``logs`` never call ``load_alpha_env``
+    at all (they act only on the run-dir state file), so this never runs
+    for them -- see this module's own docstring for why that is the
+    correct, and not merely incidental, scope.
+
+    See briefs/BRIEF-FR-005.md D4: the FR-004 erratum
+    (reports/REPORT-FR-004.md) records ``alpha.py up`` once attaching,
+    silently, to the automated test suite's own ``opportunityos_test``
+    database and serving its synthetic fixtures (``src-1``, ``opp-uq-*``,
+    ``example.com``) to the founder as though they were real. A database
+    ending ``_test`` is refused outright, by name, rather than ever
+    connected to.
     """
     db_name = _extract_db_name(db_url)
     if db_name.endswith("_test"):
-        raise AlphaError(
+        raise AlphaTestDatabaseRefusalError(
             f"OPPORTUNITYOS_DB_URL names database '{db_name}', which ends in '_test' -- alpha.py "
             "refuses to start against it. A database ending '_test' is the automated test suite's "
             "own database, populated with synthetic fixtures -- this is exactly the FR-004 defect "
             "(see the erratum in reports/REPORT-FR-004.md): alpha.py must never serve those rows to "
             f"the founder as though they were real. Point OPPORTUNITYOS_DB_URL at '{ALPHA_DB_NAME}' "
-            "instead (see docs/templates/alpha.env.template), then retry `up`."
+            "instead (see docs/templates/alpha.env.template), then retry."
         )
 
 
@@ -945,14 +990,14 @@ def cmd_up(
     pg_info: dict = {}
 
     try:
+        # load_alpha_env itself refuses (raising AlphaTestDatabaseRefusalError,
+        # a subclass of AlphaError caught below) a database name ending
+        # "_test" -- see _refuse_test_database's own docstring -- so this
+        # already happens before any PostgreSQL detection, before
+        # migrations, and before any process is spawned.
         alpha_env_values = load_alpha_env(env_file)
 
         db_url = alpha_env_values["OPPORTUNITYOS_DB_URL"]
-        # Checked before any PostgreSQL detection, before migrations, and
-        # before any process is spawned -- see _refuse_test_database's own
-        # docstring and briefs/BRIEF-FR-005.md D4.
-        _refuse_test_database(db_url)
-
         pg_info = _ensure_postgres(run_dir, db_url)
         print(f"Database: {pg_info['database']} (PostgreSQL {PG_HOST}:{PG_PORT}).")
 
@@ -1156,6 +1201,19 @@ def cmd_status(env_file: Path, run_dir: Path) -> int:
     print("last poll per source:")
     try:
         alpha_env_values = load_alpha_env(env_file)
+    except AlphaTestDatabaseRefusalError as exc:
+        # Distinct from the generic AlphaError case below: a missing or
+        # unedited env file is a benign "alpha is not set up yet" state
+        # that status must still degrade gracefully from (process/port
+        # state above is still accurate and useful on its own). A `_test`
+        # database name is not benign -- refuse loudly (non-zero exit)
+        # rather than silently degrade into it, the same as `up` does; the
+        # milder failure mode here would otherwise be status connecting to
+        # the automated test suite's own database and printing its
+        # synthetic poll history to the founder as though it were real --
+        # exactly the defect this deliverable exists to eliminate.
+        print(f"  (refused: {exc})")
+        return 1
     except AlphaError as exc:
         print(f"  (unavailable: {exc})")
         return 0
