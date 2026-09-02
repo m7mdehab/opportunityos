@@ -739,6 +739,14 @@ export interface FounderFilterDefinition {
   default_enabled: boolean
   default_mode: FilterMode
   default_params: Record<string, unknown>
+  /** Council finding (FR-005 D3 repair): a handful of filters can be
+   * permanently inert in production — `stale_postings` because nothing
+   * outside tests writes `is_stale=True`, and the truth-pack-dependent
+   * ones because the shipped template ships `assertions: []`. Non-null
+   * here stands in for the real API's `unavailable_reason`; the drawer
+   * must never let an inert filter merely read as "0 matches", since that
+   * looks like protection rather than a filter that cannot fire at all. */
+  default_unavailable_reason: string | null
 }
 
 export const FOUNDER_FILTER_DEFINITIONS: FounderFilterDefinition[] = [
@@ -749,6 +757,7 @@ export const FOUNDER_FILTER_DEFINITIONS: FounderFilterDefinition[] = [
     default_enabled: true,
     default_mode: "label_only",
     default_params: {},
+    default_unavailable_reason: null,
   },
   {
     filter_id: "work_mode_onsite",
@@ -757,6 +766,7 @@ export const FOUNDER_FILTER_DEFINITIONS: FounderFilterDefinition[] = [
     default_enabled: true,
     default_mode: "label_only",
     default_params: {},
+    default_unavailable_reason: null,
   },
   {
     filter_id: "red_lines",
@@ -764,6 +774,7 @@ export const FOUNDER_FILTER_DEFINITIONS: FounderFilterDefinition[] = [
     default_enabled: true,
     default_mode: "hide",
     default_params: {},
+    default_unavailable_reason: null,
   },
   {
     filter_id: "excluded_industries",
@@ -771,6 +782,7 @@ export const FOUNDER_FILTER_DEFINITIONS: FounderFilterDefinition[] = [
     default_enabled: true,
     default_mode: "hide",
     default_params: {},
+    default_unavailable_reason: null,
   },
   {
     filter_id: "track_preference",
@@ -778,6 +790,8 @@ export const FOUNDER_FILTER_DEFINITIONS: FounderFilterDefinition[] = [
     default_enabled: true,
     default_mode: "rank_only",
     default_params: {},
+    default_unavailable_reason:
+      "Needs a preference.track assertion in your truth pack. The shipped template has no assertions, so this filter has nothing to evaluate until you add one.",
   },
   {
     filter_id: "target_roles",
@@ -785,6 +799,8 @@ export const FOUNDER_FILTER_DEFINITIONS: FounderFilterDefinition[] = [
     default_enabled: true,
     default_mode: "rank_only",
     default_params: {},
+    default_unavailable_reason:
+      "Needs a career.target_role assertion in your truth pack. The shipped template has no assertions, so this filter has nothing to evaluate until you add one.",
   },
   {
     filter_id: "premium_fulltime_onsite",
@@ -793,6 +809,8 @@ export const FOUNDER_FILTER_DEFINITIONS: FounderFilterDefinition[] = [
     default_enabled: true,
     default_mode: "rank_only",
     default_params: {},
+    default_unavailable_reason:
+      "Needs a preference.fulltime_onsite_premium_monthly assertion in your truth pack. The shipped template has no assertions, so this filter has nothing to evaluate until you add one.",
   },
   {
     filter_id: "stale_postings",
@@ -800,6 +818,8 @@ export const FOUNDER_FILTER_DEFINITIONS: FounderFilterDefinition[] = [
     default_enabled: true,
     default_mode: "label_only",
     default_params: {},
+    default_unavailable_reason:
+      "No source-polling code path outside tests currently marks a posting stale, so this filter can never match anything yet.",
   },
   {
     filter_id: "min_fit_score",
@@ -807,6 +827,7 @@ export const FOUNDER_FILTER_DEFINITIONS: FounderFilterDefinition[] = [
     default_enabled: false,
     default_mode: "hide",
     default_params: { threshold: 50 },
+    default_unavailable_reason: null,
   },
   {
     filter_id: "compensation_floor",
@@ -814,6 +835,7 @@ export const FOUNDER_FILTER_DEFINITIONS: FounderFilterDefinition[] = [
     default_enabled: false,
     default_mode: "rank_only",
     default_params: { monthly_minimum: 50000, currency: "EGP" },
+    default_unavailable_reason: null,
   },
 ]
 
