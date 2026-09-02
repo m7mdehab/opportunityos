@@ -234,10 +234,17 @@ def _build_opportunity_detail(session: Session, opp: OpportunityRecord) -> dict[
     if evaluation is not None:
         reasons = unpack_reasons(evaluation.reasons_json)
         dims = unpack_dimension_scores(evaluation.dimension_scores_json)
-        # `evaluation_detail_json` may not exist yet on every deployed schema
-        # (a column D4b is adding) -- `getattr` with a default keeps this
-        # forward-compatible instead of raising `AttributeError`.
-        detail = unpack_evaluation_detail(getattr(evaluation, "evaluation_detail_json", None))
+        # `evaluation_detail_json` is a real, unconditional column on
+        # MatchEvaluationRecord (nullable -- see storage/models.py). Read it
+        # directly: if the attribute were ever missing that would be a
+        # schema regression, and a `getattr` default would silently turn
+        # that loud failure into a quietly empty checklist instead.
+        detail = unpack_evaluation_detail(evaluation.evaluation_detail_json)
+        # The column is nullable because rows persisted before it existed
+        # have no detail payload (`evaluation_detail_json IS NULL`). That is
+        # legitimate backward compatibility for real historical data, not
+        # defensiveness about the schema -- so strengths/gaps/unknowns fall
+        # back to a derivation from `reasons_json` only for such rows.
         fallback_strengths, fallback_gaps, fallback_unknowns = strengths_gaps_unknowns_from_reasons(reasons)
 
         qualification = {
