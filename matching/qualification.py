@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 from opportunity.models import Opportunity, RemotePolicy, Track
+from truth import predicates
 from truth.graph import TruthGraph
 from truth.models import Modality, Polarity, VerificationStatus
 
@@ -101,7 +102,7 @@ class QualificationEngine:
             founder_locs = [
                 str(a.value).casefold()
                 for a in truth_graph.assertions.values()
-                if a.predicate in ("residence.country", "residence.city", "location.city", "location.country", "residence.jurisdiction")
+                if a.predicate in predicates.RESIDENCE_LOCATION_PREDICATES
                 and a.verification_status == VerificationStatus.VERIFIED
             ]
             if not founder_locs:
@@ -168,7 +169,7 @@ class QualificationEngine:
             required_jurisdiction = auth_req_match.group(1).strip()
             founder_auths = [
                 a for a in truth_graph.assertions.values()
-                if a.predicate in ("authorization.jurisdiction", "work_authorization")
+                if a.predicate == predicates.WORK_AUTHORIZATION_JURISDICTION
                 and a.verification_status == VerificationStatus.VERIFIED
             ]
             auth_matches = [
@@ -222,7 +223,7 @@ class QualificationEngine:
             req_lang = lang_match.group(1).title()
             founder_langs = [
                 a for a in truth_graph.assertions.values()
-                if a.predicate in ("language.name", "language.proficiency")
+                if a.predicate in predicates.LANGUAGE_PREDICATES
                 and a.verification_status == VerificationStatus.VERIFIED
             ]
             matching_langs = [
@@ -325,7 +326,7 @@ class QualificationEngine:
         if pm.turnover_required is not None and pm.turnover_required > 0:
             founder_turnover_assertions = [
                 a for a in truth_graph.assertions.values()
-                if a.predicate in ("business.annual_turnover", "capacity.annual_turnover")
+                if a.predicate == predicates.CAPACITY_ANNUAL_TURNOVER_USD
                 and a.verification_status == VerificationStatus.VERIFIED
             ]
             if not founder_turnover_assertions:
@@ -380,7 +381,7 @@ class QualificationEngine:
         if pm.languages:
             founder_langs = [
                 a for a in truth_graph.assertions.values()
-                if a.predicate in ("language.name", "language.proficiency")
+                if a.predicate in predicates.LANGUAGE_PREDICATES
                 and a.verification_status == VerificationStatus.VERIFIED
             ]
             verified_lang_names = {
