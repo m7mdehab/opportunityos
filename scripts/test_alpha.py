@@ -207,6 +207,86 @@ class TestWaitWebReady(unittest.TestCase):
                     proc.kill()
                 proc.wait(timeout=5)
 
+    # -- --web-port override path: same shape, non-default port -----------------
+
+    def test_honours_a_non_default_expected_port_end_to_end(self):
+        """`--web-port 3005` must be verified exactly like the default: the
+        child reporting 3005 in its own ready line must be accepted.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "web.log"
+            log_path.write_text(
+                "  Next.js 16.3.4\n"
+                "  - Local:         http://localhost:3005\n",
+                encoding="utf-8",
+            )
+            proc = self._spawn_long_lived()
+            try:
+                # Must not raise.
+                alpha._wait_web_ready(proc, log_path, expected_port=3005, timeout_seconds=5)
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                proc.wait(timeout=5)
+
+    def test_raises_on_a_mismatch_against_a_non_default_expected_port(self):
+        """The override must not weaken the guarantee: even when the founder
+        asked for a non-default port, a child that bound a *different* port
+        still has to be rejected loudly rather than accepted because it is
+        "close enough" to what was requested.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "web.log"
+            log_path.write_text(
+                "  Next.js 16.3.4\n"
+                "  - Local:         http://localhost:3006\n",
+                encoding="utf-8",
+            )
+            proc = self._spawn_long_lived()
+            try:
+                with self.assertRaises(alpha.AlphaError) as ctx:
+                    alpha._wait_web_ready(proc, log_path, expected_port=3005, timeout_seconds=5)
+                message = str(ctx.exception)
+                self.assertIn("3006", message)
+                self.assertIn("3005", message)
+                self.assertIn("bound", message)
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                proc.wait(timeout=5)
+
+
+class TestPortOverrideCli(unittest.TestCase):
+    """--web-port/--api-port must actually reach cmd_up, with correct defaults."""
+
+    def test_defaults_when_not_specified(self):
+        args = alpha.build_arg_parser().parse_args(["up"])
+        self.assertEqual(args.web_port, alpha.DEFAULT_WEB_PORT)
+        self.assertEqual(args.api_port, alpha.DEFAULT_API_PORT)
+
+    def test_parser_accepts_explicit_overrides(self):
+        args = alpha.build_arg_parser().parse_args(
+            ["up", "--web-port", "3005", "--api-port", "8080"]
+        )
+        self.assertEqual(args.web_port, 3005)
+        self.assertEqual(args.api_port, 8080)
+
+    def test_main_threads_the_overrides_into_cmd_up(self):
+        with mock.patch.object(alpha, "cmd_up", return_value=0) as cmd_up_mock:
+            exit_code = alpha.main(["up", "--web-port", "3005", "--api-port", "8080"])
+        self.assertEqual(exit_code, 0)
+        cmd_up_mock.assert_called_once()
+        _, call_kwargs = cmd_up_mock.call_args
+        self.assertEqual(call_kwargs["web_port"], 3005)
+        self.assertEqual(call_kwargs["api_port"], 8080)
+
+    def test_main_threads_the_defaults_into_cmd_up_when_unspecified(self):
+        with mock.patch.object(alpha, "cmd_up", return_value=0) as cmd_up_mock:
+            alpha.main(["up"])
+        _, call_kwargs = cmd_up_mock.call_args
+        self.assertEqual(call_kwargs["web_port"], alpha.DEFAULT_WEB_PORT)
+        self.assertEqual(call_kwargs["api_port"], alpha.DEFAULT_API_PORT)
+
 
 class TestProcessLifecycleHelpers(unittest.TestCase):
     def test_pid_alive_then_kill_tree_stops_it(self):
@@ -322,6 +402,34 @@ class TestCliSmoke(unittest.TestCase):
             result = self._run_alpha("logs", "--run-dir", str(run_dir))
         self.assertEqual(result.returncode, 0, msg=f"stdout={result.stdout!r} stderr={result.stderr!r}")
         self.assertIn("nothing to show", result.stdout)
+
+    def test_status_reports_a_non_default_recorded_port_without_repeating_the_flag(self):
+        """Once `up` has recorded a non-default --web-port in the state file,
+        `status` must report that real port from a fresh shell -- without
+        --web-port being passed to `status` at all.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            run_dir.mkdir(parents=True)
+            env_file = Path(tmp) / "no_such_alpha.env"
+            proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+            try:
+                state = {
+                    "processes": {
+                        "web": {"pid": proc.pid, "log": str(run_dir / "web.log"), "port": 3005},
+                    },
+                    "postgres": {"started_by_alpha": False},
+                }
+                (run_dir / "state.json").write_text(json.dumps(state), encoding="utf-8")
+                # Deliberately no --web-port here: status must read the port
+                # back from the state file, not require the flag again.
+                result = self._run_alpha("status", "--run-dir", str(run_dir), "--env-file", str(env_file))
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                proc.wait(timeout=5)
+        self.assertEqual(result.returncode, 0, msg=f"stdout={result.stdout!r} stderr={result.stderr!r}")
+        self.assertIn("port 3005", result.stdout)
 
 
 if __name__ == "__main__":

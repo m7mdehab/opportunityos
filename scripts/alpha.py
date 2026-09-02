@@ -5,16 +5,36 @@ the next: PostgreSQL (an already-running local server if one is listening on
 127.0.0.1:5432, else the portable cluster FR-003 established under
 ``%LOCALAPPDATA%\\opos-pg\\``), ``alembic upgrade head``, the worker with
 ``--schedule`` (see ``worker.scheduler.PollScheduler``), the API on
-``:8000``, and the web app on ``:3000`` (pinned with ``next dev -- -p 3000``
-and verified against the child's own ready-log line -- see
-``_wait_web_ready`` -- rather than trusting that *something* answers on
-3000, which a stray unrelated process could satisfy just as well as our own
-web server), then opens ``http://localhost:3000`` in the default browser.
-``down`` stops everything this script started, cleanly, and never stops a
-PostgreSQL server it did not start. ``status`` reports each process's
-up/down state (including the port each of api/web actually bound) plus the
-last poll per source (from ``source_poll_runs``). ``logs`` tails what it
-started.
+``--api-port`` (default 8000), and the web app on ``--web-port`` (default
+3000, pinned with ``next dev -- -p <port>`` and verified against the
+child's own ready-log line -- see ``_wait_web_ready`` -- rather than
+trusting that *something* answers on that port, which a stray unrelated
+process could satisfy just as well as our own web server), then opens
+``http://localhost:<web-port>`` in the default browser. ``down`` stops
+everything this script started, cleanly, and never stops a PostgreSQL
+server it did not start. ``status`` reports each process's up/down state
+(including the port each of api/web actually bound, read from the run-dir
+state file -- ``status``/``down``/``logs`` never need ``--web-port``/
+``--api-port`` themselves) plus the last poll per source (from
+``source_poll_runs``). ``logs`` tails what it started.
+
+``--web-port``/``--api-port`` exist because this machine's port 3000/8000
+is not reserved for OpportunityOS -- another, unrelated dev server already
+holding 3000 is ordinary, and the founder must be able to proceed without
+killing their other work. Overriding the port never reintroduces the
+silent-fallback defect the pinning above fixed: an explicit
+``--web-port 3005`` still fails loudly (naming both the flag and the port)
+if 3005 is occupied, and ``_wait_web_ready`` still verifies the child bound
+exactly that port.
+
+If ``--api-port`` is non-default, the web dev server's own child process
+gets ``OPPORTUNITYOS_API_PORT`` set to it in its environment (see
+``ENV_API_PORT`` below) -- but ``web/next.config.ts`` (out of this
+deliverable's file scope; owned by D7) still hardcodes the ``/api/:path*``
+rewrite destination as ``http://localhost:8000`` and does not read that
+variable yet. Until it does, a non-default ``--api-port`` starts the API
+server on the requested port but the web app's same-origin ``/api/*``
+proxy still targets 8000.
 
 Secrets (``OPPORTUNITYOS_FOUNDER_PASSWORD``, ``OPPORTUNITYOS_SESSION_SECRET``,
 ``OPPORTUNITYOS_DB_URL``) are read from ``private/alpha.env`` (never
@@ -61,11 +81,19 @@ REQUIRED_ENV_KEYS = (
 )
 
 API_HOST = "127.0.0.1"
-API_PORT = 8000
+DEFAULT_API_PORT = 8000
 WEB_HOST = "127.0.0.1"
-WEB_PORT = 3000
+DEFAULT_WEB_PORT = 3000
 PG_HOST = "127.0.0.1"
 PG_PORT = 5432
+
+#: Environment variable set on the web dev server's process so a future
+#: web/next.config.ts change can read it for the `/api/:path*` rewrite
+#: target instead of the hardcoded `http://localhost:8000` it has today.
+#: alpha.py always sets this to the resolved --api-port; next.config.ts
+#: does not read it yet (that file is out of this deliverable's scope --
+#: see this module's docstring for the exact contract expected of it).
+ENV_API_PORT = "OPPORTUNITYOS_API_PORT"
 
 _PROCESS_LABELS = ("worker", "api", "web")
 
@@ -168,8 +196,8 @@ def _wait_web_ready(proc: "subprocess.Popen", log_path: Path, expected_port: int
                 f"web (npm run dev) exited immediately (exit code {proc.returncode}) while starting on "
                 f"port {expected_port} -- port {expected_port} is likely already in use by another "
                 f"process. Run `python scripts/alpha.py down` if a previous alpha session left it "
-                f"running, or free port {expected_port} yourself, then retry `up`. See {log_path} for "
-                "details."
+                f"running, or pass `--web-port` to use a different one, then retry `up`. See {log_path} "
+                "for details."
             )
         if log_path.exists():
             text = log_path.read_text(encoding="utf-8", errors="replace")
@@ -181,8 +209,8 @@ def _wait_web_ready(proc: "subprocess.Popen", log_path: Path, expected_port: int
                         f"web dev server bound port {actual_port} instead of the required "
                         f"{expected_port} (see {log_path}) -- another process is already holding "
                         f"port {expected_port}. Run `python scripts/alpha.py down` if a previous alpha "
-                        f"session left it running, or free port {expected_port} yourself, then retry "
-                        "`up`."
+                        f"session left it running, or pass `--web-port` to use a different one, then "
+                        "retry `up`."
                     )
                 return
         time.sleep(0.5)
@@ -407,7 +435,13 @@ def _stop_processes(processes: dict) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def cmd_up(env_file: Path, run_dir: Path) -> int:
+def cmd_up(
+    env_file: Path,
+    run_dir: Path,
+    *,
+    web_port: int = DEFAULT_WEB_PORT,
+    api_port: int = DEFAULT_API_PORT,
+) -> int:
     state = _load_state(run_dir)
     existing_processes = state.get("processes", {})
     if existing_processes and any(_pid_alive(info["pid"]) for info in existing_processes.values()):
@@ -441,16 +475,29 @@ def cmd_up(env_file: Path, run_dir: Path) -> int:
         print(f"Worker: started (pid {worker_proc.pid}), logging to {worker_log}.")
 
         api_log = run_dir / "logs" / "api.log"
+        # uvicorn never silently rebinds on a busy port (unlike Next's dev
+        # server -- see _wait_web_ready's docstring); it errors and exits
+        # non-zero, which the preflight check plus _wait_process_alive below
+        # already turn into a loud, immediate failure. A preflight check is
+        # still added here (mirroring the web one) so that failure is
+        # reported before ever spawning uvicorn, with a message naming
+        # --api-port, rather than relying on the exit-code path alone.
+        if _port_open(API_HOST, api_port, timeout=1.0):
+            raise AlphaError(
+                f"Port {api_port} is already in use by another process, so the API server cannot bind "
+                f"it. Run `python scripts/alpha.py down` if a previous alpha session left it running, "
+                f"or pass `--api-port` to use a different one, then retry `up`."
+            )
         api_proc = _spawn(
-            [sys.executable, "-m", "uvicorn", "api.app:app", "--host", API_HOST, "--port", str(API_PORT)],
+            [sys.executable, "-m", "uvicorn", "api.app:app", "--host", API_HOST, "--port", str(api_port)],
             REPO_ROOT,
             env,
             api_log,
         )
-        processes["api"] = {"pid": api_proc.pid, "log": str(api_log), "port": API_PORT}
+        processes["api"] = {"pid": api_proc.pid, "log": str(api_log), "port": api_port}
         _wait_process_alive(api_proc, 2.0, "API server", api_log)
-        _wait_for_port(API_HOST, API_PORT, 30.0, "the API server")
-        print(f"API: listening on {API_HOST}:{API_PORT} (pid {api_proc.pid}), logging to {api_log}.")
+        _wait_for_port(API_HOST, api_port, 30.0, "the API server")
+        print(f"API: listening on {API_HOST}:{api_port} (pid {api_proc.pid}), logging to {api_log}.")
 
         if not (WEB_DIR / "node_modules").exists():
             raise AlphaError(
@@ -458,14 +505,15 @@ def cmd_up(env_file: Path, run_dir: Path) -> int:
                 "re-run `python scripts/alpha.py up`."
             )
 
-        # Fail loudly, before ever spawning npm, if port 3000 is already taken
-        # -- a clear, immediate message beats waiting on Next's own startup
-        # (or _wait_web_ready's log-parsing check below) to surface it.
-        if _port_open(WEB_HOST, WEB_PORT, timeout=1.0):
+        # Fail loudly, before ever spawning npm, if the web port is already
+        # taken -- a clear, immediate message (naming --web-port) beats
+        # waiting on Next's own startup (or _wait_web_ready's log-parsing
+        # check below) to surface it.
+        if _port_open(WEB_HOST, web_port, timeout=1.0):
             raise AlphaError(
-                f"Port {WEB_PORT} is already in use by another process, so the web dev server cannot "
+                f"Port {web_port} is already in use by another process, so the web dev server cannot "
                 f"bind it. Run `python scripts/alpha.py down` if a previous alpha session left it "
-                f"running, or free port {WEB_PORT} yourself, then retry `up`."
+                f"running, or pass `--web-port` to use a different one, then retry `up`."
             )
 
         # alpha.py must run the web app against the real API, never the MSW
@@ -473,17 +521,23 @@ def cmd_up(env_file: Path, run_dir: Path) -> int:
         # trust the founder's ambient shell not to have it set from other work.
         web_env = os.environ.copy()
         web_env.pop("NEXT_PUBLIC_USE_MOCK_API", None)
+        # See ENV_API_PORT's own docstring: web/next.config.ts does not read
+        # this yet (out of this deliverable's scope -- owned by D7), but the
+        # value is set unconditionally so wiring the config side later is a
+        # config-only change with nothing to add here.
+        web_env[ENV_API_PORT] = str(api_port)
         web_log = run_dir / "logs" / "web.log"
         npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
         # `-- -p <port>` pins the port explicitly: Next's dev server only
         # silently falls back to another port when the port came from its own
         # default (see _wait_web_ready's docstring) -- an explicit -p instead
         # makes it exit non-zero on EADDRINUSE, which _wait_web_ready treats
-        # as a loud, immediate failure rather than a silent port switch.
-        web_proc = _spawn([npm_cmd, "run", "dev", "--", "-p", str(WEB_PORT)], WEB_DIR, web_env, web_log)
-        processes["web"] = {"pid": web_proc.pid, "log": str(web_log), "port": WEB_PORT}
-        _wait_web_ready(web_proc, web_log, WEB_PORT, 60.0)
-        print(f"Web: listening on {WEB_HOST}:{WEB_PORT} (pid {web_proc.pid}), logging to {web_log}.")
+        # as a loud, immediate failure rather than a silent port switch. This
+        # holds for any --web-port value, not just the default 3000.
+        web_proc = _spawn([npm_cmd, "run", "dev", "--", "-p", str(web_port)], WEB_DIR, web_env, web_log)
+        processes["web"] = {"pid": web_proc.pid, "log": str(web_log), "port": web_port}
+        _wait_web_ready(web_proc, web_log, web_port, 60.0)
+        print(f"Web: listening on {WEB_HOST}:{web_port} (pid {web_proc.pid}), logging to {web_log}.")
 
         state = {
             "processes": processes,
@@ -492,7 +546,7 @@ def cmd_up(env_file: Path, run_dir: Path) -> int:
         }
         _save_state(run_dir, state)
 
-        url = f"http://localhost:{WEB_PORT}"
+        url = f"http://localhost:{web_port}"
         print(f"Opening {url} ...")
         try:
             webbrowser.open(url)
@@ -655,6 +709,29 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=DEFAULT_RUN_DIR,
         help=f"Directory for PID/log/state tracking (default: {DEFAULT_RUN_DIR}).",
     )
+    parser.add_argument(
+        "--web-port",
+        type=int,
+        default=DEFAULT_WEB_PORT,
+        help=(
+            f"Port for the web dev server (default: {DEFAULT_WEB_PORT}). Only meaningful for `up` -- "
+            "the port actually used is recorded in the run-dir state file, so `status`/`down`/`logs` "
+            "read it back from there and never need this flag repeated. Use this when the default "
+            "port is already held by an unrelated process on this machine; `up` still fails loudly "
+            "(never silently falls back) if the port you pass here is also occupied."
+        ),
+    )
+    parser.add_argument(
+        "--api-port",
+        type=int,
+        default=DEFAULT_API_PORT,
+        help=(
+            f"Port for the API server (default: {DEFAULT_API_PORT}). Only meaningful for `up`; see "
+            f"--web-port for the state-file/fail-loudly behaviour, which is identical. Also sets "
+            f"{ENV_API_PORT} in the web dev server's own environment, for a future web/next.config.ts "
+            "change to read for its /api/* rewrite target -- next.config.ts does not read it yet."
+        ),
+    )
     return parser
 
 
@@ -662,7 +739,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = build_arg_parser().parse_args(argv)
 
     if args.command == "up":
-        return cmd_up(args.env_file, args.run_dir)
+        return cmd_up(args.env_file, args.run_dir, web_port=args.web_port, api_port=args.api_port)
     if args.command == "down":
         return cmd_down(args.run_dir)
     if args.command == "status":
