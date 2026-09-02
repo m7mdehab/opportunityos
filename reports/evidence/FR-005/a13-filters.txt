@@ -1,0 +1,39 @@
+### A-13 -- founder-controlled filters, run by the Master
+### (pre-repair state; the unavailable_reason field lands with the council repair)
+
+Seven opportunities seeded, mixed stale/not, then the app built and logged into for real --
+not asserted through the implementer's own test.
+
+  opportunities table row count             : 7
+  defaults,      include_hidden=true total  : 7   hidden_count=0
+  filters seeded by migration 0003          : 10
+  ALL FILTERS OFF, include_hidden=true total: 7   hidden_count=0
+
+  A-13: PASS
+
+  item carries hidden_by=[] flagged_by=[]
+
+The two properties the claim binds:
+
+1. With every filter disabled and include_hidden=true, `total` equals
+   `SELECT count(*) FROM opportunities` exactly. Nothing is being quietly dropped.
+2. `hidden_by` and `flagged_by` are always present as arrays, never null and never absent,
+   so the web tier never has to guess.
+
+The ten filters are seeded by the migration itself, so a database created by
+`alpha.py up` behaves correctly before any API call is made. With defaults, hidden_count is 0
+on this fixture because none of the seven trip a red line or an excluded industry -- which is
+the intended default posture: only the founder's own red lines and excluded industries hide
+anything, and everything else labels or ranks.
+
+`unavailable_reason` reports "none" above because the council repair adding it had not yet
+merged when this ran. Re-verified after that merge; see the gate evidence.
+
+--- The invariant, checked separately ---
+
+A toggle never changes `decision` and never changes `fit_score`. The council verified this on
+every path by reading the code: both fields pass straight from the evaluation record into the
+response dict, and no matcher or filter branch writes to either. `rank_only` demotes by
+prepending an integer `rank_penalty` to the sort key, leaving the score the founder reads
+untouched. A demoted score displayed as the real score would be a lie, which is why the
+contract forbade it before any of this was written.
