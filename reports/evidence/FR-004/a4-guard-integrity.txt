@@ -1,0 +1,8 @@
+### A-4 — guard boundary, PII and repository integrity (Master re-run)
+$ python scripts/check_guard.py --allow-missing-patterns ; echo exit=$?
+Guard checks passed for repository and mirror boundary.
+exit=0
+
+$ python scripts/check_repository.py ; echo exit=$?
+Repository integrity checks passed.
+exit=0

@@ -57,6 +57,30 @@ them would be a defect. Bound here so every deliverable uses the same mapping:
 - **Head revision.** The current Alembic head is `0001_baseline_schema`. D4's "downgrade 0001"
   binds to that revision id.
 
+### Amendment, before D4 and D6 were delegated
+
+The brief names **one** new table for migration `0002`, but three D6 responses cannot be
+answered from the committed schema, so the D4 rows below were widened before that deliverable
+was delegated and before any D4 result existed. Recorded here rather than quietly applied:
+
+| Table | The named requirement that forces it |
+|---|---|
+| `match_evaluations` | D4, named in the brief |
+| `source_poll_runs` | `GET /api/sources/health` — "last poll, last status, last record count" — and the dashboard's `fetched` |
+| `founder_opportunity_views` | the dashboard's `opened` |
+| `founder_triage_states` | `dismiss` and `snooze` |
+
+`ActionStatus` is `planned | prepared | awaiting_review | submitting | submitted | confirmed |
+failed | unknown_outcome | blocked`. It has no `dismissed` or `snoozed`, and no home for a
+snooze `until`. Forcing them in — say, as `blocked` with a `blocker_reason` — would corrupt a
+vocabulary that records what the *system* did about a submission, not what the founder chose to
+triage. Nothing at all persists poll outcomes or detail-view opens today. Each added table is
+the minimum needed by a route the brief names; all four are single-workspace with no tenant key,
+consistent with ADR-0012; and the whole migration goes to the council review D4 already requires.
+
+The API contract both D6 and D7 are built against was likewise fixed by the Master before either
+was delegated, so the two sides agree by construction rather than by later reconciliation.
+
 ---
 
 ## Ledger
@@ -78,7 +102,8 @@ them would be a defect. Bound here so every deliverable uses the same mapping:
 | **D3-4** | A changed posting updates `is_stale` / `reverified_at` rather than duplicating | Case U asserts the re-verification path on a mutated payload | assertion present and passing | | |
 | **D3-5** | `python -m worker --once` leaves rows in `opportunities` | Enqueue one fixture `poll_source`, run `python -m worker --once`, then `SELECT count(*) FROM opportunities;` | count > 0 | | |
 | **D4-1** | Migration `0002` round-trips | `alembic upgrade head && alembic downgrade 0001_baseline_schema && alembic upgrade head` | exit 0 each step, no error output | | |
-| **D4-2** | `match_evaluations` exists at head and is gone at `0001` | `psql -tAc "select count(*) from information_schema.tables where table_name='match_evaluations';"` after each step | `1` at head, `0` after downgrade, `1` again | | |
+| **D4-2** | All four `0002` tables exist at head and are gone at `0001` | `psql -tAc` counting `information_schema.tables` for `match_evaluations`, `source_poll_runs`, `founder_opportunity_views`, `founder_triage_states` after each step | `4` at head, `0` after downgrade, `4` again | | |
+| **D4-2b** | `0002` adds exactly those four tables and touches no existing one | table-set diff of `information_schema.tables` across the upgrade | exactly the four added; no existing table altered or dropped | | |
 | **D4-3** | Uniqueness on (`opportunity_id`, `truth_pack_hash`) is enforced by the database | `psql -tAc` on `information_schema.table_constraints` / `pg_indexes` for the unique constraint | unique constraint present | | |
 | **D4-4** | Case A/B migration smoke still passes | `python -m unittest storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_a_and_b_alembic_upgrade_downgrade_smoke 2>&1 \| tail -1` | `OK` | | |
 | **D4-5** | Case V: evaluate_new persists decisions; a new truth hash adds a row and leaves the first intact | `python -m unittest storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_v_evaluate_new_persists_match_evaluations 2>&1 \| tail -1` | `OK` | | |

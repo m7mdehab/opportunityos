@@ -1,0 +1,8 @@
+### D5 — truth pack loading, template and checker (Master re-run)
+$ python -m unittest truth.test_pack -v 2>&1 | tail -3
+Ran 12 tests in 7.816s
+
+OK
+
+$ python -m unittest truth.test_pack.TruthPackTemplateTest 2>&1 | tail -1
+OK
