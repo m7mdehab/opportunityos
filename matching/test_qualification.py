@@ -84,19 +84,26 @@ def create_test_graph() -> TruthGraph:
         locator="work_authorization.jurisdiction",
         metadata={"jurisdiction": "Germany"},
     )
+    # Independent, plausible CV-style bullets for a senior distributed systems
+    # architect. Deliberately NOT copied from create_test_opportunity's default
+    # `responsibilities` text — they overlap it only through genuine shared
+    # engineering vocabulary ("distributed", "systems", "cloud",
+    # "infrastructure"), the same fuzzy keyword-overlap path scorer.py already
+    # uses for a real founder pack, not an exact-string echo chosen to force
+    # the match.
     ev_resp1 = EvidenceRecord(
         id="ev-resp1",
-        content="Build distributed systems handling millions of requests per day",
+        content="Architected and operated large-scale distributed systems handling real-time event streams",
         source="manual",
         locator="employment.responsibility",
-        metadata={"responsibility": "Build distributed systems"},
+        metadata={"responsibility": "Architected and operated large-scale distributed systems handling real-time event streams"},
     )
     ev_resp2 = EvidenceRecord(
         id="ev-resp2",
-        content="Maintain cloud infrastructure supporting the platform's uptime",
+        content="Owned production readiness and infrastructure reliability for a multi-region cloud platform",
         source="manual",
         locator="employment.responsibility",
-        metadata={"responsibility": "Maintain cloud infrastructure"},
+        metadata={"responsibility": "Owned production readiness and infrastructure reliability for a multi-region cloud platform"},
     )
     for ev in (ev_title, ev_py, ev_go, ev_auth, ev_en, ev_ar, ev_srv, ev_res, ev_auth_de_neg, ev_resp1, ev_resp2):
         g.add_evidence(ev)
@@ -178,7 +185,7 @@ def create_test_graph() -> TruthGraph:
         id="a-resp1",
         subject_id="founder",
         predicate="employment.responsibility",
-        value="Build distributed systems",
+        value="Architected and operated large-scale distributed systems handling real-time event streams",
         evidence_ids=("ev-resp1",),
         verification_status=VerificationStatus.VERIFIED,
     ))
@@ -186,7 +193,7 @@ def create_test_graph() -> TruthGraph:
         id="a-resp2",
         subject_id="founder",
         predicate="employment.responsibility",
-        value="Maintain cloud infrastructure",
+        value="Owned production readiness and infrastructure reliability for a multi-region cloud platform",
         evidence_ids=("ev-resp2",),
         verification_status=VerificationStatus.VERIFIED,
     ))

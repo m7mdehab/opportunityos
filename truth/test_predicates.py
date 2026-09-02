@@ -2,12 +2,15 @@
 
 Three things are asserted:
 
-1. Every predicate string `matching/scorer.py` and `matching/qualification.py`
-   compare against an `AtomicAssertion.predicate` attribute is declared in
-   `truth/predicates.py`. This is implemented by parsing those files with
-   `ast` and finding every string literal used as the other side of a
-   `<expr>.predicate == "..."` / `<expr>.predicate in (...)` comparison — not
-   by maintaining a second, hand-written list that could drift from the code.
+1. Every predicate string any non-test module in `matching/` compares against
+   an `AtomicAssertion.predicate` attribute is declared in
+   `truth/predicates.py`. This is implemented by parsing every `matching/*.py`
+   file (discovered by glob, not a hand-listed tuple, so a new file cannot
+   silently reintroduce the defect this brief fixes) with `ast` and finding
+   every string literal or `predicates.NAME` reference used as the other side
+   of a `<expr>.predicate == "..."` / `<expr>.predicate in (...)` comparison —
+   not by maintaining a second, hand-written list that could drift from the
+   code.
 2. Every registry predicate is either PROJECTED (derived from
    `truth.models.CANONICAL_MATERIAL_MANIFEST`, i.e. actually emitted by
    `truth/graph.py`) or ASSERTION_ONLY with a named owning pack section.
@@ -15,15 +18,35 @@ Three things are asserted:
    `achievement.statement` assertions re-scores `responsibility_scope` above
    the historical flat 0.50, with non-empty evidence_refs.
 
-Scope note: this scans `matching/scorer.py` and `matching/qualification.py`
-only. `matching/validator.py`, `matching/compiler_employment.py`, and
-`matching/compiler_independent.py` also have a `.predicate` attribute, but it
-belongs to `GeneratedClaim` (`matching/models.py`), a distinct D1-owned claim
-taxonomy, not the truth graph's `AtomicAssertion.predicate` vocabulary this
-registry governs. `matching/mapping.py` does read `AtomicAssertion.predicate`
-and carries an identical, unfixed instance of the same defect this brief's D2
-scope fixes in scorer.py/qualification.py; it is out of D2's file scope and is
-recorded in ADR-0015 rather than silently swept into this test's scan.
+Scope note — GeneratedClaim exclusion (narrow, not a file omission): every
+`matching/*.py` file is scanned, including `matching/validator.py`,
+`matching/compiler_employment.py`, and `matching/compiler_independent.py`.
+Those three also compare a `.predicate` attribute, but on `GeneratedClaim`
+(`matching/models.py:153`), a distinct, D1-owned claim-type tag vocabulary
+("metric", "summary", "employment.record", …) that is not the truth graph's
+`AtomicAssertion.predicate` vocabulary this registry governs. `ast` carries no
+type information, so this scan excludes only comparisons where the `.predicate`
+attribute is accessed on a variable named `claim` — the one naming convention
+every file in `matching/` uses without exception for `GeneratedClaim`
+instances (verified by inspection; `AtomicAssertion` instances are uniformly
+bound to `a`). This is a narrow, documented exclusion of specific comparisons,
+not an excluded file: `matching/validator.py:265`'s
+`a.predicate in ("credential.status", "certification.state")` iterates
+`truth_graph.assertions.values()` (genuinely `AtomicAssertion`) and is scanned.
+
+Scope note — out-of-scope orphans, tracked not hidden: this D2 deliverable's
+file scope is `matching/scorer.py`, `matching/qualification.py`, and
+`matching/mapping.py`. The widened, file-agnostic scan above also reaches
+`matching/compiler_independent.py` and `matching/validator.py` (D1-owned,
+frozen for D2) and finds genuine unregistered `AtomicAssertion.predicate`
+values there: `compiler_independent.py`'s `"portfolio.item"` (same defect as
+the one fixed in `scorer.py`; real name `portfolio.title`) and
+`validator.py`'s `"credential.status"` (no such manifest field exists).
+`_KNOWN_OUT_OF_SCOPE_ORPHANS` below records exactly these two findings so the
+scan can widen honestly without either (a) silently passing by not looking, or
+(b) failing this deliverable's suite over defects two files outside its scope.
+Any predicate found anywhere that is not registered *and* not on this exact,
+per-file, per-predicate allowlist is still a hard failure.
 """
 from __future__ import annotations
 
@@ -35,10 +58,35 @@ from truth import predicates
 from truth.predicates import PredicateKind
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SCANNED_FILES: tuple[Path, ...] = (
-    REPO_ROOT / "matching" / "scorer.py",
-    REPO_ROOT / "matching" / "qualification.py",
+MATCHING_DIR = REPO_ROOT / "matching"
+
+# Every non-test module in matching/, discovered by glob. A new file dropped
+# into matching/ is scanned automatically; nothing here needs updating for it
+# to be covered.
+SCANNED_FILES: tuple[Path, ...] = tuple(
+    sorted(
+        p for p in MATCHING_DIR.glob("*.py")
+        if not p.name.startswith("test_") and p.name != "__init__.py"
+    )
 )
+
+# Files this D2 deliverable actually fixes. `test_known_orphans_are_no_longer_referenced`
+# and `test_d2_fixed_files_have_zero_out_of_scope_allowance` hold these to a
+# stricter bar than the rest of matching/.
+D2_FIXED_FILES: frozenset[str] = frozenset({"scorer.py", "qualification.py", "mapping.py"})
+
+# GeneratedClaim.predicate accesses are excluded from the scan (see module
+# docstring) by the one naming convention matching/ uses without exception.
+_GENERATED_CLAIM_VAR_NAMES = frozenset({"claim"})
+
+# Genuine AtomicAssertion.predicate orphans the widened scan reaches in files
+# outside D2's fix scope (D1-owned, frozen here). Tracked, not hidden — see
+# module docstring. `test_out_of_scope_allowlist_is_exact` keeps this from
+# going stale.
+_KNOWN_OUT_OF_SCOPE_ORPHANS: dict[str, frozenset[str]] = {
+    "compiler_independent.py": frozenset({"portfolio.item"}),
+    "validator.py": frozenset({"credential.status"}),
+}
 
 
 def _resolve_module_attribute(node: ast.Attribute) -> object | None:
@@ -73,13 +121,26 @@ def _predicate_values(node: ast.AST) -> list[str]:
     return []
 
 
+def _is_generated_claim_predicate_access(node: ast.Attribute) -> bool:
+    """True if `node` is `.predicate` accessed on a variable named `claim`
+    (the GeneratedClaim naming convention this scan excludes; see module
+    docstring)."""
+    return (
+        node.attr == "predicate"
+        and isinstance(node.value, ast.Name)
+        and node.value.id in _GENERATED_CLAIM_VAR_NAMES
+    )
+
+
 def _find_predicate_literals(source_path: Path) -> set[str]:
-    """Find every predicate value compared against a `.predicate` attribute.
+    """Find every predicate value compared against an `AtomicAssertion.predicate`
+    attribute.
 
     Matches `a.predicate == "skill.name"`, `a.predicate == predicates.SKILL_NAME`,
     `a.predicate in ("x", "y")`, and `a.predicate in predicates.SOME_TUPLE` shapes
-    (with or without `not`) — every shape used in matching/scorer.py and
-    matching/qualification.py.
+    (with or without `not`) — every shape used across matching/. Comparisons
+    where every `.predicate` operand is a GeneratedClaim access (variable named
+    `claim`) are excluded; see module docstring.
     """
     tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
     found: set[str] = set()
@@ -87,11 +148,13 @@ def _find_predicate_literals(source_path: Path) -> set[str]:
     class Visitor(ast.NodeVisitor):
         def visit_Compare(self, node: ast.Compare) -> None:
             operands: list[ast.expr] = [node.left, *node.comparators]
-            is_predicate_comparison = any(
-                isinstance(operand, ast.Attribute) and operand.attr == "predicate"
-                for operand in operands
-            )
-            if is_predicate_comparison:
+            predicate_operands = [
+                operand for operand in operands
+                if isinstance(operand, ast.Attribute) and operand.attr == "predicate"
+            ]
+            if predicate_operands and not all(
+                _is_generated_claim_predicate_access(operand) for operand in predicate_operands
+            ):
                 for operand in operands:
                     if isinstance(operand, ast.Attribute) and operand.attr == "predicate":
                         continue
@@ -114,12 +177,46 @@ class TestPredicateRegistryCompleteness(unittest.TestCase):
         registry = predicates.all_predicates()
         for path in SCANNED_FILES:
             referenced = _find_predicate_literals(path)
-            unregistered = sorted(p for p in referenced if p not in registry)
+            unregistered = {p for p in referenced if p not in registry}
+            allowed_out_of_scope = _KNOWN_OUT_OF_SCOPE_ORPHANS.get(path.name, frozenset())
+            unexpected = sorted(unregistered - allowed_out_of_scope)
             self.assertEqual(
-                unregistered,
+                unexpected,
                 [],
-                f"{path.name} references predicate(s) not declared in truth/predicates.py: {unregistered}",
+                f"{path.name} references predicate(s) neither declared in truth/predicates.py "
+                f"nor on the tracked out-of-scope allowlist: {unexpected}",
             )
+
+    def test_d2_fixed_files_have_zero_out_of_scope_allowance(self) -> None:
+        """scorer.py, qualification.py, and mapping.py are this D2 deliverable's
+        actual fix scope: they get no out-of-scope allowance at all."""
+        for filename in D2_FIXED_FILES:
+            self.assertNotIn(
+                filename,
+                _KNOWN_OUT_OF_SCOPE_ORPHANS,
+                f"{filename} is in D2 scope and must have zero unregistered predicates, "
+                "not a tracked allowance",
+            )
+
+    def test_out_of_scope_allowlist_is_exact_not_a_ceiling(self) -> None:
+        """Every allowlisted (file, predicate) pair must still be actually
+        referenced and actually unregistered, so a future fix removes the
+        entry instead of leaving a stale allowance masking a regression."""
+        registry = predicates.all_predicates()
+        files_by_name = {path.name: path for path in SCANNED_FILES}
+        for filename, allowed in _KNOWN_OUT_OF_SCOPE_ORPHANS.items():
+            path = files_by_name.get(filename)
+            self.assertIsNotNone(path, f"tracked file {filename!r} is no longer scanned")
+            referenced = _find_predicate_literals(path)
+            for predicate_name in allowed:
+                self.assertIn(
+                    predicate_name, referenced,
+                    f"{filename} no longer references {predicate_name!r}; remove it from the allowlist",
+                )
+                self.assertNotIn(
+                    predicate_name, registry,
+                    f"{predicate_name!r} is now registered; remove the {filename} allowlist entry",
+                )
 
     def test_scanned_files_reference_at_least_one_predicate(self) -> None:
         # Guards against the scanner silently finding nothing due to a refactor
@@ -157,8 +254,11 @@ class TestPredicateRegistryCompleteness(unittest.TestCase):
 
     def test_known_orphans_are_no_longer_referenced_by_their_old_spelling(self) -> None:
         """The specific orphan spellings this brief's defect list named must be gone
-        from scorer.py/qualification.py; only their real, registered replacements
-        (or a declared assertion-only predicate) may remain."""
+        from the files this D2 deliverable fixed (scorer.py, qualification.py,
+        mapping.py); only their real, registered replacements (or a declared
+        assertion-only predicate) may remain. `compiler_independent.py` still
+        references `"portfolio.item"` — tracked separately, out of D2 scope,
+        via `_KNOWN_OUT_OF_SCOPE_ORPHANS`, not asserted against here."""
         orphans = {
             "responsibility.item",
             "employment.role_description",
@@ -173,6 +273,8 @@ class TestPredicateRegistryCompleteness(unittest.TestCase):
             "portfolio.item",
         }
         for path in SCANNED_FILES:
+            if path.name not in D2_FIXED_FILES:
+                continue
             referenced = _find_predicate_literals(path)
             leftover = referenced & orphans
             self.assertEqual(leftover, set(), f"{path.name} still references orphan predicate(s): {leftover}")
