@@ -328,6 +328,7 @@ def dump_database(db_url: str, output_file: str) -> int:
             "id": me.id, "opportunity_id": me.opportunity_id, "truth_pack_hash": me.truth_pack_hash,
             "qualification_decision": me.qualification_decision, "fit_score": me.fit_score,
             "dimension_scores_json": me.dimension_scores_json, "reasons_json": me.reasons_json,
+            "evaluation_detail_json": me.evaluation_detail_json,
             "policy_version": me.policy_version,
             "evaluated_at": me.evaluated_at.isoformat() if me.evaluated_at else None,
             "created_at": me.created_at.isoformat() if me.created_at else None,
@@ -568,6 +569,21 @@ def restore_database(dump_file: str, db_url: str) -> None:
         prov = FieldProvenanceRecord(**prov_dict)
         session.merge(prov)
 
+    # Flush section 1 to the database NOW, before any FK-dependent section
+    # below is even merged. This is load-bearing, not cosmetic: every
+    # section here is merge()d into one unit-of-work with a single commit()
+    # at the end of this function, and SQLAlchemy's flush orders INSERTs by
+    # mapper configuration order, not by merge() call order or by comment
+    # order -- a FK column with no relationship() (match_evaluations,
+    # founder_opportunity_views, founder_triage_states all have an
+    # `opportunity_id` FK *column* but no `relationship()` back to
+    # OpportunityRecord, so the unit of work has no dependency edge for
+    # them) can and does get flushed before its parent `opportunities` row,
+    # raising ForeignKeyViolation on a real restore. An explicit flush here
+    # makes the opportunities rows visible to every later INSERT in this
+    # same transaction regardless of mapper order.
+    session.flush()
+
     # 2. Outbound Actions
     for act_dict in data.get("outbound_actions", []):
         if act_dict.get("created_at"):
@@ -651,8 +667,9 @@ def restore_database(dump_file: str, db_url: str) -> None:
         fb = FounderFeedbackRecord(**fb_dict)
         session.merge(fb)
 
-    # 11. Match Evaluations -- FK -> opportunities, so this must come after
-    # section 1 above (it does).
+    # 11. Match Evaluations -- FK -> opportunities. No relationship() edge
+    # exists for this FK, so ordering here relies on the explicit
+    # session.flush() after section 1 above, not on merge()/mapper order.
     for me_dict in data.get("match_evaluations", []):
         if me_dict.get("evaluated_at"):
             me_dict["evaluated_at"] = datetime.fromisoformat(me_dict["evaluated_at"])
@@ -670,16 +687,16 @@ def restore_database(dump_file: str, db_url: str) -> None:
         spr = SourcePollRunRecord(**spr_dict)
         session.merge(spr)
 
-    # 13. Founder Opportunity Views -- FK -> opportunities, so this must come
-    # after section 1 above (it does).
+    # 13. Founder Opportunity Views -- FK -> opportunities. No relationship()
+    # edge exists for this FK either; see the flush() note after section 1.
     for view_dict in data.get("founder_opportunity_views", []):
         if view_dict.get("viewed_at"):
             view_dict["viewed_at"] = datetime.fromisoformat(view_dict["viewed_at"])
         view = FounderOpportunityViewRecord(**view_dict)
         session.merge(view)
 
-    # 14. Founder Triage States -- FK -> opportunities, so this must come
-    # after section 1 above (it does).
+    # 14. Founder Triage States -- FK -> opportunities. No relationship() edge
+    # exists for this FK either; see the flush() note after section 1.
     for triage_dict in data.get("founder_triage_states", []):
         if triage_dict.get("snoozed_until"):
             triage_dict["snoozed_until"] = datetime.fromisoformat(triage_dict["snoozed_until"])

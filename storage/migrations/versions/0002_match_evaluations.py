@@ -36,6 +36,13 @@ def upgrade() -> None:
     op.create_index(op.f('ix_match_evaluations_truth_pack_hash'), 'match_evaluations', ['truth_pack_hash'], unique=False)
     op.create_index(op.f('ix_match_evaluations_evaluated_at'), 'match_evaluations', ['evaluated_at'], unique=False)
 
+    # Added in place (0002 has never been released): the hard-constraint
+    # checklist, strengths/gaps/unknowns, uncertainty_penalty, and explanation
+    # D6's detail route needs, with nowhere else to live. See
+    # storage/models.py::MatchEvaluationRecord.evaluation_detail_json for the
+    # exact JSON shape.
+    op.add_column('match_evaluations', sa.Column('evaluation_detail_json', sa.Text(), nullable=True))
+
     op.create_table(
         'source_poll_runs',
         sa.Column('id', sa.String(length=64), nullable=False),
@@ -56,6 +63,14 @@ def upgrade() -> None:
     op.create_index(op.f('ix_source_poll_runs_source_id'), 'source_poll_runs', ['source_id'], unique=False)
     op.create_index(op.f('ix_source_poll_runs_started_at'), 'source_poll_runs', ['started_at'], unique=False)
     op.create_index(op.f('ix_source_poll_runs_status'), 'source_poll_runs', ['status'], unique=False)
+    # Added in place (0002 has never been released): supports "latest run
+    # per source" lookups (e.g. /api/sources/health) without a full scan.
+    op.create_index(
+        'ix_source_poll_runs_source_id_started_at',
+        'source_poll_runs',
+        ['source_id', sa.text('started_at DESC')],
+        unique=False,
+    )
 
     op.create_table(
         'founder_opportunity_views',
@@ -89,11 +104,13 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_founder_opportunity_views_opportunity_id'), table_name='founder_opportunity_views')
     op.drop_table('founder_opportunity_views')
 
+    op.drop_index('ix_source_poll_runs_source_id_started_at', table_name='source_poll_runs')
     op.drop_index(op.f('ix_source_poll_runs_status'), table_name='source_poll_runs')
     op.drop_index(op.f('ix_source_poll_runs_started_at'), table_name='source_poll_runs')
     op.drop_index(op.f('ix_source_poll_runs_source_id'), table_name='source_poll_runs')
     op.drop_table('source_poll_runs')
 
+    op.drop_column('match_evaluations', 'evaluation_detail_json')
     op.drop_index(op.f('ix_match_evaluations_evaluated_at'), table_name='match_evaluations')
     op.drop_index(op.f('ix_match_evaluations_truth_pack_hash'), table_name='match_evaluations')
     op.drop_index(op.f('ix_match_evaluations_opportunity_id'), table_name='match_evaluations')

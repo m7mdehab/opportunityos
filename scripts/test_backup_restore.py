@@ -23,6 +23,7 @@ import os
 import json
 import unittest
 import tempfile
+from datetime import datetime, timezone
 from urllib.parse import urlsplit, urlunsplit
 
 from sqlalchemy import create_engine, text, MetaData, Column, String
@@ -32,7 +33,15 @@ from alembic import command as alembic_command
 
 from storage.engine import get_engine, get_session_factory
 from storage.repository import StorageRepository
-from storage.models import Base, OpportunityRecord, FounderFeedbackRecord
+from storage.models import (
+    Base,
+    OpportunityRecord,
+    FounderFeedbackRecord,
+    MatchEvaluationRecord,
+    SourcePollRunRecord,
+    FounderOpportunityViewRecord,
+    FounderTriageStateRecord,
+)
 import scripts.backup_restore as backup_restore
 from scripts.backup_restore import (
     dump_database,
@@ -229,6 +238,65 @@ class TestBackupRestorePostgres(unittest.TestCase):
         }, [{"field_name": "title", "derivation_type": "EXACT_EXTRACTION", "record_checksum": "hash999"}])
 
         repo.record_feedback("OPP-BACKUP-1", "good_match", None, "Perfect role fit")
+
+        # Seed one row per D4/D4b table (match_evaluations, source_poll_runs,
+        # founder_opportunity_views, founder_triage_states) -- three of the
+        # four have an opportunity_id FK *column* with no relationship()
+        # edge, which is exactly the ordering hazard restore_database's
+        # explicit post-section-1 session.flush() exists to close (see
+        # scripts/backup_restore.py). Seeding zero rows here (as this test
+        # did before) is green against that bug regardless of whether the
+        # fix is present, since an empty child table produces zero INSERTs
+        # to misorder.
+        # Naive, representing UTC wall-clock time directly (this project's own
+        # established convention -- DateTime columns here are TIMESTAMP WITHOUT
+        # TIME ZONE; handing psycopg2 a tz-aware datetime instead lets PostgreSQL
+        # convert it to the session's timezone GUC before storing it naive, which
+        # would silently shift these seeded values on a non-UTC session timezone).
+        match_eval_evaluated_at = datetime(2026, 9, 2, 10, 30, 0)
+        detail_json = (
+            '{"hard_constraints": [], "strengths": [], "gaps": [], '
+            '"unknowns": [], "uncertainty_penalty": 0.1, "explanation": "test"}'
+        )
+        session.add(MatchEvaluationRecord(
+            id="me-backup-1",
+            opportunity_id="OPP-BACKUP-1",
+            truth_pack_hash="truth-pack-hash-backup-1",
+            qualification_decision="uncertain",
+            fit_score=63.25,
+            dimension_scores_json='[{"dimension_name": "skills", "raw_score": 0.6}]',
+            reasons_json='[{"kind": "gap", "dimension": "skills", "text": "Rust experience not evidenced"}]',
+            evaluation_detail_json=detail_json,
+            policy_version="1.0.0",
+            evaluated_at=match_eval_evaluated_at,
+        ))
+        session.add(SourcePollRunRecord(
+            id="spr-backup-1",
+            source_id="greenhouse:alexandria",
+            job_id="job-backup-1",
+            started_at=datetime(2026, 9, 2, 10, 0, 0),
+            finished_at=datetime(2026, 9, 2, 10, 0, 5),
+            status="ok",
+            raw_ingested=1,
+            unique_opportunities=1,
+            inserted=1,
+            unchanged=0,
+            updated=0,
+        ))
+        session.add(FounderOpportunityViewRecord(
+            id="fov-backup-1",
+            opportunity_id="OPP-BACKUP-1",
+            viewed_at=datetime(2026, 9, 2, 10, 15, 0),
+        ))
+        triage_snoozed_until = datetime(2026, 9, 9, 0, 0, 0)
+        session.add(FounderTriageStateRecord(
+            opportunity_id="OPP-BACKUP-1",
+            state="snoozed",
+            snoozed_until=triage_snoozed_until,
+            created_at=datetime(2026, 9, 2, 10, 16, 0),
+            updated_at=datetime(2026, 9, 2, 10, 16, 0),
+        ))
+        session.commit()
         session.close()
         engine.dispose()
 
@@ -239,6 +307,9 @@ class TestBackupRestorePostgres(unittest.TestCase):
         # 3. Restore into the distinct target database. The target starts
         # with no schema at all (dropped and recreated in setUpClass), so
         # this exercises restore_database's own Alembic upgrade-to-head.
+        # This is the call that raised ForeignKeyViolation before the
+        # explicit post-section-1 flush() fix, once any of the four new
+        # tables held a row.
         restore_database(self.dump_file, self.target_url)
 
         # 4. Verify target db contents: opportunity round-trips with its
@@ -254,6 +325,34 @@ class TestBackupRestorePostgres(unittest.TestCase):
         fb = dst_session.query(FounderFeedbackRecord).filter_by(opportunity_id="OPP-BACKUP-1").first()
         self.assertIsNotNone(fb)
         self.assertEqual(fb.feedback_label, "good_match")
+
+        # 4b. The four new tables round-trip byte-for-byte, not just "a row
+        # exists": this is what distinguishes "restore succeeded" from
+        # "restore succeeded and preserved the data".
+        me = dst_session.query(MatchEvaluationRecord).filter_by(id="me-backup-1").first()
+        self.assertIsNotNone(me, "match_evaluations row must survive restore")
+        self.assertEqual(me.opportunity_id, "OPP-BACKUP-1")
+        self.assertEqual(me.truth_pack_hash, "truth-pack-hash-backup-1")
+        self.assertEqual(me.qualification_decision, "uncertain")
+        self.assertEqual(me.fit_score, 63.25)
+        self.assertEqual(me.evaluation_detail_json, detail_json)
+        self.assertEqual(me.evaluated_at, match_eval_evaluated_at)
+
+        spr = dst_session.query(SourcePollRunRecord).filter_by(id="spr-backup-1").first()
+        self.assertIsNotNone(spr, "source_poll_runs row must survive restore")
+        self.assertEqual(spr.source_id, "greenhouse:alexandria")
+        self.assertEqual(spr.status, "ok")
+        self.assertEqual(spr.inserted, 1)
+
+        fov = dst_session.query(FounderOpportunityViewRecord).filter_by(id="fov-backup-1").first()
+        self.assertIsNotNone(fov, "founder_opportunity_views row must survive restore")
+        self.assertEqual(fov.opportunity_id, "OPP-BACKUP-1")
+
+        triage = dst_session.query(FounderTriageStateRecord).filter_by(opportunity_id="OPP-BACKUP-1").first()
+        self.assertIsNotNone(triage, "founder_triage_states row must survive restore")
+        self.assertEqual(triage.state, "snoozed")
+        self.assertIsNotNone(triage.snoozed_until, "a snoozed triage state must keep its snoozed_until")
+        self.assertEqual(triage.snoozed_until, triage_snoozed_until)
 
         # 5. The restored target has the Alembic head stamped (read the
         # head from the script directory, never hard-coded).
@@ -273,6 +372,8 @@ class TestBackupRestorePostgres(unittest.TestCase):
         restore_database(self.dump_file, self.target_url)
         opp_after_second_restore = dst_session.query(OpportunityRecord).filter_by(id="OPP-BACKUP-1").first()
         self.assertEqual(len(opp_after_second_restore.provenances), 1)
+        me_count_after_second_restore = dst_session.query(MatchEvaluationRecord).filter_by(id="me-backup-1").count()
+        self.assertEqual(me_count_after_second_restore, 1, "a second restore must not duplicate match_evaluations rows")
 
         dst_session.close()
         dst_engine.dispose()
