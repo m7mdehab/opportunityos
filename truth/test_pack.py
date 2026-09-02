@@ -212,13 +212,15 @@ class TruthPackTemplateArtifactGenerationKnownLimitationTest(unittest.TestCase):
          Summary" naming both a job title and a skill -- is refused unless
          those entities are connected by an explicit `TypedRelation` or a
          shared non-root entity. Adding such a relation via this file's
-         top-level `relations:` section cannot work: `TruthGraph` (built by
-         `truth.ingest.graph_from_dict`) processes `relations:` *before*
-         `career_profile`/`capability_profile` are added, so a relation
-         naming a profile entity id such as `job-example-1` fails to load
-         with "references nonexistent source" -- the entity does not exist
-         yet at that point. There is no template-only YAML shape that adds
-         a working entity-to-entity relation here.
+         top-level `relations:` section does not work today: `TruthGraph`
+         (built by `truth.ingest.graph_from_dict`) processes `relations:`
+         *before* `career_profile`/`capability_profile` are added, so a
+         relation naming a profile entity id such as `job-example-1` fails
+         to load with "references nonexistent source" -- the entity does
+         not exist yet at that point. This is an ingest ordering bug in
+         `truth/ingest.py`, not a property of the template format; fixing
+         the ordering is in scope for `truth/ingest.py`, which is frozen
+         for this work.
       2. Material lexical coverage (`truth/validator.py`, the check
          immediately after the relational-composition guard). Even for a
          single-evidence claim, every non-trivial word the compiler writes
@@ -228,18 +230,31 @@ class TruthPackTemplateArtifactGenerationKnownLimitationTest(unittest.TestCase):
          "background", "verified", "competencies") that the founder's
          evidence -- which describes what happened to them, not the
          sentence the compiler will eventually write about it -- will not
-         literally contain. The cover letter is structurally worse: its
-         generated sentences name the *target opportunity's own* job title
-         and organization, which can never appear in the founder's own
-         evidence by construction, for any opportunity.
+         literally contain. This is a property of how `ClaimValidator`
+         checks whole rendered sentences rather than the underlying facts;
+         fixing it is in scope for `truth/validator.py`, which is frozen
+         for this work. The cover letter is structurally worse regardless
+         of that fix: its generated sentences name the *target
+         opportunity's own* job title and organization, which can never
+         appear in the founder's own evidence by construction, for any
+         opportunity -- no change to the template's data can make a cover
+         letter's employer-naming sentence self-evidencing.
 
-    The only way to force a 0-rejected result would be to write the
-    compiler's own vocabulary into the template's evidence text --
-    fabricating provenance to match generated prose. AGENTS.md's first Hard
-    Rule forbids exactly that ("Never fabricate a claim about the
-    founder"), so this test does not attempt it. Instead it proves the
-    *refusal* path is correct and safe: every rejection carries a concrete,
-    non-empty reason, and a rejected claim never reaches document export.
+    No change to the template's *data* can force a 0-rejected result while
+    keeping the CV's Professional Summary and the cover letter honest. (A
+    graph that omits the employment record entirely -- as
+    `web/tests/e2e/truth_pack.e2e.yaml` and
+    `api/test_api.py::_clean_truth_pack_graph()` both do -- does reach zero
+    rejections, because the compiler never builds the composite summary
+    claim in the first place; that is not a counter-example to the claim
+    above, and it is not a usable outcome for a founder, since a CV with no
+    job history is not a CV.) Writing the compiler's own vocabulary into
+    the template's evidence text to force approval would fabricate
+    provenance to match generated prose, which AGENTS.md's first Hard Rule
+    forbids ("Never fabricate a claim about the founder"), so this test
+    does not attempt it. Instead it proves the *refusal* path is correct
+    and safe: every rejection carries a concrete, non-empty reason, and a
+    rejected claim never reaches document export.
     """
 
     def test_shipped_template_claim_rejections_are_reasoned_and_block_export(self):
@@ -292,16 +307,13 @@ class TruthPackTemplateArtifactGenerationKnownLimitationTest(unittest.TestCase):
 
             # Mirrors api/routes_api.py::_compile_and_export's own gate:
             # export_to_docx is only ever called once every claim is allowed.
-            # A rejected claim must never reach document export.
-            if findings:
-                docx_bytes = None
-            else:
+            # This test does not re-derive that gate itself -- the real API
+            # gate (a 409, and a body that never starts with the docx `PK`
+            # zip signature) is asserted in
+            # ArtifactRoutesTest.test_artifact_409_never_returns_docx_bytes.
+            if not findings:
                 docx_bytes = BinaryArtifactExporter.export_to_docx(artifact)
                 self.assertTrue(docx_bytes)
-            if findings:
-                self.assertIsNone(
-                    docx_bytes, "no document bytes may be produced when a claim is rejected"
-                )
 
         self.assertTrue(
             saw_rejection,

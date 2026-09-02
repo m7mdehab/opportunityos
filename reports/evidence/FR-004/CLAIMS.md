@@ -51,7 +51,9 @@ them would be a defect. Bound here so every deliverable uses the same mapping:
   ("wrong track") and `duplicate_issue` ("duplicate"). No new label value is introduced.
 - **Artifact rejection.** `compile_tailored_cv` / `compile_cover_letter` do not raise on a
   prohibited claim; `ClaimValidator.validate_claim` returns `ClaimVerificationResult` with
-  `verified=False` and `rejection_reasons`. D6's 409 is therefore produced by the API validating
+  `allowed=False` and `reasons` (corrected after the fact — this cell originally named
+  `verified`/`rejection_reasons`, which do not exist on `truth/validator.py`'s
+  `ClaimVerificationResult`). D6's 409 is therefore produced by the API validating
   every generated claim and refusing to export when any is unverified — the document is never
   built, per §2 D6 "never a document".
 - **Head revision.** The current Alembic head is `0001_baseline_schema`. D4's "downgrade 0001"
@@ -145,7 +147,7 @@ was delegated, so the two sides agree by construction rather than by later recon
 | **D10-1** | Readiness matrix regenerates identically from its JSON | `python scripts/generate_readiness_matrix.py --check; echo "exit=$?"` | `exit=0` | | |
 | **D10-2** | Matrix totals still sum to 143 | `python -c` summing status counts from the JSON | sum == 143 | | |
 | **D10-3** | Every flipped row carries `status_history` | `python -c` asserting each row changed this brief has a non-empty `status_history` | assertion passes | | |
-| **D10-4** | Report carries a Founder Acceptance section left blank | `grep -n "Opportunities worth opening today" reports/REPORT-FR-004.md` | present, with a blank result column for all 13 steps | | |
+| **D10-4** | Report carries a Founder Acceptance section left blank | `sed -n '/^## 9\. Founder acceptance packet/,/^## 10\./p' reports/REPORT-FR-004.md \| grep -c "Opportunities worth opening today" && grep -cE '^\| (1[0-4]\|[1-9]) \| .+ \| \|$' reports/REPORT-FR-004.md` | `1` (the phrase occurs inside §9, not merely somewhere in the file — this excludes the false-positive match inside this ledger's own D10-4 row) and `14` (the acceptance-script step table has 14 rows, each with an empty result column) | | |
 | **A-0** | FR-002 fail-closed probe unchanged and green | `python -m unittest storage.test_fail_closed_probe -v 2>&1 \| tail -3` | `Ran 12 tests`, `OK` | | |
 | **A-1** | Full Python suite on real PostgreSQL | `python -m unittest discover -v 2>&1 \| tail -5` | `Ran N tests`, `OK`, **0 skipped**, N > 466 | | |
 | **A-2** | Per-module counts from that run | derived from the A-1 verbose output | table published in the report; totals reconcile to A-1's `N` | | |
