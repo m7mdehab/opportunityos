@@ -1,0 +1,460 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet"
+import { Separator } from "@/components/ui/separator"
+import { Button } from "@/components/ui/button"
+import { ConstraintOutcomeBadge } from "@/components/feed/constraint-outcome"
+import { DecisionBadge } from "@/components/feed/decision-badge"
+import { FeedbackButtons } from "@/components/feed/feedback-buttons"
+import { TriageActions } from "@/components/feed/triage-actions"
+import { api, downloadArtifact } from "@/lib/api/client"
+import { ApiError } from "@/lib/contract/types"
+import type {
+  ActionState,
+  ActionType,
+  FeedbackLabel,
+  OpportunityDetail,
+} from "@/lib/contract/types"
+
+export function DetailDrawer({
+  opportunityId,
+  initialActionState,
+  initialFeedbackLabel,
+  onOpenChange,
+  onOpened,
+  onFeedbackSubmitted,
+  onActionSubmitted,
+}: {
+  opportunityId: string | null
+  initialActionState: ActionState
+  initialFeedbackLabel: FeedbackLabel | null
+  onOpenChange: (open: boolean) => void
+  onOpened: () => void
+  onFeedbackSubmitted: (id: string, label: FeedbackLabel) => void
+  onActionSubmitted: (id: string, state: ActionState) => void
+}) {
+  const [detail, setDetail] = useState<OpportunityDetail | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const [actionState, setActionState] = useState<ActionState>(initialActionState)
+  const [feedbackLabel, setFeedbackLabel] = useState<FeedbackLabel | null>(
+    initialFeedbackLabel
+  )
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false)
+  const [actionSubmitting, setActionSubmitting] = useState(false)
+
+  const [downloadError, setDownloadError] = useState<string | null>(null)
+  const [downloading, setDownloading] = useState<"cv" | "cover-letter" | null>(
+    null
+  )
+
+  // Reset local state when the drawer switches to a different opportunity
+  // (or closes). This is the "adjusting state when a prop changes" pattern
+  // from the React docs — computed during render, not in an effect — so it
+  // never causes a cascading re-render.
+  const [resetFor, setResetFor] = useState<string | null>(opportunityId)
+  if (resetFor !== opportunityId) {
+    setResetFor(opportunityId)
+    setActionState(initialActionState)
+    setFeedbackLabel(initialFeedbackLabel)
+    setDetail(null)
+    setError(null)
+    setDownloadError(null)
+  }
+
+  useEffect(() => {
+    if (!opportunityId) return
+
+    let cancelled = false
+    // Standard data-fetching effect (React docs: "Fetching data" under "You
+    // Might Not Need an Effect") — setting the loading flag synchronously
+    // before the async call is the documented pattern.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(true)
+    api.opportunities
+      .detail(opportunityId)
+      .then((d) => {
+        if (cancelled) return
+        setDetail(d)
+        onOpened()
+      })
+      .catch(() => {
+        if (!cancelled) setError("Could not load this opportunity.")
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opportunityId])
+
+  async function handleFeedback(label: FeedbackLabel, note: string | null) {
+    if (!opportunityId) return
+    setFeedbackSubmitting(true)
+    try {
+      await api.opportunities.submitFeedback(opportunityId, label, note)
+      setFeedbackLabel(label)
+      onFeedbackSubmitted(opportunityId, label)
+    } finally {
+      setFeedbackSubmitting(false)
+    }
+  }
+
+  async function handleAction(type: ActionType, until: string | null) {
+    if (!opportunityId) return
+    setActionSubmitting(true)
+    try {
+      const res = await api.opportunities.submitAction(opportunityId, type, until)
+      setActionState(res.action_state)
+      onActionSubmitted(opportunityId, res.action_state)
+    } finally {
+      setActionSubmitting(false)
+    }
+  }
+
+  async function handleDownload(kind: "cv" | "cover-letter") {
+    if (!opportunityId) return
+    setDownloadError(null)
+    setDownloading(kind)
+    try {
+      const { blob, filename } = await downloadArtifact(opportunityId, kind)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        const body = err.body as {
+          findings?: { claim: string; rejection_reasons: string[] }[]
+        } | null
+        const reasons =
+          body?.findings
+            ?.map((f) => `"${f.claim}": ${f.rejection_reasons.join("; ")}`)
+            .join(" | ") ?? "one or more claims could not be verified"
+        setDownloadError(
+          `Could not generate this document — claim validation failed (${reasons}).`
+        )
+      } else if (err instanceof ApiError && err.status === 412) {
+        setDownloadError(
+          "No truth pack is loaded, so no tailored document can be generated."
+        )
+      } else {
+        setDownloadError("Download failed.")
+      }
+    } finally {
+      setDownloading(null)
+    }
+  }
+
+  return (
+    <Sheet open={opportunityId !== null} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="right"
+        className="w-full overflow-y-auto sm:max-w-lg"
+        aria-describedby={undefined}
+      >
+        {loading && (
+          <div className="p-6 text-sm text-muted-foreground">Loading…</div>
+        )}
+        {error && (
+          <div role="alert" className="p-6 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+        {detail && (
+          <div className="flex flex-col gap-6 p-4">
+            <SheetHeader className="p-0">
+              <SheetTitle>{detail.title}</SheetTitle>
+              <SheetDescription>
+                {detail.organization} · {detail.source_id}
+              </SheetDescription>
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <DecisionBadge decision={detail.qualification.decision} />
+                <span className="text-xs text-muted-foreground">
+                  {detail.track}
+                </span>
+                {detail.is_stale && (
+                  <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                    Stale — not recently reverified
+                  </span>
+                )}
+              </div>
+            </SheetHeader>
+
+            <section>
+              <p className="text-sm">{detail.description}</p>
+              <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                <dt>Deadline</dt>
+                <dd>{detail.deadline ?? "—"}</dd>
+                <dt>Posted</dt>
+                <dd>{detail.posted_date ?? "—"}</dd>
+                <dt>Reverified</dt>
+                <dd>{detail.reverified_at ?? "—"}</dd>
+              </dl>
+              <a
+                href={detail.source_url}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="mt-2 inline-block text-xs text-primary underline underline-offset-4"
+              >
+                View original source
+              </a>
+            </section>
+
+            <Separator />
+
+            <section aria-labelledby="qualification-heading">
+              <h3 id="qualification-heading" className="text-sm font-semibold">
+                Qualification checklist
+              </h3>
+              {detail.qualification.constraints.length === 0 ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Not yet evaluated against a truth pack.
+                </p>
+              ) : (
+                <ul className="mt-2 space-y-2">
+                  {detail.qualification.constraints.map((c) => (
+                    <li
+                      key={c.constraint_name}
+                      className="rounded-md border border-border p-2"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium">
+                          {c.constraint_name.replaceAll("_", " ")}
+                        </span>
+                        <ConstraintOutcomeBadge outcome={c.outcome} />
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {c.reason}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <Separator />
+
+            <section aria-labelledby="scoring-heading">
+              <h3 id="scoring-heading" className="text-sm font-semibold">
+                Dimension scores
+              </h3>
+              {detail.scoring.dimension_scores.length === 0 ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  No scoring available yet.
+                </p>
+              ) : (
+                <ul className="mt-2 space-y-2">
+                  {detail.scoring.dimension_scores.map((d) => (
+                    <li key={d.dimension}>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-medium">
+                          {d.dimension.replaceAll("_", " ")}
+                        </span>
+                        <span className="tabular-nums text-muted-foreground">
+                          {Math.round(d.score * 100)}% (weight {Math.round(d.weight * 100)}%)
+                        </span>
+                      </div>
+                      <div
+                        role="progressbar"
+                        aria-label={`${d.dimension} score`}
+                        aria-valuenow={Math.round(d.score * 100)}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted"
+                      >
+                        <div
+                          className="h-full rounded-full bg-primary"
+                          style={{ width: `${Math.round(d.score * 100)}%` }}
+                        />
+                      </div>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        {d.rationale}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {(detail.scoring.strengths.length > 0 ||
+                detail.scoring.gaps.length > 0 ||
+                detail.scoring.unknowns.length > 0) && (
+                <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+                  <div>
+                    <p className="font-medium text-emerald-700 dark:text-emerald-300">
+                      Strengths
+                    </p>
+                    <ul className="list-disc pl-4">
+                      {detail.scoring.strengths.map((s) => (
+                        <li key={s}>{s}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="font-medium text-red-700 dark:text-red-300">Gaps</p>
+                    <ul className="list-disc pl-4">
+                      {detail.scoring.gaps.map((g) => (
+                        <li key={g}>{g}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="font-medium text-amber-700 dark:text-amber-300">
+                      Unknowns
+                    </p>
+                    <ul className="list-disc pl-4">
+                      {detail.scoring.unknowns.map((u) => (
+                        <li key={u}>{u}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {detail.scoring.explanation && (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  {detail.scoring.explanation}
+                </p>
+              )}
+            </section>
+
+            <Separator />
+
+            <section aria-labelledby="provenance-heading">
+              <h3 id="provenance-heading" className="text-sm font-semibold">
+                Field provenance
+              </h3>
+              {detail.fields.length === 0 ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  No field-level provenance recorded.
+                </p>
+              ) : (
+                <ul className="mt-2 space-y-2 text-xs">
+                  {detail.fields.map((f) => (
+                    <li key={f.field_name} className="rounded-md border border-border p-2">
+                      <p className="font-medium">{f.field_name}</p>
+                      <p className="text-muted-foreground">
+                        value: {f.value ?? "—"}
+                      </p>
+                      <p className="text-muted-foreground">
+                        raw: {f.raw_value ?? "—"} ({f.derivation_type})
+                      </p>
+                      {f.rule_id && (
+                        <p className="text-muted-foreground">rule: {f.rule_id}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <Separator />
+
+            <section aria-labelledby="download-heading">
+              <h3 id="download-heading" className="text-sm font-semibold">
+                Tailored documents
+              </h3>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={downloading !== null}
+                  onClick={() => handleDownload("cv")}
+                >
+                  {downloading === "cv" ? "Preparing…" : "Download tailored CV"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={downloading !== null}
+                  onClick={() => handleDownload("cover-letter")}
+                >
+                  {downloading === "cover-letter"
+                    ? "Preparing…"
+                    : "Download cover letter"}
+                </Button>
+              </div>
+              {downloadError && (
+                <p role="alert" className="mt-2 text-xs text-destructive">
+                  {downloadError}
+                </p>
+              )}
+            </section>
+
+            <Separator />
+
+            <section aria-labelledby="feedback-heading">
+              <h3 id="feedback-heading" className="text-sm font-semibold">
+                Feedback
+              </h3>
+              <div className="mt-2">
+                <FeedbackButtons
+                  currentLabel={feedbackLabel}
+                  submitting={feedbackSubmitting}
+                  onSubmit={handleFeedback}
+                />
+              </div>
+            </section>
+
+            <Separator />
+
+            <section aria-labelledby="triage-heading">
+              <h3 id="triage-heading" className="text-sm font-semibold">
+                Triage
+              </h3>
+              <div className="mt-2">
+                <TriageActions
+                  currentState={actionState}
+                  submitting={actionSubmitting}
+                  onSubmit={handleAction}
+                />
+              </div>
+            </section>
+
+            {(detail.action_history.length > 0 ||
+              detail.feedback_history.length > 0) && (
+              <>
+                <Separator />
+                <section aria-labelledby="history-heading">
+                  <h3 id="history-heading" className="text-sm font-semibold">
+                    History
+                  </h3>
+                  <ul className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+                    {detail.action_history.map((a) => (
+                      <li key={a.action_id}>
+                        {a.created_at} — action: {a.action_status} ({a.execution_mode})
+                      </li>
+                    ))}
+                    {detail.feedback_history.map((f) => (
+                      <li key={f.id}>
+                        {f.created_at} — feedback: {f.feedback_label}
+                        {f.notes ? ` — “${f.notes}”` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              </>
+            )}
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
+  )
+}
