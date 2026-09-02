@@ -10,8 +10,8 @@ Next: BRIEF-FR-004 is the FastAPI REST service and Next.js Founder Web Alpha sli
 
 ## Repository
 
-- **Generated:** 2026-09-02T00:09:28Z
-- **State generated at commit:** `9162392` — docs(d14): capture claim evidence and align report figures with the final run
+- **Generated:** 2026-09-02T00:38:04Z
+- **State generated at commit:** `00df8aa` — docs(d14): finalise REPORT-FR-003 with verifier verdicts and CI evidence
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
