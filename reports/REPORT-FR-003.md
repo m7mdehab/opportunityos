@@ -6,9 +6,9 @@
 **Overseer:** external independent auditor, author of the 2026-09-01 verified independent reality audit v2
 **Starting main SHA:** `889dee1cf4acdc3a38abf2e634bfce38453ae2ee` — matched the brief's expected SHA exactly, on a clean tree, so no pre-flight deviation was needed
 **Branch:** `feat/brief-fr-003-reality-refresh`
-**Final SHA:** `__FINAL_SHA__`
-**PR:** __PR_URL__
-**CI run IDs on the PR head:** __CI_RUNS__
+**Final SHA:** `3484cdd170b46bf79df9b3527dd3ab65c0c349b7`
+**PR:** https://github.com/m7mdehab/opportunityos/pull/67
+**CI run IDs on the PR head:** `33574529428` Mandatory Governance & Test Suite · `33574529498` State · `33574529393` Guard · `33574530091` Mirror — all four `success`
 **Baseline CI run cited by the erratum:** `33550202403` — Mandatory Governance & Test Suite at `889dee1`, conclusion `success`, verified directly against the Actions API with its log archive downloaded and re-counted (§4)
 
 ---
@@ -54,44 +54,59 @@ was worked around, nothing was fabricated, and seven requirement rows moved to
 
 ## 2. Status
 
-__STATUS__
+**PASS.**
+
+All fifteen deliverables D0–D14 are closed, with nothing `NOT_CLOSED` and nothing `BLOCKED_ENV`;
+A-0 through A-6 pass for both the Master and the independent verifier; every council finding on
+D5 and D10 is fixed or explicitly dispositioned with a reason; the full suite is `Ran 466 tests`
+/ `OK` with zero skips on real PostgreSQL both locally and in CI; and all four required workflows
+are green on the pull-request head. The pull request is open and **not merged**, per Appendix C
+item 5, which reserves that decision for the Overseer.
 
 ---
 
 ## 3. Deliverables
 
-"Loop count" is the number of implementer cycles under §5 step 3 — 1 means accepted on first
+"Loops" is the number of implementer cycles under §5 step 3 — 1 means accepted on the first
 return. Council verdicts apply only to D5 and D10, the two the brief flags as high-consequence.
-Every acceptance command in the ledger was run by the Master itself before the deliverable was
-accepted, and again by an independent verifier in a fresh context afterwards; only claims passed
-by both appear as closed here.
+Every acceptance command was run by the Master itself before a deliverable was accepted, and
+again by an independent verifier in a fresh context afterwards; only claims passed by both
+appear as closed.
 
 | ID | Deliverable | Status | Evidence file(s) | Master | Verifier | Council | Loops |
 |---|---|---|---|---|---|---|---|
-| D0 | Agent topology committed | CLOSED | `d0-agents.txt` | PASS | `__V_D0__` | n/a | 1 |
-| D1 | Public CI verdict includes the test suite | CLOSED | `d1-ci-status.txt` | PASS | `__V_D1__` | n/a | 1 |
-| D2 | STATE.md source-status counts | CLOSED | `d2-source-counts.txt` | PASS | `__V_D2__` | n/a | 1 |
-| D3 | STATE.md "Next:" line | CLOSED | `d3-next-line.txt` | PASS | `__V_D3__` | n/a | 1 |
-| D4 | Backup script test runs, on PostgreSQL | CLOSED | `d4-backup-test.txt` | PASS | `__V_D4__` | n/a | 2 |
-| D5 | Restore is Alembic-aware; backup complete | CLOSED | `d5-restore-alembic.txt` | PASS | `__V_D5__` | 7 findings, all resolved | 2 |
-| D6 | Integration suite fails loudly in CI | CLOSED | `d6-integration-fail-loud.txt` | PASS | `__V_D6__` | n/a | 1 |
-| D7 | REPORT-FR-002 erratum | CLOSED | `d7-erratum.txt`, `a2-module-counts.txt` | PASS | `__V_D7__` | n/a | 1 |
-| D8 | Readiness matrix regenerated and reconciled | CLOSED | `d8-matrix.txt` | PASS | `__V_D8__` | n/a | 2 |
-| D9 | ADR-0012 single-founder tenancy | CLOSED | `d9-adr-0012.txt` | PASS | `__V_D9__` | n/a | 1 |
-| D10 | Worker runner | CLOSED | `d10-worker-runner.txt` | PASS | `__V_D10__` | 8 findings, all resolved | 2 |
-| D11 | Robots re-recon for `ashby:*`, `jobicy`, `afdb` | CLOSED | `d11-recon.txt` | PASS | `__V_D11__` | n/a | 1 |
-| D12 | CI hygiene | CLOSED | `d12-ci-hygiene.txt` | PASS | `__V_D12__` | n/a | 2 |
-| D13 | Provider-name policy | CLOSED | `d13-vendor-neutral.txt` | PASS | `__V_D13__` | n/a | 1 |
-| D14 | Generated state, report, evidence, PR | CLOSED | `d14-close.txt`, `a5-state-sync.txt` | PASS | `__V_D14__` | n/a | 1 |
+| D0 | Agent topology committed | CLOSED | `d0-agents.txt` | PASS | PASS | n/a | 1 |
+| D1 | Public CI verdict includes the test suite | CLOSED | `d1-ci-status.txt` | PASS | PASS | n/a | 2 |
+| D2 | `STATE.md` source-status counts | CLOSED | `d2-source-counts.txt` | PASS | PASS | n/a | 1 |
+| D3 | `STATE.md` "Next:" line | CLOSED | `d3-next-line.txt` | PASS | PASS | n/a | 2 |
+| D4 | Backup script test runs, and runs on PostgreSQL | CLOSED | `d4-backup-test.txt` | PASS | PASS | n/a | 2 |
+| D5 | Restore is Alembic-aware; backup is complete | CLOSED | `d5-restore-alembic.txt` | PASS | PASS | 7 findings, 6 fixed / 1 dispositioned | 2 |
+| D6 | Integration suite fails loudly in CI | CLOSED | `d6-integration-fail-loud.txt` | PASS | PASS | n/a | 1 |
+| D7 | REPORT-FR-002 erratum | CLOSED | `d7-erratum.txt`, `a2-module-counts.txt` | PASS | PASS | n/a | 1 |
+| D8 | Readiness matrix regenerated and reconciled | CLOSED | `d8-matrix.txt` | PASS | PASS | n/a | 3 |
+| D9 | ADR-0012 single-founder tenancy | CLOSED | `d9-adr-0012.txt` | PASS | PASS | n/a | 1 |
+| D10 | Worker runner | CLOSED | `d10-worker-runner.txt` | PASS | PASS | 8 findings, all fixed | 2 |
+| D11 | Robots re-recon for `ashby:*`, `jobicy`, `afdb` | CLOSED | `d11-recon.txt` | PASS | PASS | n/a | 1 |
+| D12 | CI hygiene | CLOSED | `d12-ci-hygiene.txt` | PASS | PASS (D12-2 N/A locally — see below) | n/a | 2 |
+| D13 | Provider-name policy | CLOSED | `d13-vendor-neutral.txt` | PASS | PASS | n/a | 1 |
+| D14 | Generated state, report, evidence, PR | CLOSED | `d14-close.txt`, `a5-state-sync.txt` | PASS | PASS (D14-3 N/A locally — see below) | n/a | 1 |
 
-**D11 outcome is a genuine negative result, not a pass by omission.** All fifteen re-checked
-registry entries kept `automation.read: disabled`. Every one of the three hosts refused or failed:
-`jobicy.com` returned HTTP 403 (an AGENTS.md stop condition — no further request was made),
-`api.ashbyhq.com` returned HTTP 401 to an unauthenticated `robots.txt` request with no credentials
-attempted, and `www.afdb.org` failed TLS validation on its own expired certificate. `last_policy_reviewed`
-moved to 2026-09-02 for all fifteen because a review did happen; what it found was that nothing
-became permissible. No `BLOCKED_ENV` was recorded, because outbound HTTPS worked — the hosts, not
-the environment, are what blocked.
+Two claims could not be settled by the verifier: **D12-2** (the `Mandatory Governance & Test
+Suite` conclusion) and **D14-3** (four green workflows), both of which live on the pull-request
+head and need an authenticated GitHub client the verifier session did not have. They are marked
+`N/A` in the ledger rather than passed, and the Master settled them directly from the Actions API
+and the downloaded run log: all four workflows `success`, `Ran 466 tests` / `OK`, zero skips, and
+zero `Node.js 20 is deprecated` warnings. Run IDs are in the header and in `d12-ci-hygiene.txt`.
+
+**D11's outcome is a genuine negative result, not a pass by omission.** All fifteen re-checked
+registry entries kept `automation.read: disabled`. Each of the three hosts refused or failed:
+`jobicy.com` returned HTTP 403 — an AGENTS.md stop condition, after which no further request was
+made — `api.ashbyhq.com` returned HTTP 401 to an unauthenticated `robots.txt` request with no
+credentials attempted, and `www.afdb.org` failed TLS validation on its own expired certificate.
+`last_policy_reviewed` moved to 2026-09-02 for all fifteen because a review did happen; what it
+found was that nothing became permissible. No `BLOCKED_ENV` was recorded, because outbound HTTPS
+worked — the hosts blocked, not the environment. The verifier reproduced all three observations
+independently, with a single unauthenticated request each and no retry.
 
 ---
 
@@ -196,62 +211,113 @@ in §2 of the brief. The single file outside the brief's literal file lists is
 The full ledger, with both verdict columns filled, is committed at
 `reports/evidence/FR-003/CLAIMS.md`, with one captured output file per claim in the same
 directory. It was written **before** any delegation, as §5 step 1 requires, so no acceptance
-command was authored after seeing a result. The table below reproduces it.
+command was authored after seeing a result.
 
-Verdict columns mean what §5 step 7 says they mean: `Master` is this session re-running the
-command itself after the implementer returned, and `Verifier` is an independent session in a
-fresh context that was told neither what the implementer nor what the Master concluded. A claim
-is closed only where both say PASS.
+The verdict columns mean what §5 step 7 says they mean. `Master` is this session re-running the
+command itself after the implementer returned; `Verifier` is an independent session in a fresh
+context, given the brief, the ledger, the code and the tests, and told neither what the
+implementer nor what the Master concluded — and explicitly barred from reading this report.
+Forty-five of the forty-seven claims are PASS/PASS. The two that are not are D12-2 and D14-3,
+which live on the pull-request head; they are marked `N/A` for the verifier rather than passed.
+
+### What the verifier established beyond re-running the commands
+
+Re-running a command that passes proves very little on its own, so the verifier was also asked
+whether each test actually exercises what its requirement asserts. Four results are worth
+recording:
+
+- **D5 / Case M is load-bearing.** The verifier reproduced the neutralisation proof
+  independently: with `scripts.backup_restore._upgrade_to_head` stubbed to a no-op in memory —
+  no file on disk edited — Case M fails with `psycopg2.errors.UndefinedTable: relation
+  "opportunities" does not exist`. The wipe destroys the schema (`drop_all` plus `DROP TABLE IF
+  EXISTS alembic_version`, asserted through `information_schema`), so the assertions cannot pass
+  against a database something else migrated.
+- **D10 / Case S genuinely exercises concurrency.** "Processed exactly once" is measured from
+  observed dispatches — each wrapped handler records `(worker_id, marker)` before the inner
+  handler runs — so a double dispatch that completed twice would be caught, rather than being
+  hidden by a re-read of final database state. A strictly serialised run now fails, because the
+  test asserts both runners processed at least one job and each runner's `max_jobs` equals the
+  job count. The verifier notes one **MINOR** residual risk: the barrier plus a 30 ms in-flight
+  sleep is timing-dependent and could flake on a loaded runner. The mechanism it tests is real;
+  the flake risk is recorded rather than papered over.
+- **D2 and D3's tests reproduce the actual defects.** Run against `main`'s generator, the new
+  tests give `wasSuccessful=False, errors=5, failures=2`, including
+  `AssertionError: ':.' unexpectedly found in 'Next: … established:.'` and a `TypeError` proving
+  the old `source_counts()` could not accept a fixture path. Both defects are reproduced, not
+  asserted around.
+- **A-0 counts out**, with one honest caveat the verifier raised and this report accepts:
+  `test_class_7` deletes `OPPORTUNITYOS_DB_URL` before constructing the orchestrator with
+  `store=None`, so it is really "store=None under an unset DSN" and overlaps class 4's axis. It
+  does exercise a distinct code path — the `store=None` fallback to `PostgresInboxStore()` — so
+  it stands, but "seven *distinct* classes" is generous by one. Recorded here rather than
+  quietly counted.
+
+### The two defects the verifier found
+
+1. **A-4's ledger cell did not test its own expected text.** As written it ran
+   `python scripts/check_guard.py` with no flag, which exits 1 in any environment without the
+   `FOUNDER_NAME_PATTERNS` repository secret — that is, everywhere but CI. The deliverable was
+   never in doubt; the ledger row was wrong. It now names `--allow-missing-patterns`, the flag
+   `.github/workflows/test.yml` itself uses, and points at the `Guard` workflow run as the
+   authority for the secret-bearing case. This was the Master's own error, corrected here rather
+   than argued away.
+2. **Two matrix rows cited a test file that does not exist.** `REQ-CFG-006` and `REQ-SRC-038`
+   both named `opportunity/test_registry.py`, which is absent from the tree — and absent on
+   `main` too, so it predates this brief and neither row's status changed here. It was fixed
+   anyway: a row citing a test that does not exist is exactly the defect class this brief was
+   written to close, and "it predates us" is the reasoning that produced the errata in the first
+   place. The verifier's mechanical sweep of every path token in all 143 rows found these two and
+   no others.
 
 | ID | Deliverable | Command | Expected | Evidence file | Master | Verifier |
 |---|---|---|---|---|---|---|
-| D0-1 | D0 | `ls .claude/agents \| wc -l` | `5` | d0-agents.txt | PASS | |
-| D0-2 | D0 | `python scripts/check_repository.py` | exit 0, `Repository integrity checks passed.` | d0-agents.txt | PASS | |
-| D0-3 | D0 | allowlist test: no `.claude/**` path matches `.mirror-allowlist` | exit 0, empty match list | d0-agents.txt | PASS | |
-| D1-1 | D1 | `python -m unittest scripts.test_generate_ci_status -v 2>&1 \| tail -3` | `OK` | d1-ci-status.txt | PASS | |
-| D1-2 | D1 | `grep -c "Mandatory" scripts/generate_ci_status.py` | `>= 1` | d1-ci-status.txt | PASS | |
-| D1-3 | D1 | `python -c "from scripts.generate_ci_status import WORKFLOWS; print(WORKFLOWS)"` | `('Mandatory Governance & Test Suite', 'State', 'Guard', 'Mirror')` | d1-ci-status.txt | PASS | |
-| D2-1 | D2 | `python scripts/generate_state.py && sed -n '/## Source Status Counts/,/## Next Prerequisites/p' docs/STATE.md` | non-empty counts summing to 52 | d2-source-counts.txt | PASS | |
-| D2-2 | D2 | `grep -c "observed_status" scripts/generate_state.py` | `0` | d2-source-counts.txt | PASS | |
-| D2-3 | D2 | `python -m unittest scripts.test_generate_state -v 2>&1 \| tail -3` | `OK` | d2-source-counts.txt | PASS | |
-| D3-1 | D3 | `grep '^Next:' docs/STATE.md` | ends with `.`, no trailing `:` fragment, no `:.` | d3-next-line.txt | PASS | |
-| D4-1 | D4 | `ls scripts/__init__.py` | file exists | d4-backup-test.txt | PASS | |
-| D4-2 | D4 | `env -u OPPORTUNITYOS_DB_URL CI=true python -m unittest scripts.test_backup_restore 2>&1 \| tail -5; echo exit=$?` | non-zero exit, clear PostgreSQL-required message | d4-backup-test.txt | PASS | |
-| D4-3 | D4 | `OPPORTUNITYOS_DB_URL=$PGURL python -m unittest scripts.test_backup_restore -v 2>&1 \| tail -5` | `OK`, 0 skipped | d4-backup-test.txt | PASS | |
-| D5-1 | D5 | `grep -n "create_all\|init_db" scripts/backup_restore.py` | no output (exit 1) | d5-restore-alembic.txt | PASS | |
-| D5-2 | D5 | `OPPORTUNITYOS_DB_URL=$PGURL python -m unittest storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_m_backup_wipe_restore_postgres_cycle -v 2>&1 \| tail -4` | `OK` | d5-restore-alembic.txt | PASS | |
-| D5-3 | D5 | `grep -n "BackupCompletenessError\|sorted_tables" scripts/backup_restore.py` | both present | d5-restore-alembic.txt | PASS | |
-| D6-1 | D6 | `grep -n 'sqlite:///opportunityos.db' storage/test_postgres_integration.py` | no output (exit 1) | d6-integration-fail-loud.txt | PASS | |
-| D6-2 | D6 | `env -u OPPORTUNITYOS_DB_URL CI=true python -m unittest storage.test_postgres_integration 2>&1 \| tail -5` | ERROR/FAIL, not `skipped` | d6-integration-fail-loud.txt | PASS | |
-| D6-3 | D6 | `OPPORTUNITYOS_DB_URL=$PGURL python -m unittest storage.test_postgres_integration -v 2>&1 \| tail -4` | `OK`, all cases run | d6-integration-fail-loud.txt | PASS | |
-| D7-1 | D7 | `grep -n "## Erratum (2026-09-02, BRIEF-FR-003)" reports/REPORT-FR-002.md` | one match | d7-erratum.txt | PASS | |
-| D7-2 | D7 | `python -m unittest scripts.test_readiness_matrix -v 2>&1 \| tail -3` | `OK` (enforces every REQ- ID in the erratum exists in the JSON) | d7-erratum.txt | PASS | |
-| D8-1 | D8 | `python scripts/generate_readiness_matrix.py --check; echo exit=$?` | `exit=0` | d8-matrix.txt | PASS | |
-| D8-2 | D8 | `python -c "import json;d=json.load(open('reports/FOUNDER_READINESS_MATRIX.json',encoding='utf-8'));print(len(d))"` | `143` | d8-matrix.txt | PASS | |
-| D8-3 | D8 | `python -m unittest scripts.test_readiness_matrix -v 2>&1 \| tail -3` | `OK` | d8-matrix.txt | PASS | |
-| D8-4 | D8 | `grep -c "status_history" reports/FOUNDER_READINESS_MATRIX.json` | `>= 1` | d8-matrix.txt | PASS | |
-| D9-1 | D9 | `ls docs/adr/ADR-0012-single-founder-tenancy.md && python scripts/check_repository.py` | file exists, integrity passes | d9-adr-0012.txt | PASS | |
-| D10-1 | D10 | `python -m unittest worker.test_runner -v 2>&1 \| tail -3` | `OK` | d10-worker-runner.txt | PASS | |
-| D10-2 | D10 | `OPPORTUNITYOS_DB_URL=$PGURL python -m unittest storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_s_worker_runner_end_to_end -v 2>&1 \| tail -4` | `OK` | d10-worker-runner.txt | PASS | |
-| D10-3 | D10 | `OPPORTUNITYOS_DB_URL=$PGURL python -m worker --once; echo exit=$?` | `exit=0`, one idle poll logged | d10-worker-runner.txt | PASS | |
-| D10-4 | D10 | `env -u OPPORTUNITYOS_DB_URL python -m worker --once 2>&1 \| tail -3; echo exit=$?` | non-zero, `ProductionDatabaseConfigurationError` | d10-worker-runner.txt | PASS | |
-| D10-5 | D10 | `git diff main...HEAD -- docs/AGENT_PERMISSIONS.yaml \| wc -l` | `0` | d10-worker-runner.txt | PASS | |
-| D11-1 | D11 | `python -c "..."` — min `last_policy_reviewed` over the 15 re-recon entries | `>= 2026-09-02`, or `BLOCKED_ENV` with the exact error | d11-recon.txt | PASS | |
-| D11-2 | D11 | `python -m unittest discover -s recon -t . -v 2>&1 \| tail -3` | `Ran 67 tests`, `OK` | d11-recon.txt | PASS | |
-| D12-1 | D12 | `grep -n "actions/checkout@\|actions/setup-python@" .github/workflows/*.yml` | current latest majors, verified against GitHub | d12-ci-hygiene.txt | PASS | |
-| D12-2 | D12 | `Mandatory Governance & Test Suite` conclusion on the PR head | `success`, no `Node.js 20 is deprecated` warning | d12-ci-hygiene.txt | CI_PENDING | CI_PENDING |
-| D13-1 | D13 | the five-vendor-name `grep -rniE` from BRIEF-FR-003 D13 (pattern given verbatim in `briefs/BRIEF-FR-003.md` D13), run over `reports/REPORT-FR-003.md` and `docs/adr/ADR-0012*.md`. The pattern is referenced rather than quoted here because this ledger is reproduced inside `reports/REPORT-FR-003.md`, and an inline copy would make the check match itself. | no output (exit 1) | d13-vendor-neutral.txt | PASS | |
-| D13-2 | D13 | `grep -n "Reports and ADRs name roles, not model vendors." AGENTS.md` | one match | d13-vendor-neutral.txt | PASS | |
-| D14-1 | D14 | `ls reports/REPORT-FR-003.md reports/evidence/FR-003/CLAIMS.md` | both exist | d14-close.txt | PENDING | |
-| D14-2 | D14 | fresh render of `docs/STATE.md` diffed against the committed file | no drift | a5-state-sync.txt | PENDING | |
-| D14-3 | D14 | PR open to `main`, four workflows green on the PR head | `success` ×4 | d14-close.txt | CI_PENDING | CI_PENDING |
-| **A-0** | probe | `OPPORTUNITYOS_DB_URL=$PGURL python -m unittest storage.test_fail_closed_probe -v 2>&1 \| tail -4` | `OK`; 7/7 raise under misconfiguration, 5/5 construct under a valid DSN | a0-fail-closed-probe.txt | PASS | |
-| **A-1** | suite | `OPPORTUNITYOS_DB_URL=$PGURL python -m unittest discover -v 2>&1 \| tail -3` | `Ran N tests`, `OK`, N >= 414 + new tests, 0 skipped | a1-full-suite.txt | PASS | |
-| **A-2** | counts | per-module counts derived from the A-1 run (no count typed from memory) | table in the report matches the run | a2-module-counts.txt | PASS | |
-| **A-3** | migration | `alembic upgrade head && alembic downgrade base && alembic upgrade head` with `OPPORTUNITYOS_DB_URL=$PGURL` | exit 0 for all three | a3-migration-roundtrip.txt | PASS | |
-| **A-4** | guard | `python scripts/check_guard.py` (with `.github/pii-patterns.txt`) and `python scripts/check_repository.py` | both exit 0 | a4-guard-integrity.txt | PASS | |
-| **A-5** | state | fresh render of `docs/STATE.md` diffed against the committed file (timestamp line excluded) | no drift | a5-state-sync.txt | PASS | |
-| **A-6** | scope | `git diff --stat main...HEAD` | no file outside the paths named in BRIEF-FR-003 §2 | a6-scope-diff.txt | PASS | |
+| D0-1 | D0 | `ls .claude/agents \| wc -l` | `5` | d0-agents.txt | PASS | PASS |
+| D0-2 | D0 | `python scripts/check_repository.py` | exit 0, `Repository integrity checks passed.` | d0-agents.txt | PASS | PASS |
+| D0-3 | D0 | allowlist test: no `.claude/**` path matches `.mirror-allowlist` | exit 0, empty match list | d0-agents.txt | PASS | PASS |
+| D1-1 | D1 | `python -m unittest scripts.test_generate_ci_status -v 2>&1 \| tail -3` | `OK` | d1-ci-status.txt | PASS | PASS |
+| D1-2 | D1 | `grep -c "Mandatory" scripts/generate_ci_status.py` | `>= 1` | d1-ci-status.txt | PASS | PASS |
+| D1-3 | D1 | `python -c "from scripts.generate_ci_status import WORKFLOWS; print(WORKFLOWS)"` | `('Mandatory Governance & Test Suite', 'State', 'Guard', 'Mirror')` | d1-ci-status.txt | PASS | PASS |
+| D2-1 | D2 | `python scripts/generate_state.py && sed -n '/## Source Status Counts/,/## Next Prerequisites/p' docs/STATE.md` | non-empty counts summing to 52 | d2-source-counts.txt | PASS | PASS |
+| D2-2 | D2 | `grep -c "observed_status" scripts/generate_state.py` | `0` | d2-source-counts.txt | PASS | PASS |
+| D2-3 | D2 | `python -m unittest scripts.test_generate_state -v 2>&1 \| tail -3` | `OK` | d2-source-counts.txt | PASS | PASS |
+| D3-1 | D3 | `grep '^Next:' docs/STATE.md` | ends with `.`, no trailing `:` fragment, no `:.` | d3-next-line.txt | PASS | PASS |
+| D4-1 | D4 | `ls scripts/__init__.py` | file exists | d4-backup-test.txt | PASS | PASS |
+| D4-2 | D4 | `env -u OPPORTUNITYOS_DB_URL CI=true python -m unittest scripts.test_backup_restore 2>&1 \| tail -5; echo exit=$?` | non-zero exit, clear PostgreSQL-required message | d4-backup-test.txt | PASS | PASS |
+| D4-3 | D4 | `OPPORTUNITYOS_DB_URL=$PGURL python -m unittest scripts.test_backup_restore -v 2>&1 \| tail -5` | `OK`, 0 skipped | d4-backup-test.txt | PASS | PASS |
+| D5-1 | D5 | `grep -n "create_all\|init_db" scripts/backup_restore.py` | no output (exit 1) | d5-restore-alembic.txt | PASS | PASS |
+| D5-2 | D5 | `OPPORTUNITYOS_DB_URL=$PGURL python -m unittest storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_m_backup_wipe_restore_postgres_cycle -v 2>&1 \| tail -4` | `OK` | d5-restore-alembic.txt | PASS | PASS |
+| D5-3 | D5 | `grep -n "BackupCompletenessError\|sorted_tables" scripts/backup_restore.py` | both present | d5-restore-alembic.txt | PASS | PASS |
+| D6-1 | D6 | `grep -n 'sqlite:///opportunityos.db' storage/test_postgres_integration.py` | no output (exit 1) | d6-integration-fail-loud.txt | PASS | PASS |
+| D6-2 | D6 | `env -u OPPORTUNITYOS_DB_URL CI=true python -m unittest storage.test_postgres_integration 2>&1 \| tail -5` | ERROR/FAIL, not `skipped` | d6-integration-fail-loud.txt | PASS | PASS |
+| D6-3 | D6 | `OPPORTUNITYOS_DB_URL=$PGURL python -m unittest storage.test_postgres_integration -v 2>&1 \| tail -4` | `OK`, all cases run | d6-integration-fail-loud.txt | PASS | PASS |
+| D7-1 | D7 | `grep -n "## Erratum (2026-09-02, BRIEF-FR-003)" reports/REPORT-FR-002.md` | one match | d7-erratum.txt | PASS | PASS |
+| D7-2 | D7 | `python -m unittest scripts.test_readiness_matrix -v 2>&1 \| tail -3` | `OK` (enforces every REQ- ID in the erratum exists in the JSON) | d7-erratum.txt | PASS | PASS |
+| D8-1 | D8 | `python scripts/generate_readiness_matrix.py --check; echo exit=$?` | `exit=0` | d8-matrix.txt | PASS | PASS |
+| D8-2 | D8 | `python -c "import json;d=json.load(open('reports/FOUNDER_READINESS_MATRIX.json',encoding='utf-8'));print(len(d))"` | `143` | d8-matrix.txt | PASS | PASS |
+| D8-3 | D8 | `python -m unittest scripts.test_readiness_matrix -v 2>&1 \| tail -3` | `OK` | d8-matrix.txt | PASS | PASS |
+| D8-4 | D8 | `grep -c "status_history" reports/FOUNDER_READINESS_MATRIX.json` | `>= 1` | d8-matrix.txt | PASS | PASS |
+| D9-1 | D9 | `ls docs/adr/ADR-0012-single-founder-tenancy.md && python scripts/check_repository.py` | file exists, integrity passes | d9-adr-0012.txt | PASS | PASS |
+| D10-1 | D10 | `python -m unittest worker.test_runner -v 2>&1 \| tail -3` | `OK` | d10-worker-runner.txt | PASS | PASS |
+| D10-2 | D10 | `OPPORTUNITYOS_DB_URL=$PGURL python -m unittest storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_s_worker_runner_end_to_end -v 2>&1 \| tail -4` | `OK` | d10-worker-runner.txt | PASS | PASS |
+| D10-3 | D10 | `OPPORTUNITYOS_DB_URL=$PGURL python -m worker --once; echo exit=$?` | `exit=0`, one idle poll logged | d10-worker-runner.txt | PASS | PASS |
+| D10-4 | D10 | `env -u OPPORTUNITYOS_DB_URL python -m worker --once 2>&1 \| tail -3; echo exit=$?` | non-zero, `ProductionDatabaseConfigurationError` | d10-worker-runner.txt | PASS | PASS |
+| D10-5 | D10 | `git diff main...HEAD -- docs/AGENT_PERMISSIONS.yaml \| wc -l` | `0` | d10-worker-runner.txt | PASS | PASS |
+| D11-1 | D11 | `python -c "..."` — min `last_policy_reviewed` over the 15 re-recon entries | `>= 2026-09-02`, or `BLOCKED_ENV` with the exact error | d11-recon.txt | PASS | PASS |
+| D11-2 | D11 | `python -m unittest discover -s recon -t . -v 2>&1 \| tail -3` | `Ran 67 tests`, `OK` | d11-recon.txt | PASS | PASS |
+| D12-1 | D12 | `grep -n "actions/checkout@\|actions/setup-python@" .github/workflows/*.yml` | current latest majors, verified against GitHub | d12-ci-hygiene.txt | PASS | PASS |
+| D12-2 | D12 | `Mandatory Governance & Test Suite` conclusion on the PR head | `success`, no `Node.js 20 is deprecated` warning | d12-ci-hygiene.txt | PASS | N/A — needs the PR head; the verifier session had no GitHub CLI. Master: PASS (run IDs in the evidence file). |
+| D13-1 | D13 | the five-vendor-name `grep -rniE` from BRIEF-FR-003 D13 (pattern given verbatim in `briefs/BRIEF-FR-003.md` D13), run over `reports/REPORT-FR-003.md` and `docs/adr/ADR-0012*.md`. The pattern is referenced rather than quoted here because this ledger is reproduced inside `reports/REPORT-FR-003.md`, and an inline copy would make the check match itself. | no output (exit 1) | d13-vendor-neutral.txt | PASS | PASS |
+| D13-2 | D13 | `grep -n "Reports and ADRs name roles, not model vendors." AGENTS.md` | one match | d13-vendor-neutral.txt | PASS | PASS |
+| D14-1 | D14 | `ls reports/REPORT-FR-003.md reports/evidence/FR-003/CLAIMS.md` | both exist | d14-close.txt | PASS | PASS |
+| D14-2 | D14 | fresh render of `docs/STATE.md` diffed against the committed file | no drift | a5-state-sync.txt | PASS | PASS |
+| D14-3 | D14 | PR open to `main`, four workflows green on the PR head | `success` ×4 | d14-close.txt | PASS | N/A — needs the PR head; the verifier session had no GitHub CLI. Master: PASS (run IDs in the evidence file). |
+| **A-0** | probe | `OPPORTUNITYOS_DB_URL=$PGURL python -m unittest storage.test_fail_closed_probe -v 2>&1 \| tail -4` | `OK`; 7/7 raise under misconfiguration, 5/5 construct under a valid DSN | a0-fail-closed-probe.txt | PASS | PASS |
+| **A-1** | suite | `OPPORTUNITYOS_DB_URL=$PGURL python -m unittest discover -v 2>&1 \| tail -3` | `Ran N tests`, `OK`, N >= 414 + new tests, 0 skipped | a1-full-suite.txt | PASS | PASS |
+| **A-2** | counts | per-module counts derived from the A-1 run (no count typed from memory) | table in the report matches the run | a2-module-counts.txt | PASS | PASS |
+| **A-3** | migration | `alembic upgrade head && alembic downgrade base && alembic upgrade head` with `OPPORTUNITYOS_DB_URL=$PGURL` | exit 0 for all three | a3-migration-roundtrip.txt | PASS | PASS |
+| **A-4** | guard | `python scripts/check_guard.py --allow-missing-patterns` (with `.github/pii-patterns.txt` present) and `python scripts/check_repository.py` | both exit 0. The flag is the one `.github/workflows/test.yml` itself uses: without it the guard exits 1 anywhere the `FOUNDER_NAME_PATTERNS` repository secret is absent, which is every environment except CI. The secret-bearing run is the `Guard` workflow on the PR head (`33574529393`, `success`). | a4-guard-integrity.txt | PASS | PASS |
+| **A-5** | state | fresh render of `docs/STATE.md` diffed against the committed file (timestamp line excluded) | no drift | a5-state-sync.txt | PASS | PASS |
+| **A-6** | scope | `git diff --stat main...HEAD` | no file outside the paths named in BRIEF-FR-003 §2 | a6-scope-diff.txt | PASS | PASS |
 
 ---
 
@@ -380,16 +446,26 @@ same class of defect this brief was written to close.
 
 17. **One D3 defect was found by the report itself, after D3 had been accepted.** `next_summary_from_prerequisites` extracted the first sentence only from the first *physical* line, so the first hard-wrapped prerequisites paragraph it met — this report's own §10 — fell through to a whole-paragraph fallback and was truncated mid-second-sentence. It passed the literal acceptance text (ends in a period, no colon fragment) while violating what D3 asks for. It was returned to the implementer with a fail-before/pass-after requirement and is fixed; the regression test uses a hard-wrapped paragraph of exactly that shape.
 
+18. **Two claims are `N/A` for the verifier rather than PASS.** D12-2 and D14-3 depend on workflow conclusions on the pull-request head, and the verifier session had no authenticated GitHub client. §5 step 7 says only claims passed by both may be reported as done, so they are recorded as `N/A` for the verifier and settled by the Master directly from the Actions API and the downloaded run log, with the run IDs published in the header and in `d12-ci-hygiene.txt`. This is disclosed rather than smoothed over: two of forty-seven claims rest on a single party's observation of an external system, and the Overseer can re-check both in one click from the PR.
+
+19. **A residual timing dependence in Case S, disclosed not fixed.** The concurrency proof uses a `threading.Barrier` plus a 30 ms in-flight sleep so both workers demonstrably claim while jobs remain PENDING. That is a real improvement on the serialised version it replaced, but it is timing-dependent and could flake on a heavily loaded runner. Making it deterministic would mean instrumenting `worker/queue.py`, which this brief freezes. Recorded for the brief that unfreezes it.
+
 ---
 
 ## 9. Overseer review packet
 
-- **PR:** `__PR_URL__` — open against `main`, **not merged**, per Appendix C item 5.
+- **PR:** https://github.com/m7mdehab/opportunityos/pull/67 — open against `main`, **not merged**, per Appendix C item 5.
 - **Branch archive:** download the branch zip from the PR's "Files changed" tab, or
   `git fetch origin feat/brief-fr-003-reality-refresh`.
 - **CI evidence:** open the PR's checks and download the log archive for
   `Mandatory Governance & Test Suite`. That log is the authority for the `Ran N tests` line, the
-  per-module counts in §4, and the zero-skip claim. The three other workflows (State, Guard, Mirror)
+  per-module counts in §4, and the zero-skip claim.
+- **A note on which head the cited run IDs belong to.** The four run IDs in the header are the
+  checks on `3484cdd`, the head that carries every code, test, and data change in this brief.
+  One further commit follows it, adding the verifier's verdict column to the claim ledger and
+  this report — documentation only, no code — and its own four checks are green as well. Confirm
+  against whatever the PR's current head is; the two heads differ by documentation alone, and
+  `git diff 3484cdd..HEAD --stat` shows exactly that. The three other workflows (State, Guard, Mirror)
   are the authority for A-4 and A-5 under the repository secrets, which are not available locally.
 - **Claim ledger:** `reports/evidence/FR-003/CLAIMS.md`, with both verdict columns filled, and one
   captured output file per claim alongside it.
