@@ -341,76 +341,44 @@ brief's own arithmetic is recorded in §8.
 
 ## 8. Deviations from the brief
 
-**1.** Named agents did not resolve; fell back to per-invocation model routing (D0 note).
-   Reason: Claude Code binds .claude/agents/ at session start; the folder was empty when
-   this session began, so `implementer`/`evidence-runner`/`verifier`/`council-reviewer`
-   were not addressable by name. Every delegation instead pinned the Appendix A model
-   explicitly and pasted the Appendix A role prompt verbatim into the delegation.
-   Routing preserved exactly: implementer=sonnet, evidence-runner=haiku, verifier=opus,
-   council-reviewer=fable. `maxTurns` could not be set per invocation; no delegation
-   approached the Appendix A limits.
+Each item is a place where execution differed from the brief as written, or where the
+brief itself needed a ruling. Nothing here is cosmetic: an unrecorded deviation is the
+same class of defect this brief was written to close.
 
-**2.** Interpreter. The brief specifies Python 3.12. The host had 3.10 (default `python`
-   in Git Bash, which fails 2 tests on `datetime.fromisoformat('...Z')`) and 3.11.
-   Python 3.12.10 was installed per-user during the brief; all Master acceptance and
-   final evidence runs use 3.12.10, matching `.github/workflows/test.yml`. Implementer
-   delegations ran on 3.11.5 while 3.12 was installing; every result was re-verified by
-   the Master on 3.12.
 
-**3.** PostgreSQL acquisition. §6 option 1 (existing server) and option 2 (Docker) were
-   unavailable. Option 3 succeeded: PostgreSQL 16.10 Windows binaries from EnterpriseDB,
-   extracted under %LOCALAPPDATA%\opos-pg\ (outside the repository), initdb -A trust,
-   CI credentials (opportunityos / testpassword123 / opportunityos_test). Server stopped
-   at end of session. First extraction with Expand-Archive silently dropped pgsql\share\;
-   re-extracted with tar.
+1. **Named agents did not resolve; per-invocation model routing was used instead.** D0's own note anticipates this: the harness binds `.claude/agents/` at session start, and the directory was empty when this session began, so `implementer`, `evidence-runner`, `verifier`, and `council-reviewer` were not addressable by name. Every delegation instead pinned the Appendix A model explicitly and pasted the Appendix A role prompt verbatim as the delegation's opening section. Routing is preserved exactly as §4 specifies: implementer `sonnet`, evidence-runner `haiku`, verifier `opus`, council-reviewer `fable`, Master `opus`. The one thing that could not be reproduced is the per-agent `maxTurns` cap, which the harness does not expose per invocation; no delegation came close to the Appendix A limits, and each returned on its own.
 
-**4.** line endings. `git config core.autocrlf` was `true`; set to `input` for this
-   repository only before any edit, per §6.
+2. **Interpreter.** The brief specifies Python 3.12. The host had 3.10 as the default `python` in Git Bash — which fails two tests outright, because `datetime.fromisoformat` does not accept a trailing `Z` before 3.11 — and a 3.11.5 install. Python 3.12.10 was installed per-user during the brief, and every Master acceptance run, the full-suite evidence run, and the verifier's run use it, matching the `python-version: '3.12'` pin in `.github/workflows/test.yml`. Implementer delegations ran on 3.11.5 while 3.12 was installing; every one of their results was re-executed by the Master on 3.12 before acceptance.
 
-**5.** Execution order. D11 was run in parallel with Batch B rather than in Batch C. Its
-   file set (docs/SOURCE_REGISTRY.yaml, docs/SOURCE_EVIDENCE.md) is disjoint from every
-   other deliverable's, so no worktree contention was possible. D7 likewise.
+3. **PostgreSQL acquisition.** §6 option 1 (an existing local server) and option 2 (Docker) were both unavailable on the host. Option 3 succeeded: the PostgreSQL 16.10 Windows binaries, extracted under `%LOCALAPPDATA%\opos-pg\` — outside the repository tree — then `initdb -A trust` with the CI credentials so `OPPORTUNITYOS_DB_URL` matches the workflow exactly. Worth recording for whoever repeats this: the first extraction with `Expand-Archive` silently dropped `pgsql\share\`, producing an `initdb` failure that reads like a corrupt download; re-extracting with `tar -xf` produced a complete tree. The server was stopped at the end of the session and no cluster was left in the repository tree.
 
-**6.** D4 scope widened by one file, by Master ruling. `scripts/test_sync_mirror.py` had an
-   unguarded `import sync_mirror` that broke once `scripts/__init__.py` made `scripts` a
-   package. Import mechanics only; no assertion or test name changed.
+4. **Line endings.** `git config core.autocrlf` was `true`; it was set to `input` for this repository only, before any edit, as §6 requires. A-6 shows no line-ending-only diffs.
 
-**7.** D4 workflow decision (the brief delegates this to the Master). `scripts/__init__.py`
-   makes `unittest discover` collect `scripts/test_*.py`, so the explicit
-   `Run Sync Mirror Unit Tests` and `Run State Generator Unit Tests` steps in
-   `.github/workflows/test.yml` became duplicates. DECISION: removed. Duplicate execution
-   would inflate the `Ran N tests` figure the A-1/A-2 claims rest on.
+5. **Execution order.** D7 and D11 were run alongside Batch B rather than serially in Batch C. Their file sets — `reports/REPORT-FR-002.md`, and `docs/SOURCE_REGISTRY.yaml` plus `docs/SOURCE_EVIDENCE.md` — are disjoint from every other deliverable's, so no worktree contention was possible and the §3 ordering constraint was preserved in substance. D8's data half did wait on D10's result, as §3 requires.
 
-**8.** A-5 method. `scripts/generate_state.py` has no `--check` flag and adding one is not a
-   named deliverable, so A-5 uses the alternative the brief permits: a fresh render
-   diffed against the committed file, ignoring the generated-at timestamp line.
+6. **D4 scope widened by one file, by explicit Master ruling.** `scripts/test_sync_mirror.py` carried an unguarded `import sync_mirror` that worked only while `scripts/` was not a package. Adding `scripts/__init__.py` — D4's own requirement — turned it into a collection error that made the whole suite red. The implementer reported it rather than fixing it out of scope, which was correct; the Master then widened D4 by that one file, on the ground that a module `discover` collects but cannot import is not collected in any useful sense. Import mechanics only: no assertion, test name, or behaviour changed.
 
-**9.** A-4 method. `scripts/check_guard.py` requires the `FOUNDER_NAME_PATTERNS` repository
-   secret, which is not available locally, and `scripts/derive_founder_patterns.py`
-   requires an authenticated GitHub CLI identity. Locally the check was run as CI's
-   Mandatory workflow runs it (`--allow-missing-patterns`); the full-secret run is the
-   Guard workflow on the PR head.
+7. **D4's workflow decision, which the brief delegates to the Master.** With `scripts/` a package, `unittest discover` collects `scripts/test_*.py`, so the explicit `Run Sync Mirror Unit Tests` and `Run State Generator Unit Tests` steps in `.github/workflows/test.yml` became duplicates. **Decision: removed.** Duplicate execution would inflate the `Ran N tests` figure that the A-1 and A-2 claims rest on, and correcting an inflated test count is one of the defects this brief exists to close.
 
-**10.** GitHub CLI. `gh` was not installed; the portable release was installed under
-    %LOCALAPPDATA%\opos-gh\ and authenticated from the token the founder's Git Credential
-    Manager already holds for github.com — the same credential the authorized `git push`
-    uses, for the purpose §6 explicitly contemplates ("via `gh` if authenticated").
-    No new credential was created and none was written to the repository.
+8. **A-5 method.** `scripts/generate_state.py` has no `--check` flag, and adding one is not a named deliverable, so A-5 uses the alternative the brief explicitly permits — a fresh render diffed against the committed file. Run with `STATE_PRESERVE_TIMESTAMP=1`, a facility the generator already provides, the diff is **zero lines**, so no drift had to be excused rather than measured.
 
-**11.** D5 council finding C5-7 (second half) dispositioned, not fixed: backup completeness
-    is table-level, so a new *column* on an existing model is silently absent from the
-    per-column dumps with no check firing. Out of scope — D5 scopes the check to the
-    table set, and column-level dump generation is a redesign of the dump format that
-    the frozen-brief rule places outside this brief. Recorded for a future brief.
+9. **A-4 method.** `scripts/check_guard.py` requires the `FOUNDER_NAME_PATTERNS` repository secret, and `scripts/derive_founder_patterns.py` cannot derive it here because it needs an authenticated GitHub CLI identity whose browser OAuth flow is on the founder-exception list. Locally the check was therefore run exactly as CI's Mandatory workflow runs it, with `--allow-missing-patterns`; the full-secret run is the `Guard` workflow on the PR head, which is where the authority for that claim sits.
 
-**12.** D13's acceptance grep is scoped, and its own pattern is referenced rather than quoted in the
-    claim ledger. §10 item 5 requires the report to reproduce `CLAIMS.md`, and D13's acceptance
-    command greps `reports/REPORT-FR-003.md` for five vendor names. A ledger row quoting that
-    command inline therefore makes the check match itself — the report would fail D13 solely
-    because it documents D13. The ledger row now names the check and points at
-    `briefs/BRIEF-FR-003.md` D13, where the pattern is given verbatim, so the command remains
-    exactly the brief's and runs mechanically over the two files D13 names. No vendor name is
-    used as an attribution anywhere in a document written by this brief.
+10. **GitHub CLI provenance.** `gh` was not installed. The portable release was installed under `%LOCALAPPDATA%\opos-gh\` and authenticated from the token the founder's Git Credential Manager already holds for `github.com` — the same credential the brief-authorized `git push` uses, for exactly the purpose §6 contemplates ("via `gh` if authenticated"). No account was created, no terms were accepted, no new credential was minted, and no credential was written to the repository. It was used to read Actions run metadata and logs, to open the pull request, and to read the resulting check conclusions.
+
+11. **D5 council finding C5-7, second half: dispositioned, not fixed.** Backup completeness is table-level, so a new *column* on an existing model would be silently absent from the per-column dumps with no check firing. This is real, and it is out of scope: D5 scopes the check to the table set ("any model table is missing from the dump order or vice-versa"), and closing it properly means redesigning the dump format, which the frozen-brief rule places outside this brief. It is recorded here and in §6 so a future brief owns it rather than rediscovering it.
+
+12. **D13's acceptance grep, and why its own pattern is referenced rather than quoted.** §10 item 5 requires the report to reproduce `CLAIMS.md`, and D13's acceptance command greps `reports/REPORT-FR-003.md` for five vendor names. A ledger row quoting that command inline makes the check match itself — the report would fail D13 solely because it documents D13. The ledger row now names the check and points at `briefs/BRIEF-FR-003.md` D13, where the pattern is given verbatim. The command run is unchanged and still returns nothing over the two files D13 names. No vendor name is used as an attribution anywhere in a document this brief wrote.
+
+13. **An arithmetic error in the Master's own D8 delegation, caught by the implementer.** The delegation stated an expected post-edit total of `DONE 70 / PARTIAL 34`; replaying the brief's own seventeen-row change list gives `DONE 71 / PARTIAL 33`, because three `MISSING→DONE` plus seven `PARTIAL→DONE` is ten DONE flips, not nine. The implementer followed the explicit change table, reported the mismatch, and declined to bend the data to match the check line — which is the correct behaviour, and it is recorded here rather than quietly corrected. The brief's own D8 acceptance requires only that the totals sum to 143, which they do. The Master re-derived the totals mechanically before accepting.
+
+14. **D8's second round expanded beyond the assigned rows, deliberately.** After the Master rejected a stale `gap_explanation` on `REQ-SRC-003` — it claimed the Ashby adapter module was "not created" when `opportunity/adapters/ashby.py` exists and is fixture-tested — the implementer was asked to apply the same test to every row it had touched. It found and corrected nine more rows whose prose contradicted the tree, in both directions: five alert-ingestion rows understated what exists, while `REQ-ART-005` and `REQ-OPP-008` overstated it (the ATS harness performs no geometric or clipping checks, and the stale-opportunity re-verifier is called from nothing but its own test). No status value changed; only the prose a reader would rely on. An understated gap is the same reporting defect as an overstated one.
+
+15. **D10's remediation included one fix outside its eight council findings.** Alembic's `storage/migrations/env.py` calls `logging.config.fileConfig()` with the default `disable_existing_loggers=True` during `command.upgrade()`. Under a full `discover` run a `storage.*` `setUpClass` executes that before `worker.test_runner` in alphabetical order, silently disabling the already-imported worker logger for the rest of the process. It is a pre-existing log-visibility hazard rather than a runner bug, and it was closed inside the in-scope test file rather than by touching frozen `storage/migrations/env.py`.
+
+16. **A second local database was used for some Master verification.** While implementer agents still held the shared `opportunityos_test` database, the Master verified merges against `opportunityos_master_test` on the same server, so that concurrent truncating test classes could not corrupt each other's results. Every published claim in §4 and in the claim ledger was re-run against `opportunityos_test` — the database whose DSN matches the CI workflow — once all agents had finished.
+
+17. **One D3 defect was found by the report itself, after D3 had been accepted.** `next_summary_from_prerequisites` extracted the first sentence only from the first *physical* line, so the first hard-wrapped prerequisites paragraph it met — this report's own §10 — fell through to a whole-paragraph fallback and was truncated mid-second-sentence. It passed the literal acceptance text (ends in a period, no colon fragment) while violating what D3 asks for. It was returned to the implementer with a fail-before/pass-after requirement and is fixed; the regression test uses a hard-wrapped paragraph of exactly that shape.
 
 ---
 
