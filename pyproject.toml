@@ -21,12 +21,16 @@ dependencies = [
     "python-docx>=1.1.0",
     "reportlab>=4.2.0",
     "pdfplumber>=0.11.0",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "itsdangerous>=2.2",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
     "coverage>=7.0",
+    "httpx>=0.27",
 ]
 
 [tool.setuptools.packages.find]
