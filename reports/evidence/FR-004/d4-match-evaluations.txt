@@ -1,0 +1,31 @@
+### D4 part A / A-3 — migration 0002 round trip (Master re-run)
+
+The brief names one new table. Three D6 routes it also names cannot be answered
+from the committed schema, so 0002 creates four. The ruling and its reasoning are
+in CLAIMS.md, recorded before D4 was delegated.
+
+$ alembic upgrade head        -> four-table count: 4
+$ alembic downgrade 0001_...  -> four-table count: 0
+
+--- orphan index / constraint check while downgraded (empty == genuinely reversible) ---
+(no rows)
+
+$ alembic upgrade head        -> four-table count: 4
+
+--- D4-3: the unique constraint is enforced by the database, not just indexed ---
+uq_match_evaluations_opportunity_truth_pack|u
+
+$ python -m unittest storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_a_and_b_alembic_upgrade_downgrade_smoke 2>&1 | tail -3
+Ran 1 test in 1.966s
+
+OK
+
+--- all four tables are covered by the backup dump and restore path ---
+84:    "match_evaluations": "match_evaluations",
+85:    "source_poll_runs": "source_poll_runs",
+86:    "founder_opportunity_views": "founder_opportunity_views",
+87:    "founder_triage_states": "founder_triage_states",
+193:        "match_evaluations": [],
+194:        "source_poll_runs": [],
+195:        "founder_opportunity_views": [],
+196:        "founder_triage_states": [],
