@@ -218,3 +218,57 @@ class FounderFeedbackRecord(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     opportunity = relationship("OpportunityRecord", back_populates="feedback")
+
+
+class MatchEvaluationRecord(Base):
+    __tablename__ = "match_evaluations"
+
+    id = Column(String(64), primary_key=True)
+    opportunity_id = Column(String(64), ForeignKey("opportunities.id", ondelete="CASCADE"), nullable=False, index=True)
+    truth_pack_hash = Column(String(64), nullable=False, index=True)
+    qualification_decision = Column(String(32), nullable=False)
+    fit_score = Column(Float, nullable=False)
+    dimension_scores_json = Column(Text, nullable=False)
+    reasons_json = Column(Text, nullable=False)
+    policy_version = Column(String(32), nullable=False)
+    evaluated_at = Column(DateTime, nullable=False, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("opportunity_id", "truth_pack_hash", name="uq_match_evaluations_opportunity_truth_pack"),
+    )
+
+
+class SourcePollRunRecord(Base):
+    __tablename__ = "source_poll_runs"
+
+    id = Column(String(64), primary_key=True)
+    source_id = Column(String(128), nullable=False, index=True)
+    job_id = Column(String(64), nullable=True)
+    started_at = Column(DateTime, nullable=False, index=True)
+    finished_at = Column(DateTime, nullable=True)
+    status = Column(String(32), nullable=False, index=True)
+    refusal_reason = Column(String(128), nullable=True)
+    raw_ingested = Column(Integer, default=0, nullable=False)
+    unique_opportunities = Column(Integer, default=0, nullable=False)
+    inserted = Column(Integer, default=0, nullable=False)
+    unchanged = Column(Integer, default=0, nullable=False)
+    updated = Column(Integer, default=0, nullable=False)
+    error_message = Column(Text, nullable=True)
+
+
+class FounderOpportunityViewRecord(Base):
+    __tablename__ = "founder_opportunity_views"
+
+    id = Column(String(64), primary_key=True)
+    opportunity_id = Column(String(64), ForeignKey("opportunities.id", ondelete="CASCADE"), nullable=False, index=True)
+    viewed_at = Column(DateTime, nullable=False, index=True)
+
+
+class FounderTriageStateRecord(Base):
+    __tablename__ = "founder_triage_states"
+
+    opportunity_id = Column(String(64), ForeignKey("opportunities.id", ondelete="CASCADE"), primary_key=True)
+    state = Column(String(32), nullable=False, index=True)
+    snoozed_until = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, nullable=False)
