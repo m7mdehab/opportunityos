@@ -87,3 +87,36 @@ Recorded, not fixed, with reasons in the report:
   a `field_name` twice, but an adapter that ever emits per-item provenance rows would hit an
   `IntegrityError`. The contract is documented rather than the schema changed.
 - Council 2 findings 13–15 (performance and defaults) are alpha-scale acceptable.
+
+---
+
+## Master's independent verification of council 2, finding 2
+
+The claim that `stale_postings` can never match was strong enough to act on only after
+checking it directly:
+
+```
+$ grep -rn "is_stale" --include=*.py . | grep -v test
+api/routes_api.py:313          "is_stale": bool(opp.is_stale),        # read
+api/routes_api.py:450          "is_stale": bool(opp.is_stale),        # read
+opportunity/persistence.py:192 opp_data = _build_opp_data(opp, is_stale=False)   # write: always False
+opportunity/persistence.py:206 opp_data = _build_opp_data(opp, is_stale=False)   # write: always False
+opportunity/reverification.py:18,25  "is_stale": status_code in (404, 410)       # COMPUTED, never persisted
+scripts/backup_restore.py:209  "is_stale": opp.is_stale,              # dump/restore
+```
+
+`opportunity/reverification.py` computes staleness correctly and returns it. Nothing in
+`worker/`, `api/` or `scripts/` ever calls it — a grep for `reverif` across those trees
+returns only a filter description string, a serialization field, and backup/restore. So every
+production write sets `is_stale=False` and the column never becomes true.
+
+Two consequences worth stating plainly:
+- The `stale_postings` filter is inert in production, exactly as the council found.
+- The FR-004 web UI already renders a "Stale" badge, and the MSW fixtures exercise it. The
+  mock therefore displays a state the real system cannot currently produce. The screenshot in
+  `d7-feed-1280.png` shows that badge; it is honest about being synthetic data, but it is not
+  a preview of anything the founder will see until a worker persists reverification results.
+
+Recorded, not fixed. Wiring the reverifier into a worker job is a new deliverable, not a
+repair, and inventing a staleness signal to make the filter look alive would be the same
+class of dishonesty this brief exists to remove.
