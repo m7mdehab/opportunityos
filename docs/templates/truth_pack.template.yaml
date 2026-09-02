@@ -292,6 +292,43 @@ capability_profile:
 # it is built, so a validation report may show non-zero assertion/relation/
 # metric counts even when these three lists are left empty here -- that
 # reflects the graph's derived content, not anything missing from this file.
+#
+# ---------------------------------------------------------------------------
+# Why "Download tailored CV" or "Download cover letter" can still return a
+# 409 even though this file loads cleanly (read this before you file a bug):
+#
+# Loading cleanly only proves every fact you entered is evidence-backed.
+# Generating a document is a second, independent check: `ClaimValidator`
+# re-verifies every sentence the compiler writes against your evidence, and
+# it can refuse a sentence for two different reasons --
+#
+#   1. Relational composition: a generated sentence that names two separate
+#      facts together (e.g. a job title and a skill in one "Professional
+#      Summary" line) is refused unless those two facts are connected in the
+#      graph by an explicit relation or a shared record, not just by both
+#      belonging to your overall profile. This stops a generator from
+#      silently implying a connection you never evidenced.
+#   2. Material lexical coverage: separately, every non-trivial word in a
+#      generated sentence must literally appear in the evidence cited for
+#      it. Ordinary connective prose the compiler writes on its own --
+#      words like "professional", "background", "verified", or a target
+#      opportunity's own job title and company name -- will usually not
+#      appear verbatim in your evidence text, because your evidence
+#      describes what happened to you, not the sentence the compiler will
+#      eventually write about it.
+#
+# A 409 with findings under either reason is the system correctly refusing
+# to emit a document it cannot fully stand behind -- it is not a crash, and
+# it is not something this template's data can be edited around: rewording
+# or padding your evidence text to happen to contain the compiler's own
+# phrasing would mean writing the generator's vocabulary into your evidence,
+# which is fabrication, not provenance, and is exactly what this system
+# exists to prevent (see the Hard Rules in AGENTS.md: "Never fabricate a
+# claim about the founder"). If you hit this, the correct response is to
+# treat the 409's findings as accurate information about what the generator
+# could not support -- not to chase the specific wording that would make the
+# check pass.
+# ---------------------------------------------------------------------------
 assertions: []
 relations: []
 metrics: []

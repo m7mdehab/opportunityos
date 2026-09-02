@@ -194,6 +194,123 @@ class TruthPackTemplateTest(unittest.TestCase):
             self.assertGreater(count, 0, f"template section {name} is unexpectedly empty")
 
 
+class TruthPackTemplateArtifactGenerationKnownLimitationTest(unittest.TestCase):
+    """Characterises a known, out-of-scope limitation: tailored-document
+    generation from the *shipped* template's own synthetic data is refused
+    by `ClaimValidator` for at least one generated claim, and this is
+    correct, safe behaviour -- not a bug this template or `truth/validator.py`
+    can fix.
+
+    This is deliberately NOT a "zero rejected claims" test. Investigation
+    during BRIEF-FR-004 D5 found two independent, structural reasons the
+    compiler's generated claims are refused, neither of which a truth pack's
+    *data* can resolve:
+
+      1. Relational composition (`TruthGraph.are_relationally_linked`,
+         `truth/graph.py`). A composite claim -- one whose cited evidence
+         spans more than one profile entity, such as a CV "Professional
+         Summary" naming both a job title and a skill -- is refused unless
+         those entities are connected by an explicit `TypedRelation` or a
+         shared non-root entity. Adding such a relation via this file's
+         top-level `relations:` section cannot work: `TruthGraph` (built by
+         `truth.ingest.graph_from_dict`) processes `relations:` *before*
+         `career_profile`/`capability_profile` are added, so a relation
+         naming a profile entity id such as `job-example-1` fails to load
+         with "references nonexistent source" -- the entity does not exist
+         yet at that point. There is no template-only YAML shape that adds
+         a working entity-to-entity relation here.
+      2. Material lexical coverage (`truth/validator.py`, the check
+         immediately after the relational-composition guard). Even for a
+         single-evidence claim, every non-trivial word the compiler writes
+         must appear verbatim in the cited evidence. The compiler's prose
+         is fixed (`matching/compiler_employment.py` is frozen for this
+         work) and includes connective phrasing ("professional",
+         "background", "verified", "competencies") that the founder's
+         evidence -- which describes what happened to them, not the
+         sentence the compiler will eventually write about it -- will not
+         literally contain. The cover letter is structurally worse: its
+         generated sentences name the *target opportunity's own* job title
+         and organization, which can never appear in the founder's own
+         evidence by construction, for any opportunity.
+
+    The only way to force a 0-rejected result would be to write the
+    compiler's own vocabulary into the template's evidence text --
+    fabricating provenance to match generated prose. AGENTS.md's first Hard
+    Rule forbids exactly that ("Never fabricate a claim about the
+    founder"), so this test does not attempt it. Instead it proves the
+    *refusal* path is correct and safe: every rejection carries a concrete,
+    non-empty reason, and a rejected claim never reaches document export.
+    """
+
+    def test_shipped_template_claim_rejections_are_reasoned_and_block_export(self):
+        from matching.binary_export import BinaryArtifactExporter
+        from matching.compiler_employment import EmploymentArtifactCompiler
+        from opportunity.adapters.himalayas import HimalayasAdapter
+        from opportunity.transport import DiscoveryRequest, MockTransport, TransportResponse
+        from truth.validator import ClaimValidator
+
+        # Fixture opportunity, fetched only through the offline MockTransport
+        # -- no network access, ever -- exactly as
+        # storage/test_postgres_integration.py's Case U does.
+        fixture_path = REPO_ROOT / "opportunity" / "fixtures" / "himalayas.json"
+        payload = fixture_path.read_text(encoding="utf-8")
+        transport = MockTransport(
+            {"himalayas": TransportResponse(status_code=200, body=payload, latency_ms=5)}
+        )
+        adapter = HimalayasAdapter()
+        response = transport.fetch(DiscoveryRequest(source_id="himalayas", url=adapter.feed_url))
+        self.assertTrue(response.is_success)
+        parsed = adapter.parse_payload(
+            response.body, raw_pointer="fixture:himalayas", fetched_at="2026-01-01T00:00:00Z"
+        )
+        self.assertTrue(parsed.opportunities, "fixture must parse to at least one opportunity")
+        opportunity = parsed.opportunities[0]
+
+        loaded = load_founder_pack(TEMPLATE_PATH)
+        graph = loaded.graph
+        compiler = EmploymentArtifactCompiler()
+        validator = ClaimValidator(graph)
+
+        saw_rejection = False
+        for artifact in (
+            compiler.compile_tailored_cv(opportunity, graph),
+            compiler.compile_cover_letter(opportunity, graph),
+        ):
+            self.assertTrue(artifact.generated_claims, "artifact produced no claims to validate")
+
+            findings = []
+            for claim in artifact.generated_claims:
+                result = validator.validate_claim(claim.text, claim.evidence_ids)
+                if not result.allowed:
+                    saw_rejection = True
+                    findings.append(result)
+                    # A refusal with no stated reason would be as unsafe as
+                    # a silent one -- the founder must be able to see why.
+                    self.assertTrue(result.reasons, f"rejected claim has no reason: {claim.text!r}")
+                    for reason in result.reasons:
+                        self.assertTrue(reason.strip())
+
+            # Mirrors api/routes_api.py::_compile_and_export's own gate:
+            # export_to_docx is only ever called once every claim is allowed.
+            # A rejected claim must never reach document export.
+            if findings:
+                docx_bytes = None
+            else:
+                docx_bytes = BinaryArtifactExporter.export_to_docx(artifact)
+                self.assertTrue(docx_bytes)
+            if findings:
+                self.assertIsNone(
+                    docx_bytes, "no document bytes may be produced when a claim is rejected"
+                )
+
+        self.assertTrue(
+            saw_rejection,
+            "expected the shipped template to still exercise the claim validator's refusal "
+            "path for at least one generated claim -- see class docstring for why this is "
+            "correct, and why it cannot be closed by editing template data",
+        )
+
+
 class TruthCheckScriptTest(unittest.TestCase):
     def _run(self, path: Path) -> subprocess.CompletedProcess:
         return subprocess.run(
