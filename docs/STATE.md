@@ -10,8 +10,8 @@ Next: The measured number decides the shape of the next brief, and it does not e
 
 ## Repository
 
-- **Generated:** 2026-09-02T06:20:37Z
-- **State generated at commit:** `95d9de8` — docs(fr-004): phase gate report
+- **Generated:** 2026-09-02T06:25:21Z
+- **State generated at commit:** `398bc47` — evidence(fr-004): final A-1, A-2, A-4 and D5 captures
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
