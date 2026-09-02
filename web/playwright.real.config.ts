@@ -102,6 +102,12 @@ export default defineConfig({
       port: API_PORT,
       reuseExistingServer: false,
       timeout: 60_000,
+      // Piped (not the default "ignore") so uvicorn's access log -- one
+      // line per request, e.g. `"POST /api/auth/login HTTP/1.1" 200` --
+      // is visible in this config's own output. That access log is the
+      // concrete evidence that a run against this config reached the
+      // real API rather than the mock, which never produces one.
+      stdout: "pipe",
       env: {
         ...baseEnv,
         OPPORTUNITYOS_DB_URL: process.env.OPPORTUNITYOS_DB_URL,
