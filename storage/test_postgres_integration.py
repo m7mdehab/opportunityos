@@ -9,6 +9,7 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
@@ -80,8 +81,15 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.db_url = os.environ.get("OPPORTUNITYOS_DB_URL", "sqlite:///opportunityos.db")
-        if not cls.db_url.startswith("postgresql"):
+        cls.db_url = os.environ.get("OPPORTUNITYOS_DB_URL")
+        if not cls.db_url or not cls.db_url.startswith("postgresql"):
+            if os.environ.get("CI"):
+                raise AssertionError(
+                    "CI is set but OPPORTUNITYOS_DB_URL is missing or not a "
+                    "PostgreSQL URL (postgresql+psycopg2://...). PostgreSQL "
+                    "integration tests must fail loudly in CI, not skip. Got: "
+                    f"{cls.db_url!r}."
+                )
             # Enforce that in CI or when running integration tests, backend MUST be real PostgreSQL
             raise unittest.SkipTest(f"PostgreSQL integration tests require real PostgreSQL backend, got: {cls.db_url}")
 
@@ -438,15 +446,27 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         try:
             dump_database(self.db_url, dump_path)
 
-            # Wipe database
+            # Wipe database: drop the schema entirely, not just its rows.
+            # TRUNCATE (the previous approach) removes rows but leaves the
+            # schema -- including alembic_version, which lives outside
+            # Base.metadata and so survives a TRUNCATE loop over
+            # Base.metadata.sorted_tables untouched. With only a row-level
+            # wipe, the alembic-head and restored-table-set assertions below
+            # would pass even if restore_database() ran no migration at all
+            # (e.g. if it were reverted to init_db()/create_all()) -- that is
+            # exactly the regression D5 exists to prevent, so the wipe must
+            # actually destroy the schema for those assertions to be
+            # load-bearing.
+            Base.metadata.drop_all(self.engine)
             with self.engine.begin() as conn:
-                for table in reversed(Base.metadata.sorted_tables):
-                    conn.execute(text(f'TRUNCATE TABLE "{table.name}" CASCADE;'))
+                conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
 
-            # Verify empty
-            check_session = self.SessionFactory()
-            self.assertEqual(check_session.query(OpportunityRecord).count(), 0)
-            check_session.close()
+            # Verify empty: no tables at all remain in the schema.
+            with self.engine.connect() as conn:
+                remaining_table_count = conn.execute(
+                    text("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'")
+                ).scalar()
+            self.assertEqual(remaining_table_count, 0)
 
             # Restore
             restore_database(dump_path, self.db_url)
@@ -459,6 +479,32 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             self.assertEqual(len(ret_opp.feedback), 1)
             self.assertEqual(ret_opp.feedback[0].feedback_label, FeedbackLabel.GOOD_MATCH.value)
             verify_session.close()
+
+            # restore_database runs the Alembic upgrade to head against the
+            # target (see scripts/backup_restore.py), not init_db/create_all;
+            # verify the restored database is actually stamped at head, read
+            # from the script directory rather than hard-coded.
+            alembic_cfg = Config("alembic.ini")
+            alembic_cfg.set_main_option("sqlalchemy.url", self.db_url)
+            script_dir = ScriptDirectory.from_config(alembic_cfg)
+            head_revision = script_dir.get_current_head()
+            with self.engine.connect() as conn:
+                stamped_revision = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+            self.assertEqual(stamped_revision, head_revision)
+
+            # The restored table set equals the full set of model tables
+            # (i.e. dump_database's completeness check covered everything).
+            with self.engine.connect() as conn:
+                actual_tables = {
+                    row[0]
+                    for row in conn.execute(
+                        text(
+                            "SELECT table_name FROM information_schema.tables "
+                            "WHERE table_schema = 'public' AND table_name != 'alembic_version'"
+                        )
+                    )
+                }
+            self.assertEqual(actual_tables, set(Base.metadata.tables.keys()))
         finally:
             if os.path.exists(dump_path):
                 os.remove(dump_path)
@@ -810,6 +856,170 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         self.assertEqual(res2.messages_ingested, 0)
         self.assertEqual(res2.events_recorded, 0)
         self.assertEqual(res2.notifications_emitted, 0)
+
+
+    def test_case_s_worker_runner_end_to_end(self):
+        """Case S: two concurrent WorkerRunners drain a mixed job queue against real PostgreSQL.
+
+        Enqueues 3 noop jobs, 1 poll_source job targeting a read-disabled source
+        (ashby:openai), and 1 always-failing job with max_retries=1. Both
+        WorkerRunners are released from a shared barrier at the same instant (so
+        the FOR UPDATE SKIP LOCKED race is actually exercised rather than one
+        runner draining the queue before the other starts), and each tracked
+        handler sleeps briefly so multiple jobs remain PENDING while both workers
+        are active. Asserts: every job reaches a terminal state exactly once (no
+        double-dispatch), both runners actually dispatched at least one job (so a
+        silently-serialised run fails this test instead of passing it), the
+        failing job reaches DEAD_LETTER, and the poll_source job records a
+        refusal instead of fetching.
+        """
+        from collections import Counter
+
+        from opportunity.registry import SourceRegistry
+        from opportunity.transport import MockTransport
+        from worker.handlers import default_handler_registry
+        from worker.runner import WorkerRunner
+
+        registry = SourceRegistry()
+        self.assertFalse(
+            registry.is_read_allowed("ashby:openai"),
+            "ashby:openai must be read-disabled for this test to be meaningful",
+        )
+
+        refusals = []
+        refusal_lock = threading.Lock()
+
+        def refusal_sink(record):
+            with refusal_lock:
+                refusals.append(dict(record))
+
+        # No fixture response is configured: ashby:openai must be refused before any
+        # fetch is attempted, so MockTransport must never be asked to serve a response.
+        mock_transport = MockTransport()
+
+        base_handlers = default_handler_registry(
+            registry=registry, transport=mock_transport, refusal_sink=refusal_sink
+        )
+
+        expected_markers = {"noop-1", "noop-2", "noop-3", "poll-ashby", "always-fail"}
+        # (worker_id, marker) per dispatch -- attributes each dispatch to the runner
+        # that actually claimed it, so we can assert both runners did real work and
+        # that no job was ever dispatched more than once (to either runner).
+        processed_records = []
+        processed_lock = threading.Lock()
+        stop_event = threading.Event()
+
+        def track(inner_handler, owner_worker_id):
+            def wrapped(payload):
+                marker = payload.get("marker")
+                with processed_lock:
+                    processed_records.append((owner_worker_id, marker))
+                    should_stop = expected_markers.issubset({m for _, m in processed_records})
+                if should_stop:
+                    stop_event.set()
+                # Hold the job "in flight" a little so other PENDING jobs remain
+                # claimable by the other runner while this one is still working --
+                # otherwise a fast runner can drain the whole queue solo before the
+                # other runner's first claim attempt even executes.
+                time.sleep(0.03)
+                # Let the underlying handler's outcome (success or exception) propagate
+                # unchanged so WorkerRunner still drives complete_job / fail_job.
+                inner_handler(payload)
+
+            return wrapped
+
+        def always_failing(payload):
+            raise RuntimeError("induced permanent failure")
+
+        def handlers_for(owner_worker_id):
+            return {
+                "noop": track(base_handlers["noop"], owner_worker_id),
+                "poll_source": track(base_handlers["poll_source"], owner_worker_id),
+                "always_failing": track(always_failing, owner_worker_id),
+            }
+
+        enqueue_session = self.SessionFactory()
+        enqueue_queue = BackgroundWorkerQueue(enqueue_session, worker_id="s-enqueue")
+        job_ids = {
+            "noop-1": enqueue_queue.enqueue_job("noop", {"marker": "noop-1"}),
+            "noop-2": enqueue_queue.enqueue_job("noop", {"marker": "noop-2"}),
+            "noop-3": enqueue_queue.enqueue_job("noop", {"marker": "noop-3"}),
+            "poll-ashby": enqueue_queue.enqueue_job(
+                "poll_source", {"source_id": "ashby:openai", "marker": "poll-ashby"}
+            ),
+            "always-fail": enqueue_queue.enqueue_job(
+                "always_failing", {"marker": "always-fail"}, max_retries=1
+            ),
+        }
+        enqueue_session.close()
+        self.assertEqual(set(job_ids.keys()), expected_markers)
+
+        runner1 = WorkerRunner(
+            self.SessionFactory, handlers_for("s-runner-1"), worker_id="s-runner-1",
+            poll_interval=0.05, stop_event=stop_event,
+        )
+        runner2 = WorkerRunner(
+            self.SessionFactory, handlers_for("s-runner-2"), worker_id="s-runner-2",
+            poll_interval=0.05, stop_event=stop_event,
+        )
+
+        # Release both runners at (as close to) the same instant so both begin
+        # claiming against the same PENDING rows -- without this, one thread can
+        # simply be scheduled first and drain the queue before the other starts.
+        start_barrier = threading.Barrier(2, timeout=10)
+
+        def _drive(runner):
+            start_barrier.wait()
+            runner.run_forever(max_jobs=5)
+
+        t1 = threading.Thread(target=_drive, args=(runner1,))
+        t2 = threading.Thread(target=_drive, args=(runner2,))
+        t1.start()
+        t2.start()
+        t1.join(timeout=30)
+        t2.join(timeout=30)
+
+        self.assertFalse(t1.is_alive(), "runner1 did not finish within the test timeout")
+        self.assertFalse(t2.is_alive(), "runner2 did not finish within the test timeout")
+
+        # Load-bearing concurrency assertion #1: the multiset of processed job markers
+        # has no duplicates, i.e. no job was dispatched to a handler more than once even
+        # though two WorkerRunners raced for the same queue via SKIP LOCKED.
+        marker_counts = Counter(marker for _, marker in processed_records)
+        self.assertEqual(
+            set(marker_counts.keys()), expected_markers, "every enqueued job must be processed exactly once"
+        )
+        for marker, count in marker_counts.items():
+            self.assertEqual(count, 1, f"job '{marker}' was dispatched {count} times, expected exactly 1")
+
+        # Load-bearing concurrency assertion #2: both runners must actually have
+        # claimed and dispatched at least one job. If SKIP LOCKED contention were not
+        # really exercised (e.g. one runner silently drained the whole queue before
+        # the other's first claim), this fails instead of the test passing vacuously.
+        worker_id_counts = Counter(worker_id for worker_id, _ in processed_records)
+        self.assertGreater(
+            worker_id_counts.get("s-runner-1", 0), 0, f"runner1 processed no jobs: {worker_id_counts}"
+        )
+        self.assertGreater(
+            worker_id_counts.get("s-runner-2", 0), 0, f"runner2 processed no jobs: {worker_id_counts}"
+        )
+
+        verify_session = self.SessionFactory()
+        try:
+            for marker, job_id in job_ids.items():
+                job = verify_session.query(WorkerJobRecord).filter_by(id=job_id).first()
+                self.assertIsNotNone(job, f"job '{marker}' ({job_id}) missing from database")
+                if marker == "always-fail":
+                    self.assertEqual(job.status, "DEAD_LETTER")
+                    self.assertEqual(job.retry_count, 1)
+                else:
+                    self.assertEqual(job.status, "COMPLETED", f"job '{marker}' did not complete: {job.status}")
+        finally:
+            verify_session.close()
+
+        # The read-disabled source must have been refused, not fetched.
+        self.assertEqual(len(refusals), 1)
+        self.assertEqual(refusals[0]["source_id"], "ashby:openai")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,5 @@
+=== D3-1 ===
+$ grep '^Next:' docs/STATE.md
+Next: BRIEF-FR-004 is the FastAPI REST service and Next.js Founder Web Alpha slice, renumbered from the provisional "FR-003" naming in the FR-002 handoff, and it must not begin until this brief's pull request has been reviewed and merged by the Overseer.
+exit=0
+

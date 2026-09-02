@@ -1,0 +1,34 @@
+=== D12-1 ===
+$ grep -n "actions/checkout@|actions/setup-python@" .github/workflows/*.yml
+.github/workflows/guard.yml:17:      - uses: actions/checkout@v7
+.github/workflows/heartbeat.yml:27:      - uses: actions/checkout@v7
+.github/workflows/mirror.yml:24:      - uses: actions/checkout@v7
+.github/workflows/state.yml:15:      - uses: actions/checkout@v7
+.github/workflows/test.yml:30:      - uses: actions/checkout@v7
+.github/workflows/test.yml:32:        uses: actions/setup-python@v7
+exit=0
+
+=== D12-2 ===
+PENDING: conclusion of the Mandatory Governance & Test Suite run on the pull-request head; not determinable before the PR exists.
+
+=== D12-2 (resolved) ===
+$ gh api repos/m7mdehab/opportunityos/actions/runs?head_sha=3484cdd170b46bf79df9b3527dd3ab65c0c349b7 --jq '.workflow_runs[] | "\(.name) | \(.status) | \(.conclusion) | \(.id)"'
+State | completed | success | 33574529498
+Mirror | completed | success | 33574530091
+Guard | completed | success | 33574529393
+Mandatory Governance & Test Suite | completed | success | 33574529428
+
+$ # Node runtime deprecation check over the Mandatory run's log archive
+$ grep -rniE 'node.?js 20 is deprecated' . | wc -l
+0
+
+$ # the same run's own totals
+Ran 466 tests in 10.017s
+OK
+$ grep -c '\.\.\. skipped' 0_test.txt
+0
+
+Note: the log does contain two Alembic DeprecationWarnings about a missing
+path_separator in alembic.ini. They are present in the 889dee1 baseline run as well,
+originate upstream, and are not the Node runtime warning D12 targets. alembic.ini is
+frozen by this brief, so they are left as they are.

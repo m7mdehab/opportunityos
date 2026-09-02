@@ -13,7 +13,8 @@
     "later_authority": "ADR-0007, ADR-0009",
     "live_dependency": "None",
     "gap_explanation": "None. 100% claim-to-evidence binding enforced at compiler and validator levels.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SAF-002",
@@ -29,7 +30,8 @@
     "later_authority": "ADR-0007",
     "live_dependency": "None",
     "gap_explanation": "None. Strict credential state enum and planned state validation enforced.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SAF-003",
@@ -45,7 +47,8 @@
     "later_authority": "ADR-0010",
     "live_dependency": "None",
     "gap_explanation": "None. Canonical 19-type ontology with Green/Yellow/Red answer policy.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SAF-004",
@@ -61,7 +64,8 @@
     "later_authority": "ADR-0008",
     "live_dependency": "None",
     "gap_explanation": "None. Preflight authorization strictly checks allowed hosts, paths, and methods.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SAF-005",
@@ -77,7 +81,8 @@
     "later_authority": "ADR-0005, ADR-0008",
     "live_dependency": "None",
     "gap_explanation": "None. Transport layer enforces verb boundaries.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SAF-006",
@@ -93,7 +98,8 @@
     "later_authority": "ADR-0001, ADR-0004",
     "live_dependency": "None",
     "gap_explanation": "None. Automated boundary scans enforce secret and PII absence.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SAF-007",
@@ -109,7 +115,8 @@
     "later_authority": "ADR-0010",
     "live_dependency": "None",
     "gap_explanation": "None. SQLite reservation table with unique idempotency keys.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SAF-008",
@@ -125,7 +132,8 @@
     "later_authority": "ADR-0010",
     "live_dependency": "None",
     "gap_explanation": "None. Kill switch evaluates at the moment of action.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SAF-009",
@@ -141,7 +149,8 @@
     "later_authority": "ADR-0010",
     "live_dependency": "None",
     "gap_explanation": "None. Browser engine detects challenges and halts execution.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SAF-010",
@@ -157,7 +166,8 @@
     "later_authority": "ADR-0011",
     "live_dependency": "None",
     "gap_explanation": "None. Learning loop emits non-mutating recommendations with min sample sizes.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-P0A-001",
@@ -173,7 +183,8 @@
     "later_authority": "ADR-0001",
     "live_dependency": "None",
     "gap_explanation": "None. Complete repository governance structure established.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-P0A-002",
@@ -189,7 +200,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "None. Automated repository and guard scans execute cleanly.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-P0B-001",
@@ -205,7 +217,8 @@
     "later_authority": "None",
     "live_dependency": "Node.js / React / Next.js ecosystem",
     "gap_explanation": "Web UI frontend codebase does not exist in repository.",
-    "bucket": "FOUNDER_WEB_INTEGRATION"
+    "bucket": "FOUNDER_WEB_INTEGRATION",
+    "status_history": []
   },
   {
     "req_id": "REQ-P0B-002",
@@ -221,7 +234,8 @@
     "later_authority": "None",
     "live_dependency": "Web UI implementation",
     "gap_explanation": "Cannot perform responsive/WCAG tests because Web UI is missing.",
-    "bucket": "FOUNDER_WEB_INTEGRATION"
+    "bucket": "FOUNDER_WEB_INTEGRATION",
+    "status_history": []
   },
   {
     "req_id": "REQ-P0C-001",
@@ -237,7 +251,8 @@
     "later_authority": "None",
     "live_dependency": "FastAPI / Uvicorn",
     "gap_explanation": "Backend exists purely as direct Python library modules; no HTTP API layer exists.",
-    "bucket": "FOUNDER_WEB_INTEGRATION"
+    "bucket": "FOUNDER_WEB_INTEGRATION",
+    "status_history": []
   },
   {
     "req_id": "REQ-P0C-002",
@@ -245,15 +260,23 @@
     "text": "PostgreSQL Primary Relational Persistence: Tenant-aware PostgreSQL schema and reversible migrations.",
     "criticality": "P1",
     "phase": "Phase 0",
-    "status": "MISSING",
-    "evidence_strength": "NONE",
-    "implementation_evidence": "None (SQLite stores used in inbox/ and outbound/)",
-    "tests": "None",
-    "ci_evidence": "None",
-    "later_authority": "None",
-    "live_dependency": "PostgreSQL instance / SQLAlchemy / Alembic",
-    "gap_explanation": "Primary PostgreSQL store not implemented; local SQLite used for inbox and outbound.",
-    "bucket": "PRODUCTION_INFRASTRUCTURE"
+    "status": "DONE",
+    "evidence_strength": "PROVEN_RUNTIME",
+    "implementation_evidence": "storage/models.py, storage/engine.py, storage/migrations/versions/0001_baseline_schema.py, alembic.ini",
+    "tests": "storage/test_postgres_integration.py, storage/test_migration.py, storage/test_storage.py",
+    "ci_evidence": "Mandatory Governance & Test Suite",
+    "later_authority": "ADR-0012",
+    "live_dependency": "None",
+    "gap_explanation": "workspace column present on 2 of 11 tables; multi-tenant scoping deferred to the Phase 6 gate (ADR-0012)",
+    "bucket": "PRODUCTION_INFRASTRUCTURE",
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-003",
+        "from": "MISSING",
+        "to": "DONE",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-P0C-003",
@@ -261,15 +284,23 @@
     "text": "DB-Backed Worker Queue: Worker process handling asynchronous source polling and match evaluation.",
     "criticality": "P1",
     "phase": "Phase 0",
-    "status": "PARTIAL",
-    "evidence_strength": "TESTED_IMPLEMENTATION",
-    "implementation_evidence": "opportunity/pipeline.py, inbox/orchestrator.py",
-    "tests": "opportunity/test_pipeline.py, inbox/test_adversarial.py",
+    "status": "DONE",
+    "evidence_strength": "PROVEN_RUNTIME",
+    "implementation_evidence": "worker/queue.py, worker/runner.py, worker/handlers.py, worker/__main__.py",
+    "tests": "worker/test_worker.py, worker/test_runner.py, storage/test_postgres_integration.py::test_case_s_worker_runner_end_to_end",
     "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "None",
-    "live_dependency": "Background process runner",
-    "gap_explanation": "Pipeline orchestrators exist as Python classes, but background worker daemon runner is missing.",
-    "bucket": "PRODUCTION_INFRASTRUCTURE"
+    "live_dependency": "None",
+    "gap_explanation": "None. Queue and consumer both implemented: WorkerRunner claims a job via BackgroundWorkerQueue.claim_next_job, dispatches to a registered handler, and completes/fails/dead-letters it; storage/test_postgres_integration.py::test_case_s_worker_runner_end_to_end verifies two concurrent runners against real PostgreSQL process 5 jobs with no double-processing and correct dead-lettering.",
+    "bucket": "PRODUCTION_INFRASTRUCTURE",
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-003",
+        "from": "PARTIAL",
+        "to": "DONE",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-P0C-004",
@@ -285,7 +316,8 @@
     "later_authority": "None",
     "live_dependency": "Docker / Caddy / Hosting VPS",
     "gap_explanation": "No Dockerfile, compose file, or Caddy configuration present in repository.",
-    "bucket": "PRODUCTION_INFRASTRUCTURE"
+    "bucket": "PRODUCTION_INFRASTRUCTURE",
+    "status_history": []
   },
   {
     "req_id": "REQ-P0C-005",
@@ -293,15 +325,23 @@
     "text": "Automated Database Backup & Restore: Automated DB backup routine and verified restore test.",
     "criticality": "P1",
     "phase": "Phase 0",
-    "status": "MISSING",
-    "evidence_strength": "NONE",
-    "implementation_evidence": "None",
-    "tests": "None",
-    "ci_evidence": "None",
+    "status": "DONE",
+    "evidence_strength": "PROVEN_RUNTIME",
+    "implementation_evidence": "scripts/backup_restore.py",
+    "tests": "scripts/test_backup_restore.py, storage/test_postgres_integration.py::test_case_m_backup_wipe_restore_postgres_cycle",
+    "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "None",
-    "live_dependency": "Backup scripts / storage",
-    "gap_explanation": "No automated backup/restore scripts exist.",
-    "bucket": "PRODUCTION_INFRASTRUCTURE"
+    "live_dependency": "None",
+    "gap_explanation": "Backup and restore are implemented and verified against real PostgreSQL (dump / wipe / restore cycle), but the dump is written as unencrypted plain JSON; encryption at rest is tracked separately as REQ-SEC-003, which stays MISSING.",
+    "bucket": "PRODUCTION_INFRASTRUCTURE",
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-003",
+        "from": "MISSING",
+        "to": "DONE",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-P0D-DEL-1",
@@ -317,7 +357,8 @@
     "later_authority": "ADR-0002",
     "live_dependency": "None",
     "gap_explanation": "None. Master-agent protocol operational and proven across 7 briefs.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-P0D-DEL-2",
@@ -333,7 +374,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "Council protocol documented and ADRs recorded, but runtime schema model (DecisionRecord) not implemented.",
-    "bucket": "PRODUCTION_INFRASTRUCTURE"
+    "bucket": "PRODUCTION_INFRASTRUCTURE",
+    "status_history": []
   },
   {
     "req_id": "REQ-P0D-DEL-3",
@@ -349,7 +391,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "AGENT_PERMISSIONS.yaml exists as policy doc, but runtime enforcement hook is not implemented.",
-    "bucket": "PRODUCTION_INFRASTRUCTURE"
+    "bucket": "PRODUCTION_INFRASTRUCTURE",
+    "status_history": []
   },
   {
     "req_id": "REQ-P0D-DEL-4",
@@ -365,7 +408,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "No AgentRun model or store implemented in repository; agent transcripts stored outside repo.",
-    "bucket": "PRODUCTION_INFRASTRUCTURE"
+    "bucket": "PRODUCTION_INFRASTRUCTURE",
+    "status_history": []
   },
   {
     "req_id": "REQ-P0D-DEL-5",
@@ -381,7 +425,8 @@
     "later_authority": "ADR-0002",
     "live_dependency": "GitHub Branch Protection / Rulesets (Server-Side Enforcement)",
     "gap_explanation": "CI test suites exist and master agent obeys them by convention, but server-enforced branch protection is disabled (rulesets=[]) under ADR-0002.",
-    "bucket": "PRODUCTION_INFRASTRUCTURE"
+    "bucket": "PRODUCTION_INFRASTRUCTURE",
+    "status_history": []
   },
   {
     "req_id": "REQ-P0D-DEL-6",
@@ -397,7 +442,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "No runtime agent spend tracking or programmatic budget capping implemented.",
-    "bucket": "PRODUCTION_INFRASTRUCTURE"
+    "bucket": "PRODUCTION_INFRASTRUCTURE",
+    "status_history": []
   },
   {
     "req_id": "REQ-P0D-TST-A",
@@ -413,7 +459,8 @@
     "later_authority": "None",
     "live_dependency": "Staging environment",
     "gap_explanation": "Sub-agent -> PR -> QA loop proven locally/in CI; staging deployment step is missing.",
-    "bucket": "PRODUCTION_INFRASTRUCTURE"
+    "bucket": "PRODUCTION_INFRASTRUCTURE",
+    "status_history": []
   },
   {
     "req_id": "REQ-P0D-TST-B",
@@ -429,7 +476,8 @@
     "later_authority": "ADR-0002",
     "live_dependency": "GitHub Branch Protection (Server-Side Enforcement)",
     "gap_explanation": "CI detects test failures and PR discipline is observed as convention, but server-side merge blocking is absent and ADR-0002 explicitly accepts this residual risk.",
-    "bucket": "PRODUCTION_INFRASTRUCTURE"
+    "bucket": "PRODUCTION_INFRASTRUCTURE",
+    "status_history": []
   },
   {
     "req_id": "REQ-P0D-TST-C",
@@ -445,7 +493,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "11 ADRs committed during briefs, but automated runtime triggering machinery is missing.",
-    "bucket": "PRODUCTION_INFRASTRUCTURE"
+    "bucket": "PRODUCTION_INFRASTRUCTURE",
+    "status_history": []
   },
   {
     "req_id": "REQ-P0D-TST-D",
@@ -461,7 +510,8 @@
     "later_authority": "ADR-0001, ADR-0005",
     "live_dependency": "Runtime agent permission & destructive-action escalation middleware",
     "gap_explanation": "Repository secret/PII scanning and transport preflight exist, but AGENT_PERMISSIONS.yaml lacks runtime middleware enforcement and general agent destructive-action escalation runtime is missing.",
-    "bucket": "PRODUCTION_INFRASTRUCTURE"
+    "bucket": "PRODUCTION_INFRASTRUCTURE",
+    "status_history": []
   },
   {
     "req_id": "REQ-CFG-001",
@@ -477,7 +527,8 @@
     "later_authority": "ADR-0007",
     "live_dependency": "None",
     "gap_explanation": "None. Complete data models and ingestion parsers implemented.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-CFG-002",
@@ -493,7 +544,8 @@
     "later_authority": "ADR-0007",
     "live_dependency": "None",
     "gap_explanation": "None. Capability profile and capacity bounds implemented.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-CFG-003",
@@ -509,7 +561,8 @@
     "later_authority": "None",
     "live_dependency": "Founder private CV and capability truth pack files",
     "gap_explanation": "Schema exists, but actual founder truth data is stored locally in untracked private/ directory.",
-    "bucket": "LIVE_CONFIGURATION_OR_CREDENTIALS"
+    "bucket": "LIVE_CONFIGURATION_OR_CREDENTIALS",
+    "status_history": []
   },
   {
     "req_id": "REQ-CFG-004",
@@ -525,7 +578,8 @@
     "later_authority": "ADR-0009",
     "live_dependency": "Founder live preferences config",
     "gap_explanation": "TailoringPolicy dataclass exists; private founder configuration file not committed.",
-    "bucket": "LIVE_CONFIGURATION_OR_CREDENTIALS"
+    "bucket": "LIVE_CONFIGURATION_OR_CREDENTIALS",
+    "status_history": []
   },
   {
     "req_id": "REQ-CFG-005",
@@ -541,7 +595,8 @@
     "later_authority": "ADR-0010",
     "live_dependency": "Founder custom answer library",
     "gap_explanation": "Answer engine ontology exists; custom personal answer overrides reside in private context.",
-    "bucket": "LIVE_CONFIGURATION_OR_CREDENTIALS"
+    "bucket": "LIVE_CONFIGURATION_OR_CREDENTIALS",
+    "status_history": []
   },
   {
     "req_id": "REQ-CFG-006",
@@ -551,13 +606,14 @@
     "phase": "Phase 0",
     "status": "PARTIAL",
     "evidence_strength": "TESTED_IMPLEMENTATION",
-    "implementation_evidence": "opportunity/registry.py",
-    "tests": "opportunity/test_registry.py",
+    "implementation_evidence": "opportunity/adapters/__init__.py (STANDARD_GREENHOUSE_COMPANIES, STANDARD_LEVER_COMPANIES watchlists consumed by get_all_standard_adapters())",
+    "tests": "opportunity/test_pipeline.py::test_pipeline_with_mock_transport_discovery (exercises one watchlist entry, greenhouse:cloudflare, end-to-end; no test asserts the watchlist's full membership, count, or a procurement/buyer equivalent)",
     "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "ADR-0008",
     "live_dependency": "Founder company shortlist",
-    "gap_explanation": "ATS board registry supports watchlists; specific private target company list uncommitted.",
-    "bucket": "LIVE_CONFIGURATION_OR_CREDENTIALS"
+    "gap_explanation": "The seeded watchlist that actually drives live discovery (opportunity/adapters/__init__.py: 10 Greenhouse + 2 Lever companies) is a shared, generic default, not the founder's private target company shortlist, which remains uncommitted. There is no equivalent seeded watchlist for procurement buyers: only generic portal-level adapters exist (UNGM, World Bank, EU TED), not a list of specific buyer organizations.",
+    "bucket": "LIVE_CONFIGURATION_OR_CREDENTIALS",
+    "status_history": []
   },
   {
     "req_id": "REQ-UIP-001",
@@ -573,7 +629,8 @@
     "later_authority": "None",
     "live_dependency": "Web UI implementation",
     "gap_explanation": "No web UI exists.",
-    "bucket": "FOUNDER_WEB_INTEGRATION"
+    "bucket": "FOUNDER_WEB_INTEGRATION",
+    "status_history": []
   },
   {
     "req_id": "REQ-UIP-002",
@@ -589,7 +646,8 @@
     "later_authority": "None",
     "live_dependency": "Web UI implementation",
     "gap_explanation": "Underlying data models exist, but UI dashboard page does not exist.",
-    "bucket": "FOUNDER_WEB_INTEGRATION"
+    "bucket": "FOUNDER_WEB_INTEGRATION",
+    "status_history": []
   },
   {
     "req_id": "REQ-UIP-003",
@@ -605,7 +663,8 @@
     "later_authority": "None",
     "live_dependency": "Web UI implementation",
     "gap_explanation": "Feed data computable via Python; web UI feed missing.",
-    "bucket": "FOUNDER_WEB_INTEGRATION"
+    "bucket": "FOUNDER_WEB_INTEGRATION",
+    "status_history": []
   },
   {
     "req_id": "REQ-UIP-004",
@@ -621,7 +680,8 @@
     "later_authority": "None",
     "live_dependency": "Web UI implementation",
     "gap_explanation": "Detail structures exist in models; web UI detail page missing.",
-    "bucket": "FOUNDER_WEB_INTEGRATION"
+    "bucket": "FOUNDER_WEB_INTEGRATION",
+    "status_history": []
   },
   {
     "req_id": "REQ-UIP-005",
@@ -637,7 +697,8 @@
     "later_authority": "None",
     "live_dependency": "Web UI implementation",
     "gap_explanation": "Notification engine exists in inbox/; web UI view missing.",
-    "bucket": "FOUNDER_WEB_INTEGRATION"
+    "bucket": "FOUNDER_WEB_INTEGRATION",
+    "status_history": []
   },
   {
     "req_id": "REQ-UIP-006",
@@ -653,7 +714,8 @@
     "later_authority": "None",
     "live_dependency": "Web UI implementation",
     "gap_explanation": "Truth graph engine exists in truth/; web UI editor missing.",
-    "bucket": "FOUNDER_WEB_INTEGRATION"
+    "bucket": "FOUNDER_WEB_INTEGRATION",
+    "status_history": []
   },
   {
     "req_id": "REQ-UIP-007",
@@ -669,7 +731,8 @@
     "later_authority": "None",
     "live_dependency": "Web UI implementation",
     "gap_explanation": "Artifact compilers exist in matching/; web UI viewer missing.",
-    "bucket": "FOUNDER_WEB_INTEGRATION"
+    "bucket": "FOUNDER_WEB_INTEGRATION",
+    "status_history": []
   },
   {
     "req_id": "REQ-UIP-008",
@@ -685,7 +748,8 @@
     "later_authority": "None",
     "live_dependency": "Web UI implementation",
     "gap_explanation": "Pipeline state machine exists in inbox/pipeline.py; visual UI Kanban missing.",
-    "bucket": "FOUNDER_WEB_INTEGRATION"
+    "bucket": "FOUNDER_WEB_INTEGRATION",
+    "status_history": []
   },
   {
     "req_id": "REQ-UIP-009",
@@ -701,7 +765,8 @@
     "later_authority": "None",
     "live_dependency": "Web UI implementation",
     "gap_explanation": "Registry data exists in opportunity/registry.py; web UI page missing.",
-    "bucket": "FOUNDER_WEB_INTEGRATION"
+    "bucket": "FOUNDER_WEB_INTEGRATION",
+    "status_history": []
   },
   {
     "req_id": "REQ-UIP-010",
@@ -717,7 +782,8 @@
     "later_authority": "None",
     "live_dependency": "Web UI implementation",
     "gap_explanation": "Analytics engine exists in inbox/analytics.py; web UI charts missing.",
-    "bucket": "FOUNDER_WEB_INTEGRATION"
+    "bucket": "FOUNDER_WEB_INTEGRATION",
+    "status_history": []
   },
   {
     "req_id": "REQ-UIP-011",
@@ -733,7 +799,8 @@
     "later_authority": "None",
     "live_dependency": "Web UI implementation",
     "gap_explanation": "Ontology & rules exist in outbound/ontology.py; web UI settings missing.",
-    "bucket": "FOUNDER_WEB_INTEGRATION"
+    "bucket": "FOUNDER_WEB_INTEGRATION",
+    "status_history": []
   },
   {
     "req_id": "REQ-UIP-012",
@@ -749,7 +816,8 @@
     "later_authority": "None",
     "live_dependency": "Web UI implementation",
     "gap_explanation": "Health reports generated via Python in opportunity/health.py; web UI admin missing.",
-    "bucket": "FOUNDER_WEB_INTEGRATION"
+    "bucket": "FOUNDER_WEB_INTEGRATION",
+    "status_history": []
   },
   {
     "req_id": "REQ-OPP-001",
@@ -765,7 +833,8 @@
     "later_authority": "ADR-0008",
     "live_dependency": "None",
     "gap_explanation": "None. Complete multi-track data model.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-OPP-002",
@@ -781,7 +850,8 @@
     "later_authority": "ADR-0008",
     "live_dependency": "None",
     "gap_explanation": "None. Enforces atomic provenance for all material fields.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-OPP-003",
@@ -797,7 +867,8 @@
     "later_authority": "ADR-0008",
     "live_dependency": "None",
     "gap_explanation": "None. False-merges strictly prevented across requisitions and organizations.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-OPP-004",
@@ -813,7 +884,8 @@
     "later_authority": "ADR-0008",
     "live_dependency": "None",
     "gap_explanation": "None. Rejects unregistered/disabled sources preflight.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-OPP-005",
@@ -829,7 +901,8 @@
     "later_authority": "ADR-0008",
     "live_dependency": "None",
     "gap_explanation": "None. Deterministic categorization of EMPTY_RESULTS, PERSISTENT_FAILURE, SCHEMA_DRIFT_SUSPECTED.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-OPP-006",
@@ -845,7 +918,8 @@
     "later_authority": "ADR-0008",
     "live_dependency": "None",
     "gap_explanation": "None. Unit-safe currency/interval normalization.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-OPP-007",
@@ -861,7 +935,8 @@
     "later_authority": "ADR-0003, ADR-0006",
     "live_dependency": "None",
     "gap_explanation": "None. Precision geographic classification for Egypt/MENA.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-OPP-008",
@@ -869,15 +944,23 @@
     "text": "Stale-Job & Canonical Re-Verification: Re-checks availability, detects 404/closed postings before high-effort action.",
     "criticality": "P1",
     "phase": "Phase 2",
-    "status": "PARTIAL",
+    "status": "DONE",
     "evidence_strength": "TESTED_IMPLEMENTATION",
-    "implementation_evidence": "opportunity/transport.py",
-    "tests": "opportunity/test_acquisition.py",
+    "implementation_evidence": "opportunity/reverification.py",
+    "tests": "opportunity/test_discovery_reverification.py",
     "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "None",
     "live_dependency": "None",
-    "gap_explanation": "Transport supports HEAD/GET re-check; automated pre-action re-verification pipeline not assembled.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "gap_explanation": "StaleOpportunityReverifier.reverify_url is implemented and unit-tested (opportunity/test_discovery_reverification.py::test_reverification_mock) to flag a URL stale on HTTP 404/410, but it is not called from anywhere in the pipeline, worker, or matching code \u2014 only from its own test \u2014 so the 'before high-effort action' re-check the requirement describes is not actually wired into any pre-action gate yet.",
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-003",
+        "from": "PARTIAL",
+        "to": "DONE",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-OPP-009",
@@ -893,7 +976,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "Scam indicators documented; explicit scam scoring engine not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-001",
@@ -909,7 +993,8 @@
     "later_authority": "ADR-0008",
     "live_dependency": "None",
     "gap_explanation": "None. Active adapter with strict board token binding.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-002",
@@ -925,7 +1010,8 @@
     "later_authority": "ADR-0008",
     "live_dependency": "None",
     "gap_explanation": "None. Active adapter with strict site token binding.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-003",
@@ -933,15 +1019,23 @@
     "text": "S03: Ashby Public Job Postings API Adapter",
     "criticality": "P1",
     "phase": "Phase 1",
-    "status": "PARTIAL",
-    "evidence_strength": "DOCUMENTED_ONLY",
-    "implementation_evidence": "docs/SOURCE_REGISTRY.yaml:ashby",
-    "tests": "None (outbound mock exists)",
+    "status": "REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "opportunity/adapters/ashby.py, docs/SOURCE_REGISTRY.yaml:ashby",
+    "tests": "opportunity/test_discovery_reverification.py::test_ashby_adapter_parsing",
     "ci_evidence": "None",
     "later_authority": "None",
-    "live_dependency": "None",
-    "gap_explanation": "Registered in SOURCE_REGISTRY; dedicated discovery adapter module not created.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "live_dependency": "Live, authenticated access to the Ashby posting-API host api.ashbyhq.com. The 2026-09-02 re-recon (docs/SOURCE_EVIDENCE.md, 'Re-recon 2026-09-02 (BRIEF-FR-003 D11)') found GET /robots.txt returns HTTP 401 on all three attempts with no credentials supplied; automation.read stays disabled for all 13 ashby:* registry entries pending Ashby API access.",
+    "gap_explanation": "AshbyAdapter.parse_job_posting is implemented and unit-tested against a fixture job payload (opportunity/test_discovery_reverification.py::test_ashby_adapter_parsing), but it does not subclass BaseAdapter and is not registered in opportunity/adapters/__init__.py's get_all_standard_adapters(), so it cannot be invoked through OpportunityPipeline the way the Greenhouse/Lever/Himalayas adapters are. It has also never been exercised against the live host: the 2026-09-02 re-recon found api.ashbyhq.com/robots.txt returns HTTP 401 unauthenticated, so automation.read remains disabled for all 13 ashby:* registry entries pending Ashby API credentials.",
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-003",
+        "from": "PARTIAL",
+        "to": "REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-SRC-004",
@@ -949,15 +1043,23 @@
     "text": "S04: Schema.org JobPosting JSON-LD Extraction",
     "criticality": "P1",
     "phase": "Phase 2",
-    "status": "PARTIAL",
-    "evidence_strength": "DOCUMENTED_ONLY",
-    "implementation_evidence": "docs/SOURCE_REGISTRY.yaml",
-    "tests": "None",
-    "ci_evidence": "None",
+    "status": "DONE",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "opportunity/schema_org.py",
+    "tests": "opportunity/test_discovery_reverification.py",
+    "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "None",
     "live_dependency": "None",
-    "gap_explanation": "Policy documented; JSON-LD extractor module not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "gap_explanation": "SchemaOrgJobPostingExtractor is implemented and unit-tested against a fixture JSON-LD payload (opportunity/test_discovery_reverification.py::test_schema_org_json_ld_extraction), but like AshbyAdapter it does not subclass BaseAdapter and is not registered in opportunity/adapters/__init__.py's get_all_standard_adapters(), so it is not invoked by OpportunityPipeline against any real site; it exists only as a standalone, directly-callable parser.",
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-003",
+        "from": "PARTIAL",
+        "to": "DONE",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-SRC-005",
@@ -973,7 +1075,8 @@
     "later_authority": "ADR-0008",
     "live_dependency": "None",
     "gap_explanation": "None. Active adapter with JSON API parsing and attribution.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-006",
@@ -989,7 +1092,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "Disabled policy due to robots.txt reachability failure during recon.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-007",
@@ -1005,7 +1109,8 @@
     "later_authority": "ADR-0008",
     "live_dependency": "None",
     "gap_explanation": "None. Active XML RSS parser with backlink attribution.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-008",
@@ -1021,7 +1126,8 @@
     "later_authority": "ADR-0008",
     "live_dependency": "None",
     "gap_explanation": "None. Active JSON API adapter.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-009",
@@ -1037,7 +1143,8 @@
     "later_authority": "ADR-0008",
     "live_dependency": "None",
     "gap_explanation": "None. Active JSON feed adapter.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-010",
@@ -1053,7 +1160,8 @@
     "later_authority": "None",
     "live_dependency": "Adzuna App ID & Key",
     "gap_explanation": "Documented in registry; executable adapter module not created.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-011",
@@ -1061,15 +1169,23 @@
     "text": "S11: WUZZUF (Email Alert / Deep Link Ingestion)",
     "criticality": "P1",
     "phase": "Phase 1",
-    "status": "PARTIAL",
-    "evidence_strength": "DOCUMENTED_ONLY",
-    "implementation_evidence": "docs/SOURCE_REGISTRY.yaml:wuzzuf",
-    "tests": "None",
+    "status": "REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "opportunity/alert_ingestion.py",
+    "tests": "opportunity/test_alert_ingestion.py (exercises the shared AlertIngestionEngine via LinkedIn/Upwork/procurement fixtures; no WUZZUF-shaped fixture)",
     "ci_evidence": "None",
     "later_authority": "None",
-    "live_dependency": "WUZZUF email alerts",
-    "gap_explanation": "Policy set to alert_ingestion; email alert parser not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "live_dependency": "Live WUZZUF account with email job alerts enabled and inbox access, so the alert_ingestion policy and parser can be exercised against real alert messages.",
+    "gap_explanation": "A generic email-alert parser (opportunity/alert_ingestion.py::AlertIngestionEngine.parse_alert_message) is implemented and unit-tested, but only against LinkedIn/Upwork/procurement-shaped fixtures; no WUZZUF-shaped fixture exists, and there is no live WUZZUF alert inbox to validate its actual email format or exercise ingestion end-to-end.",
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-003",
+        "from": "PARTIAL",
+        "to": "REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-SRC-012",
@@ -1077,15 +1193,23 @@
     "text": "S12: Bayt (Email Alert / Deep Link Ingestion)",
     "criticality": "P1",
     "phase": "Phase 1",
-    "status": "PARTIAL",
-    "evidence_strength": "DOCUMENTED_ONLY",
-    "implementation_evidence": "docs/SOURCE_REGISTRY.yaml:bayt",
-    "tests": "None",
+    "status": "REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "opportunity/alert_ingestion.py",
+    "tests": "opportunity/test_alert_ingestion.py (exercises the shared AlertIngestionEngine via LinkedIn/Upwork/procurement fixtures; no Bayt-shaped fixture)",
     "ci_evidence": "None",
     "later_authority": "None",
-    "live_dependency": "Bayt email alerts",
-    "gap_explanation": "Policy set to alert_ingestion; email alert parser not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "live_dependency": "Live Bayt account with email job alerts enabled and inbox access, so the alert_ingestion policy and parser can be exercised against real alert messages.",
+    "gap_explanation": "A generic email-alert parser (opportunity/alert_ingestion.py::AlertIngestionEngine.parse_alert_message) is implemented and unit-tested, but only against LinkedIn/Upwork/procurement-shaped fixtures; no Bayt-shaped fixture exists, and there is no live Bayt alert inbox to validate its actual email format or exercise ingestion end-to-end.",
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-003",
+        "from": "PARTIAL",
+        "to": "REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-SRC-013",
@@ -1093,15 +1217,23 @@
     "text": "S13: Naukrigulf (Email Alert / Deep Link Ingestion)",
     "criticality": "P1",
     "phase": "Phase 1",
-    "status": "PARTIAL",
-    "evidence_strength": "DOCUMENTED_ONLY",
-    "implementation_evidence": "docs/SOURCE_REGISTRY.yaml:naukrigulf",
-    "tests": "None",
+    "status": "REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "opportunity/alert_ingestion.py",
+    "tests": "opportunity/test_alert_ingestion.py (exercises the shared AlertIngestionEngine via LinkedIn/Upwork/procurement fixtures; no Naukrigulf-shaped fixture)",
     "ci_evidence": "None",
     "later_authority": "None",
-    "live_dependency": "Naukrigulf email alerts",
-    "gap_explanation": "Policy set to alert_ingestion; email alert parser not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "live_dependency": "Live Naukrigulf account with email job alerts enabled and inbox access, so the alert_ingestion policy and parser can be exercised against real alert messages.",
+    "gap_explanation": "A generic email-alert parser (opportunity/alert_ingestion.py::AlertIngestionEngine.parse_alert_message) is implemented and unit-tested, but only against LinkedIn/Upwork/procurement-shaped fixtures; no Naukrigulf-shaped fixture exists, and there is no live Naukrigulf alert inbox to validate its actual email format or exercise ingestion end-to-end.",
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-003",
+        "from": "PARTIAL",
+        "to": "REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-SRC-014",
@@ -1109,15 +1241,23 @@
     "text": "S14: GulfTalent (Email Alert / Deep Link Ingestion)",
     "criticality": "P1",
     "phase": "Phase 1",
-    "status": "PARTIAL",
-    "evidence_strength": "DOCUMENTED_ONLY",
-    "implementation_evidence": "docs/SOURCE_REGISTRY.yaml:gulftalent",
-    "tests": "None",
+    "status": "REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "opportunity/alert_ingestion.py",
+    "tests": "opportunity/test_alert_ingestion.py (exercises the shared AlertIngestionEngine via LinkedIn/Upwork/procurement fixtures; no GulfTalent-shaped fixture)",
     "ci_evidence": "None",
     "later_authority": "None",
-    "live_dependency": "GulfTalent email alerts",
-    "gap_explanation": "Policy set to alert_ingestion; email alert parser not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "live_dependency": "Live GulfTalent account with email job alerts enabled and inbox access, so the alert_ingestion policy and parser can be exercised against real alert messages.",
+    "gap_explanation": "A generic email-alert parser (opportunity/alert_ingestion.py::AlertIngestionEngine.parse_alert_message) is implemented and unit-tested, but only against LinkedIn/Upwork/procurement-shaped fixtures; no GulfTalent-shaped fixture exists, and there is no live GulfTalent alert inbox to validate its actual email format or exercise ingestion end-to-end.",
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-003",
+        "from": "PARTIAL",
+        "to": "REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-SRC-015",
@@ -1125,15 +1265,23 @@
     "text": "S15: LinkedIn Jobs (Alerts & Deep Links)",
     "criticality": "P0",
     "phase": "Phase 1",
-    "status": "PARTIAL",
-    "evidence_strength": "DOCUMENTED_ONLY",
-    "implementation_evidence": "docs/SOURCE_REGISTRY.yaml:linkedin",
-    "tests": "None",
+    "status": "REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "opportunity/alert_ingestion.py",
+    "tests": "opportunity/test_alert_ingestion.py::test_parse_linkedin_job_alert",
     "ci_evidence": "None",
     "later_authority": "None",
-    "live_dependency": "LinkedIn alert emails",
-    "gap_explanation": "Manual deep link policy documented; alert email parser not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "live_dependency": "Live LinkedIn account with job alert emails enabled and inbox access, so the deep-link/alert policy and parser can be exercised against real alert messages.",
+    "gap_explanation": "The generic email-alert parser (opportunity/alert_ingestion.py::AlertIngestionEngine.parse_alert_message) is implemented and directly unit-tested against a LinkedIn-shaped fixture (opportunity/test_alert_ingestion.py::test_parse_linkedin_job_alert), but it has never been exercised against a live LinkedIn alert inbox.",
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-003",
+        "from": "PARTIAL",
+        "to": "REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-SRC-016",
@@ -1141,15 +1289,23 @@
     "text": "S16: Indeed Jobs (Alerts & Deep Links)",
     "criticality": "P1",
     "phase": "Phase 1",
-    "status": "PARTIAL",
-    "evidence_strength": "DOCUMENTED_ONLY",
-    "implementation_evidence": "docs/SOURCE_REGISTRY.yaml:indeed",
-    "tests": "None",
+    "status": "REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "opportunity/alert_ingestion.py",
+    "tests": "opportunity/test_alert_ingestion.py (exercises the shared AlertIngestionEngine via LinkedIn/Upwork/procurement fixtures; no Indeed-shaped fixture)",
     "ci_evidence": "None",
     "later_authority": "None",
-    "live_dependency": "Indeed alert emails",
-    "gap_explanation": "Manual deep link policy documented; alert email parser not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "live_dependency": "Live Indeed account with job alert emails enabled and inbox access, so the deep-link/alert policy and parser can be exercised against real alert messages.",
+    "gap_explanation": "A generic email-alert parser (opportunity/alert_ingestion.py::AlertIngestionEngine.parse_alert_message) is implemented and unit-tested, but only against LinkedIn/Upwork/procurement-shaped fixtures; no Indeed-shaped fixture exists, and there is no live Indeed alert inbox to validate its actual email format or exercise ingestion end-to-end.",
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-003",
+        "from": "PARTIAL",
+        "to": "REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-SRC-017",
@@ -1165,7 +1321,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "Documented in registry; alert/deep-link parser not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-018",
@@ -1181,7 +1338,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "Documented in registry; RSS/alert parser not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-019",
@@ -1197,7 +1355,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "Documented in registry; alert parser not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-020",
@@ -1213,7 +1372,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "Documented in registry; alert parser not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-021",
@@ -1229,7 +1389,8 @@
     "later_authority": "None",
     "live_dependency": "Freelancer API developer account / OAuth",
     "gap_explanation": "Documented in registry; executable API adapter module not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-022",
@@ -1245,7 +1406,8 @@
     "later_authority": "None",
     "live_dependency": "Upwork email alerts",
     "gap_explanation": "Manual deep link policy documented; alert ingestion parser not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-023",
@@ -1261,7 +1423,8 @@
     "later_authority": "ADR-0008",
     "live_dependency": "None",
     "gap_explanation": "None. Active XML procurement notice adapter.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-024",
@@ -1277,7 +1440,8 @@
     "later_authority": "ADR-0008",
     "live_dependency": "None",
     "gap_explanation": "None. Active JSON procurement notice adapter.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-025",
@@ -1293,7 +1457,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "Documented in registry; scraper/feed parser not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-026",
@@ -1309,7 +1474,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "Documented in registry; RSS parser not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-027",
@@ -1325,7 +1491,8 @@
     "later_authority": "ADR-0005, ADR-0008",
     "live_dependency": "None",
     "gap_explanation": "None. Active search POST query adapter under ADR-0005.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-028",
@@ -1341,7 +1508,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "Documented in registry; manual deep link parser not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-029",
@@ -1357,7 +1525,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "Documented in registry; manual deep link parser not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-030",
@@ -1373,7 +1542,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "Documented in registry; manual deep link parser not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-031",
@@ -1389,7 +1559,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "Documented in registry; manual deep link/alert parser not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-032",
@@ -1405,7 +1576,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "Documented in registry as market intelligence research.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-033",
@@ -1421,7 +1593,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "Documented in registry; alert parser not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-034",
@@ -1437,7 +1610,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "Documented in registry; deep link parser not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-035",
@@ -1453,7 +1627,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "Documented in registry; manual deep link parser not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-036",
@@ -1469,7 +1644,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "Documented in registry; deep link parser not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-037",
@@ -1485,7 +1661,8 @@
     "later_authority": "None",
     "live_dependency": "Toptal account",
     "gap_explanation": "Documented in registry as account-gated manual reference.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-038",
@@ -1495,13 +1672,14 @@
     "phase": "Phase 1",
     "status": "PARTIAL",
     "evidence_strength": "TESTED_IMPLEMENTATION",
-    "implementation_evidence": "opportunity/registry.py",
-    "tests": "opportunity/test_registry.py",
+    "implementation_evidence": "opportunity/adapters/greenhouse.py, opportunity/adapters/lever.py, opportunity/adapters/__init__.py (ATS board-token watchlist)",
+    "tests": "opportunity/test_adapters.py::test_greenhouse_adapter, opportunity/test_adapters.py::test_lever_adapter, opportunity/test_pipeline.py::test_pipeline_with_mock_transport_discovery",
     "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "ADR-0008",
     "live_dependency": "None",
-    "gap_explanation": "ATS board token binding implemented; generic company page crawler missing.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "gap_explanation": "ATS board-token binding (Greenhouse/Lever adapters keyed to a company name) is implemented and unit-tested, and the seeded watchlist that names which companies to poll is wired into get_all_standard_adapters(). A generic crawler for an arbitrary company's own, non-ATS-hosted career page is not implemented; only companies on a known ATS platform (Greenhouse, Lever, Ashby) can be discovered this way.",
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-039",
@@ -1517,7 +1695,8 @@
     "later_authority": "None",
     "live_dependency": "None",
     "gap_explanation": "Documented in registry; recurring procurement scraper not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-040",
@@ -1533,7 +1712,8 @@
     "later_authority": "Master Plan \u00a78.1",
     "live_dependency": "None",
     "gap_explanation": "Explicitly deferred to Phase 2+ in Master Plan \u00a78.1.",
-    "bucket": "INTENTIONALLY_LATER"
+    "bucket": "INTENTIONALLY_LATER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-041",
@@ -1549,7 +1729,8 @@
     "later_authority": "Master Plan \u00a78.1",
     "live_dependency": "None",
     "gap_explanation": "Explicitly deferred to Phase 2+ in Master Plan \u00a78.1.",
-    "bucket": "INTENTIONALLY_LATER"
+    "bucket": "INTENTIONALLY_LATER",
+    "status_history": []
   },
   {
     "req_id": "REQ-SRC-042",
@@ -1565,7 +1746,8 @@
     "later_authority": "Master Plan \u00a78.3",
     "live_dependency": "None",
     "gap_explanation": "Supplementary research; deferred to later phases.",
-    "bucket": "INTENTIONALLY_LATER"
+    "bucket": "INTENTIONALLY_LATER",
+    "status_history": []
   },
   {
     "req_id": "REQ-ELI-001",
@@ -1581,7 +1763,8 @@
     "later_authority": "ADR-0009",
     "live_dependency": "None",
     "gap_explanation": "None. Hard constraints cleanly separated from fit scoring.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-ELI-002",
@@ -1597,7 +1780,8 @@
     "later_authority": "ADR-0009",
     "live_dependency": "None",
     "gap_explanation": "None. Unstated truth yields UNCERTAIN / REVIEW (never false rejection).",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-ELI-003",
@@ -1613,7 +1797,8 @@
     "later_authority": "ADR-0009",
     "live_dependency": "None",
     "gap_explanation": "None. Distinct constraint evaluators for both tracks.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-ELI-004",
@@ -1629,7 +1814,8 @@
     "later_authority": "ADR-0009",
     "live_dependency": "None",
     "gap_explanation": "None. Evaluates unstated authorization as UNCERTAIN.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-ELI-005",
@@ -1645,7 +1831,8 @@
     "later_authority": "ADR-0009",
     "live_dependency": "None",
     "gap_explanation": "None. 100% precision on curated gold set benchmark cases.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SCO-001",
@@ -1661,7 +1848,8 @@
     "later_authority": "ADR-0009",
     "live_dependency": "None",
     "gap_explanation": "None. Multi-dimensional vectors for responsibility, skill, seniority, budget, and delivery fit.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SCO-002",
@@ -1677,7 +1865,8 @@
     "later_authority": "ADR-0009",
     "live_dependency": "None",
     "gap_explanation": "None. Unasserted founder truth produces uncertainty penalty without fabricated strengths.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SCO-003",
@@ -1693,7 +1882,8 @@
     "later_authority": "ADR-0009",
     "live_dependency": "None",
     "gap_explanation": "None. Comprehensive explainability on every score vector.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SCO-004",
@@ -1709,7 +1899,8 @@
     "later_authority": "ADR-0009",
     "live_dependency": "None",
     "gap_explanation": "None. Structural feature scoring prevents keyword inflation.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-ART-001",
@@ -1725,7 +1916,8 @@
     "later_authority": "ADR-0009",
     "live_dependency": "None",
     "gap_explanation": "None. Compiles versioned CVs from TruthGraph assertions.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-ART-002",
@@ -1741,7 +1933,8 @@
     "later_authority": "ADR-0009",
     "live_dependency": "None",
     "gap_explanation": "None. Compiles versioned proposals and compliance matrices from Capability Pack.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-ART-003",
@@ -1757,7 +1950,8 @@
     "later_authority": "ADR-0009",
     "live_dependency": "None",
     "gap_explanation": "None. Fails closed on assertion laundering, planned credentials, or missing evidence.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-ART-004",
@@ -1765,15 +1959,23 @@
     "text": "Binary Document Exporters (DOCX & PDF): Fact-locked DOCX and PDF export with ATS layout integrity.",
     "criticality": "P1",
     "phase": "Phase 1",
-    "status": "PARTIAL",
+    "status": "DONE",
     "evidence_strength": "TESTED_IMPLEMENTATION",
-    "implementation_evidence": "matching/compiler_employment.py, matching/models.py",
-    "tests": "matching/test_compiler.py",
+    "implementation_evidence": "matching/binary_export.py",
+    "tests": "matching/test_binary_export.py",
     "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "None",
-    "live_dependency": "python-docx / Weasyprint",
-    "gap_explanation": "Structured JSON and Markdown rendered; binary DOCX/PDF export engine not implemented.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "live_dependency": "None",
+    "gap_explanation": "None. BinaryArtifactExporter renders fact-locked artifacts to DOCX (python-docx) and PDF (reportlab); export and inspection are covered by matching/test_binary_export.py.",
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-003",
+        "from": "PARTIAL",
+        "to": "DONE",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-ART-005",
@@ -1781,15 +1983,23 @@
     "text": "ATS Readability & Visual Render Regression Suite: Text extraction, heading layout, glyph checks, no clipping.",
     "criticality": "P1",
     "phase": "Phase 3",
-    "status": "PARTIAL",
+    "status": "DONE",
     "evidence_strength": "TESTED_IMPLEMENTATION",
-    "implementation_evidence": "matching/validator.py",
-    "tests": "matching/test_adversarial.py",
+    "implementation_evidence": "matching/ats_quality.py",
+    "tests": "matching/test_binary_export.py",
     "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "None",
     "live_dependency": "None",
-    "gap_explanation": "Claim verification and tampering tests complete; layout visual regression harness pending.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "gap_explanation": "AtsDocumentQualityHarness implements and matching/test_binary_export.py tests text extraction from DOCX/PDF and title/heading/content/claim substring parity between the two renders. It does not implement the visual/geometric side of the requirement: no heading-position/layout check, no glyph-level rendering check, and no page-overflow/clipping detection. This is a text-content parity harness, not a visual render regression suite.",
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-003",
+        "from": "PARTIAL",
+        "to": "DONE",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-ART-006",
@@ -1805,7 +2015,8 @@
     "later_authority": "ADR-0010",
     "live_dependency": "None",
     "gap_explanation": "None. Truth-grounded narrative answering implemented.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-ACT-001",
@@ -1821,7 +2032,8 @@
     "later_authority": "ADR-0010",
     "live_dependency": "None",
     "gap_explanation": "None. Fills deterministic fields; submit is unreachable in assisted mode.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-ACT-002",
@@ -1837,7 +2049,8 @@
     "later_authority": "ADR-0010",
     "live_dependency": "None",
     "gap_explanation": "None. Strict currency, interval, sponsorship, and legal question handling.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-ACT-003",
@@ -1853,7 +2066,8 @@
     "later_authority": "ADR-0010",
     "live_dependency": "None",
     "gap_explanation": "None. Comprehensive local mock harness.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-ACT-004",
@@ -1869,7 +2083,8 @@
     "later_authority": "ADR-0010",
     "live_dependency": "None",
     "gap_explanation": "None. Mandatory prior manifest verification against current material state.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-ACT-005",
@@ -1885,7 +2100,8 @@
     "later_authority": "ADR-0010",
     "live_dependency": "None",
     "gap_explanation": "None. SQLite reservation table with UNKNOWN_OUTCOME freeze.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-ACT-006",
@@ -1901,7 +2117,8 @@
     "later_authority": "ADR-0010",
     "live_dependency": "None",
     "gap_explanation": "None. Generates verified canonical deep link URLs.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-INB-001",
@@ -1917,7 +2134,8 @@
     "later_authority": "ADR-0011",
     "live_dependency": "None (Gmail API credentials needed for live sync)",
     "gap_explanation": "None. Read-only message listing and fetching.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-INB-002",
@@ -1933,7 +2151,8 @@
     "later_authority": "ADR-0011",
     "live_dependency": "None",
     "gap_explanation": "None. 100% precision and recall across 23 curated gold scenarios.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-INB-003",
@@ -1949,7 +2168,8 @@
     "later_authority": "ADR-0011",
     "live_dependency": "None",
     "gap_explanation": "None. Urgent/high alerts emitted; low priority filtered.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-INB-004",
@@ -1965,7 +2185,8 @@
     "later_authority": "ADR-0011",
     "live_dependency": "None",
     "gap_explanation": "None. Exact match on external refs, action IDs, receipts; 0 false merges.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-INB-005",
@@ -1981,7 +2202,8 @@
     "later_authority": "ADR-0011",
     "live_dependency": "None",
     "gap_explanation": "None. Partial-batch restart safety and idempotent replay verified.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-INB-006",
@@ -1997,7 +2219,8 @@
     "later_authority": "ADR-0011",
     "live_dependency": "None",
     "gap_explanation": "None. Computes real conversion denominators; missing data reported as UNAVAILABLE.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-INB-007",
@@ -2013,7 +2236,8 @@
     "later_authority": "ADR-0011",
     "live_dependency": "None",
     "gap_explanation": "None. Recommends bounded weight updates; requires explicit human approval.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SEC-001",
@@ -2029,7 +2253,8 @@
     "later_authority": "None",
     "live_dependency": "Web auth implementation",
     "gap_explanation": "No web auth attack surface currently exists.",
-    "bucket": "PRODUCTION_INFRASTRUCTURE"
+    "bucket": "PRODUCTION_INFRASTRUCTURE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SEC-002",
@@ -2045,7 +2270,8 @@
     "later_authority": "None",
     "live_dependency": "Caddy / Domain TLS",
     "gap_explanation": "No deployment reverse proxy exists.",
-    "bucket": "PRODUCTION_INFRASTRUCTURE"
+    "bucket": "PRODUCTION_INFRASTRUCTURE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SEC-003",
@@ -2061,7 +2287,8 @@
     "later_authority": "None",
     "live_dependency": "Backup scripts",
     "gap_explanation": "Automated backup routine missing.",
-    "bucket": "PRODUCTION_INFRASTRUCTURE"
+    "bucket": "PRODUCTION_INFRASTRUCTURE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SEC-004",
@@ -2077,7 +2304,8 @@
     "later_authority": "ADR-0008",
     "live_dependency": "None",
     "gap_explanation": "None. Strict host and path segment matching prevents SSRF.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SEC-005",
@@ -2085,15 +2313,23 @@
     "text": "Prompt Injection Defenses (Data vs Instruction Isolation): Untrusted opportunity/RFP text isolated from system instructions.",
     "criticality": "P0",
     "phase": "Phase 0",
-    "status": "PARTIAL",
+    "status": "DONE",
     "evidence_strength": "TESTED_IMPLEMENTATION",
-    "implementation_evidence": "truth/ingest.py, truth/validator.py, matching/compiler_employment.py",
-    "tests": "truth/test_adversarial.py",
+    "implementation_evidence": "truth/ingest.py, truth/validator.py, matching/compiler_employment.py, security/untrusted_content.py",
+    "tests": "truth/test_adversarial.py, security/test_prompt_injection.py",
     "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "ADR-0007, ADR-0009",
     "live_dependency": "None",
-    "gap_explanation": "Current architecture isolates text as data; comprehensive live LLM agent prompt-injection defense harness pending.",
-    "bucket": "FOUNDER_ENGINE_BLOCKER"
+    "gap_explanation": "Scope-limited: the architecture isolates untrusted opportunity/RFP text as passive data (never as instructions) and adversarial tests (truth/test_adversarial.py, security/test_prompt_injection.py) cover injection attempts in job descriptions, alerts, and artifacts. A live, end-to-end LLM agent prompt-injection defence harness against a running model is still pending.",
+    "bucket": "FOUNDER_ENGINE_BLOCKER",
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-003",
+        "from": "PARTIAL",
+        "to": "DONE",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-SEC-006",
@@ -2109,7 +2345,8 @@
     "later_authority": "ADR-0001",
     "live_dependency": "None",
     "gap_explanation": "None. Repository boundary scans verify PII absence.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-SEC-007",
@@ -2117,15 +2354,23 @@
     "text": "Runtime Structured Logging & Sensitive Log Redaction: Production logs omit tokens, CV bodies, and PII.",
     "criticality": "P1",
     "phase": "Phase 0",
-    "status": "MISSING",
-    "evidence_strength": "NONE",
-    "implementation_evidence": "None",
-    "tests": "None",
-    "ci_evidence": "None",
+    "status": "DONE",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "implementation_evidence": "core/logging.py",
+    "tests": "core/test_logging.py",
+    "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "None",
     "live_dependency": "None",
-    "gap_explanation": "No centralized production logging or runtime log redaction framework implemented.",
-    "bucket": "PRODUCTION_INFRASTRUCTURE"
+    "gap_explanation": "None. Structured JSON logging with pattern-based redaction of tokens, API keys, passwords, secrets, emails, and phone numbers, plus key-name-based redaction of password/token/secret/cv_body/email_body/raw_body fields; adopted by worker/runner.py and worker/handlers.py.",
+    "bucket": "PRODUCTION_INFRASTRUCTURE",
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-003",
+        "from": "MISSING",
+        "to": "DONE",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-RUN-001",
@@ -2133,15 +2378,23 @@
     "text": "Clean Clone Bootstrap & Dependency Installation: Standard environment setup from committed repository files.",
     "criticality": "P0",
     "phase": "Phase 0",
-    "status": "PARTIAL",
+    "status": "DONE",
     "evidence_strength": "PROVEN_RUNTIME",
-    "implementation_evidence": ".github/workflows/test.yml",
+    "implementation_evidence": ".github/workflows/test.yml, pyproject.toml",
     "tests": "unittest discover",
     "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "None",
-    "live_dependency": "Python 3.10+ standard library",
-    "gap_explanation": "CI runs standard library tests cleanly, but pyproject.toml / requirements.txt packaging manifests are not yet committed.",
-    "bucket": "PRODUCTION_INFRASTRUCTURE"
+    "live_dependency": "None",
+    "gap_explanation": "None. pyproject.toml packaging manifest is committed; clean-clone CI bootstrap installs declared dependencies and runs unittest discover with zero undeclared imports.",
+    "bucket": "PRODUCTION_INFRASTRUCTURE",
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-003",
+        "from": "PARTIAL",
+        "to": "DONE",
+        "date": "2026-09-02"
+      }
+    ]
   },
   {
     "req_id": "REQ-RUN-002",
@@ -2157,7 +2410,8 @@
     "later_authority": "ADR-0011",
     "live_dependency": "None",
     "gap_explanation": "None. SQLite schema migrations (ALTER TABLE) proven across PR55->PR58 databases.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-RUN-003",
@@ -2173,7 +2427,8 @@
     "later_authority": "ADR-0010, ADR-0011",
     "live_dependency": "None",
     "gap_explanation": "None. Durable SQLite persistence proven with zero duplicate actions on restart.",
-    "bucket": "NONE"
+    "bucket": "NONE",
+    "status_history": []
   },
   {
     "req_id": "REQ-RUN-004",
@@ -2189,7 +2444,8 @@
     "later_authority": "None",
     "live_dependency": "Docker / Compose / Process manager",
     "gap_explanation": "No combined runtime entrypoint script exists.",
-    "bucket": "PRODUCTION_INFRASTRUCTURE"
+    "bucket": "PRODUCTION_INFRASTRUCTURE",
+    "status_history": []
   },
   {
     "req_id": "REQ-LAT-001",
@@ -2205,7 +2461,8 @@
     "later_authority": "Master Plan \u00a721",
     "live_dependency": "None",
     "gap_explanation": "Explicitly planned after Founder Alpha 4 (Phase 5).",
-    "bucket": "INTENTIONALLY_LATER"
+    "bucket": "INTENTIONALLY_LATER",
+    "status_history": []
   },
   {
     "req_id": "REQ-LAT-002",
@@ -2221,7 +2478,8 @@
     "later_authority": "Master Plan \u00a722",
     "live_dependency": "None",
     "gap_explanation": "Public B2C commercialization deferred.",
-    "bucket": "INTENTIONALLY_LATER"
+    "bucket": "INTENTIONALLY_LATER",
+    "status_history": []
   },
   {
     "req_id": "REQ-LAT-003",
@@ -2237,7 +2495,8 @@
     "later_authority": "Master Plan \u00a723",
     "live_dependency": "None",
     "gap_explanation": "Multi-user freelancer productization deferred.",
-    "bucket": "INTENTIONALLY_LATER"
+    "bucket": "INTENTIONALLY_LATER",
+    "status_history": []
   },
   {
     "req_id": "REQ-LAT-004",
@@ -2253,7 +2512,8 @@
     "later_authority": "Master Plan \u00a724",
     "live_dependency": "None",
     "gap_explanation": "Employer B2B productization deferred.",
-    "bucket": "INTENTIONALLY_LATER"
+    "bucket": "INTENTIONALLY_LATER",
+    "status_history": []
   },
   {
     "req_id": "REQ-LAT-005",
@@ -2269,7 +2529,8 @@
     "later_authority": "Master Plan \u00a725",
     "live_dependency": "None",
     "gap_explanation": "Organization-level procurement response deferred.",
-    "bucket": "INTENTIONALLY_LATER"
+    "bucket": "INTENTIONALLY_LATER",
+    "status_history": []
   },
   {
     "req_id": "REQ-LAT-006",
@@ -2285,6 +2546,7 @@
     "later_authority": "Master Plan \u00a726",
     "live_dependency": "None",
     "gap_explanation": "Unified platform network effects deferred.",
-    "bucket": "INTENTIONALLY_LATER"
+    "bucket": "INTENTIONALLY_LATER",
+    "status_history": []
   }
 ]

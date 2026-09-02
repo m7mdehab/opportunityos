@@ -1,0 +1,31 @@
+=== D10-1 ===
+$ python -m unittest worker.test_runner -v 2>&1 | tail -3
+Ran 12 tests in 6.769s
+
+OK
+exit=0
+
+=== D10-4 ===
+$ env -u OPPORTUNITYOS_DB_URL python -m worker --once 2>&1 | tail -3; echo exit=$?
+{"timestamp": "2026-09-02T00:00:05.654990+00:00", "level": "ERROR", "logger": "opportunityos.worker.main", "message": "worker.startup_failed", "component": "worker.__main__", "data": {"error": "Production database configuration missing: OPPORTUNITYOS_DB_URL environment variable must be set."}}
+ProductionDatabaseConfigurationError: Production database configuration missing: OPPORTUNITYOS_DB_URL environment variable must be set.
+exit=0
+
+=== D10-5 ===
+$ git diff main...HEAD -- docs/AGENT_PERMISSIONS.yaml | wc -l
+0
+exit=0
+
+=== D10-2 ===
+$ OPPORTUNITYOS_DB_URL=$PGURL python -m unittest storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_s_worker_runner_end_to_end -v 2>&1 | tail -4
+----------------------------------------------------------------------
+Ran 1 test in 0.979s
+
+OK
+exit=0
+
+=== D10-3 ===
+$ OPPORTUNITYOS_DB_URL=$PGURL python -m worker --once; echo exit=$?
+{"timestamp": "2026-09-02T00:01:18.499041+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.idle_poll", "component": "worker.runner", "data": {"worker_id": "worker-64fddb05"}}
+exit=0
+

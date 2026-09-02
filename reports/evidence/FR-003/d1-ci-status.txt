@@ -1,0 +1,17 @@
+=== D1-1 ===
+$ python -m unittest scripts.test_generate_ci_status -v 2>&1 | tail -3
+Ran 5 tests in 0.001s
+
+OK
+exit=0
+
+=== D1-2 ===
+$ grep -c "Mandatory" scripts/generate_ci_status.py
+2
+exit=0
+
+=== D1-3 ===
+$ python -c "from scripts.generate_ci_status import WORKFLOWS; print(WORKFLOWS)"
+('Mandatory Governance & Test Suite', 'State', 'Guard', 'Mirror')
+exit=0
+

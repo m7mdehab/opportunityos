@@ -1,0 +1,22 @@
+=== D8-1 ===
+$ python scripts/generate_readiness_matrix.py --check; echo exit=$?
+reports\FOUNDER_READINESS_MATRIX.md is up to date with reports\FOUNDER_READINESS_MATRIX.json.
+exit=0
+
+=== D8-2 ===
+$ python -c "import json;d=json.load(open('reports/FOUNDER_READINESS_MATRIX.json',encoding='utf-8'));print(len(d))"
+143
+exit=0
+
+=== D8-3 ===
+$ python -m unittest scripts.test_readiness_matrix -v 2>&1 | tail -3
+Ran 6 tests in 0.011s
+
+OK
+exit=0
+
+=== D8-4 ===
+$ grep -c "status_history" reports/FOUNDER_READINESS_MATRIX.json
+143
+exit=0
+

@@ -1,0 +1,52 @@
+# D7(a) — per-module counts derived from CI run 33550202403 (Mandatory Governance & Test Suite, head_sha 889dee1)
+
+$ gh api repos/m7mdehab/opportunityos/actions/runs/33550202403 --jq '{id,name,head_sha,conclusion}'
+{"conclusion":"success","head_sha":"889dee1cf4acdc3a38abf2e634bfce38453ae2ee","id":33550202403,"name":"Mandatory Governance & Test Suite"}
+
+$ # from the downloaded run log archive, count one test-identification line per module
+$ sed -E 's/^[0-9-]+T[0-9:.]+Z //' 0_test.txt | grep -oE '^[A-Za-z0-9_]+ \(([a-z_][a-z0-9_]*)\.' | sed -E 's/^[A-Za-z0-9_]+ \(//; s/\.$//' | sort | uniq -c | sort -rn
+     99 truth
+     81 outbound
+     67 recon
+     60 opportunity
+     52 matching
+     25 inbox
+     19 storage
+      4 core
+      3 worker
+      3 security
+      3 __main__
+      1 feedback
+
+$ # the discover run's own totals, verbatim from the log
+Ran 414 tests in 4.075s
+OK
+
+Derived total over the eleven package modules: 99+81+67+60+52+25+19+4+3+3+1 = 414, matching 'Ran 414 tests'.
+The three additional '__main__' entries are the separate 'python scripts/test_sync_mirror.py -v' and
+'python scripts/test_generate_state.py -v' workflow steps, which ran outside the discover run. They are
+therefore not part of the 414, which corroborates D7(c): scripts/test_backup_restore.py was never collected.
+
+# A-2 — this brief, derived from the same local run captured in a1-full-suite.txt
+
+=== A-2 ===
+$ OPPORTUNITYOS_DB_URL=$PGURL python -m unittest discover -v > /tmp/a1run.txt 2>&1; echo "exit=$?"; grep -oE "^[A-Za-z0-9_]+ \(([a-z_][a-z0-9_]*)\)" /tmp/a1run.txt | sed -E 's/^[A-Za-z0-9_]+ \(//; s/\.$//' | sort | uniq -c | sort -rn; echo "---"; tail -3 /tmp/a1run.txt; echo "skipped_lines=$(grep -c '\.\.\.\. skipped' /tmp/a1run.txt)"
+exit=0
+     99 truth
+     81 outbound
+     67 recon
+     60 opportunity
+     52 matching
+     32 storage
+     27 scripts
+     25 inbox
+     15 worker
+      4 core
+      3 security
+      1 feedback
+---
+Ran 466 tests in 19.093s
+
+OK
+skipped_lines=0
+

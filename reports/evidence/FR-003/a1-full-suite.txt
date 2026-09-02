@@ -1,0 +1,7 @@
+=== A-1 ===
+$ OPPORTUNITYOS_DB_URL=$PGURL python -m unittest discover -v 2>&1 | tail -3
+Ran 466 tests in 23.139s
+
+OK
+exit=0
+

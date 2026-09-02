@@ -1,0 +1,27 @@
+=== D5-1 ===
+$ grep -n "create_all|init_db" scripts/backup_restore.py
+exit=1
+
+=== D5-3 ===
+$ grep -n "BackupCompletenessError|sorted_tables" scripts/backup_restore.py
+53:class BackupCompletenessError(RuntimeError):
+84:    """Raise BackupCompletenessError if DUMP_SECTION_TABLE_MAP and
+85:    Base.metadata.sorted_tables disagree on the set of tables covered."""
+87:    model_tables = {table.name for table in Base.metadata.sorted_tables}
+93:        raise BackupCompletenessError(
+103:    """Raise BackupCompletenessError if any DUMP_SECTION_TABLE_MAP section's
+116:            raise BackupCompletenessError(
+123:            raise BackupCompletenessError(
+378:    """Raise BackupCompletenessError unless `data`'s sections exactly match
+381:    BackupCompletenessError's contract includes guarding "against a dump
+394:        raise BackupCompletenessError(
+exit=0
+
+=== D5-2 ===
+$ OPPORTUNITYOS_DB_URL=$PGURL python -m unittest storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_m_backup_wipe_restore_postgres_cycle -v 2>&1 | tail -4
+----------------------------------------------------------------------
+Ran 1 test in 1.348s
+
+OK
+exit=0
+

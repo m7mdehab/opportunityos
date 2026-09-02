@@ -86,3 +86,91 @@ With the engine foundation, PostgreSQL relational persistence backbone, and Alem
 ## 5. Decision
 
 **PASS**
+
+---
+
+## Erratum (2026-09-02, BRIEF-FR-003)
+
+This erratum is filed by the reality-refresh brief BRIEF-FR-003. It does not
+rewrite, reword, or delete any part of the original report above — including
+the original authorship lines in the header, which stand as historical record
+under BRIEF-FR-003 D13 (existing history is not rewritten). It corrects three
+things: the per-module test counts in §3, the requirement-delta table in §2,
+and two factual gaps in the original claims.
+
+### (a) Corrected per-module test counts
+
+The per-module test counts in the original §3 "Test & Verification Results"
+were wrong, and §3 separately claimed "399 unit tests and 18 real PostgreSQL
+integration tests" — a figure that does not reconcile with its own per-module
+breakdown either. Both are superseded by the real per-module counts below,
+taken from the Mandatory Governance & Test Suite run at commit `889dee1`
+(CI run ID `33550202403`), which is the single `unittest discover` total and
+already includes the PostgreSQL integration cases (there is no separate
+integration count to add on top of it).
+
+| module | tests |
+| :--- | ---: |
+| truth | 99 |
+| outbound | 81 |
+| recon | 67 |
+| opportunity | 60 |
+| matching | 52 |
+| inbox | 25 |
+| storage | 19 |
+| core | 4 |
+| worker | 3 |
+| security | 3 |
+| feedback | 1 |
+| **total** | **414** |
+
+### (b) Corrected requirement-delta table
+
+The following table replaces the original §2 "Requirement Scope Map & Matrix
+Delta" table. It uses only requirement IDs that exist in
+`reports/FOUNDER_READINESS_MATRIX.json`.
+
+| Req ID | Requirement | Status claimed in FR-002 | Corrected status | Note |
+| :--- | :--- | :---: | :---: | :--- |
+| `REQ-P0C-002` | PostgreSQL Primary Relational Persistence | (credited via `REQ-RUN-002`) | `DONE` | The original delta credited the PostgreSQL persistence backbone against `REQ-RUN-002`; `REQ-P0C-002` is the correct matrix row for it. |
+| `REQ-RUN-002` | Database Initialization & Migrations | `DONE` | removed from delta | Already `DONE` before FR-002; FR-002 did not change it. The PostgreSQL delivery this row was crediting belongs to `REQ-P0C-002` above. |
+| `REQ-RUN-003` | Persistence Across Process Restart | `DONE` | removed from delta | Already `DONE` before FR-002; FR-002 did not change it. |
+| `REQ-INB-006` | Multi-Dimensional Outcome Analytics | `DONE` | removed from delta | `REQ-INB-006` is the Multi-Dimensional Outcome Analytics requirement (`inbox/analytics.py::DualTrackAnalyticsEngine`), not the founder-feedback backend. Its `DONE` status stands on its own prior evidence and was not earned by FR-002. The founder-feedback backend FR-002 actually delivered (`feedback/models.py`, `feedback/service.py`, `feedback/test_feedback.py`) is recorded against the acceptance-script step 13 line, not against a matrix row. |
+| `REQ-P0C-003` | DB-Backed Worker Queue | `DONE` | `PARTIAL` | FR-002 delivered the queue only (`worker/queue.py`), with no consumer/runner process to drain it. |
+| `REQ-SRC-003` | Ashby Public Job Postings API Adapter | `DONE` | `REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS` | Adapter code exists but was not exercised against the live Ashby API. |
+| `REQ-SRC-011` | WUZZUF (Email Alert / Deep Link Ingestion) | (part of `DONE` combined row) | `REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS` | No live alert integration or credentials exercised. |
+| `REQ-SRC-012` | Bayt (Email Alert / Deep Link Ingestion) | (part of `DONE` combined row) | `REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS` | No live alert integration or credentials exercised. |
+| `REQ-SRC-013` | Naukrigulf (Email Alert / Deep Link Ingestion) | (part of `DONE` combined row) | `REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS` | No live alert integration or credentials exercised. |
+| `REQ-SRC-014` | GulfTalent (Email Alert / Deep Link Ingestion) | (part of `DONE` combined row) | `REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS` | No live alert integration or credentials exercised. |
+| `REQ-SRC-015` | LinkedIn Jobs (Alerts & Deep Links) | (part of `DONE` combined row) | `REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS` | No live alert integration or credentials exercised. |
+| `REQ-SRC-016` | Indeed Jobs (Alerts & Deep Links) | (part of `DONE` combined row) | `REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS` | No live alert integration or credentials exercised. |
+| `REQ-SRC-017` | Remote Talent (remote.com) Jobs | (part of `DONE` combined row) | `PARTIAL` | Generalized ingestion engine covers the format but the source-specific path is not fully evidenced. |
+| `REQ-SRC-018` | Working Nomads (Remote Egypt & Worldwide) | (part of `DONE` combined row) | `PARTIAL` | Generalized ingestion engine covers the format but the source-specific path is not fully evidenced. |
+| `REQ-SRC-019` | Arc Remote Jobs (Employment & Freelance) | (part of `DONE` combined row) | `PARTIAL` | Generalized ingestion engine covers the format but the source-specific path is not fully evidenced. |
+| `REQ-SRC-020` | Wellfound Startup Jobs | (part of `DONE` combined row) | `PARTIAL` | Generalized ingestion engine covers the format but the source-specific path is not fully evidenced. |
+| `REQ-RUN-001` | Reproducible Packaging & Bootstrap | `DONE` | `DONE` | Credit accepted by the independent auditor; stands as originally claimed. |
+| `REQ-P0C-005` | Automated Database Backup & Restore | `DONE` | `DONE` | Credit accepted by the independent auditor; stands as originally claimed. See (c) below for a scope caveat on how it was exercised in CI. |
+| `REQ-SEC-007` | Structured Logging & Sensitive Redaction | `DONE` | `DONE` | Credit accepted by the independent auditor; stands as originally claimed. |
+| `REQ-ART-004` | Binary DOCX/PDF Export Engine | `DONE` | `DONE` | Credit accepted by the independent auditor; stands as originally claimed. |
+| `REQ-ART-005` | ATS Layout & Claim Parity Harness | `DONE` | `DONE` | Credit accepted by the independent auditor; stands as originally claimed. |
+| `REQ-SRC-004` | Schema.org JobPosting Extractor | `DONE` | `DONE` | Credit accepted by the independent auditor; stands as originally claimed. |
+| `REQ-OPP-008` | Stale Opportunity Re-verification | `DONE` | `DONE` | Credit accepted by the independent auditor; stands as originally claimed. |
+| `REQ-SEC-005` | Prompt-Injection / Untrusted Content Safety | `DONE` | `DONE` | Credit accepted by the independent auditor, with a scope-limited note: the architecture isolates untrusted text as data; a live agent prompt-injection defence harness is still pending. |
+
+### (c) Backup/restore evidence was never exercised in CI
+
+`scripts/test_backup_restore.py` was **not executed** in the `889dee1` /
+`33550202403` CI run: `scripts/` was not a package at that commit, so
+`python -m unittest discover` did not collect it. This means the
+backup/restore evidence cited by FR-002 (`REQ-P0C-005`) was never actually
+exercised in CI, despite being claimed as verified. BRIEF-FR-003 D4 closes
+this gap.
+
+### (d) Web-slice brief renumbered
+
+The FastAPI / Next.js slice named "BRIEF-FR-003: FastAPI REST API Service &
+Next.js 14+ Founder Web Alpha UI Integration" in the original §4 "Next Phase
+Prerequisites" above is **renumbered BRIEF-FR-004**. The brief actually
+numbered BRIEF-FR-003 is instead this reality-refresh and runtime-closure
+brief. `docs/STATE.md` "Next Prerequisites" will stop describing FR-003 as
+the web brief once `reports/REPORT-FR-003.md` exists.

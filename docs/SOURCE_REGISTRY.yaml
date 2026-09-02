@@ -47,11 +47,11 @@ sources:
     policy_status: unknown_disable_actions
     observed:
       status: robots_unreachable
-      detail: "robots.txt could not be read after three attempts"
-      request_metadata: ""
+      detail: "2026-09-02 re-recon: robots.txt fetch to jobicy.com returned HTTP 403 on all three attempts (AGENTS.md 403 stop rule observed; no further requests made to this host)"
+      request_metadata: "method=GET; endpoint=/robots.txt"
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-28
+    last_policy_reviewed: 2026-09-02
     policy_evidence:
       - https://jobicy.com/terms
   - source_id: remotive
@@ -236,11 +236,11 @@ sources:
     policy_status: unknown_disable_actions
     observed:
       status: robots_unreachable
-      detail: "robots.txt could not be read after three attempts"
-      request_metadata: ""
+      detail: "2026-09-02 re-recon: robots.txt fetch to www.afdb.org failed with TLS error on all three attempts: SSL CERTIFICATE_VERIFY_FAILED, certificate has expired"
+      request_metadata: "method=GET; endpoint=/robots.txt"
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-28
+    last_policy_reviewed: 2026-09-02
     policy_evidence:
       - https://www.afdb.org/en/terms-and-conditions
   - source_id: freelancer
@@ -641,11 +641,11 @@ sources:
     policy_status: unknown_disable_actions
     observed:
       status: robots_unreachable
-      detail: "robots.txt could not be read after three attempts"
-      request_metadata: ""
+      detail: "2026-09-02 re-recon: robots.txt fetch to api.ashbyhq.com returned HTTP 401 on all three attempts; one robots_allow check against the shared host covers all ashby:* entries"
+      request_metadata: "method=GET; endpoint=/robots.txt"
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-28
+    last_policy_reviewed: 2026-09-02
     policy_evidence:
       - https://www.ashbyhq.com/privacy
   - source_id: ashby:paires
@@ -668,11 +668,11 @@ sources:
     policy_status: unknown_disable_actions
     observed:
       status: robots_unreachable
-      detail: "robots.txt could not be read after three attempts"
-      request_metadata: ""
+      detail: "2026-09-02 re-recon: robots.txt fetch to api.ashbyhq.com returned HTTP 401 on all three attempts; one robots_allow check against the shared host covers all ashby:* entries"
+      request_metadata: "method=GET; endpoint=/robots.txt"
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-28
+    last_policy_reviewed: 2026-09-02
     policy_evidence:
       - https://www.ashbyhq.com/privacy
   - source_id: ashby:jellyfish
@@ -695,11 +695,11 @@ sources:
     policy_status: unknown_disable_actions
     observed:
       status: robots_unreachable
-      detail: "robots.txt could not be read after three attempts"
-      request_metadata: ""
+      detail: "2026-09-02 re-recon: robots.txt fetch to api.ashbyhq.com returned HTTP 401 on all three attempts; one robots_allow check against the shared host covers all ashby:* entries"
+      request_metadata: "method=GET; endpoint=/robots.txt"
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-28
+    last_policy_reviewed: 2026-09-02
     policy_evidence:
       - https://www.ashbyhq.com/privacy
   - source_id: ashby:adaptive_innovations
@@ -722,11 +722,11 @@ sources:
     policy_status: unknown_disable_actions
     observed:
       status: robots_unreachable
-      detail: "robots.txt could not be read after three attempts"
-      request_metadata: ""
+      detail: "2026-09-02 re-recon: robots.txt fetch to api.ashbyhq.com returned HTTP 401 on all three attempts; one robots_allow check against the shared host covers all ashby:* entries"
+      request_metadata: "method=GET; endpoint=/robots.txt"
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-28
+    last_policy_reviewed: 2026-09-02
     policy_evidence:
       - https://www.ashbyhq.com/privacy
   - source_id: ashby:bedrock_robotics
@@ -749,11 +749,11 @@ sources:
     policy_status: unknown_disable_actions
     observed:
       status: robots_unreachable
-      detail: "robots.txt could not be read after three attempts"
-      request_metadata: ""
+      detail: "2026-09-02 re-recon: robots.txt fetch to api.ashbyhq.com returned HTTP 401 on all three attempts; one robots_allow check against the shared host covers all ashby:* entries"
+      request_metadata: "method=GET; endpoint=/robots.txt"
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-28
+    last_policy_reviewed: 2026-09-02
     policy_evidence:
       - https://www.ashbyhq.com/privacy
   - source_id: ashby:cube
@@ -776,11 +776,11 @@ sources:
     policy_status: unknown_disable_actions
     observed:
       status: robots_unreachable
-      detail: "robots.txt could not be read after three attempts"
-      request_metadata: ""
+      detail: "2026-09-02 re-recon: robots.txt fetch to api.ashbyhq.com returned HTTP 401 on all three attempts; one robots_allow check against the shared host covers all ashby:* entries"
+      request_metadata: "method=GET; endpoint=/robots.txt"
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-28
+    last_policy_reviewed: 2026-09-02
     policy_evidence:
       - https://www.ashbyhq.com/privacy
   - source_id: ashby:bjak
@@ -803,11 +803,11 @@ sources:
     policy_status: unknown_disable_actions
     observed:
       status: robots_unreachable
-      detail: "robots.txt could not be read after three attempts"
-      request_metadata: ""
+      detail: "2026-09-02 re-recon: robots.txt fetch to api.ashbyhq.com returned HTTP 401 on all three attempts; one robots_allow check against the shared host covers all ashby:* entries"
+      request_metadata: "method=GET; endpoint=/robots.txt"
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-28
+    last_policy_reviewed: 2026-09-02
     policy_evidence:
       - https://www.ashbyhq.com/privacy
   - source_id: ashby:farseer
@@ -830,11 +830,11 @@ sources:
     policy_status: unknown_disable_actions
     observed:
       status: robots_unreachable
-      detail: "robots.txt could not be read after three attempts"
-      request_metadata: ""
+      detail: "2026-09-02 re-recon: robots.txt fetch to api.ashbyhq.com returned HTTP 401 on all three attempts; one robots_allow check against the shared host covers all ashby:* entries"
+      request_metadata: "method=GET; endpoint=/robots.txt"
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-28
+    last_policy_reviewed: 2026-09-02
     policy_evidence:
       - https://www.ashbyhq.com/privacy
   - source_id: ashby:regard
@@ -857,11 +857,11 @@ sources:
     policy_status: unknown_disable_actions
     observed:
       status: robots_unreachable
-      detail: "robots.txt could not be read after three attempts"
-      request_metadata: ""
+      detail: "2026-09-02 re-recon: robots.txt fetch to api.ashbyhq.com returned HTTP 401 on all three attempts; one robots_allow check against the shared host covers all ashby:* entries"
+      request_metadata: "method=GET; endpoint=/robots.txt"
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-28
+    last_policy_reviewed: 2026-09-02
     policy_evidence:
       - https://www.ashbyhq.com/privacy
   - source_id: ashby:tessera_labs
@@ -884,11 +884,11 @@ sources:
     policy_status: unknown_disable_actions
     observed:
       status: robots_unreachable
-      detail: "robots.txt could not be read after three attempts"
-      request_metadata: ""
+      detail: "2026-09-02 re-recon: robots.txt fetch to api.ashbyhq.com returned HTTP 401 on all three attempts; one robots_allow check against the shared host covers all ashby:* entries"
+      request_metadata: "method=GET; endpoint=/robots.txt"
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-28
+    last_policy_reviewed: 2026-09-02
     policy_evidence:
       - https://www.ashbyhq.com/privacy
   - source_id: ashby:posthog
@@ -911,11 +911,11 @@ sources:
     policy_status: unknown_disable_actions
     observed:
       status: robots_unreachable
-      detail: "robots.txt could not be read after three attempts"
-      request_metadata: ""
+      detail: "2026-09-02 re-recon: robots.txt fetch to api.ashbyhq.com returned HTTP 401 on all three attempts; one robots_allow check against the shared host covers all ashby:* entries"
+      request_metadata: "method=GET; endpoint=/robots.txt"
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-28
+    last_policy_reviewed: 2026-09-02
     policy_evidence:
       - https://www.ashbyhq.com/privacy
   - source_id: ashby:openai
@@ -938,11 +938,11 @@ sources:
     policy_status: unknown_disable_actions
     observed:
       status: robots_unreachable
-      detail: "robots.txt could not be read after three attempts"
-      request_metadata: ""
+      detail: "2026-09-02 re-recon: robots.txt fetch to api.ashbyhq.com returned HTTP 401 on all three attempts; one robots_allow check against the shared host covers all ashby:* entries"
+      request_metadata: "method=GET; endpoint=/robots.txt"
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-28
+    last_policy_reviewed: 2026-09-02
     policy_evidence:
       - https://www.ashbyhq.com/privacy
   - source_id: ashby:linear
@@ -965,11 +965,11 @@ sources:
     policy_status: unknown_disable_actions
     observed:
       status: robots_unreachable
-      detail: "robots.txt could not be read after three attempts"
-      request_metadata: ""
+      detail: "2026-09-02 re-recon: robots.txt fetch to api.ashbyhq.com returned HTTP 401 on all three attempts; one robots_allow check against the shared host covers all ashby:* entries"
+      request_metadata: "method=GET; endpoint=/robots.txt"
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-28
+    last_policy_reviewed: 2026-09-02
     policy_evidence:
       - https://www.ashbyhq.com/privacy
   - source_id: linkedin

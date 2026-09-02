@@ -7,7 +7,10 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import sync_mirror
+try:
+    from scripts import sync_mirror
+except ImportError:  # running as `python scripts/test_sync_mirror.py` directly
+    import sync_mirror
 
 
 class SyncMirrorTest(unittest.TestCase):

@@ -8,6 +8,8 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
+import yaml
+
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_PATH = ROOT / "docs" / "STATE.md"
@@ -127,15 +129,17 @@ def adr_records() -> tuple[list[str], list[str]]:
     return proposed, accepted
 
 
-def source_counts() -> Counter[str]:
-    registry = ROOT / "docs" / "SOURCE_REGISTRY.yaml"
+def source_counts(registry_path: Path | None = None) -> Counter[str]:
+    registry = registry_path if registry_path is not None else ROOT / "docs" / "SOURCE_REGISTRY.yaml"
     if not registry.exists():
         return Counter()
+    data = yaml.safe_load(registry.read_text(encoding="utf-8")) or {}
     counts: Counter[str] = Counter()
-    for raw in registry.read_text(encoding="utf-8").splitlines():
-        match = re.search(r"(?m)^\s*observed_status:\s*([a-z0-9_]+)\s*$", raw)
-        if match:
-            counts[match.group(1)] += 1
+    for entry in data.get("sources") or []:
+        observed = (entry or {}).get("observed") or {}
+        status = observed.get("status")
+        if status:
+            counts[status] += 1
     return counts
 
 
@@ -158,6 +162,84 @@ def generated_at() -> str:
 
 def bullets(items: list[str], empty: str) -> str:
     return "\n".join(f"- {item}" for item in items) if items else f"- {empty}"
+
+
+_LIST_MARKER_RE = re.compile(r"^[-*]\s*")
+_EMPHASIS_RE = re.compile(r"[*_`]")
+# A sentence terminator only counts when followed by whitespace or end of
+# string, so it does not fire on things like "Next.js" or "e.g.io".
+_SENTENCE_END_RE = re.compile(r"[.!?](?=\s|$)")
+_NEXT_SUMMARY_FALLBACK = "complete active brief"
+
+
+def _clean_prerequisite_line(line: str) -> str:
+    text = _LIST_MARKER_RE.sub("", line.strip())
+    text = _EMPHASIS_RE.sub("", text)
+    return text.strip()
+
+
+def _first_sentence(text: str) -> str | None:
+    match = _SENTENCE_END_RE.search(text)
+    return text[: match.end()].strip() if match else None
+
+
+def _truncate_on_word_boundary(text: str, limit: int = 300) -> str:
+    if len(text) <= limit:
+        return text
+    truncated = text[:limit].rstrip()
+    if " " in truncated:
+        truncated = truncated.rsplit(" ", 1)[0]
+    return truncated.rstrip()
+
+
+def _finalize_summary(text: str) -> str:
+    text = text.strip().rstrip(":.!?").strip()
+    return f"{text}." if text else f"{_NEXT_SUMMARY_FALLBACK}."
+
+
+def _join_lines_until_sentence(lines: list[str]) -> tuple[str | None, str]:
+    """Progressively join cleaned `lines` (non-empty) until a sentence
+    terminator is found — used both for a colon lead-in and for prose
+    hard-wrapped across physical lines with no terminator on the first
+    line. Returns (sentence, full_paragraph): `sentence` is the first
+    complete sentence found across line boundaries, or None if no line in
+    `lines` ever completes one; when None, `full_paragraph` is every line
+    joined (the loop only runs to completion, without an early break, in
+    that case), for use as the whole-paragraph fallback."""
+    joined = lines[0]
+    sentence = _first_sentence(joined)
+    for line in lines[1:]:
+        if sentence is not None:
+            break
+        joined = f"{joined} {line}"
+        sentence = _first_sentence(joined)
+    return sentence, joined
+
+
+def next_summary_from_prerequisites(prerequisites: str) -> str:
+    """Render the first complete sentence (or whole first paragraph, capped
+    at 300 chars) of a prerequisites section, never a fragment ending in
+    ':' or ':.'. A sentence may span several physical lines — a lead-in
+    colon, or hard-wrapped prose with no terminator on its first line —
+    joining stops as soon as a terminator is reached; only a paragraph
+    with no terminator anywhere falls back to the whole joined text."""
+    if not prerequisites.strip():
+        return f"{_NEXT_SUMMARY_FALLBACK}."
+
+    first_paragraph = re.split(r"\n\s*\n", prerequisites.strip(), maxsplit=1)[0]
+    clean_lines = [
+        cleaned
+        for cleaned in (_clean_prerequisite_line(line) for line in first_paragraph.splitlines())
+        if cleaned
+    ]
+    if not clean_lines:
+        return f"{_NEXT_SUMMARY_FALLBACK}."
+
+    sentence, joined_paragraph = _join_lines_until_sentence(clean_lines)
+    result = sentence if sentence is not None else joined_paragraph
+
+    result = _truncate_on_word_boundary(result)
+    return _finalize_summary(result)
 
 
 def main() -> None:
@@ -249,11 +331,7 @@ def main() -> None:
     mirror_sha, mirror_time = mirror_sync()
     shipped = completed[-1] if completed else "repository foundation not yet reported"
     blocked_summary = blocked[0] if blocked else "none"
-    next_summary = (
-        next((line.strip().lstrip("- ") for line in prerequisites.splitlines() if line.strip()), "complete active brief")
-        if prerequisites
-        else "complete active brief"
-    )
+    next_summary = next_summary_from_prerequisites(prerequisites)
 
     output = f"""<!-- GENERATED BY scripts/generate_state.py — DO NOT EDIT -->
 # OpportunityOS State
@@ -263,7 +341,7 @@ Last shipped: {shipped}.
 Active work: {active_label}.
 Phase status: {phase_status}.
 Blocked: {blocked_summary}.
-Next: {next_summary}.
+Next: {next_summary}
 
 ## Repository
 

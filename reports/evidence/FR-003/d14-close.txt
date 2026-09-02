@@ -1,0 +1,24 @@
+=== D14-1 ===
+$ ls reports/REPORT-FR-003.md reports/evidence/FR-003/CLAIMS.md
+reports/REPORT-FR-003.md
+reports/evidence/FR-003/CLAIMS.md
+exit=0
+
+=== D14-3 ===
+PENDING: pull request and the four workflow conclusions on its head; not determinable before the PR exists.
+
+=== D14-2 ===
+$ STATE_PRESERVE_TIMESTAMP=1 python scripts/generate_state.py && git diff --stat docs/STATE.md | cat && echo "drift_lines=$(git diff docs/STATE.md | grep -c '^[+-][^+-]')" && git checkout docs/STATE.md
+ docs/STATE.md | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+drift_lines=0
+Updated 1 path from the index
+exit=0
+
+
+=== D14-3 (resolved) ===
+PR: https://github.com/m7mdehab/opportunityos/pull/67  head 3484cdd170b46bf79df9b3527dd3ab65c0c349b7
+Mandatory Governance & Test Suite | success | 33574529428
+State                             | success | 33574529498
+Guard                             | success | 33574529393
+Mirror                            | success | 33574530091

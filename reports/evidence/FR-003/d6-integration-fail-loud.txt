@@ -1,0 +1,21 @@
+=== D6-1 ===
+$ grep -n 'sqlite:///opportunityos.db' storage/test_postgres_integration.py
+exit=1
+
+=== D6-2 ===
+$ env -u OPPORTUNITYOS_DB_URL CI=true python -m unittest storage.test_postgres_integration 2>&1 | tail -5
+
+----------------------------------------------------------------------
+Ran 0 tests in 0.001s
+
+FAILED (errors=1)
+exit=0
+
+=== D6-3 ===
+$ OPPORTUNITYOS_DB_URL=$PGURL python -m unittest storage.test_postgres_integration -v 2>&1 | tail -4
+----------------------------------------------------------------------
+Ran 16 tests in 5.543s
+
+OK
+exit=0
+

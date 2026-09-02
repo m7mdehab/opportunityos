@@ -1,0 +1,24 @@
+=== D2-1 ===
+$ python scripts/generate_state.py && sed -n '/## Source Status Counts/,/## Next Prerequisites/p' docs/STATE.md
+## Source Status Counts
+
+- allowed_ok: 19
+- deliberately_not_fetched: 16
+- parse_empty: 2
+- robots_unreachable: 15
+
+## Next Prerequisites
+exit=0
+
+=== D2-2 ===
+$ grep -c "observed_status" scripts/generate_state.py
+0
+exit=1
+
+=== D2-3 ===
+$ python -m unittest scripts.test_generate_state -v 2>&1 | tail -3
+Ran 8 tests in 0.544s
+
+OK
+exit=0
+
