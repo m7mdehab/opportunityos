@@ -63,3 +63,18 @@ jobs:
       - name: Lint Web
         working-directory: web
         run: npm run lint
+      - name: Install Playwright Browsers
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: Run Playwright Smoke
+        working-directory: web
+        env:
+          OPPORTUNITYOS_DB_URL: "postgresql+psycopg2://opportunityos:testpassword123@localhost:5432/opportunityos_test"
+        run: npx playwright test
+      - name: Upload Playwright Report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: web/playwright-report/
+          retention-days: 7

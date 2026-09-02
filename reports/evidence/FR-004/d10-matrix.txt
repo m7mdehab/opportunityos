@@ -1,0 +1,37 @@
+### D10 — readiness matrix (Master re-run)
+
+$ python scripts/generate_readiness_matrix.py --check
+reports\FOUNDER_READINESS_MATRIX.md is up to date with reports\FOUNDER_READINESS_MATRIX.json.
+  exit=0
+
+--- D10-2: totals still sum to 143 ---
+  DONE                                       76
+  INTENTIONALLY_DEFERRED                     9
+  MISSING                                    11
+  PARTIAL                                    39
+  REQUIRES_LIVE_INTEGRATION_OR_CREDENTIALS   8
+  TOTAL                                      143
+
+--- D10-3: every row changed by this brief carries status_history ---
+    Before the flips landed this claim passed VACUOUSLY, because zero rows
+    had been flipped. The independent verifier caught that; it is only
+    meaningful now that there are eleven changed rows to check.
+  rows changed          : 11
+  without status_history: none
+    REQ-P0B-001    MISSING  -> PARTIAL
+    REQ-P0B-002    MISSING  -> PARTIAL
+    REQ-P0C-001    MISSING  -> DONE
+    REQ-RUN-004    MISSING  -> DONE
+    REQ-SEC-001    MISSING  -> PARTIAL
+    REQ-UIP-001    MISSING  -> DONE
+    REQ-UIP-002    MISSING  -> PARTIAL
+    REQ-UIP-003    MISSING  -> DONE
+    REQ-UIP-004    MISSING  -> DONE
+    REQ-UIP-007    MISSING  -> PARTIAL
+    REQ-UIP-008    MISSING  -> PARTIAL
+
+--- every path token cited across all 143 rows resolves to a real file ---
+    The previous brief shipped two rows citing opportunity/test_registry.py,
+    which does not exist. This sweep exists so that cannot recur.
+  path tokens checked: 347
+  non-existent       : none
