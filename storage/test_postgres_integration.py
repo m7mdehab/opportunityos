@@ -1248,5 +1248,157 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         self.assertEqual(refusals, [], "a read-allowed source must never record a refusal")
 
 
+    def test_case_v_evaluate_new_persists_match_evaluations(self):
+        """Case V: evaluate_new persists match_evaluations rows against real PostgreSQL.
+
+        Persists two fixture opportunities through the sanctioned
+        opportunity.persistence.persist_batch seam, then runs the
+        evaluate_new worker handler with an injected truth pack (a
+        pack_loader returning a canned LoadedPack -- private/ is never
+        touched). Asserts one match_evaluations row per opportunity with a
+        real qualification_decision, a fit_score on the 0-100 scale, and a
+        real evaluated_at timestamp.
+
+        Then changes the (injected) truth-pack hash and reruns evaluate_new:
+        asserts a second row appears per opportunity under the new hash,
+        while the first row's own stored fields (id, decision, fit_score,
+        dimension_scores_json, evaluated_at) are read back unchanged -- so
+        this actually distinguishes "inserted a second row" from "overwrote
+        the first row and left only one row behind under the wrong hash".
+        """
+        from matching.test_qualification import create_test_graph, create_test_opportunity
+        from opportunity.persistence import persist_batch
+        from opportunity.pipeline import IngestionBatch
+        from truth.pack import LoadedPack, PackValidationReport
+        from worker.handlers import make_evaluate_new_handler
+
+        opportunities = (
+            create_test_opportunity(opp_id="case-v-opp-1", title="Senior Backend Engineer"),
+            create_test_opportunity(opp_id="case-v-opp-2", title="Staff Platform Engineer"),
+        )
+        batch = IngestionBatch(
+            batch_id="batch-case-v",
+            run_id="run-case-v",
+            ingested_at="2026-09-02",
+            opportunities=opportunities,
+            clusters=(),
+            health_reports=(),
+            total_raw_ingested=len(opportunities),
+            total_unique_opportunities=len(opportunities),
+            exact_duplicates_removed=0,
+            cross_source_duplicates_clustered=0,
+            ambiguous_duplicates_count=0,
+            track_counts=(),
+            eligibility_counts=(),
+        )
+
+        session = self.SessionFactory()
+        try:
+            repository = StorageRepository(session)
+            persist_result = persist_batch(batch, repository)
+            self.assertEqual(persist_result.inserted_count, 2, "both fixture opportunities must be freshly inserted")
+        finally:
+            session.close()
+
+        truth_graph = create_test_graph()
+        report = PackValidationReport(valid=True, section_counts=(("evidence", 1),), findings=())
+
+        def _pack_loader_for(hash_value):
+            loaded = LoadedPack(graph=truth_graph, report=report, truth_pack_hash=hash_value)
+            return lambda path: loaded
+
+        handler_v1 = make_evaluate_new_handler(
+            session_factory=self.SessionFactory,
+            pack_loader=_pack_loader_for("truth-pack-hash-v1"),
+        )
+        handler_v1({})
+
+        verify_session = self.SessionFactory()
+        try:
+            rows_v1 = (
+                verify_session.query(MatchEvaluationRecord)
+                .filter_by(truth_pack_hash="truth-pack-hash-v1")
+                .order_by(MatchEvaluationRecord.opportunity_id.asc())
+                .all()
+            )
+            self.assertEqual(len(rows_v1), 2, "one match_evaluations row per opportunity under the first hash")
+            for row in rows_v1:
+                self.assertIn(row.qualification_decision, {"qualified", "ineligible", "uncertain"})
+                self.assertGreaterEqual(row.fit_score, 0.0)
+                self.assertLessEqual(row.fit_score, 100.0)
+                self.assertIsNotNone(row.evaluated_at)
+
+            first_row_snapshot = {
+                "id": rows_v1[0].id,
+                "opportunity_id": rows_v1[0].opportunity_id,
+                "qualification_decision": rows_v1[0].qualification_decision,
+                "fit_score": rows_v1[0].fit_score,
+                "dimension_scores_json": rows_v1[0].dimension_scores_json,
+                "evaluated_at": rows_v1[0].evaluated_at,
+            }
+
+            total_rows_after_v1 = verify_session.query(MatchEvaluationRecord).count()
+            self.assertEqual(total_rows_after_v1, 2, "no rows must exist yet under any other hash")
+        finally:
+            verify_session.close()
+
+        # Re-running evaluate_new under the SAME hash must not duplicate rows
+        # (idempotent upsert on (opportunity_id, truth_pack_hash)).
+        handler_v1({})
+        verify_session = self.SessionFactory()
+        try:
+            unchanged_count = (
+                verify_session.query(MatchEvaluationRecord)
+                .filter_by(truth_pack_hash="truth-pack-hash-v1")
+                .count()
+            )
+            self.assertEqual(unchanged_count, 2, "re-running evaluate_new under the same hash must not duplicate rows")
+        finally:
+            verify_session.close()
+
+        # Now the founder's truth pack changes (new hash): evaluate_new must
+        # add a second row per opportunity, and must leave the first hash's
+        # rows completely untouched.
+        handler_v2 = make_evaluate_new_handler(
+            session_factory=self.SessionFactory,
+            pack_loader=_pack_loader_for("truth-pack-hash-v2"),
+        )
+        handler_v2({})
+
+        verify_session = self.SessionFactory()
+        try:
+            rows_v2 = (
+                verify_session.query(MatchEvaluationRecord)
+                .filter_by(truth_pack_hash="truth-pack-hash-v2")
+                .all()
+            )
+            self.assertEqual(len(rows_v2), 2, "one new match_evaluations row per opportunity under the second hash")
+
+            total_rows = verify_session.query(MatchEvaluationRecord).count()
+            self.assertEqual(total_rows, 4, "the second hash must add rows, not replace the first hash's rows")
+
+            first_row_reloaded = (
+                verify_session.query(MatchEvaluationRecord)
+                .filter_by(id=first_row_snapshot["id"])
+                .first()
+            )
+            self.assertIsNotNone(first_row_reloaded, "the first hash's row must still exist by its original id")
+            self.assertEqual(first_row_reloaded.opportunity_id, first_row_snapshot["opportunity_id"])
+            self.assertEqual(first_row_reloaded.truth_pack_hash, "truth-pack-hash-v1")
+            self.assertEqual(first_row_reloaded.qualification_decision, first_row_snapshot["qualification_decision"])
+            self.assertEqual(first_row_reloaded.fit_score, first_row_snapshot["fit_score"])
+            self.assertEqual(first_row_reloaded.dimension_scores_json, first_row_snapshot["dimension_scores_json"])
+            self.assertEqual(first_row_reloaded.evaluated_at, first_row_snapshot["evaluated_at"])
+
+            rows_v1_after = (
+                verify_session.query(MatchEvaluationRecord)
+                .filter_by(truth_pack_hash="truth-pack-hash-v1")
+                .count()
+            )
+            self.assertEqual(rows_v1_after, 2, "the first hash's rows must still number exactly 2, untouched")
+        finally:
+            verify_session.close()
+
+
 if __name__ == "__main__":
     unittest.main()
