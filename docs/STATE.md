@@ -3,21 +3,21 @@
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
 Last shipped: BRIEF-FR-004 — 2026-09-02.
-Active work: none.
-Phase status: passed.
+Active work: BRIEF-FR-005.
+Phase status: in progress.
 Blocked: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha (strictly blocked until Founder Web Alpha is live and validated).
 Next: The measured number decides the shape of the next brief, and it does not exist yet — it is produced by the founder running §9, not by this brief.
 
 ## Repository
 
-- **Generated:** 2026-09-02T07:07:09Z
-- **State generated at commit:** `680d64d` — merge(revfix): close the re-verification's documentation and test defects
+- **Generated:** 2026-09-02T19:37:39Z
+- **State generated at commit:** `e77c135` — chore: ignore *.egg-info/
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
 
-- **Brief:** none
-- **Phase status:** passed
+- **Brief:** BRIEF-FR-005
+- **Phase status:** in progress
 - **Open acceptance items:** 0
 - None
 
