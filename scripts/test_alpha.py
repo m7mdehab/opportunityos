@@ -581,21 +581,150 @@ class TestPortOverrideCli(unittest.TestCase):
 
 class TestProcessLifecycleHelpers(unittest.TestCase):
     def test_pid_alive_then_kill_tree_stops_it(self):
-        proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
-        try:
-            self.assertTrue(alpha._pid_alive(proc.pid))
-            alpha._kill_pid_tree(proc.pid)
-            deadline = time.monotonic() + 10
-            while time.monotonic() < deadline and alpha._pid_alive(proc.pid):
-                time.sleep(0.2)
-            self.assertFalse(alpha._pid_alive(proc.pid))
-        finally:
-            if proc.poll() is None:
-                proc.kill()
-            proc.wait(timeout=5)
+        # Spawned via alpha._spawn -- not a bare subprocess.Popen -- because
+        # that is the only thing _kill_pid_tree is ever safe to call on: on
+        # POSIX it signals the process *group* (os.killpg), which is only
+        # correct because _spawn starts every child with
+        # start_new_session=True (its own new group, pgid == its own pid).
+        # A bare subprocess.Popen here would share *this test runner's own*
+        # process group, so os.killpg would signal the test runner itself.
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "standin.log"
+            proc = alpha._spawn(
+                [sys.executable, "-c", "import time; time.sleep(30)"],
+                Path(tempfile.gettempdir()),
+                os.environ.copy(),
+                log_path,
+            )
+            try:
+                self.assertTrue(alpha._pid_alive(proc.pid))
+                alpha._kill_pid_tree(proc.pid)
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline and alpha._pid_alive(proc.pid):
+                    time.sleep(0.2)
+                self.assertFalse(alpha._pid_alive(proc.pid))
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                proc.wait(timeout=5)
 
     def test_pid_alive_false_for_an_implausible_pid(self):
         self.assertFalse(alpha._pid_alive(999999999))
+
+    def test_kill_pid_tree_kills_the_whole_tree_not_just_the_tracked_pid(self):
+        """Regression coverage for the actual defect (not merely the
+        zombie-reporting symptom the CI assertion caught): on POSIX, a bare
+        ``os.kill(pid, SIGTERM)`` (the previous behaviour) only ever
+        signalled the one tracked pid, never anything *that* pid had itself
+        spawned -- exactly what npm -> Next -> Next's own dev-server child
+        looks like. This spawns via ``alpha._spawn`` (the same call
+        ``cmd_up`` itself uses) so the POSIX branch's
+        ``start_new_session=True`` is exercised precisely as in production,
+        then confirms ``_kill_pid_tree`` takes down a grandchild the
+        tracked pid spawned on its own, not merely the tracked pid --
+        fails against the pre-fix ``os.kill(pid, SIGTERM)``-only POSIX
+        implementation, which left the grandchild running.
+        """
+        grandchild_pid = None
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "tree.log"
+            child_script = (
+                "import subprocess, sys, time\n"
+                "gc = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+                "print(gc.pid, flush=True)\n"
+                "time.sleep(60)\n"
+            )
+            proc = alpha._spawn(
+                [sys.executable, "-c", child_script],
+                Path(tempfile.gettempdir()),
+                os.environ.copy(),
+                log_path,
+            )
+            try:
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline and grandchild_pid is None:
+                    if log_path.exists():
+                        content = log_path.read_text(encoding="utf-8").strip()
+                        if content:
+                            grandchild_pid = int(content.splitlines()[0])
+                    time.sleep(0.2)
+                self.assertIsNotNone(
+                    grandchild_pid, "the stand-in child never reported its own grandchild's pid"
+                )
+
+                self.assertTrue(alpha._pid_alive(proc.pid))
+                self.assertTrue(alpha._pid_alive(grandchild_pid))
+
+                alpha._kill_pid_tree(proc.pid)
+
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline and (
+                    alpha._pid_alive(proc.pid) or alpha._pid_alive(grandchild_pid)
+                ):
+                    time.sleep(0.2)
+
+                self.assertFalse(alpha._pid_alive(proc.pid), "the tracked pid should be gone")
+                self.assertFalse(
+                    alpha._pid_alive(grandchild_pid),
+                    "the grandchild should be gone too -- this is the actual regression",
+                )
+            finally:
+                for leftover_pid in (proc.pid, grandchild_pid):
+                    if leftover_pid is None or not alpha._pid_alive(leftover_pid):
+                        continue
+                    if os.name == "nt":
+                        subprocess.run(
+                            ["taskkill", "/PID", str(leftover_pid), "/F"], capture_output=True
+                        )
+                    else:
+                        try:
+                            os.kill(leftover_pid, 9)
+                        except OSError:
+                            pass
+                # _kill_pid_tree operates on raw pids (os.killpg/taskkill),
+                # never on this Popen object itself, so its own returncode
+                # is never updated as a side effect -- reap it explicitly
+                # here so the Popen object is not garbage-collected with
+                # returncode still None (a ResourceWarning, not a failure,
+                # but avoidable).
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+
+    @unittest.skipIf(os.name == "nt", "zombie process state is POSIX-specific; Windows has no equivalent")
+    def test_is_zombie_detects_an_unreaped_exited_child(self):
+        proc = subprocess.Popen([sys.executable, "-c", "pass"])  # exits almost immediately
+        try:
+            deadline = time.monotonic() + 5
+            became_zombie = False
+            while time.monotonic() < deadline:
+                if alpha._is_zombie(proc.pid):
+                    became_zombie = True
+                    break
+                time.sleep(0.1)
+            self.assertTrue(became_zombie, "the stand-in process never became a zombie in time")
+        finally:
+            proc.wait(timeout=5)  # actually reap it, so this test leaves nothing behind
+
+    @unittest.skipIf(os.name == "nt", "zombie process state is POSIX-specific; Windows has no equivalent")
+    def test_pid_alive_treats_an_unreaped_zombie_as_not_alive(self):
+        """Problem 2 directly: ``os.kill(pid, 0)`` succeeds for a zombie
+        (exited, not yet reaped) exactly as it does for a live process --
+        without this fix, ``_pid_alive`` would report a process this module
+        itself just killed (see ``_kill_pid_tree``) as still alive, which
+        is exactly what the reported CI failure on Linux caught. Fails
+        against the pre-fix ``_pid_alive``, which was a bare
+        ``os.kill(pid, 0)`` with no reaping or zombie check at all.
+        """
+        proc = subprocess.Popen([sys.executable, "-c", "pass"])
+        try:
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline and not alpha._is_zombie(proc.pid):
+                time.sleep(0.1)
+            self.assertFalse(alpha._pid_alive(proc.pid))
+        finally:
+            proc.wait(timeout=5)
 
 
 class TestStopProcessesPortVerification(unittest.TestCase):

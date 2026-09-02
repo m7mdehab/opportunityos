@@ -413,6 +413,28 @@ def _wait_process_alive(proc: "subprocess.Popen", grace_seconds: float, descript
         time.sleep(0.3)
 
 
+def _is_zombie(pid: int) -> bool:
+    """Linux-only: True if ``pid`` is a zombie (exited, not yet reaped).
+
+    ``os.kill(pid, 0)`` succeeds for a zombie exactly as it does for a live
+    process -- its process-table entry still exists even though it holds no
+    port and does no work -- so without this, a pid this module just killed
+    (see ``_kill_pid_tree``) would be reported alive by ``_pid_alive``
+    indefinitely, until *something* reaps it. Not portable beyond Linux (no
+    ``/proc`` on macOS), which matches this project's actual platforms
+    (Windows via ``_pid_alive``'s own separate branch, Linux in CI).
+    """
+    try:
+        raw = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False  # /proc unavailable, or pid vanished between checks -- not "definitely a zombie"
+    # Field 2 (comm) is parenthesised and may itself contain ")" (e.g. a
+    # command named "a)b") -- split on the *last* ")" to get past it
+    # safely, exactly as `man proc` recommends for parsing this format.
+    after_comm = raw.rsplit(")", 1)[-1].split()
+    return bool(after_comm) and after_comm[0] == "Z"
+
+
 def _pid_alive(pid: int) -> bool:
     if os.name == "nt":
         result = subprocess.run(
@@ -421,9 +443,34 @@ def _pid_alive(pid: int) -> bool:
             text=True,
         )
         return str(pid) in result.stdout
+
+    # Reap it first, if this process happens to be pid's parent: without
+    # this, a child this process itself spawned (via _spawn) and then
+    # killed (via _kill_pid_tree) would sit as a zombie -- os.kill(pid, 0)
+    # below succeeds for a zombie too -- and be reported alive forever,
+    # since nothing else will ever reap it. WNOHANG never blocks; ECHILD
+    # means this process is not pid's parent (e.g. `status`/`down` run in a
+    # fresh shell well after the `up` that originally spawned pid already
+    # exited) and is the expected, common case, not an error.
+    try:
+        reaped_pid, _ = os.waitpid(pid, os.WNOHANG)
+        if reaped_pid == pid:
+            return False
+    except ChildProcessError:
+        pass
+    except OSError:
+        pass
+
     try:
         os.kill(pid, 0)
     except OSError:
+        return False
+
+    # Reaped above if this process was pid's parent; otherwise (a fresh
+    # `status`/`down` process, not pid's parent) reaping is impossible, so
+    # a zombie left behind by pid's *real* parent must be detected instead
+    # of trusted as "alive" -- see _is_zombie's own docstring.
+    if _is_zombie(pid):
         return False
     return True
 
@@ -431,30 +478,90 @@ def _pid_alive(pid: int) -> bool:
 def _kill_pid_tree(pid: int) -> None:
     """Kill ``pid`` and its children -- npm/uvicorn spawn child processes that
     would otherwise be left holding ports 8000/3000 after ``down``.
+
+    On POSIX, ``_spawn`` starts every tracked child with ``start_new_session
+    =True`` (``setsid``), making it the leader of its own new process group
+    (pgid == its own pid). That is what makes killing the *group* here --
+    ``os.killpg``, not a plain ``os.kill(pid, SIGTERM)`` on the tracked pid
+    alone -- actually reach npm's own children: the Next process npm execs
+    or forks, and Next's own dev-server child underneath that. A bare
+    ``os.kill`` on only the tracked pid (the previous behaviour) never
+    signalled any of them, so they were left holding ports 3000/8000 after
+    `down` -- the exact same orphan-survivor defect already fixed for
+    Windows via ``taskkill /T /F``, silently still present on POSIX behind
+    a docstring that claimed otherwise.
+
+    Escalates from SIGTERM to SIGKILL if the group has not exited within a
+    short bounded wait: signalling a group does not itself block until
+    every member has actually exited, and ``_stop_processes``'s own
+    subsequent port-freed check (``_wait_port_freed``) assumes this
+    function does not return before giving the signal a real chance to
+    take effect.
+
+    Only ever called on a pid this module itself spawned via ``_spawn``
+    (the ``start_new_session=True`` contract above depends on that): a
+    pid that shares its caller's own process group -- any ordinary
+    ``subprocess.Popen`` without that flag -- must never be passed here,
+    since ``os.killpg`` would then signal the *caller's* group too.
     """
     if os.name == "nt":
         subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, text=True)
         return
+
     import signal as _signal
 
     try:
-        os.kill(pid, _signal.SIGTERM)
-    except OSError:
-        pass
+        pgid = os.getpgid(pid)
+    except ProcessLookupError:
+        return  # already gone
+
+    def _signal_group(sig: int) -> None:
+        try:
+            os.killpg(pgid, sig)
+        except ProcessLookupError:
+            pass
+
+    def _wait_for_exit(timeout_seconds: float) -> bool:
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            try:
+                reaped_pid, _ = os.waitpid(pid, os.WNOHANG)
+                if reaped_pid == pid:
+                    return True
+            except ChildProcessError:
+                pass  # not this process' child -- fall back to a direct liveness check
+            if not _pid_alive(pid):
+                return True
+            time.sleep(0.1)
+        return not _pid_alive(pid)
+
+    _signal_group(_signal.SIGTERM)
+    if _wait_for_exit(5.0):
+        return
+
+    _signal_group(_signal.SIGKILL)
+    _wait_for_exit(3.0)
 
 
 def _spawn(cmd: list[str], cwd: Path, env: dict, log_path: Path) -> "subprocess.Popen":
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_file = open(log_path, "ab")
     try:
-        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+        popen_kwargs: dict = {}
+        if os.name == "nt":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            # Leader of its own new process group (pgid == its own pid) --
+            # required by _kill_pid_tree's os.killpg-based teardown above,
+            # so npm's own children (not just npm itself) are reachable.
+            popen_kwargs["start_new_session"] = True
         proc = subprocess.Popen(
             cmd,
             cwd=str(cwd),
             env=env,
             stdout=log_file,
             stderr=subprocess.STDOUT,
-            creationflags=creationflags,
+            **popen_kwargs,
         )
     except OSError as exc:
         raise AlphaError(f"Failed to start `{' '.join(cmd)}` in {cwd}: {exc}") from exc
