@@ -27,7 +27,6 @@ import {
 } from "@/lib/mock/fixtures"
 import type { MockScenario } from "@/lib/mock/scenario"
 
-const MOCK_PASSWORD = "founder-mock-pass"
 const HIGH_FIT_THRESHOLD = 70
 
 function daysAgoUtc(n: number): string {
@@ -165,11 +164,16 @@ export class MockStore {
 
   // ---- auth ----
 
+  // A mock has no business enforcing a specific credential: the real
+  // password check is api/routes_auth.py's job (covered by
+  // api/test_api.py). This accepts any non-empty password and rejects only
+  // the empty string, so the mock can still exercise the failed-login
+  // (401/429) shape without hard-coding a credential-shaped literal.
   login(password: string): { ok: true } | { ok: false; status: 401 | 429 } {
     if (this.failedLoginAttempts >= 5) {
       return { ok: false, status: 429 }
     }
-    if (password === MOCK_PASSWORD) {
+    if (password.length > 0) {
       this.authenticated = true
       this.failedLoginAttempts = 0
       return { ok: true }
