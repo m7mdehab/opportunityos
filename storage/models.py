@@ -271,4 +271,5 @@ class FounderTriageStateRecord(Base):
     opportunity_id = Column(String(64), ForeignKey("opportunities.id", ondelete="CASCADE"), primary_key=True)
     state = Column(String(32), nullable=False, index=True)
     snoozed_until = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, nullable=False)

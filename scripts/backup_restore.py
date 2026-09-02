@@ -33,6 +33,10 @@ from storage.models import (
     ReconciliationRecordModel,
     WorkerJobRecord,
     FounderFeedbackRecord,
+    MatchEvaluationRecord,
+    SourcePollRunRecord,
+    FounderOpportunityViewRecord,
+    FounderTriageStateRecord,
 )
 
 # Repository root, derived from this file's location (not the process CWD).
@@ -77,6 +81,10 @@ DUMP_SECTION_TABLE_MAP = {
     "reconciliation_records": "reconciliation_records",
     "worker_jobs": "worker_jobs",
     "founder_feedback": "founder_feedback",
+    "match_evaluations": "match_evaluations",
+    "source_poll_runs": "source_poll_runs",
+    "founder_opportunity_views": "founder_opportunity_views",
+    "founder_triage_states": "founder_triage_states",
 }
 
 
@@ -182,6 +190,10 @@ def dump_database(db_url: str, output_file: str) -> int:
         "reconciliation_records": [],
         "worker_jobs": [],
         "founder_feedback": [],
+        "match_evaluations": [],
+        "source_poll_runs": [],
+        "founder_opportunity_views": [],
+        "founder_triage_states": [],
     }
 
     # 1. Opportunities & Field Provenances
@@ -308,6 +320,45 @@ def dump_database(db_url: str, output_file: str) -> int:
             "id": fb.id, "opportunity_id": fb.opportunity_id, "feedback_label": fb.feedback_label,
             "structured_reason": fb.structured_reason, "notes": fb.notes, "dedup_hash": fb.dedup_hash,
             "created_at": fb.created_at.isoformat() if fb.created_at else None,
+        })
+
+    # 11. Match Evaluations (FK -> opportunities, already dumped in section 1)
+    for me in session.query(MatchEvaluationRecord).all():
+        data["match_evaluations"].append({
+            "id": me.id, "opportunity_id": me.opportunity_id, "truth_pack_hash": me.truth_pack_hash,
+            "qualification_decision": me.qualification_decision, "fit_score": me.fit_score,
+            "dimension_scores_json": me.dimension_scores_json, "reasons_json": me.reasons_json,
+            "policy_version": me.policy_version,
+            "evaluated_at": me.evaluated_at.isoformat() if me.evaluated_at else None,
+            "created_at": me.created_at.isoformat() if me.created_at else None,
+        })
+
+    # 12. Source Poll Runs (no FK dependency)
+    for spr in session.query(SourcePollRunRecord).all():
+        data["source_poll_runs"].append({
+            "id": spr.id, "source_id": spr.source_id, "job_id": spr.job_id,
+            "started_at": spr.started_at.isoformat() if spr.started_at else None,
+            "finished_at": spr.finished_at.isoformat() if spr.finished_at else None,
+            "status": spr.status, "refusal_reason": spr.refusal_reason,
+            "raw_ingested": spr.raw_ingested, "unique_opportunities": spr.unique_opportunities,
+            "inserted": spr.inserted, "unchanged": spr.unchanged, "updated": spr.updated,
+            "error_message": spr.error_message,
+        })
+
+    # 13. Founder Opportunity Views (FK -> opportunities, already dumped in section 1)
+    for view in session.query(FounderOpportunityViewRecord).all():
+        data["founder_opportunity_views"].append({
+            "id": view.id, "opportunity_id": view.opportunity_id,
+            "viewed_at": view.viewed_at.isoformat() if view.viewed_at else None,
+        })
+
+    # 14. Founder Triage States (FK -> opportunities, already dumped in section 1)
+    for triage in session.query(FounderTriageStateRecord).all():
+        data["founder_triage_states"].append({
+            "opportunity_id": triage.opportunity_id, "state": triage.state,
+            "snoozed_until": triage.snoozed_until.isoformat() if triage.snoozed_until else None,
+            "created_at": triage.created_at.isoformat() if triage.created_at else None,
+            "updated_at": triage.updated_at.isoformat() if triage.updated_at else None,
         })
 
     # Row-count completeness check, run in the same session/transaction the
@@ -599,6 +650,45 @@ def restore_database(dump_file: str, db_url: str) -> None:
             fb_dict["created_at"] = datetime.fromisoformat(fb_dict["created_at"])
         fb = FounderFeedbackRecord(**fb_dict)
         session.merge(fb)
+
+    # 11. Match Evaluations -- FK -> opportunities, so this must come after
+    # section 1 above (it does).
+    for me_dict in data.get("match_evaluations", []):
+        if me_dict.get("evaluated_at"):
+            me_dict["evaluated_at"] = datetime.fromisoformat(me_dict["evaluated_at"])
+        if me_dict.get("created_at"):
+            me_dict["created_at"] = datetime.fromisoformat(me_dict["created_at"])
+        me = MatchEvaluationRecord(**me_dict)
+        session.merge(me)
+
+    # 12. Source Poll Runs -- no FK dependency.
+    for spr_dict in data.get("source_poll_runs", []):
+        if spr_dict.get("started_at"):
+            spr_dict["started_at"] = datetime.fromisoformat(spr_dict["started_at"])
+        if spr_dict.get("finished_at"):
+            spr_dict["finished_at"] = datetime.fromisoformat(spr_dict["finished_at"])
+        spr = SourcePollRunRecord(**spr_dict)
+        session.merge(spr)
+
+    # 13. Founder Opportunity Views -- FK -> opportunities, so this must come
+    # after section 1 above (it does).
+    for view_dict in data.get("founder_opportunity_views", []):
+        if view_dict.get("viewed_at"):
+            view_dict["viewed_at"] = datetime.fromisoformat(view_dict["viewed_at"])
+        view = FounderOpportunityViewRecord(**view_dict)
+        session.merge(view)
+
+    # 14. Founder Triage States -- FK -> opportunities, so this must come
+    # after section 1 above (it does).
+    for triage_dict in data.get("founder_triage_states", []):
+        if triage_dict.get("snoozed_until"):
+            triage_dict["snoozed_until"] = datetime.fromisoformat(triage_dict["snoozed_until"])
+        if triage_dict.get("created_at"):
+            triage_dict["created_at"] = datetime.fromisoformat(triage_dict["created_at"])
+        if triage_dict.get("updated_at"):
+            triage_dict["updated_at"] = datetime.fromisoformat(triage_dict["updated_at"])
+        triage = FounderTriageStateRecord(**triage_dict)
+        session.merge(triage)
 
     session.commit()
     session.close()

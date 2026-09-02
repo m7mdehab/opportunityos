@@ -73,6 +73,7 @@ def upgrade() -> None:
         sa.Column('opportunity_id', sa.String(length=64), nullable=False),
         sa.Column('state', sa.String(length=32), nullable=False),
         sa.Column('snoozed_until', sa.DateTime(), nullable=True),
+        sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.Column('updated_at', sa.DateTime(), nullable=False),
         sa.ForeignKeyConstraint(['opportunity_id'], ['opportunities.id'], ondelete='CASCADE'),
         sa.PrimaryKeyConstraint('opportunity_id')
