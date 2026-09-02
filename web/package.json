@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint . --max-warnings=0"
+    "lint": "eslint . --max-warnings=0",
+    "test:e2e": "playwright test",
+    "axe": "playwright test tests/e2e/axe.spec.ts",
+    "evidence:screenshots": "playwright test tests/e2e/screenshots.spec.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

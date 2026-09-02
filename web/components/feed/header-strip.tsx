@@ -60,7 +60,7 @@ export function HeaderStrip({
               <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
                 {label}
               </dt>
-              <dd className="text-base font-semibold tabular-nums">
+              <dd data-testid={`stat-${String(key)}`} className="text-base font-semibold tabular-nums">
                 {today ? today[key] : "—"}
               </dd>
             </div>
