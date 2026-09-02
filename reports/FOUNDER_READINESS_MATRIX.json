@@ -1971,16 +1971,24 @@
     "text": "Immutable Versioned CV Compiler: Compiles tailored CV artifact tied to Opportunity and Evidence IDs.",
     "criticality": "P0",
     "phase": "Phase 1",
-    "status": "DONE",
-    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "status": "PARTIAL",
+    "evidence_strength": "PARTIAL_IMPLEMENTATION",
     "implementation_evidence": "matching/compiler_employment.py",
     "tests": "matching/test_compiler.py, matching/test_adversarial.py",
     "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "ADR-0009",
     "live_dependency": "None",
-    "gap_explanation": "None. Compiles versioned CVs from TruthGraph assertions.",
+    "gap_explanation": "PARTIAL per REPORT-FR-004 Erratum 1.2: matching/test_compiler.py counts sections and never runs truth/validator.py over the generated claims, so the compiler-plus-validator path was never tested end to end. Against the shipped founder template the validator rejects the generated claims and the artifact route returns 409. Returns to DONE only on a compiler-by-validator end-to-end test over the shipped template and a second realistic pack (BRIEF-FR-005 D1).",
     "bucket": "NONE",
-    "status_history": []
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-004",
+        "from": "DONE",
+        "to": "PARTIAL",
+        "date": "2026-09-02",
+        "reason": "Erratum 1.2 -- compiler never tested against the validator; artifact routes 409 on the shipped template."
+      }
+    ]
   },
   {
     "req_id": "REQ-ART-002",
@@ -1988,16 +1996,24 @@
     "text": "Proposal & Capability Statement Compiler: Compiles tailored proposal draft, work plan, and compliance checklist.",
     "criticality": "P0",
     "phase": "Phase 1",
-    "status": "DONE",
-    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "status": "PARTIAL",
+    "evidence_strength": "PARTIAL_IMPLEMENTATION",
     "implementation_evidence": "matching/compiler_independent.py",
     "tests": "matching/test_compiler.py",
     "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "ADR-0009",
     "live_dependency": "None",
-    "gap_explanation": "None. Compiles versioned proposals and compliance matrices from Capability Pack.",
+    "gap_explanation": "PARTIAL per REPORT-FR-004 Erratum 1.2: matching/test_compiler.py counts sections and never runs truth/validator.py over the generated claims, so the compiler-plus-validator path was never tested end to end. Against the shipped founder template the validator rejects the generated claims and the artifact route returns 409. Returns to DONE only on a compiler-by-validator end-to-end test over the shipped template and a second realistic pack (BRIEF-FR-005 D1).",
     "bucket": "NONE",
-    "status_history": []
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-004",
+        "from": "DONE",
+        "to": "PARTIAL",
+        "date": "2026-09-02",
+        "reason": "Erratum 1.2 -- compiler never tested against the validator; artifact routes 409 on the shipped template."
+      }
+    ]
   },
   {
     "req_id": "REQ-ART-003",
@@ -2005,16 +2021,24 @@
     "text": "100% Material Claim Provenance: Validator proves every generated claim maps to active TruthGraph assertions.",
     "criticality": "P0",
     "phase": "Phase 0",
-    "status": "DONE",
-    "evidence_strength": "TESTED_IMPLEMENTATION",
+    "status": "PARTIAL",
+    "evidence_strength": "PARTIAL_IMPLEMENTATION",
     "implementation_evidence": "matching/validator.py:ArtifactClaimValidator",
     "tests": "matching/test_adversarial.py",
     "ci_evidence": "Mandatory Governance & Test Suite",
     "later_authority": "ADR-0009",
     "live_dependency": "None",
-    "gap_explanation": "None. Fails closed on assertion laundering, planned credentials, or missing evidence.",
+    "gap_explanation": "PARTIAL per REPORT-FR-004 Erratum 1.2: matching/test_compiler.py counts sections and never runs truth/validator.py over the generated claims, so the compiler-plus-validator path was never tested end to end. Against the shipped founder template the validator rejects the generated claims and the artifact route returns 409. Returns to DONE only on a compiler-by-validator end-to-end test over the shipped template and a second realistic pack (BRIEF-FR-005 D1).",
     "bucket": "NONE",
-    "status_history": []
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-004",
+        "from": "DONE",
+        "to": "PARTIAL",
+        "date": "2026-09-02",
+        "reason": "Erratum 1.2 -- compiler never tested against the validator; artifact routes 409 on the shipped template."
+      }
+    ]
   },
   {
     "req_id": "REQ-ART-004",
