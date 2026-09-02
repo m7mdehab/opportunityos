@@ -1,0 +1,46 @@
+### A-6 — scope of the diff against the starting main (8423fcb)
+
+$ git diff --name-only 8423fcb..HEAD | sed 's|/.*||' | sort | uniq -c
+      1 .github
+      9 api
+      1 briefs
+      3 docs
+      4 matching
+      2 opportunity
+      1 pyproject.toml
+     19 reports
+      5 scripts
+      3 storage
+      2 truth
+     55 web
+      7 worker
+
+Top-level files outside a deliverable directory — the brief allows exactly
+pyproject.toml, .github/workflows/test.yml and AGENTS.md:
+  .github/workflows/test.yml
+  pyproject.toml
+  (AGENTS.md was not modified.)
+
+--- One disposition, raised by the independent verifier ---
+
+Two files under matching/ are not named by any deliverable in section 2:
+
+  matching/compiler_employment.py
+  matching/test_compiler.py
+
+The change is one word: line 187 read `m.semantic_context`, and MetricAssertion
+has no such field. Verified directly — its fields are ['id','subject_id',
+'numeric_value','unit','context','modality','verification_status','evidence_ids']
+and hasattr(m,'semantic_context') is False — so ANY truth graph containing a metric
+raised AttributeError on compile. A founder's real pack is very likely to contain a
+quantified achievement, which is exactly what belongs on a CV, so D6's named
+'Download tailored CV' route would have returned 500 for the person this brief is
+built for.
+
+The Master ruled it into D6's scope on the ground that the deliverable whose named
+route crashes owns the crash, and required a regression test with a metric-bearing,
+evidence-supported graph. It is recorded here as a deliberate scope widening rather
+than reported as a clean A-6 pass.
+
+matching/evaluate_persist.py and matching/test_evaluate_persist.py are named by D4
+and are in scope.
