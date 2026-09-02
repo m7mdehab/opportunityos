@@ -5,11 +5,16 @@ the next: PostgreSQL (an already-running local server if one is listening on
 127.0.0.1:5432, else the portable cluster FR-003 established under
 ``%LOCALAPPDATA%\\opos-pg\\``), ``alembic upgrade head``, the worker with
 ``--schedule`` (see ``worker.scheduler.PollScheduler``), the API on
-``:8000``, and the web app on ``:3000``, then opens
-``http://localhost:3000`` in the default browser. ``down`` stops everything
-this script started, cleanly, and never stops a PostgreSQL server it did not
-start. ``status`` reports each process's up/down state plus the last poll
-per source (from ``source_poll_runs``). ``logs`` tails what it started.
+``:8000``, and the web app on ``:3000`` (pinned with ``next dev -- -p 3000``
+and verified against the child's own ready-log line -- see
+``_wait_web_ready`` -- rather than trusting that *something* answers on
+3000, which a stray unrelated process could satisfy just as well as our own
+web server), then opens ``http://localhost:3000`` in the default browser.
+``down`` stops everything this script started, cleanly, and never stops a
+PostgreSQL server it did not start. ``status`` reports each process's
+up/down state (including the port each of api/web actually bound) plus the
+last poll per source (from ``source_poll_runs``). ``logs`` tails what it
+started.
 
 Secrets (``OPPORTUNITYOS_FOUNDER_PASSWORD``, ``OPPORTUNITYOS_SESSION_SECRET``,
 ``OPPORTUNITYOS_DB_URL``) are read from ``private/alpha.env`` (never
@@ -32,6 +37,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -124,6 +130,65 @@ def _wait_for_port(host: str, port: int, timeout_seconds: float, description: st
         time.sleep(0.5)
     raise AlphaError(
         f"Timed out after {timeout_seconds:.0f}s waiting for {description} to listen on {host}:{port}."
+    )
+
+
+#: Matches Next dev's own ready line, e.g. "- Local:         http://localhost:3001"
+#: (see node_modules/next/dist/server/lib/app-info-log.js: `_log.bootstrap('- Local:         ${appUrl}')`).
+_NEXT_LOCAL_URL_RE = re.compile(r"-\s*Local:\s*https?://[^:/\s]+:(\d+)")
+
+
+def _wait_web_ready(proc: "subprocess.Popen", log_path: Path, expected_port: int, timeout_seconds: float) -> None:
+    """Wait for the web dev server to report ready, then verify it actually
+    bound ``expected_port`` -- not just that *something* answers there.
+
+    Next's dev server, when its requested port is free to auto-retry (i.e.
+    no explicit ``-p`` was passed, or a race let it start before this
+    module's own preflight check), silently falls back to the next free
+    port and only warns about it in its own stdout -- it does not fail the
+    process. That previously let ``alpha.py`` report and open
+    "http://localhost:3000" while the web tier was actually listening on
+    3001 and an unrelated process answered on 3000 instead: the health
+    check only asked "does *something* answer on 3000?", which a stray,
+    unrelated process satisfied. ``cmd_up`` pins the port with
+    ``next dev -- -p <port>`` so Next itself refuses to silently fall back
+    (see next/dist/cli/next-dev.js: ``allowRetry = portSource === 'default'``,
+    which is false once ``-p`` is explicit) and instead exits non-zero on
+    EADDRINUSE -- caught below via ``proc.poll()``. This function is the
+    second, independent check: it parses the child's own "- Local:
+    http://host:PORT" ready line out of its log and compares that port to
+    ``expected_port``, so a mismatch is caught even if the pin above is
+    ever bypassed (e.g. a future Next version, or a differently-invoked
+    dev server) rather than trusting an external TCP probe alone.
+    """
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            raise AlphaError(
+                f"web (npm run dev) exited immediately (exit code {proc.returncode}) while starting on "
+                f"port {expected_port} -- port {expected_port} is likely already in use by another "
+                f"process. Run `python scripts/alpha.py down` if a previous alpha session left it "
+                f"running, or free port {expected_port} yourself, then retry `up`. See {log_path} for "
+                "details."
+            )
+        if log_path.exists():
+            text = log_path.read_text(encoding="utf-8", errors="replace")
+            match = _NEXT_LOCAL_URL_RE.search(text)
+            if match:
+                actual_port = int(match.group(1))
+                if actual_port != expected_port:
+                    raise AlphaError(
+                        f"web dev server bound port {actual_port} instead of the required "
+                        f"{expected_port} (see {log_path}) -- another process is already holding "
+                        f"port {expected_port}. Run `python scripts/alpha.py down` if a previous alpha "
+                        f"session left it running, or free port {expected_port} yourself, then retry "
+                        "`up`."
+                    )
+                return
+        time.sleep(0.5)
+    raise AlphaError(
+        f"Timed out after {timeout_seconds:.0f}s waiting for the web dev server to report it is ready "
+        f"on port {expected_port}. See {log_path}."
     )
 
 
@@ -382,7 +447,7 @@ def cmd_up(env_file: Path, run_dir: Path) -> int:
             env,
             api_log,
         )
-        processes["api"] = {"pid": api_proc.pid, "log": str(api_log)}
+        processes["api"] = {"pid": api_proc.pid, "log": str(api_log), "port": API_PORT}
         _wait_process_alive(api_proc, 2.0, "API server", api_log)
         _wait_for_port(API_HOST, API_PORT, 30.0, "the API server")
         print(f"API: listening on {API_HOST}:{API_PORT} (pid {api_proc.pid}), logging to {api_log}.")
@@ -393,6 +458,16 @@ def cmd_up(env_file: Path, run_dir: Path) -> int:
                 "re-run `python scripts/alpha.py up`."
             )
 
+        # Fail loudly, before ever spawning npm, if port 3000 is already taken
+        # -- a clear, immediate message beats waiting on Next's own startup
+        # (or _wait_web_ready's log-parsing check below) to surface it.
+        if _port_open(WEB_HOST, WEB_PORT, timeout=1.0):
+            raise AlphaError(
+                f"Port {WEB_PORT} is already in use by another process, so the web dev server cannot "
+                f"bind it. Run `python scripts/alpha.py down` if a previous alpha session left it "
+                f"running, or free port {WEB_PORT} yourself, then retry `up`."
+            )
+
         # alpha.py must run the web app against the real API, never the MSW
         # mock -- drop any inherited NEXT_PUBLIC_USE_MOCK_API=1 rather than
         # trust the founder's ambient shell not to have it set from other work.
@@ -400,10 +475,14 @@ def cmd_up(env_file: Path, run_dir: Path) -> int:
         web_env.pop("NEXT_PUBLIC_USE_MOCK_API", None)
         web_log = run_dir / "logs" / "web.log"
         npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
-        web_proc = _spawn([npm_cmd, "run", "dev"], WEB_DIR, web_env, web_log)
-        processes["web"] = {"pid": web_proc.pid, "log": str(web_log)}
-        _wait_process_alive(web_proc, 2.0, "web (npm run dev)", web_log)
-        _wait_for_port(WEB_HOST, WEB_PORT, 60.0, "the web dev server")
+        # `-- -p <port>` pins the port explicitly: Next's dev server only
+        # silently falls back to another port when the port came from its own
+        # default (see _wait_web_ready's docstring) -- an explicit -p instead
+        # makes it exit non-zero on EADDRINUSE, which _wait_web_ready treats
+        # as a loud, immediate failure rather than a silent port switch.
+        web_proc = _spawn([npm_cmd, "run", "dev", "--", "-p", str(WEB_PORT)], WEB_DIR, web_env, web_log)
+        processes["web"] = {"pid": web_proc.pid, "log": str(web_log), "port": WEB_PORT}
+        _wait_web_ready(web_proc, web_log, WEB_PORT, 60.0)
         print(f"Web: listening on {WEB_HOST}:{WEB_PORT} (pid {web_proc.pid}), logging to {web_log}.")
 
         state = {
@@ -469,7 +548,9 @@ def cmd_status(env_file: Path, run_dir: Path) -> int:
     for label in _PROCESS_LABELS:
         info = processes.get(label)
         if info and _pid_alive(info["pid"]):
-            print(f"  {label}: up (pid {info['pid']})")
+            port = info.get("port")
+            port_suffix = f", port {port}" if port else ""
+            print(f"  {label}: up (pid {info['pid']}{port_suffix})")
         else:
             print(f"  {label}: down")
 

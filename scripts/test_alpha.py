@@ -114,6 +114,100 @@ class TestPortHelpers(unittest.TestCase):
         self.assertIn(str(port), str(ctx.exception))
 
 
+class TestWaitWebReady(unittest.TestCase):
+    """Regression coverage for the "reported port != actually bound port" defect.
+
+    A real ``python`` subprocess stands in for the web child here -- never
+    the real ``npm``/``next`` (per this module's own "do not start the real
+    web ... in unit tests" instruction) -- because the behaviour under test
+    is entirely about parsing the child's log and comparing the port found
+    there to the port we asked for; it does not depend on Next specifically.
+
+    Before ``_wait_web_ready`` existed, ``cmd_up`` only checked "does
+    *something* answer on WEB_PORT" (``_wait_for_port``), which a stray,
+    unrelated process already listening on that port would satisfy just as
+    well as the real web child -- exactly the failure this class pins down.
+    """
+
+    def _spawn_long_lived(self) -> subprocess.Popen:
+        return subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+
+    def _spawn_immediately_exiting(self, exit_code: int = 1) -> subprocess.Popen:
+        proc = subprocess.Popen([sys.executable, "-c", f"import sys; sys.exit({exit_code})"])
+        proc.wait(timeout=5)
+        return proc
+
+    def test_raises_when_the_child_bound_a_different_port_than_requested(self):
+        """The defect this project actually hit: Next fell back to 3001 while
+        alpha.py had told the founder 3000 was ready. A test that would fail
+        against the old ``_wait_for_port``-only behaviour (which only checks
+        that *a* listener exists on the expected port, not that our own
+        child is the one that bound it).
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "web.log"
+            log_path.write_text(
+                "  ▲ Next.js 16.3.4\n"
+                "  - Local:         http://localhost:3001\n"
+                "  - Network:       http://192.168.1.5:3001\n",
+                encoding="utf-8",
+            )
+            proc = self._spawn_long_lived()
+            try:
+                with self.assertRaises(alpha.AlphaError) as ctx:
+                    alpha._wait_web_ready(proc, log_path, expected_port=3000, timeout_seconds=5)
+                message = str(ctx.exception)
+                self.assertIn("3001", message)
+                self.assertIn("3000", message)
+                self.assertIn("bound", message)
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                proc.wait(timeout=5)
+
+    def test_returns_cleanly_when_the_child_bound_the_expected_port(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "web.log"
+            log_path.write_text(
+                "  ▲ Next.js 16.3.4\n"
+                "  - Local:         http://localhost:3000\n",
+                encoding="utf-8",
+            )
+            proc = self._spawn_long_lived()
+            try:
+                # Must not raise.
+                alpha._wait_web_ready(proc, log_path, expected_port=3000, timeout_seconds=5)
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                proc.wait(timeout=5)
+
+    def test_raises_when_the_child_exits_immediately(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "web.log"  # never written -- child exited before logging anything
+            proc = self._spawn_immediately_exiting(exit_code=1)
+            with self.assertRaises(alpha.AlphaError) as ctx:
+                alpha._wait_web_ready(proc, log_path, expected_port=3000, timeout_seconds=5)
+            message = str(ctx.exception)
+            self.assertIn("exited immediately", message)
+            self.assertIn("3000", message)
+
+    def test_times_out_with_a_clear_message_if_never_ready(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "web.log"  # never written
+            proc = self._spawn_long_lived()
+            try:
+                with self.assertRaises(alpha.AlphaError) as ctx:
+                    alpha._wait_web_ready(proc, log_path, expected_port=3000, timeout_seconds=1)
+                message = str(ctx.exception)
+                self.assertIn("Timed out", message)
+                self.assertIn("3000", message)
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                proc.wait(timeout=5)
+
+
 class TestProcessLifecycleHelpers(unittest.TestCase):
     def test_pid_alive_then_kill_tree_stops_it(self):
         proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
