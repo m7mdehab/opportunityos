@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import shutil
 import tempfile
 import unittest
@@ -47,8 +48,20 @@ from api.settings import Settings
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_PACK_PATH = REPO_ROOT / "docs" / "templates" / "truth_pack.template.yaml"
 
-FOUNDER_PASSWORD = "correct-horse-battery-staple-9x"
-SESSION_SECRET = "unit-test-session-secret-do-not-use-in-prod"
+def _synthetic_value(prefix: str, entropy_bytes: int) -> str:
+    """Build a throwaway test value that is generated, never hard-coded.
+
+    A literal assigned to a name like PASSWORD or SECRET is exactly the shape
+    `scripts/check_guard.py` rejects, and it should keep rejecting it rather
+    than learn an exception for this file. Generating instead of hard-coding
+    is also better practice on its own: a value that differs every run cannot
+    be copied into anything real by accident. Nothing here is a credential.
+    """
+    return prefix + secrets.token_urlsafe(entropy_bytes)
+
+
+FOUNDER_PASSWORD = _synthetic_value("pw-", 12)
+SESSION_SECRET = _synthetic_value("sig-", 24)
 
 
 def _db_url() -> str:

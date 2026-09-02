@@ -5,16 +5,36 @@ the next: PostgreSQL (an already-running local server if one is listening on
 127.0.0.1:5432, else the portable cluster FR-003 established under
 ``%LOCALAPPDATA%\\opos-pg\\``), ``alembic upgrade head``, the worker with
 ``--schedule`` (see ``worker.scheduler.PollScheduler``), the API on
-``:8000``, and the web app on ``:3000`` (pinned with ``next dev -- -p 3000``
-and verified against the child's own ready-log line -- see
-``_wait_web_ready`` -- rather than trusting that *something* answers on
-3000, which a stray unrelated process could satisfy just as well as our own
-web server), then opens ``http://localhost:3000`` in the default browser.
-``down`` stops everything this script started, cleanly, and never stops a
-PostgreSQL server it did not start. ``status`` reports each process's
-up/down state (including the port each of api/web actually bound) plus the
-last poll per source (from ``source_poll_runs``). ``logs`` tails what it
-started.
+``--api-port`` (default 8000), and the web app on ``--web-port`` (default
+3000, pinned with ``next dev -- -p <port>`` and verified against the
+child's own ready-log line -- see ``_wait_web_ready`` -- rather than
+trusting that *something* answers on that port, which a stray unrelated
+process could satisfy just as well as our own web server), then opens
+``http://localhost:<web-port>`` in the default browser. ``down`` stops
+everything this script started, cleanly, and never stops a PostgreSQL
+server it did not start. ``status`` reports each process's up/down state
+(including the port each of api/web actually bound, read from the run-dir
+state file -- ``status``/``down``/``logs`` never need ``--web-port``/
+``--api-port`` themselves) plus the last poll per source (from
+``source_poll_runs``). ``logs`` tails what it started.
+
+``--web-port``/``--api-port`` exist because this machine's port 3000/8000
+is not reserved for OpportunityOS -- another, unrelated dev server already
+holding 3000 is ordinary, and the founder must be able to proceed without
+killing their other work. Overriding the port never reintroduces the
+silent-fallback defect the pinning above fixed: an explicit
+``--web-port 3005`` still fails loudly (naming both the flag and the port)
+if 3005 is occupied, and ``_wait_web_ready`` still verifies the child bound
+exactly that port.
+
+If ``--api-port`` is non-default, the web dev server's own child process
+gets ``OPPORTUNITYOS_API_PORT`` set to it in its environment (see
+``ENV_API_PORT`` below) -- but ``web/next.config.ts`` (out of this
+deliverable's file scope; owned by D7) still hardcodes the ``/api/:path*``
+rewrite destination as ``http://localhost:8000`` and does not read that
+variable yet. Until it does, a non-default ``--api-port`` starts the API
+server on the requested port but the web app's same-origin ``/api/*``
+proxy still targets 8000.
 
 Secrets (``OPPORTUNITYOS_FOUNDER_PASSWORD``, ``OPPORTUNITYOS_SESSION_SECRET``,
 ``OPPORTUNITYOS_DB_URL``) are read from ``private/alpha.env`` (never
@@ -60,12 +80,28 @@ REQUIRED_ENV_KEYS = (
     "OPPORTUNITYOS_DB_URL",
 )
 
+#: Every value in docs/templates/alpha.env.template contains this marker
+#: (e.g. REPLACE_WITH_A_LOCAL_FOUNDER_PASSWORD). A founder who copies the
+#: template to private/alpha.env but forgets to edit it must never reach
+#: PostgreSQL detection or `alembic upgrade head` with an unedited value --
+#: those fail with a raw SQLAlchemy/psycopg2 traceback that does not say
+#: what is actually wrong. load_alpha_env checks for this marker itself.
+PLACEHOLDER_MARKER = "REPLACE_WITH_"
+
 API_HOST = "127.0.0.1"
-API_PORT = 8000
+DEFAULT_API_PORT = 8000
 WEB_HOST = "127.0.0.1"
-WEB_PORT = 3000
+DEFAULT_WEB_PORT = 3000
 PG_HOST = "127.0.0.1"
 PG_PORT = 5432
+
+#: Environment variable set on the web dev server's process so a future
+#: web/next.config.ts change can read it for the `/api/:path*` rewrite
+#: target instead of the hardcoded `http://localhost:8000` it has today.
+#: alpha.py always sets this to the resolved --api-port; next.config.ts
+#: does not read it yet (that file is out of this deliverable's scope --
+#: see this module's docstring for the exact contract expected of it).
+ENV_API_PORT = "OPPORTUNITYOS_API_PORT"
 
 _PROCESS_LABELS = ("worker", "api", "web")
 
@@ -81,7 +117,13 @@ class AlphaError(RuntimeError):
 
 def load_alpha_env(path: Path) -> dict[str, str]:
     """Parse ``KEY=VALUE`` lines from ``path``. Raises ``AlphaError`` with a
-    clear, actionable message if the file is missing or incomplete.
+    clear, actionable message if the file is missing, incomplete, or still
+    contains unedited template placeholders (``PLACEHOLDER_MARKER``) -- the
+    most common first mistake with any env template, and one that would
+    otherwise surface as a raw SQLAlchemy/psycopg2 connection traceback out
+    of ``alembic upgrade head`` instead of a message that says what is
+    actually wrong. All three checks happen here, before ``up`` ever
+    touches PostgreSQL detection or migrations.
     """
     if not path.exists():
         raise AlphaError(
@@ -101,6 +143,20 @@ def load_alpha_env(path: Path) -> dict[str, str]:
         if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
             value = value[1:-1]
         values[key] = value
+
+    # Checked before the missing-key check below: a freshly-copied,
+    # unedited template has every key present (so "missing" would say
+    # nothing is wrong) but every value is still a placeholder -- this is
+    # the actual common case, so it must be the first, most specific error
+    # a founder sees, naming every unedited key at once rather than one per
+    # re-run.
+    placeholder_keys = sorted(key for key, value in values.items() if PLACEHOLDER_MARKER in value)
+    if placeholder_keys:
+        raise AlphaError(
+            f"{path} still contains template placeholders for {', '.join(placeholder_keys)}. Edit "
+            "that file and replace every REPLACE_WITH_* value, then retry `up`."
+        )
+
     missing = [key for key in REQUIRED_ENV_KEYS if not values.get(key)]
     if missing:
         raise AlphaError(
@@ -138,7 +194,31 @@ def _wait_for_port(host: str, port: int, timeout_seconds: float, description: st
 _NEXT_LOCAL_URL_RE = re.compile(r"-\s*Local:\s*https?://[^:/\s]+:(\d+)")
 
 
-def _wait_web_ready(proc: "subprocess.Popen", log_path: Path, expected_port: int, timeout_seconds: float) -> None:
+def _read_log_since(log_path: Path, offset: int) -> str:
+    """Return only the bytes written to ``log_path`` at or after ``offset``.
+
+    ``web.log`` is opened in append mode (see ``_spawn``) and survives
+    across every ``up`` attempt, so a stale ready line from a *previous*
+    run (a different port, possibly still sitting at the top of the file)
+    must never be visible to a fresh spawn's own readiness check --
+    otherwise the very first "- Local:" match found is whichever run wrote
+    it first, not this run's.
+    """
+    if not log_path.exists():
+        return ""
+    with open(log_path, "rb") as handle:
+        handle.seek(offset)
+        return handle.read().decode("utf-8", errors="replace")
+
+
+def _wait_web_ready(
+    proc: "subprocess.Popen",
+    log_path: Path,
+    expected_port: int,
+    timeout_seconds: float,
+    *,
+    log_offset: int = 0,
+) -> None:
     """Wait for the web dev server to report ready, then verify it actually
     bound ``expected_port`` -- not just that *something* answers there.
 
@@ -160,6 +240,15 @@ def _wait_web_ready(proc: "subprocess.Popen", log_path: Path, expected_port: int
     ``expected_port``, so a mismatch is caught even if the pin above is
     ever bypassed (e.g. a future Next version, or a differently-invoked
     dev server) rather than trusting an external TCP probe alone.
+
+    ``log_offset`` is the byte size of ``log_path`` immediately before this
+    spawn (0 if it did not exist yet). ``web.log`` is append-only across
+    every ``up`` attempt (see ``_spawn``), so without this offset the first
+    "- Local:" line anywhere in the file -- which could be from an earlier
+    run, at a different port -- would win the match instead of the line
+    *this* spawn actually wrote, causing a spurious mismatch failure (or a
+    spurious pass) against stale content. ``cmd_up`` records this offset
+    with ``log_path.stat().st_size`` right before calling ``_spawn``.
     """
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
@@ -168,23 +257,22 @@ def _wait_web_ready(proc: "subprocess.Popen", log_path: Path, expected_port: int
                 f"web (npm run dev) exited immediately (exit code {proc.returncode}) while starting on "
                 f"port {expected_port} -- port {expected_port} is likely already in use by another "
                 f"process. Run `python scripts/alpha.py down` if a previous alpha session left it "
-                f"running, or free port {expected_port} yourself, then retry `up`. See {log_path} for "
-                "details."
+                f"running, or pass `--web-port` to use a different one, then retry `up`. See {log_path} "
+                "for details."
             )
-        if log_path.exists():
-            text = log_path.read_text(encoding="utf-8", errors="replace")
-            match = _NEXT_LOCAL_URL_RE.search(text)
-            if match:
-                actual_port = int(match.group(1))
-                if actual_port != expected_port:
-                    raise AlphaError(
-                        f"web dev server bound port {actual_port} instead of the required "
-                        f"{expected_port} (see {log_path}) -- another process is already holding "
-                        f"port {expected_port}. Run `python scripts/alpha.py down` if a previous alpha "
-                        f"session left it running, or free port {expected_port} yourself, then retry "
-                        "`up`."
-                    )
-                return
+        text = _read_log_since(log_path, log_offset)
+        match = _NEXT_LOCAL_URL_RE.search(text)
+        if match:
+            actual_port = int(match.group(1))
+            if actual_port != expected_port:
+                raise AlphaError(
+                    f"web dev server bound port {actual_port} instead of the required "
+                    f"{expected_port} (see {log_path}) -- another process is already holding "
+                    f"port {expected_port}. Run `python scripts/alpha.py down` if a previous alpha "
+                    f"session left it running, or pass `--web-port` to use a different one, then "
+                    "retry `up`."
+                )
+            return
         time.sleep(0.5)
     raise AlphaError(
         f"Timed out after {timeout_seconds:.0f}s waiting for the web dev server to report it is ready "
@@ -351,13 +439,23 @@ def _ensure_postgres(run_dir: Path) -> dict:
     return {"started_by_alpha": True, "pg_ctl": str(pg_ctl), "data_dir": str(data_dir)}
 
 
-def _stop_postgres(pg_info: dict) -> str:
+def _stop_postgres(pg_info: dict) -> tuple[str, bool]:
+    """Returns ``(message, stopped)``. ``stopped`` is True whenever there is
+    nothing left for a caller to worry about -- either PostgreSQL was left
+    running on purpose (not ours to stop) or ``pg_ctl stop`` actually
+    succeeded; False means a caller must not treat this as done (see
+    ``cmd_down``/``cmd_up``'s rollback, which keep the state file around
+    when this is False so a retry can still reach it).
+    """
     if not pg_info or not pg_info.get("started_by_alpha"):
-        return "PostgreSQL: left running (alpha.py did not start it)."
+        return "PostgreSQL: left running (alpha.py did not start it).", True
     pg_ctl = pg_info.get("pg_ctl")
     data_dir = pg_info.get("data_dir")
     if not pg_ctl or not data_dir:
-        return "PostgreSQL: alpha.py started it but the state file is missing pg_ctl/data_dir; stop it manually."
+        return (
+            "PostgreSQL: alpha.py started it but the state file is missing pg_ctl/data_dir; stop it manually.",
+            False,
+        )
     result = subprocess.run(
         [pg_ctl, "stop", "-D", data_dir, "-m", "fast", "-w", "-t", "30"],
         capture_output=True,
@@ -366,9 +464,10 @@ def _stop_postgres(pg_info: dict) -> str:
     if result.returncode != 0:
         return (
             f"PostgreSQL: `pg_ctl stop` failed (exit code {result.returncode}): "
-            f"{result.stdout}\n{result.stderr}"
+            f"{result.stdout}\n{result.stderr}",
+            False,
         )
-    return "PostgreSQL: stopped (portable cluster started by alpha.py)."
+    return "PostgreSQL: stopped (portable cluster started by alpha.py).", True
 
 
 def _run_alembic_upgrade(env: dict) -> None:
@@ -388,18 +487,62 @@ def _run_alembic_upgrade(env: dict) -> None:
     print("Migrations: up to date.")
 
 
-def _stop_processes(processes: dict) -> list[str]:
-    messages = []
+def _wait_port_freed(host: str, port: int, timeout_seconds: float = 5.0) -> bool:
+    """Poll until nothing answers on ``host``:``port``, or ``timeout_seconds`` elapses.
+
+    Returns whether the port is free by the end of the wait. Used after
+    ``_kill_pid_tree`` to confirm a kill actually freed the port rather than
+    trusting the tracked pid's exit alone -- ``npm run dev`` spawns Next,
+    which spawns its own dev server process; a grandchild can be reparented
+    (Windows job objects aside, this has been observed in practice) and
+    survive ``taskkill /PID <npm-pid> /T /F`` while still holding the port.
+    """
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if not _port_open(host, port, timeout=0.5):
+            return True
+        time.sleep(0.3)
+    return not _port_open(host, port, timeout=0.5)
+
+
+def _stop_processes(processes: dict, *, port_freed_timeout: float = 5.0) -> tuple[list[str], bool]:
+    """Kill every tracked pid, then verify each one's recorded port is
+    actually free (not just that the tracked pid is gone -- see
+    ``_wait_port_freed``). Returns ``(messages, all_stopped)``; a caller
+    must not discard state (or report success) while ``all_stopped`` is
+    False, since that is exactly what stranded a survivor with no way for a
+    later ``down`` to reach it.
+
+    ``port_freed_timeout`` is exposed (default 5s in production use) purely
+    so tests can bound how long a genuinely-still-occupied-port case takes
+    to fail, without changing production's bounded-but-real wait.
+    """
+    messages: list[str] = []
+    all_stopped = True
     for label, info in processes.items():
         pid = info.get("pid")
-        if pid is None:
+        if pid is not None:
+            if _pid_alive(pid):
+                _kill_pid_tree(pid)
+                messages.append(f"{label}: stopped (was pid {pid}).")
+            else:
+                messages.append(f"{label}: already stopped (pid {pid} not running).")
+
+        port = info.get("port")
+        if port is None:
             continue
-        if _pid_alive(pid):
-            _kill_pid_tree(pid)
-            messages.append(f"{label}: stopped (was pid {pid}).")
-        else:
-            messages.append(f"{label}: already stopped (pid {pid} not running).")
-    return messages
+        # All of this project's own services bind 127.0.0.1 only (API_HOST
+        # == WEB_HOST == "127.0.0.1"); a single host is used here rather
+        # than threading a per-label host through, since there is only one.
+        if not _wait_port_freed("127.0.0.1", port, timeout_seconds=port_freed_timeout):
+            all_stopped = False
+            messages.append(
+                f"{label}: WARNING -- pid {pid} was stopped but port {port} is still occupied "
+                "(npm/Next can reparent a grandchild that then survives killing the tracked pid). "
+                f"Find and stop whatever is still listening on {port} yourself, e.g. "
+                f"`netstat -ano | findstr :{port}` on Windows, then re-run `python scripts/alpha.py down`."
+            )
+    return messages, all_stopped
 
 
 # ---------------------------------------------------------------------------
@@ -407,7 +550,13 @@ def _stop_processes(processes: dict) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def cmd_up(env_file: Path, run_dir: Path) -> int:
+def cmd_up(
+    env_file: Path,
+    run_dir: Path,
+    *,
+    web_port: int = DEFAULT_WEB_PORT,
+    api_port: int = DEFAULT_API_PORT,
+) -> int:
     state = _load_state(run_dir)
     existing_processes = state.get("processes", {})
     if existing_processes and any(_pid_alive(info["pid"]) for info in existing_processes.values()):
@@ -441,16 +590,29 @@ def cmd_up(env_file: Path, run_dir: Path) -> int:
         print(f"Worker: started (pid {worker_proc.pid}), logging to {worker_log}.")
 
         api_log = run_dir / "logs" / "api.log"
+        # uvicorn never silently rebinds on a busy port (unlike Next's dev
+        # server -- see _wait_web_ready's docstring); it errors and exits
+        # non-zero, which the preflight check plus _wait_process_alive below
+        # already turn into a loud, immediate failure. A preflight check is
+        # still added here (mirroring the web one) so that failure is
+        # reported before ever spawning uvicorn, with a message naming
+        # --api-port, rather than relying on the exit-code path alone.
+        if _port_open(API_HOST, api_port, timeout=1.0):
+            raise AlphaError(
+                f"Port {api_port} is already in use by another process, so the API server cannot bind "
+                f"it. Run `python scripts/alpha.py down` if a previous alpha session left it running, "
+                f"or pass `--api-port` to use a different one, then retry `up`."
+            )
         api_proc = _spawn(
-            [sys.executable, "-m", "uvicorn", "api.app:app", "--host", API_HOST, "--port", str(API_PORT)],
+            [sys.executable, "-m", "uvicorn", "api.app:app", "--host", API_HOST, "--port", str(api_port)],
             REPO_ROOT,
             env,
             api_log,
         )
-        processes["api"] = {"pid": api_proc.pid, "log": str(api_log), "port": API_PORT}
+        processes["api"] = {"pid": api_proc.pid, "log": str(api_log), "port": api_port}
         _wait_process_alive(api_proc, 2.0, "API server", api_log)
-        _wait_for_port(API_HOST, API_PORT, 30.0, "the API server")
-        print(f"API: listening on {API_HOST}:{API_PORT} (pid {api_proc.pid}), logging to {api_log}.")
+        _wait_for_port(API_HOST, api_port, 30.0, "the API server")
+        print(f"API: listening on {API_HOST}:{api_port} (pid {api_proc.pid}), logging to {api_log}.")
 
         if not (WEB_DIR / "node_modules").exists():
             raise AlphaError(
@@ -458,14 +620,15 @@ def cmd_up(env_file: Path, run_dir: Path) -> int:
                 "re-run `python scripts/alpha.py up`."
             )
 
-        # Fail loudly, before ever spawning npm, if port 3000 is already taken
-        # -- a clear, immediate message beats waiting on Next's own startup
-        # (or _wait_web_ready's log-parsing check below) to surface it.
-        if _port_open(WEB_HOST, WEB_PORT, timeout=1.0):
+        # Fail loudly, before ever spawning npm, if the web port is already
+        # taken -- a clear, immediate message (naming --web-port) beats
+        # waiting on Next's own startup (or _wait_web_ready's log-parsing
+        # check below) to surface it.
+        if _port_open(WEB_HOST, web_port, timeout=1.0):
             raise AlphaError(
-                f"Port {WEB_PORT} is already in use by another process, so the web dev server cannot "
+                f"Port {web_port} is already in use by another process, so the web dev server cannot "
                 f"bind it. Run `python scripts/alpha.py down` if a previous alpha session left it "
-                f"running, or free port {WEB_PORT} yourself, then retry `up`."
+                f"running, or pass `--web-port` to use a different one, then retry `up`."
             )
 
         # alpha.py must run the web app against the real API, never the MSW
@@ -473,17 +636,28 @@ def cmd_up(env_file: Path, run_dir: Path) -> int:
         # trust the founder's ambient shell not to have it set from other work.
         web_env = os.environ.copy()
         web_env.pop("NEXT_PUBLIC_USE_MOCK_API", None)
+        # See ENV_API_PORT's own docstring: web/next.config.ts does not read
+        # this yet (out of this deliverable's scope -- owned by D7), but the
+        # value is set unconditionally so wiring the config side later is a
+        # config-only change with nothing to add here.
+        web_env[ENV_API_PORT] = str(api_port)
         web_log = run_dir / "logs" / "web.log"
         npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
         # `-- -p <port>` pins the port explicitly: Next's dev server only
         # silently falls back to another port when the port came from its own
         # default (see _wait_web_ready's docstring) -- an explicit -p instead
         # makes it exit non-zero on EADDRINUSE, which _wait_web_ready treats
-        # as a loud, immediate failure rather than a silent port switch.
-        web_proc = _spawn([npm_cmd, "run", "dev", "--", "-p", str(WEB_PORT)], WEB_DIR, web_env, web_log)
-        processes["web"] = {"pid": web_proc.pid, "log": str(web_log), "port": WEB_PORT}
-        _wait_web_ready(web_proc, web_log, WEB_PORT, 60.0)
-        print(f"Web: listening on {WEB_HOST}:{WEB_PORT} (pid {web_proc.pid}), logging to {web_log}.")
+        # as a loud, immediate failure rather than a silent port switch. This
+        # holds for any --web-port value, not just the default 3000.
+        # web.log is append-only across every `up` attempt (see _spawn), so a
+        # stale "- Local:" line from a previous run must not be visible to
+        # this run's own readiness check -- record the size right before
+        # spawning and only look at bytes written from here on.
+        web_log_offset = web_log.stat().st_size if web_log.exists() else 0
+        web_proc = _spawn([npm_cmd, "run", "dev", "--", "-p", str(web_port)], WEB_DIR, web_env, web_log)
+        processes["web"] = {"pid": web_proc.pid, "log": str(web_log), "port": web_port}
+        _wait_web_ready(web_proc, web_log, web_port, 60.0, log_offset=web_log_offset)
+        print(f"Web: listening on {WEB_HOST}:{web_port} (pid {web_proc.pid}), logging to {web_log}.")
 
         state = {
             "processes": processes,
@@ -492,7 +666,7 @@ def cmd_up(env_file: Path, run_dir: Path) -> int:
         }
         _save_state(run_dir, state)
 
-        url = f"http://localhost:{WEB_PORT}"
+        url = f"http://localhost:{web_port}"
         print(f"Opening {url} ...")
         try:
             webbrowser.open(url)
@@ -503,13 +677,39 @@ def cmd_up(env_file: Path, run_dir: Path) -> int:
         return 0
     except AlphaError as exc:
         print(f"alpha up: FAILED: {exc}", file=sys.stderr)
+        rollback_confirmed = True
         if processes or pg_info:
             print("alpha up: rolling back anything this run started ...", file=sys.stderr)
-            for message in _stop_processes(processes):
+            process_messages, processes_confirmed = _stop_processes(processes)
+            for message in process_messages:
                 print(message, file=sys.stderr)
+            rollback_confirmed = rollback_confirmed and processes_confirmed
             if pg_info:
-                print(_stop_postgres(pg_info), file=sys.stderr)
-        _clear_state(run_dir)
+                pg_message, pg_confirmed = _stop_postgres(pg_info)
+                print(pg_message, file=sys.stderr)
+                rollback_confirmed = rollback_confirmed and pg_confirmed
+        if rollback_confirmed:
+            _clear_state(run_dir)
+        else:
+            # Rollback could not confirm everything is actually gone (see
+            # _stop_processes' port-freed check) -- discarding the state
+            # file here is exactly what previously stranded a survivor with
+            # no way for a later `down` to reach it. Persist it instead so
+            # `down`, run later from a fresh shell, can still find and
+            # finish the cleanup.
+            _save_state(
+                run_dir,
+                {
+                    "processes": processes,
+                    "postgres": pg_info,
+                    "started_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+            print(
+                "alpha up: rollback could NOT confirm everything stopped -- state was kept (not "
+                "cleared) so it can be retried. Run `python scripts/alpha.py down` to finish cleanup.",
+                file=sys.stderr,
+            )
         return 1
 
 
@@ -524,14 +724,27 @@ def cmd_down(run_dir: Path) -> int:
         print(f"alpha: no session recorded under {run_dir} (nothing to stop).")
         return 0
 
-    for message in _stop_processes(state.get("processes", {})):
+    process_messages, processes_confirmed = _stop_processes(state.get("processes", {}))
+    for message in process_messages:
         print(message)
 
-    print(_stop_postgres(state.get("postgres", {})))
+    pg_message, pg_confirmed = _stop_postgres(state.get("postgres", {}))
+    print(pg_message)
 
-    _clear_state(run_dir)
-    print("alpha: down.")
-    return 0
+    if processes_confirmed and pg_confirmed:
+        _clear_state(run_dir)
+        print("alpha: down.")
+        return 0
+
+    # Something is still confirmed running (see the WARNING line(s) above) --
+    # the state file is deliberately left in place (not cleared) so this can
+    # be retried, instead of reporting success and then having nothing left
+    # to point `down` at the survivor next time.
+    print(
+        "alpha: down incomplete -- see the WARNING(s) above. State was left in place; resolve them "
+        "and re-run `python scripts/alpha.py down`."
+    )
+    return 1
 
 
 # ---------------------------------------------------------------------------
@@ -655,6 +868,29 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=DEFAULT_RUN_DIR,
         help=f"Directory for PID/log/state tracking (default: {DEFAULT_RUN_DIR}).",
     )
+    parser.add_argument(
+        "--web-port",
+        type=int,
+        default=DEFAULT_WEB_PORT,
+        help=(
+            f"Port for the web dev server (default: {DEFAULT_WEB_PORT}). Only meaningful for `up` -- "
+            "the port actually used is recorded in the run-dir state file, so `status`/`down`/`logs` "
+            "read it back from there and never need this flag repeated. Use this when the default "
+            "port is already held by an unrelated process on this machine; `up` still fails loudly "
+            "(never silently falls back) if the port you pass here is also occupied."
+        ),
+    )
+    parser.add_argument(
+        "--api-port",
+        type=int,
+        default=DEFAULT_API_PORT,
+        help=(
+            f"Port for the API server (default: {DEFAULT_API_PORT}). Only meaningful for `up`; see "
+            f"--web-port for the state-file/fail-loudly behaviour, which is identical. Also sets "
+            f"{ENV_API_PORT} in the web dev server's own environment, for a future web/next.config.ts "
+            "change to read for its /api/* rewrite target -- next.config.ts does not read it yet."
+        ),
+    )
     return parser
 
 
@@ -662,7 +898,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = build_arg_parser().parse_args(argv)
 
     if args.command == "up":
-        return cmd_up(args.env_file, args.run_dir)
+        return cmd_up(args.env_file, args.run_dir, web_port=args.web_port, api_port=args.api_port)
     if args.command == "down":
         return cmd_down(args.run_dir)
     if args.command == "status":

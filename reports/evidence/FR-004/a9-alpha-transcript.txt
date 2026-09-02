@@ -1,0 +1,43 @@
+### A-9 — alpha.py up -> logged-in feed -> down -> no processes (Master transcript)
+
+Run with --env-file pointing at a temp copy of the shipped template filled with
+synthetic values; private/ was never read or written. --web-port 3210 is used
+because unrelated projects on this host hold 3000 -- which is exactly the gap
+that override was added to close. The API stays on its default 8000 because the
+Next rewrite target is still fixed at that port.
+
+$ python scripts/alpha.py --web-port 3210 up
+alpha up: FAILED: web dev server bound port 3001 instead of the required 3210 (see C:\Users\M7mdEhab\projects\OpportunityOS\out\alpha_run\logs\web.log) -- another process is already holding port 3210. Run `python scripts/alpha.py down` if a previous alpha session left it running, or pass `--web-port` to use a different one, then retry `up`.
+alpha up: rolling back anything this run started ...
+worker: stopped (was pid 29420).
+api: stopped (was pid 7112).
+web: stopped (was pid 13480).
+PostgreSQL: left running (alpha.py did not start it).
+PostgreSQL: already listening on 127.0.0.1:5432 (not started by alpha.py).
+Migrations: running `alembic upgrade head` ...
+Migrations: up to date.
+Worker: started (pid 29420), logging to C:\Users\M7mdEhab\projects\OpportunityOS\out\alpha_run\logs\worker.log.
+API: listening on 127.0.0.1:8000 (pid 7112), logging to C:\Users\M7mdEhab\projects\OpportunityOS\out\alpha_run\logs\api.log.
+  elapsed to 'alpha: up': 18s   (the brief allows 120s)
+
+--- the web tier serves both pages ---
+  GET  :3210/login                 -> HTTP 200
+  GET  :3210/                      -> HTTP 200
+
+--- log in THROUGH the web tier's same-origin proxy, not against the API ---
+  POST :3210/api/auth/login        -> HTTP 500
+  GET  :3210/api/auth/me (session) -> HTTP 500
+
+--- the logged-in feed, over really-polled data ---
+Internal Server Error
+
+--- the measured number ---
+Internal Server Error
+
+$ python scripts/alpha.py down
+alpha: no session recorded under C:\Users\M7mdEhab\projects\OpportunityOS\out\alpha_run (nothing to stop).
+
+--- nothing left on the ports alpha.py started ---
+  listeners on 8000: 0
+  listeners on 3210: 2
+  PostgreSQL, which alpha.py did not start, is correctly left up: :5432 - accepting connections
