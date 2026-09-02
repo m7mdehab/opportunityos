@@ -68,7 +68,7 @@ naive `TIMESTAMP` columns are silently shifted by the session timezone GUC. Foll
 with it; do not introduce a third convention.
 
 Defaults are **seeded by the migration**, so a fresh database behaves correctly with no
-API call. The nine filters and their defaults:
+API call. The ten filters and their defaults:
 
 | filter_id | source | enabled | mode |
 |---|---|---|---|
@@ -82,8 +82,6 @@ API call. The nine filters and their defaults:
 | `stale_postings` | `is_stale` | on | `label_only` |
 | `min_fit_score` | founder param | **off** | `hide` |
 | `compensation_floor` | founder param | **off** | `rank_only` |
-
-(That is ten rows; the brief's table lists ten. Seed all ten.)
 
 Only `red_lines` and `excluded_industries` hide by default. Everything else labels or ranks.
 
