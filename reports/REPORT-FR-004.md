@@ -1217,6 +1217,15 @@ deviation 46 of this report describe. This is a latent BRIEF-004 defect that FR-
 not an FR-004 defect, but the matrix should not have carried it as DONE while FR-004 was
 simultaneously reporting the capability as non-functional.
 
+**A second latent BRIEF-004 finding, recorded here for the same reason:** `matching/scorer.py`
+and `matching/qualification.py` read predicate names the graph never projects —
+`responsibility.item`, `employment.role_description`, `experience.summary` and
+`achievement.description`, against a graph that emits `employment.responsibility` and
+`achievement.statement` — so the `responsibility_scope` dimension has been a flat 0.50 for
+every founder since BRIEF-004, and the tests did not catch it because their hand-built
+fixtures speak the scorer's private vocabulary rather than the graph's; BRIEF-FR-005 D2
+carries the fix and the predicate registry that prevents its recurrence.
+
 `reports/FOUNDER_READINESS_MATRIX.json` now records those three rows as `PARTIAL` with a
 `status_history` entry naming this erratum. Primary status counts move DONE 76 → 73 and
 PARTIAL 39 → 42; the total stays 143 and MISSING stays 11. They return to DONE only on the
