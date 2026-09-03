@@ -304,6 +304,96 @@ export interface AuthenticatedResponse {
   authenticated: boolean
 }
 
+/** C1 — the 15-attribute generic facet surface (`GET /api/facets`),
+ * deliberately separate from the ten `FounderFilter` policy filters above:
+ * a facet uses `include` / `exclude` / `off` per value, never
+ * `hide` / `rank_only` / `label_only`, and never touches `decision` or
+ * `fit_score` — it only ever adds a `facet:<facet_id>` entry to an
+ * opportunity's `hidden_by`. */
+export type FacetValueState = "include" | "exclude" | "off"
+
+export interface FacetValue {
+  value: string
+  count: number
+  state: FacetValueState
+}
+
+export interface Facet {
+  facet_id: string
+  value_type: "enum" | "string" | "boolean" | "range" | "date-window"
+  description: string
+  /** `false` only for `language` today — no language is ever persisted
+   * anywhere in the schema. Render as visibly unavailable with
+   * `unavailable_reason`, exactly like `FounderFilter.unavailable_reason` —
+   * never hidden, never rendered as though it works. */
+  available: boolean
+  unavailable_reason: string | null
+  values: FacetValue[]
+  /** How many currently policy-visible rows this facet's own current
+   * include/exclude selection hides — exactly the number "Show N excluded
+   * by <facet>" needs. */
+  excluded_count: number
+  include: string[]
+  exclude: string[]
+}
+
+export interface FacetsResponse {
+  facets: Facet[]
+}
+
+/** Body for `PUT /api/facets/{facet_id}`. Either key omitted leaves that
+ * side unchanged; an empty array on both sides is the "off" state. */
+export interface FacetUpdateRequest {
+  include?: string[]
+  exclude?: string[]
+}
+
+/** C1 — saved views: a named facet selection (+ free-text search query) the
+ * founder can create, pick, and set as the default. */
+export interface SavedView {
+  id: string
+  name: string
+  facets: Record<string, { include: string[]; exclude: string[] }>
+  search_query: string | null
+  is_default: boolean
+}
+
+export interface SavedViewsResponse {
+  views: SavedView[]
+}
+
+export interface SavedViewCreateRequest {
+  name: string
+  facets: Record<string, { include: string[]; exclude: string[] }>
+  search_query?: string | null
+  is_default?: boolean
+}
+
+export interface SavedViewUpdateRequest {
+  name?: string
+  facets?: Record<string, { include: string[]; exclude: string[] }>
+  search_query?: string | null
+  is_default?: boolean
+}
+
+/** C4 — the hidden-reasons audit the dashboard's HIDDEN number links to.
+ * `reason` is one of the specific strings `api/facets.py::hidden_reasons_for_context`
+ * produces — `"red line: <rule>"`, `"excluded industry: <name>"`,
+ * `"filter: <filter_id>"`, or `"facet: <facet_id>"` — never a generic label. */
+export interface HiddenReason {
+  reason: string
+  count: number
+}
+
+export interface HiddenReasonsResponse {
+  reasons: HiddenReason[]
+}
+
+export interface UnhideByReasonResponse {
+  reason: string
+  status: "unhidden"
+}
+
 export interface ApiErrorBody {
   detail: string
   [key: string]: unknown

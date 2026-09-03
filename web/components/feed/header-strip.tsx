@@ -37,11 +37,14 @@ export function HeaderStrip({
   sources,
   onPollNow,
   polling,
+  onOpenHiddenReasons,
 }: {
   dashboard: DashboardResponse | null
   sources: SourceHealth[] | null
   onPollNow: () => void
   polling: boolean
+  /** C4: the HIDDEN number links to the reason -> count audit table. */
+  onOpenHiddenReasons: () => void
 }) {
   const today = dashboard?.series[0]
 
@@ -59,16 +62,34 @@ export function HeaderStrip({
           aria-label="Today's dashboard numbers"
           className="flex flex-wrap gap-x-5 gap-y-2"
         >
-          {STATS.map(({ key, label }) => (
-            <div key={key} className="text-center">
-              <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                {label}
-              </dt>
-              <dd data-testid={`stat-${String(key)}`} className="text-base font-semibold tabular-nums">
-                {today ? today[key] : "—"}
-              </dd>
-            </div>
-          ))}
+          {STATS.map(({ key, label }) =>
+            key === "hidden_by_filters" ? (
+              <div key={key} className="text-center">
+                <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  {label}
+                </dt>
+                <dd>
+                  <button
+                    type="button"
+                    data-testid={`stat-${String(key)}`}
+                    onClick={onOpenHiddenReasons}
+                    className="rounded text-base font-semibold tabular-nums underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+                  >
+                    {today ? today[key] : "—"}
+                  </button>
+                </dd>
+              </div>
+            ) : (
+              <div key={key} className="text-center">
+                <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  {label}
+                </dt>
+                <dd data-testid={`stat-${String(key)}`} className="text-base font-semibold tabular-nums">
+                  {today ? today[key] : "—"}
+                </dd>
+              </div>
+            )
+          )}
         </dl>
 
         <div className="flex items-center gap-3">

@@ -1,14 +1,18 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { HeaderStrip } from "@/components/feed/header-strip"
 import { FilterBar, EMPTY_FILTERS, type FeedFilters } from "@/components/feed/filter-bar"
 import { OpportunityCard } from "@/components/feed/opportunity-card"
 import { DetailDrawer } from "@/components/feed/detail-drawer"
 import { FiltersDrawer } from "@/components/feed/filters-drawer"
+import { FacetsPanel } from "@/components/feed/facets-panel"
+import { HiddenReasonsPanel } from "@/components/feed/hidden-reasons-panel"
+import { ManualSourcesPanel } from "@/components/feed/manual-sources-panel"
+import { OverHidingWarningBanner } from "@/components/feed/over-hiding-warning"
 import { Button } from "@/components/ui/button"
-import { EyeOff, Eye } from "lucide-react"
+import { EyeOff, Eye, SlidersHorizontal, Search } from "lucide-react"
 import {
   NoTruthPackState,
   InvalidTruthPackState,
@@ -18,6 +22,7 @@ import {
 } from "@/components/feed/empty-states"
 import { api } from "@/lib/api/client"
 import { ApiError } from "@/lib/contract/types"
+import { computeOverHidingWarning } from "@/lib/format/over-hiding"
 import type {
   ActionState,
   DashboardResponse,

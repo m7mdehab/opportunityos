@@ -13,16 +13,25 @@ import type {
   ActionType,
   AuthenticatedResponse,
   DashboardResponse,
+  FacetsResponse,
+  FacetUpdateRequest,
+  Facet,
   FeedbackLabel,
   FeedbackResponse,
   FilterUpdateRequest,
   FiltersResponse,
   FounderFilter,
+  HiddenReasonsResponse,
   OpportunityDetail,
   OpportunityListResponse,
   PollNowResponse,
+  SavedView,
+  SavedViewCreateRequest,
+  SavedViewsResponse,
+  SavedViewUpdateRequest,
   SourcesHealthResponse,
   TruthStatusResponse,
+  UnhideByReasonResponse,
 } from "@/lib/contract/types"
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -115,6 +124,46 @@ export const api = {
       request<FounderFilter>(`/api/filters/${filterId}`, {
         method: "PUT",
         body: JSON.stringify(body),
+      }),
+  },
+
+  // C1 — the 15-attribute generic facet surface. Separate control set from
+  // `filters` above: `include` / `exclude` / `off` per value, never
+  // `hide` / `rank_only` / `label_only`.
+  facets: {
+    list: () => request<FacetsResponse>("/api/facets"),
+    update: (facetId: string, body: FacetUpdateRequest) =>
+      request<Pick<Facet, "facet_id" | "include" | "exclude"> & { mode: string }>(
+        `/api/facets/${facetId}`,
+        { method: "PUT", body: JSON.stringify(body) }
+      ),
+  },
+
+  savedViews: {
+    list: () => request<SavedViewsResponse>("/api/saved-views"),
+    create: (body: SavedViewCreateRequest) =>
+      request<SavedView>("/api/saved-views", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    update: (viewId: string, body: SavedViewUpdateRequest) =>
+      request<SavedView>(`/api/saved-views/${viewId}`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
+    delete: (viewId: string) =>
+      request<{ id: string; status: string }>(`/api/saved-views/${viewId}`, {
+        method: "DELETE",
+      }),
+  },
+
+  // C4 — the audit table the dashboard's HIDDEN number links to.
+  hiddenReasons: {
+    list: () => request<HiddenReasonsResponse>("/api/hidden-reasons"),
+    unhide: (reason: string) =>
+      request<UnhideByReasonResponse>("/api/hidden-reasons/unhide", {
+        method: "POST",
+        body: JSON.stringify({ reason }),
       }),
   },
 
