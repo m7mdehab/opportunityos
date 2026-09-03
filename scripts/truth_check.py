@@ -54,14 +54,24 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     report = loaded.report
+    # `identity` and `approved_phrases` are not tracked by
+    # truth.pack.PackValidationReport (a top-level pack section, not a
+    # career_profile/capability_profile field), so their counts are read
+    # directly off the loaded graph and merged in here -- section names and
+    # entry counts only, same as every other line below.
+    section_counts = list(report.section_counts)
+    section_counts.append(("identity", 1 if loaded.graph.identity is not None else 0))
+    section_counts.append(("approved_phrases", len(loaded.graph.approved_phrases)))
+    section_counts.sort()
+
     print(f"path: {args.path}")
     print(f"truth pack valid: {report.valid}")
     print(f"truth_pack_hash: {loaded.truth_pack_hash}")
     print("section counts:")
-    for name, count in report.section_counts:
+    for name, count in section_counts:
         print(f"  {name}: {count}")
 
-    empty = report.empty_sections()
+    empty = tuple(name for name, count in section_counts if count == 0)
     if empty:
         print("empty sections:")
         for name in empty:
