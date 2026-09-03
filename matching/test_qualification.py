@@ -369,15 +369,28 @@ class TestQualificationEngine(unittest.TestCase):
         self.assertEqual(1, len(geo))
         self.assertTrue(geo[0].passed)
 
-    def test_location_country_with_verified_negative_authorization_is_ineligible(self) -> None:
+    def test_location_country_with_verified_negative_authorization_onsite_is_ineligible(self) -> None:
         # Truth graph has a verified NEGATIVE work_authorization.jurisdiction="Germany".
-        opp = create_test_opportunity(geo_status="unclear", location_country="DE")
+        # Physical presence is actually required (onsite) -> hard failure.
+        opp = create_test_opportunity(geo_status="unclear", location_country="DE", work_mode=WorkMode.ONSITE)
         decision, constraints = self.engine.evaluate(opp, self.truth_graph)
         self.assertEqual(QualificationDecision.INELIGIBLE, decision)
         geo = [c for c in constraints if c.constraint_name == "geographic_eligibility"]
         self.assertEqual(1, len(geo))
         self.assertFalse(geo[0].passed)
         self.assertTrue(geo[0].is_hard_failure)
+
+    def test_location_country_with_verified_negative_authorization_remote_is_labelled_not_hard_failure(self) -> None:
+        # Same verified NEGATIVE work_authorization.jurisdiction="Germany", but the role
+        # is remote -- no default-hide: labelled as a gap, never a hard failure.
+        opp = create_test_opportunity(geo_status="unclear", location_country="DE", work_mode=WorkMode.REMOTE)
+        decision, constraints = self.engine.evaluate(opp, self.truth_graph)
+        self.assertNotEqual(QualificationDecision.INELIGIBLE, decision)
+        geo = [c for c in constraints if c.constraint_name == "geographic_eligibility"]
+        self.assertEqual(1, len(geo))
+        self.assertIsNone(geo[0].passed)
+        self.assertFalse(geo[0].is_hard_failure)
+        self.assertIn("gap", geo[0].reason.casefold())
 
     def test_location_country_unasserted_stays_uncertain_not_ineligible(self) -> None:
         opp = create_test_opportunity(geo_status="unclear", location_country="FR")

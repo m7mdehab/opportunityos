@@ -44,7 +44,7 @@ from matching.models import TailoredArtifact
 from opportunity.models import (
     Opportunity,
     ProcurementMetadata,
-    RemotePolicy,
+    WorkMode,
     Track,
 )
 from truth.fixtures import founder_shaped_graph, synthetic_graph
@@ -80,7 +80,7 @@ def _remote_employment_opportunity() -> Opportunity:
         title="Data Engineer",
         description="Build and operate data pipelines for a distributed team.",
         skills=("Python", "SQL", "Docker", "Apache Kafka"),
-        remote_policy=RemotePolicy.REMOTE,
+        work_mode=WorkMode.REMOTE,
     )
 
 
@@ -95,7 +95,7 @@ def _onsite_employment_opportunity() -> Opportunity:
         title="Platform Engineer",
         description="Operate the on-site data platform for a logistics group.",
         skills=("Python", "Kubernetes", "Terraform"),
-        remote_policy=RemotePolicy.ON_SITE,
+        work_mode=WorkMode.ONSITE,
         location_raw="Cairo, Egypt",
     )
 

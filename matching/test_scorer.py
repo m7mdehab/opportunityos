@@ -9,7 +9,7 @@ from opportunity.models import (
     CompensationInterval,
     EmploymentType,
     Opportunity,
-    RemotePolicy,
+    WorkMode,
     Track,
 )
 from truth.models import AtomicAssertion, EvidenceRecord, VerificationStatus
@@ -143,7 +143,7 @@ class TestPremiumFullTimeOnsiteRule(unittest.TestCase):
         graph = _with_premium_threshold(create_test_graph(), "85000 EGP")
         opp = create_test_opportunity(
             employment_type=EmploymentType.FULL_TIME,
-            remote_policy=RemotePolicy.ON_SITE,
+            work_mode=WorkMode.ONSITE,
             location_raw="Egypt",
             compensation=Compensation(min_amount=40000, max_amount=40000, currency="EGP", interval=CompensationInterval.MONTHLY),
         )
@@ -158,7 +158,7 @@ class TestPremiumFullTimeOnsiteRule(unittest.TestCase):
         graph = _with_premium_threshold(create_test_graph(), "5000 USD")
         opp = create_test_opportunity(
             employment_type=EmploymentType.FULL_TIME,
-            remote_policy=RemotePolicy.ON_SITE,
+            work_mode=WorkMode.ONSITE,
             location_raw="Egypt",
             compensation=Compensation(min_amount=6000, max_amount=6000, currency="USD", interval=CompensationInterval.MONTHLY),
         )
@@ -170,7 +170,7 @@ class TestPremiumFullTimeOnsiteRule(unittest.TestCase):
         graph = _with_premium_threshold(create_test_graph(), "85000 EGP")
         opp = create_test_opportunity(
             employment_type=EmploymentType.FULL_TIME,
-            remote_policy=RemotePolicy.ON_SITE,
+            work_mode=WorkMode.ONSITE,
             location_raw="Egypt",
             compensation=None,
         )
@@ -184,7 +184,7 @@ class TestPremiumFullTimeOnsiteRule(unittest.TestCase):
         graph = _with_premium_threshold(create_test_graph(), "85000 EGP")
         opp = create_test_opportunity(
             employment_type=EmploymentType.CONTRACT,
-            remote_policy=RemotePolicy.ON_SITE,
+            work_mode=WorkMode.ONSITE,
             location_raw="Egypt",
             compensation=Compensation(min_amount=1000, max_amount=1000, currency="EGP", interval=CompensationInterval.MONTHLY),
         )

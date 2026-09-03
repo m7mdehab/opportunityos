@@ -21,7 +21,7 @@ from matching.qualification import QualificationEngine
 from matching.scorer import OpportunityScorer
 from matching.test_qualification import create_test_graph, create_test_opportunity
 from matching.validator import ArtifactClaimValidator
-from opportunity.models import Opportunity, ProcurementMetadata, RemotePolicy, Track
+from opportunity.models import Opportunity, ProcurementMetadata, Track, WorkMode
 from truth.graph import TruthGraph
 from truth.models import AtomicAssertion, EvidenceRecord, Modality, Polarity, VerificationStatus
 
@@ -192,7 +192,7 @@ class TestArtifactValidatorAndAdversarial(unittest.TestCase):
         engine = QualificationEngine()
 
         # 1. On-site requirement with empty graph -> UNCERTAIN, not INELIGIBLE
-        opp_onsite = create_test_opportunity(remote_policy=RemotePolicy.ON_SITE, location_raw="Berlin, Germany")
+        opp_onsite = create_test_opportunity(work_mode=WorkMode.ONSITE, location_raw="Berlin, Germany")
         decision, constraints = engine.evaluate(opp_onsite, empty_graph)
         self.assertEqual(decision, QualificationDecision.UNCERTAIN)
         c_onsite = [c for c in constraints if c.constraint_name == "work_mode_onsite"][0]
@@ -314,7 +314,7 @@ class TestArtifactValidatorAndAdversarial(unittest.TestCase):
             seniority=opp.seniority,
             employment_type=opp.employment_type,
             location_raw=opp.location_raw,
-            remote_policy=opp.remote_policy,
+            work_mode=opp.work_mode,
             geographic_eligibility=opp.geographic_eligibility,
             compensation=opp.compensation,
             posted_date=opp.posted_date,

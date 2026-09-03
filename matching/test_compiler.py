@@ -130,7 +130,7 @@ class TestArtifactCompilers(unittest.TestCase):
             seniority=opp.seniority,
             employment_type=opp.employment_type,
             location_raw=opp.location_raw,
-            remote_policy=opp.remote_policy,
+            work_mode=opp.work_mode,
             geographic_eligibility=opp.geographic_eligibility,
             compensation=opp.compensation,
             posted_date=opp.posted_date,

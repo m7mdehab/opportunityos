@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from opportunity.models import Opportunity, RemotePolicy, RemoteScope, Track
+from opportunity.models import Opportunity, RemotePolicy, RemoteScope, Track, WorkMode
 from opportunity.normalization import country_code_to_name
 from truth import predicates
 from truth.graph import TruthGraph
@@ -132,13 +132,45 @@ class QualificationEngine:
                     provenance_pointer=f"{opp.raw_record_pointer}.location_country",
                 )
             if negative_match:
+                # BRIEF-FR-006 A1 defect fix (council repair): a verified negative
+                # work-authorization fact is only a HARD failure when the role
+                # actually requires physical presence in that country (onsite /
+                # hybrid). The founder's own governing instruction is "I can
+                # exclude something close that isn't right for me; I can't get
+                # back something suitable that was excluded before I saw it" and
+                # the brief forbids new default-hides -- so a remote (or
+                # work-mode-unspecified) role whose *employer* merely happens to
+                # be based in a jurisdiction the founder lacks authorization for
+                # is often still perfectly doable and must not be removed from
+                # view. It is labelled as a gap instead.
+                requires_presence = opp.work_mode in (WorkMode.ONSITE, WorkMode.HYBRID)
+                if requires_presence:
+                    return HardConstraintResult(
+                        constraint_name="geographic_eligibility",
+                        passed=False,
+                        reason=(
+                            f"Opportunity requires {opp.work_mode.value} presence in "
+                            f"{country_name.title()}, which founder has a verified negative "
+                            f"authorization status for"
+                        ),
+                        required_field="location_country",
+                        founder_fact=f"Verified lack of work authorization in {country_name.title()}",
+                        is_hard_failure=True,
+                        provenance_pointer=f"{opp.raw_record_pointer}.location_country",
+                    )
                 return HardConstraintResult(
                     constraint_name="geographic_eligibility",
-                    passed=False,
-                    reason=f"Opportunity located in {country_name.title()}, which founder has a verified negative authorization status for",
+                    passed=None,
+                    reason=(
+                        f"Labelled gap, not a disqualification: opportunity's location is "
+                        f"{country_name.title()}, which founder has a verified negative "
+                        f"work-authorization status for, but work_mode is "
+                        f"'{opp.work_mode.value}' (not onsite/hybrid), so physical presence "
+                        f"there is not established as required"
+                    ),
                     required_field="location_country",
                     founder_fact=f"Verified lack of work authorization in {country_name.title()}",
-                    is_hard_failure=True,
+                    is_hard_failure=False,
                     provenance_pointer=f"{opp.raw_record_pointer}.location_country",
                 )
             return HardConstraintResult(
