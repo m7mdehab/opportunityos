@@ -1,0 +1,44 @@
+=== corpus size ===
+total payloads: 540
+distinct sources: 15
+--- per-source histogram ---
+greenhouse:affirm: 40
+greenhouse:airbnb: 40
+greenhouse:cloudflare: 40
+greenhouse:coinbase: 40
+greenhouse:datadog: 40
+greenhouse:duolingo: 40
+greenhouse:figma: 40
+greenhouse:flexport: 40
+greenhouse:stripe: 40
+greenhouse:twilio: 40
+himalayas: 20
+lever:shyftlabs: 23
+remote_ok: 40
+remotive: 17
+we_work_remotely: 40
+
+payloads re-parsed into an Opportunity via their own adapter: 540/540
+
+--- work-mode coverage (Opportunity.work_mode, added by A1) ---
+work_mode != unspecified: 282/540 (52.2%)
+
+--- location coverage (location_country OR non-unspecified remote_scope, added by A1) ---
+location_country or remote_scope != unspecified: 390/540 (72.2%)
+
+--- adapter vs. inference split of work_mode (Opportunity.work_mode_source, added by A1) ---
+work_mode_source == adapter: 117/540 (21.7%)
+work_mode_source == inference: 165/540 (30.6%)
+work_mode_source == none: 258/540 (47.8%)
+
+--- qualification decision distribution: against truth.fixtures.founder_shaped_graph() ---
+decision == qualified: 35/540 (6.5%)
+decision == ineligible: 405/540 (75.0%)
+decision == uncertain: 100/540 (18.5%)
+Note: evaluated against the founder-shaped synthetic pack (truth.fixtures.founder_shaped_graph(), never the founder's own pack), so this is the figure comparable to what a founder actually saw.
+
+--- qualification decision distribution: against an empty TruthGraph (for comparison) ---
+decision == qualified: 35/540 (6.5%)
+decision == ineligible: 405/540 (75.0%)
+decision == uncertain: 100/540 (18.5%)
+Note: evaluated with an empty TruthGraph (no founder-specific assertions), so this is the qualifier's structural behaviour over the corpus, not a founder-personalised result. This is A1C's original figure, kept for comparison, not the figure the A-12 claim answers.

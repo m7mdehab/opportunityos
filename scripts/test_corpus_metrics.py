@@ -55,11 +55,26 @@ class PrintDenominatorLineTests(unittest.TestCase):
         self.assertIn("label: 0/0 (0.0%)", out)
 
 
+class _StrippedOpportunity:
+    """Stand-in for an Opportunity that genuinely lacks a given attribute.
+
+    Real ``opportunity.models.Opportunity`` instances have carried ``work_mode``,
+    ``location_country``, ``remote_scope``, and ``work_mode_source`` (with defaults) since
+    work order A1 landed, so a real instance can never exercise the "attribute is missing"
+    branch below. This stub simulates the pre-A1 shape instead, by simply not defining the
+    attribute the "missing" test is about, so that code path stays covered.
+    """
+
+    def __init__(self, **present: object) -> None:
+        for key, value in present.items():
+            setattr(self, key, value)
+
+
 class WorkModeCoverageTests(unittest.TestCase):
     def test_missing_attribute_reports_not_available_not_zero(self) -> None:
-        # Real Opportunity instances genuinely lack `work_mode` pre-A1: this must never
-        # silently render as a 0% coverage number.
-        opps = [_minimal_opportunity(id=f"test:{i}") for i in range(3)]
+        # Simulates the pre-A1 shape (Opportunity genuinely lacked `work_mode`): this must
+        # never silently render as a 0% coverage number.
+        opps = [_StrippedOpportunity() for _ in range(3)]
         out = _capture(corpus_metrics.report_work_mode_coverage, opps)
         self.assertIn("NOT AVAILABLE", out)
         self.assertIn("work_mode", out)
@@ -71,10 +86,17 @@ class WorkModeCoverageTests(unittest.TestCase):
         out = _capture(corpus_metrics.report_work_mode_coverage, opps)
         self.assertIn("2/3 (66.7%)", out)
 
+    def test_real_opportunity_now_always_has_the_attribute(self) -> None:
+        # Documents the A1 landing: a real Opportunity never takes the NOT AVAILABLE branch.
+        opps = [_minimal_opportunity(id=f"test:{i}") for i in range(3)]
+        out = _capture(corpus_metrics.report_work_mode_coverage, opps)
+        self.assertNotIn("NOT AVAILABLE", out)
+        self.assertIn("work_mode != unspecified: 0/3 (0.0%)", out)
+
 
 class LocationCoverageTests(unittest.TestCase):
     def test_missing_attribute_reports_not_available(self) -> None:
-        opps = [_minimal_opportunity()]
+        opps = [_StrippedOpportunity()]
         out = _capture(corpus_metrics.report_location_coverage, opps)
         self.assertIn("NOT AVAILABLE", out)
 
@@ -88,13 +110,24 @@ class LocationCoverageTests(unittest.TestCase):
         out = _capture(corpus_metrics.report_location_coverage, opps)
         self.assertIn("2/3 (66.7%)", out)
 
+    def test_real_opportunity_now_always_has_the_attribute(self) -> None:
+        opps = [_minimal_opportunity()]
+        out = _capture(corpus_metrics.report_location_coverage, opps)
+        self.assertNotIn("NOT AVAILABLE", out)
+
 
 class AdapterInferenceSplitTests(unittest.TestCase):
     def test_missing_attribute_reports_not_available(self) -> None:
-        opps = [_minimal_opportunity()]
+        opps = [_StrippedOpportunity()]
         out = _capture(corpus_metrics.report_adapter_inference_split, opps)
         self.assertIn("NOT AVAILABLE", out)
         self.assertIn("work_mode_source", out)
+
+    def test_real_opportunity_now_always_has_the_attribute(self) -> None:
+        opps = [_minimal_opportunity()]
+        out = _capture(corpus_metrics.report_adapter_inference_split, opps)
+        self.assertNotIn("NOT AVAILABLE", out)
+        self.assertIn("work_mode_source == none: 1/1 (100.0%)", out)
 
     def test_present_attribute_splits_by_label(self) -> None:
         fake = types.SimpleNamespace
@@ -110,10 +143,10 @@ class AdapterInferenceSplitTests(unittest.TestCase):
         self.assertIn("work_mode_source == none: 1/4 (25.0%)", out)
 
 
-class QualificationBeforeTests(unittest.TestCase):
+class QualificationEmptyGraphTests(unittest.TestCase):
     def test_computes_real_distribution_over_given_opportunities(self) -> None:
         opps = [_minimal_opportunity(id=f"test:{i}") for i in range(5)]
-        out = _capture(corpus_metrics.report_qualification_before, opps)
+        out = _capture(corpus_metrics.report_qualification_empty_graph, opps)
         self.assertIn("decision == qualified:", out)
         self.assertIn("decision == ineligible:", out)
         self.assertIn("decision == uncertain:", out)
@@ -124,16 +157,24 @@ class QualificationBeforeTests(unittest.TestCase):
 
     def test_never_quotes_a_number_it_did_not_compute(self) -> None:
         # An empty opportunity list must show 0/0, not an omitted or fabricated line.
-        out = _capture(corpus_metrics.report_qualification_before, [])
+        out = _capture(corpus_metrics.report_qualification_empty_graph, [])
         self.assertIn("decision == qualified: 0/0", out)
 
 
-class QualificationAfterTests(unittest.TestCase):
-    def test_always_states_not_available_and_names_the_dependency(self) -> None:
-        out = _capture(corpus_metrics.report_qualification_after)
-        self.assertIn("NOT AVAILABLE", out)
-        self.assertIn("A1", out)
-        self.assertIn("matching/qualification.py", out)
+class QualificationFounderShapedTests(unittest.TestCase):
+    def test_computes_real_distribution_against_the_founder_shaped_pack(self) -> None:
+        opps = [_minimal_opportunity(id=f"test:{i}") for i in range(5)]
+        out = _capture(corpus_metrics.report_qualification_founder_shaped, opps)
+        self.assertIn("decision == qualified:", out)
+        self.assertIn("decision == ineligible:", out)
+        self.assertIn("decision == uncertain:", out)
+        for label in ("qualified", "ineligible", "uncertain"):
+            self.assertIn(f"/5 (", out)
+        self.assertIn("founder_shaped_graph", out)
+
+    def test_never_quotes_a_number_it_did_not_compute(self) -> None:
+        out = _capture(corpus_metrics.report_qualification_founder_shaped, [])
+        self.assertIn("decision == qualified: 0/0", out)
 
 
 class ParseCorpusTests(unittest.TestCase):
@@ -185,8 +226,8 @@ class MainSmokeTests(unittest.TestCase):
         self.assertIn("=== corpus size ===", out)
         self.assertIn("total payloads:", out)
         self.assertIn("--- per-source histogram ---", out)
-        self.assertIn("qualification decision distribution: BEFORE", out)
-        self.assertIn("qualification decision distribution: AFTER", out)
+        self.assertIn("qualification decision distribution: against truth.fixtures.founder_shaped_graph()", out)
+        self.assertIn("qualification decision distribution: against an empty TruthGraph", out)
 
 
 if __name__ == "__main__":
