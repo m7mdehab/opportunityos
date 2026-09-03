@@ -55,6 +55,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
+from opportunity.clustering import family_key as compute_opportunity_family_key
 from opportunity.models import CompensationInterval, FieldProvenance, Opportunity
 from opportunity.pipeline import IngestionBatch
 from storage.repository import StorageRepository
@@ -174,6 +175,14 @@ def _build_opp_data(opp: Opportunity, *, is_stale: bool) -> Dict[str, Any]:
         "compensation_max": int(round(comp.max_amount)) if comp is not None and comp.max_amount is not None else None,
         "compensation_currency": comp.currency if comp is not None else None,
         "compensation_period": compensation_period,
+        # A2 (BRIEF-FR-006) clustering: deterministic, pure function of
+        # organization + title (see opportunity.clustering.family_key). This
+        # is the only field this deliverable's allowed edit to
+        # opportunity/persistence.py writes; the family/member-count roll-up
+        # onto opportunity_families is a separate step (see
+        # opportunity.clustering.cluster_members / storage.repository's
+        # families methods), not performed per-opportunity here.
+        "family_key": compute_opportunity_family_key(opp),
     }
 
 
