@@ -1,0 +1,30 @@
+FAIL: test_case_c_exact_historical_inbox_sqlite_to_postgres (storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_c_exact_historical_inbox_sqlite_to_postgres)
+Case C: Exact historical inbox SQLite -> PostgreSQL migration with 100% fidelity.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\OpportunityOS\storage\test_postgres_integration.py", line 283, in test_case_c_exact_historical_inbox_sqlite_to_postgres
+    self.assertTrue(pg_store.is_evidence_processed(ev.message_content_hash))
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_case_h_duplicate_notification_event_replay (storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_h_duplicate_notification_event_replay)
+Case H: Duplicate notification and pipeline event replay produces 0 duplicate records.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\OpportunityOS\storage\test_postgres_integration.py", line 378, in test_case_h_duplicate_notification_event_replay
+    self.assertFalse(second_store)
+AssertionError: True is not false
+
+======================================================================
+FAIL: test_case_j_two_independent_workers_racing_with_skip_locked (storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_j_two_independent_workers_racing_with_skip_locked)
+Case J: Two independent workers racing for one job with SKIP LOCKED.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\OpportunityOS\storage\test_postgres_integration.py", line 460, in test_case_j_two_independent_workers_racing_with_skip_locked
+    self.assertEqual(len(claimed_jobs), 1, "Exactly one worker must claim the job")
+AssertionError: 0 != 1 : Exactly one worker must claim the job
+
+----------------------------------------------------------------------
+Ran 672 tests in 3006.183s
+
+FAILED (failures=6, errors=53, skipped=2)
