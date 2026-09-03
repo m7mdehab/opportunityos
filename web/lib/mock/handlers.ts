@@ -190,6 +190,12 @@ export const handlers = [
         { status: 422 }
       )
     }
+    if (result === "invalid_params") {
+      return HttpResponse.json(
+        { detail: `${filterId}: params out of range` },
+        { status: 422 }
+      )
+    }
     return HttpResponse.json(result)
   }),
 

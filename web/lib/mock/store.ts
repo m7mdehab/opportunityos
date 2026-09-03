@@ -478,7 +478,7 @@ export class MockStore {
   updateFilter(
     filterId: string,
     body: { enabled?: boolean; mode?: string; params?: Record<string, unknown> }
-  ): FounderFilter | "not_found" | "invalid_mode" {
+  ): FounderFilter | "not_found" | "invalid_mode" | "invalid_params" {
     const def = FOUNDER_FILTER_DEFINITIONS.find((f) => f.filter_id === filterId)
     const setting = this.filterSettings.get(filterId)
     if (!def || !setting) return "not_found"
@@ -490,6 +490,28 @@ export class MockStore {
       )
     ) {
       return "invalid_mode"
+    }
+
+    // Matches api/filters.py::_validate_min_fit_score_params /
+    // _validate_compensation_floor_params exactly: min_score is a number
+    // in [0, 100] (fit_score's documented scale); floor is a number >= 0.
+    // A council-found repair on the real API side, mirrored here so the
+    // mock and the real API reject the same malformed writes the same
+    // way, rather than the mock silently accepting something the real
+    // API would 422 on.
+    if (body.params !== undefined) {
+      if (filterId === "min_fit_score" && "min_score" in body.params) {
+        const value = body.params.min_score
+        if (typeof value !== "number" || value < 0 || value > 100) {
+          return "invalid_params"
+        }
+      }
+      if (filterId === "compensation_floor" && "floor" in body.params) {
+        const value = body.params.floor
+        if (typeof value !== "number" || value < 0) {
+          return "invalid_params"
+        }
+      }
     }
 
     if (body.enabled !== undefined) setting.enabled = body.enabled

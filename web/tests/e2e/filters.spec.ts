@@ -11,26 +11,25 @@ import { test, expect, type Page } from "@playwright/test"
  * network round trip*, not a fixture literal and not a fixed DOM-poll
  * window:
  *  - Baselines (`min_fit_score`'s current `enabled`/`mode`/`affected_count`,
- *    and how many opportunities have any `fit_score` at all) are read
- *    directly from `GET /api/filters` / `GET /api/opportunities` before
- *    touching the UI, never assumed from the contract's stated defaults —
- *    a prior failed run, or a fresh seed, must not change what this spec
- *    can prove.
+ *    and every opportunity's `fit_score`/`hidden_by`) are read directly
+ *    from `GET /api/filters` / `GET /api/opportunities` before touching the
+ *    UI, never assumed from the contract's stated defaults — a prior
+ *    failed run, or a fresh seed, must not change what this spec can prove.
  *  - Every UI interaction that triggers a `PUT`/`GET` is paired with
  *    `page.waitForResponse` for that exact request, and the response body
- *    itself is asserted on. This spec's first version polled the DOM with
- *    a short, fixed window instead; that produced a false failure
- *    ("affected_count did not update") on a slower/loaded real Postgres
- *    instance where `api/filters.py::build_filter_contexts` (a
- *    per-opportunity query) legitimately took longer than the poll's
- *    timeout — the request had not returned yet, not that it never fired
- *    or was rejected. Waiting on the response itself removes that race
- *    entirely and, as a side effect, is what actually diagnoses a genuine
- *    failure (fires? status? body?) instead of reporting a vague timeout.
- *  - The one non-trivial numeric assertion (raising `min_score` above
- *    every real score must match exactly every *scored* opportunity) is
- *    computed from data read at runtime (`GET /api/opportunities
- *    ?include_hidden=true`), never a hard-coded seed fact.
+ *    itself is asserted on (status, and the field the interaction was
+ *    supposed to change) — this is what makes a genuine failure
+ *    self-diagnosing (fires? status? body?) instead of a vague timeout, and
+ *    it is what actually caught that an earlier version of this spec used
+ *    `min_score` values api/filters.py's own validation rejects with a 422
+ *    (see the second test below) — a defect in the *spec*, not the API.
+ *  - `min_score` is set to 100, the top of the documented fit_score scale
+ *    (and the top of the range `api/filters.py::_validate_min_fit_score_
+ *    params` accepts) — a contract fact, not a fixture literal — and the
+ *    exact number of opportunities that transition is computed from a live
+ *    read (`GET /api/opportunities?include_hidden=true`), correctly
+ *    accounting for overlap with whatever `red_lines`/`excluded_industries`
+ *    /etc. already hide, never assumed to be zero.
  *
  * See `filters-unavailable.spec.ts` for why that one test stays mock-only.
  */
@@ -123,19 +122,23 @@ async function getFilter(page: Page, filterId: string): Promise<FounderFilterJso
   return found as FounderFilterJson
 }
 
-/** How many opportunities currently have any `fit_score` at all —
+/** Every opportunity's `fit_score` and current `hidden_by`, read with
  * `include_hidden=true` so a `hide`-mode filter from a prior test can't
- * hide the answer, and `decision`/`fit_score` are never touched by any
- * filter (contract §2), so this number is stable regardless of filter
- * settings. This is exactly the population `min_fit_score` can ever match
- * once its threshold is raised above every real score. */
-async function getScoredOpportunityCount(page: Page): Promise<number> {
+ * hide the answer. `decision`/`fit_score` are never touched by any filter
+ * (contract §2), so `fit_score` here is stable regardless of filter
+ * settings; `hidden_by` is what lets the caller compute an *exact*
+ * transition when enabling another `hide` filter, correctly accounting
+ * for overlap with whatever `red_lines`/`excluded_industries`/etc. are
+ * already hiding, rather than assuming no overlap. */
+async function getOpportunitySummaries(
+  page: Page
+): Promise<Array<{ fit_score: number | null; hidden_by: string[] }>> {
   const result = await pageFetch(page, "/api/opportunities?include_hidden=true&page_size=200")
-  const body = parseJson<{ items: Array<{ fit_score: number | null }> }>(
+  const body = parseJson<{ items: Array<{ fit_score: number | null; hidden_by: string[] }> }>(
     result,
     "GET /api/opportunities"
   )
-  return body.items.filter((o) => o.fit_score !== null).length
+  return body.items
 }
 
 test.describe("D3 founder-controlled filters", () => {
@@ -190,10 +193,22 @@ test.describe("D3 founder-controlled filters", () => {
     })
 
     // ---- authoritative baselines, read directly from the API ----
-    const scoredCount = await getScoredOpportunityCount(page)
+    const summariesBefore = await getOpportunitySummaries(page)
+    const scoredCount = summariesBefore.filter((o) => o.fit_score !== null).length
     expect(
       scoredCount,
       "no opportunity in this seed has a fit_score -- min_fit_score's path is untestable against it"
+    ).toBeGreaterThan(0)
+    // Exactly how many *additional* items min_score=100 will hide once
+    // enabled: scored opportunities not already hidden by some other
+    // filter (red_lines, excluded_industries, ...). Computed live so this
+    // holds regardless of what those already happen to be hiding.
+    const expectedNewlyHidden = summariesBefore.filter(
+      (o) => o.fit_score !== null && o.hidden_by.length === 0
+    ).length
+    expect(
+      expectedNewlyHidden,
+      "every scored opportunity in this seed is already hidden by another filter -- min_fit_score's toggle would be vacuous here"
     ).toBeGreaterThan(0)
     const minFitBefore = await getFilter(page, "min_fit_score")
 
@@ -227,23 +242,43 @@ test.describe("D3 founder-controlled filters", () => {
       String(minFitBefore.affected_count)
     )
 
-    // ---- change the numeric param to a value above every possible score
-    // (fit_score is documented 0-100; this is safely above any seed's
-    // range), synchronised on the actual PUT round trip. The one param
-    // input on this row is found generically (input[type=number]) rather
-    // than by a hard-coded id, since the real API's param key
-    // (min_score) differs from what this mock used before an earlier
-    // repair (threshold) -- this spec must not re-hard-code either
-    // name. ----
+    // ---- change the numeric param to 100, the top of the documented
+    // fit_score scale (api/filters.py::_validate_min_fit_score_params
+    // rejects anything outside [0, 100] -- see the 422 test below), so
+    // "fit_score < 100" matches every scored opportunity in any seed
+    // without needing a value above the valid range. The one param input
+    // on this row is found generically (input[type=number]) rather than
+    // by a hard-coded id, since the real API's param key (min_score)
+    // differs from what this mock used before an earlier repair
+    // (threshold) -- this spec must not re-hard-code either name. ----
     const paramInput = row.locator('input[type="number"]').first()
     await expect(paramInput).toBeVisible()
-    await paramInput.fill("1000000")
+    await paramInput.fill("100")
 
+    // This param edit *also* triggers FiltersDrawer's onFiltersChanged
+    // (the filter is still disabled, so it changes nothing visible), which
+    // fires its own GET /api/opportunities?...include_hidden=false. That
+    // request must be allowed to finish here, not left in flight: on a
+    // real backend slow enough for it to still be pending when the enable
+    // step below registers its own waitForResponse for the identical URL
+    // pattern, that second registration could resolve on *this* stale,
+    // still-disabled response instead of the fresh one the toggle click
+    // causes -- which is exactly what produced a false "nothing changed"
+    // failure here before this fix (feedBody.total stuck at its
+    // before-toggle value). Waiting for both responses at every step that
+    // triggers a re-query removes that ambiguity entirely.
     const [paramPutResponse] = await Promise.all([
       page.waitForResponse(
         (res) =>
           res.request().method() === "PUT" &&
           res.url().includes("/api/filters/min_fit_score"),
+        { timeout: 15_000 }
+      ),
+      page.waitForResponse(
+        (res) =>
+          res.request().method() === "GET" &&
+          res.url().includes("/api/opportunities?") &&
+          res.url().includes("include_hidden=false"),
         { timeout: 15_000 }
       ),
       paramInput.blur(),
@@ -301,21 +336,11 @@ test.describe("D3 founder-controlled filters", () => {
     await expect(toggle).toHaveAttribute("aria-checked", "true")
     await expect(chip).toHaveAttribute("data-filter-effect", enablePutBody.mode)
 
-    // The re-query this toggle caused actually changed what it hides. If
-    // this fails against the real stack with feedBody.total unchanged and
-    // feedBody's items all carrying hidden_by: [] despite enablePutBody
-    // above showing enabled: true / the correct params / a non-zero
-    // affected_count, that is not this spec racing the network (both PUT
-    // responses and this GET are awaited via page.waitForResponse before
-    // any assertion runs) -- it was reproduced this way against a real
-    // FastAPI + real Postgres run and traced to api/routes_api.py::
-    // list_opportunities's apply_filters(ctx, filter_settings) call
-    // disagreeing with api/filters.py::filter_affected_count's identical
-    // matcher call for the same filter/params/opportunities in the same
-    // request cycle, reproducing on roughly 3 of 4 runs (never on the mock
-    // config). Fixing that is outside this file's (web/**) scope.
-    expect(feedBody.total).toBeLessThan(totalBefore)
-    expect(feedBody.hidden_count).toBeGreaterThan(hiddenBefore)
+    // The re-query this toggle caused actually changed what it hides, by
+    // exactly the amount computed above -- not a vague direction, and not
+    // assuming no overlap with whatever else is already hiding rows.
+    expect(feedBody.total).toBe(totalBefore - expectedNewlyHidden)
+    expect(feedBody.hidden_count).toBe(hiddenBefore + expectedNewlyHidden)
 
     // ---- close the drawer; the UI should already reflect the response
     // above (no further network round trip needed for that) ----
@@ -334,6 +359,57 @@ test.describe("D3 founder-controlled filters", () => {
       () => (window as unknown as { __noReload?: boolean }).__noReload
     )
     expect(survivedReload).toBe(true)
+  })
+
+  test("an out-of-range param is rejected with 422, and the feed keeps working", async ({
+    page,
+  }) => {
+    // Council-found defect: api/filters.py::_validate_min_fit_score_params
+    // rejects a min_score outside [0, 100] (fit_score's documented scale)
+    // before anything is committed. Pinning this both proves the guard and
+    // is what caught an earlier version of this very spec sending a
+    // value (well above 100) that the API had every right to reject.
+    await login(page)
+    await expect(page.getByTestId("opportunity-card-opp-001")).toBeVisible()
+
+    const totalBefore = await opportunityCount(page)
+
+    const [drawerFiltersResponse] = await Promise.all([
+      page.waitForResponse(
+        (res) => res.request().method() === "GET" && res.url().includes("/api/filters"),
+        { timeout: 15_000 }
+      ),
+      page.getByRole("button", { name: "Filters" }).click(),
+    ])
+    expect(drawerFiltersResponse.ok(), await drawerFiltersResponse.text()).toBe(true)
+    const drawer = page.getByRole("dialog")
+    await expect(drawer).toBeVisible()
+
+    const row = drawer.getByTestId("filter-row-min_fit_score")
+    await expect(row).toBeVisible()
+    const paramInput = row.locator('input[type="number"]').first()
+    await expect(paramInput).toBeVisible()
+    await paramInput.fill("1000000")
+
+    const [rejectedResponse] = await Promise.all([
+      page.waitForResponse(
+        (res) =>
+          res.request().method() === "PUT" &&
+          res.url().includes("/api/filters/min_fit_score"),
+        { timeout: 15_000 }
+      ),
+      paramInput.blur(),
+    ])
+    expect(rejectedResponse.status(), await rejectedResponse.text()).toBe(422)
+
+    // The founder sees that it failed, not silence.
+    await expect(drawer.getByRole("alert")).toBeVisible()
+
+    // A rejected write must not partially apply anywhere.
+    await page.keyboard.press("Escape")
+    await expect(drawer).not.toBeVisible()
+    await expect(page.getByTestId("opportunity-card-opp-001")).toBeVisible()
+    expect(await opportunityCount(page)).toBe(totalBefore)
   })
 
   test("a rank_only/label_only filter never looks like it hid anything", async ({
