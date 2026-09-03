@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from opportunity.clustering import family_key as compute_family_key
 from opportunity.models import DerivationType, FieldProvenance, Opportunity, Track
 from opportunity.persistence import PersistResult, persist_batch
 from opportunity.pipeline import IngestionBatch
@@ -237,6 +238,36 @@ class PersistBatchTest(unittest.TestCase):
         # The remote job id is not lost -- it is preserved verbatim in the
         # row's own primary key.
         self.assertEqual(record.id, "himalayas:him-job-101")
+
+    def test_persisted_record_carries_the_deterministic_family_key(self):
+        """A2 (BRIEF-FR-006): persist_batch writes opportunity.clustering.family_key
+        onto OpportunityRecord.family_key -- the only field this deliverable's
+        allowed edit to opportunity/persistence.py touches."""
+        opp = _make_opportunity()
+        batch = _make_batch((opp,))
+
+        persist_batch(batch, self.repository)
+
+        record = self.session.query(OpportunityRecord).filter_by(id=opp.id).first()
+        self.assertIsNotNone(record)
+        self.assertEqual(record.family_key, compute_family_key(opp))
+        self.assertTrue(record.family_key)
+
+    def test_family_key_recomputed_and_unchanged_on_identical_rerun(self):
+        opp = _make_opportunity()
+        batch = _make_batch((opp,))
+
+        persist_batch(batch, self.repository)
+        first_key = (
+            self.session.query(OpportunityRecord).filter_by(id=opp.id).first().family_key
+        )
+
+        persist_batch(batch, self.repository)
+        second_key = (
+            self.session.query(OpportunityRecord).filter_by(id=opp.id).first().family_key
+        )
+
+        self.assertEqual(first_key, second_key)
 
 
 if __name__ == "__main__":

@@ -37,16 +37,18 @@ from typing import Any, Callable, Mapping, MutableMapping, Optional
 from core.logging import get_logger, redact_data
 from matching.evaluate_persist import evaluate_and_store
 from matching.scorer import OpportunityScorer
+from opportunity.clustering import compute_family_key
 from opportunity.models import (
     Compensation,
     CompensationInterval,
     EmploymentType,
     GeographicEligibility,
     Opportunity,
-    RemotePolicy,
+    RemoteScope,
     SeniorityLevel,
     SourceHealthStatus,
     Track,
+    WorkMode,
 )
 from opportunity.persistence import persist_batch
 from opportunity.pipeline import OpportunityPipeline
@@ -589,9 +591,36 @@ def _reconstruct_opportunity(session: Any, record: OpportunityRecord) -> Opportu
     ``title``, ``description``, and ``organization`` are stored with full
     fidelity on ``OpportunityRecord`` itself and are used verbatim here.
     ``skills`` (stored as a single comma-joined provenance value),
-    ``seniority``, ``employment_type``, ``remote_policy``,
-    ``geographic_eligibility`` (status only), and ``compensation`` are
-    recovered on a best-effort basis from ``field_provenances``.
+    ``seniority``, ``employment_type``, and ``geographic_eligibility`` (status
+    only) are recovered on a best-effort basis from ``field_provenances``.
+
+    BRIEF-FR-006 A1 defect fix: ``work_mode``, ``work_mode_source``,
+    ``location_country``, ``location_city``, ``location_region``,
+    ``remote_scope``, ``remote_scope_regions``, and the four
+    ``compensation_*`` columns are read directly off ``record`` -- migration
+    ``0004_founder_control`` (A1M) made these real ``opportunities`` columns
+    and ``storage/repository.py::save_opportunity`` (A1M) writes them from
+    exactly the keys ``opportunity/persistence.py::_build_opp_data`` (A1)
+    produces -- so the column is the authoritative, always-in-sync source,
+    not a re-derivation from ``field_provenances``.
+
+    ``work_mode`` backward-compatibility decision: rows written by every
+    adapter as of this fix persist their work-mode signal as a
+    ``field_provenances`` row named ``"work_mode"`` (not ``"remote_policy"``
+    -- see ``opportunity/adapters/*.py``), *and*, going forward, directly on
+    ``record.work_mode``. Older rows written before this brief's adapters
+    landed have neither: ``record.work_mode`` defaults to
+    ``"unspecified"`` (migration 0004's column default) until a backfill
+    (``reextract_all``) re-derives it, and their only surviving signal is a
+    legacy ``field_provenances`` row still named ``"remote_policy"`` from the
+    pre-FR-006 adapter code. Rather than silently reporting "unspecified" for
+    those rows when better information already exists, this function keeps
+    reading that legacy key as a fallback -- but ONLY when ``record.work_mode``
+    is still at its unbackfilled default; it is never used to override a
+    genuine (even if ``"unspecified"``-by-inference) value the column already
+    holds. The ``field_provenances`` row itself is never renamed or rewritten
+    by this read path -- only a new write (a fresh poll, or ``reextract_all``)
+    would ever replace it with a ``"work_mode"``-named row.
 
     Known, honest limitation: ``opportunity.persistence`` (frozen for this
     deliverable) stores ``responsibilities``/``requirements`` provenance only
@@ -625,23 +654,57 @@ def _reconstruct_opportunity(session: Any, record: OpportunityRecord) -> Opportu
     if geo_status:
         geo = GeographicEligibility(status=geo_status, reason="")
 
+    # --- work_mode: record column first, legacy "remote_policy" provenance
+    # fallback only when the column is still at its unbackfilled default. ---
+    record_work_mode = getattr(record, "work_mode", None)
+    if record_work_mode and record_work_mode != "unspecified":
+        work_mode = _enum_or_default(WorkMode, record_work_mode, WorkMode.UNSPECIFIED)
+    else:
+        legacy_remote_policy_to_work_mode = {
+            "remote": WorkMode.REMOTE, "hybrid": WorkMode.HYBRID, "on_site": WorkMode.ONSITE,
+        }
+        work_mode = legacy_remote_policy_to_work_mode.get(prov.get("remote_policy", ""), WorkMode.UNSPECIFIED)
+    work_mode_source = getattr(record, "work_mode_source", None) or "none"
+
+    remote_scope = _enum_or_default(RemoteScope, getattr(record, "remote_scope", None), RemoteScope.UNSPECIFIED)
+    remote_scope_regions_raw = getattr(record, "remote_scope_regions", None)
+    try:
+        remote_scope_regions = tuple(json.loads(remote_scope_regions_raw)) if remote_scope_regions_raw else ()
+    except (TypeError, ValueError):
+        remote_scope_regions = ()
+
+    # --- compensation: record columns first (A1M-authoritative), falling
+    # back to the pre-existing field_provenances-derived reconstruction for
+    # rows the migration/backfill has not touched. ---
+    record_comp_min = getattr(record, "compensation_min", None)
+    record_comp_max = getattr(record, "compensation_max", None)
+    record_comp_currency = getattr(record, "compensation_currency", None)
+    record_comp_period = getattr(record, "compensation_period", None)
     compensation = None
-    comp_min_raw = prov.get("compensation.min_amount")
-    comp_max_raw = prov.get("compensation.max_amount")
-    comp_currency = prov.get("compensation.currency") or None
-    comp_interval = _enum_or_default(
-        CompensationInterval, prov.get("compensation.interval"), CompensationInterval.UNSPECIFIED
-    )
-    if comp_min_raw or comp_max_raw or comp_currency or comp_interval != CompensationInterval.UNSPECIFIED:
-        try:
-            compensation = Compensation(
-                min_amount=float(comp_min_raw) if comp_min_raw else None,
-                max_amount=float(comp_max_raw) if comp_max_raw else None,
-                currency=comp_currency,
-                interval=comp_interval,
-            )
-        except ValueError:
-            compensation = None
+    if record_comp_min is not None or record_comp_max is not None or record_comp_currency or record_comp_period:
+        compensation = Compensation(
+            min_amount=float(record_comp_min) if record_comp_min is not None else None,
+            max_amount=float(record_comp_max) if record_comp_max is not None else None,
+            currency=record_comp_currency,
+            interval=_enum_or_default(CompensationInterval, record_comp_period, CompensationInterval.UNSPECIFIED),
+        )
+    else:
+        comp_min_raw = prov.get("compensation.min_amount")
+        comp_max_raw = prov.get("compensation.max_amount")
+        comp_currency = prov.get("compensation.currency") or None
+        comp_interval = _enum_or_default(
+            CompensationInterval, prov.get("compensation.interval"), CompensationInterval.UNSPECIFIED
+        )
+        if comp_min_raw or comp_max_raw or comp_currency or comp_interval != CompensationInterval.UNSPECIFIED:
+            try:
+                compensation = Compensation(
+                    min_amount=float(comp_min_raw) if comp_min_raw else None,
+                    max_amount=float(comp_max_raw) if comp_max_raw else None,
+                    currency=comp_currency,
+                    interval=comp_interval,
+                )
+            except ValueError:
+                compensation = None
 
     return Opportunity(
         id=record.id,
@@ -658,7 +721,13 @@ def _reconstruct_opportunity(session: Any, record: OpportunityRecord) -> Opportu
         seniority=_enum_or_default(SeniorityLevel, prov.get("seniority"), SeniorityLevel.UNSPECIFIED),
         employment_type=_enum_or_default(EmploymentType, prov.get("employment_type"), EmploymentType.UNSPECIFIED),
         location_raw=prov.get("location_raw", ""),
-        remote_policy=_enum_or_default(RemotePolicy, prov.get("remote_policy"), RemotePolicy.UNSPECIFIED),
+        work_mode=work_mode,
+        work_mode_source=work_mode_source,
+        location_country=getattr(record, "location_country", None) or "",
+        location_city=getattr(record, "location_city", None) or "",
+        location_region=getattr(record, "location_region", None) or "",
+        remote_scope=remote_scope,
+        remote_scope_regions=remote_scope_regions,
         geographic_eligibility=geo,
         compensation=compensation,
         posted_date=record.posted_date,
@@ -896,6 +965,77 @@ def make_reextract_all_handler(
     return handler
 
 
+def backfill_family_keys(session: Any, *, batch_size: int = 200) -> dict:
+    """A2 (BRIEF-FR-006 clustering) backfill: compute and persist
+    ``opportunities.family_key`` for every existing row.
+
+    Unlike ``reextract_all`` above, this needs no raw-payload reconstruction
+    and no injectable extractor: ``family_key`` (see
+    ``opportunity.clustering.compute_family_key``) is a pure function of only
+    ``organization`` and ``title``, both stored with full fidelity on
+    ``OpportunityRecord`` itself.
+
+    Batched (keyset cursor, ``id`` ascending, ``batch_size`` rows per
+    committed iteration) and idempotent: a row is only written -- and only
+    counted in ``changed`` -- when the freshly computed key differs from
+    what is already stored, so re-running this against unchanged data
+    reports ``changed == 0`` on the second and every subsequent run.
+    """
+    scanned = 0
+    changed = 0
+    last_id: Optional[str] = None
+    while True:
+        query = session.query(OpportunityRecord).order_by(OpportunityRecord.id.asc())
+        if last_id is not None:
+            query = query.filter(OpportunityRecord.id > last_id)
+        batch = query.limit(batch_size).all()
+        if not batch:
+            break
+        for record in batch:
+            last_id = record.id
+            scanned += 1
+            computed_key = compute_family_key(record.organization, record.title)
+            if record.family_key != computed_key:
+                record.family_key = computed_key
+                changed += 1
+        session.commit()
+
+    logger.info(
+        "worker.backfill_family_keys_completed",
+        extra={"component": "worker.handlers", "extra_data": {"scanned": scanned, "changed": changed}},
+    )
+    return {"status": "ok", "scanned": scanned, "changed": changed}
+
+
+def make_backfill_family_keys_handler(
+    *,
+    session_factory: Optional[SessionFactory] = None,
+    batch_size: int = 200,
+) -> Callable[[dict], None]:
+    """Build the ``backfill_family_keys`` job handler bound to the given
+    (injectable) session factory. See ``backfill_family_keys`` (above) for
+    the batching/idempotency contract this handler wraps in a single
+    committed session per batch."""
+    _session_factory_holder: list[Optional[SessionFactory]] = [session_factory]
+
+    def _resolve_session_factory() -> SessionFactory:
+        if _session_factory_holder[0] is None:
+            _session_factory_holder[0] = _production_session_factory()
+        return _session_factory_holder[0]
+
+    def handler(payload: dict) -> None:
+        session = _resolve_session_factory()()
+        try:
+            backfill_family_keys(session, batch_size=batch_size)
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    return handler
+
+
 def default_handler_registry(
     *,
     registry: Optional[SourceRegistry] = None,
@@ -934,4 +1074,5 @@ def default_handler_registry(
             scorer=scorer,
         ),
         "reextract_all": make_reextract_all_handler(session_factory=session_factory),
+        "backfill_family_keys": make_backfill_family_keys_handler(session_factory=session_factory),
     }
