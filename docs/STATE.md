@@ -11,7 +11,7 @@ Next: The measured number still does not exist.
 ## Repository
 
 - **Generated:** 2026-09-02T19:37:39Z
-- **State generated at commit:** `0e6e254` — docs(fr-005): final report -- Decision PASS_WITH_NOT_CLOSED
+- **State generated at commit:** `1d89fc6` — docs(fr-005): deviation 30 -- CI on main is unverifiable from this host
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
