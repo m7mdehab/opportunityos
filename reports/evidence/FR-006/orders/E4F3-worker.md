@@ -82,12 +82,12 @@ Any migration · `storage/models.py` · `opportunity/` other than `reverificatio
 
 | # | Command | Expected |
 |---|---|---|
-| E4F3.1 | `py -3.12 -m unittest worker -v` | `OK`, count stated |
+| E4F3.1 | `py -3.12 -m unittest discover -s worker -p "test_*.py" -v` | `OK`, count stated |
 | E4F3.2 | the cadence test | each source class scheduled at its declared cadence; the registry field is the source of truth; a source with no field gets the default |
 | E4F3.3 | the 403/429 test | a source that returned 403 or 429 is **not** rescheduled in the same session, whatever its cadence |
 | E4F3.4 | the re-verification test | a posting older than 14 days that is gone becomes `is_stale = True`; one still present does not; a read-forbidden source is never re-verified |
 | E4F3.5 | the "new since" test | rows newer than the last view are marked; marking seen changes no `decision`, `fit_score`, or hidden state |
 | E4F3.6 | `py -3.12 -m worker --digest` | Markdown and HTML written to `out/digest/`; the run makes **zero** network requests (assert it) |
-| E4F3.7 | `py -3.12 -m unittest api -v` and `py -3.12 scripts/check_repository.py` | `OK` and exit 0 |
+| E4F3.7 | `py -3.12 -m unittest discover -s api -p "test_*.py" -v` and `py -3.12 scripts/check_repository.py` | `OK` and exit 0 |
 
 Paste the `Ran N tests` and `OK`/`FAILED` lines verbatim.

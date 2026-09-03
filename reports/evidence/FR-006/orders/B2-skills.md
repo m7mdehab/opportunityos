@@ -93,8 +93,8 @@ beyond the proficiency field's own validation · `matching/seniority.py`,
 
 | # | Command | Expected |
 |---|---|---|
-| B2.1 | `py -3.12 -m unittest matching -v` | `OK`, count stated |
-| B2.2 | `py -3.12 -m unittest truth -v` | `OK` |
+| B2.1 | `py -3.12 -m unittest discover -s matching -p "test_*.py" -v` | `OK`, count stated |
+| B2.2 | `py -3.12 -m unittest discover -s truth -p "test_*.py" -v` | `OK` |
 | B2.3 | the proficiency-tier tests | `basic` and `foundations` produce a **partial** match; unknown produces a partial match; `working` and above can produce a strength — each asserted separately |
 | B2.4 | the required/nice-to-have split tests | a headed Greenhouse list and a headed Lever list both split correctly; an unheaded description yields **all nice-to-have** |
 | B2.5 | the anti-regression test | no reason string can claim a verified/core skill for a `basic` proficiency, searched across all generated reasons |

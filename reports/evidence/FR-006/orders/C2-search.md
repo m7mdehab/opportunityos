@@ -76,7 +76,7 @@ them, stop and report it) · `matching/**` · `truth/**` · `opportunity/**` · 
 
 | # | Command | Expected |
 |---|---|---|
-| C2.1 | `py -3.12 -m unittest api storage -v` | `OK`, counts stated |
+| C2.1 | `py -3.12 -m unittest discover -s api -p "test_*.py" and py -3.12 -m unittest discover -s storage -p "test_*.py" -v` | `OK`, counts stated |
 | C2.2 | `pytorch -"customer engineer"` over the fixture corpus | result count printed; **every** returned row inspected and shown to contain `pytorch`; **zero** returned rows titled Customer Engineer |
 | C2.3 | `SELECT indexname FROM pg_indexes WHERE tablename='opportunities'` after `alembic upgrade head` | `ix_opportunities_search_tsv` present |
 | C2.4 | the adversarial-input tests | unbalanced quote, lone `-`, empty, very long, and operator characters each return a result or an empty set — **never** a 500 |

@@ -82,7 +82,7 @@ Any migration · `opportunity/models.py`, `opportunity/adapters/**`,
 | # | Command | Expected |
 |---|---|---|
 | A2.1 | `py -3.12 -m unittest opportunity.test_clustering -v` | `OK`, >= 15 tests |
-| A2.2 | `py -3.12 -m unittest opportunity storage -v` | `OK`, counts stated |
+| A2.2 | `py -3.12 -m unittest discover -s opportunity -p "test_*.py" and py -3.12 -m unittest discover -s storage -p "test_*.py" -v` | `OK`, counts stated |
 | A2.3 | a corpus run printing every family with its member count | the Cloudflare "Senior Customer Engineer" set is **one** family; its member count is printed |
 | A2.4 | the whole-corpus invariant check | **zero** families spanning two employers; **zero** spanning two normalized titles — both printed as counts over the full corpus |
 | A2.5 | the determinism check | keys recomputed over the corpus twice are identical; the comparison is printed |

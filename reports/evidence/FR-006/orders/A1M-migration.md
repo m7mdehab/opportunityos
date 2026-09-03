@@ -106,7 +106,7 @@ order reports a different spelling, the Master reconciles at integration — do 
 | A1M.1 | on an empty scratch DB: `alembic upgrade head`, `alembic downgrade base`, `alembic upgrade head` | 4 / 4 / 4 revisions, exit 0 each; head is `0004_founder_control` |
 | A1M.2 | a per-object presence check after upgrade and after downgrade | every column, index, constraint and table listed above present after upgrade and **absent** after downgrade — printed per object, not inferred from the exit code |
 | A1M.3 | `SELECT indexname FROM pg_indexes WHERE tablename='opportunities'` | `ix_opportunities_search_tsv` present |
-| A1M.4 | `py -3.12 -m unittest storage -v` | `OK`, count stated |
+| A1M.4 | `py -3.12 -m unittest discover -s storage -p "test_*.py" -v` | `OK`, count stated |
 | A1M.5 | `py -3.12 -m unittest scripts.test_backup_restore -v` | `OK` |
 | A1M.6 | the `reextract_all` idempotency test | second run reports zero changed rows |
 | A1M.7 | `ls storage/migrations/versions/` | exactly **one** `0004_*` file; `founder_filter_settings` still exists after upgrade |

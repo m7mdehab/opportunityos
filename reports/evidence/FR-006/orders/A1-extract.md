@@ -171,7 +171,7 @@ anything under `private/`.
 
 | # | Command | Expected |
 |---|---|---|
-| A1.1 | `py -3.12 -m unittest opportunity -v` | `OK`, count stated |
+| A1.1 | `py -3.12 -m unittest discover -s opportunity -p "test_*.py" -v` | `OK`, count stated |
 | A1.2 | `py -3.12 -m unittest matching.test_qualification -v` | `OK` |
 | A1.3 | `py -3.12 -m unittest storage.test_postgres_integration -v` | `OK` |
 | A1.4 | `alembic upgrade head` then `alembic downgrade base` then `alembic upgrade head` on an empty scratch DB | 4 / 4 / 4 revisions, exit 0 each; head is `0004_founder_control` |

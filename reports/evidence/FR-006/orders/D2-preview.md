@@ -74,7 +74,7 @@ is wrong, report it — do not fix it here) · **`truth/**`**, and `truth/valida
 
 | # | Command | Expected |
 |---|---|---|
-| D2.1 | `py -3.12 -m unittest api storage -v` | `OK`, counts stated |
+| D2.1 | `py -3.12 -m unittest discover -s api -p "test_*.py" and py -3.12 -m unittest discover -s storage -p "test_*.py" -v` | `OK`, counts stated |
 | D2.2 | `curl -i` on `cv.pdf` | `200`, `Content-Type: application/pdf`, **`Content-Disposition: inline`**, body starts `%PDF` |
 | D2.3 | the template-parameter tests | each of the three templates returns a **different** document; an unknown template returns **422**, not a fallback |
 | D2.4 | the cache tests | miss → hit; a changed truth-pack hash → regeneration; the cache key printed for each case |

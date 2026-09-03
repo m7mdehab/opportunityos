@@ -110,7 +110,7 @@ Any migration · `storage/models.py` (A1 already declared the tables) · `matchi
 
 | # | Command | Expected |
 |---|---|---|
-| C1.1 | `py -3.12 -m unittest api -v` | `OK`, count stated |
+| C1.1 | `py -3.12 -m unittest discover -s api -p "test_*.py" -v` | `OK`, count stated |
 | C1.2 | the all-off equality test | `include_hidden` total **equals** `SELECT count(*) FROM opportunities`; both numbers printed |
 | C1.3 | the per-facet include and exclude tests | **every** facet in the brief's list exercised in both directions — a table of facet id, include result count, exclude result count |
 | C1.4 | the no-re-judgement test | `decision` and `fit_score` unchanged under every facet exclusion, asserted per facet |
@@ -119,6 +119,6 @@ Any migration · `storage/models.py` (A1 already declared the tables) · `matchi
 | C1.7 | the hidden-reasons audit | reason → count table printed; unhide-all-by-reason changes the visible count and nothing else |
 | C1.8 | the 10% warning test | a constructed poll where one facet hides >10% of new rows raises the warning; one at 9% does not |
 | C1.9 | the B4 exercise | affected counts for `track_preference`, `premium_fulltime_onsite`, `stale_postings`, each printed with its query |
-| C1.10 | `py -3.12 -m unittest storage -v` | `OK` |
+| C1.10 | `py -3.12 -m unittest discover -s storage -p "test_*.py" -v` | `OK` |
 
 Paste the `Ran N tests` and `OK`/`FAILED` lines verbatim. Report each B4 count as you found it.

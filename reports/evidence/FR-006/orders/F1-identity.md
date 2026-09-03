@@ -101,11 +101,11 @@ projection only) · `truth/predicates.py` · `truth/fixtures.py` · `truth/test_
 
 | # | Command | Expected |
 |---|---|---|
-| F1.1 | `py -3.12 -m unittest truth -v` | `OK`, count stated; count is higher than before |
+| F1.1 | `py -3.12 -m unittest discover -s truth -p "test_*.py" -v` | `OK`, count stated; count is higher than before |
 | F1.2 | `py -3.12 -m unittest truth.test_predicates -v` | `OK` — every new predicate registered and projected |
 | F1.3 | `py -3.12 scripts/truth_check.py` against a temporary pack you build from the template | exit 0; section names and counts printed; **no value text** |
 | F1.4 | the leak test | a pack with a distinctive sentinel in every field produces stdout containing the sentinel **zero** times |
-| F1.5 | `py -3.12 -m unittest matching -v` | `OK` — the fixture changes did not break the existing compiler or validator suites |
+| F1.5 | `py -3.12 -m unittest discover -s matching -p "test_*.py" -v` | `OK` — the fixture changes did not break the existing compiler or validator suites |
 | F1.6 | `py -3.12 scripts/check_guard.py --allow-missing-patterns` | exit 0 — the template's placeholder identity values do not look like real personal data or secrets |
 
 Paste the `Ran N tests` and `OK`/`FAILED` lines verbatim.
