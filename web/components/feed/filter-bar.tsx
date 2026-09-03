@@ -3,6 +3,7 @@
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
+import { SlidersHorizontal } from "lucide-react"
 import type { Track, Decision } from "@/lib/contract/types"
 
 export interface FeedFilters {
@@ -32,9 +33,15 @@ const selectClasses =
 export function FilterBar({
   filters,
   onChange,
+  onOpenFounderFilters,
 }: {
   filters: FeedFilters
   onChange: (next: FeedFilters) => void
+  /** Opens the founder-controlled Filters drawer (D3) — a separate concept
+   * from the search-bar filters above: those narrow this query's request,
+   * the drawer's filters decide what is hidden, ranked, or labelled across
+   * every query. */
+  onOpenFounderFilters: () => void
 }) {
   const hasActiveFilters =
     filters.track !== "" ||
@@ -126,6 +133,17 @@ export function FilterBar({
           Clear filters
         </Button>
       )}
+
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="ml-auto"
+        onClick={onOpenFounderFilters}
+      >
+        <SlidersHorizontal aria-hidden="true" className="size-3.5" />
+        Filters
+      </Button>
     </form>
   )
 }

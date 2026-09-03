@@ -7,6 +7,7 @@ a temp-file SQLite DB, never the real production database.
 import os
 import tempfile
 import unittest
+from pathlib import Path
 
 from opportunity.models import DerivationType, FieldProvenance, Opportunity, Track
 from opportunity.persistence import PersistResult, persist_batch
@@ -14,6 +15,8 @@ from opportunity.pipeline import IngestionBatch
 from storage.engine import get_engine, get_session_factory, init_db
 from storage.models import FieldProvenanceRecord, OpportunityRecord
 from storage.repository import StorageRepository
+
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
 
 def _field_provenance(field_name: str, value: str) -> FieldProvenance:
@@ -192,6 +195,48 @@ class PersistBatchTest(unittest.TestCase):
 
         row_count = self.session.query(OpportunityRecord).count()
         self.assertEqual(row_count, 0)
+
+    def test_persisted_source_id_is_the_registry_id_not_the_remote_job_id(self):
+        """Regression for the BRIEF-FR-005 source_id erratum.
+
+        A real adapter (``HimalayasAdapter``) parsing a real, committed
+        fixture (``opportunity/fixtures/himalayas.json``) produces an
+        ``Opportunity`` whose ``source`` is the registry id ("himalayas")
+        and whose ``source_id`` is the job's own remote id ("him-job-101").
+        The persisted ``OpportunityRecord.source_id`` must carry the
+        former -- the value ``GET /api/sources/health`` keys on -- and must
+        never be empty or equal to the raw per-job id.
+        """
+        from opportunity.adapters.himalayas import HimalayasAdapter
+
+        fixture_path = FIXTURES_DIR / "himalayas.json"
+        payload = fixture_path.read_text(encoding="utf-8")
+
+        adapter = HimalayasAdapter()
+        parse_result = adapter.parse_payload(
+            payload, raw_pointer="fixture:himalayas", fetched_at="2026-08-27"
+        )
+        self.assertEqual(len(parse_result.opportunities), 1)
+
+        opp = parse_result.opportunities[0]
+        # Sanity-check the fixture still exercises two *different* values,
+        # so this test would actually fail if the mapping regressed.
+        self.assertEqual(opp.source, "himalayas")
+        self.assertEqual(opp.source_id, "him-job-101")
+        self.assertNotEqual(opp.source, opp.source_id)
+
+        batch = _make_batch(parse_result.opportunities)
+        result = persist_batch(batch, self.repository)
+        self.assertEqual(result.inserted_count, 1)
+
+        record = self.session.query(OpportunityRecord).filter_by(id=opp.id).first()
+        self.assertIsNotNone(record)
+        self.assertEqual(record.source_id, "himalayas")
+        self.assertTrue(record.source_id, "source_id must never be empty")
+        self.assertNotEqual(record.source_id, "him-job-101")
+        # The remote job id is not lost -- it is preserved verbatim in the
+        # row's own primary key.
+        self.assertEqual(record.id, "himalayas:him-job-101")
 
 
 if __name__ == "__main__":

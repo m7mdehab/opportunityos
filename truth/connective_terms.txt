@@ -1,0 +1,60 @@
+# Connective boilerplate stop-list (BRIEF-FR-005 D1 / ADR-0014, term class (c)).
+#
+# Every entry here is a single lower-case word that `truth/validator.py`
+# subtracts from a claim's "material" token set during the guard-9 lexical
+# coverage check, in addition to `_NON_MATERIAL_WORDS`. An entry belongs on
+# this list ONLY if two things are both true:
+#
+#   1. It is structural or letter-form vocabulary that carries no
+#      verifiable, founder-specific factual weight by itself -- removing the
+#      word changes how a sentence reads, never what fact it asserts.
+#   2. It could never plausibly appear as part of a real job title or skill
+#      name. This is the test an independent council review applied and
+#      found this file failing on its first pass (ADR-0014 "Residual
+#      exposure and review history" has the full account): words like
+#      "professional", "position", "team", "hiring", "manager", "role", and
+#      "time" all appear in real titles ("Professional Services Consultant",
+#      "Hiring Manager", "Team Lead", "Part-Time Engineer", ...), so leaving
+#      them here let a claim smuggle in a title suffix the founder's
+#      evidence never stated. Every entry below has been re-checked against
+#      that test and does not fail it.
+#
+# A proper noun, a skill name, a quantity, an employer name, a role title,
+# or any other value that could vary between two true and two false claims
+# must never appear here -- it stays class (a): founder-claim, evidence-
+# checked.
+#
+# This file is loaded once at import and only ever *widens* what guard 9
+# excuses from the "uncovered material term" rejection. It can never cause an
+# unsupported founder-specific claim to pass: guard 9 still requires every
+# other token in the claim to appear in the cited evidence.
+#
+# As of this revision, the compiler routes every sentence that names the
+# target opportunity (role/employer) through a NARRATIVE segment instead of
+# a class-(a) claim (see `matching/compiler_employment.py`), so this list no
+# longer needs cover-letter-greeting vocabulary at all -- NARRATIVE text is
+# never checked against it. What remains is deliberately small: pure
+# salutations (zero plausible title/skill overlap) plus the one label word
+# ("background") the compiler's own claim wording still needs.
+
+# --- Letter-form greeting / closing vocabulary --------------------------
+# Salutation and sign-off words. They identify the document as a letter;
+# they assert nothing about the founder or the opportunity, and none of
+# them can plausibly be part of a job title or skill name.
+dear
+sincerely
+regards
+faithfully
+yours
+truly
+warmly
+respectfully
+hello
+hi
+
+# --- CV/cover-letter label vocabulary ------------------------------------
+# "Background" introduces a fact that is separately claimed and evidence-
+# checked (e.g. "Background: {title}." still requires {title} itself to be
+# covered by cited evidence) and is not itself a plausible title/skill
+# fragment.
+background

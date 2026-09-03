@@ -1,0 +1,110 @@
+### A-9 run 1 -- live poll on a fresh opportunityos_alpha (Master)
+
+alpha.py up output (note it names the database, which FR-004 could not):
+  PostgreSQL: already listening on 127.0.0.1:5432 (not started by alpha.py).
+  PostgreSQL: database 'opportunityos_alpha' does not exist; creating it ...
+  PostgreSQL: database 'opportunityos_alpha' created.
+  PostgreSQL: using database 'opportunityos_alpha'.
+  Database: opportunityos_alpha (PostgreSQL 127.0.0.1:5432).
+  Worker/API/Web started; alpha: up.
+
+--- per-source poll runs (source_poll_runs, registry ids) ---
+       source_id       | status | raw_ingested | unique_opportunities | inserted 
+-----------------------+--------+--------------+----------------------+----------
+ greenhouse:stripe     | ok     |          591 |                  591 |      591
+ greenhouse:datadog    | ok     |          442 |                  442 |      442
+ greenhouse:cloudflare | ok     |          321 |                  321 |      321
+ greenhouse:coinbase   | ok     |          187 |                  187 |      187
+ greenhouse:flexport   | ok     |          170 |                  170 |      170
+ greenhouse:figma      | ok     |          160 |                  160 |      160
+ remote_ok             | ok     |          100 |                  100 |      100
+ greenhouse:duolingo   | ok     |           89 |                   89 |       89
+ himalayas             | ok     |           20 |                   18 |       18
+ remotive              | ok     |           18 |                   18 |       18
+ etimad                | ok     |            0 |                    0 |        0
+ eu_ted                | ok     |            0 |                    0 |        0
+ freelancer            | ok     |            0 |                    0 |        0
+ ungm                  | ok     |            0 |                    0 |        0
+ we_work_remotely      | error  |            0 |                    0 |        0
+ world_bank            | ok     |           15 |                    0 |        0
+(16 rows)
+
+--- opportunities persisted ---
+ opportunities 
+---------------
+          2096
+(1 row)
+
+--- A-9 fixture-residue probes (expected: all zero) ---
+ example_com | opp_uq | src_prefixed 
+-------------+--------+--------------
+           0 |      0 |            0
+(1 row)
+
+--- source_id shape (THE DEFECT) ---
+  source_id_kind  | count 
+------------------+-------
+ (numeric job id) |  2078
+ (empty string)   |    18
+(2 rows)
+
+
+================================================================================
+MASTER'S READING OF RUN 1
+================================================================================
+
+WHAT PASSED. This is a genuine live poll. Twelve sources were attempted through the real
+`poll_source -> persist_batch -> evaluate_new` seam on a database that alpha.py created
+empty moments earlier, and the three fixture-residue probes A-9 named are all ZERO:
+no example.com URL, no `opp-uq-*` id, no `src-*` source id. The rows are real postings from
+remoteOK.com, himalayas.app, remotive.com and three Greenhouse boards, with real employers
+(named in the run, withheld here -- see the note below) and real titles. `we_work_remotely` returned an
+error and was recorded, not retried, as AGENTS.md requires. `world_bank` ingested 15 raw
+records and yielded 0 opportunities -- recorded as observed.
+
+This is the property FR-004's prose asserted with no claim behind it. It is now evidenced.
+
+WHAT DID NOT PASS. A-9's expected result also said: "Every `source_id` present is a real
+registry id from `docs/SOURCE_REGISTRY.yaml`." None are. 2078 rows carry a bare numeric job
+id; 18 carry the empty string.
+
+The cause is a one-line mapping error in `opportunity/persistence.py:127`. `Opportunity` has
+two similarly-named fields: `source` (the registry id -- adapters set `source=self.source_id`,
+e.g. himalayas.py:121,168 where the adapter's own source_id is "himalayas") and `source_id`
+(the job's remote id at that source -- himalayas.py:170, greenhouse.py:147, eu_ted.py:176).
+Persistence maps the second into the record's `source_id` column. It should map the first.
+
+`source_poll_runs.source_id` stores the registry ids correctly, which is why the per-source
+table above reads properly while the opportunity rows do not.
+
+WHY NOBODY CAUGHT IT BEFORE. FR-004's fixtures used `source_id: "src-1"` -- a value that
+*looks* like a source id. The mapping therefore appeared correct against every fixture in the
+suite, and only a real poll could expose it. This is a pre-existing BRIEF-FR-004 defect that
+FR-005 found, in the same class as the two already recorded in the FR-004 erratum.
+
+It matters to the founder, not just to the ledger: the feed shows which source each
+opportunity came from, and that column currently shows a meaningless number, or nothing at
+all for 18 rows, and cannot be reconciled by eye with `GET /api/sources/health`, which keys
+on registry ids.
+
+A-9 is therefore recorded as PASS on the provenance half and NOT_CLOSED on the registry-id
+half pending run 2. A repair task was opened rather than the expected result being softened;
+see a9-live-poll-run2.txt for the re-run after the fix.
+
+
+--- Why no employer names appear above ---
+
+The Master's live run did show real employer names, and they were the clearest single
+demonstration that these are genuine postings rather than fixtures. They are withheld from
+this file anyway.
+
+`reports/**` is on the public documentation mirror allowlist (`.mirror-allowlist`), and
+`docs/SOURCE_REGISTRY.yaml` records `attribution: {required: review_required}` for all three
+of remote_ok, himalayas and remotive. Read access is `allowed`, which is what the poll used
+and all the poll needed. Redistributing listing content into a public repository under an
+attribution requirement that is explicitly unreviewed is a different act from reading it,
+and "coverage is not permission" is the rule that separates the two.
+
+Nothing is lost evidentially: the claim A-9 binds is that the rows are real and carry no
+fixture residue, and that is established by the per-source counts, the three real hosts, and
+the three zero probes above -- none of which needs a company's name.

@@ -6,6 +6,9 @@ import { HeaderStrip } from "@/components/feed/header-strip"
 import { FilterBar, EMPTY_FILTERS, type FeedFilters } from "@/components/feed/filter-bar"
 import { OpportunityCard } from "@/components/feed/opportunity-card"
 import { DetailDrawer } from "@/components/feed/detail-drawer"
+import { FiltersDrawer } from "@/components/feed/filters-drawer"
+import { Button } from "@/components/ui/button"
+import { EyeOff, Eye } from "lucide-react"
 import {
   NoTruthPackState,
   InvalidTruthPackState,
@@ -42,6 +45,14 @@ export default function FeedPage() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [polling, setPolling] = useState(false)
+
+  // ---- D3 founder-controlled filters ----
+  const [filtersDrawerOpen, setFiltersDrawerOpen] = useState(false)
+  const [hiddenCount, setHiddenCount] = useState(0)
+  // "Show N hidden" — a deliberate, visible, switchable control per the
+  // founder's stated requirement (see d3-contract.md §6): nothing that a
+  // `hide`-mode filter removes stays removed without a way back to it.
+  const [includeHidden, setIncludeHidden] = useState(false)
 
   // ---- auth gate ----
   useEffect(() => {
@@ -88,10 +99,12 @@ export default function FeedPage() {
         q: filters.q || undefined,
         page: 1,
         page_size: 50,
+        include_hidden: includeHidden,
       })
       .then((res) => {
         setItems(res.items)
         setTotal(res.total)
+        setHiddenCount(res.hidden_count)
       })
       .catch((err) => {
         if (err instanceof ApiError && err.status === 401) {
@@ -101,7 +114,7 @@ export default function FeedPage() {
         setListError("Could not load opportunities.")
       })
       .finally(() => setListLoading(false))
-  }, [filters, router])
+  }, [filters, includeHidden, router])
 
   useEffect(() => {
     if (authPhase !== "authenticated") return
@@ -184,7 +197,11 @@ export default function FeedPage() {
       />
 
       {truth?.loaded && (
-        <FilterBar filters={filters} onChange={setFilters} />
+        <FilterBar
+          filters={filters}
+          onChange={setFilters}
+          onOpenFounderFilters={() => setFiltersDrawerOpen(true)}
+        />
       )}
 
       <main className="flex-1 px-4 py-4 sm:px-6">
@@ -212,8 +229,12 @@ export default function FeedPage() {
           )
         ) : (
           <>
-            <p className="mb-3 text-xs text-muted-foreground">
+            <p
+              data-testid="opportunity-count"
+              className="mb-3 text-xs text-muted-foreground"
+            >
               {total} opportunit{total === 1 ? "y" : "ies"}
+              {includeHidden && " (including hidden)"}
             </p>
             <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {items?.map((o) => (
@@ -226,7 +247,45 @@ export default function FeedPage() {
             </ul>
           </>
         )}
+
+        {/* The founder's own visible, switchable control back to whatever
+            a `hide`-mode filter removed — see d3-contract.md §6. Rendered
+            outside the branches above so it survives even when a hide
+            filter's default leaves nothing else on the page (an entirely
+            hidden feed is exactly the case this control exists for). */}
+        {truth?.loaded && !listLoading && !listError && (hiddenCount > 0 || includeHidden) && (
+          <div className="mt-4 flex justify-center">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              data-testid="toggle-hidden-opportunities"
+              onClick={() => setIncludeHidden((v) => !v)}
+            >
+              {includeHidden ? (
+                <>
+                  <EyeOff aria-hidden="true" className="size-3.5" />
+                  Hide hidden opportunities
+                </>
+              ) : (
+                <>
+                  <Eye aria-hidden="true" className="size-3.5" />
+                  Show {hiddenCount} hidden
+                </>
+              )}
+            </Button>
+          </div>
+        )}
       </main>
+
+      <FiltersDrawer
+        open={filtersDrawerOpen}
+        onOpenChange={setFiltersDrawerOpen}
+        onFiltersChanged={() => {
+          refreshList()
+          refreshDashboard()
+        }}
+      />
 
       <DetailDrawer
         opportunityId={selectedId}

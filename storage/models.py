@@ -59,6 +59,21 @@ class FieldProvenanceRecord(Base):
 
     opportunity = relationship("OpportunityRecord", back_populates="provenances")
 
+    __table_args__ = (
+        # Natural identity for a provenance row (see migration
+        # 0003_provenance_identity for why this tuple, not the brief's
+        # ("opportunity_id", "field_name", "source_locator") -- there is no
+        # source_locator column, and raw_pointer, the closest analogue, is
+        # nullable and therefore unusable in a PostgreSQL unique constraint).
+        # The surrogate ``id`` stays the primary key so ``Session.merge()``
+        # (storage/repository.py) has a stable target; this constraint is
+        # what gives the row its natural identity and prevents a re-poll
+        # from accumulating duplicate provenance rows for the same field.
+        UniqueConstraint(
+            "opportunity_id", "field_name", "record_checksum", name="uq_field_provenances_identity"
+        ),
+    )
+
 
 class OutboundActionRecordModel(Base):
     __tablename__ = "outbound_actions"
@@ -288,4 +303,36 @@ class FounderTriageStateRecord(Base):
     state = Column(String(32), nullable=False, index=True)
     snoozed_until = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, nullable=False)
+
+
+class FounderFilterSettingRecord(Base):
+    """D3 (BRIEF-FR-005) -- one row per named founder-controlled filter.
+
+    Table and defaults live in migration ``0003_provenance_identity`` (D3's
+    marked block), shared with D5's provenance work in that revision. Every
+    fresh database has all ten filters seeded by the migration itself, so the
+    API never has to invent a default on first read.
+
+    ``mode`` is one of ``hide`` | ``rank_only`` | ``label_only`` (see
+    ``api/filters.py``). ``params_json`` is nullable free-form JSON for the
+    handful of filters that take founder-supplied parameters (``min_fit_score``,
+    ``compensation_floor``); every other filter's params are ``{}``.
+
+    Timezone convention for ``updated_at``: this column is naive (no
+    ``timezone=True``), matching every other ``DateTime`` column in this
+    module (e.g. ``MatchEvaluationRecord.evaluated_at``). Writers must strip
+    tzinfo from an already-UTC value before writing (see
+    ``matching/evaluate_persist.py::_to_naive_utc`` and
+    ``api/filters.py::to_naive_utc``) rather than handing psycopg2 a tz-aware
+    datetime, which PostgreSQL would silently convert using the session's
+    ``timezone`` GUC before storing it naive.
+    """
+
+    __tablename__ = "founder_filter_settings"
+
+    filter_id = Column(String(64), primary_key=True)
+    enabled = Column(Boolean, nullable=False)
+    mode = Column(String(16), nullable=False)
+    params_json = Column(Text, nullable=True)
     updated_at = Column(DateTime, nullable=False)

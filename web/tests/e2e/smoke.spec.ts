@@ -35,6 +35,21 @@ test.describe("founder alpha smoke", () => {
     await expect(
       page.getByTestId("opportunity-card-opp-001")
     ).toBeVisible()
+
+    // D3 default founder filters hide the fixture set's red-line and
+    // excluded-industry matches (opp-002 among them, needed below). Reveal
+    // them here so the rest of this smoke test's assumptions about which
+    // opportunities are on the page are unchanged from pre-D3 behaviour —
+    // this control's own toggle behaviour is covered separately by
+    // `filters.spec.ts` (A-8).
+    const showHidden = page.getByTestId("toggle-hidden-opportunities")
+    if (await showHidden.count()) {
+      await showHidden.click()
+      await expect(
+        page.getByTestId("opportunity-card-opp-002")
+      ).toBeVisible()
+    }
+
     const initialCardCount = await page.getByRole("listitem").count()
     expect(initialCardCount).toBeGreaterThan(0)
 

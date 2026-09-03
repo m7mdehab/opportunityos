@@ -46,22 +46,22 @@ def create_test_graph() -> TruthGraph:
         id="ev-auth",
         content="Egypt",
         source="manual",
-        locator="authorization.jurisdiction",
+        locator="work_authorization.jurisdiction",
         metadata={"jurisdiction": "Egypt"},
     )
     ev_en = EvidenceRecord(
         id="ev-en",
         content="English",
         source="manual",
-        locator="language.name",
-        metadata={"name": "English"},
+        locator="language.language",
+        metadata={"language": "English"},
     )
     ev_ar = EvidenceRecord(
         id="ev-ar",
         content="Arabic",
         source="manual",
-        locator="language.name",
-        metadata={"name": "Arabic"},
+        locator="language.language",
+        metadata={"language": "Arabic"},
     )
     ev_srv = EvidenceRecord(
         id="ev-srv",
@@ -81,10 +81,31 @@ def create_test_graph() -> TruthGraph:
         id="ev-auth-de-neg",
         content="Not authorized to work in Germany",
         source="manual",
-        locator="authorization.jurisdiction",
+        locator="work_authorization.jurisdiction",
         metadata={"jurisdiction": "Germany"},
     )
-    for ev in (ev_title, ev_py, ev_go, ev_auth, ev_en, ev_ar, ev_srv, ev_res, ev_auth_de_neg):
+    # Independent, plausible CV-style bullets for a senior distributed systems
+    # architect. Deliberately NOT copied from create_test_opportunity's default
+    # `responsibilities` text — they overlap it only through genuine shared
+    # engineering vocabulary ("distributed", "systems", "cloud",
+    # "infrastructure"), the same fuzzy keyword-overlap path scorer.py already
+    # uses for a real founder pack, not an exact-string echo chosen to force
+    # the match.
+    ev_resp1 = EvidenceRecord(
+        id="ev-resp1",
+        content="Architected and operated large-scale distributed systems handling real-time event streams",
+        source="manual",
+        locator="employment.responsibility",
+        metadata={"responsibility": "Architected and operated large-scale distributed systems handling real-time event streams"},
+    )
+    ev_resp2 = EvidenceRecord(
+        id="ev-resp2",
+        content="Owned production readiness and infrastructure reliability for a multi-region cloud platform",
+        source="manual",
+        locator="employment.responsibility",
+        metadata={"responsibility": "Owned production readiness and infrastructure reliability for a multi-region cloud platform"},
+    )
+    for ev in (ev_title, ev_py, ev_go, ev_auth, ev_en, ev_ar, ev_srv, ev_res, ev_auth_de_neg, ev_resp1, ev_resp2):
         g.add_evidence(ev)
 
     g.add_assertion(AtomicAssertion(
@@ -122,7 +143,7 @@ def create_test_graph() -> TruthGraph:
     g.add_assertion(AtomicAssertion(
         id="a-auth",
         subject_id="founder",
-        predicate="authorization.jurisdiction",
+        predicate="work_authorization.jurisdiction",
         value="Egypt",
         evidence_ids=("ev-auth",),
         verification_status=VerificationStatus.VERIFIED,
@@ -130,7 +151,7 @@ def create_test_graph() -> TruthGraph:
     g.add_assertion(AtomicAssertion(
         id="a-auth-de-neg",
         subject_id="founder",
-        predicate="authorization.jurisdiction",
+        predicate="work_authorization.jurisdiction",
         value="Germany",
         evidence_ids=("ev-auth-de-neg",),
         verification_status=VerificationStatus.VERIFIED,
@@ -139,7 +160,7 @@ def create_test_graph() -> TruthGraph:
     g.add_assertion(AtomicAssertion(
         id="a-lang-en",
         subject_id="founder",
-        predicate="language.name",
+        predicate="language.language",
         value="English",
         evidence_ids=("ev-en",),
         verification_status=VerificationStatus.VERIFIED,
@@ -147,7 +168,7 @@ def create_test_graph() -> TruthGraph:
     g.add_assertion(AtomicAssertion(
         id="a-lang-ar",
         subject_id="founder",
-        predicate="language.name",
+        predicate="language.language",
         value="Arabic",
         evidence_ids=("ev-ar",),
         verification_status=VerificationStatus.VERIFIED,
@@ -158,6 +179,22 @@ def create_test_graph() -> TruthGraph:
         predicate="service.name",
         value="Cloud Architecture Advisory",
         evidence_ids=("ev-srv",),
+        verification_status=VerificationStatus.VERIFIED,
+    ))
+    g.add_assertion(AtomicAssertion(
+        id="a-resp1",
+        subject_id="founder",
+        predicate="employment.responsibility",
+        value="Architected and operated large-scale distributed systems handling real-time event streams",
+        evidence_ids=("ev-resp1",),
+        verification_status=VerificationStatus.VERIFIED,
+    ))
+    g.add_assertion(AtomicAssertion(
+        id="a-resp2",
+        subject_id="founder",
+        predicate="employment.responsibility",
+        value="Owned production readiness and infrastructure reliability for a multi-region cloud platform",
+        evidence_ids=("ev-resp2",),
         verification_status=VerificationStatus.VERIFIED,
     ))
     return g
@@ -175,6 +212,7 @@ def create_test_opportunity(
     responsibilities: tuple[str, ...] = ("Build distributed systems", "Maintain cloud infrastructure"),
     procurement_metadata: ProcurementMetadata | None = None,
     compensation: Any = None,
+    employment_type: EmploymentType = EmploymentType.FULL_TIME,
 ) -> Opportunity:
     prov = SourceProvenance(
         source_id="greenhouse:cloudflare",
@@ -200,7 +238,7 @@ def create_test_opportunity(
         requirements=("5+ years Python", "Go proficiency"),
         skills=skills,
         seniority=SeniorityLevel.SENIOR,
-        employment_type=EmploymentType.FULL_TIME,
+        employment_type=employment_type,
         location_raw=location_raw,
         remote_policy=remote_policy,
         geographic_eligibility=geo,

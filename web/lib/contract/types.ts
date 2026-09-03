@@ -44,13 +44,67 @@ export interface OpportunityListItem {
   is_stale: boolean
   action_state: ActionState
   feedback_label: FeedbackLabel | null
+  /** filter_ids in `hide` mode that currently match this item. Always
+   * present, `[]` when empty — never `null`. Non-empty only when the item
+   * is returned via `include_hidden=true`, since a `hide` match is
+   * otherwise omitted from `items` entirely. */
+  hidden_by: string[]
+  /** filter_ids in `rank_only` or `label_only` mode that currently match
+   * this item. Always present, `[]` when empty — never `null`. Rendered as
+   * chips; never implies the item was removed or re-scored. */
+  flagged_by: string[]
 }
 
 export interface OpportunityListResponse {
   page: number
   page_size: number
   total: number
+  /** Count of opportunities currently hidden by an enabled `hide`-mode
+   * filter, regardless of `include_hidden`. */
+  hidden_count: number
   items: OpportunityListItem[]
+}
+
+/** D3 — founder-controlled filters (`founder_filter_settings`). A toggle
+ * changes only whether a row is hidden, ranked, or merely labelled: it
+ * never changes `decision` or `fit_score` on any `OpportunityListItem`. */
+export type FilterMode = "hide" | "rank_only" | "label_only"
+
+export interface FounderFilter {
+  filter_id: string
+  enabled: boolean
+  mode: FilterMode
+  /** Free-form per-filter parameters (e.g. `min_fit_score.threshold`,
+   * `compensation_floor.monthly_minimum` + `currency`). Empty object when
+   * the filter takes no parameters. */
+  params: Record<string, unknown>
+  /** Count of opportunities this filter currently matches, computed
+   * regardless of `enabled` — so the drawer can show what enabling it
+   * would do before the founder flips the switch. Not meaningful (and not
+   * to be shown) when `unavailable_reason` is set — see below. */
+  affected_count: number
+  description: string
+  /** Non-null when this filter cannot match anything right now for a
+   * reason unrelated to `enabled`/`mode` — e.g. the predicate depends on a
+   * truth-pack assertion the founder's pack does not contain, or on a
+   * signal nothing currently computes. When set, `affected_count` reads as
+   * "0" for a reason that has nothing to do with the founder having no
+   * matches, so the UI must render this filter as visibly inert (not
+   * "enabled and protecting you", not "off") and show this text instead of
+   * the count. Council finding, FR-005 D3 repair. */
+  unavailable_reason: string | null
+}
+
+export interface FiltersResponse {
+  filters: FounderFilter[]
+}
+
+/** Body for `PUT /api/filters/{filter_id}`. All keys optional; an absent
+ * key leaves that property unchanged. */
+export interface FilterUpdateRequest {
+  enabled?: boolean
+  mode?: FilterMode
+  params?: Record<string, unknown>
 }
 
 export interface OpportunityField {
@@ -184,6 +238,9 @@ export interface DashboardDay {
   opened: number
   labelled: number
   applied: number
+  /** Count of opportunities hidden that day by an enabled `hide`-mode
+   * founder filter (D3). */
+  hidden_by_filters: number
 }
 
 export interface DashboardResponse {

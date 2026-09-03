@@ -88,6 +88,7 @@ def _dimension_scores_to_json(evaluation: MatchEvaluation) -> str:
             "unknowns": list(ds.unknowns),
             "evidence_refs": list(ds.evidence_refs),
             "opportunity_field_refs": list(ds.opportunity_field_refs),
+            "signal_tags": list(ds.signal_tags),
         }
         for ds in evaluation.dimension_scores
     ]

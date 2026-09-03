@@ -10,6 +10,7 @@ import type {
   Decision,
   FeedbackHistoryEntry,
   FeedbackLabel,
+  FilterMode,
   OpportunityField,
   QualificationConstraint,
   DimensionScore,
@@ -713,4 +714,191 @@ export function truthSectionsMissing(): TruthSection[] {
     { section: "red_list", present: false, count: 0 },
     { section: "answer_library", present: false, count: 0 },
   ]
+}
+
+/**
+ * D3 — founder-controlled filters (contract: `reports/evidence/FR-005/
+ * d3-contract.md` §3). Named filters, seeded with the exact defaults the
+ * Master specified: only `red_lines` and `excluded_industries` hide by
+ * default, everything else labels or ranks, and `min_fit_score` /
+ * `compensation_floor` start disabled.
+ *
+ * The mock's per-opportunity match predicates below are a synthetic stand
+ * -in for the real API's Python evaluation loop (`api/routes_api.py`,
+ * evaluated per the contract doc) — they exist only so the drawer has
+ * something true and internally consistent to show against the fixture
+ * set, not as a claim about real filter semantics. Each predicate is
+ * derived from a real field already on `SeedOpportunity` (never a bare
+ * hard-coded id list) so toggling params (e.g. `min_fit_score.threshold`)
+ * visibly changes the affected set, the same way it will against the real
+ * API.
+ */
+export interface FounderFilterDefinition {
+  filter_id: string
+  description: string
+  default_enabled: boolean
+  default_mode: FilterMode
+  default_params: Record<string, unknown>
+  /** Council finding (FR-005 D3 repair): a handful of filters can be
+   * permanently inert in production — `stale_postings` because nothing
+   * outside tests writes `is_stale=True`, and the truth-pack-dependent
+   * ones because the shipped template ships `assertions: []`. Non-null
+   * here stands in for the real API's `unavailable_reason`; the drawer
+   * must never let an inert filter merely read as "0 matches", since that
+   * looks like protection rather than a filter that cannot fire at all. */
+  default_unavailable_reason: string | null
+}
+
+export const FOUNDER_FILTER_DEFINITIONS: FounderFilterDefinition[] = [
+  {
+    filter_id: "geo_eligibility",
+    description:
+      "Opportunities that fail the qualifier's geographic eligibility constraint.",
+    default_enabled: true,
+    default_mode: "label_only",
+    default_params: {},
+    default_unavailable_reason: null,
+  },
+  {
+    filter_id: "work_mode_onsite",
+    description:
+      "Opportunities that fail the qualifier's on-site work-mode constraint.",
+    default_enabled: true,
+    default_mode: "label_only",
+    default_params: {},
+    default_unavailable_reason: null,
+  },
+  {
+    filter_id: "red_lines",
+    description: "Opportunities matching a red line in your truth pack.",
+    default_enabled: true,
+    default_mode: "hide",
+    default_params: {},
+    default_unavailable_reason: null,
+  },
+  {
+    filter_id: "excluded_industries",
+    description: "Opportunities in an industry your truth pack excludes.",
+    default_enabled: true,
+    default_mode: "hide",
+    default_params: {},
+    default_unavailable_reason: null,
+  },
+  {
+    filter_id: "track_preference",
+    description: "Opportunities outside your preferred track order.",
+    default_enabled: true,
+    default_mode: "rank_only",
+    default_params: {},
+    default_unavailable_reason:
+      "Needs a preference.track assertion in your truth pack. The shipped template has no assertions, so this filter has nothing to evaluate until you add one.",
+  },
+  {
+    filter_id: "target_roles",
+    description: "Opportunities that do not match a career target role.",
+    default_enabled: true,
+    default_mode: "rank_only",
+    default_params: {},
+    default_unavailable_reason:
+      "Needs a career.target_role assertion in your truth pack. The shipped template has no assertions, so this filter has nothing to evaluate until you add one.",
+  },
+  {
+    filter_id: "premium_fulltime_onsite",
+    description:
+      "Full-time, on-site opportunities below your premium compensation threshold.",
+    default_enabled: true,
+    default_mode: "rank_only",
+    default_params: {},
+    default_unavailable_reason:
+      "Needs a preference.fulltime_onsite_premium_monthly assertion in your truth pack. The shipped template has no assertions, so this filter has nothing to evaluate until you add one.",
+  },
+  {
+    filter_id: "stale_postings",
+    description: "Opportunities not recently reverified by their source.",
+    default_enabled: true,
+    default_mode: "label_only",
+    default_params: {},
+    default_unavailable_reason:
+      "No source-polling code path outside tests currently marks a posting stale, so this filter can never match anything yet.",
+  },
+  {
+    filter_id: "min_fit_score",
+    description: "Opportunities below a minimum fit score you set.",
+    default_enabled: false,
+    default_mode: "hide",
+    // Param name and default (0) match `api/filters.py`'s
+    // `FILTER_DEFINITIONS` exactly, not just this mock's own convention —
+    // a param-name mismatch between the mock and the real API is exactly
+    // the kind of divergence D3 exists to prevent, and it was here until
+    // the A-8 real-stack run surfaced it. `min_score=0` can never match
+    // anything real (`fit_score` is always >= 0), which the Playwright
+    // spec relies on as a structural fact true against any seed.
+    default_params: { min_score: 0 },
+    default_unavailable_reason: null,
+  },
+  {
+    filter_id: "compensation_floor",
+    description: "Opportunities below a compensation floor you set.",
+    default_enabled: false,
+    default_mode: "rank_only",
+    // Same alignment as `min_fit_score` above: `floor`/`currency` and the
+    // `0`/`null` defaults match `api/filters.py` verbatim.
+    default_params: { floor: 0, currency: null },
+    default_unavailable_reason: null,
+  },
+]
+
+function dimensionScore(o: SeedOpportunity, dimension: string): number | null {
+  const d = o.dimension_scores.find((d) => d.dimension === dimension)
+  return d ? d.score : null
+}
+
+/** Returns whether `filterId` currently matches `o`, given the live
+ * `params` for that filter (only `min_fit_score.min_score` varies the
+ * result today). See the module doc above for what this stands in for.
+ *
+ * `min_fit_score` reads the real `fit_score` field under the real API's
+ * param name (`min_score`), so it behaves identically to
+ * `api/filters.py::_min_fit_score_matches` — the Playwright A-8 spec
+ * relies on that identity to stay valid unchanged against the real stack.
+ * `compensation_floor` is still a proxy (this mock has no modelled
+ * compensation-amount field to compare `params.floor`/`params.currency`
+ * against, unlike the real predicate, which reads persisted
+ * `compensation.min_amount`/`max_amount`/`currency`); nothing in this repo
+ * currently asserts its `affected_count` numerically, only its mode/switch
+ * behaviour, which does not depend on this approximation. */
+export function evaluateFounderFilter(
+  filterId: string,
+  o: SeedOpportunity,
+  params: Record<string, unknown>
+): boolean {
+  switch (filterId) {
+    case "geo_eligibility":
+    case "work_mode_onsite":
+      return /relocate|on-site/i.test(o.description)
+    case "red_lines":
+      return o.constraints.some((c) => c.outcome === "FAIL" && c.is_hard_failure)
+    case "excluded_industries":
+      return o.track === "procurement"
+    case "track_preference":
+      return o.track !== "employment"
+    case "target_roles":
+      return o.decision !== "qualified"
+    case "premium_fulltime_onsite": {
+      const comp = dimensionScore(o, "compensation_alignment")
+      return o.track === "employment" && comp !== null && comp < 0.5
+    }
+    case "compensation_floor": {
+      const comp = dimensionScore(o, "compensation_alignment")
+      return comp !== null && comp < 0.5
+    }
+    case "stale_postings":
+      return o.is_stale
+    case "min_fit_score": {
+      const minScore = Number(params.min_score ?? 0)
+      return o.fit_score !== null && o.fit_score < minScore
+    }
+    default:
+      return false
+  }
 }

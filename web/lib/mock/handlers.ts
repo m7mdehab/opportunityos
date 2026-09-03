@@ -72,6 +72,7 @@ export const handlers = [
     const q = url.searchParams.get("q") ?? undefined
     const page = Number(url.searchParams.get("page") ?? "1")
     const pageSize = Number(url.searchParams.get("page_size") ?? "25")
+    const includeHidden = url.searchParams.get("include_hidden") === "true"
 
     const result = store().listOpportunities({
       track,
@@ -80,6 +81,7 @@ export const handlers = [
       q,
       page,
       page_size: pageSize,
+      include_hidden: includeHidden,
     })
     return HttpResponse.json(result)
   }),
@@ -159,6 +161,39 @@ export const handlers = [
       return HttpResponse.json(
         { detail: "opportunity not found" },
         { status: 404 }
+      )
+    }
+    return HttpResponse.json(result)
+  }),
+
+  // ---- filters (D3) ----
+  http.get("/api/filters", ({ request }) => {
+    if (!requireAuth(request)) return unauthorized()
+    return HttpResponse.json(store().listFilters())
+  }),
+
+  http.put("/api/filters/:filter_id", async ({ request, params }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const filterId = String(params.filter_id)
+    const body = (await request.json().catch(() => ({}))) as {
+      enabled?: boolean
+      mode?: string
+      params?: Record<string, unknown>
+    }
+    const result = store().updateFilter(filterId, body)
+    if (result === "not_found") {
+      return HttpResponse.json({ detail: "unknown filter_id" }, { status: 404 })
+    }
+    if (result === "invalid_mode") {
+      return HttpResponse.json(
+        { detail: "invalid mode", allowed: ["hide", "rank_only", "label_only"] },
+        { status: 422 }
+      )
+    }
+    if (result === "invalid_params") {
+      return HttpResponse.json(
+        { detail: `${filterId}: params out of range` },
+        { status: 422 }
       )
     }
     return HttpResponse.json(result)

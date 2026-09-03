@@ -1,0 +1,62 @@
+### A-1 and A-2 -- suite total and per-module reconciliation
+### Master, integrated branch, real PostgreSQL 16.10, Python 3.12.10.
+### NOTE: this is the pre-repair integration figure. The gate figure is recorded separately
+### after the council repairs land; the method below is what produces it.
+
+$ py -3.12 -m unittest discover
+Ran 655 tests in 173.405s
+OK (skipped=2)
+
+FR-003 -> FR-004 -> FR-005 : 466 -> 585 -> 655.
+
+--- A-2: per-module counts ---
+
+  module         tests
+  truth            122
+  outbound          81
+  scripts           94
+  recon             67
+  opportunity       64
+  matching          81
+  storage           36
+  api               50
+  worker            27
+  inbox             25
+  core               4
+  security           3
+  feedback           1
+  ------------------ ---
+  sum              655
+
+--- The reconciliation, done properly rather than by eye ---
+
+A-2's expected result is that the per-module counts sum to A-1's N. Summing thirteen numbers
+that happen to add up is weak evidence -- it would not detect a test collected under two
+packages, or one collected but never run. So the Master collected test *ids* with
+unittest's loader, both ways, and compared the sets:
+
+  top-level discover:      655 collected, 655 unique
+  sum of per-module:       655 collected, 655 unique
+  ids collected twice across per-module runs:   0
+  in per-module but not top-level:              0
+  in top-level but not per-module:              0
+
+Exact set equality, no duplicates, no asymmetry.
+
+--- A correction to an earlier Master figure ---
+
+An earlier run in this brief was recorded as "Ran 648". That was a misread: the number was
+captured from a truncated tail while the loader was reporting 655, and the discrepancy is
+what prompted the id-level reconciliation above. There is no missing set of seven tests. The
+figure is 655, confirmed by two independent methods. Implementers were told the corrected
+baseline so their own deltas are measured against the right number.
+
+--- The two skips ---
+
+Both are the same POSIX-only test, one line per docstring line:
+  scripts.test_alpha.TestProcessLifecycleHelpers.test_is_zombie_detects_an_unreaped_exited_child
+  'zombie process state is POSIX-specific; Windows has no equivalent'
+
+A-1's expected result says "0 skipped". That is a CI (Linux) property and cannot hold on the
+Master's Windows host. The expected result is not rewritten; the row is evidenced in two
+halves -- this Windows count with the skip named, and the CI count from the workflow run.

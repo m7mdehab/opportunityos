@@ -41,6 +41,7 @@ from storage.models import (
     SourcePollRunRecord,
     FounderOpportunityViewRecord,
     FounderTriageStateRecord,
+    FounderFilterSettingRecord,
 )
 import scripts.backup_restore as backup_restore
 from scripts.backup_restore import (
@@ -296,6 +297,22 @@ class TestBackupRestorePostgres(unittest.TestCase):
             created_at=datetime(2026, 9, 2, 10, 16, 0),
             updated_at=datetime(2026, 9, 2, 10, 16, 0),
         ))
+        # D3 (BRIEF-FR-005) council repair, defect 7: this test previously
+        # asserted backup completeness for founder_filter_settings on a
+        # row-count check alone (this class's own setUp TRUNCATEs the table,
+        # so the prior version of this test dumped and restored zero rows --
+        # a round trip that passes regardless of whether values actually
+        # survive). Seed one row explicitly toggled away from its migration
+        # default (enabled=True, mode="hide", non-empty params) and assert
+        # every field below survives the restore intact.
+        filter_updated_at = datetime(2026, 9, 2, 10, 17, 0)
+        session.add(FounderFilterSettingRecord(
+            filter_id="min_fit_score",
+            enabled=True,
+            mode="hide",
+            params_json=json.dumps({"min_score": 42.5}),
+            updated_at=filter_updated_at,
+        ))
         session.commit()
         session.close()
         engine.dispose()
@@ -353,6 +370,13 @@ class TestBackupRestorePostgres(unittest.TestCase):
         self.assertEqual(triage.state, "snoozed")
         self.assertIsNotNone(triage.snoozed_until, "a snoozed triage state must keep its snoozed_until")
         self.assertEqual(triage.snoozed_until, triage_snoozed_until)
+
+        filter_setting = dst_session.query(FounderFilterSettingRecord).filter_by(filter_id="min_fit_score").first()
+        self.assertIsNotNone(filter_setting, "founder_filter_settings row must survive restore")
+        self.assertTrue(filter_setting.enabled, "the non-default enabled=True must survive, not the migration default False")
+        self.assertEqual(filter_setting.mode, "hide")
+        self.assertEqual(json.loads(filter_setting.params_json), {"min_score": 42.5})
+        self.assertEqual(filter_setting.updated_at, filter_updated_at)
 
         # 5. The restored target has the Alembic head stamped (read the
         # head from the script directory, never hard-coded).

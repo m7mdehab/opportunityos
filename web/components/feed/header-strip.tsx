@@ -18,6 +18,10 @@ const STATS: Array<{ key: keyof DashboardResponse["series"][number]; label: stri
   { key: "opened", label: "Opened" },
   { key: "labelled", label: "Labelled" },
   { key: "applied", label: "Applied" },
+  // D3: how many rows a `hide`-mode filter removed from view today, so the
+  // dashboard states a number in the same place it states every other
+  // count rather than leaving it implicit in the feed.
+  { key: "hidden_by_filters", label: "Hidden" },
 ]
 
 function sourceDotColor(source: SourceHealth): string {

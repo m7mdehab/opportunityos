@@ -113,6 +113,21 @@ def _build_opp_data(opp: Opportunity, *, is_stale: bool) -> Dict[str, Any]:
     assert. ``raw_payload_json`` is populated from ``raw_provenance`` (the
     real acquisition-time source metadata) when present, since that is
     genuine provenance rather than an invented value.
+
+    ``source_id`` is mapped from ``opp.source`` -- the registry source id
+    (e.g. ``"himalayas"``, ``"greenhouse:cloudflare"``) that every adapter
+    sets via ``source=self.source_id`` -- not from ``opp.source_id``, which
+    is the *job's own remote id at that source* (e.g. a numeric Greenhouse
+    job id). ``OpportunityRecord.source_id`` exists so the feed can be
+    reconciled against ``GET /api/sources/health``, which keys on registry
+    ids; a bare per-job number cannot be reconciled against anything. The
+    remote job id is not lost by this: ``Opportunity.id`` is computed by
+    ``compute_deterministic_id(source, remote_id, ...)`` (``opportunity/
+    models.py``) as ``f"{source}:{remote_id}"`` whenever the adapter has a
+    stable remote id, and that id is itself the persisted row's primary key
+    (``"id": opp.id`` below) -- so the remote job id remains recoverable
+    verbatim from the row's own id, it is just no longer duplicated into
+    ``source_id``.
     """
     raw_payload_json = None
     if opp.raw_provenance is not None:
@@ -124,7 +139,7 @@ def _build_opp_data(opp: Opportunity, *, is_stale: bool) -> Dict[str, Any]:
         "title": opp.title,
         "organization": opp.organization,
         "description": opp.description,
-        "source_id": opp.source_id,
+        "source_id": opp.source,
         "source_url": opp.source_url,
         "content_hash": opp.content_hash,
         "country": None,

@@ -83,7 +83,8 @@ vacuous pass when zero rows had changed.
 
 **What PASS_WITH_NOT_CLOSED means here.** The engine, the API, the front end, the scheduler
 and the one-command runner all work, and the founder can log in and see a ranked feed over
-real polled data. One named capability does not work and is documented rather than disguised.
+real polled data. [**FALSE — corrected by Erratum 1.1; the A-9 feed was test-database residue,
+not polled data.**] One named capability does not work and is documented rather than disguised.
 The measured daily number — the brief's actual outcome — is still obtainable, because it
 depends on the feed and the dashboard, not on document generation.
 
@@ -163,7 +164,7 @@ Every figure below was produced by the Master on this machine, against real Post
 | A-6 scope diff | **NOT_CLOSED** — two `matching/` files outside the closed set; dispositioned below |
 | A-7 `npm run build` / `npm run lint` | both exit 0, lint at `--max-warnings=0` |
 | A-8 Playwright | mock config **7 passed** with `.env.local` absent; real stack **1 passed** at 3210/8210 |
-| A-9 `alpha.py` transcript | up in **26 s**, logged-in feed of 138 opportunities, clean teardown |
+| A-9 `alpha.py` transcript | up in **26 s**, logged-in feed of 138 opportunities, clean teardown (those 138 rows are test-database residue, not polled data — Erratum 1.1) |
 
 ### Toolchain provenance
 
@@ -845,8 +846,8 @@ are recorded in the same voice as everyone else's.
     real-stack phase; it now passes in both configurations, with uvicorn access logs
     proving the real run reached the service rather than MSW. A-9 needed four attempts
     across three distinct `alpha.py` defects and one self-inflicted port collision before a
-    single uninterrupted transcript was possible: up in 26 seconds, 138 really-polled
-    opportunities in the logged-in feed, and a clean teardown. Neither was reported as
+    single uninterrupted transcript was possible: up in 26 seconds, 138 [**not** really-polled;
+    corrected by Erratum 1.1] opportunities in the logged-in feed, and a clean teardown. Neither was reported as
     passing until it actually did.
 
 
@@ -1171,3 +1172,94 @@ instructed exactly that when transmitting this brief. That instruction reassigns
 decides; it does not lower any gate. Recorded in §8 and stated in the pull request
 itself so the Overseer knows the change came from the founder and not from the
 Master's own judgement.
+
+---
+
+## Erratum 1 — corrections after Overseer review (2026-09-02)
+
+The Overseer reviewed this brief post-merge on `main` @ `b563102`, accepted the merge and
+confirmed the `PASS_WITH_NOT_CLOSED` gate, and found one false claim in this report. That
+correction and the three findings alongside it are recorded here rather than by editing the
+original text, so the overclaim and its correction stay legible side by side. Each was
+independently reproduced by the Master before being recorded.
+
+### E1.1 — "real polled data" in §2, §4 and §8 is FALSE
+
+The A-9 feed of 138 opportunities was **not** real polled data. Every row in the transcript
+is test residue: ids `opp-uq-*`, `source_id: src-1`, `https://example.com/job/1`,
+`Acme Corp`. `alpha.py` takes its database from `OPPORTUNITYOS_DB_URL` in the env file, and
+the temp env file used for the A-9 run pointed at `opportunityos_test`, so the run attached
+to the already-populated test database and served that database's fixtures. The "measured
+number" line (139 fetched, 1 qualified) is the synthetic pack scored against that residue.
+
+The affected sentences are §2 ("a ranked feed over real polled data"), the §4 evidence-table
+row for A-9, and deviation 45 in §8 ("138 really-polled opportunities"). All three are
+marked inline as corrected by this erratum. `reports/evidence/FR-004/a9-alpha-transcript.txt`
+carries the same correction appended below its raw output; the raw output itself is
+unaltered, because it is accurate — only the Master's heading over it was not.
+
+**What is and is not affected.** D8's acceptance in §2 of the brief required *fixture*
+opportunities, and D8 met that; the deliverable is not failed and the gate does not move.
+Every D3 and D8 test injects a fixture transport, which is correct for a test and is not
+proof that the seam runs live. What is now on record is that **no live poll through the new
+`poll_source` → `persist_batch` → `evaluate_new` seam is evidenced anywhere in FR-004.** The
+claim ledger exists to stop exactly this class of statement, and it did not stop this one:
+A-9's expected result named the transcript and the teardown, and said nothing about the
+provenance of the rows, so the Master's prose asserted a property no claim had bound. FR-005
+carries the live-poll proof (§5 item 2 of the Overseer review).
+
+### E1.2 — REQ-ART-001/002/003 downgraded DONE → PARTIAL
+
+`matching/test_compiler.py` never runs the validator over generated claims; it counts
+sections. BRIEF-004's PASS for the compilers plus validator was therefore never an
+end-to-end pass, and the first realistic truth pack broke it — which is what §2 D6 and
+deviation 46 of this report describe. This is a latent BRIEF-004 defect that FR-004 found,
+not an FR-004 defect, but the matrix should not have carried it as DONE while FR-004 was
+simultaneously reporting the capability as non-functional.
+
+**A second latent BRIEF-004 finding, recorded here for the same reason:** `matching/scorer.py`
+and `matching/qualification.py` read predicate names the graph never projects —
+`responsibility.item`, `employment.role_description`, `experience.summary` and
+`achievement.description`, against a graph that emits `employment.responsibility` and
+`achievement.statement` — so the `responsibility_scope` dimension has been a flat 0.50 for
+every founder since BRIEF-004, and the tests did not catch it because their hand-built
+fixtures speak the scorer's private vocabulary rather than the graph's; BRIEF-FR-005 D2
+carries the fix and the predicate registry that prevents its recurrence.
+
+`reports/FOUNDER_READINESS_MATRIX.json` now records those three rows as `PARTIAL` with a
+`status_history` entry naming this erratum. Primary status counts move DONE 76 → 73 and
+PARTIAL 39 → 42; the total stays 143 and MISSING stays 11. They return to DONE only on the
+evidence named in FR-005 D1: a compiler×validator end-to-end test over the shipped template
+and a second realistic pack.
+
+### E1.3 — `alpha.py` runs against the test database
+
+`alpha.py` accepts any `OPPORTUNITYOS_DB_URL` the env file gives it, which is how E1.1
+happened. The founder's real data must never share a database with test fixtures. FR-005 D2
+gives `alpha.py` its own database (`opportunityos_alpha`), creates it when absent, and makes
+it refuse any database whose name ends in `_test`.
+
+### E1.4 — the four-table schema ruling is dispositioned ACCEPTED
+
+§5 of this report left the three tables beyond `match_evaluations` — `source_poll_runs`,
+`founder_opportunity_views`, `founder_triage_states` — as not closable by the Master, and
+presented them for the Overseer. The Overseer has dispositioned them as a **justified scope
+deviation, ACCEPTED**, on the ground that the omission was in the brief: D6 named routes
+(last poll, opened counts, dismiss/snooze with `until`) that the committed schema could not
+answer, and the alternative the council rejected — fabricating those values into
+`outbound_actions` — would have been worse. Each table is minimal, reversible and covered by
+the round-trip. Recorded here so the ledger carries the disposition rather than a
+retro-fitted pass.
+
+### E1.5 — what the Overseer independently reproduced
+
+On Ubuntu 24.04 / Python 3.12 / PostgreSQL 16.15 / Node 22.22: `main` @ `b563102` with four
+green workflows; the `0001`→`0002`→`0001`→`0002` migration round-trip at exit 0; **585/585
+tests OK with 0 skipped** on real PostgreSQL; the A-2 module counts; the A-0 fail-closed
+probe at 12/12; `next build` and `eslint --max-warnings=0` clean; and the D6 artifact 409
+diagnosis reproduced below the API with the shipped template (CV 1 of 3 claims rejected for
+composite-without-relation; cover letter 2 of 2 rejected for material terms absent from
+evidence). A-8 was not re-run there because the browser download was blocked in that
+sandbox; the stored trace, transcript and four screenshots were inspected instead. The
+Addendum to `BRIEF-FR-004.md` was assessed and found to be correctly handled as a record
+that grants nothing.

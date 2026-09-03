@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from core.logging import get_logger
 from feedback.models import FeedbackLabel
 from feedback.service import FounderFeedbackService
+from matching.artifact_validation import validate_artifact_claims
 from matching.binary_export import BinaryArtifactExporter
 from matching.compiler_employment import EmploymentArtifactCompiler
 from opportunity.models import Opportunity, Track
@@ -25,6 +26,7 @@ from outbound.models import ActionStatus, ExecutionMode
 from storage.models import (
     FieldProvenanceRecord,
     FounderFeedbackRecord,
+    FounderFilterSettingRecord,
     FounderOpportunityViewRecord,
     FounderTriageStateRecord,
     MatchEvaluationRecord,
@@ -38,6 +40,19 @@ from truth.validator import ClaimValidator
 from worker.queue import BackgroundWorkerQueue
 
 from .deps import get_db, get_repository, require_session
+from .filters import (
+    FILTER_DEFINITIONS,
+    FILTER_DEFINITIONS_BY_ID,
+    FILTER_MODES,
+    FilterSettingsRow,
+    ParamValidationError,
+    affected_count as filter_affected_count,
+    apply_filters,
+    build_filter_contexts,
+    to_naive_utc,
+    unavailable_reason,
+    validate_filter_params,
+)
 from .serialization import (
     serialize_constraint,
     serialize_dimension_score,
@@ -134,6 +149,131 @@ def _latest_feedback_label(session: Session, opportunity_id: str) -> str | None:
     return fb.feedback_label if fb is not None else None
 
 
+# --------------------------------------------------------------------------
+# D3: founder-controlled filters
+# --------------------------------------------------------------------------
+
+
+def _load_filter_settings(session: Session) -> dict[str, FilterSettingsRow]:
+    """Every `founder_filter_settings` row, keyed by `filter_id`. A row
+    missing entirely (should not happen once migration 0003 has seeded all
+    ten -- see `_D3_FILTER_SEED`) is simply absent from this dict;
+    `filters.apply_filters` / `filters.affected_count` fall back to that
+    filter's `FilterDefinition` defaults in that case."""
+    rows = session.query(FounderFilterSettingRecord).all()
+    settings: dict[str, FilterSettingsRow] = {}
+    for row in rows:
+        params = json.loads(row.params_json) if row.params_json else {}
+        settings[row.filter_id] = FilterSettingsRow(enabled=row.enabled, mode=row.mode, params=params)
+    return settings
+
+
+def _truth_graph_from_request(request: Request):
+    loaded_pack = request.app.state.loaded_truth_pack
+    return loaded_pack.graph if loaded_pack is not None else None
+
+
+@router.get("/filters")
+def list_filters(request: Request, session: Session = Depends(get_db)):
+    settings = _load_filter_settings(session)
+    truth_graph = _truth_graph_from_request(request)
+    contexts = build_filter_contexts(session, truth_graph, session.query(OpportunityRecord).all())
+
+    filters_payload = []
+    for fd in FILTER_DEFINITIONS:
+        row = settings.get(fd.filter_id)
+        enabled = row.enabled if row is not None else fd.default_enabled
+        mode = row.mode if row is not None else fd.default_mode
+        params = row.params if row is not None else dict(fd.default_params)
+        filters_payload.append(
+            {
+                "filter_id": fd.filter_id,
+                "enabled": enabled,
+                "mode": mode,
+                "params": params,
+                "affected_count": filter_affected_count(fd, params, contexts),
+                "description": fd.description,
+                # Council defects 2/3: non-null when this filter has no real
+                # data source to evaluate against right now (missing pack
+                # assertion, or a pipeline gap upstream) -- see
+                # api/filters.py::unavailable_reason.
+                "unavailable_reason": unavailable_reason(fd, truth_graph),
+            }
+        )
+    return {"filters": filters_payload}
+
+
+class FilterUpdateRequest(BaseModel):
+    enabled: bool | None = None
+    mode: str | None = None
+    params: dict[str, Any] | None = None
+
+
+@router.put("/filters/{filter_id}")
+def update_filter(
+    filter_id: str,
+    payload: FilterUpdateRequest,
+    response: Response,
+    request: Request,
+    session: Session = Depends(get_db),
+):
+    fd = FILTER_DEFINITIONS_BY_ID.get(filter_id)
+    if fd is None:
+        raise HTTPException(status_code=404, detail=f"unknown filter_id: {filter_id!r}")
+
+    if payload.mode is not None and payload.mode not in FILTER_MODES:
+        response.status_code = 422
+        return {"detail": "invalid mode", "allowed": list(FILTER_MODES)}
+
+    # Council defect 1: validate `params` BEFORE any session mutation or
+    # commit. A malformed params payload used to be persisted and only fail
+    # (500) the moment a later matcher tried to use it -- by which point
+    # every GET /api/opportunities and GET /api/filters call was also
+    # 500ing, with no way to recover except a raw PUT the drawer itself could
+    # no longer even render a form to issue.
+    validated_params: dict[str, Any] | None = None
+    if payload.params is not None:
+        try:
+            validated_params = validate_filter_params(filter_id, payload.params)
+        except ParamValidationError as error:
+            response.status_code = 422
+            return {"detail": str(error)}
+
+    now = to_naive_utc(datetime.now(timezone.utc))
+    row = session.query(FounderFilterSettingRecord).filter_by(filter_id=filter_id).first()
+    if row is None:
+        row = FounderFilterSettingRecord(
+            filter_id=filter_id,
+            enabled=fd.default_enabled,
+            mode=fd.default_mode,
+            params_json=json.dumps(dict(fd.default_params)),
+            updated_at=now,
+        )
+        session.add(row)
+
+    if payload.enabled is not None:
+        row.enabled = payload.enabled
+    if payload.mode is not None:
+        row.mode = payload.mode
+    if validated_params is not None:
+        row.params_json = json.dumps(validated_params)
+    row.updated_at = now
+    session.commit()
+
+    params = json.loads(row.params_json) if row.params_json else {}
+    truth_graph = _truth_graph_from_request(request)
+    contexts = build_filter_contexts(session, truth_graph, session.query(OpportunityRecord).all())
+    return {
+        "filter_id": row.filter_id,
+        "enabled": row.enabled,
+        "mode": row.mode,
+        "params": params,
+        "affected_count": filter_affected_count(fd, params, contexts),
+        "description": fd.description,
+        "unavailable_reason": unavailable_reason(fd, truth_graph),
+    }
+
+
 @router.get("/opportunities")
 def list_opportunities(
     request: Request,
@@ -142,6 +282,7 @@ def list_opportunities(
     min_score: float | None = None,
     since: str | None = None,
     q: str | None = None,
+    include_hidden: bool = False,
     page: int = 1,
     page_size: int = 25,
     session: Session = Depends(get_db),
@@ -159,18 +300,27 @@ def list_opportunities(
 
     opportunities = query.all()
 
+    filter_settings = _load_filter_settings(session)
+    truth_graph = _truth_graph_from_request(request)
+    contexts = build_filter_contexts(session, truth_graph, opportunities)
+
     rows: list[dict[str, Any]] = []
-    for opp in opportunities:
-        evaluation = _latest_evaluation(session, opp.id)
-        opp_decision = evaluation.qualification_decision if evaluation else None
-        fit_score = evaluation.fit_score if evaluation else None
+    hidden_count = 0
+    for opp, ctx in zip(opportunities, contexts):
+        opp_decision = ctx.decision
+        fit_score = ctx.fit_score
 
         if decision and opp_decision != decision:
             continue
         if min_score is not None and (fit_score is None or fit_score < min_score):
             continue
 
-        reasons = unpack_reasons(evaluation.reasons_json if evaluation else None)
+        outcome = apply_filters(ctx, filter_settings)
+        if outcome.hidden_by:
+            hidden_count += 1
+            if not include_hidden:
+                continue
+
         rows.append(
             {
                 "id": opp.id,
@@ -181,17 +331,33 @@ def list_opportunities(
                 "track": opp.track,
                 "decision": opp_decision,
                 "fit_score": fit_score,
-                "top_reasons": top_reasons_from_list(reasons),
+                "top_reasons": top_reasons_from_list(ctx.reasons),
                 "deadline": opp.deadline,
                 "posted_date": opp.posted_date,
                 "is_stale": bool(opp.is_stale),
                 "action_state": _latest_action_state(session, opp.id),
                 "feedback_label": _latest_feedback_label(session, opp.id),
+                "hidden_by": outcome.hidden_by,
+                "flagged_by": outcome.flagged_by,
+                "_rank_penalty": outcome.rank_penalty,
             }
         )
 
-    # fit_score descending, nulls last, then posted_date descending, then id.
-    rows.sort(key=lambda r: (r["fit_score"] is None, -(r["fit_score"] or 0), _posted_date_sort_key(r["posted_date"]), r["id"]))
+    # Rank-penalty tier first (contract section 4: demoted items sort after
+    # non-demoted ones at equal score, and never reorder within a tier), then
+    # the pre-existing key unchanged: fit_score descending, nulls last, then
+    # posted_date descending, then id.
+    rows.sort(
+        key=lambda r: (
+            r["_rank_penalty"],
+            r["fit_score"] is None,
+            -(r["fit_score"] or 0),
+            _posted_date_sort_key(r["posted_date"]),
+            r["id"],
+        )
+    )
+    for r in rows:
+        del r["_rank_penalty"]
 
     total = len(rows)
     page = max(1, page)
@@ -199,7 +365,7 @@ def list_opportunities(
     start = (page - 1) * page_size
     page_items = rows[start : start + page_size]
 
-    return {"page": page, "page_size": page_size, "total": total, "items": page_items}
+    return {"page": page, "page_size": page_size, "total": total, "hidden_count": hidden_count, "items": page_items}
 
 
 def _posted_date_sort_key(value: str | None) -> tuple[int, Any]:
@@ -405,18 +571,13 @@ def _compile_and_export(request: Request, opportunity_id: str, kind: str, sessio
     else:
         artifact = compiler.compile_cover_letter(domain_opp, loaded_pack.graph, compiled_at=compiled_at)
 
+    # ADR-0014 dispatch (NARRATIVE claims -> validate_narrative, everything
+    # else -> validate_claim): shared with matching/test_artifacts_e2e.py and
+    # matching/test_compiler.py via matching.artifact_validation, so the
+    # tests exercise this exact production logic rather than a hand-copied
+    # mirror of it (BRIEF-FR-005 D1 council remediation, defect 4b).
     validator = ClaimValidator(loaded_pack.graph)
-    findings: list[dict[str, Any]] = []
-    for claim in artifact.generated_claims:
-        result = validator.validate_claim(claim.text, claim.evidence_ids)
-        if not result.allowed:
-            findings.append(
-                {
-                    "claim": claim.text,
-                    "assertion_type": result.assertion_type.value,
-                    "rejection_reasons": list(result.reasons),
-                }
-            )
+    findings = validate_artifact_claims(artifact, validator)
 
     if findings:
         logger.info(
@@ -617,6 +778,9 @@ def dashboard_daily(request: Request, days: int = 7, session: Session = Depends(
     high_fit_threshold = request.app.state.settings.high_fit_threshold
     today = datetime.now(timezone.utc).date()
 
+    filter_settings = _load_filter_settings(session)
+    truth_graph = _truth_graph_from_request(request)
+
     series = []
     for offset in range(days):
         day = today - timedelta(days=offset)
@@ -659,6 +823,13 @@ def dashboard_daily(request: Request, days: int = 7, session: Session = Depends(
             )
             .scalar()
         )
+        day_opportunities = (
+            session.query(OpportunityRecord)
+            .filter(OpportunityRecord.created_at >= day_start, OpportunityRecord.created_at < day_end)
+            .all()
+        )
+        day_contexts = build_filter_contexts(session, truth_graph, day_opportunities)
+        hidden_by_filters = sum(1 for ctx in day_contexts if apply_filters(ctx, filter_settings).hidden_by)
 
         series.append(
             {
@@ -670,6 +841,7 @@ def dashboard_daily(request: Request, days: int = 7, session: Session = Depends(
                 "opened": int(opened or 0),
                 "labelled": int(labelled or 0),
                 "applied": int(applied or 0),
+                "hidden_by_filters": hidden_by_filters,
             }
         )
 

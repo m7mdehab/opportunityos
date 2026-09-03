@@ -1974,13 +1974,28 @@
     "status": "DONE",
     "evidence_strength": "TESTED_IMPLEMENTATION",
     "implementation_evidence": "matching/compiler_employment.py",
-    "tests": "matching/test_compiler.py, matching/test_adversarial.py",
+    "tests": "matching/test_artifacts_e2e.py, matching/test_compiler.py, api/test_api.py::ArtifactRoutesTest",
     "ci_evidence": "Mandatory Governance & Test Suite",
-    "later_authority": "ADR-0009",
+    "later_authority": "ADR-0014",
     "live_dependency": "None",
-    "gap_explanation": "None. Compiles versioned CVs from TruthGraph assertions.",
+    "gap_explanation": "Compiler and validator are now tested end to end. matching/test_artifacts_e2e.py compiles CV and cover letter for two packs (the shipped synthetic template and a founder-shaped synthetic pack) against three fixture opportunities, asserting zero validator rejections, that every non-narrative sentence maps to a claim with evidence ids, and that no forbidden-inflation term appears unless the pack contains it verbatim. Both artifact routes return HTTP 200 with DOCX bytes, verified by the Master over HTTP. The suite includes per-pack mutation tests and fails when guard 9 is neutralised, so the safety property is defended by the tests rather than merely assumed. See BRIEF-FR-005 D1, ADR-0014, and reports/evidence/FR-005/a10-a11-after-repair.txt.",
     "bucket": "NONE",
-    "status_history": []
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-004",
+        "from": "DONE",
+        "to": "PARTIAL",
+        "date": "2026-09-02",
+        "reason": "Erratum 1.2 -- compiler never tested against the validator; artifact routes 409 on the shipped template."
+      },
+      {
+        "brief": "BRIEF-FR-005",
+        "from": "PARTIAL",
+        "to": "DONE",
+        "date": "2026-09-03",
+        "reason": "Compiler-by-validator end-to-end evidence over two packs; both artifact routes return DOCX; tripwire and e2e mutation tests both fail under a neutralised validator."
+      }
+    ]
   },
   {
     "req_id": "REQ-ART-002",
@@ -1991,13 +2006,28 @@
     "status": "DONE",
     "evidence_strength": "TESTED_IMPLEMENTATION",
     "implementation_evidence": "matching/compiler_independent.py",
-    "tests": "matching/test_compiler.py",
+    "tests": "matching/test_artifacts_e2e.py, matching/test_compiler.py, api/test_api.py::ArtifactRoutesTest",
     "ci_evidence": "Mandatory Governance & Test Suite",
-    "later_authority": "ADR-0009",
+    "later_authority": "ADR-0014",
     "live_dependency": "None",
-    "gap_explanation": "None. Compiles versioned proposals and compliance matrices from Capability Pack.",
+    "gap_explanation": "Compiler and validator are now tested end to end. matching/test_artifacts_e2e.py compiles CV and cover letter for two packs (the shipped synthetic template and a founder-shaped synthetic pack) against three fixture opportunities, asserting zero validator rejections, that every non-narrative sentence maps to a claim with evidence ids, and that no forbidden-inflation term appears unless the pack contains it verbatim. Both artifact routes return HTTP 200 with DOCX bytes, verified by the Master over HTTP. The suite includes per-pack mutation tests and fails when guard 9 is neutralised, so the safety property is defended by the tests rather than merely assumed. See BRIEF-FR-005 D1, ADR-0014, and reports/evidence/FR-005/a10-a11-after-repair.txt.",
     "bucket": "NONE",
-    "status_history": []
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-004",
+        "from": "DONE",
+        "to": "PARTIAL",
+        "date": "2026-09-02",
+        "reason": "Erratum 1.2 -- compiler never tested against the validator; artifact routes 409 on the shipped template."
+      },
+      {
+        "brief": "BRIEF-FR-005",
+        "from": "PARTIAL",
+        "to": "DONE",
+        "date": "2026-09-03",
+        "reason": "Compiler-by-validator end-to-end evidence over two packs; both artifact routes return DOCX; tripwire and e2e mutation tests both fail under a neutralised validator."
+      }
+    ]
   },
   {
     "req_id": "REQ-ART-003",
@@ -2008,13 +2038,28 @@
     "status": "DONE",
     "evidence_strength": "TESTED_IMPLEMENTATION",
     "implementation_evidence": "matching/validator.py:ArtifactClaimValidator",
-    "tests": "matching/test_adversarial.py",
+    "tests": "matching/test_artifacts_e2e.py, matching/test_compiler.py, api/test_api.py::ArtifactRoutesTest",
     "ci_evidence": "Mandatory Governance & Test Suite",
-    "later_authority": "ADR-0009",
+    "later_authority": "ADR-0014",
     "live_dependency": "None",
-    "gap_explanation": "None. Fails closed on assertion laundering, planned credentials, or missing evidence.",
+    "gap_explanation": "Compiler and validator are now tested end to end. matching/test_artifacts_e2e.py compiles CV and cover letter for two packs (the shipped synthetic template and a founder-shaped synthetic pack) against three fixture opportunities, asserting zero validator rejections, that every non-narrative sentence maps to a claim with evidence ids, and that no forbidden-inflation term appears unless the pack contains it verbatim. Both artifact routes return HTTP 200 with DOCX bytes, verified by the Master over HTTP. The suite includes per-pack mutation tests and fails when guard 9 is neutralised, so the safety property is defended by the tests rather than merely assumed. See BRIEF-FR-005 D1, ADR-0014, and reports/evidence/FR-005/a10-a11-after-repair.txt.",
     "bucket": "NONE",
-    "status_history": []
+    "status_history": [
+      {
+        "brief": "BRIEF-FR-004",
+        "from": "DONE",
+        "to": "PARTIAL",
+        "date": "2026-09-02",
+        "reason": "Erratum 1.2 -- compiler never tested against the validator; artifact routes 409 on the shipped template."
+      },
+      {
+        "brief": "BRIEF-FR-005",
+        "from": "PARTIAL",
+        "to": "DONE",
+        "date": "2026-09-03",
+        "reason": "Compiler-by-validator end-to-end evidence over two packs; both artifact routes return DOCX; tripwire and e2e mutation tests both fail under a neutralised validator."
+      }
+    ]
   },
   {
     "req_id": "REQ-ART-004",

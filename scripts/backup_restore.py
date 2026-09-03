@@ -37,6 +37,7 @@ from storage.models import (
     SourcePollRunRecord,
     FounderOpportunityViewRecord,
     FounderTriageStateRecord,
+    FounderFilterSettingRecord,
 )
 
 # Repository root, derived from this file's location (not the process CWD).
@@ -85,6 +86,7 @@ DUMP_SECTION_TABLE_MAP = {
     "source_poll_runs": "source_poll_runs",
     "founder_opportunity_views": "founder_opportunity_views",
     "founder_triage_states": "founder_triage_states",
+    "founder_filter_settings": "founder_filter_settings",
 }
 
 
@@ -194,6 +196,7 @@ def dump_database(db_url: str, output_file: str) -> int:
         "source_poll_runs": [],
         "founder_opportunity_views": [],
         "founder_triage_states": [],
+        "founder_filter_settings": [],
     }
 
     # 1. Opportunities & Field Provenances
@@ -360,6 +363,15 @@ def dump_database(db_url: str, output_file: str) -> int:
             "snoozed_until": triage.snoozed_until.isoformat() if triage.snoozed_until else None,
             "created_at": triage.created_at.isoformat() if triage.created_at else None,
             "updated_at": triage.updated_at.isoformat() if triage.updated_at else None,
+        })
+
+    # 15. Founder Filter Settings (D3, BRIEF-FR-005) -- no FK dependency;
+    # filter_id is a founder-facing config key, not an opportunity reference.
+    for setting in session.query(FounderFilterSettingRecord).all():
+        data["founder_filter_settings"].append({
+            "filter_id": setting.filter_id, "enabled": setting.enabled, "mode": setting.mode,
+            "params_json": setting.params_json,
+            "updated_at": setting.updated_at.isoformat() if setting.updated_at else None,
         })
 
     # Row-count completeness check, run in the same session/transaction the
@@ -706,6 +718,13 @@ def restore_database(dump_file: str, db_url: str) -> None:
             triage_dict["updated_at"] = datetime.fromisoformat(triage_dict["updated_at"])
         triage = FounderTriageStateRecord(**triage_dict)
         session.merge(triage)
+
+    # 15. Founder Filter Settings (D3, BRIEF-FR-005) -- no FK dependency.
+    for setting_dict in data.get("founder_filter_settings", []):
+        if setting_dict.get("updated_at"):
+            setting_dict["updated_at"] = datetime.fromisoformat(setting_dict["updated_at"])
+        setting = FounderFilterSettingRecord(**setting_dict)
+        session.merge(setting)
 
     session.commit()
     session.close()

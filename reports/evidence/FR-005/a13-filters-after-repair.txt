@@ -1,0 +1,48 @@
+### D3 after the council repair -- verified by the Master, not read off the implementer's report
+
+--- GET /api/filters: four filters now admit they cannot act ---
+
+    ok  geo_eligibility          enabled=True  mode=label_only  count=0
+    ok  work_mode_onsite         enabled=True  mode=label_only  count=0
+    ok  red_lines                enabled=True  mode=hide        count=0
+    ok  excluded_industries      enabled=True  mode=hide        count=0
+  INERT track_preference         enabled=True  mode=rank_only   count=0
+         "Your truth pack has no verified preference.track assertion, so this filter has
+          nothing to compare an opportunity against."
+  INERT target_roles             enabled=True  mode=label_only  count=0
+         "Your truth pack has no verified career.target_role assertion, so this filter has
+          no declared role to compare openings against."
+  INERT premium_fulltime_onsite  enabled=True  mode=rank_only   count=0
+         "Your truth pack has no verified preference.fulltime_onsite_premium_monthly
+          assertion, so this filter has no threshold."
+  INERT stale_postings           enabled=True  mode=label_only  count=0
+         "Staleness is never computed by the current pipeline: opportunity/persistence.py
+          always writes is_stale=False ..."
+    ok  min_fit_score            enabled=False mode=hide        count=0
+    ok  compensation_floor       enabled=False mode=rank_only   count=0
+
+Three of the four reasons are conditional -- they disappear the moment the founder's pack
+declares the assertion. The fourth is unconditional and names the file responsible, because
+no truth pack can make staleness work; only a worker that persists reverification results
+can, and that is a future deliverable rather than something to paper over here.
+
+Note `target_roles` is now seeded `label_only` rather than `rank_only`. Under substring
+matching it demoted a fit-95 posting below a fit-30 one; it now uses token-set matching, and
+until that predicate is proven against live data it labels rather than reorders.
+
+--- Defect 1: a malformed param no longer takes the feed down ---
+
+  PUT bad min_score ("abc")     -> HTTP 422
+  feed still serves afterwards  -> HTTP 200, total=5
+  filters still serve           -> HTTP 200
+  PUT out-of-range min_score    -> HTTP 422
+  PUT unknown param key         -> HTTP 422
+  PUT unknown filter_id         -> HTTP 404
+
+Before the repair the first of those returned 500 *after* persisting, and every subsequent
+feed and filter request then returned 500 -- so the drawer could not load, and the founder
+could not undo it from the UI at all. Recovery needed a raw HTTP client.
+
+Both layers were required and both are present: validation rejects before the commit, and
+each matcher degrades to no-match rather than raising, so a database that already holds a bad
+value from some other path is still serviceable.

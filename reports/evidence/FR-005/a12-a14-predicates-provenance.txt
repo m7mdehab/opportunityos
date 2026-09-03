@@ -1,0 +1,95 @@
+### A-12 — predicate contract, and the score that was blind
+### A-14 — provenance idempotency
+### Run by the Master on the integrated branch. Real PostgreSQL 16.10, Python 3.12.10.
+
+--- A-12: the contract test ---
+$ py -3.12 -m unittest truth.test_predicates
+Ran 10 tests
+OK
+
+  test_every_referenced_predicate_is_registered .......................... ok
+  test_projected_predicates_match_the_canonical_manifest ................. ok
+  test_registry_predicates_are_classified_projected_or_assertion_only .... ok
+  test_assertion_only_predicates_name_the_assertions_section ............. ok
+  test_scanned_files_reference_at_least_one_predicate .................... ok
+  test_every_scanned_file_exists ......................................... ok
+  test_d2_fixed_files_have_zero_out_of_scope_allowance ................... ok
+  test_out_of_scope_allowlist_is_exact_not_a_ceiling ..................... ok
+  test_orphan_spellings_named_by_the_brief_are_gone ...................... ok
+  test_responsibility_scope_exceeds_flat_half_with_evidence .............. ok
+
+The scan globs every non-test file in matching/ (11 files) rather than a hand-listed tuple,
+so a new file cannot silently reintroduce an orphan predicate.
+
+--- A-12: the dimension that could not see the founder ---
+
+Scoring the corrected fixture graph against the employment opportunity fixture:
+
+  overall_fit_score = 84.50 (0-100)   decision = QUALIFIED
+
+  dimension                  raw     weight   evidence_refs
+  core_skills                1.000   0.35     2
+  seniority_and_experience   1.000   0.20     1
+  responsibility_scope       0.800   0.15     2      <-- was a flat 0.500 with 0 refs
+  domain_fit                 0.550   0.10     1
+  geography_and_remote       1.000   0.10     1
+  compensation_fit           0.500   0.05     0
+  career_trajectory          0.500   0.05     0
+
+Before D2, `responsibility_scope` read four predicate names the graph never projects
+(`responsibility.item`, `employment.role_description`, `experience.summary`,
+`achievement.description`) against a graph that emits `employment.responsibility` and
+`achievement.statement`. For an employment-only founder the only non-orphan in that list was
+`service.name`, which belongs to the independent track -- so the dimension returned the
+neutral 0.500 with zero evidence refs for every founder, and had done since BRIEF-004.
+
+It now reads what the graph emits and returns 0.800 with two evidence references. At weight
+0.15 that is roughly 4.5 points of overall fit score that were previously unreachable no
+matter what the founder's history contained.
+
+`compensation_fit` still shows 0.500 with no refs on this fixture: the fixture opportunity
+states no compensation, and D2's premium rule is specified to treat unknown compensation as
+UNKNOWN rather than as a penalty. That 0.500 is correct behaviour, not a second instance of
+the defect.
+
+--- A-14: provenance idempotency ---
+$ py -3.12 -m unittest storage.test_postgres_integration -k case_u
+Ran 1 test
+OK
+
+Case U now captures the field_provenances row count after run 1 and asserts it is exactly
+equal after run 2 (identical re-poll) and again after run 3 (a changed posting under the same
+identity). FR-004 asserted only that the count was greater than zero after run 1, which is
+why the duplication was never caught.
+
+--- A-3: migration round-trip through 0003 ---
+3 down / 3 up / 3 down / 3 up, every step exit 0, from an empty database:
+
+  downgrade base : 0003 -> 0002 -> 0001 -> base   exit=0
+  upgrade head   : base -> 0001 -> 0002 -> 0003   exit=0
+  downgrade base : 0003 -> 0002 -> 0001 -> base   exit=0
+  upgrade head   : base -> 0001 -> 0002 -> 0003   exit=0
+
+--- An environment hazard found while doing this, recorded because it wasted an hour ---
+
+A scratch database was left with `alembic_version` reading `0002_match_evaluations` while the
+tables themselves no longer existed, so `alembic upgrade head` failed inside 0003's
+de-duplication DELETE with `relation "field_provenances" does not exist`, and the suite then
+reported 13 errors and a reduced collection of 550 tests. Nothing in this brief caused it:
+some test in the suite drops the schema without resetting the alembic version table. Dropping
+and recreating the database made the suite green at 599. This is pre-existing, is not fixed
+here, and is the most likely explanation for the single unreproducible
+"FAILED (failures=1)" recorded in a0-a1-baseline.txt.
+
+
+--- CORRECTION after independent verification ---
+
+The figures above (responsibility_scope 0.800 with two evidence refs) were measured before
+the D1 and D3 council repairs landed. Re-measured by the verifier at the merge head, the same
+named fixture yields **0.95 with three evidence refs** (a-resp1, a-resp2, a-ach). The fixture
+gained an achievement assertion in a later commit.
+
+The claim's binding -- raw_score > 0.50 with non-empty evidence_refs -- holds comfortably
+either way, and the before figure (a flat 0.500 with zero refs) is unchanged. But 0.800 was
+stale relative to the head being merged, and is corrected here rather than left to be
+discovered. The report quotes the corrected figure.

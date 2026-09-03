@@ -1,0 +1,126 @@
+### A-9 run 2 -- live poll on a fresh opportunityos_alpha, AFTER the source_id repair
+### Master, 2026-09-03T00:13:21Z. Database dropped beforehand; alpha.py created it.
+
+alpha.py up:
+  PostgreSQL: database 'opportunityos_alpha' created.
+  PostgreSQL: using database 'opportunityos_alpha'.
+  Database: opportunityos_alpha (PostgreSQL 127.0.0.1:5432).
+  Migrations: up to date. Worker/API/Web started. alpha: up.
+
+POST /api/auth/login  -> HTTP 200
+POST /api/worker/poll-now -> HTTP 200
+
+--- per-source poll runs (registry ids) ---
+       source_id       | status | raw_ingested | unique_opportunities | inserted 
+-----------------------+--------+--------------+----------------------+----------
+ greenhouse:cloudflare | ok     |          321 |                  321 |      321
+ remote_ok             | ok     |          100 |                  100 |      100
+ himalayas             | ok     |           20 |                   18 |       18
+ remotive              | ok     |           18 |                   18 |       18
+ etimad                | ok     |            0 |                    0 |        0
+ eu_ted                | ok     |            0 |                    0 |        0
+ freelancer            | ok     |            0 |                    0 |        0
+ ungm                  | ok     |            0 |                    0 |        0
+ we_work_remotely      | error  |            0 |                    0 |        0
+ world_bank            | ok     |           15 |                    0 |        0
+(10 rows)
+
+--- opportunities persisted ---
+ opportunities 
+---------------
+           899
+(1 row)
+
+--- source_id on the opportunity rows (the repaired mapping) ---
+       source_id       | count 
+-----------------------+-------
+ greenhouse:datadog    |   442
+ greenhouse:cloudflare |   321
+ remote_ok             |   100
+ remotive              |    18
+ himalayas             |    18
+(5 rows)
+
+--- A-9 residue probes: every one must be zero ---
+ example_com | opp_uq | src_prefixed | empty_source | numeric_job_id 
+-------------+--------+--------------+--------------+----------------
+           0 |      0 |            0 |            0 |              0
+(1 row)
+
+--- the row id still carries the remote job id ---
+sample id shape: himalayas:<remote-id>
+
+================================================================================
+A-9 CLOSES -- both halves
+================================================================================
+
+PROVENANCE HALF (passed in run 1 too): ten sources attempted through the real
+poll_source -> persist_batch -> evaluate_new seam, on a database alpha.py created moments
+earlier. Every residue probe is zero: no example.com URL, no opp-uq-* id, no src-* source id.
+
+REGISTRY-ID HALF (failed in run 1, passes now): every source_id on every opportunity row is
+a real registry id from docs/SOURCE_REGISTRY.yaml -- greenhouse:datadog, greenhouse:cloudflare,
+remote_ok, remotive, himalayas. Zero empty strings, zero bare numeric job ids. In run 1 the
+same query returned 2078 numeric job ids and 18 empty strings.
+
+The remote job id is not lost. It lives verbatim in each row's own primary key, which is
+compute_deterministic_id(source, remote_id, ...) -- of the shape "<registry-id>:<remote-id>".
+Nothing was added to the schema to preserve it.
+
+HONEST NOTES ON THIS RUN
+
+- The counts drift between snapshots because the worker polls on a schedule and keeps
+  running: the same run showed 457 rows a minute after poll-now and 899 shortly after. Both
+  are true; neither is "the" number. What A-9 binds is the provenance of the rows, not their
+  count at an instant, which is precisely the lesson of the FR-004 erratum.
+- source_poll_runs above shows ten rows because it was captured mid-cycle; greenhouse:datadog
+  and greenhouse:duolingo had persisted opportunities but their poll-run rows had not yet
+  landed. That is a snapshot artefact, not a missing source.
+- we_work_remotely returned an error and was RECORDED, not retried, as AGENTS.md requires.
+- world_bank fetched 15 raw records and yielded 0 opportunities. Recorded as observed rather
+  than investigated; it is not a defect this brief owns.
+- etimad, eu_ted, freelancer and ungm returned nothing. Also recorded as observed.
+- No employer names or listing text appear in this file. reports/** is publicly mirrored and
+  SOURCE_REGISTRY marks attribution as review_required for these sources; reading was
+  allowed and is all the poll used.
+
+================================================================================
+ADDED AFTER INDEPENDENT VERIFICATION -- the assertion this file made but did not test
+================================================================================
+
+The verifier found that this evidence's residue probes test five things --
+example_com, opp_uq, src_prefixed, empty_source, numeric_job_id -- and that NONE of
+them tests membership in docs/SOURCE_REGISTRY.yaml, while the prose above asserts
+"every source_id on every opportunity row is a real registry id from
+docs/SOURCE_REGISTRY.yaml".
+
+That is structurally the FR-004 pattern this entire brief exists to correct: prose
+asserting a property no claim bound. "Not empty and not numeric" does not imply "in
+the registry". The verifier checked the enumerated values by hand and found them all
+genuine, so the statement was under-probed rather than untrue -- but under-probed is
+exactly what the erratum was about.
+
+So here is the probe that was missing, run against the live alpha database:
+
+### A-9 registry-membership probe (added after the verifier found this untested)
+### is_source_registered() called for every distinct source_id on the opportunity rows
+
+  REGISTERED  greenhouse:affirm
+  REGISTERED  greenhouse:airbnb
+  REGISTERED  greenhouse:cloudflare
+  REGISTERED  greenhouse:datadog
+  REGISTERED  greenhouse:duolingo
+  REGISTERED  greenhouse:figma
+  REGISTERED  greenhouse:flexport
+  REGISTERED  greenhouse:twilio
+  REGISTERED  himalayas
+  REGISTERED  lever:shyftlabs
+  REGISTERED  remote_ok
+  REGISTERED  remotive
+
+distinct source_id values : 12
+registered                : 12
+NOT in the registry       : 0
+
+This calls SourceRegistry.is_source_registered() for every distinct source_id present
+on the opportunity rows. It tests the assertion directly instead of inferring it.

@@ -12,8 +12,11 @@ nothing is up. Do not start the real web or API in unit tests").
 from __future__ import annotations
 
 import contextlib
+import inspect
+import io
 import json
 import os
+import secrets
 import socket
 import subprocess
 import sys
@@ -25,9 +28,21 @@ from pathlib import Path
 from unittest import mock
 
 import scripts.alpha as alpha
+import storage.engine as storage_engine
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ALPHA_SCRIPT = REPO_ROOT / "scripts" / "alpha.py"
+
+
+def _synthetic_value(prefix: str, entropy_bytes: int) -> str:
+    """Build a throwaway test value that is generated, never hard-coded --
+    see api/test_api.py's own helper of the same shape. A literal assigned
+    to a name like PASSWORD or SECRET is exactly what scripts/check_guard.py
+    rejects; generating instead of hard-coding also means the value differs
+    every run, so it cannot be copied into anything real by accident.
+    Nothing here is a credential.
+    """
+    return prefix + secrets.token_urlsafe(entropy_bytes)
 
 
 @contextlib.contextmanager
@@ -200,6 +215,267 @@ class TestUpRejectsAnUneditedTemplate(unittest.TestCase):
             # No partial run state should exist either -- this failure
             # happens before anything is tracked.
             self.assertEqual(alpha._load_state(run_dir), {})
+
+
+class TestExtractDbName(unittest.TestCase):
+    """`_extract_db_name` must handle every URL shape this project actually
+    produces: with/without a password, with/without a trailing query string.
+    """
+
+    def test_with_password_no_query_string(self):
+        self.assertEqual(
+            alpha._extract_db_name("postgresql+psycopg2://user:pw@127.0.0.1:5432/opportunityos_alpha"),
+            "opportunityos_alpha",
+        )
+
+    def test_without_password_no_query_string(self):
+        self.assertEqual(
+            alpha._extract_db_name("postgresql+psycopg2://user@127.0.0.1:5432/opportunityos_alpha"),
+            "opportunityos_alpha",
+        )
+
+    def test_with_password_and_query_string(self):
+        self.assertEqual(
+            alpha._extract_db_name(
+                "postgresql+psycopg2://user:pw@127.0.0.1:5432/opportunityos_test?sslmode=disable"
+            ),
+            "opportunityos_test",
+        )
+
+    def test_without_password_and_with_query_string(self):
+        self.assertEqual(
+            alpha._extract_db_name(
+                "postgresql+psycopg2://user@127.0.0.1:5432/opportunityos_test?sslmode=disable"
+            ),
+            "opportunityos_test",
+        )
+
+    def test_missing_database_name_raises_a_clear_error(self):
+        with self.assertRaises(alpha.AlphaError) as ctx:
+            alpha._extract_db_name("postgresql+psycopg2://user@127.0.0.1:5432/")
+        self.assertIn("no database name", str(ctx.exception))
+
+
+class TestRefuseTestDatabase(unittest.TestCase):
+    """`_refuse_test_database` -- the function `cmd_up` calls before any
+    PostgreSQL detection or migration -- must reject any database name
+    ending `_test`, name that database in its message, and must not be
+    fooled by a trailing query string. A name that merely contains, but
+    does not end in, `_test` (e.g. `opportunityos_testing`) must be
+    accepted -- only an exact suffix match refuses.
+    """
+
+    def test_test_suffixed_name_is_refused_and_named_in_the_message(self):
+        with self.assertRaises(alpha.AlphaError) as ctx:
+            alpha._refuse_test_database(
+                "postgresql+psycopg2://opportunityos@127.0.0.1:5432/opportunityos_test"
+            )
+        message = str(ctx.exception)
+        self.assertIn("opportunityos_test", message)
+        self.assertIn("_test", message)
+
+    def test_test_suffixed_name_with_query_parameters_is_still_refused(self):
+        """The parser must not be fooled by `...(/opportunityos_test?sslmode=disable)`."""
+        with self.assertRaises(alpha.AlphaError) as ctx:
+            alpha._refuse_test_database(
+                "postgresql+psycopg2://opportunityos@127.0.0.1:5432/opportunityos_test?sslmode=disable"
+            )
+        self.assertIn("opportunityos_test", str(ctx.exception))
+
+    def test_opportunityos_alpha_name_is_accepted(self):
+        alpha._refuse_test_database(
+            "postgresql+psycopg2://opportunityos@127.0.0.1:5432/opportunityos_alpha"
+        )  # must not raise
+
+    def test_a_name_merely_containing_test_but_not_ending_in_it_is_accepted(self):
+        alpha._refuse_test_database(
+            "postgresql+psycopg2://opportunityos@127.0.0.1:5432/opportunityos_testing"
+        )  # must not raise -- only an exact "_test" suffix refuses
+
+
+class TestUpRejectsATestDatabase(unittest.TestCase):
+    """`up` must refuse a database name ending in `_test` before ever
+    touching PostgreSQL detection or migrations -- mirrors
+    TestUpRejectsAnUneditedTemplate's own proof technique (mocking
+    `_ensure_postgres`/`_run_alembic_upgrade`/`_spawn` and asserting none of
+    them are called) so this is a placement proof, not merely an outcome
+    proof, and covers both a plain `_test` name and one with a trailing
+    query string.
+    """
+
+    def _env_file(self, tmp: str, db_url: str) -> Path:
+        env_path = Path(tmp) / "alpha.env"
+        env_path.write_text(
+            f"OPPORTUNITYOS_FOUNDER_PASSWORD={_synthetic_value('pw-', 12)}\n"
+            f"OPPORTUNITYOS_SESSION_SECRET={_synthetic_value('sig-', 24)}\n"
+            f"OPPORTUNITYOS_DB_URL={db_url}\n",
+            encoding="utf-8",
+        )
+        return env_path
+
+    def _assert_refused(self, db_url: str, expected_db_name: str) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            env_path = self._env_file(tmp, db_url)
+            stderr = io.StringIO()
+            with mock.patch.object(alpha, "_ensure_postgres") as ensure_postgres_mock, \
+                 mock.patch.object(alpha, "_run_alembic_upgrade") as alembic_mock, \
+                 mock.patch.object(alpha, "_spawn") as spawn_mock, \
+                 contextlib.redirect_stderr(stderr):
+                exit_code = alpha.cmd_up(env_path, run_dir)
+
+            self.assertEqual(exit_code, 1)
+            ensure_postgres_mock.assert_not_called()
+            alembic_mock.assert_not_called()
+            spawn_mock.assert_not_called()
+            self.assertIn(expected_db_name, stderr.getvalue())
+            # No partial run state either -- this failure happens before
+            # anything is tracked, same as the unedited-template case above.
+            self.assertEqual(alpha._load_state(run_dir), {})
+
+    def test_plain_test_database_name_is_refused_naming_the_database(self):
+        self._assert_refused(
+            "postgresql+psycopg2://opportunityos@127.0.0.1:5432/opportunityos_test",
+            "opportunityos_test",
+        )
+
+    def test_test_database_with_query_parameters_is_still_refused_and_not_fooled_by_them(self):
+        self._assert_refused(
+            "postgresql+psycopg2://opportunityos@127.0.0.1:5432/opportunityos_test?sslmode=disable",
+            "opportunityos_test",
+        )
+
+
+class TestStatusRefusesATestDatabase(unittest.TestCase):
+    """`status` must refuse a database name ending in `_test` too -- not
+    just `up`. Regression coverage for the Master's own re-run finding:
+    `status --env-file <env naming opportunityos_test>` previously exited 0
+    and (against a properly migrated opportunityos_test -- the normal state,
+    since that is the suite's own database) would have printed that
+    database's poll history to the founder as though it were their own,
+    the exact FR-004 defect in milder form. The refusal is enforced inside
+    `load_alpha_env` itself (see `AlphaTestDatabaseRefusalError`'s own
+    docstring), so this is regression coverage for that shared code path
+    from `status`'s own call site, not a re-test of `_refuse_test_database`
+    itself (already covered by TestRefuseTestDatabase).
+    """
+
+    def _env_file(self, tmp: str, db_url: str) -> Path:
+        env_path = Path(tmp) / "alpha.env"
+        env_path.write_text(
+            f"OPPORTUNITYOS_FOUNDER_PASSWORD={_synthetic_value('pw-', 12)}\n"
+            f"OPPORTUNITYOS_SESSION_SECRET={_synthetic_value('sig-', 24)}\n"
+            f"OPPORTUNITYOS_DB_URL={db_url}\n",
+            encoding="utf-8",
+        )
+        return env_path
+
+    def test_status_refuses_and_exits_nonzero_naming_the_database(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            env_path = self._env_file(
+                tmp, "postgresql+psycopg2://opportunityos@127.0.0.1:5432/opportunityos_test"
+            )
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = alpha.cmd_status(env_path, run_dir)
+
+        self.assertEqual(exit_code, 1)
+        output = stdout.getvalue()
+        self.assertIn("opportunityos_test", output)
+        self.assertIn("refused", output)
+        # Never falls through to the generic "could not query the database"
+        # degrade path below the refusal -- that would mean a connection
+        # was actually attempted.
+        self.assertNotIn("could not query the database", output)
+
+    def test_status_with_a_query_string_test_database_is_still_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            env_path = self._env_file(
+                tmp,
+                "postgresql+psycopg2://opportunityos@127.0.0.1:5432/opportunityos_test?sslmode=disable",
+            )
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = alpha.cmd_status(env_path, run_dir)
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("opportunityos_test", stdout.getvalue())
+
+    def test_status_never_calls_get_engine_when_the_database_is_refused(self):
+        """Placement proof, mirroring TestUpRejectsATestDatabase's own
+        technique: `storage.engine.get_engine` is the only thing in
+        `cmd_status` that ever opens a database connection (see
+        cmd_status's own `from storage.engine import get_engine, ...`,
+        executed only after the refusal check). Mocking the attribute on
+        the real module `cmd_status` imports from and asserting it was
+        never called is direct proof no connection was ever attempted --
+        stronger than checking output alone.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            env_path = self._env_file(
+                tmp, "postgresql+psycopg2://opportunityos@127.0.0.1:5432/opportunityos_test"
+            )
+            with mock.patch.object(storage_engine, "get_engine") as get_engine_mock, \
+                 contextlib.redirect_stdout(io.StringIO()):
+                exit_code = alpha.cmd_status(env_path, run_dir)
+
+        self.assertEqual(exit_code, 1)
+        get_engine_mock.assert_not_called()
+
+    def test_status_on_an_opportunityos_alpha_database_is_not_refused(self):
+        """The accepted name must not be refused either -- status then
+        proceeds to (and fails gracefully within) the real DB-query
+        section, since nothing is actually listening at this fake
+        host/port in this test; the point here is only that it is not
+        refused before that.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            # Port 1 is a reserved, never-listening port, so the DB-query
+            # section fails fast with a connection error rather than
+            # hanging -- this test is only about the refusal *not* firing,
+            # not about a real database.
+            env_path = self._env_file(
+                tmp, "postgresql+psycopg2://opportunityos@127.0.0.1:1/opportunityos_alpha"
+            )
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = alpha.cmd_status(env_path, run_dir)
+
+        # Exit 0 either way (status degrades gracefully on a real connection
+        # failure) -- what matters is the message is the generic
+        # "unavailable: could not query the database", not this module's
+        # own "(refused: ...)" line. (Not a bare `assertNotIn("refused", ...)`
+        # -- psycopg2's own OperationalError text contains "Connection
+        # refused", which would make that a false positive here.)
+        self.assertEqual(exit_code, 0)
+        output = stdout.getvalue()
+        self.assertIn("could not query the database", output)
+        self.assertNotIn("(refused:", output)
+
+
+class TestDownAndLogsNeverResolveTheDatabaseUrl(unittest.TestCase):
+    """`down` and `logs` are deliberately exempt from the `_test` refusal --
+    not silently, but because they never call `load_alpha_env` (and so
+    never resolve OPPORTUNITYOS_DB_URL) at all: both act purely on the
+    run-dir state file recording what `up` itself already started. A stray
+    previous session must still be stoppable (or its logs still readable)
+    even if the founder's env file currently names a test database --
+    refusing here would actively prevent cleanup rather than protect
+    anything. This is an executable version of that argument: their own
+    signatures take no `env_file` parameter, so a future change that made
+    them start resolving OPPORTUNITYOS_DB_URL would show up here as a
+    parameter-list change, not silently.
+    """
+
+    def test_cmd_down_takes_no_env_file_parameter(self):
+        self.assertNotIn("env_file", inspect.signature(alpha.cmd_down).parameters)
+
+    def test_cmd_logs_takes_no_env_file_parameter(self):
+        self.assertNotIn("env_file", inspect.signature(alpha.cmd_logs).parameters)
 
 
 class TestStateFile(unittest.TestCase):
@@ -793,17 +1069,21 @@ class TestStopProcessesPortVerification(unittest.TestCase):
 
 
 class TestEnsureAndStopPostgres(unittest.TestCase):
+    _DB_URL = "postgresql+psycopg2://opportunityos@127.0.0.1:5432/opportunityos_alpha"
+
     def test_already_listening_is_detected_and_not_restarted(self):
-        with mock.patch.object(alpha, "_port_open", return_value=True):
-            result = alpha._ensure_postgres(Path(tempfile.gettempdir()))
-        self.assertEqual(result, {"started_by_alpha": False})
+        with mock.patch.object(alpha, "_port_open", return_value=True), \
+             mock.patch.object(alpha, "_ensure_database_exists") as ensure_db_mock:
+            result = alpha._ensure_postgres(Path(tempfile.gettempdir()), self._DB_URL)
+        self.assertEqual(result, {"started_by_alpha": False, "database": "opportunityos_alpha"})
+        ensure_db_mock.assert_called_once_with(self._DB_URL)
 
     def test_missing_localappdata_raises_a_clear_error(self):
         env_without_localappdata = {k: v for k, v in os.environ.items() if k != "LOCALAPPDATA"}
         with mock.patch.object(alpha, "_port_open", return_value=False):
             with mock.patch.dict(os.environ, env_without_localappdata, clear=True):
                 with self.assertRaises(alpha.AlphaError) as ctx:
-                    alpha._ensure_postgres(Path(tempfile.gettempdir()))
+                    alpha._ensure_postgres(Path(tempfile.gettempdir()), self._DB_URL)
         self.assertIn("LOCALAPPDATA", str(ctx.exception))
 
     def test_missing_portable_cluster_raises_a_clear_error_naming_the_brief(self):
@@ -811,7 +1091,7 @@ class TestEnsureAndStopPostgres(unittest.TestCase):
             with mock.patch.object(alpha, "_port_open", return_value=False):
                 with mock.patch.dict(os.environ, {"LOCALAPPDATA": fake_localappdata}):
                     with self.assertRaises(alpha.AlphaError) as ctx:
-                        alpha._ensure_postgres(Path(tempfile.gettempdir()))
+                        alpha._ensure_postgres(Path(tempfile.gettempdir()), self._DB_URL)
         self.assertIn("BRIEF-FR-003.md", str(ctx.exception))
 
     def test_stop_postgres_leaves_a_server_it_did_not_start(self):
@@ -871,6 +1151,26 @@ class TestCliSmoke(unittest.TestCase):
         self.assertIn("web: down", result.stdout)
         # Missing env-file must not crash status; it degrades gracefully.
         self.assertIn("unavailable", result.stdout)
+
+    def test_status_exits_nonzero_against_a_test_database_as_a_real_subprocess(self):
+        """Regression test for the Master's own re-run finding: reproduces
+        the exact repro steps reported (`status --env-file <env naming
+        opportunityos_test>`), as a real subprocess exactly like the
+        Master ran it -- not just via a direct `cmd_status` call.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            env_file = Path(tmp) / "alpha.env"
+            env_file.write_text(
+                f"OPPORTUNITYOS_FOUNDER_PASSWORD={_synthetic_value('pw-', 12)}\n"
+                f"OPPORTUNITYOS_SESSION_SECRET={_synthetic_value('sig-', 24)}\n"
+                "OPPORTUNITYOS_DB_URL=postgresql+psycopg2://opportunityos@127.0.0.1:5432/opportunityos_test\n",
+                encoding="utf-8",
+            )
+            result = self._run_alpha("status", "--run-dir", str(run_dir), "--env-file", str(env_file))
+        self.assertNotEqual(result.returncode, 0, msg=f"stdout={result.stdout!r} stderr={result.stderr!r}")
+        self.assertIn("opportunityos_test", result.stdout)
+        self.assertNotIn("could not query the database", result.stdout)
 
     def test_down_is_safe_and_exits_zero_when_nothing_is_up(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -977,7 +1277,9 @@ class TestFailedUpLeavesStateForDown(unittest.TestCase):
             )
             api_port = _free_port()
 
-            with mock.patch.object(alpha, "_ensure_postgres", return_value={"started_by_alpha": False}), \
+            with mock.patch.object(
+                     alpha, "_ensure_postgres", return_value={"started_by_alpha": False, "database": "db"}
+                 ), \
                  mock.patch.object(alpha, "_run_alembic_upgrade", return_value=None), \
                  mock.patch.object(alpha, "_spawn", side_effect=lambda *a, **k: _FakePopen()), \
                  mock.patch.object(alpha, "_wait_process_alive", return_value=None), \
@@ -1026,7 +1328,9 @@ class TestFailedUpLeavesStateForDown(unittest.TestCase):
             )
             api_port = _free_port()
 
-            with mock.patch.object(alpha, "_ensure_postgres", return_value={"started_by_alpha": False}), \
+            with mock.patch.object(
+                     alpha, "_ensure_postgres", return_value={"started_by_alpha": False, "database": "db"}
+                 ), \
                  mock.patch.object(alpha, "_run_alembic_upgrade", return_value=None), \
                  mock.patch.object(alpha, "_spawn", side_effect=lambda *a, **k: _FakePopen()), \
                  mock.patch.object(alpha, "_wait_process_alive", return_value=None), \
@@ -1043,6 +1347,128 @@ class TestFailedUpLeavesStateForDown(unittest.TestCase):
 
             self.assertEqual(exit_code, 1)
             self.assertEqual(alpha._load_state(run_dir), {})
+
+
+class TestPersistBatchProducesRealSourceIds(unittest.TestCase):
+    """Integration: `persist_batch` from a real adapter + a real, already-
+    committed fixture file produces `OpportunityRecord` rows carrying the
+    adapter's own real per-job ids -- never the synthetic `src-1`/
+    `opp-uq-*` shape the FR-004 erratum (reports/REPORT-FR-004.md) records
+    `alpha.py up` once serving to the founder as though it were real polled
+    data. No live network I/O: the payload is read from
+    opportunity/fixtures/greenhouse_cloudflare.json (already committed) and
+    parsed by the real GreenhouseAdapter, exactly as opportunity/test_adapters.py
+    does.
+
+    Requires a real PostgreSQL OPPORTUNITYOS_DB_URL, same requirement and
+    skip/fail-loud behaviour as storage/test_postgres_integration.py.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.db_url = os.environ.get("OPPORTUNITYOS_DB_URL")
+        if not cls.db_url or not cls.db_url.startswith("postgresql"):
+            if os.environ.get("CI"):
+                raise AssertionError(
+                    "CI is set but OPPORTUNITYOS_DB_URL is missing or not a PostgreSQL URL "
+                    f"(postgresql+psycopg2://...). Got: {cls.db_url!r}."
+                )
+            raise unittest.SkipTest(
+                f"requires a real PostgreSQL OPPORTUNITYOS_DB_URL, got: {cls.db_url!r}"
+            )
+
+        from alembic import command
+        from alembic.config import Config
+        from storage.engine import get_engine, get_session_factory
+        from storage.models import Base
+
+        cls.engine = get_engine(cls.db_url)
+        cls.SessionFactory = get_session_factory(cls.engine)
+        cls.Base = Base
+
+        alembic_cfg = Config(str(REPO_ROOT / "alembic.ini"))
+        alembic_cfg.set_main_option("sqlalchemy.url", cls.db_url)
+        command.upgrade(alembic_cfg, "head")
+
+    def setUp(self):
+        from sqlalchemy import text
+
+        with self.engine.begin() as conn:
+            for table in reversed(self.Base.metadata.sorted_tables):
+                conn.execute(text(f'TRUNCATE TABLE "{table.name}" CASCADE;'))
+
+    def test_persist_batch_from_a_real_greenhouse_fixture_is_not_synthetic(self):
+        from opportunity.adapters.greenhouse import GreenhouseAdapter
+        from opportunity.persistence import persist_batch
+        from opportunity.pipeline import IngestionBatch
+        from opportunity.registry import SourceRegistry
+        from storage.models import OpportunityRecord
+        from storage.repository import StorageRepository
+
+        fixture_path = REPO_ROOT / "opportunity" / "fixtures" / "greenhouse_cloudflare.json"
+        payload = fixture_path.read_text(encoding="utf-8")
+
+        adapter = GreenhouseAdapter("cloudflare")
+        parse_result = adapter.parse_payload(
+            payload, raw_pointer="fixture:greenhouse", fetched_at="2026-08-30"
+        )
+        self.assertEqual(len(parse_result.opportunities), 2)
+
+        # The adapter's own source id ("greenhouse:cloudflare") must itself
+        # be one docs/SOURCE_REGISTRY.yaml actually recognizes -- proving
+        # this is a real, policy-governed source, not a fabricated
+        # placeholder like FR-004's "src-1".
+        registry = SourceRegistry()
+        self.assertTrue(registry.is_source_registered(adapter.source_id))
+        self.assertEqual(adapter.source_id, "greenhouse:cloudflare")
+
+        batch = IngestionBatch(
+            batch_id="fixture-batch",
+            run_id="fixture-run",
+            ingested_at="2026-08-30",
+            opportunities=parse_result.opportunities,
+            clusters=(),
+            health_reports=(),
+            total_raw_ingested=parse_result.records_raw_count,
+            total_unique_opportunities=len(parse_result.opportunities),
+            exact_duplicates_removed=0,
+            cross_source_duplicates_clustered=0,
+            ambiguous_duplicates_count=0,
+            track_counts=(),
+            eligibility_counts=(),
+        )
+
+        session = self.SessionFactory()
+        try:
+            repository = StorageRepository(session)
+            result = persist_batch(batch, repository)
+        finally:
+            session.close()
+
+        self.assertEqual(result.inserted_count, 2)
+
+        session = self.SessionFactory()
+        try:
+            rows = session.query(OpportunityRecord).order_by(OpportunityRecord.id).all()
+        finally:
+            session.close()
+
+        self.assertEqual(len(rows), 2)
+        # The persisted row's source_id column carries the real, registered
+        # source id ("greenhouse:cloudflare") -- never the synthetic
+        # "src-1" FR-004's erratum recorded being served to the founder, and
+        # never a bare per-job number (BRIEF-FR-005's own source_id erratum:
+        # opportunity/persistence.py used to map opp.source_id -- the job's
+        # remote id at Greenhouse, e.g. "5512301" -- onto this column
+        # instead of opp.source, the registry id). The fixture's own real
+        # Greenhouse job ids are preserved instead in each row's primary key
+        # (see the id assertion below), not duplicated into source_id.
+        row_source_ids = sorted(row.source_id for row in rows)
+        self.assertEqual(row_source_ids, ["greenhouse:cloudflare", "greenhouse:cloudflare"])
+        for row in rows:
+            self.assertNotEqual(row.source_id, "src-1")
+            self.assertNotIn("opp-uq-", row.id)
+            self.assertTrue(row.id.startswith("greenhouse:cloudflare:"))
 
 
 if __name__ == "__main__":

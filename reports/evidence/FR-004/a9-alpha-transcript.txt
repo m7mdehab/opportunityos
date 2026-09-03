@@ -40,3 +40,19 @@ alpha: down.
   listeners on 8000: 0
   listeners on 3000: 0
   PostgreSQL, which alpha.py did not start, correctly remains: :5432 - accepting connections
+
+=== CORRECTION appended 2026-09-02 after Overseer review — see REPORT-FR-004.md Erratum 1.1 ===
+
+The heading "--- the logged-in feed, over really-polled data ---" above is WRONG. The raw
+output under it is unaltered and accurate; the Master's description of it was not.
+
+Those 138 rows are test-database residue, not polled data. Every one carries a synthetic id
+(opp-uq-*), source_id "src-1", a https://example.com/ source_url and "Acme Corp" as the
+organization. alpha.py takes its database from OPPORTUNITYOS_DB_URL in the env file, and the
+temp env file used for this run pointed at opportunityos_test, so `up` attached to the
+already-populated test database instead of a database of its own. The "--- the measured
+number ---" line below it (139 fetched, 1 qualified) is therefore the synthetic pack scored
+against that residue, not a measurement over anything real.
+
+No live poll through the poll_source -> persist_batch -> evaluate_new seam is evidenced
+anywhere in FR-004. FR-005 D2 carries that proof, and gives alpha.py its own database.

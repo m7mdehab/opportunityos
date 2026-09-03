@@ -4,10 +4,12 @@ from __future__ import annotations
 import unittest
 
 from opportunity.models import Opportunity, ProcurementMetadata, Track
+from matching.artifact_validation import validate_artifact_claims
 from matching.compiler_employment import EmploymentArtifactCompiler
 from matching.compiler_independent import IndependentArtifactCompiler
 from matching.models import ArtifactType, CommitmentStatus, TailoringPolicy
 from matching.test_qualification import create_test_graph, create_test_opportunity
+from truth.validator import ClaimValidator
 
 
 class TestArtifactCompilers(unittest.TestCase):
@@ -25,14 +27,42 @@ class TestArtifactCompilers(unittest.TestCase):
             )
         )
 
+    def _rejections(self, artifact, opportunity=None) -> list[dict]:
+        """Run every generated claim through the real, production ADR-0014
+        validator dispatch (`matching.artifact_validation.validate_artifact_claims`
+        -- the same function `api/routes_api.py::_compile_and_export` calls,
+        not a hand-copied mirror of it) and return the findings. An empty
+        list is the actual behaviour this deliverable fixes -- BRIEF-FR-004's
+        compiler emitted composite claims that `ClaimValidator` correctly
+        refused for any naturally-written pack; counting `len(sections) >= N`
+        never caught that, because a section can exist and still carry a
+        claim the validator would 409 on. `opportunity` is accepted and
+        unused (kept so call sites that pass one for documentation purposes
+        do not need updating) -- ADR-0014's class (b) was removed entirely
+        after council review, so validation no longer depends on the
+        opportunity at all."""
+        validator = ClaimValidator(self.truth_graph)
+        return validate_artifact_claims(artifact, validator)
+
     def test_compile_tailored_cv(self) -> None:
         opp = create_test_opportunity()
         cv = self.emp_compiler.compile_tailored_cv(opp, self.truth_graph)
         self.assertEqual(cv.artifact_type, ArtifactType.TAILORED_CV)
         self.assertEqual(cv.opportunity_id, opp.id)
-        self.assertTrue(len(cv.sections) >= 3)
         self.assertTrue(len(cv.generated_claims) > 0)
         self.assertTrue(bool(cv.artifact_hash))
+        # The actual deliverable: every claim the compiler generated against
+        # a real (non-hand-tuned) truth graph must clear `ClaimValidator`.
+        self.assertEqual(self._rejections(cv, opp), [])
+        # ADR-0014 atomicity: the professional-summary claim cites exactly
+        # the title assertion's own evidence -- it no longer combines
+        # unrelated skill evidence into the same claim (BRIEF-FR-004 defect:
+        # that combination tripped the relational-composition guard for any
+        # naturally-written pack).
+        summary_claims = [c for c in cv.generated_claims if c.claim_id == "claim-summary-title"]
+        self.assertTrue(summary_claims, "expected a professional-summary claim")
+        for claim in summary_claims:
+            self.assertLessEqual(len(claim.assertion_ids), 1, "summary claim must cite at most one founder fact")
 
     def test_compile_tailored_cv_with_metric_bearing_graph(self) -> None:
         """Regression (BRIEF-FR-004 D6 council finding): `MetricAssertion`
@@ -63,7 +93,22 @@ class TestArtifactCompilers(unittest.TestCase):
         opp = create_test_opportunity()
         cover = self.emp_compiler.compile_cover_letter(opp, self.truth_graph)
         self.assertEqual(cover.artifact_type, ArtifactType.COVER_LETTER)
-        self.assertTrue(len(cover.sections) >= 2)
+        self.assertTrue(len(cover.generated_claims) > 0)
+        # The actual deliverable: a cover letter naturally names the target
+        # role and employer (BRIEF-FR-004 defect: the validator treated
+        # those words as unsupported founder claims and 409'd 2 of 2 cover
+        # letter claims against the shipped template). Every claim the
+        # compiler generated must now clear `ClaimValidator`.
+        self.assertEqual(self._rejections(cover, opp), [])
+        # At least one claim must be a NARRATIVE segment (the greeting) and
+        # at least one must be a real, evidence-backed founder claim -- a
+        # cover letter that was entirely narrative would prove nothing about
+        # the fix, and one with no narrative at all would not be a letter.
+        policy_sources = {c.policy_source for c in cover.generated_claims}
+        self.assertIn("NARRATIVE", policy_sources)
+        non_narrative = [c for c in cover.generated_claims if c.policy_source != "NARRATIVE"]
+        self.assertTrue(non_narrative, "expected at least one non-narrative (evidence-backed) claim")
+        self.assertTrue(all(c.evidence_ids for c in non_narrative), "every non-narrative claim must cite evidence")
 
     def test_compile_independent_proposal_with_resolved_commitments(self) -> None:
         opp = create_test_opportunity(

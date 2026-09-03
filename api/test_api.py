@@ -30,6 +30,7 @@ from storage.models import (
     Base,
     FieldProvenanceRecord,
     FounderFeedbackRecord,
+    FounderFilterSettingRecord,
     FounderOpportunityViewRecord,
     FounderTriageStateRecord,
     IdempotencyReservationRecord,
@@ -40,9 +41,21 @@ from storage.models import (
     WorkerJobRecord,
 )
 from truth.graph import TruthGraph
-from truth.models import CareerProfile, EvidenceRecord, SkillRecord
+from truth.models import (
+    AtomicAssertion,
+    CapabilityProfile,
+    CareerProfile,
+    EmploymentRecord,
+    EvidenceRecord,
+    RedLineRule,
+    SkillRecord,
+    VerificationStatus,
+)
+from truth.pack import LoadedPack, PackValidationReport
+from truth.validator import ClaimValidator
 
 from api.app import create_app
+from api.filters import FILTER_DEFINITIONS, FILTER_DEFINITIONS_BY_ID
 from api.settings import Settings
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -62,6 +75,161 @@ def _synthetic_value(prefix: str, entropy_bytes: int) -> str:
 
 FOUNDER_PASSWORD = _synthetic_value("pw-", 12)
 SESSION_SECRET = _synthetic_value("sig-", 24)
+
+
+# ---------------------------------------------------------------------------
+# D3 (BRIEF-FR-005) test fixtures: founder_filter_settings reseeding and
+# synthetic truth-pack graphs.
+# ---------------------------------------------------------------------------
+
+
+def _reseed_founder_filter_settings(session) -> None:
+    """Insert `founder_filter_settings` rows for every filter in
+    `api.filters.FILTER_DEFINITIONS`, at each filter's own default
+    enabled/mode/params. Mirrors migration 0003's `_D3_FILTER_SEED` exactly
+    (`FilterSeedSyncTest` asserts the two never drift apart) -- called from
+    `ApiTestCase.setUp` because the shared TRUNCATE-every-table loop there
+    also empties this table, and a real fresh-migrated database never has an
+    empty `founder_filter_settings`."""
+    from api.filters import to_naive_utc
+
+    now = to_naive_utc(datetime.now(timezone.utc))
+    for fd in FILTER_DEFINITIONS:
+        session.add(
+            FounderFilterSettingRecord(
+                filter_id=fd.filter_id,
+                enabled=fd.default_enabled,
+                mode=fd.default_mode,
+                params_json=json.dumps(dict(fd.default_params)),
+                updated_at=now,
+            )
+        )
+    session.commit()
+
+
+def _install_truth_graph(app, graph: TruthGraph) -> None:
+    """Hand `app.state` a `TruthGraph` built directly in-test (the same
+    pattern `matching/test_scorer.py::_with_premium_threshold` uses),
+    bypassing YAML file loading entirely. Filter fixtures need very specific
+    assertions/red-lines/excluded-industries; building the graph in Python is
+    far less brittle than hand-writing evidence-perfect YAML for each case."""
+    app.state.loaded_truth_pack = LoadedPack(
+        graph=graph,
+        report=PackValidationReport(valid=True, section_counts=(), findings=()),
+        truth_pack_hash="test-truth-pack-hash",
+    )
+
+
+def _graph_with_red_line_and_excluded_industry() -> TruthGraph:
+    """A minimal graph carrying one career red line ("guaranteed placement")
+    and one capability excluded industry ("Gambling") -- the same values the
+    shipped `docs/templates/truth_pack.template.yaml` uses, built directly
+    rather than through YAML ingest so no evidence-wording gymnastics are
+    needed."""
+    graph = TruthGraph()
+    graph.add_evidence(
+        EvidenceRecord(
+            id="ev-cap-summary",
+            content="Targets Widget Manufacturing and excludes the Gambling industry.",
+            source="manual",
+            locator="capability_profile.summary",
+        )
+    )
+    graph.add_career_profile(
+        CareerProfile(
+            id="career-fixture",
+            red_lines=(
+                RedLineRule(
+                    id="rl-guarantee",
+                    pattern=r"guarant(?:eed?)\s+placement",
+                    reason="Never imply guaranteed employment outcomes.",
+                ),
+            ),
+        )
+    )
+    graph.add_capability_profile(
+        CapabilityProfile(
+            id="cap-fixture",
+            evidence_ids=("ev-cap-summary",),
+            excluded_industries=("Gambling",),
+        )
+    )
+    return graph
+
+
+def _graph_with_founder_preferences(
+    *,
+    preferred_track: str | None = None,
+    target_role: str | None = None,
+    premium_threshold: str | None = None,
+) -> TruthGraph:
+    """A graph carrying only the assertion-only predicates D3's
+    `track_preference` / `target_roles` / `premium_fulltime_onsite` filters
+    read (`truth/predicates.py`'s `PREFERENCE_TRACK`, `CAREER_TARGET_ROLE`,
+    `PREFERENCE_FULLTIME_ONSITE_PREMIUM_MONTHLY`), each backed by its own
+    evidence record whose text supports the value (required by
+    `TruthGraph.add_assertion`'s value-support check)."""
+    from truth import predicates
+
+    graph = TruthGraph()
+    if preferred_track is not None:
+        graph.add_evidence(
+            EvidenceRecord(
+                id="ev-track-pref",
+                content=f"Founder's declared track preference order: {preferred_track}.",
+                source="manual",
+                locator="assertions.track_preference",
+            )
+        )
+        graph.add_assertion(
+            AtomicAssertion(
+                id="a-track-pref",
+                subject_id="founder",
+                predicate=predicates.PREFERENCE_TRACK,
+                value=preferred_track,
+                evidence_ids=("ev-track-pref",),
+                verification_status=VerificationStatus.VERIFIED,
+            )
+        )
+    if target_role is not None:
+        graph.add_evidence(
+            EvidenceRecord(
+                id="ev-target-role",
+                content=f"Founder's declared target role: {target_role}.",
+                source="manual",
+                locator="assertions.target_role",
+            )
+        )
+        graph.add_assertion(
+            AtomicAssertion(
+                id="a-target-role",
+                subject_id="founder",
+                predicate=predicates.CAREER_TARGET_ROLE,
+                value=target_role,
+                evidence_ids=("ev-target-role",),
+                verification_status=VerificationStatus.VERIFIED,
+            )
+        )
+    if premium_threshold is not None:
+        graph.add_evidence(
+            EvidenceRecord(
+                id="ev-premium-threshold",
+                content=f"Minimum acceptable full-time on-site compensation: {premium_threshold} per month.",
+                source="manual",
+                locator="assertions.premium_threshold",
+            )
+        )
+        graph.add_assertion(
+            AtomicAssertion(
+                id="a-premium-threshold",
+                subject_id="founder",
+                predicate=predicates.PREFERENCE_FULLTIME_ONSITE_PREMIUM_MONTHLY,
+                value=premium_threshold,
+                evidence_ids=("ev-premium-threshold",),
+                verification_status=VerificationStatus.VERIFIED,
+            )
+        )
+    return graph
 
 
 def _db_url() -> str:
@@ -118,6 +286,16 @@ class ApiTestCase(unittest.TestCase):
             for table in reversed(Base.metadata.sorted_tables):
                 conn.execute(text(f'TRUNCATE TABLE "{table.name}" CASCADE;'))
         self.session = self.session_factory()
+        # D3 (BRIEF-FR-005): `founder_filter_settings` is truncated by the loop
+        # above along with every other table, but migration 0003 only seeds its
+        # ten default rows once, at migration time -- not on every TRUNCATE. A
+        # real fresh-migrated database always has all ten rows present (that is
+        # the whole point of "seeded by the migration"), so every test's fixture
+        # must start from that same state rather than an empty table. This
+        # reseed uses `api.filters.FILTER_DEFINITIONS` -- verified identical to
+        # the migration's own `_D3_FILTER_SEED` by
+        # `FilterSeedSyncTest.test_migration_seed_matches_filter_definitions`.
+        _reseed_founder_filter_settings(self.session)
 
     def tearDown(self):
         self.session.close()
@@ -170,13 +348,16 @@ class ApiTestCase(unittest.TestCase):
         created_at: datetime | None = None,
         posted_date: str | None = None,
         is_stale: bool = False,
+        title: str | None = None,
+        organization: str | None = None,
+        description: str | None = None,
     ) -> OpportunityRecord:
         record = OpportunityRecord(
             id=opp_id,
             track=track,
-            title=f"Title {opp_id}",
-            organization=f"Org {opp_id}",
-            description="A synthetic opportunity for API tests.",
+            title=title if title is not None else f"Title {opp_id}",
+            organization=organization if organization is not None else f"Org {opp_id}",
+            description=description if description is not None else "A synthetic opportunity for API tests.",
             source_id="himalayas",
             source_url=f"https://himalayas.app/jobs/{opp_id}",
             content_hash=f"hash-{opp_id}",
@@ -199,6 +380,40 @@ class ApiTestCase(unittest.TestCase):
         self.session.commit()
         return record
 
+    def seed_compensation(
+        self,
+        opp_id: str,
+        *,
+        min_amount: float | None = None,
+        max_amount: float | None = None,
+        currency: str | None = None,
+    ) -> None:
+        """Seed the atomic `compensation.min_amount` / `compensation.max_amount`
+        / `compensation.currency` `field_provenances` rows every adapter writes
+        (`opportunity/adapters/*.py`) -- the real data source D3's
+        `compensation_floor` filter reads, rather than a synthesized combined
+        string."""
+        fields = {
+            "compensation.min_amount": None if min_amount is None else str(min_amount),
+            "compensation.max_amount": None if max_amount is None else str(max_amount),
+            "compensation.currency": currency,
+        }
+        for field_name, value in fields.items():
+            if value is None:
+                continue
+            self.session.add(
+                FieldProvenanceRecord(
+                    opportunity_id=opp_id,
+                    field_name=field_name,
+                    raw_value=value,
+                    normalized_value=value,
+                    derivation_type="rule_derivation",
+                    raw_pointer=f"raw.{opp_id}.{field_name}",
+                    record_checksum=f"chk-{opp_id}-{field_name}",
+                )
+            )
+        self.session.commit()
+
     def seed_evaluation(
         self,
         opp_id: str,
@@ -208,6 +423,7 @@ class ApiTestCase(unittest.TestCase):
         evaluated_at: datetime | None = None,
         reasons: list[dict] | None = None,
         evaluation_detail: dict | None = None,
+        dimension_scores: list[dict] | None = None,
         truth_pack_hash: str = "hash-fixture",
     ) -> MatchEvaluationRecord:
         """Seed a `match_evaluations` row using the canonical shapes
@@ -220,9 +436,13 @@ class ApiTestCase(unittest.TestCase):
         defaults to `None`, i.e. an unpopulated column -- exactly the state
         of a row persisted before this column existed -- so tests that need
         hard-constraint data pass it explicitly rather than relying on a
-        default that would mask the null case.
+        default that would mask the null case. `dimension_scores` defaults to
+        the single-`core_skills`-entry shape below (unchanged from before this
+        parameter existed) -- pass it explicitly for tests (e.g. D3's
+        `premium_fulltime_onsite` filter) that need a specific dimension,
+        such as `compensation_fit`, present.
         """
-        dimension_scores = [
+        dimension_scores = dimension_scores if dimension_scores is not None else [
             {
                 "dimension_name": "core_skills",
                 "raw_score": 0.5,
@@ -705,6 +925,94 @@ def _clean_truth_pack_graph() -> TruthGraph:
     return graph
 
 
+def _unsupported_skill_term_graph() -> TruthGraph:
+    """ADR-0014 tripwire fixture: an unsupported FOUNDER-specific term must
+    still be rejected.
+
+    This exploits a documented, pre-existing gap the same shape as
+    `_mismatched_truth_pack_graph`'s polarity gap, but for lexical coverage
+    instead of negation: `TruthGraph.add_career_profile`'s field-provenance
+    check resolves a skill name through `truth.ingest.CANONICAL_SKILL_ALIASES`
+    (so a skill literally named "K8s" is accepted against evidence that only
+    ever says "Kubernetes" -- "k8s" -> "Kubernetes" is a known alias, and the
+    canonical form's tokens are what the graph checks against the evidence).
+    `ClaimValidator.validate_claim` has no such alias fallback: it requires
+    the claim text's own literal words to be covered by cited evidence or the
+    committed `CONNECTIVE_TERMS` stop-list -- neither of which is "k8s"
+    here. The compiler's atomic skill claim (bare `str(skill.value)`, i.e.
+    "K8s") is therefore rejected.
+
+    NOTE (council review, defect 8/NIT): with only one evidence record cited
+    and zero token overlap between "k8s" and "kubernetes", this specific
+    claim is actually turned away at `validate_claim` guard 5 ("no evidence
+    record supports the material claim") before guard 9's lexical-coverage
+    check is even reached -- so this fixture proves the HTTP path still
+    401/409s on an unsupported term end-to-end, not specifically that guard
+    9 fired. The guard-9-specific proof is the direct, in-process
+    `validate_claim` call inside `test_artifact_409_never_returns_docx_bytes`
+    below, which uses the council's own headline probe.
+    """
+    evidence = (
+        EvidenceRecord("ev-k8s", "Has hands-on Kubernetes experience.", "synthetic_cv", "skills.0"),
+    )
+    graph = TruthGraph(evidence)
+    profile = CareerProfile(
+        id="career-alias-gap",
+        evidence_ids=(),
+        skills=(SkillRecord("skill-k8s", "K8s", ("ev-k8s",)),),
+    )
+    graph.add_career_profile(profile)
+    return graph
+
+
+def _class_c_admissible_graph() -> TruthGraph:
+    """ADR-0014 tripwire fixture: a claim whose only "uncovered" term is
+    class (c) (the committed `truth/connective_terms.txt` stop-list) must
+    NOT be rejected.
+
+    A single, evidence-backed employment title ("Data Engineer", cited to
+    its own evidence) is enough to make `EmploymentArtifactCompiler.
+    compile_tailored_cv` emit the `claim-summary-title` claim, whose text is
+    "Background: Data Engineer." -- "background" is not itself in the
+    evidence, and is admissible only because it is on the committed
+    connective stop-list (re-audited by council review to contain nothing
+    that could plausibly be part of a real job title or skill).
+
+    An earlier revision of this fixture used the cover letter and a second
+    admissibility class ("opportunity-provenanced terms", derived from the
+    target opportunity's own organization/title). Independent council review
+    found that class applied too broadly and it was removed entirely from
+    `ClaimValidator.validate_claim` (see ADR-0014's "Residual exposure and
+    review history"); the role/employer name now appears only inside a
+    NARRATIVE segment, which needs no special admissibility rule at all.
+    """
+    evidence = (
+        EvidenceRecord(
+            "ev-cb-title", "Data Engineer", "synthetic_cv", "employment.0.title",
+            metadata={"title": "Data Engineer", "organization": "Prior Employer Ltd"},
+        ),
+        EvidenceRecord(
+            "ev-cb-org", "Prior Employer Ltd", "synthetic_cv", "employment.0.organization",
+            metadata={"organization": "Prior Employer Ltd"},
+        ),
+        EvidenceRecord("ev-cb-dates", "2020-01-01 to 2022-01-01", "synthetic_cv", "employment.0.dates"),
+    )
+    graph = TruthGraph(evidence)
+    profile = CareerProfile(
+        id="career-class-c",
+        evidence_ids=(),
+        employment=(
+            EmploymentRecord(
+                id="job-class-c", organization="Prior Employer Ltd", title="Data Engineer",
+                start_date=date(2020, 1, 1), end_date=date(2022, 1, 1),
+                evidence_ids=("ev-cb-title", "ev-cb-org", "ev-cb-dates"),
+            ),
+        ),
+    )
+    graph.add_career_profile(profile)
+    return graph
+
+
 class ArtifactRoutesTest(ApiTestCase):
     def setUp(self):
         super().setUp()
@@ -773,6 +1081,108 @@ class ArtifactRoutesTest(ApiTestCase):
         self.assertIn("claim", finding)
         self.assertIn("assertion_type", finding)
         self.assertIn("rejection_reasons", finding)
+
+        # ADR-0014 tripwire, "saw_rejection" style, using the council's own
+        # headline probe (`reports/evidence/FR-005/council-d1-probe.txt`):
+        # guard 9 (material lexical coverage) must reject plain inflation on
+        # its own -- not merely tolerate it because a downstream guard also
+        # happens to catch it. This calls `ClaimValidator.validate_claim`
+        # directly against a fresh, single-evidence graph and would FAIL if
+        # guard 9 were ever neutralised, or if `class (b)` (removed in this
+        # revision after council review -- see ADR-0014 "Residual exposure
+        # and review history") were ever reintroduced and applied broadly
+        # enough to admit these words again.
+        clean_evidence = EvidenceRecord(
+            "ev-tripwire-title", "Data Engineer", "synthetic_cv", "employment.title",
+        )
+        direct_graph = TruthGraph((clean_evidence,))
+        direct_validator = ClaimValidator(direct_graph)
+        probe_claim = "Senior Data Engineer, Kubernetes certified."
+
+        rejected = direct_validator.validate_claim(probe_claim, ("ev-tripwire-title",))
+        saw_rejection = not rejected.allowed and all(
+            word in " ".join(rejected.reasons) for word in ("senior", "kubernetes", "certified")
+        )
+        self.assertTrue(
+            saw_rejection,
+            f"expected the validator to reject 'Senior ... Kubernetes certified.' against "
+            f"evidence that only says 'Data Engineer'; got {rejected}",
+        )
+
+        # `validate_claim` no longer accepts an `opportunity_terms` keyword
+        # at all (class (b) was removed structurally, not merely narrowed):
+        # confirm there is no remaining code path that could rescue this
+        # claim by declaring its words opportunity-provenanced.
+        with self.assertRaises(TypeError):
+            direct_validator.validate_claim(
+                probe_claim, ("ev-tripwire-title",),
+                opportunity_terms={"senior", "kubernetes", "certified"},
+            )
+
+    def test_artifact_409_on_unsupported_founder_term_via_skill_alias_gap(self):
+        """ADR-0014: an unsupported FOUNDER-specific term still 409s and
+        never returns docx bytes through the real HTTP path.
+        See `_unsupported_skill_term_graph` for the exact mechanism."""
+        import unittest.mock as mock
+
+        self.seed_opportunity("opp-alias-gap")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            from truth.pack import LoadedPack, PackValidationReport
+
+            graph = _unsupported_skill_term_graph()
+            loader.return_value = LoadedPack(
+                graph=graph,
+                report=PackValidationReport(valid=True, section_counts=(("evidence", 1),)),
+                truth_pack_hash="alias-gap-hash",
+            )
+            client.post("/api/truth/reload")
+
+            response = client.get("/api/opportunities/opp-alias-gap/artifacts/cv.docx")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(response.content.startswith(b"PK"))
+        body = response.json()
+        self.assertGreaterEqual(len(body["findings"]), 1)
+        self.assertTrue(
+            any("k8s" in finding["claim"].casefold() for finding in body["findings"]),
+            body["findings"],
+        )
+
+    def test_artifact_200_when_only_uncovered_term_is_connective(self):
+        """ADR-0014: a claim whose only uncovered term is class (c) (the
+        committed connective stop-list) is not rejected. See
+        `_class_c_admissible_graph` for the exact claim this exercises
+        ("Background: Data Engineer.", where "background" is the connective
+        word and "Data Engineer" is the founder's own evidence-backed
+        title)."""
+        import unittest.mock as mock
+
+        self.seed_opportunity("opp-class-c")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            from truth.pack import LoadedPack, PackValidationReport
+
+            graph = _class_c_admissible_graph()
+            loader.return_value = LoadedPack(
+                graph=graph,
+                report=PackValidationReport(valid=True, section_counts=(("evidence", 1),)),
+                truth_pack_hash="class-c-hash",
+            )
+            client.post("/api/truth/reload")
+
+            response = client.get("/api/opportunities/opp-class-c/artifacts/cv.docx")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.headers["content-type"],
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+        self.assertTrue(response.content.startswith(b"PK"), "response body is not a docx/zip payload")
 
     def test_artifact_412_when_no_truth_pack_loaded(self):
         self.seed_opportunity("opp-nopack")
@@ -1001,6 +1411,10 @@ class DashboardTest(ApiTestCase):
                 "opened": 0,
                 "labelled": 0,
                 "applied": 0,
+                # D3 (BRIEF-FR-005): every series entry also carries the count of
+                # that day's opportunities currently hidden by an enabled `hide`
+                # filter. Zero here because no opportunity was seeded for this day.
+                "hidden_by_filters": 0,
             },
         )
 
@@ -1157,6 +1571,692 @@ class HighFitThresholdDefaultTest(unittest.TestCase):
             session_secret="y",
         )
         self.assertEqual(settings.high_fit_threshold, 70.0)
+
+
+# ---------------------------------------------------------------------------
+# D3 (BRIEF-FR-005): founder-controlled filters
+# ---------------------------------------------------------------------------
+
+
+class FilterSeedSyncTest(unittest.TestCase):
+    """Migration 0003's `_D3_FILTER_SEED` (a deliberate independent literal
+    copy, not an import -- see that migration's module docstring) must never
+    drift from `api.filters.FILTER_DEFINITIONS`'s defaults. No PostgreSQL
+    connectivity needed: this only imports the migration module and compares
+    two in-memory Python structures."""
+
+    def test_migration_seed_matches_filter_definitions_defaults(self):
+        import importlib.util
+
+        migration_path = REPO_ROOT / "storage" / "migrations" / "versions" / "0003_provenance_identity.py"
+        spec = importlib.util.spec_from_file_location("_d3_migration_0003", migration_path)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        seed_by_id = {row[0]: row for row in module._D3_FILTER_SEED}
+        self.assertEqual(set(seed_by_id), {fd.filter_id for fd in FILTER_DEFINITIONS})
+        for fd in FILTER_DEFINITIONS:
+            _, enabled, mode, params = seed_by_id[fd.filter_id]
+            self.assertEqual(enabled, fd.default_enabled, fd.filter_id)
+            self.assertEqual(mode, fd.default_mode, fd.filter_id)
+            self.assertEqual(params, fd.default_params, fd.filter_id)
+
+
+class FilterSettingsRouteTest(ApiTestCase):
+    def setUp(self):
+        super().setUp()
+        self.app = self.make_app()
+        self.client = self.logged_in_client(self.app)
+
+    def test_get_filters_lists_all_ten_with_defaults(self):
+        resp = self.client.get("/api/filters")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        by_id = {f["filter_id"]: f for f in body["filters"]}
+        self.assertEqual(set(by_id), {fd.filter_id for fd in FILTER_DEFINITIONS})
+        for fd in FILTER_DEFINITIONS:
+            entry = by_id[fd.filter_id]
+            self.assertEqual(entry["enabled"], fd.default_enabled, fd.filter_id)
+            self.assertEqual(entry["mode"], fd.default_mode, fd.filter_id)
+            self.assertEqual(entry["params"], fd.default_params, fd.filter_id)
+            self.assertEqual(entry["affected_count"], 0, fd.filter_id)  # no opportunities seeded
+            self.assertEqual(entry["description"], fd.description, fd.filter_id)
+
+    def test_put_unknown_filter_id_404(self):
+        resp = self.client.put("/api/filters/does-not-exist", json={"enabled": False})
+        self.assertEqual(resp.status_code, 404)
+
+    def test_put_invalid_mode_422(self):
+        resp = self.client.put("/api/filters/stale_postings", json={"mode": "delete_forever"})
+        self.assertEqual(resp.status_code, 422)
+
+    def test_put_updates_only_supplied_fields(self):
+        before = {f["filter_id"]: f for f in self.client.get("/api/filters").json()["filters"]}
+        before_stale = before["stale_postings"]
+
+        resp = self.client.put("/api/filters/stale_postings", json={"mode": "hide"})
+        self.assertEqual(resp.status_code, 200, resp.text)
+        updated = resp.json()
+        self.assertEqual(updated["mode"], "hide")
+        self.assertEqual(updated["enabled"], before_stale["enabled"])
+        self.assertEqual(updated["params"], before_stale["params"])
+
+        resp2 = self.client.put(
+            "/api/filters/min_fit_score", json={"enabled": True, "params": {"min_score": 60}}
+        )
+        self.assertEqual(resp2.status_code, 200, resp2.text)
+        updated2 = resp2.json()
+        self.assertTrue(updated2["enabled"])
+        self.assertEqual(updated2["mode"], "hide")  # unchanged default
+        self.assertEqual(updated2["params"], {"min_score": 60})
+
+    def test_affected_count_reflects_matches_regardless_of_enabled(self):
+        self.seed_opportunity("opp-stale", is_stale=True)
+        self.seed_evaluation("opp-stale", decision="qualified", fit_score=50.0)
+        self.seed_opportunity("opp-fresh", is_stale=False)
+        self.seed_evaluation("opp-fresh", decision="qualified", fit_score=50.0)
+
+        resp = self.client.put("/api/filters/stale_postings", json={"enabled": False})
+        self.assertEqual(resp.status_code, 200, resp.text)
+        self.assertFalse(resp.json()["enabled"])
+        self.assertEqual(resp.json()["affected_count"], 1)
+
+        body = self.client.get("/api/filters").json()
+        entry = next(f for f in body["filters"] if f["filter_id"] == "stale_postings")
+        self.assertFalse(entry["enabled"])
+        self.assertEqual(entry["affected_count"], 1)
+
+    # -- council repair round: defect 1 (malformed params must 422, never
+    # persist, and never brick the feed) -------------------------------
+
+    def test_put_malformed_min_score_is_422_and_never_persisted(self):
+        resp = self.client.put(
+            "/api/filters/min_fit_score", json={"enabled": True, "params": {"min_score": "abc"}}
+        )
+        self.assertEqual(resp.status_code, 422, resp.text)
+
+        # Nothing was written: GET /api/filters still reports the seeded
+        # migration default, not a half-applied enabled=True.
+        body = self.client.get("/api/filters").json()
+        entry = next(f for f in body["filters"] if f["filter_id"] == "min_fit_score")
+        self.assertFalse(entry["enabled"])
+        self.assertEqual(entry["params"], {"min_score": 0})
+
+        # And the feed itself is still fully functional -- the defect this
+        # regression-tests was that a bad PUT bricked every subsequent GET
+        # until another valid PUT was issued by hand.
+        feed_resp = self.client.get("/api/opportunities")
+        self.assertEqual(feed_resp.status_code, 200, feed_resp.text)
+        filters_resp = self.client.get("/api/filters")
+        self.assertEqual(filters_resp.status_code, 200, filters_resp.text)
+
+    def test_put_min_score_out_of_range_is_422(self):
+        resp = self.client.put("/api/filters/min_fit_score", json={"params": {"min_score": 150}})
+        self.assertEqual(resp.status_code, 422, resp.text)
+
+    def test_put_unknown_param_key_is_422(self):
+        resp = self.client.put("/api/filters/stale_postings", json={"params": {"unexpected": 1}})
+        self.assertEqual(resp.status_code, 422, resp.text)
+
+    def test_put_compensation_floor_non_numeric_shape_is_422(self):
+        # Previously accepted with 200 and would only 500 later, once any
+        # opportunity carried a compensation row.
+        resp = self.client.put("/api/filters/compensation_floor", json={"params": {"floor": {"x": 1}}})
+        self.assertEqual(resp.status_code, 422, resp.text)
+
+    def test_put_compensation_floor_negative_is_422(self):
+        resp = self.client.put("/api/filters/compensation_floor", json={"params": {"floor": -1}})
+        self.assertEqual(resp.status_code, 422, resp.text)
+
+    def test_put_compensation_floor_valid_params_persist(self):
+        resp = self.client.put(
+            "/api/filters/compensation_floor",
+            json={"enabled": True, "params": {"floor": 50000, "currency": "EGP"}},
+        )
+        self.assertEqual(resp.status_code, 200, resp.text)
+        self.assertEqual(resp.json()["params"], {"floor": 50000.0, "currency": "EGP"})
+
+    # -- council repair round: defects 2/3 (unavailable_reason) ----------
+
+    def test_track_preference_and_stale_postings_report_unavailable_by_default(self):
+        body = self.client.get("/api/filters").json()
+        by_id = {f["filter_id"]: f for f in body["filters"]}
+
+        # No truth pack is loaded at all in this test's app (make_app()'s
+        # default), so every pack-dependent filter is unavailable.
+        self.assertIsNotNone(by_id["track_preference"]["unavailable_reason"])
+        self.assertIsNotNone(by_id["target_roles"]["unavailable_reason"])
+        self.assertIsNotNone(by_id["premium_fulltime_onsite"]["unavailable_reason"])
+
+        # stale_postings is unconditionally unavailable (defect 2): nothing
+        # upstream ever computes is_stale=True, pack or no pack.
+        self.assertIsNotNone(by_id["stale_postings"]["unavailable_reason"])
+
+        # A filter with a real, pack-independent data source stays available.
+        self.assertIsNone(by_id["geo_eligibility"]["unavailable_reason"])
+        self.assertIsNone(by_id["red_lines"]["unavailable_reason"])
+
+    def test_track_preference_becomes_available_once_pack_declares_it(self):
+        _install_truth_graph(self.app, _graph_with_founder_preferences(preferred_track="employment"))
+        body = self.client.get("/api/filters").json()
+        entry = next(f for f in body["filters"] if f["filter_id"] == "track_preference")
+        self.assertIsNone(entry["unavailable_reason"])
+        # target_roles and premium_fulltime_onsite still have no assertion of
+        # their own in this pack, so they remain unavailable independently.
+        by_id = {f["filter_id"]: f for f in body["filters"]}
+        self.assertIsNotNone(by_id["target_roles"]["unavailable_reason"])
+        self.assertIsNotNone(by_id["premium_fulltime_onsite"]["unavailable_reason"])
+
+
+class FilterEngineOpportunitiesTest(ApiTestCase):
+    """Contract section 7: each filter's three modes plus disabled, the A-13
+    total-equals-table-count assertion, the defaults hidden set, and the
+    red-line-toggled-off decision/fit_score invariant."""
+
+    def setUp(self):
+        super().setUp()
+        self.app = self.make_app()
+        self.client = self.logged_in_client(self.app)
+
+    # -- helpers ------------------------------------------------------
+
+    def _set_filter(self, filter_id: str, *, enabled: bool, mode: str, params: dict | None = None):
+        payload: dict = {"enabled": enabled, "mode": mode}
+        if params is not None:
+            payload["params"] = params
+        resp = self.client.put(f"/api/filters/{filter_id}", json=payload)
+        self.assertEqual(resp.status_code, 200, resp.text)
+        return resp.json()
+
+    def _items_by_id(self, **params):
+        query = {"include_hidden": True}
+        query.update(params)
+        resp = self.client.get("/api/opportunities", params=query)
+        self.assertEqual(resp.status_code, 200, resp.text)
+        body = resp.json()
+        return {item["id"]: item for item in body["items"]}, body
+
+    def _assert_hide_rank_label_disabled(
+        self, filter_id: str, *, matched_id: str, control_id: str, params: dict | None = None
+    ):
+        """The generic four-state check shared by every filter here whose
+        match condition is independent of `fit_score` (all but
+        `min_fit_score`, tested separately below). `matched_id` is always
+        seeded with a *higher* fit_score than `control_id`, so `rank_only`
+        demotion (matched sorts after control despite the higher score) is
+        distinguishable from ordinary fit_score-descending order, which would
+        already put `matched_id` first with no filter in effect."""
+        # -- disabled: filter contributes to neither hidden_by nor flagged_by
+        self._set_filter(filter_id, enabled=False, mode="hide", params=params)
+        items, _ = self._items_by_id()
+        self.assertEqual(items[matched_id]["hidden_by"], [])
+        self.assertEqual(items[matched_id]["flagged_by"], [])
+
+        matched_fit_score = items[matched_id]["fit_score"]
+        matched_decision = items[matched_id]["decision"]
+
+        # -- hide: hidden by default, visible only with include_hidden=true --
+        self._set_filter(filter_id, enabled=True, mode="hide", params=params)
+        items, _ = self._items_by_id()
+        self.assertIn(filter_id, items[matched_id]["hidden_by"])
+        self.assertNotIn(filter_id, items[control_id]["hidden_by"])
+        # The invariant that outranks everything else in D3: a hide toggle
+        # never touches decision or fit_score.
+        self.assertEqual(items[matched_id]["fit_score"], matched_fit_score)
+        self.assertEqual(items[matched_id]["decision"], matched_decision)
+
+        default_ids = {item["id"] for item in self.client.get("/api/opportunities").json()["items"]}
+        self.assertNotIn(matched_id, default_ids)
+        self.assertIn(control_id, default_ids)
+
+        # -- rank_only: never hidden, flagged, demoted below control despite
+        # a strictly higher fit_score; fit_score itself is untouched --------
+        self._set_filter(filter_id, enabled=True, mode="rank_only", params=params)
+        items, body = self._items_by_id()
+        self.assertEqual(items[matched_id]["hidden_by"], [])
+        self.assertIn(filter_id, items[matched_id]["flagged_by"])
+        self.assertEqual(items[matched_id]["fit_score"], matched_fit_score)
+        self.assertEqual(items[matched_id]["decision"], matched_decision)
+        order = [item["id"] for item in body["items"]]
+        self.assertLess(order.index(control_id), order.index(matched_id))
+
+        # -- label_only: flagged, but order is untouched -- matched keeps its
+        # higher-fit_score rank ahead of control -----------------------------
+        self._set_filter(filter_id, enabled=True, mode="label_only", params=params)
+        items, body = self._items_by_id()
+        self.assertEqual(items[matched_id]["hidden_by"], [])
+        self.assertIn(filter_id, items[matched_id]["flagged_by"])
+        order = [item["id"] for item in body["items"]]
+        self.assertLess(order.index(matched_id), order.index(control_id))
+
+    # -- one test per filter -------------------------------------------
+
+    def test_geo_eligibility_modes(self):
+        failing_detail = {
+            "hard_constraints": [
+                {
+                    "constraint_name": "geographic_eligibility",
+                    "passed": False,
+                    "reason": "excluded",
+                    "required_field": "geographic_eligibility",
+                    "founder_fact": "policy exclusion",
+                    "is_hard_failure": True,
+                    "provenance_pointer": "p",
+                }
+            ],
+            "strengths": [], "gaps": [], "unknowns": [], "uncertainty_penalty": 0.0, "explanation": "",
+        }
+        passing_detail = {
+            "hard_constraints": [
+                {
+                    "constraint_name": "geographic_eligibility",
+                    "passed": True,
+                    "reason": "eligible",
+                    "required_field": "geographic_eligibility",
+                    "founder_fact": "ok",
+                    "is_hard_failure": False,
+                    "provenance_pointer": "p",
+                }
+            ],
+            "strengths": [], "gaps": [], "unknowns": [], "uncertainty_penalty": 0.0, "explanation": "",
+        }
+        self.seed_opportunity("opp-match")
+        self.seed_evaluation("opp-match", decision="ineligible", fit_score=90.0, evaluation_detail=failing_detail)
+        self.seed_opportunity("opp-control")
+        self.seed_evaluation("opp-control", decision="qualified", fit_score=50.0, evaluation_detail=passing_detail)
+        self._assert_hide_rank_label_disabled("geo_eligibility", matched_id="opp-match", control_id="opp-control")
+
+    def test_work_mode_onsite_modes(self):
+        failing_detail = {
+            "hard_constraints": [
+                {
+                    "constraint_name": "work_mode_onsite",
+                    "passed": False,
+                    "reason": "on-site mismatch",
+                    "required_field": "remote_policy",
+                    "founder_fact": "founder elsewhere",
+                    "is_hard_failure": True,
+                    "provenance_pointer": "p",
+                }
+            ],
+            "strengths": [], "gaps": [], "unknowns": [], "uncertainty_penalty": 0.0, "explanation": "",
+        }
+        passing_detail = {
+            "hard_constraints": [
+                {
+                    "constraint_name": "work_mode_onsite",
+                    "passed": True,
+                    "reason": "on-site matches founder location",
+                    "required_field": "remote_policy",
+                    "founder_fact": "founder co-located",
+                    "is_hard_failure": False,
+                    "provenance_pointer": "p",
+                }
+            ],
+            "strengths": [], "gaps": [], "unknowns": [], "uncertainty_penalty": 0.0, "explanation": "",
+        }
+        self.seed_opportunity("opp-match")
+        self.seed_evaluation("opp-match", decision="ineligible", fit_score=90.0, evaluation_detail=failing_detail)
+        self.seed_opportunity("opp-control")
+        self.seed_evaluation("opp-control", decision="qualified", fit_score=50.0, evaluation_detail=passing_detail)
+        self._assert_hide_rank_label_disabled("work_mode_onsite", matched_id="opp-match", control_id="opp-control")
+
+    def test_red_lines_modes(self):
+        _install_truth_graph(self.app, _graph_with_red_line_and_excluded_industry())
+        self.seed_opportunity(
+            "opp-match", title="Sales Role",
+            description="We guarantee placement for every candidate within 30 days.",
+        )
+        self.seed_evaluation("opp-match", decision="qualified", fit_score=90.0)
+        self.seed_opportunity(
+            "opp-control", title="Backend Engineer", description="A normal, unremarkable job posting."
+        )
+        self.seed_evaluation("opp-control", decision="qualified", fit_score=50.0)
+        self._assert_hide_rank_label_disabled("red_lines", matched_id="opp-match", control_id="opp-control")
+
+    def test_excluded_industries_modes(self):
+        _install_truth_graph(self.app, _graph_with_red_line_and_excluded_industry())
+        self.seed_opportunity(
+            "opp-match", organization="Golden Gambling Corp", description="Operate our online gambling platform."
+        )
+        self.seed_evaluation("opp-match", decision="qualified", fit_score=90.0)
+        self.seed_opportunity("opp-control", organization="Widget Co", description="Build widgets for clients.")
+        self.seed_evaluation("opp-control", decision="qualified", fit_score=50.0)
+        self._assert_hide_rank_label_disabled("excluded_industries", matched_id="opp-match", control_id="opp-control")
+
+    def test_track_preference_modes(self):
+        _install_truth_graph(self.app, _graph_with_founder_preferences(preferred_track="employment"))
+        self.seed_opportunity("opp-match", track="procurement")
+        self.seed_evaluation("opp-match", decision="qualified", fit_score=90.0)
+        self.seed_opportunity("opp-control", track="employment")
+        self.seed_evaluation("opp-control", decision="qualified", fit_score=50.0)
+        self._assert_hide_rank_label_disabled("track_preference", matched_id="opp-match", control_id="opp-control")
+
+    def test_target_roles_modes(self):
+        _install_truth_graph(self.app, _graph_with_founder_preferences(target_role="Senior Backend Engineer"))
+        self.seed_opportunity("opp-match", title="Marketing Coordinator")
+        self.seed_evaluation("opp-match", decision="qualified", fit_score=90.0)
+        self.seed_opportunity("opp-control", title="Senior Backend Engineer")
+        self.seed_evaluation("opp-control", decision="qualified", fit_score=50.0)
+        self._assert_hide_rank_label_disabled("target_roles", matched_id="opp-match", control_id="opp-control")
+
+    def test_target_roles_token_match_ignores_word_order_and_seniority(self):
+        """Council repair, defect 4: the old plain-phrase substring check
+        (`target.casefold() in title_cf`) required "backend engineer" to
+        appear as a contiguous, exactly-ordered phrase. A title that
+        genuinely is a backend engineering role but states the words in a
+        different order, or adds a seniority qualifier the target role
+        string does not carry, was wrongly flagged as misaligned and demoted
+        below a worse match on nothing but string luck. This proves the
+        token-set matcher does not repeat that: neither a reordered title nor
+        one with an extra seniority word is flagged, so ordinary
+        fit_score-descending order holds regardless of who states the words
+        in what order."""
+        _install_truth_graph(self.app, _graph_with_founder_preferences(target_role="Backend Engineer"))
+        self.seed_opportunity("opp-reordered", title="Senior Software Engineer, Backend")
+        self.seed_evaluation("opp-reordered", decision="qualified", fit_score=95.0)
+        self.seed_opportunity("opp-intern", title="Backend Engineer Intern")
+        self.seed_evaluation("opp-intern", decision="qualified", fit_score=30.0)
+
+        self._set_filter("target_roles", enabled=True, mode="rank_only")
+        items, body = self._items_by_id()
+
+        self.assertEqual(items["opp-reordered"]["flagged_by"], [])
+        self.assertEqual(items["opp-intern"]["flagged_by"], [])
+        order = [item["id"] for item in body["items"]]
+        self.assertLess(order.index("opp-reordered"), order.index("opp-intern"))
+
+    def test_premium_fulltime_onsite_modes(self):
+        # Council repair, defect 6: matched by the stable `signal_tags` entry
+        # matching/scorer.py's premium rule now emits, not by a bare
+        # `"premium" in gap.casefold()` search over the prose sentence below
+        # (which is still present -- and still exercised for wording realism
+        # -- but is no longer what the matcher itself reads).
+        premium_gap_dimension = [
+            {
+                "dimension_name": "compensation_fit",
+                "raw_score": 0.35,
+                "weight": 0.05,
+                "weighted_score": 0.0175,
+                "explanation": "Compensation evaluated against founder target policy.",
+                "strengths": [],
+                "gaps": [
+                    "Full-time on-site compensation (~40000 EGP/month) is below the founder's full-time "
+                    "on-site premium threshold (85000 EGP/month)"
+                ],
+                "unknowns": [],
+                "evidence_refs": ["a-premium-threshold"],
+                "opportunity_field_refs": ["compensation"],
+                "signal_tags": ["premium_shortfall"],
+            }
+        ]
+        no_gap_dimension = [
+            {
+                "dimension_name": "compensation_fit",
+                "raw_score": 0.9,
+                "weight": 0.05,
+                "weighted_score": 0.045,
+                "explanation": "Compensation evaluated against founder target policy.",
+                "strengths": ["Opportunity compensation meets target"],
+                "gaps": [],
+                "unknowns": [],
+                "evidence_refs": [],
+                "opportunity_field_refs": ["compensation"],
+                "signal_tags": [],
+            }
+        ]
+        self.seed_opportunity("opp-match")
+        self.seed_evaluation(
+            "opp-match", decision="qualified", fit_score=90.0, dimension_scores=premium_gap_dimension
+        )
+        self.seed_opportunity("opp-control")
+        self.seed_evaluation(
+            "opp-control", decision="qualified", fit_score=50.0, dimension_scores=no_gap_dimension
+        )
+        self._assert_hide_rank_label_disabled(
+            "premium_fulltime_onsite", matched_id="opp-match", control_id="opp-control"
+        )
+
+    def test_premium_fulltime_onsite_matcher_reads_a_real_scorer_result(self):
+        """Council repair, defect 6's own instruction: run a real
+        `matching.scorer.OpportunityScorer` evaluation -- not a synthetic
+        dimension_scores dict -- through the exact JSON round trip
+        production uses (`matching.evaluate_persist.evaluate_and_store` ->
+        `MatchEvaluationRecord.dimension_scores_json` -> this API's own
+        `GET /api/opportunities`), proving the `signal_tags` plumbing is
+        genuinely wired end to end and not just shaped correctly in a test
+        fixture."""
+        from opportunity.models import Compensation, CompensationInterval, EmploymentType, RemotePolicy
+        from matching.evaluate_persist import evaluate_and_store
+        from matching.test_qualification import create_test_graph, create_test_opportunity
+        from storage.repository import StorageRepository
+        from truth import predicates
+        from truth.models import AtomicAssertion, EvidenceRecord, VerificationStatus
+
+        graph = create_test_graph()
+        graph.add_evidence(
+            EvidenceRecord(
+                id="ev-premium-real",
+                content="Minimum acceptable full-time on-site compensation: 85000 EGP per month.",
+                source="manual",
+                locator="assertions.premium_threshold",
+            )
+        )
+        graph.add_assertion(
+            AtomicAssertion(
+                id="a-premium-real",
+                subject_id="founder",
+                predicate=predicates.PREFERENCE_FULLTIME_ONSITE_PREMIUM_MONTHLY,
+                value="85000 EGP",
+                evidence_ids=("ev-premium-real",),
+                verification_status=VerificationStatus.VERIFIED,
+            )
+        )
+
+        self.seed_opportunity("opp-real-scorer", track="employment")
+        domain_opp = create_test_opportunity(
+            opp_id="opp-real-scorer",
+            employment_type=EmploymentType.FULL_TIME,
+            remote_policy=RemotePolicy.ON_SITE,
+            location_raw="Egypt",
+            compensation=Compensation(
+                min_amount=40000, max_amount=40000, currency="EGP", interval=CompensationInterval.MONTHLY
+            ),
+        )
+        evaluate_and_store(
+            domain_opp,
+            graph,
+            StorageRepository(self.session),
+            truth_pack_hash="hash-real-scorer",
+        )
+
+        self._set_filter("premium_fulltime_onsite", enabled=True, mode="rank_only")
+        items, _ = self._items_by_id()
+        self.assertIn("premium_fulltime_onsite", items["opp-real-scorer"]["flagged_by"])
+
+    def test_stale_postings_modes(self):
+        self.seed_opportunity("opp-match", is_stale=True)
+        self.seed_evaluation("opp-match", decision="qualified", fit_score=90.0)
+        self.seed_opportunity("opp-control", is_stale=False)
+        self.seed_evaluation("opp-control", decision="qualified", fit_score=50.0)
+        self._assert_hide_rank_label_disabled("stale_postings", matched_id="opp-match", control_id="opp-control")
+
+    def test_compensation_floor_modes(self):
+        self.seed_opportunity("opp-match")
+        self.seed_evaluation("opp-match", decision="qualified", fit_score=90.0)
+        self.seed_compensation("opp-match", min_amount=20000, max_amount=25000, currency="EGP")
+        self.seed_opportunity("opp-control")
+        self.seed_evaluation("opp-control", decision="qualified", fit_score=50.0)
+        self.seed_compensation("opp-control", min_amount=90000, max_amount=95000, currency="EGP")
+        self._assert_hide_rank_label_disabled(
+            "compensation_floor",
+            matched_id="opp-match",
+            control_id="opp-control",
+            params={"floor": 50000, "currency": "EGP"},
+        )
+
+    def test_min_fit_score_modes(self):
+        """Bespoke, not `_assert_hide_rank_label_disabled`: this filter's own
+        match condition (`fit_score < min_score`) is defined in terms of the
+        exact value the generic helper otherwise uses to distinguish
+        rank-demotion from ordinary score ordering, so it is tested directly
+        instead."""
+        self.seed_opportunity("opp-match")
+        self.seed_evaluation("opp-match", decision="qualified", fit_score=20.0)
+        self.seed_opportunity("opp-control")
+        self.seed_evaluation("opp-control", decision="qualified", fit_score=80.0)
+        params = {"min_score": 50}
+
+        self._set_filter("min_fit_score", enabled=False, mode="hide", params=params)
+        items, _ = self._items_by_id()
+        self.assertEqual(items["opp-match"]["hidden_by"], [])
+        self.assertEqual(items["opp-match"]["flagged_by"], [])
+
+        self._set_filter("min_fit_score", enabled=True, mode="hide", params=params)
+        items, _ = self._items_by_id()
+        self.assertIn("min_fit_score", items["opp-match"]["hidden_by"])
+        self.assertNotIn("min_fit_score", items["opp-control"]["hidden_by"])
+        self.assertEqual(items["opp-match"]["fit_score"], 20.0)
+        default_ids = {item["id"] for item in self.client.get("/api/opportunities").json()["items"]}
+        self.assertNotIn("opp-match", default_ids)
+        self.assertIn("opp-control", default_ids)
+
+        self._set_filter("min_fit_score", enabled=True, mode="rank_only", params=params)
+        items, body = self._items_by_id()
+        self.assertEqual(items["opp-match"]["hidden_by"], [])
+        self.assertIn("min_fit_score", items["opp-match"]["flagged_by"])
+        self.assertEqual(items["opp-match"]["fit_score"], 20.0)
+        order = [item["id"] for item in body["items"]]
+        self.assertLess(order.index("opp-control"), order.index("opp-match"))
+
+        self._set_filter("min_fit_score", enabled=True, mode="label_only", params=params)
+        items, _ = self._items_by_id()
+        self.assertEqual(items["opp-match"]["hidden_by"], [])
+        self.assertIn("min_fit_score", items["opp-match"]["flagged_by"])
+
+    def test_defensive_matcher_survives_a_bad_persisted_params_value(self):
+        """Council repair, defect 1, layer (b): `FilterSettingsRouteTest`
+        already proves `PUT /api/filters/{id}` itself rejects a malformed
+        params payload before anything is written (layer (a)). This proves
+        the second, independent line of defence -- a row a database already
+        holds a bad value in, written by bypassing the API entirely (an
+        older version of this code, a hand edit, ...) -- degrades to "does
+        not match" instead of 500ing the whole feed."""
+        row = self.session.query(FounderFilterSettingRecord).filter_by(filter_id="min_fit_score").first()
+        row.enabled = True
+        row.mode = "hide"
+        row.params_json = json.dumps({"min_score": "not-a-number"})
+        self.session.commit()
+
+        comp_row = self.session.query(FounderFilterSettingRecord).filter_by(filter_id="compensation_floor").first()
+        comp_row.enabled = True
+        comp_row.mode = "rank_only"
+        comp_row.params_json = json.dumps({"floor": {"nested": "garbage"}, "currency": "EGP"})
+        self.session.commit()
+
+        self.seed_opportunity("opp-1")
+        self.seed_evaluation("opp-1", decision="qualified", fit_score=10.0)
+        self.seed_compensation("opp-1", min_amount=1000, max_amount=1000, currency="EGP")
+
+        resp = self.client.get("/api/opportunities", params={"include_hidden": True})
+        self.assertEqual(resp.status_code, 200, resp.text)
+        item = resp.json()["items"][0]
+        self.assertEqual(item["hidden_by"], [])
+        self.assertEqual(item["flagged_by"], [])
+
+        filters_resp = self.client.get("/api/filters")
+        self.assertEqual(filters_resp.status_code, 200, filters_resp.text)
+
+    # -- contract section 7's named, cross-cutting assertions -----------
+
+    def test_a13_all_filters_off_include_hidden_total_equals_table_count(self):
+        for fd in FILTER_DEFINITIONS:
+            self._set_filter(fd.filter_id, enabled=False, mode=fd.default_mode)
+
+        self.seed_opportunity("opp-1")
+        self.seed_evaluation("opp-1", decision="qualified", fit_score=80.0)
+        self.seed_opportunity("opp-2")  # never evaluated -> decision/fit_score null
+        self.seed_opportunity("opp-3", is_stale=True)
+        self.seed_evaluation("opp-3", decision="ineligible", fit_score=10.0)
+
+        resp = self.client.get("/api/opportunities", params={"include_hidden": True})
+        self.assertEqual(resp.status_code, 200, resp.text)
+        body = resp.json()
+
+        actual_count = self.session.query(OpportunityRecord).count()
+        self.assertEqual(actual_count, 3)
+        self.assertEqual(body["total"], actual_count)
+        self.assertEqual(body["hidden_count"], 0)
+
+    def test_defaults_hidden_set_is_exactly_red_line_and_excluded_industry_hits(self):
+        _install_truth_graph(self.app, _graph_with_red_line_and_excluded_industry())
+
+        self.seed_opportunity(
+            "opp-redline", description="We guarantee placement for every candidate within 30 days."
+        )
+        self.seed_evaluation("opp-redline", decision="qualified", fit_score=80.0)
+
+        self.seed_opportunity("opp-industry", organization="Golden Gambling Corp")
+        self.seed_evaluation("opp-industry", decision="qualified", fit_score=70.0)
+
+        self.seed_opportunity("opp-geo-uncertain")
+        self.seed_evaluation(
+            "opp-geo-uncertain",
+            decision="uncertain",
+            fit_score=60.0,
+            evaluation_detail={
+                "hard_constraints": [
+                    {
+                        "constraint_name": "geographic_eligibility",
+                        "passed": None,
+                        "reason": "unclear",
+                        "required_field": "geographic_eligibility",
+                        "founder_fact": "?",
+                        "is_hard_failure": False,
+                        "provenance_pointer": "p",
+                    }
+                ],
+                "strengths": [], "gaps": [], "unknowns": [], "uncertainty_penalty": 0.0, "explanation": "",
+            },
+        )  # geo_eligibility is label_only by default -> flagged, never hidden
+
+        self.seed_opportunity("opp-clean")
+        self.seed_evaluation("opp-clean", decision="qualified", fit_score=50.0)
+
+        resp = self.client.get("/api/opportunities", params={"include_hidden": True})
+        self.assertEqual(resp.status_code, 200, resp.text)
+        body = resp.json()
+        hidden_ids = {item["id"] for item in body["items"] if item["hidden_by"]}
+        self.assertEqual(hidden_ids, {"opp-redline", "opp-industry"})
+        self.assertEqual(body["hidden_count"], 2)
+
+        geo_item = next(item for item in body["items"] if item["id"] == "opp-geo-uncertain")
+        self.assertEqual(geo_item["hidden_by"], [])
+        self.assertIn("geo_eligibility", geo_item["flagged_by"])
+
+    def test_red_line_toggled_off_shows_item_with_identical_decision_and_fit_score(self):
+        _install_truth_graph(self.app, _graph_with_red_line_and_excluded_industry())
+        self.seed_opportunity(
+            "opp-redline", description="We guarantee placement for every candidate within 30 days."
+        )
+        self.seed_evaluation("opp-redline", decision="qualified", fit_score=77.0)
+
+        on_items, _ = self._items_by_id()
+        self.assertIn("red_lines", on_items["opp-redline"]["hidden_by"])
+        decision_on = on_items["opp-redline"]["decision"]
+        fit_score_on = on_items["opp-redline"]["fit_score"]
+
+        self._set_filter("red_lines", enabled=False, mode="hide")
+        default_resp = self.client.get("/api/opportunities")
+        self.assertEqual(default_resp.status_code, 200, default_resp.text)
+        default_items = {item["id"]: item for item in default_resp.json()["items"]}
+
+        self.assertIn("opp-redline", default_items)
+        off_item = default_items["opp-redline"]
+        self.assertEqual(off_item["hidden_by"], [])
+        self.assertEqual(off_item["decision"], decision_on)
+        self.assertEqual(off_item["fit_score"], fit_score_on)
 
 
 if __name__ == "__main__":

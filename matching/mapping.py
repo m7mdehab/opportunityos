@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 from opportunity.models import Opportunity
+from truth import predicates
 from truth.graph import TruthGraph
 from truth.models import VerificationStatus
 
@@ -32,7 +33,7 @@ class RequirementMapper:
         founder_skills = {
             str(a.value).casefold(): a
             for a in truth_graph.assertions.values()
-            if a.predicate == "skill.name" and a.verification_status == VerificationStatus.VERIFIED
+            if a.predicate == predicates.SKILL_NAME and a.verification_status == VerificationStatus.VERIFIED
         }
         for skill in opp.skills:
             skill_cf = skill.casefold()
@@ -72,13 +73,7 @@ class RequirementMapper:
             for a in truth_graph.assertions.values():
                 if a.verification_status != VerificationStatus.VERIFIED:
                     continue
-                if a.predicate not in (
-                    "responsibility.item",
-                    "employment.role_description",
-                    "service.name",
-                    "experience.summary",
-                    "achievement.description",
-                ):
+                if a.predicate not in predicates.RESPONSIBILITY_SCOPE_PREDICATES:
                     continue
                 val_str = str(a.value).casefold()
                 if len(val_str) > 3 and val_str in req_cf:
