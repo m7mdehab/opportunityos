@@ -1,0 +1,55 @@
+### A-10 and A-11 re-verified by the Master AFTER the D1 council repair
+### (the validator changed substantially, so the earlier evidence does not carry over)
+
+--- A-10: documents still generate ---
+
+  pack               artifact       status  magic  bytes   forbidden-inflation
+  shipped-template   cv             200     PK     36910   none
+  shipped-template   cover-letter   200     PK     36855   none
+  founder-shaped     cv             200     PK     37333   ['lead']
+  founder-shaped     cover-letter   200     PK     36855   none
+
+Unchanged from before the repair. The single 'lead' hit is the founder-shaped pack's own job
+title, present verbatim (truth/fixtures.py: "Group Data Platform Lead"), so A-10's condition
+-- no forbidden term unless the pack contains it verbatim -- holds.
+
+--- The two council probes, re-run by the Master ---
+
+  validate_claim parameters : ['claim', 'evidence_ids', 'as_of', 'allowed_subject_ids']
+  class (b) still present    : False
+
+  REJECTED  A  posting-title laundering
+               "Senior Data Engineer, Kubernetes certified." against evidence "Data Engineer"
+               claim contains material terms absent from evidence: certified, kubernetes, senior
+  REJECTED  B  connective-list title words
+               "Professional background: Data Engineer Manager."
+               claim contains material terms absent from evidence: manager, professional
+  ALLOWED   C  control: "Data Engineer."
+
+Both were ALLOWED before the repair. The control case matters as much as the two probes: a
+validator that had simply started rejecting everything would also show A and B as rejected,
+and would be useless. C confirms genuinely supported claims still pass.
+
+The implementer removed the `opportunity_terms` parameter entirely rather than narrowing it,
+which is why it no longer appears in the signature. The employer name and role title now live
+only in a NARRATIVE segment carrying no founder-specific value, so there is no
+opportunity-derived admissibility class left to attack. That also retires the requirement
+clause the council found unimplemented ("admissible when the claim cites that provenance") --
+there is nothing left that needs a citation check.
+
+--- A-11: the tripwire, re-verified by neutralising guard 9 again ---
+
+  guard 9 intact       ArtifactRoutesTest + test_artifacts_e2e : Ran 26 tests, OK
+  guard 9 neutralised  api.test_api.ArtifactRoutesTest         : Ran 5 tests,  FAILED (failures=1)
+  guard 9 neutralised  matching.test_artifacts_e2e             : Ran 21 tests, FAILED (failures=2)
+  guard 9 restored     git diff --stat truth/validator.py      : empty
+  guard 9 restored     both suites                             : Ran 26 tests, OK
+
+THE THING THAT CHANGED. Before the repair, neutralising guard 9 made only the tripwire fail;
+the sixteen e2e tests stayed GREEN, because they were positive-only and a validator that
+refuses nothing lets every claim map and every document render. The Master recorded that as a
+finding and the council found it independently.
+
+The e2e suite now has 21 tests including per-pack mutation cases, and it fails under the same
+neutralisation. The safety property is now defended in two independent places rather than
+one. That is a better outcome than the repair was asked for.
