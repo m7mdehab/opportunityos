@@ -12,6 +12,7 @@ to a documented public endpoint.
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import urllib.error
@@ -280,7 +281,13 @@ def load_founder_watchlist_candidates(path: Path | None = None) -> list[BoardCan
     for item in data.get("companies", []) or []:
         kind = str(item.get("kind", "")).strip().lower()
         token = str(item.get("token", "")).strip()
-        if kind not in ATS_HOSTS or not token:
+        # Council review 4, finding 7: restricted to Greenhouse/Lever only. `ATS_HOSTS`
+        # also lists `ashby`, which is registered `disabled` in the committed registry
+        # (every `ashby:*` entry has `automation.read: disabled`) -- accepting an
+        # `ashby` watchlist entry here would fail-open the sweep into probing
+        # `api.ashbyhq.com` and writing a new `ashby:*` entry with `read: allowed`,
+        # directly contradicting that disabled status.
+        if kind not in ("greenhouse", "lever") or not token:
             continue
         out.append(
             BoardCandidate(kind=kind, token=token, company=str(item.get("name", token)), seed="founder_watchlist")
@@ -294,6 +301,37 @@ def registered_source_ids(registry_path: Path | None = None) -> set[str]:
         return set()
     text = target.read_text(encoding="utf-8")
     return set(re.findall(r"(?m)^\s*-\s+source_id:\s*(\S+)", text))
+
+
+class ATSHostNotReadAllowed(RuntimeError):
+    """Raised when a candidate's ATS kind has no host-level read-allowed authority.
+
+    Council review 4, finding 7: the registry is the authority for whether a host may
+    be probed at all -- a candidate whose kind (e.g. `ashby`) has zero
+    `read: allowed` entries in the committed registry must never reach a live
+    request or a generated, read-allowed registry entry, regardless of how it was
+    seeded (watchlist, directory, or otherwise).
+    """
+
+
+def _kind_has_host_level_read_allowed(kind: str, registry_path: Path | None = None) -> bool:
+    """True iff the committed registry has >=1 `{kind}:*` entry with `automation.read: allowed`."""
+    target = registry_path or SOURCE_REGISTRY_PATH
+    if not target.exists():
+        return False
+    text = target.read_text(encoding="utf-8")
+    pattern = re.compile(
+        rf"(?ms)^\s*-\s+source_id:\s*{re.escape(kind)}:\S+.*?^\s*automation:\s*\n\s*read:\s*(\S+)"
+    )
+    return any(match.group(1) == "allowed" for match in pattern.finditer(text))
+
+
+def _assert_kind_host_allowed(kind: str, registry_path: Path | None = None) -> None:
+    if not _kind_has_host_level_read_allowed(kind, registry_path):
+        raise ATSHostNotReadAllowed(
+            f"Refused: ATS kind '{kind}' has no host-level 'automation.read: allowed' entry in "
+            "the committed registry -- no entry for this kind may be generated or probed."
+        )
 
 
 def dedupe_candidates(candidates: Iterable[BoardCandidate], already_registered: set[str] = frozenset()) -> list[BoardCandidate]:
@@ -313,18 +351,46 @@ def dedupe_candidates(candidates: Iterable[BoardCandidate], already_registered: 
 # ---------------------------------------------------------------------------
 
 
+class CorruptProgressFile(RuntimeError):
+    """Raised when the resumable-progress cache exists but cannot be parsed.
+
+    Council review 4, finding 8: a crash mid-write used to leave invalid JSON, and
+    the old ``load_progress`` swallowed that as ``{}`` -- silently re-probing every
+    candidate, *including ones already recorded as blocked*. Refusing to run is the
+    correct behaviour when the record of what is blocked has been lost; the caller
+    must delete or manually recover the file before a sweep can proceed.
+    """
+
+
 def load_progress(path: Path) -> dict[str, dict]:
     if not path.exists():
         return {}
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
+        text = path.read_text(encoding="utf-8")
+    except OSError as error:
+        raise CorruptProgressFile(f"Could not read progress file {path}: {error}") from error
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as error:
+        raise CorruptProgressFile(
+            f"Progress file {path} exists but is not valid JSON (possible crash mid-write); "
+            "refusing to run rather than silently re-probing candidates already recorded as "
+            "blocked. Recover or delete the file to proceed."
+        ) from error
 
 
 def save_progress(path: Path, progress: dict[str, dict]) -> None:
+    """Atomically replace the progress file so a crash mid-write can never corrupt it.
+
+    Council review 4, finding 8: writes to a temporary path in the same directory
+    first, then ``os.replace``s it into place -- ``os.replace`` is atomic on both
+    POSIX and Windows, so readers only ever see the old complete file or the new
+    complete file, never a partial write.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(progress, indent=2, sort_keys=True), encoding="utf-8")
+    tmp_path = path.with_name(f"{path.name}.tmp{os.getpid()}")
+    tmp_path.write_text(json.dumps(progress, indent=2, sort_keys=True), encoding="utf-8")
+    os.replace(tmp_path, path)
 
 
 # ---------------------------------------------------------------------------
@@ -353,7 +419,10 @@ def build_registry_entry(
     latency_ms: int,
     reviewed_date: str | None = None,
     automation_read: str = "allowed",
+    registry_path: Path | None = None,
 ) -> RegistryEntryDraft:
+    if automation_read == "allowed":
+        _assert_kind_host_allowed(candidate.kind, registry_path)
     return RegistryEntryDraft(
         source_id=candidate.candidate_id,
         name=candidate.candidate_id,
@@ -479,6 +548,12 @@ def run_sweep(
 
     for candidate in candidates:
         cid = candidate.candidate_id
+
+        # Council review 4, finding 7: refuse before ever issuing the probe request --
+        # a fail-open path here would let a founder watchlist entry (or any future
+        # seed) reach a host the committed registry has never authorized for
+        # automated read.
+        _assert_kind_host_allowed(candidate.kind)
 
         if cid in progress:
             record = progress[cid]

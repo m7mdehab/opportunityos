@@ -1,9 +1,14 @@
 """BRIEF-FR-006 E23: transport-log assertion (order requirement 7) -- no source that
 returned 403 or 429 during the E23 recon sweep was requested a second time in the same
-run. This replays the actual, dated 2026-09-03 recon requests (see
-reports/evidence/FR-006/e23-recon-log.md and docs/SOURCE_EVIDENCE.md) through
-`recon.transport_log.TransportLog`, in request order, and asserts no retry-after-block
-occurred."""
+run. `E23_RECON_REQUEST_LOG` below is a manual, hand-typed transcription of the dated
+2026-09-03 recon requests (see docs/SOURCE_EVIDENCE.md), NOT a machine-replayed log --
+the probe scripts that made those requests were not committed, and
+`reports/evidence/FR-006/e23-recon-log.md` does not exist. This test replays the
+transcription through `recon.transport_log.TransportLog`, in request order, and asserts
+no retry-after-block occurred; it demonstrates `TransportLog`'s guard logic is
+consistent with the transcribed sequence, not that the transcription itself was
+independently machine-verified against raw request logs (council review 4, finding
+15)."""
 from __future__ import annotations
 
 import unittest

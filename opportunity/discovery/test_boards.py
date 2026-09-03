@@ -161,6 +161,57 @@ class SeedLoadingTests(unittest.TestCase):
         result = boards.dedupe_candidates([a, b, c], already_registered={"lever:beta"})
         self.assertEqual([x.candidate_id for x in result], ["greenhouse:acme"])
 
+    def test_founder_watchlist_never_yields_an_ashby_candidate(self):
+        # Council review 4, finding 7: ATS_HOSTS includes "ashby", but Ashby is
+        # registered disabled -- the watchlist loader must restrict to
+        # ("greenhouse", "lever") regardless of what ATS_HOSTS lists.
+        yaml_text = (
+            "companies:" + chr(10)
+            + "  - kind: ashby" + chr(10)
+            + "    token: ashby-co" + chr(10)
+            + "    name: Blocked Co" + chr(10)
+            + "  - kind: greenhouse" + chr(10)
+            + "    token: acme" + chr(10)
+            + "    name: Acme" + chr(10)
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            temp_path = Path(tmp) / "watchlist.yaml"
+            temp_path.write_text(yaml_text, encoding="utf-8")
+            candidates = boards.load_founder_watchlist_candidates(path=temp_path)
+        self.assertEqual([c.candidate_id for c in candidates], ["greenhouse:acme"])
+        self.assertNotIn("ashby", {c.kind for c in candidates})
+
+
+class ATSHostAuthorityTests(unittest.TestCase):
+    def test_build_registry_entry_raises_for_ashby(self):
+        # Council review 4, finding 7: no ashby:* entry may ever be generated while
+        # Ashby stays registered disabled in the committed registry.
+        candidate = boards.BoardCandidate(kind="ashby", token="ashby-co")
+        with self.assertRaises(boards.ATSHostNotReadAllowed):
+            boards.build_registry_entry(candidate, record_count=5, matched_count=1, latency_ms=10)
+
+    def test_run_sweep_raises_for_ashby_before_any_probe(self):
+        candidate = boards.BoardCandidate(kind="ashby", token="ashby-co")
+
+        class ExplodingTransport(MockTransport):
+            def fetch(self, request):
+                raise AssertionError("run_sweep must refuse an ashby candidate before probing")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            progress_path = Path(tmp) / "progress.json"
+            with self.assertRaises(boards.ATSHostNotReadAllowed):
+                boards.run_sweep(
+                    [candidate], transport=ExplodingTransport(), progress_path=progress_path,
+                    classifier=boards.KeywordFallbackClassifier(), classifier_label="keyword_fallback",
+                )
+
+    def test_greenhouse_and_lever_are_host_level_allowed(self):
+        self.assertTrue(boards._kind_has_host_level_read_allowed("greenhouse"))
+        self.assertTrue(boards._kind_has_host_level_read_allowed("lever"))
+
+    def test_ashby_is_not_host_level_allowed(self):
+        self.assertFalse(boards._kind_has_host_level_read_allowed("ashby"))
+
 
 class RegistryEntryTemplateTests(unittest.TestCase):
     def test_render_registry_entry_disables_prepare_and_submit(self):
@@ -221,6 +272,41 @@ class ProgressResumabilityTests(unittest.TestCase):
     def test_load_progress_missing_file_returns_empty_dict(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(boards.load_progress(Path(tmp) / "missing.json"), {})
+
+    def test_save_progress_is_atomic_via_os_replace(self):
+        # Council review 4, finding 8: no partial-write window -- readers only ever
+        # see the prior complete file or the new complete file.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "progress.json"
+            boards.save_progress(path, {"a": {"classification": "live"}})
+            boards.save_progress(path, {"a": {"classification": "live"}, "b": {"classification": "blocked"}})
+            # No leftover temp file from the atomic-replace strategy.
+            leftovers = [p for p in Path(tmp).iterdir() if p.name != "progress.json"]
+            self.assertEqual(leftovers, [])
+            loaded = boards.load_progress(path)
+        self.assertEqual(loaded["b"]["classification"], "blocked")
+
+    def test_corrupt_progress_file_raises_instead_of_silently_reprobing(self):
+        # Council review 4, finding 8: a crash mid-write must never be treated as
+        # "nothing recorded yet" -- that would silently re-probe candidates already
+        # recorded as blocked. Refusing to run is the correct behaviour.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "progress.json"
+            path.write_text("{not valid json", encoding="utf-8")
+            with self.assertRaises(boards.CorruptProgressFile):
+                boards.load_progress(path)
+
+    def test_run_sweep_raises_on_corrupt_progress_rather_than_reprobing_blocked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            progress_path = Path(tmp) / "progress.json"
+            progress_path.write_text("{not valid json", encoding="utf-8")
+            candidate = boards.BoardCandidate(kind="greenhouse", token="blocked-co")
+            transport = MockTransport({"greenhouse:blocked-co": TransportResponse(403, "", 5)})
+            with self.assertRaises(boards.CorruptProgressFile):
+                boards.run_sweep(
+                    [candidate], transport=transport, progress_path=progress_path,
+                    classifier=boards.KeywordFallbackClassifier(), classifier_label="keyword_fallback",
+                )
 
     def test_resumed_sweep_skips_already_processed_and_never_reprobes_blocked(self):
         board_slug = "blocked-co"

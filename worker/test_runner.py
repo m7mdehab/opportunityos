@@ -9,8 +9,9 @@ from pathlib import Path
 
 import json
 
+from opportunity.adapters.greenhouse import GreenhouseAdapter
 from opportunity.registry import SourceRegistry
-from opportunity.transport import BaseTransport, MockTransport, TransportResponse
+from opportunity.transport import BaseTransport, MockTransport, RateLimiter, TransportResponse
 from storage.engine import get_engine, get_session_factory, init_db
 from storage.models import OpportunityRecord, SourcePollRunRecord, WorkerJobRecord
 from truth.pack import TruthPackMissing
@@ -431,6 +432,98 @@ class TestHackerNewsGovernedWiring(unittest.TestCase):
             self.assertEqual(run.status, "ok")
         finally:
             session.close()
+
+
+class TestSharedRateLimiterPerATSHost(unittest.TestCase):
+    """Council review 4, finding 9: docs/SOURCE_REGISTRY.yaml's generated Greenhouse/
+    Lever entries declare ``rate_limits.documented: shared_per_ats_host``. This must
+    actually be shared across DIFFERENT boards on the same host, and across
+    DIFFERENT poll_source jobs (not just within one job) -- ``AcquisitionService``
+    now keys its rate limiter by host (opportunity/transport.py), and
+    ``make_poll_source_handler`` now builds one process-wide ``RateLimiter`` and
+    assigns it onto every fresh ``OpportunityPipeline`` it builds (worker/handlers.py),
+    instead of each job/pipeline getting a brand-new, unshared limiter.
+    """
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        db_path = os.path.join(self.temp_dir.name, "test_ratelimit.db")
+        self.engine = get_engine(f"sqlite:///{db_path}")
+        init_db(self.engine)
+        self.session_factory = get_session_factory(self.engine)
+
+    def tearDown(self):
+        self.engine.dispose()
+        try:
+            self.temp_dir.cleanup()
+        except Exception:
+            pass
+
+    def _no_pack(self, _path):
+        raise TruthPackMissing("no truth pack in this offline test")
+
+    def test_pacing_shared_across_boards_on_same_host_and_across_jobs(self):
+        # Two real, committed, read-allowed Greenhouse boards -- same ATS host
+        # (boards-api.greenhouse.io), different source_ids.
+        board_a = GreenhouseAdapter("cloudflare")
+        board_b = GreenhouseAdapter("datadog")
+        registry = SourceRegistry()
+        self.assertTrue(registry.is_read_allowed(board_a.source_id))
+        self.assertTrue(registry.is_read_allowed(board_b.source_id))
+
+        transport = MockTransport({
+            board_a.source_id: TransportResponse(status_code=200, body='{"jobs": []}', latency_ms=1),
+            board_b.source_id: TransportResponse(status_code=200, body='{"jobs": []}', latency_ms=1),
+        })
+
+        current_time = [1000.0]
+        limiter = RateLimiter(clock=lambda: current_time[0], default_min_interval_s=1.0)
+
+        handler = make_poll_source_handler(
+            registry=registry,
+            transport=transport,
+            adapters=[board_a, board_b],
+            session_factory=self.session_factory,
+            pack_loader=self._no_pack,
+            rate_limiter=limiter,
+        )
+
+        # Job 1 polls board_a; job 2 (a SEPARATE handler() call, simulating a
+        # separate worker job) immediately polls board_b on the same host, at
+        # the same instant (fake clock never advances). If pacing were per-
+        # source_id (the old behaviour) or per-job (a fresh RateLimiter per
+        # pipeline), board_b would see zero wait. Shared-per-host, cross-job
+        # pacing means the limiter's internal bucket for
+        # "boards-api.greenhouse.io" was already touched by job 1, so job 2's
+        # acquire() for the same host computes a positive wait.
+        handler({"source_id": board_a.source_id, "job_id": "job-1"})
+        wait_before_job_2 = limiter.acquire("boards-api.greenhouse.io")
+        self.assertGreater(
+            wait_before_job_2, 0.0,
+            "pacing must be shared per ATS host across boards AND across separate poll_source jobs",
+        )
+
+    def test_acquisition_service_keys_rate_limiter_by_host_not_source_id(self):
+        from opportunity.transport import AcquisitionService
+
+        current_time = [1000.0]
+        limiter = RateLimiter(clock=lambda: current_time[0], default_min_interval_s=1.0)
+        transport = MockTransport({
+            "greenhouse:cloudflare": TransportResponse(status_code=200, body='{"jobs": []}', latency_ms=1),
+            "greenhouse:datadog": TransportResponse(status_code=200, body='{"jobs": []}', latency_ms=1),
+        })
+        registry = SourceRegistry()
+        service = AcquisitionService(registry=registry, transport=transport, rate_limiter=limiter)
+
+        result_a = service.acquire("greenhouse:cloudflare", "https://boards-api.greenhouse.io/v1/boards/cloudflare/jobs")
+        result_b = service.acquire("greenhouse:datadog", "https://boards-api.greenhouse.io/v1/boards/datadog/jobs")
+        self.assertTrue(result_a.authorized)
+        self.assertTrue(result_b.authorized)
+
+        # A third acquire for either board_a or board_b (same host) must now wait,
+        # because both prior calls landed in the same host bucket.
+        wait = limiter.acquire("boards-api.greenhouse.io")
+        self.assertGreater(wait, 0.0)
 
 
 if __name__ == "__main__":

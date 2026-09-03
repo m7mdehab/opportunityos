@@ -12,11 +12,23 @@ top-level comment fetched individually as a job posting. `parse_payload` below i
 therefore deliberately decoupled from the network: it consumes an already-assembled
 JSON document (see `PAYLOAD SHAPE` below). `fetch_who_is_hiring_payload()` performs the
 live, multi-step, GET-only Firebase orchestration and returns that JSON document as a
-string, for use by recon and by the poll worker. This split is the "clearly marked
-seam" called out in the work order: the live multi-request fetch is not wired into
-`worker/handlers.py` by this work order (that file is outside E23's allowed-files list)
--- the Master wires the fetch step at integration; this module is ready to be called
-with whatever payload results.
+string, for use by recon.
+
+Council review 4 (finding 10) found this function using raw `urllib.request.urlopen`
+directly, bypassing `SourceRegistry`/`is_read_allowed` and every rate limiter entirely --
+so disabling the registry entry would not have stopped it. It now takes an
+`opportunity.acquisition.AcquisitionService` and routes every GET through
+`acquisition_service.acquire(...)`, which enforces the registry pre-flight and the
+`/v0/` endpoint rule at `opportunity/registry.py`, refuses (raises `SourceReadRefused`)
+if the source is not read-allowed, and stops -- returning the empty/partial payload
+assembled so far, never raising -- on a 403/429 mid-orchestration.
+
+Note: `worker/handlers.py` (outside this module's ownership) independently wires a
+governed multi-step Hacker News fetch of its own
+(`_fetch_hacker_news_who_is_hiring_governed`) into the poll path rather than calling
+this function; the two are functionally parallel, both routed through
+`AcquisitionService.acquire`. This function remains the one recon and any future caller
+should use directly.
 
 PAYLOAD SHAPE (what `parse_payload` expects):
     {
@@ -34,10 +46,10 @@ from __future__ import annotations
 
 import json
 import re
-import urllib.request
 from html import unescape
 from typing import Any
 
+from opportunity.acquisition import AcquisitionService
 from opportunity.adapters.base import BaseAdapter
 from opportunity.models import (
     DerivationType,
@@ -70,33 +82,80 @@ def _strip_html(text: str) -> str:
     return unescape(_TAG_RE.sub(" ", text or "")).strip()
 
 
-def fetch_who_is_hiring_payload(max_comments: int = 200, timeout: int = 20) -> str:
+class SourceReadRefused(RuntimeError):
+    """Raised when the registry refuses to authorize the HN Firebase fetch.
+
+    Raised, never a silent no-op: this is what makes flipping the
+    ``hacker_news_who_is_hiring`` registry entry to ``read: disabled`` make
+    this function *refuse*, not fetch (BRIEF-FR-006 council review 4,
+    finding 10).
+    """
+
+
+def fetch_who_is_hiring_payload(
+    acquisition_service: AcquisitionService,
+    max_comments: int = 200,
+    timeout: float = 20.0,
+) -> str:
     """Live, GET-only, public-Firebase-API fetch of the latest "Who is hiring?" thread.
 
-    Not exercised by the committed unit tests (which use a static fixture payload) to
-    keep `unittest` offline and deterministic; used by recon and, at integration, by the
-    poll worker. Every request is GET to `hacker-news.firebaseio.com`, matching the
-    endpoint rule registered in `opportunity/registry.py`.
-    """
-    def _get(url: str) -> Any:
-        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
+    Every request is routed through the given ``AcquisitionService.acquire`` --
+    the same registry pre-flight (``SourceRegistry.validate_preflight`` /
+    ``is_read_allowed``), shared rate limiter, and injectable transport used
+    by every other adapter's fetch path. This used to call
+    ``urllib.request.urlopen`` directly, which meant setting the registry
+    entry to ``read: disabled`` would not stop it and an HTTP 403/429 mid-loop
+    raised an uncaught ``HTTPError`` (council review 4, finding 10) -- both
+    are fixed by routing through ``acquisition_service`` here.
 
-    user = _get(f"{FIREBASE_BASE}/user/whoishiring.json")
+    If the very first request is refused by the registry (e.g. the source is
+    ``disabled``), this raises ``SourceReadRefused`` instead of fetching
+    anything. If an authorized request comes back 403/429 mid-orchestration,
+    this stops and returns whatever partial payload was assembled so far
+    (never retried within this call) rather than raising.
+    """
+    def _get(url: str) -> tuple[Any, int]:
+        result = acquisition_service.acquire(
+            source_id="hacker_news_who_is_hiring",
+            url=url,
+            method="GET",
+            headers={"User-Agent": USER_AGENT},
+            timeout_s=timeout,
+        )
+        if not result.authorized:
+            raise SourceReadRefused(result.refusal_reason or "hacker_news_who_is_hiring read is disabled")
+        status = result.response.status_code
+        if status in (403, 429) or not result.response.is_success or not result.response.body:
+            return None, status
+        try:
+            return json.loads(result.response.body), status
+        except (TypeError, ValueError):
+            return None, status
+
+    def _empty_payload() -> str:
+        return json.dumps({"thread_id": None, "thread_title": "", "comments": []})
+
+    user, status = _get(f"{FIREBASE_BASE}/user/whoishiring.json")
+    if not isinstance(user, dict):
+        return _empty_payload()
     submitted_ids = list(user.get("submitted", []))[:60]
+
     thread_item: dict[str, Any] | None = None
     for item_id in submitted_ids:
-        item = _get(f"{FIREBASE_BASE}/item/{item_id}.json")
+        item, status = _get(f"{FIREBASE_BASE}/item/{item_id}.json")
+        if status in (403, 429):
+            return _empty_payload()
         if item and isinstance(item, dict) and str(item.get("title", "")).lower().startswith("ask hn: who is hiring"):
             thread_item = item
             break
     if thread_item is None:
-        return json.dumps({"thread_id": None, "thread_title": "", "comments": []})
+        return _empty_payload()
 
     comments: list[dict[str, Any]] = []
     for kid_id in list(thread_item.get("kids", []))[:max_comments]:
-        kid = _get(f"{FIREBASE_BASE}/item/{kid_id}.json")
+        kid, status = _get(f"{FIREBASE_BASE}/item/{kid_id}.json")
+        if status in (403, 429):
+            break
         if not kid or kid.get("deleted") or kid.get("dead"):
             continue
         comments.append(kid)

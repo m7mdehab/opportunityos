@@ -1,8 +1,10 @@
 """Integration and parsing tests for all opportunity feed adapters."""
 import json
+import tempfile
 from pathlib import Path
 import unittest
 
+from opportunity.acquisition import AcquisitionService
 from opportunity.adapters import (
     EUTEDAdapter,
     GreenhouseAdapter,
@@ -15,6 +17,7 @@ from opportunity.adapters import (
     WeWorkRemotelyAdapter,
     WorldBankAdapter,
 )
+from opportunity.adapters.hacker_news import SourceReadRefused, fetch_who_is_hiring_payload
 from opportunity.models import (
     EmploymentType,
     RemotePolicy,
@@ -23,6 +26,8 @@ from opportunity.models import (
     Track,
     WorkMode,
 )
+from opportunity.registry import SourceRegistry
+from opportunity.transport import MockTransport, TransportResponse
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -221,6 +226,104 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual("inference", opp.work_mode_source)
         self.assertEqual(RemoteScope.WORLDWIDE, opp.remote_scope)
         self.assertEqual(RemotePolicy.REMOTE, opp.remote_policy)
+
+
+_HN_DISABLED_REGISTRY_YAML = """
+sources:
+  - source_id: hacker_news_who_is_hiring
+    name: "hacker_news_who_is_hiring"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: allowed_ok
+      detail: "test fixture: disabled for E5.2"
+      request_metadata: "method=GET; endpoint=/v0/item/1.json"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://github.com/HackerNews/API
+"""
+
+
+class HackerNewsGovernedFetchTests(unittest.TestCase):
+    """Council review 4, finding 10: ``fetch_who_is_hiring_payload`` must route every
+    GET through ``AcquisitionService.acquire`` and refuse -- not fetch -- when the
+    registry entry is ``read: disabled``."""
+
+    def test_flipping_registry_to_disabled_refuses_not_fetches(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            registry_path = Path(tmp_dir) / "registry.yaml"
+            registry_path.write_text(_HN_DISABLED_REGISTRY_YAML, encoding="utf-8")
+            registry = SourceRegistry(registry_path)
+
+            class CountingTransport(MockTransport):
+                def __init__(self):
+                    super().__init__()
+                    self.calls = 0
+
+                def fetch(self, request):
+                    self.calls += 1
+                    return TransportResponse(status_code=200, body='{"submitted": [1]}', latency_ms=5)
+
+            transport = CountingTransport()
+            service = AcquisitionService(registry=registry, transport=transport)
+
+            with self.assertRaises(SourceReadRefused):
+                fetch_who_is_hiring_payload(service)
+
+            # The registry gate must refuse before transport is ever touched --
+            # this is what makes it "refuse, not fetch".
+            self.assertEqual(0, transport.calls)
+
+    def test_read_allowed_fetches_through_acquisition_service(self):
+        registry = SourceRegistry()  # real, committed docs/SOURCE_REGISTRY.yaml: read-allowed
+        transport = MockTransport()
+        transport.set_response(
+            "hacker_news_who_is_hiring",
+            TransportResponse(status_code=200, body=json.dumps({"submitted": []}), latency_ms=5),
+        )
+        service = AcquisitionService(registry=registry, transport=transport)
+
+        payload = fetch_who_is_hiring_payload(service)
+        data = json.loads(payload)
+        self.assertEqual([], data["comments"])
+
+    def test_403_mid_orchestration_stops_and_returns_partial_not_raise(self):
+        registry = SourceRegistry()
+
+        class SequencedTransport(MockTransport):
+            def __init__(self):
+                super().__init__()
+                self._calls = 0
+
+            def fetch(self, request):
+                self._calls += 1
+                if self._calls == 1:
+                    return TransportResponse(status_code=200, body=json.dumps({"submitted": [42]}), latency_ms=5)
+                return TransportResponse(status_code=403, body="", latency_ms=5)
+
+        transport = SequencedTransport()
+        service = AcquisitionService(registry=registry, transport=transport)
+
+        payload = fetch_who_is_hiring_payload(service)
+        data = json.loads(payload)
+        self.assertEqual([], data["comments"])
+        self.assertEqual(2, transport._calls)
 
 
 if __name__ == "__main__":

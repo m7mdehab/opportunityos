@@ -68,6 +68,32 @@ class RegistryEnumerationTests(unittest.TestCase):
             with self.subTest(source_id=source_id):
                 self.assertTrue(self.registry.is_read_allowed(source_id))
 
+    def test_no_generated_entry_for_a_disabled_host(self) -> None:
+        """Council review 4, finding 7: a generated `{kind}:*` entry must never be
+        read-allowed while that ATS kind's host has no read-allowed authority in the
+        committed registry. Ashby is the concrete case: every `ashby:*` entry here is
+        `automation.read: disabled` (2026-09-02 re-recon, HTTP 401), so no `ashby:*`
+        entry may ever be read-allowed -- guarding against `opportunity.discovery.boards`
+        (or any future seed) fail-opening a probe of `api.ashbyhq.com`."""
+        ashby_ids = [sid for sid in self.source_ids if sid.startswith("ashby:")]
+        self.assertGreater(len(ashby_ids), 0, "expected at least one ashby: entry to guard")
+        for source_id in ashby_ids:
+            with self.subTest(source_id=source_id):
+                self.assertFalse(
+                    self.registry.is_read_allowed(source_id),
+                    f"{source_id} must stay read: disabled -- Ashby has no host-level authority",
+                )
+
+    def test_boards_module_refuses_to_generate_an_ashby_entry(self) -> None:
+        """Defense in depth alongside the above: `opportunity.discovery.boards`'s own
+        generation path must raise, not silently produce a read-allowed entry, if ever
+        handed an `ashby` candidate (council review 4, finding 7)."""
+        from opportunity.discovery.boards import ATSHostNotReadAllowed, BoardCandidate, build_registry_entry
+
+        candidate = BoardCandidate(kind="ashby", token="ashby-co")
+        with self.assertRaises(ATSHostNotReadAllowed):
+            build_registry_entry(candidate, record_count=5, matched_count=1, latency_ms=10)
+
 
 if __name__ == "__main__":
     unittest.main()
