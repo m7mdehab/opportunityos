@@ -3037,17 +3037,22 @@ class NoReJudgementSerializationTest(ApiTestCase):
         self.seed_opportunity("opp-redline")
         self.seed_evaluation("opp-redline", decision="qualified", fit_score=70.0)
 
-        graph = TruthGraph(
-            evidence={}, career_profile=None, capability_profile=None,
-            red_line_rules=(
-                RedLineRule(
-                    id="rl-1", rule_text="Never work for opp-redline.",
-                    applies_to_field="organization", forbidden_pattern="Org opp-redline",
+        graph = TruthGraph()
+        graph.add_career_profile(
+            CareerProfile(
+                id="career-fixture",
+                red_lines=(
+                    RedLineRule(
+                        id="rl-1",
+                        pattern=r"Org opp-redline",
+                        reason="Never work for opp-redline.",
+                    ),
                 ),
-            ),
+            )
         )
         self.app.state.loaded_truth_pack = LoadedPack(
-            graph=graph, source_hash="hash-x", validation_report=PackValidationReport(findings=[], is_valid=True),
+            graph=graph, truth_pack_hash="hash-x",
+            report=PackValidationReport(valid=True, section_counts=(), findings=()),
         )
 
         opportunities = self.session.query(OpportunityRecord).all()
@@ -3066,10 +3071,12 @@ class NoReJudgementSerializationTest(ApiTestCase):
             self.assertEqual(item["fit_score"], direct_fit_scores[item["id"]])
             self.assertEqual(bool(item["hidden_by"]), direct_hidden[item["id"]])
 
-        # fit_score-descending order is untouched by the new fields on each row.
+        # fit_score-descending order is untouched by the new fields on each row;
+        # opp-redline is correctly excluded from the visible set by the red-line
+        # match, exactly matching the direct computation's hidden verdict.
         visible_ids = [item["id"] for item in body["items"] if not item["hidden_by"]]
-        self.assertEqual(visible_ids, ["opp-a", "opp-redline", "opp-b"])
-        self.assertTrue(direct_hidden.get("opp-redline") is False)
+        self.assertEqual(visible_ids, ["opp-a", "opp-b"])
+        self.assertTrue(direct_hidden.get("opp-redline") is True)
 
 
 class ManualSourcesRouteTest(ApiTestCase):
@@ -3087,10 +3094,25 @@ class ManualSourcesRouteTest(ApiTestCase):
         import socket
         from unittest.mock import patch
 
-        def _forbidden_connect(*args, **kwargs):
-            raise AssertionError("GET /api/manual-sources made an outbound network connection")
+        real_connect = socket.socket.connect
+        _LOOPBACK = {"127.0.0.1", "::1", "localhost"}
 
-        with patch.object(socket.socket, "connect", side_effect=_forbidden_connect):
+        def _guarded_connect(self_socket, address, *args, **kwargs):
+            # Windows has no native `socketpair()`; CPython's asyncio proactor
+            # event loop emulates it with a real loopback TCP connection for
+            # its self-pipe (unittest's own event-loop bootstrapping, nothing
+            # to do with this route). Only a connection to a genuinely
+            # non-loopback host counts as "this route made an outbound
+            # request" -- exactly the thing a `manual_only` source's policy
+            # forbids an automated read of.
+            host = address[0] if isinstance(address, tuple) else address
+            if host not in _LOOPBACK:
+                raise AssertionError(
+                    f"GET /api/manual-sources made an outbound network connection to {address!r}"
+                )
+            return real_connect(self_socket, address, *args, **kwargs)
+
+        with patch.object(socket.socket, "connect", _guarded_connect):
             response = self.client.get("/api/manual-sources")
 
         self.assertEqual(response.status_code, 200, response.text)
@@ -3132,7 +3154,13 @@ class PollOverHidingRouteTest(ApiTestCase):
 
         for i in range(10):
             work_mode = "onsite" if i < 3 else "remote"
-            self.seed_opportunity(f"opp-poll-{i}", created_at=started_at + timedelta(seconds=i))
+            # `created_at` must be stored naive, exactly like `poll.started_at`
+            # above (`to_naive_utc`) -- a tz-aware value handed to psycopg2 for
+            # a naive column is converted using the session's `timezone` GUC
+            # first (storage/models.py's own documented convention), which
+            # would silently shift these rows outside the poll's window on a
+            # non-UTC session and make every row invisible to the route.
+            self.seed_opportunity(f"opp-poll-{i}", created_at=to_naive_utc(started_at + timedelta(seconds=i)))
             record = self.session.query(OpportunityRecord).filter_by(id=f"opp-poll-{i}").one()
             record.work_mode = work_mode
             self.session.commit()
