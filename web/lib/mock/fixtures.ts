@@ -826,7 +826,14 @@ export const FOUNDER_FILTER_DEFINITIONS: FounderFilterDefinition[] = [
     description: "Opportunities below a minimum fit score you set.",
     default_enabled: false,
     default_mode: "hide",
-    default_params: { threshold: 50 },
+    // Param name and default (0) match `api/filters.py`'s
+    // `FILTER_DEFINITIONS` exactly, not just this mock's own convention —
+    // a param-name mismatch between the mock and the real API is exactly
+    // the kind of divergence D3 exists to prevent, and it was here until
+    // the A-8 real-stack run surfaced it. `min_score=0` can never match
+    // anything real (`fit_score` is always >= 0), which the Playwright
+    // spec relies on as a structural fact true against any seed.
+    default_params: { min_score: 0 },
     default_unavailable_reason: null,
   },
   {
@@ -834,7 +841,9 @@ export const FOUNDER_FILTER_DEFINITIONS: FounderFilterDefinition[] = [
     description: "Opportunities below a compensation floor you set.",
     default_enabled: false,
     default_mode: "rank_only",
-    default_params: { monthly_minimum: 50000, currency: "EGP" },
+    // Same alignment as `min_fit_score` above: `floor`/`currency` and the
+    // `0`/`null` defaults match `api/filters.py` verbatim.
+    default_params: { floor: 0, currency: null },
     default_unavailable_reason: null,
   },
 ]
@@ -845,8 +854,19 @@ function dimensionScore(o: SeedOpportunity, dimension: string): number | null {
 }
 
 /** Returns whether `filterId` currently matches `o`, given the live
- * `params` for that filter (only `min_fit_score.threshold` varies the
- * result today). See the module doc above for what this stands in for. */
+ * `params` for that filter (only `min_fit_score.min_score` varies the
+ * result today). See the module doc above for what this stands in for.
+ *
+ * `min_fit_score` reads the real `fit_score` field under the real API's
+ * param name (`min_score`), so it behaves identically to
+ * `api/filters.py::_min_fit_score_matches` — the Playwright A-8 spec
+ * relies on that identity to stay valid unchanged against the real stack.
+ * `compensation_floor` is still a proxy (this mock has no modelled
+ * compensation-amount field to compare `params.floor`/`params.currency`
+ * against, unlike the real predicate, which reads persisted
+ * `compensation.min_amount`/`max_amount`/`currency`); nothing in this repo
+ * currently asserts its `affected_count` numerically, only its mode/switch
+ * behaviour, which does not depend on this approximation. */
 export function evaluateFounderFilter(
   filterId: string,
   o: SeedOpportunity,
@@ -875,8 +895,8 @@ export function evaluateFounderFilter(
     case "stale_postings":
       return o.is_stale
     case "min_fit_score": {
-      const threshold = Number(params.threshold ?? 50)
-      return o.fit_score !== null && o.fit_score < threshold
+      const minScore = Number(params.min_score ?? 0)
+      return o.fit_score !== null && o.fit_score < minScore
     }
     default:
       return false

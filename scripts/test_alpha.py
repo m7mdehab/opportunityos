@@ -1454,12 +1454,17 @@ class TestPersistBatchProducesRealSourceIds(unittest.TestCase):
             session.close()
 
         self.assertEqual(len(rows), 2)
-        # The fixture's own real Greenhouse job ids (see
-        # opportunity/fixtures/greenhouse_cloudflare.json) end up verbatim
-        # in the persisted row's source_id column -- never the synthetic
-        # "src-1" FR-004's erratum recorded being served to the founder.
+        # The persisted row's source_id column carries the real, registered
+        # source id ("greenhouse:cloudflare") -- never the synthetic
+        # "src-1" FR-004's erratum recorded being served to the founder, and
+        # never a bare per-job number (BRIEF-FR-005's own source_id erratum:
+        # opportunity/persistence.py used to map opp.source_id -- the job's
+        # remote id at Greenhouse, e.g. "5512301" -- onto this column
+        # instead of opp.source, the registry id). The fixture's own real
+        # Greenhouse job ids are preserved instead in each row's primary key
+        # (see the id assertion below), not duplicated into source_id.
         row_source_ids = sorted(row.source_id for row in rows)
-        self.assertEqual(row_source_ids, ["5512301", "5512302"])
+        self.assertEqual(row_source_ids, ["greenhouse:cloudflare", "greenhouse:cloudflare"])
         for row in rows:
             self.assertNotEqual(row.source_id, "src-1")
             self.assertNotIn("opp-uq-", row.id)
