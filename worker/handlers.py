@@ -53,7 +53,7 @@ from opportunity.models import (
 from opportunity.persistence import persist_batch
 from opportunity.pipeline import OpportunityPipeline
 from opportunity.registry import SourceRegistry
-from opportunity.transport import AcquisitionService, BaseTransport, HttpTransport
+from opportunity.transport import AcquisitionService, BaseTransport, HttpTransport, RateLimiter
 from storage.models import FieldProvenanceRecord, MatchEvaluationRecord, OpportunityRecord, SourcePollRunRecord
 try:
     # A1M's own reextract_all interface point (see below) into the concurrent
@@ -319,6 +319,7 @@ def make_poll_source_handler(
     truth_pack_path: Optional[Any] = None,
     pack_loader: Optional[PackLoader] = None,
     scorer: Optional[OpportunityScorer] = None,
+    rate_limiter: Optional[RateLimiter] = None,
 ) -> Callable[[dict], None]:
     """Build a ``poll_source`` handler bound to the given (injectable) dependencies.
 
@@ -374,6 +375,18 @@ def make_poll_source_handler(
     # paces across separate polls of this source within one worker process,
     # not just within one call.
     hn_acquisition = AcquisitionService(registry=reg, transport=fetch_transport)
+    # Council review 4, finding 9: docs/SOURCE_REGISTRY.yaml's generated Greenhouse/
+    # Lever entries declare `rate_limits.documented: shared_per_ats_host`, but
+    # `OpportunityPipeline.__init__` builds its own `AcquisitionService` (and thus its
+    # own fresh, per-source `RateLimiter`) every time -- and this handler builds a new
+    # `OpportunityPipeline` per job (below), so nothing was actually shared even across
+    # two jobs polling boards on the very same ATS host. Built once here, reused by
+    # every handler() call, and assigned onto each fresh pipeline's `.acquisition`
+    # below so pacing is process-wide, not per-job -- combined with
+    # `AcquisitionService.acquire` now keying its limiter by host (see
+    # `opportunity/transport.py`), this makes pacing genuinely shared per ATS host
+    # across boards *and* across jobs, matching what the registry claims.
+    process_rate_limiter = rate_limiter if rate_limiter is not None else RateLimiter()
     _session_factory_holder: list[Optional[SessionFactory]] = [session_factory]
 
     def _resolve_session_factory() -> SessionFactory:
@@ -409,6 +422,7 @@ def make_poll_source_handler(
         )
         try:
             pipeline = OpportunityPipeline(adapters=adapters, registry=reg, transport=fetch_transport)
+            pipeline.acquisition.rate_limiter = process_rate_limiter
             if source_id == HACKER_NEWS_SOURCE_ID:
                 # Hacker News needs a governed multi-step Firebase fetch (see
                 # _fetch_hacker_news_who_is_hiring_governed's docstring) instead

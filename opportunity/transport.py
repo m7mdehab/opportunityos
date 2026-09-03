@@ -10,6 +10,7 @@ import hashlib
 import json
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
@@ -250,8 +251,15 @@ class AcquisitionService:
                 refusal_reason=reason,
             )
 
-        # 2. Rate limiting pacing check
-        wait_needed = self.rate_limiter.acquire(source_id)
+        # 2. Rate limiting pacing check -- keyed by HOST, not source_id.
+        # Council review 4, finding 9: docs/SOURCE_REGISTRY.yaml's generated Greenhouse/
+        # Lever board entries declare `rate_limits.documented: shared_per_ats_host`, but
+        # a limiter keyed by source_id never shares pacing across boards on the same
+        # host. Keying by `urlparse(url).netloc` makes every board on
+        # `boards-api.greenhouse.io` (or `api.lever.co`) share one pacing bucket, while
+        # every other (already one-source-per-host) source is unaffected.
+        host = urllib.parse.urlparse(url).netloc.lower()
+        wait_needed = self.rate_limiter.acquire(host)
         if wait_needed > 0 and isinstance(self.transport, HttpTransport):
             time.sleep(wait_needed)
 
