@@ -170,6 +170,52 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             )
             self.assertEqual(res.scalar(), 4, "all four 0002 tables must exist again after re-upgrading to head")
 
+    def test_d3_target_roles_filter_seed_reverts_to_rank_only(self):
+        """A1S (BRIEF-FR-006 order A1S-seed): 0004's data migration reverts the
+        `target_roles` filter's seeded `mode` from 0003's `label_only` (a
+        council repair) back to `rank_only` (Overseer decision, FR-005 review
+        §3.1), guarded on the row's current value so re-running `upgrade` at
+        head is a data no-op and `downgrade` never clobbers a mode the founder
+        set by hand to something else."""
+        alembic_cfg = Config("alembic.ini")
+        alembic_cfg.set_main_option("sqlalchemy.url", self.db_url)
+
+        def target_roles_row():
+            with self.engine.connect() as conn:
+                return conn.execute(
+                    text(
+                        "SELECT filter_id, mode FROM founder_filter_settings "
+                        "WHERE filter_id = 'target_roles'"
+                    )
+                ).fetchone()
+
+        # Seed a scratch DB through 0003 only -- its own upgrade() inserts the
+        # `label_only` row for target_roles -- before 0004 ever runs.
+        command.downgrade(alembic_cfg, "base")
+        command.upgrade(alembic_cfg, "0003_provenance_identity")
+        row = target_roles_row()
+        self.assertIsNotNone(row, "0003 must seed a target_roles row")
+        self.assertEqual(tuple(row), ("target_roles", "label_only"))
+
+        # A1S.1: alembic upgrade head -> rank_only.
+        command.upgrade(alembic_cfg, "head")
+        row = target_roles_row()
+        self.assertEqual(tuple(row), ("target_roles", "rank_only"))
+
+        # A1S.2: alembic downgrade -1 -> label_only.
+        command.downgrade(alembic_cfg, "-1")
+        row = target_roles_row()
+        self.assertEqual(tuple(row), ("target_roles", "label_only"))
+
+        # A1S.3: alembic upgrade head twice in a row -- second run is a
+        # data no-op, the row stays rank_only, both calls exit 0 (no raise).
+        command.upgrade(alembic_cfg, "head")
+        row = target_roles_row()
+        self.assertEqual(tuple(row), ("target_roles", "rank_only"))
+        command.upgrade(alembic_cfg, "head")
+        row = target_roles_row()
+        self.assertEqual(tuple(row), ("target_roles", "rank_only"))
+
     def test_match_evaluations_unique_constraint_enforced_by_database(self):
         """(opportunity_id, truth_pack_hash) duplicates are rejected by PostgreSQL itself."""
         session = self.SessionFactory()
