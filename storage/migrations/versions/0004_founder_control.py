@@ -85,6 +85,39 @@ def upgrade() -> None:
         postgresql_using='gin',
     )
 
+    # --- backfill search_tsv for pre-existing rows ---------------------------
+    # Council review #3, finding 6: without this, every row written before
+    # this revision has a NULL `search_tsv` and is silently absent from every
+    # full-text search result -- not an error, just gone. Same document body
+    # as `storage/repository.py::_SEARCH_TSV_UPDATE_SQL` (title, organization,
+    # description, location parts, and any `requirements` field-provenance
+    # value), run here transactionally with the column/index add rather than
+    # via the Python helper (`backfill_search_tsv`) from a separate
+    # entrypoint. Idempotent: only rows still missing a value are touched.
+    op.execute(
+        """
+        UPDATE opportunities o
+        SET search_tsv = to_tsvector(
+            'english',
+            concat_ws(
+                ' ',
+                o.title,
+                o.organization,
+                o.description,
+                o.location_country,
+                o.location_city,
+                o.location_region,
+                (
+                    SELECT string_agg(fp.normalized_value, ' ')
+                    FROM field_provenances fp
+                    WHERE fp.opportunity_id = o.id AND fp.field_name = 'requirements'
+                )
+            )
+        )
+        WHERE o.search_tsv IS NULL
+        """
+    )
+
     # --- opportunity_families -------------------------------------------------
     op.create_table(
         'opportunity_families',

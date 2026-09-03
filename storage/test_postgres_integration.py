@@ -235,6 +235,55 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         print(f"C2.3: pg_indexes for opportunities = {sorted(names)}")
         self.assertIn("ix_opportunities_search_tsv", names)
 
+    def test_search_backfill_finds_pre_0004_rows(self):
+        """Council review #3, finding 6: a row inserted while the schema was
+        at `0003_provenance_identity` (before `search_tsv` existed) must be
+        findable by full-text search after `alembic upgrade head` -- 0004's
+        `upgrade()` must backfill `search_tsv` for pre-existing rows, not
+        just add the column and index for rows written afterward."""
+        alembic_cfg = Config("alembic.ini")
+        alembic_cfg.set_main_option("sqlalchemy.url", self.db_url)
+
+        command.downgrade(alembic_cfg, "base")
+        command.upgrade(alembic_cfg, "0003_provenance_identity")
+
+        with self.engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO opportunities "
+                    "(id, track, title, organization, description, source_id, source_url, content_hash) "
+                    "VALUES (:id, :track, :title, :organization, :description, :source_id, :source_url, :content_hash)"
+                ),
+                {
+                    "id": "OPP-PRE-0004",
+                    "track": "EMPLOYMENT",
+                    "title": "Distributed Systems Engineer",
+                    "organization": "Alexandria Cloud Labs",
+                    "description": "Build resilient distributed systems.",
+                    "source_id": "greenhouse:alexandria-pre",
+                    "source_url": "https://boards.greenhouse.io/alexandria/pre-0004",
+                    "content_hash": "hash-pre-0004",
+                },
+            )
+
+        command.upgrade(alembic_cfg, "head")
+
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT id FROM opportunities "
+                    "WHERE search_tsv @@ plainto_tsquery('english', 'Distributed Systems') "
+                    "AND id = :id"
+                ),
+                {"id": "OPP-PRE-0004"},
+            ).fetchone()
+        self.assertIsNotNone(
+            row,
+            "a row inserted at 0003 must be findable by full-text search "
+            "after upgrading to head -- 0004 must backfill search_tsv for "
+            "pre-existing rows, not leave it NULL",
+        )
+
     def test_match_evaluations_unique_constraint_enforced_by_database(self):
         """(opportunity_id, truth_pack_hash) duplicates are rejected by PostgreSQL itself."""
         session = self.SessionFactory()

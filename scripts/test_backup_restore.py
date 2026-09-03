@@ -42,6 +42,10 @@ from storage.models import (
     FounderOpportunityViewRecord,
     FounderTriageStateRecord,
     FounderFilterSettingRecord,
+    OpportunityFamilyRecord,
+    FounderFacetRecord,
+    FounderSavedViewRecord,
+    ArtifactCacheRecord,
 )
 import scripts.backup_restore as backup_restore
 from scripts.backup_restore import (
@@ -227,6 +231,10 @@ class TestBackupRestorePostgres(unittest.TestCase):
         session = session_factory()
         repo = StorageRepository(session)
 
+        # Council review #3, finding 5: every one of the 17 founder-control
+        # columns migration 0004 added to `opportunities` is populated here
+        # (not left at server_default) so the restore round-trip actually
+        # exercises them, not just their presence.
         repo.save_opportunity({
             "id": "OPP-BACKUP-1",
             "track": "EMPLOYMENT",
@@ -236,6 +244,22 @@ class TestBackupRestorePostgres(unittest.TestCase):
             "source_id": "greenhouse:alexandria",
             "source_url": "https://boards.greenhouse.io/alexandria/1",
             "content_hash": "hash999",
+            "work_mode": "remote",
+            "work_mode_source": "explicit",
+            "location_country": "EG",
+            "location_city": "Alexandria",
+            "location_region": "MENA",
+            "remote_scope": "global",
+            "remote_scope_regions": "EMEA,APAC",
+            "employment_type": "full_time",
+            "seniority_level": "principal",
+            "compensation_min": 120000,
+            "compensation_max": 160000,
+            "compensation_currency": "USD",
+            "compensation_period": "year",
+            "title_family": "engineering",
+            "title_level": "principal",
+            "family_key": "family-backup-1",
         }, [{"field_name": "title", "derivation_type": "EXACT_EXTRACTION", "record_checksum": "hash999"}])
 
         repo.record_feedback("OPP-BACKUP-1", "good_match", None, "Perfect role fit")
@@ -313,6 +337,53 @@ class TestBackupRestorePostgres(unittest.TestCase):
             params_json=json.dumps({"min_score": 42.5}),
             updated_at=filter_updated_at,
         ))
+
+        # Council review #3, finding 5: the round-trip test previously seeded
+        # zero rows in all four of migration 0004's new tables, so
+        # `_check_dump_row_counts` passed `0 == 0` whether or not the dump
+        # and restore loops for these tables were correct, and the
+        # `artifact_cache.payload` base64 path never executed. One non-empty
+        # row per table, asserted row-for-row after restore below.
+        family_updated_at = datetime(2026, 9, 2, 10, 18, 0)
+        session.add(OpportunityFamilyRecord(
+            family_key="family-backup-1",
+            employer="Alexandria Cloud Labs",
+            normalized_title="principal distributed systems engineer",
+            member_count=1,
+            best_member_id="OPP-BACKUP-1",
+            split_out=True,
+            updated_at=family_updated_at,
+        ))
+        facet_updated_at = datetime(2026, 9, 2, 10, 19, 0)
+        session.add(FounderFacetRecord(
+            facet_id="facet-backup-1",
+            mode="rank",
+            values_json=json.dumps(["remote", "hybrid"]),
+            updated_at=facet_updated_at,
+        ))
+        saved_view_created_at = datetime(2026, 9, 2, 10, 20, 0)
+        saved_view_updated_at = datetime(2026, 9, 2, 10, 21, 0)
+        session.add(FounderSavedViewRecord(
+            id="view-backup-1",
+            name="Remote principal roles",
+            facets_json=json.dumps({"work_mode": ["remote"]}),
+            search_query="distributed systems",
+            is_default=True,
+            created_at=saved_view_created_at,
+            updated_at=saved_view_updated_at,
+        ))
+        artifact_payload = b"\x00\x01binary-artifact-payload\xff\xfe"
+        artifact_created_at = datetime(2026, 9, 2, 10, 22, 0)
+        session.add(ArtifactCacheRecord(
+            cache_key="artifact-backup-1",
+            opportunity_id="OPP-BACKUP-1",
+            truth_pack_hash="truth-pack-hash-backup-1",
+            template_id="template-a",
+            artifact_kind="resume",
+            content_type="application/pdf",
+            payload=artifact_payload,
+            created_at=artifact_created_at,
+        ))
         session.commit()
         session.close()
         engine.dispose()
@@ -338,6 +409,25 @@ class TestBackupRestorePostgres(unittest.TestCase):
         self.assertIsNotNone(opp)
         self.assertEqual(opp.title, "Principal Distributed Systems Engineer")
         self.assertEqual(len(opp.provenances), 1)
+
+        # Council review #3, finding 5: every founder-control column
+        # populated above must survive the dump/restore round-trip.
+        self.assertEqual(opp.work_mode, "remote")
+        self.assertEqual(opp.work_mode_source, "explicit")
+        self.assertEqual(opp.location_country, "EG")
+        self.assertEqual(opp.location_city, "Alexandria")
+        self.assertEqual(opp.location_region, "MENA")
+        self.assertEqual(opp.remote_scope, "global")
+        self.assertEqual(opp.remote_scope_regions, "EMEA,APAC")
+        self.assertEqual(opp.employment_type, "full_time")
+        self.assertEqual(opp.seniority_level, "principal")
+        self.assertEqual(opp.compensation_min, 120000)
+        self.assertEqual(opp.compensation_max, 160000)
+        self.assertEqual(opp.compensation_currency, "USD")
+        self.assertEqual(opp.compensation_period, "year")
+        self.assertEqual(opp.title_family, "engineering")
+        self.assertEqual(opp.title_level, "principal")
+        self.assertEqual(opp.family_key, "family-backup-1")
 
         fb = dst_session.query(FounderFeedbackRecord).filter_by(opportunity_id="OPP-BACKUP-1").first()
         self.assertIsNotNone(fb)
@@ -377,6 +467,44 @@ class TestBackupRestorePostgres(unittest.TestCase):
         self.assertEqual(filter_setting.mode, "hide")
         self.assertEqual(json.loads(filter_setting.params_json), {"min_score": 42.5})
         self.assertEqual(filter_setting.updated_at, filter_updated_at)
+
+        # 4c. Council review #3, finding 5: row-for-row equality for all four
+        # of migration 0004's new tables -- these were seeded with zero rows
+        # before this fix, so their dump/restore correctness was never
+        # actually exercised.
+        family = dst_session.query(OpportunityFamilyRecord).filter_by(family_key="family-backup-1").first()
+        self.assertIsNotNone(family, "opportunity_families row must survive restore")
+        self.assertEqual(family.employer, "Alexandria Cloud Labs")
+        self.assertEqual(family.normalized_title, "principal distributed systems engineer")
+        self.assertEqual(family.member_count, 1)
+        self.assertEqual(family.best_member_id, "OPP-BACKUP-1")
+        self.assertTrue(family.split_out, "the non-default split_out=True must survive, not the migration default False")
+        self.assertEqual(family.updated_at, family_updated_at)
+
+        facet = dst_session.query(FounderFacetRecord).filter_by(facet_id="facet-backup-1").first()
+        self.assertIsNotNone(facet, "founder_facets row must survive restore")
+        self.assertEqual(facet.mode, "rank")
+        self.assertEqual(json.loads(facet.values_json), ["remote", "hybrid"])
+        self.assertEqual(facet.updated_at, facet_updated_at)
+
+        saved_view = dst_session.query(FounderSavedViewRecord).filter_by(id="view-backup-1").first()
+        self.assertIsNotNone(saved_view, "founder_saved_views row must survive restore")
+        self.assertEqual(saved_view.name, "Remote principal roles")
+        self.assertEqual(json.loads(saved_view.facets_json), {"work_mode": ["remote"]})
+        self.assertEqual(saved_view.search_query, "distributed systems")
+        self.assertTrue(saved_view.is_default, "the non-default is_default=True must survive")
+        self.assertEqual(saved_view.created_at, saved_view_created_at)
+        self.assertEqual(saved_view.updated_at, saved_view_updated_at)
+
+        artifact = dst_session.query(ArtifactCacheRecord).filter_by(cache_key="artifact-backup-1").first()
+        self.assertIsNotNone(artifact, "artifact_cache row must survive restore")
+        self.assertEqual(artifact.opportunity_id, "OPP-BACKUP-1")
+        self.assertEqual(artifact.truth_pack_hash, "truth-pack-hash-backup-1")
+        self.assertEqual(artifact.template_id, "template-a")
+        self.assertEqual(artifact.artifact_kind, "resume")
+        self.assertEqual(artifact.content_type, "application/pdf")
+        self.assertEqual(bytes(artifact.payload), artifact_payload, "the base64-encoded payload path must round-trip byte-for-byte")
+        self.assertEqual(artifact.created_at, artifact_created_at)
 
         # 5. The restored target has the Alembic head stamped (read the
         # head from the script directory, never hard-coded).
