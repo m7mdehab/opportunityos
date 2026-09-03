@@ -9,11 +9,21 @@ from __future__ import annotations
 
 import unittest
 
+from opportunity.adapters import (
+    GreenhouseAdapter,
+    HimalayasAdapter,
+    LeverAdapter,
+    RemoteOKAdapter,
+    RemotiveAdapter,
+    WeWorkRemotelyAdapter,
+)
+from opportunity.fixtures import load_corpus
+from opportunity.persistence import _build_opp_data, _build_provenances
 from storage.models import MatchEvaluationRecord, OpportunityRecord
-from storage.repository import backfill_search_tsv
+from storage.repository import StorageRepository, backfill_search_tsv
 
 from api.search import is_query_unparseable, rank_key, search_opportunity_ids
-from api.test_api import ApiTestCase, REPO_ROOT
+from api.test_api import ApiTestCase
 
 
 # ---------------------------------------------------------------------------
@@ -95,79 +105,99 @@ class SearchAdversarialTest(ApiTestCase):
 
 
 # ---------------------------------------------------------------------------
-# C2.2: `pytorch -"customer engineer"` over the fixture corpus.
+# C2.2: `pytorch -"customer engineer"` over the REAL fixture corpus
+# (`opportunity/fixtures/corpus/`, work order A1C, 540 payloads across 15
+# sources -- loaded via `opportunity.fixtures.load_corpus`).
 # ---------------------------------------------------------------------------
+
+_SINGLETON_ADAPTER_FACTORIES = {
+    "himalayas": HimalayasAdapter,
+    "remotive": RemotiveAdapter,
+    "remote_ok": RemoteOKAdapter,
+    "we_work_remotely": WeWorkRemotelyAdapter,
+}
+
+
+def _fit_varchar64(value: str) -> str:
+    """Some real corpus postings (e.g. We Work Remotely's URL-derived ids)
+    exceed `opportunities.id`/`content_hash`'s `VARCHAR(64)` column width
+    (`storage/models.py`, frozen for this order). Deterministically shorten
+    rather than truncate blindly, so two different long values never
+    collide into the same 64-char row: keep a readable prefix and append a
+    hash of the full original value. A test-fixture accommodation for a
+    pre-existing column-width limit, not a change to search behaviour."""
+    import hashlib
+
+    if len(value) <= 64:
+        return value
+    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+    return f"{value[:47]}-{digest}"
+
+
+def _adapter_for_source_id(source_id: str):
+    """Map a `CorpusFixture.source_id` (e.g. `"greenhouse:cloudflare"`,
+    `"himalayas"`) back to the same adapter class that would have produced
+    it live -- each fixture's `raw_body` is, per `opportunity/fixtures/
+    __init__.py`'s own docstring, "wrapped in the minimal feed envelope its
+    adapter's `parse_payload` expects", so re-parsing with the matching
+    adapter is exactly how a real poll would have processed it."""
+    if source_id in _SINGLETON_ADAPTER_FACTORIES:
+        return _SINGLETON_ADAPTER_FACTORIES[source_id]()
+    prefix, _, company = source_id.partition(":")
+    if prefix == "greenhouse":
+        return GreenhouseAdapter(company)
+    if prefix == "lever":
+        return LeverAdapter(company)
+    raise ValueError(f"no adapter mapping for corpus source_id {source_id!r}")
 
 
 class PytorchCorpusSearchTest(ApiTestCase):
-    """`opportunity/fixtures/corpus/` (work order A1C) may not be on this
-    worktree's base -- checked at setUp time below. If absent, this test
-    runs against synthetic rows of the same shape (title/organization/
-    description) instead, and prints that fact explicitly; the Master
-    re-runs this row over the real corpus at integration."""
+    """C2.2, over the real corpus. Deliberately self-invalidating history:
+    an earlier revision of this test ran against synthetic rows (the corpus
+    was absent on this worktree's base at the time) and asserted, loudly,
+    that it must be rewritten the moment the real corpus landed -- which is
+    exactly what happened and exactly what this revision does."""
 
     def setUp(self):
         super().setUp()
         self.app = self.make_app()
         self.client = self.logged_in_client(self.app)
-        corpus_dir = REPO_ROOT / "opportunity" / "fixtures" / "corpus"
-        self.using_real_corpus = corpus_dir.exists() and any(corpus_dir.iterdir())
+
+    def _persist_real_corpus(self) -> int:
+        fixtures = load_corpus()
+        self.assertGreaterEqual(
+            len(fixtures), 500,
+            "expected the real ~540-payload corpus (opportunity/fixtures/corpus/), "
+            "not a partial or absent one",
+        )
+        repository = StorageRepository(self.session)
+        persisted = 0
+        for fixture in fixtures:
+            adapter = _adapter_for_source_id(fixture.source_id)
+            result = adapter.parse_payload(fixture.raw_body)
+            for opp in result.opportunities:
+                opp_data = _build_opp_data(opp, is_stale=False)
+                opp_data["id"] = _fit_varchar64(opp_data["id"])
+                opp_data["content_hash"] = _fit_varchar64(opp_data["content_hash"])
+                repository.save_opportunity(opp_data, _build_provenances(opp))
+                persisted += 1
+        return persisted
 
     def test_pytorch_excludes_customer_engineer(self):
-        if self.using_real_corpus:
-            self.fail(
-                "opportunity/fixtures/corpus/ now exists on this branch -- "
-                "this test must be rewritten to load it instead of the "
-                "synthetic rows below (BRIEF-FR-006 C2 order)."
-            )
-        print(
-            "C2.2: opportunity/fixtures/corpus/ is ABSENT on this worktree's "
-            "base -- running against SYNTHETIC rows of the same shape, NOT "
-            "the real fixture corpus. The Master must re-run this row over "
-            "the real corpus at integration."
-        )
-
-        # Matches: text contains "pytorch", title is not "Customer Engineer".
-        self.seed_opportunity(
-            "opp-pytorch-1",
-            title="ML Engineer",
-            organization="Acme AI",
-            description="Build and train models using pytorch and distributed data loaders.",
-        )
-        self.seed_opportunity(
-            "opp-pytorch-2",
-            title="Research Scientist",
-            organization="DeepCo",
-            description="Research role. Requirements: pytorch, CUDA, large-scale training.",
-        )
-        # Excluded by the negated phrase, even though it also mentions
-        # pytorch in its own description.
-        self.seed_opportunity(
-            "opp-ce-pytorch",
-            title="Customer Engineer",
-            organization="Acme AI",
-            description="Support customers integrating pytorch models into production.",
-        )
-        # Excluded: no "pytorch" anywhere.
-        self.seed_opportunity(
-            "opp-unrelated", title="Backend Engineer", organization="Acme AI",
-            description="Build REST APIs in Go.",
-        )
-        # Excluded on both grounds.
-        self.seed_opportunity(
-            "opp-ce-plain", title="Customer Engineer", organization="Beta Inc",
-            description="Handle customer support tickets.",
-        )
+        persisted = self._persist_real_corpus()
+        print(f"C2.2: persisted {persisted} real corpus opportunities (of {len(load_corpus())} raw fixtures)")
 
         response = self.client.get("/api/opportunities", params={"q": 'pytorch -"customer engineer"'})
         self.assertEqual(response.status_code, 200, response.text)
         items = response.json()["items"]
-
         print(f"C2.2: result count = {len(items)}")
-        self.assertGreater(len(items), 0)
 
-        ids = {item["id"] for item in items}
-        self.assertEqual(ids, {"opp-pytorch-1", "opp-pytorch-2"})
+        if not items:
+            # A fact about a corpus drawn from fifteen job boards, not a
+            # search defect -- proven independently by the positive control
+            # below, not by loosening this query or seeding a synthetic row
+            # alongside the real ones.
+            print("C2.2: zero rows in the real corpus mention 'pytorch' -- reporting count 0.")
 
         for item in items:
             full = self.session.query(OpportunityRecord).filter_by(id=item["id"]).one()
@@ -179,6 +209,35 @@ class PytorchCorpusSearchTest(ApiTestCase):
             )
             self.assertTrue(contains_pytorch)
             self.assertNotEqual(full.title.strip().lower(), "customer engineer")
+
+        self._assert_positive_control()
+
+    def _assert_positive_control(self):
+        """Independent proof the search machinery works against this real
+        corpus, regardless of whether it happens to contain "pytorch": a
+        query for a phrase the corpus is known to contain ("customer
+        engineer" -- per the coordinator, 7 of the 40 Cloudflare Greenhouse
+        postings) returns rows, and negating that exact phrase excludes
+        every one of those same rows from a broader query that would
+        otherwise include them."""
+        with_ce = self.client.get("/api/opportunities", params={"q": '"customer engineer"'})
+        self.assertEqual(with_ce.status_code, 200, with_ce.text)
+        ce_items = with_ce.json()["items"]
+        ce_ids = {item["id"] for item in ce_items}
+        self.assertGreater(len(ce_ids), 0, 'positive control: corpus must contain "customer engineer" matches')
+        print(f'C2.2 positive control: "customer engineer" alone -> {len(ce_ids)} row(s): {sorted(ce_ids)}')
+
+        negated = self.client.get("/api/opportunities", params={"q": 'engineer -"customer engineer"'})
+        self.assertEqual(negated.status_code, 200, negated.text)
+        negated_ids = {item["id"] for item in negated.json()["items"]}
+        self.assertFalse(
+            negated_ids & ce_ids,
+            "negated phrase must exclude every row the un-negated phrase matched",
+        )
+        print(
+            f"C2.2 positive control: 'engineer -\"customer engineer\"' excludes all "
+            f"{len(ce_ids)} 'customer engineer' row(s) -- {len(negated_ids)} other rows remain"
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -42,12 +42,14 @@ column exists), and `requirements` via a correlated subquery over
 
 `py -3.12 -m unittest discover -s api -p "test_*.py" -v`:
 ```
-Ran 81 tests in 58.416s
+Ran 91 tests in 131.112s
 
 OK (skipped=1)
 ```
-(the 1 skip is `SearchPerformanceTest`, guarded on
-`OPPORTUNITYOS_RUN_SEARCH_PERF=1` -- see C2.5.)
+(the 1 skip is `SearchPerformanceTest`, the **gated** 20,000-row run,
+guarded on `OPPORTUNITYOS_RUN_SEARCH_PERF=1` -- see C2.5. Its 2,000-row
+sibling, `SearchPerformanceSmokeTest`, is **not** gated and ran as part of
+this 91.)
 
 `py -3.12 -m unittest discover -s storage -p "test_*.py" -v`:
 ```
@@ -66,21 +68,37 @@ founder-control columns`, a different, already-merged work order.
 
 ## C2.2 — `pytorch -"customer engineer"`
 
-`opportunity/fixtures/corpus/` is **absent** on this worktree's base (the
-A1C work order committing it had not landed here). Ran against **synthetic
-rows**, not the real corpus -- printed explicitly by the test:
+**Ran against the REAL 540-payload corpus** (`opportunity/fixtures/corpus/`,
+15 sources, landed via merging `feat/brief-fr-006-nothing-missed`), loaded
+with `opportunity.fixtures.load_corpus`, re-parsed per fixture through the
+matching adapter (`GreenhouseAdapter`/`LeverAdapter`/etc., keyed off each
+fixture's own `source_id`), and persisted through the real
+`StorageRepository.save_opportunity` path -- not synthetic rows. (An earlier
+revision of this test, committed before the corpus landed, deliberately
+failed loudly the moment it appeared, exactly as designed; this is the
+rewrite.)
 ```
-C2.2: opportunity/fixtures/corpus/ is ABSENT on this worktree's base -- running against SYNTHETIC rows of the same shape, NOT the real fixture corpus. The Master must re-run this row over the real corpus at integration.
-C2.2: result count = 2
-C2.2: inspected id='opp-pytorch-1' title='ML Engineer' contains_pytorch=True
-C2.2: inspected id='opp-pytorch-2' title='Research Scientist' contains_pytorch=True
+C2.2: persisted 540 real corpus opportunities (of 540 raw fixtures)
+C2.2: result count = 6
+C2.2: inspected id='greenhouse:twilio:7996774' title='Machine Learning Engineer' contains_pytorch=True
+C2.2: inspected id='greenhouse:twilio:8007455' title='Machine Learning Engineer' contains_pytorch=True
+C2.2: inspected id='greenhouse:datadog:7194969' title='AI Research Engineer - Datadog AI Research (DAIR)' contains_pytorch=True
+C2.2: inspected id='greenhouse:datadog:6572669' title='AI Research Scientist - Datadog AI Research (DAIR)' contains_pytorch=True
+C2.2: inspected id='greenhouse:datadog:6652564' title='AI Research Scientist - Datadog AI Research (DAIR)' contains_pytorch=True
+C2.2: inspected id='greenhouse:figma:5707966004' title='AI Applied Scientist' contains_pytorch=True
+C2.2 positive control: "customer engineer" alone -> 7 row(s): ['greenhouse:cloudflare:7955378', 'greenhouse:cloudflare:8027774', 'greenhouse:cloudflare:8084358', 'greenhouse:cloudflare:8140641', 'greenhouse:cloudflare:8140643', 'greenhouse:cloudflare:8172845', 'greenhouse:cloudflare:8172846']
+C2.2 positive control: 'engineer -"customer engineer"' excludes all 7 'customer engineer' row(s) -- 25 other rows remain
 ```
-Both returned rows were inspected and contain `pytorch`; zero returned rows
-are titled Customer Engineer (a seeded `Customer Engineer` row that also
-mentions pytorch, and a plain `Customer Engineer` row, are both correctly
-excluded by the negated phrase). **This is a different result than a run
-over the real 540-row corpus would produce and must be re-run there at
-integration.**
+**Result count: 6.** Every one of the 6 returned rows was inspected
+individually (printed above) and confirmed to contain `pytorch`; **zero**
+returned rows are titled Customer Engineer. The corpus does contain pytorch
+matches (this is not the "report 0" case) so no synthetic row or query
+loosening was needed. A positive control independently proves the search
+machinery itself works against this real corpus regardless: querying
+`"customer engineer"` alone returns exactly 7 rows, all 7 Cloudflare
+Greenhouse postings, matching the coordinator's own figure; negating that
+phrase in a broader query (`engineer -"customer engineer"`) excludes all 7
+of them.
 
 ## C2.3 — index present after `alembic upgrade head`
 
@@ -100,24 +118,42 @@ C2.4 very-long-query (16000 chars) -> status=200 items=1 message=None
 ```
 Every case returns 200 with a list (empty or not); never 500.
 
-## C2.5 — 20k-row timing run
+## C2.5 — timing runs
 
-`OPPORTUNITYOS_RUN_SEARCH_PERF=1 py -3.12 -m unittest api.test_search_performance -v`:
+**Two tests, two row counts.** `SearchPerformanceSmokeTest` (2,000 rows) is
+**ungated** and runs in every plain `unittest discover -s api` (see C2.1's
+91-test run above) -- it proves the measurement code path itself works on a
+normal run, but does **not** evidence the brief's own >= 20,000-row claim.
+`SearchPerformanceTest` (20,000 rows) is **gated** on
+`OPPORTUNITYOS_RUN_SEARCH_PERF=1` and is the **only** source of the A-15
+figure; it is skipped by a normal run (see the `skipped=1` in C2.1).
+
+Ungated smoke run, captured from the same C2.1 `discover` invocation above:
 ```
-Ran 1 test in 15.239s
+C2.5 SMOKE (ungated, runs by default; NOT the A-15 20k claim): row_count=2000 inserted_in=0.61s query_set=['pytorch', '"customer engineer"', 'pytorch -"customer engineer"', 'engineer -customer', 'python OR golang'] sample_size=100 p95=4.20ms
+```
+
+Gated A-15 run, `OPPORTUNITYOS_RUN_SEARCH_PERF=1 py -3.12 -m unittest api.test_search_performance.SearchPerformanceTest -v`:
+```
+Ran 1 test in 27.188s
 
 OK
-C2.5: inserted 20000 rows in 6.44s; backfill_search_tsv indexed 20000 rows in 5.47s
+C2.5: inserted 20000 rows in 13.53s; backfill_search_tsv indexed 20000 rows in 7.07s
 C2.5: row_count=20000
 C2.5: query_set=['pytorch', '"customer engineer"', 'pytorch -"customer engineer"', 'engineer -customer', 'python OR golang']
 C2.5: sample_size=100 (queries x 20 reps each)
-C2.5: p95=23.73ms
-C2.5: p95 23.73ms < 200ms target
+C2.5: p95=72.48ms
+C2.5: THIS IS THE A-15 FIGURE -- gated run, OPPORTUNITYOS_RUN_SEARCH_PERF=1, 20000 rows.
+C2.5: p95 72.48ms < 200ms target
 ```
-Row count measured over: **20,000**. Sample size: **100** (5 queries x 20
-reps each). **p95 = 23.73ms** (< 200ms target). Local Windows PostgreSQL,
-per the order's own caveat, is not a performance reference; this is what was
-measured, honestly, not tuned.
+**The A-15 p95 figure is 72.48ms, sample size 100 (5 queries x 20 reps
+each), measured over 20,000 rows, obtained only from the gated
+`OPPORTUNITYOS_RUN_SEARCH_PERF=1` run** -- not from the smoke run, and not
+from a plain `unittest discover`. It differs from an earlier same-day
+measurement of this identical test (23.73ms) on this same shared, local,
+multi-tenant Windows PostgreSQL instance; both are < 200ms and both are
+reported as measured, not tuned, per the order's own caveat that a local
+Windows PostgreSQL is not a performance reference.
 
 ## C2.6 — facet composition
 
@@ -177,6 +213,12 @@ touches 0 rows (idempotent).
   None`, since C2's whole job is to populate it on every
   `save_opportunity` call and the fixture opportunity has real
   title/organization/description text.
+- **`api/test_search.py::PytorchCorpusSearchTest::
+  test_pytorch_excludes_customer_engineer`**: an earlier revision (see git
+  history) ran against 5 synthetic rows and asserted a hard `self.fail(...)`
+  if the real corpus ever appeared. Now loads and persists the real 540-row
+  corpus and asserts against it, plus an independent positive control (see
+  C2.2 above) that was not present in the synthetic version.
 
 ## Assumptions named
 
@@ -199,10 +241,15 @@ touches 0 rows (idempotent).
    compose through additively; `api.search.search_opportunity_ids`/
    `is_query_unparseable` are the composition point the Master or C1 can
    call once it lands.
-4. **`opportunity/fixtures/corpus/` was absent** on this worktree's base;
-   C2.2 ran against synthetic rows of the same shape, explicitly flagged in
-   test output and here. Must be re-run over the real corpus at
-   integration.
+4. **A handful of real corpus postings' derived ids/content hashes exceed
+   `opportunities.id`/`content_hash`'s `VARCHAR(64)` column width** (e.g. a
+   We Work Remotely posting whose id is built from its full URL slug).
+   `api/test_search.py::_fit_varchar64` deterministically shortens
+   (readable prefix + a hash suffix of the full value, never a blind
+   truncation that could collide) only inside this test's own persistence
+   helper -- a test-fixture accommodation for a pre-existing column-width
+   limit in a frozen file (`storage/models.py`), not a change to search
+   behaviour.
 5. Ranking formula's neutral fit multiplier for an unevaluated opportunity
    (no `match_evaluations` row) is **0.5**, chosen so it is neither buried
    (0) nor privileged above every evaluated match (1).
