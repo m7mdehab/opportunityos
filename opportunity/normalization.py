@@ -401,7 +401,7 @@ def extract_work_location(
             if region_group is not None and "remote_scope_regions" not in resolved:
                 try:
                     captured = match.group(region_group)
-                except (IndexError, error := re.error):  # pragma: no cover - defensive
+                except IndexError:  # pragma: no cover - defensive
                     captured = ""
                 codes = _resolve_region_tokens(captured) if captured else ()
                 if not codes:

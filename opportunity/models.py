@@ -301,9 +301,12 @@ class Opportunity:
     seniority: SeniorityLevel = SeniorityLevel.UNSPECIFIED
     employment_type: EmploymentType = EmploymentType.UNSPECIFIED
     location_raw: str = ""
-    remote_policy: RemotePolicy = RemotePolicy.UNSPECIFIED
-    # BRIEF-FR-006 A1 fields. ``work_mode``/``remote_policy`` are kept in sync by
-    # __post_init__ (see the module-level comment above _WORK_MODE_TO_REMOTE_POLICY).
+    # BRIEF-FR-006 A1 fields. ``work_mode`` is the new canonical, writable field;
+    # ``remote_policy`` below is a read-only derived @property (Master decision #1)
+    # -- NOT a constructor parameter any more. See the FR-006 A1 report: this is a
+    # breaking change for any `Opportunity(remote_policy=...)` call site outside
+    # this deliverable's allowed file set (six frozen files identified and named
+    # in that report; they must be repointed at `work_mode=` in a follow-up).
     work_mode: WorkMode = WorkMode.UNSPECIFIED
     work_mode_source: str = "none"  # "adapter" | "inference" | "none"
     location_country: str = ""  # ISO-2
@@ -338,8 +341,6 @@ class Opportunity:
             raise ValueError(f"seniority must be an instance of SeniorityLevel enum, got {type(self.seniority)}")
         if not isinstance(self.employment_type, EmploymentType):
             raise ValueError(f"employment_type must be an instance of EmploymentType enum, got {type(self.employment_type)}")
-        if not isinstance(self.remote_policy, RemotePolicy):
-            raise ValueError(f"remote_policy must be an instance of RemotePolicy enum, got {type(self.remote_policy)}")
         if not isinstance(self.work_mode, WorkMode):
             raise ValueError(f"work_mode must be an instance of WorkMode enum, got {type(self.work_mode)}")
         if not isinstance(self.remote_scope, RemoteScope):
@@ -348,19 +349,6 @@ class Opportunity:
             raise ValueError(
                 f"work_mode_source must be one of {sorted(WORK_MODE_SOURCE_VALUES)}, got {self.work_mode_source!r}"
             )
-
-        # BRIEF-FR-006 A1 Master decision #1: work_mode is the new canonical field;
-        # remote_policy stays constructor-compatible (deviation from a literal
-        # read-only @property -- see the FR-006 A1 report) but is never allowed to
-        # diverge from work_mode. Whichever of the two the caller actually set wins;
-        # the other is derived here so there is only ever one *effective* writable
-        # source of truth despite both remaining assignable fields.
-        if self.work_mode != WorkMode.UNSPECIFIED:
-            derived_remote_policy = _WORK_MODE_TO_REMOTE_POLICY[self.work_mode]
-            if self.remote_policy != derived_remote_policy:
-                object.__setattr__(self, "remote_policy", derived_remote_policy)
-        elif self.remote_policy != RemotePolicy.UNSPECIFIED:
-            object.__setattr__(self, "work_mode", _REMOTE_POLICY_TO_WORK_MODE[self.remote_policy])
 
         # Ensure content_hash is populated deterministically
         if not self.content_hash:
@@ -375,6 +363,14 @@ class Opportunity:
                 self.organization, self.title, self.location_raw
             )
             object.__setattr__(self, "dedup_key", computed_dedup)
+
+    @property
+    def remote_policy(self) -> RemotePolicy:
+        """Read-only derived alias of ``work_mode`` (BRIEF-FR-006 A1 Master decision
+        #1). Kept so BRIEF-003 call sites that only *read* ``opp.remote_policy``
+        keep working; it is deliberately not a constructor parameter -- ``work_mode``
+        is the single writable source of truth."""
+        return _WORK_MODE_TO_REMOTE_POLICY[self.work_mode]
 
 
 def validate_opportunity_provenance(opp: Opportunity) -> tuple[bool, str]:

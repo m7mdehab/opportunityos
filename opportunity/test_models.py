@@ -28,6 +28,19 @@ from opportunity.models import (
 )
 
 
+def _minimal_opportunity_for_alias_test() -> Opportunity:
+    return Opportunity(
+        id="opp-alias-test",
+        track=Track.EMPLOYMENT,
+        source="himalayas",
+        source_url="",
+        source_id="",
+        organization="Acme",
+        title="Engineer",
+        description="",
+    )
+
+
 class TestOpportunityModels(unittest.TestCase):
     def test_material_field_manifest_reflection(self) -> None:
         """Every field on Opportunity must have an executable rule in MATERIAL_OPPORTUNITY_FIELD_RULES."""
@@ -47,6 +60,18 @@ class TestOpportunityModels(unittest.TestCase):
             "content_hash",
             "dedup_key",
             "extra_attributes",
+            # BRIEF-FR-006 A1: work_mode_source / location_country / location_city /
+            # location_region / remote_scope / remote_scope_regions are structured
+            # detail of the single "work_mode" material fact (Master decision #2:
+            # work_mode_source is recorded as a FieldProvenance entry for the
+            # "work_mode" field -- one entry, not one per sub-detail). "work_mode"
+            # itself has a rule below and is not excluded here.
+            "work_mode_source",
+            "location_country",
+            "location_city",
+            "location_region",
+            "remote_scope",
+            "remote_scope_regions",
         }
         
         material_fields = opp_fields - infrastructure_fields
@@ -63,6 +88,26 @@ class TestOpportunityModels(unittest.TestCase):
                 MATERIAL_OPPORTUNITY_FIELD_MANIFEST,
                 f"Opportunity field '{field_name}' is missing from MATERIAL_OPPORTUNITY_FIELD_MANIFEST",
             )
+
+    def test_remote_policy_alias_agrees_with_work_mode_for_every_value(self) -> None:
+        """BRIEF-FR-006 A1 Master decision #1: `remote_policy` is a read-only derived
+        @property of `work_mode`, never an independent constructor input."""
+        from opportunity.models import WorkMode
+
+        expected = {
+            WorkMode.REMOTE: RemotePolicy.REMOTE,
+            WorkMode.HYBRID: RemotePolicy.HYBRID,
+            WorkMode.ONSITE: RemotePolicy.ON_SITE,
+            WorkMode.UNSPECIFIED: RemotePolicy.UNSPECIFIED,
+        }
+        for work_mode, remote_policy in expected.items():
+            with self.subTest(work_mode=work_mode):
+                opp = dataclasses.replace(
+                    _minimal_opportunity_for_alias_test(), work_mode=work_mode
+                )
+                self.assertEqual(remote_policy, opp.remote_policy)
+        # Not a constructor kwarg any more.
+        self.assertNotIn("remote_policy", {f.name for f in dataclasses.fields(Opportunity)})
 
     def test_greenhouse_field_provenance_individual_removal_regressions(self) -> None:
         """Removing provenance for each populated field individually MUST fail validation."""
@@ -110,7 +155,7 @@ class TestOpportunityModels(unittest.TestCase):
             "seniority",
             "employment_type",
             "location_raw",
-            "remote_policy",
+            "work_mode",
             "geographic_eligibility",
         ]
 

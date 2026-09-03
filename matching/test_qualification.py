@@ -9,9 +9,11 @@ from opportunity.models import (
     Opportunity,
     ProcurementMetadata,
     RemotePolicy,
+    RemoteScope,
     SeniorityLevel,
     SourceProvenance,
     Track,
+    WorkMode,
 )
 from truth.graph import TruthGraph
 from truth.models import AtomicAssertion, EvidenceRecord, Modality, Polarity, VerificationStatus
@@ -205,7 +207,7 @@ def create_test_opportunity(
     track: Track = Track.EMPLOYMENT,
     title: str = "Staff Backend Engineer",
     geo_status: str = "eligible",
-    remote_policy: RemotePolicy = RemotePolicy.REMOTE,
+    work_mode: WorkMode = WorkMode.REMOTE,
     location_raw: str = "Remote, Worldwide",
     description: str = "Build distributed systems with Python.",
     skills: tuple[str, ...] = ("Python", "Go"),
@@ -213,6 +215,9 @@ def create_test_opportunity(
     procurement_metadata: ProcurementMetadata | None = None,
     compensation: Any = None,
     employment_type: EmploymentType = EmploymentType.FULL_TIME,
+    location_country: str = "",
+    remote_scope: RemoteScope = RemoteScope.UNSPECIFIED,
+    remote_scope_regions: tuple[str, ...] = (),
 ) -> Opportunity:
     prov = SourceProvenance(
         source_id="greenhouse:cloudflare",
@@ -240,7 +245,10 @@ def create_test_opportunity(
         seniority=SeniorityLevel.SENIOR,
         employment_type=employment_type,
         location_raw=location_raw,
-        remote_policy=remote_policy,
+        work_mode=work_mode,
+        location_country=location_country,
+        remote_scope=remote_scope,
+        remote_scope_regions=remote_scope_regions,
         geographic_eligibility=geo,
         compensation=compensation,
         posted_date="2026-08-15",
@@ -274,7 +282,7 @@ class TestQualificationEngine(unittest.TestCase):
 
     def test_ineligible_mandatory_onsite_foreign_location(self) -> None:
         opp = create_test_opportunity(
-            remote_policy=RemotePolicy.ON_SITE,
+            work_mode=WorkMode.ONSITE,
             location_raw="Berlin, Germany",
         )
         decision, constraints = self.engine.evaluate(opp, self.truth_graph)
@@ -317,6 +325,78 @@ class TestQualificationEngine(unittest.TestCase):
         self.assertTrue(len(uncertain) > 0)
         self.assertIsNone(uncertain[0].passed)
         self.assertFalse(uncertain[0].is_hard_failure)
+
+    # --- BRIEF-FR-006 A1: geographic eligibility resolves on country OR remote_scope ---
+
+    def test_worldwide_remote_scope_resolves_eligible(self) -> None:
+        opp = create_test_opportunity(geo_status="unclear", remote_scope=RemoteScope.WORLDWIDE)
+        decision, constraints = self.engine.evaluate(opp, self.truth_graph)
+        geo = [c for c in constraints if c.constraint_name == "geographic_eligibility"]
+        self.assertEqual(1, len(geo))
+        self.assertTrue(geo[0].passed)
+        self.assertFalse(geo[0].is_hard_failure)
+
+    def test_region_restricted_excluding_egypt_is_labelled_not_hidden(self) -> None:
+        opp = create_test_opportunity(
+            geo_status="unclear",
+            remote_scope=RemoteScope.REGION_RESTRICTED,
+            remote_scope_regions=("US",),
+        )
+        decision, constraints = self.engine.evaluate(opp, self.truth_graph)
+        geo = [c for c in constraints if c.constraint_name == "geographic_eligibility"]
+        self.assertEqual(1, len(geo))
+        self.assertIsNone(geo[0].passed)
+        self.assertFalse(geo[0].is_hard_failure, "region-restricted-excluding-EG must never be a hard failure")
+        self.assertIn("remote but region-restricted", geo[0].reason)
+        self.assertNotEqual(QualificationDecision.INELIGIBLE, decision)
+
+    def test_region_restricted_including_egypt_resolves_eligible(self) -> None:
+        opp = create_test_opportunity(
+            geo_status="unclear",
+            remote_scope=RemoteScope.REGION_RESTRICTED,
+            remote_scope_regions=("EG", "SA"),
+        )
+        decision, constraints = self.engine.evaluate(opp, self.truth_graph)
+        geo = [c for c in constraints if c.constraint_name == "geographic_eligibility"]
+        self.assertEqual(1, len(geo))
+        self.assertTrue(geo[0].passed)
+
+    def test_location_country_matching_founder_authorization_resolves_eligible(self) -> None:
+        # Truth graph has a verified work_authorization.jurisdiction="Egypt" assertion.
+        opp = create_test_opportunity(geo_status="unclear", location_country="EG")
+        decision, constraints = self.engine.evaluate(opp, self.truth_graph)
+        geo = [c for c in constraints if c.constraint_name == "geographic_eligibility"]
+        self.assertEqual(1, len(geo))
+        self.assertTrue(geo[0].passed)
+
+    def test_location_country_with_verified_negative_authorization_is_ineligible(self) -> None:
+        # Truth graph has a verified NEGATIVE work_authorization.jurisdiction="Germany".
+        opp = create_test_opportunity(geo_status="unclear", location_country="DE")
+        decision, constraints = self.engine.evaluate(opp, self.truth_graph)
+        self.assertEqual(QualificationDecision.INELIGIBLE, decision)
+        geo = [c for c in constraints if c.constraint_name == "geographic_eligibility"]
+        self.assertEqual(1, len(geo))
+        self.assertFalse(geo[0].passed)
+        self.assertTrue(geo[0].is_hard_failure)
+
+    def test_location_country_unasserted_stays_uncertain_not_ineligible(self) -> None:
+        opp = create_test_opportunity(geo_status="unclear", location_country="FR")
+        decision, constraints = self.engine.evaluate(opp, self.truth_graph)
+        self.assertEqual(QualificationDecision.UNCERTAIN, decision)
+        geo = [c for c in constraints if c.constraint_name == "geographic_eligibility"]
+        self.assertEqual(1, len(geo))
+        self.assertIsNone(geo[0].passed)
+        self.assertFalse(geo[0].is_hard_failure)
+
+    def test_neither_country_nor_remote_scope_falls_back_to_prior_behavior(self) -> None:
+        # No location_country, no remote_scope -> unchanged pre-A1 blanket UNCERTAIN.
+        opp = create_test_opportunity(geo_status="unclear")
+        decision, constraints = self.engine.evaluate(opp, self.truth_graph)
+        self.assertEqual(QualificationDecision.UNCERTAIN, decision)
+        geo = [c for c in constraints if c.constraint_name == "geographic_eligibility"]
+        self.assertEqual(1, len(geo))
+        self.assertIsNone(geo[0].passed)
+        self.assertIn("uncertain", geo[0].reason.casefold())
 
 
 if __name__ == "__main__":

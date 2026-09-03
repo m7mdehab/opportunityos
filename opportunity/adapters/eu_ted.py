@@ -23,6 +23,7 @@ from opportunity.normalization import (
     create_field_provenance,
     derive_geographic_eligibility,
     extract_skills_from_text,
+    extract_work_location,
     parse_iso_date,
 )
 
@@ -124,6 +125,9 @@ class EUTEDAdapter(BaseAdapter):
             desc_derivation = DerivationType.RAW_EXTRACTION if description else DerivationType.UNASSERTED_ABSENT
 
             skills = extract_skills_from_text(f"{title} {description}")
+            # Native mapping first (brief: TED duty station / buyer country). See
+            # ungm.py's identical comment for the rationale.
+            work_loc = extract_work_location(buyer_country, description, native_country=buyer_country)
             geo = derive_geographic_eligibility(
                 title=title,
                 location_raw=buyer_country,
@@ -179,6 +183,13 @@ class EUTEDAdapter(BaseAdapter):
                 description=description,
                 skills=skills,
                 location_raw=buyer_country,
+                work_mode=work_loc.work_mode,
+                work_mode_source=work_loc.work_mode_source,
+                location_country=work_loc.location_country,
+                location_city=work_loc.location_city,
+                location_region=work_loc.location_region,
+                remote_scope=work_loc.remote_scope,
+                remote_scope_regions=work_loc.remote_scope_regions,
                 geographic_eligibility=geo,
                 posted_date=posted_date,
                 closing_date=deadline,
