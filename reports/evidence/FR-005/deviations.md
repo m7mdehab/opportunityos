@@ -178,3 +178,37 @@ Recommended as a real deliverable for the next brief, not a note: `alpha.py` sho
 start without an explicit truth-pack path when it cannot confirm a human is driving it, in
 the same spirit as its `_test` database refusal. The failure mode is identical — a default
 that silently points somewhere it should not.
+
+### 22. An implementer destroyed its own uncommitted work and reconstructed it from memory
+Mid-repair, the D1 implementer ran `git checkout -- truth/validator.py` to revert a
+deliberate guard-9 mutation, and that silently discarded its own uncommitted defect fixes in
+the same file. It caught this immediately, reconstructed the changes, re-ran the narrow suite
+to confirm the reconstruction, switched to backup-file reverts for every subsequent
+neutralisation test, and disclosed all of it unprompted.
+
+Recorded for two reasons. First, because reconstructed-from-memory code deserves more
+scrutiny than code that was merely written once, and the Master therefore re-ran both council
+probes, the neutralisation test and A-10 against the merged result rather than accepting the
+implementer's word — all three confirm the shipped behaviour. Second, because the Master had
+instructed exactly this revert technique earlier in the brief without noticing the hazard: a
+`git checkout` used to undo a test mutation will also undo any uncommitted real work in the
+same file. Backup-and-restore is the correct pattern and is now what both the Master and the
+implementer use.
+
+### 23. D1 removed class (b) rather than narrowing it
+The council's suggested fix was to add a `founder_terms` set so opportunity-provenanced terms
+could never excuse a founder-fact token. The implementer instead deleted the
+`opportunity_terms` parameter outright, moving the employer name and role title into a
+NARRATIVE segment that carries no founder-specific value. This is a larger change than was
+asked for and a better one: there is no admissibility class left to attack, and the
+requirement clause the council found unimplemented ("admissible when the claim cites that
+provenance") no longer has anything to govern. Recorded as a deliberate widening of the
+repair, not silent scope creep — the implementer flagged it.
+
+### 24. The A-8 filter spec failed for the Master on the real stack after the implementer reported it passing
+The implementer reported 3 passed against `playwright.real.config.ts`. The Master got 2
+passed / 1 failed, twice, on a merged branch. Neither party is lying; the databases differed.
+Sent back for diagnosis rather than accepted, on the grounds that a green which does not
+reproduce for a second person is the exact FR-004 defect this brief committed to not
+repeating. If it cannot be made reproducible, A-8's filter half is recorded NOT_CLOSED rather
+than shipped as a pass.
