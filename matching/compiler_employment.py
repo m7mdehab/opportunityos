@@ -31,6 +31,7 @@ from .models import (
     CommitmentStatus,
     ForwardCommitment,
     GeneratedClaim,
+    OmittedItem,
     TailoredArtifact,
     TailoringPolicy,
 )
@@ -130,6 +131,13 @@ class EmploymentArtifactCompiler:
         """
         sections: list[ArtifactSection] = []
         claims: list[GeneratedClaim] = []
+        omitted_items: list = []
+
+        identity = build_identity_block(truth_graph)
+        if identity is not None:
+            sections.append(identity.section.to_artifact_section())
+            claims.extend(identity.section.claims)
+            omitted_items.extend(identity.section.omitted)
 
         title_assertions = [
             a for a in truth_graph.assertions.values()
@@ -270,6 +278,50 @@ class EmploymentArtifactCompiler:
             evidence_ids=alignment_eids,
         ))
 
+        # --- Motivation: founder-authored `approved_phrases` used verbatim
+        # only. If the pack carries none, the letter omits this paragraph
+        # entirely rather than inventing motivation text (work order D1.6).
+        approved_phrases = list(truth_graph.approved_phrases.values())
+        if approved_phrases:
+            motivation_phrases = [p for p in approved_phrases if "motivation" in p.tags] or approved_phrases
+            closing_phrases = [p for p in approved_phrases if "closing" in p.tags]
+            selected_phrases = motivation_phrases[:1] + closing_phrases[:1]
+            motivation_items: list[str] = []
+            motivation_aids: list[str] = []
+            motivation_eids: list[str] = []
+            for phrase in selected_phrases:
+                motivation_items.append(phrase.text)
+                motivation_aids.append(phrase.id)
+                motivation_eids.extend(phrase.evidence_ids)
+                claims.append(GeneratedClaim(
+                    claim_id=f"claim-cover-phrase-{phrase.id}",
+                    text=phrase.text,
+                    section_id="motivation",
+                    assertion_ids=(phrase.id,),
+                    evidence_ids=phrase.evidence_ids,
+                    predicate="approved_phrase.text",
+                    authorized_value=phrase.text,
+                    is_forward_commitment=False,
+                ))
+            unused_phrases = [p for p in approved_phrases if p.id not in {ph.id for ph in selected_phrases}]
+            omitted_items.extend(
+                OmittedItem(
+                    section_id="motivation",
+                    text=p.text,
+                    reason="not the selected motivation/closing phrase for this letter",
+                    claim_id=f"claim-cover-phrase-{p.id}",
+                )
+                for p in unused_phrases
+            )
+            sections.append(ArtifactSection(
+                section_id="motivation",
+                heading="Motivation",
+                content=" ".join(motivation_items),
+                items=tuple(motivation_items),
+                assertion_ids=tuple(motivation_aids),
+                evidence_ids=tuple(sorted(set(motivation_eids))),
+            ))
+
         if self.policy.default_availability_hours_per_week is not None:
             commitments = (
                 ForwardCommitment(
@@ -303,4 +355,5 @@ class EmploymentArtifactCompiler:
             generated_claims=tuple(claims),
             commitment_checklist=commitments,
             compiled_at=compiled_at,
+            omitted_items=tuple(omitted_items),
         )
