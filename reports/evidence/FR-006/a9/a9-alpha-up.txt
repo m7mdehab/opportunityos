@@ -1,0 +1,1 @@
+alpha: a previous `up` session appears to still be running (per state file). Run `python scripts/alpha.py status` for details, or `python scripts/alpha.py down` first if you want to restart.
