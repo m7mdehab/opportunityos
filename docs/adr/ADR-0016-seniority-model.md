@@ -154,9 +154,25 @@ direction, for a real person whose actual titles are what they are.
   `mid-sahara` period into one continuous span) with verified leadership
   evidence from `group-holdings`'s responsibility text ("Led the shared data
   platform serving all group subsidiaries"). Against this table, that meets
-  Mid (24mo) and Junior (0mo) postings, and falls short of Staff (120mo) and
-  Principal (180mo) on tenure alone despite having leadership evidence —
-  which is the acceptance behavior this deliverable's order specifies.
+  Mid (24mo), Junior (0mo), and Senior (60mo) postings, and falls short of
+  Staff (120mo) and Principal (180mo) on tenure alone despite having
+  leadership evidence — which is the acceptance behavior this deliverable's
+  order specifies.
+- **The founder-shaped fixture is not founder-shaped on tenure, and the B1.6
+  acceptance run does not exercise the short-tenure case §0 describes.** The
+  brief's own context names the real founder as having roughly 20 months of
+  tenure ("they do not make a 20-month-tenure founder 'senior' for a
+  Staff/Principal engineering role"), but `founder_shaped_graph()` computes to
+  108 months (9 years) — a deliberately richer synthetic pack, frozen for this
+  deliverable and depended on by other BRIEF-FR-006 work orders, not a stand-in
+  for the real founder's actual tenure. The B1.6 acceptance script's
+  Staff/Principal gap is therefore produced by a 120-month floor against a
+  9-year pack, not by short tenure. The test that actually closes §0's
+  specific defect — a short-tenure founder whose only senior-sounding evidence
+  is a title token — is `matching/test_seniority.py::TestPeopleLeadershipEvidence::test_leadership_in_title_only_does_not_count`,
+  which asserts a "Team Lead" title with no leadership-describing
+  responsibility text does not set `has_people_leadership`, independent of
+  how much tenure the role carries.
 - `matching/scorer.py`'s `seniority_and_experience` explanation now names
   real computed numbers (months professional, months in family, required
   level, gap) instead of a single fixed sentence
