@@ -299,3 +299,17 @@ evidence; the Master applied that rule to implementers' work and not to its own.
 Repaired by regenerating STATE and committing it alone as the branch's final commit, then
 re-running the row. The finding stands regardless of the repair: it was marked PASS without
 being re-run at the head being merged.
+
+### 29. The Master's own gate discipline, corrected by the verifier
+Three of the verifier's findings are the same defect in different places: **the Master
+verified something once, then let later commits invalidate the observation without re-running
+it.** A-5 was recorded PASS six commits before the head being merged; a `responsibility_scope`
+figure was published from before the council repairs; the A-6 path count was stated as 82 and
+was 83 by the time the verifier read it and 84 by the time the branch was finished.
+
+None of these is a code defect and none changes what ships. They matter because the Master
+spent this brief insisting that implementers re-run their acceptance at the head, that a
+council probe be reproduced before it became a finding, and that A-9's rows have their
+provenance bound rather than asserted — and then did not hold its own evidence to the same
+standard. The counts in particular should be derived at the final commit or stated as
+"as of <sha>", never left as a bare number in prose that keeps moving.
