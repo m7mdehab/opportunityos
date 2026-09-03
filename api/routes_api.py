@@ -25,9 +25,11 @@ from opportunity.registry import SourceRegistry
 from outbound.models import ActionStatus, ExecutionMode
 from storage.models import (
     FieldProvenanceRecord,
+    FounderFacetRecord,
     FounderFeedbackRecord,
     FounderFilterSettingRecord,
     FounderOpportunityViewRecord,
+    FounderSavedViewRecord,
     FounderTriageStateRecord,
     MatchEvaluationRecord,
     OpportunityRecord,
@@ -40,6 +42,14 @@ from truth.validator import ClaimValidator
 from worker.queue import BackgroundWorkerQueue
 
 from .deps import get_db, get_repository, require_session
+from .facets import (
+    FACET_DEFINITIONS_BY_ID,
+    FacetSettingsRow,
+    apply_facets,
+    facet_payload,
+    hidden_reasons_audit,
+    unhide_by_reason,
+)
 from .filters import (
     FILTER_DEFINITIONS,
     FILTER_DEFINITIONS_BY_ID,
@@ -52,6 +62,12 @@ from .filters import (
     to_naive_utc,
     unavailable_reason,
     validate_filter_params,
+)
+from .saved_views import (
+    create_saved_view,
+    delete_saved_view,
+    list_saved_views,
+    update_saved_view,
 )
 from .serialization import (
     serialize_constraint,
@@ -274,6 +290,168 @@ def update_filter(
     }
 
 
+# --------------------------------------------------------------------------
+# C1: generic facets
+# --------------------------------------------------------------------------
+
+
+def _load_facet_settings(session: Session) -> dict[str, FacetSettingsRow]:
+    """Every `founder_facets` row, keyed by `facet_id`. A facet with no row
+    at all (every facet, on a fresh database -- migration 0004 seeds no
+    default facet selections, matching "nothing hides by default except the
+    founder's own red lines and excluded industries") is simply absent from
+    this dict; `facets.apply_facets` / `facets.facet_hides` treat that as
+    `include=() exclude=()` -- the "off" state."""
+    rows = session.query(FounderFacetRecord).all()
+    settings: dict[str, FacetSettingsRow] = {}
+    for row in rows:
+        payload = json.loads(row.values_json) if row.values_json else {}
+        settings[row.facet_id] = FacetSettingsRow(
+            include=tuple(payload.get("include") or []),
+            exclude=tuple(payload.get("exclude") or []),
+        )
+    return settings
+
+
+@router.get("/facets")
+def list_facets(request: Request, session: Session = Depends(get_db)):
+    facet_settings = _load_facet_settings(session)
+    filter_settings = _load_filter_settings(session)
+    truth_graph = _truth_graph_from_request(request)
+    opportunities = session.query(OpportunityRecord).all()
+    contexts = build_filter_contexts(session, truth_graph, opportunities)
+    # A facet only ever narrows what the policy filters already show -- the
+    # same base set `GET /api/opportunities` returns without
+    # `include_hidden`, before any facet narrows it further.
+    visible = [ctx for ctx in contexts if not apply_filters(ctx, filter_settings).hidden_by]
+    return {"facets": facet_payload(visible, facet_settings)}
+
+
+class FacetUpdateRequest(BaseModel):
+    include: list[str] | None = None
+    exclude: list[str] | None = None
+
+
+@router.put("/facets/{facet_id}")
+def update_facet(facet_id: str, payload: FacetUpdateRequest, response: Response, session: Session = Depends(get_db)):
+    fd = FACET_DEFINITIONS_BY_ID.get(facet_id)
+    if fd is None:
+        raise HTTPException(status_code=404, detail=f"unknown facet_id: {facet_id!r}")
+    if not fd.available:
+        response.status_code = 422
+        return {"detail": fd.unavailable_reason}
+
+    now = to_naive_utc(datetime.now(timezone.utc))
+    row = session.query(FounderFacetRecord).filter_by(facet_id=facet_id).first()
+    existing = json.loads(row.values_json) if (row is not None and row.values_json) else {}
+    include = payload.include if payload.include is not None else list(existing.get("include") or [])
+    exclude = payload.exclude if payload.exclude is not None else list(existing.get("exclude") or [])
+    mode = "off" if not include and not exclude else "active"
+    values_json = json.dumps({"include": include, "exclude": exclude})
+
+    if row is None:
+        row = FounderFacetRecord(facet_id=facet_id, mode=mode, values_json=values_json, updated_at=now)
+        session.add(row)
+    else:
+        row.mode = mode
+        row.values_json = values_json
+        row.updated_at = now
+    session.commit()
+
+    return {"facet_id": facet_id, "mode": mode, "include": include, "exclude": exclude}
+
+
+# --------------------------------------------------------------------------
+# C1: saved views
+# --------------------------------------------------------------------------
+
+
+@router.get("/saved-views")
+def list_saved_views_route(session: Session = Depends(get_db)):
+    return {"views": list_saved_views(session)}
+
+
+class SavedViewCreateRequest(BaseModel):
+    name: str
+    facets: dict[str, Any] = {}
+    search_query: str | None = None
+    is_default: bool = False
+
+
+@router.post("/saved-views")
+def create_saved_view_route(payload: SavedViewCreateRequest, session: Session = Depends(get_db)):
+    now = to_naive_utc(datetime.now(timezone.utc))
+    return create_saved_view(
+        session,
+        name=payload.name,
+        facets=payload.facets,
+        search_query=payload.search_query,
+        is_default=payload.is_default,
+        now=now,
+    )
+
+
+class SavedViewUpdateRequest(BaseModel):
+    name: str | None = None
+    facets: dict[str, Any] | None = None
+    search_query: str | None = None
+    is_default: bool | None = None
+
+
+@router.put("/saved-views/{view_id}")
+def update_saved_view_route(view_id: str, payload: SavedViewUpdateRequest, session: Session = Depends(get_db)):
+    now = to_naive_utc(datetime.now(timezone.utc))
+    result = update_saved_view(
+        session,
+        view_id,
+        name=payload.name,
+        facets=payload.facets,
+        search_query=payload.search_query,
+        is_default=payload.is_default,
+        now=now,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"unknown saved view: {view_id!r}")
+    return result
+
+
+@router.delete("/saved-views/{view_id}")
+def delete_saved_view_route(view_id: str, session: Session = Depends(get_db)):
+    ok = delete_saved_view(session, view_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"unknown saved view: {view_id!r}")
+    return {"id": view_id, "status": "deleted"}
+
+
+# --------------------------------------------------------------------------
+# C4: hidden-reasons audit
+# --------------------------------------------------------------------------
+
+
+@router.get("/hidden-reasons")
+def hidden_reasons_route(request: Request, session: Session = Depends(get_db)):
+    filter_settings = _load_filter_settings(session)
+    facet_settings = _load_facet_settings(session)
+    truth_graph = _truth_graph_from_request(request)
+    opportunities = session.query(OpportunityRecord).all()
+    contexts = build_filter_contexts(session, truth_graph, opportunities)
+    counts = hidden_reasons_audit(contexts, filter_settings, facet_settings, truth_graph)
+    return {"reasons": [{"reason": reason, "count": count} for reason, count in sorted(counts.items())]}
+
+
+class UnhideByReasonRequest(BaseModel):
+    reason: str
+
+
+@router.post("/hidden-reasons/unhide")
+def unhide_by_reason_route(payload: UnhideByReasonRequest, session: Session = Depends(get_db)):
+    now = to_naive_utc(datetime.now(timezone.utc))
+    ok = unhide_by_reason(session, payload.reason, now)
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"unrecognised reason: {payload.reason!r}")
+    return {"reason": payload.reason, "status": "unhidden"}
+
+
 @router.get("/opportunities")
 def list_opportunities(
     request: Request,
@@ -301,6 +479,7 @@ def list_opportunities(
     opportunities = query.all()
 
     filter_settings = _load_filter_settings(session)
+    facet_settings = _load_facet_settings(session)
     truth_graph = _truth_graph_from_request(request)
     contexts = build_filter_contexts(session, truth_graph, opportunities)
 
@@ -316,7 +495,13 @@ def list_opportunities(
             continue
 
         outcome = apply_filters(ctx, filter_settings)
-        if outcome.hidden_by:
+        # C1 composition point: a facet only ever adds to `hidden_by` --
+        # never touches `decision`/`fit_score`/`flagged_by`/rank order. Facet
+        # hits are namespaced `facet:<facet_id>` so the UI (and the C4 audit)
+        # can tell a policy-filter hit from a facet hit in the same list.
+        facet_outcome = apply_facets(ctx, facet_settings)
+        combined_hidden_by = outcome.hidden_by + [f"facet:{facet_id}" for facet_id in facet_outcome.hidden_by]
+        if combined_hidden_by:
             hidden_count += 1
             if not include_hidden:
                 continue
@@ -337,7 +522,7 @@ def list_opportunities(
                 "is_stale": bool(opp.is_stale),
                 "action_state": _latest_action_state(session, opp.id),
                 "feedback_label": _latest_feedback_label(session, opp.id),
-                "hidden_by": outcome.hidden_by,
+                "hidden_by": combined_hidden_by,
                 "flagged_by": outcome.flagged_by,
                 "_rank_penalty": outcome.rank_penalty,
             }

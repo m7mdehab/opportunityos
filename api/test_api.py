@@ -29,9 +29,11 @@ from storage.engine import get_engine, get_session_factory
 from storage.models import (
     Base,
     FieldProvenanceRecord,
+    FounderFacetRecord,
     FounderFeedbackRecord,
     FounderFilterSettingRecord,
     FounderOpportunityViewRecord,
+    FounderSavedViewRecord,
     FounderTriageStateRecord,
     IdempotencyReservationRecord,
     MatchEvaluationRecord,
@@ -55,7 +57,15 @@ from truth.pack import LoadedPack, PackValidationReport
 from truth.validator import ClaimValidator
 
 from api.app import create_app
-from api.filters import FILTER_DEFINITIONS, FILTER_DEFINITIONS_BY_ID
+from api.facets import FacetSettingsRow, poll_hide_fraction_warnings
+from api.filters import (
+    FILTER_DEFINITIONS,
+    FILTER_DEFINITIONS_BY_ID,
+    OpportunityFilterContext,
+    affected_count as filter_affected_count,
+    build_filter_contexts,
+    to_naive_utc,
+)
 from api.settings import Settings
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -2351,6 +2361,396 @@ class FilterEngineOpportunitiesTest(ApiTestCase):
         self.assertEqual(off_item["hidden_by"], [])
         self.assertEqual(off_item["decision"], decision_on)
         self.assertEqual(off_item["fit_score"], fit_score_on)
+
+
+class FacetsTest(ApiTestCase):
+    """C1 (BRIEF-FR-006): the generic facet engine, saved views, and C4's
+    hidden-reasons audit. `orders/C1-facets.md` acceptance rows C1.2-C1.7."""
+
+    def setUp(self):
+        super().setUp()
+        self.app = self.make_app()
+        self.client = self.logged_in_client(self.app)
+
+    # -- helpers ---------------------------------------------------------
+
+    def _seed_opp(self, opp_id: str, **attrs) -> OpportunityRecord:
+        defaults = dict(
+            track=attrs.pop("track", "employment"),
+            title=attrs.pop("title", f"Title {opp_id}"),
+            organization=attrs.pop("organization", f"Org {opp_id}"),
+            description=attrs.pop("description", "A synthetic opportunity for facet tests."),
+            source_id=attrs.pop("source_id", "himalayas"),
+            source_url=f"https://himalayas.app/jobs/{opp_id}",
+            content_hash=f"hash-{opp_id}",
+            posted_date=attrs.pop("posted_date", None),
+            created_at=attrs.pop("created_at", datetime.now(timezone.utc)),
+        )
+        defaults.update(attrs)
+        record = OpportunityRecord(id=opp_id, **defaults)
+        self.session.add(record)
+        self.session.commit()
+        return record
+
+    def _disable_all_filters(self):
+        for fd in FILTER_DEFINITIONS:
+            resp = self.client.put(f"/api/filters/{fd.filter_id}", json={"enabled": False})
+            self.assertEqual(resp.status_code, 200, resp.text)
+
+    def _set_facet(self, facet_id: str, *, include=None, exclude=None):
+        payload: dict = {}
+        if include is not None:
+            payload["include"] = include
+        if exclude is not None:
+            payload["exclude"] = exclude
+        resp = self.client.put(f"/api/facets/{facet_id}", json=payload)
+        self.assertEqual(resp.status_code, 200, resp.text)
+        return resp.json()
+
+    def _default_visible_ids(self) -> set[str]:
+        resp = self.client.get("/api/opportunities")
+        self.assertEqual(resp.status_code, 200, resp.text)
+        return {item["id"] for item in resp.json()["items"]}
+
+    # -- C1.2: all-off include_hidden equals SELECT count(*) --------------
+
+    def test_all_off_include_hidden_equals_table_count(self):
+        self._disable_all_filters()
+        for i in range(5):
+            self._seed_opp(f"opp-alloff-{i}")
+            self.seed_evaluation(f"opp-alloff-{i}", decision="qualified", fit_score=float(50 + i))
+
+        resp = self.client.get("/api/opportunities", params={"include_hidden": True})
+        self.assertEqual(resp.status_code, 200, resp.text)
+        api_total = resp.json()["total"]
+        raw_count = self.session.execute(text("SELECT count(*) FROM opportunities")).scalar()
+        print(f"C1.2: include_hidden total={api_total}  SELECT count(*) FROM opportunities={raw_count}")
+        self.assertEqual(api_total, raw_count)
+
+    # -- C1.3: every facet, include and exclude, through the API ----------
+
+    def test_every_facet_include_and_exclude_through_the_api(self):
+        now = datetime.now(timezone.utc)
+        self._seed_opp(
+            "opp-a", work_mode="remote", location_country="US", location_city="Austin",
+            remote_scope="global", employment_type="fulltime", seniority_level="senior",
+            title_family="engineering", track="employment", source_id="himalayas",
+            organization="Acme A", posted_date=now.date().isoformat(),
+        )
+        self.seed_evaluation("opp-a", decision="qualified", fit_score=90.0)
+        self.seed_compensation("opp-a", min_amount=100000, max_amount=120000, currency="USD")
+
+        self._seed_opp(
+            "opp-b", work_mode="onsite", location_country="EG", location_city="Cairo",
+            remote_scope="unspecified", employment_type="contract", seniority_level="junior",
+            title_family="design", track="procurement", source_id="remotive",
+            organization="Acme B", posted_date=(now - timedelta(days=120)).date().isoformat(),
+        )
+        self.seed_evaluation("opp-b", decision="ineligible", fit_score=20.0)
+        # opp-b has no seeded compensation -> compensation_stated bucket "no".
+
+        checks = [
+            ("work_mode", "remote", "onsite"),
+            ("location_country", "US", "EG"),
+            ("location_city", "Austin", "Cairo"),
+            ("remote_scope", "global", "unspecified"),
+            ("employment_type", "fulltime", "contract"),
+            ("seniority_level", "senior", "junior"),
+            ("title_family", "engineering", "design"),
+            ("track", "employment", "procurement"),
+            ("source_id", "himalayas", "remotive"),
+            ("employer", "Acme A", "Acme B"),
+            ("posted_within", "last_24h", "older"),
+            ("compensation_stated", "yes", "no"),
+            ("decision", "qualified", "ineligible"),
+            ("fit_score", "75-100", "0-25"),
+        ]
+
+        table_rows: list[tuple[str, int, int]] = []
+        for facet_id, value_a, value_b in checks:
+            self._set_facet(facet_id, include=[], exclude=[])
+
+            self._set_facet(facet_id, include=[value_a])
+            visible_include = self._default_visible_ids()
+            self.assertIn("opp-a", visible_include)
+            self.assertNotIn("opp-b", visible_include)
+
+            self._set_facet(facet_id, include=[], exclude=[value_b])
+            visible_exclude = self._default_visible_ids()
+            self.assertIn("opp-a", visible_exclude)
+            self.assertNotIn("opp-b", visible_exclude)
+
+            self._set_facet(facet_id, include=[], exclude=[])
+            table_rows.append((facet_id, len(visible_include), len(visible_exclude)))
+
+        print("facet_id | include_result_count | exclude_result_count")
+        for facet_id, include_count, exclude_count in table_rows:
+            print(f"{facet_id} | {include_count} | {exclude_count}")
+        self.assertEqual(len(table_rows), len(checks))
+
+        # language: declared per the brief, but has no persisted data source
+        # (see api/facets.py::_LANGUAGE_UNAVAILABLE_REASON) -- the API must
+        # refuse to accept an include/exclude selection for it rather than
+        # silently accepting one that can never match anything.
+        resp = self.client.put("/api/facets/language", json={"include": ["en"]})
+        self.assertEqual(resp.status_code, 422, resp.text)
+        print(f"language | n/a (unavailable: {resp.json()['detail']})")
+
+    # -- C1.4: a facet never changes decision or fit_score -----------------
+
+    def test_no_re_judgement_under_every_facet_exclusion(self):
+        now = datetime.now(timezone.utc)
+        self._seed_opp(
+            "opp-target", work_mode="remote", location_country="US", location_city="Austin",
+            remote_scope="global", employment_type="fulltime", seniority_level="senior",
+            title_family="engineering", track="employment", source_id="himalayas",
+            organization="Acme A", posted_date=now.date().isoformat(),
+        )
+        self.seed_evaluation("opp-target", decision="qualified", fit_score=88.0)
+        self.seed_compensation("opp-target", min_amount=100000, max_amount=120000, currency="USD")
+
+        before = self.client.get("/api/opportunities", params={"include_hidden": True}).json()
+        before_item = next(i for i in before["items"] if i["id"] == "opp-target")
+        decision_before, fit_score_before = before_item["decision"], before_item["fit_score"]
+
+        values_by_facet = {
+            "work_mode": "remote", "location_country": "US", "location_city": "Austin",
+            "remote_scope": "global", "employment_type": "fulltime", "seniority_level": "senior",
+            "title_family": "engineering", "track": "employment", "source_id": "himalayas",
+            "employer": "Acme A", "posted_within": "last_24h", "compensation_stated": "yes",
+            "decision": "qualified", "fit_score": "75-100",
+        }
+        for facet_id, value in values_by_facet.items():
+            self._set_facet(facet_id, include=[], exclude=[value])
+            resp = self.client.get("/api/opportunities", params={"include_hidden": True})
+            item = next(i for i in resp.json()["items"] if i["id"] == "opp-target")
+            self.assertIn(f"facet:{facet_id}", item["hidden_by"])
+            self.assertEqual(item["decision"], decision_before)
+            self.assertEqual(item["fit_score"], fit_score_before)
+            self._set_facet(facet_id, include=[], exclude=[])
+
+        print(
+            f"C1.4: decision={decision_before!r} fit_score={fit_score_before!r} "
+            f"unchanged across {len(values_by_facet)} facet exclusions"
+        )
+
+    # -- C1.5: defaults -- only red-line and excluded-industry hits hidden -
+
+    def test_defaults_only_red_line_and_excluded_industry_hidden(self):
+        _install_truth_graph(self.app, _graph_with_red_line_and_excluded_industry())
+        self._seed_opp("opp-redline", description="We guarantee placement for every candidate within 30 days.")
+        self.seed_evaluation("opp-redline", decision="qualified", fit_score=80.0)
+        self._seed_opp("opp-industry", description="A role at a Gambling company.")
+        self.seed_evaluation("opp-industry", decision="qualified", fit_score=70.0)
+        self._seed_opp("opp-clean")
+        self.seed_evaluation("opp-clean", decision="qualified", fit_score=60.0)
+
+        resp = self.client.get("/api/opportunities", params={"include_hidden": True})
+        self.assertEqual(resp.status_code, 200, resp.text)
+        body = resp.json()
+        hidden_ids = {item["id"] for item in body["items"] if item["hidden_by"]}
+        print(f"C1.5: hidden_ids={sorted(hidden_ids)} hidden_count={body['hidden_count']}")
+        self.assertEqual(hidden_ids, {"opp-redline", "opp-industry"})
+        self.assertEqual(body["hidden_count"], 2)
+
+    # -- C1.6: saved-view round trip through a fresh session ---------------
+
+    def test_saved_view_round_trip_survives_fresh_session(self):
+        resp = self.client.post(
+            "/api/saved-views",
+            json={
+                "name": "Remote data eng, EU/US, last 7 days",
+                "facets": {
+                    "work_mode": {"include": ["remote"], "exclude": []},
+                    "posted_within": {"include": ["last_7d"], "exclude": []},
+                },
+                "search_query": "data engineer",
+                "is_default": True,
+            },
+        )
+        self.assertEqual(resp.status_code, 200, resp.text)
+        created = resp.json()
+
+        # A genuinely fresh session, not self.session and not a cached
+        # Python object -- the round-trip claim this order requires.
+        fresh_session = self.session_factory()
+        try:
+            row = fresh_session.query(FounderSavedViewRecord).filter_by(id=created["id"]).first()
+            self.assertIsNotNone(row)
+            self.assertEqual(row.name, created["name"])
+            self.assertEqual(json.loads(row.facets_json), created["facets"])
+            self.assertEqual(row.search_query, created["search_query"])
+            self.assertTrue(bool(row.is_default))
+        finally:
+            fresh_session.close()
+
+        resp2 = self.client.get("/api/saved-views")
+        self.assertEqual(resp2.status_code, 200, resp2.text)
+        views = resp2.json()["views"]
+        self.assertEqual(len(views), 1)
+        self.assertEqual(views[0]["id"], created["id"])
+        self.assertTrue(views[0]["is_default"])
+        print(
+            f"C1.6: saved view {created['id']!r} round-tripped through a fresh session; "
+            f"is_default={views[0]['is_default']}"
+        )
+
+    # -- C1.7: hidden-reasons audit + unhide-all-by-reason ------------------
+
+    def test_hidden_reasons_audit_and_unhide_by_reason(self):
+        _install_truth_graph(self.app, _graph_with_red_line_and_excluded_industry())
+        self._seed_opp("opp-redline", description="We guarantee placement for every candidate within 30 days.")
+        self.seed_evaluation("opp-redline", decision="qualified", fit_score=80.0)
+        self._seed_opp("opp-industry", description="A role at a Gambling company.")
+        self.seed_evaluation("opp-industry", decision="qualified", fit_score=70.0)
+        self._seed_opp("opp-facet-hidden", work_mode="onsite")
+        self.seed_evaluation("opp-facet-hidden", decision="qualified", fit_score=65.0)
+        self._set_facet("work_mode", include=[], exclude=["onsite"])
+        self._seed_opp("opp-clean")
+        self.seed_evaluation("opp-clean", decision="qualified", fit_score=60.0)
+
+        resp = self.client.get("/api/hidden-reasons")
+        self.assertEqual(resp.status_code, 200, resp.text)
+        reasons = resp.json()["reasons"]
+        print("reason | count")
+        for entry in reasons:
+            print(f"{entry['reason']} | {entry['count']}")
+        reason_map = {entry["reason"]: entry["count"] for entry in reasons}
+        self.assertEqual(reason_map.get("facet: work_mode"), 1)
+        self.assertIn("red line: Never imply guaranteed employment outcomes.", reason_map)
+        self.assertIn("excluded industry: Gambling", reason_map)
+
+        before_visible = self._default_visible_ids()
+        self.assertNotIn("opp-facet-hidden", before_visible)
+
+        unhide_resp = self.client.post("/api/hidden-reasons/unhide", json={"reason": "facet: work_mode"})
+        self.assertEqual(unhide_resp.status_code, 200, unhide_resp.text)
+
+        after_visible = self._default_visible_ids()
+        self.assertIn("opp-facet-hidden", after_visible)
+        # "nothing else" -- the red-line/excluded-industry hits are untouched
+        # by an unhide targeted at a different reason.
+        self.assertNotIn("opp-redline", after_visible)
+        self.assertNotIn("opp-industry", after_visible)
+        print(
+            f"C1.7: unhide-all-by-reason('facet: work_mode') changed visible set "
+            f"from {sorted(before_visible)} to {sorted(after_visible)}"
+        )
+
+
+class PollHideFractionWarningTest(unittest.TestCase):
+    """C4: 'any facet or red line hiding more than 10% of new rows in a poll
+    triggers a visible warning.' A pure-function test against
+    `api.facets.poll_hide_fraction_warnings` -- no HTTP layer, no database
+    needed, since the warning is a deterministic function of
+    (poll_inserted, contexts, settings). Constructs exactly a >10% case and
+    exactly a 9% case (acceptance row C1.8)."""
+
+    @staticmethod
+    def _ctx(opp_id: str, work_mode: str) -> OpportunityFilterContext:
+        opp = OpportunityRecord(
+            id=opp_id, track="employment", title="t", organization="o", description="d",
+            source_id="s", source_url="u", content_hash="h", work_mode=work_mode,
+        )
+        return OpportunityFilterContext(
+            opp=opp, decision=None, fit_score=None, reasons=[], evaluation_detail={},
+            dimension_scores=[], compensation_min=None, compensation_max=None,
+            compensation_currency=None, truth_graph=None,
+        )
+
+    def test_over_10_percent_warns_9_percent_does_not(self):
+        facet_settings = {"work_mode": FacetSettingsRow(include=(), exclude=("onsite",))}
+
+        # Scenario A: 10 new rows, 2 onsite -> 20% > 10% -> warns.
+        contexts_a = [self._ctx(f"a{i}", "onsite" if i < 2 else "remote") for i in range(10)]
+        warnings_a = poll_hide_fraction_warnings(10, contexts_a, {}, facet_settings)
+        print(f"C1.8 (>10% case): 2/10 onsite hidden by facet:work_mode -> warnings={warnings_a}")
+        self.assertTrue(any(w["cause"] == "facet: work_mode" for w in warnings_a))
+
+        # Scenario B: 100 new rows, 9 onsite -> exactly 9% -> no warning.
+        contexts_b = [self._ctx(f"b{i}", "onsite" if i < 9 else "remote") for i in range(100)]
+        warnings_b = poll_hide_fraction_warnings(100, contexts_b, {}, facet_settings)
+        print(f"C1.8 (9% case): 9/100 onsite hidden by facet:work_mode -> warnings={warnings_b}")
+        self.assertFalse(any(w["cause"] == "facet: work_mode" for w in warnings_b))
+
+
+class B4ExerciseTest(ApiTestCase):
+    """B4: exercise `track_preference`, `premium_fulltime_onsite`, and
+    `stale_postings` against a founder-shaped fixture corpus and print each
+    affected count (acceptance row C1.9)."""
+
+    def setUp(self):
+        super().setUp()
+        self.app = self.make_app()
+        self.client = self.logged_in_client(self.app)
+
+    def test_b4_affected_counts_on_fixture_corpus(self):
+        graph = _graph_with_founder_preferences(preferred_track="employment", premium_threshold="8000")
+        _install_truth_graph(self.app, graph)
+
+        # track_preference: founder prefers "employment" -- 3 aligned rows,
+        # 2 misaligned ("procurement") rows.
+        for i in range(3):
+            self.seed_opportunity(f"opp-emp-{i}", track="employment")
+            self.seed_evaluation(f"opp-emp-{i}", decision="qualified", fit_score=60.0)
+        for i in range(2):
+            self.seed_opportunity(f"opp-proc-{i}", track="procurement")
+            self.seed_evaluation(f"opp-proc-{i}", decision="qualified", fit_score=55.0)
+
+        # premium_fulltime_onsite: one row carries the scorer's code-owned
+        # `premium_shortfall` signal tag on `compensation_fit`, one does not.
+        self.seed_opportunity("opp-premium-shortfall")
+        self.seed_evaluation(
+            "opp-premium-shortfall", decision="qualified", fit_score=50.0,
+            dimension_scores=[{
+                "dimension_name": "compensation_fit", "raw_score": 0.2, "weight": 0.15,
+                "weighted_score": 0.03, "explanation": "below premium threshold",
+                "signal_tags": ["premium_shortfall"],
+            }],
+        )
+        self.seed_opportunity("opp-premium-ok")
+        self.seed_evaluation(
+            "opp-premium-ok", decision="qualified", fit_score=80.0,
+            dimension_scores=[{
+                "dimension_name": "compensation_fit", "raw_score": 0.9, "weight": 0.15,
+                "weighted_score": 0.135, "explanation": "meets premium threshold",
+                "signal_tags": [],
+            }],
+        )
+
+        opportunities = self.session.query(OpportunityRecord).all()
+        contexts = build_filter_contexts(self.session, graph, opportunities)
+
+        track_pref_fd = FILTER_DEFINITIONS_BY_ID["track_preference"]
+        premium_fd = FILTER_DEFINITIONS_BY_ID["premium_fulltime_onsite"]
+        stale_fd = FILTER_DEFINITIONS_BY_ID["stale_postings"]
+
+        track_pref_count = filter_affected_count(track_pref_fd, {}, contexts)
+        premium_count = filter_affected_count(premium_fd, {}, contexts)
+        stale_count = filter_affected_count(stale_fd, {}, contexts)
+        stale_query_count = self.session.query(OpportunityRecord).filter(OpportunityRecord.is_stale.is_(True)).count()
+
+        print(
+            f"B4 track_preference affected_count={track_pref_count} "
+            f"(query: opp.track.casefold() != founder's preferred track 'employment', "
+            f"over {len(contexts)} rows -- api/filters.py::_track_preference_matches)"
+        )
+        print(
+            f"B4 premium_fulltime_onsite affected_count={premium_count} "
+            f"(query: compensation_fit dimension's signal_tags contains 'premium_shortfall', "
+            f"over {len(contexts)} rows -- api/filters.py::_premium_fulltime_onsite_matches)"
+        )
+        print(
+            f"B4 stale_postings affected_count={stale_count} "
+            f"(query: SELECT count(*) FROM opportunities WHERE is_stale = true -> {stale_query_count}; "
+            f"zero is correct -- nothing in opportunity/persistence.py or any worker handler ever "
+            f"writes is_stale=True; see api/filters.py::_STALE_POSTINGS_UNAVAILABLE_REASON)"
+        )
+
+        self.assertEqual(track_pref_count, 2)
+        self.assertEqual(premium_count, 1)
+        self.assertEqual(stale_count, 0)
+        self.assertEqual(stale_query_count, 0)
 
 
 if __name__ == "__main__":

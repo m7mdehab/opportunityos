@@ -15,6 +15,8 @@ from storage.models import (
     ReconciliationRecordModel,
     WorkerJobRecord,
     FounderFeedbackRecord,
+    FounderFacetRecord,
+    FounderSavedViewRecord,
 )
 
 
@@ -136,3 +138,45 @@ class StorageRepository:
 
     def list_feedback_for_opportunity(self, opp_id: str) -> List[FounderFeedbackRecord]:
         return self.session.query(FounderFeedbackRecord).filter_by(opportunity_id=opp_id).all()
+
+    # C1 (BRIEF-FR-006) -- Facet Operations
+    # `api/routes_api.py` queries `founder_facets`/`founder_saved_views`
+    # directly (matching every other route in that module's own convention
+    # for `founder_filter_settings`); these thin wrappers exist so
+    # `storage/test_postgres_integration.py` can exercise persistence and
+    # round-tripping without going through the HTTP layer at all.
+    def get_facet(self, facet_id: str) -> Optional[FounderFacetRecord]:
+        return self.session.query(FounderFacetRecord).filter_by(facet_id=facet_id).first()
+
+    def list_facets(self) -> List[FounderFacetRecord]:
+        return self.session.query(FounderFacetRecord).all()
+
+    def upsert_facet(self, facet_id: str, mode: str, values_json: Optional[str], updated_at: datetime) -> FounderFacetRecord:
+        row = self.get_facet(facet_id)
+        if row is None:
+            row = FounderFacetRecord(facet_id=facet_id, mode=mode, values_json=values_json, updated_at=updated_at)
+            self.session.add(row)
+        else:
+            row.mode = mode
+            row.values_json = values_json
+            row.updated_at = updated_at
+        self.session.commit()
+        return row
+
+    # C1 (BRIEF-FR-006) -- Saved View Operations
+    def list_saved_views(self) -> List[FounderSavedViewRecord]:
+        return self.session.query(FounderSavedViewRecord).order_by(FounderSavedViewRecord.name.asc()).all()
+
+    def get_saved_view(self, view_id: str) -> Optional[FounderSavedViewRecord]:
+        return self.session.query(FounderSavedViewRecord).filter_by(id=view_id).first()
+
+    def get_default_saved_view(self) -> Optional[FounderSavedViewRecord]:
+        return self.session.query(FounderSavedViewRecord).filter_by(is_default=True).first()
+
+    def delete_saved_view(self, view_id: str) -> bool:
+        row = self.get_saved_view(view_id)
+        if row is None:
+            return False
+        self.session.delete(row)
+        self.session.commit()
+        return True
