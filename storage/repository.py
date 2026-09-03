@@ -2,6 +2,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from storage.models import (
     OpportunityRecord,
@@ -19,6 +20,98 @@ from storage.models import (
     FounderSavedViewRecord,
     OpportunityFamilyRecord,
 )
+
+
+# BRIEF-FR-006 C2: `search_tsv` document definition, shared verbatim between
+# the per-row population below (`_refresh_search_tsv`, called at the end of
+# every `save_opportunity`) and the idempotent batch backfill
+# (`backfill_search_tsv`). Both are the *same* UPDATE body -- one scoped to a
+# single `id`, the other to every row (or every row still missing a value) --
+# so a row written by either path can never end up indexed against a
+# different document shape than a row written by the other. Source columns:
+# title, organization ("employer"), description, and location (no single
+# "location" column exists on `opportunities` -- `location_country`,
+# `location_city`, `location_region` are concatenated instead). `requirements`
+# is included via a correlated subquery over `field_provenances` for any row
+# where `field_name = 'requirements'` -- no current adapter populates that
+# field (BRIEF-FR-006 C2 assumption, named in the work order return), so this
+# is presently a no-op, but a row written by a future adapter that does
+# populate it becomes searchable on it with no further change here.
+# `concat_ws`/`string_agg` both silently skip NULL inputs, so a row missing
+# any of these fields still gets a valid (possibly shorter) document rather
+# than a NULL search_tsv.
+_SEARCH_TSV_UPDATE_SQL = """
+UPDATE opportunities o
+SET search_tsv = to_tsvector(
+    'english',
+    concat_ws(
+        ' ',
+        o.title,
+        o.organization,
+        o.description,
+        o.location_country,
+        o.location_city,
+        o.location_region,
+        (
+            SELECT string_agg(fp.normalized_value, ' ')
+            FROM field_provenances fp
+            WHERE fp.opportunity_id = o.id AND fp.field_name = 'requirements'
+        )
+    )
+)
+"""
+
+
+def _is_postgres(session: Session) -> bool:
+    bind = session.get_bind()
+    return bind is not None and bind.dialect.name == "postgresql"
+
+
+def backfill_search_tsv(session: Session, *, only_missing: bool = True) -> int:
+    """Idempotent batch (re)population of `search_tsv` for existing rows.
+
+    A no-op (returns 0) against a non-PostgreSQL bind (e.g. SQLite in
+    matching-suite tests that build `Base.metadata` directly): `search_tsv`
+    is a plain TEXT column there with no `to_tsvector` function to call --
+    see the column comment in `storage/models.py`.
+
+    `only_missing=True` (the default) only (re)writes rows where
+    `search_tsv IS NULL`, which is both the common backfill case (rows
+    written before this column existed) and safely re-runnable: running it
+    twice in a row touches zero rows the second time. Pass
+    `only_missing=False` to force a full reindex of every row (e.g. after
+    changing the document definition above).
+    """
+    if not _is_postgres(session):
+        return 0
+    sql = _SEARCH_TSV_UPDATE_SQL
+    if only_missing:
+        sql += " WHERE o.search_tsv IS NULL"
+    result = session.execute(text(sql))
+    session.commit()
+    return result.rowcount or 0
+
+
+def _refresh_search_tsv(session: Session, opportunity_id: str) -> None:
+    """Populate/refresh `search_tsv` for exactly one row, right after it
+    (and its `field_provenances` children) have been committed. Called from
+    `StorageRepository.save_opportunity` on every insert and every update --
+    application-side, not a trigger or a generated column, because
+    migration `0004_founder_control` (frozen for this work order) already
+    added `search_tsv` as a plain nullable `TSVECTOR` column rather than a
+    `GENERATED ALWAYS AS (...) STORED` column, and adding a database trigger
+    outside of a migration would not be reproducible across environments.
+    Application-side population at this single call site is also where
+    every current write path already funnels through: `save_opportunity` is
+    the only method that writes an `OpportunityRecord`, so a row written by
+    any path (initial ingestion, re-ingestion/update) ends up indexed here;
+    the batch path above (`backfill_search_tsv`) exists only to catch rows
+    written before this code existed.
+    """
+    if not _is_postgres(session):
+        return
+    session.execute(text(_SEARCH_TSV_UPDATE_SQL + " WHERE o.id = :id"), {"id": opportunity_id})
+    session.commit()
 
 
 class StorageRepository:
@@ -97,6 +190,12 @@ class StorageRepository:
 
         self.session.merge(record)
         self.session.commit()
+
+        # BRIEF-FR-006 C2: keep search_tsv current for every write path that
+        # goes through this method -- see `_refresh_search_tsv` for why this
+        # is application-side rather than a trigger/generated column.
+        _refresh_search_tsv(self.session, opp_data["id"])
+
         return record
 
     def get_opportunity(self, opportunity_id: str) -> Optional[OpportunityRecord]:
