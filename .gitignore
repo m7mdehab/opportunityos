@@ -27,7 +27,7 @@ private/*
 *.egg-info/
 
 # Discovery runtime cache (resumable sweep progress; not evidence, not a seed)
-opportunity/discovery/.progress.json
+opportunity/discovery/.progress*.json
 
 # Agent worktrees (harness-managed, never tracked)
 .claude/worktrees/
