@@ -6,6 +6,7 @@ import unittest
 from opportunity.adapters import (
     EUTEDAdapter,
     GreenhouseAdapter,
+    HackerNewsWhoIsHiringAdapter,
     HimalayasAdapter,
     LeverAdapter,
     RemoteOKAdapter,
@@ -171,6 +172,45 @@ class AdapterTests(unittest.TestCase):
         self.assertIn("Modernization", opp.title)
         self.assertIsNotNone(opp.procurement_metadata)
         self.assertIn("72000000", opp.procurement_metadata.cpv_codes)  # type: ignore
+
+    def test_hacker_news_who_is_hiring_adapter(self):
+        # Inline fixture (not opportunity/fixtures/**, which A1 owns this wave): a minimal,
+        # already-assembled Hacker News Firebase payload matching HackerNewsWhoIsHiringAdapter's
+        # documented PAYLOAD SHAPE (see opportunity/adapters/hacker_news.py).
+        payload = json.dumps({
+            "thread_id": 99999999,
+            "thread_title": "Ask HN: Who is hiring? (September 2026)",
+            "comments": [
+                {
+                    "id": 111111,
+                    "by": "hn_recruiter",
+                    "time": 1767225600,
+                    "text": (
+                        "NimbusData | Remote (Worldwide) | Full-time | $140k-$180k<p>"
+                        "We are hiring a Senior Machine Learning Engineer to build our "
+                        "recommendation platform. Python, PyTorch, Kubernetes required."
+                    ),
+                },
+                {
+                    "id": 222222,
+                    "by": "another_recruiter",
+                    "time": 1767225700,
+                    "text": "",  # empty text should be skipped, not raise
+                },
+            ],
+        })
+        adapter = HackerNewsWhoIsHiringAdapter()
+        result = adapter.parse_payload(payload, raw_pointer="fixture:hn", fetched_at="2026-09-03")
+
+        self.assertEqual(2, result.records_raw_count)
+        opportunities = result.opportunities
+        self.assertEqual(1, len(opportunities))
+        opp = opportunities[0]
+        self.assertEqual("hacker_news_who_is_hiring", opp.source)
+        self.assertEqual("NimbusData", opp.organization)
+        self.assertIn("NimbusData", opp.title)
+        self.assertEqual("https://news.ycombinator.com/item?id=111111", opp.source_url)
+        self.assertIn("Python", opp.description)
 
 
 if __name__ == "__main__":

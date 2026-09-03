@@ -247,7 +247,7 @@ sources:
     name: "freelancer"
     category: independent
     access:
-      discovery: public_get
+      discovery: credential_gated
       detail: public_get_or_unknown
       submit: prohibited_or_unknown
     attribution:
@@ -257,19 +257,20 @@ sources:
     commercial_use:
       status: review_required
     automation:
-      read: allowed
+      read: disabled
       prepare: disabled
       submit: disabled
-    policy_status: unknown_disable_actions
+    policy_status: manual_only
     observed:
       status: parse_empty
-      detail: "HTTP 200 parsed zero records"
+      detail: "2026-09-03 BRIEF-FR-006 E23 correction: prior HTTP 200/zero-records read from /api/projects/0.1/projects/active/ was an unauthenticated probe of a documented partner/OAuth-only endpoint. Per the brief ('Freelancer stays credential-gated'), automation.read is corrected to disabled; no adapter is bound. robots.txt (checked 2026-09-03) blocks JoobleBot/PetalBot explicitly and allows generic crawl, but the API itself requires an OAuth application key AGENTS.md forbids obtaining without founder credentials."
       request_metadata: "method=GET; endpoint=/api/projects/0.1/projects/active/"
       latency_ms: 733
       record_count: 0
-    last_policy_reviewed: 2026-08-28
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://www.freelancer.com/about/terms
+      - https://www.freelancer.com/robots.txt
   - source_id: etimad
     name: "etimad"
     category: independent
@@ -992,10 +993,10 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt fetched (HTTP 200); it explicitly states automated access without LinkedIn's express permission is strictly prohibited. Registered manual_only; alert-mailbox route (FR-004 inbox adapter) available but unconfigured (founder has not provided a mailbox); deep link provided in opportunity/manual_sources.py."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
   - source_id: indeed
@@ -1018,10 +1019,10 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt fetched (HTTP 200); permits generic SEO crawling but documents no public job-data API. Registered manual_only; alert-mailbox route available but unconfigured; deep link provided in opportunity/manual_sources.py."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
   - source_id: glassdoor
@@ -1070,10 +1071,10 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt fetched (HTTP 200); uses Content-Signal directives (not classic Disallow) with no documented public jobs API. Alert-mailbox route (FR-004 inbox adapter) already built but unconfigured (no founder mailbox); deep link provided in opportunity/manual_sources.py."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
   - source_id: bayt
@@ -1096,10 +1097,10 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt fetched (HTTP 200); explicitly disallows named bots (008, LinkedInBot, IndexBot). Alert-mailbox route already built but unconfigured; deep link provided in opportunity/manual_sources.py."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
   - source_id: naukrigulf
@@ -1122,10 +1123,10 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt fetch timed out on two attempts (consistent with anti-bot mitigation against a non-browser user agent); not retried a third time in this session. Alert-mailbox route already built but unconfigured; deep link provided in opportunity/manual_sources.py."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
   - source_id: gulftalent
@@ -1148,10 +1149,10 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt fetched (HTTP 200); explicitly disallows named bots (008, JobdiggerSpider). Alert-mailbox route already built but unconfigured; deep link provided in opportunity/manual_sources.py."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
   - source_id: upwork
@@ -1174,10 +1175,10 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt request itself returned HTTP 403 (not the API -- the host blocks non-browser access outright), confirming the brief's note that the API is partner-only. Not retried. RSS search feeds named in the brief could not be safely reconned without a second request to an already-blocking host."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
   - source_id: mostaql
@@ -1200,10 +1201,10 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt fetched (HTTP 200); disallows /search* and /ajax/ but not general browsing. No documented public JSON/RSS projects API found within recon budget. Deep link with founder's search prefilled provided in opportunity/manual_sources.py."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
   - source_id: khamsat
@@ -1226,10 +1227,10 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt fetched (HTTP 200); allows general browsing with several dynamic-query disallows. No documented public API found. Deep link provided in opportunity/manual_sources.py."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
   - source_id: ureed
@@ -1278,10 +1279,10 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt fetched (HTTP 200 on retry after a transient local TLS-store error); uses Content-Signal directives (ai-train=no, search=yes). No documented public gigs API found. Deep link provided in opportunity/manual_sources.py."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
   - source_id: guru
@@ -1356,10 +1357,10 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt fetched (HTTP 200). Per brief, Toptal is application-based with no browsable open-project feed for unaccepted applicants. Deep link provided in opportunity/manual_sources.py."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
   - source_id: wellfound
@@ -1382,9 +1383,611 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt fetched (HTTP 200; partial disallow on job/session query paths). Per brief, alerts route if API forbids -- job data requires an authenticated account. Alert route available but unconfigured; deep link provided in opportunity/manual_sources.py."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
+  - source_id: hacker_news_who_is_hiring
+    name: "hacker_news_who_is_hiring"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: read_allowed
+    observed:
+      status: allowed_ok
+      detail: "2026-09-03 recon: robots.txt Allow: /*.json$ for all user agents; GET /v0/item/1.json returned HTTP 200. Public Firebase mirror, no auth. Adapter: opportunity/adapters/hacker_news.py (HackerNewsWhoIsHiringAdapter). Multi-step thread discovery is documented in that module as a fetch-orchestration seam for the Master to wire into worker/handlers.py."
+      request_metadata: "method=GET; endpoint=/v0/item/1.json"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://github.com/HackerNews/API
+      - https://hacker-news.firebaseio.com/robots.txt
+  - source_id: reddit_forhire
+    name: "reddit_forhire"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: http_403
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200) but the public JSON endpoint (https://www.reddit.com/r/forhire.json) returned HTTP 403 on the first request (confirmed directly via r/forhire; generalized to this subreddit, which shares the same host, endpoint pattern, and anti-bot policy, to avoid a second request against an already-blocking host). AGENTS.md 403-stop rule observed; not retried. No browser automation used per brief Appendix 6."
+      request_metadata: "method=GET; endpoint=/r/forhire.json"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.redditinc.com/policies/reddit-rules
+      - https://www.reddit.com/robots.txt
+  - source_id: reddit_remotejobs
+    name: "reddit_remotejobs"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: http_403
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200) but the public JSON endpoint (https://www.reddit.com/r/remotejobs.json) returned HTTP 403 on the first request (confirmed directly via r/forhire; generalized to this subreddit, which shares the same host, endpoint pattern, and anti-bot policy, to avoid a second request against an already-blocking host). AGENTS.md 403-stop rule observed; not retried. No browser automation used per brief Appendix 6."
+      request_metadata: "method=GET; endpoint=/robots.txt (subreddit JSON not independently requested)"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.redditinc.com/policies/reddit-rules
+      - https://www.reddit.com/robots.txt
+  - source_id: reddit_machinelearningjobs
+    name: "reddit_machinelearningjobs"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: http_403
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200) but the public JSON endpoint (https://www.reddit.com/r/MachineLearningJobs.json) returned HTTP 403 on the first request (confirmed directly via r/forhire; generalized to this subreddit, which shares the same host, endpoint pattern, and anti-bot policy, to avoid a second request against an already-blocking host). AGENTS.md 403-stop rule observed; not retried. No browser automation used per brief Appendix 6."
+      request_metadata: "method=GET; endpoint=/robots.txt (subreddit JSON not independently requested)"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.redditinc.com/policies/reddit-rules
+      - https://www.reddit.com/robots.txt
+  - source_id: reddit_datajobs
+    name: "reddit_datajobs"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: http_403
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200) but the public JSON endpoint (https://www.reddit.com/r/datajobs.json) returned HTTP 403 on the first request (confirmed directly via r/forhire; generalized to this subreddit, which shares the same host, endpoint pattern, and anti-bot policy, to avoid a second request against an already-blocking host). AGENTS.md 403-stop rule observed; not retried. No browser automation used per brief Appendix 6."
+      request_metadata: "method=GET; endpoint=/robots.txt (subreddit JSON not independently requested)"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.redditinc.com/policies/reddit-rules
+      - https://www.reddit.com/robots.txt
+  - source_id: reddit_hiring
+    name: "reddit_hiring"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: http_403
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200) but the public JSON endpoint (https://www.reddit.com/r/hiring.json) returned HTTP 403 on the first request (confirmed directly via r/forhire; generalized to this subreddit, which shares the same host, endpoint pattern, and anti-bot policy, to avoid a second request against an already-blocking host). AGENTS.md 403-stop rule observed; not retried. No browser automation used per brief Appendix 6."
+      request_metadata: "method=GET; endpoint=/robots.txt (subreddit JSON not independently requested)"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.redditinc.com/policies/reddit-rules
+      - https://www.reddit.com/robots.txt
+  - source_id: reddit_jobbit
+    name: "reddit_jobbit"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: http_403
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200) but the public JSON endpoint (https://www.reddit.com/r/jobbit.json) returned HTTP 403 on the first request (confirmed directly via r/forhire; generalized to this subreddit, which shares the same host, endpoint pattern, and anti-bot policy, to avoid a second request against an already-blocking host). AGENTS.md 403-stop rule observed; not retried. No browser automation used per brief Appendix 6."
+      request_metadata: "method=GET; endpoint=/robots.txt (subreddit JSON not independently requested)"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.redditinc.com/policies/reddit-rules
+      - https://www.reddit.com/robots.txt
+  - source_id: reddit_bigdatajobs
+    name: "reddit_bigdatajobs"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: http_403
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200) but the public JSON endpoint (https://www.reddit.com/r/bigdatajobs.json) returned HTTP 403 on the first request (confirmed directly via r/forhire; generalized to this subreddit, which shares the same host, endpoint pattern, and anti-bot policy, to avoid a second request against an already-blocking host). AGENTS.md 403-stop rule observed; not retried. No browser automation used per brief Appendix 6."
+      request_metadata: "method=GET; endpoint=/robots.txt (subreddit JSON not independently requested)"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.redditinc.com/policies/reddit-rules
+      - https://www.reddit.com/robots.txt
+  - source_id: ycombinator_work_at_a_startup
+    name: "ycombinator_work_at_a_startup"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: no_public_api
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200, generic allow). No documented public JSON/RSS jobs API found within recon budget; full listings require an applicant account. Deep link only."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.workatastartup.com/robots.txt
+  - source_id: working_nomads
+    name: "working_nomads"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: no_public_api
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200, generic allow). Guessed RSS/API paths (/jobs.rss, /api/exposed_jobs/rss) returned HTTP 404 on two attempts. No documented public feed found within recon budget. Deep link only."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.workingnomads.com/robots.txt
+  - source_id: remote_co
+    name: "remote_co"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: robots_unreachable
+      detail: "2026-09-03 recon: robots.txt fetch timed out on two attempts, consistent with anti-bot mitigation against a non-browser user agent. Not retried a third time in this session. Deep link only."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://remote.co/robots.txt
+  - source_id: justremote
+    name: "justremote"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: no_public_api
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200, generic allow with a few path disallows). No documented public JSON/RSS jobs API found within recon budget. Deep link only."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://justremote.co/robots.txt
+  - source_id: arc_dev
+    name: "arc_dev"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: no_public_api
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200, generic allow). No documented public jobs API found within recon budget. Deep link only."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://arc.dev/robots.txt
+  - source_id: ai_jobs_net
+    name: "ai_jobs_net"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: robots_unreachable
+      detail: "2026-09-03 recon: robots.txt request returned an HTML SPA fallback page rather than a text robots file (retried after a local TLS-store error on the first attempt); a candidate API path (/api/v1/jobs) timed out on both attempts. Not confirmed reachable in this session; registered manual_only pending a future successful recon pass rather than claiming read access without confirmation."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://ai-jobs.net/robots.txt
+  - source_id: otta
+    name: "otta"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: credential_gated
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200, generic allow). Per brief, Otta is an alerts-route source -- job data requires an authenticated account. Alert route available but unconfigured (no founder mailbox). Deep link only."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://otta.com/robots.txt
+  - source_id: peopleperhour
+    name: "peopleperhour"
+    category: independent
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: no_public_api
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200, generic allow). No documented public projects API found within recon budget. Deep link only."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.peopleperhour.com/robots.txt
+  - source_id: preply
+    name: "preply"
+    category: independent
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: platform_application
+    observed:
+      status: not_a_postings_feed
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200). Per brief, tutoring platforms are platform-application, not postings; registered under track=tutoring with a deep link and readiness checklist in opportunity/manual_sources.py. No adapter."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://preply.com/robots.txt
+  - source_id: superprof
+    name: "superprof"
+    category: independent
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: platform_application
+    observed:
+      status: http_403
+      detail: "2026-09-03 recon: robots.txt request itself returned HTTP 403 (Cloudflare bot mitigation). Not retried. Per brief, tutoring platforms are platform-application, not postings; registered under track=tutoring with a deep link and readiness checklist. No adapter."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.superprof.com/robots.txt
+  - source_id: wyzant
+    name: "wyzant"
+    category: independent
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: platform_application
+    observed:
+      status: not_a_postings_feed
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200 on retry after a transient local TLS-store error). Per brief, tutoring platforms are platform-application, not postings; registered under track=tutoring with a deep link and readiness checklist. No adapter."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.wyzant.com/robots.txt
+  - source_id: tutor_com
+    name: "tutor_com"
+    category: independent
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: platform_application
+    observed:
+      status: not_a_postings_feed
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200). Per brief, tutoring platforms are platform-application, not postings; registered under track=tutoring with a deep link and readiness checklist. No adapter."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.tutor.com/robots.txt
+  - source_id: chegg
+    name: "chegg"
+    category: independent
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: platform_application
+    observed:
+      status: not_a_postings_feed
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200; blocks ia_archiver, partial disallow for others). Per brief, tutoring platforms are platform-application, not postings; registered under track=tutoring with a deep link and readiness checklist. No adapter."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.chegg.com/robots.txt
+  - source_id: cambly
+    name: "cambly"
+    category: independent
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: platform_application
+    observed:
+      status: not_a_postings_feed
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200, generic allow with a few path disallows). Per brief, tutoring platforms are platform-application, not postings; registered under track=tutoring with a deep link and readiness checklist. No adapter."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.cambly.com/robots.txt

@@ -18,6 +18,7 @@ class Track(str, Enum):
     CONTRACT = "contract"
     FREELANCE = "freelance"
     PROCUREMENT = "procurement"
+    TUTORING = "tutoring"  # BRIEF-FR-006 E23: platform-application tutoring track, not a postings track.
 
 
 class SeniorityLevel(str, Enum):
@@ -37,6 +38,7 @@ class EmploymentType(str, Enum):
     FREELANCE = "freelance"
     INTERNSHIP = "internship"
     TEMPORARY = "temporary"
+    PLATFORM_APPLICATION = "platform_application"  # BRIEF-FR-006 E23: tutoring platforms; not a posting.
     UNSPECIFIED = "unspecified"
 
 
