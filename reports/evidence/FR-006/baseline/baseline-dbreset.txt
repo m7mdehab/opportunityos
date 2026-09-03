@@ -1,0 +1,37 @@
+ERROR:  database "opportunityos_test" is being accessed by other users
+DETAIL:  There are 29 other sessions using the database.
+ pg_terminate_backend 
+----------------------
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+ t
+(29 rows)
+
+ERROR:  database "opportunityos_test" is being accessed by other users
+DETAIL:  There are 6 other sessions using the database.
