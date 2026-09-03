@@ -73,6 +73,13 @@ class MatchDimensionScore:
     unknowns: tuple[str, ...] = ()
     evidence_refs: tuple[str, ...] = ()
     opportunity_field_refs: tuple[str, ...] = ()
+    #: Stable, code-owned marker tags a rule may attach to this dimension so a
+    #: downstream consumer (e.g. api/filters.py's premium_fulltime_onsite
+    #: filter) can key off a fixed vocabulary instead of matching prose in
+    #: `gaps`/`explanation`, which is free to be reworded. Empty by default;
+    #: every existing call site is unaffected. Currently emitted only by the
+    #: premium full-time/on-site rule in matching/scorer.py ("premium_shortfall").
+    signal_tags: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not (0.0 <= self.raw_score <= 1.0):

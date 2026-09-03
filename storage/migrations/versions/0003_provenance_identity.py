@@ -24,6 +24,25 @@ identity.
 D3 (founder-controlled filters) shares this revision file -- its
 ``founder_filter_settings`` table is added in the clearly marked block
 below, independent of the provenance work.
+
+**Amended-in-place warning.** This revision was first committed by D5 with
+an empty D3 block (see the marker comments below) and applied, in that
+state, to development databases while D3's API half was still being built
+in a parallel worktree. D3 then filled the marked block in on this SAME
+revision id rather than adding a 0004 -- so a database that ran ``alembic
+upgrade head`` while stamped ``0003_provenance_identity`` from the
+D5-only version has the ``field_provenances`` constraint but NO
+``founder_filter_settings`` table at all, and Alembic will report it as
+already at head (revision ids, not script content, are what Alembic
+tracks) and silently do nothing on a later ``upgrade head``. If
+``founder_filter_settings`` is missing from a database that reports itself
+at ``0003_provenance_identity``, this is why. Recovery: ``alembic stamp
+0002_match_evaluations && alembic upgrade head`` forces the current
+(D3-filled) script body to actually run. A later, second in-place edit
+changed only ``target_roles``'s seeded default ``mode`` from
+``rank_only`` to ``label_only`` (council repair, defect 4) -- the same
+stamp-and-reupgrade recovers that too, or an existing row can simply be
+`PUT /api/filters/target_roles {"mode": "label_only"}`-ed by hand.
 """
 import json
 from datetime import datetime, timezone
@@ -53,7 +72,12 @@ _D3_FILTER_SEED: tuple[tuple[str, bool, str, dict], ...] = (
     ("red_lines", True, "hide", {}),
     ("excluded_industries", True, "hide", {}),
     ("track_preference", True, "rank_only", {}),
-    ("target_roles", True, "rank_only", {}),
+    # Council repair (post-merge review of D3+D5, defect 4): seeded as
+    # label_only, not rank_only -- the token-based title-match predicate
+    # this filter now uses had not yet been proven against live data when
+    # it was rank_only, and an unproven predicate silently reordering the
+    # feed is worse than one that only labels.
+    ("target_roles", True, "label_only", {}),
     ("premium_fulltime_onsite", True, "rank_only", {}),
     ("stale_postings", True, "label_only", {}),
     ("min_fit_score", False, "hide", {"min_score": 0}),

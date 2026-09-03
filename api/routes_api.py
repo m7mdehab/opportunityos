@@ -44,10 +44,13 @@ from .filters import (
     FILTER_DEFINITIONS_BY_ID,
     FILTER_MODES,
     FilterSettingsRow,
+    ParamValidationError,
     affected_count as filter_affected_count,
     apply_filters,
     build_filter_contexts,
     to_naive_utc,
+    unavailable_reason,
+    validate_filter_params,
 )
 from .serialization import (
     serialize_constraint,
@@ -189,6 +192,11 @@ def list_filters(request: Request, session: Session = Depends(get_db)):
                 "params": params,
                 "affected_count": filter_affected_count(fd, params, contexts),
                 "description": fd.description,
+                # Council defects 2/3: non-null when this filter has no real
+                # data source to evaluate against right now (missing pack
+                # assertion, or a pipeline gap upstream) -- see
+                # api/filters.py::unavailable_reason.
+                "unavailable_reason": unavailable_reason(fd, truth_graph),
             }
         )
     return {"filters": filters_payload}
@@ -216,6 +224,20 @@ def update_filter(
         response.status_code = 422
         return {"detail": "invalid mode", "allowed": list(FILTER_MODES)}
 
+    # Council defect 1: validate `params` BEFORE any session mutation or
+    # commit. A malformed params payload used to be persisted and only fail
+    # (500) the moment a later matcher tried to use it -- by which point
+    # every GET /api/opportunities and GET /api/filters call was also
+    # 500ing, with no way to recover except a raw PUT the drawer itself could
+    # no longer even render a form to issue.
+    validated_params: dict[str, Any] | None = None
+    if payload.params is not None:
+        try:
+            validated_params = validate_filter_params(filter_id, payload.params)
+        except ParamValidationError as error:
+            response.status_code = 422
+            return {"detail": str(error)}
+
     now = to_naive_utc(datetime.now(timezone.utc))
     row = session.query(FounderFilterSettingRecord).filter_by(filter_id=filter_id).first()
     if row is None:
@@ -232,8 +254,8 @@ def update_filter(
         row.enabled = payload.enabled
     if payload.mode is not None:
         row.mode = payload.mode
-    if payload.params is not None:
-        row.params_json = json.dumps(payload.params)
+    if validated_params is not None:
+        row.params_json = json.dumps(validated_params)
     row.updated_at = now
     session.commit()
 
@@ -247,6 +269,7 @@ def update_filter(
         "params": params,
         "affected_count": filter_affected_count(fd, params, contexts),
         "description": fd.description,
+        "unavailable_reason": unavailable_reason(fd, truth_graph),
     }
 
 

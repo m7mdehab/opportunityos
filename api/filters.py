@@ -10,7 +10,7 @@ rows, and the loaded truth pack's `TruthGraph` (already exposed to
 computes a new hard constraint or a new scoring rule -- `geo_eligibility` and
 `work_mode_onsite` read the qualifier's *already-persisted* verdict,
 `premium_fulltime_onsite` reads D2's *already-persisted* `compensation_fit`
-gap text, and the rest read opportunity/truth-pack data verbatim. Keeping
+signal tag, and the rest read opportunity/truth-pack data verbatim. Keeping
 this in `api/` also keeps `truth/test_predicates.py`'s glob of `matching/*.py`
 (which enforces the predicate-literal registry contract) completely
 unaffected -- this module never adds a file there.
@@ -20,6 +20,15 @@ Appendix rule 2): **a filter never changes `decision` or `fit_score`**. Every
 matcher here is a pure, read-only predicate over already-computed data; the
 demotion machinery (`FilterOutcome.rank_penalty`) is consumed only as a sort
 key by `api/routes_api.py`, never written back into the score.
+
+Council repair round (post-merge review of D3+D5) fixed six defects here:
+defect 1 (malformed params bricking the feed -- see `validate_filter_params`
+and the `_safe_float` guards in the matchers), defects 2/3 (silent no-op
+filters -- see `FilterDefinition.availability` / `unavailable_reason`),
+defect 4 (`target_roles` string-order accident -- see the token-set matcher),
+defect 5 (`excluded_industries` substring over-match -- see the word-boundary
+regex), and defect 6 (`premium_fulltime_onsite` keying off scorer prose --
+see the `signal_tags` read).
 """
 
 from __future__ import annotations
@@ -51,6 +60,29 @@ def to_naive_utc(value: datetime) -> datetime:
     if value.tzinfo is not None:
         return value.astimezone(timezone.utc).replace(tzinfo=None)
     return value
+
+
+def _safe_float(value: Any) -> float | None:
+    """Best-effort numeric coercion that never raises.
+
+    Council defect 1: `validate_filter_params` (below) is the primary
+    defence -- it rejects a non-numeric `min_score`/`floor` at PUT time,
+    before anything is committed. This is the *second*, independent line of
+    defence for a row a database already holds a bad value in (e.g. one
+    written by an older version of this code, or edited directly): a matcher
+    must degrade to "does not match" rather than crash the entire feed with
+    an unguarded `float(...)`.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -87,6 +119,10 @@ class FilterSettingsRow:
     params: dict[str, Any]
 
 
+def _always_available(truth_graph: TruthGraph | None) -> str | None:
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class FilterDefinition:
     filter_id: str
@@ -95,6 +131,90 @@ class FilterDefinition:
     default_params: dict[str, Any]
     description: str
     matcher: Callable[[OpportunityFilterContext, dict[str, Any]], bool]
+    #: Council defects 2/3. Returns a human-readable reason the filter cannot
+    #: currently match anything meaningful (missing pack data, or a pipeline
+    #: gap upstream), or None when the filter has a real data source to work
+    #: from. `GET /api/filters` exposes this so the drawer can distinguish
+    #: "0 matches because nothing qualifies" from "0 matches because there is
+    #: no signal to evaluate at all" -- the founder's stated requirement is
+    #: that nothing filters silently, and a filter with no data source is
+    #: exactly that if left unmarked.
+    availability: Callable[[TruthGraph | None], str | None] = _always_available
+
+
+# ---------------------------------------------------------------------------
+# Params validation (council defect 1). Every parametrised filter's `params`
+# gets a small explicit schema; unknown keys and out-of-range/wrong-typed
+# values are rejected with a ParamValidationError BEFORE anything is
+# persisted, so `PUT /api/filters/{id}` can never write a value the matchers
+# would later choke on. `api/routes_api.py::update_filter` calls
+# `validate_filter_params` before `session.commit()`.
+# ---------------------------------------------------------------------------
+
+
+class ParamValidationError(ValueError):
+    """Raised by `validate_filter_params` for a malformed `params` payload.
+    The message is written to be safe to return directly in a 422 body."""
+
+
+def _validate_no_params(filter_id: str, params: dict[str, Any]) -> dict[str, Any]:
+    if params:
+        raise ParamValidationError(f"{filter_id!r} does not accept params; got keys {sorted(params)}")
+    return {}
+
+
+def _validate_number(filter_id: str, key: str, value: Any, *, minimum: float, maximum: float | None) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ParamValidationError(f"{filter_id!r}.{key} must be a number, got {value!r}")
+    numeric = float(value)
+    if numeric < minimum or (maximum is not None and numeric > maximum):
+        bound = f">= {minimum}" if maximum is None else f"between {minimum} and {maximum}"
+        raise ParamValidationError(f"{filter_id!r}.{key} must be {bound}, got {numeric!r}")
+    return numeric
+
+
+def _validate_min_fit_score_params(filter_id: str, params: dict[str, Any]) -> dict[str, Any]:
+    allowed = {"min_score"}
+    unknown = set(params) - allowed
+    if unknown:
+        raise ParamValidationError(f"{filter_id!r} does not accept params {sorted(unknown)}")
+    result: dict[str, Any] = {}
+    if "min_score" in params:
+        result["min_score"] = _validate_number(filter_id, "min_score", params["min_score"], minimum=0.0, maximum=100.0)
+    return result
+
+
+def _validate_compensation_floor_params(filter_id: str, params: dict[str, Any]) -> dict[str, Any]:
+    allowed = {"floor", "currency"}
+    unknown = set(params) - allowed
+    if unknown:
+        raise ParamValidationError(f"{filter_id!r} does not accept params {sorted(unknown)}")
+    result: dict[str, Any] = {}
+    if "floor" in params:
+        result["floor"] = _validate_number(filter_id, "floor", params["floor"], minimum=0.0, maximum=None)
+    if "currency" in params:
+        currency = params["currency"]
+        if currency is not None and not isinstance(currency, str):
+            raise ParamValidationError(f"{filter_id!r}.currency must be a string or null, got {currency!r}")
+        result["currency"] = currency
+    return result
+
+
+_PARAM_VALIDATORS: dict[str, Callable[[str, dict[str, Any]], dict[str, Any]]] = {
+    "min_fit_score": _validate_min_fit_score_params,
+    "compensation_floor": _validate_compensation_floor_params,
+}
+
+
+def validate_filter_params(filter_id: str, params: dict[str, Any]) -> dict[str, Any]:
+    """Validate (and coerce numerics in) a `params` payload for `filter_id`.
+
+    Raises `ParamValidationError` on anything malformed; the caller is
+    expected to turn that into a 422 *before* touching the database. Filters
+    with no `_PARAM_VALIDATORS` entry take no params at all (`{}`).
+    """
+    validator = _PARAM_VALIDATORS.get(filter_id, _validate_no_params)
+    return validator(filter_id, dict(params or {}))
 
 
 # ---------------------------------------------------------------------------
@@ -155,13 +275,27 @@ def _excluded_industries(truth_graph: TruthGraph) -> tuple[str, ...]:
 
 
 def _excluded_industries_matches(ctx: OpportunityFilterContext, params: dict[str, Any]) -> bool:
+    """Council defect 5: a plain `in` substring check hid postings on
+    accidental substring collisions (e.g. an excluded "Finance" matching
+    "Financial", or an excluded short word matching inside an unrelated
+    longer one). Word-boundary regex matching fixes that: an excluded
+    industry only matches whole words in the opportunity text."""
     if ctx.truth_graph is None:
         return False
     excluded = _excluded_industries(ctx.truth_graph)
     if not excluded:
         return False
-    haystack = f"{ctx.opp.title} {ctx.opp.organization} {ctx.opp.description}".casefold()
-    return any(industry.casefold() in haystack for industry in excluded if industry.strip())
+    haystack = f"{ctx.opp.title} {ctx.opp.organization} {ctx.opp.description}"
+    for industry in excluded:
+        name = industry.strip()
+        if not name:
+            continue
+        try:
+            if re.search(rf"\b{re.escape(name)}\b", haystack, flags=re.IGNORECASE):
+                return True
+        except re.error:
+            continue
+    return False
 
 
 _KNOWN_TRACK_TOKENS = {"employment", "procurement"}
@@ -196,6 +330,40 @@ def _track_preference_matches(ctx: OpportunityFilterContext, params: dict[str, A
     return ctx.opp.track.casefold() != preferred
 
 
+def _track_preference_availability(truth_graph: TruthGraph | None) -> str | None:
+    if _founder_track_preference(truth_graph) is None:
+        return (
+            "Your truth pack has no verified preference.track assertion, so this "
+            "filter has nothing to compare an opportunity's track against."
+        )
+    return None
+
+
+# Council defect 4: job-title words this filter ignores on both sides of the
+# comparison (the founder's declared target role AND the opportunity title)
+# before comparing. Seniority/level qualifiers carry no bearing on *what* the
+# role is -- a target of "Backend Engineer" must align with "Senior Backend
+# Engineer" and with a posting that omits the word entirely; connective/filler
+# words carry no role identity either. This is a job-title-specific list,
+# deliberately separate from `truth/connective_terms.txt` (ADR-0014's claim-
+# validation stop-list governs a different, narrower concern -- see that
+# file's own docstring -- and must not be repurposed here).
+_TITLE_STOPWORDS: frozenset[str] = frozenset({
+    "senior", "sr", "junior", "jr", "lead", "staff", "principal", "associate",
+    "entry", "level", "intern", "internship", "trainee", "graduate",
+    "i", "ii", "iii", "iv", "v",
+    "and", "the", "of", "for", "a", "an", "in", "at", "to", "on", "with",
+})
+
+_TITLE_TOKEN_RE = re.compile(r"[a-z0-9]+")
+
+
+def _significant_title_tokens(text: str) -> frozenset[str]:
+    return frozenset(
+        token for token in _TITLE_TOKEN_RE.findall(text.casefold()) if token not in _TITLE_STOPWORDS
+    )
+
+
 def _founder_target_roles(truth_graph: TruthGraph | None) -> tuple[str, ...]:
     if truth_graph is None:
         return ()
@@ -209,40 +377,98 @@ def _founder_target_roles(truth_graph: TruthGraph | None) -> tuple[str, ...]:
 
 
 def _target_roles_matches(ctx: OpportunityFilterContext, params: dict[str, Any]) -> bool:
+    """Council defect 4: matching used to be a raw phrase substring check
+    (`target.casefold() in title_cf`), which is sensitive to word order and
+    punctuation -- "Senior Software Engineer, Backend" does not contain the
+    literal substring "backend engineer" even though it plainly *is* a
+    Backend Engineer posting, so it was wrongly flagged as misaligned and
+    demoted below far worse matches. This compares token *sets* instead
+    (order-independent, seniority/connective words ignored on both sides):
+    the opportunity aligns with a declared target role if every significant
+    token of that role appears somewhere in the title."""
     targets = _founder_target_roles(ctx.truth_graph)
     if not targets:
         return False
-    title_cf = ctx.opp.title.casefold()
-    return not any(target.casefold() in title_cf for target in targets)
+    title_tokens = _significant_title_tokens(ctx.opp.title)
+    for target in targets:
+        target_tokens = _significant_title_tokens(target)
+        if target_tokens and target_tokens.issubset(title_tokens):
+            return False  # aligned with at least one declared target role
+    return True
+
+
+def _target_roles_availability(truth_graph: TruthGraph | None) -> str | None:
+    if not _founder_target_roles(truth_graph):
+        return (
+            "Your truth pack has no verified career.target_role assertion, so this "
+            "filter has no declared role to compare opportunity titles against."
+        )
+    return None
+
+
+def _founder_premium_threshold_configured(truth_graph: TruthGraph | None) -> bool:
+    if truth_graph is None:
+        return False
+    return any(
+        a.predicate == predicates.PREFERENCE_FULLTIME_ONSITE_PREMIUM_MONTHLY
+        and a.verification_status == VerificationStatus.VERIFIED
+        for a in truth_graph.assertions.values()
+    )
 
 
 def _premium_fulltime_onsite_matches(ctx: OpportunityFilterContext, params: dict[str, Any]) -> bool:
-    """Surfaces D2's already-computed premium full-time/on-site ranking
-    signal (`matching/scorer.py`'s `compensation_fit` dimension) rather than
-    recomputing the currency-threshold comparison itself: that rule already
-    appends a gap note containing "premium" only when it fires (see
-    `matching/test_scorer.py::TestPremiumFullTimeOnsiteRule`), so reading that
-    gap text back is a genuine read of the persisted signal, not a guess."""
+    """Council defect 6: this used to key off `"premium" in gap.casefold()`,
+    a bare substring search on the scorer's free-text sentence -- a reword of
+    that sentence would have silently disabled the filter with nothing to
+    catch it. `matching/scorer.py` now emits a stable, code-owned
+    `signal_tags` entry ("premium_shortfall") on the `compensation_fit`
+    dimension only on the one branch that actually found a shortfall
+    (`matching/models.py::MatchDimensionScore.signal_tags`,
+    `matching/evaluate_persist.py::_dimension_scores_to_json`); this reads
+    that tag verbatim, not prose."""
     for dim in ctx.dimension_scores:
         if dim.get("dimension_name") == "compensation_fit":
-            gaps = dim.get("gaps") or []
-            return any("premium" in str(gap).casefold() for gap in gaps)
+            tags = dim.get("signal_tags") or []
+            return "premium_shortfall" in tags
     return False
+
+
+def _premium_fulltime_onsite_availability(truth_graph: TruthGraph | None) -> str | None:
+    if not _founder_premium_threshold_configured(truth_graph):
+        return (
+            "Your truth pack has no verified preference.fulltime_onsite_premium_monthly "
+            "assertion, so this filter has no threshold to compare full-time on-site "
+            "compensation against."
+        )
+    return None
 
 
 def _stale_postings_matches(ctx: OpportunityFilterContext, params: dict[str, Any]) -> bool:
     return bool(ctx.opp.is_stale)
 
 
+_STALE_POSTINGS_UNAVAILABLE_REASON = (
+    "Staleness is never computed by the current pipeline: "
+    "opportunity/persistence.py always writes is_stale=False on ingest, and "
+    "opportunity/reverification.py's results are computed but not persisted "
+    "by any worker. This filter cannot match anything until a future brief "
+    "wires reverification results back into is_stale."
+)
+
+
+def _stale_postings_availability(truth_graph: TruthGraph | None) -> str | None:
+    return _STALE_POSTINGS_UNAVAILABLE_REASON
+
+
 def _min_fit_score_matches(ctx: OpportunityFilterContext, params: dict[str, Any]) -> bool:
-    threshold = params.get("min_score")
+    threshold = _safe_float(params.get("min_score"))
     if threshold is None or ctx.fit_score is None:
         return False
-    return ctx.fit_score < float(threshold)
+    return ctx.fit_score < threshold
 
 
 def _compensation_floor_matches(ctx: OpportunityFilterContext, params: dict[str, Any]) -> bool:
-    floor = params.get("floor")
+    floor = _safe_float(params.get("floor"))
     if floor is None:
         return False
     amount = ctx.compensation_max if ctx.compensation_max is not None else ctx.compensation_min
@@ -250,11 +476,11 @@ def _compensation_floor_matches(ctx: OpportunityFilterContext, params: dict[str,
         return False
     required_currency = params.get("currency")
     if required_currency is not None:
-        if not ctx.compensation_currency:
+        if not isinstance(required_currency, str) or not ctx.compensation_currency:
             return False
-        if ctx.compensation_currency.strip().casefold() != str(required_currency).strip().casefold():
+        if ctx.compensation_currency.strip().casefold() != required_currency.strip().casefold():
             return False
-    return amount < float(floor)
+    return amount < floor
 
 
 # ---------------------------------------------------------------------------
@@ -309,14 +535,20 @@ FILTER_DEFINITIONS: tuple[FilterDefinition, ...] = (
         default_params={},
         description="Opportunities outside your declared track preference order.",
         matcher=_track_preference_matches,
+        availability=_track_preference_availability,
     ),
     FilterDefinition(
         filter_id="target_roles",
         default_enabled=True,
-        default_mode="rank_only",
+        # Council defect 4: demoted to label_only pending live-data proof of
+        # the token-based predicate above (was rank_only). Ranking on an
+        # unproven predicate risks reordering the feed in a way the founder
+        # cannot see the reason for; labelling is visible and reversible.
+        default_mode="label_only",
         default_params={},
         description="Opportunities whose title does not mention your declared target role.",
         matcher=_target_roles_matches,
+        availability=_target_roles_availability,
     ),
     FilterDefinition(
         filter_id="premium_fulltime_onsite",
@@ -328,6 +560,7 @@ FILTER_DEFINITIONS: tuple[FilterDefinition, ...] = (
             "compensation premium threshold."
         ),
         matcher=_premium_fulltime_onsite_matches,
+        availability=_premium_fulltime_onsite_availability,
     ),
     FilterDefinition(
         filter_id="stale_postings",
@@ -336,6 +569,7 @@ FILTER_DEFINITIONS: tuple[FilterDefinition, ...] = (
         default_params={},
         description="Opportunities flagged stale (no longer reverifiable at the source).",
         matcher=_stale_postings_matches,
+        availability=_stale_postings_availability,
     ),
     FilterDefinition(
         filter_id="min_fit_score",
@@ -356,6 +590,14 @@ FILTER_DEFINITIONS: tuple[FilterDefinition, ...] = (
 )
 
 FILTER_DEFINITIONS_BY_ID: dict[str, FilterDefinition] = {fd.filter_id: fd for fd in FILTER_DEFINITIONS}
+
+
+def unavailable_reason(fd: FilterDefinition, truth_graph: TruthGraph | None) -> str | None:
+    """Council defects 2/3: the reason `fd` cannot currently match anything
+    meaningful, or None when it has a real data source. `GET /api/filters`
+    exposes this per filter so the drawer can tell "0 matches, nothing
+    qualifies" apart from "0 matches, there is no signal at all"."""
+    return fd.availability(truth_graph)
 
 
 # ---------------------------------------------------------------------------
@@ -403,14 +645,6 @@ def build_filter_contexts(
         )
         comp_by_field = {row.field_name: row.normalized_value for row in comp_rows}
 
-        def _to_float(raw: str | None) -> float | None:
-            if raw is None:
-                return None
-            try:
-                return float(raw)
-            except (TypeError, ValueError):
-                return None
-
         contexts.append(
             OpportunityFilterContext(
                 opp=opp,
@@ -419,8 +653,8 @@ def build_filter_contexts(
                 reasons=reasons,
                 evaluation_detail=evaluation_detail,
                 dimension_scores=dimension_scores,
-                compensation_min=_to_float(comp_by_field.get("compensation.min_amount")),
-                compensation_max=_to_float(comp_by_field.get("compensation.max_amount")),
+                compensation_min=_safe_float(comp_by_field.get("compensation.min_amount")),
+                compensation_max=_safe_float(comp_by_field.get("compensation.max_amount")),
                 compensation_currency=comp_by_field.get("compensation.currency"),
                 truth_graph=truth_graph,
             )
@@ -431,7 +665,15 @@ def build_filter_contexts(
 def apply_filters(ctx: OpportunityFilterContext, settings: dict[str, FilterSettingsRow]) -> FilterOutcome:
     """Evaluate all ten filters for one opportunity against the founder's
     current settings. A disabled filter is not evaluated at all (contract
-    section 4): it contributes to neither `hidden_by` nor `flagged_by`."""
+    section 4): it contributes to neither `hidden_by` nor `flagged_by`.
+
+    Council defect 1 (belt-and-suspenders, layer (b)): every matcher here
+    reads `params` defensively (`_safe_float`, structural `.get(...)` checks)
+    rather than trusting it, so a row a database already holds a malformed
+    value in degrades to "does not match" instead of raising -- layer (a),
+    `validate_filter_params`, is what stops a bad value from being written in
+    the first place (see `api/routes_api.py::update_filter`).
+    """
     hidden_by: list[str] = []
     flagged_by: list[str] = []
     rank_penalty = 0
@@ -444,7 +686,13 @@ def apply_filters(ctx: OpportunityFilterContext, settings: dict[str, FilterSetti
         mode = row.mode if row is not None else fd.default_mode
         params = row.params if row is not None else fd.default_params
 
-        if not fd.matcher(ctx, params):
+        try:
+            matched = fd.matcher(ctx, params)
+        except (TypeError, ValueError, AttributeError):
+            # Defensive last resort: a matcher must never take the feed down.
+            matched = False
+
+        if not matched:
             continue
 
         if mode == "hide":
@@ -461,4 +709,11 @@ def apply_filters(ctx: OpportunityFilterContext, settings: dict[str, FilterSetti
 def affected_count(fd: FilterDefinition, params: dict[str, Any], contexts: list[OpportunityFilterContext]) -> int:
     """The number of opportunities `fd` currently matches, computed
     regardless of `enabled` (contract section 5: `GET /api/filters`)."""
-    return sum(1 for ctx in contexts if fd.matcher(ctx, params))
+    count = 0
+    for ctx in contexts:
+        try:
+            if fd.matcher(ctx, params):
+                count += 1
+        except (TypeError, ValueError, AttributeError):
+            continue
+    return count
