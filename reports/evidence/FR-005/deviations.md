@@ -313,3 +313,31 @@ council probe be reproduced before it became a finding, and that A-9's rows have
 provenance bound rather than asserted — and then did not hold its own evidence to the same
 standard. The counts in particular should be derived at the final commit or stated as
 "as of <sha>", never left as a bare number in prose that keeps moving.
+
+### 30. CI status on `main` cannot be verified from this host either
+`scripts/generate_ci_status.py` queries the four workflow conclusions through `gh api`, and
+`gh` is unauthenticated here. The repository is private, so an unauthenticated read is not
+possible either. So §8's *second* half — "four workflows green on `main` after merge" — is as
+unverifiable from this session as the first half was, and the merge was made without the
+Master being able to watch the result.
+
+That is a real gap and it is stated rather than glossed. What was done to bound the risk,
+before touching `main`:
+
+- Every step the four workflows run was executed locally against the exact merge candidate:
+  the full suite on real PostgreSQL (672, OK), `check_guard.py` in both its repository and
+  `--mirror-only` forms, `check_repository.py`, the STATE freshness diff under
+  `STATE_PRESERVE_TIMESTAMP=1`, `npm ci` / `build` / `lint`, and Playwright in both the mock
+  and real-stack configurations.
+- The known Windows/Linux divergence was checked specifically rather than hoped past. Two
+  tests skip here and **run** on CI: the POSIX zombie-detection pair in `scripts/test_alpha`.
+  FR-004 went red on CI for exactly this class of reason. `git diff b563102..HEAD` over
+  `scripts/alpha.py` shows D4 touched none of the POSIX teardown paths — no `killpg`,
+  `setsid`, `start_new_session`, `/proc`, `waitpid` or `SIGTERM` line changed — so the code
+  those two tests exercise is untouched by this brief.
+- Linux portability of the new files was checked: `truth/connective_terms.txt` is loaded via
+  `Path(__file__).with_name()`, all four new paths are tracked on `main` with matching case,
+  and no host-specific or backslash path appears in any of them.
+
+The residual risk is a Linux-only failure in code this brief did change. If `main` goes red,
+the fix is forward and the founder will see it before the Master does.
