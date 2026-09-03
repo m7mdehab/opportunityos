@@ -168,7 +168,7 @@ class SeedLoadingTests(unittest.TestCase):
         yaml_text = (
             "companies:" + chr(10)
             + "  - kind: ashby" + chr(10)
-            + "    token: some-disabled-board" + chr(10)
+            + "    token: ashby-co" + chr(10)
             + "    name: Blocked Co" + chr(10)
             + "  - kind: greenhouse" + chr(10)
             + "    token: acme" + chr(10)
@@ -186,12 +186,12 @@ class ATSHostAuthorityTests(unittest.TestCase):
     def test_build_registry_entry_raises_for_ashby(self):
         # Council review 4, finding 7: no ashby:* entry may ever be generated while
         # Ashby stays registered disabled in the committed registry.
-        candidate = boards.BoardCandidate(kind="ashby", token="some-disabled-board")
+        candidate = boards.BoardCandidate(kind="ashby", token="ashby-co")
         with self.assertRaises(boards.ATSHostNotReadAllowed):
             boards.build_registry_entry(candidate, record_count=5, matched_count=1, latency_ms=10)
 
     def test_run_sweep_raises_for_ashby_before_any_probe(self):
-        candidate = boards.BoardCandidate(kind="ashby", token="some-disabled-board")
+        candidate = boards.BoardCandidate(kind="ashby", token="ashby-co")
 
         class ExplodingTransport(MockTransport):
             def fetch(self, request):

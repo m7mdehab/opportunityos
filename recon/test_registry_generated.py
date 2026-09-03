@@ -90,7 +90,7 @@ class RegistryEnumerationTests(unittest.TestCase):
         handed an `ashby` candidate (council review 4, finding 7)."""
         from opportunity.discovery.boards import ATSHostNotReadAllowed, BoardCandidate, build_registry_entry
 
-        candidate = BoardCandidate(kind="ashby", token="some-disabled-board")
+        candidate = BoardCandidate(kind="ashby", token="ashby-co")
         with self.assertRaises(ATSHostNotReadAllowed):
             build_registry_entry(candidate, record_count=5, matched_count=1, latency_ms=10)
 
