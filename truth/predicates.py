@@ -191,6 +191,12 @@ SKILL_NAME = "skill.name"
 # graph projection) is what "read what the graph emits" means per the work
 # order.
 SKILL_PROFICIENCY = "skill.proficiency"
+# BRIEF-FR-006 D1F: newly projected -- truth/models.py's CANONICAL_MATERIAL_MANIFEST
+# now declares `MaterialFieldSpec(SkillRecord, "category", "skill.category",
+# optional=True)`, so truth/graph.py's manifest-driven projection walks it the
+# same generic way it already walked `proficiency`; no new code in graph.py
+# was needed.
+SKILL_CATEGORY = "skill.category"
 EMPLOYMENT_TITLE = "employment.title"
 EMPLOYMENT_ORGANIZATION = "employment.organization"
 EMPLOYMENT_MARKET_FACING_TITLE = "employment.market_facing_title"
@@ -265,6 +271,7 @@ DOMAIN_FIT_PREDICATES: tuple[str, ...] = (
 _NAMED_CONSTANTS: tuple[str, ...] = (
     SKILL_NAME,
     SKILL_PROFICIENCY,
+    SKILL_CATEGORY,
     EMPLOYMENT_TITLE,
     EMPLOYMENT_ORGANIZATION,
     EMPLOYMENT_MARKET_FACING_TITLE,

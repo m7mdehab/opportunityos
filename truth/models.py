@@ -253,6 +253,7 @@ class SkillRecord:
     name: str
     evidence_ids: tuple[str, ...]
     proficiency: str | None = None
+    category: str | None = None
 
     def __post_init__(self) -> None:
         _require_identifier(self.id)
@@ -260,6 +261,8 @@ class SkillRecord:
         _validate_evidence_ids(self.evidence_ids)
         if self.proficiency is not None:
             _require_text(self.proficiency, "proficiency")
+        if self.category is not None:
+            _require_text(self.category, "category")
 
 
 @dataclass(frozen=True, slots=True)
@@ -735,6 +738,7 @@ CANONICAL_MATERIAL_MANIFEST: tuple[MaterialFieldSpec, ...] = (
     # SkillRecord
     MaterialFieldSpec(SkillRecord, "name", "skill.name"),
     MaterialFieldSpec(SkillRecord, "proficiency", "skill.proficiency", optional=True),
+    MaterialFieldSpec(SkillRecord, "category", "skill.category", optional=True),
 
     # LanguageRecord
     MaterialFieldSpec(LanguageRecord, "language", "language.language"),

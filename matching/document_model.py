@@ -510,13 +510,16 @@ def _render_present(graph: TruthGraph, evidence_ids: tuple[str, ...]) -> str:
 def build_skills_section(
     graph: TruthGraph, opp: Opportunity | None, max_skills: int
 ) -> DocumentSection:
-    """Skills grouped by the pack's own categories, ordered by relevance,
-    with proficiency shown honestly. `SkillRecord` (`truth/models.py`,
-    frozen) carries no `category` field, so the group key used here is the
-    pack's own `skill.proficiency` value when the pack states one, else a
-    single "Technical Skills" group -- see the work order return for why
-    this is a content-threshold gap on the current fixtures, not a design
-    choice made to dodge grouping."""
+    """Skills grouped by the pack's own `skill.category` (BRIEF-FR-006 D1F;
+    `truth/models.py::SkillRecord.category`, optional), ordered by relevance,
+    with proficiency shown honestly. Selection and ranking are unchanged from
+    D1: the most opportunity-relevant skills are chosen first, up to
+    `max_skills`. Grouping is then applied to the selected set only --
+    same-category items are made contiguous, with each category's position
+    driven by the best (most relevant) rank of any skill inside it, so the
+    most relevant category still leads. If no selected skill carries a
+    category (a pack that never sets the field), this falls back to the
+    plain relevance order with no reordering."""
     name_assertions = [
         a for a in graph.assertions.values()
         if a.predicate == "skill.name" and a.verification_status == VerificationStatus.VERIFIED
@@ -525,6 +528,11 @@ def build_skills_section(
         a.subject_id: a
         for a in graph.assertions.values()
         if a.predicate == "skill.proficiency" and a.verification_status == VerificationStatus.VERIFIED
+    }
+    category_by_subject = {
+        a.subject_id: a
+        for a in graph.assertions.values()
+        if a.predicate == "skill.category" and a.verification_status == VerificationStatus.VERIFIED
     }
 
     opp_terms = {s.casefold() for s in (opp.skills if opp is not None else ())}
@@ -536,16 +544,46 @@ def build_skills_section(
     selected = ranked[:max_skills]
     left_out = ranked[max_skills:]
 
+    has_categories = any(a.subject_id in category_by_subject for a in selected)
+    if has_categories:
+        relevance_rank = {a.id: idx for idx, a in enumerate(selected)}
+        groups: dict[str, list[AtomicAssertion]] = {}
+        for a in selected:
+            cat = category_by_subject.get(a.subject_id)
+            groups.setdefault(str(cat.value) if cat is not None else "General", []).append(a)
+        group_order = sorted(
+            groups.keys(), key=lambda cat: min(relevance_rank[a.id] for a in groups[cat])
+        )
+        grouped_selected = [
+            a
+            for cat in group_order
+            for a in sorted(groups[cat], key=lambda a: relevance_rank[a.id])
+        ]
+    else:
+        grouped_selected = selected
+
     items: list[DocumentItem] = []
-    for a in selected:
+    for a in grouped_selected:
         prof = proficiency_by_subject.get(a.subject_id)
-        text = str(a.value)
+        cat = category_by_subject.get(a.subject_id)
+        # `authorized_value` stays the bare skill name -- the exact value the
+        # cited `skill.name` assertion actually authorizes -- never the
+        # decorated display `text` below. This was already true (`prof` was
+        # always `None` on every shipped fixture, so it was untested); fixing
+        # it here as part of the D1F Skills-grouping change is what surfaced
+        # it against a pack that now sets proficiency/category for real.
+        authorized_value = str(a.value)
+        text = authorized_value
         aids = [a.id]
         eids = list(a.evidence_ids)
         if prof is not None:
             text = f"{text} ({prof.value})"
             aids.append(prof.id)
             eids.extend(prof.evidence_ids)
+        if cat is not None:
+            text = f"{text} [{cat.value}]"
+            aids.append(cat.id)
+            eids.extend(cat.evidence_ids)
         items.append(DocumentItem(GeneratedClaim(
             claim_id=f"claim-skill-{a.id}",
             text=text,
@@ -553,7 +591,7 @@ def build_skills_section(
             assertion_ids=tuple(aids),
             evidence_ids=tuple(eids),
             predicate="skill.name",
-            authorized_value=text,
+            authorized_value=authorized_value,
         )))
 
     omitted = tuple(

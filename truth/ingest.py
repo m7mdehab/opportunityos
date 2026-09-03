@@ -312,11 +312,12 @@ def parse_certification(value: Any) -> CertificationRecord:
 
 def parse_skill(value: Any, context: str = "skill") -> SkillRecord:
     data = _mapping(value, context)
-    _validate_keys(data, context, required={"id", "name", "evidence_ids"}, optional={"proficiency"})
+    _validate_keys(data, context, required={"id", "name", "evidence_ids"}, optional={"proficiency", "category"})
     return SkillRecord(
         id=data["id"], name=canonicalize_skill(data["name"]),
         evidence_ids=_strings(data["evidence_ids"], f"{context}.evidence_ids"),
         proficiency=data.get("proficiency"),
+        category=data.get("category"),
     )
 
 
