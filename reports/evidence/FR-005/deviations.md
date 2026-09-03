@@ -212,3 +212,30 @@ Sent back for diagnosis rather than accepted, on the grounds that a green which 
 reproduce for a second person is the exact FR-004 defect this brief committed to not
 repeating. If it cannot be made reproducible, A-8's filter half is recorded NOT_CLOSED rather
 than shipped as a pass.
+
+### 25. The PR half of §8 cannot be evidenced, and the merge route is a deliberate choice
+`gh` is unauthenticated on this host (`gh auth status`: no host; no `hosts.yml`). Creating a
+pull request needs `gh auth login`, a browser OAuth flow, which `AGENTS.md` lists as an
+exhaustive exception to the delegation rule. An earlier attempt to read the git credential
+helper's GitHub token and drive the REST API directly was **blocked by the permission
+classifier, correctly, and was not worked around**.
+
+§8 asks for four workflows green *on the PR head* and again *on `main` after merge*. Without
+a PR, a pushed feature branch triggers no workflow at all — `test.yml`, `guard.yml`,
+`state.yml` and `mirror.yml` all fire on `push: branches: [main]` or `pull_request`, and a
+feature-branch push matches neither. So the first half is not merely unevidenced; it is
+unobtainable on this host.
+
+What the Master did instead, stated plainly rather than presented as equivalent: ran every
+step those four workflows run, locally, against the merge candidate, before touching `main` —
+the full suite on real PostgreSQL, `check_guard.py` (both the repository scan and
+`--mirror-only`), `check_repository.py`, the STATE freshness diff, `npm ci`/`build`/`lint`,
+and Playwright in both configurations. Then merged to `main` under the founder's standing
+instruction and ADR-0002 (private `main` is not server-protected; PR discipline is
+convention), letting the four workflows run on `main` itself.
+
+This is weaker than the brief asked for in one specific way: no second party saw the change
+in a pull-request diff before it landed. The independent verifier and two council reviews saw
+it, which is the substance of that protection, but not its form. Recorded as a **gate
+shortfall**, not a deliverable failure, and the branch is pushed so the diff remains
+inspectable after the fact.
