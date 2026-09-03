@@ -1,21 +1,25 @@
 #!/usr/bin/env py -3.12
-"""Corpus metrics for work order A1C (BRIEF-FR-006).
+"""Corpus metrics for claim A-12 (BRIEF-FR-006).
 
-Prints, with denominators, every quantitative number that work orders A1 and A2 measure
+Prints, with denominators, every quantitative number the brief's A-12 claim measures
 against the committed fixture corpus at ``opportunity/fixtures/corpus/``:
 
 - corpus size (payload count, per-source histogram)
 - share of rows with a work mode other than ``unspecified``
 - share with a ``location_country`` or a non-unspecified ``remote_scope``
-- the adapter vs. inference split of work-mode values
-- the qualification decision distribution before and after the A1 extraction change
+- the adapter vs. inference split of work-mode values (``Opportunity.work_mode_source``)
+- the qualification decision distribution, computed twice: once against
+  ``truth.fixtures.founder_shaped_graph()`` (the figure that answers the claim -- this is
+  what a founder actually saw) and once against an empty ``TruthGraph`` (so the difference
+  from A1C's original number is visible, not silently overwritten)
 
 The work-mode / location-country / remote-scope / adapter-inference-split metrics all read
 fields (``Opportunity.work_mode``, ``work_mode_source``, ``location_country``,
-``remote_scope``) that work order A1 adds. If A1's change has not landed on this worktree yet,
-this script says so explicitly for each affected metric instead of printing a fabricated 0%.
-The "before" qualification distribution needs none of A1's new fields, so it is always
-computed for real, over the real corpus, on every run.
+``remote_scope``) added by work order A1. Those fields now exist on every real
+``Opportunity`` with defaults, so a real corpus row can never trigger the "attribute is
+missing" branches below; those branches exist for callers that pass in a stripped/stubbed
+record (see scripts/test_corpus_metrics.py) and are kept so a genuinely missing field is
+still reported as NOT AVAILABLE rather than a fabricated 0%.
 """
 from __future__ import annotations
 
@@ -91,7 +95,12 @@ def report_work_mode_coverage(opportunities: list[Opportunity]) -> None:
             f"({len(missing)}/{len(opportunities)} rows lack the attribute.)"
         )
         return
-    non_unspecified = sum(1 for o in opportunities if str(getattr(o, "work_mode")) != "unspecified")
+    # Compare the WorkMode enum member directly to the plain string, not via str(x): WorkMode
+    # mixes in `str`, so equality with a plain string works correctly (`WorkMode.UNSPECIFIED ==
+    # "unspecified"` is True), but `str(WorkMode.UNSPECIFIED)` renders as "WorkMode.UNSPECIFIED"
+    # (Enum.__str__), which would make this comparison always-true and silently report every row
+    # as non-unspecified.
+    non_unspecified = sum(1 for o in opportunities if getattr(o, "work_mode") != "unspecified")
     print_denominator_line("work_mode != unspecified", non_unspecified, len(opportunities))
 
 
@@ -110,7 +119,7 @@ def report_location_coverage(opportunities: list[Opportunity]) -> None:
     covered = sum(
         1
         for o in opportunities
-        if getattr(o, "location_country", None) or str(getattr(o, "remote_scope", "unspecified")) != "unspecified"
+        if getattr(o, "location_country", None) or getattr(o, "remote_scope", "unspecified") != "unspecified"
     )
     print_denominator_line("location_country or remote_scope != unspecified", covered, len(opportunities))
 
@@ -136,27 +145,54 @@ def report_adapter_inference_split(opportunities: list[Opportunity]) -> None:
         print(f"work_mode_source with unexpected value: {other}/{total}")
 
 
-def report_qualification_before(opportunities: list[Opportunity]) -> None:
-    print()
-    print("--- qualification decision distribution: BEFORE (current matching/qualification.py, unmodified) ---")
-    try:
-        from matching.qualification import QualificationEngine
-        from truth.graph import TruthGraph
-    except ImportError as e:
-        print(f"NOT AVAILABLE: could not import the qualifier ({e}).")
-        return
+def _qualification_distribution(
+    opportunities: list[Opportunity], truth_graph: Any
+) -> tuple[collections.Counter[str], int]:
+    from matching.qualification import QualificationEngine
 
     engine = QualificationEngine()
-    empty_truth_graph = TruthGraph()
     decisions: collections.Counter[str] = collections.Counter()
     eval_errors = 0
     for opp in opportunities:
         try:
-            decision, _results = engine.evaluate(opp, empty_truth_graph)
+            decision, _results = engine.evaluate(opp, truth_graph)
         except Exception:  # noqa: BLE001 - count, do not hide
             eval_errors += 1
             continue
         decisions[str(decision.value)] += 1
+    return decisions, eval_errors
+
+
+def report_qualification_founder_shaped(opportunities: list[Opportunity]) -> None:
+    print()
+    print("--- qualification decision distribution: against truth.fixtures.founder_shaped_graph() ---")
+    try:
+        from truth.fixtures import founder_shaped_graph
+    except ImportError as e:
+        print(f"NOT AVAILABLE: could not import founder_shaped_graph ({e}).")
+        return
+    decisions, eval_errors = _qualification_distribution(opportunities, founder_shaped_graph())
+    total = len(opportunities)
+    for label in ("qualified", "ineligible", "uncertain"):
+        print_denominator_line(f"decision == {label}", decisions.get(label, 0), total)
+    if eval_errors:
+        print(f"evaluation errors (excluded from the distribution above): {eval_errors}/{total}")
+    print(
+        "Note: evaluated against the founder-shaped synthetic pack (truth.fixtures."
+        "founder_shaped_graph(), never the founder's own pack), so this is the figure "
+        "comparable to what a founder actually saw."
+    )
+
+
+def report_qualification_empty_graph(opportunities: list[Opportunity]) -> None:
+    print()
+    print("--- qualification decision distribution: against an empty TruthGraph (for comparison) ---")
+    try:
+        from truth.graph import TruthGraph
+    except ImportError as e:
+        print(f"NOT AVAILABLE: could not import the qualifier ({e}).")
+        return
+    decisions, eval_errors = _qualification_distribution(opportunities, TruthGraph())
     total = len(opportunities)
     for label in ("qualified", "ineligible", "uncertain"):
         print_denominator_line(f"decision == {label}", decisions.get(label, 0), total)
@@ -164,21 +200,8 @@ def report_qualification_before(opportunities: list[Opportunity]) -> None:
         print(f"evaluation errors (excluded from the distribution above): {eval_errors}/{total}")
     print(
         "Note: evaluated with an empty TruthGraph (no founder-specific assertions), so this is "
-        "the qualifier's structural behaviour over the corpus, not a founder-personalised result."
-    )
-
-
-def report_qualification_after() -> None:
-    print()
-    print("--- qualification decision distribution: AFTER (post-A1 qualifier change) ---")
-    print(
-        "NOT AVAILABLE on this worktree: work order A1 changes matching/qualification.py in "
-        "place (geographic eligibility resolves on country OR remote_scope; UNKNOWN only when "
-        "both are absent) and adds the fields this script would need to distinguish the after-"
-        "state from the before-state above. A1C is frozen out of matching/qualification.py by "
-        "its own work order, so it cannot make that change itself. The Master must re-run this "
-        "script (scripts/corpus_metrics.py) once A1 is integrated to capture the real after-"
-        "figure; do not substitute the before-figure or a guess."
+        "the qualifier's structural behaviour over the corpus, not a founder-personalised result. "
+        "This is A1C's original figure, kept for comparison, not the figure the A-12 claim answers."
     )
 
 
@@ -209,8 +232,8 @@ def main() -> int:
     report_work_mode_coverage(opportunities)
     report_location_coverage(opportunities)
     report_adapter_inference_split(opportunities)
-    report_qualification_before(opportunities)
-    report_qualification_after()
+    report_qualification_founder_shaped(opportunities)
+    report_qualification_empty_graph(opportunities)
     return 0
 
 
