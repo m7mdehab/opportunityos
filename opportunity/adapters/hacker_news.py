@@ -54,7 +54,7 @@ from opportunity.normalization import (
     derive_geographic_eligibility,
     extract_compensation,
     extract_employment_type,
-    extract_remote_policy,
+    extract_work_location,
     extract_seniority,
     extract_skills_from_text,
     extract_track,
@@ -158,7 +158,12 @@ class HackerNewsWhoIsHiringAdapter(BaseAdapter):
             seniority = extract_seniority(title, description)
             emp_type = extract_employment_type("", title, description)
             track = extract_track(self.track, "", title, description)
-            remote_policy = extract_remote_policy("", description)
+            # BRIEF-FR-006 A1 defect fix (post-merge grep sweep): this adapter
+            # landed via E23 after A1's remote_policy=... constructor kwarg was
+            # removed. No native work-mode field exists in free-text HN "who is
+            # hiring" comments, so this is text inference only, same as every
+            # other text-only adapter.
+            work_loc = extract_work_location("", description)
             comp = extract_compensation(description)
             geo = derive_geographic_eligibility(
                 title=title,
@@ -183,7 +188,11 @@ class HackerNewsWhoIsHiringAdapter(BaseAdapter):
                 create_field_provenance("description", raw_text[:100], description[:100], DerivationType.RAW_EXTRACTION, f"{item_pointer}.text", record_checksum, "clean_text"),
                 create_field_provenance("seniority", title, seniority.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.text", record_checksum, "extract_seniority"),
                 create_field_provenance("employment_type", "", emp_type.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.text", record_checksum, "extract_employment_type"),
-                create_field_provenance("remote_policy", "", remote_policy.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.text", record_checksum, "extract_remote_policy"),
+                create_field_provenance(
+                    "work_mode", "", work_loc.work_mode.value,
+                    DerivationType.RULE_DERIVATION if work_loc.work_mode_source == "inference" else DerivationType.UNASSERTED_ABSENT,
+                    f"{item_pointer}.text", record_checksum, work_loc.work_mode_rule_id or "extract_work_location",
+                ),
                 create_field_provenance("geographic_eligibility", description[:50], geo.status, DerivationType.RULE_DERIVATION, f"{item_pointer}.text", record_checksum, "classify_geography"),
             ]
             if skills:
@@ -208,7 +217,13 @@ class HackerNewsWhoIsHiringAdapter(BaseAdapter):
                 seniority=seniority,
                 employment_type=emp_type,
                 location_raw="",
-                remote_policy=remote_policy,
+                work_mode=work_loc.work_mode,
+                work_mode_source=work_loc.work_mode_source,
+                location_country=work_loc.location_country,
+                location_city=work_loc.location_city,
+                location_region=work_loc.location_region,
+                remote_scope=work_loc.remote_scope,
+                remote_scope_regions=work_loc.remote_scope_regions,
                 geographic_eligibility=geo,
                 compensation=comp,
                 posted_date=None,

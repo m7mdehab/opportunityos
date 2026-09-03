@@ -18,8 +18,10 @@ from opportunity.adapters import (
 from opportunity.models import (
     EmploymentType,
     RemotePolicy,
+    RemoteScope,
     SeniorityLevel,
     Track,
+    WorkMode,
 )
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -211,6 +213,14 @@ class AdapterTests(unittest.TestCase):
         self.assertIn("NimbusData", opp.title)
         self.assertEqual("https://news.ycombinator.com/item?id=111111", opp.source_url)
         self.assertIn("Python", opp.description)
+        # BRIEF-FR-006 A1 defect fix: HN "who is hiring" comments carry no native
+        # structured work-mode field -- "Remote (Worldwide)" is free text, so this
+        # must be inference, and work_mode_source must say so (never silently
+        # "adapter" for a fact the adapter never actually mapped).
+        self.assertEqual(WorkMode.REMOTE, opp.work_mode)
+        self.assertEqual("inference", opp.work_mode_source)
+        self.assertEqual(RemoteScope.WORLDWIDE, opp.remote_scope)
+        self.assertEqual(RemotePolicy.REMOTE, opp.remote_policy)
 
 
 if __name__ == "__main__":
