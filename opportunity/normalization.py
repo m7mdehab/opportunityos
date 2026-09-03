@@ -6,10 +6,15 @@ data fabrication. Material fields preserve atomic field-level provenance.
 from __future__ import annotations
 
 import datetime
+import functools
 import hashlib
 import html
 import re
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+
+import yaml
 
 from recon.classification import classify
 from recon.models import Record as ReconRecord
@@ -23,8 +28,10 @@ from .models import (
     FieldProvenance,
     GeographicEligibility,
     RemotePolicy,
+    RemoteScope,
     SeniorityLevel,
     Track,
+    WorkMode,
 )
 
 
@@ -208,6 +215,229 @@ def extract_remote_policy(location_raw: str, text: str = "") -> RemotePolicy:
         if pattern.search(search_space):
             return policy
     return RemotePolicy.UNSPECIFIED
+
+
+# ---------------------------------------------------------------------------
+# BRIEF-FR-006 A1: work_mode / location / remote_scope text-inference engine.
+#
+# ``opportunity/inference_rules.yaml`` is the committed, ordered rule table
+# (id, regex pattern, and the fields it sets). Rules run ONLY over fields an
+# adapter did not already map from a native source field -- adapter-native
+# mapping always wins (see ``extract_work_location``'s ``native_*`` kwargs).
+# Rules are data, not code: a new rule can be added to the YAML file without
+# touching this module.
+# ---------------------------------------------------------------------------
+
+_INFERENCE_RULES_PATH = Path(__file__).resolve().parent / "inference_rules.yaml"
+
+# ISO-3166-1 alpha-2 country code aliases (name/abbreviation -> code, all keys
+# casefolded) used both to resolve a captured "(<country/region> only)" group
+# and, indirectly, to keep the generated ``country_*`` rules in
+# ``inference_rules.yaml`` consistent with this table (see the codegen script
+# referenced in the FR-006 A1 report; this table is the hand-committed
+# artifact, not a runtime import of that script).
+COUNTRY_ALIASES: dict[str, str] = {
+    'algeria': 'DZ', 'argentina': 'AR', 'australia': 'AU', 'austria': 'AT',
+    'bahrain': 'BH', 'bangladesh': 'BD', 'belgium': 'BE', 'brazil': 'BR',
+    'canada': 'CA', 'chile': 'CL', 'china': 'CN', 'colombia': 'CO',
+    'czech republic': 'CZ', 'czechia': 'CZ', 'denmark': 'DK', 'egypt': 'EG',
+    'egy': 'EG', 'finland': 'FI', 'france': 'FR', 'germany': 'DE',
+    'ghana': 'GH', 'greece': 'GR', 'hungary': 'HU', 'india': 'IN',
+    'indonesia': 'ID', 'ireland': 'IE', 'israel': 'IL', 'italy': 'IT',
+    'japan': 'JP', 'jordan': 'JO', 'kenya': 'KE', 'kuwait': 'KW',
+    'lebanon': 'LB', 'malaysia': 'MY', 'mexico': 'MX', 'morocco': 'MA',
+    'netherlands': 'NL', 'the netherlands': 'NL', 'holland': 'NL',
+    'new zealand': 'NZ', 'nigeria': 'NG', 'norway': 'NO', 'oman': 'OM',
+    'pakistan': 'PK', 'peru': 'PE', 'philippines': 'PH', 'poland': 'PL',
+    'portugal': 'PT', 'qatar': 'QA', 'romania': 'RO', 'saudi arabia': 'SA',
+    'singapore': 'SG', 'south africa': 'ZA', 'south korea': 'KR', 'korea': 'KR',
+    'spain': 'ES', 'sweden': 'SE', 'switzerland': 'CH', 'thailand': 'TH',
+    'tunisia': 'TN', 'turkey': 'TR', 'ukraine': 'UA',
+    'united arab emirates': 'AE', 'uae': 'AE',
+    'united kingdom': 'GB', 'uk': 'GB', 'u.k.': 'GB', 'great britain': 'GB',
+    'united states': 'US', 'usa': 'US', 'united states of america': 'US',
+    'u.s.': 'US', 'u.s.a.': 'US', 'vietnam': 'VN',
+}
+
+# Recognised region codes (as used by remote_scope_regions) that are not a
+# single ISO-3166 country.
+REGION_ALIASES: dict[str, str] = {
+    'apac': 'APAC', 'canada': 'CA', 'emea': 'EMEA', 'eu': 'EU',
+    'europe': 'EU', 'european union': 'EU', 'latam': 'LATAM',
+    'u.k.': 'GB', 'u.s.': 'US', 'uk': 'GB', 'united kingdom': 'GB',
+    'united states': 'US', 'us': 'US', 'usa': 'US',
+}
+
+
+def country_code_to_name(iso2_or_region: str) -> str:
+    """Best-effort reverse lookup: ISO-2/region code -> a human-readable name.
+
+    Falls back to the code itself when unrecognised (never fabricates a name).
+    """
+    if not iso2_or_region:
+        return ""
+    code = iso2_or_region.strip().upper()
+    for name, mapped in COUNTRY_ALIASES.items():
+        if mapped == code and " " not in name and len(name) > 2:
+            # Prefer a canonical multi-letter alias (e.g. "egypt" over "egy").
+            return name.title()
+    for name, mapped in COUNTRY_ALIASES.items():
+        if mapped == code:
+            return name.title()
+    return code
+
+
+@functools.lru_cache(maxsize=1)
+def _load_inference_rules() -> tuple[dict[str, Any], ...]:
+    """Load and compile ``inference_rules.yaml`` once per process."""
+    if not _INFERENCE_RULES_PATH.exists():
+        return ()
+    with open(_INFERENCE_RULES_PATH, "r", encoding="utf-8") as fh:
+        doc = yaml.safe_load(fh)
+    raw_rules = doc.get("rules", []) if isinstance(doc, dict) else []
+    compiled: list[dict[str, Any]] = []
+    for raw_rule in raw_rules:
+        compiled.append(
+            {
+                "id": raw_rule["id"],
+                "regex": re.compile(raw_rule["pattern"]),
+                "sets": dict(raw_rule.get("sets") or {}),
+                "region_from_group": raw_rule.get("region_from_group"),
+            }
+        )
+    return tuple(compiled)
+
+
+def _resolve_region_tokens(raw_group: str) -> tuple[str, ...]:
+    """Split a captured '<country/region list>' group and resolve each token."""
+    tokens = re.split(r",|&|/|\band\b|\bor\b", raw_group, flags=re.IGNORECASE)
+    codes: list[str] = []
+    for tok in tokens:
+        key = clean_text(tok).casefold().strip()
+        if not key:
+            continue
+        code = COUNTRY_ALIASES.get(key) or REGION_ALIASES.get(key)
+        if code and code not in codes:
+            codes.append(code)
+    return tuple(codes)
+
+
+_WORK_MODE_BY_VALUE: dict[str, WorkMode] = {m.value: m for m in WorkMode}
+_REMOTE_SCOPE_BY_VALUE: dict[str, RemoteScope] = {s.value: s for s in RemoteScope}
+
+
+@dataclass(frozen=True, slots=True)
+class WorkLocationExtraction:
+    """Result of :func:`extract_work_location`."""
+    work_mode: WorkMode = WorkMode.UNSPECIFIED
+    work_mode_source: str = "none"  # "adapter" | "inference" | "none"
+    work_mode_rule_id: str = ""
+    location_country: str = ""
+    location_city: str = ""
+    location_region: str = ""
+    remote_scope: RemoteScope = RemoteScope.UNSPECIFIED
+    remote_scope_regions: tuple[str, ...] = ()
+
+
+def extract_work_mode(location_raw: str, text: str = "") -> WorkMode:
+    """Standalone work-mode-only extraction (brief vocabulary: remote | hybrid |
+    onsite | unspecified). Convenience wrapper around
+    :func:`extract_work_location` for callers that only need the mode."""
+    return extract_work_location(location_raw, text).work_mode
+
+
+def extract_work_location(
+    location_raw: str,
+    text: str = "",
+    *,
+    native_work_mode: WorkMode | None = None,
+    native_country: str = "",
+    native_city: str = "",
+    native_region: str = "",
+) -> WorkLocationExtraction:
+    """Adapter-native mapping first, text inference second (BRIEF-FR-006 A1).
+
+    ``native_*`` kwargs are whatever an adapter already parsed from a native
+    source field (Lever ``workplaceType`` / ``categories.location``,
+    Greenhouse ``location.name`` / ``offices``, Himalayas
+    ``locationRestrictions``, Remotive ``candidate_required_location``,
+    RemoteOK ``location``, WWR region, UNGM/World Bank/TED duty station /
+    buyer country). When a native value is given for a field, no rule is ever
+    allowed to overwrite it; ``work_mode_source`` records this distinction.
+    Text inference (``opportunity/inference_rules.yaml``) only fills fields
+    still unset after native mapping, and only ever sets a given field from
+    the FIRST rule (top to bottom) that matches -- so more specific rules
+    must be listed before generic catch-alls in the YAML file.
+    """
+    search_text = f"{location_raw} {text[:400]}".strip()
+
+    resolved: dict[str, Any] = {}
+    rule_ids: dict[str, str] = {}
+
+    if native_work_mode is not None and native_work_mode != WorkMode.UNSPECIFIED:
+        resolved["work_mode"] = native_work_mode.value
+        rule_ids["work_mode"] = "adapter_native"
+    if native_country:
+        norm_country = native_country.strip().upper()
+        if len(norm_country) != 2:
+            norm_country = COUNTRY_ALIASES.get(native_country.strip().casefold(), "")
+        if norm_country:
+            resolved["location_country"] = norm_country
+            rule_ids["location_country"] = "adapter_native"
+    if native_city:
+        resolved["location_city"] = native_city.strip()
+        rule_ids["location_city"] = "adapter_native"
+    if native_region:
+        resolved["location_region"] = native_region.strip()
+        rule_ids["location_region"] = "adapter_native"
+
+    if search_text.strip():
+        for rule in _load_inference_rules():
+            match = rule["regex"].search(search_text)
+            if not match:
+                continue
+
+            region_group = rule.get("region_from_group")
+            if region_group is not None and "remote_scope_regions" not in resolved:
+                try:
+                    captured = match.group(region_group)
+                except (IndexError, error := re.error):  # pragma: no cover - defensive
+                    captured = ""
+                codes = _resolve_region_tokens(captured) if captured else ()
+                if not codes:
+                    continue  # nothing resolvable in the bracket -> rule does not apply
+                resolved["remote_scope_regions"] = list(codes)
+                rule_ids["remote_scope_regions"] = rule["id"]
+
+            for field, value in rule["sets"].items():
+                if field in resolved:
+                    continue
+                resolved[field] = value
+                rule_ids[field] = rule["id"]
+
+    work_mode_value = resolved.get("work_mode", WorkMode.UNSPECIFIED.value)
+    work_mode = _WORK_MODE_BY_VALUE.get(work_mode_value, WorkMode.UNSPECIFIED)
+    if rule_ids.get("work_mode") == "adapter_native":
+        work_mode_source = "adapter"
+    elif "work_mode" in resolved:
+        work_mode_source = "inference"
+    else:
+        work_mode_source = "none"
+
+    remote_scope_value = resolved.get("remote_scope", RemoteScope.UNSPECIFIED.value)
+    remote_scope = _REMOTE_SCOPE_BY_VALUE.get(remote_scope_value, RemoteScope.UNSPECIFIED)
+    remote_scope_regions = tuple(resolved.get("remote_scope_regions", ()))
+
+    return WorkLocationExtraction(
+        work_mode=work_mode,
+        work_mode_source=work_mode_source,
+        work_mode_rule_id=rule_ids.get("work_mode", ""),
+        location_country=resolved.get("location_country", ""),
+        location_city=resolved.get("location_city", ""),
+        location_region=resolved.get("location_region", ""),
+        remote_scope=remote_scope,
+        remote_scope_regions=remote_scope_regions,
+    )
 
 
 _CURRENCY_MAP: dict[str, str] = {

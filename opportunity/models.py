@@ -47,6 +47,27 @@ class RemotePolicy(str, Enum):
     UNSPECIFIED = "unspecified"
 
 
+class WorkMode(str, Enum):
+    """BRIEF-FR-006 A1 canonical work-mode field (values per the brief: remote |
+    hybrid | onsite | unspecified -- distinct spelling from ``RemotePolicy.ON_SITE``,
+    which predates this field and stays for backward compatibility; see
+    ``_WORK_MODE_TO_REMOTE_POLICY`` below for the mapping)."""
+    REMOTE = "remote"
+    HYBRID = "hybrid"
+    ONSITE = "onsite"
+    UNSPECIFIED = "unspecified"
+
+
+class RemoteScope(str, Enum):
+    """Only meaningful when ``work_mode`` is ``REMOTE`` (or, loosely, ``HYBRID``)."""
+    WORLDWIDE = "worldwide"
+    REGION_RESTRICTED = "region_restricted"
+    UNSPECIFIED = "unspecified"
+
+
+WORK_MODE_SOURCE_VALUES: frozenset[str] = frozenset({"adapter", "inference", "none"})
+
+
 class CompensationInterval(str, Enum):
     HOURLY = "hourly"
     DAILY = "daily"
@@ -99,7 +120,12 @@ MATERIAL_OPPORTUNITY_FIELD_RULES: tuple[MaterialFieldRule, ...] = (
     MaterialFieldRule("seniority", lambda opp: opp.seniority != SeniorityLevel.UNSPECIFIED),
     MaterialFieldRule("employment_type", lambda opp: opp.employment_type != EmploymentType.UNSPECIFIED),
     MaterialFieldRule("location_raw", lambda opp: bool(opp.location_raw)),
-    MaterialFieldRule("remote_policy", lambda opp: opp.remote_policy != RemotePolicy.UNSPECIFIED),
+    # BRIEF-FR-006 A1: ``work_mode`` (not ``remote_policy``) is now the canonical
+    # populated-field signal and the field every adapter attaches a FieldProvenance
+    # entry to. ``remote_policy`` stays as a constructor-compatible, always-synced
+    # alias (see Opportunity.__post_init__) but is deliberately not re-checked here
+    # to avoid requiring two separate provenance entries for one underlying fact.
+    MaterialFieldRule("work_mode", lambda opp: opp.work_mode != WorkMode.UNSPECIFIED),
     MaterialFieldRule("geographic_eligibility", lambda opp: bool(opp.geographic_eligibility)),
     MaterialFieldRule("compensation", lambda opp: opp.compensation is not None, ("compensation",)),
     MaterialFieldRule("compensation.min_amount", lambda opp: opp.compensation is not None and opp.compensation.min_amount is not None, ("compensation.min_amount",)),
@@ -204,6 +230,24 @@ class GeographicEligibility:
             raise ValueError(f"invalid geographic eligibility status: '{self.status}'")
 
 
+# BRIEF-FR-006 A1 Master decision: ``work_mode`` is the new canonical field.
+# ``Opportunity.remote_policy`` stays reachable (not deleted -- BRIEF-003 and
+# every frozen matching/api/truth call site keep constructing and reading it)
+# but its value is always derived to agree with ``work_mode`` -- see
+# ``Opportunity.__post_init__``. Literal `on_site` (RemotePolicy) vs. `onsite`
+# (WorkMode) is intentional: the brief specifies `onsite` for the new field and
+# `on_site` already shipped in RemotePolicy before this deliverable.
+_WORK_MODE_TO_REMOTE_POLICY: dict[WorkMode, RemotePolicy] = {
+    WorkMode.REMOTE: RemotePolicy.REMOTE,
+    WorkMode.HYBRID: RemotePolicy.HYBRID,
+    WorkMode.ONSITE: RemotePolicy.ON_SITE,
+    WorkMode.UNSPECIFIED: RemotePolicy.UNSPECIFIED,
+}
+_REMOTE_POLICY_TO_WORK_MODE: dict[RemotePolicy, WorkMode] = {
+    remote_policy: work_mode for work_mode, remote_policy in _WORK_MODE_TO_REMOTE_POLICY.items()
+}
+
+
 def compute_canonical_content_hash(
     organization: str,
     title: str,
@@ -258,6 +302,15 @@ class Opportunity:
     employment_type: EmploymentType = EmploymentType.UNSPECIFIED
     location_raw: str = ""
     remote_policy: RemotePolicy = RemotePolicy.UNSPECIFIED
+    # BRIEF-FR-006 A1 fields. ``work_mode``/``remote_policy`` are kept in sync by
+    # __post_init__ (see the module-level comment above _WORK_MODE_TO_REMOTE_POLICY).
+    work_mode: WorkMode = WorkMode.UNSPECIFIED
+    work_mode_source: str = "none"  # "adapter" | "inference" | "none"
+    location_country: str = ""  # ISO-2
+    location_city: str = ""
+    location_region: str = ""
+    remote_scope: RemoteScope = RemoteScope.UNSPECIFIED
+    remote_scope_regions: tuple[str, ...] = ()
     geographic_eligibility: GeographicEligibility | None = None
     compensation: Compensation | None = None
     posted_date: str | None = None
@@ -287,6 +340,27 @@ class Opportunity:
             raise ValueError(f"employment_type must be an instance of EmploymentType enum, got {type(self.employment_type)}")
         if not isinstance(self.remote_policy, RemotePolicy):
             raise ValueError(f"remote_policy must be an instance of RemotePolicy enum, got {type(self.remote_policy)}")
+        if not isinstance(self.work_mode, WorkMode):
+            raise ValueError(f"work_mode must be an instance of WorkMode enum, got {type(self.work_mode)}")
+        if not isinstance(self.remote_scope, RemoteScope):
+            raise ValueError(f"remote_scope must be an instance of RemoteScope enum, got {type(self.remote_scope)}")
+        if self.work_mode_source not in WORK_MODE_SOURCE_VALUES:
+            raise ValueError(
+                f"work_mode_source must be one of {sorted(WORK_MODE_SOURCE_VALUES)}, got {self.work_mode_source!r}"
+            )
+
+        # BRIEF-FR-006 A1 Master decision #1: work_mode is the new canonical field;
+        # remote_policy stays constructor-compatible (deviation from a literal
+        # read-only @property -- see the FR-006 A1 report) but is never allowed to
+        # diverge from work_mode. Whichever of the two the caller actually set wins;
+        # the other is derived here so there is only ever one *effective* writable
+        # source of truth despite both remaining assignable fields.
+        if self.work_mode != WorkMode.UNSPECIFIED:
+            derived_remote_policy = _WORK_MODE_TO_REMOTE_POLICY[self.work_mode]
+            if self.remote_policy != derived_remote_policy:
+                object.__setattr__(self, "remote_policy", derived_remote_policy)
+        elif self.remote_policy != RemotePolicy.UNSPECIFIED:
+            object.__setattr__(self, "work_mode", _REMOTE_POLICY_TO_WORK_MODE[self.remote_policy])
 
         # Ensure content_hash is populated deterministically
         if not self.content_hash:
