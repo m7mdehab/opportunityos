@@ -10,8 +10,8 @@ backup file produced by this script is handling founder data in the clear.
 import os
 import sys
 import json
-import base64
 import argparse
+import base64
 import threading
 from datetime import datetime, timezone
 from pathlib import Path

@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from sqlalchemy import text
@@ -62,6 +63,9 @@ SET search_tsv = to_tsvector(
 """
 
 
+logger = logging.getLogger(__name__)
+
+
 def _is_postgres(session: Session) -> bool:
     bind = session.get_bind()
     return bind is not None and bind.dialect.name == "postgresql"
@@ -73,7 +77,13 @@ def backfill_search_tsv(session: Session, *, only_missing: bool = True) -> int:
     A no-op (returns 0) against a non-PostgreSQL bind (e.g. SQLite in
     matching-suite tests that build `Base.metadata` directly): `search_tsv`
     is a plain TEXT column there with no `to_tsvector` function to call --
-    see the column comment in `storage/models.py`.
+    see the column comment in `storage/models.py`. This is a deliberate
+    fail-*open* skip (council review #3, finding 9) -- it does not violate
+    the FR-002 fail-closed invariant, because `storage/engine.py` still
+    refuses SQLite outright without the explicit test opt-in, and this
+    function running against a SQLite session only ever happens inside that
+    already-opted-in test path. It is logged at WARNING rather than raised
+    so a genuinely misconfigured production bind is not silently invisible.
 
     `only_missing=True` (the default) only (re)writes rows where
     `search_tsv IS NULL`, which is both the common backfill case (rows
@@ -83,6 +93,11 @@ def backfill_search_tsv(session: Session, *, only_missing: bool = True) -> int:
     changing the document definition above).
     """
     if not _is_postgres(session):
+        logger.warning(
+            "backfill_search_tsv: skipped -- non-PostgreSQL bind (%s); "
+            "search_tsv was not (re)populated for any row",
+            getattr(session.get_bind(), "dialect", None) and session.get_bind().dialect.name,
+        )
         return 0
     sql = _SEARCH_TSV_UPDATE_SQL
     if only_missing:
@@ -109,6 +124,12 @@ def _refresh_search_tsv(session: Session, opportunity_id: str) -> None:
     written before this code existed.
     """
     if not _is_postgres(session):
+        logger.warning(
+            "_refresh_search_tsv: skipped for opportunity %s -- "
+            "non-PostgreSQL bind (%s); search_tsv was not refreshed",
+            opportunity_id,
+            getattr(session.get_bind(), "dialect", None) and session.get_bind().dialect.name,
+        )
         return
     session.execute(text(_SEARCH_TSV_UPDATE_SQL + " WHERE o.id = :id"), {"id": opportunity_id})
     session.commit()

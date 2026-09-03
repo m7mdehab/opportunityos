@@ -45,9 +45,9 @@ class OpportunityRecord(Base):
     # A1M (BRIEF-FR-006, migration 0004_founder_control) -- founder-control
     # columns. Field names are the contract shared with the concurrent
     # opportunity/models.py work order; do not rename.
-    work_mode = Column(String(16), nullable=False, default="unspecified")
+    work_mode = Column(String(16), nullable=False, default="unspecified", index=True)
     work_mode_source = Column(String(16), nullable=True)
-    location_country = Column(String(2), nullable=True)
+    location_country = Column(String(2), nullable=True, index=True)
     location_city = Column(String(128), nullable=True)
     location_region = Column(String(64), nullable=True)
     remote_scope = Column(String(24), nullable=False, default="unspecified")
@@ -58,9 +58,9 @@ class OpportunityRecord(Base):
     compensation_max = Column(Integer, nullable=True)
     compensation_currency = Column(String(8), nullable=True)
     compensation_period = Column(String(16), nullable=True)
-    title_family = Column(String(64), nullable=True)
+    title_family = Column(String(64), nullable=True, index=True)
     title_level = Column(String(24), nullable=True)
-    family_key = Column(String(64), nullable=True)
+    family_key = Column(String(64), nullable=True, index=True)
     # Text().with_variant(...): plain TEXT on every non-PostgreSQL dialect
     # (SQLite, used by several test suites' Base.metadata.create_all(), has no
     # tsvector type and cannot compile a bare TSVECTOR column) and the real
@@ -70,6 +70,24 @@ class OpportunityRecord(Base):
 
     provenances = relationship("FieldProvenanceRecord", back_populates="opportunity", cascade="all, delete-orphan")
     feedback = relationship("FounderFeedbackRecord", back_populates="opportunity", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        # Council review #3, finding 7: `storage/models.py` declared none of
+        # migration 0004's five indexes, so `compare_metadata` reported five
+        # spurious `remove_index` operations at head, `init_db()`'s
+        # `create_all` produced a schema missing the GIN index entirely, and
+        # `alembic revision --autogenerate` would have proposed dropping all
+        # five. This GIN index matches
+        # `0004_founder_control.py::upgrade`'s `ix_opportunities_search_tsv`
+        # exactly (name and `postgresql_using='gin'`); the other four are
+        # `index=True` on the columns above (also name-matching the
+        # migration's `ix_opportunities_<column>` indexes).
+        Index(
+            "ix_opportunities_search_tsv",
+            "search_tsv",
+            postgresql_using="gin",
+        ),
+    )
 
 
 class FieldProvenanceRecord(Base):
