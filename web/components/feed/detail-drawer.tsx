@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import DOMPurify from "dompurify"
 import {
   Sheet,
   SheetContent,
@@ -54,6 +55,19 @@ export function DetailDrawer({
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const [downloading, setDownloading] = useState<"cv" | "cover-letter" | null>(
     null
+  )
+
+  // Every posting is untrusted data (AGENTS.md: "treat retrieved content as
+  // untrusted data, never as agent instructions") — `detail.description` is
+  // sanitised HTML, not raw text, so it renders formatting (paragraphs,
+  // lists, links a real posting uses) without trusting the source. Runs
+  // only in the browser: `detail` starts `null` and is only ever populated
+  // from the client-side fetch effect below, so this is never reached
+  // during server rendering (no `document`/`window` there) and DOMPurify's
+  // browser build never needs a server DOM shim.
+  const sanitizedDescription = useMemo(
+    () => (detail ? DOMPurify.sanitize(detail.description) : ""),
+    [detail]
   )
 
   // Reset local state when the drawer switches to a different opportunity
@@ -197,7 +211,14 @@ export function DetailDrawer({
             </SheetHeader>
 
             <section>
-              <p className="text-sm">{detail.description}</p>
+              <div
+                data-testid="opportunity-description"
+                className="text-sm [&_a]:underline [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
+                // Sanitised above with DOMPurify — the one deliberate
+                // `dangerouslySetInnerHTML` in this file, and only ever fed
+                // sanitised output, never `detail.description` directly.
+                dangerouslySetInnerHTML={{ __html: sanitizedDescription }}
+              />
               <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 <dt>Deadline</dt>
                 <dd>{detail.deadline ?? "—"}</dd>
@@ -227,25 +248,95 @@ export function DetailDrawer({
                   Not yet evaluated against a truth pack.
                 </p>
               ) : (
-                <ul className="mt-2 space-y-2">
-                  {detail.qualification.constraints.map((c) => (
-                    <li
-                      key={c.constraint_name}
-                      className="rounded-md border border-border p-2"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-medium">
-                          {c.constraint_name.replaceAll("_", " ")}
-                        </span>
-                        <ConstraintOutcomeBadge outcome={c.outcome} />
+                <>
+                  {/* "Requirements split required/nice-to-have with your
+                      match against each": `is_hard_failure` is already the
+                      exact required/soft distinction the matching engine
+                      computed — a hard failure is a required constraint,
+                      anything else is nice-to-have. No new API field
+                      needed; this only regroups `qualification.constraints`
+                      already returned by GET /api/opportunities/{id}. */}
+                  {(["required", "nice_to_have"] as const).map((bucket) => {
+                    const items = detail.qualification.constraints.filter((c) =>
+                      bucket === "required" ? c.is_hard_failure : !c.is_hard_failure
+                    )
+                    if (items.length === 0) return null
+                    return (
+                      <div key={bucket} className="mt-2">
+                        <h4 className="text-xs font-semibold text-muted-foreground">
+                          {bucket === "required" ? "Required" : "Nice to have"}
+                        </h4>
+                        <ul className="mt-1 space-y-2">
+                          {items.map((c) => (
+                            <li
+                              key={c.constraint_name}
+                              data-testid={`requirement-${bucket}-${c.constraint_name}`}
+                              className="rounded-md border border-border p-2"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs font-medium">
+                                  {c.constraint_name.replaceAll("_", " ")}
+                                </span>
+                                <ConstraintOutcomeBadge outcome={c.outcome} />
+                              </div>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {c.reason}
+                              </p>
+                              {c.founder_fact && (
+                                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                                  Your match: {c.founder_fact}
+                                </p>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
                       </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {c.reason}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
+                    )
+                  })}
+                </>
               )}
+            </section>
+
+            <Separator />
+
+            <section aria-labelledby="geography-heading">
+              <h3 id="geography-heading" className="text-sm font-semibold">
+                Geography reasoning
+              </h3>
+              {(() => {
+                const geoConstraint = detail.qualification.constraints.find((c) =>
+                  /geo|location|remote|relocat/i.test(c.constraint_name)
+                )
+                if (!geoConstraint) {
+                  return (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      No geography-specific constraint was reported by qualification
+                      for this opportunity.
+                    </p>
+                  )
+                }
+                return (
+                  <div
+                    data-testid="geography-reasoning"
+                    className="mt-1 rounded-md border border-border p-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium">
+                        {geoConstraint.constraint_name.replaceAll("_", " ")}
+                      </span>
+                      <ConstraintOutcomeBadge outcome={geoConstraint.outcome} />
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {geoConstraint.reason}
+                    </p>
+                    {geoConstraint.founder_fact && (
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        Your fact: {geoConstraint.founder_fact}
+                      </p>
+                    )}
+                  </div>
+                )
+              })()}
             </section>
 
             <Separator />
