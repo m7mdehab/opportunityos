@@ -158,21 +158,27 @@ direction, for a real person whose actual titles are what they are.
   Staff (120mo) and Principal (180mo) on tenure alone despite having
   leadership evidence — which is the acceptance behavior this deliverable's
   order specifies.
-- **The founder-shaped fixture is not founder-shaped on tenure, and the B1.6
-  acceptance run does not exercise the short-tenure case §0 describes.** The
-  brief's own context names the real founder as having roughly 20 months of
-  tenure ("they do not make a 20-month-tenure founder 'senior' for a
-  Staff/Principal engineering role"), but `founder_shaped_graph()` computes to
-  108 months (9 years) — a deliberately richer synthetic pack, frozen for this
-  deliverable and depended on by other BRIEF-FR-006 work orders, not a stand-in
-  for the real founder's actual tenure. The B1.6 acceptance script's
+- **The founder-shaped fixture is not founder-shaped on tenure.** The brief's
+  own context names the real founder as having roughly 20 months of tenure
+  ("they do not make a 20-month-tenure founder 'senior' for a Staff/Principal
+  engineering role"), but `founder_shaped_graph()` computes to 108 months
+  (9 years) — a deliberately richer synthetic pack, frozen for this
+  deliverable and depended on by other BRIEF-FR-006 work orders, not a
+  stand-in for the real founder's actual tenure. The B1.6 acceptance script's
   Staff/Principal gap is therefore produced by a 120-month floor against a
-  9-year pack, not by short tenure. The test that actually closes §0's
-  specific defect — a short-tenure founder whose only senior-sounding evidence
-  is a title token — is `matching/test_seniority.py::TestPeopleLeadershipEvidence::test_leadership_in_title_only_does_not_count`,
-  which asserts a "Team Lead" title with no leadership-describing
-  responsibility text does not set `has_people_leadership`, independent of
-  how much tenure the role carries.
+  9-year pack, not by short tenure. §0's exact combined scenario — a
+  short-tenure founder whose only senior-sounding evidence is a "Team Lead"
+  title, scored end to end against a Staff/Principal posting — is a committed
+  regression test, not just disclosed here:
+  `matching/test_seniority.py::TestShortTenureTeamLeadDoesNotMatchStaffPosting::test_20_month_team_lead_title_earns_no_staff_strength`
+  builds a local, non-fixture founder with exactly 20 verified professional
+  months in a single "Team Lead" role whose responsibility text describes no
+  leadership, runs it through `OpportunityScorer` against a Staff posting, and
+  asserts both that no seniority strength is produced and that the gap names
+  the month shortfall (`"120"` and `"20"` in the gap text).
+  `matching/test_seniority.py::TestPeopleLeadershipEvidence::test_leadership_in_title_only_does_not_count`
+  remains the narrower unit-level proof that `has_people_leadership` itself
+  ignores title tokens, independent of tenure or the scorer.
 - `matching/scorer.py`'s `seniority_and_experience` explanation now names
   real computed numbers (months professional, months in family, required
   level, gap) instead of a single fixed sentence
