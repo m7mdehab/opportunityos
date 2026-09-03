@@ -31,6 +31,7 @@ from .models import (
     ScoringPolicy,
 )
 from .qualification import QualificationEngine
+from .title_family import normalize_title
 
 _CURRENCY_THRESHOLD_RE = re.compile(r"^\s*([\d,]+(?:\.\d+)?)\s*([A-Za-z]{3})\s*$")
 
@@ -352,7 +353,10 @@ class OpportunityScorer:
                 domain_ev_refs = ()
                 uncertainty_acc += 0.1
 
-        w_dom = weights.get("domain", 0.10)
+        # Rebalanced from 0.10 (see the title_family_fit dimension's weight
+        # note below, dimension 8) to make room for that new dimension
+        # without exceeding the employment_weights total of 1.0.
+        w_dom = weights.get("domain", 0.05)
         scores.append(MatchDimensionScore(
             dimension_name="domain_fit",
             raw_score=domain_score,
@@ -550,6 +554,77 @@ class OpportunityScorer:
             gaps=traj_gaps,
             unknowns=traj_unknowns,
             evidence_refs=traj_ev_refs,
+            opportunity_field_refs=("title",),
+        ))
+
+        # 8. Title-Family Fit (B3, BRIEF-FR-006): compares the posting's
+        # normalized title family (`matching/title_family.py`, driven by the
+        # committed `matching/title_families.yaml`) against the families the
+        # founder's verified CAREER_TARGET_ROLE assertions themselves
+        # normalize onto. Distinguishes near-identical titles by family (not
+        # only by score) -- e.g. "Senior Customer Engineer" postings no
+        # longer read as a data-engineering match just because both titles
+        # contain "Engineer".
+        #
+        # Weight note: this dimension is new, so `employment_weights` is
+        # rebalanced to keep the total at 1.0 without touching any other
+        # implementer's dimension in this concurrent wave: `domain` drops
+        # from its 0.10 default to 0.05 (domain_fit's term-overlap check
+        # already covers much of the same ground as title-family alignment,
+        # so halving it is a reasonable reallocation) and the freed 0.05
+        # funds `title_family` at 0.05. Every other default is unchanged.
+        opp_family_id, _opp_level, opp_family_rule = normalize_title(opp.title)
+        target_role_family_assertions = [
+            a for a in truth_graph.assertions.values()
+            if a.predicate == predicates.CAREER_TARGET_ROLE
+            and a.verification_status == VerificationStatus.VERIFIED
+        ]
+        if not target_role_family_assertions:
+            title_family_score = 0.50
+            title_family_strengths = ()
+            title_family_gaps = ()
+            title_family_unknowns = ("Founder has no verified career.target_role assertion to compare title families against",)
+            title_family_ev_refs = ()
+            uncertainty_acc += 0.1
+        else:
+            target_families = {
+                normalize_title(str(a.value))[0]: a for a in target_role_family_assertions
+            }
+            if opp_family_id != "other" and opp_family_id in target_families:
+                title_family_score = 1.0
+                title_family_strengths = (
+                    f"Posting title family '{opp_family_id}' matches a verified target role (rule: {opp_family_rule})",
+                )
+                title_family_gaps = ()
+                title_family_unknowns = ()
+                title_family_ev_refs = (target_families[opp_family_id].id,)
+            elif opp_family_id == "other":
+                title_family_score = 0.40
+                title_family_strengths = ()
+                title_family_gaps = ()
+                title_family_unknowns = (f"Posting title did not normalize to a known family (rule: {opp_family_rule})",)
+                title_family_ev_refs = ()
+                uncertainty_acc += 0.05
+            else:
+                title_family_score = 0.20
+                title_family_strengths = ()
+                title_family_gaps = (
+                    f"Posting title family '{opp_family_id}' does not match any of the founder's verified target-role families",
+                )
+                title_family_unknowns = ()
+                title_family_ev_refs = tuple(a.id for a in target_role_family_assertions)
+
+        w_title_family = weights.get("title_family", 0.05)
+        scores.append(MatchDimensionScore(
+            dimension_name="title_family_fit",
+            raw_score=title_family_score,
+            weight=w_title_family,
+            weighted_score=title_family_score * w_title_family,
+            explanation=f"Posting title normalized to family '{opp_family_id}' (rule: {opp_family_rule}).",
+            strengths=title_family_strengths,
+            gaps=title_family_gaps,
+            unknowns=title_family_unknowns,
+            evidence_refs=title_family_ev_refs,
             opportunity_field_refs=("title",),
         ))
 

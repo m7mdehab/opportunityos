@@ -1603,6 +1603,16 @@ class FilterSeedSyncTest(unittest.TestCase):
             self.assertEqual(params, fd.default_params, fd.filter_id)
 
 
+class TargetRolesDefaultModeTest(unittest.TestCase):
+    """B3 (BRIEF-FR-006), Overseer decision at FR-005 review §3.1: the
+    `target_roles` filter default reverts from the council-defect-4
+    `label_only` demotion back to `rank_only`."""
+
+    def test_target_roles_default_mode_is_rank_only(self):
+        fd = FILTER_DEFINITIONS_BY_ID["target_roles"]
+        self.assertEqual(fd.default_mode, "rank_only")
+
+
 class FilterSettingsRouteTest(ApiTestCase):
     def setUp(self):
         super().setUp()

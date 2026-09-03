@@ -1,0 +1,236 @@
+
+# B3 (BRIEF-FR-006) -- committed target-role family definitions.
+#
+# `matching/title_family.py::normalize_title` loads this file and evaluates
+# `families` in the order they appear here (list order, not dict/hash
+# iteration order, so results are deterministic regardless of Python's dict
+# implementation). For each family, `aliases` are checked before `patterns`,
+# and within each list, entries are checked in the order written. The first
+# family with a matching alias/pattern -- and no matching `negative_patterns`
+# entry for that same family -- wins. `other` is the deliberate catch-all and
+# must remain last with empty rule lists.
+#
+# All matching happens against a normalized copy of the title: casefolded,
+# with every run of non-alphanumeric characters collapsed to a single space
+# (see `title_family.py::_normalize_for_matching`). Aliases are plain phrases
+# (matched as whole words via an auto-derived word-boundary regex); `patterns`
+# are raw regexes evaluated with `re.search` against the same normalized text.
+#
+# Ordering rationale (specific families first, generic/broad ones last, so a
+# narrower, more identifying family wins a title before a broader one gets a
+# chance): customer/solutions engineering and ML/AI engineering are checked
+# first because "engineer" alone is not diagnostic and these two are the
+# collision pair the brief calls out by name (Customer Engineer vs Data
+# Engineer; ML Engineer vs Sales Engineer). data_migration is checked before
+# devops_platform so "cloud migration" wins over a generic "cloud" reading.
+# `other` always resolves; nothing is ever left unresolved.
+
+version: 1
+families:
+  - id: customer_solutions_engineering
+    display_name: Customer / Solutions Engineering
+    aliases:
+      - "customer engineer"
+      - "customer success engineer"
+      - "solutions engineer"
+      - "solution engineer"
+      - "sales engineer"
+      - "presales engineer"
+      - "pre sales engineer"
+      - "technical account manager"
+      - "solutions consultant"
+    patterns:
+      - '\bcustomer\s+(success\s+)?engineer\b'
+      - '\bsolutions?\s+engineer\b'
+      - '\bsales\s+engineer\b'
+      - '\b(pre\s*sales)\s+engineer\b'
+      - '\btechnical\s+account\s+manager\b'
+    negative_patterns:
+      - '\bdata\b'
+
+  - id: ml_ai_engineering
+    display_name: ML / AI Engineering
+    aliases:
+      - "machine learning engineer"
+      - "ml engineer"
+      - "ai engineer"
+      - "artificial intelligence engineer"
+      - "deep learning engineer"
+      - "nlp engineer"
+      - "computer vision engineer"
+      - "mlops engineer"
+    patterns:
+      - '\bmachine\s+learning\s+engineer\b'
+      - '\bml\s+engineer\b'
+      - '\bai\s+engineer\b'
+      - '\bartificial\s+intelligence\s+engineer\b'
+      - '\b(deep\s+learning|nlp|computer\s+vision|mlops)\s+engineer\b'
+    negative_patterns: []
+
+  - id: data_science
+    display_name: Data Science
+    aliases:
+      - "data scientist"
+      - "statistical consultant"
+      - "statistician"
+      - "quantitative analyst"
+    patterns:
+      - '\bdata\s+scientist\b'
+      - '\bstatistic(ian|al)\b'
+      - '\bquantitative\s+analyst\b'
+    negative_patterns: []
+
+  - id: data_migration
+    display_name: Data Migration
+    aliases:
+      - "data migration"
+      - "cloud migration"
+      - "migration engineer"
+      - "migration specialist"
+      - "platform migration"
+      - "system migration"
+    patterns:
+      - '\b(data|cloud|system|platform|infrastructure)\s+migration\b'
+      - '\bmigration\s+(engineer|specialist|consultant|lead)\b'
+    negative_patterns: []
+
+  - id: analytics_bi
+    display_name: Analytics / BI
+    aliases:
+      - "data analyst"
+      - "business intelligence analyst"
+      - "bi analyst"
+      - "bi engineer"
+      - "analytics engineer"
+      - "reporting analyst"
+      - "insights analyst"
+    patterns:
+      - '\bdata\s+analyst\b'
+      - '\b(business\s+intelligence|bi)\s+(analyst|engineer|developer)\b'
+      - '\banalytics\s+(engineer|analyst|specialist)\b'
+      - '\breporting\s+analyst\b'
+    negative_patterns: []
+
+  - id: tutoring
+    display_name: Tutoring / Teaching
+    aliases:
+      - "tutor"
+      - "private tutor"
+      - "instructor"
+      - "teaching assistant"
+    patterns:
+      - '\btutor(ing)?\b'
+      - '\binstructor\b'
+      - '\bteaching\s+assistant\b'
+    negative_patterns: []
+
+  - id: data_engineering
+    display_name: Data Engineering
+    aliases:
+      - "data engineer"
+      - "etl engineer"
+      - "data platform engineer"
+      - "big data engineer"
+      - "data infrastructure engineer"
+      - "data pipeline engineer"
+      - "data architect"
+    patterns:
+      - '\bdata\s+(platform\s+|infrastructure\s+|pipeline\s+)?engineer\b'
+      - '\betl\s+engineer\b'
+      - '\bbig\s*data\s+engineer\b'
+      - '\bdata\s+architect\b'
+    negative_patterns:
+      - '\b(customer|sales|solutions?)\b'
+
+  - id: web_frontend
+    display_name: Web / Frontend
+    aliases:
+      - "frontend engineer"
+      - "front end engineer"
+      - "frontend developer"
+      - "front end developer"
+      - "ui engineer"
+      - "react developer"
+      - "web developer"
+      - "full stack developer"
+      - "fullstack developer"
+      - "fullstack engineer"
+    patterns:
+      - '\bfront[\s-]?end\s+(engineer|developer)\b'
+      - '\b(react|angular|vue)\s+developer\b'
+      - '\bui\s+engineer\b'
+      - '\bweb\s+developer\b'
+      - '\bfull[\s-]?stack\s+(developer|engineer)\b'
+    negative_patterns: []
+
+  - id: backend
+    display_name: Backend
+    aliases:
+      - "backend engineer"
+      - "back end engineer"
+      - "backend developer"
+      - "backend architect"
+      - "api engineer"
+      - "server side engineer"
+    patterns:
+      - '\bback[\s-]?end\s+(engineer|developer|architect)\b'
+      - '\bengineer\s+back[\s-]?end\b'
+      - '\bapi\s+engineer\b'
+      - '\bserver[\s-]?side\s+engineer\b'
+    negative_patterns: []
+
+  - id: devops_platform
+    display_name: DevOps / Platform
+    aliases:
+      - "devops engineer"
+      - "site reliability engineer"
+      - "platform engineer"
+      - "infrastructure engineer"
+      - "cloud engineer"
+      - "cloud architect"
+      - "systems engineer"
+      - "systems architect"
+      - "kubernetes engineer"
+    patterns:
+      - '\bdevops\s+engineer\b'
+      - '\bsite\s+reliability\s+engineer\b'
+      - '\bsre\b'
+      - '\bplatform\s+engineer\b'
+      - '\binfrastructure\s+engineer\b'
+      - '\bcloud\s+(engineer|architect)\b'
+      - '\bsystems?\s+(engineer|architect)\b'
+      - '\bkubernetes\s+engineer\b'
+    negative_patterns:
+      - '\bdata\b'
+
+  - id: product
+    display_name: Product
+    aliases:
+      - "product manager"
+      - "product owner"
+      - "product designer"
+      - "product marketing manager"
+    patterns:
+      - '\bproduct\s+(manager|owner|designer|lead)\b'
+    negative_patterns: []
+
+  - id: project_program_management
+    display_name: Project / Program Management
+    aliases:
+      - "project manager"
+      - "program manager"
+      - "delivery manager"
+      - "scrum master"
+      - "program coordinator"
+      - "project coordinator"
+    patterns:
+      - '\b(project|program)\s+(manager|coordinator|lead)\b'
+      - '\bdelivery\s+manager\b'
+      - '\bscrum\s+master\b'
+    negative_patterns: []
+
+  - id: other
+    display_name: Other / Unclassified
+    aliases: []
+    patterns: []
+    negative_patterns: []
