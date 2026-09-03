@@ -1,0 +1,17 @@
+=== upgrade head (1) ===
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+=== downgrade base ===
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running downgrade 0004_founder_control -> 0003_provenance_identity, 0004_founder_control
+INFO  [alembic.runtime.migration] Running downgrade 0003_provenance_identity -> 0002_match_evaluations, 0003_provenance_identity
+INFO  [alembic.runtime.migration] Running downgrade 0002_match_evaluations -> 0001_baseline_schema, 0002_match_evaluations
+INFO  [alembic.runtime.migration] Running downgrade 0001_baseline_schema -> , 0001_baseline_schema
+=== upgrade head (2) ===
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001_baseline_schema, 0001_baseline_schema
+INFO  [alembic.runtime.migration] Running upgrade 0001_baseline_schema -> 0002_match_evaluations, 0002_match_evaluations
+INFO  [alembic.runtime.migration] Running upgrade 0002_match_evaluations -> 0003_provenance_identity, 0003_provenance_identity
+INFO  [alembic.runtime.migration] Running upgrade 0003_provenance_identity -> 0004_founder_control, 0004_founder_control
