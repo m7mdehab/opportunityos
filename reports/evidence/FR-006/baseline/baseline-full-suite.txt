@@ -680,8 +680,19 @@ C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fast
         [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
         
   return self.router.on_event(event_type)  # ty: ignore[deprecated]
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           ERROR
-test_reload_with_valid_pack (api.test_api.TruthRoutesTest.test_reload_with_valid_pack) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+ERROR
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:572: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces/commas for version_locations.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade 0003_provenance_identity -> 0004_founder_control, 0004_founder_control
+setUpClass (api.test_api.SourcesAndWorkerTest) ... ERROR
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade 0003_provenance_identity -> 0004_founder_control, 0004_founder_control
+test_reload_with_invalid_pack (api.test_api.TruthRoutesTest.test_reload_with_invalid_pack) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
         on_event is deprecated, use lifespan event handlers instead.
 
         Read more about it in the
@@ -696,6 +707,21 @@ C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fast
         
   return self.router.on_event(event_type)  # ty: ignore[deprecated]
 ok
+test_reload_with_valid_pack (api.test_api.TruthRoutesTest.test_reload_with_valid_pack) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+FAIL
 test_status_returns_200_even_when_no_pack_loaded (api.test_api.TruthRoutesTest.test_status_returns_200_even_when_no_pack_loaded) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
         on_event is deprecated, use lifespan event handlers instead.
 
@@ -866,6 +892,29 @@ test_world_bank_adapter (opportunity.test_adapters.AdapterTests.test_world_bank_
 test_greenhouse_and_ted_nonempty_missing_collection_schema_drift (opportunity.test_adversarial.TestAdversarialInvariants.test_greenhouse_and_ted_nonempty_missing_collection_schema_drift)
 Greenhouse and TED with unexpected schema must report SCHEMA_DRIFT_SUSPECTED, not EMPTY_RESULTS. ... ok
 test_health_telemetry_b_valid_empty_payload (opportunity.test_adversarial.TestAdversarialInvariants.test_health_telemetry_b_valid_empty_payload)
+B. Valid source payload containing exactly 0 source records -> EMPTY_RESULTS. ... ok
+test_health_telemetry_d_raw_parsed_valid_accuracy (opportunity.test_adversarial.TestAdversarialInvariants.test_health_telemetry_d_raw_parsed_valid_accuracy)
+D. Collection has 3 raw records, 2 normalize successfully -> raw=3, parsed=2, valid=2. ... ok
+test_health_telemetry_e_parser_exception_after_http_200 (opportunity.test_adversarial.TestAdversarialInvariants.test_health_telemetry_e_parser_exception_after_http_200)
+E. Parser exception after HTTP 200 -> HTTP transport remains 200 and parser error is independently recorded. ... ok
+test_health_telemetry_successful_non_200_status_code_preservation (opportunity.test_adversarial.TestAdversarialInvariants.test_health_telemetry_successful_non_200_status_code_preservation)
+MockTransport status_code=206, latency=187ms -> SourceHealthReport retains status_code=206 and latency=187ms. ... ok
+test_minimal_records_zero_fabrication_across_all_adapters (opportunity.test_adversarial.TestAdversarialInvariants.test_minimal_records_zero_fabrication_across_all_adapters)
+Sparse records across all 9 adapters must not fabricate placeholder values. ... ok
+test_ted_concrete_description_laundering_bug_fixed (opportunity.test_adversarial.TestAdversarialInvariants.test_ted_concrete_description_laundering_bug_fixed)
+Notice has title but no description -> description MUST NOT silently become title. ... ok
+test_parse_linkedin_job_alert (opportunity.test_alert_ingestion.TestAlertIngestionEngine.test_parse_linkedin_job_alert) ... ok
+test_parse_procurement_tender_alert (opportunity.test_alert_ingestion.TestAlertIngestionEngine.test_parse_procurement_tender_alert) ... ok
+test_parse_upwork_freelance_alert (opportunity.test_alert_ingestion.TestAlertIngestionEngine.test_parse_upwork_freelance_alert) ... ok
+test_ats_direct_plus_aggregator_with_same_canonical_url_merges (opportunity.test_dedupe.TestDeduplicationRegressions.test_ats_direct_plus_aggregator_with_same_canonical_url_merges)
+ATS direct + aggregator with exact same canonical ATS URL -> MERGES cleanly. ... ok
+test_same_source_distinct_requisition_ids_never_merge (opportunity.test_dedupe.TestDeduplicationRegressions.test_same_source_distinct_requisition_ids_never_merge)
+Distinct requisition IDs from same source never merge (preserving headcount). ... ok
+test_similarity_without_identity_proof_does_not_merge (opportunity.test_dedupe.TestDeduplicationRegressions.test_similarity_without_identity_proof_does_not_merge)
+Same org, same exact title, near-identical description without stable identity -> preserve both. ... ok
+test_source_id_substring_matching_rejected (opportunity.test_dedupe.TestDeduplicationRegressions.test_source_id_substring_matching_rejected)
+source_id in other.source_url (e.g. '1' in '.../jobs/12345') MUST NEVER MERGE. ... ok
+test_canonical_serialization_identical_across_pythonhashseeds (opportunity.test_deterministic_replay.DeterministicReplayTests.test_canonical_serialization_identical_across_pythonhashseeds) ... )
 B. Valid source payload containing exactly 0 source records -> EMPTY_RESULTS. ... ok
 test_health_telemetry_d_raw_parsed_valid_accuracy (opportunity.test_adversarial.TestAdversarialInvariants.test_health_telemetry_d_raw_parsed_valid_accuracy)
 D. Collection has 3 raw records, 2 normalize successfully -> raw=3, parsed=2, valid=2. ... ok
@@ -1277,4 +1326,263 @@ Case I: Two independent PostgreSQL sessions racing for the same idempotency key.
 test_case_j_two_independent_workers_racing_with_skip_locked (storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_j_two_independent_workers_racing_with_skip_locked)
 Case J: Two independent workers racing for one job with SKIP LOCKED. ... FAIL
 test_case_k_worker_stale_lease_recovery_after_restart (storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_k_worker_stale_lease_recovery_after_restart)
-Case K: Stale leased worker job is cleanly recovered after lease expiration. ... 
+Case K: Stale leased worker job is cleanly recovered after lease expiration. ... ERROR
+test_case_l_transaction_rollback_after_induced_failure (storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_l_transaction_rollback_after_induced_failure)
+Case L: Transaction rolls back completely on induced failure. ... ERROR
+test_case_m_backup_wipe_restore_postgres_cycle (storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_m_backup_wipe_restore_postgres_cycle)
+Case M: Full backup -> wipe database -> restore -> verify all models. ... ERROR
+test_case_n_founder_feedback_duplicate_and_identity (storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_n_founder_feedback_duplicate_and_identity)
+Case N: Founder feedback duplicate replay produces 0 duplicate records and returns exact persisted ID. ... ERROR
+test_case_o_process_restart_against_migrated_postgres (storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_o_process_restart_against_migrated_postgres)
+Case O: Process restarts against PostgreSQL maintain complete state continuity. ... ERROR
+test_case_p_no_implicit_production_sqlite_fallback (storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_p_no_implicit_production_sqlite_fallback)
+Case P: Storage engine and all production components fail closed to PostgreSQL with no silent SQLite fallback. ... ERROR
+test_case_q_outbound_browser_engine_with_postgres_ledger (storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_q_outbound_browser_engine_with_postgres_ledger)
+Case Q: Real OutboundBrowserEngine executes against PostgresIdempotencyLedger through full lifecycle. ... ERROR
+test_case_r_production_operational_orchestrator_with_postgres_store (storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_r_production_operational_orchestrator_with_postgres_store)
+Case R: Real ProductionOperationalOrchestrator executes against PostgresInboxStore through full lifecycle. ... ERROR
+test_case_s_worker_runner_end_to_end (storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_s_worker_runner_end_to_end)
+Case S: two concurrent WorkerRunners drain a mixed job queue against real PostgreSQL. ... ERROR
+test_case_t_stale_lease_reclaim_race (storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_t_stale_lease_reclaim_race)
+Case T: two sessions race to reclaim one job whose lease has already ... ERROR
+test_case_u_poll_source_persists_idempotently (storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_u_poll_source_persists_idempotently)
+Case U: poll_source persists a fixture batch idempotently against real PostgreSQL. ... ERROR
+test_case_v_evaluate_new_persists_match_evaluations (storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_v_evaluate_new_persists_match_evaluations)
+Case V: evaluate_new persists match_evaluations rows against real PostgreSQL. ... ERROR
+test_match_evaluations_unique_constraint_enforced_by_database (storage.test_postgres_integration.PostgresProductionIntegrationTest.test_match_evaluations_unique_constraint_enforced_by_database)
+(opportunity_id, truth_pack_hash) duplicates are rejected by PostgreSQL itself. ... ERROR
+test_founder_feedback (storage.test_storage.TestStorageRepository.test_founder_feedback) ... ok
+test_save_and_get_opportunity (storage.test_storage.TestStorageRepository.test_save_and_get_opportunity) ... ok
+test_active_assertions_supersedes_and_conflicts_resolution (truth.test_adversarial.AdversarialTruthTests.test_active_assertions_supersedes_and_conflicts_resolution) ... ok
+test_all_seeded_bad_claims_reject_in_batch (truth.test_adversarial.AdversarialTruthTests.test_all_seeded_bad_claims_reject_in_batch) ... ok
+test_approximate_to_definite_upgrade_rejected (truth.test_adversarial.AdversarialTruthTests.test_approximate_to_definite_upgrade_rejected) ... ok
+test_business_capacity_strict_numeric_validation (truth.test_adversarial.AdversarialTruthTests.test_business_capacity_strict_numeric_validation) ... ok
+test_cross_evidence_relationship_laundering_is_rejected (truth.test_adversarial.AdversarialTruthTests.test_cross_evidence_relationship_laundering_is_rejected) ... ok
+test_dangling_relation_endpoints_and_arbitrary_string_rejected (truth.test_adversarial.AdversarialTruthTests.test_dangling_relation_endpoints_and_arbitrary_string_rejected) ... ok
+test_epistemic_assertion_type_laundering_is_prevented (truth.test_adversarial.AdversarialTruthTests.test_epistemic_assertion_type_laundering_is_prevented) ... ok
+test_evidence_laundering_cannot_append_an_unbacked_skill (truth.test_adversarial.AdversarialTruthTests.test_evidence_laundering_cannot_append_an_unbacked_skill) ... ok
+test_explicit_null_cannot_be_coerced_into_a_fact (truth.test_adversarial.AdversarialTruthTests.test_explicit_null_cannot_be_coerced_into_a_fact) ... ok
+test_field_level_atomic_mismatch_attacks (truth.test_adversarial.AdversarialTruthTests.test_field_level_atomic_mismatch_attacks) ... ok
+test_forbidden_phrases_survive_case_and_whitespace_obfuscation (truth.test_adversarial.AdversarialTruthTests.test_forbidden_phrases_survive_case_and_whitespace_obfuscation) ... ok
+test_invariant_1_subject_predicate_safe_field_provenance (truth.test_adversarial.AdversarialTruthTests.test_invariant_1_subject_predicate_safe_field_provenance)
+Invariant 1: Subject/predicate-safe field provenance via explicit scope. ... ok
+test_invariant_2_canonical_material_field_manifest_reflection (truth.test_adversarial.AdversarialTruthTests.test_invariant_2_canonical_material_field_manifest_reflection)
+Invariant 2: Real complete material-field coverage, reflection, and executable engine. ... ok
+test_invariant_3_metric_assertions_are_sole_authority (truth.test_adversarial.AdversarialTruthTests.test_invariant_3_metric_assertions_are_sole_authority)
+Invariant 3: Real profile auto-extraction produces UNAVAILABLE metrics. ... ok
+test_invariant_4_candidate_authorized_by_assertions_not_extra_text (truth.test_adversarial.AdversarialTruthTests.test_invariant_4_candidate_authorized_by_assertions_not_extra_text)
+Invariant 4: ClaimCandidate must be authorized by assertions, not their extra text. ... ok
+test_many_evidence_ids_do_not_make_an_unrelated_claim_true (truth.test_adversarial.AdversarialTruthTests.test_many_evidence_ids_do_not_make_an_unrelated_claim_true) ... ok
+test_mapping_types_and_booleans_cannot_pass_integer_fields (truth.test_adversarial.AdversarialTruthTests.test_mapping_types_and_booleans_cannot_pass_integer_fields) ... ok
+test_metric_provenance_laundering_is_rejected (truth.test_adversarial.AdversarialTruthTests.test_metric_provenance_laundering_is_rejected) ... ok
+test_metric_substitution_never_inherits_original_provenance (truth.test_adversarial.AdversarialTruthTests.test_metric_substitution_never_inherits_original_provenance) ... ok
+test_modality_bound_strengthening_attacks (truth.test_adversarial.AdversarialTruthTests.test_modality_bound_strengthening_attacks) ... ok
+test_never_claim_semantic_paraphrase_protection (truth.test_adversarial.AdversarialTruthTests.test_never_claim_semantic_paraphrase_protection) ... ok
+test_planned_certification_held_verbs_are_all_rejected (truth.test_adversarial.AdversarialTruthTests.test_planned_certification_held_verbs_are_all_rejected) ... ok
+test_polarity_inversion_attacks (truth.test_adversarial.AdversarialTruthTests.test_polarity_inversion_attacks) ... ok
+test_same_parent_false_relationship_composition (truth.test_adversarial.AdversarialTruthTests.test_same_parent_false_relationship_composition) ... ok
+test_seeded_case_and_space_mutations_are_deterministic (truth.test_adversarial.AdversarialTruthTests.test_seeded_case_and_space_mutations_are_deterministic) ... ok
+test_single_sentence_multi_metric_isolation (truth.test_adversarial.AdversarialTruthTests.test_single_sentence_multi_metric_isolation) ... ok
+test_structural_capacity_mismatch_rejection (truth.test_adversarial.AdversarialTruthTests.test_structural_capacity_mismatch_rejection) ... ok
+test_structural_field_mismatch_rejection_cdo_vs_analyst (truth.test_adversarial.AdversarialTruthTests.test_structural_field_mismatch_rejection_cdo_vs_analyst) ... ok
+test_structural_language_mismatch_rejection (truth.test_adversarial.AdversarialTruthTests.test_structural_language_mismatch_rejection) ... ok
+test_structural_skill_mismatch_rejection (truth.test_adversarial.AdversarialTruthTests.test_structural_skill_mismatch_rejection) ... ok
+test_structural_work_authorization_mismatch_rejection (truth.test_adversarial.AdversarialTruthTests.test_structural_work_authorization_mismatch_rejection) ... ok
+test_structured_never_claim_candidate_dominance (truth.test_adversarial.AdversarialTruthTests.test_structured_never_claim_candidate_dominance) ... ok
+test_temporal_validity_and_expiration (truth.test_adversarial.AdversarialTruthTests.test_temporal_validity_and_expiration) ... ok
+test_terminal_case_10_candidate_bound_to_material_assertions (truth.test_adversarial.AdversarialTruthTests.test_terminal_case_10_candidate_bound_to_material_assertions) ... ok
+test_terminal_case_1_cross_record_token_union_rejected (truth.test_adversarial.AdversarialTruthTests.test_terminal_case_1_cross_record_token_union_rejected) ... ok
+test_terminal_case_2_negated_field_evidence_rejected_at_ingestion (truth.test_adversarial.AdversarialTruthTests.test_terminal_case_2_negated_field_evidence_rejected_at_ingestion) ... ok
+test_terminal_case_3_complete_material_field_coverage (truth.test_adversarial.AdversarialTruthTests.test_terminal_case_3_complete_material_field_coverage) ... ok
+test_terminal_case_4_nonexistent_source_target_rejected_in_add_relation (truth.test_adversarial.AdversarialTruthTests.test_terminal_case_4_nonexistent_source_target_rejected_in_add_relation) ... ok
+test_terminal_case_5_nested_achievement_requires_relation_evidence (truth.test_adversarial.AdversarialTruthTests.test_terminal_case_5_nested_achievement_requires_relation_evidence) ... ok
+test_terminal_case_6_multimetric_verification_order_independence (truth.test_adversarial.AdversarialTruthTests.test_terminal_case_6_multimetric_verification_order_independence) ... ok
+test_terminal_case_7_numeric_substrings_do_not_verify_numbers (truth.test_adversarial.AdversarialTruthTests.test_terminal_case_7_numeric_substrings_do_not_verify_numbers) ... ok
+test_terminal_case_8_year_only_does_not_establish_exact_date (truth.test_adversarial.AdversarialTruthTests.test_terminal_case_8_year_only_does_not_establish_exact_date) ... ok
+test_terminal_case_9_future_superseder_does_not_invalidate_current_truth (truth.test_adversarial.AdversarialTruthTests.test_terminal_case_9_future_superseder_does_not_invalidate_current_truth) ... ok
+test_unverified_to_verified_upgrade_rejected (truth.test_adversarial.AdversarialTruthTests.test_unverified_to_verified_upgrade_rejected) ... ok
+test_verified_assertion_without_evidence_rejected (truth.test_adversarial.AdversarialTruthTests.test_verified_assertion_without_evidence_rejected) ... ok
+test_yaml_tags_aliases_and_block_payloads_are_not_interpreted (truth.test_adversarial.AdversarialTruthTests.test_yaml_tags_aliases_and_block_payloads_are_not_interpreted) ... ok
+test_direct_and_recursive_provenance_are_distinct (truth.test_graph.TruthGraphTests.test_direct_and_recursive_provenance_are_distinct) ... ok
+test_duplicate_nodes_are_rejected (truth.test_graph.TruthGraphTests.test_duplicate_nodes_are_rejected) ... ok
+test_fact_and_inference_categories_do_not_overlap (truth.test_graph.TruthGraphTests.test_fact_and_inference_categories_do_not_overlap) ... ok
+test_indexes_are_read_only_views (truth.test_graph.TruthGraphTests.test_indexes_are_read_only_views) ... ok
+test_indexes_atomic_evidence_and_profiles (truth.test_graph.TruthGraphTests.test_indexes_atomic_evidence_and_profiles) ... ok
+test_provenance_edge_list_preserves_owning_node (truth.test_graph.TruthGraphTests.test_provenance_edge_list_preserves_owning_node) ... ok
+test_reverse_provenance_indexing (truth.test_graph.TruthGraphTests.test_reverse_provenance_indexing) ... ok
+test_unknown_evidence_rejects_profile_transactionally (truth.test_graph.TruthGraphTests.test_unknown_evidence_rejects_profile_transactionally) ... ok
+test_canonical_skill_aliases_are_case_and_separator_insensitive (truth.test_ingest.IngestionTests.test_canonical_skill_aliases_are_case_and_separator_insensitive) ... ok
+test_dates_are_strict_iso_8601_calendar_dates (truth.test_ingest.IngestionTests.test_dates_are_strict_iso_8601_calendar_dates) ... ok
+test_dict_ingestion_constructs_and_links_graph (truth.test_ingest.IngestionTests.test_dict_ingestion_constructs_and_links_graph) ... ok
+test_fractional_strings_are_rejected_for_integer_fields (truth.test_ingest.IngestionTests.test_fractional_strings_are_rejected_for_integer_fields) ... ok
+test_ingestion_supports_assertions_relations_and_metrics (truth.test_ingest.IngestionTests.test_ingestion_supports_assertions_relations_and_metrics) ... ok
+test_invalid_enum_and_naive_datetime_are_rejected (truth.test_ingest.IngestionTests.test_invalid_enum_and_naive_datetime_are_rejected) ... ok
+test_json_ingestion_is_deterministic (truth.test_ingest.IngestionTests.test_json_ingestion_is_deterministic) ... ok
+test_json_rejects_non_object_root_and_duplicate_graph_ids (truth.test_ingest.IngestionTests.test_json_rejects_non_object_root_and_duplicate_graph_ids) ... ok
+test_loader_rejects_unknown_format (truth.test_ingest.IngestionTests.test_loader_rejects_unknown_format) ... ok
+test_never_claim_concept_is_validated_without_silent_default (truth.test_ingest.IngestionTests.test_never_claim_concept_is_validated_without_silent_default) ... ok
+test_unknown_evidence_reference_is_rejected (truth.test_ingest.IngestionTests.test_unknown_evidence_reference_is_rejected) ... ok
+test_unknown_fields_fail_closed (truth.test_ingest.IngestionTests.test_unknown_fields_fail_closed) ... ok
+test_yaml_ingestion_supports_truth_pack_subset (truth.test_ingest.IngestionTests.test_yaml_ingestion_supports_truth_pack_subset) ... ok
+test_yaml_rejects_unsafe_features_and_duplicate_keys (truth.test_ingest.IngestionTests.test_yaml_rejects_unsafe_features_and_duplicate_keys) ... ok
+test_achievement_requires_unique_atomic_evidence (truth.test_models.ModelTests.test_achievement_requires_unique_atomic_evidence) ... ok
+test_atomic_assertion_model_invariants (truth.test_models.ModelTests.test_atomic_assertion_model_invariants) ... ok
+test_business_capacity_qualification_fields (truth.test_models.ModelTests.test_business_capacity_qualification_fields) ... ok
+test_business_capacity_rejects_non_integer_for_int_fields (truth.test_models.ModelTests.test_business_capacity_rejects_non_integer_for_int_fields) ... ok
+test_business_capacity_validates_ranges (truth.test_models.ModelTests.test_business_capacity_validates_ranges) ... ok
+test_capability_industry_sets_cannot_contradict (truth.test_models.ModelTests.test_capability_industry_sets_cannot_contradict) ... ok
+test_claim_candidate_model_invariants (truth.test_models.ModelTests.test_claim_candidate_model_invariants) ... ok
+test_enums_have_stable_wire_values (truth.test_models.ModelTests.test_enums_have_stable_wire_values) ... ok
+test_evidence_cannot_encode_a_prohibited_claim_as_support (truth.test_models.ModelTests.test_evidence_cannot_encode_a_prohibited_claim_as_support) ... ok
+test_explicit_null_is_structural_not_an_empty_string (truth.test_models.ModelTests.test_explicit_null_is_structural_not_an_empty_string) ... ok
+test_metric_assertion_model_invariants (truth.test_models.ModelTests.test_metric_assertion_model_invariants) ... ok
+test_models_are_immutable (truth.test_models.ModelTests.test_models_are_immutable) ... ok
+test_planned_certification_cannot_have_issued_date (truth.test_models.ModelTests.test_planned_certification_cannot_have_issued_date) ... ok
+test_service_requires_evidence (truth.test_models.ModelTests.test_service_requires_evidence) ... ok
+test_typed_relation_model_invariants (truth.test_models.ModelTests.test_typed_relation_model_invariants) ... ok
+test_default_path_constant_is_private_truth_pack (truth.test_pack.LoadFounderPackDefaultPathTest.test_default_path_constant_is_private_truth_pack) ... ok
+test_hash_changes_when_content_changes (truth.test_pack.LoadFounderPackHashTest.test_hash_changes_when_content_changes) ... ok
+test_hash_stable_across_key_ordering (truth.test_pack.LoadFounderPackHashTest.test_hash_stable_across_key_ordering) ... ok
+test_hash_stable_across_two_loads_of_same_file (truth.test_pack.LoadFounderPackHashTest.test_hash_stable_across_two_loads_of_same_file) ... ok
+test_invalid_pack_raises_truth_pack_invalid_with_findings (truth.test_pack.LoadFounderPackInvalidTest.test_invalid_pack_raises_truth_pack_invalid_with_findings) ... ok
+test_missing_file_raises_truth_pack_missing (truth.test_pack.LoadFounderPackMissingTest.test_missing_file_raises_truth_pack_missing) ... ok
+test_report_and_loaded_pack_shape (truth.test_pack.LoadFounderPackReportTest.test_report_and_loaded_pack_shape) ... ok
+test_broken_copy_exits_one_with_findings (truth.test_pack.TruthCheckScriptTest.test_broken_copy_exits_one_with_findings) ... ok
+test_output_contains_no_template_field_values (truth.test_pack.TruthCheckScriptTest.test_output_contains_no_template_field_values) ... ok
+test_template_copy_exits_zero (truth.test_pack.TruthCheckScriptTest.test_template_copy_exits_zero) ... ok
+test_shipped_template_claim_rejections_are_reasoned_and_block_export (truth.test_pack.TruthPackTemplateArtifactGenerationKnownLimitationTest.test_shipped_template_claim_rejections_are_reasoned_and_block_export) ... ERROR
+test_template_covers_every_documented_section (truth.test_pack.TruthPackTemplateTest.test_template_covers_every_documented_section) ... ERROR
+test_template_loads_with_zero_validator_errors (truth.test_pack.TruthPackTemplateTest.test_template_loads_with_zero_validator_errors) ... ERROR
+test_assertion_only_predicates_name_the_assertions_section (truth.test_predicates.TestPredicateRegistryCompleteness.test_assertion_only_predicates_name_the_assertions_section) ... ok
+test_d2_fixed_files_have_zero_out_of_scope_allowance (truth.test_predicates.TestPredicateRegistryCompleteness.test_d2_fixed_files_have_zero_out_of_scope_allowance)
+scorer.py, qualification.py, and mapping.py are this D2 deliverable's ... ok
+test_every_referenced_predicate_is_registered (truth.test_predicates.TestPredicateRegistryCompleteness.test_every_referenced_predicate_is_registered) ... ok
+test_every_scanned_file_exists (truth.test_predicates.TestPredicateRegistryCompleteness.test_every_scanned_file_exists) ... ok
+test_known_orphans_are_no_longer_referenced_by_their_old_spelling (truth.test_predicates.TestPredicateRegistryCompleteness.test_known_orphans_are_no_longer_referenced_by_their_old_spelling)
+The specific orphan spellings this brief's defect list named must be gone ... ok
+test_out_of_scope_allowlist_is_exact_not_a_ceiling (truth.test_predicates.TestPredicateRegistryCompleteness.test_out_of_scope_allowlist_is_exact_not_a_ceiling)
+Every allowlisted (file, predicate) pair must still be actually ... ok
+test_projected_predicates_match_the_canonical_manifest (truth.test_predicates.TestPredicateRegistryCompleteness.test_projected_predicates_match_the_canonical_manifest) ... ok
+test_registry_predicates_are_classified_projected_or_assertion_only (truth.test_predicates.TestPredicateRegistryCompleteness.test_registry_predicates_are_classified_projected_or_assertion_only) ... ok
+test_scanned_files_reference_at_least_one_predicate (truth.test_predicates.TestPredicateRegistryCompleteness.test_scanned_files_reference_at_least_one_predicate) ... ok
+test_responsibility_scope_exceeds_flat_half_with_evidence (truth.test_predicates.TestResponsibilityScopeRescores.test_responsibility_scope_exceeds_flat_half_with_evidence) ... ok
+test_business_capacity_numeric_fuzzing (truth.test_property.TruthGraphPropertyTests.test_business_capacity_numeric_fuzzing)
+Property: BusinessCapacity strictly rejects non-finite or negative values across ... ok
+test_epistemic_monotonicity_property (truth.test_property.TruthGraphPropertyTests.test_epistemic_monotonicity_property)
+Property: The resolved assertion type of a multi-evidence claim is strictly ... ok
+test_modality_bound_monotonicity_property (truth.test_property.TruthGraphPropertyTests.test_modality_bound_monotonicity_property)
+Property: Upper-bound evidence records strictly forbid lower-bound or exact strengthening. ... ok
+test_never_claim_dominance_property (truth.test_property.TruthGraphPropertyTests.test_never_claim_dominance_property)
+Property: Prohibited concepts are 100% rejected regardless of evidence existence, ... ok
+test_polarity_preservation_property (truth.test_property.TruthGraphPropertyTests.test_polarity_preservation_property)
+Property: Negative particles in evidence strictly forbid positive claims under fuzzing. ... ok
+test_relational_isolation_property (truth.test_property.TruthGraphPropertyTests.test_relational_isolation_property)
+Property: Two evidence records from disjoint entity scopes can NEVER be joined ... ok
+test_approximate_non_metric_claim_must_be_qualified (truth.test_validator.ClaimValidatorTests.test_approximate_non_metric_claim_must_be_qualified) ... ok
+test_batch_and_require_valid_preserve_input_order (truth.test_validator.ClaimValidatorTests.test_batch_and_require_valid_preserve_input_order) ... ok
+test_metric_requires_exact_value_and_verified_metric_node (truth.test_validator.ClaimValidatorTests.test_metric_requires_exact_value_and_verified_metric_node) ... ok
+test_planned_credential_can_only_be_described_as_planned (truth.test_validator.ClaimValidatorTests.test_planned_credential_can_only_be_described_as_planned) ... ok
+test_prohibited_gold_claims_are_rejected (truth.test_validator.ClaimValidatorTests.test_prohibited_gold_claims_are_rejected) ... ok
+test_red_lines_and_never_claims_are_case_insensitive (truth.test_validator.ClaimValidatorTests.test_red_lines_and_never_claims_are_case_insensitive) ... ok
+test_requested_evidence_must_support_the_claim (truth.test_validator.ClaimValidatorTests.test_requested_evidence_must_support_the_claim) ... ok
+test_unbacked_gold_claims_are_rejected (truth.test_validator.ClaimValidatorTests.test_unbacked_gold_claims_are_rejected) ... ok
+test_unknown_and_explicit_null_evidence_fail_closed (truth.test_validator.ClaimValidatorTests.test_unknown_and_explicit_null_evidence_fail_closed) ... ok
+test_verified_gold_claims_are_traceable (truth.test_validator.ClaimValidatorTests.test_verified_gold_claims_are_traceable) ... ok
+test_poll_source_fetches_and_ingests_for_read_allowed_source (worker.test_runner.TestPollSourceHandler.test_poll_source_fetches_and_ingests_for_read_allowed_source) ... ERROR
+test_poll_source_refuses_read_disabled_source_without_fetching (worker.test_runner.TestPollSourceHandler.test_poll_source_refuses_read_disabled_source_without_fetching) ... ok
+test_handler_exception_triggers_fail_job (worker.test_runner.TestWorkerRunner.test_handler_exception_triggers_fail_job) ... PostgreSQL: already listening on 127.0.0.1:5432 (not started by alpha.py).
+PostgreSQL: using database 'opportunityos_alpha'.
+Database: db (PostgreSQL 127.0.0.1:5432).
+Worker: started (pid 424243), logging to C:\Users\M7mdEhab\AppData\Local\Temp\tmpg0yfpyqa\run\logs\worker.log.
+Database: db (PostgreSQL 127.0.0.1:5432).
+Worker: started (pid 424245), logging to C:\Users\M7mdEhab\AppData\Local\Temp\tmpuvutv_21\run\logs\worker.log.
+stopped
+alpha: down.
+{"timestamp": "2026-09-03T13:56:55.842976+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "w-fail", "job_id": "job-dc0873fa2025", "job_type": "explode", "payload_summary": {"payload_keys": []}}}
+INFO  [opportunityos.worker.runner] worker.job_claimed
+{"timestamp": "2026-09-03T13:56:55.896702+00:00", "level": "ERROR", "logger": "opportunityos.worker.runner", "message": "worker.job_failed", "component": "worker.runner", "data": {"worker_id": "w-fail", "job_id": "job-dc0873fa2025", "job_type": "explode", "error": "Handler raised: boom"}}
+ERROR [opportunityos.worker.runner] worker.job_failed
+ok
+test_heartbeat_renews_lease_so_slow_handler_still_completes_once (worker.test_runner.TestWorkerRunner.test_heartbeat_renews_lease_so_slow_handler_still_completes_once)
+A handler that outlives lease_seconds must still complete exactly once: ... {"timestamp": "2026-09-03T13:56:57.007239+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "w-heartbeat", "job_id": "job-0f6639b03853", "job_type": "slow", "payload_summary": {"payload_keys": []}}}
+INFO  [opportunityos.worker.runner] worker.job_claimed
+{"timestamp": "2026-09-03T13:56:58.384193+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_completed", "component": "worker.runner", "data": {"worker_id": "w-heartbeat", "job_id": "job-0f6639b03853", "job_type": "slow"}}
+INFO  [opportunityos.worker.runner] worker.job_completed
+ok
+test_repeated_failures_reach_dead_letter_after_max_retries (worker.test_runner.TestWorkerRunner.test_repeated_failures_reach_dead_letter_after_max_retries) ... {"timestamp": "2026-09-03T13:56:59.022956+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "w-deadletter", "job_id": "job-effeb27baa07", "job_type": "explode", "payload_summary": {"payload_keys": []}}}
+INFO  [opportunityos.worker.runner] worker.job_claimed
+{"timestamp": "2026-09-03T13:56:59.088179+00:00", "level": "ERROR", "logger": "opportunityos.worker.runner", "message": "worker.job_failed", "component": "worker.runner", "data": {"worker_id": "w-deadletter", "job_id": "job-effeb27baa07", "job_type": "explode", "error": "Handler raised: always fails"}}
+ERROR [opportunityos.worker.runner] worker.job_failed
+{"timestamp": "2026-09-03T13:56:59.113179+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "w-deadletter", "job_id": "job-effeb27baa07", "job_type": "explode", "payload_summary": {"payload_keys": []}}}
+INFO  [opportunityos.worker.runner] worker.job_claimed
+{"timestamp": "2026-09-03T13:56:59.154439+00:00", "level": "ERROR", "logger": "opportunityos.worker.runner", "message": "worker.job_failed", "component": "worker.runner", "data": {"worker_id": "w-deadletter", "job_id": "job-effeb27baa07", "job_type": "explode", "error": "Handler raised: always fails"}}
+ERROR [opportunityos.worker.runner] worker.job_failed
+ok
+test_run_forever_honours_max_jobs (worker.test_runner.TestWorkerRunner.test_run_forever_honours_max_jobs) ... {"timestamp": "2026-09-03T13:56:59.758581+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.started", "component": "worker.runner", "data": {"worker_id": "w-maxjobs", "max_jobs": 3}}
+INFO  [opportunityos.worker.runner] worker.started
+{"timestamp": "2026-09-03T13:56:59.771207+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "w-maxjobs", "job_id": "job-9c4f66f17a75", "job_type": "noop", "payload_summary": {"payload_keys": ["i"]}}}
+INFO  [opportunityos.worker.runner] worker.job_claimed
+{"timestamp": "2026-09-03T13:56:59.827294+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_completed", "component": "worker.runner", "data": {"worker_id": "w-maxjobs", "job_id": "job-9c4f66f17a75", "job_type": "noop"}}
+INFO  [opportunityos.worker.runner] worker.job_completed
+{"timestamp": "2026-09-03T13:56:59.839968+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "w-maxjobs", "job_id": "job-5c2bd87834e0", "job_type": "noop", "payload_summary": {"payload_keys": ["i"]}}}
+INFO  [opportunityos.worker.runner] worker.job_claimed
+{"timestamp": "2026-09-03T13:56:59.978007+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_completed", "component": "worker.runner", "data": {"worker_id": "w-maxjobs", "job_id": "job-5c2bd87834e0", "job_type": "noop"}}
+INFO  [opportunityos.worker.runner] worker.job_completed
+{"timestamp": "2026-09-03T13:56:59.990625+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "w-maxjobs", "job_id": "job-c9c9debff67d", "job_type": "noop", "payload_summary": {"payload_keys": ["i"]}}}
+INFO  [opportunityos.worker.runner] worker.job_claimed
+{"timestamp": "2026-09-03T13:57:00.116056+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_completed", "component": "worker.runner", "data": {"worker_id": "w-maxjobs", "job_id": "job-c9c9debff67d", "job_type": "noop"}}
+INFO  [opportunityos.worker.runner] worker.job_completed
+{"timestamp": "2026-09-03T13:57:00.117055+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.stopped", "component": "worker.runner", "data": {"worker_id": "w-maxjobs", "processed": 3}}
+INFO  [opportunityos.worker.runner] worker.stopped
+ok
+test_run_forever_honours_stop_event (worker.test_runner.TestWorkerRunner.test_run_forever_honours_stop_event) ... {"timestamp": "2026-09-03T13:57:01.845825+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.started", "component": "worker.runner", "data": {"worker_id": "w-stopped", "max_jobs": 10}}
+INFO  [opportunityos.worker.runner] worker.started
+{"timestamp": "2026-09-03T13:57:01.846620+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.stopped", "component": "worker.runner", "data": {"worker_id": "w-stopped", "processed": 0}}
+INFO  [opportunityos.worker.runner] worker.stopped
+ok
+test_run_forever_stop_event_set_concurrently_halts_loop (worker.test_runner.TestWorkerRunner.test_run_forever_stop_event_set_concurrently_halts_loop) ... {"timestamp": "2026-09-03T13:57:03.352582+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.started", "component": "worker.runner", "data": {"worker_id": "w-concurrent-stop", "max_jobs": null}}
+INFO  [opportunityos.worker.runner] worker.started
+{"timestamp": "2026-09-03T13:57:03.375269+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "w-concurrent-stop", "job_id": "job-33b0c51ef3c3", "job_type": "noop", "payload_summary": {"payload_keys": ["i"]}}}
+INFO  [opportunityos.worker.runner] worker.job_claimed
+{"timestamp": "2026-09-03T13:57:03.521159+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_completed", "component": "worker.runner", "data": {"worker_id": "w-concurrent-stop", "job_id": "job-33b0c51ef3c3", "job_type": "noop"}}
+INFO  [opportunityos.worker.runner] worker.job_completed
+{"timestamp": "2026-09-03T13:57:03.534126+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "w-concurrent-stop", "job_id": "job-84e810e5e799", "job_type": "noop", "payload_summary": {"payload_keys": ["i"]}}}
+INFO  [opportunityos.worker.runner] worker.job_claimed
+{"timestamp": "2026-09-03T13:57:03.670062+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_completed", "component": "worker.runner", "data": {"worker_id": "w-concurrent-stop", "job_id": "job-84e810e5e799", "job_type": "noop"}}
+INFO  [opportunityos.worker.runner] worker.job_completed
+{"timestamp": "2026-09-03T13:57:03.671060+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.stopped", "component": "worker.runner", "data": {"worker_id": "w-concurrent-stop", "processed": 2}}
+INFO  [opportunityos.worker.runner] worker.stopped
+ok
+test_run_once_dispatches_to_registered_handler (worker.test_runner.TestWorkerRunner.test_run_once_dispatches_to_registered_handler) ... {"timestamp": "2026-09-03T13:57:04.188256+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "w-dispatch", "job_id": "job-2ce9513fd95f", "job_type": "noop", "payload_summary": {"payload_keys": ["a"]}}}
+INFO  [opportunityos.worker.runner] worker.job_claimed
+{"timestamp": "2026-09-03T13:57:04.471215+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_completed", "component": "worker.runner", "data": {"worker_id": "w-dispatch", "job_id": "job-2ce9513fd95f", "job_type": "noop"}}
+INFO  [opportunityos.worker.runner] worker.job_completed
+ok
+test_run_once_returns_false_when_no_work (worker.test_runner.TestWorkerRunner.test_run_once_returns_false_when_no_work) ... {"timestamp": "2026-09-03T13:57:06.037179+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.idle_poll", "component": "worker.runner", "data": {"worker_id": "w-idle"}}
+INFO  [opportunityos.worker.runner] worker.idle_poll
+ok
+test_stolen_lease_refuses_to_write_outcome (worker.test_runner.TestWorkerRunner.test_stolen_lease_refuses_to_write_outcome)
+If another worker's stale-lease sweep has already taken over a job, this ... ok
+test_unknown_job_type_fails_with_distinctive_message (worker.test_runner.TestWorkerRunner.test_unknown_job_type_fails_with_distinctive_message) ... {"timestamp": "2026-09-03T13:57:07.897911+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "w-unknown", "job_id": "job-e72cfcd9b1b1", "job_type": "does_not_exist", "payload_summary": {"payload_keys": []}}}
+INFO  [opportunityos.worker.runner] worker.job_claimed
+{"timestamp": "2026-09-03T13:57:07.898907+00:00", "level": "ERROR", "logger": "opportunityos.worker.runner", "message": "worker.job_unknown_type", "component": "worker.runner", "data": {"worker_id": "w-unknown", "job_id": "job-e72cfcd9b1b1", "job_type": "does_not_exist"}}
+ERROR [opportunityos.worker.runner] worker.job_unknown_type
+{"timestamp": "2026-09-03T13:57:07.931403+00:00", "level": "ERROR", "logger": "opportunityos.worker.runner", "message": "worker.job_failed", "component": "worker.runner", "data": {"worker_id": "w-unknown", "job_id": "job-e72cfcd9b1b1", "job_type": "does_not_exist", "error": "UNKNOWN_JOB_TYPE: no handler registered for job_type 'does_not_exist'"}}
+ERROR [opportunityos.worker.runner] worker.job_failed
+ok
+test_default_when_unset (worker.test_scheduler.TestGetPollIntervalHours.test_default_when_unset) ... ok
+test_falls_back_on_invalid_value (worker.test_scheduler.TestGetPollIntervalHours.test_falls_back_on_invalid_value) ... ok
+test_falls_back_on_nonpositive_value (worker.test_scheduler.TestGetPollIntervalHours.test_falls_back_on_nonpositive_value) ... ok
+test_reads_env_override (worker.test_scheduler.TestGetPollIntervalHours.test_reads_env_override) ... ok
+test_real_os_environ_used_when_env_not_injected (worker.test_scheduler.TestGetPollIntervalHours.test_real_os_environ_used_when_env_not_injected) ... ok
+test_first_tick_on_a_fresh_scheduler_is_always_due (worker.test_scheduler.TestIntervalMath.test_first_tick_on_a_fresh_scheduler_is_always_due) ... ok
+test_interval_elapsed_gates_reenqueue_with_injected_clock (worker.test_scheduler.TestIntervalMath.test_interval_elapsed_gates_reenqueue_with_injected_clock) ... ok
+test_enqueues_again_once_the_prior_job_is_no_longer_pending (worker.test_scheduler.TestOneJobPerSourcePerTick.test_enqueues_again_once_the_prior_job_is_no_longer_pending) ... ok
+test_no_duplicate_while_a_poll_source_job_is_already_pending (worker.test_scheduler.TestOneJobPerSourcePerTick.test_no_duplicate_while_a_poll_source_job_is_already_pending) ... ok
+test_no_duplicate_while_a_retry_poll_source_job_is_pending (worker.test_scheduler.TestOneJobPerSourcePerTick.test_no_duplicate_while_a_retry_poll_source_job_is_pending) ... ok
+test_read_disabled_sources_never_enqueued (worker.test_scheduler.TestReadPolicyBoundary.test_read_disabled_sources_never_enqueued) ... ok
+test_enqueue_and_claim (worker.test_worker.TestBackgroundWorkerQueue.test_enqueue_and_claim) ... ok
+test_retry_and_dead_letter (worker.test_worker.TestBackgroundWorkerQueue.test_retry_and_dead_letter) ... ok
+test_stale_lease_reclaim_dead_letters_poison_job (worker.test_worker.TestBackgroundWorkerQueue.test_stale_lease_reclaim_dead_letters_poison_job)
+A poison job (its handler always kills the worker process before ... ok
+test_stale_lease_recovery (worker.test_worker.TestBackgroundWorkerQueue.test_stale_lease_recovery) ... 
