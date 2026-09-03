@@ -42,6 +42,23 @@ class StorageRepository:
             deadline=opp_data.get("deadline"),
             is_stale=opp_data.get("is_stale", False),
             raw_payload_json=opp_data.get("raw_payload_json"),
+            work_mode=opp_data.get("work_mode", "unspecified"),
+            work_mode_source=opp_data.get("work_mode_source"),
+            location_country=opp_data.get("location_country"),
+            location_city=opp_data.get("location_city"),
+            location_region=opp_data.get("location_region"),
+            remote_scope=opp_data.get("remote_scope", "unspecified"),
+            remote_scope_regions=opp_data.get("remote_scope_regions"),
+            employment_type=opp_data.get("employment_type", "unspecified"),
+            seniority_level=opp_data.get("seniority_level", "unspecified"),
+            compensation_min=opp_data.get("compensation_min"),
+            compensation_max=opp_data.get("compensation_max"),
+            compensation_currency=opp_data.get("compensation_currency"),
+            compensation_period=opp_data.get("compensation_period"),
+            title_family=opp_data.get("title_family"),
+            title_level=opp_data.get("title_level"),
+            family_key=opp_data.get("family_key"),
+            search_tsv=opp_data.get("search_tsv"),
         )
         for prov in provenances:
             prov_rec = FieldProvenanceRecord(
