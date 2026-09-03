@@ -1971,14 +1971,14 @@
     "text": "Immutable Versioned CV Compiler: Compiles tailored CV artifact tied to Opportunity and Evidence IDs.",
     "criticality": "P0",
     "phase": "Phase 1",
-    "status": "PARTIAL",
-    "evidence_strength": "PARTIAL_IMPLEMENTATION",
+    "status": "DONE",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
     "implementation_evidence": "matching/compiler_employment.py",
-    "tests": "matching/test_compiler.py, matching/test_adversarial.py",
+    "tests": "matching/test_artifacts_e2e.py, matching/test_compiler.py, api/test_api.py::ArtifactRoutesTest",
     "ci_evidence": "Mandatory Governance & Test Suite",
-    "later_authority": "ADR-0009",
+    "later_authority": "ADR-0014",
     "live_dependency": "None",
-    "gap_explanation": "PARTIAL per REPORT-FR-004 Erratum 1.2: matching/test_compiler.py counts sections and never runs truth/validator.py over the generated claims, so the compiler-plus-validator path was never tested end to end. Against the shipped founder template the validator rejects the generated claims and the artifact route returns 409. Returns to DONE only on a compiler-by-validator end-to-end test over the shipped template and a second realistic pack (BRIEF-FR-005 D1).",
+    "gap_explanation": "Compiler and validator are now tested end to end. matching/test_artifacts_e2e.py compiles CV and cover letter for two packs (the shipped synthetic template and a founder-shaped synthetic pack) against three fixture opportunities, asserting zero validator rejections, that every non-narrative sentence maps to a claim with evidence ids, and that no forbidden-inflation term appears unless the pack contains it verbatim. Both artifact routes return HTTP 200 with DOCX bytes, verified by the Master over HTTP. The suite includes per-pack mutation tests and fails when guard 9 is neutralised, so the safety property is defended by the tests rather than merely assumed. See BRIEF-FR-005 D1, ADR-0014, and reports/evidence/FR-005/a10-a11-after-repair.txt.",
     "bucket": "NONE",
     "status_history": [
       {
@@ -1987,6 +1987,13 @@
         "to": "PARTIAL",
         "date": "2026-09-02",
         "reason": "Erratum 1.2 -- compiler never tested against the validator; artifact routes 409 on the shipped template."
+      },
+      {
+        "brief": "BRIEF-FR-005",
+        "from": "PARTIAL",
+        "to": "DONE",
+        "date": "2026-09-03",
+        "reason": "Compiler-by-validator end-to-end evidence over two packs; both artifact routes return DOCX; tripwire and e2e mutation tests both fail under a neutralised validator."
       }
     ]
   },
@@ -1996,14 +2003,14 @@
     "text": "Proposal & Capability Statement Compiler: Compiles tailored proposal draft, work plan, and compliance checklist.",
     "criticality": "P0",
     "phase": "Phase 1",
-    "status": "PARTIAL",
-    "evidence_strength": "PARTIAL_IMPLEMENTATION",
+    "status": "DONE",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
     "implementation_evidence": "matching/compiler_independent.py",
-    "tests": "matching/test_compiler.py",
+    "tests": "matching/test_artifacts_e2e.py, matching/test_compiler.py, api/test_api.py::ArtifactRoutesTest",
     "ci_evidence": "Mandatory Governance & Test Suite",
-    "later_authority": "ADR-0009",
+    "later_authority": "ADR-0014",
     "live_dependency": "None",
-    "gap_explanation": "PARTIAL per REPORT-FR-004 Erratum 1.2: matching/test_compiler.py counts sections and never runs truth/validator.py over the generated claims, so the compiler-plus-validator path was never tested end to end. Against the shipped founder template the validator rejects the generated claims and the artifact route returns 409. Returns to DONE only on a compiler-by-validator end-to-end test over the shipped template and a second realistic pack (BRIEF-FR-005 D1).",
+    "gap_explanation": "Compiler and validator are now tested end to end. matching/test_artifacts_e2e.py compiles CV and cover letter for two packs (the shipped synthetic template and a founder-shaped synthetic pack) against three fixture opportunities, asserting zero validator rejections, that every non-narrative sentence maps to a claim with evidence ids, and that no forbidden-inflation term appears unless the pack contains it verbatim. Both artifact routes return HTTP 200 with DOCX bytes, verified by the Master over HTTP. The suite includes per-pack mutation tests and fails when guard 9 is neutralised, so the safety property is defended by the tests rather than merely assumed. See BRIEF-FR-005 D1, ADR-0014, and reports/evidence/FR-005/a10-a11-after-repair.txt.",
     "bucket": "NONE",
     "status_history": [
       {
@@ -2012,6 +2019,13 @@
         "to": "PARTIAL",
         "date": "2026-09-02",
         "reason": "Erratum 1.2 -- compiler never tested against the validator; artifact routes 409 on the shipped template."
+      },
+      {
+        "brief": "BRIEF-FR-005",
+        "from": "PARTIAL",
+        "to": "DONE",
+        "date": "2026-09-03",
+        "reason": "Compiler-by-validator end-to-end evidence over two packs; both artifact routes return DOCX; tripwire and e2e mutation tests both fail under a neutralised validator."
       }
     ]
   },
@@ -2021,14 +2035,14 @@
     "text": "100% Material Claim Provenance: Validator proves every generated claim maps to active TruthGraph assertions.",
     "criticality": "P0",
     "phase": "Phase 0",
-    "status": "PARTIAL",
-    "evidence_strength": "PARTIAL_IMPLEMENTATION",
+    "status": "DONE",
+    "evidence_strength": "TESTED_IMPLEMENTATION",
     "implementation_evidence": "matching/validator.py:ArtifactClaimValidator",
-    "tests": "matching/test_adversarial.py",
+    "tests": "matching/test_artifacts_e2e.py, matching/test_compiler.py, api/test_api.py::ArtifactRoutesTest",
     "ci_evidence": "Mandatory Governance & Test Suite",
-    "later_authority": "ADR-0009",
+    "later_authority": "ADR-0014",
     "live_dependency": "None",
-    "gap_explanation": "PARTIAL per REPORT-FR-004 Erratum 1.2: matching/test_compiler.py counts sections and never runs truth/validator.py over the generated claims, so the compiler-plus-validator path was never tested end to end. Against the shipped founder template the validator rejects the generated claims and the artifact route returns 409. Returns to DONE only on a compiler-by-validator end-to-end test over the shipped template and a second realistic pack (BRIEF-FR-005 D1).",
+    "gap_explanation": "Compiler and validator are now tested end to end. matching/test_artifacts_e2e.py compiles CV and cover letter for two packs (the shipped synthetic template and a founder-shaped synthetic pack) against three fixture opportunities, asserting zero validator rejections, that every non-narrative sentence maps to a claim with evidence ids, and that no forbidden-inflation term appears unless the pack contains it verbatim. Both artifact routes return HTTP 200 with DOCX bytes, verified by the Master over HTTP. The suite includes per-pack mutation tests and fails when guard 9 is neutralised, so the safety property is defended by the tests rather than merely assumed. See BRIEF-FR-005 D1, ADR-0014, and reports/evidence/FR-005/a10-a11-after-repair.txt.",
     "bucket": "NONE",
     "status_history": [
       {
@@ -2037,6 +2051,13 @@
         "to": "PARTIAL",
         "date": "2026-09-02",
         "reason": "Erratum 1.2 -- compiler never tested against the validator; artifact routes 409 on the shipped template."
+      },
+      {
+        "brief": "BRIEF-FR-005",
+        "from": "PARTIAL",
+        "to": "DONE",
+        "date": "2026-09-03",
+        "reason": "Compiler-by-validator end-to-end evidence over two packs; both artifact routes return DOCX; tripwire and e2e mutation tests both fail under a neutralised validator."
       }
     ]
   },
