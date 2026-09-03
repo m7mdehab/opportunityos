@@ -38,6 +38,7 @@ from storage.models import (
     FounderTriageStateRecord,
     IdempotencyReservationRecord,
     MatchEvaluationRecord,
+    OpportunityFamilyRecord,
     OpportunityRecord,
     OutboundActionRecordModel,
     SourcePollRunRecord,
@@ -64,10 +65,12 @@ from api.filters import (
     FILTER_DEFINITIONS_BY_ID,
     OpportunityFilterContext,
     affected_count as filter_affected_count,
+    apply_filters,
     build_filter_contexts,
     to_naive_utc,
 )
 from api.settings import Settings
+from opportunity.manual_sources import MANUAL_SOURCES
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_PACK_PATH = REPO_ROOT / "docs" / "templates" / "truth_pack.template.yaml"
@@ -2840,6 +2843,297 @@ class B4ExerciseTest(ApiTestCase):
         self.assertEqual(premium_count, 1)
         self.assertEqual(stale_count, 0)
         self.assertEqual(stale_query_count, 0)
+
+
+# ---------------------------------------------------------------------------
+# C5 (BRIEF-FR-006): extraction fields on the feed item / detail response,
+# GET /api/manual-sources, GET /api/polls/{poll_id}/over-hiding.
+# ---------------------------------------------------------------------------
+
+_C5_EXTRACTION_FIELD_NAMES = (
+    "work_mode",
+    "work_mode_source",
+    "location_country",
+    "location_city",
+    "location_region",
+    "remote_scope",
+    "remote_scope_regions",
+    "employment_type",
+    "seniority_level",
+    "compensation_min",
+    "compensation_max",
+    "compensation_currency",
+    "compensation_period",
+    "title_family",
+    "title_level",
+    "family_key",
+)
+
+
+class ExtractionFieldSerializationTest(ApiTestCase):
+    """C5.1 / C5.2: the founder's original complaint ("no card said whether
+    the job was remote, hybrid, or on-site, or where it was") is only fixed
+    once these `opportunities` columns (migration 0004) actually reach the
+    list item and the detail response."""
+
+    def setUp(self):
+        super().setUp()
+        self.app = self.make_app()
+        self.client = self.logged_in_client(self.app)
+
+    def _seed_full_row(self, opp_id: str, **overrides) -> OpportunityRecord:
+        record = OpportunityRecord(
+            id=opp_id,
+            track="employment",
+            title=f"Title {opp_id}",
+            organization=f"Org {opp_id}",
+            description="A synthetic opportunity for API tests.",
+            source_id="himalayas",
+            source_url=f"https://himalayas.app/jobs/{opp_id}",
+            content_hash=f"hash-{opp_id}",
+            created_at=datetime.now(timezone.utc),
+            work_mode=overrides.pop("work_mode", "remote"),
+            work_mode_source=overrides.pop("work_mode_source", "posting"),
+            location_country=overrides.pop("location_country", "EG"),
+            location_city=overrides.pop("location_city", "Cairo"),
+            location_region=overrides.pop("location_region", "MENA"),
+            remote_scope=overrides.pop("remote_scope", "worldwide"),
+            remote_scope_regions=overrides.pop("remote_scope_regions", json.dumps(["EG", "SA"])),
+            employment_type=overrides.pop("employment_type", "full_time"),
+            seniority_level=overrides.pop("seniority_level", "senior"),
+            compensation_min=overrides.pop("compensation_min", 4000),
+            compensation_max=overrides.pop("compensation_max", 6000),
+            compensation_currency=overrides.pop("compensation_currency", "USD"),
+            compensation_period=overrides.pop("compensation_period", "monthly"),
+            title_family=overrides.pop("title_family", "data_engineer"),
+            title_level=overrides.pop("title_level", "senior"),
+            family_key=overrides.pop("family_key", None),
+        )
+        assert not overrides, f"unrecognised overrides: {overrides}"
+        self.session.add(record)
+        self.session.commit()
+        backfill_search_tsv(self.session)
+        return record
+
+    def test_c5_1_every_extraction_field_present_in_list_and_detail(self):
+        self._seed_full_row("opp-full")
+
+        list_resp = self.client.get("/api/opportunities")
+        self.assertEqual(list_resp.status_code, 200, list_resp.text)
+        item = list_resp.json()["items"][0]
+        print(f"C5.1 list item: {json.dumps(item, indent=2, sort_keys=True)}")
+
+        detail_resp = self.client.get("/api/opportunities/opp-full")
+        self.assertEqual(detail_resp.status_code, 200, detail_resp.text)
+        detail = detail_resp.json()
+        print(f"C5.1 detail body: {json.dumps(detail, indent=2, sort_keys=True)}")
+
+        for field_name in _C5_EXTRACTION_FIELD_NAMES:
+            self.assertIn(field_name, item, f"{field_name!r} missing from list item")
+            self.assertIn(field_name, detail, f"{field_name!r} missing from detail body")
+
+        self.assertEqual(item["work_mode"], "remote")
+        self.assertEqual(item["location_city"], "Cairo")
+        self.assertEqual(item["remote_scope_regions"], ["EG", "SA"])
+        self.assertEqual(detail["compensation_min"], 4000)
+        self.assertEqual(detail["title_family"], "data_engineer")
+
+    def test_c5_1_family_size_present_for_clustered_row(self):
+        self.session.add(
+            OpportunityFamilyRecord(
+                family_key="fam-1",
+                employer="Org opp-fam",
+                normalized_title="Data Engineer",
+                member_count=14,
+                best_member_id="opp-fam",
+                split_out=False,
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
+        self.session.commit()
+        self._seed_full_row("opp-fam", family_key="fam-1")
+        self._seed_full_row("opp-unclustered", family_key=None)
+
+        body = self.client.get("/api/opportunities").json()
+        by_id = {item["id"]: item for item in body["items"]}
+        self.assertEqual(by_id["opp-fam"]["family_size"], 14)
+        self.assertIsNone(by_id["opp-unclustered"]["family_size"])
+
+        detail = self.client.get("/api/opportunities/opp-fam").json()
+        self.assertEqual(detail["family_size"], 14)
+
+    def test_work_mode_unspecified_serializes_verbatim_not_null_or_blank(self):
+        """`work_mode='unspecified'` is a real, storable value (47.8% of real
+        postings carry no work-mode signal at all per the brief) -- it must
+        come back as the literal string `'unspecified'`, never `null` or
+        `''`, so the UI can render 'not stated' rather than showing nothing."""
+        self._seed_full_row("opp-unspecified", work_mode="unspecified", work_mode_source=None)
+
+        item = self.client.get("/api/opportunities").json()["items"][0]
+        self.assertEqual(item["work_mode"], "unspecified")
+        self.assertIsNotNone(item["work_mode"])
+        self.assertNotEqual(item["work_mode"], "")
+        self.assertIn("work_mode_source", item)
+        self.assertIsNone(item["work_mode_source"])
+
+        detail = self.client.get("/api/opportunities/opp-unspecified").json()
+        self.assertEqual(detail["work_mode"], "unspecified")
+        self.assertIn("work_mode_source", detail)
+
+
+class NoReJudgementSerializationTest(ApiTestCase):
+    """C5.2: exposing the extraction fields must change nothing about
+    `decision`, `fit_score`, ordering, or which rows are hidden. Asserted by
+    cross-checking the HTTP response against the same underlying
+    `build_filter_contexts` / `apply_filters` computation the route itself
+    calls -- the serializer addition sits strictly downstream of that
+    decision, never upstream of it."""
+
+    def setUp(self):
+        super().setUp()
+        self.app = self.make_app()
+        self.client = self.logged_in_client(self.app)
+
+    def test_decision_fit_score_order_and_hidden_set_unchanged(self):
+        self.seed_opportunity("opp-a", posted_date="2026-08-20")
+        self.seed_evaluation("opp-a", decision="qualified", fit_score=90.0)
+        self.seed_opportunity("opp-b", posted_date="2026-08-21")
+        self.seed_evaluation("opp-b", decision="qualified", fit_score=40.0)
+        self.seed_opportunity("opp-redline")
+        self.seed_evaluation("opp-redline", decision="qualified", fit_score=70.0)
+
+        graph = TruthGraph(
+            evidence={}, career_profile=None, capability_profile=None,
+            red_line_rules=(
+                RedLineRule(
+                    id="rl-1", rule_text="Never work for opp-redline.",
+                    applies_to_field="organization", forbidden_pattern="Org opp-redline",
+                ),
+            ),
+        )
+        self.app.state.loaded_truth_pack = LoadedPack(
+            graph=graph, source_hash="hash-x", validation_report=PackValidationReport(findings=[], is_valid=True),
+        )
+
+        opportunities = self.session.query(OpportunityRecord).all()
+        contexts = build_filter_contexts(self.session, graph, opportunities)
+        filter_settings = {}
+        direct_decisions = {ctx.opp.id: ctx.decision for ctx in contexts}
+        direct_fit_scores = {ctx.opp.id: ctx.fit_score for ctx in contexts}
+        direct_hidden = {ctx.opp.id: bool(apply_filters(ctx, filter_settings).hidden_by) for ctx in contexts}
+
+        response = self.client.get("/api/opportunities", params={"include_hidden": True})
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+
+        for item in body["items"]:
+            self.assertEqual(item["decision"], direct_decisions[item["id"]])
+            self.assertEqual(item["fit_score"], direct_fit_scores[item["id"]])
+            self.assertEqual(bool(item["hidden_by"]), direct_hidden[item["id"]])
+
+        # fit_score-descending order is untouched by the new fields on each row.
+        visible_ids = [item["id"] for item in body["items"] if not item["hidden_by"]]
+        self.assertEqual(visible_ids, ["opp-a", "opp-redline", "opp-b"])
+        self.assertTrue(direct_hidden.get("opp-redline") is False)
+
+
+class ManualSourcesRouteTest(ApiTestCase):
+    """C5.3: `GET /api/manual-sources` must return every
+    `opportunity.manual_sources.MANUAL_SOURCES` entry and must never make an
+    outbound network request -- these are deep links the founder clicks, the
+    API only ever templates the URL string."""
+
+    def setUp(self):
+        super().setUp()
+        self.app = self.make_app()
+        self.client = self.logged_in_client(self.app)
+
+    def test_returns_every_entry_and_makes_zero_outbound_requests(self):
+        import socket
+        from unittest.mock import patch
+
+        def _forbidden_connect(*args, **kwargs):
+            raise AssertionError("GET /api/manual-sources made an outbound network connection")
+
+        with patch.object(socket.socket, "connect", side_effect=_forbidden_connect):
+            response = self.client.get("/api/manual-sources")
+
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        returned_ids = {entry["source_id"] for entry in body["sources"]}
+        expected_ids = {item.source_id for item in MANUAL_SOURCES}
+        self.assertEqual(returned_ids, expected_ids)
+        self.assertEqual(len(body["sources"]), len(MANUAL_SOURCES))
+
+        by_id = {entry["source_id"]: entry for entry in body["sources"]}
+        for item in MANUAL_SOURCES:
+            entry = by_id[item.source_id]
+            self.assertEqual(entry["name"], item.name)
+            self.assertEqual(entry["deep_link"], item.deep_link())
+            self.assertEqual(entry["category"], item.category)
+        print(f"C5.3: {len(body['sources'])} manual sources returned, zero outbound connections made")
+
+
+class PollOverHidingRouteTest(ApiTestCase):
+    """C5.4: the route must report exactly what
+    `api.facets.poll_hide_fraction_warnings` itself computes for the same
+    inputs -- never a day-granular or filters-only approximation."""
+
+    def setUp(self):
+        super().setUp()
+        self.app = self.make_app()
+        self.client = self.logged_in_client(self.app)
+
+    def test_route_matches_underlying_computation(self):
+        started_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+        finished_at = datetime.now(timezone.utc)
+        poll = SourcePollRunRecord(
+            id="poll-1", source_id="himalayas", started_at=to_naive_utc(started_at),
+            finished_at=to_naive_utc(finished_at), status="success",
+            raw_ingested=10, unique_opportunities=10, inserted=10, unchanged=0, updated=0,
+        )
+        self.session.add(poll)
+        self.session.commit()
+
+        for i in range(10):
+            work_mode = "onsite" if i < 3 else "remote"
+            self.seed_opportunity(f"opp-poll-{i}", created_at=started_at + timedelta(seconds=i))
+            record = self.session.query(OpportunityRecord).filter_by(id=f"opp-poll-{i}").one()
+            record.work_mode = work_mode
+            self.session.commit()
+
+        facet_row = FounderFacetRecord(
+            facet_id="work_mode", mode="filter",
+            values_json=json.dumps({"include": [], "exclude": ["onsite"]}),
+            updated_at=to_naive_utc(datetime.now(timezone.utc)),
+        )
+        self.session.add(facet_row)
+        self.session.commit()
+
+        opportunities = self.session.query(OpportunityRecord).all()
+        contexts = build_filter_contexts(self.session, None, opportunities)
+        facet_settings = {"work_mode": FacetSettingsRow(include=(), exclude=("onsite",))}
+        expected = poll_hide_fraction_warnings(poll.inserted, contexts, {}, facet_settings)
+
+        response = self.client.get("/api/polls/poll-1/over-hiding")
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        print(f"C5.4: route={body['warnings']} direct={expected}")
+
+        self.assertEqual(body["poll_inserted"], poll.inserted)
+        self.assertEqual(len(body["warnings"]), len(expected))
+        for got, want in zip(
+            sorted(body["warnings"], key=lambda w: w["cause"]),
+            sorted(expected, key=lambda w: w["cause"]),
+        ):
+            self.assertEqual(got["cause"], want["cause"])
+            self.assertEqual(got["hidden"], want["hidden"])
+            self.assertEqual(got["of"], want["of"])
+            self.assertAlmostEqual(got["fraction"], want["fraction"])
+
+    def test_unknown_poll_id_is_404(self):
+        response = self.client.get("/api/polls/does-not-exist/over-hiding")
+        self.assertEqual(response.status_code, 404)
 
 
 if __name__ == "__main__":
