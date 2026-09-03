@@ -1,0 +1,6 @@
+{
+  "source_id": "remote_ok",
+  "request_url": "https://remoteok.com/api",
+  "fetched_at": "2026-09-03T13:46:15.618175+00:00",
+  "raw_body": "[{\"slug\": \"remote-janitor-buffalo-wild-wings-fralich-inc-1137266\", \"id\": \"1137266\", \"epoch\": 1788281387, \"date\": \"2026-09-01T16:49:47+00:00\", \"company\": \"Buffalo Wild Wings - Fralich, Inc.\", \"company_logo\": \"\", \"position\": \"JANITOR\", \"tags\": [\"payroll\", \"vfx\", \"customer support\", \"dev\", \"non tech\", \"digital nomad\", \"exec\", \"legal\", \"engineer\"], \"description\": \"<ul><li>If you\\u00e2\\u0080\\u0099re a high-energy leader who thrives in hospitality and enjoys working in a fast-paced sports environment, apply today!</li></ul><br/><br/>Please mention the word **RESOURCEFUL** and tag RNDEuMzkuMjQ4Ljkz when applying to show you read the job post completely (#RNDEuMzkuMjQ4Ljkz). This is a beta feature to avoid spam applicants. Companies can search these words to find applicants that read this and see they're human.\", \"location\": \"Georgetown, \", \"apply_url\": \"https://remoteOK.com/remote-jobs/remote-janitor-buffalo-wild-wings-fralich-inc-1137266\", \"salary_min\": 0, \"salary_max\": 0, \"logo\": \"\", \"url\": \"https://remoteOK.com/remote-jobs/remote-janitor-buffalo-wild-wings-fralich-inc-1137266\"}]"
+}
