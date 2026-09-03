@@ -31,6 +31,25 @@ from .models import ArtifactSection, GeneratedClaim, OmittedItem
 
 _WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.#/-]*")
 
+# Best-effort, read-only mirror of the leading clause of
+# `truth.validator.ClaimValidator`'s `_METRIC` pattern -- never imported
+# from the frozen module. This is a defensive pre-check only, used to
+# decide whether a short, non-metric value (e.g. a phone number beginning
+# with a bare digit run, such as a "+20" country code) is safe to render as
+# its own single-value claim, never to decide whether a claim is actually
+# admissible: `matching.artifact_validation.validate_artifact_claims`,
+# backed by the real, frozen validator, is always the final authority and
+# runs over every artifact this compiler produces before export.
+_LEADING_METRIC_RE = re.compile(r"(?<![\w-])(?:[$€£]\s*)?\d+(?:[.,]\d+)?")
+
+# Same defensive-mirror caveat as `_LEADING_METRIC_RE` above, this time for
+# `truth.validator.ClaimValidator._HELD`: a planned certification whose own
+# NAME contains one of these words (e.g. "Certified Group Analytics
+# Architect") cannot be rendered honestly at all -- any claim naming it,
+# however framed, contains a "held" word and is rejected as claiming the
+# credential is already held. Never imported from the frozen module.
+_HELD_WORD_RE = re.compile(r"\b(?:certified|credentialed|holds?|holding|earned|obtained|completed|awarded)\b", re.IGNORECASE)
+
 
 def _terms(text: str | None) -> set[str]:
     if not text:
@@ -163,6 +182,7 @@ def build_identity_block(graph: TruthGraph) -> IdentityBlock | None:
     }
 
     items: list[DocumentItem] = []
+    omitted: list[OmittedItem] = []
     values: dict[str, str | None] = {}
     for field_name, predicate in field_order:
         a = by_pred.get(predicate)
@@ -171,6 +191,28 @@ def build_identity_block(graph: TruthGraph) -> IdentityBlock | None:
             continue
         text = str(a.value)
         values[field_name] = text
+        if _LEADING_METRIC_RE.search(text):
+            # E.g. a phone number written with a leading country code
+            # ("+20-555-0101"): rendered on its own, this reads to
+            # `ClaimValidator._validate_metric_provenance` as a bare
+            # numeric claim ("20") with no verified metric backing it, and
+            # is rejected -- not a content problem, a validator false
+            # positive on short digit-led values. Per the work order's hard
+            # stop this compiler does not touch the validator; it omits the
+            # field from the rendered document instead and reports the
+            # case. The value is still resolved on `IdentityBlock` for any
+            # non-claim internal use.
+            omitted.append(OmittedItem(
+                section_id="identity",
+                text=text,
+                reason=(
+                    "validator rejects this value as an unsupported bare metric "
+                    "(known validator interaction with short digit-led values, "
+                    "not a content gap -- see the work order return)"
+                ),
+                claim_id=f"claim-identity-{field_name}",
+            ))
+            continue
         items.append(DocumentItem(GeneratedClaim(
             claim_id=f"claim-identity-{field_name}",
             text=text,
@@ -209,7 +251,9 @@ def build_identity_block(graph: TruthGraph) -> IdentityBlock | None:
         )))
     values["location"] = location_text
 
-    section = DocumentSection(section_id="identity", heading="Contact Information", items=tuple(items))
+    section = DocumentSection(
+        section_id="identity", heading="Contact Information", items=tuple(items), omitted=tuple(omitted),
+    )
     return IdentityBlock(section=section, **values)
 
 
@@ -329,8 +373,11 @@ def build_experience_section(
         start_a = fields.get("start_date")
         end_a = fields.get("end_date")
         if start_a is not None:
-            start_text = _format_month_year(start_a.value)
-            end_text = _format_month_year(end_a.value) if end_a is not None else "Present"
+            start_text = _render_date_value(start_a.value, graph, start_a.evidence_ids)
+            if end_a is not None:
+                end_text = _render_date_value(end_a.value, graph, end_a.evidence_ids)
+            else:
+                end_text = _render_present(graph, start_a.evidence_ids)
             header += f" ({start_text} – {end_text})"
             header_aids.append(start_a.id)
             header_eids.extend(start_a.evidence_ids)
@@ -404,6 +451,48 @@ def _format_month_year(value) -> str:
         return _date(int(y), int(m), int(d)).strftime("%b %Y")
     except (ValueError, TypeError):
         return text
+
+
+def _render_date_value(value, graph: TruthGraph, evidence_ids: tuple[str, ...]) -> str:
+    """Render a date for a claim: prefer the brief-mandated "Jan 2026" form,
+    but only when the month name it introduces is textually present in the
+    record's own cited evidence (guard 9, `truth/validator.py`, requires
+    every material word in a claim to be covered by its evidence); otherwise
+    fall back to the ISO form the evidence itself uses, which is always
+    covered by construction. On both shipped synthetic packs today, every
+    date's evidence stores the date as an ISO string (e.g.
+    "2023-01-01 to 2026-08-31") with no English month name in it, so this
+    always falls back to ISO on the current fixtures -- see the work order
+    return; this is a genuine, reported deviation from the brief's exact
+    display string, not a rendering bug."""
+    evidence_text = " ".join(
+        (graph.evidence_records[eid].content or "")
+        for eid in evidence_ids
+        if eid in graph.evidence_records and graph.evidence_records[eid].content
+    )
+    preferred = _format_month_year(value)
+    month_word = preferred.split(" ", 1)[0]
+    if month_word.casefold() in evidence_text.casefold():
+        return preferred
+    return value.isoformat() if isinstance(value, _date) else str(value)
+
+
+def _render_present(graph: TruthGraph, evidence_ids: tuple[str, ...]) -> str:
+    """"Present" is not in `truth/connective_terms.txt` (frozen) or the
+    validator's non-material-word set, so it can only be rendered for a
+    still-open role when the record's own evidence literally uses that
+    word; otherwise this renders nothing rather than invent an unevidenced
+    word (no role in either shipped synthetic pack is actually open-ended,
+    so this path is untested by fixture data -- see the work order
+    return)."""
+    evidence_text = " ".join(
+        (graph.evidence_records[eid].content or "")
+        for eid in evidence_ids
+        if eid in graph.evidence_records and graph.evidence_records[eid].content
+    )
+    if "present" in evidence_text.casefold():
+        return "Present"
+    return ""
 
 
 def build_skills_section(
@@ -488,7 +577,9 @@ def build_education_section(graph: TruthGraph) -> DocumentSection:
         start_a = fields.get("start_date")
         end_a = fields.get("end_date")
         if start_a is not None and end_a is not None:
-            text += f" ({_format_month_year(start_a.value)} – {_format_month_year(end_a.value)})"
+            start_text = _render_date_value(start_a.value, graph, start_a.evidence_ids)
+            end_text = _render_date_value(end_a.value, graph, end_a.evidence_ids)
+            text += f" ({start_text} – {end_text})"
             aids.extend([start_a.id, end_a.id])
             eids.extend(start_a.evidence_ids)
             eids.extend(end_a.evidence_ids)
@@ -513,18 +604,80 @@ def build_certifications_section(graph: TruthGraph) -> DocumentSection:
         fields_by_subject.setdefault(a.subject_id, {})[a.predicate.split(".", 1)[1]] = a
 
     items: list[DocumentItem] = []
+    omitted: list[OmittedItem] = []
     for subject_id in sorted(fields_by_subject):
         fields = fields_by_subject[subject_id]
         if "name" not in fields or "issuer" not in fields:
             continue
         name_a = fields["name"]
         issuer_a = fields["issuer"]
+        state_a = fields.get("state")
+
+        if (
+            state_a is not None
+            and str(state_a.value) == "planned"
+            and _HELD_WORD_RE.search(str(name_a.value))
+        ):
+            # The credential's own name contains a "held" word (e.g.
+            # "Certified Group Analytics Architect"): no framing of a claim
+            # naming it can satisfy `_planned_credential_reasons` (frozen),
+            # which rejects any claim containing a held-word when the
+            # certification is planned. Omit rather than misrepresent it as
+            # held or fabricate wording the validator will not accept.
+            omitted.append(OmittedItem(
+                section_id="certifications",
+                text=str(name_a.value),
+                reason=(
+                    "planned certification's own name contains a 'held' word "
+                    "(e.g. 'Certified'); no honest rendering satisfies the "
+                    "validator's planned-credential guard -- see the work "
+                    "order return"
+                ),
+                claim_id=f"claim-certification-{subject_id}",
+            ))
+            continue
+
+        if state_a is not None and str(state_a.value) == "planned":
+            # `ClaimValidator._planned_credential_reasons` (frozen) rejects
+            # ANY claim naming a planned certification unless the claim
+            # itself contains a "planning" word (e.g. "planning", "pursue")
+            # and no "held" word (e.g. "certified", "completed") --
+            # otherwise it reads as the founder claiming to already hold it.
+            # Rather than compose new planning language of our own (which
+            # would also have to separately satisfy guard 9's evidence-
+            # coverage check), quote the record's own evidence verbatim: the
+            # pack's evidence for a planned certification is already written
+            # as "Planning to pursue the {name} certification from
+            # {issuer}." -- an approved fact, not synthesized prose.
+            evidence_text = next(
+                (
+                    graph.evidence_records[eid].content
+                    for eid in name_a.evidence_ids
+                    if eid in graph.evidence_records and graph.evidence_records[eid].content
+                ),
+                None,
+            )
+            if evidence_text:
+                text = evidence_text
+                aids = [name_a.id, issuer_a.id, state_a.id]
+                eids = list(dict.fromkeys(list(name_a.evidence_ids) + list(issuer_a.evidence_ids) + list(state_a.evidence_ids)))
+                items.append(DocumentItem(GeneratedClaim(
+                    claim_id=f"claim-certification-{subject_id}",
+                    text=text,
+                    section_id="certifications",
+                    assertion_ids=tuple(aids),
+                    evidence_ids=tuple(eids),
+                    predicate="certification.record",
+                    authorized_value=text,
+                )))
+                continue
+
         text = f"{name_a.value} | {issuer_a.value}"
         aids = [name_a.id, issuer_a.id]
         eids = list(name_a.evidence_ids) + list(issuer_a.evidence_ids)
         issued_a = fields.get("issued_date")
         if issued_a is not None:
-            text += f" ({_format_month_year(issued_a.value)})"
+            text += f" ({_render_date_value(issued_a.value, graph, issued_a.evidence_ids)})"
             aids.append(issued_a.id)
             eids.extend(issued_a.evidence_ids)
         items.append(DocumentItem(GeneratedClaim(
@@ -537,7 +690,7 @@ def build_certifications_section(graph: TruthGraph) -> DocumentSection:
             authorized_value=text,
         )))
 
-    return DocumentSection(section_id="certifications", heading="Certifications", items=tuple(items))
+    return DocumentSection(section_id="certifications", heading="Certifications", items=tuple(items), omitted=tuple(omitted))
 
 
 def build_projects_section(graph: TruthGraph) -> DocumentSection:
