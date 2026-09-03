@@ -1,0 +1,196 @@
+test_down_cleans_up_a_recorded_but_already_dead_pid (test_alpha.TestCliSmoke.test_down_cleans_up_a_recorded_but_already_dead_pid) ... ok
+test_down_is_safe_and_exits_zero_when_nothing_is_up (test_alpha.TestCliSmoke.test_down_is_safe_and_exits_zero_when_nothing_is_up) ... ok
+test_logs_is_safe_when_nothing_is_up (test_alpha.TestCliSmoke.test_logs_is_safe_when_nothing_is_up) ... ok
+test_status_exits_nonzero_against_a_test_database_as_a_real_subprocess (test_alpha.TestCliSmoke.test_status_exits_nonzero_against_a_test_database_as_a_real_subprocess)
+Regression test for the Master's own re-run finding: reproduces ... ok
+test_status_is_safe_and_exits_zero_when_nothing_is_up (test_alpha.TestCliSmoke.test_status_is_safe_and_exits_zero_when_nothing_is_up) ... ok
+test_status_reports_a_non_default_recorded_port_without_repeating_the_flag (test_alpha.TestCliSmoke.test_status_reports_a_non_default_recorded_port_without_repeating_the_flag)
+Once `up` has recorded a non-default --web-port in the state file, ... ok
+test_cmd_down_takes_no_env_file_parameter (test_alpha.TestDownAndLogsNeverResolveTheDatabaseUrl.test_cmd_down_takes_no_env_file_parameter) ... ok
+test_cmd_logs_takes_no_env_file_parameter (test_alpha.TestDownAndLogsNeverResolveTheDatabaseUrl.test_cmd_logs_takes_no_env_file_parameter) ... ok
+test_already_listening_is_detected_and_not_restarted (test_alpha.TestEnsureAndStopPostgres.test_already_listening_is_detected_and_not_restarted) ... ok
+test_missing_localappdata_raises_a_clear_error (test_alpha.TestEnsureAndStopPostgres.test_missing_localappdata_raises_a_clear_error) ... ok
+test_missing_portable_cluster_raises_a_clear_error_naming_the_brief (test_alpha.TestEnsureAndStopPostgres.test_missing_portable_cluster_raises_a_clear_error_naming_the_brief) ... ok
+test_stop_postgres_calls_pg_ctl_stop_when_alpha_started_it (test_alpha.TestEnsureAndStopPostgres.test_stop_postgres_calls_pg_ctl_stop_when_alpha_started_it) ... ok
+test_stop_postgres_leaves_a_server_it_did_not_start (test_alpha.TestEnsureAndStopPostgres.test_stop_postgres_leaves_a_server_it_did_not_start) ... ok
+test_stop_postgres_reports_not_stopped_when_pg_ctl_stop_fails (test_alpha.TestEnsureAndStopPostgres.test_stop_postgres_reports_not_stopped_when_pg_ctl_stop_fails) ... ok
+test_missing_database_name_raises_a_clear_error (test_alpha.TestExtractDbName.test_missing_database_name_raises_a_clear_error) ... ok
+test_with_password_and_query_string (test_alpha.TestExtractDbName.test_with_password_and_query_string) ... ok
+test_with_password_no_query_string (test_alpha.TestExtractDbName.test_with_password_no_query_string) ... ok
+test_without_password_and_with_query_string (test_alpha.TestExtractDbName.test_without_password_and_with_query_string) ... ok
+test_without_password_no_query_string (test_alpha.TestExtractDbName.test_without_password_no_query_string) ... ok
+test_state_file_is_cleared_when_rollback_confirms_success (test_alpha.TestFailedUpLeavesStateForDown.test_state_file_is_cleared_when_rollback_confirms_success)
+The mirror-image case: when rollback genuinely confirms ... alpha up: FAILED: simulated: API never became healthy
+alpha up: rolling back anything this run started ...
+mocked: rollback confirmed
+mocked: postgres left running
+ok
+test_state_file_is_kept_not_cleared_when_rollback_cannot_confirm_success (test_alpha.TestFailedUpLeavesStateForDown.test_state_file_is_kept_not_cleared_when_rollback_cannot_confirm_success) ... alpha up: FAILED: simulated: API never became healthy
+alpha up: rolling back anything this run started ...
+mocked: rollback could not confirm
+mocked: postgres left running
+alpha up: rollback could NOT confirm everything stopped -- state was kept (not cleared) so it can be retried. Run `python scripts/alpha.py down` to finish cleanup.
+ok
+test_fully_edited_values_are_accepted (test_alpha.TestLoadAlphaEnv.test_fully_edited_values_are_accepted) ... ok
+test_malformed_line_is_reported_with_line_number (test_alpha.TestLoadAlphaEnv.test_malformed_line_is_reported_with_line_number) ... ok
+test_missing_file_names_the_template_and_the_missing_path (test_alpha.TestLoadAlphaEnv.test_missing_file_names_the_template_and_the_missing_path) ... ok
+test_missing_required_key_is_reported_by_name (test_alpha.TestLoadAlphaEnv.test_missing_required_key_is_reported_by_name) ... ok
+test_parses_a_valid_file (test_alpha.TestLoadAlphaEnv.test_parses_a_valid_file) ... ok
+test_partially_edited_template_names_only_the_still_unedited_keys (test_alpha.TestLoadAlphaEnv.test_partially_edited_template_names_only_the_still_unedited_keys) ... ok
+test_unedited_template_copy_is_rejected_naming_every_placeholder_key (test_alpha.TestLoadAlphaEnv.test_unedited_template_copy_is_rejected_naming_every_placeholder_key)
+The most common first mistake: copy the shipped template to ... ok
+test_alpha_py_never_spawns_a_python_child_via_a_literal_argv0 (test_alpha.TestNoPythonLiteralArgv0.test_alpha_py_never_spawns_a_python_child_via_a_literal_argv0) ... ok
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:572: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces/commas for version_locations.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+test_persist_batch_from_a_real_greenhouse_fixture_is_not_synthetic (test_alpha.TestPersistBatchProducesRealSourceIds.test_persist_batch_from_a_real_greenhouse_fixture_is_not_synthetic) ... ok
+test_port_open_true_for_a_listening_socket (test_alpha.TestPortHelpers.test_port_open_true_for_a_listening_socket) ... ok
+test_wait_for_port_times_out_with_a_clear_message (test_alpha.TestPortHelpers.test_wait_for_port_times_out_with_a_clear_message) ... ok
+test_defaults_when_not_specified (test_alpha.TestPortOverrideCli.test_defaults_when_not_specified) ... ok
+test_main_threads_the_defaults_into_cmd_up_when_unspecified (test_alpha.TestPortOverrideCli.test_main_threads_the_defaults_into_cmd_up_when_unspecified) ... ok
+test_main_threads_the_overrides_into_cmd_up (test_alpha.TestPortOverrideCli.test_main_threads_the_overrides_into_cmd_up) ... ok
+test_parser_accepts_explicit_overrides (test_alpha.TestPortOverrideCli.test_parser_accepts_explicit_overrides) ... ok
+test_is_zombie_detects_an_unreaped_exited_child (test_alpha.TestProcessLifecycleHelpers.test_is_zombie_detects_an_unreaped_exited_child) ... skipped 'zombie process state is POSIX-specific; Windows has no equivalent'
+test_kill_pid_tree_kills_the_whole_tree_not_just_the_tracked_pid (test_alpha.TestProcessLifecycleHelpers.test_kill_pid_tree_kills_the_whole_tree_not_just_the_tracked_pid)
+Regression coverage for the actual defect (not merely the ... ok
+test_pid_alive_false_for_an_implausible_pid (test_alpha.TestProcessLifecycleHelpers.test_pid_alive_false_for_an_implausible_pid) ... ok
+test_pid_alive_then_kill_tree_stops_it (test_alpha.TestProcessLifecycleHelpers.test_pid_alive_then_kill_tree_stops_it) ... ok
+test_pid_alive_treats_an_unreaped_zombie_as_not_alive (test_alpha.TestProcessLifecycleHelpers.test_pid_alive_treats_an_unreaped_zombie_as_not_alive)
+Problem 2 directly: ``os.kill(pid, 0)`` succeeds for a zombie ... skipped 'zombie process state is POSIX-specific; Windows has no equivalent'
+test_a_name_merely_containing_test_but_not_ending_in_it_is_accepted (test_alpha.TestRefuseTestDatabase.test_a_name_merely_containing_test_but_not_ending_in_it_is_accepted) ... ok
+test_opportunityos_alpha_name_is_accepted (test_alpha.TestRefuseTestDatabase.test_opportunityos_alpha_name_is_accepted) ... ok
+test_test_suffixed_name_is_refused_and_named_in_the_message (test_alpha.TestRefuseTestDatabase.test_test_suffixed_name_is_refused_and_named_in_the_message) ... ok
+test_test_suffixed_name_with_query_parameters_is_still_refused (test_alpha.TestRefuseTestDatabase.test_test_suffixed_name_with_query_parameters_is_still_refused)
+The parser must not be fooled by `...(/opportunityos_test?sslmode=disable)`. ... ok
+test_load_state_tolerates_corrupt_json (test_alpha.TestStateFile.test_load_state_tolerates_corrupt_json) ... ok
+test_save_load_clear_roundtrip (test_alpha.TestStateFile.test_save_load_clear_roundtrip) ... ok
+test_status_never_calls_get_engine_when_the_database_is_refused (test_alpha.TestStatusRefusesATestDatabase.test_status_never_calls_get_engine_when_the_database_is_refused)
+Placement proof, mirroring TestUpRejectsATestDatabase's own ... ok
+test_status_on_an_opportunityos_alpha_database_is_not_refused (test_alpha.TestStatusRefusesATestDatabase.test_status_on_an_opportunityos_alpha_database_is_not_refused)
+The accepted name must not be refused either -- status then ... ok
+test_status_refuses_and_exits_nonzero_naming_the_database (test_alpha.TestStatusRefusesATestDatabase.test_status_refuses_and_exits_nonzero_naming_the_database) ... ok
+test_status_with_a_query_string_test_database_is_still_refused (test_alpha.TestStatusRefusesATestDatabase.test_status_with_a_query_string_test_database_is_still_refused) ... ok
+test_all_stopped_true_for_a_process_with_no_port_to_verify (test_alpha.TestStopProcessesPortVerification.test_all_stopped_true_for_a_process_with_no_port_to_verify) ... ok
+test_all_stopped_true_when_the_recorded_port_is_actually_free (test_alpha.TestStopProcessesPortVerification.test_all_stopped_true_when_the_recorded_port_is_actually_free) ... ok
+test_reports_warning_and_not_all_stopped_when_the_port_stays_occupied (test_alpha.TestStopProcessesPortVerification.test_reports_warning_and_not_all_stopped_when_the_port_stays_occupied) ... ok
+test_plain_test_database_name_is_refused_naming_the_database (test_alpha.TestUpRejectsATestDatabase.test_plain_test_database_name_is_refused_naming_the_database) ... ok
+test_test_database_with_query_parameters_is_still_refused_and_not_fooled_by_them (test_alpha.TestUpRejectsATestDatabase.test_test_database_with_query_parameters_is_still_refused_and_not_fooled_by_them) ... ok
+test_nothing_is_started_when_the_template_is_unedited (test_alpha.TestUpRejectsAnUneditedTemplate.test_nothing_is_started_when_the_template_is_unedited) ... alpha up: FAILED: C:\Users\M7mdEhab\AppData\Local\Temp\tmpmmh57k_w\alpha.env still contains template placeholders for OPPORTUNITYOS_DB_URL, OPPORTUNITYOS_FOUNDER_PASSWORD, OPPORTUNITYOS_SESSION_SECRET. Edit that file and replace every REPLACE_WITH_* value, then retry `up`.
+ok
+test_a_correct_ready_line_followed_by_exit_is_treated_as_a_failure (test_alpha.TestWaitWebReady.test_a_correct_ready_line_followed_by_exit_is_treated_as_a_failure)
+The exact real-world defect this class was extended for: Next ... ok
+test_honours_a_non_default_expected_port_end_to_end (test_alpha.TestWaitWebReady.test_honours_a_non_default_expected_port_end_to_end)
+`--web-port` must be verified exactly like the default: a child ... ok
+test_ignores_a_stale_local_line_written_before_this_spawns_offset (test_alpha.TestWaitWebReady.test_ignores_a_stale_local_line_written_before_this_spawns_offset)
+The real defect this project hit on a second `up`: web.log is ... ok
+test_names_the_existing_pid_and_port_when_another_dev_server_holds_the_lock (test_alpha.TestWaitWebReady.test_names_the_existing_pid_and_port_when_another_dev_server_holds_the_lock)
+Next has already diagnosed this precisely -- surface it verbatim ... ok
+test_raises_on_a_mismatch_against_a_non_default_expected_port (test_alpha.TestWaitWebReady.test_raises_on_a_mismatch_against_a_non_default_expected_port)
+The override must not weaken the guarantee: even when the founder ... ok
+test_raises_when_the_child_bound_a_different_port_than_requested (test_alpha.TestWaitWebReady.test_raises_when_the_child_bound_a_different_port_than_requested)
+The defect this project actually hit: Next fell back to 3001 while ... ok
+test_raises_when_the_child_exits_immediately (test_alpha.TestWaitWebReady.test_raises_when_the_child_exits_immediately) ... ok
+test_returns_cleanly_when_the_child_bound_the_expected_port (test_alpha.TestWaitWebReady.test_returns_cleanly_when_the_child_bound_the_expected_port) ... ok
+test_times_out_with_a_clear_message_if_never_ready (test_alpha.TestWaitWebReady.test_times_out_with_a_clear_message_if_never_ready) ... ok
+test_without_the_offset_the_stale_line_causes_a_false_failure (test_alpha.TestWaitWebReady.test_without_the_offset_the_stale_line_causes_a_false_failure)
+Documents the defect directly: the same log/ports as the test ... ok
+test_dump_database_raises_when_mapping_disagrees_with_metadata (test_backup_restore.TestBackupCompleteness.test_dump_database_raises_when_mapping_disagrees_with_metadata) ... ok
+test_dump_database_raises_when_mapping_names_unknown_table (test_backup_restore.TestBackupCompleteness.test_dump_database_raises_when_mapping_names_unknown_table) ... ok
+test_full_backup_and_restore_cycle (test_backup_restore.TestBackupRestorePostgres.test_full_backup_and_restore_cycle) ... INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001_baseline_schema, 0001_baseline_schema
+INFO  [alembic.runtime.migration] Running upgrade 0001_baseline_schema -> 0002_match_evaluations, 0002_match_evaluations
+INFO  [alembic.runtime.migration] Running upgrade 0002_match_evaluations -> 0003_provenance_identity, 0003_provenance_identity
+INFO  [alembic.runtime.migration] Running upgrade 0003_provenance_identity -> 0004_founder_control, 0004_founder_control
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+ok
+test_restore_refuses_dump_with_column_delta (test_backup_restore.TestBackupRestorePostgres.test_restore_refuses_dump_with_column_delta) ... INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+ok
+test_upgrade_to_head_is_independent_of_process_cwd (test_backup_restore.TestBackupRestorePostgres.test_upgrade_to_head_is_independent_of_process_cwd) ... INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+ok
+test_restore_database_raises_when_dump_has_an_unknown_section (test_backup_restore.TestRestoreCompleteness.test_restore_database_raises_when_dump_has_an_unknown_section) ... ok
+test_restore_database_raises_when_dump_missing_a_known_section (test_backup_restore.TestRestoreCompleteness.test_restore_database_raises_when_dump_missing_a_known_section) ... ok
+test_missing_attribute_reports_not_available (test_corpus_metrics.AdapterInferenceSplitTests.test_missing_attribute_reports_not_available) ... ok
+test_present_attribute_splits_by_label (test_corpus_metrics.AdapterInferenceSplitTests.test_present_attribute_splits_by_label) ... ok
+test_real_opportunity_now_always_has_the_attribute (test_corpus_metrics.AdapterInferenceSplitTests.test_real_opportunity_now_always_has_the_attribute) ... ok
+test_missing_attribute_reports_not_available (test_corpus_metrics.LocationCoverageTests.test_missing_attribute_reports_not_available) ... ok
+test_present_attribute_counts_country_or_scope (test_corpus_metrics.LocationCoverageTests.test_present_attribute_counts_country_or_scope) ... ok
+test_real_opportunity_now_always_has_the_attribute (test_corpus_metrics.LocationCoverageTests.test_real_opportunity_now_always_has_the_attribute) ... ok
+test_main_runs_over_the_committed_corpus_and_exits_zero (test_corpus_metrics.MainSmokeTests.test_main_runs_over_the_committed_corpus_and_exits_zero) ... ok
+test_real_greenhouse_fixture_reparses_to_one_opportunity (test_corpus_metrics.ParseCorpusTests.test_real_greenhouse_fixture_reparses_to_one_opportunity) ... ok
+test_unregistered_source_id_is_reported_as_a_parse_error_not_silently_dropped (test_corpus_metrics.ParseCorpusTests.test_unregistered_source_id_is_reported_as_a_parse_error_not_silently_dropped) ... ok
+test_formats_numerator_denominator_and_percentage (test_corpus_metrics.PrintDenominatorLineTests.test_formats_numerator_denominator_and_percentage) ... ok
+test_zero_denominator_does_not_divide_by_zero (test_corpus_metrics.PrintDenominatorLineTests.test_zero_denominator_does_not_divide_by_zero) ... ok
+test_computes_real_distribution_over_given_opportunities (test_corpus_metrics.QualificationEmptyGraphTests.test_computes_real_distribution_over_given_opportunities) ... ok
+test_never_quotes_a_number_it_did_not_compute (test_corpus_metrics.QualificationEmptyGraphTests.test_never_quotes_a_number_it_did_not_compute) ... ok
+test_computes_real_distribution_against_the_founder_shaped_pack (test_corpus_metrics.QualificationFounderShapedTests.test_computes_real_distribution_against_the_founder_shaped_pack) ... ok
+test_never_quotes_a_number_it_did_not_compute (test_corpus_metrics.QualificationFounderShapedTests.test_never_quotes_a_number_it_did_not_compute) ... ok
+test_missing_attribute_reports_not_available_not_zero (test_corpus_metrics.WorkModeCoverageTests.test_missing_attribute_reports_not_available_not_zero) ... ok
+test_present_attribute_computes_real_percentage (test_corpus_metrics.WorkModeCoverageTests.test_present_attribute_computes_real_percentage) ... ok
+test_real_opportunity_now_always_has_the_attribute (test_corpus_metrics.WorkModeCoverageTests.test_real_opportunity_now_always_has_the_attribute) ... ok
+test_node_modules_check_fails_when_missing_and_names_the_fix (test_dev_env.TestCheckHelpers.test_node_modules_check_fails_when_missing_and_names_the_fix) ... ok
+test_node_modules_check_passes_when_present (test_dev_env.TestCheckHelpers.test_node_modules_check_passes_when_present) ... ok
+test_pdf_renderer_check_reports_reportlab_and_never_mentions_libreoffice (test_dev_env.TestCheckHelpers.test_pdf_renderer_check_reports_reportlab_and_never_mentions_libreoffice) ... ok
+test_playwright_check_reports_fail_and_the_fix_when_the_probed_path_is_missing (test_dev_env.TestCheckHelpers.test_playwright_check_reports_fail_and_the_fix_when_the_probed_path_is_missing) ... ok
+test_all_checks_run_and_exit_is_nonzero_when_one_fails (test_dev_env.TestCmdUpRunsEveryCheck.test_all_checks_run_and_exit_is_nonzero_when_one_fails) ... ok
+test_exit_is_zero_when_every_check_passes_and_postgres_databases_are_ensured (test_dev_env.TestCmdUpRunsEveryCheck.test_exit_is_zero_when_every_check_passes_and_postgres_databases_are_ensured) ... ok
+test_drop_all_drops_probe_databases_but_never_the_protected_two (test_dev_env.TestDropAllExclusion.test_drop_all_drops_probe_databases_but_never_the_protected_two) ... ok
+test_accepts_a_valid_slug_without_touching_postgres (test_dev_env.TestSlugValidation.test_accepts_a_valid_slug_without_touching_postgres) ... ok
+test_rejects_a_slug_over_32_characters (test_dev_env.TestSlugValidation.test_rejects_a_slug_over_32_characters) ... ok
+test_rejects_a_slug_with_a_space_and_names_the_pattern (test_dev_env.TestSlugValidation.test_rejects_a_slug_with_a_space_and_names_the_pattern) ... ok
+test_rejects_uppercase (test_dev_env.TestSlugValidation.test_rejects_uppercase) ... ok
+test_all_four_success_and_mirror_current_is_healthy (test_generate_ci_status.ComputeVerdictTests.test_all_four_success_and_mirror_current_is_healthy) ... ok
+test_any_workflow_unavailable_is_not_healthy (test_generate_ci_status.ComputeVerdictTests.test_any_workflow_unavailable_is_not_healthy) ... ok
+test_mandatory_failure_with_others_success_is_not_healthy (test_generate_ci_status.ComputeVerdictTests.test_mandatory_failure_with_others_success_is_not_healthy) ... ok
+test_mirror_stale_with_all_checks_green (test_generate_ci_status.ComputeVerdictTests.test_mirror_stale_with_all_checks_green) ... ok
+test_workflows_tuple_is_exactly_four_named_workflows (test_generate_ci_status.ComputeVerdictTests.test_workflows_tuple_is_exactly_four_named_workflows) ... ok
+test_state_generation_recognizes_gate_fr_001_and_blocks_brief_007 (test_generate_state.GenerateStateTest.test_state_generation_recognizes_gate_fr_001_and_blocks_brief_007) ... ok
+test_colon_lead_in_joins_until_sentence_terminator (test_generate_state.NextSummaryTest.test_colon_lead_in_joins_until_sentence_terminator) ... ok
+test_hard_wrapped_paragraph_stops_at_end_of_first_sentence (test_generate_state.NextSummaryTest.test_hard_wrapped_paragraph_stops_at_end_of_first_sentence) ... ok
+test_state_md_next_line_has_no_colon_fragment (test_generate_state.NextSummaryTest.test_state_md_next_line_has_no_colon_fragment) ... ok
+test_counts_observed_status_per_source_from_yaml (test_generate_state.SourceCountsTest.test_counts_observed_status_per_source_from_yaml) ... ok
+test_missing_registry_returns_empty_counter (test_generate_state.SourceCountsTest.test_missing_registry_returns_empty_counter) ... ok
+test_no_regex_based_observed_status_scan_remains (test_generate_state.SourceCountsTest.test_no_regex_based_observed_status_scan_remains) ... ok
+test_source_entry_without_observed_block_is_skipped (test_generate_state.SourceCountsTest.test_source_entry_without_observed_block_is_skipped) ... ok
+test_every_status_is_in_allowed_set (test_readiness_matrix.ReadinessMatrixDataTest.test_every_status_is_in_allowed_set) ... ok
+test_req_ids_are_unique (test_readiness_matrix.ReadinessMatrixDataTest.test_req_ids_are_unique) ... ok
+test_rendered_output_matches_committed_markdown (test_readiness_matrix.ReadinessMatrixRenderTest.test_rendered_output_matches_committed_markdown) ... ok
+test_rendered_totals_equal_json_counts (test_readiness_matrix.ReadinessMatrixRenderTest.test_rendered_totals_equal_json_counts) ... ok
+test_req_ids_mentioned_in_reports_exist_in_matrix (test_readiness_matrix.ReadinessMatrixRenderTest.test_req_ids_mentioned_in_reports_exist_in_matrix) ... ok
+test_status_history_is_tolerated_but_not_rendered (test_readiness_matrix.ReadinessMatrixRenderTest.test_status_history_is_tolerated_but_not_rendered) ... ok
+test_main_runs_over_the_committed_corpus_and_exits_zero (test_scoring_metrics.MainSmokeTests.test_main_runs_over_the_committed_corpus_and_exits_zero) ... ok
+test_does_not_match_ordinary_job_titles (test_scoring_metrics.NotARolePostingRegexTests.test_does_not_match_ordinary_job_titles) ... ok
+test_matches_procurement_style_titles (test_scoring_metrics.NotARolePostingRegexTests.test_matches_procurement_style_titles) ... ok
+test_reports_not_available_when_no_row_has_that_seniority (test_scoring_metrics.ReportB1SeniorityTableTests.test_reports_not_available_when_no_row_has_that_seniority) ... ok
+test_classifies_family_other_and_the_two_other_groups (test_scoring_metrics.ReportB3TitleFamilyMappingTests.test_classifies_family_other_and_the_two_other_groups) ... ok
+test_pii_patterns_uses_original_source_path_when_remapped (test_sync_mirror.SyncMirrorTest.test_pii_patterns_uses_original_source_path_when_remapped) ... ok
+test_workflow_uses_original_source_path_when_remapped (test_sync_mirror.SyncMirrorTest.test_workflow_uses_original_source_path_when_remapped) ... ok
+test_exit_zero_and_reports_identity_and_approved_phrases_counts (test_truth_check.TruthCheckLeakTests.test_exit_zero_and_reports_identity_and_approved_phrases_counts) ... ok
+test_no_value_text_leaks_for_any_field (test_truth_check.TruthCheckLeakTests.test_no_value_text_leaks_for_any_field) ... ok
+
+----------------------------------------------------------------------
+Ran 131 tests in 97.155s
+
+OK (skipped=2)
+PostgreSQL: already listening on 127.0.0.1:5432 (not started by alpha.py).
+PostgreSQL: using database 'opportunityos_alpha'.
+Database: db (PostgreSQL 127.0.0.1:5432).
+Worker: started (pid 424243), logging to C:\Users\M7mdEhab\AppData\Local\Temp\tmpo5qp65zc\run\logs\worker.log.
+Database: db (PostgreSQL 127.0.0.1:5432).
+Worker: started (pid 424245), logging to C:\Users\M7mdEhab\AppData\Local\Temp\tmp08p321nd\run\logs\worker.log.
+stopped
+alpha: down.
+PostgreSQL: database 'opportunityos_test_f2-dropall-a' does not exist; creating it ...
+PostgreSQL: database 'opportunityos_test_f2-dropall-a' created.
+PostgreSQL: database 'opportunityos_test_f2-dropall-b' does not exist; creating it ...
+PostgreSQL: database 'opportunityos_test_f2-dropall-b' created.

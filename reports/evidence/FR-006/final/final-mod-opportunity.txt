@@ -1,0 +1,217 @@
+test_ashby_is_not_host_level_allowed (discovery.test_boards.ATSHostAuthorityTests.test_ashby_is_not_host_level_allowed) ... ok
+test_build_registry_entry_raises_for_ashby (discovery.test_boards.ATSHostAuthorityTests.test_build_registry_entry_raises_for_ashby) ... ok
+test_greenhouse_and_lever_are_host_level_allowed (discovery.test_boards.ATSHostAuthorityTests.test_greenhouse_and_lever_are_host_level_allowed) ... ok
+test_run_sweep_raises_for_ashby_before_any_probe (discovery.test_boards.ATSHostAuthorityTests.test_run_sweep_raises_for_ashby_before_any_probe) ... ok
+test_ashby_url (discovery.test_boards.CandidateUrlTests.test_ashby_url) ... ok
+test_candidate_id_and_url_properties (discovery.test_boards.CandidateUrlTests.test_candidate_id_and_url_properties) ... ok
+test_greenhouse_url (discovery.test_boards.CandidateUrlTests.test_greenhouse_url) ... ok
+test_lever_url (discovery.test_boards.CandidateUrlTests.test_lever_url) ... ok
+test_unknown_kind_raises (discovery.test_boards.CandidateUrlTests.test_unknown_kind_raises) ... ok
+test_200_unparseable_body_is_error (discovery.test_boards.ClassifyStatusTests.test_200_unparseable_body_is_error) ... ok
+test_200_with_postings_is_live (discovery.test_boards.ClassifyStatusTests.test_200_with_postings_is_live) ... ok
+test_200_with_zero_postings_is_empty (discovery.test_boards.ClassifyStatusTests.test_200_with_zero_postings_is_empty) ... ok
+test_403_is_blocked (discovery.test_boards.ClassifyStatusTests.test_403_is_blocked) ... ok
+test_404_is_absent (discovery.test_boards.ClassifyStatusTests.test_404_is_absent) ... ok
+test_429_is_blocked (discovery.test_boards.ClassifyStatusTests.test_429_is_blocked) ... ok
+test_lever_payload_parses (discovery.test_boards.ClassifyStatusTests.test_lever_payload_parses) ... ok
+test_other_status_is_error (discovery.test_boards.ClassifyStatusTests.test_other_status_is_error) ... ok
+test_corrupt_progress_file_raises_instead_of_silently_reprobing (discovery.test_boards.ProgressResumabilityTests.test_corrupt_progress_file_raises_instead_of_silently_reprobing) ... ok
+test_load_progress_missing_file_returns_empty_dict (discovery.test_boards.ProgressResumabilityTests.test_load_progress_missing_file_returns_empty_dict) ... ok
+test_resumed_sweep_skips_already_processed_and_never_reprobes_blocked (discovery.test_boards.ProgressResumabilityTests.test_resumed_sweep_skips_already_processed_and_never_reprobes_blocked) ... ok
+test_run_sweep_raises_on_corrupt_progress_rather_than_reprobing_blocked (discovery.test_boards.ProgressResumabilityTests.test_run_sweep_raises_on_corrupt_progress_rather_than_reprobing_blocked) ... ok
+test_save_and_load_progress_roundtrip (discovery.test_boards.ProgressResumabilityTests.test_save_and_load_progress_roundtrip) ... ok
+test_save_progress_is_atomic_via_os_replace (discovery.test_boards.ProgressResumabilityTests.test_save_progress_is_atomic_via_os_replace) ... ok
+test_append_registry_entries_skips_already_present_source_id (discovery.test_boards.RegistryEntryTemplateTests.test_append_registry_entries_skips_already_present_source_id) ... ok
+test_append_registry_entries_writes_new_entry (discovery.test_boards.RegistryEntryTemplateTests.test_append_registry_entries_writes_new_entry) ... ok
+test_generated_entry_validates_against_registry_loader (discovery.test_boards.RegistryEntryTemplateTests.test_generated_entry_validates_against_registry_loader) ... ok
+test_render_registry_entry_disables_prepare_and_submit (discovery.test_boards.RegistryEntryTemplateTests.test_render_registry_entry_disables_prepare_and_submit) ... ok
+test_dedupe_candidates_drops_duplicates_and_registered (discovery.test_boards.SeedLoadingTests.test_dedupe_candidates_drops_duplicates_and_registered) ... ok
+test_founder_watchlist_missing_file_returns_empty (discovery.test_boards.SeedLoadingTests.test_founder_watchlist_missing_file_returns_empty) ... ok
+test_founder_watchlist_never_reads_real_path_in_tests (discovery.test_boards.SeedLoadingTests.test_founder_watchlist_never_reads_real_path_in_tests) ... ok
+test_founder_watchlist_never_yields_an_ashby_candidate (discovery.test_boards.SeedLoadingTests.test_founder_watchlist_never_yields_an_ashby_candidate) ... ok
+test_remoteintech_seed_loads_committed_slugs (discovery.test_boards.SeedLoadingTests.test_remoteintech_seed_loads_committed_slugs) ... ok
+test_watchlist_ats_seed_loads_known_boards (discovery.test_boards.SeedLoadingTests.test_watchlist_ats_seed_loads_known_boards) ... ok
+test_sweep_does_not_register_live_board_without_relevant_postings (discovery.test_boards.SweepOrchestrationTests.test_sweep_does_not_register_live_board_without_relevant_postings) ... ok
+test_sweep_registers_live_relevant_board_and_reports_seed_and_classifier (discovery.test_boards.SweepOrchestrationTests.test_sweep_registers_live_relevant_board_and_reports_seed_and_classifier) ... ok
+test_sweep_respects_max_new_requests_for_bounded_runs (discovery.test_boards.SweepOrchestrationTests.test_sweep_respects_max_new_requests_for_bounded_runs) ... ok
+test_sweep_shares_rate_limit_across_boards_on_same_host (discovery.test_boards.SweepOrchestrationTests.test_sweep_shares_rate_limit_across_boards_on_same_host) ... ok
+test_default_classifier_returns_a_label (discovery.test_boards.TitleFamilyFilterTests.test_default_classifier_returns_a_label) ... ok
+test_keyword_fallback_matches_known_keyword (discovery.test_boards.TitleFamilyFilterTests.test_keyword_fallback_matches_known_keyword) ... ok
+test_keyword_fallback_rejects_unrelated_title (discovery.test_boards.TitleFamilyFilterTests.test_keyword_fallback_rejects_unrelated_title) ... ok
+test_relevant_postings_filters_by_family_and_window (discovery.test_boards.TitleFamilyFilterTests.test_relevant_postings_filters_by_family_and_window) ... ok
+test_relevant_postings_keeps_unparseable_date (discovery.test_boards.TitleFamilyFilterTests.test_relevant_postings_keeps_unparseable_date) ... ok
+test_arbitrary_host_get_refused_preflight (test_acquisition.TestAcquisitionAndRegistryAuthority.test_arbitrary_host_get_refused_preflight) ... ok
+test_disabled_source_refused_preflight (test_acquisition.TestAcquisitionAndRegistryAuthority.test_disabled_source_refused_preflight) ... ok
+test_exact_latency_telemetry_preserved (test_acquisition.TestAcquisitionAndRegistryAuthority.test_exact_latency_telemetry_preserved) ... ok
+test_greenhouse_cross_board_and_http_downgrade_rejected (test_acquisition.TestAcquisitionAndRegistryAuthority.test_greenhouse_cross_board_and_http_downgrade_rejected) ... ok
+test_lever_cross_site_and_http_downgrade_rejected (test_acquisition.TestAcquisitionAndRegistryAuthority.test_lever_cross_site_and_http_downgrade_rejected) ... ok
+test_mutating_methods_strictly_forbidden (test_acquisition.TestAcquisitionAndRegistryAuthority.test_mutating_methods_strictly_forbidden) ... ok
+test_pacing_rate_limiter_injectable_clock (test_acquisition.TestAcquisitionAndRegistryAuthority.test_pacing_rate_limiter_injectable_clock) ... ok
+test_ted_endpoint_and_substring_bypass_rejection (test_acquisition.TestAcquisitionAndRegistryAuthority.test_ted_endpoint_and_substring_bypass_rejection) ... ok
+test_unregistered_source_refused_preflight (test_acquisition.TestAcquisitionAndRegistryAuthority.test_unregistered_source_refused_preflight) ... ok
+test_eu_ted_adapter (test_adapters.AdapterTests.test_eu_ted_adapter) ... ok
+test_greenhouse_adapter (test_adapters.AdapterTests.test_greenhouse_adapter) ... ok
+test_hacker_news_who_is_hiring_adapter (test_adapters.AdapterTests.test_hacker_news_who_is_hiring_adapter) ... ok
+test_himalayas_adapter (test_adapters.AdapterTests.test_himalayas_adapter) ... ok
+test_lever_adapter (test_adapters.AdapterTests.test_lever_adapter) ... ok
+test_remote_ok_adapter (test_adapters.AdapterTests.test_remote_ok_adapter) ... ok
+test_remotive_adapter (test_adapters.AdapterTests.test_remotive_adapter) ... ok
+test_ungm_adapter (test_adapters.AdapterTests.test_ungm_adapter) ... ok
+test_we_work_remotely_adapter (test_adapters.AdapterTests.test_we_work_remotely_adapter) ... ok
+test_world_bank_adapter (test_adapters.AdapterTests.test_world_bank_adapter) ... ok
+test_403_mid_orchestration_stops_and_returns_partial_not_raise (test_adapters.HackerNewsGovernedFetchTests.test_403_mid_orchestration_stops_and_returns_partial_not_raise) ... ok
+test_flipping_registry_to_disabled_refuses_not_fetches (test_adapters.HackerNewsGovernedFetchTests.test_flipping_registry_to_disabled_refuses_not_fetches) ... ok
+test_read_allowed_fetches_through_acquisition_service (test_adapters.HackerNewsGovernedFetchTests.test_read_allowed_fetches_through_acquisition_service) ... ok
+test_greenhouse_and_ted_nonempty_missing_collection_schema_drift (test_adversarial.TestAdversarialInvariants.test_greenhouse_and_ted_nonempty_missing_collection_schema_drift)
+Greenhouse and TED with unexpected schema must report SCHEMA_DRIFT_SUSPECTED, not EMPTY_RESULTS. ... ok
+test_health_telemetry_b_valid_empty_payload (test_adversarial.TestAdversarialInvariants.test_health_telemetry_b_valid_empty_payload)
+B. Valid source payload containing exactly 0 source records -> EMPTY_RESULTS. ... ok
+test_health_telemetry_d_raw_parsed_valid_accuracy (test_adversarial.TestAdversarialInvariants.test_health_telemetry_d_raw_parsed_valid_accuracy)
+D. Collection has 3 raw records, 2 normalize successfully -> raw=3, parsed=2, valid=2. ... ok
+test_health_telemetry_e_parser_exception_after_http_200 (test_adversarial.TestAdversarialInvariants.test_health_telemetry_e_parser_exception_after_http_200)
+E. Parser exception after HTTP 200 -> HTTP transport remains 200 and parser error is independently recorded. ... ok
+test_health_telemetry_successful_non_200_status_code_preservation (test_adversarial.TestAdversarialInvariants.test_health_telemetry_successful_non_200_status_code_preservation)
+MockTransport status_code=206, latency=187ms -> SourceHealthReport retains status_code=206 and latency=187ms. ... ok
+test_minimal_records_zero_fabrication_across_all_adapters (test_adversarial.TestAdversarialInvariants.test_minimal_records_zero_fabrication_across_all_adapters)
+Sparse records across all 9 adapters must not fabricate placeholder values. ... ok
+test_ted_concrete_description_laundering_bug_fixed (test_adversarial.TestAdversarialInvariants.test_ted_concrete_description_laundering_bug_fixed)
+Notice has title but no description -> description MUST NOT silently become title. ... ok
+test_parse_linkedin_job_alert (test_alert_ingestion.TestAlertIngestionEngine.test_parse_linkedin_job_alert) ... ok
+test_parse_procurement_tender_alert (test_alert_ingestion.TestAlertIngestionEngine.test_parse_procurement_tender_alert) ... ok
+test_parse_upwork_freelance_alert (test_alert_ingestion.TestAlertIngestionEngine.test_parse_upwork_freelance_alert) ... ok
+test_a2_3_family_report_over_hand_built_corpus (test_clustering.TestCorpusWideReport.test_a2_3_family_report_over_hand_built_corpus) ... ok
+test_a2_4_whole_corpus_invariant_check (test_clustering.TestCorpusWideReport.test_a2_4_whole_corpus_invariant_check) ... ok
+test_best_fit_selection_is_deterministic_regardless_of_input_order (test_clustering.TestFamilyCard.test_best_fit_selection_is_deterministic_regardless_of_input_order) ... ok
+test_family_carries_best_fit_members_score_not_average (test_clustering.TestFamilyCard.test_family_carries_best_fit_members_score_not_average) ... ok
+test_family_carries_location_list_and_member_count (test_clustering.TestFamilyCard.test_family_carries_location_list_and_member_count) ... ok
+test_compute_family_key_matches_family_key (test_clustering.TestFamilyKeyDeterminism.test_compute_family_key_matches_family_key) ... ok
+test_location_variation_does_not_change_key (test_clustering.TestFamilyKeyDeterminism.test_location_variation_does_not_change_key) ... ok
+test_recompute_over_corpus_twice_is_identical (test_clustering.TestFamilyKeyDeterminism.test_recompute_over_corpus_twice_is_identical)
+A2.5 determinism check: keys recomputed over the corpus twice are ... ok
+test_same_opportunity_same_key (test_clustering.TestFamilyKeyDeterminism.test_same_opportunity_same_key) ... ok
+test_cloudflare_customer_engineer_set_is_one_family (test_clustering.TestFamilyMembershipRules.test_cloudflare_customer_engineer_set_is_one_family) ... ok
+test_different_employer_same_title_text_is_separate_family (test_clustering.TestFamilyMembershipRules.test_different_employer_same_title_text_is_separate_family) ... ok
+test_different_seniority_level_is_separate_family (test_clustering.TestFamilyMembershipRules.test_different_seniority_level_is_separate_family) ... ok
+test_other_bucket_distinct_titles_do_not_collide (test_clustering.TestFamilyMembershipRules.test_other_bucket_distinct_titles_do_not_collide) ... ok
+test_singleton_is_family_of_one_and_behaves_like_plain_card (test_clustering.TestFamilyMembershipRules.test_singleton_is_family_of_one_and_behaves_like_plain_card) ... ok
+test_zero_families_span_two_employers (test_clustering.TestFamilyMembershipRules.test_zero_families_span_two_employers) ... ok
+test_zero_families_span_two_normalized_titles (test_clustering.TestFamilyMembershipRules.test_zero_families_span_two_normalized_titles) ... ok
+test_clustering_never_changes_any_members_decision_or_fit_score (test_clustering.TestNeverMergeAcrossDecisions.test_clustering_never_changes_any_members_decision_or_fit_score)
+A2.7 no-re-judgement test: no member's decision or fit_score ... ok
+test_ineligible_member_status_is_flagged_not_hidden (test_clustering.TestNeverMergeAcrossDecisions.test_ineligible_member_status_is_flagged_not_hidden)
+A family must never hide an ineligible member's status behind a ... ok
+test_no_flag_when_all_members_share_one_decision (test_clustering.TestNeverMergeAcrossDecisions.test_no_flag_when_all_members_share_one_decision) ... ok
+test_level_word_changes_the_key (test_clustering.TestNormalizedTitleKey.test_level_word_changes_the_key) ... ok
+test_pure_function_of_title_text (test_clustering.TestNormalizedTitleKey.test_pure_function_of_title_text) ... ok
+test_ats_direct_plus_aggregator_with_same_canonical_url_merges (test_dedupe.TestDeduplicationRegressions.test_ats_direct_plus_aggregator_with_same_canonical_url_merges)
+ATS direct + aggregator with exact same canonical ATS URL -> MERGES cleanly. ... ok
+test_same_source_distinct_requisition_ids_never_merge (test_dedupe.TestDeduplicationRegressions.test_same_source_distinct_requisition_ids_never_merge)
+Distinct requisition IDs from same source never merge (preserving headcount). ... ok
+test_similarity_without_identity_proof_does_not_merge (test_dedupe.TestDeduplicationRegressions.test_similarity_without_identity_proof_does_not_merge)
+Same org, same exact title, near-identical description without stable identity -> preserve both. ... ok
+test_source_id_substring_matching_rejected (test_dedupe.TestDeduplicationRegressions.test_source_id_substring_matching_rejected)
+source_id in other.source_url (e.g. '1' in '.../jobs/12345') MUST NEVER MERGE. ... ok
+test_canonical_serialization_identical_across_pythonhashseeds (test_deterministic_replay.DeterministicReplayTests.test_canonical_serialization_identical_across_pythonhashseeds) ... ok
+test_ashby_adapter_parsing (test_discovery_reverification.TestStructuredDiscoveryAndReverification.test_ashby_adapter_parsing) ... ok
+test_reverification_mock (test_discovery_reverification.TestStructuredDiscoveryAndReverification.test_reverification_mock) ... ok
+test_schema_org_json_ld_extraction (test_discovery_reverification.TestStructuredDiscoveryAndReverification.test_schema_org_json_ld_extraction) ... ok
+test_empty_results_not_silently_healthy (test_health.HealthMonitorTests.test_empty_results_not_silently_healthy) ... ok
+test_healthy_run (test_health.HealthMonitorTests.test_healthy_run) ... ok
+test_policy_restriction_and_rate_limiting (test_health.HealthMonitorTests.test_policy_restriction_and_rate_limiting) ... ok
+test_schema_drift_detection (test_health.HealthMonitorTests.test_schema_drift_detection) ... ok
+test_transient_and_persistent_failures (test_health.HealthMonitorTests.test_transient_and_persistent_failures) ... ok
+test_every_entry_has_a_resolvable_deep_link (test_manual_sources.ManualSourceCatalogueTests.test_every_entry_has_a_resolvable_deep_link) ... ok
+test_no_duplicate_source_ids (test_manual_sources.ManualSourceCatalogueTests.test_no_duplicate_source_ids) ... ok
+test_opportunity_type_is_manual_only_or_platform_application (test_manual_sources.ManualSourceCatalogueTests.test_opportunity_type_is_manual_only_or_platform_application) ... ok
+test_reddit_routes_are_registered_and_blocked (test_manual_sources.ManualSourceCatalogueTests.test_reddit_routes_are_registered_and_blocked) ... ok
+test_tutoring_platforms_are_platform_application_under_tutoring_track (test_manual_sources.ManualSourceCatalogueTests.test_tutoring_platforms_are_platform_application_under_tutoring_track) ... ok
+test_every_corpus_id_fits_varchar64 (test_models.TestComputeDeterministicIdVarcharBound.test_every_corpus_id_fits_varchar64) ... ok
+test_fitting_id_unchanged_by_fix (test_models.TestComputeDeterministicIdVarcharBound.test_fitting_id_unchanged_by_fix) ... ok
+test_long_remote_id_is_stable_across_calls (test_models.TestComputeDeterministicIdVarcharBound.test_long_remote_id_is_stable_across_calls) ... ok
+test_no_id_collisions_across_corpus (test_models.TestComputeDeterministicIdVarcharBound.test_no_id_collisions_across_corpus) ... ok
+test_compensation_atomic_subfield_provenance_regressions (test_models.TestOpportunityModels.test_compensation_atomic_subfield_provenance_regressions)
+Generic 'compensation' provenance cannot substitute for missing atomic subfield provenance. ... ok
+test_greenhouse_field_provenance_individual_removal_regressions (test_models.TestOpportunityModels.test_greenhouse_field_provenance_individual_removal_regressions)
+Removing provenance for each populated field individually MUST fail validation. ... ok
+test_material_field_manifest_reflection (test_models.TestOpportunityModels.test_material_field_manifest_reflection)
+Every field on Opportunity must have an executable rule in MATERIAL_OPPORTUNITY_FIELD_RULES. ... ok
+test_procurement_provenance_individual_removal_regressions (test_models.TestOpportunityModels.test_procurement_provenance_individual_removal_regressions)
+Removing CPV, buyer, or deadline provenance on procurement notice MUST fail. ... ok
+test_remote_policy_alias_agrees_with_work_mode_for_every_value (test_models.TestOpportunityModels.test_remote_policy_alias_agrees_with_work_mode_for_every_value)
+BRIEF-FR-006 A1 Master decision #1: `remote_policy` is a read-only derived ... ok
+test_clean_text (test_normalization.NormalizationTests.test_clean_text) ... ok
+test_country_name_inference (test_normalization.NormalizationTests.test_country_name_inference) ... ok
+test_create_field_provenance (test_normalization.NormalizationTests.test_create_field_provenance) ... ok
+test_derive_geographic_eligibility (test_normalization.NormalizationTests.test_derive_geographic_eligibility) ... ok
+test_extract_compensation_no_fabricated_defaults (test_normalization.NormalizationTests.test_extract_compensation_no_fabricated_defaults) ... ok
+test_extract_employment_type (test_normalization.NormalizationTests.test_extract_employment_type) ... ok
+test_extract_list_sections (test_normalization.NormalizationTests.test_extract_list_sections) ... ok
+test_extract_remote_policy (test_normalization.NormalizationTests.test_extract_remote_policy) ... ok
+test_extract_seniority (test_normalization.NormalizationTests.test_extract_seniority) ... ok
+test_extract_skills (test_normalization.NormalizationTests.test_extract_skills) ... ok
+test_extract_track_deterministic (test_normalization.NormalizationTests.test_extract_track_deterministic) ... ok
+test_extract_work_mode_generic (test_normalization.NormalizationTests.test_extract_work_mode_generic) ... ok
+test_native_mapping_wins_over_inference (test_normalization.NormalizationTests.test_native_mapping_wins_over_inference)
+Adapter-native work_mode must never be overwritten by text inference. ... ok
+test_no_signal_yields_unspecified_and_none_source (test_normalization.NormalizationTests.test_no_signal_yields_unspecified_and_none_source) ... ok
+test_parse_iso_date (test_normalization.NormalizationTests.test_parse_iso_date) ... ok
+test_worked_example_1_remote_us_only (test_normalization.NormalizationTests.test_worked_example_1_remote_us_only)
+Brief worked example: 'Remote (US only)' -> remote, region-restricted [US]. ... ok
+test_worked_example_2_hybrid_cairo (test_normalization.NormalizationTests.test_worked_example_2_hybrid_cairo)
+Brief worked example: 'Hybrid — Cairo' -> hybrid, EG/Cairo. ... ok
+test_worked_example_3_onsite_multi_country (test_normalization.NormalizationTests.test_worked_example_3_onsite_multi_country)
+Brief worked example: 'Egypt, Saudi Arabia, or UAE' -> onsite, multi-country. ... ok
+test_changed_content_hash_updates_and_reverifies (test_persistence.PersistBatchTest.test_changed_content_hash_updates_and_reverifies) ... _refresh_search_tsv: skipped for opportunity fixture:job-1 -- non-PostgreSQL bind (sqlite); search_tsv was not refreshed
+_refresh_search_tsv: skipped for opportunity fixture:job-1 -- non-PostgreSQL bind (sqlite); search_tsv was not refreshed
+ok
+test_empty_batch_is_noop (test_persistence.PersistBatchTest.test_empty_batch_is_noop) ... ok
+test_family_key_recomputed_and_unchanged_on_identical_rerun (test_persistence.PersistBatchTest.test_family_key_recomputed_and_unchanged_on_identical_rerun) ... _refresh_search_tsv: skipped for opportunity fixture:job-1 -- non-PostgreSQL bind (sqlite); search_tsv was not refreshed
+ok
+test_fresh_insert_with_provenance (test_persistence.PersistBatchTest.test_fresh_insert_with_provenance) ... _refresh_search_tsv: skipped for opportunity fixture:job-1 -- non-PostgreSQL bind (sqlite); search_tsv was not refreshed
+ok
+test_identical_rerun_inserts_nothing (test_persistence.PersistBatchTest.test_identical_rerun_inserts_nothing) ... _refresh_search_tsv: skipped for opportunity fixture:job-1 -- non-PostgreSQL bind (sqlite); search_tsv was not refreshed
+ok
+test_persisted_record_carries_the_deterministic_family_key (test_persistence.PersistBatchTest.test_persisted_record_carries_the_deterministic_family_key)
+A2 (BRIEF-FR-006): persist_batch writes opportunity.clustering.family_key ... _refresh_search_tsv: skipped for opportunity fixture:job-1 -- non-PostgreSQL bind (sqlite); search_tsv was not refreshed
+ok
+test_persisted_source_id_is_the_registry_id_not_the_remote_job_id (test_persistence.PersistBatchTest.test_persisted_source_id_is_the_registry_id_not_the_remote_job_id)
+Regression for the BRIEF-FR-005 source_id erratum. ... _refresh_search_tsv: skipped for opportunity himalayas:him-job-101 -- non-PostgreSQL bind (sqlite); search_tsv was not refreshed
+ok
+test_empty_batch_not_clean (test_pipeline.PipelineTests.test_empty_batch_not_clean) ... ok
+test_full_pipeline_multi_source_ingestion (test_pipeline.PipelineTests.test_full_pipeline_multi_source_ingestion) ... ok
+test_pipeline_handles_unregistered_and_disabled_sources (test_pipeline.PipelineTests.test_pipeline_handles_unregistered_and_disabled_sources) ... ok
+test_pipeline_with_mock_transport_discovery (test_pipeline.PipelineTests.test_pipeline_with_mock_transport_discovery) ... ok
+test_gone_posting_older_than_14_days_is_marked_stale (test_reverification.TestReverifyStaleOpportunities.test_gone_posting_older_than_14_days_is_marked_stale) ... ok
+test_posting_younger_than_14_days_is_not_a_candidate (test_reverification.TestReverifyStaleOpportunities.test_posting_younger_than_14_days_is_not_a_candidate) ... ok
+test_rate_limiter_is_consulted_per_candidate (test_reverification.TestReverifyStaleOpportunities.test_rate_limiter_is_consulted_per_candidate) ... ok
+test_read_forbidden_source_is_never_reverified (test_reverification.TestReverifyStaleOpportunities.test_read_forbidden_source_is_never_reverified) ... ok
+test_still_present_posting_is_not_marked_stale (test_reverification.TestReverifyStaleOpportunities.test_still_present_posting_is_not_marked_stale) ... ok
+test_every_bound_adapter_source_is_read_allowed (test_source_policy.SourcePolicyBindingTests.test_every_bound_adapter_source_is_read_allowed) ... ok
+test_every_e23_added_or_corrected_entry_has_policy_status_and_dated_review (test_source_policy.SourcePolicyBindingTests.test_every_e23_added_or_corrected_entry_has_policy_status_and_dated_review) ... ok
+test_hacker_news_is_the_only_new_e23_source_bound_to_an_adapter (test_source_policy.SourcePolicyBindingTests.test_hacker_news_is_the_only_new_e23_source_bound_to_an_adapter) ... ok
+test_no_bound_adapter_targets_a_manual_only_or_disabled_registry_entry (test_source_policy.SourcePolicyBindingTests.test_no_bound_adapter_targets_a_manual_only_or_disabled_registry_entry) ... ok
+test_zero_prepare_or_submit_permissions_in_agent_permissions (test_source_policy.SourcePolicyBindingTests.test_zero_prepare_or_submit_permissions_in_agent_permissions) ... ok
+test_zero_prepare_or_submit_permissions_in_source_registry (test_source_policy.SourcePolicyBindingTests.test_zero_prepare_or_submit_permissions_in_source_registry) ... ok
+
+----------------------------------------------------------------------
+Ran 162 tests in 42.592s
+
+OK
+
+A2.3 corpus run: 24 postings -> 9 families (title normalizer: matching.title_family.normalize_title)
+  family_key=17aa6ae61112... employer='Cloudflare' normalized_title='customer_solutions_engineering:staff' member_count=1
+  family_key=1a33552659f3... employer='Cloudflare' normalized_title='other:unspecified:quantum flux herder' member_count=1
+  family_key=1f761c0d5fb4... employer='Cloudflare' normalized_title='backend:senior' member_count=2
+  family_key=5416d97cc257... employer='Cloudflare' normalized_title='customer_solutions_engineering:senior' member_count=14
+  family_key=60354e531af1... employer='Nimbus Data' normalized_title='data_engineering:unspecified' member_count=1
+  family_key=8741286d547c... employer='Acme Corp' normalized_title='customer_solutions_engineering:senior' member_count=1
+  family_key=aec95779e6af... employer='Cloudflare' normalized_title='other:unspecified:zorbatron wrangler' member_count=1
+  family_key=d939a4c23029... employer='Cloudflare' normalized_title='customer_solutions_engineering:unspecified' member_count=2
+  family_key=f221ee77fe8a... employer='Acme Corp' normalized_title='product:unspecified' member_count=1
+A2.3 result: the Cloudflare 'Senior Customer Engineer' set collapsed to ONE family with member_count=14
+
+A2.4 whole-corpus invariant check: 24 postings, 9 families, cross_employer_violations=0, cross_title_violations=0
+A2.5 determinism: 24 keys compared, identical=True
+A2.7 no-re-judgement: 3 members compared before/after clustering, all decision/fit_score pairs unchanged=True
+id-length check: 540 ids checked; current max=52; previous max=153
+collision check: 540 ids checked; 540 unique; duplicates=[]

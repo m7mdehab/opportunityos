@@ -1,0 +1,9 @@
+test_redact_emails (core.test_logging.TestStructuredLogging.test_redact_emails) ... ok
+test_redact_structured_dict (core.test_logging.TestStructuredLogging.test_redact_structured_dict) ... ok
+test_redact_tokens_and_secrets (core.test_logging.TestStructuredLogging.test_redact_tokens_and_secrets) ... ok
+test_structured_log_formatter_output (core.test_logging.TestStructuredLogging.test_structured_log_formatter_output) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.001s
+
+OK
