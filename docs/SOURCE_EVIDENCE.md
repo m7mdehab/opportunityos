@@ -253,3 +253,37 @@ never sent a body request beyond `robots.txt` — the brief itself designates th
 application-based, or platform-application, so no further recon request was warranted once that
 designation was confirmed. No credentials, accounts, sign-ins, or CAPTCHAs were encountered or
 attempted anywhere in this sweep.
+
+
+## Re-recon 2026-09-03 (BRIEF-FR-006 E1)
+
+**Ashby re-recon.** E1 authorizes a re-check of Ashby read access using "the documented public
+posting API host" -- `api.ashbyhq.com`, the same host `recon/sources.py:ats_sources()` already
+calls for every `ashby:*` entry (`/posting-api/job-board/{token}`). A single unauthenticated
+`GET https://api.ashbyhq.com/robots.txt` was made (one request, not retried): **HTTP 401**,
+identical to the 2026-09-02 FR-003 D11 finding above. As a secondary check (not a policy basis
+by itself, recorded for completeness only), `GET https://jobs.ashbyhq.com/robots.txt` --
+Ashby's public candidate-facing career-page host, a different host from the documented posting
+API -- returned HTTP 200 with `Disallow: /meeting/`, `Disallow: /b/`, `Disallow: /api/`; it does
+not disallow crawling generally, but it is not the posting-API host and its robots file does not
+speak to `api.ashbyhq.com`, so it cannot supply the permission E1 requires. **Decision: Ashby
+`automation.read` stays `disabled`.** Per the E1 order, "if robots is still unreachable or
+forbids, Ashby stays disabled and that is a valid closure"; robots.txt on the documented posting
+API host is unreachable (401) exactly as before, so the flip condition (robots AND terms permit)
+is not met. No entry in `docs/SOURCE_REGISTRY.yaml` was changed by this re-recon (the existing
+2026-09-02 record already reflects this state).
+
+**Board discovery sweep.** Seeds used:
+- `remoteintech_directory`: https://github.com/remoteintech/remote-jobs, accessed 2026-09-03,
+  license ISC per the repository README. 882 company-name slugs were read once from the
+  repository file tree (`https://api.github.com/repos/remoteintech/remote-jobs/git/trees/main`,
+  one API call) and committed verbatim to
+  `opportunity/discovery/seeds/remoteintech_companies.json` for citation and reproducibility.
+  Each slug is a discovery CANDIDATE token tried against Greenhouse and Lever only (never
+  asserted to be the company'''s real ATS token until a live probe confirms it); Ashby was
+  excluded from this sweep for the reason given above.
+- `founder_watchlist`: `private/watchlist.yaml` (founder-private, never read by this session's
+  tests); it did not exist at run time, so it contributed 0 candidates this run.
+
+Results, relevance filter, and the full classification breakdown are in
+`reports/evidence/FR-006/e1-discovery-run.md`.

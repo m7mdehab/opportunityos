@@ -1991,3 +1991,975 @@ sources:
     last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://www.cambly.com/robots.txt
+  - source_id: greenhouse:acquia
+    name: "greenhouse:acquia"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 5/11 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/acquia/jobs?content=true"
+      latency_ms: 436
+      record_count: 11
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:aestudio
+    name: "greenhouse:aestudio"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 4/6 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/aestudio/jobs?content=true"
+      latency_ms: 1288
+      record_count: 6
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:alphasights
+    name: "greenhouse:alphasights"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 6/83 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/alphasights/jobs?content=true"
+      latency_ms: 1669
+      record_count: 83
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:asana
+    name: "greenhouse:asana"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 56/119 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/asana/jobs?content=true"
+      latency_ms: 3543
+      record_count: 119
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:axios
+    name: "greenhouse:axios"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 2/30 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/axios/jobs?content=true"
+      latency_ms: 1315
+      record_count: 30
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:bitwarden
+    name: "greenhouse:bitwarden"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 23/36 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/bitwarden/jobs?content=true"
+      latency_ms: 838
+      record_count: 36
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:cabify
+    name: "greenhouse:cabify"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 4/65 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/cabify/jobs?content=true"
+      latency_ms: 1850
+      record_count: 65
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:calendly
+    name: "greenhouse:calendly"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 6/10 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/calendly/jobs?content=true"
+      latency_ms: 1016
+      record_count: 10
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:canonical
+    name: "greenhouse:canonical"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 132/302 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/canonical/jobs?content=true"
+      latency_ms: 6763
+      record_count: 302
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:chainguard
+    name: "greenhouse:chainguard"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 46/85 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/chainguard/jobs?content=true"
+      latency_ms: 2880
+      record_count: 85
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:circleci
+    name: "greenhouse:circleci"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 2/6 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/circleci/jobs?content=true"
+      latency_ms: 687
+      record_count: 6
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:comet
+    name: "greenhouse:comet"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 1/3 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/comet/jobs?content=true"
+      latency_ms: 418
+      record_count: 3
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:consensys
+    name: "greenhouse:consensys"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 3/6 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/consensys/jobs?content=true"
+      latency_ms: 418
+      record_count: 6
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:coursera
+    name: "greenhouse:coursera"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 12/24 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/coursera/jobs?content=true"
+      latency_ms: 633
+      record_count: 24
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:dashlane
+    name: "greenhouse:dashlane"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 8/14 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/dashlane/jobs?content=true"
+      latency_ms: 15111
+      record_count: 14
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:datacamp
+    name: "greenhouse:datacamp"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 4/32 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/datacamp/jobs?content=true"
+      latency_ms: 1063
+      record_count: 32
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:discord
+    name: "greenhouse:discord"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 32/48 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/discord/jobs?content=true"
+      latency_ms: 1222
+      record_count: 48
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:doximity
+    name: "greenhouse:doximity"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 4/10 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/doximity/jobs?content=true"
+      latency_ms: 554
+      record_count: 10
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:dropbox
+    name: "greenhouse:dropbox"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 16/42 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/dropbox/jobs?content=true"
+      latency_ms: 2395
+      record_count: 42
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:ebury
+    name: "greenhouse:ebury"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 89/172 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/ebury/jobs?content=true"
+      latency_ms: 5162
+      record_count: 172
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:elastic
+    name: "greenhouse:elastic"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 234/360 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/elastic/jobs?content=true"
+      latency_ms: 9861
+      record_count: 360
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:fastly
+    name: "greenhouse:fastly"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 20/51 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/fastly/jobs?content=true"
+      latency_ms: 3264
+      record_count: 51
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:fingerprint
+    name: "greenhouse:fingerprint"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 8/23 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/fingerprint/jobs?content=true"
+      latency_ms: 385
+      record_count: 23
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:fleetio
+    name: "greenhouse:fleetio"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 9/22 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/fleetio/jobs?content=true"
+      latency_ms: 841
+      record_count: 22
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:flip
+    name: "greenhouse:flip"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 4/12 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/flip/jobs?content=true"
+      latency_ms: 665
+      record_count: 12
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:gitlab
+    name: "greenhouse:gitlab"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 128/233 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/gitlab/jobs?content=true"
+      latency_ms: 3902
+      record_count: 233
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:godaddy
+    name: "greenhouse:godaddy"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 16/32 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/godaddy/jobs?content=true"
+      latency_ms: 1754
+      record_count: 32
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:gremlin
+    name: "greenhouse:gremlin"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 2/3 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/gremlin/jobs?content=true"
+      latency_ms: 346
+      record_count: 3
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: lever:activecampaign
+    name: "lever:activecampaign"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 3/13 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://api.lever.co/v0/postings/activecampaign?mode=json"
+      latency_ms: 11277
+      record_count: 13
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.lever.co/terms
+  - source_id: lever:aerostrat
+    name: "lever:aerostrat"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 2/3 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://api.lever.co/v0/postings/aerostrat?mode=json"
+      latency_ms: 1482
+      record_count: 3
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.lever.co/terms
+  - source_id: lever:anomali
+    name: "lever:anomali"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 2/10 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://api.lever.co/v0/postings/anomali?mode=json"
+      latency_ms: 23063
+      record_count: 10
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.lever.co/terms
+  - source_id: lever:bounteous
+    name: "lever:bounteous"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 14/37 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://api.lever.co/v0/postings/bounteous?mode=json"
+      latency_ms: 17864
+      record_count: 37
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.lever.co/terms
+  - source_id: lever:collabora
+    name: "lever:collabora"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 1/3 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://api.lever.co/v0/postings/collabora?mode=json"
+      latency_ms: 2099
+      record_count: 3
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.lever.co/terms
+  - source_id: lever:dronedeploy
+    name: "lever:dronedeploy"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 3/9 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://api.lever.co/v0/postings/dronedeploy?mode=json"
+      latency_ms: 8462
+      record_count: 9
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.lever.co/terms
+  - source_id: lever:findem
+    name: "lever:findem"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 2/3 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://api.lever.co/v0/postings/findem?mode=json"
+      latency_ms: 1383
+      record_count: 3
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.lever.co/terms
+  - source_id: lever:gojob
+    name: "lever:gojob"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 2/62 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://api.lever.co/v0/postings/gojob?mode=json"
+      latency_ms: 63223
+      record_count: 62
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.lever.co/terms

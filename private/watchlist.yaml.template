@@ -1,0 +1,23 @@
+# Founder watchlist template (BRIEF-FR-006 E1).
+#
+# Copy this file to `private/watchlist.yaml` (already gitignored -- never commit the real
+# file) and list the companies you want opportunity/discovery/boards.py to track directly,
+# in addition to the committed public-directory seeds. Discovery reads the real file at
+# runtime if it exists; if it does not exist, this seed silently contributes nothing.
+#
+# kind must be exactly "greenhouse", "lever", or "ashby".
+# token must be the exact board/site/org token as it appears in that ATS public URL:
+#   Greenhouse: https://boards-api.greenhouse.io/v1/boards/<token>/jobs
+#   Lever:      https://api.lever.co/v0/postings/<token>
+#   Ashby:      https://api.ashbyhq.com/posting-api/job-board/<token>
+# (Ashby reads are policy-disabled as of this brief -- see docs/SOURCE_EVIDENCE.md -- so an
+# ashby entry here will be probed and classified but will not be registered as read-allowed
+# until that policy status changes.)
+
+companies:
+  - kind: greenhouse
+    token: example-company
+    name: "Example Company"
+  - kind: lever
+    token: example-co
+    name: "Example Co"

@@ -23,7 +23,11 @@ Thumbs.db
 # Local personal data
 private/*
 !private/README.md
+!private/watchlist.yaml.template
 *.egg-info/
+
+# Discovery runtime cache (resumable sweep progress; not evidence, not a seed)
+opportunity/discovery/.progress*.json
 
 # Agent worktrees (harness-managed, never tracked)
 .claude/worktrees/
