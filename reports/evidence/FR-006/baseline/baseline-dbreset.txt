@@ -1,5 +1,0 @@
-ERROR:  database "opportunityos_test" is being accessed by other users
-DETAIL:  There are 9 other sessions using the database.
-EXIT_CODE_1: 1
-ERROR:  database "opportunityos_test" already exists
-EXIT_CODE_2: 1

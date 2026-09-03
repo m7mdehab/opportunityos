@@ -1,1 +1,0 @@
-Guard checks passed for repository and mirror boundary.
