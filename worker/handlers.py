@@ -52,6 +52,14 @@ from opportunity.pipeline import OpportunityPipeline
 from opportunity.registry import SourceRegistry
 from opportunity.transport import BaseTransport, HttpTransport
 from storage.models import FieldProvenanceRecord, MatchEvaluationRecord, OpportunityRecord, SourcePollRunRecord
+try:
+    # A1M's own reextract_all interface point (see below) into the concurrent
+    # A1-extract work order's extraction functions. Imported defensively: if
+    # A1-extract has not landed on this branch yet, ``reextract_all`` degrades
+    # to a documented no-op rather than failing worker startup.
+    from opportunity.extraction import extract_founder_control_fields as _default_founder_control_extractor  # type: ignore
+except ImportError:
+    _default_founder_control_extractor = None
 from storage.repository import StorageRepository
 from truth.pack import LoadedPack, TruthPackInvalid, TruthPackMissing, load_founder_pack
 from worker.queue import BackgroundWorkerQueue
@@ -605,6 +613,135 @@ def make_evaluate_new_handler(
     return handler
 
 
+#: Interface for the (as of this work order, not-yet-landed) founder-control
+#: field extractor that the concurrent A1-extract work order is building:
+#: ``(raw_payload: dict) -> Mapping[str, Any]`` mapping A1M column name (see
+#: ``_A1M_COLUMNS`` below and ``storage/migrations/versions/
+#: 0004_founder_control.py``) to its freshly extracted value. Injectable so a
+#: test can supply a fake extractor without waiting on that concurrent order.
+FounderControlExtractor = Callable[[dict], Mapping[str, Any]]
+
+#: Every ``opportunities`` column this work order's migration
+#: (``0004_founder_control``) added that ``reextract_all`` is responsible for
+#: refreshing. ``search_tsv`` is deliberately excluded: it is a derived
+#: search index, not a directly-extracted field, and is out of scope here.
+_A1M_COLUMNS = (
+    "work_mode", "work_mode_source", "location_country", "location_city",
+    "location_region", "remote_scope", "remote_scope_regions", "employment_type",
+    "seniority_level", "compensation_min", "compensation_max", "compensation_currency",
+    "compensation_period", "title_family", "title_level", "family_key",
+)
+
+
+def reextract_all(
+    session: Any,
+    *,
+    extractor: Optional[FounderControlExtractor] = None,
+    batch_size: int = 200,
+) -> dict:
+    """Re-parse every stored ``raw_payload_json`` and update the A1M
+    founder-control columns on ``opportunities`` in place.
+
+    Batched: at most ``batch_size`` rows are loaded and committed per
+    iteration, ordered by ``id`` ascending with a keyset (``id > last_id``)
+    cursor, so an interrupted run can simply be re-invoked and makes forward
+    progress from where the last committed batch left off, without an
+    ``OFFSET`` skipping or re-scanning rows.
+
+    Idempotent: a row is only written (and only counted in ``changed``) when
+    at least one extracted column's value actually differs from what is
+    already stored, so re-running against unchanged underlying data (and an
+    unchanged extractor) always reports ``changed == 0`` on the second and
+    every subsequent run.
+
+    ``extractor`` is the injectable interface described by
+    ``FounderControlExtractor`` above. If neither ``extractor`` nor the
+    module-level default (populated only once the concurrent A1-extract work
+    order's ``opportunity.extraction.extract_founder_control_fields`` exists
+    on this branch) is available, this is a documented no-op: it scans zero
+    rows, changes zero rows, and reports
+    ``{"status": "extractor_unavailable", "scanned": 0, "changed": 0}``.
+    Extraction logic itself is out of scope for this work order -- see
+    ``reports/evidence/FR-006/orders/A1M-migration.md`` item 4.
+    """
+    extract_fn = extractor or _default_founder_control_extractor
+    if extract_fn is None:
+        logger.warning(
+            "worker.reextract_all_extractor_unavailable",
+            extra={"component": "worker.handlers", "extra_data": {"scanned": 0, "changed": 0}},
+        )
+        return {"status": "extractor_unavailable", "scanned": 0, "changed": 0}
+
+    scanned = 0
+    changed = 0
+    last_id: Optional[str] = None
+    while True:
+        query = session.query(OpportunityRecord).order_by(OpportunityRecord.id.asc())
+        if last_id is not None:
+            query = query.filter(OpportunityRecord.id > last_id)
+        batch = query.limit(batch_size).all()
+        if not batch:
+            break
+        for record in batch:
+            last_id = record.id
+            scanned += 1
+            if not record.raw_payload_json:
+                continue
+            try:
+                raw_payload = json.loads(record.raw_payload_json)
+            except (TypeError, ValueError):
+                continue
+            extracted = extract_fn(raw_payload)
+            row_changed = False
+            for column in _A1M_COLUMNS:
+                if column not in extracted:
+                    continue
+                new_value = extracted[column]
+                if getattr(record, column) != new_value:
+                    setattr(record, column, new_value)
+                    row_changed = True
+            if row_changed:
+                changed += 1
+        session.commit()
+
+    logger.info(
+        "worker.reextract_all_completed",
+        extra={"component": "worker.handlers", "extra_data": {"scanned": scanned, "changed": changed}},
+    )
+    return {"status": "ok", "scanned": scanned, "changed": changed}
+
+
+def make_reextract_all_handler(
+    *,
+    session_factory: Optional[SessionFactory] = None,
+    extractor: Optional[FounderControlExtractor] = None,
+    batch_size: int = 200,
+) -> Callable[[dict], None]:
+    """Build the ``reextract_all`` job handler bound to the given (injectable) dependencies.
+
+    See ``reextract_all`` (above) for the batching/idempotency/no-op
+    contract this handler wraps in a single committed session per batch.
+    """
+    _session_factory_holder: list[Optional[SessionFactory]] = [session_factory]
+
+    def _resolve_session_factory() -> SessionFactory:
+        if _session_factory_holder[0] is None:
+            _session_factory_holder[0] = _production_session_factory()
+        return _session_factory_holder[0]
+
+    def handler(payload: dict) -> None:
+        session = _resolve_session_factory()()
+        try:
+            reextract_all(session, extractor=extractor, batch_size=batch_size)
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    return handler
+
+
 def default_handler_registry(
     *,
     registry: Optional[SourceRegistry] = None,
@@ -642,4 +779,5 @@ def default_handler_registry(
             pack_loader=pack_loader,
             scorer=scorer,
         ),
+        "reextract_all": make_reextract_all_handler(session_factory=session_factory),
     }
