@@ -14,7 +14,7 @@ Branch `feat/brief-fr-006-nothing-missed`, base `main` = `bf25d93`.
 | F2 dev_env | — | INTEGRATED | reportlab 5.0.1; `alpha.py` already used `sys.executable` |
 | A1M migration `0004` | — | INTEGRATED | 17 cols, 5 indexes, 4 tables, reversible per object |
 | A1S `target_roles` seed | A1M | INTEGRATED | data migration; guard test passes |
-| A1B council-3 repairs | A1M | DISPATCHED | search backfill, backup seeding, index metadata |
+| A1B council-3 repairs | A1M | DISPATCHED (late — see deviation 82) | search backfill, backup seeding, index metadata |
 | A1 extraction | — | INTEGRATED | 7 fields; repo-wide `remote_policy` sweep done |
 | A1C corpus | A1 | INTEGRATED | 540 payloads, Cloudflare present |
 | A12M metrics | A1, A1C, B* | INTEGRATED | the A-12/A-13 numbers |
