@@ -225,11 +225,18 @@ career_profile:
       issued_date: "2021-03-01"
 
   # skills: optional. Names are canonicalized (e.g. "python" -> "Python").
+  # `proficiency` (optional) must be one of the closed vocabulary tiers:
+  # basic, foundations, working, advanced, expert -- see matching/skills.py.
+  # `category` (optional, BRIEF-FR-006 D1F) is a pack-author-chosen grouping
+  # label (e.g. "Languages", "Cloud", "Tooling") used to group the compiled
+  # CV's Skills section; omit it and the section falls back to a single
+  # ungrouped list.
   skills:
     - id: skill-example-1
       name: "Widget Design"
       evidence_ids: ["ev-skill"]
       proficiency: "advanced"
+      category: "Tooling"
 
   # languages: optional.
   languages:

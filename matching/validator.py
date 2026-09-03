@@ -227,20 +227,50 @@ class ArtifactClaimValidator:
                                 errors.append(f"Summary claim '{claim.claim_id}' text does not contain cited skill '{s_val}'")
                                 claim_passed = False
 
-                elif claim.predicate == "employment.record":
+                elif claim.predicate in (
+                    "employment.record", "education.record", "certification.record",
+                    "portfolio.record", "language.record", "identity.location",
+                ):
+                    # BRIEF-FR-006 D1F: generalised from the original "employment.record"-only
+                    # branch to cover D1's other new claim-type tags. `outbound/artifact_selector.py`
+                    # and `outbound/authority.py` both default-construct this legacy validator, so
+                    # it is extended (not retired) here rather than deleted. This never widens
+                    # what `truth/validator.py` (the real, production authority per ADR-0014)
+                    # would accept -- it only stops this legacy validator from rejecting a claim
+                    # predicate as "unknown" -- and preserves the original cross-subject /
+                    # domain-mismatch check exactly as it worked for employment.record.
+                    domain_prefix = claim.predicate.split(".", 1)[0] + "."
                     subjects = {getattr(a, "subject_id", "") for a in matched_assertions}
-                    if len(subjects) != 1 or not all(getattr(a, "predicate", "").startswith("employment.") for a in matched_assertions):
-                        errors.append(f"Employment record claim '{claim.claim_id}' cites cross-subject or non-employment assertions: {subjects}")
+                    if len(subjects) != 1 or not all(getattr(a, "predicate", "").startswith(domain_prefix) for a in matched_assertions):
+                        errors.append(f"Record claim '{claim.claim_id}' cites cross-subject or mismatched-domain assertions: {subjects}")
                         claim_passed = False
                     else:
                         field_dict = {getattr(a, "predicate", "").split(".", 1)[1]: str(a.value) for a in matched_assertions if "." in getattr(a, "predicate", "")}
                         claim_text_cf = claim.text.casefold()
-                        if "title" in field_dict and field_dict["title"].casefold() not in claim_text_cf:
-                            errors.append(f"Employment record claim '{claim.claim_id}' text does not match cited title '{field_dict['title']}'")
-                            claim_passed = False
-                        if "organization" in field_dict and field_dict["organization"].casefold() not in claim_text_cf:
-                            errors.append(f"Employment record claim '{claim.claim_id}' text does not match cited organization '{field_dict['organization']}'")
-                            claim_passed = False
+                        for field_name in ("title", "organization", "institution", "qualification", "name", "issuer", "language"):
+                            if field_name in field_dict and field_dict[field_name].casefold() not in claim_text_cf:
+                                errors.append(f"Record claim '{claim.claim_id}' text does not match cited {field_name} '{field_dict[field_name]}'")
+                                claim_passed = False
+
+                elif claim.predicate in (
+                    "employment.responsibility", "achievement.statement", "profile.approved_summary",
+                    "identity.name", "identity.headline", "identity.email", "identity.phone",
+                    "identity.linkedin", "identity.github", "identity.website",
+                ):
+                    # BRIEF-FR-006 D1F: single-value claim-type tags D1 introduced. Same
+                    # authorization shape as the pre-existing "skill.name" / "employment.title"
+                    # branches above: the claim's value must be authorized by an assertion
+                    # actually carrying that exact predicate.
+                    authorized_values = [
+                        str(a.value).casefold() for a in matched_assertions if getattr(a, "predicate", "") == claim.predicate
+                    ]
+                    target_val = (claim.authorized_value or claim.text).casefold()
+                    if not authorized_values or not any(v in target_val or target_val in v for v in authorized_values):
+                        errors.append(
+                            f"Claim '{claim.claim_id}' asserts value for predicate '{claim.predicate}' "
+                            f"which is not authorized by cited assertions '{authorized_values}'"
+                        )
+                        claim_passed = False
 
                 elif claim.predicate in ("credential.status", "certification.state"):
                     authorized_creds = [

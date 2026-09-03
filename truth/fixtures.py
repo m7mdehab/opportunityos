@@ -66,7 +66,10 @@ def synthetic_evidence() -> tuple[EvidenceRecord, ...]:
             metadata={"subject_id": "achievement-verified"},
         ),
         EvidenceRecord(
-            "ev-python", "Uses Python for data engineering.", "synthetic_cv", "skills.0",
+            "ev-python",
+            "Uses Python for data engineering at an expert self-assessed proficiency level, "
+            "categorized under Languages skills.",
+            "synthetic_cv", "skills.0",
             assertion_type=AssertionType.NORMALIZED_FACT,
         ),
         EvidenceRecord("ev-degree", "BSc in Example Systems from Example Institute from 2017-09-01 to 2021-06-30.", "synthetic_cv", "education.0"),
@@ -83,7 +86,9 @@ def synthetic_evidence() -> tuple[EvidenceRecord, ...]:
             assertion_type=AssertionType.DERIVED_CAPABILITY,
         ),
         EvidenceRecord(
-            "ev-portfolio", "Delivered a synthetic data quality assessment for an example dataset.",
+            "ev-portfolio",
+            "Delivered a synthetic data quality assessment for an example dataset. "
+            "Case study: https://synthetic-analytics.example/portfolio/data-quality-assessment.",
             "synthetic_capability_pack", "portfolio.0",
         ),
         EvidenceRecord(
@@ -215,7 +220,7 @@ def synthetic_career_profile() -> CareerProfile:
                 CertificationState.PLANNED, ("ev-cert-plan",),
             ),
         ),
-        skills=(SkillRecord("skill-python", "Python", ("ev-python",)),),
+        skills=(SkillRecord("skill-python", "Python", ("ev-python",), proficiency="expert", category="Languages"),),
         languages=(LanguageRecord("language-english", "English", "professional", ("ev-language",)),),
         work_authorizations=(
             WorkAuthorization("auth-exampleland", "Exampleland", "authorized", ("ev-work-auth",)),
@@ -264,6 +269,7 @@ def synthetic_capability_profile() -> CapabilityProfile:
                 "portfolio-assessment", "Synthetic data quality assessment",
                 "Delivered a synthetic data quality assessment for an example dataset.",
                 ("ev-portfolio",),
+                url="https://synthetic-analytics.example/portfolio/data-quality-assessment",
             ),
         ),
         capacity=BusinessCapacity(
@@ -276,7 +282,7 @@ def synthetic_capability_profile() -> CapabilityProfile:
         target_industries=("Technology", "Development"),
         excluded_industries=("Weapons",),
         delivery_languages=("English",),
-        tools=(SkillRecord("tool-python", "Python", ("ev-python",)),),
+        tools=(SkillRecord("tool-python", "Python", ("ev-python",), proficiency="expert", category="Languages"),),
         never_claims=(
             NeverClaimRule(
                 "never-turnkey",
@@ -344,6 +350,7 @@ _FOUNDER_ROLES = (
         "start": date(2017, 9, 1),
         "end": date(2018, 12, 31),
         "responsibility": "Maintained REST API endpoints for the billing platform.",
+        "responsibility_2": "Wrote automated tests to catch regressions before each billing platform release.",
     },
     {
         "rid": "mid-sahara",
@@ -352,6 +359,7 @@ _FOUNDER_ROLES = (
         "start": date(2019, 1, 1),
         "end": date(2020, 3, 31),
         "responsibility": "Owned the billing platform's data ingestion service.",
+        "responsibility_2": "Mentored two junior engineers on the backend team's on-call rotation.",
     },
     {
         "rid": "freelance-cedar",
@@ -360,6 +368,7 @@ _FOUNDER_ROLES = (
         "start": date(2019, 1, 1),
         "end": date(2019, 6, 30),
         "responsibility": "Delivered a data quality assessment for a regional retail client.",
+        "responsibility_2": "Documented data quality findings and recommendations for the client's operations team.",
     },
     {
         "rid": "data-atlas",
@@ -391,6 +400,7 @@ _FOUNDER_ROLES = (
         "start": date(2023, 1, 1),
         "end": date(2026, 8, 31),
         "responsibility": "Maintained logistics-specific data marts on the shared group platform.",
+        "responsibility_2": "Coordinated with the logistics operations team to prioritize data mart requests.",
     },
     {
         "rid": "group-analytics",
@@ -399,6 +409,7 @@ _FOUNDER_ROLES = (
         "start": date(2023, 1, 1),
         "end": date(2026, 8, 31),
         "responsibility": "Maintained analytics-specific data marts on the shared group platform.",
+        "responsibility_2": "Partnered with the analytics team to validate data mart accuracy before releases.",
     },
 )
 
@@ -451,6 +462,55 @@ _FOUNDER_SKILLS = (
 )
 assert len(_FOUNDER_SKILLS) == 38, "founder-shaped pack must carry exactly 38 skills"
 
+# Category + proficiency for every founder skill, shaped like a real pack
+# author's honest self-assessment (BRIEF-FR-006 D1F): varied categories (so
+# the compiled CV's Skills section has something real to group by) and varied
+# proficiency tiers, including at least one `basic` skill (Power BI) so
+# matching/skills.py's B2 anti-regression -- a `basic`/`foundations` skill
+# must never produce a core-skill strength -- has a real fixture skill to
+# exercise it against, not just a synthetic scorer-level test.
+_FOUNDER_SKILL_META: dict[str, tuple[str, str]] = {
+    "Python": ("Languages", "expert"),
+    "SQL": ("Languages", "expert"),
+    "Data Modeling": ("Data Platform", "advanced"),
+    "ETL Pipelines": ("Data Platform", "advanced"),
+    "Apache Kafka": ("Data Platform", "advanced"),
+    "Apache Airflow": ("Data Platform", "advanced"),
+    "dbt": ("Data Platform", "working"),
+    "Docker": ("Tooling", "working"),
+    "Kubernetes": ("Tooling", "working"),
+    "AWS": ("Cloud", "advanced"),
+    "Google Cloud Platform": ("Cloud", "working"),
+    "Microsoft Azure": ("Cloud", "foundations"),
+    "Terraform": ("Tooling", "working"),
+    "CI CD Automation": ("Tooling", "working"),
+    "Git": ("Tooling", "expert"),
+    "Linux Administration": ("Tooling", "working"),
+    "Bash Scripting": ("Languages", "working"),
+    "Java": ("Languages", "foundations"),
+    "Scala": ("Languages", "foundations"),
+    "Apache Spark": ("Data Platform", "advanced"),
+    "Hadoop": ("Data Platform", "foundations"),
+    "NoSQL Databases": ("Data Platform", "working"),
+    "MongoDB": ("Data Platform", "working"),
+    "PostgreSQL": ("Data Platform", "advanced"),
+    "Redis": ("Data Platform", "working"),
+    "GraphQL": ("Data Platform", "foundations"),
+    "REST API Design": ("Data Platform", "advanced"),
+    "Microservices Architecture": ("Data Platform", "advanced"),
+    "Agile Delivery": ("Delivery", "working"),
+    "Scrum Facilitation": ("Delivery", "working"),
+    "Stakeholder Communication": ("Delivery", "working"),
+    "Data Visualization": ("Analytics", "working"),
+    "Tableau": ("Analytics", "foundations"),
+    "Power BI": ("Analytics", "basic"),
+    "Statistics": ("Analytics", "working"),
+    "Machine Learning": ("Analytics", "foundations"),
+    "A/B Testing": ("Analytics", "working"),
+    "Data Governance": ("Analytics", "advanced"),
+}
+assert set(_FOUNDER_SKILL_META) == set(_FOUNDER_SKILLS), "every founder skill must carry category/proficiency metadata"
+
 
 def _skill_slug(name: str) -> str:
     return name.casefold().replace(" ", "-").replace("/", "-")
@@ -478,6 +538,11 @@ def founder_shaped_evidence() -> tuple[EvidenceRecord, ...]:
             f"ev-{rid}-resp", role["responsibility"],
             "founder_shaped_cv", f"employment.{rid}.responsibilities.0",
         ))
+        if "responsibility_2" in role:
+            records.append(EvidenceRecord(
+                f"ev-{rid}-resp2", role["responsibility_2"],
+                "founder_shaped_cv", f"employment.{rid}.responsibilities.1",
+            ))
         if "achievement" in role:
             records.append(EvidenceRecord(
                 f"ev-{rid}-achievement", f"{role['achievement']} Delivered at {role['org']}.",
@@ -498,8 +563,11 @@ def founder_shaped_evidence() -> tuple[EvidenceRecord, ...]:
 
     for skill in _FOUNDER_SKILLS:
         slug = _skill_slug(skill)
+        category, proficiency = _FOUNDER_SKILL_META[skill]
         records.append(EvidenceRecord(
-            f"ev-skill-{slug}", skill, "founder_shaped_cv", f"skills.{slug}",
+            f"ev-skill-{slug}",
+            f"{skill}. Self-assessed proficiency: {proficiency}. Category: {category}.",
+            "founder_shaped_cv", f"skills.{slug}",
         ))
 
     records.append(EvidenceRecord(
@@ -543,12 +611,14 @@ def founder_shaped_evidence() -> tuple[EvidenceRecord, ...]:
     ))
     records.append(EvidenceRecord(
         "ev-founder-portfolio-group",
-        "Delivered a shared data platform migration for a multi-subsidiary freight group.",
+        "Delivered a shared data platform migration for a multi-subsidiary freight group. "
+        "Case study: https://riley-founder-shaped.example/portfolio/shared-data-platform-migration.",
         "founder_shaped_capability_pack", "portfolio.0",
     ))
     records.append(EvidenceRecord(
         "ev-founder-portfolio-etl",
-        "Delivered an ETL pipeline reliability review for a regional logistics operator.",
+        "Delivered an ETL pipeline reliability review for a regional logistics operator. "
+        "Case study: https://riley-founder-shaped.example/portfolio/etl-pipeline-reliability-review.",
         "founder_shaped_capability_pack", "portfolio.1",
     ))
     records.append(EvidenceRecord(
@@ -662,8 +732,9 @@ def founder_shaped_career_profile() -> CareerProfile:
             start_date=role["start"],
             end_date=role["end"],
             evidence_ids=(
-                f"ev-{role['rid']}-org", f"ev-{role['rid']}-title",
-                f"ev-{role['rid']}-dates", f"ev-{role['rid']}-resp",
+                (f"ev-{role['rid']}-org", f"ev-{role['rid']}-title",
+                 f"ev-{role['rid']}-dates", f"ev-{role['rid']}-resp")
+                + ((f"ev-{role['rid']}-resp2",) if "responsibility_2" in role else ())
             ),
             achievements=(
                 (Achievement(
@@ -674,7 +745,10 @@ def founder_shaped_career_profile() -> CareerProfile:
                 ),)
                 if "achievement" in role else ()
             ),
-            responsibilities=(role["responsibility"],),
+            responsibilities=(
+                (role["responsibility"],)
+                + ((role["responsibility_2"],) if "responsibility_2" in role else ())
+            ),
         )
         for role in _FOUNDER_ROLES
     )
@@ -688,7 +762,10 @@ def founder_shaped_career_profile() -> CareerProfile:
     )
 
     skills = tuple(
-        SkillRecord(f"skill-{_skill_slug(name)}", name, (f"ev-skill-{_skill_slug(name)}",))
+        SkillRecord(
+            f"skill-{_skill_slug(name)}", name, (f"ev-skill-{_skill_slug(name)}",),
+            proficiency=_FOUNDER_SKILL_META[name][1], category=_FOUNDER_SKILL_META[name][0],
+        )
         for name in _FOUNDER_SKILLS
     )
 
@@ -765,11 +842,13 @@ def founder_shaped_capability_profile() -> CapabilityProfile:
                 "portfolio-founder-group", "Shared data platform migration",
                 "Delivered a shared data platform migration for a multi-subsidiary freight group.",
                 ("ev-founder-portfolio-group",),
+                url="https://riley-founder-shaped.example/portfolio/shared-data-platform-migration",
             ),
             PortfolioItem(
                 "portfolio-founder-etl", "ETL pipeline reliability review",
                 "Delivered an ETL pipeline reliability review for a regional logistics operator.",
                 ("ev-founder-portfolio-etl",),
+                url="https://riley-founder-shaped.example/portfolio/etl-pipeline-reliability-review",
             ),
         ),
         capacity=BusinessCapacity(
