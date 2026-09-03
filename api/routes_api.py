@@ -721,6 +721,53 @@ def _build_opportunity_detail(session: Session, opp: OpportunityRecord) -> dict[
     }
 
 
+# --------------------------------------------------------------------------
+# "New since you last looked" (BRIEF-FR-006 E4)
+# --------------------------------------------------------------------------
+#
+# founder_opportunity_views (storage/models.py::FounderOpportunityViewRecord)
+# already gets one row per opportunity the founder opens (see get_opportunity
+# below, which is the only writer -- unchanged by this deliverable). "When
+# the founder last looked at the feed" is taken here as the single most
+# recent viewed_at across every such row, regardless of which opportunity it
+# was for: any opportunity first ingested (OpportunityRecord.created_at,
+# the same "how recent is this row" column api/routes_api.py's
+# dashboard_daily already uses) after that instant is "new since you last
+# looked". Named as an assumption in this work order's report -- the model
+# itself has no single "feed-level" viewed_at column to read instead.
+#
+# This is purely additive/read-only: it never writes decision, fit_score, or
+# hidden state, and marking a row seen (get_opportunity, below) never
+# touches them either -- both endpoints only ever read/write
+# founder_opportunity_views.viewed_at.
+#
+# Registered BEFORE `/opportunities/{opportunity_id}` below: FastAPI/Starlette
+# matches routes in registration order, and "new-since-last-view" would
+# otherwise be swallowed as an `opportunity_id` path value by that route.
+
+
+def _last_feed_viewed_at(session: Session) -> datetime | None:
+    return session.query(func.max(FounderOpportunityViewRecord.viewed_at)).scalar()
+
+
+@router.get("/opportunities/new-since-last-view")
+def opportunities_new_since_last_view(session: Session = Depends(get_db)):
+    last_viewed_at = _last_feed_viewed_at(session)
+
+    query = session.query(OpportunityRecord.id, OpportunityRecord.title, OpportunityRecord.created_at)
+    if last_viewed_at is not None:
+        query = query.filter(OpportunityRecord.created_at > last_viewed_at)
+    rows = query.order_by(OpportunityRecord.created_at.desc()).all()
+
+    return {
+        "last_viewed_at": _iso(last_viewed_at),
+        "count": len(rows),
+        "new_opportunities": [
+            {"id": r.id, "title": r.title, "created_at": _iso(r.created_at)} for r in rows
+        ],
+    }
+
+
 @router.get("/opportunities/{opportunity_id}")
 def get_opportunity(opportunity_id: str, session: Session = Depends(get_db)):
     opp = session.query(OpportunityRecord).filter_by(id=opportunity_id).first()
@@ -994,6 +1041,23 @@ def _upsert_triage_state(session: Session, opportunity_id: str, state: str, snoo
         existing.snoozed_until = snoozed_until
         existing.updated_at = now
     session.commit()
+
+
+# --------------------------------------------------------------------------
+# Digest (BRIEF-FR-006 F3) -- exposes the file worker.digest.generate_digest
+# (``python -m worker --digest``) already wrote to out/digest/. Read-only:
+# this endpoint never generates a digest itself, only reads the latest one
+# already on disk.
+# --------------------------------------------------------------------------
+
+@router.get("/digest/latest")
+def digest_latest():
+    from worker.digest import latest_digest
+
+    digest = latest_digest()
+    if digest is None:
+        raise HTTPException(status_code=404, detail="no digest has been generated yet")
+    return digest
 
 
 # --------------------------------------------------------------------------

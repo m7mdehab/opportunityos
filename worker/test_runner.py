@@ -7,11 +7,14 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import json
+
 from opportunity.registry import SourceRegistry
 from opportunity.transport import BaseTransport, MockTransport, TransportResponse
 from storage.engine import get_engine, get_session_factory, init_db
-from storage.models import WorkerJobRecord
-from worker.handlers import make_poll_source_handler
+from storage.models import OpportunityRecord, SourcePollRunRecord, WorkerJobRecord
+from truth.pack import TruthPackMissing
+from worker.handlers import HACKER_NEWS_SOURCE_ID, make_poll_source_handler
 from worker.queue import BackgroundWorkerQueue
 from worker.runner import UNKNOWN_JOB_TYPE_MARKER, WorkerRunner
 
@@ -319,6 +322,115 @@ class TestPollSourceHandler(unittest.TestCase):
         self.assertEqual(len(fetch_calls), 1, "the governed acquisition path must actually have fetched")
         self.assertEqual(fetch_calls[0][0], "himalayas")
         self.assertEqual(refusals, [], "a read-allowed source must never record a refusal")
+
+
+class TestHackerNewsGovernedWiring(unittest.TestCase):
+    """E4F3.8: the Hacker News live-fetch seam (opportunity.adapters.hacker_news.
+    fetch_who_is_hiring_payload) wired into worker.handlers, through the normal
+    poll_source path, against a mocked multi-step Firebase payload -- no live
+    network in this test, ever (MockTransport, keyed by exact URL so each of
+    the three governed steps gets its own response).
+    """
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        db_path = os.path.join(self.temp_dir.name, "test_hn.db")
+        self.engine = get_engine(f"sqlite:///{db_path}")
+        init_db(self.engine)
+        self.session_factory = get_session_factory(self.engine)
+
+    def tearDown(self):
+        self.engine.dispose()
+        try:
+            self.temp_dir.cleanup()
+        except Exception:
+            pass
+
+    def _no_pack(self, _path):
+        raise TruthPackMissing("no truth pack in this offline test")
+
+    def _mock_transport(self):
+        base = "https://hacker-news.firebaseio.com/v0"
+        return MockTransport({
+            f"{base}/user/whoishiring.json": TransportResponse(
+                status_code=200, body=json.dumps({"submitted": [2001, 3001]}), latency_ms=1,
+            ),
+            f"{base}/item/2001.json": TransportResponse(
+                status_code=200,
+                body=json.dumps({"id": 2001, "title": "Ask HN: Who wants to be hired? (September 2026)"}),
+                latency_ms=1,
+            ),
+            f"{base}/item/3001.json": TransportResponse(
+                status_code=200,
+                body=json.dumps({
+                    "id": 3001,
+                    "title": "Ask HN: Who is hiring? (September 2026)",
+                    "kids": [4001, 4002],
+                }),
+                latency_ms=1,
+            ),
+            f"{base}/item/4001.json": TransportResponse(
+                status_code=200,
+                body=json.dumps({
+                    "id": 4001,
+                    "by": "acme_founder",
+                    "time": 1767000000,
+                    "text": "Acme Robotics | Remote (MENA) | Backend Engineer, distributed systems, Python.",
+                }),
+                latency_ms=1,
+            ),
+            f"{base}/item/4002.json": TransportResponse(
+                status_code=200,
+                body=json.dumps({"id": 4002, "deleted": True}),
+                latency_ms=1,
+            ),
+        })
+
+    def test_hacker_news_poll_ingests_rows_through_governed_fetch(self):
+        registry = SourceRegistry()
+        self.assertTrue(
+            registry.is_read_allowed(HACKER_NEWS_SOURCE_ID),
+            "hacker_news_who_is_hiring must be read-allowed for this test to be meaningful",
+        )
+
+        fetch_calls = []
+
+        class RecordingTransport(BaseTransport):
+            def __init__(self, inner):
+                self._inner = inner
+
+            def fetch(self, request):
+                fetch_calls.append((request.source_id, request.url))
+                return self._inner.fetch(request)
+
+        handler = make_poll_source_handler(
+            registry=registry,
+            transport=RecordingTransport(self._mock_transport()),
+            session_factory=self.session_factory,
+            pack_loader=self._no_pack,
+        )
+
+        handler({"source_id": HACKER_NEWS_SOURCE_ID})
+
+        # The registry gate was exercised (every governed step routes through
+        # AcquisitionService.acquire, which calls registry.validate_preflight)
+        # and the shared rate limiter was consulted -- both true of every
+        # call recorded below, since RecordingTransport only ever sees a
+        # request after AcquisitionService's preflight + rate-limiter steps.
+        self.assertEqual(len(fetch_calls), 5, "one governed request per Firebase step")
+        self.assertTrue(all(source_id == HACKER_NEWS_SOURCE_ID for source_id, _ in fetch_calls))
+
+        session = self.session_factory()
+        try:
+            rows = session.query(OpportunityRecord).filter_by(source_id=HACKER_NEWS_SOURCE_ID).all()
+            print(f"E4F3.8 hacker_news_who_is_hiring rows ingested: {len(rows)}")
+            self.assertEqual(len(rows), 1, "the deleted comment must be skipped; the non-hiring thread must be skipped")
+            self.assertIn("Acme Robotics", rows[0].organization)
+
+            run = session.query(SourcePollRunRecord).filter_by(source_id=HACKER_NEWS_SOURCE_ID).one()
+            self.assertEqual(run.status, "ok")
+        finally:
+            session.close()
 
 
 if __name__ == "__main__":

@@ -34,13 +34,15 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 from datetime import datetime, timezone
 from typing import Callable, Mapping, Optional
 
 from core.logging import get_logger
 from opportunity.registry import SourceRegistry
-from storage.models import WorkerJobRecord
+from storage.models import SourcePollRunRecord, WorkerJobRecord
+from worker.handlers import BLOCKED_POLL_STATUS
 from worker.queue import BackgroundWorkerQueue
 
 logger = get_logger("opportunityos.worker.scheduler")
@@ -95,6 +97,40 @@ def _default_clock() -> datetime:
     return datetime.now(timezone.utc)
 
 
+#: Matches a ``poll_cadence_hours: <number>`` line anywhere within one
+#: source's YAML block in ``docs/SOURCE_REGISTRY.yaml`` (or a test fixture
+#: shaped like it). Line-oriented on purpose, mirroring
+#: ``opportunity.registry.SourceRegistry._parse_yaml_sources``'s own
+#: dependency-free regex parser exactly (this module must not add a YAML
+#: library dependency, and ``opportunity/registry.py`` is frozen for this
+#: work order so the cadence field cannot live on its ``SourcePolicy``
+#: dataclass -- the scheduler reads the registry file itself instead).
+_CADENCE_FIELD_RE = re.compile(r"(?m)^\s*poll_cadence_hours:\s*([0-9.]+)")
+
+
+def _parse_cadence_hours(content: str) -> dict[str, float]:
+    """Per-source ``poll_cadence_hours:`` -> hours, parsed the same way
+    ``SourceRegistry._parse_yaml_sources`` splits the file into one chunk per
+    ``- source_id: ...`` entry. A source with no ``poll_cadence_hours`` field
+    is simply absent from the returned mapping -- callers apply their own
+    default (see ``PollScheduler.get_cadence_hours``).
+    """
+    cadences: dict[str, float] = {}
+    chunks = re.split(r"(?m)^\s*-\s+source_id:\s*", content)
+    for chunk in chunks[1:]:
+        lines = chunk.strip().splitlines()
+        if not lines:
+            continue
+        source_id = lines[0].strip().strip("\"'")
+        match = _CADENCE_FIELD_RE.search(chunk)
+        if match:
+            try:
+                cadences[source_id] = float(match.group(1))
+            except ValueError:
+                continue
+    return cadences
+
+
 class PollScheduler:
     """Enqueues ``poll_source`` for every read-allowed source on an interval.
 
@@ -129,6 +165,32 @@ class PollScheduler:
         self.tick_interval_seconds = tick_interval_seconds
         self.stop_event = stop_event or threading.Event()
         self._last_enqueued_at: dict[str, datetime] = {}
+        # Per-source cadence read once at construction from the same
+        # docs/SOURCE_REGISTRY.yaml (or fixture) file self.registry loaded --
+        # policy data next to the source's rate limits, not a Python table.
+        # A source absent from this mapping (no `poll_cadence_hours:` field)
+        # falls back to `self.interval_hours` in get_cadence_hours below.
+        self._cadence_hours: dict[str, float] = self._load_cadence_hours()
+        # Sources that returned 403/429 on a poll this session (see
+        # _blocked_source_ids_from_db): once observed, a source_id stays in
+        # this set for the rest of this PollScheduler instance's lifetime --
+        # cadence is a floor, not a licence, and this union is deliberately
+        # one-directional (never cleared) so a still-blocking source is not
+        # retried just because its cadence interval elapsed again.
+        self._blocked_this_session: set[str] = set()
+
+    def _load_cadence_hours(self) -> dict[str, float]:
+        try:
+            content = self.registry.path.read_text(encoding="utf-8")
+        except OSError:
+            return {}
+        return _parse_cadence_hours(content)
+
+    def get_cadence_hours(self, source_id: str) -> float:
+        """The declared cadence for ``source_id``, or ``self.interval_hours``
+        (the existing global default) when the registry entry has no
+        ``poll_cadence_hours`` field."""
+        return self._cadence_hours.get(source_id, self.interval_hours)
 
     # -- source enumeration -------------------------------------------------
 
@@ -151,7 +213,25 @@ class PollScheduler:
         if last is None:
             return True
         elapsed_hours = (now - last).total_seconds() / 3600.0
-        return elapsed_hours >= self.interval_hours
+        return elapsed_hours >= self.get_cadence_hours(source_id)
+
+    # -- 403/429 session blocklist -------------------------------------------
+
+    def _blocked_source_ids_from_db(self, session) -> set[str]:
+        """source_ids with any ``source_poll_runs`` row recorded
+        ``status="blocked"`` (worker.handlers.BLOCKED_POLL_STATUS) -- a poll
+        that returned HTTP 403 or 429. Cadence is a floor, not a licence:
+        such a source is never re-enqueued by this scheduler instance again,
+        regardless of how much time (or how many due cadence intervals)
+        pass -- see ``_blocked_this_session``.
+        """
+        rows = (
+            session.query(SourcePollRunRecord.source_id)
+            .filter(SourcePollRunRecord.status == BLOCKED_POLL_STATUS)
+            .distinct()
+            .all()
+        )
+        return {source_id for (source_id,) in rows}
 
     # -- duplicate suppression -------------------------------------------------
 
@@ -190,8 +270,22 @@ class PollScheduler:
         try:
             queue = BackgroundWorkerQueue(session)
             already_pending = self._pending_poll_source_ids(session)
+            # Monotonic union: a source_id observed blocked (403/429) on any
+            # prior tick of this scheduler instance stays blocked for the
+            # rest of its session even if this tick's DB query no longer
+            # returns it for some reason.
+            self._blocked_this_session |= self._blocked_source_ids_from_db(session)
             enqueued: list[str] = []
             for source_id in self._read_allowed_source_ids():
+                if source_id in self._blocked_this_session:
+                    logger.info(
+                        "worker.scheduler_skip_blocked",
+                        extra={
+                            "component": "worker.scheduler",
+                            "extra_data": {"source_id": source_id},
+                        },
+                    )
+                    continue
                 if not self._is_due(source_id, now):
                     continue
                 if source_id in already_pending:

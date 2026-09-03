@@ -3,6 +3,7 @@ sources:
   - source_id: himalayas
     name: "himalayas"
     category: employment
+    poll_cadence_hours: 1
     access:
       discovery: public_get
       detail: public_get_or_unknown
@@ -57,6 +58,7 @@ sources:
   - source_id: remotive
     name: "remotive"
     category: employment
+    poll_cadence_hours: 1
     access:
       discovery: public_get
       detail: public_get_or_unknown
@@ -84,6 +86,7 @@ sources:
   - source_id: remote_ok
     name: "remote_ok"
     category: employment
+    poll_cadence_hours: 1
     access:
       discovery: public_get
       detail: public_get_or_unknown
@@ -111,6 +114,7 @@ sources:
   - source_id: we_work_remotely
     name: "we_work_remotely"
     category: employment
+    poll_cadence_hours: 1
     access:
       discovery: public_get
       detail: public_get_or_unknown
@@ -138,6 +142,7 @@ sources:
   - source_id: ungm
     name: "ungm"
     category: independent
+    poll_cadence_hours: 24
     access:
       discovery: public_get
       detail: public_get_or_unknown
@@ -165,6 +170,7 @@ sources:
   - source_id: world_bank
     name: "world_bank"
     category: independent
+    poll_cadence_hours: 24
     access:
       discovery: public_get
       detail: public_get_or_unknown
@@ -192,6 +198,7 @@ sources:
   - source_id: eu_ted
     name: "eu_ted"
     category: independent
+    poll_cadence_hours: 24
     access:
       discovery: public_get
       detail: public_get_or_unknown
@@ -1392,6 +1399,7 @@ sources:
   - source_id: hacker_news_who_is_hiring
     name: "hacker_news_who_is_hiring"
     category: employment
+    poll_cadence_hours: 1
     access:
       discovery: public_get
       detail: public_get_or_unknown
@@ -1420,6 +1428,7 @@ sources:
   - source_id: reddit_forhire
     name: "reddit_forhire"
     category: employment
+    poll_cadence_hours: 1
     access:
       discovery: manual_deeplink_or_alert
       detail: public_get_or_unknown
