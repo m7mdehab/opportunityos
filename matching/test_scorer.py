@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import unittest
+from datetime import date
 
 from opportunity.models import (
     Compensation,
@@ -11,7 +12,7 @@ from opportunity.models import (
     RemotePolicy,
     Track,
 )
-from truth.models import AtomicAssertion, VerificationStatus
+from truth.models import AtomicAssertion, EvidenceRecord, VerificationStatus
 from truth import predicates
 from matching.mapping import RequirementMapper
 from matching.models import (
@@ -23,9 +24,50 @@ from matching.scorer import OpportunityScorer
 from matching.test_qualification import create_test_graph, create_test_opportunity
 
 
+def _with_employment_tenure(graph, *, start: date, end: date):
+    """`matching.test_qualification.create_test_graph()` (frozen for this
+    deliverable -- BRIEF-FR-006 order B1) asserts only `employment.title` and
+    `employment.responsibility` under subject `"founder"`, with no dates. The
+    old keyword-substring seniority model didn't need dates, so the fixture
+    never carried any. `matching/seniority.py` (ADR-0016) computes tenure from
+    verified `employment.start_date`/`employment.end_date` assertions, so
+    without this helper every scorer test built on `create_test_graph()` would
+    fall into the "no computable tenure" branch regardless of how senior the
+    fixture's title reads. This adds real, evidence-backed dates under the
+    same `"founder"` subject the existing title/responsibility assertions
+    already use, rather than editing the frozen fixture.
+    """
+    ev_dates = EvidenceRecord(
+        id="ev-title-dates",
+        content=f"Employed as Senior Distributed Systems Architect from {start.isoformat()} to {end.isoformat()}.",
+        source="manual",
+        locator="employment.dates",
+    )
+    graph.add_evidence(ev_dates)
+    graph.add_assertion(AtomicAssertion(
+        id="a-title-start",
+        subject_id="founder",
+        predicate=predicates.EMPLOYMENT_START_DATE,
+        value=start,
+        evidence_ids=("ev-title-dates",),
+        verification_status=VerificationStatus.VERIFIED,
+    ))
+    graph.add_assertion(AtomicAssertion(
+        id="a-title-end",
+        subject_id="founder",
+        predicate=predicates.EMPLOYMENT_END_DATE,
+        value=end,
+        evidence_ids=("ev-title-dates",),
+        verification_status=VerificationStatus.VERIFIED,
+    ))
+    return graph
+
+
 class TestOpportunityScorerAndMapper(unittest.TestCase):
     def setUp(self) -> None:
-        self.truth_graph = create_test_graph()
+        self.truth_graph = _with_employment_tenure(
+            create_test_graph(), start=date(2015, 1, 1), end=date(2026, 8, 31),
+        )
         self.scorer = OpportunityScorer()
         self.mapper = RequirementMapper()
 
