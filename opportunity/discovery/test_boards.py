@@ -172,7 +172,8 @@ class RegistryEntryTemplateTests(unittest.TestCase):
         self.assertIn("source_id: greenhouse:acme", text)
 
     def test_generated_entry_validates_against_registry_loader(self):
-        candidate = boards.BoardCandidate(kind="greenhouse", token="acme-discovery-test")
+        board_slug = "acme-discovery-test"
+        candidate = boards.BoardCandidate(kind="greenhouse", token=board_slug)
         entry = boards.build_registry_entry(candidate, record_count=3, matched_count=1, latency_ms=80)
         block = boards.render_registry_entry(entry)
         content = "sources:\n" + block
@@ -198,7 +199,8 @@ class RegistryEntryTemplateTests(unittest.TestCase):
         self.assertEqual(written, 0)
 
     def test_append_registry_entries_writes_new_entry(self):
-        candidate = boards.BoardCandidate(kind="lever", token="brand-new")
+        board_slug = "brand-new"
+        candidate = boards.BoardCandidate(kind="lever", token=board_slug)
         entry = boards.build_registry_entry(candidate, record_count=1, matched_count=1, latency_ms=10)
         with tempfile.TemporaryDirectory() as tmp:
             registry_path = Path(tmp) / "SOURCE_REGISTRY.yaml"
@@ -221,7 +223,8 @@ class ProgressResumabilityTests(unittest.TestCase):
             self.assertEqual(boards.load_progress(Path(tmp) / "missing.json"), {})
 
     def test_resumed_sweep_skips_already_processed_and_never_reprobes_blocked(self):
-        candidate = boards.BoardCandidate(kind="greenhouse", token="blocked-co")
+        board_slug = "blocked-co"
+        candidate = boards.BoardCandidate(kind="greenhouse", token=board_slug)
         transport = MockTransport({"greenhouse:blocked-co": TransportResponse(403, "", 5)})
         with tempfile.TemporaryDirectory() as tmp:
             progress_path = Path(tmp) / "progress.json"

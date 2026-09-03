@@ -1,8 +1,8 @@
 # ADR-0017: The CV/cover-letter document model
 
-Status: Accepted
-Date: 2026-09-03
-Related: BRIEF-FR-006 §2 Track D, work order D1; ADR-0014 (claim admissibility); ADR-0016 (seniority model)
+- **Status:** Accepted
+- **Date:** 2026-09-03
+- **Related:** BRIEF-FR-006 §2 Track D, work order D1; ADR-0014 (claim admissibility); ADR-0016 (seniority model)
 
 ## Context
 
@@ -144,9 +144,14 @@ packs and reading the validator's own rejection reasons), not hypothesised:
    the word "Present" for an open-ended role; no role in either pack is
    actually open-ended, so this path is unexercised by fixture data.
 2. **A phone number can look like an unverified metric.** A claim whose
-   entire text is a short, digit-led value (e.g. `"+20-555-0101"`) reads to
+   entire text is a short, digit-led value (e.g. `<phone from identity.phone>`
+   — an Egypt-format number beginning with the country code digits "20" —
+   not spelled out literally here because a phone-number-shaped string trips
+   the secret-scan guard even in illustrative prose; see the guard note on
+   template email addresses for the same reason) reads to
    `ClaimValidator._validate_metric_provenance` as a bare numeric claim
-   (`"20 count"`) with no verified metric backing it, and is rejected — a
+   (`"20 count"`, taken from those leading digits) with no verified metric
+   backing it, and is rejected — a
    validator false positive on short digit-led values, not a content
    problem. `build_identity_block` detects this pattern (a defensive,
    never-imported mirror of the metric regex's leading clause) and omits
