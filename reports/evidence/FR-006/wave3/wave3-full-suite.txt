@@ -1,0 +1,1172 @@
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+  from starlette.testclient import TestClient as TestClient  # noqa
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:572: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces/commas for version_locations.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+test_artifact_200_on_clean_fixture (api.test_api.ArtifactRoutesTest.test_artifact_200_on_clean_fixture) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_artifact_200_when_only_uncovered_term_is_connective (api.test_api.ArtifactRoutesTest.test_artifact_200_when_only_uncovered_term_is_connective)
+ADR-0014: a claim whose only uncovered term is class (c) (the ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_artifact_409_never_returns_docx_bytes (api.test_api.ArtifactRoutesTest.test_artifact_409_never_returns_docx_bytes) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_artifact_409_on_unsupported_founder_term_via_skill_alias_gap (api.test_api.ArtifactRoutesTest.test_artifact_409_on_unsupported_founder_term_via_skill_alias_gap)
+ADR-0014: an unsupported FOUNDER-specific term still 409s and ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_artifact_412_when_no_truth_pack_loaded (api.test_api.ArtifactRoutesTest.test_artifact_412_when_no_truth_pack_loaded) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:572: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces/commas for version_locations.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+test_docs_routes_are_disabled_entirely (api.test_api.AuthFailClosedTest.test_docs_routes_are_disabled_entirely)
+Finding 1 (council, auth review): FastAPI's own `/openapi.json`, ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_every_non_auth_route_401s_without_a_session (api.test_api.AuthFailClosedTest.test_every_non_auth_route_401s_without_a_session) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:572: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces/commas for version_locations.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+test_sixth_attempt_in_a_window_is_rate_limited (api.test_api.AuthRateLimitTest.test_sixth_attempt_in_a_window_is_rate_limited) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:572: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces/commas for version_locations.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+test_login_me_logout_cycle (api.test_api.AuthSessionTest.test_login_me_logout_cycle) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_login_validation_error_does_not_echo_submitted_password (api.test_api.AuthSessionTest.test_login_validation_error_does_not_echo_submitted_password)
+Finding 4 (council, auth review): FastAPI's default 422 body ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:572: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces/commas for version_locations.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+test_b4_affected_counts_on_fixture_corpus (api.test_api.B4ExerciseTest.test_b4_affected_counts_on_fixture_corpus) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:572: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces/commas for version_locations.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+test_daily_counters_over_a_three_day_seeded_fixture (api.test_api.DashboardTest.test_daily_counters_over_a_three_day_seeded_fixture) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:572: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces/commas for version_locations.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+test_all_off_include_hidden_equals_table_count (api.test_api.FacetsTest.test_all_off_include_hidden_equals_table_count) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_defaults_only_red_line_and_excluded_industry_hidden (api.test_api.FacetsTest.test_defaults_only_red_line_and_excluded_industry_hidden) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_every_facet_include_and_exclude_through_the_api (api.test_api.FacetsTest.test_every_facet_include_and_exclude_through_the_api) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_hidden_reasons_audit_and_unhide_by_reason (api.test_api.FacetsTest.test_hidden_reasons_audit_and_unhide_by_reason) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_no_re_judgement_under_every_facet_exclusion (api.test_api.FacetsTest.test_no_re_judgement_under_every_facet_exclusion) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_saved_view_round_trip_survives_fresh_session (api.test_api.FacetsTest.test_saved_view_round_trip_survives_fresh_session) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:572: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces/commas for version_locations.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+test_active_snooze_still_reports_snoozed (api.test_api.FeedbackAndActionTest.test_active_snooze_still_reports_snoozed) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_dismiss_and_snooze_write_triage_state_not_outbound_actions (api.test_api.FeedbackAndActionTest.test_dismiss_and_snooze_write_triage_state_not_outbound_actions) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_expired_snooze_resurfaces_instead_of_raising (api.test_api.FeedbackAndActionTest.test_expired_snooze_resurfaces_instead_of_raising)
+Council-flagged timezone hazard: every `DateTime` column is naive ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_feedback_unknown_label_422 (api.test_api.FeedbackAndActionTest.test_feedback_unknown_label_422) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_feedback_valid_label_persists (api.test_api.FeedbackAndActionTest.test_feedback_valid_label_persists) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_mark_applied_writes_outbound_action_without_idempotency_reservation (api.test_api.FeedbackAndActionTest.test_mark_applied_writes_outbound_action_without_idempotency_reservation) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_snooze_without_future_until_is_422 (api.test_api.FeedbackAndActionTest.test_snooze_without_future_until_is_422) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:572: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces/commas for version_locations.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+test_a13_all_filters_off_include_hidden_total_equals_table_count (api.test_api.FilterEngineOpportunitiesTest.test_a13_all_filters_off_include_hidden_total_equals_table_count) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_compensation_floor_modes (api.test_api.FilterEngineOpportunitiesTest.test_compensation_floor_modes) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_defaults_hidden_set_is_exactly_red_line_and_excluded_industry_hits (api.test_api.FilterEngineOpportunitiesTest.test_defaults_hidden_set_is_exactly_red_line_and_excluded_industry_hits) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_defensive_matcher_survives_a_bad_persisted_params_value (api.test_api.FilterEngineOpportunitiesTest.test_defensive_matcher_survives_a_bad_persisted_params_value)
+Council repair, defect 1, layer (b): `FilterSettingsRouteTest` ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_excluded_industries_modes (api.test_api.FilterEngineOpportunitiesTest.test_excluded_industries_modes) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_geo_eligibility_modes (api.test_api.FilterEngineOpportunitiesTest.test_geo_eligibility_modes) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_min_fit_score_modes (api.test_api.FilterEngineOpportunitiesTest.test_min_fit_score_modes)
+Bespoke, not `_assert_hide_rank_label_disabled`: this filter's own ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_premium_fulltime_onsite_matcher_reads_a_real_scorer_result (api.test_api.FilterEngineOpportunitiesTest.test_premium_fulltime_onsite_matcher_reads_a_real_scorer_result)
+Council repair, defect 6's own instruction: run a real ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_premium_fulltime_onsite_modes (api.test_api.FilterEngineOpportunitiesTest.test_premium_fulltime_onsite_modes) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_red_line_toggled_off_shows_item_with_identical_decision_and_fit_score (api.test_api.FilterEngineOpportunitiesTest.test_red_line_toggled_off_shows_item_with_identical_decision_and_fit_score) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_red_lines_modes (api.test_api.FilterEngineOpportunitiesTest.test_red_lines_modes) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_stale_postings_modes (api.test_api.FilterEngineOpportunitiesTest.test_stale_postings_modes) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_target_roles_family_taxonomy_prevents_fr005_defect_4_recurrence (api.test_api.FilterEngineOpportunitiesTest.test_target_roles_family_taxonomy_prevents_fr005_defect_4_recurrence)
+Council review #1 finding 2 (BRIEF-FR-006 B3): `target_roles` now ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_target_roles_modes (api.test_api.FilterEngineOpportunitiesTest.test_target_roles_modes) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_target_roles_token_match_ignores_word_order_and_seniority (api.test_api.FilterEngineOpportunitiesTest.test_target_roles_token_match_ignores_word_order_and_seniority)
+Council repair, defect 4: the old plain-phrase substring check ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_track_preference_modes (api.test_api.FilterEngineOpportunitiesTest.test_track_preference_modes) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_work_mode_onsite_modes (api.test_api.FilterEngineOpportunitiesTest.test_work_mode_onsite_modes) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_migration_seed_matches_filter_definitions_defaults (api.test_api.FilterSeedSyncTest.test_migration_seed_matches_filter_definitions_defaults) ... ok
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:572: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces/commas for version_locations.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+test_affected_count_reflects_matches_regardless_of_enabled (api.test_api.FilterSettingsRouteTest.test_affected_count_reflects_matches_regardless_of_enabled) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_get_filters_lists_all_ten_with_defaults (api.test_api.FilterSettingsRouteTest.test_get_filters_lists_all_ten_with_defaults) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_put_compensation_floor_negative_is_422 (api.test_api.FilterSettingsRouteTest.test_put_compensation_floor_negative_is_422) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_put_compensation_floor_non_numeric_shape_is_422 (api.test_api.FilterSettingsRouteTest.test_put_compensation_floor_non_numeric_shape_is_422) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_put_compensation_floor_valid_params_persist (api.test_api.FilterSettingsRouteTest.test_put_compensation_floor_valid_params_persist) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_put_invalid_mode_422 (api.test_api.FilterSettingsRouteTest.test_put_invalid_mode_422) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_put_malformed_min_score_is_422_and_never_persisted (api.test_api.FilterSettingsRouteTest.test_put_malformed_min_score_is_422_and_never_persisted) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_put_min_score_out_of_range_is_422 (api.test_api.FilterSettingsRouteTest.test_put_min_score_out_of_range_is_422) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_put_unknown_filter_id_404 (api.test_api.FilterSettingsRouteTest.test_put_unknown_filter_id_404) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_put_unknown_param_key_is_422 (api.test_api.FilterSettingsRouteTest.test_put_unknown_param_key_is_422) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_put_updates_only_supplied_fields (api.test_api.FilterSettingsRouteTest.test_put_updates_only_supplied_fields) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_track_preference_and_stale_postings_report_unavailable_by_default (api.test_api.FilterSettingsRouteTest.test_track_preference_and_stale_postings_report_unavailable_by_default) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_track_preference_becomes_available_once_pack_declares_it (api.test_api.FilterSettingsRouteTest.test_track_preference_becomes_available_once_pack_declares_it) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_load_settings_defaults_to_70_when_env_var_unset (api.test_api.HighFitThresholdDefaultTest.test_load_settings_defaults_to_70_when_env_var_unset) ... ok
+test_settings_dataclass_default_is_70 (api.test_api.HighFitThresholdDefaultTest.test_settings_dataclass_default_is_70) ... ok
+test_settings_module_constant_is_70 (api.test_api.HighFitThresholdDefaultTest.test_settings_module_constant_is_70) ... ok
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:572: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces/commas for version_locations.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+test_detail_404_for_missing_opportunity (api.test_api.OpportunityRoutesTest.test_detail_404_for_missing_opportunity) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_detail_falls_back_to_reasons_derived_strengths_when_detail_is_null (api.test_api.OpportunityRoutesTest.test_detail_falls_back_to_reasons_derived_strengths_when_detail_is_null)
+Legitimate backward compatibility for a row persisted before ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_detail_reaches_pass_fail_unknown_and_uncertain (api.test_api.OpportunityRoutesTest.test_detail_reaches_pass_fail_unknown_and_uncertain)
+`UNKNOWN` being structurally distinct from `FAIL` is the brief's ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_detail_records_a_founder_opportunity_view (api.test_api.OpportunityRoutesTest.test_detail_records_a_founder_opportunity_view) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_list_filters_sorts_and_paginates (api.test_api.OpportunityRoutesTest.test_list_filters_sorts_and_paginates) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_over_10_percent_warns_9_percent_does_not (api.test_api.PollHideFractionWarningTest.test_over_10_percent_warns_9_percent_does_not) ... ok
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:572: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces/commas for version_locations.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+test_poll_now_enqueues_only_read_allowed_sources (api.test_api.SourcesAndWorkerTest.test_poll_now_enqueues_only_read_allowed_sources) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_sources_health_reports_registered_sources (api.test_api.SourcesAndWorkerTest.test_sources_health_reports_registered_sources) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_target_roles_default_mode_is_rank_only (api.test_api.TargetRolesDefaultModeTest.test_target_roles_default_mode_is_rank_only) ... ok
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:572: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces/commas for version_locations.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+test_reload_with_invalid_pack (api.test_api.TruthRoutesTest.test_reload_with_invalid_pack) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_reload_with_valid_pack (api.test_api.TruthRoutesTest.test_reload_with_valid_pack) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_status_returns_200_even_when_no_pack_loaded (api.test_api.TruthRoutesTest.test_status_returns_200_even_when_no_pack_loaded) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:572: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces/commas for version_locations.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+test_backfill_is_idempotent (api.test_search.BackfillVisibilityTest.test_backfill_is_idempotent) ... ok
+test_backfilled_row_is_searchable (api.test_search.BackfillVisibilityTest.test_backfilled_row_is_searchable) ... ok
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+test_search_intersects_with_active_hide_filter (api.test_search.FacetCompositionTest.test_search_intersects_with_active_hide_filter) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:572: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces/commas for version_locations.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+test_search_never_mutates_decision_or_fit_score (api.test_search.NoReJudgementTest.test_search_never_mutates_decision_or_fit_score) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:572: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces/commas for version_locations.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+test_pytorch_excludes_customer_engineer (api.test_search.PytorchCorpusSearchTest.test_pytorch_excludes_customer_engineer) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+FAIL
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:572: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces/commas for version_locations.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+test_blank_query_is_not_unparseable (api.test_search.QueryUnparseableTest.test_blank_query_is_not_unparseable) ... ok
+test_lone_dash_is_unparseable (api.test_search.QueryUnparseableTest.test_lone_dash_is_unparseable) ... ok
+test_ordinary_term_is_not_unparseable (api.test_search.QueryUnparseableTest.test_ordinary_term_is_not_unparseable) ... ok
+test_higher_fit_at_equal_relevance_ranks_higher (api.test_search.RankKeyFormulaTest.test_higher_fit_at_equal_relevance_ranks_higher) ... ok
+test_higher_relevance_at_equal_fit_ranks_higher (api.test_search.RankKeyFormulaTest.test_higher_relevance_at_equal_fit_ranks_higher) ... ok
+test_missing_fit_score_uses_neutral_half_multiplier (api.test_search.RankKeyFormulaTest.test_missing_fit_score_uses_neutral_half_multiplier) ... ok
+test_relevance_can_outweigh_a_large_fit_gap (api.test_search.RankKeyFormulaTest.test_relevance_can_outweigh_a_large_fit_gap) ... ok
+test_zero_relevance_is_always_zero_regardless_of_fit (api.test_search.RankKeyFormulaTest.test_zero_relevance_is_always_zero_regardless_of_fit) ... ok
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+test_empty_query (api.test_search.SearchAdversarialTest.test_empty_query) ... C:\Users\M7mdEhab\projects\OpportunityOS\api\app.py:117: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  return self.router.on_event(event_type)  # ty: ignore[deprecated]
+ok
+test_lone_dash (api.test_search.SearchAdversarialTest.test_lone_dash) ... 
