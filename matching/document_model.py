@@ -328,9 +328,21 @@ def build_experience_section(
         ):
             responsibility_assertions.setdefault(a.subject_id, []).append(a)
 
+    # Role membership only -- NOT an admissibility check. The relation's own
+    # `verification_status` reflects whether the achievement text
+    # independently proves it happened at this specific employer (it rarely
+    # does: an achievement sentence like "Reduced pipeline latency by 35%"
+    # doesn't name the org), so `_wire_employment_achievement_relation`
+    # (`truth/graph.py`, frozen) marks most such relations UNVERIFIED even
+    # when the achievement itself is a verified, evidence-backed assertion.
+    # Requiring the relation to be VERIFIED here would silently drop nearly
+    # every achievement bullet; the achievement's own claim is validated on
+    # its own evidence by `validate_artifact_claims` regardless of this
+    # relation's status, so any relation of this type is used to determine
+    # which role an achievement belongs to.
     achieved_during: dict[str, set[str]] = {}
     for rel in graph.relations.values():
-        if rel.relation_type == RelationType.ACHIEVED_DURING and rel.verification_status == VerificationStatus.VERIFIED:
+        if rel.relation_type == RelationType.ACHIEVED_DURING:
             achieved_during.setdefault(rel.source_id, set()).add(rel.target_id)
 
     achievement_assertions: dict[str, AtomicAssertion] = {

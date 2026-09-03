@@ -73,3 +73,40 @@ class AtsDocumentQualityHarness:
                 return False
 
         return True
+
+    @staticmethod
+    def ats_parse_check(artifact: "TailoredArtifact", pdf_bytes: bytes) -> Dict[str, Any]:
+        """A committed ATS-parse check over the extracted PDF text (work
+        order D1 requirement 7): which of the artifact's own section
+        headings are detected verbatim, how many employment/education/
+        certification dates parse, and that no table is present in the PDF
+        (`pdfplumber`'s own table detector -- this module never builds a
+        `reportlab.platypus.Table`, so this is expected to always be empty,
+        and asserting it is what proves that, not just that we didn't call
+        the API)."""
+        pdf_info = AtsDocumentQualityHarness.inspect_pdf(pdf_bytes)
+        full_text = pdf_info["full_text"]
+        norm_text = AtsDocumentQualityHarness._normalize_whitespace(full_text)
+
+        sections_detected = [
+            sec.heading for sec in artifact.sections
+            if sec.heading and AtsDocumentQualityHarness._normalize_whitespace(sec.heading) in norm_text
+        ]
+
+        date_pattern = re.compile(
+            r"(?:\d{4}-\d{2}-\d{2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4})"
+        )
+        dates_parsed = date_pattern.findall(full_text)
+
+        tables_detected = 0
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            for page in pdf.pages:
+                tables_detected += len(page.extract_tables())
+
+        return {
+            "sections_detected": sections_detected,
+            "dates_parsed_count": len(dates_parsed),
+            "dates_parsed": dates_parsed,
+            "tables_detected": tables_detected,
+        }
+
