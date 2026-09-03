@@ -399,6 +399,39 @@ export interface ApiErrorBody {
   [key: string]: unknown
 }
 
+/** BRIEF-FR-006 D2 — the three committed ATS-safe templates
+ * (`matching/templates/__init__.py::TEMPLATES`). */
+export type ArtifactTemplateId = "classic" | "compact" | "modern"
+
+export const ARTIFACT_TEMPLATES: ArtifactTemplateId[] = [
+  "classic",
+  "compact",
+  "modern",
+]
+
+/** A bullet, skill, summary variant, or entry the compiler considered but
+ * did not select for this opportunity, with the reason
+ * (`matching/models.py::OmittedItem`, "what was left out and why"). */
+export interface OmittedItem {
+  section_id: string
+  text: string
+  reason: string
+  claim_id: string
+}
+
+export interface OmittedItemsResponse {
+  template: ArtifactTemplateId
+  omitted_items: OmittedItem[]
+}
+
+/** Shape of one entry in a 409 artifact-validation-rejection body's
+ * `findings` array (`matching/artifact_validation.py`). */
+export interface ArtifactValidationFinding {
+  claim: string
+  assertion_type: string
+  rejection_reasons: string[]
+}
+
 /** Thrown by the api client for any non-2xx response. Carries the parsed body
  * (when JSON) so callers can branch on `status` and `.body.detail` etc. */
 export class ApiError extends Error {

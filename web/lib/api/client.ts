@@ -11,6 +11,7 @@ import { ApiError } from "@/lib/contract/types"
 import type {
   ActionResponse,
   ActionType,
+  ArtifactTemplateId,
   AuthenticatedResponse,
   DashboardResponse,
   FacetsResponse,
@@ -22,6 +23,7 @@ import type {
   FiltersResponse,
   FounderFilter,
   HiddenReasonsResponse,
+  OmittedItemsResponse,
   OpportunityDetail,
   OpportunityListResponse,
   PollNowResponse,
@@ -101,6 +103,25 @@ export const api = {
       request<OpportunityDetail>(`/api/opportunities/${id}`),
     artifactUrl: (id: string, kind: "cv" | "cover-letter") =>
       `/api/opportunities/${id}/artifacts/${kind === "cv" ? "cv.docx" : "cover-letter.docx"}`,
+    // BRIEF-FR-006 D2 — inline preview URL for the drawer's embedded PDF
+    // viewer (`<embed src=...>`). No `download` param: inline is the
+    // default per the deliverable text.
+    artifactPdfUrl: (
+      id: string,
+      kind: "cv" | "cover-letter",
+      template: ArtifactTemplateId = "classic"
+    ) =>
+      `/api/opportunities/${id}/artifacts/${
+        kind === "cv" ? "cv.pdf" : "cover-letter.pdf"
+      }?template=${template}`,
+    omittedItems: (
+      id: string,
+      kind: "cv" | "cover-letter",
+      template: ArtifactTemplateId = "classic"
+    ) =>
+      request<OmittedItemsResponse>(
+        `/api/opportunities/${id}/artifacts/${kind}/omitted?template=${template}`
+      ),
     submitFeedback: (id: string, label: FeedbackLabel, note: string | null) =>
       request<FeedbackResponse>(`/api/opportunities/${id}/feedback`, {
         method: "POST",
@@ -184,12 +205,21 @@ export const api = {
 }
 
 /** Downloads a binary artifact, surfacing 409/412 as typed ApiErrors instead
- * of trying to parse binary content as JSON. */
+ * of trying to parse binary content as JSON. `format` defaults to `"docx"`
+ * (the pre-existing behaviour); `"pdf"` fetches
+ * `?download=true` so the PDF route returns `attachment`, not the
+ * preview's `inline` (BRIEF-FR-006 D2 requirement 1). */
 export async function downloadArtifact(
   id: string,
-  kind: "cv" | "cover-letter"
+  kind: "cv" | "cover-letter",
+  options?: { format?: "docx" | "pdf"; template?: ArtifactTemplateId }
 ): Promise<{ blob: Blob; filename: string }> {
-  const url = api.opportunities.artifactUrl(id, kind)
+  const format = options?.format ?? "docx"
+  const template = options?.template ?? "classic"
+  const url =
+    format === "docx"
+      ? `${api.opportunities.artifactUrl(id, kind)}?template=${template}`
+      : `${api.opportunities.artifactPdfUrl(id, kind, template)}&download=true`
   const res = await fetch(url, { credentials: "same-origin" })
 
   if (!res.ok) {
@@ -199,7 +229,7 @@ export async function downloadArtifact(
 
   const disposition = res.headers.get("content-disposition") ?? ""
   const match = /filename="?([^"]+)"?/.exec(disposition)
-  const filename = match?.[1] ?? `${kind}-${id}.docx`
+  const filename = match?.[1] ?? `${kind}-${id}.${format}`
   const blob = await res.blob()
   return { blob, filename }
 }
