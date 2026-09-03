@@ -10,7 +10,7 @@ from matching.gold_set import BenchmarkItem, GoldSetHarness
 from matching.models import QualificationDecision
 from matching.scorer import OpportunityScorer
 from matching.test_qualification import create_test_graph, create_test_opportunity
-from matching.test_scorer import _with_employment_tenure
+from matching.test_scorer import _with_employment_tenure, _with_skill_proficiency
 
 
 class TestDeterministicReplayAndGoldSet(unittest.TestCase):
@@ -25,8 +25,18 @@ class TestDeterministicReplayAndGoldSet(unittest.TestCase):
         # fixture itself) makes it faithful to what `create_test_graph()`'s
         # own title text describes ("Senior Distributed Systems Architect"),
         # not more favorable to any expected benchmark bound.
-        self.truth_graph = _with_employment_tenure(
-            create_test_graph(), start=date(2015, 1, 1), end=date(2026, 8, 31),
+        # BRIEF-FR-006 B2: the same incompleteness pattern as the tenure gap
+        # above -- `create_test_graph()`'s Python/Go skill.name assertions
+        # carry no proficiency evidence, so under the proficiency-aware
+        # scorer (matching/skills.py) they are honest partial matches, never
+        # strengths. `_with_skill_proficiency` (matching/test_scorer.py) is
+        # the same completion already applied there, for the same reason:
+        # completing a thin fixture with real evidence, not moving a bound.
+        self.truth_graph = _with_skill_proficiency(
+            _with_employment_tenure(
+                create_test_graph(), start=date(2015, 1, 1), end=date(2026, 8, 31),
+            ),
+            proficiency="expert",
         )
         self.scorer = OpportunityScorer()
         self.compiler = EmploymentArtifactCompiler()
@@ -58,6 +68,17 @@ class TestDeterministicReplayAndGoldSet(unittest.TestCase):
             opp_id="bench-high-fit",
             title="Senior Distributed Systems Architect",
             skills=("Python", "Go"),
+            # BRIEF-FR-006 B2: a "Requirements:" header is what makes these
+            # skills *required* rather than nice-to-have
+            # (opportunity/inference_rules.yaml); without it, even
+            # expert-proficiency matches stay partial (matching/skills.py's
+            # core-skill strength requires required + working+ proficiency).
+            description=(
+                "Build distributed systems.\n"
+                "Requirements:\n"
+                "Python\n"
+                "Go"
+            ),
         )
         opp_low = create_test_opportunity(
             opp_id="bench-low-fit",
