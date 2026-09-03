@@ -268,6 +268,51 @@ class TestProjectProgramManagementFamily(unittest.TestCase):
         self.assertNotEqual(family, "project_program_management")
 
 
+class TestSoftwareEngineeringFallbackFamily(unittest.TestCase):
+    """Defect 1 (council review #1): a bare Engineer/Developer/Architect
+    title with no more specific domain signal must land in a real family,
+    not `other`."""
+
+    def test_bare_engineer_word(self) -> None:
+        family, level, rule = normalize_title("Engineer")
+        self.assertEqual(family, "software_engineering")
+        self.assertEqual(level, "unspecified")
+        self.assertTrue(rule.startswith("software_engineering#"))
+
+    def test_software_engineer_without_domain_qualifier(self) -> None:
+        family, level, _ = normalize_title("Software Engineer")
+        self.assertEqual(family, "software_engineering")
+        self.assertEqual(level, "unspecified")
+
+    def test_senior_architect_level_preserved(self) -> None:
+        family, level, _ = normalize_title("Senior Architect")
+        self.assertEqual(family, "software_engineering")
+        self.assertEqual(level, "senior")
+
+    def test_junior_architect_level_preserved(self) -> None:
+        family, level, _ = normalize_title("Junior Architect")
+        self.assertEqual(family, "software_engineering")
+        self.assertEqual(level, "junior")
+
+    def test_remote_developer_bare(self) -> None:
+        family, _, _ = normalize_title("Remote Developer")
+        self.assertEqual(family, "software_engineering")
+
+    def test_fallback_does_not_steal_backend_engineer(self) -> None:
+        # A specific family must still win over the generic fallback.
+        family, _, _ = normalize_title("Backend Engineer")
+        self.assertEqual(family, "backend")
+
+    def test_fallback_does_not_steal_frontend_engineer(self) -> None:
+        family, _, _ = normalize_title("Frontend Engineer")
+        self.assertEqual(family, "web_frontend")
+
+    def test_non_role_rfp_text_still_falls_to_other(self) -> None:
+        # No Engineer/Developer/Architect/Programmer word present -> genuinely other.
+        family, _, _ = normalize_title("Advisory RFP")
+        self.assertEqual(family, "other")
+
+
 class TestOtherFallback(unittest.TestCase):
     def test_regional_partnerships_contractor(self) -> None:
         family, level, rule = normalize_title("Regional Partnerships Contractor")

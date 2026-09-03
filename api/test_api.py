@@ -1579,22 +1579,94 @@ class HighFitThresholdDefaultTest(unittest.TestCase):
 
 
 class FilterSeedSyncTest(unittest.TestCase):
-    """Migration 0003's `_D3_FILTER_SEED` (a deliberate independent literal
-    copy, not an import -- see that migration's module docstring) must never
-    drift from `api.filters.FILTER_DEFINITIONS`'s defaults. No PostgreSQL
-    connectivity needed: this only imports the migration module and compares
-    two in-memory Python structures."""
+    """The seeded filter state *at Alembic head* must never drift from
+    `api.filters.FILTER_DEFINITIONS`'s defaults.
 
-    def test_migration_seed_matches_filter_definitions_defaults(self):
+    B3 defect 4 (council review #1, BRIEF-FR-006): this used to read
+    migration 0003's `_D3_FILTER_SEED` (a deliberate independent literal
+    copy, not an import -- see that migration's module docstring) in
+    isolation and assert it matched `FILTER_DEFINITIONS` directly. That was
+    only ever true *before* any later revision changes a seeded default --
+    the brief specifies the `target_roles` revert to `rank_only` happens
+    "via data migration" (owned by a later revision, e.g. 0004), so reading
+    0003 alone would wrongly assert a permanent pre-migration snapshot.
+
+    This test now composes 0003's `_D3_FILTER_SEED` with every later
+    revision's overrides, discovered by glob (not hand-listed) so a new
+    revision is picked up automatically, the same discovery discipline
+    `truth/test_predicates.py` uses for `matching/*.py`. A later revision
+    declares its overrides as a module-level `_D3_FILTER_SEED_OVERRIDES`
+    dict (`{filter_id: (enabled, mode, params)}`) for whatever filter(s) it
+    changes -- a convention this test introduces because none existed
+    before now; a later revision that changes a seeded filter default
+    without declaring this attribute fails loudly here rather than silently
+    passing. `0003_provenance_identity.py` itself is never edited by this
+    fix (frozen for this work order); only this test composes it with
+    whatever comes after it.
+
+    No PostgreSQL connectivity needed: this only imports migration modules
+    and compares in-memory Python structures.
+    """
+
+    _VERSIONS_DIR = REPO_ROOT / "storage" / "migrations" / "versions"
+    _BASE_REVISION_FILENAME = "0003_provenance_identity.py"
+
+    def _load_migration_module(self, filename: str):
         import importlib.util
 
-        migration_path = REPO_ROOT / "storage" / "migrations" / "versions" / "0003_provenance_identity.py"
-        spec = importlib.util.spec_from_file_location("_d3_migration_0003", migration_path)
+        path = self._VERSIONS_DIR / filename
+        spec = importlib.util.spec_from_file_location(f"_d3_migration_{path.stem}", path)
         module = importlib.util.module_from_spec(spec)
         assert spec.loader is not None
         spec.loader.exec_module(module)
+        return module
 
-        seed_by_id = {row[0]: row for row in module._D3_FILTER_SEED}
+    def _later_revisions(self) -> list:
+        """Every `versions/*.py` file whose leading revision number sorts
+        after 0003's, by glob discovery. Purely lexicographic on the
+        4-digit prefix this repo's migrations already use consistently
+        (0001..0003 today), so a newly landed 0004, 0005, ... is found
+        without this test needing an update."""
+        base_prefix = self._BASE_REVISION_FILENAME[:4]
+        found = []
+        for path in sorted(self._VERSIONS_DIR.glob("*.py")):
+            prefix = path.name[:4]
+            if prefix.isdigit() and prefix > base_prefix:
+                found.append(path)
+        return found
+
+    def test_migration_seed_matches_filter_definitions_defaults(self):
+        module_0003 = self._load_migration_module(self._BASE_REVISION_FILENAME)
+        seed_by_id = {row[0]: list(row) for row in module_0003._D3_FILTER_SEED}
+
+        later_revisions = self._later_revisions()
+        if not later_revisions:
+            self.skipTest(
+                "No migration revision after 0003_provenance_identity.py exists in this "
+                "worktree yet -- expected next: 0004 (BRIEF-FR-006 work order A1M owns it "
+                "and it is specified to carry the target_roles -> rank_only data migration, "
+                "per this work order's Overseer decision). This test composes 0003's "
+                "_D3_FILTER_SEED with every later revision's _D3_FILTER_SEED_OVERRIDES; with "
+                "no later revision present there is nothing to compose, and asserting 0003 "
+                "alone would wrongly assert a permanent pre-migration snapshot, so this test "
+                "skips rather than asserting a value it cannot verify at head yet."
+            )
+
+        for path in later_revisions:
+            module = self._load_migration_module(path.name)
+            overrides = getattr(module, "_D3_FILTER_SEED_OVERRIDES", None)
+            if overrides is None:
+                self.fail(
+                    f"{path.name} is a migration revision after 0003_provenance_identity.py "
+                    "but declares no `_D3_FILTER_SEED_OVERRIDES` module attribute for this "
+                    "test to compose. Either it changes no seeded filter default (in which "
+                    "case declare `_D3_FILTER_SEED_OVERRIDES = {}` to say so explicitly) or "
+                    "it does and must declare the override so this guard can verify the "
+                    "seeded state at head."
+                )
+            for filter_id, row in overrides.items():
+                seed_by_id[filter_id] = [filter_id, *row]
+
         self.assertEqual(set(seed_by_id), {fd.filter_id for fd in FILTER_DEFINITIONS})
         for fd in FILTER_DEFINITIONS:
             _, enabled, mode, params = seed_by_id[fd.filter_id]

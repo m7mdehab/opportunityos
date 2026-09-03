@@ -229,6 +229,27 @@ families:
       - '\bscrum\s+master\b'
     negative_patterns: []
 
+  - id: software_engineering
+    display_name: Software Engineering (General)
+    # Defect 1 (council review #1, BRIEF-FR-006 B3): a bare Engineer /
+    # Developer / Architect title with no more specific domain signal must
+    # still land in a real family, not `other` -- `other` means "not a role
+    # family we recognise", not "we had no rule". This family is
+    # deliberately generic and evaluated last, after every more specific
+    # family above, so it never steals a title a specific family should own
+    # (e.g. "Backend Engineer" still resolves to `backend`, not here,
+    # because `backend` is checked first and returns before this family is
+    # ever reached).
+    aliases:
+      - "software engineer"
+      - "software developer"
+      - "engineer"
+      - "developer"
+      - "architect"
+      - "programmer"
+    patterns: []
+    negative_patterns: []
+
   - id: other
     display_name: Other / Unclassified
     aliases: []
