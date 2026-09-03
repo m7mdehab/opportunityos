@@ -372,5 +372,90 @@ class TestPurityAndDeterminism(unittest.TestCase):
             self.assertIn(family, _KNOWN_FAMILIES, f"unknown family for {title!r}: {family!r}")
 
 
+class TestBroadenedLabourMarketFamilies(unittest.TestCase):
+    """Council review #2 (BRIEF-FR-006 B3): the founder-target-only taxonomy
+    classified 20.6% of the committed 540-payload corpus, against the
+    brief's 95% threshold. These 14 families were added to cover the real
+    labour market a 15-job-board corpus carries (sales, marketing, support,
+    operations, finance, legal, people, design, security, research,
+    hardware, healthcare, education, QA), not just the founder's target
+    roles -- title_family_fit (matching/scorer.py) already handles founder
+    relevance separately. One clearly-defensible positive case per family,
+    taken from real corpus titles recorded in this order's evidence."""
+
+    def test_sales_account_management(self) -> None:
+        family, _, _ = normalize_title("Account Executive, Enterprise")
+        self.assertEqual(family, "sales_account_management")
+
+    def test_marketing(self) -> None:
+        family, _, _ = normalize_title("Brand Marketing Manager")
+        self.assertEqual(family, "marketing")
+
+    def test_support_success(self) -> None:
+        family, _, _ = normalize_title("Customer Success Manager")
+        self.assertEqual(family, "support_success")
+
+    def test_operations_logistics(self) -> None:
+        family, _, _ = normalize_title("Air Freight Manager")
+        self.assertEqual(family, "operations_logistics")
+
+    def test_finance_accounting(self) -> None:
+        family, _, _ = normalize_title("Accounting Manager, GL Operations")
+        self.assertEqual(family, "finance_accounting")
+
+    def test_legal(self) -> None:
+        family, _, _ = normalize_title("Corporate Counsel")
+        self.assertEqual(family, "legal")
+
+    def test_people_recruiting(self) -> None:
+        family, _, _ = normalize_title("Talent Acquisition Manager")
+        self.assertEqual(family, "people_recruiting")
+
+    def test_design_ux(self) -> None:
+        family, _, _ = normalize_title("UX Designer")
+        self.assertEqual(family, "design_ux")
+
+    def test_security(self) -> None:
+        family, _, _ = normalize_title("Security Operations Center Manager")
+        self.assertEqual(family, "security")
+
+    def test_research_science(self) -> None:
+        family, _, _ = normalize_title("Applied Scientist")
+        self.assertEqual(family, "research_science")
+
+    def test_hardware_embedded(self) -> None:
+        family, _, _ = normalize_title("Hardware Engineer")
+        self.assertEqual(family, "hardware_embedded")
+
+    def test_healthcare_clinical(self) -> None:
+        family, _, _ = normalize_title("Registered Nurse")
+        self.assertEqual(family, "healthcare_clinical")
+
+    def test_education(self) -> None:
+        family, _, _ = normalize_title("Curriculum Manager")
+        self.assertEqual(family, "education")
+
+    def test_qa_test(self) -> None:
+        family, _, _ = normalize_title("QA Engineer")
+        self.assertEqual(family, "qa_test")
+
+    def test_non_collision_data_engineer_vs_customer_engineer_survives_broadening(self) -> None:
+        de_family, _, _ = normalize_title("Data Engineer")
+        ce_family, _, _ = normalize_title("Customer Engineer")
+        self.assertEqual(de_family, "data_engineering")
+        self.assertEqual(ce_family, "customer_solutions_engineering")
+        self.assertNotEqual(de_family, ce_family)
+
+    def test_non_collision_ml_engineer_vs_sales_engineer_survives_sales_family(self) -> None:
+        # The sales_account_management family added by this batch makes this
+        # pair harder to keep apart, not easier -- explicitly re-verified.
+        ml_family, _, _ = normalize_title("ML Engineer")
+        sales_family, _, _ = normalize_title("Sales Engineer")
+        self.assertEqual(ml_family, "ml_ai_engineering")
+        self.assertEqual(sales_family, "customer_solutions_engineering")
+        self.assertNotEqual(sales_family, "sales_account_management")
+        self.assertNotEqual(ml_family, sales_family)
+
+
 if __name__ == "__main__":
     unittest.main()
