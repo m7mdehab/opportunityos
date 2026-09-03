@@ -850,7 +850,9 @@ def _artifact_filename(kind: str, opportunity_id: str) -> str:
     return f"{kind}-{opportunity_id}.docx"
 
 
-def _compile_and_export(request: Request, opportunity_id: str, kind: str, session: Session) -> Response:
+def _compile_and_export(
+    request: Request, opportunity_id: str, kind: str, session: Session, template: str | None = None,
+) -> Response:
     opp = session.query(OpportunityRecord).filter_by(id=opportunity_id).first()
     if opp is None:
         raise HTTPException(status_code=404, detail="opportunity not found")
@@ -897,7 +899,7 @@ def _compile_and_export(request: Request, opportunity_id: str, kind: str, sessio
             content=json.dumps({"detail": "claim validation failed", "findings": findings}),
         )
 
-    docx_bytes = BinaryArtifactExporter.export_to_docx(artifact)
+    docx_bytes = BinaryArtifactExporter.export_to_docx(artifact, template=template)
     filename = _artifact_filename(kind, opportunity_id)
     return Response(
         content=docx_bytes,
@@ -907,13 +909,17 @@ def _compile_and_export(request: Request, opportunity_id: str, kind: str, sessio
 
 
 @router.get("/opportunities/{opportunity_id}/artifacts/cv.docx")
-def get_cv_artifact(opportunity_id: str, request: Request, session: Session = Depends(get_db)):
-    return _compile_and_export(request, opportunity_id, "cv", session)
+def get_cv_artifact(
+    opportunity_id: str, request: Request, session: Session = Depends(get_db), template: str | None = None,
+):
+    return _compile_and_export(request, opportunity_id, "cv", session, template=template)
 
 
 @router.get("/opportunities/{opportunity_id}/artifacts/cover-letter.docx")
-def get_cover_letter_artifact(opportunity_id: str, request: Request, session: Session = Depends(get_db)):
-    return _compile_and_export(request, opportunity_id, "cover-letter", session)
+def get_cover_letter_artifact(
+    opportunity_id: str, request: Request, session: Session = Depends(get_db), template: str | None = None,
+):
+    return _compile_and_export(request, opportunity_id, "cover-letter", session, template=template)
 
 
 # --------------------------------------------------------------------------

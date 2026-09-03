@@ -95,10 +95,16 @@ class DocumentSection:
         evidence_ids = tuple(sorted({
             eid for item in self.items for eid in item.claim.evidence_ids
         }))
+        # BRIEF-FR-006 council review #2 MAJOR 5: `content` and `items` used to
+        # carry the exact same text, and both exporters render `content` as a
+        # paragraph AND every `items` entry as its own bullet -- every line
+        # doubled. `items` is authoritative when present (it is what actually
+        # carries the per-claim structure); `content` is only for sections
+        # that never populate `items` at all.
         return ArtifactSection(
             section_id=self.section_id,
             heading=self.heading,
-            content="\n".join(texts),
+            content="" if texts else "\n".join(texts),
             items=texts,
             assertion_ids=assertion_ids,
             evidence_ids=evidence_ids,

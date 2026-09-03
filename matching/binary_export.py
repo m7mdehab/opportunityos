@@ -1,5 +1,7 @@
 import io
 import os
+import zipfile
+from datetime import datetime, timezone
 from typing import Optional, List
 from matching.models import TailoredArtifact, ArtifactType
 from matching.templates import Template, get_template
@@ -9,6 +11,28 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
+
+# BRIEF-FR-006 council review #2 MAJOR 6: the requirement is that export is
+# deterministic (same artifact -> same bytes). A fixed, arbitrary reference
+# instant, never wall-clock `datetime.now()`.
+_DETERMINISTIC_DT = datetime(2026, 1, 1, tzinfo=timezone.utc)
+_DETERMINISTIC_ZIP_DATE_TIME = (2026, 1, 1, 0, 0, 0)
+
+
+def _make_docx_bytes_deterministic(data: bytes) -> bytes:
+    """python-docx's `Document.save()` writes each zip member with the
+    current wall-clock time in its `ZipInfo.date_time`, so two exports of the
+    identical artifact differ byte-for-byte. Rewrite every member with a
+    fixed timestamp, preserving content and compression exactly."""
+    src = zipfile.ZipFile(io.BytesIO(data))
+    out_bio = io.BytesIO()
+    with zipfile.ZipFile(out_bio, "w", zipfile.ZIP_DEFLATED) as out:
+        for info in src.infolist():
+            info.date_time = _DETERMINISTIC_ZIP_DATE_TIME
+            out.writestr(info, src.read(info.filename))
+    src.close()
+    return out_bio.getvalue()
+
 
 class BinaryArtifactExporter:
     @staticmethod
@@ -56,9 +80,13 @@ class BinaryArtifactExporter:
                 br.font.size = Pt(tpl.bullet_size_pt)
                 br.font.name = tpl.docx_font
 
+        doc.core_properties.created = _DETERMINISTIC_DT
+        doc.core_properties.modified = _DETERMINISTIC_DT
+        doc.core_properties.last_modified_by = ""
+
         bio = io.BytesIO()
         doc.save(bio)
-        content = bio.getvalue()
+        content = _make_docx_bytes_deterministic(bio.getvalue())
 
         if output_path:
             with open(output_path, "wb") as f:
@@ -79,6 +107,9 @@ class BinaryArtifactExporter:
             leftMargin=tpl.margin_pt,
             topMargin=tpl.margin_pt,
             bottomMargin=tpl.margin_pt,
+            # MAJOR 6: suppresses reportlab's per-build CreationDate/ModDate/ID
+            # (council-verified to make repeat exports byte-identical).
+            invariant=1,
         )
         styles = getSampleStyleSheet()
 
