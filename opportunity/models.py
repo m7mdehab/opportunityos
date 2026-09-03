@@ -282,7 +282,13 @@ def compute_dedup_key(
 def compute_deterministic_id(source: str, remote_id: str, title: str, organization: str, raw_pointer: str) -> str:
     if remote_id and remote_id.strip():
         clean_remote = re.sub(r"[^\w\-.]", "_", remote_id.strip())
-        return f"{source}:{clean_remote}"
+        candidate = f"{source}:{clean_remote}"
+        if len(candidate) <= 64:
+            return candidate
+        # Composed id exceeds storage.models.Opportunity.id's 64-char primary key
+        # bound (e.g. We Work Remotely slugs). Fall back to the same bounded,
+        # deterministic hash form already used below for the empty-remote_id case,
+        # so long remote_ids never overflow the column or collide via truncation.
     digest = hashlib.sha256(f"{organization}:{title}:{raw_pointer}".encode("utf-8")).hexdigest()[:16]
     return f"{source}:{digest}"
 
