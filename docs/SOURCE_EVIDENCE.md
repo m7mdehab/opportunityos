@@ -196,13 +196,13 @@ plain unauthenticated HTTP GET.
 | Source | Status | Latency ms | Records | Detail |
 |---|---|---:|---:|---|
 | hacker_news_who_is_hiring | allowed_ok | n/a (multi-request) | 0 (bound path, this session) | robots.txt Allow: /*.json$. **Correction (council review 4, finding 11):** the "192 rows" figure previously reported here came from a manual, disconnected smoke run of `fetch_who_is_hiring_payload()` invoked directly against live Hacker News -- not from the bound production path. At the time of that figure, `OpportunityPipeline.execute_discovery` fetched only `HackerNewsWhoIsHiringAdapter.feed_url` (the `whoishiring` user object) as a single GET and handed it to `parse_payload`, which requires a `comments` key the user object never has -- so the bound path always yielded 0 rows and permanent `has_schema_drift=True` health, regardless of what a manual smoke run produced. `worker/handlers.py` now wires a governed, registry-gated, multi-step fetch (`_fetch_hacker_news_who_is_hiring_governed`) into the bound poll path for this source, but this offline work order made no network request (per its own constraint), so no production run of the bound path has been executed or measured this session -- the honest, measured row count for the bound path in this session is **0**. |
-| reddit_forhire | http_403 | 0 | 0 | `GET /r/forhire.json` → HTTP 403 on the first request. Not retried. Registered `manual_only` with a deep link — this is Reddit's one attempted route and its dated closure. |
-| reddit_remotejobs | http_403 (generalized) | 0 | 0 | Same host/endpoint pattern as reddit_forhire; not independently requested to avoid a second request to an already-blocking host. `manual_only`, deep link. |
-| reddit_machinelearningjobs | http_403 (generalized) | 0 | 0 | See reddit_forhire. `manual_only`, deep link. |
-| reddit_datajobs | http_403 (generalized) | 0 | 0 | See reddit_forhire. `manual_only`, deep link. |
-| reddit_hiring | http_403 (generalized) | 0 | 0 | See reddit_forhire. `manual_only`, deep link. |
-| reddit_jobbit | http_403 (generalized) | 0 | 0 | See reddit_forhire. `manual_only`, deep link. |
-| reddit_bigdatajobs | http_403 (generalized) | 0 | 0 | See reddit_forhire. `manual_only`, deep link. |
+| reddit_forhire | http_403 | 0 | 0 | `GET /r/forhire.json` → HTTP 403 on the first request. Not retried. Registered `manual_only` with a deep link — this is Reddit's one attempted route and its dated closure. **Correction (council review 4, finding 13):** the `robots.txt` fetch that preceded this request returned HTTP 200, but its response body (the `User-agent: *` directive text) was never recorded — only the status code was. Whether the subsequent `/r/forhire.json` request was itself robots-compliant therefore cannot be established from this evidence; this is an open, unresolved question, recorded honestly rather than guessed. `www.reddit.com` has since returned HTTP 403 to this project even for `robots.txt`, so the directive text cannot be safely re-fetched. This source stays `manual_only`/`read: disabled` regardless of how that question resolves. |
+| reddit_remotejobs | inferred_from_sibling_403 | 0 | 0 | Same host/endpoint pattern as reddit_forhire; not independently requested to avoid a second request to an already-blocking host. `manual_only`, deep link. |
+| reddit_machinelearningjobs | inferred_from_sibling_403 | 0 | 0 | See reddit_forhire. `manual_only`, deep link. |
+| reddit_datajobs | inferred_from_sibling_403 | 0 | 0 | See reddit_forhire. `manual_only`, deep link. |
+| reddit_hiring | inferred_from_sibling_403 | 0 | 0 | See reddit_forhire. `manual_only`, deep link. |
+| reddit_jobbit | inferred_from_sibling_403 | 0 | 0 | See reddit_forhire. `manual_only`, deep link. |
+| reddit_bigdatajobs | inferred_from_sibling_403 | 0 | 0 | See reddit_forhire. `manual_only`, deep link. |
 | ycombinator_work_at_a_startup | no_public_api | 0 | 0 | robots.txt allowed; no documented public jobs API found within recon budget. `manual_only`, deep link. |
 | working_nomads | no_public_api | 0 | 0 | robots.txt allowed; guessed RSS/API paths returned HTTP 404 twice. `manual_only`, deep link. |
 | remote_co | robots_unreachable | 0 | 0 | robots.txt timed out twice; not retried a third time. `manual_only`, deep link. |
@@ -253,8 +253,10 @@ was the 403). `www.reddit.com` received two: `robots.txt` (HTTP 200) and then th
 `/r/forhire.json` (HTTP 403) -- the blocking request, not a retry of an earlier one. No host was
 requested a second time *after* a 403/429 was observed; the transport-log replay in
 `recon/test_e23_transport_log.py::test_e23_recon_sweep_never_retried_a_blocked_source` asserts this
-against the literal, ordered request log and would raise `BlockedSourceRetryError` if any of the
-three appeared a second time. None was requested again.
+against a manual, hand-typed transcription of the ordered request sequence (the probe scripts that
+made these requests were not committed, so this is not a machine-captured log -- see that test's
+docstring) and would raise `BlockedSourceRetryError` if any of the three appeared a second time in
+that transcription. None was recorded as requested again.
 
 **Not fetched at all, and why:** the 13 tutoring/alert-route/application-only sources above were
 never sent a body request beyond `robots.txt` — the brief itself designates them alert-route,

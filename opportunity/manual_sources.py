@@ -59,12 +59,13 @@ TUTORING_READINESS_CHECKLIST: tuple[str, ...] = (
 
 MANUAL_SOURCES: tuple[ManualSource, ...] = (
     # --- E2: aggregators and communities -----------------------------------------
-    ManualSource(
-        "hacker_news_who_is_hiring", "Hacker News \"Who is hiring?\"", Track.EMPLOYMENT,
-        "manual_only", "https://hn.algolia.com/?q={query}&type=comment", "aggregator",
-        "Registered here only as a fallback deep link; the primary route is the read-allowed "
-        "adapter (see docs/SOURCE_REGISTRY.yaml: hacker_news_who_is_hiring, read=allowed).",
-    ),
+    # Council review 4, finding 18: `hacker_news_who_is_hiring` used to be listed
+    # here as `manual_only` while its registry entry is `read: allowed` with a bound,
+    # now-governed-and-wired adapter (opportunity/adapters/hacker_news.py +
+    # worker/handlers.py) -- directly contradicting this module's own docstring
+    # ("No adapter reads any of these"). Removed rather than given a distinct type:
+    # it is not a manual-only fallback, it is a fully automated, read-allowed source,
+    # so it belongs in the adapter-backed catalogue, not this one.
     ManualSource("reddit_forhire", "Reddit r/forhire", Track.EMPLOYMENT, "manual_only",
                  "https://old.reddit.com/r/forhire/search?q={query}&restrict_sr=on&sort=new", "aggregator", _REDDIT_403_NOTE),
     ManualSource("reddit_remotejobs", "Reddit r/remotejobs", Track.EMPLOYMENT, "manual_only",
@@ -175,8 +176,10 @@ MANUAL_SOURCES: tuple[ManualSource, ...] = (
                  "feeds could not be safely reconned without a second request to an already-blocking host."),
     ManualSource("freelancer", "Freelancer.com", Track.FREELANCE, "manual_only",
                  "https://www.freelancer.com/jobs/?keyword={query}", "freelance",
-                 "Stays credential-gated per brief instruction; existing registry entry (docs/SOURCE_REGISTRY.yaml) "
-                 "left as-is. Deep link only."),
+                 "Stays credential-gated per brief instruction. Council review 4, finding 19: the registry entry "
+                 "(docs/SOURCE_REGISTRY.yaml) previously incorrectly had automation.read: allowed from an "
+                 "unauthenticated probe of a partner/OAuth-only endpoint; it was corrected to read: disabled on "
+                 "2026-09-03 (see docs/SOURCE_EVIDENCE.md), not left as-is. Deep link only."),
 
     # --- E3: tutoring (platform_application, never rendered as postings) -----------
     ManualSource("preply", "Preply", Track.TUTORING, "platform_application",

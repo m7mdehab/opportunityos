@@ -1446,7 +1446,7 @@ sources:
     policy_status: manual_only
     observed:
       status: http_403
-      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200) but the public JSON endpoint (https://www.reddit.com/r/forhire.json) returned HTTP 403 on the first request (confirmed directly via r/forhire; generalized to this subreddit, which shares the same host, endpoint pattern, and anti-bot policy, to avoid a second request against an already-blocking host). AGENTS.md 403-stop rule observed; not retried. No browser automation used per brief Appendix 6."
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200) but the public JSON endpoint (https://www.reddit.com/r/forhire.json) returned HTTP 403 on the first request (confirmed directly via r/forhire; generalized to this subreddit, which shares the same host, endpoint pattern, and anti-bot policy, to avoid a second request against an already-blocking host). AGENTS.md 403-stop rule observed; not retried. No browser automation used per brief Appendix 6. Council review 4, finding 13: the robots.txt response body (the actual User-agent: * directive text) was not captured or recorded at the time of this recon -- only its HTTP 200 status was. Compliance of the subsequent body request with robots.txt therefore CANNOT be established from this evidence; this is recorded as an open, unresolved question, not a compliant-by-default assumption. The host has since returned HTTP 403 to this project even for robots.txt, so the directive text cannot be safely re-fetched now. Regardless of that open question, this source stays manual_only/read: disabled -- the correction does not depend on resolving it."
       request_metadata: "method=GET; endpoint=/r/forhire.json"
       latency_ms: 0
       record_count: 0
@@ -1473,7 +1473,7 @@ sources:
       submit: disabled
     policy_status: manual_only
     observed:
-      status: http_403
+      status: inferred_from_sibling_403
       detail: "2026-09-03 recon: robots.txt fetched (HTTP 200) but the public JSON endpoint (https://www.reddit.com/r/remotejobs.json) returned HTTP 403 on the first request (confirmed directly via r/forhire; generalized to this subreddit, which shares the same host, endpoint pattern, and anti-bot policy, to avoid a second request against an already-blocking host). AGENTS.md 403-stop rule observed; not retried. No browser automation used per brief Appendix 6."
       request_metadata: "method=GET; endpoint=/robots.txt (subreddit JSON not independently requested)"
       latency_ms: 0
@@ -1501,7 +1501,7 @@ sources:
       submit: disabled
     policy_status: manual_only
     observed:
-      status: http_403
+      status: inferred_from_sibling_403
       detail: "2026-09-03 recon: robots.txt fetched (HTTP 200) but the public JSON endpoint (https://www.reddit.com/r/MachineLearningJobs.json) returned HTTP 403 on the first request (confirmed directly via r/forhire; generalized to this subreddit, which shares the same host, endpoint pattern, and anti-bot policy, to avoid a second request against an already-blocking host). AGENTS.md 403-stop rule observed; not retried. No browser automation used per brief Appendix 6."
       request_metadata: "method=GET; endpoint=/robots.txt (subreddit JSON not independently requested)"
       latency_ms: 0
@@ -1529,7 +1529,7 @@ sources:
       submit: disabled
     policy_status: manual_only
     observed:
-      status: http_403
+      status: inferred_from_sibling_403
       detail: "2026-09-03 recon: robots.txt fetched (HTTP 200) but the public JSON endpoint (https://www.reddit.com/r/datajobs.json) returned HTTP 403 on the first request (confirmed directly via r/forhire; generalized to this subreddit, which shares the same host, endpoint pattern, and anti-bot policy, to avoid a second request against an already-blocking host). AGENTS.md 403-stop rule observed; not retried. No browser automation used per brief Appendix 6."
       request_metadata: "method=GET; endpoint=/robots.txt (subreddit JSON not independently requested)"
       latency_ms: 0
@@ -1557,7 +1557,7 @@ sources:
       submit: disabled
     policy_status: manual_only
     observed:
-      status: http_403
+      status: inferred_from_sibling_403
       detail: "2026-09-03 recon: robots.txt fetched (HTTP 200) but the public JSON endpoint (https://www.reddit.com/r/hiring.json) returned HTTP 403 on the first request (confirmed directly via r/forhire; generalized to this subreddit, which shares the same host, endpoint pattern, and anti-bot policy, to avoid a second request against an already-blocking host). AGENTS.md 403-stop rule observed; not retried. No browser automation used per brief Appendix 6."
       request_metadata: "method=GET; endpoint=/robots.txt (subreddit JSON not independently requested)"
       latency_ms: 0
@@ -1585,7 +1585,7 @@ sources:
       submit: disabled
     policy_status: manual_only
     observed:
-      status: http_403
+      status: inferred_from_sibling_403
       detail: "2026-09-03 recon: robots.txt fetched (HTTP 200) but the public JSON endpoint (https://www.reddit.com/r/jobbit.json) returned HTTP 403 on the first request (confirmed directly via r/forhire; generalized to this subreddit, which shares the same host, endpoint pattern, and anti-bot policy, to avoid a second request against an already-blocking host). AGENTS.md 403-stop rule observed; not retried. No browser automation used per brief Appendix 6."
       request_metadata: "method=GET; endpoint=/robots.txt (subreddit JSON not independently requested)"
       latency_ms: 0
@@ -1613,7 +1613,7 @@ sources:
       submit: disabled
     policy_status: manual_only
     observed:
-      status: http_403
+      status: inferred_from_sibling_403
       detail: "2026-09-03 recon: robots.txt fetched (HTTP 200) but the public JSON endpoint (https://www.reddit.com/r/bigdatajobs.json) returned HTTP 403 on the first request (confirmed directly via r/forhire; generalized to this subreddit, which shares the same host, endpoint pattern, and anti-bot policy, to avoid a second request against an already-blocking host). AGENTS.md 403-stop rule observed; not retried. No browser automation used per brief Appendix 6."
       request_metadata: "method=GET; endpoint=/robots.txt (subreddit JSON not independently requested)"
       latency_ms: 0
