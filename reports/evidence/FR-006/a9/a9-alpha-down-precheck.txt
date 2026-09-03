@@ -1,0 +1,5 @@
+worker: already stopped (pid 26856 not running).
+api: stopped (was pid 14116).
+web: already stopped (pid 30812 not running).
+PostgreSQL: left running (alpha.py did not start it).
+alpha: down.

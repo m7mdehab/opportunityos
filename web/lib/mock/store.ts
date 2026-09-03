@@ -18,6 +18,7 @@ import type {
   HiddenReason,
   HiddenReasonsResponse,
   OpportunityDetail,
+  OpportunityExtractionFields,
   OpportunityListItem,
   OpportunityListResponse,
   SavedView,
@@ -636,6 +637,7 @@ export class MockStore {
       evidence_links: o.evidence_links,
       action_history: o.action_history,
       feedback_history: o.feedback_history,
+      ...mockExtractionFields(o),
     }
   }
 
@@ -858,6 +860,66 @@ export class MockStore {
   }
 }
 
+/** BRIEF-FR-006 C5: `SeedOpportunity` (fixtures.ts) predates the C5 order
+ * and has no work_mode/location/compensation/family fields of its own —
+ * rather than hand-add them to every one of its ~30 literal fixture
+ * entries (out of this order's scope, and fixtures.ts is large enough that
+ * doing so blind would risk silently changing an existing scenario's
+ * facet/filter behaviour), this deterministically derives a plausible,
+ * *varied* set of C5 fields from each opportunity's own `id` string so the
+ * mock feed/detail can demonstrate every field the real API now returns.
+ * This is synthetic mock-only data, not a claim about a real founder or
+ * employer — the real values come from `api/serialization.py`. One row
+ * (`id` ending in `0` mod the rotation) is deliberately `"unspecified"`,
+ * matching the real corpus measurement that ~47.8% of postings carry no
+ * work-mode signal. */
+function hashString(s: string): number {
+  let h = 0
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) | 0
+  }
+  return Math.abs(h)
+}
+
+const MOCK_WORK_MODES = ["remote", "hybrid", "onsite", "unspecified"] as const
+const MOCK_LOCATIONS: Array<{ city: string | null; country: string | null; region: string | null }> = [
+  { city: "Cairo", country: "EG", region: "MENA" },
+  { city: null, country: null, region: null },
+  { city: "Dubai", country: "AE", region: "MENA" },
+  { city: "Berlin", country: "DE", region: "EU" },
+]
+const MOCK_EMPLOYMENT_TYPES = ["full_time", "contract", "part_time", "unspecified"] as const
+const MOCK_SENIORITY_LEVELS = ["mid", "senior", "lead", "unspecified"] as const
+
+function mockExtractionFields(o: SeedOpportunity): OpportunityExtractionFields {
+  const h = hashString(o.id)
+  const workMode = MOCK_WORK_MODES[h % MOCK_WORK_MODES.length]
+  const location = MOCK_LOCATIONS[h % MOCK_LOCATIONS.length]
+  const employmentType = MOCK_EMPLOYMENT_TYPES[h % MOCK_EMPLOYMENT_TYPES.length]
+  const seniorityLevel = MOCK_SENIORITY_LEVELS[h % MOCK_SENIORITY_LEVELS.length]
+  const isClustered = h % 5 === 0
+
+  return {
+    work_mode: workMode,
+    work_mode_source: workMode === "unspecified" ? null : h % 3 === 0 ? "inferred" : "posting",
+    location_country: location.country,
+    location_city: location.city,
+    location_region: location.region,
+    remote_scope: workMode === "remote" ? "worldwide" : "unspecified",
+    remote_scope_regions: workMode === "remote" && h % 2 === 0 ? ["EG", "AE"] : [],
+    employment_type: employmentType,
+    seniority_level: seniorityLevel,
+    compensation_min: h % 4 === 0 ? null : 3000 + (h % 5000),
+    compensation_max: h % 4 === 0 ? null : 6000 + (h % 5000),
+    compensation_currency: h % 4 === 0 ? null : "USD",
+    compensation_period: h % 4 === 0 ? null : "monthly",
+    title_family: null,
+    title_level: null,
+    family_key: isClustered ? `fam-${h % 7}` : null,
+    family_size: isClustered ? 2 + (h % 20) : null,
+  }
+}
+
 function toListItem(
   o: SeedOpportunity,
   hidden_by: string[],
@@ -880,6 +942,7 @@ function toListItem(
     feedback_label: o.feedback_label,
     hidden_by,
     flagged_by,
+    ...mockExtractionFields(o),
   }
 }
 

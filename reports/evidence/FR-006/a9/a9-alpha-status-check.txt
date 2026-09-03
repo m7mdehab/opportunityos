@@ -1,0 +1,12 @@
+alpha status
+------------
+  worker: down
+  api: up (pid 14116, port 8000)
+  web: down
+  postgres: listening on 127.0.0.1:5432 (external/pre-existing)
+
+last poll per source:
+  (unavailable: could not query the database: (psycopg2.OperationalError) connection to server at "127.0.0.1", port 5432 failed: FATAL:  database "opportunityos_alpha" does not exist
+DETAIL:  It seems to have just been dropped or renamed.
+
+(Background on this error at: https://sqlalche.me/e/20/e3q8))

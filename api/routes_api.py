@@ -21,6 +21,7 @@ from matching.artifact_validation import validate_artifact_claims
 from matching.binary_export import BinaryArtifactExporter
 from matching.compiler_employment import EmploymentArtifactCompiler
 from matching.templates import TEMPLATES
+from opportunity.manual_sources import MANUAL_SOURCES
 from opportunity.models import Opportunity, Track
 from opportunity.registry import SourceRegistry
 from outbound.models import ActionStatus, ExecutionMode
@@ -33,6 +34,7 @@ from storage.models import (
     FounderSavedViewRecord,
     FounderTriageStateRecord,
     MatchEvaluationRecord,
+    OpportunityFamilyRecord,
     OpportunityRecord,
     OutboundActionRecordModel,
     SourcePollRunRecord,
@@ -50,6 +52,7 @@ from .facets import (
     apply_facets,
     facet_payload,
     hidden_reasons_audit,
+    poll_hide_fraction_warnings,
     unhide_by_reason,
 )
 from .filters import (
@@ -75,6 +78,7 @@ from .search import is_query_unparseable, rank_key, search_opportunity_ids
 from .serialization import (
     serialize_constraint,
     serialize_dimension_score,
+    serialize_opportunity_extraction_fields,
     strengths_gaps_unknowns_from_reasons,
     top_reasons_from_list,
     unpack_dimension_scores,
@@ -317,6 +321,23 @@ def _load_facet_settings(session: Session) -> dict[str, FacetSettingsRow]:
     return settings
 
 
+def _family_sizes(session: Session, family_keys: list[str | None]) -> dict[str, int]:
+    """C5: `OpportunityFamilyRecord.member_count` for every distinct,
+    non-null `family_key` among `family_keys`, batched into one query rather
+    than one lookup per row (contract: adding fields to the feed item must
+    not change how anything is ranked, hidden, or fetched -- N+1 here would
+    still be *correct*, just needlessly slow on a real feed page)."""
+    keys = {k for k in family_keys if k}
+    if not keys:
+        return {}
+    rows = (
+        session.query(OpportunityFamilyRecord.family_key, OpportunityFamilyRecord.member_count)
+        .filter(OpportunityFamilyRecord.family_key.in_(keys))
+        .all()
+    )
+    return {family_key: member_count for family_key, member_count in rows if member_count is not None}
+
+
 @router.get("/facets")
 def list_facets(request: Request, session: Session = Depends(get_db)):
     facet_settings = _load_facet_settings(session)
@@ -506,6 +527,7 @@ def list_opportunities(
     facet_settings = _load_facet_settings(session)
     truth_graph = _truth_graph_from_request(request)
     contexts = build_filter_contexts(session, truth_graph, opportunities)
+    family_sizes = _family_sizes(session, [o.family_key for o in opportunities])
 
     rows: list[dict[str, Any]] = []
     hidden_count = 0
@@ -530,27 +552,27 @@ def list_opportunities(
             if not include_hidden:
                 continue
 
-        rows.append(
-            {
-                "id": opp.id,
-                "title": opp.title,
-                "organization": opp.organization,
-                "source_id": opp.source_id,
-                "source_url": opp.source_url,
-                "track": opp.track,
-                "decision": opp_decision,
-                "fit_score": fit_score,
-                "top_reasons": top_reasons_from_list(ctx.reasons),
-                "deadline": opp.deadline,
-                "posted_date": opp.posted_date,
-                "is_stale": bool(opp.is_stale),
-                "action_state": _latest_action_state(session, opp.id),
-                "feedback_label": _latest_feedback_label(session, opp.id),
-                "hidden_by": combined_hidden_by,
-                "flagged_by": outcome.flagged_by,
-                "_rank_penalty": outcome.rank_penalty,
-            }
-        )
+        row = {
+            "id": opp.id,
+            "title": opp.title,
+            "organization": opp.organization,
+            "source_id": opp.source_id,
+            "source_url": opp.source_url,
+            "track": opp.track,
+            "decision": opp_decision,
+            "fit_score": fit_score,
+            "top_reasons": top_reasons_from_list(ctx.reasons),
+            "deadline": opp.deadline,
+            "posted_date": opp.posted_date,
+            "is_stale": bool(opp.is_stale),
+            "action_state": _latest_action_state(session, opp.id),
+            "feedback_label": _latest_feedback_label(session, opp.id),
+            "hidden_by": combined_hidden_by,
+            "flagged_by": outcome.flagged_by,
+            "_rank_penalty": outcome.rank_penalty,
+        }
+        row.update(serialize_opportunity_extraction_fields(opp, family_sizes.get(opp.family_key)))
+        rows.append(row)
 
     # Rank-penalty tier first (contract section 4: demoted items sort after
     # non-demoted ones at equal score, and never reorder within a tier).
@@ -692,7 +714,11 @@ def _build_opportunity_detail(session: Session, opp: OpportunityRecord) -> dict[
         .all()
     ]
 
-    return {
+    family_size = None
+    if opp.family_key:
+        family_size = _family_sizes(session, [opp.family_key]).get(opp.family_key)
+
+    detail_payload: dict[str, Any] = {
         "id": opp.id,
         "title": opp.title,
         "organization": opp.organization,
@@ -722,6 +748,8 @@ def _build_opportunity_detail(session: Session, opp: OpportunityRecord) -> dict[
         "action_history": action_history,
         "feedback_history": feedback_history,
     }
+    detail_payload.update(serialize_opportunity_extraction_fields(opp, family_size))
+    return detail_payload
 
 
 # --------------------------------------------------------------------------
@@ -1291,9 +1319,82 @@ def dashboard_daily(request: Request, days: int = 7, session: Session = Depends(
     return {"days": days, "high_fit_threshold": high_fit_threshold, "series": series}
 
 
+@router.get("/polls/{poll_id}/over-hiding")
+def poll_over_hiding(poll_id: str, request: Request, session: Session = Depends(get_db)):
+    """BRIEF-FR-006 C5: `api/facets.py::poll_hide_fraction_warnings` is the
+    real, per-poll, filter-*and*-facet-aware "hid more than 10% of a poll's
+    new rows" computation (see its own docstring and
+    `PollHideFractionWarningTest`) -- but nothing called it, so the web side
+    had derived a day-granular, filters-only approximation from
+    `GET /api/dashboard/daily` instead (`web/lib/format/over-hiding.ts`,
+    both divergences named in its own docstring). This route calls the real
+    function directly against exactly the rows that specific poll inserted,
+    so the returned figure is never an approximation of the underlying
+    computation -- it *is* the underlying computation.
+
+    A poll run has no `opportunity_id` foreign key back to the specific rows
+    it inserted (frozen `storage/models.py` has no such column), so "the
+    rows this poll inserted" is taken as every `OpportunityRecord` whose
+    `created_at` falls within `[started_at, finished_at]` -- the same
+    poll-window convention `dashboard_daily` already uses at day
+    granularity, just narrowed to this one run's own window instead of a
+    calendar day. `finished_at` is null for a run still in flight; `now` is
+    used as the window's open end in that case.
+    """
+    poll = session.query(SourcePollRunRecord).filter_by(id=poll_id).first()
+    if poll is None:
+        raise HTTPException(status_code=404, detail="poll run not found")
+
+    window_end = poll.finished_at or datetime.now(timezone.utc)
+    new_opportunities = (
+        session.query(OpportunityRecord)
+        .filter(OpportunityRecord.created_at >= poll.started_at, OpportunityRecord.created_at <= window_end)
+        .all()
+    )
+    truth_graph = _truth_graph_from_request(request)
+    new_contexts = build_filter_contexts(session, truth_graph, new_opportunities)
+    filter_settings = _load_filter_settings(session)
+    facet_settings = _load_facet_settings(session)
+
+    warnings = poll_hide_fraction_warnings(poll.inserted, new_contexts, filter_settings, facet_settings)
+    return {"poll_id": poll.id, "poll_inserted": poll.inserted, "warnings": warnings}
+
+
 # --------------------------------------------------------------------------
 # Sources and worker
 # --------------------------------------------------------------------------
+
+@router.get("/manual-sources")
+def manual_sources_route():
+    """BRIEF-FR-006 C5: `opportunity/manual_sources.py::MANUAL_SOURCES` had
+    no serving route, so the web side had transcribed it statically into
+    `web/lib/data/manual-sources.ts` (drift risk named in that order's
+    return notes -- and that transcription had already drifted, still
+    listing `hacker_news_who_is_hiring`, which a later council review
+    removed from this module because it is a fully automated, read-allowed
+    adapter, not a manual fallback). This route serves the module's own
+    tuple directly -- read-only, in-process, no network I/O of any kind
+    (`ManualSource.deep_link` is pure string templating) -- so the founder's
+    "Check manually" panel can never again silently diverge from the
+    catalogue that actually governs which sources are manual-only."""
+    return {
+        "sources": [
+            {
+                "source_id": item.source_id,
+                "name": item.name,
+                "track": item.track.value,
+                "opportunity_type": item.opportunity_type,
+                "deep_link": item.deep_link(),
+                "category": item.category,
+                "policy_note": item.policy_note,
+                "alert_route_available": item.alert_route_available,
+                "alert_route_configured": item.alert_route_configured,
+                "readiness_checklist": list(item.readiness_checklist),
+            }
+            for item in MANUAL_SOURCES
+        ]
+    }
+
 
 @router.get("/sources/health")
 def sources_health(session: Session = Depends(get_db)):
