@@ -21,6 +21,7 @@ from opportunity.normalization import (
     create_field_provenance,
     derive_geographic_eligibility,
     extract_skills_from_text,
+    extract_work_location,
     parse_iso_date,
 )
 
@@ -95,6 +96,9 @@ class WorldBankAdapter(BaseAdapter):
                     )
 
                     skills = extract_skills_from_text(f"{title} {description}")
+                    # Native mapping first (brief: World Bank duty station / buyer
+                    # country). See ungm.py's identical comment for the rationale.
+                    work_loc = extract_work_location(country, description, native_country=country)
                     geo = derive_geographic_eligibility(
                         title=title,
                         location_raw=country,
@@ -148,6 +152,13 @@ class WorldBankAdapter(BaseAdapter):
                         description=description,
                         skills=skills,
                         location_raw=country,
+                        work_mode=work_loc.work_mode,
+                        work_mode_source=work_loc.work_mode_source,
+                        location_country=work_loc.location_country,
+                        location_city=work_loc.location_city,
+                        location_region=work_loc.location_region,
+                        remote_scope=work_loc.remote_scope,
+                        remote_scope_regions=work_loc.remote_scope_regions,
                         geographic_eligibility=geo,
                         posted_date=posted_date,
                         closing_date=deadline,

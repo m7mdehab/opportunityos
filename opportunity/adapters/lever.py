@@ -12,6 +12,7 @@ from opportunity.models import (
     Opportunity,
     ParseResult,
     Track,
+    WorkMode,
     compute_deterministic_id,
 )
 from opportunity.normalization import (
@@ -22,12 +23,21 @@ from opportunity.normalization import (
     extract_compensation,
     extract_employment_type,
     extract_list_sections,
-    extract_remote_policy,
     extract_seniority,
     extract_skills_from_text,
     extract_track,
+    extract_work_location,
     parse_iso_date,
 )
+
+# Lever native `categories.workplaceType` -> WorkMode (brief: "Lever `workplaceType`").
+_LEVER_WORKPLACE_TYPE: dict[str, WorkMode] = {
+    "remote": WorkMode.REMOTE,
+    "hybrid": WorkMode.HYBRID,
+    "onsite": WorkMode.ONSITE,
+    "on-site": WorkMode.ONSITE,
+    "on_site": WorkMode.ONSITE,
+}
 
 
 class LeverAdapter(BaseAdapter):
@@ -89,7 +99,11 @@ class LeverAdapter(BaseAdapter):
             seniority = extract_seniority(title, description)
             emp_type = extract_employment_type(commitment, title, description)
             track = extract_track(self.track, commitment, title, description)
-            remote_policy = extract_remote_policy(location_raw, description)
+            native_workplace_type = clean_text(categories.get("workplaceType")).casefold()
+            native_work_mode = _LEVER_WORKPLACE_TYPE.get(native_workplace_type)
+            work_loc = extract_work_location(
+                location_raw, description, native_work_mode=native_work_mode
+            )
             comp = extract_compensation(description)
             geo = derive_geographic_eligibility(
                 title=title,
@@ -115,7 +129,11 @@ class LeverAdapter(BaseAdapter):
                 create_field_provenance("location_raw", raw_loc, location_raw, DerivationType.RAW_EXTRACTION if location_raw else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.categories.location", record_checksum, "clean_text"),
                 create_field_provenance("seniority", title, seniority.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.text", record_checksum, "extract_seniority"),
                 create_field_provenance("employment_type", commitment, emp_type.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.categories.commitment", record_checksum, "extract_employment_type"),
-                create_field_provenance("remote_policy", raw_loc, remote_policy.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.categories.location", record_checksum, "extract_remote_policy"),
+                create_field_provenance(
+                    "work_mode", categories.get("workplaceType") or raw_loc, work_loc.work_mode.value,
+                    DerivationType.SOURCE_METADATA_DERIVATION if work_loc.work_mode_source == "adapter" else (DerivationType.RULE_DERIVATION if work_loc.work_mode_source == "inference" else DerivationType.UNASSERTED_ABSENT),
+                    f"{item_pointer}.categories.workplaceType", record_checksum, work_loc.work_mode_rule_id or "extract_work_location",
+                ),
                 create_field_provenance("geographic_eligibility", location_raw, geo.status, DerivationType.RULE_DERIVATION, f"{item_pointer}.categories.location", record_checksum, "classify_geography"),
             ]
 
@@ -155,7 +173,13 @@ class LeverAdapter(BaseAdapter):
                 seniority=seniority,
                 employment_type=emp_type,
                 location_raw=location_raw,
-                remote_policy=remote_policy,
+                work_mode=work_loc.work_mode,
+                work_mode_source=work_loc.work_mode_source,
+                location_country=work_loc.location_country,
+                location_city=work_loc.location_city,
+                location_region=work_loc.location_region,
+                remote_scope=work_loc.remote_scope,
+                remote_scope_regions=work_loc.remote_scope_regions,
                 geographic_eligibility=geo,
                 compensation=comp,
                 posted_date=created_at,

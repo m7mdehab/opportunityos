@@ -2109,7 +2109,7 @@ class FilterEngineOpportunitiesTest(ApiTestCase):
         `GET /api/opportunities`), proving the `signal_tags` plumbing is
         genuinely wired end to end and not just shaped correctly in a test
         fixture."""
-        from opportunity.models import Compensation, CompensationInterval, EmploymentType, RemotePolicy
+        from opportunity.models import Compensation, CompensationInterval, EmploymentType, WorkMode
         from matching.evaluate_persist import evaluate_and_store
         from matching.test_qualification import create_test_graph, create_test_opportunity
         from storage.repository import StorageRepository
@@ -2140,7 +2140,7 @@ class FilterEngineOpportunitiesTest(ApiTestCase):
         domain_opp = create_test_opportunity(
             opp_id="opp-real-scorer",
             employment_type=EmploymentType.FULL_TIME,
-            remote_policy=RemotePolicy.ON_SITE,
+            work_mode=WorkMode.ONSITE,
             location_raw="Egypt",
             compensation=Compensation(
                 min_amount=40000, max_amount=40000, currency="EGP", interval=CompensationInterval.MONTHLY

@@ -13,6 +13,7 @@ from opportunity.models import (
     Opportunity,
     ParseResult,
     Track,
+    WorkMode,
     compute_deterministic_id,
 )
 from opportunity.normalization import (
@@ -22,10 +23,10 @@ from opportunity.normalization import (
     derive_geographic_eligibility,
     extract_employment_type,
     extract_list_sections,
-    extract_remote_policy,
     extract_seniority,
     extract_skills_from_text,
     extract_track,
+    extract_work_location,
     parse_iso_date,
 )
 
@@ -82,6 +83,10 @@ class HimalayasAdapter(BaseAdapter):
                 loc_parts.extend(job.get("locationRestrictions") if isinstance(job.get("locationRestrictions"), list) else [str(job.get("locationRestrictions"))])
             raw_loc = ", ".join(loc_parts)
             location_raw = clean_text(raw_loc)
+            raw_restrictions = job.get("locationRestrictions")
+            native_region = clean_text(
+                ", ".join(raw_restrictions) if isinstance(raw_restrictions, list) else (raw_restrictions or "")
+            )
 
             url = str(job.get("applicationLink") or job.get("url") or "")
             raw_pub = job.get("pubDate") or job.get("createdAt") or job.get("publishedAt")
@@ -112,7 +117,15 @@ class HimalayasAdapter(BaseAdapter):
             raw_emp = str(job.get("employmentType") or "")
             emp_type = extract_employment_type(raw_emp, title, description)
             track = extract_track(self.track, raw_emp, title, description)
-            remote_policy = extract_remote_policy(location_raw, description)
+            # Native mapping first (brief: Himalayas `locationRestrictions`). The
+            # Himalayas board is remote-only by construction (every listing is a
+            # remote job), so `work_mode` itself is an adapter-native fact; the
+            # restriction list is the native region hint.
+            work_loc = extract_work_location(
+                location_raw, description,
+                native_work_mode=WorkMode.REMOTE,
+                native_region=native_region,
+            )
             geo = derive_geographic_eligibility(
                 title=title,
                 location_raw=location_raw,
@@ -137,7 +150,11 @@ class HimalayasAdapter(BaseAdapter):
                 create_field_provenance("location_raw", raw_loc, location_raw, DerivationType.RAW_EXTRACTION if location_raw else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.location", record_checksum, "clean_text"),
                 create_field_provenance("seniority", title, seniority.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.title", record_checksum, "extract_seniority"),
                 create_field_provenance("employment_type", raw_emp, emp_type.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.employmentType", record_checksum, "extract_employment_type"),
-                create_field_provenance("remote_policy", raw_loc, remote_policy.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.location", record_checksum, "extract_remote_policy"),
+                create_field_provenance(
+                    "work_mode", raw_restrictions or "himalayas_remote_board", work_loc.work_mode.value,
+                    DerivationType.SOURCE_METADATA_DERIVATION, f"{item_pointer}.locationRestrictions",
+                    record_checksum, "himalayas_remote_board",
+                ),
                 create_field_provenance("geographic_eligibility", location_raw, geo.status, DerivationType.RULE_DERIVATION, f"{item_pointer}.location", record_checksum, "classify_geography"),
             ]
 
@@ -177,7 +194,13 @@ class HimalayasAdapter(BaseAdapter):
                 seniority=seniority,
                 employment_type=emp_type,
                 location_raw=location_raw,
-                remote_policy=remote_policy,
+                work_mode=work_loc.work_mode,
+                work_mode_source=work_loc.work_mode_source,
+                location_country=work_loc.location_country,
+                location_city=work_loc.location_city,
+                location_region=work_loc.location_region,
+                remote_scope=work_loc.remote_scope,
+                remote_scope_regions=work_loc.remote_scope_regions,
                 geographic_eligibility=geo,
                 compensation=comp,
                 posted_date=posted_date,

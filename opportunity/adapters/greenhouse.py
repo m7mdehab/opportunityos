@@ -22,10 +22,10 @@ from opportunity.normalization import (
     extract_compensation,
     extract_employment_type,
     extract_list_sections,
-    extract_remote_policy,
     extract_seniority,
     extract_skills_from_text,
     extract_track,
+    extract_work_location,
     parse_iso_date,
 )
 
@@ -88,7 +88,15 @@ class GreenhouseAdapter(BaseAdapter):
             seniority = extract_seniority(title, description)
             emp_type = extract_employment_type(str(job.get("employment_type") or ""), title, description)
             track = extract_track(self.track, str(job.get("employment_type") or ""), title, description)
-            remote_policy = extract_remote_policy(location_raw, description)
+            # Native mapping first (brief: Greenhouse `location.name` + `offices`):
+            # `offices` is a list of office dicts; use the first office's name as a
+            # native city/region hint when the primary `location.name` didn't
+            # already resolve one via text inference.
+            offices = job.get("offices") if isinstance(job.get("offices"), list) else []
+            native_office_name = clean_text(offices[0].get("name")) if offices and isinstance(offices[0], dict) else ""
+            work_loc = extract_work_location(
+                location_raw, description, native_region=native_office_name
+            )
             comp = extract_compensation(description)
             geo = derive_geographic_eligibility(
                 title=title,
@@ -114,7 +122,11 @@ class GreenhouseAdapter(BaseAdapter):
                 create_field_provenance("location_raw", raw_loc, location_raw, DerivationType.RAW_EXTRACTION if location_raw else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.location", record_checksum, "clean_text"),
                 create_field_provenance("seniority", title, seniority.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.title", record_checksum, "extract_seniority"),
                 create_field_provenance("employment_type", job.get("employment_type"), emp_type.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.employment_type", record_checksum, "extract_employment_type"),
-                create_field_provenance("remote_policy", raw_loc, remote_policy.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.location", record_checksum, "extract_remote_policy"),
+                create_field_provenance(
+                    "work_mode", raw_loc, work_loc.work_mode.value,
+                    DerivationType.RULE_DERIVATION if work_loc.work_mode_source == "inference" else DerivationType.UNASSERTED_ABSENT,
+                    f"{item_pointer}.location", record_checksum, work_loc.work_mode_rule_id or "extract_work_location",
+                ),
                 create_field_provenance("geographic_eligibility", location_raw, geo.status, DerivationType.RULE_DERIVATION, f"{item_pointer}.location", record_checksum, "classify_geography"),
             ]
 
@@ -154,7 +166,13 @@ class GreenhouseAdapter(BaseAdapter):
                 seniority=seniority,
                 employment_type=emp_type,
                 location_raw=location_raw,
-                remote_policy=remote_policy,
+                work_mode=work_loc.work_mode,
+                work_mode_source=work_loc.work_mode_source,
+                location_country=work_loc.location_country,
+                location_city=work_loc.location_city,
+                location_region=work_loc.location_region,
+                remote_scope=work_loc.remote_scope,
+                remote_scope_regions=work_loc.remote_scope_regions,
                 geographic_eligibility=geo,
                 compensation=comp,
                 posted_date=updated_at,

@@ -25,11 +25,13 @@ from .models import (
     OpportunityCluster,
     ProcurementMetadata,
     RemotePolicy,
+    RemoteScope,
     SeniorityLevel,
     SourceHealthReport,
     SourceHealthStatus,
     SourceProvenance,
     Track,
+    WorkMode,
 )
 from .normalization import (
     clean_text,
@@ -39,6 +41,8 @@ from .normalization import (
     extract_remote_policy,
     extract_seniority,
     extract_skills_from_text,
+    extract_work_location,
+    extract_work_mode,
     parse_iso_date,
 )
 from .pipeline import IngestionBatch, OpportunityPipeline
@@ -48,6 +52,8 @@ __all__ = [
     "SeniorityLevel",
     "EmploymentType",
     "RemotePolicy",
+    "WorkMode",
+    "RemoteScope",
     "CompensationInterval",
     "Compensation",
     "ProcurementMetadata",
@@ -64,6 +70,8 @@ __all__ = [
     "extract_seniority",
     "extract_employment_type",
     "extract_remote_policy",
+    "extract_work_mode",
+    "extract_work_location",
     "extract_compensation",
     "parse_iso_date",
     "extract_skills_from_text",

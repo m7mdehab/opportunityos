@@ -10,7 +10,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from opportunity.models import Opportunity, RemotePolicy, Track
+from opportunity.models import Opportunity, RemotePolicy, RemoteScope, Track, WorkMode
+from opportunity.normalization import country_code_to_name
 from truth import predicates
 from truth.graph import TruthGraph
 from truth.models import Modality, Polarity, VerificationStatus
@@ -50,6 +51,140 @@ class QualificationEngine:
 
         return decision, tuple(results)
 
+    def _resolve_geo_from_extracted_fields(
+        self, opp: Opportunity, truth_graph: TruthGraph
+    ) -> HardConstraintResult | None:
+        """BRIEF-FR-006 A1 qualifier change: geographic eligibility resolves whenever
+        the opportunity has a ``location_country`` OR a ``remote_scope`` -- UNCERTAIN
+        (the pre-existing blanket fallback) is reserved for when BOTH are absent.
+        Region-restricted remote roles that exclude Egypt are LABELLED "remote but
+        region-restricted"; this method never returns ``is_hard_failure=True`` for
+        that case -- it is never hidden and never made ineligible. Per-country
+        eligibility reads the founder's verified work-authorization jurisdictions
+        and residence/location assertions from the truth graph. Returns ``None``
+        (defer to the caller's pre-existing fallback) when neither field is present.
+        """
+        if opp.remote_scope == RemoteScope.WORLDWIDE:
+            return HardConstraintResult(
+                constraint_name="geographic_eligibility",
+                passed=True,
+                reason="Worldwide remote role; no geographic restriction",
+                required_field="remote_scope",
+                founder_fact="Opportunity permits worldwide remote engagement",
+                is_hard_failure=False,
+                provenance_pointer=f"{opp.raw_record_pointer}.remote_scope",
+            )
+
+        if opp.remote_scope == RemoteScope.REGION_RESTRICTED:
+            regions = tuple(r.upper() for r in opp.remote_scope_regions)
+            includes_eg = "EG" in regions or "MENA" in regions or "EMEA" in regions
+            if includes_eg:
+                return HardConstraintResult(
+                    constraint_name="geographic_eligibility",
+                    passed=True,
+                    reason=f"Region-restricted remote role includes Egypt ({', '.join(regions) or 'unspecified region'})",
+                    required_field="remote_scope",
+                    founder_fact="Founder region (Egypt) is included in remote_scope_regions",
+                    is_hard_failure=False,
+                    provenance_pointer=f"{opp.raw_record_pointer}.remote_scope",
+                )
+            return HardConstraintResult(
+                constraint_name="geographic_eligibility",
+                passed=None,
+                reason=(
+                    f"remote but region-restricted (excludes Egypt): restricted to "
+                    f"{', '.join(regions) or 'an unspecified region'}"
+                ),
+                required_field="remote_scope",
+                founder_fact="Founder residence (Egypt) is not in the restricted region list",
+                is_hard_failure=False,
+                provenance_pointer=f"{opp.raw_record_pointer}.remote_scope",
+            )
+
+        if opp.location_country:
+            country_name = country_code_to_name(opp.location_country).casefold()
+            founder_auth = [
+                a for a in truth_graph.assertions.values()
+                if a.predicate == predicates.WORK_AUTHORIZATION_JURISDICTION
+                and a.verification_status == VerificationStatus.VERIFIED
+            ]
+            founder_residence = [
+                a for a in truth_graph.assertions.values()
+                if a.predicate in predicates.RESIDENCE_LOCATION_PREDICATES
+                and a.verification_status == VerificationStatus.VERIFIED
+            ]
+            positive_match = any(
+                str(a.value).strip().casefold() == country_name and a.polarity != Polarity.NEGATIVE
+                for a in founder_auth
+            ) or any(str(a.value).strip().casefold() == country_name for a in founder_residence)
+            negative_match = any(
+                str(a.value).strip().casefold() == country_name and a.polarity == Polarity.NEGATIVE
+                for a in founder_auth
+            )
+            if positive_match:
+                return HardConstraintResult(
+                    constraint_name="geographic_eligibility",
+                    passed=True,
+                    reason=f"Founder has verified eligibility in {country_name.title()}",
+                    required_field="location_country",
+                    founder_fact=f"Verified residence/authorization: {country_name.title()}",
+                    is_hard_failure=False,
+                    provenance_pointer=f"{opp.raw_record_pointer}.location_country",
+                )
+            if negative_match:
+                # BRIEF-FR-006 A1 defect fix (council repair): a verified negative
+                # work-authorization fact is only a HARD failure when the role
+                # actually requires physical presence in that country (onsite /
+                # hybrid). The founder's own governing instruction is "I can
+                # exclude something close that isn't right for me; I can't get
+                # back something suitable that was excluded before I saw it" and
+                # the brief forbids new default-hides -- so a remote (or
+                # work-mode-unspecified) role whose *employer* merely happens to
+                # be based in a jurisdiction the founder lacks authorization for
+                # is often still perfectly doable and must not be removed from
+                # view. It is labelled as a gap instead.
+                requires_presence = opp.work_mode in (WorkMode.ONSITE, WorkMode.HYBRID)
+                if requires_presence:
+                    return HardConstraintResult(
+                        constraint_name="geographic_eligibility",
+                        passed=False,
+                        reason=(
+                            f"Opportunity requires {opp.work_mode.value} presence in "
+                            f"{country_name.title()}, which founder has a verified negative "
+                            f"authorization status for"
+                        ),
+                        required_field="location_country",
+                        founder_fact=f"Verified lack of work authorization in {country_name.title()}",
+                        is_hard_failure=True,
+                        provenance_pointer=f"{opp.raw_record_pointer}.location_country",
+                    )
+                return HardConstraintResult(
+                    constraint_name="geographic_eligibility",
+                    passed=None,
+                    reason=(
+                        f"Labelled gap, not a disqualification: opportunity's location is "
+                        f"{country_name.title()}, which founder has a verified negative "
+                        f"work-authorization status for, but work_mode is "
+                        f"'{opp.work_mode.value}' (not onsite/hybrid), so physical presence "
+                        f"there is not established as required"
+                    ),
+                    required_field="location_country",
+                    founder_fact=f"Verified lack of work authorization in {country_name.title()}",
+                    is_hard_failure=False,
+                    provenance_pointer=f"{opp.raw_record_pointer}.location_country",
+                )
+            return HardConstraintResult(
+                constraint_name="geographic_eligibility",
+                passed=None,
+                reason=f"Opportunity located in {country_name.title()}; founder eligibility for that country is unasserted in the truth graph",
+                required_field="location_country",
+                founder_fact="Country eligibility unasserted in truth graph",
+                is_hard_failure=False,
+                provenance_pointer=f"{opp.raw_record_pointer}.location_country",
+            )
+
+        return None
+
     def _evaluate_employment_constraints(self, opp: Opportunity, truth_graph: TruthGraph) -> list[HardConstraintResult]:
         results: list[HardConstraintResult] = []
 
@@ -77,7 +212,8 @@ class QualificationEngine:
                     provenance_pointer=opp.raw_record_pointer,
                 ))
             else:  # unclear / ineligible without hard exclusion
-                results.append(HardConstraintResult(
+                resolved = self._resolve_geo_from_extracted_fields(opp, truth_graph)
+                results.append(resolved or HardConstraintResult(
                     constraint_name="geographic_eligibility",
                     passed=None,
                     reason=f"Geographic eligibility uncertain: {geo.reason}",
@@ -87,7 +223,8 @@ class QualificationEngine:
                     provenance_pointer=opp.raw_record_pointer,
                 ))
         else:
-            results.append(HardConstraintResult(
+            resolved = self._resolve_geo_from_extracted_fields(opp, truth_graph)
+            results.append(resolved or HardConstraintResult(
                 constraint_name="geographic_eligibility",
                 passed=None,
                 reason="Opportunity lacks geographic classification metadata",

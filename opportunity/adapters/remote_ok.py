@@ -13,6 +13,7 @@ from opportunity.models import (
     Opportunity,
     ParseResult,
     Track,
+    WorkMode,
     compute_deterministic_id,
 )
 from opportunity.normalization import (
@@ -22,10 +23,10 @@ from opportunity.normalization import (
     derive_geographic_eligibility,
     extract_employment_type,
     extract_list_sections,
-    extract_remote_policy,
     extract_seniority,
     extract_skills_from_text,
     extract_track,
+    extract_work_location,
     parse_iso_date,
 )
 
@@ -101,7 +102,13 @@ class RemoteOKAdapter(BaseAdapter):
             seniority = extract_seniority(title, description)
             emp_type = extract_employment_type(tags_text, title, description)
             track = extract_track(self.track, tags_text, title, description)
-            remote_policy = extract_remote_policy(location_raw, description)
+            # Native mapping first (brief: RemoteOK `location`). RemoteOK is a
+            # remote-only board, so work_mode itself is adapter-native.
+            work_loc = extract_work_location(
+                location_raw, description,
+                native_work_mode=WorkMode.REMOTE,
+                native_region=raw_loc,
+            )
             geo = derive_geographic_eligibility(
                 title=title,
                 location_raw=location_raw,
@@ -126,7 +133,11 @@ class RemoteOKAdapter(BaseAdapter):
                 create_field_provenance("location_raw", raw_loc, location_raw, DerivationType.RAW_EXTRACTION if location_raw else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.location", record_checksum, "clean_text"),
                 create_field_provenance("seniority", title, seniority.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.position", record_checksum, "extract_seniority"),
                 create_field_provenance("employment_type", tags_text, emp_type.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.tags", record_checksum, "extract_employment_type"),
-                create_field_provenance("remote_policy", raw_loc, remote_policy.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.location", record_checksum, "extract_remote_policy"),
+                create_field_provenance(
+                    "work_mode", raw_loc or "remote_ok_remote_board", work_loc.work_mode.value,
+                    DerivationType.SOURCE_METADATA_DERIVATION, f"{item_pointer}.location",
+                    record_checksum, "remote_ok_remote_board",
+                ),
                 create_field_provenance("geographic_eligibility", location_raw, geo.status, DerivationType.RULE_DERIVATION, f"{item_pointer}.location", record_checksum, "classify_geography"),
             ]
 
@@ -166,7 +177,13 @@ class RemoteOKAdapter(BaseAdapter):
                 seniority=seniority,
                 employment_type=emp_type,
                 location_raw=location_raw,
-                remote_policy=remote_policy,
+                work_mode=work_loc.work_mode,
+                work_mode_source=work_loc.work_mode_source,
+                location_country=work_loc.location_country,
+                location_city=work_loc.location_city,
+                location_region=work_loc.location_region,
+                remote_scope=work_loc.remote_scope,
+                remote_scope_regions=work_loc.remote_scope_regions,
                 geographic_eligibility=geo,
                 compensation=comp,
                 posted_date=posted_date,
