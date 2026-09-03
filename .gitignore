@@ -31,3 +31,6 @@ opportunity/discovery/.progress*.json
 
 # Agent worktrees (harness-managed, never tracked)
 .claude/worktrees/
+
+# Local SQLite artifacts from opt-in test paths (never production)
+*.db
