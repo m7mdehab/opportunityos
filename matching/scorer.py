@@ -460,6 +460,15 @@ class OpportunityScorer:
         # to the founder's threshold; qualification is untouched (compensation_fit never
         # feeds a hard constraint).
         premium_ev_refs: tuple[str, ...] = ()
+        # Stable marker tag (BRIEF-FR-005 D3 council repair, defect 6):
+        # api/filters.py's premium_fulltime_onsite filter used to key off the
+        # word "premium" inside comp_gaps' free-text sentence below -- a
+        # reword of that sentence would silently disable the filter with no
+        # test catching it. "premium_shortfall" is a code-owned tag, set only
+        # on the one branch that actually finds a shortfall, and is not
+        # prose: nothing about it is expected to change if the sentence's
+        # wording changes.
+        comp_signal_tags: tuple[str, ...] = ()
         if opp.employment_type == EmploymentType.FULL_TIME and opp.remote_policy == RemotePolicy.ON_SITE:
             premium_assertions = [
                 a for a in truth_graph.assertions.values()
@@ -483,6 +492,7 @@ class OpportunityScorer:
                             f"founder's full-time on-site premium threshold ({threshold_amount:.0f} {threshold_currency}/month)",
                         )
                         comp_score = min(comp_score, 0.35)
+                        comp_signal_tags = ("premium_shortfall",)
                 # else: compensation unstated, non-monthly/yearly, or a different currency
                 # than the threshold -> UNKNOWN for this rule, never a penalty.
 
@@ -498,6 +508,7 @@ class OpportunityScorer:
             unknowns=comp_unknowns,
             evidence_refs=premium_ev_refs,
             opportunity_field_refs=("compensation",),
+            signal_tags=comp_signal_tags,
         ))
 
         # 7. Career Trajectory

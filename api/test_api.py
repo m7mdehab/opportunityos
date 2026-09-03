@@ -1655,6 +1655,87 @@ class FilterSettingsRouteTest(ApiTestCase):
         self.assertFalse(entry["enabled"])
         self.assertEqual(entry["affected_count"], 1)
 
+    # -- council repair round: defect 1 (malformed params must 422, never
+    # persist, and never brick the feed) -------------------------------
+
+    def test_put_malformed_min_score_is_422_and_never_persisted(self):
+        resp = self.client.put(
+            "/api/filters/min_fit_score", json={"enabled": True, "params": {"min_score": "abc"}}
+        )
+        self.assertEqual(resp.status_code, 422, resp.text)
+
+        # Nothing was written: GET /api/filters still reports the seeded
+        # migration default, not a half-applied enabled=True.
+        body = self.client.get("/api/filters").json()
+        entry = next(f for f in body["filters"] if f["filter_id"] == "min_fit_score")
+        self.assertFalse(entry["enabled"])
+        self.assertEqual(entry["params"], {"min_score": 0})
+
+        # And the feed itself is still fully functional -- the defect this
+        # regression-tests was that a bad PUT bricked every subsequent GET
+        # until another valid PUT was issued by hand.
+        feed_resp = self.client.get("/api/opportunities")
+        self.assertEqual(feed_resp.status_code, 200, feed_resp.text)
+        filters_resp = self.client.get("/api/filters")
+        self.assertEqual(filters_resp.status_code, 200, filters_resp.text)
+
+    def test_put_min_score_out_of_range_is_422(self):
+        resp = self.client.put("/api/filters/min_fit_score", json={"params": {"min_score": 150}})
+        self.assertEqual(resp.status_code, 422, resp.text)
+
+    def test_put_unknown_param_key_is_422(self):
+        resp = self.client.put("/api/filters/stale_postings", json={"params": {"unexpected": 1}})
+        self.assertEqual(resp.status_code, 422, resp.text)
+
+    def test_put_compensation_floor_non_numeric_shape_is_422(self):
+        # Previously accepted with 200 and would only 500 later, once any
+        # opportunity carried a compensation row.
+        resp = self.client.put("/api/filters/compensation_floor", json={"params": {"floor": {"x": 1}}})
+        self.assertEqual(resp.status_code, 422, resp.text)
+
+    def test_put_compensation_floor_negative_is_422(self):
+        resp = self.client.put("/api/filters/compensation_floor", json={"params": {"floor": -1}})
+        self.assertEqual(resp.status_code, 422, resp.text)
+
+    def test_put_compensation_floor_valid_params_persist(self):
+        resp = self.client.put(
+            "/api/filters/compensation_floor",
+            json={"enabled": True, "params": {"floor": 50000, "currency": "EGP"}},
+        )
+        self.assertEqual(resp.status_code, 200, resp.text)
+        self.assertEqual(resp.json()["params"], {"floor": 50000.0, "currency": "EGP"})
+
+    # -- council repair round: defects 2/3 (unavailable_reason) ----------
+
+    def test_track_preference_and_stale_postings_report_unavailable_by_default(self):
+        body = self.client.get("/api/filters").json()
+        by_id = {f["filter_id"]: f for f in body["filters"]}
+
+        # No truth pack is loaded at all in this test's app (make_app()'s
+        # default), so every pack-dependent filter is unavailable.
+        self.assertIsNotNone(by_id["track_preference"]["unavailable_reason"])
+        self.assertIsNotNone(by_id["target_roles"]["unavailable_reason"])
+        self.assertIsNotNone(by_id["premium_fulltime_onsite"]["unavailable_reason"])
+
+        # stale_postings is unconditionally unavailable (defect 2): nothing
+        # upstream ever computes is_stale=True, pack or no pack.
+        self.assertIsNotNone(by_id["stale_postings"]["unavailable_reason"])
+
+        # A filter with a real, pack-independent data source stays available.
+        self.assertIsNone(by_id["geo_eligibility"]["unavailable_reason"])
+        self.assertIsNone(by_id["red_lines"]["unavailable_reason"])
+
+    def test_track_preference_becomes_available_once_pack_declares_it(self):
+        _install_truth_graph(self.app, _graph_with_founder_preferences(preferred_track="employment"))
+        body = self.client.get("/api/filters").json()
+        entry = next(f for f in body["filters"] if f["filter_id"] == "track_preference")
+        self.assertIsNone(entry["unavailable_reason"])
+        # target_roles and premium_fulltime_onsite still have no assertion of
+        # their own in this pack, so they remain unavailable independently.
+        by_id = {f["filter_id"]: f for f in body["filters"]}
+        self.assertIsNotNone(by_id["target_roles"]["unavailable_reason"])
+        self.assertIsNotNone(by_id["premium_fulltime_onsite"]["unavailable_reason"])
+
 
 class FilterEngineOpportunitiesTest(ApiTestCase):
     """Contract section 7: each filter's three modes plus disabled, the A-13
@@ -1848,7 +1929,38 @@ class FilterEngineOpportunitiesTest(ApiTestCase):
         self.seed_evaluation("opp-control", decision="qualified", fit_score=50.0)
         self._assert_hide_rank_label_disabled("target_roles", matched_id="opp-match", control_id="opp-control")
 
+    def test_target_roles_token_match_ignores_word_order_and_seniority(self):
+        """Council repair, defect 4: the old plain-phrase substring check
+        (`target.casefold() in title_cf`) required "backend engineer" to
+        appear as a contiguous, exactly-ordered phrase. A title that
+        genuinely is a backend engineering role but states the words in a
+        different order, or adds a seniority qualifier the target role
+        string does not carry, was wrongly flagged as misaligned and demoted
+        below a worse match on nothing but string luck. This proves the
+        token-set matcher does not repeat that: neither a reordered title nor
+        one with an extra seniority word is flagged, so ordinary
+        fit_score-descending order holds regardless of who states the words
+        in what order."""
+        _install_truth_graph(self.app, _graph_with_founder_preferences(target_role="Backend Engineer"))
+        self.seed_opportunity("opp-reordered", title="Senior Software Engineer, Backend")
+        self.seed_evaluation("opp-reordered", decision="qualified", fit_score=95.0)
+        self.seed_opportunity("opp-intern", title="Backend Engineer Intern")
+        self.seed_evaluation("opp-intern", decision="qualified", fit_score=30.0)
+
+        self._set_filter("target_roles", enabled=True, mode="rank_only")
+        items, body = self._items_by_id()
+
+        self.assertEqual(items["opp-reordered"]["flagged_by"], [])
+        self.assertEqual(items["opp-intern"]["flagged_by"], [])
+        order = [item["id"] for item in body["items"]]
+        self.assertLess(order.index("opp-reordered"), order.index("opp-intern"))
+
     def test_premium_fulltime_onsite_modes(self):
+        # Council repair, defect 6: matched by the stable `signal_tags` entry
+        # matching/scorer.py's premium rule now emits, not by a bare
+        # `"premium" in gap.casefold()` search over the prose sentence below
+        # (which is still present -- and still exercised for wording realism
+        # -- but is no longer what the matcher itself reads).
         premium_gap_dimension = [
             {
                 "dimension_name": "compensation_fit",
@@ -1864,6 +1976,7 @@ class FilterEngineOpportunitiesTest(ApiTestCase):
                 "unknowns": [],
                 "evidence_refs": ["a-premium-threshold"],
                 "opportunity_field_refs": ["compensation"],
+                "signal_tags": ["premium_shortfall"],
             }
         ]
         no_gap_dimension = [
@@ -1878,6 +1991,7 @@ class FilterEngineOpportunitiesTest(ApiTestCase):
                 "unknowns": [],
                 "evidence_refs": [],
                 "opportunity_field_refs": ["compensation"],
+                "signal_tags": [],
             }
         ]
         self.seed_opportunity("opp-match")
@@ -1891,6 +2005,63 @@ class FilterEngineOpportunitiesTest(ApiTestCase):
         self._assert_hide_rank_label_disabled(
             "premium_fulltime_onsite", matched_id="opp-match", control_id="opp-control"
         )
+
+    def test_premium_fulltime_onsite_matcher_reads_a_real_scorer_result(self):
+        """Council repair, defect 6's own instruction: run a real
+        `matching.scorer.OpportunityScorer` evaluation -- not a synthetic
+        dimension_scores dict -- through the exact JSON round trip
+        production uses (`matching.evaluate_persist.evaluate_and_store` ->
+        `MatchEvaluationRecord.dimension_scores_json` -> this API's own
+        `GET /api/opportunities`), proving the `signal_tags` plumbing is
+        genuinely wired end to end and not just shaped correctly in a test
+        fixture."""
+        from opportunity.models import Compensation, CompensationInterval, EmploymentType, RemotePolicy
+        from matching.evaluate_persist import evaluate_and_store
+        from matching.test_qualification import create_test_graph, create_test_opportunity
+        from storage.repository import StorageRepository
+        from truth import predicates
+        from truth.models import AtomicAssertion, EvidenceRecord, VerificationStatus
+
+        graph = create_test_graph()
+        graph.add_evidence(
+            EvidenceRecord(
+                id="ev-premium-real",
+                content="Minimum acceptable full-time on-site compensation: 85000 EGP per month.",
+                source="manual",
+                locator="assertions.premium_threshold",
+            )
+        )
+        graph.add_assertion(
+            AtomicAssertion(
+                id="a-premium-real",
+                subject_id="founder",
+                predicate=predicates.PREFERENCE_FULLTIME_ONSITE_PREMIUM_MONTHLY,
+                value="85000 EGP",
+                evidence_ids=("ev-premium-real",),
+                verification_status=VerificationStatus.VERIFIED,
+            )
+        )
+
+        self.seed_opportunity("opp-real-scorer", track="employment")
+        domain_opp = create_test_opportunity(
+            opp_id="opp-real-scorer",
+            employment_type=EmploymentType.FULL_TIME,
+            remote_policy=RemotePolicy.ON_SITE,
+            location_raw="Egypt",
+            compensation=Compensation(
+                min_amount=40000, max_amount=40000, currency="EGP", interval=CompensationInterval.MONTHLY
+            ),
+        )
+        evaluate_and_store(
+            domain_opp,
+            graph,
+            StorageRepository(self.session),
+            truth_pack_hash="hash-real-scorer",
+        )
+
+        self._set_filter("premium_fulltime_onsite", enabled=True, mode="rank_only")
+        items, _ = self._items_by_id()
+        self.assertIn("premium_fulltime_onsite", items["opp-real-scorer"]["flagged_by"])
 
     def test_stale_postings_modes(self):
         self.seed_opportunity("opp-match", is_stale=True)
@@ -1951,6 +2122,39 @@ class FilterEngineOpportunitiesTest(ApiTestCase):
         items, _ = self._items_by_id()
         self.assertEqual(items["opp-match"]["hidden_by"], [])
         self.assertIn("min_fit_score", items["opp-match"]["flagged_by"])
+
+    def test_defensive_matcher_survives_a_bad_persisted_params_value(self):
+        """Council repair, defect 1, layer (b): `FilterSettingsRouteTest`
+        already proves `PUT /api/filters/{id}` itself rejects a malformed
+        params payload before anything is written (layer (a)). This proves
+        the second, independent line of defence -- a row a database already
+        holds a bad value in, written by bypassing the API entirely (an
+        older version of this code, a hand edit, ...) -- degrades to "does
+        not match" instead of 500ing the whole feed."""
+        row = self.session.query(FounderFilterSettingRecord).filter_by(filter_id="min_fit_score").first()
+        row.enabled = True
+        row.mode = "hide"
+        row.params_json = json.dumps({"min_score": "not-a-number"})
+        self.session.commit()
+
+        comp_row = self.session.query(FounderFilterSettingRecord).filter_by(filter_id="compensation_floor").first()
+        comp_row.enabled = True
+        comp_row.mode = "rank_only"
+        comp_row.params_json = json.dumps({"floor": {"nested": "garbage"}, "currency": "EGP"})
+        self.session.commit()
+
+        self.seed_opportunity("opp-1")
+        self.seed_evaluation("opp-1", decision="qualified", fit_score=10.0)
+        self.seed_compensation("opp-1", min_amount=1000, max_amount=1000, currency="EGP")
+
+        resp = self.client.get("/api/opportunities", params={"include_hidden": True})
+        self.assertEqual(resp.status_code, 200, resp.text)
+        item = resp.json()["items"][0]
+        self.assertEqual(item["hidden_by"], [])
+        self.assertEqual(item["flagged_by"], [])
+
+        filters_resp = self.client.get("/api/filters")
+        self.assertEqual(filters_resp.status_code, 200, filters_resp.text)
 
     # -- contract section 7's named, cross-cutting assertions -----------
 
