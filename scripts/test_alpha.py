@@ -16,6 +16,7 @@ import inspect
 import io
 import json
 import os
+import re
 import secrets
 import socket
 import subprocess
@@ -1469,6 +1470,30 @@ class TestPersistBatchProducesRealSourceIds(unittest.TestCase):
             self.assertNotEqual(row.source_id, "src-1")
             self.assertNotIn("opp-uq-", row.id)
             self.assertTrue(row.id.startswith("greenhouse:cloudflare:"))
+
+
+_PYTHON_ARGV0_RE = re.compile(r'\[\s*(["\'])python\1\s*,')
+
+
+class TestNoPythonLiteralArgv0(unittest.TestCase):
+    """scripts/dev_env.py work order F2, item 5 (the `sys.executable` sweep):
+    every subprocess argv[0] that spawns a Python child process must be
+    `sys.executable`, never the literal "python" -- bare `python` on this
+    machine resolves to an older interpreter missing this project's
+    dependencies (see scripts/dev_env.py's own docstring). A static source
+    scan, not a mocked-subprocess assertion, so it also catches any future
+    literal added anywhere in this file without needing to enumerate every
+    call site by name.
+    """
+
+    def test_alpha_py_never_spawns_a_python_child_via_a_literal_argv0(self):
+        source = (REPO_ROOT / "scripts" / "alpha.py").read_text(encoding="utf-8")
+        match = _PYTHON_ARGV0_RE.search(source)
+        self.assertIsNone(
+            match,
+            f"found a literal \"python\"/'python' as a subprocess argv[0] in scripts/alpha.py "
+            f"near {match.group(0) if match else ''!r} -- use sys.executable instead.",
+        )
 
 
 if __name__ == "__main__":
