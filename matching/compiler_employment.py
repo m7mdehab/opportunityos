@@ -67,7 +67,12 @@ class EmploymentArtifactCompiler:
             # each as its own atomic claim, in the Technical Skills section
             # immediately below.
             top_title = str(title_assertions[0].value)
-            summary_text = f"Professional background: {top_title}."
+            # "Background:" not "Professional background:" (BRIEF-FR-005 D1
+            # remediation): the section heading already says "Professional
+            # Summary", and "professional" was removed from the class-(c)
+            # connective stop-list because it can be part of a real job
+            # title ("Professional Services Consultant").
+            summary_text = f"Background: {top_title}."
             summary_aids = (title_assertions[0].id,)
             summary_eids = title_assertions[0].evidence_ids
 
@@ -188,7 +193,18 @@ class EmploymentArtifactCompiler:
         metric_evidence_ids: list[str] = []
         for m in metric_assertions:
             unit_str = f" {m.unit}" if m.unit and m.unit not in ("count", "number") else ""
-            m_text = f"{m.context}: {m.numeric_value}{unit_str}"
+            # Strip a trailing full stop from the context before appending
+            # ": {value}{unit}": a period immediately before that colon is a
+            # sentence-boundary character to `ClaimValidator`'s clause-context
+            # extraction (`truth/validator.py::_get_clause_context`), which
+            # would then check the number against an empty clause instead of
+            # the sentence that actually contains it and 409 the CV. Ingest
+            # passes a founder-authored YAML `context` string through
+            # verbatim, and a real founder is likely to write a full
+            # sentence there -- this is not a hypothetical fixture-only
+            # concern (council review, BRIEF-FR-005 D1 remediation).
+            metric_context = m.context.rstrip(".")
+            m_text = f"{metric_context}: {m.numeric_value}{unit_str}"
             metric_items.append(m_text)
             metric_assertion_ids.append(m.id)
             metric_evidence_ids.extend(m.evidence_ids)
@@ -248,19 +264,26 @@ class EmploymentArtifactCompiler:
     ) -> TailoredArtifact:
         """Compile an opportunity-specific cover letter narrative locked to truth graph.
 
-        ADR-0014: every founder-specific fact is an atomic claim citing exactly
-        the evidence that supports it. Connective prose -- the greeting, the
-        expression of interest, naming the target role/employer with no
-        founder fact attached, generic closing sentences -- carries no
-        founder-specific fact and is emitted as a NARRATIVE segment
-        (`policy_source="NARRATIVE"`), which `ClaimValidator.validate_narrative`
-        checks only for prohibited concepts and red lines, never for evidence
-        coverage. Where a sentence combines a founder fact (the title) with
-        the target role/employer name, it stays one claim that cites the
-        title's own evidence; the role/employer words are then admissible
-        under ADR-0014's class (b) -- `opportunity_terms`, populated by the
-        caller (`api/routes_api.py::_compile_and_export`) from the real
-        `Opportunity` field values, never guessed here or in the validator.
+        ADR-0014 (revised after council review): every founder-specific fact
+        is an atomic claim citing exactly the evidence that supports it.
+        Connective prose -- the greeting, the expression of interest, and
+        naming the target role/employer -- carries no founder-specific fact
+        and is emitted as a NARRATIVE segment (`policy_source="NARRATIVE"`),
+        which `ClaimValidator.validate_narrative` checks only for prohibited
+        concepts and red lines, never for evidence coverage.
+
+        An earlier revision combined the founder's title with the target
+        role/employer name in one claim (admitting the opportunity's own
+        words under an "opportunity-provenanced" term class). Independent
+        council review found that class applied unconditionally to every
+        claim in the document, not just the one that embedded an opportunity
+        field, and was driven by scraped, third-party posting text -- see
+        ADR-0014's "Residual exposure and review history". That class was
+        removed entirely. The role/employer name now appears ONLY inside a
+        NARRATIVE segment that carries no founder-specific value at all, so
+        it needs no special admissibility rule; the founder's title, when
+        known, is a separate atomic claim that never mentions the
+        opportunity's own words.
         """
         sections: list[ArtifactSection] = []
         claims: list[GeneratedClaim] = []
@@ -274,9 +297,11 @@ class EmploymentArtifactCompiler:
             if a.predicate == "skill.name" and a.verification_status == VerificationStatus.VERIFIED
         ]
 
-        # --- Introduction: a NARRATIVE greeting plus one atomic claim -------
+        # --- Introduction: two NARRATIVE segments (zero founder-specific
+        # values) plus, if a title is known, one separate atomic claim. -----
         greeting_text = "I am writing to express my interest in the following opportunity."
-        intro_parts = [greeting_text]
+        role_text = f"Applying for the {opp.title} role at {opp.organization}."
+        intro_parts = [greeting_text, role_text]
         claims.append(GeneratedClaim(
             claim_id="claim-cover-greeting",
             text=greeting_text,
@@ -288,41 +313,35 @@ class EmploymentArtifactCompiler:
             is_forward_commitment=False,
             policy_source="NARRATIVE",
         ))
+        claims.append(GeneratedClaim(
+            claim_id="claim-cover-role-narrative",
+            text=role_text,
+            section_id="introduction",
+            assertion_ids=(),
+            evidence_ids=(),
+            predicate="",
+            authorized_value="",
+            is_forward_commitment=False,
+            policy_source="NARRATIVE",
+        ))
 
+        intro_aids: tuple[str, ...] = ()
+        intro_eids: tuple[str, ...] = ()
         if title_assertions:
             top_title = str(title_assertions[0].value)
-            role_text = (
-                f"Professional background: {top_title}, applying for the "
-                f"{opp.title} role at {opp.organization}."
-            )
-            intro_parts.append(role_text)
+            background_text = f"Background: {top_title}."
+            intro_parts.append(background_text)
             intro_aids = (title_assertions[0].id,)
             intro_eids = title_assertions[0].evidence_ids
             claims.append(GeneratedClaim(
-                claim_id="claim-cover-role",
-                text=role_text,
+                claim_id="claim-cover-background",
+                text=background_text,
                 section_id="introduction",
                 assertion_ids=intro_aids,
                 evidence_ids=intro_eids,
                 predicate="employment.title",
                 authorized_value=top_title,
                 is_forward_commitment=False,
-            ))
-        else:
-            role_text = f"Applying for the {opp.title} role at {opp.organization}."
-            intro_parts.append(role_text)
-            intro_aids = ()
-            intro_eids = ()
-            claims.append(GeneratedClaim(
-                claim_id="claim-cover-role-narrative",
-                text=role_text,
-                section_id="introduction",
-                assertion_ids=(),
-                evidence_ids=(),
-                predicate="",
-                authorized_value="",
-                is_forward_commitment=False,
-                policy_source="NARRATIVE",
             ))
 
         sections.append(ArtifactSection(
