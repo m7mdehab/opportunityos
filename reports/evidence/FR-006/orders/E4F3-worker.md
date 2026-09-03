@@ -94,3 +94,31 @@ Any migration · `storage/models.py` · `opportunity/` other than `reverificatio
 | E4F3.7 | `py -3.12 -m unittest discover -s api -p "test_*.py" -v` and `py -3.12 scripts/check_repository.py` | `OK` and exit 0 |
 
 Paste the `Ran N tests` and `OK`/`FAILED` lines verbatim.
+
+## Addition from the Master (after E23 integrated)
+
+**Wire the Hacker News live-fetch seam.** Work order E23 shipped
+`opportunity/adapters/hacker_news.py` with `HackerNewsWhoIsHiringAdapter.parse_payload` (tested
+offline against a committed fixture) **and** a live multi-step Firebase fetch
+`fetch_who_is_hiring_payload()` that is **not wired into `worker/handlers.py`** — that file was
+outside E23's allowed list, so it left a documented seam for integration. `worker/handlers.py` is
+yours.
+
+Wire it, subject to the same gates as every other source: the `registry.is_read_allowed`
+check stays exactly where it is; the shared rate limiter applies; a 403/429 is recorded and the
+source is not requested again this session. Hacker News is the **only** new read-allowed source
+in the brief that produces rows, so if it is not wired, the live poll claim A-9 shows no breadth
+delta at all.
+
+Cadence for it, per the brief: **hourly**. The monthly thread changes within a day.
+
+Add one acceptance row and paste its output:
+
+**E4F3.8** — a poll of `hacker_news_who_is_hiring` through the normal worker path, against a
+mocked or recorded payload (no live network in a test): rows are ingested, the registry gate is
+exercised, and the rate limiter is consulted. Print the row count.
+
+Also note: `opportunity/manual_sources.py` now exists and holds the deep-link catalogue for every
+`manual_only` source. You do not own it and must not poll anything in it — a `manual_only` source
+is never fetched. Claim A-16 has a test that asserts exactly that (`opportunity/test_source_policy.py`);
+keep it green.
