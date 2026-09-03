@@ -185,6 +185,19 @@ class ArtifactSection:
     evidence_ids: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class OmittedItem:
+    """A bullet, skill, summary variant, or entry the compiler considered
+    but did not select for this opportunity, with the reason (BRIEF-FR-006
+    D1 requirement 4: "what was left out and why"). Part of the artifact's
+    API-visible data (`TailoredArtifact.omitted_items`), not only a UI
+    nicety -- work order D2/C3 renders it."""
+    section_id: str
+    text: str
+    reason: str
+    claim_id: str = ""
+
+
 def compute_artifact_hash(
     opportunity_id: str,
     opportunity_content_hash: str,
@@ -237,6 +250,7 @@ class TailoredArtifact:
     generated_claims: tuple[GeneratedClaim, ...]
     commitment_checklist: tuple[ForwardCommitment, ...]
     compiled_at: str
+    omitted_items: tuple[OmittedItem, ...] = ()
     artifact_hash: str = ""
 
     def __post_init__(self) -> None:
