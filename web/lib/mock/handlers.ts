@@ -199,6 +199,96 @@ export const handlers = [
     return HttpResponse.json(result)
   }),
 
+  // ---- facets (C1) ----
+  http.get("/api/facets", ({ request }) => {
+    if (!requireAuth(request)) return unauthorized()
+    return HttpResponse.json(store().listFacets())
+  }),
+
+  http.put("/api/facets/:facet_id", async ({ request, params }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const facetId = String(params.facet_id)
+    const body = (await request.json().catch(() => ({}))) as {
+      include?: string[]
+      exclude?: string[]
+    }
+    const result = store().updateFacet(facetId, body)
+    if (result === "not_found") {
+      return HttpResponse.json({ detail: "unknown facet_id" }, { status: 404 })
+    }
+    if (result === "unavailable") {
+      return HttpResponse.json(
+        { detail: "this facet has no data source yet" },
+        { status: 422 }
+      )
+    }
+    return HttpResponse.json(result)
+  }),
+
+  // ---- saved views (C1) ----
+  http.get("/api/saved-views", ({ request }) => {
+    if (!requireAuth(request)) return unauthorized()
+    return HttpResponse.json(store().listSavedViews())
+  }),
+
+  http.post("/api/saved-views", async ({ request }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const body = (await request.json().catch(() => ({}))) as {
+      name?: string
+      facets?: Record<string, { include: string[]; exclude: string[] }>
+      search_query?: string | null
+      is_default?: boolean
+    }
+    return HttpResponse.json(
+      store().createSavedView({
+        name: body.name ?? "",
+        facets: body.facets ?? {},
+        search_query: body.search_query ?? null,
+        is_default: body.is_default ?? false,
+      })
+    )
+  }),
+
+  http.put("/api/saved-views/:view_id", async ({ request, params }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const body = (await request.json().catch(() => ({}))) as {
+      name?: string
+      facets?: Record<string, { include: string[]; exclude: string[] }>
+      search_query?: string | null
+      is_default?: boolean
+    }
+    const result = store().updateSavedView(String(params.view_id), body)
+    if (!result) {
+      return HttpResponse.json({ detail: "unknown saved view" }, { status: 404 })
+    }
+    return HttpResponse.json(result)
+  }),
+
+  http.delete("/api/saved-views/:view_id", ({ request, params }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const ok = store().deleteSavedView(String(params.view_id))
+    if (!ok) {
+      return HttpResponse.json({ detail: "unknown saved view" }, { status: 404 })
+    }
+    return HttpResponse.json({ id: String(params.view_id), status: "deleted" })
+  }),
+
+  // ---- hidden reasons (C4) ----
+  http.get("/api/hidden-reasons", ({ request }) => {
+    if (!requireAuth(request)) return unauthorized()
+    return HttpResponse.json(store().hiddenReasonsAudit())
+  }),
+
+  http.post("/api/hidden-reasons/unhide", async ({ request }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const body = (await request.json().catch(() => ({}))) as { reason?: string }
+    const ok = store().unhideByReason(body.reason ?? "")
+    if (!ok) {
+      return HttpResponse.json({ detail: "unrecognised reason" }, { status: 404 })
+    }
+    return HttpResponse.json({ reason: body.reason, status: "unhidden" })
+  }),
+
   // ---- dashboard ----
   http.get("/api/dashboard/daily", ({ request }) => {
     if (!requireAuth(request)) return unauthorized()
