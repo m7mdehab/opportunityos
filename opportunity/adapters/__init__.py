@@ -6,6 +6,7 @@ from typing import Iterable
 from opportunity.adapters.base import BaseAdapter
 from opportunity.adapters.eu_ted import EUTEDAdapter
 from opportunity.adapters.greenhouse import GreenhouseAdapter
+from opportunity.adapters.hacker_news import HackerNewsWhoIsHiringAdapter
 from opportunity.adapters.himalayas import HimalayasAdapter
 from opportunity.adapters.lever import LeverAdapter
 from opportunity.adapters.remote_ok import RemoteOKAdapter
@@ -44,6 +45,7 @@ def get_all_standard_adapters() -> list[BaseAdapter]:
         UNGMAdapter(),
         WorldBankAdapter(),
         EUTEDAdapter(),
+        HackerNewsWhoIsHiringAdapter(),
     ]
     for company in STANDARD_GREENHOUSE_COMPANIES:
         adapters.append(GreenhouseAdapter(company))
@@ -56,6 +58,7 @@ __all__ = [
     "BaseAdapter",
     "GreenhouseAdapter",
     "LeverAdapter",
+    "HackerNewsWhoIsHiringAdapter",
     "HimalayasAdapter",
     "RemotiveAdapter",
     "RemoteOKAdapter",
