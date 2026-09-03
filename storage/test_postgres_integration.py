@@ -27,6 +27,7 @@ from storage.models import (
     WorkerJobRecord,
     FounderFeedbackRecord,
     MatchEvaluationRecord,
+    OpportunityFamilyRecord,
 )
 from storage.engine import (
     get_engine,
@@ -1784,6 +1785,75 @@ class A1MFounderControlRoundTripTest(unittest.TestCase):
             art = session.query(ArtifactCacheRecord).filter_by(cache_key="cache-1").first()
             self.assertIsNotNone(art)
             self.assertEqual(bytes(art.payload), b"%PDF-fake")
+        finally:
+            session.close()
+
+    def test_case_t_family_upsert_and_split_out_round_trip(self):
+        """A2.6 (BRIEF-FR-006 clustering): StorageRepository's
+        opportunity_families methods -- upsert_family is idempotent and
+        preserves a founder's split_out choice across a re-cluster, and
+        set_family_split_out round-trips: collapse -> split -> collapse."""
+        session = self.SessionFactory()
+        repo = StorageRepository(session)
+        try:
+            fam = repo.upsert_family(
+                family_key="cf:senior-customer-engineer",
+                employer="Cloudflare",
+                normalized_title="customer_solutions_engineering:senior",
+                member_count=14,
+                best_member_id="cf-sce-05",
+            )
+            self.assertEqual(fam.member_count, 14)
+            self.assertFalse(fam.split_out)
+            row_count_after_insert = session.query(OpportunityFamilyRecord).count()
+            self.assertEqual(row_count_after_insert, 1, "collapsed: one row per family")
+
+            # Step 1 (collapse, baseline): fetched family is collapsed.
+            fetched = repo.get_family("cf:senior-customer-engineer")
+            self.assertIsNotNone(fetched)
+            self.assertFalse(fetched.split_out)
+
+            # Step 2 (split): set_family_split_out(True) persists the toggle.
+            split = repo.set_family_split_out("cf:senior-customer-engineer", True)
+            self.assertIsNotNone(split)
+            self.assertTrue(split.split_out)
+            after_split = repo.get_family("cf:senior-customer-engineer")
+            self.assertTrue(after_split.split_out)
+            row_count_after_split = session.query(OpportunityFamilyRecord).count()
+            self.assertEqual(row_count_after_split, 1, "split_out toggles a flag, never adds/removes family rows")
+
+            # A re-cluster (upsert with fresh member_count/best_member_id) must
+            # not silently undo the founder's split_out choice.
+            reupserted = repo.upsert_family(
+                family_key="cf:senior-customer-engineer",
+                employer="Cloudflare",
+                normalized_title="customer_solutions_engineering:senior",
+                member_count=15,
+                best_member_id="cf-sce-06",
+            )
+            self.assertEqual(reupserted.member_count, 15)
+            self.assertTrue(reupserted.split_out, "re-clustering must preserve an existing split_out choice")
+
+            # Step 3 (collapse again): set_family_split_out(False) reverses it.
+            collapsed_again = repo.set_family_split_out("cf:senior-customer-engineer", False)
+            self.assertFalse(collapsed_again.split_out)
+            after_collapse = repo.get_family("cf:senior-customer-engineer")
+            self.assertFalse(after_collapse.split_out)
+            row_count_after_collapse = session.query(OpportunityFamilyRecord).count()
+            self.assertEqual(row_count_after_collapse, 1)
+
+            print(
+                "A2.6 split_out round-trip row counts: "
+                f"after_insert={row_count_after_insert} after_split={row_count_after_split} "
+                f"after_collapse={row_count_after_collapse}"
+            )
+
+            # set_family_split_out on a non-existent family: no write, returns None.
+            missing = repo.set_family_split_out("no-such-family", True)
+            self.assertIsNone(missing)
+
+            families = repo.list_families()
+            self.assertEqual(len(families), 1)
         finally:
             session.close()
 

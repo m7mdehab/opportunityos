@@ -37,6 +37,7 @@ from typing import Any, Callable, Mapping, MutableMapping, Optional
 from core.logging import get_logger, redact_data
 from matching.evaluate_persist import evaluate_and_store
 from matching.scorer import OpportunityScorer
+from opportunity.clustering import compute_family_key
 from opportunity.models import (
     Compensation,
     CompensationInterval,
@@ -742,6 +743,77 @@ def make_reextract_all_handler(
     return handler
 
 
+def backfill_family_keys(session: Any, *, batch_size: int = 200) -> dict:
+    """A2 (BRIEF-FR-006 clustering) backfill: compute and persist
+    ``opportunities.family_key`` for every existing row.
+
+    Unlike ``reextract_all`` above, this needs no raw-payload reconstruction
+    and no injectable extractor: ``family_key`` (see
+    ``opportunity.clustering.compute_family_key``) is a pure function of only
+    ``organization`` and ``title``, both stored with full fidelity on
+    ``OpportunityRecord`` itself.
+
+    Batched (keyset cursor, ``id`` ascending, ``batch_size`` rows per
+    committed iteration) and idempotent: a row is only written -- and only
+    counted in ``changed`` -- when the freshly computed key differs from
+    what is already stored, so re-running this against unchanged data
+    reports ``changed == 0`` on the second and every subsequent run.
+    """
+    scanned = 0
+    changed = 0
+    last_id: Optional[str] = None
+    while True:
+        query = session.query(OpportunityRecord).order_by(OpportunityRecord.id.asc())
+        if last_id is not None:
+            query = query.filter(OpportunityRecord.id > last_id)
+        batch = query.limit(batch_size).all()
+        if not batch:
+            break
+        for record in batch:
+            last_id = record.id
+            scanned += 1
+            computed_key = compute_family_key(record.organization, record.title)
+            if record.family_key != computed_key:
+                record.family_key = computed_key
+                changed += 1
+        session.commit()
+
+    logger.info(
+        "worker.backfill_family_keys_completed",
+        extra={"component": "worker.handlers", "extra_data": {"scanned": scanned, "changed": changed}},
+    )
+    return {"status": "ok", "scanned": scanned, "changed": changed}
+
+
+def make_backfill_family_keys_handler(
+    *,
+    session_factory: Optional[SessionFactory] = None,
+    batch_size: int = 200,
+) -> Callable[[dict], None]:
+    """Build the ``backfill_family_keys`` job handler bound to the given
+    (injectable) session factory. See ``backfill_family_keys`` (above) for
+    the batching/idempotency contract this handler wraps in a single
+    committed session per batch."""
+    _session_factory_holder: list[Optional[SessionFactory]] = [session_factory]
+
+    def _resolve_session_factory() -> SessionFactory:
+        if _session_factory_holder[0] is None:
+            _session_factory_holder[0] = _production_session_factory()
+        return _session_factory_holder[0]
+
+    def handler(payload: dict) -> None:
+        session = _resolve_session_factory()()
+        try:
+            backfill_family_keys(session, batch_size=batch_size)
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    return handler
+
+
 def default_handler_registry(
     *,
     registry: Optional[SourceRegistry] = None,
@@ -780,4 +852,5 @@ def default_handler_registry(
             scorer=scorer,
         ),
         "reextract_all": make_reextract_all_handler(session_factory=session_factory),
+        "backfill_family_keys": make_backfill_family_keys_handler(session_factory=session_factory),
     }

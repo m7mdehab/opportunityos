@@ -17,6 +17,7 @@ from storage.models import (
     FounderFeedbackRecord,
     FounderFacetRecord,
     FounderSavedViewRecord,
+    OpportunityFamilyRecord,
 )
 
 
@@ -180,3 +181,81 @@ class StorageRepository:
         self.session.delete(row)
         self.session.commit()
         return True
+    # Opportunity Family Operations (A2 clustering, BRIEF-FR-006)
+    def upsert_family(
+        self,
+        *,
+        family_key: str,
+        employer: str,
+        normalized_title: str,
+        member_count: int,
+        best_member_id: str,
+    ) -> OpportunityFamilyRecord:
+        """Insert or update one ``opportunity_families`` row from a freshly
+        computed :class:`opportunity.clustering.Family`.
+
+        ``split_out`` (the reversible "show separately" toggle) is
+        deliberately preserved across an upsert rather than reset to its
+        column default: re-running clustering after new postings arrive for
+        an existing family must not silently undo a founder's earlier
+        "show separately" choice for that family.
+        """
+        existing = (
+            self.session.query(OpportunityFamilyRecord)
+            .filter_by(family_key=family_key)
+            .first()
+        )
+        now = datetime.now(timezone.utc)
+        if existing is None:
+            record = OpportunityFamilyRecord(
+                family_key=family_key,
+                employer=employer,
+                normalized_title=normalized_title,
+                member_count=member_count,
+                best_member_id=best_member_id,
+                split_out=False,
+                updated_at=now,
+            )
+            self.session.add(record)
+        else:
+            existing.employer = employer
+            existing.normalized_title = normalized_title
+            existing.member_count = member_count
+            existing.best_member_id = best_member_id
+            existing.updated_at = now
+            record = existing
+        self.session.commit()
+        return record
+
+    def get_family(self, family_key: str) -> Optional[OpportunityFamilyRecord]:
+        return (
+            self.session.query(OpportunityFamilyRecord)
+            .filter_by(family_key=family_key)
+            .first()
+        )
+
+    def list_families(self) -> List[OpportunityFamilyRecord]:
+        return (
+            self.session.query(OpportunityFamilyRecord)
+            .order_by(OpportunityFamilyRecord.family_key.asc())
+            .all()
+        )
+
+    def set_family_split_out(
+        self, family_key: str, split_out: bool
+    ) -> Optional[OpportunityFamilyRecord]:
+        """Reversible per-family "show separately" toggle, persisted.
+
+        Setting ``split_out=True`` makes the family's members appear as
+        individual cards; setting it back to ``False`` re-collapses them.
+        Returns ``None`` (no write) if the family row does not exist yet --
+        a family must be upserted (from a clustering run) before its
+        ``split_out`` flag can be toggled.
+        """
+        record = self.get_family(family_key)
+        if record is None:
+            return None
+        record.split_out = split_out
+        record.updated_at = datetime.now(timezone.utc)
+        self.session.commit()
+        return record
