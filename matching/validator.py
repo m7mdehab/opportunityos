@@ -254,8 +254,10 @@ class ArtifactClaimValidator:
 
                 elif claim.predicate in (
                     "employment.responsibility", "achievement.statement", "profile.approved_summary",
+                    "approved_phrase.text",
                     "identity.name", "identity.headline", "identity.email", "identity.phone",
                     "identity.linkedin", "identity.github", "identity.website",
+                    "identity.location_city", "identity.location_country",  # MINOR 15
                 ):
                     # BRIEF-FR-006 D1F: single-value claim-type tags D1 introduced. Same
                     # authorization shape as the pre-existing "skill.name" / "employment.title"

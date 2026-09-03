@@ -1119,6 +1119,41 @@ class ArtifactRoutesTest(ApiTestCase):
         self.assertTrue(response.content.startswith(b"PK"), "response body is not a docx/zip payload")
         self.assertIn("attachment", response.headers["content-disposition"])
 
+    def test_artifact_template_query_param_selects_a_different_document(self):
+        # BRIEF-FR-006 council review #2 MAJOR 10: `template=` was never
+        # threaded past `binary_export.py`, so Compact and Modern were
+        # unreachable from the product. Assert the query param actually
+        # changes the exported bytes for all three committed templates.
+        import unittest.mock as mock
+
+        self.seed_opportunity("opp-clean")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            from truth.pack import LoadedPack, PackValidationReport
+
+            graph = _clean_truth_pack_graph()
+            loader.return_value = LoadedPack(
+                graph=graph,
+                report=PackValidationReport(valid=True, section_counts=(("evidence", 1),)),
+                truth_pack_hash="clean-hash",
+            )
+            reload_response = client.post("/api/truth/reload")
+            self.assertEqual(reload_response.status_code, 200)
+
+            bodies = {}
+            for template_name in ("classic", "compact", "modern"):
+                response = client.get(
+                    "/api/opportunities/opp-clean/artifacts/cv.docx",
+                    params={"template": template_name},
+                )
+                self.assertEqual(response.status_code, 200)
+                bodies[template_name] = response.content
+
+        self.assertEqual(len(bodies), 3)
+        self.assertEqual(len({bodies["classic"], bodies["compact"], bodies["modern"]}), 3)
+
     def test_artifact_409_never_returns_docx_bytes(self):
         import unittest.mock as mock
 
