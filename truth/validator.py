@@ -65,25 +65,6 @@ def _load_connective_terms(path: Path) -> frozenset[str]:
 CONNECTIVE_TERMS: frozenset[str] = _load_connective_terms(_CONNECTIVE_TERMS_PATH)
 
 
-def opportunity_terms_from_values(*values: str | None) -> set[str]:
-    """Build the class-(b) opportunity-provenanced term set from real field values.
-
-    The CALLER (e.g. `api/routes_api.py::_compile_and_export`) is responsible
-    for passing only actual `Opportunity` field values that carry their own
-    field provenance (employer name, role title, ...) -- this function only
-    tokenizes whatever it is given. It never inspects a claim or an
-    opportunity object itself, so it cannot be used to launder an arbitrary
-    word into admissibility: the validator only ever excuses a token that is
-    literally present in a value the caller asserts is real opportunity data.
-    """
-    terms: set[str] = set()
-    for value in values:
-        if not value:
-            continue
-        terms.update(_tokens(_normalize(str(value))))
-    return terms - _NON_MATERIAL_WORDS
-
-
 _NEGATIVE_MARKERS = re.compile(
     r"\b(?:not|no|never|neither|nor|without|cannot|unauthorized|non-|ineligible|lacks?|lacking)\b",
     re.I,
@@ -314,7 +295,6 @@ class ClaimValidator:
         *,
         as_of: date | None = None,
         allowed_subject_ids: set[str] | None = None,
-        opportunity_terms: set[str] | None = None,
     ) -> ClaimVerificationResult:
         if not isinstance(claim, str) or not claim.strip():
             raise ValueError("claim must be a non-empty string")
@@ -421,29 +401,39 @@ class ClaimValidator:
 
         # 9. Material lexical coverage check.
         #
-        # Three term classes are recognised (ADR-0014). Only class (a) --
-        # founder-claim terms, i.e. anything not covered below -- can ever
-        # cause a rejection here:
+        # Two term classes are recognised (ADR-0014, revised after council
+        # review). Only class (a) -- founder-claim terms, i.e. anything not
+        # covered below -- can ever cause a rejection here:
         #   (a) founder-claim terms: must be covered by `evidence_tokens`
         #       (the cited, relationally-linked supporting evidence). This is
         #       unchanged from before ADR-0014.
-        #   (b) opportunity-provenanced terms: `opportunity_terms`, supplied
-        #       explicitly by the CALLER from real `Opportunity` field values
-        #       (see `opportunity_terms_from_values`). The validator never
-        #       guesses these; it only ever subtracts exactly the tokens the
-        #       caller asserts are real opportunity data.
         #   (c) connective boilerplate: `CONNECTIVE_TERMS`, the committed,
-        #       fixed stop-list loaded from `truth/connective_terms.txt`.
-        # Because (b) and (c) are pure set subtractions applied on top of (a),
-        # neither can ever cause a term to be excused unless it is literally
-        # a member of that class's fixed vocabulary -- there is no code path
-        # by which an arbitrary unsupported founder-specific word can be
-        # marked class (b) or (c) to pass; the sets are closed and supplied
-        # from a fixed file or from the caller's real field values, never
-        # from the claim text itself.
+        #       fixed stop-list loaded from `truth/connective_terms.txt`,
+        #       every entry documented there as unable to be part of a job
+        #       title or skill.
+        # An earlier revision of this ADR also had a class (b),
+        # "opportunity-provenanced terms" (the target employer/role name),
+        # applied to every non-narrative claim regardless of whether that
+        # claim embedded an opportunity field. Independent council review
+        # found that this let a scraped, third-party job posting title
+        # enlarge the set of words excused from coverage on a claim about
+        # the FOUNDER (e.g. a posting titled "Senior Engineering Manager"
+        # would get "senior" and "manager" excused on every claim in the
+        # document, including ones that never mention the opportunity at
+        # all) -- undermining guard 9's independence from the very data it
+        # exists to check claims against. Class (b) was removed entirely
+        # rather than scoped down: the target role/employer name now appears
+        # only inside NARRATIVE segments (see `matching/compiler_employment.py`),
+        # which carry no founder-specific value and are therefore never
+        # subject to this guard at all. See ADR-0014's "Residual exposure and
+        # review history" section for the full account.
+        # Because (c) is a pure set subtraction applied on top of (a), it can
+        # never cause a term to be excused unless it is literally a member of
+        # the fixed, committed vocabulary in `truth/connective_terms.txt` --
+        # there is no code path by which an arbitrary unsupported
+        # founder-specific word can be marked class (c) to pass.
         evidence_tokens = set().union(*(_tokens(record.content or "") for record in supporting))
-        admissible_non_founder_terms = CONNECTIVE_TERMS | (opportunity_terms or set())
-        uncovered = sorted(_tokens(claim) - evidence_tokens - _NON_MATERIAL_WORDS - admissible_non_founder_terms)
+        uncovered = sorted(_tokens(claim) - evidence_tokens - _NON_MATERIAL_WORDS - CONNECTIVE_TERMS)
         if uncovered:
             return self._result(
                 claim, False, AssertionType.UNSUPPORTED_CLAIM,
@@ -485,7 +475,14 @@ class ClaimValidator:
             supporting_ids, ("claim is traceable to supporting evidence",),
         )
 
-    def validate_narrative(self, text: str) -> ClaimVerificationResult:
+    def validate_narrative(
+        self,
+        text: str,
+        *,
+        assertion_ids: tuple[str, ...] = (),
+        evidence_ids: tuple[str, ...] = (),
+        authorized_value: str = "",
+    ) -> ClaimVerificationResult:
         """Validate a NARRATIVE segment (ADR-0014): connective prose that
         asserts no founder-specific fact and therefore cites no evidence.
 
@@ -495,16 +492,50 @@ class ClaimValidator:
         `validate_claim`. The evidence-coverage, relational-composition, and
         metric-provenance guards (`validate_claim` steps 3-12) are not
         meaningful for text that makes no evidentiary claim about the
-        founder, so they do not run here -- this method never grants an
-        exemption from any of those guards for text that *does* contain a
-        founder-specific assertion; the compiler is responsible for only
-        ever routing genuinely connective, fact-free text through this path
-        (see `matching/compiler_employment.py` and
-        `matching/compiler_independent.py`).
+        founder, so they do not run here.
+
+        Because those guards do not run, this method structurally rejects
+        the two ways a narrative-tagged claim could otherwise smuggle a
+        founder-specific fact past them entirely unchecked (council review
+        finding, ADR-0014 "Residual exposure"):
+
+        1. A `GeneratedClaim` carrying `assertion_ids`, `evidence_ids`, or a
+           non-empty `authorized_value` is, by definition, claiming to be an
+           evidence-backed founder fact -- exactly what `policy_source ==
+           "NARRATIVE"` says it is not. The caller (`_compile_and_export` /
+           `matching.artifact_validation.validate_artifact_claims`) is
+           expected to pass a narrative claim's own such fields here so this
+           can be checked, rather than this method trusting the
+           `policy_source` tag alone.
+        2. A parseable metric (a number that reads like a quantified fact)
+           is rejected outright: a real number belongs in an
+           evidence-checked, metric-provenance-verified claim, never in text
+           this method does not check evidence for.
         """
         if not isinstance(text, str) or not text.strip():
             raise ValueError("narrative text must be a non-empty string")
         text = _SPACE.sub(" ", text.strip())
+
+        if assertion_ids or evidence_ids or authorized_value:
+            return self._result(
+                text, False, AssertionType.UNSUPPORTED_CLAIM,
+                VerificationStatus.UNVERIFIED, (),
+                (
+                    "a NARRATIVE segment must not carry assertion_ids, evidence_ids, or an "
+                    "authorized_value -- those mark a claim as an evidence-backed founder fact, "
+                    "which narrative text is not validated as one",
+                ),
+            )
+
+        if _parse_structured_metrics_with_context(text):
+            return self._result(
+                text, False, AssertionType.UNSUPPORTED_CLAIM,
+                VerificationStatus.UNVERIFIED, (),
+                (
+                    "a NARRATIVE segment must not contain a parseable metric -- a quantified "
+                    "fact belongs in an evidence-checked, metric-provenance-verified claim",
+                ),
+            )
 
         prohibited_reasons = self._prohibited_reasons(text)
         if prohibited_reasons:

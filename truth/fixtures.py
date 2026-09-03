@@ -647,14 +647,16 @@ def founder_shaped_graph() -> TruthGraph:
             subject_id=f"achievement-{role['rid']}",
             numeric_value=role["metric"][0],
             unit=role["metric"][1],
-            # No trailing period: `claim-metric-{id}` renders
-            # "{context}: {value}{unit}" and the validator's clause-context
-            # extraction splits on sentence punctuation, so a period right
-            # before that colon would truncate the clause the number is
-            # checked against. `truth.fixtures.synthetic_graph`'s metric
-            # context is written the same, period-free way for the same
-            # reason.
-            context=role["achievement"].rstrip("."),
+            # Deliberately keeps its natural trailing period (this achievement
+            # sentence, like a real founder's, ends in one): the compiler
+            # itself now strips it before building "{context}: {value}{unit}"
+            # (`matching/compiler_employment.py`, BRIEF-FR-005 D1
+            # remediation). A real founder's truth pack passes a YAML
+            # `context` string through ingest verbatim, almost always as a
+            # full, period-terminated sentence -- this field is written this
+            # way specifically to exercise that real, non-hypothetical
+            # exposure, not as a fixture-only style choice.
+            context=role["achievement"],
             verification_status=MetricVerification.VERIFIED,
             evidence_ids=(f"ev-{role['rid']}-achievement",),
         )

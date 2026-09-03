@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from core.logging import get_logger
 from feedback.models import FeedbackLabel
 from feedback.service import FounderFeedbackService
+from matching.artifact_validation import validate_artifact_claims
 from matching.binary_export import BinaryArtifactExporter
 from matching.compiler_employment import EmploymentArtifactCompiler
 from opportunity.models import Opportunity, Track
@@ -35,7 +36,7 @@ from storage.models import (
 )
 from storage.repository import StorageRepository
 from truth.pack import TruthPackInvalid, TruthPackMissing, load_founder_pack
-from truth.validator import ClaimValidator, opportunity_terms_from_values
+from truth.validator import ClaimValidator
 from worker.queue import BackgroundWorkerQueue
 
 from .deps import get_db, get_repository, require_session
@@ -570,29 +571,13 @@ def _compile_and_export(request: Request, opportunity_id: str, kind: str, sessio
     else:
         artifact = compiler.compile_cover_letter(domain_opp, loaded_pack.graph, compiled_at=compiled_at)
 
+    # ADR-0014 dispatch (NARRATIVE claims -> validate_narrative, everything
+    # else -> validate_claim): shared with matching/test_artifacts_e2e.py and
+    # matching/test_compiler.py via matching.artifact_validation, so the
+    # tests exercise this exact production logic rather than a hand-copied
+    # mirror of it (BRIEF-FR-005 D1 council remediation, defect 4b).
     validator = ClaimValidator(loaded_pack.graph)
-    # Class (b) opportunity-provenanced terms (ADR-0014): derived here, by the
-    # caller, from the real Opportunity's own field values -- never guessed
-    # inside the validator. Only these two fields carry independent field
-    # provenance on the domain Opportunity today (employer name, role title).
-    opportunity_terms = opportunity_terms_from_values(domain_opp.organization, domain_opp.title)
-    findings: list[dict[str, Any]] = []
-    for claim in artifact.generated_claims:
-        if claim.policy_source == "NARRATIVE":
-            # NARRATIVE segments (ADR-0014) assert no founder-specific fact
-            # and cite no evidence; only the prohibited-concept / red-line
-            # guards apply, run on the full narrative text.
-            result = validator.validate_narrative(claim.text)
-        else:
-            result = validator.validate_claim(claim.text, claim.evidence_ids, opportunity_terms=opportunity_terms)
-        if not result.allowed:
-            findings.append(
-                {
-                    "claim": claim.text,
-                    "assertion_type": result.assertion_type.value,
-                    "rejection_reasons": list(result.reasons),
-                }
-            )
+    findings = validate_artifact_claims(artifact, validator)
 
     if findings:
         logger.info(

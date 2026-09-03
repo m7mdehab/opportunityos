@@ -4,11 +4,12 @@ from __future__ import annotations
 import unittest
 
 from opportunity.models import Opportunity, ProcurementMetadata, Track
+from matching.artifact_validation import validate_artifact_claims
 from matching.compiler_employment import EmploymentArtifactCompiler
 from matching.compiler_independent import IndependentArtifactCompiler
 from matching.models import ArtifactType, CommitmentStatus, TailoringPolicy
 from matching.test_qualification import create_test_graph, create_test_opportunity
-from truth.validator import ClaimValidator, opportunity_terms_from_values
+from truth.validator import ClaimValidator
 
 
 class TestArtifactCompilers(unittest.TestCase):
@@ -26,27 +27,22 @@ class TestArtifactCompilers(unittest.TestCase):
             )
         )
 
-    def _rejections(self, artifact, opportunity) -> list[tuple[str, tuple[str, ...]]]:
-        """Run every generated claim through the real ADR-0014 validator
-        dispatch (NARRATIVE segments through `validate_narrative`, everything
-        else through `validate_claim` with class (b) opportunity terms), and
-        return the ones the validator rejects. An empty list is the actual
-        behaviour this deliverable fixes -- BRIEF-FR-004's compiler emitted
-        composite claims that `ClaimValidator` correctly refused for any
-        naturally-written pack; counting `len(sections) >= N` never caught
-        that, because a section can exist and still carry a claim the
-        validator would 409 on."""
+    def _rejections(self, artifact, opportunity=None) -> list[dict]:
+        """Run every generated claim through the real, production ADR-0014
+        validator dispatch (`matching.artifact_validation.validate_artifact_claims`
+        -- the same function `api/routes_api.py::_compile_and_export` calls,
+        not a hand-copied mirror of it) and return the findings. An empty
+        list is the actual behaviour this deliverable fixes -- BRIEF-FR-004's
+        compiler emitted composite claims that `ClaimValidator` correctly
+        refused for any naturally-written pack; counting `len(sections) >= N`
+        never caught that, because a section can exist and still carry a
+        claim the validator would 409 on. `opportunity` is accepted and
+        unused (kept so call sites that pass one for documentation purposes
+        do not need updating) -- ADR-0014's class (b) was removed entirely
+        after council review, so validation no longer depends on the
+        opportunity at all."""
         validator = ClaimValidator(self.truth_graph)
-        opportunity_terms = opportunity_terms_from_values(opportunity.organization, opportunity.title)
-        findings = []
-        for claim in artifact.generated_claims:
-            if claim.policy_source == "NARRATIVE":
-                result = validator.validate_narrative(claim.text)
-            else:
-                result = validator.validate_claim(claim.text, claim.evidence_ids, opportunity_terms=opportunity_terms)
-            if not result.allowed:
-                findings.append((claim.claim_id, result.reasons))
-        return findings
+        return validate_artifact_claims(artifact, validator)
 
     def test_compile_tailored_cv(self) -> None:
         opp = create_test_opportunity()

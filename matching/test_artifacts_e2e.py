@@ -8,14 +8,20 @@ internships and three concurrent group roles, five certifications, 38
 skills, and preference assertions; every name in it is obviously fake) --
 and asserts, for every resulting artifact:
 
-1. zero `ClaimValidator` rejections (the D1 defect this brief fixes: a
-   naturally-written pack used to reject nearly every generated claim);
-2. every non-NARRATIVE claim carries at least one evidence id, and no word
-   rendered into a section's DOCX text is untraceable to a claim covering
-   that section, `_NON_MATERIAL_WORDS`, the committed `CONNECTIVE_TERMS`
-   stop-list, or the opportunity's own field values;
-3. no term from the committed forbidden-inflation list appears in the
-   rendered DOCX text unless the pack's own evidence contains it verbatim.
+1. zero `ClaimValidator` rejections via the shared, production dispatch
+   (`matching.artifact_validation.validate_artifact_claims` -- the same
+   function `api/routes_api.py::_compile_and_export` calls) (the D1 defect
+   this brief fixes: a naturally-written pack used to reject nearly every
+   generated claim);
+2. every non-NARRATIVE claim carries at least one evidence id;
+3. no term from the committed forbidden-inflation list appears, as a whole
+   word, in the rendered DOCX text unless the pack's own evidence contains
+   it verbatim;
+4. (council remediation, defect 4) a claim mutated to add a genuinely
+   unsupported word is rejected -- and ONLY that claim -- proving guard 9
+   still functions on this exact compiler output, not merely that the
+   positive cases happen to pass; and a NARRATIVE claim mutated to contain a
+   red-line phrase is rejected.
 
 This test compiles directly against the compiler + validator; it does not
 exercise the HTTP/DB layer (that is `api/test_api.py`'s
@@ -23,11 +29,14 @@ exercise the HTTP/DB layer (that is `api/test_api.py`'s
 """
 from __future__ import annotations
 
+import dataclasses
 import io
+import re
 import unittest
 
 import docx
 
+from matching.artifact_validation import validate_artifact_claims
 from matching.binary_export import BinaryArtifactExporter
 from matching.compiler_employment import EmploymentArtifactCompiler
 from matching.compiler_independent import IndependentArtifactCompiler
@@ -40,13 +49,7 @@ from opportunity.models import (
 )
 from truth.fixtures import founder_shaped_graph, synthetic_graph
 from truth.graph import TruthGraph
-from truth.validator import (
-    CONNECTIVE_TERMS,
-    ClaimValidator,
-    _NON_MATERIAL_WORDS,
-    _tokens,
-    opportunity_terms_from_values,
-)
+from truth.validator import ClaimValidator
 
 # Committed forbidden-inflation list (BRIEF-FR-005 D1 acceptance): words a
 # compiler must never introduce on its own initiative. It is legitimate for
@@ -64,14 +67,6 @@ FORBIDDEN_INFLATION_TERMS = (
     "extensive",
     "proven",
 )
-
-# Sections whose `content`/`items` are forward-commitment policy statements
-# (`ForwardCommitment`, a distinct model from `GeneratedClaim` -- see
-# `matching/models.py`), not evidence-backed claims about the founder's
-# history. They are intentionally excluded from the claim-coverage mapping
-# below; `commitment_checklist` carries its own RESOLVED/UNRESOLVED (RED)
-# discipline, unchanged by this brief.
-_NON_CLAIM_SECTIONS = frozenset({"commitments"})
 
 
 def _remote_employment_opportunity() -> Opportunity:
@@ -123,38 +118,27 @@ def _procurement_opportunity() -> Opportunity:
     )
 
 
+def _replace_claim(
+    artifact: TailoredArtifact, claim_id: str, **overrides
+) -> TailoredArtifact:
+    """Return a copy of `artifact` with exactly one generated claim (matched
+    by `claim_id`) replaced by `dataclasses.replace(claim, **overrides)`.
+    Used only to construct deliberately-broken artifacts for the negative
+    tests below; `artifact_hash` is left stale on purpose since these
+    artifacts are never exported, only validated."""
+    new_claims = tuple(
+        dataclasses.replace(claim, **overrides) if claim.claim_id == claim_id else claim
+        for claim in artifact.generated_claims
+    )
+    return dataclasses.replace(artifact, generated_claims=new_claims)
+
+
 class _ArtifactE2ECase(unittest.TestCase):
     """Shared assertion helpers; concrete cases are generated below."""
 
-    def _validate_all(
-        self, artifact: TailoredArtifact, graph: TruthGraph, opportunity: Opportunity
-    ) -> list[tuple[str, str, tuple[str, ...]]]:
-        """Mirror `api/routes_api.py::_compile_and_export`'s validation dispatch
-        exactly: NARRATIVE claims go through `validate_narrative` (prohibited
-        concepts / red lines only); every other claim goes through
-        `validate_claim` with class (b) opportunity terms derived, by this
-        caller, from the opportunity's own real field values."""
-        validator = ClaimValidator(graph)
-        opportunity_terms = opportunity_terms_from_values(opportunity.organization, opportunity.title)
-        findings: list[tuple[str, str, tuple[str, ...]]] = []
-        for claim in artifact.generated_claims:
-            if claim.policy_source == "NARRATIVE":
-                result = validator.validate_narrative(claim.text)
-            else:
-                result = validator.validate_claim(claim.text, claim.evidence_ids, opportunity_terms=opportunity_terms)
-            if not result.allowed:
-                findings.append((claim.claim_id, claim.text, result.reasons))
-        return findings
-
-    def _assert_claim_coverage(
-        self, artifact: TailoredArtifact, opportunity: Opportunity
-    ) -> None:
-        """Every non-NARRATIVE claim carries evidence ids, and no word
-        rendered into a (claim-bearing) section's DOCX text is untraceable to
-        a claim covering that section, non-material vocabulary, the
-        committed connective stop-list, or the opportunity's own fields."""
-        opportunity_terms = opportunity_terms_from_values(opportunity.organization, opportunity.title)
-
+    def _assert_evidence_backed(self, artifact: TailoredArtifact) -> None:
+        """Every non-NARRATIVE claim carries evidence ids -- a claim the
+        validator would otherwise have to check against nothing."""
         for claim in artifact.generated_claims:
             if claim.policy_source == "NARRATIVE":
                 continue
@@ -163,34 +147,12 @@ class _ArtifactE2ECase(unittest.TestCase):
                 f"non-narrative claim '{claim.claim_id}' ({claim.text!r}) has no evidence ids",
             )
 
-        claims_by_section: dict[str, list] = {}
-        for claim in artifact.generated_claims:
-            claims_by_section.setdefault(claim.section_id, []).append(claim)
-
-        for section in artifact.sections:
-            if section.section_id in _NON_CLAIM_SECTIONS:
-                continue
-            section_claims = claims_by_section.get(section.section_id, [])
-            allowed = set(_NON_MATERIAL_WORDS) | set(CONNECTIVE_TERMS) | opportunity_terms
-            for claim in section_claims:
-                allowed |= _tokens(claim.text)
-
-            content_stray = _tokens(section.content) - allowed
-            self.assertFalse(
-                content_stray,
-                f"section '{section.section_id}' content has untraceable words {sorted(content_stray)}: {section.content!r}",
-            )
-            for item in section.items:
-                item_stray = _tokens(item) - allowed
-                self.assertFalse(
-                    item_stray,
-                    f"section '{section.section_id}' item has untraceable words {sorted(item_stray)}: {item!r}",
-                )
-
     def _assert_docx_clean(self, artifact: TailoredArtifact, graph: TruthGraph) -> None:
         """DOCX bytes are real (start with the ZIP/docx `PK` magic) and
-        contain no forbidden-inflation term the pack's own evidence does not
-        already contain, verbatim."""
+        contain no forbidden-inflation term, as a whole word, the pack's own
+        evidence does not already contain verbatim. Word-boundary matching
+        (council remediation, defect 4c): a naive substring check would
+        flag "leading" for "lead" or "expertise" for "expert"."""
         docx_bytes = BinaryArtifactExporter.export_to_docx(artifact)
         self.assertTrue(docx_bytes.startswith(b"PK"), "exported artifact is not a docx/zip payload")
 
@@ -202,21 +164,71 @@ class _ArtifactE2ECase(unittest.TestCase):
         ).casefold()
 
         for term in FORBIDDEN_INFLATION_TERMS:
-            if term in rendered_text:
-                self.assertIn(
-                    term,
+            pattern = rf"\b{re.escape(term)}\b"
+            if re.search(pattern, rendered_text):
+                self.assertRegex(
                     evidence_blob,
-                    f"forbidden-inflation term '{term}' appears in the generated document "
-                    "but not verbatim anywhere in the pack's evidence",
+                    pattern,
+                    f"forbidden-inflation term '{term}' appears (whole word) in the generated "
+                    "document but not verbatim, as a whole word, anywhere in the pack's evidence",
                 )
 
     def _check_employment_artifact(
         self, graph: TruthGraph, opportunity: Opportunity, artifact: TailoredArtifact
     ) -> None:
-        findings = self._validate_all(artifact, graph, opportunity)
+        validator = ClaimValidator(graph)
+        findings = validate_artifact_claims(artifact, validator)
         self.assertEqual(findings, [], f"validator rejected claims: {findings}")
-        self._assert_claim_coverage(artifact, opportunity)
+        self._assert_evidence_backed(artifact)
         self._assert_docx_clean(artifact, graph)
+
+    def _assert_mutated_non_narrative_claim_is_rejected_alone(
+        self, graph: TruthGraph, artifact: TailoredArtifact
+    ) -> None:
+        """Council remediation (defect 4a): append a genuinely unsupported
+        word to exactly one non-narrative claim's text and assert the
+        validator rejects that claim -- and only that claim. This proves
+        guard 9 still functions on this exact, real compiler output; the
+        positive-only checks above cannot distinguish "guard 9 works" from
+        "guard 9 was neutralised and everything happens to pass"."""
+        non_narrative = [c for c in artifact.generated_claims if c.policy_source != "NARRATIVE"]
+        self.assertTrue(non_narrative, "artifact has no non-narrative claim to mutate")
+        target = non_narrative[0]
+
+        mutated = _replace_claim(artifact, target.claim_id, text=target.text + " zorbaflex")
+        validator = ClaimValidator(graph)
+        findings = validate_artifact_claims(mutated, validator)
+
+        rejected_ids = {finding["claim_id"] for finding in findings}
+        self.assertEqual(
+            rejected_ids, {target.claim_id},
+            f"expected exactly claim '{target.claim_id}' to be rejected after mutation; got {findings}",
+        )
+        self.assertTrue(
+            any("zorbaflex" in reason for reason in findings[0]["rejection_reasons"]),
+            findings,
+        )
+
+    def _assert_red_line_in_narrative_is_rejected(
+        self, graph: TruthGraph, artifact: TailoredArtifact
+    ) -> None:
+        """Council remediation (defect 4a): a NARRATIVE claim mutated to
+        contain a red-line phrase must still be rejected -- proving
+        `validate_narrative`'s prohibited-concept/red-line guard, which runs
+        on the full narrative text, is not itself neutralised."""
+        narrative = [c for c in artifact.generated_claims if c.policy_source == "NARRATIVE"]
+        self.assertTrue(narrative, "artifact has no NARRATIVE claim to mutate")
+        target = narrative[0]
+
+        mutated = _replace_claim(
+            artifact, target.claim_id,
+            text=target.text + " This engagement guarantees a 100% success outcome.",
+        )
+        validator = ClaimValidator(graph)
+        findings = validate_artifact_claims(mutated, validator)
+
+        rejected_ids = {finding["claim_id"] for finding in findings}
+        self.assertIn(target.claim_id, rejected_ids, findings)
 
 
 def _make_case(pack_name: str, pack_factory) -> type[_ArtifactE2ECase]:
@@ -257,6 +269,16 @@ def _make_case(pack_name: str, pack_factory) -> type[_ArtifactE2ECase]:
             opp = _procurement_opportunity()
             proposal = self.ind_compiler.compile_proposal(opp, self.graph)
             self._check_employment_artifact(self.graph, opp, proposal)
+
+        def test_mutated_non_narrative_claim_rejected_alone(self) -> None:
+            opp = _remote_employment_opportunity()
+            cv = self.emp_compiler.compile_tailored_cv(opp, self.graph)
+            self._assert_mutated_non_narrative_claim_is_rejected_alone(self.graph, cv)
+
+        def test_red_line_in_narrative_claim_rejected(self) -> None:
+            opp = _remote_employment_opportunity()
+            cover = self.emp_compiler.compile_cover_letter(opp, self.graph)
+            self._assert_red_line_in_narrative_is_rejected(self.graph, cover)
 
     Case.__name__ = f"Test{pack_name}ArtifactsE2E"
     Case.__qualname__ = Case.__name__
@@ -311,6 +333,54 @@ class FounderShapedPackShapeTest(unittest.TestCase):
         self.assertIn("career.target_role", preference_predicates)
         self.assertIn("preference.track", preference_predicates)
         self.assertIn("preference.fulltime_onsite_premium_monthly", preference_predicates)
+
+
+class PeriodTerminatedMetricContextTest(unittest.TestCase):
+    """Council remediation (defect 6): a `MetricAssertion.context` ending in
+    a full stop used to make `compile_tailored_cv`'s
+    "{context}: {value}{unit}" claim text read, to the validator's
+    clause-context extraction, as two sentences -- truncating the clause the
+    number is checked against and 409ing the CV. Ingest passes a
+    founder-authored YAML `context` string through verbatim, so a founder
+    who writes a full sentence there hits this; it is not hypothetical."""
+
+    def test_period_terminated_context_still_validates(self) -> None:
+        from truth.models import EvidenceRecord, MetricAssertion, MetricVerification
+
+        evidence = (
+            EvidenceRecord(
+                "ev-period-ach",
+                "Reduced deployment time by 25% across the release pipeline.",
+                "synthetic_cv", "achievements.0",
+                metadata={"subject_id": "achievement-period"},
+            ),
+        )
+        graph = TruthGraph(evidence, metrics=(
+            MetricAssertion(
+                id="metric-period",
+                subject_id="achievement-period",
+                numeric_value=25,
+                unit="%",
+                # Deliberately period-terminated, like a real founder's
+                # YAML-authored sentence.
+                context="Reduced deployment time by 25% across the release pipeline.",
+                verification_status=MetricVerification.VERIFIED,
+                evidence_ids=("ev-period-ach",),
+            ),
+        ))
+
+        opp = _remote_employment_opportunity()
+        cv = EmploymentArtifactCompiler().compile_tailored_cv(opp, graph)
+
+        metric_claims = [c for c in cv.generated_claims if c.predicate == "metric"]
+        self.assertTrue(metric_claims, "expected a metric-derived claim")
+        for claim in metric_claims:
+            context_part = claim.text.split(":")[0]
+            self.assertFalse(context_part.endswith("."), claim.text)
+
+        validator = ClaimValidator(graph)
+        findings = validate_artifact_claims(cv, validator)
+        self.assertEqual(findings, [], findings)
 
 
 if __name__ == "__main__":
