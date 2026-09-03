@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import unittest
+from datetime import date
 
 from opportunity.models import RemotePolicy, SeniorityLevel, Track
 from matching.compiler_employment import EmploymentArtifactCompiler
@@ -9,11 +10,24 @@ from matching.gold_set import BenchmarkItem, GoldSetHarness
 from matching.models import QualificationDecision
 from matching.scorer import OpportunityScorer
 from matching.test_qualification import create_test_graph, create_test_opportunity
+from matching.test_scorer import _with_employment_tenure
 
 
 class TestDeterministicReplayAndGoldSet(unittest.TestCase):
     def setUp(self) -> None:
-        self.truth_graph = create_test_graph()
+        # `create_test_graph()` (matching/test_qualification.py, frozen for
+        # BRIEF-FR-006 B1) asserts `employment.title` with no dates -- the old
+        # keyword-substring seniority model never needed them. ADR-0016's
+        # tenure model does. This fixture was incomplete, not merely old: it
+        # never carried the evidence an honest tenure computation requires.
+        # Completing it with the same real, evidence-backed dates
+        # `matching/test_scorer.py` already uses (not touching the frozen
+        # fixture itself) makes it faithful to what `create_test_graph()`'s
+        # own title text describes ("Senior Distributed Systems Architect"),
+        # not more favorable to any expected benchmark bound.
+        self.truth_graph = _with_employment_tenure(
+            create_test_graph(), start=date(2015, 1, 1), end=date(2026, 8, 31),
+        )
         self.scorer = OpportunityScorer()
         self.compiler = EmploymentArtifactCompiler()
         self.harness = GoldSetHarness(scorer=self.scorer)
