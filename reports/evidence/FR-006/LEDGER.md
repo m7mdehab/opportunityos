@@ -10,13 +10,15 @@ Branch: `feat/brief-fr-006-nothing-missed`. Base `main` = `bf25d93`.
 | Node | Order file | Depends on | Status | Notes |
 |---|---|---|---|---|
 | D0 protocol adoption | — (Master) | — | INTEGRATED | `824a809` |
-| F2 dev_env | `F2-devenv.md` | — | DISPATCHED (resumed, narrowed) | budget overrun, deviation 6 |
-| A1 extraction + migration 0004 | `A1-extract.md` | — | DISPATCHED | critical path for A2, C1, C2, D2, E4 |
-| B1 seniority | `B1-seniority.md` | — | DISPATCHED | |
-| B3 title families | `B3-families.md` | — | DISPATCHED (resumed, narrowed) | budget overrun, deviation 9 |
-| F1 identity predicates | `F1-identity.md` | — | DISPATCHED | critical path for D1 |
-| E1 board discovery | `E1-discovery.md` | — | ORDERED | waiting for a slot |
-| E23 communities/freelance/tutoring | `E23-sources.md` | — | ORDERED | E2+E3 merged, deviation 2 |
+| F2 dev_env | `F2-devenv.md` | — | **INTEGRATED** | rows F2.1-F2.6 pass; `alpha.py` already used `sys.executable`, so the sweep is a static-scan test. reportlab 5.0.1. |
+| A1 extraction (split) | `A1-extract.md` | — | DEFECT-1 | 7 new fields + 155 inference rules + qualifier; `remote_policy` became a property and broke 6 test files repo-wide |
+| A1M migration 0004 | `A1M-migration.md` | — | DISPATCHED | the unblocker for A2, C1, C2, D2, E4 |
+| A1C corpus + metrics | `A1C-corpus.md` | A1 | ORDERED | |
+| B1 seniority | `B1-seniority.md` | — | **INTEGRATED** | 15 new tests; ADR-0016; `is_senior` gone. Fixture encodes 9y, brief describes ~20mo — recorded in the ADR. |
+| B3 title families | `B3-families.md` | — | **INTEGRATED** | 62 tests; 735 repo tests OK; `other` split 17 non-role / 9 unplaced; `domain_fit` 0.10->0.05 for the new dimension |
+| F1 identity predicates | `F1-identity.md` | — | **INTEGRATED** | `identity`+`approved_phrases` sections, 9+1 predicates projected, leak test green. Could not reproduce FR-005's claimed silent-unknown-section defect. |
+| E1 board discovery | `E1-discovery.md` | — | DISPATCHED | |
+| E23 communities/freelance/tutoring | `E23-sources.md` | — | DISPATCHED | E2+E3 merged, deviation 2 |
 | A2 clustering | `A2-cluster.md` | A1 | ORDERED | |
 | B2 skills | `B2-skills.md` | A1, B3 | ORDERED | |
 | C1 facets + C4 audit + B4 exercise | `C1-facets.md` | A1, B3 | ORDERED | merged, deviation 7 |
@@ -31,7 +33,7 @@ Branch: `feat/brief-fr-006-nothing-missed`. Base `main` = `bf25d93`.
 
 | # | Subject | Requires | Status |
 |---|---|---|---|
-| 1 | B1 + B2 + B3 scoring semantics (ADR-0016) | B1, B2, B3 integrated | pending |
+| 1 | B1 + B3 scoring semantics (ADR-0016) | B1, B3 integrated | **DISPATCHED** (B2 not yet in; a second pass covers it) |
 | 2 | D1 document model and truth-lock (ADR-0017) | D1 integrated | pending |
 | 3 | Migration `0004` (A1/A2/C1/C2/D2 schema) | those integrated | pending |
 | 4 | E0-E3 source policy compliance | E1, E23 integrated | pending |
