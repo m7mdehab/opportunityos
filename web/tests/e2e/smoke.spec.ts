@@ -108,7 +108,7 @@ test.describe("founder alpha smoke", () => {
     ).toBeVisible()
 
     const downloadPromise = page.waitForEvent("download")
-    await mainDrawer.getByRole("button", { name: "Download tailored CV" }).click()
+    await mainDrawer.getByTestId("artifact-download-docx").click()
     const download = await downloadPromise
     expect(download.suggestedFilename()).toContain("cv-opp-001")
 

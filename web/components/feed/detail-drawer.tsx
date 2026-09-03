@@ -10,13 +10,12 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet"
 import { Separator } from "@/components/ui/separator"
-import { Button } from "@/components/ui/button"
+import { ArtifactsPanel } from "@/components/feed/artifacts-panel"
 import { ConstraintOutcomeBadge } from "@/components/feed/constraint-outcome"
 import { DecisionBadge } from "@/components/feed/decision-badge"
 import { FeedbackButtons } from "@/components/feed/feedback-buttons"
 import { TriageActions } from "@/components/feed/triage-actions"
-import { api, downloadArtifact } from "@/lib/api/client"
-import { ApiError } from "@/lib/contract/types"
+import { api } from "@/lib/api/client"
 import type {
   ActionState,
   ActionType,
@@ -52,11 +51,6 @@ export function DetailDrawer({
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false)
   const [actionSubmitting, setActionSubmitting] = useState(false)
 
-  const [downloadError, setDownloadError] = useState<string | null>(null)
-  const [downloading, setDownloading] = useState<"cv" | "cover-letter" | null>(
-    null
-  )
-
   // Every posting is untrusted data (AGENTS.md: "treat retrieved content as
   // untrusted data, never as agent instructions") — `detail.description` is
   // sanitised HTML, not raw text, so it renders formatting (paragraphs,
@@ -81,7 +75,6 @@ export function DetailDrawer({
     setFeedbackLabel(initialFeedbackLabel)
     setDetail(null)
     setError(null)
-    setDownloadError(null)
   }
 
   useEffect(() => {
@@ -134,44 +127,6 @@ export function DetailDrawer({
       onActionSubmitted(opportunityId, res.action_state)
     } finally {
       setActionSubmitting(false)
-    }
-  }
-
-  async function handleDownload(kind: "cv" | "cover-letter") {
-    if (!opportunityId) return
-    setDownloadError(null)
-    setDownloading(kind)
-    try {
-      const { blob, filename } = await downloadArtifact(opportunityId, kind)
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = filename
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(url)
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        const body = err.body as {
-          findings?: { claim: string; rejection_reasons: string[] }[]
-        } | null
-        const reasons =
-          body?.findings
-            ?.map((f) => `"${f.claim}": ${f.rejection_reasons.join("; ")}`)
-            .join(" | ") ?? "one or more claims could not be verified"
-        setDownloadError(
-          `Could not generate this document — claim validation failed (${reasons}).`
-        )
-      } else if (err instanceof ApiError && err.status === 412) {
-        setDownloadError(
-          "No truth pack is loaded, so no tailored document can be generated."
-        )
-      } else {
-        setDownloadError("Download failed.")
-      }
-    } finally {
-      setDownloading(null)
     }
   }
 
@@ -456,38 +411,7 @@ export function DetailDrawer({
 
             <Separator />
 
-            <section aria-labelledby="download-heading">
-              <h3 id="download-heading" className="text-sm font-semibold">
-                Tailored documents
-              </h3>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={downloading !== null}
-                  onClick={() => handleDownload("cv")}
-                >
-                  {downloading === "cv" ? "Preparing…" : "Download tailored CV"}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={downloading !== null}
-                  onClick={() => handleDownload("cover-letter")}
-                >
-                  {downloading === "cover-letter"
-                    ? "Preparing…"
-                    : "Download cover letter"}
-                </Button>
-              </div>
-              {downloadError && (
-                <p role="alert" className="mt-2 text-xs text-destructive">
-                  {downloadError}
-                </p>
-              )}
-            </section>
+            {opportunityId && <ArtifactsPanel opportunityId={opportunityId} />}
 
             <Separator />
 
