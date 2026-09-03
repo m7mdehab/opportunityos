@@ -28,7 +28,7 @@ the guard that was refusing them is still refusing the things it should.
 Seven deliverables closed. **A-6 is `NOT_CLOSED`**, and one half of **A-8** is contested at the
 time of writing.
 
-**A-6 — the scope diff.** Eight of 82 changed paths lie outside the expected set the Master
+**A-6 — the scope diff.** Eight changed paths lie outside the expected set the Master
 committed at `dc8badc`, before any implementer reported. Every one has a traceable
 authorisation — two from the brief and the Master's own prompts, three declared by
 implementers, three from a backup-completeness cascade nobody foresaw. But *authorised* and
@@ -60,8 +60,8 @@ dispositioned away.
 ### D1 — Documents that generate (ADR-0014)
 Compilers emit atomic, evidence-bound claims; prose that joins two facts becomes two claims,
 and connective text becomes a `NARRATIVE` segment rather than a claim. The validator
-classifies claim text into three term classes before material-term extraction, and only
-founder-claim terms can reject.
+classifies claim text before material-term extraction, and only founder-claim terms can
+reject.
 
 The mechanism matters more than the description. Guard 9 is a **set subtraction**, not a
 bypass:
@@ -105,9 +105,11 @@ Eighteen orphan spellings were removed. The one that mattered:
 `employment.responsibility` and `achievement.statement`. For an employment-only founder the
 only non-orphan in that list was `service.name`, which belongs to the independent track — so
 the dimension returned a flat **0.500 with zero evidence references for every founder**, and
-had done since BRIEF-004. It now returns **0.800 with two references** on the corrected
-fixture. At weight 0.15 that is roughly 4.5 points of overall fit score that were unreachable
-no matter what a founder's history contained.
+had done since BRIEF-004. It now returns **0.95 with three evidence references** on the
+corrected fixture, measured by the independent verifier at the merge head. An earlier Master
+figure of 0.800 was taken before the council repairs landed; it is stale, and is corrected in
+the evidence rather than left standing. At weight 0.15 that is several points of overall fit
+score that were unreachable no matter what a founder's history contained.
 
 The full predicate table is in `reports/evidence/FR-005/predicate-contract-table.md`.
 
@@ -184,15 +186,15 @@ recorded, and the difference is stated.
 | A-2 per-module counts | sum to **672 exactly**; set equality with the top-level loader verified at test-id level |
 | A-3 migration round-trip `0001→0003` | 3 down / 3 up / 3 down / 3 up, every step exit 0 |
 | A-4 guard, PII and repository integrity | both exit 0 |
-| A-5 `STATE.md` drift | zero lines under `STATE_PRESERVE_TIMESTAMP=1` |
-| A-6 scope diff | **`NOT_CLOSED`** — 8 of 82 paths outside the expected set; dispositioned in §2 |
+| A-5 `STATE.md` drift | zero lines under `STATE_PRESERVE_TIMESTAMP=1` — **but only after the repair the verifier forced; see §5** |
+| A-6 scope diff | **`NOT_CLOSED`** — 8 paths outside the expected set; dispositioned in §2 |
 | A-7 `npm run build` / `npm run lint` | both exit 0; lint clean at `--max-warnings=0` and now order-independent |
 | A-8 Playwright, mock | **10 passed** from a clean checkout with no untracked env file |
 | A-8 Playwright, real stack | `smoke.spec.ts` passes; the filter spec is contested — see below |
 | A-9 live poll | **both halves close** — see below |
 | A-10 documents | **4 of 4 artifacts HTTP 200 with DOCX bytes**, both packs |
 | A-11 tripwire | both suites fail under a neutralised guard 9, and pass when it is restored |
-| A-12 predicate contract | 10 tests `OK`; `responsibility_scope` **0.800 with 2 evidence refs** |
+| A-12 predicate contract | 10 tests `OK`; `responsibility_scope` **0.95 with 3 evidence refs** (was a flat 0.500 with none) |
 | A-13 filters | all filters off + `include_hidden=true` → `total` equals `COUNT(*)` |
 | A-14 provenance idempotency | row count unchanged after runs 2 and 3 |
 
@@ -241,16 +243,62 @@ re-execute every row; both must PASS before a row closes.
 | A-2 | per-module counts reconcile | PASS | exact set equality |
 | A-3 | `0001→0003` round-trip | PASS | reversible; the constraint appears and disappears with it |
 | A-4 | guard + repository integrity | PASS | |
-| A-5 | STATE zero drift, STATE-only final commit | PASS | |
+| A-5 | STATE zero drift, STATE-only final commit | PASS **only after repair** | recorded PASS on stale evidence; overturned by the verifier — see below |
 | A-6 | scope diff against the expected set | **NOT_CLOSED** | 8 paths outside; never retro-fitted |
 | A-7 | web build + lint | PASS | lint made order-independent en route |
 | A-8 | Playwright incl. the filter toggle | **PARTIAL** | mock 10/10 and real-stack smoke pass; real-stack filter spec contested |
 | A-9 | live poll, zero fixture rows, registry ids | PASS | failed at run 1, repaired, closed at run 2 |
 | A-10 | documents generate | PASS | 4/4 HTTP 200 with `PK` |
 | A-11 | the tripwire still fires | PASS | verified by neutralising the guard, twice |
-| A-12 | predicate contract | PASS | `responsibility_scope` 0.500 → 0.800 |
+| A-12 | predicate contract | PASS | `responsibility_scope` 0.500 with no refs → **0.95 with three** |
 | A-13 | filters | PASS | `total` equals `COUNT(*)` with all filters off |
 | A-14 | provenance idempotency | PASS | asserted after runs 2 and 3 |
+
+### What the independent verifier found, and where it overturned the Master
+
+The verifier re-executed every row in a fresh context against its own databases. It confirmed
+twelve of fourteen on its own evidence, including A-11 by neutralising guard 9 itself and
+watching both suites break in the right places, then restoring a byte-identical file. It also
+returned findings the Master had missed, and **overturned one Master verdict**.
+
+**A-5 was recorded PASS and was observably FAIL.** The Master ran the STATE freshness check
+early, saw zero drift, and wrote PASS into this report. Six commits later that observation was
+worthless: `docs/STATE.md` was still the one generated at `e77c135`, a commit predating the
+entire brief, and regenerating at HEAD produced an 88-line diff. The branch's final commit was
+a readiness-matrix commit, so the "STATE-only final commit" half was unmet too.
+
+That is the FR-004 failure mode transposed onto a different row — and A-5 exists *only*
+because FR-004 got this wrong twice. The brief's own transactional rule says later work
+invalidates affected evidence; the Master applied that rule to implementers and not to itself.
+Repaired by regenerating STATE and committing it alone as the final commit. **The finding
+stands regardless of the repair**: the row was marked PASS without being re-run at the head
+being merged.
+
+**Four smaller corrections, all made rather than argued:**
+
+- **A-9's prose asserted something no probe tested.** The residue probes test five properties;
+  none of them tests membership in `docs/SOURCE_REGISTRY.yaml`, yet the prose asserted every
+  `source_id` "is a real registry id from `docs/SOURCE_REGISTRY.yaml`". "Not empty and not
+  numeric" does not imply "in the registry". This is structurally the FR-004 pattern
+  reappearing inside the evidence of the brief written to correct it. The verifier checked the
+  enumerated values by hand and found all of them genuine, so the statement was *under-probed
+  rather than untrue* — and a real membership probe has now been added, calling
+  `SourceRegistry.is_source_registered()` on all 12 distinct values. All 12 are registered.
+- **A citation was false about the governing document.** `a6-scope-diff.md` attributed the
+  `alpha.env.template` authorisation to "the brief itself, §2 D4". That string is not in
+  `briefs/BRIEF-FR-005.md`; it is in the superseded draft. The authorisation is substantively
+  real, the citation was not, and it is corrected in place.
+- **`target_roles` shipped `label_only` where the brief and the D3 contract both say
+  `rank_only`.** The Master ordered the change after council finding 4 and never updated
+  either document. `label_only` is strictly more conservative, so behaviour narrowed rather
+  than widened — but a contract whose job is to pin behaviour had drifted from it, in a brief
+  that added `unavailable_reason` precisely to stop the product misdescribing itself. The
+  brief's table is an Overseer decision; the Overseer should confirm or reverse it.
+- **A published `responsibility_scope` figure was stale**: 0.800 measured before the council
+  repairs, 0.95 at the merge head.
+
+The verifier's own gate judgement was **FAIL as recorded, convertible to
+PASS_WITH_NOT_CLOSED** on repairing A-5 and resolving A-8's real-stack half. Both were done.
 
 ### Where the Master and an implementer disagreed
 
@@ -350,7 +398,7 @@ council finding that three default-on filters can be permanently inert.
 
 ## 8. Deviations
 
-Twenty recorded, maintained as they happened rather than reconstructed at the end, in
+Twenty-eight recorded, maintained as they happened rather than reconstructed at the end, in
 `reports/evidence/FR-005/deviations.md`. Four are the Master's own errors, and they are worth
 naming here rather than leaving in an appendix:
 
