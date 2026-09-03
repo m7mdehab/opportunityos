@@ -266,6 +266,50 @@ def _red_lines_matches(ctx: OpportunityFilterContext, params: dict[str, Any]) ->
     return False
 
 
+def matched_red_line_rule(ctx: OpportunityFilterContext, truth_graph: TruthGraph | None):
+    """C4 audit hook: the *specific* `RedLineRule` (not just the boolean
+    `_red_lines_matches` result) that hid `ctx`, or `None` if none matched.
+    `api/facets.py::hidden_reasons_for_context` uses this to name the actual
+    rule in the hidden-reasons table (`"red line: <rule.reason>"`) instead of
+    the generic filter id -- the brief's own example (`red line: gambling`)
+    names the specific cause, not the filter."""
+    if truth_graph is None:
+        return None
+    red_lines, _never_claims = truth_graph.rules()
+    if not red_lines:
+        return None
+    text = f"{ctx.opp.title}\n{ctx.opp.description}\n{ctx.opp.organization}"
+    for rule in red_lines:
+        try:
+            if re.search(rule.pattern, text, flags=re.IGNORECASE):
+                return rule
+        except re.error:
+            continue
+    return None
+
+
+def matched_excluded_industry(ctx: OpportunityFilterContext, truth_graph: TruthGraph | None) -> str | None:
+    """C4 audit hook: the specific excluded-industry string that hid `ctx`
+    (word-boundary matched, same as `_excluded_industries_matches`), or
+    `None` if none matched."""
+    if truth_graph is None:
+        return None
+    excluded = _excluded_industries(truth_graph)
+    if not excluded:
+        return None
+    haystack = f"{ctx.opp.title} {ctx.opp.organization} {ctx.opp.description}"
+    for industry in excluded:
+        name = industry.strip()
+        if not name:
+            continue
+        try:
+            if re.search(rf"\b{re.escape(name)}\b", haystack, flags=re.IGNORECASE):
+                return name
+        except re.error:
+            continue
+    return None
+
+
 def _excluded_industries(truth_graph: TruthGraph) -> tuple[str, ...]:
     industries: list[str] = []
     for profile in truth_graph.profiles.values():
