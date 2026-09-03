@@ -1,0 +1,17 @@
+test_class_1_get_production_db_url_raises_when_env_unset (test_fail_closed_probe.FailClosedProbeMisconfigurationTest.test_class_1_get_production_db_url_raises_when_env_unset) ... ok
+test_class_2_get_engine_default_constructor_raises_when_env_unset (test_fail_closed_probe.FailClosedProbeMisconfigurationTest.test_class_2_get_engine_default_constructor_raises_when_env_unset) ... ok
+test_class_3_get_production_db_url_raises_for_sqlite_env (test_fail_closed_probe.FailClosedProbeMisconfigurationTest.test_class_3_get_production_db_url_raises_for_sqlite_env) ... ok
+test_class_4_production_components_raise_when_env_unset (test_fail_closed_probe.FailClosedProbeMisconfigurationTest.test_class_4_production_components_raise_when_env_unset) ... ok
+test_class_5_postgres_inbox_store_raises_for_explicit_sqlite_arg (test_fail_closed_probe.FailClosedProbeMisconfigurationTest.test_class_5_postgres_inbox_store_raises_for_explicit_sqlite_arg) ... ok
+test_class_6_postgres_idempotency_ledger_raises_for_explicit_sqlite_arg (test_fail_closed_probe.FailClosedProbeMisconfigurationTest.test_class_6_postgres_idempotency_ledger_raises_for_explicit_sqlite_arg) ... ok
+test_class_7_orchestrator_raises_for_store_none (test_fail_closed_probe.FailClosedProbeMisconfigurationTest.test_class_7_orchestrator_raises_for_store_none) ... ok
+test_valid_dsn_1_outbound_browser_engine_carries_postgres_ledger (test_fail_closed_probe.FailClosedProbeValidDsnTest.test_valid_dsn_1_outbound_browser_engine_carries_postgres_ledger) ... ok
+test_valid_dsn_2_inbound_ingestion_service_carries_postgres_store (test_fail_closed_probe.FailClosedProbeValidDsnTest.test_valid_dsn_2_inbound_ingestion_service_carries_postgres_store) ... ok
+test_valid_dsn_3_pipeline_event_store_carries_postgres_store (test_fail_closed_probe.FailClosedProbeValidDsnTest.test_valid_dsn_3_pipeline_event_store_carries_postgres_store) ... ok
+test_valid_dsn_4_notification_engine_carries_postgres_store (test_fail_closed_probe.FailClosedProbeValidDsnTest.test_valid_dsn_4_notification_engine_carries_postgres_store) ... ok
+test_valid_dsn_5_production_operational_orchestrator_carries_postgres_store (test_fail_closed_probe.FailClosedProbeValidDsnTest.test_valid_dsn_5_production_operational_orchestrator_carries_postgres_store) ... ok
+
+----------------------------------------------------------------------
+Ran 12 tests in 0.065s
+
+OK
