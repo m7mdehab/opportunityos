@@ -94,7 +94,7 @@ class AtsDocumentQualityHarness:
         ]
 
         date_pattern = re.compile(
-            r"(?:\d{4}-\d{2}-\d{2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4})"
+            r"\b(?:\d{4}-\d{2}-\d{2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4})\b"
         )
         dates_parsed = date_pattern.findall(full_text)
 
