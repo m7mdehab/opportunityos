@@ -142,7 +142,7 @@ separate small file and tell the Master) · `opportunity/registry.py` (new host 
 | # | Command | Expected |
 |---|---|---|
 | E23.1 | `py -3.12 -m unittest opportunity.test_adapters -v` | `OK`, count stated |
-| E23.2 | `py -3.12 -m unittest recon -v` | `OK` |
+| E23.2 | `py -3.12 -m unittest discover -s recon -p "test_*.py" -v` | `OK` |
 | E23.3 | the A-16 policy test | **zero** adapters bound to a `manual_only` or `disabled` source; **zero** `prepare`/`submit` permissions anywhere |
 | E23.4 | the recon sweep | a dated outcome line per source, including the not-fetched ones, with the reason |
 | E23.5 | an adapter smoke run for each read-allowed new source | row counts per source, printed; a source that yields zero rows is reported as zero, not omitted |

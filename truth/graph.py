@@ -11,6 +11,7 @@ from typing import Any, TypeAlias
 from .models import (
     CANONICAL_MATERIAL_MANIFEST,
     Achievement,
+    ApprovedPhrase,
     AssertionType,
     AtomicAssertion,
     BusinessCapacity,
@@ -21,6 +22,7 @@ from .models import (
     EducationRecord,
     EmploymentRecord,
     EvidenceRecord,
+    Identity,
     LanguageRecord,
     MaterialFieldSpec,
     MetricAssertion,
@@ -511,6 +513,8 @@ class TruthGraph:
         self._entities: dict[str, object] = {}
         self._entity_evidence: dict[str, tuple[str, ...]] = {}
         self._evidence_entities: dict[str, list[str]] = {}
+        self._identity: Identity | None = None
+        self._approved_phrases: dict[str, ApprovedPhrase] = {}
 
         self._pending_relations = tuple(relations)
         for record in evidence:
@@ -542,6 +546,15 @@ class TruthGraph:
     @property
     def profiles(self):
         return MappingProxyType(self._profiles)
+
+    @property
+    def identity(self):
+        """The founder's identity block, or None if the pack carries none."""
+        return self._identity
+
+    @property
+    def approved_phrases(self):
+        return MappingProxyType(self._approved_phrases)
 
     def _check_id_collision(self, node_id: str) -> None:
         if (
@@ -665,6 +678,50 @@ class TruthGraph:
 
     def add_capability_profile(self, profile: CapabilityProfile) -> None:
         self._add_profile(profile)
+
+    def add_identity(self, identity: Identity) -> None:
+        """Add the pack's (singleton) identity block, projected like any
+        other entity per `CANONICAL_MATERIAL_MANIFEST`."""
+        if self._identity is not None:
+            raise ValueError("duplicate identity: only one identity section is permitted per pack")
+        self._check_id_collision(identity.id)
+
+        missing = sorted(set(identity.evidence_ids) - set(self._evidence))
+        if missing:
+            raise ValueError(f"identity references unknown evidence: {', '.join(missing)}")
+
+        links = {identity.id: identity.evidence_ids}
+        self._validate_entity_manifest(identity, links)
+
+        self._entities[identity.id] = identity
+        self._entity_evidence[identity.id] = identity.evidence_ids
+        for ev_id in identity.evidence_ids:
+            self._evidence_entities.setdefault(ev_id, []).append(identity.id)
+
+        self._project_entity_manifest(identity)
+        self._identity = identity
+
+    def add_approved_phrase(self, phrase: ApprovedPhrase) -> None:
+        """Add one founder-authored approved phrase, projected like any other
+        entity per `CANONICAL_MATERIAL_MANIFEST`."""
+        if phrase.id in self._approved_phrases:
+            raise ValueError(f"duplicate approved_phrase id: {phrase.id}")
+        self._check_id_collision(phrase.id)
+
+        missing = sorted(set(phrase.evidence_ids) - set(self._evidence))
+        if missing:
+            raise ValueError(f"approved_phrase {phrase.id} references unknown evidence: {', '.join(missing)}")
+
+        links = {phrase.id: phrase.evidence_ids}
+        self._validate_entity_manifest(phrase, links)
+
+        self._entities[phrase.id] = phrase
+        self._entity_evidence[phrase.id] = phrase.evidence_ids
+        for ev_id in phrase.evidence_ids:
+            self._evidence_entities.setdefault(ev_id, []).append(phrase.id)
+
+        self._project_entity_manifest(phrase)
+        self._approved_phrases[phrase.id] = phrase
 
     def _add_profile(self, profile: Profile) -> None:
         nodes = tuple(self._walk_profile(profile))

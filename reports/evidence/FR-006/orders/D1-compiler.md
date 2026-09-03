@@ -149,7 +149,7 @@ phrase bank; if something is missing, stop and report it as a scope question) ·
 
 | # | Command | Expected |
 |---|---|---|
-| D1.1 | `py -3.12 -m unittest matching -v` | `OK`, count stated |
+| D1.1 | `py -3.12 -m unittest discover -s matching -p "test_*.py" -v` | `OK`, count stated |
 | D1.2 | a run generating CV DOCX + PDF for **both** synthetic packs × **three** templates × three fixture postings | every artifact produced; DOCX starts `PK`, PDF starts `%PDF`; **zero** validator rejections |
 | D1.3 | the content assertions on the founder-shaped pack | identity block present (name + >= 1 contact); bullets-per-role counts printed with **>= 2 for every non-internship role**; education present; certifications count **>= 3**; projects with URLs; skills grouped — each count printed, not asserted in prose |
 | D1.4 | the ATS-parse check over the extracted PDF text | sections detected (listed), dates parsed (count), **no tables** |

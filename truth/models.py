@@ -612,6 +612,64 @@ class CapabilityProfile:
 
 
 @dataclass(frozen=True, slots=True)
+class Identity:
+    """The founder's identity block: name and contact details.
+
+    A singleton per pack (fixed `id`), truth-locked like every other
+    material entity: `evidence_ids` back the whole record, and every
+    non-null field must be textually supported by that evidence (checked
+    by `TruthGraph._validate_entity_manifest` via `CANONICAL_MATERIAL_MANIFEST`,
+    same as `EmploymentRecord.organization`/`title`).
+    """
+
+    id: str
+    name: str
+    evidence_ids: tuple[str, ...]
+    headline: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    linkedin: str | None = None
+    github: str | None = None
+    website: str | None = None
+    location_city: str | None = None
+    location_country: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.id)
+        _require_text(self.name, "name")
+        _validate_evidence_ids(self.evidence_ids)
+        for field_name in (
+            "headline", "email", "phone", "linkedin", "github", "website",
+            "location_city", "location_country",
+        ):
+            value = getattr(self, field_name)
+            if value is not None:
+                _require_text(value, field_name)
+
+
+@dataclass(frozen=True, slots=True)
+class ApprovedPhrase:
+    """One founder-authored, evidence-backed sentence a cover letter may use
+    verbatim for motivation. Nothing generates or paraphrases these; they are
+    the only sentences a cover-letter compiler may draw motivation text from.
+    """
+
+    id: str
+    text: str
+    evidence_ids: tuple[str, ...]
+    tags: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.id)
+        _require_text(self.text, "text")
+        _validate_evidence_ids(self.evidence_ids)
+        if not isinstance(self.tags, tuple):
+            raise ValueError("tags must be an immutable tuple")
+        for tag in self.tags:
+            _require_text(tag, "tag")
+
+
+@dataclass(frozen=True, slots=True)
 class ClaimVerificationResult:
     claim: str
     allowed: bool
@@ -732,4 +790,18 @@ CANONICAL_MATERIAL_MANIFEST: tuple[MaterialFieldSpec, ...] = (
     MaterialFieldSpec(CapabilityProfile, "tools", "capability_profile.tools", is_nested_entity=True, optional=True),
     MaterialFieldSpec(CapabilityProfile, "red_lines", "capability_profile.red_lines", is_nested_entity=True, optional=True),
     MaterialFieldSpec(CapabilityProfile, "never_claims", "capability_profile.never_claims", is_nested_entity=True, optional=True),
+
+    # Identity (BRIEF-FR-006 F1): projected top-level identity block.
+    MaterialFieldSpec(Identity, "name", "identity.name"),
+    MaterialFieldSpec(Identity, "headline", "identity.headline", optional=True),
+    MaterialFieldSpec(Identity, "email", "identity.email", optional=True),
+    MaterialFieldSpec(Identity, "phone", "identity.phone", optional=True),
+    MaterialFieldSpec(Identity, "linkedin", "identity.linkedin", optional=True),
+    MaterialFieldSpec(Identity, "github", "identity.github", optional=True),
+    MaterialFieldSpec(Identity, "website", "identity.website", optional=True),
+    MaterialFieldSpec(Identity, "location_city", "identity.location_city", optional=True),
+    MaterialFieldSpec(Identity, "location_country", "identity.location_country", optional=True),
+
+    # ApprovedPhrase (BRIEF-FR-006 F1): founder-authored motivation sentences.
+    MaterialFieldSpec(ApprovedPhrase, "text", "approved_phrase.text"),
 )

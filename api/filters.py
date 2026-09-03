@@ -540,11 +540,19 @@ FILTER_DEFINITIONS: tuple[FilterDefinition, ...] = (
     FilterDefinition(
         filter_id="target_roles",
         default_enabled=True,
-        # Council defect 4: demoted to label_only pending live-data proof of
-        # the token-based predicate above (was rank_only). Ranking on an
-        # unproven predicate risks reordering the feed in a way the founder
-        # cannot see the reason for; labelling is visible and reversible.
-        default_mode="label_only",
+        # B3 (BRIEF-FR-006), Overseer decision at FR-005 review §3.1: reverts
+        # the council-defect-4 demotion to label_only (see the superseded
+        # comment this replaces) back to rank_only now that matching/
+        # title_family.py gives the target-role comparison a committed,
+        # code-owned family taxonomy instead of a raw token-set heuristic.
+        # This is a data change only -- no migration -- because
+        # `apply_filters` (below) always falls back to `default_mode` for
+        # any founder with no explicit `FounderFilterSettingRecord` row for
+        # this filter, so updating this constant is itself the idempotent
+        # settings-seed update: a founder with no saved override picks up
+        # rank_only on the next read, and a founder who already saved an
+        # explicit mode is untouched either way.
+        default_mode="rank_only",
         default_params={},
         description="Opportunities whose title does not mention your declared target role.",
         matcher=_target_roles_matches,

@@ -7,6 +7,7 @@ from datetime import date
 from .graph import TruthGraph
 from .models import (
     Achievement,
+    ApprovedPhrase,
     AssertionType,
     AtomicAssertion,
     BusinessCapacity,
@@ -18,6 +19,7 @@ from .models import (
     EmploymentRecord,
     EngagementType,
     EvidenceRecord,
+    Identity,
     LanguageRecord,
     MetricAssertion,
     MetricVerification,
@@ -104,6 +106,75 @@ def synthetic_evidence() -> tuple[EvidenceRecord, ...]:
         EvidenceRecord(
             "ev-cap-profile", "Target industries Technology and Development, excluded Weapons, delivering in English language.",
             "synthetic_capability_pack", "capability",
+        ),
+        EvidenceRecord(
+            "ev-identity",
+            "Jordan A. Synthetic is a Synthetic Data Engineering Leader based in Synthetic City, "
+            "Exampleland. Email jordan.synthetic@example.com, phone +1-555-0100, LinkedIn "
+            "https://linkedin.com/in/jordan-synthetic, GitHub https://github.com/jordan-synthetic, "
+            "website https://jordan-synthetic.example.",
+            "synthetic_identity", "identity",
+        ),
+        EvidenceRecord(
+            "ev-phrase-motivation-1",
+            "I am motivated by building reliable, evidence-backed data systems that teams can trust.",
+            "synthetic_identity", "approved_phrases.0",
+        ),
+        EvidenceRecord(
+            "ev-phrase-motivation-2",
+            "I thrive on turning ambiguous data problems into dependable, well-tested pipelines.",
+            "synthetic_identity", "approved_phrases.1",
+        ),
+        EvidenceRecord(
+            "ev-phrase-closing-1",
+            "I would welcome the opportunity to bring this focus on reliability to your team.",
+            "synthetic_identity", "approved_phrases.2",
+        ),
+        EvidenceRecord(
+            "ev-phrase-closing-2",
+            "Thank you for considering my application; I look forward to discussing how I can contribute.",
+            "synthetic_identity", "approved_phrases.3",
+        ),
+    )
+
+
+def synthetic_identity() -> Identity:
+    return Identity(
+        id="identity",
+        name="Jordan A. Synthetic",
+        evidence_ids=("ev-identity",),
+        headline="Synthetic Data Engineering Leader",
+        email="jordan.synthetic@example.com",
+        phone="+1-555-0100",
+        linkedin="https://linkedin.com/in/jordan-synthetic",
+        github="https://github.com/jordan-synthetic",
+        website="https://jordan-synthetic.example",
+        location_city="Synthetic City",
+        location_country="Exampleland",
+    )
+
+
+def synthetic_approved_phrases() -> tuple[ApprovedPhrase, ...]:
+    return (
+        ApprovedPhrase(
+            "phrase-motivation-1",
+            "I am motivated by building reliable, evidence-backed data systems that teams can trust.",
+            ("ev-phrase-motivation-1",), ("motivation",),
+        ),
+        ApprovedPhrase(
+            "phrase-motivation-2",
+            "I thrive on turning ambiguous data problems into dependable, well-tested pipelines.",
+            ("ev-phrase-motivation-2",), ("motivation",),
+        ),
+        ApprovedPhrase(
+            "phrase-closing-1",
+            "I would welcome the opportunity to bring this focus on reliability to your team.",
+            ("ev-phrase-closing-1",), ("closing",),
+        ),
+        ApprovedPhrase(
+            "phrase-closing-2",
+            "Thank you for considering my application; I look forward to discussing how I can contribute.",
+            ("ev-phrase-closing-2",), ("closing",),
         ),
     )
 
@@ -231,6 +302,9 @@ def synthetic_graph() -> TruthGraph:
     graph = TruthGraph(synthetic_evidence(), metrics=(metric_40,))
     graph.add_career_profile(synthetic_career_profile())
     graph.add_capability_profile(synthetic_capability_profile())
+    graph.add_identity(synthetic_identity())
+    for phrase in synthetic_approved_phrases():
+        graph.add_approved_phrase(phrase)
     return graph
 
 
@@ -506,7 +580,77 @@ def founder_shaped_evidence() -> tuple[EvidenceRecord, ...]:
         "founder_shaped_profile", "preferences.fulltime_onsite_premium_monthly",
     ))
 
+    records.append(EvidenceRecord(
+        "ev-founder-identity",
+        "Riley K. Founder is a Group Data Platform Lead based in Cairo, Egypt. Email "
+        "riley.founder@example.com, phone +20-555-0101, LinkedIn "
+        "https://linkedin.com/in/riley-founder-shaped, GitHub https://github.com/riley-founder-shaped, "
+        "website https://riley-founder-shaped.example.",
+        "founder_shaped_identity", "identity",
+    ))
+    records.append(EvidenceRecord(
+        "ev-founder-phrase-motivation-1",
+        "I am driven to build data platforms that a distributed engineering group can rely on.",
+        "founder_shaped_identity", "approved_phrases.0",
+    ))
+    records.append(EvidenceRecord(
+        "ev-founder-phrase-motivation-2",
+        "I care about turning fragmented shipment data into one dependable, shared platform.",
+        "founder_shaped_identity", "approved_phrases.1",
+    ))
+    records.append(EvidenceRecord(
+        "ev-founder-phrase-closing-1",
+        "I would welcome the chance to bring this platform-lead experience to your team.",
+        "founder_shaped_identity", "approved_phrases.2",
+    ))
+    records.append(EvidenceRecord(
+        "ev-founder-phrase-closing-2",
+        "Thank you for your time; I look forward to discussing how I can contribute to your group.",
+        "founder_shaped_identity", "approved_phrases.3",
+    ))
+
     return tuple(records)
+
+
+def founder_shaped_identity() -> Identity:
+    return Identity(
+        id="identity",
+        name="Riley K. Founder",
+        evidence_ids=("ev-founder-identity",),
+        headline="Group Data Platform Lead",
+        email="riley.founder@example.com",
+        phone="+20-555-0101",
+        linkedin="https://linkedin.com/in/riley-founder-shaped",
+        github="https://github.com/riley-founder-shaped",
+        website="https://riley-founder-shaped.example",
+        location_city="Cairo",
+        location_country="Egypt",
+    )
+
+
+def founder_shaped_approved_phrases() -> tuple[ApprovedPhrase, ...]:
+    return (
+        ApprovedPhrase(
+            "phrase-founder-motivation-1",
+            "I am driven to build data platforms that a distributed engineering group can rely on.",
+            ("ev-founder-phrase-motivation-1",), ("motivation",),
+        ),
+        ApprovedPhrase(
+            "phrase-founder-motivation-2",
+            "I care about turning fragmented shipment data into one dependable, shared platform.",
+            ("ev-founder-phrase-motivation-2",), ("motivation",),
+        ),
+        ApprovedPhrase(
+            "phrase-founder-closing-1",
+            "I would welcome the chance to bring this platform-lead experience to your team.",
+            ("ev-founder-phrase-closing-1",), ("closing",),
+        ),
+        ApprovedPhrase(
+            "phrase-founder-closing-2",
+            "Thank you for your time; I look forward to discussing how I can contribute to your group.",
+            ("ev-founder-phrase-closing-2",), ("closing",),
+        ),
+    )
 
 
 def founder_shaped_career_profile() -> CareerProfile:
@@ -706,5 +850,9 @@ def founder_shaped_graph() -> TruthGraph:
     )
     for assertion in preference_assertions:
         graph.add_assertion(assertion)
+
+    graph.add_identity(founder_shaped_identity())
+    for phrase in founder_shaped_approved_phrases():
+        graph.add_approved_phrase(phrase)
 
     return graph
