@@ -54,12 +54,23 @@ class TestArtifactCompilers(unittest.TestCase):
         # The actual deliverable: every claim the compiler generated against
         # a real (non-hand-tuned) truth graph must clear `ClaimValidator`.
         self.assertEqual(self._rejections(cv, opp), [])
-        # ADR-0014 atomicity: the professional-summary claim cites exactly
-        # the title assertion's own evidence -- it no longer combines
-        # unrelated skill evidence into the same claim (BRIEF-FR-004 defect:
-        # that combination tripped the relational-composition guard for any
+        # `create_test_graph()` (matching/test_qualification.py, not part of
+        # this order's scope) carries no `career_profile.approved_summaries`,
+        # so the Summary section (BRIEF-FR-006 D1: selects an approved-
+        # summary variant, never combines evidence) is legitimately empty
+        # here -- the atomicity check below runs against
+        # `truth.fixtures.synthetic_graph()`, which does carry one.
+        from truth.fixtures import synthetic_graph
+
+        summary_graph = synthetic_graph()
+        summary_cv = self.emp_compiler.compile_tailored_cv(opp, summary_graph)
+        # ADR-0014 atomicity (BRIEF-FR-006 D1 update): the summary claim is
+        # the selected `profile.approved_summary` assertion verbatim -- it
+        # cites exactly that one assertion's own evidence, never combining
+        # unrelated evidence into the same claim (BRIEF-FR-004 defect: that
+        # combination tripped the relational-composition guard for any
         # naturally-written pack).
-        summary_claims = [c for c in cv.generated_claims if c.claim_id == "claim-summary-title"]
+        summary_claims = [c for c in summary_cv.generated_claims if c.predicate == "profile.approved_summary"]
         self.assertTrue(summary_claims, "expected a professional-summary claim")
         for claim in summary_claims:
             self.assertLessEqual(len(claim.assertion_ids), 1, "summary claim must cite at most one founder fact")

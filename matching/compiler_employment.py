@@ -13,12 +13,25 @@ from opportunity.models import Opportunity
 from truth.graph import TruthGraph
 from truth.models import VerificationStatus
 
+from .document_model import (
+    CompiledDocument,
+    build_achievements_section,
+    build_certifications_section,
+    build_education_section,
+    build_experience_section,
+    build_identity_block,
+    build_languages_section,
+    build_projects_section,
+    build_skills_section,
+    build_summary_section,
+)
 from .models import (
     ArtifactSection,
     ArtifactType,
     CommitmentStatus,
     ForwardCommitment,
     GeneratedClaim,
+    OmittedItem,
     TailoredArtifact,
     TailoringPolicy,
 )
@@ -36,200 +49,30 @@ class EmploymentArtifactCompiler:
         truth_graph: TruthGraph,
         compiled_at: str = "2026-08-30",
     ) -> TailoredArtifact:
-        """Compile an opportunity-specific tailored CV strictly from verified assertions."""
-        sections: list[ArtifactSection] = []
-        claims: list[GeneratedClaim] = []
-
-        # 1. Professional Summary Section
-        title_assertions = [
-            a for a in truth_graph.assertions.values()
-            if a.predicate == "employment.title" and a.verification_status == VerificationStatus.VERIFIED
-        ]
-        founder_skills = [
-            a for a in truth_graph.assertions.values()
-            if a.predicate == "skill.name" and a.verification_status == VerificationStatus.VERIFIED
-        ]
-        # Prioritize skills appearing in opportunity requirements
-        opp_skills_cf = {s.casefold() for s in opp.skills}
-        relevant_skills = [s for s in founder_skills if str(s.value).casefold() in opp_skills_cf]
-        other_skills = [s for s in founder_skills if str(s.value).casefold() not in opp_skills_cf]
-        ordered_skills = (relevant_skills + other_skills)[:self.policy.max_skills_highlighted]
-
-        if title_assertions:
-            # ADR-0014: atomic claim -- a single founder fact (the title),
-            # backed by exactly the evidence that supports it. The prior
-            # version of this claim also named the founder's top skills in
-            # the same sentence, combining evidence from unrelated skill
-            # assertions with the title assertion; `ClaimValidator` guard 8
-            # correctly refuses that unless the combined evidence is
-            # relationally linked, which title and skill evidence generally
-            # is not. Skills remain fully covered -- they are still listed,
-            # each as its own atomic claim, in the Technical Skills section
-            # immediately below.
-            top_title = str(title_assertions[0].value)
-            # "Background:" not "Professional background:" (BRIEF-FR-005 D1
-            # remediation): the section heading already says "Professional
-            # Summary", and "professional" was removed from the class-(c)
-            # connective stop-list because it can be part of a real job
-            # title ("Professional Services Consultant").
-            summary_text = f"Background: {top_title}."
-            summary_aids = (title_assertions[0].id,)
-            summary_eids = title_assertions[0].evidence_ids
-
-            sec_summary = ArtifactSection(
-                section_id="summary",
-                heading="Professional Summary",
-                content=summary_text,
-                items=(),
-                assertion_ids=summary_aids,
-                evidence_ids=summary_eids,
-            )
-            sections.append(sec_summary)
-            claims.append(GeneratedClaim(
-                claim_id="claim-summary-title",
-                text=summary_text,
-                section_id="summary",
-                assertion_ids=summary_aids,
-                evidence_ids=summary_eids,
-                predicate="summary",
-                authorized_value=summary_text,
-                is_forward_commitment=False,
-            ))
-
-        # 2. Selected Relevant Technical Skills Section
-        if ordered_skills:
-            skill_names = tuple(str(s.value) for s in ordered_skills)
-            sec_skills = ArtifactSection(
-                section_id="skills",
-                heading="Technical Skills & Competencies",
-                content=", ".join(skill_names),
-                items=skill_names,
-                assertion_ids=tuple(s.id for s in ordered_skills),
-                evidence_ids=tuple(sorted(set(ev for s in ordered_skills for ev in s.evidence_ids))),
-            )
-            sections.append(sec_skills)
-            for s in ordered_skills:
-                claims.append(GeneratedClaim(
-                    claim_id=f"claim-skill-{s.id}",
-                    text=str(s.value),
-                    section_id="skills",
-                    assertion_ids=(s.id,),
-                    evidence_ids=s.evidence_ids,
-                    predicate="skill.name",
-                    authorized_value=str(s.value),
-                    is_forward_commitment=False,
-                ))
-
-        # 3. Relevant Professional Experience Section
-        emp_records = {}
-        for a in truth_graph.assertions.values():
-            if a.verification_status != VerificationStatus.VERIFIED:
-                continue
-            if a.predicate.startswith("employment."):
-                subj = a.subject_id
-                emp_records.setdefault(subj, []).append(a)
-
-        exp_items: list[str] = []
-        exp_assertion_ids: list[str] = []
-        exp_evidence_ids: list[str] = []
-
-        for subj, assertions in emp_records.items():
-            field_dict = {a.predicate.split(".", 1)[1]: str(a.value) for a in assertions}
-            title = field_dict.get("title")
-            org = field_dict.get("organization")
-            start = field_dict.get("start_date")
-            end = field_dict.get("end_date")
-
-            if title and org:
-                exp_header = f"{title} | {org}"
-            elif title:
-                exp_header = title
-            elif org:
-                exp_header = org
-            else:
-                exp_header = f"Experience Record ({subj})"
-
-            if start and end:
-                exp_header += f" ({start} – {end})"
-            elif start:
-                exp_header += f" ({start} – )"
-            elif end:
-                exp_header += f" ( – {end})"
-
-            exp_items.append(exp_header)
-            exp_assertion_ids.extend(a.id for a in assertions)
-            for a in assertions:
-                exp_evidence_ids.extend(a.evidence_ids)
-
-            claims.append(GeneratedClaim(
-                claim_id=f"claim-emp-{subj}",
-                text=exp_header,
-                section_id="experience",
-                assertion_ids=tuple(a.id for a in assertions),
-                evidence_ids=tuple(ev for a in assertions for ev in a.evidence_ids),
-                predicate="employment.record",
-                authorized_value=exp_header,
-                is_forward_commitment=False,
-            ))
-
-        if exp_items:
-            sec_exp = ArtifactSection(
-                section_id="experience",
-                heading="Professional Experience",
-                content="\n".join(exp_items),
-                items=tuple(exp_items),
-                assertion_ids=tuple(exp_assertion_ids),
-                evidence_ids=tuple(sorted(set(exp_evidence_ids))),
-            )
-            sections.append(sec_exp)
-
-        # 4. Verified Metrics & Key Achievements Section
-        metric_assertions = [
-            m for m in truth_graph.metrics.values()
-            if m.verification_status == VerificationStatus.VERIFIED
-        ]
-        metric_items: list[str] = []
-        metric_assertion_ids: list[str] = []
-        metric_evidence_ids: list[str] = []
-        for m in metric_assertions:
-            unit_str = f" {m.unit}" if m.unit and m.unit not in ("count", "number") else ""
-            # Strip a trailing full stop from the context before appending
-            # ": {value}{unit}": a period immediately before that colon is a
-            # sentence-boundary character to `ClaimValidator`'s clause-context
-            # extraction (`truth/validator.py::_get_clause_context`), which
-            # would then check the number against an empty clause instead of
-            # the sentence that actually contains it and 409 the CV. Ingest
-            # passes a founder-authored YAML `context` string through
-            # verbatim, and a real founder is likely to write a full
-            # sentence there -- this is not a hypothetical fixture-only
-            # concern (council review, BRIEF-FR-005 D1 remediation).
-            metric_context = m.context.rstrip(".")
-            m_text = f"{metric_context}: {m.numeric_value}{unit_str}"
-            metric_items.append(m_text)
-            metric_assertion_ids.append(m.id)
-            metric_evidence_ids.extend(m.evidence_ids)
-
-            claims.append(GeneratedClaim(
-                claim_id=f"claim-metric-{m.id}",
-                text=m_text,
-                section_id="achievements",
-                assertion_ids=(m.id,),
-                evidence_ids=m.evidence_ids,
-                predicate="metric",
-                authorized_value=m_text,
-                is_forward_commitment=False,
-            ))
-
-        if metric_items:
-            sec_metrics = ArtifactSection(
-                section_id="achievements",
-                heading="Selected Quantified Achievements",
-                content="\n".join(metric_items),
-                items=tuple(metric_items),
-                assertion_ids=tuple(metric_assertion_ids),
-                evidence_ids=tuple(sorted(set(metric_evidence_ids))),
-            )
-            sections.append(sec_metrics)
+        """Compile an opportunity-specific tailored CV strictly from verified
+        assertions. Assembly happens through `matching.document_model`'s
+        section builders: this method only picks the order sections appear
+        in and flattens the resulting `CompiledDocument` into the
+        `TailoredArtifact` shape the exporters, `ats_quality`, and
+        `artifact_validation` already consume."""
+        identity = build_identity_block(truth_graph)
+        document = CompiledDocument(
+            title=f"Tailored Curriculum Vitae — {opp.organization} ({opp.title})",
+            identity=identity,
+            sections=(
+                build_summary_section(truth_graph, opp),
+                build_skills_section(truth_graph, opp, self.policy.max_skills_highlighted),
+                build_experience_section(truth_graph, opp, self.policy.max_experience_bullets_per_role),
+                build_achievements_section(truth_graph),
+                build_education_section(truth_graph),
+                build_certifications_section(truth_graph),
+                build_projects_section(truth_graph),
+                build_languages_section(truth_graph),
+            ),
+        )
+        sections_flat, claims_flat, omitted_flat = document.flatten()
+        sections: list[ArtifactSection] = [sec for sec in sections_flat if sec.items or sec.content]
+        claims: list[GeneratedClaim] = list(claims_flat)
 
         # Forward commitments for employment (standard availability/notice)
         commitments = (
@@ -254,6 +97,7 @@ class EmploymentArtifactCompiler:
             generated_claims=tuple(claims),
             commitment_checklist=commitments,
             compiled_at=compiled_at,
+            omitted_items=omitted_flat,
         )
 
     def compile_cover_letter(
@@ -287,6 +131,13 @@ class EmploymentArtifactCompiler:
         """
         sections: list[ArtifactSection] = []
         claims: list[GeneratedClaim] = []
+        omitted_items: list = []
+
+        identity = build_identity_block(truth_graph)
+        if identity is not None:
+            sections.append(identity.section.to_artifact_section())
+            claims.extend(identity.section.claims)
+            omitted_items.extend(identity.section.omitted)
 
         title_assertions = [
             a for a in truth_graph.assertions.values()
@@ -427,6 +278,50 @@ class EmploymentArtifactCompiler:
             evidence_ids=alignment_eids,
         ))
 
+        # --- Motivation: founder-authored `approved_phrases` used verbatim
+        # only. If the pack carries none, the letter omits this paragraph
+        # entirely rather than inventing motivation text (work order D1.6).
+        approved_phrases = list(truth_graph.approved_phrases.values())
+        if approved_phrases:
+            motivation_phrases = [p for p in approved_phrases if "motivation" in p.tags] or approved_phrases
+            closing_phrases = [p for p in approved_phrases if "closing" in p.tags]
+            selected_phrases = motivation_phrases[:1] + closing_phrases[:1]
+            motivation_items: list[str] = []
+            motivation_aids: list[str] = []
+            motivation_eids: list[str] = []
+            for phrase in selected_phrases:
+                motivation_items.append(phrase.text)
+                motivation_aids.append(phrase.id)
+                motivation_eids.extend(phrase.evidence_ids)
+                claims.append(GeneratedClaim(
+                    claim_id=f"claim-cover-phrase-{phrase.id}",
+                    text=phrase.text,
+                    section_id="motivation",
+                    assertion_ids=(phrase.id,),
+                    evidence_ids=phrase.evidence_ids,
+                    predicate="approved_phrase.text",
+                    authorized_value=phrase.text,
+                    is_forward_commitment=False,
+                ))
+            unused_phrases = [p for p in approved_phrases if p.id not in {ph.id for ph in selected_phrases}]
+            omitted_items.extend(
+                OmittedItem(
+                    section_id="motivation",
+                    text=p.text,
+                    reason="not the selected motivation/closing phrase for this letter",
+                    claim_id=f"claim-cover-phrase-{p.id}",
+                )
+                for p in unused_phrases
+            )
+            sections.append(ArtifactSection(
+                section_id="motivation",
+                heading="Motivation",
+                content=" ".join(motivation_items),
+                items=tuple(motivation_items),
+                assertion_ids=tuple(motivation_aids),
+                evidence_ids=tuple(sorted(set(motivation_eids))),
+            ))
+
         if self.policy.default_availability_hours_per_week is not None:
             commitments = (
                 ForwardCommitment(
@@ -460,4 +355,5 @@ class EmploymentArtifactCompiler:
             generated_claims=tuple(claims),
             commitment_checklist=commitments,
             compiled_at=compiled_at,
+            omitted_items=tuple(omitted_items),
         )
