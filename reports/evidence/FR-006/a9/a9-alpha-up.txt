@@ -1,0 +1,12 @@
+alpha up: FAILED: Timed out after 30s waiting for the API server to listen on 127.0.0.1:8000.
+alpha up: rolling back anything this run started ...
+worker: stopped (was pid 13564).
+api: stopped (was pid 23280).
+PostgreSQL: left running (alpha.py did not start it).
+PostgreSQL: already listening on 127.0.0.1:5432 (not started by alpha.py).
+PostgreSQL: database 'opportunityos_alpha' already exists.
+PostgreSQL: using database 'opportunityos_alpha'.
+Database: opportunityos_alpha (PostgreSQL 127.0.0.1:5432).
+Migrations: running `alembic upgrade head` ...
+Migrations: up to date.
+Worker: started (pid 13564), logging to C:\Users\M7mdEhab\projects\OpportunityOS\out\alpha_run\logs\worker.log.
