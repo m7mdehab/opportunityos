@@ -193,5 +193,91 @@ class TestPremiumFullTimeOnsiteRule(unittest.TestCase):
         self.assertFalse(any("premium" in g.casefold() for g in comp.gaps))
 
 
+class TestScoringPolicyWeightsSumToOne(unittest.TestCase):
+    """B3 (BRIEF-FR-006) council review #2 defect fix: a `weights.get(key,
+    default)` fallback default only ever fires when `key` is *absent* from
+    the policy dict. Editing the fallback default alone (as the domain_fit
+    rebalance originally did) silently does nothing when the key is
+    present, and the effective total weight can drift above 1.0 without any
+    test catching it. This asserts both totals exactly, and -- the
+    assertion that actually matters -- that every weight key
+    `matching/scorer.py` reads is present in the corresponding
+    `ScoringPolicy` dict, so a future dimension cannot be added by relying
+    on a fallback again."""
+
+    def _referenced_weight_keys(self, function_name: str) -> set[str]:
+        """Scan `matching/scorer.py`'s source (not a hand-listed set) for
+        every string literal passed as the first argument of a
+        `weights.get("<key>", ...)` call textually inside the named
+        top-level method, via `ast` -- not by hand-listing the keys."""
+        import ast
+        import inspect
+
+        from matching import scorer as scorer_module
+
+        source = inspect.getsource(scorer_module)
+        tree = ast.parse(source, filename=scorer_module.__file__)
+
+        class_def = next(
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.ClassDef) and node.name == "OpportunityScorer"
+        )
+        method_def = next(
+            node for node in class_def.body
+            if isinstance(node, ast.FunctionDef) and node.name == function_name
+        )
+
+        found: set[str] = set()
+
+        class Visitor(ast.NodeVisitor):
+            def visit_Call(self, node: ast.Call) -> None:
+                if (
+                    isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "get"
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "weights"
+                    and node.args
+                    and isinstance(node.args[0], ast.Constant)
+                    and isinstance(node.args[0].value, str)
+                ):
+                    found.add(node.args[0].value)
+                self.generic_visit(node)
+
+        Visitor().visit(method_def)
+        return found
+
+    def test_employment_weights_sum_to_one(self) -> None:
+        policy = ScoringPolicy()
+        self.assertEqual(sum(policy.employment_weights.values()), 1.0)
+
+    def test_independent_weights_sum_to_one(self) -> None:
+        policy = ScoringPolicy()
+        self.assertEqual(sum(policy.independent_weights.values()), 1.0)
+
+    def test_every_employment_weight_key_scorer_reads_is_in_the_policy_dict(self) -> None:
+        referenced = self._referenced_weight_keys("_score_employment")
+        self.assertTrue(referenced, "expected _score_employment to reference at least one weight key")
+        policy_keys = set(ScoringPolicy().employment_weights)
+        missing = referenced - policy_keys
+        self.assertEqual(
+            missing, set(),
+            f"matching/scorer.py._score_employment reads weight key(s) {sorted(missing)} that "
+            "are absent from ScoringPolicy().employment_weights -- each such key silently falls "
+            "back to the weights.get(...) default forever, which is exactly how the domain_fit "
+            "rebalance regression happened.",
+        )
+
+    def test_every_independent_weight_key_scorer_reads_is_in_the_policy_dict(self) -> None:
+        referenced = self._referenced_weight_keys("_score_independent")
+        self.assertTrue(referenced, "expected _score_independent to reference at least one weight key")
+        policy_keys = set(ScoringPolicy().independent_weights)
+        missing = referenced - policy_keys
+        self.assertEqual(
+            missing, set(),
+            f"matching/scorer.py._score_independent reads weight key(s) {sorted(missing)} that "
+            "are absent from ScoringPolicy().independent_weights.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -283,10 +283,20 @@ class ScoringPolicy:
         "skills": 0.35,
         "experience": 0.20,
         "responsibilities": 0.15,
-        "domain": 0.10,
+        # B3 (BRIEF-FR-006) council review #2 defect fix: this was the
+        # policy default actually read by matching/scorer.py's
+        # `weights.get("domain", ...)` fallback -- the fallback default
+        # alone (previously edited in scorer.py) never fires while this key
+        # is present, so it was the only place that mattered. Rebalanced
+        # 0.10 -> 0.05 to make room for "title_family" below without the
+        # dict summing to more than 1.0.
+        "domain": 0.05,
         "geography": 0.10,
         "compensation": 0.05,
         "trajectory": 0.05,
+        # New in B3: title_family_fit dimension weight. Sum: 0.35 + 0.20 +
+        # 0.15 + 0.05 + 0.10 + 0.05 + 0.05 + 0.05 = 1.00.
+        "title_family": 0.05,
     })
     independent_weights: dict[str, float] = field(default_factory=lambda: {
         "services": 0.35,
