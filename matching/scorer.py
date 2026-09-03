@@ -679,7 +679,7 @@ class OpportunityScorer:
         # already covers much of the same ground as title-family alignment,
         # so halving it is a reasonable reallocation) and the freed 0.05
         # funds `title_family` at 0.05. Every other default is unchanged.
-        opp_family_id, _opp_level, opp_family_rule = normalize_title(opp.title)
+        opp_family_id, opp_level, opp_family_rule = normalize_title(opp.title)
         target_role_family_assertions = [
             a for a in truth_graph.assertions.values()
             if a.predicate == predicates.CAREER_TARGET_ROLE
@@ -726,7 +726,13 @@ class OpportunityScorer:
             raw_score=title_family_score,
             weight=w_title_family,
             weighted_score=title_family_score * w_title_family,
-            explanation=f"Posting title normalized to family '{opp_family_id}' (rule: {opp_family_rule}).",
+            # Finding 8 (council review #1): normalize_title also computes a
+            # level (migration 0004's title_level column is the storage side
+            # of this, not scored here -- the requirement asks for the level
+            # to be surfaced, not for a scoring effect this dimension's
+            # acceptance criteria never specified). Surfaced here in the
+            # explanation so it is observable per-evaluation.
+            explanation=f"Posting title normalized to family '{opp_family_id}', level '{opp_level}' (rule: {opp_family_rule}).",
             strengths=title_family_strengths,
             gaps=title_family_gaps,
             unknowns=title_family_unknowns,

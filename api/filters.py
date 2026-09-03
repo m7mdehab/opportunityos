@@ -40,6 +40,7 @@ from typing import Any, Callable
 
 from sqlalchemy.orm import Session
 
+from matching.title_family import normalize_title
 from storage.models import FieldProvenanceRecord, OpportunityRecord
 from truth import predicates
 from truth.graph import TruthGraph
@@ -348,22 +349,6 @@ def _track_preference_availability(truth_graph: TruthGraph | None) -> str | None
 # deliberately separate from `truth/connective_terms.txt` (ADR-0014's claim-
 # validation stop-list governs a different, narrower concern -- see that
 # file's own docstring -- and must not be repurposed here).
-_TITLE_STOPWORDS: frozenset[str] = frozenset({
-    "senior", "sr", "junior", "jr", "lead", "staff", "principal", "associate",
-    "entry", "level", "intern", "internship", "trainee", "graduate",
-    "i", "ii", "iii", "iv", "v",
-    "and", "the", "of", "for", "a", "an", "in", "at", "to", "on", "with",
-})
-
-_TITLE_TOKEN_RE = re.compile(r"[a-z0-9]+")
-
-
-def _significant_title_tokens(text: str) -> frozenset[str]:
-    return frozenset(
-        token for token in _TITLE_TOKEN_RE.findall(text.casefold()) if token not in _TITLE_STOPWORDS
-    )
-
-
 def _founder_target_roles(truth_graph: TruthGraph | None) -> tuple[str, ...]:
     if truth_graph is None:
         return ()
@@ -376,25 +361,37 @@ def _founder_target_roles(truth_graph: TruthGraph | None) -> tuple[str, ...]:
     )
 
 
+def _founder_target_role_families(truth_graph: TruthGraph | None) -> frozenset[str]:
+    """Council review #1 finding 2 (BRIEF-FR-006 B3): the families the
+    founder's verified `career.target_role` assertions normalize onto, via
+    the same `matching.title_family.normalize_title` the `title_family_fit`
+    scored dimension (`matching/scorer.py`) uses -- so this filter's
+    `rank_only` default rests on the committed taxonomy, not a separate
+    heuristic that can drift from it. `other` is excluded: a target role
+    that does not itself normalize to a real family gives this filter
+    nothing reliable to compare an opportunity's family against."""
+    families = {normalize_title(target)[0] for target in _founder_target_roles(truth_graph)}
+    families.discard("other")
+    return frozenset(families)
+
+
 def _target_roles_matches(ctx: OpportunityFilterContext, params: dict[str, Any]) -> bool:
-    """Council defect 4: matching used to be a raw phrase substring check
-    (`target.casefold() in title_cf`), which is sensitive to word order and
-    punctuation -- "Senior Software Engineer, Backend" does not contain the
-    literal substring "backend engineer" even though it plainly *is* a
-    Backend Engineer posting, so it was wrongly flagged as misaligned and
-    demoted below far worse matches. This compares token *sets* instead
-    (order-independent, seniority/connective words ignored on both sides):
-    the opportunity aligns with a declared target role if every significant
-    token of that role appears somewhere in the title."""
-    targets = _founder_target_roles(ctx.truth_graph)
-    if not targets:
+    """Council review #1 finding 2: this used to compare token *sets*
+    (`_significant_title_tokens`, order-independent, seniority/connective
+    words stripped from both sides) -- the very FR-005 council-defect-4
+    heuristic whose unproven-predicate risk was the reason this filter's
+    default was demoted to `label_only` in the first place. Comparing
+    against the committed `matching/title_family.py` taxonomy instead (the
+    same normalization `title_family_fit` scores against) is what actually
+    justifies reverting the default to `rank_only`: the opportunity aligns
+    with a declared target role if its title normalizes to the same family
+    as at least one verified target-role assertion, not merely if their
+    words overlap."""
+    target_families = _founder_target_role_families(ctx.truth_graph)
+    if not target_families:
         return False
-    title_tokens = _significant_title_tokens(ctx.opp.title)
-    for target in targets:
-        target_tokens = _significant_title_tokens(target)
-        if target_tokens and target_tokens.issubset(title_tokens):
-            return False  # aligned with at least one declared target role
-    return True
+    opp_family, _opp_level, _opp_rule = normalize_title(ctx.opp.title)
+    return opp_family not in target_families  # True: misaligned, filter matches
 
 
 def _target_roles_availability(truth_graph: TruthGraph | None) -> str | None:

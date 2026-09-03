@@ -2061,6 +2061,33 @@ class FilterEngineOpportunitiesTest(ApiTestCase):
         order = [item["id"] for item in body["items"]]
         self.assertLess(order.index("opp-reordered"), order.index("opp-intern"))
 
+    def test_target_roles_family_taxonomy_prevents_fr005_defect_4_recurrence(self):
+        """Council review #1 finding 2 (BRIEF-FR-006 B3): `target_roles` now
+        compares committed title families (`matching/title_family.py`), the
+        same normalization `title_family_fit` (`matching/scorer.py`) scores
+        against, instead of raw token overlap -- that is what actually
+        justifies `rank_only` as the default (Overseer decision, FR-005
+        review Sec 3.1), not merely a comment saying so. This proves the
+        specific failure mode FR-005's council defect 4 existed to contain
+        cannot recur under the new comparison: a high-fit opportunity whose
+        title genuinely normalizes to the founder's declared target-role
+        family must not be ranked below a low-fit opportunity outside that
+        family. Uses the brief's own named non-collision pair (Data Engineer
+        vs Customer Engineer, BRIEF-FR-006 B3 Required behaviour #6)."""
+        _install_truth_graph(self.app, _graph_with_founder_preferences(target_role="Senior Data Engineer"))
+        self.seed_opportunity("opp-in-family", title="Data Engineer")
+        self.seed_evaluation("opp-in-family", decision="qualified", fit_score=95.0)
+        self.seed_opportunity("opp-out-of-family", title="Customer Engineer")
+        self.seed_evaluation("opp-out-of-family", decision="qualified", fit_score=30.0)
+
+        self._set_filter("target_roles", enabled=True, mode="rank_only")
+        items, body = self._items_by_id()
+
+        self.assertEqual(items["opp-in-family"]["flagged_by"], [])
+        self.assertIn("target_roles", items["opp-out-of-family"]["flagged_by"])
+        order = [item["id"] for item in body["items"]]
+        self.assertLess(order.index("opp-in-family"), order.index("opp-out-of-family"))
+
     def test_premium_fulltime_onsite_modes(self):
         # Council repair, defect 6: matched by the stable `signal_tags` entry
         # matching/scorer.py's premium rule now emits, not by a bare
