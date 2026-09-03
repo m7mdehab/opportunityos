@@ -118,22 +118,6 @@ _SINGLETON_ADAPTER_FACTORIES = {
 }
 
 
-def _fit_varchar64(value: str) -> str:
-    """Some real corpus postings (e.g. We Work Remotely's URL-derived ids)
-    exceed `opportunities.id`/`content_hash`'s `VARCHAR(64)` column width
-    (`storage/models.py`, frozen for this order). Deterministically shorten
-    rather than truncate blindly, so two different long values never
-    collide into the same 64-char row: keep a readable prefix and append a
-    hash of the full original value. A test-fixture accommodation for a
-    pre-existing column-width limit, not a change to search behaviour."""
-    import hashlib
-
-    if len(value) <= 64:
-        return value
-    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
-    return f"{value[:47]}-{digest}"
-
-
 def _adapter_for_source_id(source_id: str):
     """Map a `CorpusFixture.source_id` (e.g. `"greenhouse:cloudflare"`,
     `"himalayas"`) back to the same adapter class that would have produced
@@ -177,8 +161,6 @@ class PytorchCorpusSearchTest(ApiTestCase):
             result = adapter.parse_payload(fixture.raw_body)
             for opp in result.opportunities:
                 opp_data = _build_opp_data(opp, is_stale=False)
-                opp_data["id"] = _fit_varchar64(opp_data["id"])
-                opp_data["content_hash"] = _fit_varchar64(opp_data["content_hash"])
                 repository.save_opportunity(opp_data, _build_provenances(opp))
                 persisted += 1
         return persisted
