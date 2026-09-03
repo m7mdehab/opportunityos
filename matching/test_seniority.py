@@ -8,11 +8,21 @@ from __future__ import annotations
 import unittest
 from datetime import date
 
+from opportunity.models import (
+    EmploymentType,
+    GeographicEligibility,
+    Opportunity,
+    SeniorityLevel,
+    SourceProvenance,
+    Track,
+    WorkMode,
+)
 from truth import predicates
 from truth.graph import TruthGraph
 from truth.models import AtomicAssertion, EvidenceRecord, VerificationStatus
 
 from matching import seniority
+from matching.scorer import OpportunityScorer
 
 
 def _build_graph(roles: list[dict]) -> TruthGraph:
@@ -215,6 +225,70 @@ class TestExplain(unittest.TestCase):
         self.assertIn("data engineering", text)
         self.assertIn("Senior", text)
         self.assertIn("gap", text.casefold())
+
+
+def _staff_or_principal_opportunity(title: str, level: SeniorityLevel) -> Opportunity:
+    prov = SourceProvenance(
+        source_id="greenhouse:regression", source_url="https://example.test/regression-1",
+        feed_url="https://example.test/jobs", fetched_at="2026-09-03T00:00:00Z",
+        payload_checksum="sha256fake",
+    )
+    geo = GeographicEligibility(status="eligible", reason="Worldwide remote")
+    return Opportunity(
+        id="opp-regression-1", track=Track.EMPLOYMENT, source="greenhouse:regression",
+        source_url="https://example.test/regression-1", source_id="regression-1",
+        organization="Example Corp", title=title,
+        description="Own data engineering initiatives end to end.",
+        responsibilities=("Own data pipelines",), requirements=(),
+        skills=(), seniority=level, employment_type=EmploymentType.FULL_TIME,
+        location_raw="Remote, Worldwide", work_mode=WorkMode.REMOTE,
+        geographic_eligibility=geo, compensation=None, posted_date="2026-09-01",
+        closing_date=None, procurement_metadata=None, raw_provenance=prov,
+        record_checksum="sha256fake", raw_record_pointer="feed:jobs[0]",
+        field_provenances=(),
+    )
+
+
+class TestShortTenureTeamLeadDoesNotMatchStaffPosting(unittest.TestCase):
+    """Regression guard for the defect this whole deliverable exists to close
+    (BRIEF-FR-006 order B1 "Why this exists"): a founder with short tenure
+    whose only senior-sounding evidence is a "Team Lead" title, with no
+    responsibility text describing leadership, scored end to end through
+    `OpportunityScorer` against a Staff/Principal posting. This is the
+    combined, through-the-scorer case; `test_leadership_in_title_only_does_not_count`
+    above proves `has_people_leadership` alone. A short-tenure founder is
+    built locally here rather than in the founder-shaped fixture
+    (`truth.fixtures.founder_shaped_graph()`), which is frozen for this
+    deliverable and depended on by other BRIEF-FR-006 work orders.
+    """
+
+    def test_20_month_team_lead_title_earns_no_staff_strength(self) -> None:
+        graph = _build_graph([{
+            "rid": "short-tenure-lead",
+            "title": "Team Lead",
+            "start": date(2024, 1, 1),
+            "end": date(2025, 8, 31),  # exactly 20 months
+            "responsibilities": ["Maintained REST API endpoints for the billing platform."],
+        }])
+
+        # Sanity check on the fixture itself before asserting on the scorer's output.
+        spans = seniority.extract_employment_spans(graph)
+        self.assertEqual(seniority.total_professional_months(spans), 20)
+        found, _ = seniority.has_people_leadership(spans)
+        self.assertFalse(found)
+
+        opp = _staff_or_principal_opportunity("Staff Data Engineer", SeniorityLevel.LEAD)
+        evaluation = OpportunityScorer().evaluate(opp, graph)
+        dim = next(
+            d for d in evaluation.dimension_scores if d.dimension_name == "seniority_and_experience"
+        )
+
+        self.assertEqual(dim.strengths, ())
+        self.assertTrue(dim.gaps, "expected a gap naming the month shortfall")
+        self.assertTrue(
+            any("120" in gap and "20" in gap for gap in dim.gaps),
+            f"gap text does not name the month shortfall: {dim.gaps}",
+        )
 
 
 if __name__ == "__main__":
