@@ -195,7 +195,7 @@ plain unauthenticated HTTP GET.
 
 | Source | Status | Latency ms | Records | Detail |
 |---|---|---:|---:|---|
-| hacker_news_who_is_hiring | allowed_ok | n/a (multi-request) | 192 | robots.txt Allow: /*.json$; live smoke run on 2026-09-03 (`HackerNewsWhoIsHiringAdapter` fed the live `fetch_who_is_hiring_payload()` output) parsed 192 opportunity rows from the current "Who is hiring?" thread. Adapter bound. |
+| hacker_news_who_is_hiring | allowed_ok | n/a (multi-request) | 0 (bound path, this session) | robots.txt Allow: /*.json$. **Correction (council review 4, finding 11):** the "192 rows" figure previously reported here came from a manual, disconnected smoke run of `fetch_who_is_hiring_payload()` invoked directly against live Hacker News -- not from the bound production path. At the time of that figure, `OpportunityPipeline.execute_discovery` fetched only `HackerNewsWhoIsHiringAdapter.feed_url` (the `whoishiring` user object) as a single GET and handed it to `parse_payload`, which requires a `comments` key the user object never has -- so the bound path always yielded 0 rows and permanent `has_schema_drift=True` health, regardless of what a manual smoke run produced. `worker/handlers.py` now wires a governed, registry-gated, multi-step fetch (`_fetch_hacker_news_who_is_hiring_governed`) into the bound poll path for this source, but this offline work order made no network request (per its own constraint), so no production run of the bound path has been executed or measured this session -- the honest, measured row count for the bound path in this session is **0**. |
 | reddit_forhire | http_403 | 0 | 0 | `GET /r/forhire.json` → HTTP 403 on the first request. Not retried. Registered `manual_only` with a deep link — this is Reddit's one attempted route and its dated closure. |
 | reddit_remotejobs | http_403 (generalized) | 0 | 0 | Same host/endpoint pattern as reddit_forhire; not independently requested to avoid a second request to an already-blocking host. `manual_only`, deep link. |
 | reddit_machinelearningjobs | http_403 (generalized) | 0 | 0 | See reddit_forhire. `manual_only`, deep link. |
@@ -232,10 +232,15 @@ plain unauthenticated HTTP GET.
 | chegg | not_a_postings_adapter | 0 | 0 | robots.txt allowed (blocks ia_archiver only). `track=tutoring`, `platform_application`, deep link + readiness checklist. |
 | cambly | not_a_postings_adapter | 0 | 0 | robots.txt allowed. `track=tutoring`, `platform_application`, deep link + readiness checklist. |
 
-**New read-allowed sources that actually produced rows: 1** (`hacker_news_who_is_hiring`, 192 rows).
+**New read-allowed sources that actually produced rows: 0.** `hacker_news_who_is_hiring` is
+read-allowed and now has a governed fetch wired into its bound poll path (see the row above and
+finding 11's correction), but no network request was made this offline session, so zero rows have
+actually been produced and measured through the bound path as of this evidence.
 The brief's E2 acceptance text names "at least 8"; per this order's binding rule ("reaching fewer
 than 8 read-allowed sources is reported as the number reached... do not stretch a policy reading to
-raise a count"), the true number reached is reported as 1. Every other aggregator/regional/freelance
+raise a count"), the true number reached is reported as 0 rows actually produced this session
+(`hacker_news_who_is_hiring` is read-allowed with a bound, governed fetch path, but unmeasured
+against live Hacker News this session -- see above). Every other aggregator/regional/freelance
 source's terms, robots outcome, or brief-designated alert/application-only status forecloses safe
 automated reading within this session; each is `manual_only` (or `platform_application` for
 tutoring) with a dated recon outcome and a resolvable deep link, which the brief and AGENTS.md both
@@ -243,7 +248,10 @@ treat as a completed deliverable, not a failure.
 
 **403/429 responses received, and confirmation none was retried:** `reddit_forhire` (`GET
 /r/forhire.json` → 403), `upwork` (`GET /robots.txt` → 403), `superprof` (`GET /robots.txt` → 403).
-Each of these three hosts was requested exactly once in this session; the transport-log replay in
+`upwork` and `superprof` each received exactly one request (their `robots.txt` fetch, which itself
+was the 403). `www.reddit.com` received two: `robots.txt` (HTTP 200) and then the body request
+`/r/forhire.json` (HTTP 403) -- the blocking request, not a retry of an earlier one. No host was
+requested a second time *after* a 403/429 was observed; the transport-log replay in
 `recon/test_e23_transport_log.py::test_e23_recon_sweep_never_retried_a_blocked_source` asserts this
 against the literal, ordered request log and would raise `BlockedSourceRetryError` if any of the
 three appeared a second time. None was requested again.
