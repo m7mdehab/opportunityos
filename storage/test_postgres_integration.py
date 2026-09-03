@@ -216,6 +216,24 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         row = target_roles_row()
         self.assertEqual(tuple(row), ("target_roles", "rank_only"))
 
+    def test_search_tsv_gin_index_exists_at_head(self):
+        """BRIEF-FR-006 C2.3: `ix_opportunities_search_tsv` (migration
+        `0004_founder_control`, frozen for this work order) is present on
+        `opportunities` after `alembic upgrade head`."""
+        alembic_cfg = Config("alembic.ini")
+        alembic_cfg.set_main_option("sqlalchemy.url", self.db_url)
+        command.upgrade(alembic_cfg, "head")
+
+        with self.engine.connect() as conn:
+            names = {
+                row[0]
+                for row in conn.execute(
+                    text("SELECT indexname FROM pg_indexes WHERE tablename = 'opportunities'")
+                )
+            }
+        print(f"C2.3: pg_indexes for opportunities = {sorted(names)}")
+        self.assertIn("ix_opportunities_search_tsv", names)
+
     def test_match_evaluations_unique_constraint_enforced_by_database(self):
         """(opportunity_id, truth_pack_hash) duplicates are rejected by PostgreSQL itself."""
         session = self.SessionFactory()
@@ -1728,7 +1746,15 @@ class A1MFounderControlRoundTripTest(unittest.TestCase):
             self.assertIsNone(fetched.title_family)
             self.assertIsNone(fetched.title_level)
             self.assertIsNone(fetched.family_key)
-            self.assertIsNone(fetched.search_tsv)
+            # BRIEF-FR-006 C2 (search): superseded assertion -- at A1M time
+            # `search_tsv` genuinely stayed NULL because nothing populated
+            # it yet. C2's whole job is to populate it on every
+            # `save_opportunity` call (see `storage.repository.
+            # _refresh_search_tsv`), so a row with real title/organization/
+            # description text -- exactly what `_base_opp_data` supplies --
+            # must come back indexed, not NULL, even though every *other*
+            # new column here was deliberately left unset.
+            self.assertIsNotNone(fetched.search_tsv)
         finally:
             session.close()
 

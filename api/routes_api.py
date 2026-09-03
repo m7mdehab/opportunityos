@@ -53,6 +53,7 @@ from .filters import (
     unavailable_reason,
     validate_filter_params,
 )
+from .search import is_query_unparseable, rank_key, search_opportunity_ids
 from .serialization import (
     serialize_constraint,
     serialize_dimension_score,
@@ -292,13 +293,33 @@ def list_opportunities(
         query = query.filter(OpportunityRecord.track == track)
     if since:
         query = query.filter(OpportunityRecord.created_at >= since)
-    if q:
-        like = f"%{q}%"
-        query = query.filter(
-            (OpportunityRecord.title.ilike(like)) | (OpportunityRecord.organization.ilike(like))
-        )
 
-    opportunities = query.all()
+    # BRIEF-FR-006 C2: full-text search replaces the old title/organization
+    # `ilike` match. `search_relevance` (id -> ts_rank) stays empty unless a
+    # search is active; everything downstream of this block (facet/filter
+    # application via `apply_filters`, `hidden_count`) is unchanged and runs
+    # against whatever `opportunities` ends up holding, so a search plus an
+    # active exclusion facet naturally returns their intersection and still
+    # counts the excluded rows. `search_message` is set only for genuinely
+    # unparseable input (api.search.is_query_unparseable) -- never for a
+    # query that legitimately matches zero rows -- and the response is an
+    # empty result, never a 500, either way.
+    search_relevance: dict[str, float] = {}
+    search_message: str | None = None
+    if q:
+        if is_query_unparseable(session, q):
+            search_message = "search query has no searchable terms"
+            opportunities: list[OpportunityRecord] = []
+        else:
+            hits = search_opportunity_ids(session, q)
+            search_relevance = {hit.opportunity_id: hit.relevance for hit in hits}
+            if search_relevance:
+                query = query.filter(OpportunityRecord.id.in_(search_relevance.keys()))
+                opportunities = query.all()
+            else:
+                opportunities = []
+    else:
+        opportunities = query.all()
 
     filter_settings = _load_filter_settings(session)
     truth_graph = _truth_graph_from_request(request)
@@ -344,18 +365,33 @@ def list_opportunities(
         )
 
     # Rank-penalty tier first (contract section 4: demoted items sort after
-    # non-demoted ones at equal score, and never reorder within a tier), then
-    # the pre-existing key unchanged: fit_score descending, nulls last, then
+    # non-demoted ones at equal score, and never reorder within a tier).
+    # Below that tier: with an active search, BRIEF-FR-006 C2's ranking
+    # formula (relevance x fit, `api.search.rank_key`) descending -- this
+    # changes row *order* only; `decision`/`fit_score` themselves are read
+    # here, never written (see `api.search.rank_key`'s docstring and
+    # `api/test_search.py::NoReJudgementTest`). Without an active search, the
+    # pre-existing key is unchanged: fit_score descending, nulls last, then
     # posted_date descending, then id.
-    rows.sort(
-        key=lambda r: (
-            r["_rank_penalty"],
-            r["fit_score"] is None,
-            -(r["fit_score"] or 0),
-            _posted_date_sort_key(r["posted_date"]),
-            r["id"],
+    if q and search_relevance:
+        rows.sort(
+            key=lambda r: (
+                r["_rank_penalty"],
+                -rank_key(search_relevance.get(r["id"], 0.0), r["fit_score"]),
+                _posted_date_sort_key(r["posted_date"]),
+                r["id"],
+            )
         )
-    )
+    else:
+        rows.sort(
+            key=lambda r: (
+                r["_rank_penalty"],
+                r["fit_score"] is None,
+                -(r["fit_score"] or 0),
+                _posted_date_sort_key(r["posted_date"]),
+                r["id"],
+            )
+        )
     for r in rows:
         del r["_rank_penalty"]
 
@@ -365,7 +401,14 @@ def list_opportunities(
     start = (page - 1) * page_size
     page_items = rows[start : start + page_size]
 
-    return {"page": page, "page_size": page_size, "total": total, "hidden_count": hidden_count, "items": page_items}
+    return {
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "hidden_count": hidden_count,
+        "items": page_items,
+        "message": search_message,
+    }
 
 
 def _posted_date_sort_key(value: str | None) -> tuple[int, Any]:

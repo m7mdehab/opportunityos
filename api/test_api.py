@@ -26,6 +26,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from storage.engine import get_engine, get_session_factory
+from storage.repository import backfill_search_tsv
 from storage.models import (
     Base,
     FieldProvenanceRecord,
@@ -378,6 +379,14 @@ class ApiTestCase(unittest.TestCase):
             )
         )
         self.session.commit()
+        # BRIEF-FR-006 C2: this helper builds `OpportunityRecord` directly
+        # (not through `StorageRepository.save_opportunity`, the only path
+        # that populates `search_tsv` on write), so every opportunity seeded
+        # by every existing test class would otherwise have `search_tsv IS
+        # NULL` and be invisible to search. Running the idempotent batch
+        # backfill here keeps every seeded row searchable without changing
+        # `seed_opportunity`'s return value or any of its existing callers.
+        backfill_search_tsv(self.session)
         return record
 
     def seed_compensation(
