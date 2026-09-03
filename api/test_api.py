@@ -865,6 +865,59 @@ class OpportunityRoutesTest(ApiTestCase):
         views = self.session.query(FounderOpportunityViewRecord).filter_by(opportunity_id="opp-viewed").all()
         self.assertEqual(len(views), 1)
 
+    # -- E4F3.5: "new since you last looked" --------------------------------
+
+    def test_new_since_last_view_marks_rows_when_no_view_ever_recorded(self):
+        self.seed_opportunity("opp-never-viewed", created_at=datetime.now(timezone.utc) - timedelta(hours=1))
+
+        response = self.client.get("/api/opportunities/new-since-last-view")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertIsNone(body["last_viewed_at"])
+        ids = [row["id"] for row in body["new_opportunities"]]
+        self.assertIn("opp-never-viewed", ids)
+
+    def test_new_since_last_view_excludes_rows_older_than_the_last_view_and_includes_newer_ones(self):
+        old_time = datetime.now(timezone.utc) - timedelta(days=2)
+        self.seed_opportunity("opp-old", created_at=old_time)
+
+        # Founder looks at the feed (viewing opp-old records a view row).
+        detail_response = self.client.get("/api/opportunities/opp-old")
+        self.assertEqual(detail_response.status_code, 200)
+
+        # A brand new opportunity, ingested after that view.
+        new_time = datetime.now(timezone.utc) + timedelta(hours=1)
+        self.seed_opportunity("opp-new-after-view", created_at=new_time)
+
+        response = self.client.get("/api/opportunities/new-since-last-view")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertIsNotNone(body["last_viewed_at"])
+        ids = [row["id"] for row in body["new_opportunities"]]
+        self.assertIn("opp-new-after-view", ids)
+        self.assertNotIn("opp-old", ids)
+
+    def test_marking_a_row_seen_changes_no_decision_fit_score_or_hidden_state(self):
+        self.seed_opportunity("opp-seen-check")
+        self.seed_evaluation("opp-seen-check", decision="qualified", fit_score=81.0)
+
+        before = self.client.get("/api/opportunities/opp-seen-check").json()
+
+        # Mark it seen a second time (get_opportunity records a view on every
+        # call) -- this must be a pure read as far as decision/fit_score/
+        # hidden state are concerned.
+        after = self.client.get("/api/opportunities/opp-seen-check").json()
+
+        self.assertEqual(before["qualification"]["decision"], after["qualification"]["decision"])
+        self.assertEqual(before["scoring"]["fit_score"], after["scoring"]["fit_score"])
+        self.assertEqual(
+            self.session.query(FounderOpportunityViewRecord)
+            .filter_by(opportunity_id="opp-seen-check")
+            .count(),
+            2,
+            "each detail view records its own row -- marking seen writes only to founder_opportunity_views",
+        )
+
     def test_detail_404_for_missing_opportunity(self):
         response = self.client.get("/api/opportunities/does-not-exist")
         self.assertEqual(response.status_code, 404)
