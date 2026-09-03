@@ -458,5 +458,90 @@ class TestSkillProficiencyOrderingAcceptance(unittest.TestCase):
         )
 
 
+def _graph_with_target_role(target_role_value: str) -> TruthGraph:
+    """`create_test_graph()` (matching/test_qualification.py, frozen for
+    this deliverable) carries no `career.target_role` assertion by default
+    -- this adds exactly one, verified, so callers can exercise the
+    `title_family_fit` dimension's matched/mismatched branches."""
+    graph = create_test_graph()
+    graph.add_evidence(EvidenceRecord(
+        id="ev-target-role",
+        content=target_role_value,
+        source="manual",
+        locator="career.target_role",
+        metadata={"target_role": target_role_value},
+    ))
+    graph.add_assertion(AtomicAssertion(
+        id="a-target-role",
+        subject_id="founder",
+        predicate=predicates.CAREER_TARGET_ROLE,
+        value=target_role_value,
+        evidence_ids=("ev-target-role",),
+        verification_status=VerificationStatus.VERIFIED,
+    ))
+    return graph
+
+
+class TestTitleFamilyFitDimensionIntegration(unittest.TestCase):
+    """Council review #1 finding 3 (BRIEF-FR-006 B3): `title_family_fit`
+    shipped with no test that ran a full `Opportunity`/`TruthGraph` pair
+    through `OpportunityScorer.evaluate()` -- only `normalize_title` was
+    unit-tested in isolation (`matching/test_title_family.py`), and nothing
+    asserted on the dimension's actual `raw_score`/`strengths`/`gaps` as
+    produced by the scorer. The council notes this is also why the
+    domain_fit weight-normalization defect (review #2) went undetected:
+    nothing exercised this dimension's `weighted_score` end to end. Four
+    cases, per the finding: a matching family, a mismatched family, an
+    `other`-family posting, and a founder pack with no verified
+    `career.target_role` assertion at all."""
+
+    def _dimension(self, evaluation):
+        return next(
+            ds for ds in evaluation.dimension_scores if ds.dimension_name == "title_family_fit"
+        )
+
+    def test_matching_family(self) -> None:
+        graph = _graph_with_target_role("Data Engineer")
+        opp = create_test_opportunity(title="Senior Data Engineer")
+        evaluation = OpportunityScorer().evaluate(opp, graph)
+        dim = self._dimension(evaluation)
+        self.assertEqual(dim.raw_score, 1.0)
+        self.assertTrue(dim.strengths)
+        self.assertEqual(dim.gaps, ())
+        self.assertTrue(dim.evidence_refs)
+        self.assertIn("data_engineering", dim.explanation)
+        self.assertIn("senior", dim.explanation)  # Finding 8: level surfaced
+
+    def test_mismatched_family(self) -> None:
+        graph = _graph_with_target_role("Data Engineer")
+        opp = create_test_opportunity(title="Customer Engineer")
+        evaluation = OpportunityScorer().evaluate(opp, graph)
+        dim = self._dimension(evaluation)
+        self.assertEqual(dim.raw_score, 0.20)
+        self.assertEqual(dim.strengths, ())
+        self.assertTrue(dim.gaps)
+        self.assertIn("customer_solutions_engineering", dim.explanation)
+
+    def test_other_family_posting(self) -> None:
+        graph = _graph_with_target_role("Data Engineer")
+        opp = create_test_opportunity(title="Advisory RFP")
+        evaluation = OpportunityScorer().evaluate(opp, graph)
+        dim = self._dimension(evaluation)
+        self.assertEqual(dim.raw_score, 0.40)
+        self.assertEqual(dim.strengths, ())
+        self.assertEqual(dim.gaps, ())
+        self.assertTrue(dim.unknowns)
+        self.assertIn("'other'", dim.explanation)
+
+    def test_no_target_role_assertion(self) -> None:
+        graph = create_test_graph()
+        opp = create_test_opportunity(title="Data Engineer")
+        evaluation = OpportunityScorer().evaluate(opp, graph)
+        dim = self._dimension(evaluation)
+        self.assertEqual(dim.raw_score, 0.50)
+        self.assertTrue(dim.unknowns)
+        self.assertIn("no verified career.target_role assertion", dim.unknowns[0])
+
+
 if __name__ == "__main__":
     unittest.main()
