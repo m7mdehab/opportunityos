@@ -63,6 +63,8 @@ Reports and ADRs name roles, not model vendors.
 
 ## Parallel Work Policy
 
+Briefs execute under `docs/AGENT_EXECUTION_PROTOCOL.md`.
+
 - Use one branch per brief and one worktree per parallel sub-agent.
 - Keep shared contracts serial until stable; isolate parallel-safe work in separate worktrees.
 - No agent is the sole approver of its own work; route checker failures back through repair and re-test.
