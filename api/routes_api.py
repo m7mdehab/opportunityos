@@ -20,6 +20,7 @@ from feedback.service import FounderFeedbackService
 from matching.artifact_validation import validate_artifact_claims
 from matching.binary_export import BinaryArtifactExporter
 from matching.compiler_employment import EmploymentArtifactCompiler
+from matching.templates import TEMPLATES
 from opportunity.models import Opportunity, Track
 from opportunity.registry import SourceRegistry
 from outbound.models import ActionStatus, ExecutionMode
@@ -41,6 +42,7 @@ from truth.pack import TruthPackInvalid, TruthPackMissing, load_founder_pack
 from truth.validator import ClaimValidator
 from worker.queue import BackgroundWorkerQueue
 
+from . import artifact_cache
 from .deps import get_db, get_repository, require_session
 from .facets import (
     FACET_DEFINITIONS_BY_ID,
@@ -85,6 +87,7 @@ logger = get_logger("api.routes")
 router = APIRouter(prefix="/api", dependencies=[Depends(require_session)])
 
 DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+PDF_MEDIA_TYPE = "application/pdf"
 
 
 # --------------------------------------------------------------------------
@@ -818,13 +821,32 @@ def _opportunity_to_domain(opp: OpportunityRecord, provenances: list[FieldProven
     )
 
 
-def _artifact_filename(kind: str, opportunity_id: str) -> str:
-    return f"{kind}-{opportunity_id}.docx"
+def _artifact_filename(kind: str, opportunity_id: str, ext: str) -> str:
+    return f"{kind}-{opportunity_id}.{ext}"
 
 
-def _compile_and_export(
-    request: Request, opportunity_id: str, kind: str, session: Session, template: str | None = None,
-) -> Response:
+def _validate_template_param(template: str | None) -> str:
+    """`template` defaults to Classic; an unrecognized name is a 422, never
+    a silent fallback that serves a different document than the founder
+    asked for (BRIEF-FR-006 D2 requirement 2)."""
+    if not template:
+        return "classic"
+    normalized = template.casefold()
+    if normalized not in TEMPLATES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown template {template!r}; valid: {sorted(TEMPLATES)}",
+        )
+    return normalized
+
+
+def _compile_artifact_or_response(
+    request: Request, opportunity_id: str, kind: str, session: Session,
+) -> tuple[Any, str] | Response:
+    """Compiles and validates the artifact. Returns `(artifact,
+    truth_pack_hash)` on success, or a `Response` (412/409) for the caller
+    to return unchanged -- a 409 returned from here must never be handed to
+    `artifact_cache.store()` (BRIEF-FR-006 D2 requirement 3)."""
     opp = session.query(OpportunityRecord).filter_by(id=opportunity_id).first()
     if opp is None:
         raise HTTPException(status_code=404, detail="opportunity not found")
@@ -864,19 +886,80 @@ def _compile_and_export(
                 "extra_data": {"opportunity_id": opportunity_id, "kind": kind, "finding_count": len(findings)},
             },
         )
-        # No docx is ever built past this point -- export_to_docx is not called.
+        # No docx/pdf is ever built past this point, and this Response is
+        # never passed to artifact_cache.store() by any caller below.
         return Response(
             status_code=409,
             media_type="application/json",
             content=json.dumps({"detail": "claim validation failed", "findings": findings}),
         )
 
-    docx_bytes = BinaryArtifactExporter.export_to_docx(artifact, template=template)
-    filename = _artifact_filename(kind, opportunity_id)
+    return artifact, loaded_pack.truth_pack_hash
+
+
+def _serve_artifact(
+    request: Request,
+    opportunity_id: str,
+    kind: str,
+    fmt: str,
+    session: Session,
+    template: str | None,
+    inline: bool,
+) -> Response:
+    """Shared DOCX/PDF path: validates the template, serves a cache hit
+    without recompiling, and otherwise compiles+validates+exports+caches.
+    `fmt` is `"docx"` or `"pdf"`; `inline` controls
+    `Content-Disposition` (PDF preview uses `inline`, every download uses
+    `attachment` -- BRIEF-FR-006 D2 requirement 1)."""
+    template_id = _validate_template_param(template)
+    media_type = DOCX_MEDIA_TYPE if fmt == "docx" else PDF_MEDIA_TYPE
+    cache_kind = artifact_cache.docx_kind(kind) if fmt == "docx" else artifact_cache.pdf_kind(kind)
+    filename = _artifact_filename(kind, opportunity_id, fmt)
+    disposition = "inline" if inline else "attachment"
+
+    opp = session.query(OpportunityRecord).filter_by(id=opportunity_id).first()
+    if opp is None:
+        raise HTTPException(status_code=404, detail="opportunity not found")
+
+    loaded_pack = request.app.state.loaded_truth_pack
+    if loaded_pack is None:
+        reason = request.app.state.truth_pack_error or "no truth pack loaded"
+        return Response(
+            status_code=412,
+            media_type="application/json",
+            content=json.dumps({"detail": "no truth pack loaded", "reason": reason}),
+        )
+
+    key = artifact_cache.cache_key(opportunity_id, loaded_pack.truth_pack_hash, template_id, cache_kind)
+    logger.info(
+        "artifact cache lookup",
+        extra={"component": "api.artifacts", "extra_data": {"cache_key": key, "kind": cache_kind}},
+    )
+    cached = artifact_cache.get(session, opportunity_id, loaded_pack.truth_pack_hash, template_id, cache_kind)
+    if cached is not None:
+        cached_content_type, cached_payload = cached
+        return Response(
+            content=cached_payload,
+            media_type=cached_content_type,
+            headers={"Content-Disposition": f'{disposition}; filename="{filename}"'},
+        )
+
+    result = _compile_artifact_or_response(request, opportunity_id, kind, session)
+    if isinstance(result, Response):
+        return result
+    artifact, truth_pack_hash = result
+
+    if fmt == "docx":
+        content = BinaryArtifactExporter.export_to_docx(artifact, template=template_id)
+    else:
+        content = BinaryArtifactExporter.export_to_pdf(artifact, template=template_id)
+
+    artifact_cache.store(session, opportunity_id, truth_pack_hash, template_id, cache_kind, media_type, content)
+
     return Response(
-        content=docx_bytes,
-        media_type=DOCX_MEDIA_TYPE,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'{disposition}; filename="{filename}"'},
     )
 
 
@@ -884,14 +967,76 @@ def _compile_and_export(
 def get_cv_artifact(
     opportunity_id: str, request: Request, session: Session = Depends(get_db), template: str | None = None,
 ):
-    return _compile_and_export(request, opportunity_id, "cv", session, template=template)
+    return _serve_artifact(request, opportunity_id, "cv", "docx", session, template, inline=False)
 
 
 @router.get("/opportunities/{opportunity_id}/artifacts/cover-letter.docx")
 def get_cover_letter_artifact(
     opportunity_id: str, request: Request, session: Session = Depends(get_db), template: str | None = None,
 ):
-    return _compile_and_export(request, opportunity_id, "cover-letter", session, template=template)
+    return _serve_artifact(request, opportunity_id, "cover-letter", "docx", session, template, inline=False)
+
+
+@router.get("/opportunities/{opportunity_id}/artifacts/cv.pdf")
+def get_cv_pdf_artifact(
+    opportunity_id: str,
+    request: Request,
+    session: Session = Depends(get_db),
+    template: str | None = None,
+    download: bool = False,
+):
+    """Inline by default (BRIEF-FR-006 D2 requirement 1, embedded preview);
+    `?download=true` returns the same bytes as `attachment` for saving."""
+    return _serve_artifact(request, opportunity_id, "cv", "pdf", session, template, inline=not download)
+
+
+@router.get("/opportunities/{opportunity_id}/artifacts/cover-letter.pdf")
+def get_cover_letter_pdf_artifact(
+    opportunity_id: str,
+    request: Request,
+    session: Session = Depends(get_db),
+    template: str | None = None,
+    download: bool = False,
+):
+    return _serve_artifact(request, opportunity_id, "cover-letter", "pdf", session, template, inline=not download)
+
+
+@router.get("/opportunities/{opportunity_id}/artifacts/{kind}/omitted")
+def get_artifact_omitted_items(
+    opportunity_id: str,
+    kind: str,
+    request: Request,
+    session: Session = Depends(get_db),
+    template: str | None = None,
+):
+    """D1's "what was left out and why" data
+    (`TailoredArtifact.omitted_items`), exposed as JSON so the drawer's
+    artifacts panel can render it next to the PDF preview without parsing a
+    binary document. Not cached -- it recompiles the same way
+    `_compile_artifact_or_response` always has; only the exported document
+    bytes are cached (BRIEF-FR-006 D2 requirement 3 concerns the document,
+    not this metadata)."""
+    if kind not in ("cv", "cover-letter"):
+        raise HTTPException(status_code=404, detail="unknown artifact kind")
+    template_id = _validate_template_param(template)
+
+    result = _compile_artifact_or_response(request, opportunity_id, kind, session)
+    if isinstance(result, Response):
+        return result
+    artifact, _truth_pack_hash = result
+
+    return {
+        "template": template_id,
+        "omitted_items": [
+            {
+                "section_id": item.section_id,
+                "text": item.text,
+                "reason": item.reason,
+                "claim_id": item.claim_id,
+            }
+            for item in artifact.omitted_items
+        ],
+    }
 
 
 # --------------------------------------------------------------------------
