@@ -383,5 +383,115 @@ class PeriodTerminatedMetricContextTest(unittest.TestCase):
         self.assertEqual(findings, [], findings)
 
 
+class CouncilReviewTwoRegressionTest(unittest.TestCase):
+    """BRIEF-FR-006 council review #2: MAJOR 5 (double rendering), MAJOR 6
+    (non-deterministic export bytes), MAJOR 7 (cover letters rejected by the
+    outbound gate), MAJOR 8 (letter opens with the founder's oldest role)."""
+
+    def _no_duplicate_nonblank_lines(self, text: str) -> list[str]:
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        seen: dict[str, int] = {}
+        for ln in lines:
+            seen[ln] = seen.get(ln, 0) + 1
+        return [ln for ln, count in seen.items() if count > 1]
+
+    def test_no_duplicated_line_in_extracted_text(self) -> None:
+        from matching.ats_quality import AtsDocumentQualityHarness
+
+        for pack_name, graph in (("synthetic", synthetic_graph()), ("founder", founder_shaped_graph())):
+            compiler = EmploymentArtifactCompiler()
+            opp = _remote_employment_opportunity()
+            for kind, artifact in (
+                ("cv", compiler.compile_tailored_cv(opp, graph)),
+                ("cover", compiler.compile_cover_letter(opp, graph)),
+            ):
+                docx_bytes = BinaryArtifactExporter.export_to_docx(artifact)
+                pdf_bytes = BinaryArtifactExporter.export_to_pdf(artifact)
+                docx_dupes = self._no_duplicate_nonblank_lines(
+                    AtsDocumentQualityHarness.inspect_docx(docx_bytes)["full_text"]
+                )
+                pdf_dupes = self._no_duplicate_nonblank_lines(
+                    AtsDocumentQualityHarness.inspect_pdf(pdf_bytes)["full_text"]
+                )
+                self.assertEqual(docx_dupes, [], f"{pack_name}/{kind} DOCX has duplicated line(s): {docx_dupes}")
+                self.assertEqual(pdf_dupes, [], f"{pack_name}/{kind} PDF has duplicated line(s): {pdf_dupes}")
+
+    def test_repeat_exports_are_byte_identical_for_all_templates(self) -> None:
+        graph = founder_shaped_graph()
+        opp = _remote_employment_opportunity()
+        cv = EmploymentArtifactCompiler().compile_tailored_cv(opp, graph)
+        for template_name in ("classic", "compact", "modern"):
+            docx1 = BinaryArtifactExporter.export_to_docx(cv, template=template_name)
+            docx2 = BinaryArtifactExporter.export_to_docx(cv, template=template_name)
+            pdf1 = BinaryArtifactExporter.export_to_pdf(cv, template=template_name)
+            pdf2 = BinaryArtifactExporter.export_to_pdf(cv, template=template_name)
+            self.assertEqual(docx1, docx2, f"DOCX export not byte-identical for template {template_name!r}")
+            self.assertEqual(pdf1, pdf2, f"PDF export not byte-identical for template {template_name!r}")
+
+    def test_cover_letter_passes_legacy_outbound_gate_on_all_four_combinations(self) -> None:
+        # `matching.validator.ArtifactClaimValidator` is the validator
+        # `outbound/authority.py` and `outbound/artifact_selector.py` actually
+        # gate on -- distinct from the `truth.validator.ClaimValidator`
+        # production path already exercised by `_check_employment_artifact`
+        # above.
+        from matching.validator import ArtifactClaimValidator
+
+        compiler = EmploymentArtifactCompiler()
+        legacy_validator = ArtifactClaimValidator()
+        for pack_name, graph in (("synthetic", synthetic_graph()), ("founder", founder_shaped_graph())):
+            for opp_name, opp in (
+                ("remote", _remote_employment_opportunity()),
+                ("onsite", _onsite_employment_opportunity()),
+            ):
+                letter = compiler.compile_cover_letter(opp, graph)
+                result = legacy_validator.validate_artifact(letter, graph, opportunity=opp)
+                self.assertTrue(
+                    result.is_valid, f"{pack_name}/{opp_name} cover letter rejected: {result.errors}"
+                )
+                self.assertEqual(result.errors, ())
+
+    def test_cover_letter_never_opens_with_an_internship(self) -> None:
+        compiler = EmploymentArtifactCompiler()
+        opp = _remote_employment_opportunity()
+        for graph in (synthetic_graph(), founder_shaped_graph()):
+            letter = compiler.compile_cover_letter(opp, graph)
+            intro = next(s for s in letter.sections if s.section_id == "introduction")
+            self.assertNotIn("intern", intro.content.casefold(), intro.content)
+
+    def test_document_model_metric_and_held_regex_mirrors_agree_with_frozen_validator(self) -> None:
+        # MAJOR 9: `matching/document_model.py` keeps two defensive,
+        # read-only "mirror" copies of `truth.validator`'s frozen `_METRIC`
+        # and `_HELD` regexes (never imported from the frozen module, per the
+        # work order). Nothing enforced they stay in agreement -- this pins
+        # that agreement on a fixed corpus so a future edit to either can't
+        # silently drift.
+        from matching import document_model
+        from truth import validator as truth_validator
+
+        metric_corpus = (
+            "+20-555-0101", "+1-555-0100", "20", "3.5", "$5,000", "40%",
+            "reduced latency by 35%", "no digits here", "Cairo, Egypt",
+        )
+        for text in metric_corpus:
+            self.assertEqual(
+                bool(document_model._LEADING_METRIC_RE.search(text)),
+                bool(truth_validator._METRIC.search(text)),
+                f"_LEADING_METRIC_RE / _METRIC disagree on {text!r}",
+            )
+
+        held_corpus = (
+            "Certified Group Analytics Architect", "holds a certification",
+            "holding the credential", "completed the exam", "earned the award",
+            "obtained the license", "awarded first place",
+            "Planning to pursue the certification", "no held-word here at all",
+        )
+        for text in held_corpus:
+            self.assertEqual(
+                bool(document_model._HELD_WORD_RE.search(text)),
+                bool(truth_validator._HELD.search(text)),
+                f"_HELD_WORD_RE / _HELD disagree on {text!r}",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -178,12 +178,43 @@ class EmploymentArtifactCompiler:
 
         intro_aids: tuple[str, ...] = ()
         intro_eids: tuple[str, ...] = ()
-        if title_assertions:
-            top_title = str(title_assertions[0].value)
+        # BRIEF-FR-006 council review #2 MAJOR 8: `title_assertions[0]` was
+        # dict insertion order, not recency, so a founder with an old
+        # internship ingested first opened every cover letter with it. Prefer
+        # `identity.headline` (the founder's own current, chosen headline --
+        # already rendered and cited in the identity block above); fall back
+        # to the most-recently-started verified title only if the pack has no
+        # headline at all.
+        headline_claim = None
+        if identity is not None:
+            headline_claim = next(
+                (item.claim for item in identity.section.items if item.claim.predicate == "identity.headline"),
+                None,
+            )
+        if headline_claim is not None:
+            background_text = f"Background: {headline_claim.text}."
+            intro_parts.append(background_text)
+            intro_aids = headline_claim.assertion_ids
+            intro_eids = headline_claim.evidence_ids
+            claims.append(GeneratedClaim(
+                claim_id="claim-cover-background",
+                text=background_text,
+                section_id="introduction",
+                assertion_ids=intro_aids,
+                evidence_ids=intro_eids,
+                predicate="identity.headline",
+                authorized_value=headline_claim.text,
+                is_forward_commitment=False,
+            ))
+        elif title_assertions:
+            most_recent_title = max(
+                title_assertions, key=lambda a: (a.effective_from is not None, a.effective_from or datetime.date.min)
+            )
+            top_title = str(most_recent_title.value)
             background_text = f"Background: {top_title}."
             intro_parts.append(background_text)
-            intro_aids = (title_assertions[0].id,)
-            intro_eids = title_assertions[0].evidence_ids
+            intro_aids = (most_recent_title.id,)
+            intro_eids = most_recent_title.evidence_ids
             claims.append(GeneratedClaim(
                 claim_id="claim-cover-background",
                 text=background_text,
@@ -291,14 +322,31 @@ class EmploymentArtifactCompiler:
             motivation_eids: list[str] = []
             for phrase in selected_phrases:
                 motivation_items.append(phrase.text)
-                motivation_aids.append(phrase.id)
-                motivation_eids.extend(phrase.evidence_ids)
+                # BRIEF-FR-006 council review #2 MAJOR 7: `phrase.id` (e.g.
+                # "phrase-founder-motivation-1") is the `ApprovedPhrase`
+                # ENTITY id, not the projected `approved_phrase.text`
+                # assertion id `truth/graph.py` actually creates (a derived
+                # "as_<subject>_<predicate>_<value>" id). Citing the entity id
+                # made `ArtifactClaimValidator.validate_artifact` reject every
+                # cover letter with "references non-existent assertion ID" --
+                # cite the real projected assertion instead.
+                phrase_assertion = next(
+                    (
+                        a for a in truth_graph.assertions.values()
+                        if a.predicate == "approved_phrase.text" and a.subject_id == phrase.id
+                    ),
+                    None,
+                )
+                phrase_aid = phrase_assertion.id if phrase_assertion is not None else phrase.id
+                phrase_eids = phrase_assertion.evidence_ids if phrase_assertion is not None else phrase.evidence_ids
+                motivation_aids.append(phrase_aid)
+                motivation_eids.extend(phrase_eids)
                 claims.append(GeneratedClaim(
                     claim_id=f"claim-cover-phrase-{phrase.id}",
                     text=phrase.text,
                     section_id="motivation",
-                    assertion_ids=(phrase.id,),
-                    evidence_ids=phrase.evidence_ids,
+                    assertion_ids=(phrase_aid,),
+                    evidence_ids=phrase_eids,
                     predicate="approved_phrase.text",
                     authorized_value=phrase.text,
                     is_forward_commitment=False,
@@ -316,7 +364,7 @@ class EmploymentArtifactCompiler:
             sections.append(ArtifactSection(
                 section_id="motivation",
                 heading="Motivation",
-                content=" ".join(motivation_items),
+                content="",  # MAJOR 5: items already carries this text; avoid doubling it
                 items=tuple(motivation_items),
                 assertion_ids=tuple(motivation_aids),
                 evidence_ids=tuple(sorted(set(motivation_eids))),
