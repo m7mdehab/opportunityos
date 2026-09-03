@@ -1,11 +1,23 @@
-import { test, expect, type Page } from "@playwright/test"
+import { test, expect, type Page, type Locator } from "@playwright/test"
 
 /**
  * D3 — founder-controlled filters (`reports/evidence/FR-005/d3-contract.md`).
  * Claim A-8: toggling one filter changes its affected-count and re-queries
  * the feed, with no page reload. Run against the mock layer in phase 1 and
- * the real FastAPI service in phase 2, same as `smoke.spec.ts` — only
- * `playwright.config.ts` vs `playwright.real.config.ts` differ.
+ * the real FastAPI service + real PostgreSQL in phase 2 — this file is in
+ * both `playwright.config.ts` and `playwright.real.config.ts`'s `testMatch`.
+ *
+ * Every assertion here is *behavioural*, not a fixture literal: no absolute
+ * `data-affected-count` value is ever asserted, only that it is a valid
+ * non-negative integer, that it moves in the direction a param change can
+ * only move it in, and that toggling the switch changes the feed. An
+ * earlier version of this spec asserted exact counts ("3", "7") that were
+ * true of the MSW mock's fixture set and happened to also be true of
+ * `tests/e2e/seed_real.py`'s seed (it borrows the same synthetic fit
+ * scores) — but that was a coincidence, not a contract, and asserting it
+ * is exactly the FR-004 mistake this brief exists to not repeat: a mock
+ * phase whose "real" run only re-proves what the mock already assumed.
+ * See `filters-unavailable.spec.ts` for why that one test stays mock-only.
  */
 const FOUNDER_PASSWORD =
   process.env.E2E_FOUNDER_PASSWORD ?? "founder-mock-pass"
@@ -20,19 +32,61 @@ async function login(page: Page) {
 }
 
 async function opportunityCount(page: Page): Promise<number> {
-  const text = await page.getByTestId("opportunity-count").innerText()
+  // Zero visible opportunities is a real, valid state (page.tsx renders an
+  // empty-state card instead of the "N opportunities" paragraph then) —
+  // aggressively enabling a `hide` filter in this file can legitimately
+  // reach it, so this must return 0 rather than time out waiting for an
+  // element that correctly isn't there.
+  const el = page.getByTestId("opportunity-count")
+  if (!(await el.count())) return 0
+  const text = await el.innerText()
   return Number(text.match(/^(\d+)/)?.[1] ?? "0")
 }
 
-async function hiddenCount(page: Page): Promise<number | null> {
+async function hiddenCount(page: Page): Promise<number> {
   const button = page.getByTestId("toggle-hidden-opportunities")
-  if (!(await button.count())) return null
+  if (!(await button.count())) return 0
   const text = await button.innerText()
   const match = text.match(/(\d+)\s+hidden/)
-  return match ? Number(match[1]) : null
+  return match ? Number(match[1]) : 0
+}
+
+/** Reads `data-affected-count` off a filter row's chip and asserts it is a
+ * well-formed non-negative integer — the one structural property every
+ * implementation must satisfy, regardless of what data is seeded. */
+async function readAffectedCount(chip: Locator): Promise<number> {
+  const raw = await chip.getAttribute("data-affected-count")
+  const n = Number(raw)
+  expect(
+    Number.isInteger(n) && n >= 0,
+    `data-affected-count should be a non-negative integer, was ${JSON.stringify(raw)}`
+  ).toBe(true)
+  return n
 }
 
 test.describe("D3 founder-controlled filters", () => {
+  // Both filters this file enables are off by default; reset them after
+  // every test via a direct API call (not the UI, to keep this fast) so
+  // state never leaks into another test in this file, into
+  // `smoke.spec.ts` (which runs later, alphabetically, against the same
+  // mock singleton or the same real database row), or into a re-run.
+  test.afterEach(async ({ page }) => {
+    await page.request
+      .put("/api/filters/min_fit_score", {
+        data: { enabled: false, mode: "hide", params: { min_score: 0 } },
+      })
+      .catch(() => undefined)
+    await page.request
+      .put("/api/filters/compensation_floor", {
+        data: {
+          enabled: false,
+          mode: "rank_only",
+          params: { floor: 0, currency: null },
+        },
+      })
+      .catch(() => undefined)
+  })
+
   test("toggling a filter changes its affected-count and re-queries the feed without reloading", async ({
     page,
   }) => {
@@ -58,18 +112,30 @@ test.describe("D3 founder-controlled filters", () => {
     await expect(row).toBeVisible()
     const chip = row.locator("[data-affected-count]")
 
-    // `min_fit_score` starts disabled with threshold=50; the mock fixture
-    // set has exactly 3 opportunities scoring below 50.
-    await expect(chip).toHaveAttribute("data-affected-count", "3")
+    // `min_fit_score` starts disabled — structural, per the contract's
+    // default table, true regardless of seeded data.
     await expect(chip).toHaveAttribute("data-filter-effect", "off")
+    const beforeParamCount = await readAffectedCount(chip)
 
-    // ---- change the threshold param: affected_count must change ----
-    const thresholdInput = row.locator(
-      'input[id="filter-param-min_fit_score-threshold"]'
-    )
-    await thresholdInput.fill("90")
-    await thresholdInput.blur()
-    await expect(chip).toHaveAttribute("data-affected-count", "7")
+    // ---- change the numeric param: affected_count must move, and only
+    // upward — raising a minimum-score threshold can never stop matching
+    // an opportunity that already matched a lower one. The default param
+    // is 0, which can never match anything (`fit_score` is never
+    // negative); a very high value matches every *scored* opportunity.
+    // The one param input on this row, found generically rather than by a
+    // hard-coded id, since the real API's param key (`min_score`) differs
+    // from what this mock used before this repair (`threshold`) — this
+    // spec must not re-hard-code either name. ----
+    const paramInput = row.locator('input[type="number"]').first()
+    await expect(paramInput).toBeVisible()
+    await paramInput.fill("1000")
+    await paramInput.blur()
+
+    await expect
+      .poll(() => readAffectedCount(chip), {
+        message: "affected_count did not update after the param change",
+      })
+      .toBeGreaterThan(beforeParamCount)
 
     // ---- toggle the filter on: this is the A-8 toggle ----
     const toggle = row.getByRole("switch")
@@ -77,10 +143,6 @@ test.describe("D3 founder-controlled filters", () => {
     await toggle.click()
     await expect(toggle).toHaveAttribute("aria-checked", "true")
     await expect(chip).toHaveAttribute("data-filter-effect", "hide")
-    // affected_count is computed independently of `enabled`, so it does not
-    // move again on this click — the row's live effect label does (off ->
-    // hide), and the feed itself re-queries, asserted below.
-    await expect(chip).toHaveAttribute("data-affected-count", "7")
 
     // ---- close the drawer and confirm the feed re-queried ----
     await page.keyboard.press("Escape")
@@ -91,7 +153,7 @@ test.describe("D3 founder-controlled filters", () => {
       .toBeLessThan(totalBefore)
     await expect
       .poll(() => hiddenCount(page))
-      .toBeGreaterThan(hiddenBefore ?? 0)
+      .toBeGreaterThan(hiddenBefore)
 
     // No navigation/reload happened anywhere in this flow.
     const survivedReload = await page.evaluate(
@@ -110,72 +172,24 @@ test.describe("D3 founder-controlled filters", () => {
     const drawer = page.getByRole("dialog")
     await expect(drawer).toBeVisible()
 
-    // `geo_eligibility` defaults to enabled + label_only (and is available):
-    // its chip must read as a label, not a hide, and never carry the hide
-    // styling class.
+    // `geo_eligibility` defaults to enabled + label_only: its chip must
+    // read as a label, not a hide, and never carry the hide styling class
+    // — a structural property of the filter's *mode*, independent of how
+    // many opportunities it actually matches.
     const geoRow = drawer.getByTestId("filter-row-geo_eligibility")
     const geoChip = geoRow.locator("[data-affected-count]")
     await expect(geoChip).toHaveAttribute("data-filter-effect", "label_only")
     const geoClass = (await geoChip.getAttribute("class")) ?? ""
     expect(geoClass).not.toContain("red-")
 
-    // `compensation_floor` is rank_only and available, but starts disabled;
-    // enable it and confirm the same guarantee holds once it is actually
-    // acting, not just when it happens to be off.
+    // `compensation_floor` is rank_only but starts disabled; enable it and
+    // confirm the same guarantee holds once it is actually acting, not
+    // just when it happens to be off.
     const compRow = drawer.getByTestId("filter-row-compensation_floor")
     await compRow.getByRole("switch").click()
     const compChip = compRow.locator("[data-affected-count]")
     await expect(compChip).toHaveAttribute("data-filter-effect", "rank_only")
     const compClass = (await compChip.getAttribute("class")) ?? ""
     expect(compClass).not.toContain("red-")
-  })
-
-  test("an unavailable filter renders as inert, shows its reason, and stays switchable", async ({
-    page,
-  }) => {
-    // Council finding, FR-005 D3 repair: `stale_postings` can never match
-    // anything (nothing outside tests writes `is_stale=True`), but before
-    // this repair it read as an ordinary enabled label_only filter with
-    // `affected_count: 0` — indistinguishable from "no stale postings
-    // right now". This asserts that ambiguity is gone.
-    await login(page)
-    await expect(page.getByTestId("opportunity-card-opp-001")).toBeVisible()
-
-    await page.getByRole("button", { name: "Filters" }).click()
-    const drawer = page.getByRole("dialog")
-    await expect(drawer).toBeVisible()
-
-    // Unavailable filters get their own section, surfaced first.
-    await expect(
-      drawer.getByRole("heading", { name: /Unavailable/ })
-    ).toBeVisible()
-
-    const row = drawer.getByTestId("filter-row-stale_postings")
-    await expect(row).toBeVisible()
-
-    // Distinct inert state: icon + colour + text together, never a bare
-    // suppressed "0" and never colour alone.
-    const notice = row.locator('[data-filter-effect="unavailable"]')
-    await expect(notice).toBeVisible()
-    await expect(notice).toContainText("Unavailable")
-    await expect(notice).toContainText(
-      "No source-polling code path outside tests"
-    )
-
-    // The affected-count chip must not render at all for this row — a
-    // suppressed "0" is exactly the misleading signal this repair removes.
-    await expect(row.locator("[data-affected-count]")).toHaveCount(0)
-
-    // Still switchable: `enabled`/`mode` remain a real, durable founder
-    // preference here (see the reasoning documented in
-    // filters-drawer.tsx), so the control is not disabled.
-    const toggle = row.getByRole("switch")
-    await expect(toggle).toBeEnabled()
-    const wasChecked = (await toggle.getAttribute("aria-checked")) === "true"
-    await toggle.click()
-    await expect(toggle).toHaveAttribute(
-      "aria-checked",
-      wasChecked ? "false" : "true"
-    )
   })
 })

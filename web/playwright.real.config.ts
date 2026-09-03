@@ -3,12 +3,14 @@ import { defineConfig, devices } from "@playwright/test"
 import { definedProcessEnv, ensureEnv, syntheticSecret } from "./tests/e2e/env"
 
 /**
- * Phase 2 (BRIEF-FR-004 D7): the same `tests/e2e/smoke.spec.ts` used by
+ * Phase 2 (BRIEF-FR-004 D7, extended by BRIEF-FR-005 D3's A-8): the same
+ * `tests/e2e/smoke.spec.ts` and `tests/e2e/filters.spec.ts` used by
  * `playwright.config.ts` (phase 1, the MSW mock), run instead against the
  * real FastAPI service (`api.app:app`) backed by real PostgreSQL, seeded
- * by `tests/e2e/seed_real.py`. Per that file's own docstring, only this
+ * by `tests/e2e/seed_real.py`. Per those files' own docstrings, only this
  * config's `use.baseURL` / `webServer` differ from phase 1 -- the test
- * files and their assertions are untouched.
+ * files and their assertions are untouched. (`filters-unavailable.spec.ts`
+ * stays mock-only for now -- see its own docstring for why.)
  *
  * A separate config file (not a branch inside playwright.config.ts) so
  * phase 1 stays a single, simple, always-safe-to-run mock config, and this
@@ -74,7 +76,10 @@ const baseEnv = definedProcessEnv()
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  testMatch: "smoke.spec.ts",
+  // Covers smoke.spec.ts and filters.spec.ts, not filters-unavailable.spec.ts
+  // or axe.spec.ts/screenshots.spec.ts -- a pattern, not a file list, so a
+  // new real-stack-safe spec only needs the right filename to be included.
+  testMatch: /\/(smoke|filters)\.spec\.ts$/,
   fullyParallel: false,
   workers: 1,
   retries: 0,
