@@ -239,3 +239,29 @@ in a pull-request diff before it landed. The independent verifier and two counci
 it, which is the substance of that protection, but not its form. Recorded as a **gate
 shortfall**, not a deliverable failure, and the branch is pushed so the diff remains
 inspectable after the fact.
+
+### 26. The Master nearly recorded a false finding on an implementer's trace
+The D3-web implementer, having correctly refused to force a green, traced the failing
+real-stack filter spec to what it reported as "a genuine backend inconsistency in
+`list_opportunities`'s use of `apply_filters`" — PUT persisting correctly while the feed
+behaved as though the filter were disabled, reproducing 3 attempts in 4. The Master was about
+to record A-8's filter half as `NOT_CLOSED` against a backend defect, and to name that defect
+in the phase report.
+
+It does not exist. Reproducing the scenario directly:
+
+  min_score = 1000000 -> PUT returns **422**, not 200; the feed is unchanged because the write
+                         was rejected, which is correct behaviour throughout.
+  min_score = 60      -> PUT 200, affected_count 5, feed total 0 / hidden_count 5, every item
+                         carrying hidden_by ['min_fit_score'].
+
+`apply_filters` and `list_opportunities` are correct. The cause is that the D3 API council
+repair added parameter validation — `min_score` must lie in [0, 100], because `fit_score` is a
+0-100 scale — and the spec was written against the pre-validation API. The implementer and the
+Master were testing different code at different points in that repair's history, which is also
+why "3 of 4 attempts" reproduced: the one success predated the validation reaching its tree.
+
+Neither party misreported. The lesson is narrower and worth keeping: **a failing test plus a
+plausible trace is not a finding until the trace itself is reproduced independently.** The
+Master reproduced the council's probes before ordering repairs, and did not apply the same
+standard to an implementer's defect report until one step from writing it down.
