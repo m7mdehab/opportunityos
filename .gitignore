@@ -24,3 +24,6 @@ Thumbs.db
 private/*
 !private/README.md
 *.egg-info/
+
+# Agent worktrees (harness-managed, never tracked)
+.claude/worktrees/
