@@ -105,3 +105,24 @@ scope question you report; it is not something you fix from here.
 
 Paste raw output. If a card field is unavailable because the API does not expose it, name the
 field and the endpoint in your return — do not render a placeholder that looks like data.
+
+## Additions from the Master (after C1 integrated)
+
+1. **Wire the 10% over-hiding warning.** C1 implemented it as a pure function with tests
+   (`2/10` warns, `9/100` does not) but did **not** wire it to an endpoint or the UI. The brief
+   requires a **visible** warning. Surface it on the feed, and cover it with a Playwright spec
+   that constructs the condition and asserts the warning is rendered.
+2. **The `language` facet is permanently unavailable** — there is no persisted language data
+   anywhere in the schema, and `GET /api/facets` returns it with a 422 / unavailable marker.
+   Render it as visibly unavailable with its reason, exactly as the existing
+   `filters-unavailable.spec.ts` does for an inert filter. Do not hide it, and do not render it as
+   though it works.
+3. **The facet surface is `/api/facets` (15 attributes) *plus* the surviving `/api/filters`
+   (the ten policy filters).** Both must be reachable from the drawer. The ten keep their
+   `hide` / `rank_only` / `label_only` semantics; the fifteen use `include` / `exclude` / `off`.
+   Do not merge the two into one control set — they mean different things, and one of them
+   carries an Overseer decision.
+4. **Routes available to you:** `GET /api/facets`, `GET /api/saved-views`,
+   `GET /api/hidden-reasons`, plus the facet parameters composed into `GET /api/opportunities`.
+   If a card field you need is not in the feed item, report it as a scope question — do not add
+   an API route from the web worktree.
