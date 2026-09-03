@@ -15,6 +15,29 @@ const ACTION_STATE_LABEL: Record<string, string> = {
   snoozed: "Snoozed",
 }
 
+/** BRIEF-FR-006 C5: the founder's original complaint was "no card said
+ * whether the job was remote, hybrid, or on-site" — `work_mode` is always
+ * present on `OpportunityListItem` (never `undefined`), and `"unspecified"`
+ * is a real, honest value (47.8% of real postings carry no work-mode
+ * signal at all), rendered as "not stated" rather than hidden or blank. */
+const WORK_MODE_LABEL: Record<string, string> = {
+  remote: "Remote",
+  hybrid: "Hybrid",
+  onsite: "On-site",
+  unspecified: "Work mode not stated",
+}
+
+function workModeLabel(workMode: string): string {
+  return WORK_MODE_LABEL[workMode] ?? workMode
+}
+
+/** `[city, country]` joined, `null` when neither is known — never a bare
+ * comma or an invented placeholder. */
+function locationLabel(o: { location_city: string | null; location_country: string | null }): string | null {
+  const parts = [o.location_city, o.location_country].filter((p): p is string => Boolean(p))
+  return parts.length > 0 ? parts.join(", ") : null
+}
+
 /** `ref` is exposed so `page.tsx`'s `j`/`k` keyboard navigation can move
  * real DOM focus onto a card (required behaviour #4: "focus is visible and
  * managed" — an actual `HTMLButtonElement.focus()` call, not a CSS-only
@@ -34,6 +57,7 @@ export const OpportunityCard = forwardRef<
   const isHidden = o.hidden_by.length > 0
   const domain = employerDomain(o.source_url)
   const age = postedAge(o.posted_date)
+  const location = locationLabel(o)
 
   return (
     <li>
@@ -84,6 +108,27 @@ export const OpportunityCard = forwardRef<
         <div className="flex flex-wrap items-center gap-1.5">
           <DecisionBadge decision={o.decision} />
           <Badge variant="outline">{o.track}</Badge>
+          <Badge
+            variant="outline"
+            data-testid={`work-mode-${o.id}`}
+            className={cn(
+              "gap-1",
+              o.work_mode === "unspecified" && "text-muted-foreground"
+            )}
+          >
+            <Globe aria-hidden="true" className="size-3" />
+            {workModeLabel(o.work_mode)}
+          </Badge>
+          {location && (
+            <Badge variant="outline" data-testid={`location-${o.id}`}>
+              {location}
+            </Badge>
+          )}
+          {o.family_size !== null && o.family_size > 1 && (
+            <Badge variant="outline" data-testid={`family-size-${o.id}`}>
+              — {o.family_size} locations
+            </Badge>
+          )}
           {isHidden && (
             <Badge
               data-testid={`hidden-badge-${o.id}`}

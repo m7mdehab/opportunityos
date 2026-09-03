@@ -29,7 +29,43 @@ export type FeedbackLabel =
   | "duplicate_issue"
   | "review_required"
 
-export interface OpportunityListItem {
+/**
+ * BRIEF-FR-006 C5: the founder's original complaint was "no card said
+ * whether the job was remote, hybrid, or on-site, or where it was" — these
+ * fields are how it gets fixed. Shared between `OpportunityListItem` and
+ * `OpportunityDetail` because `api/serialization.py::serialize_opportunity_extraction_fields`
+ * emits the identical shape into both.
+ *
+ * `work_mode = "unspecified"` is a real, storable value (47.8% of real
+ * postings carry no work-mode signal at all) — render it as "not stated",
+ * never coerce it to blank or hide the row's work-mode field entirely.
+ * `work_mode_source` rides along whenever `work_mode` does, so the UI can
+ * distinguish an extracted value from an inferred one.
+ */
+export interface OpportunityExtractionFields {
+  work_mode: string
+  work_mode_source: string | null
+  location_country: string | null
+  location_city: string | null
+  location_region: string | null
+  remote_scope: string
+  remote_scope_regions: string[]
+  employment_type: string
+  seniority_level: string
+  compensation_min: number | null
+  compensation_max: number | null
+  compensation_currency: string | null
+  compensation_period: string | null
+  title_family: string | null
+  title_level: string | null
+  family_key: string | null
+  /** `OpportunityFamilyRecord.member_count` for this row's `family_key`.
+   * `null` when the row is not part of a clustered family — never a
+   * misleading `1`. */
+  family_size: number | null
+}
+
+export interface OpportunityListItem extends OpportunityExtractionFields {
   id: string
   title: string
   organization: string
@@ -174,7 +210,7 @@ export interface FeedbackHistoryEntry {
   created_at: string
 }
 
-export interface OpportunityDetail {
+export interface OpportunityDetail extends OpportunityExtractionFields {
   id: string
   title: string
   organization: string

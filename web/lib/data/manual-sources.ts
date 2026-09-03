@@ -1,19 +1,21 @@
 /**
  * E23 UI half — the "Check manually" panel's data.
  *
- * SCOPE NOTE (see this order's return notes for the full writeup): no API
- * route serves `opportunity/manual_sources.py::MANUAL_SOURCES` — it is a
- * frozen-for-this-order Python module with no `GET` endpoint wired to it.
- * That module's own docstring says "Work order C3 renders this catalogue as
- * the 'Check manually' panel; this module only supplies the data" — this
- * file is a direct, read-only transcription of its `MANUAL_SOURCES` tuple
- * (source_id, name, category, deep_link_template, policy_note), not new
- * data invented on the web side. It is static founder-facing configuration
- * (every deep link resolves without any API call), not per-opportunity
- * data, so duplicating it here — rather than adding a route — is the
- * "obvious option" within this order's Python-frozen constraint. It will
- * drift if `opportunity/manual_sources.py` changes; a future order should
- * add `GET /api/manual-sources` and delete this file.
+ * BRIEF-FR-006 C5 UPDATE: `GET /api/manual-sources` now exists
+ * (`api/routes_api.py::manual_sources_route`) and serves
+ * `opportunity/manual_sources.py::MANUAL_SOURCES` directly, read-only, with
+ * zero outbound network I/O (`api/test_api.py::ManualSourcesRouteTest`
+ * asserts that). This file's static transcription is corrected against the
+ * live module as of this order (the stale `hacker_news_who_is_hiring`
+ * entry — removed from the Python catalogue by a prior council review
+ * because it is a fully automated, read-allowed adapter, not a manual
+ * fallback — is deleted here too), but it is still a duplicate, not the
+ * live route: `components/feed/manual-sources-panel.tsx` (the only
+ * consumer) is outside this order's allowed-files list and still imports
+ * `MANUAL_SOURCES` as a synchronous array, so switching this file to an
+ * async `fetch("/api/manual-sources")` would require also converting that
+ * component to load state asynchronously — out of scope here. A future
+ * order should do both together and delete this file's static array.
  *
  * Deliberately excludes every `opportunity_type: "platform_application"`
  * (tutoring) entry: the Python module's own docstring says those "must
@@ -46,15 +48,6 @@ const REDDIT_403_NOTE =
 
 export const MANUAL_SOURCES: ManualSource[] = [
   // --- aggregators and communities ---
-  {
-    sourceId: "hacker_news_who_is_hiring",
-    name: 'Hacker News "Who is hiring?"',
-    track: "employment",
-    category: "aggregator",
-    deepLink: deepLink("https://hn.algolia.com/?q={query}&type=comment"),
-    policyNote:
-      "Registered here only as a fallback deep link; the primary route is the read-allowed adapter.",
-  },
   {
     sourceId: "reddit_forhire",
     name: "Reddit r/forhire",
