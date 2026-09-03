@@ -1,12 +1,14 @@
 # A-6 — scope diff, observed against the set written in advance
 
-`git diff --name-only main...HEAD` → **82 paths**.
+`git diff --name-only main...HEAD` → **83 paths, as of the final source commit**.
+(The Master first wrote 82; the verifier read 83. The number moves with every commit, which is
+exactly why it is now stated against a fixed head rather than left bare in prose.)
 Expected set: `reports/evidence/FR-005/a6-expected-scope.md`, committed at `dc8badc`, before
 any implementer had reported.
 
 ## Verdict: NOT_CLOSED
 
-**8 of the 82 paths lie outside the expected set.** The rule this row exists to enforce is
+**8 of the 83 paths lie outside the expected set.** The rule this row exists to enforce is
 that a larger observed set is `NOT_CLOSED` and is never retro-fitted, so the expected set has
 not been edited to admit them. FR-004 failed exactly this row, marked it PASS, and the
 verifier's objection — that doing so "retro-fits the expected result to the observation,

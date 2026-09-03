@@ -25,8 +25,7 @@ the guard that was refusing them is still refusing the things it should.
 
 **PASS_WITH_NOT_CLOSED.**
 
-Seven deliverables closed. **A-6 is `NOT_CLOSED`**, and one half of **A-8** is contested at the
-time of writing.
+All eight deliverables closed. **A-6 is `NOT_CLOSED`** and is the only row that does not close.
 
 **A-6 — the scope diff.** Eight changed paths lie outside the expected set the Master
 committed at `dc8badc`, before any implementer reported. Every one has a traceable
@@ -189,8 +188,8 @@ recorded, and the difference is stated.
 | A-5 `STATE.md` drift | zero lines under `STATE_PRESERVE_TIMESTAMP=1` — **but only after the repair the verifier forced; see §5** |
 | A-6 scope diff | **`NOT_CLOSED`** — 8 paths outside the expected set; dispositioned in §2 |
 | A-7 `npm run build` / `npm run lint` | both exit 0; lint clean at `--max-warnings=0` and now order-independent |
-| A-8 Playwright, mock | **10 passed** from a clean checkout with no untracked env file |
-| A-8 Playwright, real stack | `smoke.spec.ts` passes; the filter spec is contested — see below |
+| A-8 Playwright, mock | **11 passed** from a clean checkout with no untracked env file |
+| A-8 Playwright, real stack | **4 passed** — toggle spec, 422 spec, rank/label invariant, and the smoke including a real `cv.docx` download |
 | A-9 live poll | **both halves close** — see below |
 | A-10 documents | **4 of 4 artifacts HTTP 200 with DOCX bytes**, both packs |
 | A-11 tripwire | both suites fail under a neutralised guard 9, and pass when it is restored |
@@ -243,10 +242,10 @@ re-execute every row; both must PASS before a row closes.
 | A-2 | per-module counts reconcile | PASS | exact set equality |
 | A-3 | `0001→0003` round-trip | PASS | reversible; the constraint appears and disappears with it |
 | A-4 | guard + repository integrity | PASS | |
-| A-5 | STATE zero drift, STATE-only final commit | PASS **only after repair** | recorded PASS on stale evidence; overturned by the verifier — see below |
+| A-5 | STATE zero drift, STATE-only final commit | PASS, **after the repair the verifier forced** | recorded PASS on stale evidence; overturned — see below |
 | A-6 | scope diff against the expected set | **NOT_CLOSED** | 8 paths outside; never retro-fitted |
 | A-7 | web build + lint | PASS | lint made order-independent en route |
-| A-8 | Playwright incl. the filter toggle | **PARTIAL** | mock 10/10 and real-stack smoke pass; real-stack filter spec contested |
+| A-8 | Playwright incl. the filter toggle | PASS | mock **11/11**; real stack **4/4** including the toggle spec and a 422 case |
 | A-9 | live poll, zero fixture rows, registry ids | PASS | failed at run 1, repaired, closed at run 2 |
 | A-10 | documents generate | PASS | 4/4 HTTP 200 with `PK` |
 | A-11 | the tripwire still fires | PASS | verified by neutralising the guard, twice |
@@ -621,4 +620,46 @@ responsibilities and requirements as a count rather than text.
 
 ## Decision
 
-*(completed at the gate)*
+**PASS_WITH_NOT_CLOSED.**
+
+All eight deliverables are closed. Thirteen of fourteen claims pass on the Master's evidence
+and were independently re-executed by the verifier. **A-6 is `NOT_CLOSED`** — eight paths lie
+outside the scope set committed before any implementer reported, each traceably authorised but
+none of them *expected*, and the set was not edited to admit them.
+
+What the brief set out to do, it did. Tailored documents generate, for both packs, over HTTP,
+where FR-004 returned 409 "always, by construction". The scorer can see a founder's
+responsibilities for the first time since BRIEF-004. A real poll of twelve sources is
+evidenced with the provenance of its rows *bound by a probe* rather than asserted in prose.
+And the founder's rule — that nothing is hidden without a visible, switchable control — is
+honoured to the point of admitting, in the drawer, which controls cannot currently act at all.
+
+Three of the four defects this brief fixed were latent BRIEF-004 defects that fixtures had
+concealed, and one of those was findable only by polling real sources. That is the strongest
+argument in this report for doing the unglamorous parts: the live poll and the
+compiler-against-validator test earned more than the features did.
+
+**What a reader should weigh against that.** The verifier overturned the Master's A-5 verdict,
+and it was right to: STATE was recorded fresh six commits before the head being merged, on a
+row that exists only because FR-004 got the same thing wrong twice. A-9's prose asserted
+registry membership that none of its five probes tested — the exact FR-004 pattern, inside the
+evidence of the brief written to correct it; it was true, and it was untested, and it is now
+probed. A citation in the A-6 evidence was false about the governing document. `target_roles`
+shipped a default the brief did not specify. And the Master came within one step of writing a
+non-existent backend defect into this report on the strength of an implementer's plausible
+trace, having required exactly that trace-level reproduction of the council and not of itself.
+
+None of those changed what ships. All of them are the same failure: verifying once and letting
+the observation go stale, or accepting a diagnosis without reproducing it. That is recorded as
+deviation 29 rather than distributed thinly across the report.
+
+**The gate's PR half is not met and could not be.** `gh` is unauthenticated here, PR creation
+needs a browser OAuth flow that `AGENTS.md` reserves to the founder, and a feature-branch push
+triggers no workflow at all — so "four workflows green on the PR head" is unobtainable on this
+host, not merely unevidenced. Every step those workflows run was executed locally against the
+merge candidate first, and the four run on `main` after the merge. What is genuinely lost is
+that no second party saw this as a pull-request diff before it landed; two council reviews and
+an independent verifier saw the substance, but not the form. Recorded as a gate shortfall.
+
+The measured number still does not exist. It is produced by the founder working §9 — and now,
+for the first time, the documents that script asks for will actually open.
