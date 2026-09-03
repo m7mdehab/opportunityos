@@ -1,0 +1,47 @@
+
+Running 22 tests using 1 worker
+
+[WebServer] Failed to proxy http://localhost:8000/api/opportunities/opp-001/artifacts/cv.pdf?template=classic AggregateError: 
+[WebServer]     at ignore-listed frames {
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   [errors]: [
+[WebServer]     Error: connect ECONNREFUSED ::1:8000
+[WebServer]         at <unknown> (Error: connect ECONNREFUSED ::1:8000) {
+[WebServer]       errno: -4078,
+[WebServer]       code: 'ECONNREFUSED',
+[WebServer]       syscall: 'connect',
+[WebServer]       address: '::1',
+[WebServer]       port: 8000
+[WebServer]     },
+[WebServer]     Error: connect ECONNREFUSED 127.0.0.1:8000
+[WebServer]         at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8000) {
+[WebServer]       errno: -4078,
+[WebServer]       code: 'ECONNREFUSED',
+[WebServer]       syscall: 'connect',
+[WebServer]       address: '127.0.0.1',
+[WebServer]       port: 8000
+[WebServer]     }
+[WebServer]   ]
+[WebServer] }
+[WebServer] AggregateError: 
+[WebServer]     at ignore-listed frames {
+[WebServer]   code: 'ECONNREFUSED',
+[WebServer]   [errors]: [
+[WebServer]     Error: connect ECONNREFUSED ::1:8000
+[WebServer]         at <unknown> (Error: connect ECONNREFUSED ::1:8000) {
+[WebServer]       errno: -4078,
+[WebServer]       code: 'ECONNREFUSED',
+[WebServer]       syscall: 'connect',
+[WebServer]       address: '::1',
+[WebServer]       port: 8000
+[WebServer]     },
+[WebServer]     Error: connect ECONNREFUSED 127.0.0.1:8000
+[WebServer]         at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8000) {
+[WebServer]       errno: -4078,
+[WebServer]       code: 'ECONNREFUSED',
+[WebServer]       syscall: 'connect',
+[WebServer]       address: '127.0.0.1',
+[WebServer]       port: 8000
+[WebServer]     }
+[WebServer]   ]
+[WebServer] }
