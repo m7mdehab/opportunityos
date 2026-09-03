@@ -94,7 +94,7 @@ evidence:
     locator: "certifications.0"
     metadata: {"name": "Certified Widget Professional", "issuer": "Example Certifying Body"}
   - id: ev-skill
-    content: "Demonstrated advanced Widget Design proficiency across three delivery engagements."
+    content: "Demonstrated advanced Widget Design proficiency across three delivery engagements, categorized under Tooling skills."
     source: "self_reported"
     locator: "skills.0"
   - id: ev-language

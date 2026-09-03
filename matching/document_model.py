@@ -566,7 +566,14 @@ def build_skills_section(
     for a in grouped_selected:
         prof = proficiency_by_subject.get(a.subject_id)
         cat = category_by_subject.get(a.subject_id)
-        text = str(a.value)
+        # `authorized_value` stays the bare skill name -- the exact value the
+        # cited `skill.name` assertion actually authorizes -- never the
+        # decorated display `text` below. This was already true (`prof` was
+        # always `None` on every shipped fixture, so it was untested); fixing
+        # it here as part of the D1F Skills-grouping change is what surfaced
+        # it against a pack that now sets proficiency/category for real.
+        authorized_value = str(a.value)
+        text = authorized_value
         aids = [a.id]
         eids = list(a.evidence_ids)
         if prof is not None:
@@ -584,7 +591,7 @@ def build_skills_section(
             assertion_ids=tuple(aids),
             evidence_ids=tuple(eids),
             predicate="skill.name",
-            authorized_value=text,
+            authorized_value=authorized_value,
         )))
 
     omitted = tuple(
