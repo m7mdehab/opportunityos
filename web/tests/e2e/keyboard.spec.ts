@@ -92,7 +92,7 @@ test.describe("C3 keyboard flow (j/k/o/a/x)", () => {
     const applyBody = (await applyResponse.json()) as { action_state: string }
     expect(applyBody.action_state).toBe("submitted")
     const appliedCard = page.locator(`[data-testid="${beforeId}"]`)
-    await expect(appliedCard.getByText("Applied")).toBeVisible()
+    await expect(appliedCard.getByText("Applied", { exact: true })).toBeVisible()
 
     await page.keyboard.press("j")
     const nextId = await focusedCard(page).getAttribute("data-testid")
@@ -108,7 +108,7 @@ test.describe("C3 keyboard flow (j/k/o/a/x)", () => {
     const dismissBody = (await dismissResponse.json()) as { action_state: string }
     expect(dismissBody.action_state).toBe("dismissed")
     const dismissedCard = page.locator(`[data-testid="${nextId}"]`)
-    await expect(dismissedCard.getByText("Dismissed")).toBeVisible()
+    await expect(dismissedCard.getByText("Dismissed", { exact: true })).toBeVisible()
   })
 
   test("shortcuts do not fire while a text input has focus", async ({ page }) => {
@@ -124,7 +124,7 @@ test.describe("C3 keyboard flow (j/k/o/a/x)", () => {
       }
     })
 
-    const search = page.getByLabel("Search")
+    const search = page.locator("#filter-search")
     await search.click()
     const activeTag = await page.evaluate(() => document.activeElement?.tagName)
     expect(activeTag).toBe("INPUT")

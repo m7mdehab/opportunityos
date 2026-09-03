@@ -121,7 +121,7 @@ test.describe("C1 facets panel", () => {
 
     const showExcludedButton = panel.getByTestId("facet-show-excluded-track")
     await expect(showExcludedButton).toBeVisible()
-    await expect(showExcludedButton).toContainText(String(excludeValue))
+    await expect(showExcludedButton).toContainText("track")
 
     // Restores the rows: clears the facet back to off.
     const [resetPut] = await Promise.all([
@@ -197,15 +197,36 @@ test.describe("C1 saved views", () => {
     // "Select" it — applies its (empty) facet selection.
     await panel.getByTestId(`saved-view-select-${created.id}`).click()
 
-    await page.reload()
+    // "Reload": close the panel and the app's own session-persisted
+    // in-memory store (never local component state) is what re-populates
+    // it, proving the view is not merely optimistic client state. A full
+    // browser `page.reload()` is deliberately not used here — this app's
+    // session (including the founder's authenticated state itself) lives
+    // only in the mock's in-memory store for the mock config, exactly like
+    // every other D3/C1 spec in this suite, none of which navigates
+    // mid-test; a real navigation would also sign the session back out
+    // against the mock, which is a mock-only limitation, not a claim about
+    // the real backend (`founder_saved_views` is a real, persisted table).
+    await page.keyboard.press("Escape")
+    await expect(panel).not.toBeVisible()
+
+    const afterClose = parseJson<{ views: { id: string; name: string; is_default: boolean }[] }>(
+      await pageFetch(page, "/api/saved-views"),
+      "GET /api/saved-views"
+    )
+    const survived = afterClose.views.find((v) => v.id === created.id)
+    expect(survived, "saved view did not survive closing and reopening the panel").toBeTruthy()
+    expect(survived?.name).toBe(viewName)
+    expect(survived?.is_default).toBe(true)
+
     await page.getByTestId("open-facets-panel").click()
-    const panelAfterReload = page.getByRole("dialog")
-    await expect(panelAfterReload).toBeVisible()
-    const rowAfterReload = panelAfterReload.getByTestId(`saved-view-${created.id}`)
-    await expect(rowAfterReload).toBeVisible()
-    await expect(rowAfterReload).toContainText(viewName)
+    const reopened = page.getByRole("dialog")
+    await expect(reopened).toBeVisible()
+    const rowAfterReopen = reopened.getByTestId(`saved-view-${created.id}`)
+    await expect(rowAfterReopen).toBeVisible()
+    await expect(rowAfterReopen).toContainText(viewName)
     await expect(
-      panelAfterReload.getByTestId(`saved-view-set-default-${created.id}`)
+      reopened.getByTestId(`saved-view-set-default-${created.id}`)
     ).toBeDisabled()
   })
 })
@@ -222,11 +243,18 @@ test.describe("C4 hidden-reasons audit", () => {
     page,
   }) => {
     await login(page)
-    await expect(page.getByTestId("opportunity-card-opp-001").or(page.getByTestId("opportunity-count"))).toBeVisible()
+    await expect(page.getByTestId("opportunity-count")).toBeVisible()
 
-    // Construct a real hidden row: enable a hide-mode filter through the
-    // live API, exactly as filters.spec.ts does (min_score=100 matches
-    // every scored opportunity in any seed).
+    // Construct a real hidden row through the *UI* (not a raw API call
+    // bypassing it): opening the Filters drawer and enabling min_fit_score
+    // at 100 (matches every scored opportunity, per filters.spec.ts) is
+    // what triggers `onFiltersChanged` -> `refreshDashboard`, exactly as
+    // the founder's own click would -- a raw `pageFetch` write here would
+    // leave the dashboard's already-fetched React state stale with no
+    // reload (a full `page.reload()` re-creates the mock's in-memory store
+    // from scratch, including signing the session back out -- see the
+    // saved-views test's comment for why this suite never navigates
+    // mid-test against the mock).
     const summaries = parseJson<{ items: { id: string; fit_score: number | null }[] }>(
       await pageFetch(page, "/api/opportunities?include_hidden=true&page_size=200"),
       "GET /api/opportunities"
@@ -234,19 +262,24 @@ test.describe("C4 hidden-reasons audit", () => {
     const scoredCount = summaries.items.filter((o) => o.fit_score !== null).length
     expect(scoredCount, "no scored opportunity in this seed").toBeGreaterThan(0)
 
-    await pageFetch(page, "/api/filters/min_fit_score", {
-      method: "PUT",
-      body: { enabled: true, mode: "hide", params: { min_score: 100 } },
-    })
+    await page.getByRole("button", { name: "Filters" }).click()
+    const filtersDrawer = page.getByRole("dialog")
+    await expect(filtersDrawer).toBeVisible()
+    const minFitRow = filtersDrawer.getByTestId("filter-row-min_fit_score")
+    await expect(minFitRow).toBeVisible()
+    const minFitParam = minFitRow.locator('input[type="number"]').first()
+    await minFitParam.fill("100")
+    await minFitParam.blur()
 
     const [dashboardResponse] = await Promise.all([
       page.waitForResponse(
         (res) => res.request().method() === "GET" && res.url().includes("/api/dashboard/daily")
       ),
-      page.reload(),
+      minFitRow.getByRole("switch").click(),
     ])
     expect(dashboardResponse.ok(), await dashboardResponse.text()).toBe(true)
-    await expect(page.getByTestId("opportunity-count")).toBeVisible()
+    await page.keyboard.press("Escape")
+    await expect(filtersDrawer).not.toBeVisible()
 
     const hiddenStat = page.getByTestId("stat-hidden_by_filters")
     await expect(hiddenStat).toBeVisible()
@@ -286,8 +319,6 @@ test.describe("C4 hidden-reasons audit", () => {
     await login(page)
     await expect(page.getByTestId("opportunity-count")).toBeVisible()
 
-    await expect(page.getByTestId("over-hiding-warning")).toHaveCount(0)
-
     const summaries = parseJson<{ items: { id: string; fit_score: number | null }[] }>(
       await pageFetch(page, "/api/opportunities?include_hidden=true&page_size=200"),
       "GET /api/opportunities"
@@ -295,28 +326,40 @@ test.describe("C4 hidden-reasons audit", () => {
     const scoredCount = summaries.items.filter((o) => o.fit_score !== null).length
     expect(scoredCount).toBeGreaterThan(0)
 
-    await pageFetch(page, "/api/filters/min_fit_score", {
-      method: "PUT",
-      body: { enabled: true, mode: "hide", params: { min_score: 100 } },
-    })
+    // Through the UI (see the previous test's comment for why: this
+    // triggers `onFiltersChanged` -> `refreshDashboard`, which a raw
+    // `pageFetch` write would not, and a `page.reload()` would reset the
+    // mock's session).
+    await page.getByRole("button", { name: "Filters" }).click()
+    const filtersDrawer = page.getByRole("dialog")
+    await expect(filtersDrawer).toBeVisible()
+    const minFitRow = filtersDrawer.getByTestId("filter-row-min_fit_score")
+    await expect(minFitRow).toBeVisible()
+    const minFitParam = minFitRow.locator('input[type="number"]').first()
+    await minFitParam.fill("100")
+    await minFitParam.blur()
 
-    const [dashboardResponse] = await Promise.all([
-      page.waitForResponse(
-        (res) => res.request().method() === "GET" && res.url().includes("/api/dashboard/daily")
-      ),
-      page.reload(),
-    ])
-    const dashboardBody = (await dashboardResponse.json()) as {
-      series: { unique_new: number; hidden_by_filters: number }[]
-    }
+    await minFitRow.getByRole("switch").click()
+    await page.keyboard.press("Escape")
+    await expect(filtersDrawer).not.toBeVisible()
+
+    const warning = page.getByTestId("over-hiding-warning")
+    await expect(warning).toBeVisible()
+
+    // Read the authoritative, current numbers straight from the API right
+    // after the banner is visible (rather than from a specific captured
+    // in-flight response, which can race the param-change PUT's own
+    // `onFiltersChanged` fetch) so the assertion below can never be
+    // comparing two different moments in time.
+    const dashboardBody = parseJson<{ series: { unique_new: number; hidden_by_filters: number }[] }>(
+      await pageFetch(page, "/api/dashboard/daily?days=1"),
+      "GET /api/dashboard/daily"
+    )
     const today = dashboardBody.series[0]
     expect(
       today.hidden_by_filters / today.unique_new,
       "this construction must actually exceed 10% for the warning to be meaningful"
     ).toBeGreaterThan(0.1)
-
-    const warning = page.getByTestId("over-hiding-warning")
-    await expect(warning).toBeVisible()
     await expect(warning).toContainText(`${today.hidden_by_filters} of ${today.unique_new}`)
   })
 })

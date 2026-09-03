@@ -159,6 +159,10 @@ export default function FeedPage() {
   // toggling "Show hidden", etc. can shrink it).
   useEffect(() => {
     if (!items) return
+    // Standard data-fetching-adjacent effect (React docs: "Fetching data"
+    // under "You Might Not Need an Effect") — clamping the cursor when an
+    // external input (`items`, driven by the query) changes shape.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFocusedIndex((i) => Math.min(i, Math.max(items.length - 1, 0)))
   }, [items])
 
