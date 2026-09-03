@@ -45,12 +45,13 @@ from opportunity.models import (
     Opportunity,
     RemotePolicy,
     SeniorityLevel,
+    SourceHealthStatus,
     Track,
 )
 from opportunity.persistence import persist_batch
 from opportunity.pipeline import OpportunityPipeline
 from opportunity.registry import SourceRegistry
-from opportunity.transport import BaseTransport, HttpTransport
+from opportunity.transport import AcquisitionService, BaseTransport, HttpTransport
 from storage.models import FieldProvenanceRecord, MatchEvaluationRecord, OpportunityRecord, SourcePollRunRecord
 try:
     # A1M's own reextract_all interface point (see below) into the concurrent
@@ -204,6 +205,108 @@ def _write_poll_run_record(
         session.close()
 
 
+#: Status recorded on ``source_poll_runs`` when a source's own poll returned
+#: HTTP 403/429 this run: distinct from ``"ok"`` (empty-but-authorized) and
+#: ``"refused"`` (registry read policy) so ``worker.scheduler.PollScheduler``
+#: can tell "nothing to fetch" apart from "stop asking this source" and never
+#: reschedule the latter for the rest of this process's session (see its
+#: ``_blocked_source_ids_from_db``). Cadence is a floor, not a licence.
+BLOCKED_POLL_STATUS = "blocked"
+
+#: HTTP status codes that mean "stop asking this source this session",
+#: shared by the generic (``execute_discovery``/health-report) path and the
+#: Hacker News governed multi-step fetch below.
+_BLOCKED_STATUS_CODES = frozenset({403, 429})
+
+#: Health statuses (see ``opportunity.health.SourceHealthMonitor.record_run``)
+#: that correspond to the same 403/429 "stop asking this session" condition
+#: for a source polled through the normal ``OpportunityPipeline.execute_discovery``
+#: / ``process_payloads`` path (which never raises for a non-2xx transport
+#: response -- it just health-reports it and yields zero opportunities).
+_BLOCKED_HEALTH_STATUSES = frozenset({SourceHealthStatus.POLICY_RESTRICTION, SourceHealthStatus.RATE_LIMITED})
+
+#: The one source this work order wires a live, governed, multi-step fetch
+#: for (see ``_fetch_hacker_news_who_is_hiring_governed`` below). Every other
+#: source's single-request fetch already goes through
+#: ``OpportunityPipeline.execute_discovery`` -> ``AcquisitionService.acquire``.
+HACKER_NEWS_SOURCE_ID = "hacker_news_who_is_hiring"
+
+_HN_FIREBASE_BASE = "https://hacker-news.firebaseio.com/v0"
+
+
+def _hn_governed_get(acquisition: AcquisitionService, source_id: str, url: str) -> tuple[Optional[Any], Optional[int]]:
+    """One governed GET -- registry preflight, shared rate limiter, injectable
+    transport, all via ``AcquisitionService.acquire`` -- returning
+    ``(parsed_json_or_None, status_code)``.
+    """
+    result = acquisition.acquire(source_id=source_id, url=url, method="GET")
+    status = result.response.status_code
+    if not result.authorized or not result.response.is_success or not result.response.body:
+        return None, status
+    try:
+        return json.loads(result.response.body), status
+    except (TypeError, ValueError):
+        return None, status
+
+
+def _fetch_hacker_news_who_is_hiring_governed(
+    acquisition: AcquisitionService,
+    source_id: str = HACKER_NEWS_SOURCE_ID,
+    max_comments: int = 200,
+) -> tuple[Optional[str], Optional[int]]:
+    """Governed re-implementation of the multi-step Firebase orchestration
+    documented (but left un-wired, on purpose) by
+    ``opportunity.adapters.hacker_news.fetch_who_is_hiring_payload``.
+
+    That module is frozen for this work order (E23 owns it) and its live
+    fetch uses raw ``urllib`` directly, bypassing the registry gate, the
+    shared rate limiter, and test injection entirely -- exactly the
+    "clearly marked seam" its own docstring describes for integration here.
+    This function performs the identical three-step orchestration (resolve
+    the current thread via the ``whoishiring`` user's submissions, fetch the
+    thread item, fetch each top-level comment) but every request goes
+    through the same injected ``AcquisitionService`` (registry
+    ``is_read_allowed``/``validate_preflight`` + the shared ``RateLimiter`` +
+    an injectable ``BaseTransport``) used everywhere else, so it is
+    offline-testable with a ``MockTransport`` and stops immediately --
+    recording the blocking status rather than raising -- the moment any step
+    returns 403/429, per this source's own read-only policy gate.
+    """
+    user, status = _hn_governed_get(acquisition, source_id, f"{_HN_FIREBASE_BASE}/user/whoishiring.json")
+    if user is None:
+        return None, status
+    submitted_ids = list(user.get("submitted", []))[:60]
+
+    thread_item: Optional[dict] = None
+    for item_id in submitted_ids:
+        item, status = _hn_governed_get(acquisition, source_id, f"{_HN_FIREBASE_BASE}/item/{item_id}.json")
+        if status in _BLOCKED_STATUS_CODES:
+            return None, status
+        if item and isinstance(item, dict) and str(item.get("title", "")).lower().startswith("ask hn: who is hiring"):
+            thread_item = item
+            break
+    if thread_item is None:
+        return json.dumps({"thread_id": None, "thread_title": "", "comments": []}), 200
+
+    comments: list[dict] = []
+    for kid_id in list(thread_item.get("kids", []))[:max_comments]:
+        kid, status = _hn_governed_get(acquisition, source_id, f"{_HN_FIREBASE_BASE}/item/{kid_id}.json")
+        if status in _BLOCKED_STATUS_CODES:
+            return None, status
+        if not kid or kid.get("deleted") or kid.get("dead"):
+            continue
+        comments.append(kid)
+
+    return (
+        json.dumps({
+            "thread_id": thread_item.get("id"),
+            "thread_title": thread_item.get("title", ""),
+            "comments": comments,
+        }),
+        200,
+    )
+
+
 def make_poll_source_handler(
     *,
     registry: Optional[SourceRegistry] = None,
@@ -263,6 +366,12 @@ def make_poll_source_handler(
     reg = registry or SourceRegistry()
     fetch_transport = transport or HttpTransport()
     pack_loader_fn = pack_loader or load_founder_pack
+    # Built once, reused by every handler() call: gives the Hacker News
+    # governed multi-step fetch (below) the same registry gate + injectable
+    # transport as the rest of this handler, and a RateLimiter that actually
+    # paces across separate polls of this source within one worker process,
+    # not just within one call.
+    hn_acquisition = AcquisitionService(registry=reg, transport=fetch_transport)
     _session_factory_holder: list[Optional[SessionFactory]] = [session_factory]
 
     def _resolve_session_factory() -> SessionFactory:
@@ -298,7 +407,35 @@ def make_poll_source_handler(
         )
         try:
             pipeline = OpportunityPipeline(adapters=adapters, registry=reg, transport=fetch_transport)
-            batch = pipeline.execute_discovery(source_ids=[source_id])
+            if source_id == HACKER_NEWS_SOURCE_ID:
+                # Hacker News needs a governed multi-step Firebase fetch (see
+                # _fetch_hacker_news_who_is_hiring_governed's docstring) instead
+                # of the generic single-request execute_discovery path every
+                # other source uses. A 403/429 on any step is not raised: it is
+                # recorded (status="blocked") and this poll returns cleanly, the
+                # same "stop asking this source, don't crash the worker"
+                # contract every other source gets from health_reports below.
+                hn_payload, hn_status = _fetch_hacker_news_who_is_hiring_governed(hn_acquisition, source_id)
+                if hn_payload is None:
+                    blocked = hn_status in _BLOCKED_STATUS_CODES
+                    _write_poll_run_record(
+                        _resolve_session_factory,
+                        source_id=source_id,
+                        job_id=job_id,
+                        started_at=started_at,
+                        status=BLOCKED_POLL_STATUS if blocked else "error",
+                        refusal_reason=f"http_{hn_status}" if blocked else None,
+                        error_message=None if blocked else f"hacker_news_who_is_hiring fetch failed (status={hn_status})",
+                    )
+                    return
+                batch = pipeline.process_payloads(
+                    {source_id: hn_payload},
+                    now_iso=started_at.strftime("%Y-%m-%d"),
+                    run_id=job_id or "run_default",
+                    status_codes={source_id: hn_status or 200},
+                )
+            else:
+                batch = pipeline.execute_discovery(source_ids=[source_id])
         except Exception as exc:
             _write_poll_run_record(
                 _resolve_session_factory,
@@ -309,6 +446,22 @@ def make_poll_source_handler(
                 error_message=str(exc),
             )
             raise
+
+        # A source polled through execute_discovery/process_payloads never
+        # raises for a non-2xx transport response -- it health-reports it and
+        # yields zero opportunities for that source. Detect that here (rather
+        # than only for Hacker News) so any source's 403/429 is recorded as
+        # BLOCKED_POLL_STATUS, not a misleadingly-empty "ok", and
+        # worker.scheduler.PollScheduler can act on it. Cadence is a floor,
+        # not a licence.
+        blocked_report = next(
+            (
+                r
+                for r in batch.health_reports
+                if r.source_id == source_id and r.status in _BLOCKED_HEALTH_STATUSES
+            ),
+            None,
+        )
 
         session = _resolve_session_factory()()
         try:
@@ -360,7 +513,8 @@ def make_poll_source_handler(
                 job_id=job_id,
                 started_at=_to_utc_naive(started_at),
                 finished_at=_to_utc_naive(datetime.now(timezone.utc)),
-                status="ok",
+                status=BLOCKED_POLL_STATUS if blocked_report is not None else "ok",
+                refusal_reason=(f"blocked_{blocked_report.status.value}" if blocked_report is not None else None),
                 raw_ingested=batch.total_raw_ingested,
                 unique_opportunities=batch.total_unique_opportunities,
                 inserted=result.inserted_count,
