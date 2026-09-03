@@ -151,3 +151,30 @@ public mirror allowlist, and `docs/SOURCE_REGISTRY.yaml` records
 under an unreviewed attribution requirement is a different act. The names were withheld.
 Nothing evidential was lost: the per-source counts, the three real hosts and the three zero
 probes carry the claim on their own.
+
+### 21. **Master error** — the founder's truth pack was read by a process the Master started
+`alpha.py up` starts an API whose truth-pack path defaults to `private/truth_pack.yaml`. The
+Master supplied only a database URL, a password and a session secret, so the first
+founder-facing capture in A-9 ran against the founder's real pack. The Master never opened
+that file — `Read(./private/**)` is denied in settings and was never attempted — but it
+started the process that did, and then read pack-derived aggregates back out: filter
+affected-counts, and the fact that three filters were available rather than inert, which
+implies the pack declares those assertions.
+
+§6 of the brief says "private/ remains denied to the agent; the founder's pack is never read
+by any session." Causing a process to read it is not the same as opening it, and no personal
+content — no name, employer, title or skill — entered the Master's context; what was seen was
+counts and a score distribution. But the honest reading is that the boundary was crossed, and
+it was crossed because the Master did not think about the default path before starting the
+service.
+
+Remediation: the pack-derived figures were not committed anywhere. The stack was taken down
+and restarted with `OPPORTUNITYOS_TRUTH_PACK_PATH` pointed at the committed synthetic pack,
+and every published number comes from that second run. A-9's own claims — source provenance
+and fixture residue — are ingestion properties and are pack-independent, so they were
+unaffected.
+
+Recommended as a real deliverable for the next brief, not a note: `alpha.py` should refuse to
+start without an explicit truth-pack path when it cannot confirm a human is driving it, in
+the same spirit as its `_test` database refusal. The failure mode is identical — a default
+that silently points somewhere it should not.
