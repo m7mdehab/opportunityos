@@ -41,6 +41,7 @@ export function ArtifactsPanel({ opportunityId }: { opportunityId: string }) {
   const [kind, setKind] = useState<"cv" | "cover-letter">("cv")
   const [template, setTemplate] = useState<ArtifactTemplateId>("classic")
 
+  const [loadedKey, setLoadedKey] = useState<string | null>(null)
   const [omittedItems, setOmittedItems] = useState<OmittedItem[] | null>(null)
   const [findings, setFindings] = useState<ArtifactValidationFinding[] | null>(
     null
@@ -57,12 +58,21 @@ export function ArtifactsPanel({ opportunityId }: { opportunityId: string }) {
     template
   )
 
+  // React's documented "adjust state when props change" pattern, not an
+  // effect: resetting during render avoids the synchronous re-render cascade
+  // that `react-hooks/set-state-in-effect` flags, and guarantees the panel
+  // never paints one document's findings against another's request.
+  const requestKey = `${opportunityId}|${kind}|${template}`
+  if (requestKey !== loadedKey) {
+    setLoadedKey(requestKey)
+    setOmittedItems(null)
+    setFindings(null)
+    setMetaError(null)
+    setLoadingMeta(true)
+  }
+
   useEffect(() => {
     let cancelled = false
-    setLoadingMeta(true)
-    setMetaError(null)
-    setFindings(null)
-    setOmittedItems(null)
     api.opportunities
       .omittedItems(opportunityId, kind, template)
       .then((res) => {

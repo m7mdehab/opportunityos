@@ -9,4 +9,107 @@ test_adv_03_adapter_version_changed_after_graduation_blocks_action (test_adversa
 test_adv_04_source_policy_changed_to_manual_blocks_submit (test_adversarial.AdversarialOutboundTests.test_adv_04_source_policy_changed_to_manual_blocks_submit) ... ok
 test_adv_05_unknown_outcome_retry_attempt_after_process_restart (test_adversarial.AdversarialOutboundTests.test_adv_05_unknown_outcome_retry_attempt_after_process_restart) ... ok
 test_adv_06_two_independent_ledger_instances_racing_against_sqlite (test_adversarial.AdversarialOutboundTests.test_adv_06_two_independent_ledger_instances_racing_against_sqlite)
-Race TWO independent IdempotencyLedger and OutboundBrowserEngine instances against the same DB file. ... 
+Race TWO independent IdempotencyLedger and OutboundBrowserEngine instances against the same DB file. ... ok
+test_adv_07_real_prepare_then_truth_graph_mutation_blocks_submission (test_adversarial.AdversarialOutboundTests.test_adv_07_real_prepare_then_truth_graph_mutation_blocks_submission)
+A. prepare -> no change -> submit succeeds; B. prepare -> TG mutation -> BLOCK. ... ok
+test_adv_08_real_prepare_then_source_policy_version_mutation_blocks_submission (test_adversarial.AdversarialOutboundTests.test_adv_08_real_prepare_then_source_policy_version_mutation_blocks_submission)
+C. prepare -> source policy version changes -> BLOCK. ... ok
+test_adv_08b_real_prepare_then_adapter_evidence_mutation_blocks_submission (test_adversarial.AdversarialOutboundTests.test_adv_08b_real_prepare_then_adapter_evidence_mutation_blocks_submission)
+D. prepare -> adapter graduation evidence changes -> BLOCK. ... ok
+test_adv_08c_real_prepare_then_tailoring_policy_mutation_blocks_submission (test_adversarial.AdversarialOutboundTests.test_adv_08c_real_prepare_then_tailoring_policy_mutation_blocks_submission)
+E. prepare -> tailoring policy changes -> BLOCK. ... ok
+test_adv_08d_real_prepare_no_material_change_submits_successfully (test_adversarial.AdversarialOutboundTests.test_adv_08d_real_prepare_no_material_change_submits_successfully)
+A. prepare -> no change -> submit succeeds. ... ok
+test_adv_08e_post_reservation_source_version_mutation_hook_aborts_submit (test_adversarial.AdversarialOutboundTests.test_adv_08e_post_reservation_source_version_mutation_hook_aborts_submit)
+Requirement 2B: Post-reservation source policy VERSION changes while policy remains SUBMIT_ALLOWED => BLOCK, 0 submit calls. ... ok
+test_adv_08f_post_reservation_truth_graph_mutation_hook_aborts_submit (test_adversarial.AdversarialOutboundTests.test_adv_08f_post_reservation_truth_graph_mutation_hook_aborts_submit)
+Requirement 2C: Post-reservation TruthGraph authority changes => BLOCK, 0 submit calls. ... ok
+test_adv_08g_post_reservation_manual_only_mutation_hook_aborts_submit (test_adversarial.AdversarialOutboundTests.test_adv_08g_post_reservation_manual_only_mutation_hook_aborts_submit)
+Adversarial hook: source policy changes to MANUAL_ONLY during reservation -> submit_page() NEVER called. ... ok
+test_adv_09_assisted_mode_zero_submit_on_js_auto_submit_page (test_adversarial.AdversarialOutboundTests.test_adv_09_assisted_mode_zero_submit_on_js_auto_submit_page) ... ok
+test_adv_10_procurement_dossier_blocks_autonomous_controlled_submit (test_adversarial.AdversarialOutboundTests.test_adv_10_procurement_dossier_blocks_autonomous_controlled_submit) ... ok
+test_adv_11_freelance_proposal_blocks_unauthorized_controlled_submit (test_adversarial.AdversarialOutboundTests.test_adv_11_freelance_proposal_blocks_unauthorized_controlled_submit) ... ok
+test_adv_12_ineligible_qualification_blocks_action (test_adversarial.AdversarialOutboundTests.test_adv_12_ineligible_qualification_blocks_action) ... ok
+test_adv_13_uncertain_qualification_pauses_for_review (test_adversarial.AdversarialOutboundTests.test_adv_13_uncertain_qualification_pauses_for_review) ... ok
+test_adv_14_missing_confirmation_evidence_transitions_to_unknown_outcome (test_adversarial.AdversarialOutboundTests.test_adv_14_missing_confirmation_evidence_transitions_to_unknown_outcome) ... ok
+test_adv_15_deceptive_legal_declaration_classified_red (test_adversarial.AdversarialOutboundTests.test_adv_15_deceptive_legal_declaration_classified_red) ... ok
+test_adv_16_mismatched_artifact_opportunity_hash_blocks_action (test_adversarial.AdversarialOutboundTests.test_adv_16_mismatched_artifact_opportunity_hash_blocks_action) ... ok
+test_adv_17_work_authorization_unresolved_jurisdiction_pauses_for_review (test_adversarial.AdversarialOutboundTests.test_adv_17_work_authorization_unresolved_jurisdiction_pauses_for_review) ... ok
+test_adv_18_missing_email_in_truth_graph_pauses_required_email_field (test_adversarial.AdversarialOutboundTests.test_adv_18_missing_email_in_truth_graph_pauses_required_email_field) ... ok
+test_adv_19_empty_truth_graph_pauses_required_identity_field (test_adversarial.AdversarialOutboundTests.test_adv_19_empty_truth_graph_pauses_required_identity_field) ... ok
+test_adv_20_valid_controlled_submit_end_to_end_succeeds_and_confirms (test_adversarial.AdversarialOutboundTests.test_adv_20_valid_controlled_submit_end_to_end_succeeds_and_confirms) ... ok
+test_compensation_daily_rate_without_explicit_currency_fails_closed_to_pause (test_answer_engine.ApplicationAnswerEngineTests.test_compensation_daily_rate_without_explicit_currency_fails_closed_to_pause) ... ok
+test_compensation_empty_policy_fails_closed_to_pause (test_answer_engine.ApplicationAnswerEngineTests.test_compensation_empty_policy_fails_closed_to_pause) ... ok
+test_compensation_explicit_daily_rate_and_currency_yields_exact_yellow_answer (test_answer_engine.ApplicationAnswerEngineTests.test_compensation_explicit_daily_rate_and_currency_yields_exact_yellow_answer) ... ok
+test_compensation_explicit_hourly_rate_and_currency_yields_exact_yellow_answer (test_answer_engine.ApplicationAnswerEngineTests.test_compensation_explicit_hourly_rate_and_currency_yields_exact_yellow_answer) ... ok
+test_compensation_hourly_rate_without_explicit_currency_fails_closed_to_pause (test_answer_engine.ApplicationAnswerEngineTests.test_compensation_hourly_rate_without_explicit_currency_fails_closed_to_pause) ... ok
+test_empty_truth_graph_email_field_fails_closed_to_pause (test_answer_engine.ApplicationAnswerEngineTests.test_empty_truth_graph_email_field_fails_closed_to_pause) ... ok
+test_empty_truth_graph_linkedin_field_fails_closed_to_pause (test_answer_engine.ApplicationAnswerEngineTests.test_empty_truth_graph_linkedin_field_fails_closed_to_pause) ... ok
+test_empty_truth_graph_name_field_fails_closed_to_pause (test_answer_engine.ApplicationAnswerEngineTests.test_empty_truth_graph_name_field_fails_closed_to_pause) ... ok
+test_empty_truth_graph_phone_field_fails_closed_to_pause (test_answer_engine.ApplicationAnswerEngineTests.test_empty_truth_graph_phone_field_fails_closed_to_pause) ... ok
+test_explicit_notice_period_policy_yields_exact_yellow_answer (test_answer_engine.ApplicationAnswerEngineTests.test_explicit_notice_period_policy_yields_exact_yellow_answer) ... ok
+test_explicit_sponsorship_policy_yields_exact_yellow_answer (test_answer_engine.ApplicationAnswerEngineTests.test_explicit_sponsorship_policy_yields_exact_yellow_answer) ... ok
+test_unconfigured_notice_period_policy_fails_closed_to_pause (test_answer_engine.ApplicationAnswerEngineTests.test_unconfigured_notice_period_policy_fails_closed_to_pause) ... ok
+test_unconfigured_sponsorship_policy_fails_closed_to_pause (test_answer_engine.ApplicationAnswerEngineTests.test_unconfigured_sponsorship_policy_fails_closed_to_pause) ... ok
+test_work_authorization_egypt_positive_with_us_question_yields_pause_not_no (test_answer_engine.ApplicationAnswerEngineTests.test_work_authorization_egypt_positive_with_us_question_yields_pause_not_no) ... ok
+test_work_authorization_explicit_verified_negative_yields_green_no (test_answer_engine.ApplicationAnswerEngineTests.test_work_authorization_explicit_verified_negative_yields_green_no) ... ok
+test_work_authorization_explicit_verified_positive_yields_green_yes (test_answer_engine.ApplicationAnswerEngineTests.test_work_authorization_explicit_verified_positive_yields_green_yes) ... ok
+test_raw_unowned_artifact_is_strictly_rejected (test_artifact_selector.ApplicationArtifactSelectorTests.test_raw_unowned_artifact_is_strictly_rejected) ... ok
+test_wrong_candidate_artifact_is_strictly_blocked (test_artifact_selector.ApplicationArtifactSelectorTests.test_wrong_candidate_artifact_is_strictly_blocked) ... ok
+test_wrong_workspace_artifact_is_strictly_blocked (test_artifact_selector.ApplicationArtifactSelectorTests.test_wrong_workspace_artifact_is_strictly_blocked) ... ok
+test_discovery_allowed_alone_prohibits_fill_and_prepare (test_authority.ActionAuthorityTests.test_discovery_allowed_alone_prohibits_fill_and_prepare) ... ok
+test_kill_switch_blocks_immediately (test_authority.ActionAuthorityTests.test_kill_switch_blocks_immediately) ... ok
+test_raw_artifact_blocks_assisted_fill (test_authority.ActionAuthorityTests.test_raw_artifact_blocks_assisted_fill) ... ok
+test_raw_artifact_blocks_controlled_submit (test_authority.ActionAuthorityTests.test_raw_artifact_blocks_controlled_submit) ... ok
+test_split_adapter_registry_strictly_rejected (test_browser_engine.BrowserEngineTests.test_split_adapter_registry_strictly_rejected) ... ok
+test_split_source_registry_strictly_rejected (test_browser_engine.BrowserEngineTests.test_split_source_registry_strictly_rejected) ... ok
+test_cross_instance_concurrent_reservation_atomicity (test_idempotency.IdempotencyLedgerTests.test_cross_instance_concurrent_reservation_atomicity)
+Test two independent IdempotencyLedger instances racing on the same SQLite file. ... ok
+test_reservation_and_process_restart_durability (test_idempotency.IdempotencyLedgerTests.test_reservation_and_process_restart_durability) ... ok
+test_application_answer_validations (test_models.TestOutboundModels.test_application_answer_validations) ... ok
+test_presubmit_manifest_hash (test_models.TestOutboundModels.test_presubmit_manifest_hash) ... ok
+test_classify_contact_and_links (test_ontology.TestFieldOntology.test_classify_contact_and_links) ... ok
+test_classify_identity (test_ontology.TestFieldOntology.test_classify_identity) ... ok
+test_classify_sensitive_and_unknown (test_ontology.TestFieldOntology.test_classify_sensitive_and_unknown) ... ok
+test_classify_work_auth_and_sponsorship (test_ontology.TestFieldOntology.test_classify_work_auth_and_sponsorship) ... ok
+test_evidence_corrupted_after_initialization_invalidates_submit_eligibility (test_registry.RegistryTests.test_evidence_corrupted_after_initialization_invalidates_submit_eligibility) ... ok
+test_evidence_deleted_after_initialization_invalidates_submit_eligibility (test_registry.RegistryTests.test_evidence_deleted_after_initialization_invalidates_submit_eligibility) ... ok
+test_evidence_modified_after_initialization_invalidates_submit_eligibility (test_registry.RegistryTests.test_evidence_modified_after_initialization_invalidates_submit_eligibility) ... ok
+test_production_default_adapters_are_assisted_verified (test_registry.RegistryTests.test_production_default_adapters_are_assisted_verified) ... ok
+test_zt_01_global_kill_switch_strictly_blocks_submission (test_zero_tolerance.ZeroToleranceOutboundTests.test_zt_01_global_kill_switch_strictly_blocks_submission) ... ok
+test_zt_02_unauthorized_source_strictly_blocks_action (test_zero_tolerance.ZeroToleranceOutboundTests.test_zt_02_unauthorized_source_strictly_blocks_action) ... ok
+test_zt_03_unsupported_action_class_strictly_blocks_action (test_zero_tolerance.ZeroToleranceOutboundTests.test_zt_03_unsupported_action_class_strictly_blocks_action) ... ok
+test_zt_04_unregistered_adapter_strictly_blocks_action (test_zero_tolerance.ZeroToleranceOutboundTests.test_zt_04_unregistered_adapter_strictly_blocks_action) ... ok
+test_zt_05_ungraduated_adapter_strictly_blocks_controlled_submit (test_zero_tolerance.ZeroToleranceOutboundTests.test_zt_05_ungraduated_adapter_strictly_blocks_controlled_submit) ... ok
+test_zt_06_ineligible_opportunity_strictly_blocks_action (test_zero_tolerance.ZeroToleranceOutboundTests.test_zt_06_ineligible_opportunity_strictly_blocks_action) ... ok
+test_zt_07_uncertain_qualification_pauses_for_review (test_zero_tolerance.ZeroToleranceOutboundTests.test_zt_07_uncertain_qualification_pauses_for_review) ... ok
+test_zt_08_unverified_factual_claim_fails_closed_to_pause (test_zero_tolerance.ZeroToleranceOutboundTests.test_zt_08_unverified_factual_claim_fails_closed_to_pause) ... ok
+test_zt_09_prohibited_concept_fails_closed_to_pause (test_zero_tolerance.ZeroToleranceOutboundTests.test_zt_09_prohibited_concept_fails_closed_to_pause) ... ok
+test_zt_10_red_question_blocks_autonomous_controlled_submit (test_zero_tolerance.ZeroToleranceOutboundTests.test_zt_10_red_question_blocks_autonomous_controlled_submit) ... ok
+test_zt_11_duplicate_submission_strictly_blocks_action (test_zero_tolerance.ZeroToleranceOutboundTests.test_zt_11_duplicate_submission_strictly_blocks_action) ... ok
+test_zt_12_captcha_challenge_strictly_blocks_action (test_zero_tolerance.ZeroToleranceOutboundTests.test_zt_12_captcha_challenge_strictly_blocks_action) ... ok
+test_zt_13_mfa_challenge_pauses_for_human_intervention (test_zero_tolerance.ZeroToleranceOutboundTests.test_zt_13_mfa_challenge_pauses_for_human_intervention) ... ok
+test_zt_14_mismatched_opportunity_artifact_hash_strictly_blocks (test_zero_tolerance.ZeroToleranceOutboundTests.test_zt_14_mismatched_opportunity_artifact_hash_strictly_blocks) ... ok
+test_zt_15_assisted_mode_strictly_prohibits_driver_submission (test_zero_tolerance.ZeroToleranceOutboundTests.test_zt_15_assisted_mode_strictly_prohibits_driver_submission) ... ok
+
+======================================================================
+ERROR: adapters (unittest.loader._FailedTest.adapters)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: adapters
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\unittest\loader.py", line 429, in _find_test_path
+    package = self._get_module_from_name(name)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\unittest\loader.py", line 339, in _get_module_from_name
+    __import__(name)
+  File "C:\Users\M7mdEhab\projects\OpportunityOS\outbound\adapters\__init__.py", line 4, in <module>
+    from .base import BaseOutboundAdapter
+  File "C:\Users\M7mdEhab\projects\OpportunityOS\outbound\adapters\base.py", line 8, in <module>
+    from ..models import (
+ImportError: attempted relative import beyond top-level package
+
+
+----------------------------------------------------------------------
+Ran 82 tests in 1186.936s
+
+FAILED (errors=1)
