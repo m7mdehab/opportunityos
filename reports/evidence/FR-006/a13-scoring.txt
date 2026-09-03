@@ -1,0 +1,50 @@
+corpus opportunities evaluated: 540
+
+=== B1: seniority_and_experience raw score/explanation by opportunity seniority ===
+Junior (opportunity_id='greenhouse:affirm:7712707003', title='Business Development Associate'): raw_score=1.000 seniority_strength=YES
+    explanation: Founder: 9y professional; 0m in Business Development; role asks Junior (0m+); meets the bar.
+Mid (opportunity_id='remote_ok:1137236', title='Estimator'): raw_score=1.000 seniority_strength=YES
+    explanation: Founder: 9y professional; 0m in Estimator; role asks Mid (2y+); meets the bar.
+Senior (opportunity_id='greenhouse:airbnb:7732569', title='(Contract) Senior Data Scientist, Platform Inference - MarTech DS Measurement'): raw_score=1.000 seniority_strength=YES
+    explanation: Founder: 9y professional; 0m in Contract Data Scientist Platform Inference MarTech DS Measurement; role asks Senior (5y+); meets the bar.
+Lead (opportunity_id='greenhouse:affirm:7799329003', title='Analytics Lead, Full Stack'): raw_score=0.350 seniority_strength=no
+    explanation: Founder: 9y professional; 0m in Analytics Full Stack; role asks Staff (10y+), people leadership; gap: 1y.
+Staff (== Lead threshold; SeniorityLevel has no separate STAFF member) (opportunity_id='greenhouse:affirm:7799329003', title='Analytics Lead, Full Stack'): raw_score=0.350 seniority_strength=no
+    explanation: Founder: 9y professional; 0m in Analytics Full Stack; role asks Staff (10y+), people leadership; gap: 1y.
+Principal (opportunity_id='greenhouse:coinbase:8131316', title='Chief of Staff'): raw_score=0.350 seniority_strength=no
+    explanation: Founder: 9y professional; 0m in of; role asks Principal (15y+), people leadership; gap: 6y.
+
+=== B2: core-skill strength vs. partial-proficiency counts, over the corpus ===
+rows with >= 1 required-skill match at >= working proficiency (core-skill strength): 0/540 (0.0%)
+rows with >= 1 basic/foundations/unknown-proficiency match (partial, not a strength): 136/540 (25.2%)
+five sample reason strings from real corpus rows:
+  - greenhouse:affirm:7808667003: Nice-to-have: you have Python (unknown-proficiency, 1 record); Sql (unknown-proficiency, 1 record); Go not in your pack.
+  - greenhouse:affirm:7916080003: Nice-to-have: you have Python (unknown-proficiency, 1 record); Sql (unknown-proficiency, 1 record).
+  - greenhouse:affirm:7813362003: Nice-to-have: you have Python (unknown-proficiency, 1 record); Sql (unknown-proficiency, 1 record).
+  - greenhouse:affirm:7764109003: Nice-to-have: you have Python (unknown-proficiency, 1 record); Sql (unknown-proficiency, 1 record).
+  - greenhouse:affirm:7799329003: Nice-to-have: you have Python (unknown-proficiency, 1 record); Sql (unknown-proficiency, 1 record); Go not in your pack.
+
+=== B2 ordering: customer_solutions_engineering vs. data_engineering, over the corpus ===
+customer_solutions_engineering: best overall_fit_score=64.25 (title='Customer Success Engineer, Federal')
+data_engineering: best overall_fit_score=74.75 (title='Senior Data Engineer (Redshift)')
+Note: the fixture-based figures from B2's hand-built fixtures are 46.08 (customer_solutions_engineering) and 82.5 (data_engineering); the corpus figures above are measured independently over opportunity/fixtures/corpus/ and may differ -- the corpus figures are what the report quotes.
+
+=== B3: title-family mapping share, over the corpus's 540 titles ===
+titles mapping to a family (not 'other'): 111/540 (20.6%)
+titles mapping to 'other': 429/540 (79.4%)
+'other' titles: (a) not a role posting: 1/429 (0.2%)
+'other' titles: (b) a role title the taxonomy failed to place: 428/429 (99.8%)
+  group (a) sample:
+    - Expression of Interest Canât see a role thatâs right for you
+  group (b) sample:
+    - Administrative Assistant IV
+    - Affirm Bank Strategic Finance Manager
+    - Analyst
+    - Analyst II, Full Stack (Revenue Analytics)
+    - Analyst II, Full Stack (Revenue Analytics)
+    - Analytics Lead, Full Stack
+    - Analytics Lead, Full Stack
+    - Analytics Lead, Full Stack
+    - Analytics Lead, Full Stack
+    - Analytics Lead, Full Stack (Strategic Revenue Insights)
+    ... and 418 more
