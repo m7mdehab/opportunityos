@@ -80,3 +80,16 @@ some test in the suite drops the schema without resetting the alembic version ta
 and recreating the database made the suite green at 599. This is pre-existing, is not fixed
 here, and is the most likely explanation for the single unreproducible
 "FAILED (failures=1)" recorded in a0-a1-baseline.txt.
+
+
+--- CORRECTION after independent verification ---
+
+The figures above (responsibility_scope 0.800 with two evidence refs) were measured before
+the D1 and D3 council repairs landed. Re-measured by the verifier at the merge head, the same
+named fixture yields **0.95 with three evidence refs** (a-resp1, a-resp2, a-ach). The fixture
+gained an achievement assertion in a later commit.
+
+The claim's binding -- raw_score > 0.50 with non-empty evidence_refs -- holds comfortably
+either way, and the before figure (a flat 0.500 with zero refs) is unchanged. But 0.800 was
+stale relative to the head being merged, and is corrected here rather than left to be
+discovered. The report quotes the corrected figure.

@@ -83,3 +83,44 @@ HONEST NOTES ON THIS RUN
 - No employer names or listing text appear in this file. reports/** is publicly mirrored and
   SOURCE_REGISTRY marks attribution as review_required for these sources; reading was
   allowed and is all the poll used.
+
+================================================================================
+ADDED AFTER INDEPENDENT VERIFICATION -- the assertion this file made but did not test
+================================================================================
+
+The verifier found that this evidence's residue probes test five things --
+example_com, opp_uq, src_prefixed, empty_source, numeric_job_id -- and that NONE of
+them tests membership in docs/SOURCE_REGISTRY.yaml, while the prose above asserts
+"every source_id on every opportunity row is a real registry id from
+docs/SOURCE_REGISTRY.yaml".
+
+That is structurally the FR-004 pattern this entire brief exists to correct: prose
+asserting a property no claim bound. "Not empty and not numeric" does not imply "in
+the registry". The verifier checked the enumerated values by hand and found them all
+genuine, so the statement was under-probed rather than untrue -- but under-probed is
+exactly what the erratum was about.
+
+So here is the probe that was missing, run against the live alpha database:
+
+### A-9 registry-membership probe (added after the verifier found this untested)
+### is_source_registered() called for every distinct source_id on the opportunity rows
+
+  REGISTERED  greenhouse:affirm
+  REGISTERED  greenhouse:airbnb
+  REGISTERED  greenhouse:cloudflare
+  REGISTERED  greenhouse:datadog
+  REGISTERED  greenhouse:duolingo
+  REGISTERED  greenhouse:figma
+  REGISTERED  greenhouse:flexport
+  REGISTERED  greenhouse:twilio
+  REGISTERED  himalayas
+  REGISTERED  lever:shyftlabs
+  REGISTERED  remote_ok
+  REGISTERED  remotive
+
+distinct source_id values : 12
+registered                : 12
+NOT in the registry       : 0
+
+This calls SourceRegistry.is_source_registered() for every distinct source_id present
+on the opportunity rows. It tests the assertion directly instead of inferring it.

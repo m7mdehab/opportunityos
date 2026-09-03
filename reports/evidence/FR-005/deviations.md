@@ -265,3 +265,37 @@ Neither party misreported. The lesson is narrower and worth keeping: **a failing
 plausible trace is not a finding until the trace itself is reproduced independently.** The
 Master reproduced the council's probes before ordering repairs, and did not apply the same
 standard to an implementer's defect report until one step from writing it down.
+
+### 27. `target_roles` shipped a different default from the brief, undisclosed until verification
+The brief's §2 D3 table and the Master's own D3 contract both specify `target_roles` with
+default mode `rank_only`. What shipped is `label_only`. The Master ordered that change when
+council 2 finding 4 showed substring matching demoted a fit-95 posting below a fit-30 one,
+and it is recorded in `council-findings.md` — but neither the contract document nor the
+report's tables were updated, and no deviation was raised at the time. The independent
+verifier found it by comparing `api/filters.py` against the seeded database row.
+
+`label_only` is strictly more conservative than `rank_only`: it cannot reorder the feed at
+all. So this narrows behaviour rather than widening it, and is not a safety issue. The defect
+is that a documentation artefact whose entire job is to pin behaviour drifted from the
+behaviour, in a brief that added an `unavailable_reason` field precisely so the product would
+stop telling the founder things that were not so.
+
+The brief's table is an Overseer-embedded decision (Appendix 1). The Overseer should confirm
+or reverse the change rather than have it stand on the Master's judgement alone.
+
+### 28. **Master error** — A-5 recorded PASS on stale evidence; overturned by the verifier
+The Master ran the STATE freshness check early, saw zero drift, and recorded A-5 as PASS in
+the report. Six commits later that observation was worthless: `docs/STATE.md` on the branch
+was still the one generated at `e77c135`, a commit predating the entire brief, and
+regenerating at HEAD produced an 88-line diff. The branch's final commit was a readiness-matrix
+commit, so the "STATE-only final commit" half of the row was unmet too.
+
+A-5 exists *only because FR-004 got this wrong twice*, and its stated binding is "the FR-004
+ordering defect is not repeated". Recording it PASS on an observation that later commits had
+invalidated is the same category of error as FR-004's A-6 — evidence that no longer describes
+the artefact being merged. The brief's own transactional rule says defects invalidate affected
+evidence; the Master applied that rule to implementers' work and not to its own.
+
+Repaired by regenerating STATE and committing it alone as the branch's final commit, then
+re-running the row. The finding stands regardless of the repair: it was marked PASS without
+being re-run at the head being merged.

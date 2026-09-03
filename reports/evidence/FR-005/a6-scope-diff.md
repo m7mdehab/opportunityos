@@ -18,7 +18,7 @@ Every one of the eight has a traceable authorisation. None is an undisclosed wid
 
 | path | authorised by | why the Master's expected set missed it |
 |---|---|---|
-| `docs/templates/alpha.env.template` | **the brief itself** — §2 D4 says "`docs/templates/alpha.env.template` updated accordingly" | Straightforward Master omission. It was in the brief and should have been in the set. |
+| `docs/templates/alpha.env.template` | the **superseded draft** brief's D2, which v1.1's header maps onto v1.1's D4 — **not** v1.1's own text | The Master originally cited this as "the brief itself, §2 D4". The independent verifier checked and that string does not appear in `briefs/BRIEF-FR-005.md` at all; it is in the draft at `5efedf7`. The authorisation is substantively real — v1.1 D4 requires the `_test` refusal that the template documents — but the citation as written was **false about the governing document**, and is corrected here rather than quietly dropped. |
 | `api/filters.py` | the Master's own D3 prompt — "a new module for the filter engine, e.g. `matching/filters.py` or `api/filters.py` — you choose" | The expected set was written before the D3 prompt, and was not revisited when the prompt authorised a file the set did not name. |
 | `matching/artifact_validation.py` | the Master, explicitly, in the council-repair instruction for D1 defect 4b | Created mid-brief on Master instruction; the set predates the council review. |
 | `matching/mapping.py` | the Master, explicitly — recorded as deviation 8 | Scope extension decided after the set was written. |

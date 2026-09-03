@@ -77,13 +77,25 @@ API call. The ten filters and their defaults:
 | `red_lines` | truth pack red lines | on | `hide` |
 | `excluded_industries` | truth pack | on | `hide` |
 | `track_preference` | `preference.track` order | on | `rank_only` |
-| `target_roles` | `career.target_role` | on | `rank_only` |
+| `target_roles` | `career.target_role` | on | `label_only` ¹ |
 | `premium_fulltime_onsite` | D2 rule | on | `rank_only` |
 | `stale_postings` | `is_stale` | on | `label_only` |
 | `min_fit_score` | founder param | **off** | `hide` |
 | `compensation_floor` | founder param | **off** | `rank_only` |
 
 Only `red_lines` and `excluded_industries` hide by default. Everything else labels or ranks.
+
+¹ **Amended after council review, and after this contract was first committed.** `target_roles`
+was specified `rank_only` here and in the brief's §2 D3 table. Council 2 finding 4 showed that
+with substring matching it demoted a fit-95 posting below a fit-30 one, because the rank
+penalty is the leading sort key. The matcher was changed to token-set matching and the seeded
+default moved to `label_only` until the predicate is proven against live data. `label_only` is
+strictly more conservative than `rank_only` — it cannot reorder anything — so this narrows
+behaviour rather than widening it. The change was ordered by the Master and is recorded in
+`council-findings.md`; this table and the report were **not** updated at the time, which the
+independent verifier caught as documentation-versus-behaviour drift in the very artefact meant
+to pin behaviour. Corrected here. The brief's own table still reads `rank_only` and is an
+Overseer-embedded decision (Appendix 1), so the Overseer should confirm or reverse this.
 
 ---
 
