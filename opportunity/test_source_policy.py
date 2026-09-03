@@ -66,6 +66,31 @@ class SourcePolicyBindingTests(unittest.TestCase):
                     "no adapter_permissions entry may carry a prepare/submit classification",
                 )
 
+    def test_every_e23_added_or_corrected_entry_has_policy_status_and_dated_review(self):
+        # BRIEF-FR-006 E23: every source this order registered or corrected must carry a
+        # policy_status and a last_policy_reviewed date (2026-09-03).
+        e23_source_ids = {
+            "hacker_news_who_is_hiring", "reddit_forhire", "reddit_remotejobs",
+            "reddit_machinelearningjobs", "reddit_datajobs", "reddit_hiring", "reddit_jobbit",
+            "reddit_bigdatajobs", "ycombinator_work_at_a_startup", "working_nomads", "remote_co",
+            "justremote", "wellfound", "arc_dev", "ai_jobs_net", "otta", "peopleperhour",
+            "preply", "superprof", "wyzant", "tutor_com", "chegg", "cambly",
+            # pre-existing entries this order corrected/updated with a dated 2026-09-03 review:
+            "freelancer", "linkedin", "indeed", "wuzzuf", "bayt", "naukrigulf", "gulftalent",
+            "upwork", "mostaql", "khamsat", "contra", "toptal", "jobicy",
+        }
+        data = yaml.safe_load(REGISTRY_PATH.read_text(encoding="utf-8"))
+        by_id = {entry["source_id"]: entry for entry in data.get("sources", [])}
+        missing = e23_source_ids - set(by_id)
+        self.assertEqual(set(), missing, f"E23 source ids missing from the registry entirely: {missing}")
+        for source_id in sorted(e23_source_ids):
+            entry = by_id[source_id]
+            with self.subTest(source_id=source_id):
+                self.assertTrue(entry.get("policy_status"), "policy_status must be set")
+                reviewed = entry.get("last_policy_reviewed")
+                self.assertIsNotNone(reviewed, "last_policy_reviewed must be set")
+                self.assertEqual(str(reviewed), "2026-09-02" if source_id == "jobicy" else "2026-09-03")
+
     def test_hacker_news_is_the_only_new_e23_source_bound_to_an_adapter(self):
         # Guards against accidentally wiring a manual_only/platform_application source
         # (e.g. a Reddit route or a tutoring platform) into the live adapter pipeline.
