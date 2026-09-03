@@ -25,6 +25,7 @@ from truth.graph import TruthGraph
 from truth.models import VerificationStatus
 
 from . import seniority
+from . import skills as skill_matching
 from .models import (
     HardConstraintResult,
     MatchDimensionScore,
@@ -190,20 +191,42 @@ class OpportunityScorer:
         uncertainty_acc = 0.0
         weights = self.policy.employment_weights
 
-        # 1. Core Skill Fit
-        founder_skills = {
-            str(a.value).casefold(): a
-            for a in truth_graph.assertions.values()
+        # 1. Core Skill Fit (proficiency-aware, requirement-aware -- BRIEF-FR-006
+        # B2). Name-only matching used to say "Verified core skill: Javascript"
+        # for a skill the founder's own CV records as *basic* -- the product
+        # telling the founder something untrue about themselves (AGENTS.md's
+        # first hard rule). Fixed via `matching/skills.py`: proficiency below
+        # `working` (or unrecognised/absent -- unknown must not be optimistic)
+        # is always a *partial* match, never a strength, and a core-skill
+        # strength additionally requires the posting to have listed that skill
+        # as *required* (opportunity/inference_rules.yaml headed-list rules),
+        # not merely nice-to-have.
+        skill_name_assertions = [
+            a for a in truth_graph.assertions.values()
             if a.predicate == predicates.SKILL_NAME and a.verification_status == VerificationStatus.VERIFIED
+        ]
+        skill_proficiency_by_subject = {
+            a.subject_id: skill_matching.normalize_proficiency(str(a.value) if a.value is not None else None)
+            for a in truth_graph.assertions.values()
+            if a.predicate == predicates.SKILL_PROFICIENCY
         }
+        founder_skills_by_name: dict[str, tuple[str | None, tuple[str, ...]]] = {}
+        for a in skill_name_assertions:
+            name_key = str(a.value).casefold()
+            proficiency = skill_proficiency_by_subject.get(a.subject_id)
+            existing = founder_skills_by_name.get(name_key)
+            if existing is None or (existing[0] is None and proficiency is not None):
+                founder_skills_by_name[name_key] = (proficiency, a.evidence_ids)
+
         opp_skills = [s.casefold() for s in opp.skills]
-        if not founder_skills:
+        if not founder_skills_by_name:
             if opp_skills:
                 skill_ratio = 0.0
                 skill_strengths = ()
                 skill_gaps = tuple(f"Unverified skill requirement: {s.title()}" for s in opp_skills)
                 skill_unknowns = ("Founder truth graph contains 0 verified skills",)
                 skill_ev_refs = ()
+                skill_explanation = "No explicit skills specified in posting."
                 uncertainty_acc += 0.4
             else:
                 skill_ratio = 0.5
@@ -211,22 +234,54 @@ class OpportunityScorer:
                 skill_gaps = ()
                 skill_unknowns = ("No explicit skills in opportunity or founder truth graph",)
                 skill_ev_refs = ()
+                skill_explanation = "No explicit skills specified in posting."
                 uncertainty_acc += 0.3
         else:
             if opp_skills:
-                matched_skills = [s for s in opp_skills if s in founder_skills]
-                missing_skills = [s for s in opp_skills if s not in founder_skills]
-                skill_ratio = len(matched_skills) / len(opp_skills)
-                skill_strengths = tuple(f"Verified core skill: {s.title()}" for s in matched_skills)
-                skill_gaps = tuple(f"Unverified skill requirement: {s.title()}" for s in missing_skills)
-                skill_unknowns = ()
-                skill_ev_refs = tuple(founder_skills[s].id for s in matched_skills)
+                required_skills, _nice_to_have_skills = skill_matching.split_required_and_nice_to_have(
+                    opp.description, tuple(opp.skills),
+                )
+                skill_evals = skill_matching.evaluate_skill_matches(
+                    tuple(opp_skills), required_skills, founder_skills_by_name,
+                )
+                strength_matches = [m for m in skill_evals if m.is_strength]
+                partial_matches = [m for m in skill_evals if m.is_partial]
+                gap_matches = [m for m in skill_evals if m.is_gap]
+
+                skill_ratio = (
+                    (len(strength_matches) + 0.5 * len(partial_matches)) / len(skill_evals)
+                    if skill_evals else 0.5
+                )
+                skill_strengths = tuple(
+                    f"Core skill match (required, {m.proficiency} proficiency): {m.name.title()}"
+                    for m in strength_matches
+                )
+                skill_gaps = tuple(
+                    (
+                        f"Unverified skill requirement: {m.name.title()}" if m.required
+                        else f"Nice-to-have skill not in founder pack: {m.name.title()}"
+                    )
+                    for m in gap_matches
+                )
+                skill_unknowns = tuple(
+                    (
+                        f"Partial skill signal: {m.name.title()} ({m.proficiency or 'unknown'} proficiency; "
+                        + ("required, below working proficiency" if m.required else "nice-to-have match")
+                        + ") -- not a core-skill strength"
+                    )
+                    for m in partial_matches
+                )
+                skill_ev_refs = tuple(dict.fromkeys(
+                    ref for m in strength_matches + partial_matches for ref in m.evidence_refs
+                ))
+                skill_explanation = skill_matching.render_reason(skill_evals)
             else:
                 skill_ratio = 0.5  # Neutral when skills unstated in job payload
                 skill_strengths = ()
                 skill_gaps = ()
                 skill_unknowns = ("Opportunity payload lacks explicit skills list",)
                 skill_ev_refs = ()
+                skill_explanation = "No explicit skills specified in posting."
                 uncertainty_acc += 0.2
 
         w_skill = weights.get("skills", 0.35)
@@ -235,7 +290,7 @@ class OpportunityScorer:
             raw_score=skill_ratio,
             weight=w_skill,
             weighted_score=skill_ratio * w_skill,
-            explanation=f"Matched {len(skill_strengths)}/{len(opp_skills)} required skills." if opp_skills else "No explicit skills specified in posting.",
+            explanation=skill_explanation,
             strengths=skill_strengths,
             gaps=skill_gaps,
             unknowns=skill_unknowns,

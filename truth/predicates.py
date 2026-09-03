@@ -182,6 +182,15 @@ def is_declared(name: str) -> bool:
 
 # PROJECTED (truth/graph.py, from CANONICAL_MATERIAL_MANIFEST)
 SKILL_NAME = "skill.name"
+# BRIEF-FR-006 B2: already projected today -- truth/models.py's
+# CANONICAL_MATERIAL_MANIFEST declares `MaterialFieldSpec(SkillRecord,
+# "proficiency", "skill.proficiency", optional=True)`, and truth/graph.py's
+# manifest-driven `_project_entity_manifest` walks every declared field, so
+# this predicate was already reachable via `_projected_specs()` before this
+# named constant existed. Registering the constant here (not adding a new
+# graph projection) is what "read what the graph emits" means per the work
+# order.
+SKILL_PROFICIENCY = "skill.proficiency"
 EMPLOYMENT_TITLE = "employment.title"
 EMPLOYMENT_ORGANIZATION = "employment.organization"
 EMPLOYMENT_MARKET_FACING_TITLE = "employment.market_facing_title"
@@ -255,6 +264,7 @@ DOMAIN_FIT_PREDICATES: tuple[str, ...] = (
 
 _NAMED_CONSTANTS: tuple[str, ...] = (
     SKILL_NAME,
+    SKILL_PROFICIENCY,
     EMPLOYMENT_TITLE,
     EMPLOYMENT_ORGANIZATION,
     EMPLOYMENT_MARKET_FACING_TITLE,

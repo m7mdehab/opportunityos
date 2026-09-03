@@ -893,3 +893,51 @@ rules:
     location_city: Montreal
     location_country: CA
   description: City-name mention -> location_city=Montreal, location_country=CA.
+
+# ---------------------------------------------------------------------------
+# skill_requirement_rules (BRIEF-FR-006 B2): headed-list detection for a
+# posting's required-vs-nice-to-have skill split. Read by
+# matching/skills.py::split_required_and_nice_to_have, not by
+# opportunity/normalization.py::apply_inference_rules -- these rules do not
+# `set` an Opportunity field, they classify lines of posting body text, so
+# they live in their own top-level key rather than the `rules:` list above.
+# Evaluated top-to-bottom per line, same convention as `rules:` above: the
+# most recently matched header (required or nice-to-have) governs every
+# subsequent line until the next header. Greenhouse and Lever both ship
+# headed HTML lists (`<h3>Requirements:</h3><ul><li>...`); a description
+# with no header match at all leaves every skill nice-to-have, the
+# conservative default -- inflating "required" inflates the founder's
+# apparent match.
+skill_requirement_rules:
+  required_headers:
+  - id: header_requirements
+    pattern: (?i)^(?:job\s+)?requirements?\s*:?\s*$
+    description: '''Requirements:'' section heading (worked example: Cloudflare Greenhouse posting).'
+  - id: header_required_skills
+    pattern: (?i)^required\s+skills?\s*:?\s*$
+    description: '''Required Skills:'' section heading.'
+  - id: header_required_qualifications
+    pattern: (?i)^(?:required|minimum)\s+qualifications?\s*:?\s*$
+    description: '''Required Qualifications:'' / ''Minimum Qualifications:'' section heading.'
+  - id: header_must_have
+    pattern: (?i)^(?:must[- ]haves?|you\s+must\s+have|what\s+you(?:'ll|\s+will)\s+need)\s*:?\s*$
+    description: '''Must have:'' / ''What you''ll need:'' section heading.'
+  - id: header_what_you_bring
+    pattern: (?i)^what\s+you(?:'ll|\s+will)\s+bring\s*:?\s*$
+    description: '''What you''ll bring:'' section heading (common Lever phrasing).'
+  nice_to_have_headers:
+  - id: header_nice_to_have
+    pattern: (?i)^nice[- ]to[- ]haves?\s*:?\s*$
+    description: '''Nice to have:'' section heading.'
+  - id: header_preferred
+    pattern: (?i)^preferred(?:\s+qualifications?|\s+skills?)?\s*:?\s*$
+    description: '''Preferred:'' / ''Preferred Qualifications:'' section heading.'
+  - id: header_bonus
+    pattern: (?i)^bonus(?:\s+points?)?\s*:?\s*$
+    description: '''Bonus points:'' section heading.'
+  - id: header_good_to_have
+    pattern: (?i)^good\s+to\s+haves?\s*:?\s*$
+    description: '''Good to have:'' section heading.'
+  - id: header_pluses
+    pattern: (?i)^plus(?:es)?\s*:?\s*$
+    description: '''Pluses:'' section heading.'

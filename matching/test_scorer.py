@@ -12,6 +12,7 @@ from opportunity.models import (
     WorkMode,
     Track,
 )
+from truth.graph import TruthGraph
 from truth.models import AtomicAssertion, EvidenceRecord, VerificationStatus
 from truth import predicates
 from matching.mapping import RequirementMapper
@@ -63,6 +64,36 @@ def _with_employment_tenure(graph, *, start: date, end: date):
     return graph
 
 
+def _with_skill_proficiency(graph, *, proficiency: str):
+    """`matching.test_qualification.create_test_graph()` (frozen) asserts
+    `skill.name` = Python and `skill.name` = Go both under subject
+    `"founder"` -- a flat, hand-built fixture, unlike a real founder-shaped
+    pack where each `SkillRecord` is its own graph entity with its own
+    `subject_id` (`truth/graph.py`'s manifest projection). Because both
+    skill.name assertions here share subject `"founder"`, a single
+    `skill.proficiency` assertion under that same subject resolves for both
+    (BRIEF-FR-006 B2's scorer joins skill.proficiency to skill.name by
+    `subject_id`, matching how the real graph actually projects proficiency
+    per skill entity). This is additive, not an edit to the frozen fixture.
+    """
+    ev = EvidenceRecord(
+        id="ev-skill-proficiency",
+        content=f"{proficiency.title()} proficiency with Python and Go, verified across roles.",
+        source="manual",
+        locator="skills.proficiency",
+    )
+    graph.add_evidence(ev)
+    graph.add_assertion(AtomicAssertion(
+        id="a-skill-proficiency",
+        subject_id="founder",
+        predicate=predicates.SKILL_PROFICIENCY,
+        value=proficiency,
+        evidence_ids=("ev-skill-proficiency",),
+        verification_status=VerificationStatus.VERIFIED,
+    ))
+    return graph
+
+
 class TestOpportunityScorerAndMapper(unittest.TestCase):
     def setUp(self) -> None:
         self.truth_graph = _with_employment_tenure(
@@ -72,15 +103,36 @@ class TestOpportunityScorerAndMapper(unittest.TestCase):
         self.mapper = RequirementMapper()
 
     def test_high_fit_employment_opportunity(self) -> None:
+        # BRIEF-FR-006 B2: a "high fit" fixture must be genuinely high fit --
+        # required skills at >= working proficiency -- not merely name-matched.
+        # `_with_skill_proficiency` adds real skill.proficiency evidence; the
+        # description's "Requirements:" header is what makes Python/Go
+        # *required* rather than nice-to-have (opportunity/inference_rules.yaml).
+        graph = _with_skill_proficiency(self.truth_graph, proficiency="expert")
         opp = create_test_opportunity(
             skills=("Python", "Go"),
             title="Senior Distributed Systems Architect",
+            description="Build distributed systems.\nRequirements:\nPython\nGo",
         )
-        eval_res = self.scorer.evaluate(opp, self.truth_graph)
+        eval_res = self.scorer.evaluate(opp, graph)
         self.assertEqual(eval_res.qualification_decision, QualificationDecision.QUALIFIED)
         self.assertTrue(eval_res.overall_fit_score >= 80.0)
         self.assertTrue(len(eval_res.strengths) > 0)
+        self.assertTrue(any("Core skill match" in s for s in eval_res.strengths))
         self.assertTrue(len(eval_res.dimension_scores) >= 5)
+
+    def test_name_matched_skill_with_unknown_proficiency_is_not_a_strength(self) -> None:
+        # The regression this whole work order exists to fix: the frozen
+        # `create_test_graph()` fixture's Python/Go skill.name assertions
+        # carry no proficiency evidence at all. Unknown proficiency must be
+        # partial, never a strength -- even though the name matches and the
+        # posting's default description carries no required/nice-to-have
+        # header (so every skill is conservatively nice-to-have too).
+        opp = create_test_opportunity(skills=("Python", "Go"), title="Senior Distributed Systems Architect")
+        eval_res = self.scorer.evaluate(opp, self.truth_graph)
+        skills_dim = next(d for d in eval_res.dimension_scores if d.dimension_name == "core_skills")
+        self.assertEqual(skills_dim.strengths, ())
+        self.assertTrue(any("Partial skill signal" in u for u in skills_dim.unknowns))
 
     def test_low_fit_different_skills_opportunity(self) -> None:
         opp = create_test_opportunity(
@@ -191,6 +243,134 @@ class TestPremiumFullTimeOnsiteRule(unittest.TestCase):
         eval_res = self.scorer.evaluate(opp, graph)
         comp = self._comp_dimension(eval_res)
         self.assertFalse(any("premium" in g.casefold() for g in comp.gaps))
+
+
+def _skill_assertion(graph: TruthGraph, *, skill_id: str, name: str, proficiency: str | None, evidence_count: int) -> None:
+    """Add one skill.name (+ optional skill.proficiency) assertion under its
+    own subject_id -- `skill_id` -- exactly as a real founder-shaped pack's
+    manifest projection does (`truth/graph.py`'s `_project_entity_manifest`
+    projects one `SkillRecord` entity per skill, so `skill.name` and
+    `skill.proficiency` share that entity's own subject_id, not a shared
+    "founder" subject). `evidence_count` evidence records are attached so
+    the rendered reason string's evidence-strength phrase is meaningful.
+    """
+    evidence_ids = tuple(f"ev-{skill_id}-{i}" for i in range(evidence_count))
+    proficiency_phrase = f" {proficiency} proficiency." if proficiency is not None else ""
+    for ev_id in evidence_ids:
+        graph.add_evidence(EvidenceRecord(
+            id=ev_id, content=f"Used {name} professionally.{proficiency_phrase}", source="manual", locator=f"skills.{skill_id}",
+        ))
+    graph.add_assertion(AtomicAssertion(
+        id=f"a-{skill_id}-name", subject_id=skill_id, predicate=predicates.SKILL_NAME,
+        value=name, evidence_ids=evidence_ids, verification_status=VerificationStatus.VERIFIED,
+    ))
+    if proficiency is not None:
+        graph.add_assertion(AtomicAssertion(
+            id=f"a-{skill_id}-proficiency", subject_id=skill_id, predicate=predicates.SKILL_PROFICIENCY,
+            value=proficiency, evidence_ids=evidence_ids, verification_status=VerificationStatus.VERIFIED,
+        ))
+
+
+class TestSkillProficiencyOrderingAcceptance(unittest.TestCase):
+    """BRIEF-FR-006 B2's required ordering acceptance and anti-regression
+    check, run over a minimal fixture corpus (`opportunity/fixtures/corpus/`
+    per work order A1C is not yet merged into this worktree; this builds an
+    equivalent minimal, real, deterministic two-posting corpus in-process).
+    """
+
+    def setUp(self) -> None:
+        graph = TruthGraph()
+        # Founder target role and employment tenure -- a verified senior
+        # data-engineering career, same shape as matching.test_qualification's
+        # frozen create_test_graph() (subject "founder" for the single span).
+        ev_target = EvidenceRecord(
+            id="ev-target-role", content="Targeting Data Engineer roles.",
+            source="manual", locator="assertions.career.target_role",
+        )
+        ev_title = EvidenceRecord(
+            id="ev-de-title", content="Senior Data Engineer at a logistics group.",
+            source="manual", locator="employment.title",
+        )
+        ev_resp = EvidenceRecord(
+            id="ev-de-resp", content="Built and operated Airflow-orchestrated ETL pipelines on Python and SQL.",
+            source="manual", locator="employment.responsibility",
+        )
+        for ev in (ev_target, ev_title, ev_resp):
+            graph.add_evidence(ev)
+        graph.add_assertion(AtomicAssertion(
+            id="a-target-role", subject_id="founder", predicate=predicates.CAREER_TARGET_ROLE,
+            value="Data Engineer", evidence_ids=("ev-target-role",), verification_status=VerificationStatus.VERIFIED,
+        ))
+        graph.add_assertion(AtomicAssertion(
+            id="a-de-title", subject_id="founder", predicate=predicates.EMPLOYMENT_TITLE,
+            value="Senior Data Engineer", evidence_ids=("ev-de-title",), verification_status=VerificationStatus.VERIFIED,
+        ))
+        graph.add_assertion(AtomicAssertion(
+            id="a-de-resp", subject_id="founder", predicate=predicates.EMPLOYMENT_RESPONSIBILITY,
+            value="Built and operated Airflow-orchestrated ETL pipelines on Python and SQL.",
+            evidence_ids=("ev-de-resp",), verification_status=VerificationStatus.VERIFIED,
+        ))
+        graph = _with_employment_tenure(graph, start=date(2015, 1, 1), end=date(2026, 8, 31))
+
+        # Founder skills: real data-engineering strengths at working+ proficiency...
+        _skill_assertion(graph, skill_id="skill-python", name="Python", proficiency="expert", evidence_count=3)
+        _skill_assertion(graph, skill_id="skill-sql", name="SQL", proficiency="advanced", evidence_count=3)
+        _skill_assertion(graph, skill_id="skill-airflow", name="Airflow", proficiency="working", evidence_count=2)
+        # ...and the exact defect scenario named in the work order: a skill
+        # the founder's own CV records as *basic*.
+        _skill_assertion(graph, skill_id="skill-javascript", name="Javascript", proficiency="basic", evidence_count=1)
+
+        self.graph = graph
+        self.scorer = OpportunityScorer()
+
+    def test_senior_customer_engineer_no_longer_outscores_data_engineering_match(self) -> None:
+        data_eng_opp = create_test_opportunity(
+            opp_id="opp-data-eng",
+            title="Senior Data Engineer",
+            description="Build ETL pipelines.\nRequirements:\nPython\nSQL\nAirflow",
+            skills=("Python", "SQL", "Airflow"),
+        )
+        # Reproduces the reported defect verbatim: a posting requiring a skill
+        # the founder's CV records as basic, on a title-mismatched family
+        # (matching/title_families.yaml: customer_solutions_engineering, not
+        # data_engineering -- matching/test_title_family.py already covers the
+        # family split; B2 only changes whether "Javascript" can be a strength).
+        customer_eng_opp = create_test_opportunity(
+            opp_id="opp-customer-eng",
+            title="Senior Customer Engineer",
+            description="Support enterprise customers.\nRequirements:\nJavascript\nZendesk\nSalesforce",
+            skills=("Javascript", "Zendesk", "Salesforce"),
+        )
+
+        de_eval = self.scorer.evaluate(data_eng_opp, self.graph)
+        sce_eval = self.scorer.evaluate(customer_eng_opp, self.graph)
+
+        print(
+            f"\nB2.6 corpus ordering: Senior Customer Engineer = {sce_eval.overall_fit_score}, "
+            f"Senior Data Engineer (best data-engineering match) = {de_eval.overall_fit_score}"
+        )
+
+        # The specific anti-regression this work order fixes: Javascript is
+        # `basic` proficiency, so the *core_skills* dimension can never render
+        # it as a verified/core skill strength, on either evaluation. (Other
+        # dimensions, e.g. domain_fit's independent term-overlap check, are
+        # out of B2's scope -- confined to matching/scorer.py's skills
+        # dimension per the work order's allowed-files list.)
+        for evaluation in (de_eval, sce_eval):
+            skills_dim = next(d for d in evaluation.dimension_scores if d.dimension_name == "core_skills")
+            for strength in skills_dim.strengths:
+                self.assertNotIn("Verified core skill: Javascript", strength)
+                if "Javascript" in strength:
+                    self.fail(f"basic-proficiency skill produced a core_skills strength string: {strength!r}")
+
+        sce_skills_dim = next(d for d in sce_eval.dimension_scores if d.dimension_name == "core_skills")
+        self.assertEqual(sce_skills_dim.strengths, ())
+        self.assertTrue(any("Javascript" in u and "basic" in u for u in sce_skills_dim.unknowns))
+
+        self.assertLess(
+            sce_eval.overall_fit_score, de_eval.overall_fit_score,
+            "Senior Customer Engineer must not outscore the founder's data-engineering match",
+        )
 
 
 if __name__ == "__main__":
