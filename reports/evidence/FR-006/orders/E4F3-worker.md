@@ -31,9 +31,12 @@ deviation.
 - Work order E1 added shared **per-ATS-host** rate limiting. Cadence is a different thing from
   rate limiting and both must hold: a source may be scheduled hourly and still be throttled by
   its host's shared limiter. Do not collapse the two.
-- **Migration `0004_founder_control` already exists** (work order A1) with the
-  `founder_opportunity_views` table (`opportunity_id` PK, `viewed_at`). **Do not write a
-  migration.**
+- **Migration `0004_founder_control` already exists** and is frozen. **Do not write a migration.**
+- **`founder_opportunity_views` already existed before this brief**, created by
+  `0002_match_evaluations`, and its shape is **not** what an earlier draft of this order said:
+  it has a **surrogate `id` primary key**, not `opportunity_id` as the primary key. Read the
+  actual model in `storage/models.py` before writing against it. `0004` deliberately did not
+  touch it.
 - FR-005 established that `stale_postings` is a guaranteed no-op because **nothing in the
   codebase writes `is_stale = True`**. `opportunity/reverification.py` exists. Your E4
   re-verification is the writer that makes that filter mean something — that is the point of
