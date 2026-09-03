@@ -41,6 +41,18 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+# --- D3 seed override (BRIEF-FR-006 work order A1S): target_roles revert ----
+# Overseer decision (FR-005 review §3.1): the `target_roles` filter's seeded
+# default reverts from `label_only` (0003's `_D3_FILTER_SEED`, a council
+# repair) back to `rank_only`. `api/filters.py`'s `FILTER_DEFINITIONS`
+# already declares `rank_only` for this filter; this migration brings the
+# seeded row in the database into agreement with it. `0003` is a released
+# revision and is never edited, so the correction lands here as a data
+# migration instead. `api/test_api.py`'s filter-seed guard composes 0003's
+# `_D3_FILTER_SEED` with this dict to verify the seeded state at head.
+_D3_FILTER_SEED_OVERRIDES = {"target_roles": {"mode": "rank_only"}}
+
+
 def upgrade() -> None:
     # --- opportunities: founder-control columns -----------------------------
     op.add_column('opportunities', sa.Column('work_mode', sa.String(length=16), nullable=False, server_default='unspecified'))
@@ -127,8 +139,24 @@ def upgrade() -> None:
     # founder_opportunity_views: already exists (0002_match_evaluations) --
     # intentionally not touched here; see module docstring.
 
+    # --- D3 seed override: target_roles -> rank_only ------------------------
+    # Guarded on the current value: a no-op if the row is already correct
+    # (re-running upgrade at head, or a database seeded after this revision
+    # already existed), and it never clobbers a mode the founder set by hand
+    # to something other than the pre-revert default.
+    op.execute(
+        "UPDATE founder_filter_settings SET mode = 'rank_only' "
+        "WHERE filter_id = 'target_roles' AND mode = 'label_only'"
+    )
+
 
 def downgrade() -> None:
+    # --- D3 seed override: reverse of the upgrade-time revert ---------------
+    op.execute(
+        "UPDATE founder_filter_settings SET mode = 'label_only' "
+        "WHERE filter_id = 'target_roles' AND mode = 'rank_only'"
+    )
+
     op.drop_table('artifact_cache')
     op.drop_table('founder_saved_views')
     op.drop_table('founder_facets')

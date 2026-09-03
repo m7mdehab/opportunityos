@@ -1596,9 +1596,11 @@ class FilterSeedSyncTest(unittest.TestCase):
     revision is picked up automatically, the same discovery discipline
     `truth/test_predicates.py` uses for `matching/*.py`. A later revision
     declares its overrides as a module-level `_D3_FILTER_SEED_OVERRIDES`
-    dict (`{filter_id: (enabled, mode, params)}`) for whatever filter(s) it
-    changes -- a convention this test introduces because none existed
-    before now; a later revision that changes a seeded filter default
+    dict (`{filter_id: {field: new_value, ...}}`, a partial override of
+    only the fields that change -- e.g. `{"target_roles": {"mode":
+    "rank_only"}}`) for whatever filter(s) it changes -- a convention this
+    test introduces because none existed before now; a later revision that
+    changes a seeded filter default
     without declaring this attribute fails loudly here rather than silently
     passing. `0003_provenance_identity.py` itself is never edited by this
     fix (frozen for this work order); only this test composes it with
@@ -1664,8 +1666,18 @@ class FilterSeedSyncTest(unittest.TestCase):
                     "it does and must declare the override so this guard can verify the "
                     "seeded state at head."
                 )
-            for filter_id, row in overrides.items():
-                seed_by_id[filter_id] = [filter_id, *row]
+            for filter_id, override in overrides.items():
+                # An override is a partial dict of the fields it changes
+                # (e.g. `{"mode": "rank_only"}`), not a full replacement
+                # tuple -- it merges onto the base seed row from 0003 (or a
+                # still-earlier override already folded into `seed_by_id`)
+                # so a later revision does not have to restate fields it
+                # leaves alone.
+                _, enabled, mode, params = seed_by_id[filter_id]
+                enabled = override.get("enabled", enabled)
+                mode = override.get("mode", mode)
+                params = override.get("params", params)
+                seed_by_id[filter_id] = [filter_id, enabled, mode, params]
 
         self.assertEqual(set(seed_by_id), {fd.filter_id for fd in FILTER_DEFINITIONS})
         for fd in FILTER_DEFINITIONS:
