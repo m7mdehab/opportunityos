@@ -58,6 +58,7 @@ from truth.pack import LoadedPack, PackValidationReport
 from truth.validator import ClaimValidator
 
 from api.app import create_app
+from matching.compiler_employment import EmploymentArtifactCompiler
 from api.facets import FacetSettingsRow, poll_hide_fraction_warnings
 from api.filters import (
     FILTER_DEFINITIONS,
@@ -1301,6 +1302,335 @@ class ArtifactRoutesTest(ApiTestCase):
         body = response.json()
         self.assertEqual(body["detail"], "no truth pack loaded")
         self.assertIn("reason", body)
+
+    # -- D2: PDF preview routes --------------------------------------
+
+    def test_pdf_route_streams_inline_with_pdf_content_type(self):
+        """D2.2: `cv.pdf` is `200`, `Content-Type: application/pdf`,
+        `Content-Disposition: inline`, body starts `%PDF`."""
+        import unittest.mock as mock
+
+        self.seed_opportunity("opp-clean")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            from truth.pack import LoadedPack, PackValidationReport
+
+            graph = _clean_truth_pack_graph()
+            loader.return_value = LoadedPack(
+                graph=graph,
+                report=PackValidationReport(valid=True, section_counts=(("evidence", 1),)),
+                truth_pack_hash="clean-hash",
+            )
+            client.post("/api/truth/reload")
+            response = client.get("/api/opportunities/opp-clean/artifacts/cv.pdf")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "application/pdf")
+        self.assertIn("inline", response.headers["content-disposition"])
+        self.assertTrue(response.content.startswith(b"%PDF"), "response body is not a PDF payload")
+
+    def test_pdf_download_variant_is_attachment(self):
+        """D2.1: `?download=true` on `cv.pdf` returns `attachment`, not
+        `inline` -- the download variant the deliverable text requires
+        alongside the inline preview default."""
+        import unittest.mock as mock
+
+        self.seed_opportunity("opp-clean")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            from truth.pack import LoadedPack, PackValidationReport
+
+            graph = _clean_truth_pack_graph()
+            loader.return_value = LoadedPack(
+                graph=graph,
+                report=PackValidationReport(valid=True, section_counts=(("evidence", 1),)),
+                truth_pack_hash="clean-hash",
+            )
+            client.post("/api/truth/reload")
+            response = client.get(
+                "/api/opportunities/opp-clean/artifacts/cv.pdf", params={"download": "true"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("attachment", response.headers["content-disposition"])
+        self.assertTrue(response.content.startswith(b"%PDF"))
+
+    def test_pdf_template_query_param_selects_a_different_document(self):
+        """D2.3: each of the three templates returns a different PDF."""
+        import unittest.mock as mock
+
+        self.seed_opportunity("opp-clean")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            from truth.pack import LoadedPack, PackValidationReport
+
+            graph = _clean_truth_pack_graph()
+            loader.return_value = LoadedPack(
+                graph=graph,
+                report=PackValidationReport(valid=True, section_counts=(("evidence", 1),)),
+                truth_pack_hash="clean-hash",
+            )
+            client.post("/api/truth/reload")
+
+            bodies = {}
+            for template_name in ("classic", "compact", "modern"):
+                response = client.get(
+                    "/api/opportunities/opp-clean/artifacts/cv.pdf",
+                    params={"template": template_name},
+                )
+                self.assertEqual(response.status_code, 200)
+                bodies[template_name] = response.content
+
+        self.assertEqual(len({bodies["classic"], bodies["compact"], bodies["modern"]}), 3)
+
+    def test_unknown_template_is_422_not_a_fallback(self):
+        """D2.3: an unknown template is a 422, never a silent fallback to a
+        different document than the founder asked for."""
+        self.seed_opportunity("opp-clean")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        response = client.get(
+            "/api/opportunities/opp-clean/artifacts/cv.pdf", params={"template": "nonexistent"},
+        )
+        self.assertEqual(response.status_code, 422)
+
+        response = client.get(
+            "/api/opportunities/opp-clean/artifacts/cv.docx", params={"template": "nonexistent"},
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_docx_route_still_attachment(self):
+        """D2.1: DOCX routes keep `attachment`, never `inline`."""
+        import unittest.mock as mock
+
+        self.seed_opportunity("opp-clean")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            from truth.pack import LoadedPack, PackValidationReport
+
+            graph = _clean_truth_pack_graph()
+            loader.return_value = LoadedPack(
+                graph=graph,
+                report=PackValidationReport(valid=True, section_counts=(("evidence", 1),)),
+                truth_pack_hash="clean-hash",
+            )
+            client.post("/api/truth/reload")
+            response = client.get("/api/opportunities/opp-clean/artifacts/cv.docx")
+
+        self.assertIn("attachment", response.headers["content-disposition"])
+        self.assertNotIn("inline", response.headers["content-disposition"])
+
+    def test_omitted_items_endpoint_reflects_document_model(self):
+        """D2's "what was left out and why" panel: the JSON endpoint returns
+        `omitted_items` shaped the way the drawer needs them."""
+        import unittest.mock as mock
+
+        self.seed_opportunity("opp-clean")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            from truth.pack import LoadedPack, PackValidationReport
+
+            graph = _clean_truth_pack_graph()
+            loader.return_value = LoadedPack(
+                graph=graph,
+                report=PackValidationReport(valid=True, section_counts=(("evidence", 1),)),
+                truth_pack_hash="clean-hash",
+            )
+            client.post("/api/truth/reload")
+            response = client.get("/api/opportunities/opp-clean/artifacts/cv/omitted")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertIn("omitted_items", body)
+        self.assertEqual(body["template"], "classic")
+        for item in body["omitted_items"]:
+            self.assertIn("section_id", item)
+            self.assertIn("text", item)
+            self.assertIn("reason", item)
+
+    def test_omitted_items_endpoint_409_on_rejected_claim(self):
+        """The panel must see the claim and reason on a 409, not a bare
+        error -- same 409 body shape as the binary routes."""
+        import unittest.mock as mock
+
+        self.seed_opportunity("opp-mismatch")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            from truth.pack import LoadedPack, PackValidationReport
+
+            graph = _mismatched_truth_pack_graph()
+            loader.return_value = LoadedPack(
+                graph=graph,
+                report=PackValidationReport(valid=True, section_counts=(("evidence", 1),)),
+                truth_pack_hash="mismatch-hash",
+            )
+            client.post("/api/truth/reload")
+            response = client.get("/api/opportunities/opp-mismatch/artifacts/cv/omitted")
+
+        self.assertEqual(response.status_code, 409)
+        body = response.json()
+        self.assertEqual(body["detail"], "claim validation failed")
+        self.assertGreaterEqual(len(body["findings"]), 1)
+
+
+class ArtifactCacheTest(ApiTestCase):
+    """D2.4/D2.5: the `artifact_cache` table -- hit, hash-change
+    invalidation, and the 409-never-cached rule."""
+
+    def setUp(self):
+        super().setUp()
+
+    def _mock_pack(self, loader, graph, truth_pack_hash):
+        from truth.pack import LoadedPack, PackValidationReport
+
+        loader.return_value = LoadedPack(
+            graph=graph,
+            report=PackValidationReport(valid=True, section_counts=(("evidence", 1),)),
+            truth_pack_hash=truth_pack_hash,
+        )
+
+    def test_cache_hit_returns_stored_bytes_without_recompiling(self):
+        """D2.4: miss -> hit. Prints the cache key computed for the request
+        so the acceptance transcript shows it, per D2.4's requirement."""
+        import unittest.mock as mock
+
+        from api import artifact_cache
+
+        self.seed_opportunity("opp-clean")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            graph = _clean_truth_pack_graph()
+            self._mock_pack(loader, graph, "clean-hash")
+            client.post("/api/truth/reload")
+
+            key = artifact_cache.cache_key("opp-clean", "clean-hash", "classic", "cv")
+            print(f"D2.4 cache key (miss then hit) = {key}")
+
+            with mock.patch(
+                "api.routes_api.EmploymentArtifactCompiler.compile_tailored_cv",
+                wraps=EmploymentArtifactCompiler().compile_tailored_cv,
+            ) as compile_spy:
+                first = client.get("/api/opportunities/opp-clean/artifacts/cv.docx")
+                self.assertEqual(first.status_code, 200)
+                self.assertEqual(compile_spy.call_count, 1)
+
+                second = client.get("/api/opportunities/opp-clean/artifacts/cv.docx")
+                self.assertEqual(second.status_code, 200)
+                # Cache hit: the compiler is never invoked a second time.
+                self.assertEqual(compile_spy.call_count, 1)
+
+        self.assertEqual(first.content, second.content)
+
+        row = self.session.execute(
+            text("SELECT cache_key FROM artifact_cache WHERE cache_key = :k"), {"k": key}
+        ).fetchone()
+        self.assertIsNotNone(row, "expected the cache row to exist under the computed key")
+
+    def test_changed_truth_pack_hash_invalidates_and_regenerates(self):
+        """D2.4: a changed truth-pack hash misses the old cache entry and
+        regenerates rather than serving stale bytes."""
+        import unittest.mock as mock
+
+        from api import artifact_cache
+
+        self.seed_opportunity("opp-clean")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            graph = _clean_truth_pack_graph()
+            self._mock_pack(loader, graph, "hash-v1")
+            client.post("/api/truth/reload")
+
+            key_v1 = artifact_cache.cache_key("opp-clean", "hash-v1", "classic", "cv")
+            print(f"D2.4 cache key (v1) = {key_v1}")
+
+            first = client.get("/api/opportunities/opp-clean/artifacts/cv.docx")
+            self.assertEqual(first.status_code, 200)
+
+            self._mock_pack(loader, graph, "hash-v2")
+            client.post("/api/truth/reload")
+
+            key_v2 = artifact_cache.cache_key("opp-clean", "hash-v2", "classic", "cv")
+            print(f"D2.4 cache key (v2, after hash change) = {key_v2}")
+            self.assertNotEqual(key_v1, key_v2)
+
+            with mock.patch(
+                "api.routes_api.EmploymentArtifactCompiler.compile_tailored_cv",
+                wraps=EmploymentArtifactCompiler().compile_tailored_cv,
+            ) as compile_spy:
+                second = client.get("/api/opportunities/opp-clean/artifacts/cv.docx")
+                self.assertEqual(second.status_code, 200)
+                # Regenerated (not served from the stale hash-v1 entry).
+                self.assertEqual(compile_spy.call_count, 1)
+
+        self.assertEqual(first.content, second.content)  # same clean fixture -> same bytes
+
+        # Eviction policy (1): the stale hash-v1 row for this
+        # (opportunity, kind, template) is gone, not merely superseded.
+        stale_row = self.session.execute(
+            text("SELECT cache_key FROM artifact_cache WHERE cache_key = :k"), {"k": key_v1}
+        ).fetchone()
+        self.assertIsNone(stale_row, "expected the hash-v1 cache row to have been evicted")
+
+        fresh_row = self.session.execute(
+            text("SELECT cache_key FROM artifact_cache WHERE cache_key = :k"), {"k": key_v2}
+        ).fetchone()
+        self.assertIsNotNone(fresh_row)
+
+    def test_409_rejection_is_never_cached(self):
+        """D2.5: a rejected claim returns 409, is not stored, and a later
+        fixed pack regenerates (rather than serving anything stale)."""
+        import unittest.mock as mock
+
+        from api import artifact_cache
+
+        self.seed_opportunity("opp-mismatch")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            bad_graph = _mismatched_truth_pack_graph()
+            self._mock_pack(loader, bad_graph, "bad-hash")
+            client.post("/api/truth/reload")
+
+            bad_key = artifact_cache.cache_key("opp-mismatch", "bad-hash", "classic", "cv")
+            print(f"D2.5 cache key (409, must not be cached) = {bad_key}")
+
+            rejected = client.get("/api/opportunities/opp-mismatch/artifacts/cv.docx")
+            self.assertEqual(rejected.status_code, 409)
+
+            row = self.session.execute(
+                text("SELECT cache_key FROM artifact_cache WHERE cache_key = :k"), {"k": bad_key}
+            ).fetchone()
+            self.assertIsNone(row, "a 409 rejection must never be written to the artifact cache")
+
+            # Fix the pack (same opportunity, a clean graph now) and confirm
+            # a fresh, successful generation follows -- nothing stale was
+            # ever cached to block it.
+            clean_graph = _clean_truth_pack_graph()
+            self._mock_pack(loader, clean_graph, "fixed-hash")
+            client.post("/api/truth/reload")
+
+            fixed = client.get("/api/opportunities/opp-mismatch/artifacts/cv.docx")
+
+        self.assertEqual(fixed.status_code, 200)
+        self.assertTrue(fixed.content.startswith(b"PK"))
 
 
 # ---------------------------------------------------------------------------
