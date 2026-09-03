@@ -183,6 +183,10 @@ def is_declared(name: str) -> bool:
 # PROJECTED (truth/graph.py, from CANONICAL_MATERIAL_MANIFEST)
 SKILL_NAME = "skill.name"
 EMPLOYMENT_TITLE = "employment.title"
+EMPLOYMENT_ORGANIZATION = "employment.organization"
+EMPLOYMENT_MARKET_FACING_TITLE = "employment.market_facing_title"
+EMPLOYMENT_START_DATE = "employment.start_date"
+EMPLOYMENT_END_DATE = "employment.end_date"
 EMPLOYMENT_RESPONSIBILITY = "employment.responsibility"
 ACHIEVEMENT_STATEMENT = "achievement.statement"
 SERVICE_NAME = "service.name"
@@ -230,6 +234,18 @@ RESPONSIBILITY_SCOPE_PREDICATES: tuple[str, ...] = (
     ACHIEVEMENT_STATEMENT,
 )
 
+# `matching/seniority.py` call sites that reconstruct employment spans (title,
+# organization, dates, responsibilities) and their linked achievements from
+# the truth graph's flat assertion list, grouped by `subject_id`.
+EMPLOYMENT_TENURE_PREDICATES: tuple[str, ...] = (
+    EMPLOYMENT_TITLE,
+    EMPLOYMENT_ORGANIZATION,
+    EMPLOYMENT_MARKET_FACING_TITLE,
+    EMPLOYMENT_START_DATE,
+    EMPLOYMENT_END_DATE,
+    EMPLOYMENT_RESPONSIBILITY,
+)
+
 DOMAIN_FIT_PREDICATES: tuple[str, ...] = (
     SKILL_NAME,
     SERVICE_NAME,
@@ -240,6 +256,10 @@ DOMAIN_FIT_PREDICATES: tuple[str, ...] = (
 _NAMED_CONSTANTS: tuple[str, ...] = (
     SKILL_NAME,
     EMPLOYMENT_TITLE,
+    EMPLOYMENT_ORGANIZATION,
+    EMPLOYMENT_MARKET_FACING_TITLE,
+    EMPLOYMENT_START_DATE,
+    EMPLOYMENT_END_DATE,
     EMPLOYMENT_RESPONSIBILITY,
     ACHIEVEMENT_STATEMENT,
     SERVICE_NAME,

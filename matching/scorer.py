@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 import re
+from datetime import date
 from typing import Any
 
 from opportunity.models import (
@@ -23,6 +24,7 @@ from truth import predicates
 from truth.graph import TruthGraph
 from truth.models import VerificationStatus
 
+from . import seniority
 from .models import (
     HardConstraintResult,
     MatchDimensionScore,
@@ -33,6 +35,43 @@ from .models import (
 from .qualification import QualificationEngine
 
 _CURRENCY_THRESHOLD_RE = re.compile(r"^\s*([\d,]+(?:\.\d+)?)\s*([A-Za-z]{3})\s*$")
+
+# Opportunity.seniority (opportunity/models.py's SeniorityLevel) has no
+# separate "staff" member; industry usage treats "Staff" and "Lead" as the
+# same tier, both below Principal, so LEAD maps to seniority.py's "staff"
+# threshold row. SeniorityLevel.UNSPECIFIED is deliberately absent -- an
+# unspecified requirement falls through to the "required_level is None"
+# branch below rather than asserting a fabricated level.
+_REQUIRED_LEVEL_BY_OPP_SENIORITY: dict[SeniorityLevel, str] = {
+    SeniorityLevel.ENTRY: "junior",
+    SeniorityLevel.MID: "mid",
+    SeniorityLevel.SENIOR: "senior",
+    SeniorityLevel.LEAD: "staff",
+    SeniorityLevel.PRINCIPAL: "principal",
+    SeniorityLevel.EXECUTIVE: "principal",
+}
+
+# Words that describe a level, not a role family, stripped from an
+# opportunity's title before it is used as a `matching/seniority.py`
+# `family_aliases` query. This is a title-family filter only -- it never
+# feeds a seniority pass/fail decision, which is why it can safely stay a
+# simple stoplist until BRIEF-FR-006 B3's `matching/title_families.yaml`
+# replaces family derivation entirely.
+_TITLE_LEVEL_WORDS = frozenset({
+    "senior", "sr", "junior", "jr", "entry", "entry-level", "mid", "mid-level",
+    "associate", "staff", "principal", "lead", "director", "head", "chief", "i", "ii", "iii", "iv", "v",
+})
+_TITLE_WORD_RE = re.compile(r"[A-Za-z]+(?:-[A-Za-z]+)*")
+
+
+def _family_aliases_from_title(title: str) -> tuple[str, ...]:
+    """Derive a simple, single-alias role-family query from an opportunity's
+    title by stripping level words. Not a seniority signal itself -- see
+    module note above and `matching/seniority.py`'s module docstring."""
+    words = [w for w in _TITLE_WORD_RE.findall(title) if w.casefold() not in _TITLE_LEVEL_WORDS]
+    if not words:
+        return ()
+    return (" ".join(words),)
 
 
 def _parse_currency_threshold(value: Any) -> tuple[float, str] | None:
@@ -89,7 +128,7 @@ class OpportunityScorer:
         if opp.track == Track.PROCUREMENT:
             dim_scores, uncertainty = self._score_independent(opp, truth_graph)
         else:
-            dim_scores, uncertainty = self._score_employment(opp, truth_graph)
+            dim_scores, uncertainty = self._score_employment(opp, truth_graph, evaluated_at)
 
         # Calculate weighted overall score
         total_weighted = sum(ds.weighted_score for ds in dim_scores)
@@ -143,7 +182,9 @@ class OpportunityScorer:
             score_breakdown=breakdown,
         )
 
-    def _score_employment(self, opp: Opportunity, truth_graph: TruthGraph) -> tuple[list[MatchDimensionScore], float]:
+    def _score_employment(
+        self, opp: Opportunity, truth_graph: TruthGraph, evaluated_at: str = "2026-08-30",
+    ) -> tuple[list[MatchDimensionScore], float]:
         scores: list[MatchDimensionScore] = []
         uncertainty_acc = 0.0
         weights = self.policy.employment_weights
@@ -201,63 +242,73 @@ class OpportunityScorer:
             opportunity_field_refs=("skills",) if opp_skills else (),
         ))
 
-        # 2. Experience & Seniority Fit
-        emp_title_assertions = [
-            a for a in truth_graph.assertions.values()
-            if a.predicate == predicates.EMPLOYMENT_TITLE and a.verification_status == VerificationStatus.VERIFIED
-        ]
+        # 2. Experience & Seniority Fit -- derived from the truth graph's actual
+        # employment tenure and verified people-leadership evidence (ADR-0016),
+        # never from a title-keyword substring test. See matching/seniority.py.
         opp_level = opp.seniority
-        if not emp_title_assertions:
+        required_level = _REQUIRED_LEVEL_BY_OPP_SENIORITY.get(opp_level)
+        family_aliases = _family_aliases_from_title(opp.title)
+        try:
+            as_of = date.fromisoformat(evaluated_at)
+        except ValueError:
+            as_of = None
+        assessment = seniority.assess(
+            truth_graph,
+            required_level=required_level,
+            family_aliases=family_aliases,
+            as_of=as_of,
+        )
+        family_label = family_aliases[0] if family_aliases else "the opportunity's role family"
+
+        if assessment is None:
             seniority_score = 0.5
             seniority_strengths = ()
             seniority_gaps = ()
-            seniority_unknowns = ("No verified employment history in founder truth graph",)
-            seniority_ev_refs = ()
-            uncertainty_acc += 0.3
-        else:
-            is_senior = any(
-                any(k in str(a.value).casefold() for k in ("senior", "sr", "lead", "principal", "staff", "architect", "chief", "director", "head"))
-                for a in emp_title_assertions
+            seniority_unknowns = (
+                "No verified employment record (title + start date) in founder truth graph",
             )
-            if is_senior:
-                if opp_level in {SeniorityLevel.SENIOR, SeniorityLevel.LEAD, SeniorityLevel.PRINCIPAL, SeniorityLevel.EXECUTIVE}:
-                    seniority_score = 1.0
-                    seniority_strengths = (f"Seniority alignment: {opp_level.value.title()} matches verified founder experience",)
-                    seniority_gaps = ()
-                    seniority_unknowns = ()
-                elif opp_level == SeniorityLevel.MID:
-                    seniority_score = 0.8
-                    seniority_strengths = ("Experienced background covers mid-level scope",)
-                    seniority_gaps = ()
-                    seniority_unknowns = ()
-                elif opp_level == SeniorityLevel.ENTRY:
-                    seniority_score = 0.4
-                    seniority_strengths = ()
-                    seniority_gaps = ("Role is entry level; founder has senior experience",)
-                    seniority_unknowns = ()
-                else:
-                    seniority_score = 0.7
-                    seniority_strengths = ()
-                    seniority_gaps = ()
-                    seniority_unknowns = ("Opportunity seniority unspecified",)
-                    uncertainty_acc += 0.1
+            seniority_ev_refs = ()
+            seniority_explanation = (
+                f"Seniority requirement evaluated as {opp_level.value.title()}; founder truth graph has no "
+                "verified employment record with both a title and a start date to compute tenure from."
+            )
+            uncertainty_acc += 0.3
+        elif required_level is None:
+            seniority_score = 0.7
+            seniority_strengths = ()
+            seniority_gaps = ()
+            seniority_unknowns = ("Opportunity seniority unspecified",)
+            seniority_ev_refs = assessment.tenure_evidence_refs
+            seniority_explanation = seniority.explain(assessment, family_label=family_label)
+            uncertainty_acc += 0.1
+        else:
+            seniority_ev_refs = tuple(sorted(set(assessment.tenure_evidence_refs) | set(assessment.leadership_evidence_refs)))
+            seniority_explanation = seniority.explain(assessment, family_label=family_label)
+            if assessment.meets_requirement:
+                seniority_score = 1.0
+                seniority_strengths = (
+                    f"Seniority alignment: {assessment.requirement.level.title()} requirement met with "
+                    f"{assessment.total_months} verified professional month(s)"
+                    + (", including verified people-leadership evidence" if assessment.requirement.requires_leadership else "")
+                    + ".",
+                )
+                seniority_gaps = ()
+                seniority_unknowns = ()
             else:
-                if opp_level == SeniorityLevel.ENTRY:
-                    seniority_score = 0.9
-                    seniority_strengths = ("Entry level alignment",)
-                    seniority_gaps = ()
-                    seniority_unknowns = ()
-                elif opp_level == SeniorityLevel.MID:
-                    seniority_score = 0.8
-                    seniority_strengths = ("Mid level alignment",)
-                    seniority_gaps = ()
-                    seniority_unknowns = ()
+                seniority_score = 0.35
+                seniority_strengths = ()
+                if assessment.months_gap > 0:
+                    seniority_gaps = (
+                        f"Role requires {assessment.requirement.level.title()} "
+                        f"({assessment.requirement.months_floor}+ verified professional months); founder has "
+                        f"{assessment.total_months}, a gap of {assessment.months_gap} month(s)",
+                    )
                 else:
-                    seniority_score = 0.5
-                    seniority_strengths = ()
-                    seniority_gaps = (f"Role requires {opp_level.value.title()}; founder verified title is mid/entry",)
-                    seniority_unknowns = ()
-            seniority_ev_refs = tuple(a.id for a in emp_title_assertions)
+                    seniority_gaps = (
+                        f"Role requires {assessment.requirement.level.title()}, which also requires verified "
+                        "people-leadership evidence from responsibilities/achievements; none found",
+                    )
+                seniority_unknowns = ()
 
         w_exp = weights.get("experience", 0.20)
         scores.append(MatchDimensionScore(
@@ -265,7 +316,7 @@ class OpportunityScorer:
             raw_score=seniority_score,
             weight=w_exp,
             weighted_score=seniority_score * w_exp,
-            explanation=f"Seniority requirement evaluated as {opp_level.value.title()}.",
+            explanation=seniority_explanation,
             strengths=seniority_strengths,
             gaps=seniority_gaps,
             unknowns=seniority_unknowns,
