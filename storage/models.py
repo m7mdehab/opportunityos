@@ -61,7 +61,12 @@ class OpportunityRecord(Base):
     title_family = Column(String(64), nullable=True)
     title_level = Column(String(24), nullable=True)
     family_key = Column(String(64), nullable=True)
-    search_tsv = Column(TSVECTOR, nullable=True)
+    # Text().with_variant(...): plain TEXT on every non-PostgreSQL dialect
+    # (SQLite, used by several test suites' Base.metadata.create_all(), has no
+    # tsvector type and cannot compile a bare TSVECTOR column) and the real
+    # ``tsvector`` type on PostgreSQL, where migration 0004_founder_control's
+    # GIN index (ix_opportunities_search_tsv) actually lives.
+    search_tsv = Column(Text().with_variant(TSVECTOR(), "postgresql"), nullable=True)
 
     provenances = relationship("FieldProvenanceRecord", back_populates="opportunity", cascade="all, delete-orphan")
     feedback = relationship("FounderFeedbackRecord", back_populates="opportunity", cascade="all, delete-orphan")
