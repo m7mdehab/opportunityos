@@ -77,7 +77,7 @@ to search. Both were caught by checking the repository rather than the record.
 |---|---|
 | A-0 fail-closed | **PASS** — `Ran 12 tests` / `OK` |
 | A-1 full suite | **PASS on substance** — `Ran 1039 tests in 487.300s` / `OK`, **zero failures** (baseline 672). `NOT_CLOSED` on its `0 skipped` clause: 2 POSIX zombie tests + 1 gated perf run |
-| A-2 per-module counts | **NOT_CLOSED** — partial; see §7 |
+| A-2 per-module counts | **PASS** — **1039 = 1039** at test-id level across 13 modules |
 | A-3 migrations | **PASS** — 4 down / 4 up, head `0004_founder_control` |
 | A-4 guard + repository | **PASS** — both exit 0 |
 | A-5 STATE | **PASS** — regenerated on `main`, zero drift |
@@ -240,7 +240,9 @@ Two items need the Overseer specifically:
 ## 10. Next phase
 
 See `reports/evidence/FR-006/next-prerequisites-draft.md`. Ordered by what most limits the founder:
-nothing new reaches the feed; extraction is the ceiling on qualification quality; the title taxonomy
+nothing new reaches the feed; the `api` suite cannot be run standalone (a session left idle in
+transaction deadlocks it against `TRUNCATE match_evaluations`); extraction is the ceiling on
+qualification quality; the title taxonomy
 needs a different kind of input rather than more patterns; two artifact validators; `stale_postings`
 has a writer nothing calls; the `identity.phone` false positive; the gold set under-specifies every
 honest dimension; and the process items — cap concurrency at four, size orders to the harness's real

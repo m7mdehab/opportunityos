@@ -79,3 +79,12 @@ corpus rather than patching it a third time.
   survived until the web work order tripped over it.
 - The readiness matrix's F4 targets (`1B/1H/2A/2B/2C/3C/3E/1G`) resolve to nothing in the
   repository. Name them by `req_id`.
+
+## 9. The `api` suite cannot be run in isolation
+
+`py -3.12 -m unittest discover -s api -t . -p "test_*.py"` hangs indefinitely. `pg_stat_activity`
+shows a session **idle in transaction** holding `SELECT ... FROM match_evaluations` while other
+backends block on `TRUNCATE TABLE "match_evaluations" CASCADE` with `wait_event_type = Lock`. The
+full suite passes 1039 with zero failures because its ordering differs, so this is latent rather
+than breaking — but a suite that cannot be run alone cannot be bisected, and bisection is what you
+need on the day something breaks. Find the test that leaves the transaction open and close it.
