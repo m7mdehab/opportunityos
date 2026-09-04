@@ -58,7 +58,7 @@ Next: complete active brief.
 - [ADR-0010: Outbound Action Authority, Execution Modes, and Idempotency Architecture](adr/ADR-0010-outbound-action-authority-and-idempotency.md)
 - [ADR-0011: Operational Autonomy, Inbound Signal Processing, Pipeline Synchronization, and Safe Learning](adr/ADR-0011-operational-autonomy-and-feedback-loops.md)
 - [ADR-0012 — Single-Founder Tenancy Through Phase 5](adr/ADR-0012-single-founder-tenancy.md)
-- [ADR-0013 — Alpha-Grade Auth and Local-Only Posture](adr/ADR-0013-alpha-grade-auth-and-local-posture.md)
+- [ADR-0013 — Alpha-Grade Auth and Local-Only Posture](adr/ADR-0013-alpha-grade-auth-and-local-only-posture.md)
 - [ADR-0014 — Claim Classes: Atomic Founder Claims and Narrative Segments](adr/ADR-0014-claim-classes.md)
 - [ADR-0015 — Predicate Contract Between the Truth Graph and the Matching Engine](adr/ADR-0015-predicate-contract.md)
 - [ADR-0016 — Founder Seniority From Employment Tenure, Not Title Keywords](adr/ADR-0016-seniority-model.md)
