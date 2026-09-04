@@ -4,7 +4,7 @@ OpportunityOS is an opportunity-acquisition platform for MENA, beginning with a 
 
 ## Authority
 
-1. Mohammed is Founder and final product authority.
+1. The founder is the final product authority.
 2. ChatGPT is the Owner/Overseer for project context, architecture judgment, execution briefs, independent verification, and final PASS/NOT PASS closure.
 3. The Master Agent is selected per task. Codex, Gemini/Antigravity, Copilot, or another proven executor may fill that role.
 4. Workers, councils, and independent auditors are subordinate evidence-producing roles, not closure authorities.
