@@ -3,21 +3,21 @@
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
 Last shipped: BRIEF-FR-005 — 2026-09-03.
-Active work: none.
-Phase status: passed.
+Active work: BRIEF-FR-006.
+Phase status: in progress.
 Blocked: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha (strictly blocked until Founder Web Alpha is live and validated).
-Next: The measured number still does not exist.
+Next: complete active brief.
 
 ## Repository
 
 - **Generated:** 2026-09-02T19:37:39Z
-- **State generated at commit:** `1d89fc6` — docs(fr-005): deviation 30 -- CI on main is unverifiable from this host
+- **State generated at commit:** `49ede98` — docs(fr-006): A-2 passes in the report; api isolation defect to next-phase
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
 
-- **Brief:** none
-- **Phase status:** passed
+- **Brief:** BRIEF-FR-006
+- **Phase status:** in progress
 - **Open acceptance items:** 0
 - None
 
@@ -38,7 +38,7 @@ Next: The measured number still does not exist.
 
 ## Last Phase Outcome
 
-- BRIEF-FR-005 — PASSWITHNOTCLOSED.
+- BRIEF-FR-006 — undecided
 
 ## Decisions
 
@@ -61,6 +61,8 @@ Next: The measured number still does not exist.
 - [ADR-0013 — Alpha-Grade Auth and Local-Only Posture](adr/ADR-0013-alpha-grade-auth-and-local-only-posture.md)
 - [ADR-0014 — Claim Classes: Atomic Founder Claims and Narrative Segments](adr/ADR-0014-claim-classes.md)
 - [ADR-0015 — Predicate Contract Between the Truth Graph and the Matching Engine](adr/ADR-0015-predicate-contract.md)
+- [ADR-0016 — Founder Seniority From Employment Tenure, Not Title Keywords](adr/ADR-0016-seniority-model.md)
+- [ADR-0017: The CV/cover-letter document model](adr/ADR-0017-document-model.md)
 
 ## Blocked Items
 
@@ -68,12 +70,16 @@ Next: The measured number still does not exist.
 
 ## Source Status Counts
 
-- allowed_ok: 19
+- allowed_ok: 56
+- credential_gated: 1
 - deliberately_not_fetched: 16
+- http_403: 2
+- inferred_from_sibling_403: 6
+- no_public_api: 5
+- not_a_postings_feed: 5
 - parse_empty: 2
-- robots_unreachable: 15
+- robots_unreachable: 17
 
 ## Next Prerequisites
 
-**The measured number still does not exist.** It is produced by the founder working §9, not by
-this brief. Nothing below should be scoped until it is in hand.
+- None
