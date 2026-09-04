@@ -12,15 +12,15 @@ A new chat may begin with:
 
 The Owner/Overseer should then read `AGENTS.md`, `docs/AUTHORITY_INDEX.md`, this file, generated `docs/STATE.md`, inspect current GitHub `main` and any active branch/PR, then load only the active brief and task-relevant ADRs/evidence.
 
-Do not ask Mohammed to re-explain project history that can be recovered from the canonical repository layer.
+Do not ask the founder to re-explain project history that can be recovered from the canonical repository layer.
 
 ## Project In One Paragraph
 
-OpportunityOS is an autonomous opportunity-acquisition platform for MENA that covers employment and independent professional work, including freelance/consulting, contract, and procurement opportunities. Its core flow is `discover -> ingest -> qualify -> score -> truth-locked tailor -> prepare/fill/controlled-submit -> monitor outcomes -> learn safely`. The system is designed to save the Founder time and increase access to remote work, freelance/client work, and other economic opportunities without fabricating founder claims or bypassing source/platform rules.
+OpportunityOS is an autonomous opportunity-acquisition platform for MENA that covers employment and independent professional work, including freelance/consulting, contract, and procurement opportunities. Its core flow is `discover -> ingest -> qualify -> score -> truth-locked tailor -> prepare/fill/controlled-submit -> monitor outcomes -> learn safely`. The system is designed to save the founder time and increase access to remote work, freelance/client work, and other economic opportunities without fabricating founder claims or bypassing source/platform rules.
 
 ## Authority
 
-- Founder/final product authority: Mohammed Ehab Elnomany.
+- Founder/final product authority: the founder.
 - Owner/Overseer: ChatGPT. Owns context, architecture judgment, task briefing, independent verification, and final PASS/NOT PASS closure.
 - Master Agent: dynamically selected by task. Codex is preferred for architecture-sensitive/stateful/concurrency/provenance/submission-authority work when capacity permits; Gemini/Antigravity is strong high-volume/bounded/browser execution capacity; Copilot is secondary/mechanical capacity.
 - Independent auditors/councils are evidence-producing roles, not closure authority.
