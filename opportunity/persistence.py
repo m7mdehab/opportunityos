@@ -55,7 +55,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
-from opportunity.models import FieldProvenance, Opportunity
+from opportunity.clustering import family_key as compute_opportunity_family_key
+from opportunity.models import CompensationInterval, FieldProvenance, Opportunity
 from opportunity.pipeline import IngestionBatch
 from storage.repository import StorageRepository
 
@@ -133,6 +134,20 @@ def _build_opp_data(opp: Opportunity, *, is_stale: bool) -> Dict[str, Any]:
     if opp.raw_provenance is not None:
         raw_payload_json = json.dumps(asdict(opp.raw_provenance), sort_keys=True)
 
+    # BRIEF-FR-006 A1 defect fix: map the seven work_mode/location/remote_scope
+    # fields, plus compensation_min/max/currency/period derived off the existing
+    # Compensation object, using the exact column-name spellings from the A1
+    # report (work order A1M owns the actual DB columns/migration -- see that
+    # report's return for the full list and their types; this dict simply
+    # carries the same names through so A1M's storage/repository.py wiring has
+    # nothing to rename). ``remote_scope_regions`` is a tuple on Opportunity but
+    # the brief specifies the column as Text (JSON array), so it is JSON-encoded
+    # here, matching how ``raw_payload_json`` already round-trips through JSON.
+    comp = opp.compensation
+    compensation_period = None
+    if comp is not None and comp.interval != CompensationInterval.UNSPECIFIED:
+        compensation_period = comp.interval.value
+
     return {
         "id": opp.id,
         "track": opp.track.value,
@@ -149,6 +164,25 @@ def _build_opp_data(opp: Opportunity, *, is_stale: bool) -> Dict[str, Any]:
         "deadline": opp.closing_date,
         "is_stale": is_stale,
         "raw_payload_json": raw_payload_json,
+        "work_mode": opp.work_mode.value,
+        "work_mode_source": opp.work_mode_source,
+        "location_country": opp.location_country or None,
+        "location_city": opp.location_city or None,
+        "location_region": opp.location_region or None,
+        "remote_scope": opp.remote_scope.value,
+        "remote_scope_regions": json.dumps(list(opp.remote_scope_regions)) if opp.remote_scope_regions else None,
+        "compensation_min": int(round(comp.min_amount)) if comp is not None and comp.min_amount is not None else None,
+        "compensation_max": int(round(comp.max_amount)) if comp is not None and comp.max_amount is not None else None,
+        "compensation_currency": comp.currency if comp is not None else None,
+        "compensation_period": compensation_period,
+        # A2 (BRIEF-FR-006) clustering: deterministic, pure function of
+        # organization + title (see opportunity.clustering.family_key). This
+        # is the only field this deliverable's allowed edit to
+        # opportunity/persistence.py writes; the family/member-count roll-up
+        # onto opportunity_families is a separate step (see
+        # opportunity.clustering.cluster_members / storage.repository's
+        # families methods), not performed per-opportunity here.
+        "family_key": compute_opportunity_family_key(opp),
     }
 
 

@@ -1,0 +1,1032 @@
+
+Running 22 tests using 1 worker
+
+  x   1 [chromium] › tests\e2e\artifacts-preview.spec.ts:24:7 › D2 artifacts panel: PDF preview, template switch, DOCX download › preview renders, template switch changes it, DOCX downloads (4.4s)
+  ok  2 [chromium] › tests\e2e\artifacts-preview.spec.ts:83:7 › D2 artifacts panel: PDF preview, template switch, DOCX download › a 409 claim-validation rejection shows the claim and reason in plain language (4.4s)
+  ok  3 [chromium] › tests\e2e\axe.spec.ts:8:7 › accessibility › /login is axe-clean (6.6s)
+  ok  4 [chromium] › tests\e2e\axe.spec.ts:17:7 › accessibility › / (the feed) is axe-clean (7.7s)
+  ok  5 [chromium] › tests\e2e\facets.spec.ts:83:7 › C1 facets panel › one include and one exclude exercised through the UI; 'Show N excluded' restores the rows (4.1s)
+  x   6 [chromium] › tests\e2e\facets.spec.ts:139:7 › C1 facets panel › the language facet renders as permanently unavailable (3.2s)
+  x   7 [chromium] › tests\e2e\facets.spec.ts:158:7 › C1 saved views › create, select, set default, reload — the view survives (2.9s)
+  x   8 [chromium] › tests\e2e\facets.spec.ts:242:7 › C4 hidden-reasons audit › the dashboard's HIDDEN number links to the table, and unhide-by-reason changes the visible count (3.2s)
+  x   9 [chromium] › tests\e2e\facets.spec.ts:318:7 › C4 hidden-reasons audit › the >10% over-hiding warning is visible once constructed (2.9s)
+  x  10 [chromium] › tests\e2e\filters-unavailable.spec.ts:30:7 › D3 founder-controlled filters — unavailable_reason › an unavailable filter renders as inert, shows its reason, and stays switchable (2.9s)
+afterEach: PUT /api/filters/min_fit_score failed to send: page.evaluate: TypeError: Failed to fetch
+    at eval (eval at evaluate (:311:30), <anonymous>:5:23)
+    at UtilityScript.evaluate (<anonymous>:313:16)
+    at UtilityScript.<anonymous> (<anonymous>:1:44)
+    at pageFetch (C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\filters.spec.ts:95:15)
+    at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\filters.spec.ts:156:36 {
+  log: [],
+  Symbol(step): {
+    location: {
+      file: 'C:\\Users\\M7mdEhab\\projects\\OpportunityOS\\web\\tests\\e2e\\filters.spec.ts',
+      line: 95,
+      column: 15,
+      function: 'pageFetch'
+    },
+    category: 'pw:api',
+    title: 'Evaluate',
+    apiName: 'page.evaluate',
+    params: {
+      expression: 'async ({\n' +
+        '    path: p,\n' +
+        '    init: i\n' +
+        '  }) => {\n' +
+        '    const res = await fetch(p, {\n' +
+        '      method: i === null || i === void 0 ? void 0 : i.method,\n' +
+        '      headers: (i === null || i === void 0 ? void 0 : i.body) !== undefined ? {\n' +
+        '        "Content-Type": "application/json"\n' +
+        '      } : undefined,\n' +
+        '      body: (i === null || i === void 0 ? void 0 : i.body) !== undefined ? JSON.stringify(i.body) : undefined\n' +
+        '    });\n' +
+        '    const text = await res.text();\n' +
+        '    return {\n' +
+        '      ok: res.ok,\n' +
+        '      status: res.status,\n' +
+        '      text\n' +
+        '    };\n' +
+        '  }',
+      isFunction: true,
+      arg: [Object]
+    },
+    group: undefined,
+    stepId: 'pw:api@38',
+    boxedStack: undefined,
+    steps: [],
+    attachmentIndices: [],
+    info: TestStepInfoImpl {
+      annotations: [],
+      _testInfo: [TestInfoImpl],
+      _stepId: 'pw:api@38',
+      _title: 'Evaluate',
+      _parentStep: [TestStepInfoImpl],
+      skip: [Function (anonymous)]
+    },
+    complete: [Function: complete],
+    endWallTime: 1788479650111,
+    error: {
+      message: 'Error: page.evaluate: TypeError: Failed to fetch\n' +
+        '    at eval (eval at evaluate (:311:30), <anonymous>:5:23)\n' +
+        '    at UtilityScript.evaluate (<anonymous>:313:16)\n' +
+        '    at UtilityScript.<anonymous> (<anonymous>:1:44)',
+      stack: 'Error: page.evaluate: TypeError: Failed to fetch\n' +
+        '    at eval (eval at evaluate (:311:30), <anonymous>:5:23)\n' +
+        '    at UtilityScript.evaluate (<anonymous>:313:16)\n' +
+        '    at UtilityScript.<anonymous> (<anonymous>:1:44)\n' +
+        '    at eval (eval at evaluate (:311:30), <anonymous>:5:23)\n' +
+        '    at UtilityScript.evaluate (<anonymous>:313:16)\n' +
+        '    at UtilityScript.<anonymous> (<anonymous>:1:44)\n' +
+        '    at pageFetch (C:\\Users\\M7mdEhab\\projects\\OpportunityOS\\web\\tests\\e2e\\filters.spec.ts:95:15)\n' +
+        '    at C:\\Users\\M7mdEhab\\projects\\OpportunityOS\\web\\tests\\e2e\\filters.spec.ts:156:36',
+      cause: undefined
+    }
+  }
+}
+afterEach: PUT /api/filters/compensation_floor failed to send: page.evaluate: TypeError: Failed to fetch
+    at eval (eval at evaluate (:311:30), <anonymous>:5:23)
+    at UtilityScript.evaluate (<anonymous>:313:16)
+    at UtilityScript.<anonymous> (<anonymous>:1:44)
+    at pageFetch (C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\filters.spec.ts:95:15)
+    at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\filters.spec.ts:169:34 {
+  log: [],
+  Symbol(step): {
+    location: {
+      file: 'C:\\Users\\M7mdEhab\\projects\\OpportunityOS\\web\\tests\\e2e\\filters.spec.ts',
+      line: 95,
+      column: 15,
+      function: 'pageFetch'
+    },
+    category: 'pw:api',
+    title: 'Evaluate',
+    apiName: 'page.evaluate',
+    params: {
+      expression: 'async ({\n' +
+        '    path: p,\n' +
+        '    init: i\n' +
+        '  }) => {\n' +
+        '    const res = await fetch(p, {\n' +
+        '      method: i === null || i === void 0 ? void 0 : i.method,\n' +
+        '      headers: (i === null || i === void 0 ? void 0 : i.body) !== undefined ? {\n' +
+        '        "Content-Type": "application/json"\n' +
+        '      } : undefined,\n' +
+        '      body: (i === null || i === void 0 ? void 0 : i.body) !== undefined ? JSON.stringify(i.body) : undefined\n' +
+        '    });\n' +
+        '    const text = await res.text();\n' +
+        '    return {\n' +
+        '      ok: res.ok,\n' +
+        '      status: res.status,\n' +
+        '      text\n' +
+        '    };\n' +
+        '  }',
+      isFunction: true,
+      arg: [Object]
+    },
+    group: undefined,
+    stepId: 'pw:api@39',
+    boxedStack: undefined,
+    steps: [],
+    attachmentIndices: [],
+    info: TestStepInfoImpl {
+      annotations: [],
+      _testInfo: [TestInfoImpl],
+      _stepId: 'pw:api@39',
+      _title: 'Evaluate',
+      _parentStep: [TestStepInfoImpl],
+      skip: [Function (anonymous)]
+    },
+    complete: [Function: complete],
+    endWallTime: 1788479650127,
+    error: {
+      message: 'Error: page.evaluate: TypeError: Failed to fetch\n' +
+        '    at eval (eval at evaluate (:311:30), <anonymous>:5:23)\n' +
+        '    at UtilityScript.evaluate (<anonymous>:313:16)\n' +
+        '    at UtilityScript.<anonymous> (<anonymous>:1:44)',
+      stack: 'Error: page.evaluate: TypeError: Failed to fetch\n' +
+        '    at eval (eval at evaluate (:311:30), <anonymous>:5:23)\n' +
+        '    at UtilityScript.evaluate (<anonymous>:313:16)\n' +
+        '    at UtilityScript.<anonymous> (<anonymous>:1:44)\n' +
+        '    at eval (eval at evaluate (:311:30), <anonymous>:5:23)\n' +
+        '    at UtilityScript.evaluate (<anonymous>:313:16)\n' +
+        '    at UtilityScript.<anonymous> (<anonymous>:1:44)\n' +
+        '    at pageFetch (C:\\Users\\M7mdEhab\\projects\\OpportunityOS\\web\\tests\\e2e\\filters.spec.ts:95:15)\n' +
+        '    at C:\\Users\\M7mdEhab\\projects\\OpportunityOS\\web\\tests\\e2e\\filters.spec.ts:169:34',
+      cause: undefined
+    }
+  }
+}
+  x  11 [chromium] › tests\e2e\filters.spec.ts:183:7 › D3 founder-controlled filters › toggling a filter changes its affected-count and re-queries the feed without reloading (2.9s)
+afterEach: PUT /api/filters/min_fit_score failed to send: page.evaluate: TypeError: Failed to fetch
+    at eval (eval at evaluate (:311:30), <anonymous>:5:23)
+    at UtilityScript.evaluate (<anonymous>:313:16)
+    at UtilityScript.<anonymous> (<anonymous>:1:44)
+    at pageFetch (C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\filters.spec.ts:95:15)
+    at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\filters.spec.ts:156:36 {
+  log: [],
+  Symbol(step): {
+    location: {
+      file: 'C:\\Users\\M7mdEhab\\projects\\OpportunityOS\\web\\tests\\e2e\\filters.spec.ts',
+      line: 95,
+      column: 15,
+      function: 'pageFetch'
+    },
+    category: 'pw:api',
+    title: 'Evaluate',
+    apiName: 'page.evaluate',
+    params: {
+      expression: 'async ({\n' +
+        '    path: p,\n' +
+        '    init: i\n' +
+        '  }) => {\n' +
+        '    const res = await fetch(p, {\n' +
+        '      method: i === null || i === void 0 ? void 0 : i.method,\n' +
+        '      headers: (i === null || i === void 0 ? void 0 : i.body) !== undefined ? {\n' +
+        '        "Content-Type": "application/json"\n' +
+        '      } : undefined,\n' +
+        '      body: (i === null || i === void 0 ? void 0 : i.body) !== undefined ? JSON.stringify(i.body) : undefined\n' +
+        '    });\n' +
+        '    const text = await res.text();\n' +
+        '    return {\n' +
+        '      ok: res.ok,\n' +
+        '      status: res.status,\n' +
+        '      text\n' +
+        '    };\n' +
+        '  }',
+      isFunction: true,
+      arg: [Object]
+    },
+    group: undefined,
+    stepId: 'pw:api@38',
+    boxedStack: undefined,
+    steps: [],
+    attachmentIndices: [],
+    info: TestStepInfoImpl {
+      annotations: [],
+      _testInfo: [TestInfoImpl],
+      _stepId: 'pw:api@38',
+      _title: 'Evaluate',
+      _parentStep: [TestStepInfoImpl],
+      skip: [Function (anonymous)]
+    },
+    complete: [Function: complete],
+    endWallTime: 1788479654734,
+    error: {
+      message: 'Error: page.evaluate: TypeError: Failed to fetch\n' +
+        '    at eval (eval at evaluate (:311:30), <anonymous>:5:23)\n' +
+        '    at UtilityScript.evaluate (<anonymous>:313:16)\n' +
+        '    at UtilityScript.<anonymous> (<anonymous>:1:44)',
+      stack: 'Error: page.evaluate: TypeError: Failed to fetch\n' +
+        '    at eval (eval at evaluate (:311:30), <anonymous>:5:23)\n' +
+        '    at UtilityScript.evaluate (<anonymous>:313:16)\n' +
+        '    at UtilityScript.<anonymous> (<anonymous>:1:44)\n' +
+        '    at eval (eval at evaluate (:311:30), <anonymous>:5:23)\n' +
+        '    at UtilityScript.evaluate (<anonymous>:313:16)\n' +
+        '    at UtilityScript.<anonymous> (<anonymous>:1:44)\n' +
+        '    at pageFetch (C:\\Users\\M7mdEhab\\projects\\OpportunityOS\\web\\tests\\e2e\\filters.spec.ts:95:15)\n' +
+        '    at C:\\Users\\M7mdEhab\\projects\\OpportunityOS\\web\\tests\\e2e\\filters.spec.ts:156:36',
+      cause: undefined
+    }
+  }
+}
+afterEach: PUT /api/filters/compensation_floor failed to send: page.evaluate: TypeError: Failed to fetch
+    at eval (eval at evaluate (:311:30), <anonymous>:5:23)
+    at UtilityScript.evaluate (<anonymous>:313:16)
+    at UtilityScript.<anonymous> (<anonymous>:1:44)
+    at pageFetch (C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\filters.spec.ts:95:15)
+    at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\filters.spec.ts:169:34 {
+  log: [],
+  Symbol(step): {
+    location: {
+      file: 'C:\\Users\\M7mdEhab\\projects\\OpportunityOS\\web\\tests\\e2e\\filters.spec.ts',
+      line: 95,
+      column: 15,
+      function: 'pageFetch'
+    },
+    category: 'pw:api',
+    title: 'Evaluate',
+    apiName: 'page.evaluate',
+    params: {
+      expression: 'async ({\n' +
+        '    path: p,\n' +
+        '    init: i\n' +
+        '  }) => {\n' +
+        '    const res = await fetch(p, {\n' +
+        '      method: i === null || i === void 0 ? void 0 : i.method,\n' +
+        '      headers: (i === null || i === void 0 ? void 0 : i.body) !== undefined ? {\n' +
+        '        "Content-Type": "application/json"\n' +
+        '      } : undefined,\n' +
+        '      body: (i === null || i === void 0 ? void 0 : i.body) !== undefined ? JSON.stringify(i.body) : undefined\n' +
+        '    });\n' +
+        '    const text = await res.text();\n' +
+        '    return {\n' +
+        '      ok: res.ok,\n' +
+        '      status: res.status,\n' +
+        '      text\n' +
+        '    };\n' +
+        '  }',
+      isFunction: true,
+      arg: [Object]
+    },
+    group: undefined,
+    stepId: 'pw:api@39',
+    boxedStack: undefined,
+    steps: [],
+    attachmentIndices: [],
+    info: TestStepInfoImpl {
+      annotations: [],
+      _testInfo: [TestInfoImpl],
+      _stepId: 'pw:api@39',
+      _title: 'Evaluate',
+      _parentStep: [TestStepInfoImpl],
+      skip: [Function (anonymous)]
+    },
+    complete: [Function: complete],
+    endWallTime: 1788479654750,
+    error: {
+      message: 'Error: page.evaluate: TypeError: Failed to fetch\n' +
+        '    at eval (eval at evaluate (:311:30), <anonymous>:5:23)\n' +
+        '    at UtilityScript.evaluate (<anonymous>:313:16)\n' +
+        '    at UtilityScript.<anonymous> (<anonymous>:1:44)',
+      stack: 'Error: page.evaluate: TypeError: Failed to fetch\n' +
+        '    at eval (eval at evaluate (:311:30), <anonymous>:5:23)\n' +
+        '    at UtilityScript.evaluate (<anonymous>:313:16)\n' +
+        '    at UtilityScript.<anonymous> (<anonymous>:1:44)\n' +
+        '    at eval (eval at evaluate (:311:30), <anonymous>:5:23)\n' +
+        '    at UtilityScript.evaluate (<anonymous>:313:16)\n' +
+        '    at UtilityScript.<anonymous> (<anonymous>:1:44)\n' +
+        '    at pageFetch (C:\\Users\\M7mdEhab\\projects\\OpportunityOS\\web\\tests\\e2e\\filters.spec.ts:95:15)\n' +
+        '    at C:\\Users\\M7mdEhab\\projects\\OpportunityOS\\web\\tests\\e2e\\filters.spec.ts:169:34',
+      cause: undefined
+    }
+  }
+}
+  x  12 [chromium] › tests\e2e\filters.spec.ts:364:7 › D3 founder-controlled filters › an out-of-range param is rejected with 422, and the feed keeps working (2.9s)
+afterEach: PUT /api/filters/min_fit_score failed to send: page.evaluate: TypeError: Failed to fetch
+    at eval (eval at evaluate (:311:30), <anonymous>:5:23)
+    at UtilityScript.evaluate (<anonymous>:313:16)
+    at UtilityScript.<anonymous> (<anonymous>:1:44)
+    at pageFetch (C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\filters.spec.ts:95:15)
+    at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\filters.spec.ts:156:36 {
+  log: [],
+  Symbol(step): {
+    location: {
+      file: 'C:\\Users\\M7mdEhab\\projects\\OpportunityOS\\web\\tests\\e2e\\filters.spec.ts',
+      line: 95,
+      column: 15,
+      function: 'pageFetch'
+    },
+    category: 'pw:api',
+    title: 'Evaluate',
+    apiName: 'page.evaluate',
+    params: {
+      expression: 'async ({\n' +
+        '    path: p,\n' +
+        '    init: i\n' +
+        '  }) => {\n' +
+        '    const res = await fetch(p, {\n' +
+        '      method: i === null || i === void 0 ? void 0 : i.method,\n' +
+        '      headers: (i === null || i === void 0 ? void 0 : i.body) !== undefined ? {\n' +
+        '        "Content-Type": "application/json"\n' +
+        '      } : undefined,\n' +
+        '      body: (i === null || i === void 0 ? void 0 : i.body) !== undefined ? JSON.stringify(i.body) : undefined\n' +
+        '    });\n' +
+        '    const text = await res.text();\n' +
+        '    return {\n' +
+        '      ok: res.ok,\n' +
+        '      status: res.status,\n' +
+        '      text\n' +
+        '    };\n' +
+        '  }',
+      isFunction: true,
+      arg: [Object]
+    },
+    group: undefined,
+    stepId: 'pw:api@38',
+    boxedStack: undefined,
+    steps: [],
+    attachmentIndices: [],
+    info: TestStepInfoImpl {
+      annotations: [],
+      _testInfo: [TestInfoImpl],
+      _stepId: 'pw:api@38',
+      _title: 'Evaluate',
+      _parentStep: [TestStepInfoImpl],
+      skip: [Function (anonymous)]
+    },
+    complete: [Function: complete],
+    endWallTime: 1788479658394,
+    error: {
+      message: 'Error: page.evaluate: TypeError: Failed to fetch\n' +
+        '    at eval (eval at evaluate (:311:30), <anonymous>:5:23)\n' +
+        '    at UtilityScript.evaluate (<anonymous>:313:16)\n' +
+        '    at UtilityScript.<anonymous> (<anonymous>:1:44)',
+      stack: 'Error: page.evaluate: TypeError: Failed to fetch\n' +
+        '    at eval (eval at evaluate (:311:30), <anonymous>:5:23)\n' +
+        '    at UtilityScript.evaluate (<anonymous>:313:16)\n' +
+        '    at UtilityScript.<anonymous> (<anonymous>:1:44)\n' +
+        '    at eval (eval at evaluate (:311:30), <anonymous>:5:23)\n' +
+        '    at UtilityScript.evaluate (<anonymous>:313:16)\n' +
+        '    at UtilityScript.<anonymous> (<anonymous>:1:44)\n' +
+        '    at pageFetch (C:\\Users\\M7mdEhab\\projects\\OpportunityOS\\web\\tests\\e2e\\filters.spec.ts:95:15)\n' +
+        '    at C:\\Users\\M7mdEhab\\projects\\OpportunityOS\\web\\tests\\e2e\\filters.spec.ts:156:36',
+      cause: undefined
+    }
+  }
+}
+afterEach: PUT /api/filters/compensation_floor failed to send: page.evaluate: TypeError: Failed to fetch
+    at eval (eval at evaluate (:311:30), <anonymous>:5:23)
+    at UtilityScript.evaluate (<anonymous>:313:16)
+    at UtilityScript.<anonymous> (<anonymous>:1:44)
+    at pageFetch (C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\filters.spec.ts:95:15)
+    at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\filters.spec.ts:169:34 {
+  log: [],
+  Symbol(step): {
+    location: {
+      file: 'C:\\Users\\M7mdEhab\\projects\\OpportunityOS\\web\\tests\\e2e\\filters.spec.ts',
+      line: 95,
+      column: 15,
+      function: 'pageFetch'
+    },
+    category: 'pw:api',
+    title: 'Evaluate',
+    apiName: 'page.evaluate',
+    params: {
+      expression: 'async ({\n' +
+        '    path: p,\n' +
+        '    init: i\n' +
+        '  }) => {\n' +
+        '    const res = await fetch(p, {\n' +
+        '      method: i === null || i === void 0 ? void 0 : i.method,\n' +
+        '      headers: (i === null || i === void 0 ? void 0 : i.body) !== undefined ? {\n' +
+        '        "Content-Type": "application/json"\n' +
+        '      } : undefined,\n' +
+        '      body: (i === null || i === void 0 ? void 0 : i.body) !== undefined ? JSON.stringify(i.body) : undefined\n' +
+        '    });\n' +
+        '    const text = await res.text();\n' +
+        '    return {\n' +
+        '      ok: res.ok,\n' +
+        '      status: res.status,\n' +
+        '      text\n' +
+        '    };\n' +
+        '  }',
+      isFunction: true,
+      arg: [Object]
+    },
+    group: undefined,
+    stepId: 'pw:api@39',
+    boxedStack: undefined,
+    steps: [],
+    attachmentIndices: [],
+    info: TestStepInfoImpl {
+      annotations: [],
+      _testInfo: [TestInfoImpl],
+      _stepId: 'pw:api@39',
+      _title: 'Evaluate',
+      _parentStep: [TestStepInfoImpl],
+      skip: [Function (anonymous)]
+    },
+    complete: [Function: complete],
+    endWallTime: 1788479658411,
+    error: {
+      message: 'Error: page.evaluate: TypeError: Failed to fetch\n' +
+        '    at eval (eval at evaluate (:311:30), <anonymous>:5:23)\n' +
+        '    at UtilityScript.evaluate (<anonymous>:313:16)\n' +
+        '    at UtilityScript.<anonymous> (<anonymous>:1:44)',
+      stack: 'Error: page.evaluate: TypeError: Failed to fetch\n' +
+        '    at eval (eval at evaluate (:311:30), <anonymous>:5:23)\n' +
+        '    at UtilityScript.evaluate (<anonymous>:313:16)\n' +
+        '    at UtilityScript.<anonymous> (<anonymous>:1:44)\n' +
+        '    at eval (eval at evaluate (:311:30), <anonymous>:5:23)\n' +
+        '    at UtilityScript.evaluate (<anonymous>:313:16)\n' +
+        '    at UtilityScript.<anonymous> (<anonymous>:1:44)\n' +
+        '    at pageFetch (C:\\Users\\M7mdEhab\\projects\\OpportunityOS\\web\\tests\\e2e\\filters.spec.ts:95:15)\n' +
+        '    at C:\\Users\\M7mdEhab\\projects\\OpportunityOS\\web\\tests\\e2e\\filters.spec.ts:169:34',
+      cause: undefined
+    }
+  }
+}
+  x  13 [chromium] › tests\e2e\filters.spec.ts:415:7 › D3 founder-controlled filters › a rank_only/label_only filter never looks like it hid anything (2.7s)
+  x  14 [chromium] › tests\e2e\keyboard.spec.ts:29:7 › C3 keyboard flow (j/k/o/a/x) › j/k move the cursor and move real DOM focus with it (3.0s)
+  x  15 [chromium] › tests\e2e\keyboard.spec.ts:59:7 › C3 keyboard flow (j/k/o/a/x) › o opens the drawer for the focused card (2.9s)
+  x  16 [chromium] › tests\e2e\keyboard.spec.ts:76:7 › C3 keyboard flow (j/k/o/a/x) › a marks the focused card applied; moving on, x dismisses the next one (3.1s)
+  x  17 [chromium] › tests\e2e\keyboard.spec.ts:114:7 › C3 keyboard flow (j/k/o/a/x) › shortcuts do not fire while a text input has focus (2.8s)
+  x  18 [chromium] › tests\e2e\screenshots.spec.ts:31:9 › evidence screenshots › login page @ 360px (2.8s)
+  x  19 [chromium] › tests\e2e\screenshots.spec.ts:41:9 › evidence screenshots › feed page @ 360px (2.8s)
+  x  20 [chromium] › tests\e2e\screenshots.spec.ts:31:9 › evidence screenshots › login page @ 1280px (2.9s)
+  x  21 [chromium] › tests\e2e\screenshots.spec.ts:41:9 › evidence screenshots › feed page @ 1280px (2.9s)
+  x  22 [chromium] › tests\e2e\smoke.spec.ts:28:7 › founder alpha smoke › login, feed, drawer, download, feedback, mark applied, dashboard counts (2.9s)
+
+
+  1) [chromium] › tests\e2e\artifacts-preview.spec.ts:24:7 › D2 artifacts panel: PDF preview, template switch, DOCX download › preview renders, template switch changes it, DOCX downloads 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 200
+    Received: 500
+
+      43 |     // response, not just a plausible-looking URL.
+      44 |     const classicResponse = await page.request.get(classicSrc!)
+    > 45 |     expect(classicResponse.status()).toBe(200)
+         |                                      ^
+      46 |     expect(classicResponse.headers()["content-type"]).toBe("application/pdf")
+      47 |     expect(classicResponse.headers()["content-disposition"]).toContain("inline")
+      48 |     const classicBody = await classicResponse.body()
+        at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\artifacts-preview.spec.ts:45:38
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\artifacts-preview-D2-artif-5990a-h-changes-it-DOCX-downloads-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\artifacts-preview-D2-artif-5990a-h-changes-it-DOCX-downloads-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\artifacts-preview-D2-artif-5990a-h-changes-it-DOCX-downloads-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\artifacts-preview-D2-artif-5990a-h-changes-it-DOCX-downloads-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) [chromium] › tests\e2e\facets.spec.ts:139:7 › C1 facets panel › the language facet renders as permanently unavailable 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3100/
+    Call log:
+      - navigating to "http://localhost:3100/", waiting until "load"
+
+
+      12 |
+      13 | async function login(page: Page) {
+    > 14 |   await page.goto("/")
+         |              ^
+      15 |   await expect(page).toHaveURL(/\/login$/)
+      16 |   await page.getByLabel("Password").fill(FOUNDER_PASSWORD)
+      17 |   await page.getByRole("button", { name: "Sign in" }).click()
+        at login (C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\facets.spec.ts:14:14)
+        at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\facets.spec.ts:140:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\facets-C1-facets-panel-the-93061--as-permanently-unavailable-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\facets-C1-facets-panel-the-93061--as-permanently-unavailable-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\facets-C1-facets-panel-the-93061--as-permanently-unavailable-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\facets-C1-facets-panel-the-93061--as-permanently-unavailable-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) [chromium] › tests\e2e\facets.spec.ts:158:7 › C1 saved views › create, select, set default, reload — the view survives 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3100/
+    Call log:
+      - navigating to "http://localhost:3100/", waiting until "load"
+
+
+      12 |
+      13 | async function login(page: Page) {
+    > 14 |   await page.goto("/")
+         |              ^
+      15 |   await expect(page).toHaveURL(/\/login$/)
+      16 |   await page.getByLabel("Password").fill(FOUNDER_PASSWORD)
+      17 |   await page.getByRole("button", { name: "Sign in" }).click()
+        at login (C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\facets.spec.ts:14:14)
+        at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\facets.spec.ts:159:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\facets-C1-saved-views-crea-9bf31--reload-—-the-view-survives-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\facets-C1-saved-views-crea-9bf31--reload-—-the-view-survives-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\facets-C1-saved-views-crea-9bf31--reload-—-the-view-survives-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\facets-C1-saved-views-crea-9bf31--reload-—-the-view-survives-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4) [chromium] › tests\e2e\facets.spec.ts:242:7 › C4 hidden-reasons audit › the dashboard's HIDDEN number links to the table, and unhide-by-reason changes the visible count 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3100/
+    Call log:
+      - navigating to "http://localhost:3100/", waiting until "load"
+
+
+      12 |
+      13 | async function login(page: Page) {
+    > 14 |   await page.goto("/")
+         |              ^
+      15 |   await expect(page).toHaveURL(/\/login$/)
+      16 |   await page.getByLabel("Password").fill(FOUNDER_PASSWORD)
+      17 |   await page.getByRole("button", { name: "Sign in" }).click()
+        at login (C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\facets.spec.ts:14:14)
+        at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\facets.spec.ts:245:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\facets-C4-hidden-reasons-a-d54e3-n-changes-the-visible-count-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\facets-C4-hidden-reasons-a-d54e3-n-changes-the-visible-count-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\facets-C4-hidden-reasons-a-d54e3-n-changes-the-visible-count-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\facets-C4-hidden-reasons-a-d54e3-n-changes-the-visible-count-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5) [chromium] › tests\e2e\facets.spec.ts:318:7 › C4 hidden-reasons audit › the >10% over-hiding warning is visible once constructed 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3100/
+    Call log:
+      - navigating to "http://localhost:3100/", waiting until "load"
+
+
+      12 |
+      13 | async function login(page: Page) {
+    > 14 |   await page.goto("/")
+         |              ^
+      15 |   await expect(page).toHaveURL(/\/login$/)
+      16 |   await page.getByLabel("Password").fill(FOUNDER_PASSWORD)
+      17 |   await page.getByRole("button", { name: "Sign in" }).click()
+        at login (C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\facets.spec.ts:14:14)
+        at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\facets.spec.ts:319:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\facets-C4-hidden-reasons-a-d2a9f-is-visible-once-constructed-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\facets-C4-hidden-reasons-a-d2a9f-is-visible-once-constructed-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\facets-C4-hidden-reasons-a-d2a9f-is-visible-once-constructed-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\facets-C4-hidden-reasons-a-d2a9f-is-visible-once-constructed-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  6) [chromium] › tests\e2e\filters-unavailable.spec.ts:30:7 › D3 founder-controlled filters — unavailable_reason › an unavailable filter renders as inert, shows its reason, and stays switchable 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3100/
+    Call log:
+      - navigating to "http://localhost:3100/", waiting until "load"
+
+
+      19 |
+      20 | async function login(page: Page) {
+    > 21 |   await page.goto("/")
+         |              ^
+      22 |   await expect(page).toHaveURL(/\/login$/)
+      23 |   await page.getByLabel("Password").fill(FOUNDER_PASSWORD)
+      24 |   await page.getByRole("button", { name: "Sign in" }).click()
+        at login (C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\filters-unavailable.spec.ts:21:14)
+        at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\filters-unavailable.spec.ts:38:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\filters-unavailable-D3-fou-02169-reason-and-stays-switchable-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\filters-unavailable-D3-fou-02169-reason-and-stays-switchable-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\filters-unavailable-D3-fou-02169-reason-and-stays-switchable-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\filters-unavailable-D3-fou-02169-reason-and-stays-switchable-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  7) [chromium] › tests\e2e\filters.spec.ts:183:7 › D3 founder-controlled filters › toggling a filter changes its affected-count and re-queries the feed without reloading 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3100/
+    Call log:
+      - navigating to "http://localhost:3100/", waiting until "load"
+
+
+      38 |
+      39 | async function login(page: Page) {
+    > 40 |   await page.goto("/")
+         |              ^
+      41 |   await expect(page).toHaveURL(/\/login$/)
+      42 |   await page.getByLabel("Password").fill(FOUNDER_PASSWORD)
+      43 |   await page.getByRole("button", { name: "Sign in" }).click()
+        at login (C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\filters.spec.ts:40:14)
+        at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\filters.spec.ts:186:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\filters-D3-founder-control-99373--the-feed-without-reloading-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\filters-D3-founder-control-99373--the-feed-without-reloading-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\filters-D3-founder-control-99373--the-feed-without-reloading-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\filters-D3-founder-control-99373--the-feed-without-reloading-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  8) [chromium] › tests\e2e\filters.spec.ts:364:7 › D3 founder-controlled filters › an out-of-range param is rejected with 422, and the feed keeps working 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3100/
+    Call log:
+      - navigating to "http://localhost:3100/", waiting until "load"
+
+
+      38 |
+      39 | async function login(page: Page) {
+    > 40 |   await page.goto("/")
+         |              ^
+      41 |   await expect(page).toHaveURL(/\/login$/)
+      42 |   await page.getByLabel("Password").fill(FOUNDER_PASSWORD)
+      43 |   await page.getByRole("button", { name: "Sign in" }).click()
+        at login (C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\filters.spec.ts:40:14)
+        at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\filters.spec.ts:372:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\filters-D3-founder-control-d7810--and-the-feed-keeps-working-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\filters-D3-founder-control-d7810--and-the-feed-keeps-working-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\filters-D3-founder-control-d7810--and-the-feed-keeps-working-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\filters-D3-founder-control-d7810--and-the-feed-keeps-working-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  9) [chromium] › tests\e2e\filters.spec.ts:415:7 › D3 founder-controlled filters › a rank_only/label_only filter never looks like it hid anything 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3100/
+    Call log:
+      - navigating to "http://localhost:3100/", waiting until "load"
+
+
+      38 |
+      39 | async function login(page: Page) {
+    > 40 |   await page.goto("/")
+         |              ^
+      41 |   await expect(page).toHaveURL(/\/login$/)
+      42 |   await page.getByLabel("Password").fill(FOUNDER_PASSWORD)
+      43 |   await page.getByRole("button", { name: "Sign in" }).click()
+        at login (C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\filters.spec.ts:40:14)
+        at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\filters.spec.ts:418:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\filters-D3-founder-control-d5b20--looks-like-it-hid-anything-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\filters-D3-founder-control-d5b20--looks-like-it-hid-anything-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\filters-D3-founder-control-d5b20--looks-like-it-hid-anything-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\filters-D3-founder-control-d5b20--looks-like-it-hid-anything-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  10) [chromium] › tests\e2e\keyboard.spec.ts:29:7 › C3 keyboard flow (j/k/o/a/x) › j/k move the cursor and move real DOM focus with it 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3100/
+    Call log:
+      - navigating to "http://localhost:3100/", waiting until "load"
+
+
+      14 |
+      15 | async function login(page: Page) {
+    > 16 |   await page.goto("/")
+         |              ^
+      17 |   await expect(page).toHaveURL(/\/login$/)
+      18 |   await page.getByLabel("Password").fill(FOUNDER_PASSWORD)
+      19 |   await page.getByRole("button", { name: "Sign in" }).click()
+        at login (C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\keyboard.spec.ts:16:14)
+        at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\keyboard.spec.ts:30:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\keyboard-C3-keyboard-flow--29824-move-real-DOM-focus-with-it-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\keyboard-C3-keyboard-flow--29824-move-real-DOM-focus-with-it-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\keyboard-C3-keyboard-flow--29824-move-real-DOM-focus-with-it-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\keyboard-C3-keyboard-flow--29824-move-real-DOM-focus-with-it-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  11) [chromium] › tests\e2e\keyboard.spec.ts:59:7 › C3 keyboard flow (j/k/o/a/x) › o opens the drawer for the focused card 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3100/
+    Call log:
+      - navigating to "http://localhost:3100/", waiting until "load"
+
+
+      14 |
+      15 | async function login(page: Page) {
+    > 16 |   await page.goto("/")
+         |              ^
+      17 |   await expect(page).toHaveURL(/\/login$/)
+      18 |   await page.getByLabel("Password").fill(FOUNDER_PASSWORD)
+      19 |   await page.getByRole("button", { name: "Sign in" }).click()
+        at login (C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\keyboard.spec.ts:16:14)
+        at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\keyboard.spec.ts:60:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\keyboard-C3-keyboard-flow--29dbc-drawer-for-the-focused-card-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\keyboard-C3-keyboard-flow--29dbc-drawer-for-the-focused-card-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\keyboard-C3-keyboard-flow--29dbc-drawer-for-the-focused-card-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\keyboard-C3-keyboard-flow--29dbc-drawer-for-the-focused-card-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  12) [chromium] › tests\e2e\keyboard.spec.ts:76:7 › C3 keyboard flow (j/k/o/a/x) › a marks the focused card applied; moving on, x dismisses the next one 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3100/
+    Call log:
+      - navigating to "http://localhost:3100/", waiting until "load"
+
+
+      14 |
+      15 | async function login(page: Page) {
+    > 16 |   await page.goto("/")
+         |              ^
+      17 |   await expect(page).toHaveURL(/\/login$/)
+      18 |   await page.getByLabel("Password").fill(FOUNDER_PASSWORD)
+      19 |   await page.getByRole("button", { name: "Sign in" }).click()
+        at login (C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\keyboard.spec.ts:16:14)
+        at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\keyboard.spec.ts:79:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\keyboard-C3-keyboard-flow--cc514-on-x-dismisses-the-next-one-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\keyboard-C3-keyboard-flow--cc514-on-x-dismisses-the-next-one-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\keyboard-C3-keyboard-flow--cc514-on-x-dismisses-the-next-one-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\keyboard-C3-keyboard-flow--cc514-on-x-dismisses-the-next-one-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  13) [chromium] › tests\e2e\keyboard.spec.ts:114:7 › C3 keyboard flow (j/k/o/a/x) › shortcuts do not fire while a text input has focus 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3100/
+    Call log:
+      - navigating to "http://localhost:3100/", waiting until "load"
+
+
+      14 |
+      15 | async function login(page: Page) {
+    > 16 |   await page.goto("/")
+         |              ^
+      17 |   await expect(page).toHaveURL(/\/login$/)
+      18 |   await page.getByLabel("Password").fill(FOUNDER_PASSWORD)
+      19 |   await page.getByRole("button", { name: "Sign in" }).click()
+        at login (C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\keyboard.spec.ts:16:14)
+        at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\keyboard.spec.ts:115:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\keyboard-C3-keyboard-flow--c6b71-hile-a-text-input-has-focus-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\keyboard-C3-keyboard-flow--c6b71-hile-a-text-input-has-focus-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\keyboard-C3-keyboard-flow--c6b71-hile-a-text-input-has-focus-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\keyboard-C3-keyboard-flow--c6b71-hile-a-text-input-has-focus-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  14) [chromium] › tests\e2e\screenshots.spec.ts:31:9 › evidence screenshots › login page @ 360px ──
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3100/login
+    Call log:
+      - navigating to "http://localhost:3100/login", waiting until "load"
+
+
+      31 |     test(`login page @ ${vp.name}px`, async ({ page }) => {
+      32 |       await page.setViewportSize({ width: vp.width, height: vp.height })
+    > 33 |       await page.goto("/login")
+         |                  ^
+      34 |       await expect(page.getByRole("heading", { name: "OpportunityOS" })).toBeVisible()
+      35 |       await page.screenshot({
+      36 |         path: path.join(EVIDENCE_DIR, `d7-login-${vp.name}.png`),
+        at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\screenshots.spec.ts:33:18
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\screenshots-evidence-screenshots-login-page-360px-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\screenshots-evidence-screenshots-login-page-360px-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\screenshots-evidence-screenshots-login-page-360px-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\screenshots-evidence-screenshots-login-page-360px-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  15) [chromium] › tests\e2e\screenshots.spec.ts:41:9 › evidence screenshots › feed page @ 360px ───
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3100/login
+    Call log:
+      - navigating to "http://localhost:3100/login", waiting until "load"
+
+
+      41 |     test(`feed page @ ${vp.name}px`, async ({ page }) => {
+      42 |       await page.setViewportSize({ width: vp.width, height: vp.height })
+    > 43 |       await page.goto("/login")
+         |                  ^
+      44 |       await page.getByLabel("Password").fill(FOUNDER_PASSWORD)
+      45 |       await page.getByRole("button", { name: "Sign in" }).click()
+      46 |       await expect(page).toHaveURL(/\/$/)
+        at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\screenshots.spec.ts:43:18
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\screenshots-evidence-screenshots-feed-page-360px-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\screenshots-evidence-screenshots-feed-page-360px-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\screenshots-evidence-screenshots-feed-page-360px-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\screenshots-evidence-screenshots-feed-page-360px-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  16) [chromium] › tests\e2e\screenshots.spec.ts:31:9 › evidence screenshots › login page @ 1280px ─
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3100/login
+    Call log:
+      - navigating to "http://localhost:3100/login", waiting until "load"
+
+
+      31 |     test(`login page @ ${vp.name}px`, async ({ page }) => {
+      32 |       await page.setViewportSize({ width: vp.width, height: vp.height })
+    > 33 |       await page.goto("/login")
+         |                  ^
+      34 |       await expect(page.getByRole("heading", { name: "OpportunityOS" })).toBeVisible()
+      35 |       await page.screenshot({
+      36 |         path: path.join(EVIDENCE_DIR, `d7-login-${vp.name}.png`),
+        at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\screenshots.spec.ts:33:18
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\screenshots-evidence-screenshots-login-page-1280px-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\screenshots-evidence-screenshots-login-page-1280px-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\screenshots-evidence-screenshots-login-page-1280px-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\screenshots-evidence-screenshots-login-page-1280px-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  17) [chromium] › tests\e2e\screenshots.spec.ts:41:9 › evidence screenshots › feed page @ 1280px ──
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3100/login
+    Call log:
+      - navigating to "http://localhost:3100/login", waiting until "load"
+
+
+      41 |     test(`feed page @ ${vp.name}px`, async ({ page }) => {
+      42 |       await page.setViewportSize({ width: vp.width, height: vp.height })
+    > 43 |       await page.goto("/login")
+         |                  ^
+      44 |       await page.getByLabel("Password").fill(FOUNDER_PASSWORD)
+      45 |       await page.getByRole("button", { name: "Sign in" }).click()
+      46 |       await expect(page).toHaveURL(/\/$/)
+        at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\screenshots.spec.ts:43:18
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\screenshots-evidence-screenshots-feed-page-1280px-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\screenshots-evidence-screenshots-feed-page-1280px-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\screenshots-evidence-screenshots-feed-page-1280px-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\screenshots-evidence-screenshots-feed-page-1280px-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  18) [chromium] › tests\e2e\smoke.spec.ts:28:7 › founder alpha smoke › login, feed, drawer, download, feedback, mark applied, dashboard counts 
+
+    Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3100/
+    Call log:
+      - navigating to "http://localhost:3100/", waiting until "load"
+
+
+      12 |
+      13 | async function login(page: Page) {
+    > 14 |   await page.goto("/")
+         |              ^
+      15 |   await expect(page).toHaveURL(/\/login$/)
+      16 |   await page.getByLabel("Password").fill(FOUNDER_PASSWORD)
+      17 |   await page.getByRole("button", { name: "Sign in" }).click()
+        at login (C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\smoke.spec.ts:14:14)
+        at C:\Users\M7mdEhab\projects\OpportunityOS\web\tests\e2e\smoke.spec.ts:32:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\smoke-founder-alpha-smoke--16fb0-rk-applied-dashboard-counts-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\smoke-founder-alpha-smoke--16fb0-rk-applied-dashboard-counts-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\smoke-founder-alpha-smoke--16fb0-rk-applied-dashboard-counts-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\smoke-founder-alpha-smoke--16fb0-rk-applied-dashboard-counts-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  18 failed
+    [chromium] › tests\e2e\artifacts-preview.spec.ts:24:7 › D2 artifacts panel: PDF preview, template switch, DOCX download › preview renders, template switch changes it, DOCX downloads 
+    [chromium] › tests\e2e\facets.spec.ts:139:7 › C1 facets panel › the language facet renders as permanently unavailable 
+    [chromium] › tests\e2e\facets.spec.ts:158:7 › C1 saved views › create, select, set default, reload — the view survives 
+    [chromium] › tests\e2e\facets.spec.ts:242:7 › C4 hidden-reasons audit › the dashboard's HIDDEN number links to the table, and unhide-by-reason changes the visible count 
+    [chromium] › tests\e2e\facets.spec.ts:318:7 › C4 hidden-reasons audit › the >10% over-hiding warning is visible once constructed 
+    [chromium] › tests\e2e\filters-unavailable.spec.ts:30:7 › D3 founder-controlled filters — unavailable_reason › an unavailable filter renders as inert, shows its reason, and stays switchable 
+    [chromium] › tests\e2e\filters.spec.ts:183:7 › D3 founder-controlled filters › toggling a filter changes its affected-count and re-queries the feed without reloading 
+    [chromium] › tests\e2e\filters.spec.ts:364:7 › D3 founder-controlled filters › an out-of-range param is rejected with 422, and the feed keeps working 
+    [chromium] › tests\e2e\filters.spec.ts:415:7 › D3 founder-controlled filters › a rank_only/label_only filter never looks like it hid anything 
+    [chromium] › tests\e2e\keyboard.spec.ts:29:7 › C3 keyboard flow (j/k/o/a/x) › j/k move the cursor and move real DOM focus with it 
+    [chromium] › tests\e2e\keyboard.spec.ts:59:7 › C3 keyboard flow (j/k/o/a/x) › o opens the drawer for the focused card 
+    [chromium] › tests\e2e\keyboard.spec.ts:76:7 › C3 keyboard flow (j/k/o/a/x) › a marks the focused card applied; moving on, x dismisses the next one 
+    [chromium] › tests\e2e\keyboard.spec.ts:114:7 › C3 keyboard flow (j/k/o/a/x) › shortcuts do not fire while a text input has focus 
+    [chromium] › tests\e2e\screenshots.spec.ts:31:9 › evidence screenshots › login page @ 360px ────
+    [chromium] › tests\e2e\screenshots.spec.ts:41:9 › evidence screenshots › feed page @ 360px ─────
+    [chromium] › tests\e2e\screenshots.spec.ts:31:9 › evidence screenshots › login page @ 1280px ───
+    [chromium] › tests\e2e\screenshots.spec.ts:41:9 › evidence screenshots › feed page @ 1280px ────
+    [chromium] › tests\e2e\smoke.spec.ts:28:7 › founder alpha smoke › login, feed, drawer, download, feedback, mark applied, dashboard counts 
+  4 passed (2.0m)

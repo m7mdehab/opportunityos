@@ -1,0 +1,7 @@
+test_submit_and_query_feedback (test_feedback.TestFounderFeedbackService.test_submit_and_query_feedback) ... _refresh_search_tsv: skipped for opportunity OPP-FB-1 -- non-PostgreSQL bind (sqlite); search_tsv was not refreshed
+ok
+
+----------------------------------------------------------------------
+Ran 1 test in 0.659s
+
+OK

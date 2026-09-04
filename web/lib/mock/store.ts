@@ -8,13 +8,21 @@ import type {
   ActionType,
   DashboardDay,
   DashboardResponse,
+  Facet,
+  FacetsResponse,
+  FacetValueState,
   FeedbackLabel,
   FilterMode,
   FiltersResponse,
   FounderFilter,
+  HiddenReason,
+  HiddenReasonsResponse,
   OpportunityDetail,
+  OpportunityExtractionFields,
   OpportunityListItem,
   OpportunityListResponse,
+  SavedView,
+  SavedViewsResponse,
   SourceHealth,
   SourcesHealthResponse,
   TruthStatusResponse,
@@ -39,6 +47,82 @@ interface FilterSetting {
 }
 
 const HIGH_FIT_THRESHOLD = 70
+
+/** C1 mock facet surface. A trimmed set of the real API's 15 facets,
+ * bucketed over fields this mock's `SeedOpportunity` actually models
+ * (track/source_id/organization/decision/fit_score) — this mock has no
+ * modelled work_mode/location/compensation field, matching the fact that
+ * the real API does not expose those on any opportunity response either
+ * (see this order's return notes). `language` is unavailable here for the
+ * same reason it is unavailable on the real API: no language is ever
+ * persisted anywhere. */
+interface MockFacetDef {
+  facet_id: string
+  value_type: Facet["value_type"]
+  description: string
+  available: boolean
+  unavailable_reason: string | null
+  valueOf: (o: SeedOpportunity) => string
+}
+
+const MOCK_FACET_DEFS: MockFacetDef[] = [
+  {
+    facet_id: "track",
+    value_type: "enum",
+    description: "Employment vs. procurement track.",
+    available: true,
+    unavailable_reason: null,
+    valueOf: (o) => o.track,
+  },
+  {
+    facet_id: "source_id",
+    value_type: "enum",
+    description: "Source adapter this opportunity came from.",
+    available: true,
+    unavailable_reason: null,
+    valueOf: (o) => o.source_id,
+  },
+  {
+    facet_id: "employer",
+    value_type: "string",
+    description: "Hiring organization.",
+    available: true,
+    unavailable_reason: null,
+    valueOf: (o) => o.organization,
+  },
+  {
+    facet_id: "decision",
+    value_type: "enum",
+    description: "The latest qualification decision.",
+    available: true,
+    unavailable_reason: null,
+    valueOf: (o) => o.decision ?? "unspecified",
+  },
+  {
+    facet_id: "fit_score",
+    value_type: "range",
+    description: "Fit score bucketed in quartiles.",
+    available: true,
+    unavailable_reason: null,
+    valueOf: (o) => {
+      const s = o.fit_score
+      if (s === null) return "unscored"
+      if (s < 25) return "0-25"
+      if (s < 50) return "25-50"
+      if (s < 75) return "50-75"
+      return "75-100"
+    },
+  },
+  {
+    facet_id: "language",
+    value_type: "enum",
+    description: "Posting language.",
+    available: false,
+    unavailable_reason:
+      "No language is ever persisted for an opportunity anywhere in the schema.",
+    valueOf: () => "unspecified",
+  },
+]
 
 function daysAgoUtc(n: number): string {
   const d = new Date()
@@ -65,8 +149,17 @@ export class MockStore {
    * /api/filters/{filter_id}`. */
   filterSettings: Map<string, FilterSetting>
 
+  /** C1 facet settings, one entry per `MOCK_FACET_DEFS` row that the
+   * founder has actually touched — absent is the "off" state, matching the
+   * real API's `FounderFacetRecord` semantics exactly. */
+  facetSettings: Map<string, { include: string[]; exclude: string[] }>
+  /** C1 saved views. */
+  savedViews: SavedView[]
+
   constructor(scenario: MockScenario) {
     this.scenario = scenario
+    this.facetSettings = new Map()
+    this.savedViews = []
     this.filterSettings = new Map(
       FOUNDER_FILTER_DEFINITIONS.map((f) => [
         f.filter_id,
@@ -246,7 +339,177 @@ export class MockStore {
         if (setting.mode === "rank_only") rankDemoted = true
       }
     }
+    for (const fd of MOCK_FACET_DEFS) {
+      if (!fd.available) continue
+      const row = this.facetSettings.get(fd.facet_id)
+      if (!row || (row.include.length === 0 && row.exclude.length === 0)) continue
+      const value = fd.valueOf(o)
+      const hides =
+        (row.include.length > 0 && !row.include.includes(value)) ||
+        row.exclude.includes(value)
+      if (hides) hidden_by.push(`facet:${fd.facet_id}`)
+    }
     return { hidden_by, flagged_by, rankDemoted }
+  }
+
+  // ---- facets (C1) ----
+
+  listFacets(): FacetsResponse {
+    const items = [...this.opportunities.values()]
+    return {
+      facets: MOCK_FACET_DEFS.map((fd) => {
+        if (!fd.available) {
+          return {
+            facet_id: fd.facet_id,
+            value_type: fd.value_type,
+            description: fd.description,
+            available: false,
+            unavailable_reason: fd.unavailable_reason,
+            values: [],
+            excluded_count: 0,
+            include: [],
+            exclude: [],
+          }
+        }
+        const row = this.facetSettings.get(fd.facet_id) ?? { include: [], exclude: [] }
+        const counts = new Map<string, number>()
+        let excluded = 0
+        for (const o of items) {
+          const value = fd.valueOf(o)
+          counts.set(value, (counts.get(value) ?? 0) + 1)
+          const hides =
+            (row.include.length > 0 && !row.include.includes(value)) ||
+            row.exclude.includes(value)
+          if (hides) excluded += 1
+        }
+        const values = [...counts.entries()]
+          .sort(([a], [b]) => (a < b ? -1 : 1))
+          .map(([value, count]) => ({
+            value,
+            count,
+            state: (row.include.includes(value)
+              ? "include"
+              : row.exclude.includes(value)
+                ? "exclude"
+                : "off") as FacetValueState,
+          }))
+        return {
+          facet_id: fd.facet_id,
+          value_type: fd.value_type,
+          description: fd.description,
+          available: true,
+          unavailable_reason: null,
+          values,
+          excluded_count: excluded,
+          include: row.include,
+          exclude: row.exclude,
+        }
+      }),
+    }
+  }
+
+  updateFacet(
+    facetId: string,
+    body: { include?: string[]; exclude?: string[] }
+  ): Facet | "not_found" | "unavailable" {
+    const fd = MOCK_FACET_DEFS.find((f) => f.facet_id === facetId)
+    if (!fd) return "not_found"
+    if (!fd.available) return "unavailable"
+    const existing = this.facetSettings.get(facetId) ?? { include: [], exclude: [] }
+    const include = body.include ?? existing.include
+    const exclude = body.exclude ?? existing.exclude
+    this.facetSettings.set(facetId, { include, exclude })
+    return this.listFacets().facets.find((f) => f.facet_id === facetId)!
+  }
+
+  // ---- saved views (C1) ----
+
+  listSavedViews(): SavedViewsResponse {
+    return { views: this.savedViews }
+  }
+
+  createSavedView(body: {
+    name: string
+    facets: SavedView["facets"]
+    search_query?: string | null
+    is_default?: boolean
+  }): SavedView {
+    if (body.is_default) {
+      for (const v of this.savedViews) v.is_default = false
+    }
+    const view: SavedView = {
+      id: `view-${this.savedViews.length + 1}-${Date.now()}`,
+      name: body.name,
+      facets: body.facets,
+      search_query: body.search_query ?? null,
+      is_default: body.is_default ?? false,
+    }
+    this.savedViews.push(view)
+    return view
+  }
+
+  updateSavedView(
+    viewId: string,
+    body: {
+      name?: string
+      facets?: SavedView["facets"]
+      search_query?: string | null
+      is_default?: boolean
+    }
+  ): SavedView | null {
+    const view = this.savedViews.find((v) => v.id === viewId)
+    if (!view) return null
+    if (body.name !== undefined) view.name = body.name
+    if (body.facets !== undefined) view.facets = body.facets
+    if (body.search_query !== undefined) view.search_query = body.search_query
+    if (body.is_default) {
+      for (const v of this.savedViews) v.is_default = false
+      view.is_default = true
+    } else if (body.is_default === false) {
+      view.is_default = false
+    }
+    return view
+  }
+
+  deleteSavedView(viewId: string): boolean {
+    const idx = this.savedViews.findIndex((v) => v.id === viewId)
+    if (idx === -1) return false
+    this.savedViews.splice(idx, 1)
+    return true
+  }
+
+  // ---- hidden reasons (C4) ----
+
+  hiddenReasonsAudit(): HiddenReasonsResponse {
+    const counts = new Map<string, number>()
+    for (const o of this.opportunities.values()) {
+      const { hidden_by } = this.matchingFilterIds(o)
+      for (const reason of hidden_by) {
+        const label = reason.startsWith("facet:") ? `facet: ${reason.slice(6)}` : `filter: ${reason}`
+        counts.set(label, (counts.get(label) ?? 0) + 1)
+      }
+    }
+    const reasons: HiddenReason[] = [...counts.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([reason, count]) => ({ reason, count }))
+    return { reasons }
+  }
+
+  unhideByReason(reason: string): boolean {
+    if (reason.startsWith("facet: ")) {
+      const facetId = reason.slice("facet: ".length)
+      if (!MOCK_FACET_DEFS.some((f) => f.facet_id === facetId)) return false
+      this.facetSettings.set(facetId, { include: [], exclude: [] })
+      return true
+    }
+    if (reason.startsWith("filter: ")) {
+      const filterId = reason.slice("filter: ".length)
+      const setting = this.filterSettings.get(filterId)
+      if (!setting) return false
+      setting.enabled = false
+      return true
+    }
+    return false
   }
 
   private hiddenCount(items: SeedOpportunity[]): number {
@@ -374,6 +637,7 @@ export class MockStore {
       evidence_links: o.evidence_links,
       action_history: o.action_history,
       feedback_history: o.feedback_history,
+      ...mockExtractionFields(o),
     }
   }
 
@@ -540,10 +804,21 @@ export class MockStore {
   // ---- dashboard / sources / worker / truth ----
 
   dashboard(days: number): DashboardResponse {
+    // `hidden_by_filters` for *today* (index 0) is recomputed live against
+    // current filter/facet settings on every call -- matching the real
+    // API's `dashboard_daily`, which re-runs `apply_filters` against
+    // today's rows on every request rather than a value frozen at seed
+    // time. Earlier days stay the static snapshot this mock has no
+    // per-day history to recompute against.
+    const series = this.dailyCounters.slice(0, days).map((day, i) =>
+      i === 0
+        ? { ...day, hidden_by_filters: this.hiddenCount([...this.opportunities.values()]) }
+        : day
+    )
     return {
       days,
       high_fit_threshold: HIGH_FIT_THRESHOLD,
-      series: this.dailyCounters.slice(0, days),
+      series,
     }
   }
 
@@ -585,6 +860,66 @@ export class MockStore {
   }
 }
 
+/** BRIEF-FR-006 C5: `SeedOpportunity` (fixtures.ts) predates the C5 order
+ * and has no work_mode/location/compensation/family fields of its own —
+ * rather than hand-add them to every one of its ~30 literal fixture
+ * entries (out of this order's scope, and fixtures.ts is large enough that
+ * doing so blind would risk silently changing an existing scenario's
+ * facet/filter behaviour), this deterministically derives a plausible,
+ * *varied* set of C5 fields from each opportunity's own `id` string so the
+ * mock feed/detail can demonstrate every field the real API now returns.
+ * This is synthetic mock-only data, not a claim about a real founder or
+ * employer — the real values come from `api/serialization.py`. One row
+ * (`id` ending in `0` mod the rotation) is deliberately `"unspecified"`,
+ * matching the real corpus measurement that ~47.8% of postings carry no
+ * work-mode signal. */
+function hashString(s: string): number {
+  let h = 0
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) | 0
+  }
+  return Math.abs(h)
+}
+
+const MOCK_WORK_MODES = ["remote", "hybrid", "onsite", "unspecified"] as const
+const MOCK_LOCATIONS: Array<{ city: string | null; country: string | null; region: string | null }> = [
+  { city: "Cairo", country: "EG", region: "MENA" },
+  { city: null, country: null, region: null },
+  { city: "Dubai", country: "AE", region: "MENA" },
+  { city: "Berlin", country: "DE", region: "EU" },
+]
+const MOCK_EMPLOYMENT_TYPES = ["full_time", "contract", "part_time", "unspecified"] as const
+const MOCK_SENIORITY_LEVELS = ["mid", "senior", "lead", "unspecified"] as const
+
+function mockExtractionFields(o: SeedOpportunity): OpportunityExtractionFields {
+  const h = hashString(o.id)
+  const workMode = MOCK_WORK_MODES[h % MOCK_WORK_MODES.length]
+  const location = MOCK_LOCATIONS[h % MOCK_LOCATIONS.length]
+  const employmentType = MOCK_EMPLOYMENT_TYPES[h % MOCK_EMPLOYMENT_TYPES.length]
+  const seniorityLevel = MOCK_SENIORITY_LEVELS[h % MOCK_SENIORITY_LEVELS.length]
+  const isClustered = h % 5 === 0
+
+  return {
+    work_mode: workMode,
+    work_mode_source: workMode === "unspecified" ? null : h % 3 === 0 ? "inferred" : "posting",
+    location_country: location.country,
+    location_city: location.city,
+    location_region: location.region,
+    remote_scope: workMode === "remote" ? "worldwide" : "unspecified",
+    remote_scope_regions: workMode === "remote" && h % 2 === 0 ? ["EG", "AE"] : [],
+    employment_type: employmentType,
+    seniority_level: seniorityLevel,
+    compensation_min: h % 4 === 0 ? null : 3000 + (h % 5000),
+    compensation_max: h % 4 === 0 ? null : 6000 + (h % 5000),
+    compensation_currency: h % 4 === 0 ? null : "USD",
+    compensation_period: h % 4 === 0 ? null : "monthly",
+    title_family: null,
+    title_level: null,
+    family_key: isClustered ? `fam-${h % 7}` : null,
+    family_size: isClustered ? 2 + (h % 20) : null,
+  }
+}
+
 function toListItem(
   o: SeedOpportunity,
   hidden_by: string[],
@@ -607,6 +942,7 @@ function toListItem(
     feedback_label: o.feedback_label,
     hidden_by,
     flagged_by,
+    ...mockExtractionFields(o),
   }
 }
 

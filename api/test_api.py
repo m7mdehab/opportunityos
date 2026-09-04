@@ -26,15 +26,19 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from storage.engine import get_engine, get_session_factory
+from storage.repository import backfill_search_tsv
 from storage.models import (
     Base,
     FieldProvenanceRecord,
+    FounderFacetRecord,
     FounderFeedbackRecord,
     FounderFilterSettingRecord,
     FounderOpportunityViewRecord,
+    FounderSavedViewRecord,
     FounderTriageStateRecord,
     IdempotencyReservationRecord,
     MatchEvaluationRecord,
+    OpportunityFamilyRecord,
     OpportunityRecord,
     OutboundActionRecordModel,
     SourcePollRunRecord,
@@ -55,8 +59,19 @@ from truth.pack import LoadedPack, PackValidationReport
 from truth.validator import ClaimValidator
 
 from api.app import create_app
-from api.filters import FILTER_DEFINITIONS, FILTER_DEFINITIONS_BY_ID
+from matching.compiler_employment import EmploymentArtifactCompiler
+from api.facets import FacetSettingsRow, poll_hide_fraction_warnings
+from api.filters import (
+    FILTER_DEFINITIONS,
+    FILTER_DEFINITIONS_BY_ID,
+    OpportunityFilterContext,
+    affected_count as filter_affected_count,
+    apply_filters,
+    build_filter_contexts,
+    to_naive_utc,
+)
 from api.settings import Settings
+from opportunity.manual_sources import MANUAL_SOURCES
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_PACK_PATH = REPO_ROOT / "docs" / "templates" / "truth_pack.template.yaml"
@@ -378,6 +393,14 @@ class ApiTestCase(unittest.TestCase):
             )
         )
         self.session.commit()
+        # BRIEF-FR-006 C2: this helper builds `OpportunityRecord` directly
+        # (not through `StorageRepository.save_opportunity`, the only path
+        # that populates `search_tsv` on write), so every opportunity seeded
+        # by every existing test class would otherwise have `search_tsv IS
+        # NULL` and be invisible to search. Running the idempotent batch
+        # backfill here keeps every seeded row searchable without changing
+        # `seed_opportunity`'s return value or any of its existing callers.
+        backfill_search_tsv(self.session)
         return record
 
     def seed_compensation(
@@ -846,6 +869,59 @@ class OpportunityRoutesTest(ApiTestCase):
         views = self.session.query(FounderOpportunityViewRecord).filter_by(opportunity_id="opp-viewed").all()
         self.assertEqual(len(views), 1)
 
+    # -- E4F3.5: "new since you last looked" --------------------------------
+
+    def test_new_since_last_view_marks_rows_when_no_view_ever_recorded(self):
+        self.seed_opportunity("opp-never-viewed", created_at=datetime.now(timezone.utc) - timedelta(hours=1))
+
+        response = self.client.get("/api/opportunities/new-since-last-view")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertIsNone(body["last_viewed_at"])
+        ids = [row["id"] for row in body["new_opportunities"]]
+        self.assertIn("opp-never-viewed", ids)
+
+    def test_new_since_last_view_excludes_rows_older_than_the_last_view_and_includes_newer_ones(self):
+        old_time = datetime.now(timezone.utc) - timedelta(days=2)
+        self.seed_opportunity("opp-old", created_at=old_time)
+
+        # Founder looks at the feed (viewing opp-old records a view row).
+        detail_response = self.client.get("/api/opportunities/opp-old")
+        self.assertEqual(detail_response.status_code, 200)
+
+        # A brand new opportunity, ingested after that view.
+        new_time = datetime.now(timezone.utc) + timedelta(hours=1)
+        self.seed_opportunity("opp-new-after-view", created_at=new_time)
+
+        response = self.client.get("/api/opportunities/new-since-last-view")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertIsNotNone(body["last_viewed_at"])
+        ids = [row["id"] for row in body["new_opportunities"]]
+        self.assertIn("opp-new-after-view", ids)
+        self.assertNotIn("opp-old", ids)
+
+    def test_marking_a_row_seen_changes_no_decision_fit_score_or_hidden_state(self):
+        self.seed_opportunity("opp-seen-check")
+        self.seed_evaluation("opp-seen-check", decision="qualified", fit_score=81.0)
+
+        before = self.client.get("/api/opportunities/opp-seen-check").json()
+
+        # Mark it seen a second time (get_opportunity records a view on every
+        # call) -- this must be a pure read as far as decision/fit_score/
+        # hidden state are concerned.
+        after = self.client.get("/api/opportunities/opp-seen-check").json()
+
+        self.assertEqual(before["qualification"]["decision"], after["qualification"]["decision"])
+        self.assertEqual(before["scoring"]["fit_score"], after["scoring"]["fit_score"])
+        self.assertEqual(
+            self.session.query(FounderOpportunityViewRecord)
+            .filter_by(opportunity_id="opp-seen-check")
+            .count(),
+            2,
+            "each detail view records its own row -- marking seen writes only to founder_opportunity_views",
+        )
+
     def test_detail_404_for_missing_opportunity(self):
         response = self.client.get("/api/opportunities/does-not-exist")
         self.assertEqual(response.status_code, 404)
@@ -1047,6 +1123,41 @@ class ArtifactRoutesTest(ApiTestCase):
         self.assertTrue(response.content.startswith(b"PK"), "response body is not a docx/zip payload")
         self.assertIn("attachment", response.headers["content-disposition"])
 
+    def test_artifact_template_query_param_selects_a_different_document(self):
+        # BRIEF-FR-006 council review #2 MAJOR 10: `template=` was never
+        # threaded past `binary_export.py`, so Compact and Modern were
+        # unreachable from the product. Assert the query param actually
+        # changes the exported bytes for all three committed templates.
+        import unittest.mock as mock
+
+        self.seed_opportunity("opp-clean")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            from truth.pack import LoadedPack, PackValidationReport
+
+            graph = _clean_truth_pack_graph()
+            loader.return_value = LoadedPack(
+                graph=graph,
+                report=PackValidationReport(valid=True, section_counts=(("evidence", 1),)),
+                truth_pack_hash="clean-hash",
+            )
+            reload_response = client.post("/api/truth/reload")
+            self.assertEqual(reload_response.status_code, 200)
+
+            bodies = {}
+            for template_name in ("classic", "compact", "modern"):
+                response = client.get(
+                    "/api/opportunities/opp-clean/artifacts/cv.docx",
+                    params={"template": template_name},
+                )
+                self.assertEqual(response.status_code, 200)
+                bodies[template_name] = response.content
+
+        self.assertEqual(len(bodies), 3)
+        self.assertEqual(len({bodies["classic"], bodies["compact"], bodies["modern"]}), 3)
+
     def test_artifact_409_never_returns_docx_bytes(self):
         import unittest.mock as mock
 
@@ -1194,6 +1305,335 @@ class ArtifactRoutesTest(ApiTestCase):
         body = response.json()
         self.assertEqual(body["detail"], "no truth pack loaded")
         self.assertIn("reason", body)
+
+    # -- D2: PDF preview routes --------------------------------------
+
+    def test_pdf_route_streams_inline_with_pdf_content_type(self):
+        """D2.2: `cv.pdf` is `200`, `Content-Type: application/pdf`,
+        `Content-Disposition: inline`, body starts `%PDF`."""
+        import unittest.mock as mock
+
+        self.seed_opportunity("opp-clean")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            from truth.pack import LoadedPack, PackValidationReport
+
+            graph = _clean_truth_pack_graph()
+            loader.return_value = LoadedPack(
+                graph=graph,
+                report=PackValidationReport(valid=True, section_counts=(("evidence", 1),)),
+                truth_pack_hash="clean-hash",
+            )
+            client.post("/api/truth/reload")
+            response = client.get("/api/opportunities/opp-clean/artifacts/cv.pdf")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "application/pdf")
+        self.assertIn("inline", response.headers["content-disposition"])
+        self.assertTrue(response.content.startswith(b"%PDF"), "response body is not a PDF payload")
+
+    def test_pdf_download_variant_is_attachment(self):
+        """D2.1: `?download=true` on `cv.pdf` returns `attachment`, not
+        `inline` -- the download variant the deliverable text requires
+        alongside the inline preview default."""
+        import unittest.mock as mock
+
+        self.seed_opportunity("opp-clean")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            from truth.pack import LoadedPack, PackValidationReport
+
+            graph = _clean_truth_pack_graph()
+            loader.return_value = LoadedPack(
+                graph=graph,
+                report=PackValidationReport(valid=True, section_counts=(("evidence", 1),)),
+                truth_pack_hash="clean-hash",
+            )
+            client.post("/api/truth/reload")
+            response = client.get(
+                "/api/opportunities/opp-clean/artifacts/cv.pdf", params={"download": "true"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("attachment", response.headers["content-disposition"])
+        self.assertTrue(response.content.startswith(b"%PDF"))
+
+    def test_pdf_template_query_param_selects_a_different_document(self):
+        """D2.3: each of the three templates returns a different PDF."""
+        import unittest.mock as mock
+
+        self.seed_opportunity("opp-clean")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            from truth.pack import LoadedPack, PackValidationReport
+
+            graph = _clean_truth_pack_graph()
+            loader.return_value = LoadedPack(
+                graph=graph,
+                report=PackValidationReport(valid=True, section_counts=(("evidence", 1),)),
+                truth_pack_hash="clean-hash",
+            )
+            client.post("/api/truth/reload")
+
+            bodies = {}
+            for template_name in ("classic", "compact", "modern"):
+                response = client.get(
+                    "/api/opportunities/opp-clean/artifacts/cv.pdf",
+                    params={"template": template_name},
+                )
+                self.assertEqual(response.status_code, 200)
+                bodies[template_name] = response.content
+
+        self.assertEqual(len({bodies["classic"], bodies["compact"], bodies["modern"]}), 3)
+
+    def test_unknown_template_is_422_not_a_fallback(self):
+        """D2.3: an unknown template is a 422, never a silent fallback to a
+        different document than the founder asked for."""
+        self.seed_opportunity("opp-clean")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        response = client.get(
+            "/api/opportunities/opp-clean/artifacts/cv.pdf", params={"template": "nonexistent"},
+        )
+        self.assertEqual(response.status_code, 422)
+
+        response = client.get(
+            "/api/opportunities/opp-clean/artifacts/cv.docx", params={"template": "nonexistent"},
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_docx_route_still_attachment(self):
+        """D2.1: DOCX routes keep `attachment`, never `inline`."""
+        import unittest.mock as mock
+
+        self.seed_opportunity("opp-clean")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            from truth.pack import LoadedPack, PackValidationReport
+
+            graph = _clean_truth_pack_graph()
+            loader.return_value = LoadedPack(
+                graph=graph,
+                report=PackValidationReport(valid=True, section_counts=(("evidence", 1),)),
+                truth_pack_hash="clean-hash",
+            )
+            client.post("/api/truth/reload")
+            response = client.get("/api/opportunities/opp-clean/artifacts/cv.docx")
+
+        self.assertIn("attachment", response.headers["content-disposition"])
+        self.assertNotIn("inline", response.headers["content-disposition"])
+
+    def test_omitted_items_endpoint_reflects_document_model(self):
+        """D2's "what was left out and why" panel: the JSON endpoint returns
+        `omitted_items` shaped the way the drawer needs them."""
+        import unittest.mock as mock
+
+        self.seed_opportunity("opp-clean")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            from truth.pack import LoadedPack, PackValidationReport
+
+            graph = _clean_truth_pack_graph()
+            loader.return_value = LoadedPack(
+                graph=graph,
+                report=PackValidationReport(valid=True, section_counts=(("evidence", 1),)),
+                truth_pack_hash="clean-hash",
+            )
+            client.post("/api/truth/reload")
+            response = client.get("/api/opportunities/opp-clean/artifacts/cv/omitted")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertIn("omitted_items", body)
+        self.assertEqual(body["template"], "classic")
+        for item in body["omitted_items"]:
+            self.assertIn("section_id", item)
+            self.assertIn("text", item)
+            self.assertIn("reason", item)
+
+    def test_omitted_items_endpoint_409_on_rejected_claim(self):
+        """The panel must see the claim and reason on a 409, not a bare
+        error -- same 409 body shape as the binary routes."""
+        import unittest.mock as mock
+
+        self.seed_opportunity("opp-mismatch")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            from truth.pack import LoadedPack, PackValidationReport
+
+            graph = _mismatched_truth_pack_graph()
+            loader.return_value = LoadedPack(
+                graph=graph,
+                report=PackValidationReport(valid=True, section_counts=(("evidence", 1),)),
+                truth_pack_hash="mismatch-hash",
+            )
+            client.post("/api/truth/reload")
+            response = client.get("/api/opportunities/opp-mismatch/artifacts/cv/omitted")
+
+        self.assertEqual(response.status_code, 409)
+        body = response.json()
+        self.assertEqual(body["detail"], "claim validation failed")
+        self.assertGreaterEqual(len(body["findings"]), 1)
+
+
+class ArtifactCacheTest(ApiTestCase):
+    """D2.4/D2.5: the `artifact_cache` table -- hit, hash-change
+    invalidation, and the 409-never-cached rule."""
+
+    def setUp(self):
+        super().setUp()
+
+    def _mock_pack(self, loader, graph, truth_pack_hash):
+        from truth.pack import LoadedPack, PackValidationReport
+
+        loader.return_value = LoadedPack(
+            graph=graph,
+            report=PackValidationReport(valid=True, section_counts=(("evidence", 1),)),
+            truth_pack_hash=truth_pack_hash,
+        )
+
+    def test_cache_hit_returns_stored_bytes_without_recompiling(self):
+        """D2.4: miss -> hit. Prints the cache key computed for the request
+        so the acceptance transcript shows it, per D2.4's requirement."""
+        import unittest.mock as mock
+
+        from api import artifact_cache
+
+        self.seed_opportunity("opp-clean")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            graph = _clean_truth_pack_graph()
+            self._mock_pack(loader, graph, "clean-hash")
+            client.post("/api/truth/reload")
+
+            key = artifact_cache.cache_key("opp-clean", "clean-hash", "classic", "cv")
+            print(f"D2.4 cache key (miss then hit) = {key}")
+
+            with mock.patch(
+                "api.routes_api.EmploymentArtifactCompiler.compile_tailored_cv",
+                wraps=EmploymentArtifactCompiler().compile_tailored_cv,
+            ) as compile_spy:
+                first = client.get("/api/opportunities/opp-clean/artifacts/cv.docx")
+                self.assertEqual(first.status_code, 200)
+                self.assertEqual(compile_spy.call_count, 1)
+
+                second = client.get("/api/opportunities/opp-clean/artifacts/cv.docx")
+                self.assertEqual(second.status_code, 200)
+                # Cache hit: the compiler is never invoked a second time.
+                self.assertEqual(compile_spy.call_count, 1)
+
+        self.assertEqual(first.content, second.content)
+
+        row = self.session.execute(
+            text("SELECT cache_key FROM artifact_cache WHERE cache_key = :k"), {"k": key}
+        ).fetchone()
+        self.assertIsNotNone(row, "expected the cache row to exist under the computed key")
+
+    def test_changed_truth_pack_hash_invalidates_and_regenerates(self):
+        """D2.4: a changed truth-pack hash misses the old cache entry and
+        regenerates rather than serving stale bytes."""
+        import unittest.mock as mock
+
+        from api import artifact_cache
+
+        self.seed_opportunity("opp-clean")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            graph = _clean_truth_pack_graph()
+            self._mock_pack(loader, graph, "hash-v1")
+            client.post("/api/truth/reload")
+
+            key_v1 = artifact_cache.cache_key("opp-clean", "hash-v1", "classic", "cv")
+            print(f"D2.4 cache key (v1) = {key_v1}")
+
+            first = client.get("/api/opportunities/opp-clean/artifacts/cv.docx")
+            self.assertEqual(first.status_code, 200)
+
+            self._mock_pack(loader, graph, "hash-v2")
+            client.post("/api/truth/reload")
+
+            key_v2 = artifact_cache.cache_key("opp-clean", "hash-v2", "classic", "cv")
+            print(f"D2.4 cache key (v2, after hash change) = {key_v2}")
+            self.assertNotEqual(key_v1, key_v2)
+
+            with mock.patch(
+                "api.routes_api.EmploymentArtifactCompiler.compile_tailored_cv",
+                wraps=EmploymentArtifactCompiler().compile_tailored_cv,
+            ) as compile_spy:
+                second = client.get("/api/opportunities/opp-clean/artifacts/cv.docx")
+                self.assertEqual(second.status_code, 200)
+                # Regenerated (not served from the stale hash-v1 entry).
+                self.assertEqual(compile_spy.call_count, 1)
+
+        self.assertEqual(first.content, second.content)  # same clean fixture -> same bytes
+
+        # Eviction policy (1): the stale hash-v1 row for this
+        # (opportunity, kind, template) is gone, not merely superseded.
+        stale_row = self.session.execute(
+            text("SELECT cache_key FROM artifact_cache WHERE cache_key = :k"), {"k": key_v1}
+        ).fetchone()
+        self.assertIsNone(stale_row, "expected the hash-v1 cache row to have been evicted")
+
+        fresh_row = self.session.execute(
+            text("SELECT cache_key FROM artifact_cache WHERE cache_key = :k"), {"k": key_v2}
+        ).fetchone()
+        self.assertIsNotNone(fresh_row)
+
+    def test_409_rejection_is_never_cached(self):
+        """D2.5: a rejected claim returns 409, is not stored, and a later
+        fixed pack regenerates (rather than serving anything stale)."""
+        import unittest.mock as mock
+
+        from api import artifact_cache
+
+        self.seed_opportunity("opp-mismatch")
+        app = self.make_app()
+        client = self.logged_in_client(app)
+
+        with mock.patch("api.routes_api.load_founder_pack") as loader:
+            bad_graph = _mismatched_truth_pack_graph()
+            self._mock_pack(loader, bad_graph, "bad-hash")
+            client.post("/api/truth/reload")
+
+            bad_key = artifact_cache.cache_key("opp-mismatch", "bad-hash", "classic", "cv")
+            print(f"D2.5 cache key (409, must not be cached) = {bad_key}")
+
+            rejected = client.get("/api/opportunities/opp-mismatch/artifacts/cv.docx")
+            self.assertEqual(rejected.status_code, 409)
+
+            row = self.session.execute(
+                text("SELECT cache_key FROM artifact_cache WHERE cache_key = :k"), {"k": bad_key}
+            ).fetchone()
+            self.assertIsNone(row, "a 409 rejection must never be written to the artifact cache")
+
+            # Fix the pack (same opportunity, a clean graph now) and confirm
+            # a fresh, successful generation follows -- nothing stale was
+            # ever cached to block it.
+            clean_graph = _clean_truth_pack_graph()
+            self._mock_pack(loader, clean_graph, "fixed-hash")
+            client.post("/api/truth/reload")
+
+            fixed = client.get("/api/opportunities/opp-mismatch/artifacts/cv.docx")
+
+        self.assertEqual(fixed.status_code, 200)
+        self.assertTrue(fixed.content.startswith(b"PK"))
 
 
 # ---------------------------------------------------------------------------
@@ -1579,28 +2019,122 @@ class HighFitThresholdDefaultTest(unittest.TestCase):
 
 
 class FilterSeedSyncTest(unittest.TestCase):
-    """Migration 0003's `_D3_FILTER_SEED` (a deliberate independent literal
-    copy, not an import -- see that migration's module docstring) must never
-    drift from `api.filters.FILTER_DEFINITIONS`'s defaults. No PostgreSQL
-    connectivity needed: this only imports the migration module and compares
-    two in-memory Python structures."""
+    """The seeded filter state *at Alembic head* must never drift from
+    `api.filters.FILTER_DEFINITIONS`'s defaults.
 
-    def test_migration_seed_matches_filter_definitions_defaults(self):
+    B3 defect 4 (council review #1, BRIEF-FR-006): this used to read
+    migration 0003's `_D3_FILTER_SEED` (a deliberate independent literal
+    copy, not an import -- see that migration's module docstring) in
+    isolation and assert it matched `FILTER_DEFINITIONS` directly. That was
+    only ever true *before* any later revision changes a seeded default --
+    the brief specifies the `target_roles` revert to `rank_only` happens
+    "via data migration" (owned by a later revision, e.g. 0004), so reading
+    0003 alone would wrongly assert a permanent pre-migration snapshot.
+
+    This test now composes 0003's `_D3_FILTER_SEED` with every later
+    revision's overrides, discovered by glob (not hand-listed) so a new
+    revision is picked up automatically, the same discovery discipline
+    `truth/test_predicates.py` uses for `matching/*.py`. A later revision
+    declares its overrides as a module-level `_D3_FILTER_SEED_OVERRIDES`
+    dict (`{filter_id: {field: new_value, ...}}`, a partial override of
+    only the fields that change -- e.g. `{"target_roles": {"mode":
+    "rank_only"}}`) for whatever filter(s) it changes -- a convention this
+    test introduces because none existed before now; a later revision that
+    changes a seeded filter default
+    without declaring this attribute fails loudly here rather than silently
+    passing. `0003_provenance_identity.py` itself is never edited by this
+    fix (frozen for this work order); only this test composes it with
+    whatever comes after it.
+
+    No PostgreSQL connectivity needed: this only imports migration modules
+    and compares in-memory Python structures.
+    """
+
+    _VERSIONS_DIR = REPO_ROOT / "storage" / "migrations" / "versions"
+    _BASE_REVISION_FILENAME = "0003_provenance_identity.py"
+
+    def _load_migration_module(self, filename: str):
         import importlib.util
 
-        migration_path = REPO_ROOT / "storage" / "migrations" / "versions" / "0003_provenance_identity.py"
-        spec = importlib.util.spec_from_file_location("_d3_migration_0003", migration_path)
+        path = self._VERSIONS_DIR / filename
+        spec = importlib.util.spec_from_file_location(f"_d3_migration_{path.stem}", path)
         module = importlib.util.module_from_spec(spec)
         assert spec.loader is not None
         spec.loader.exec_module(module)
+        return module
 
-        seed_by_id = {row[0]: row for row in module._D3_FILTER_SEED}
+    def _later_revisions(self) -> list:
+        """Every `versions/*.py` file whose leading revision number sorts
+        after 0003's, by glob discovery. Purely lexicographic on the
+        4-digit prefix this repo's migrations already use consistently
+        (0001..0003 today), so a newly landed 0004, 0005, ... is found
+        without this test needing an update."""
+        base_prefix = self._BASE_REVISION_FILENAME[:4]
+        found = []
+        for path in sorted(self._VERSIONS_DIR.glob("*.py")):
+            prefix = path.name[:4]
+            if prefix.isdigit() and prefix > base_prefix:
+                found.append(path)
+        return found
+
+    def test_migration_seed_matches_filter_definitions_defaults(self):
+        module_0003 = self._load_migration_module(self._BASE_REVISION_FILENAME)
+        seed_by_id = {row[0]: list(row) for row in module_0003._D3_FILTER_SEED}
+
+        later_revisions = self._later_revisions()
+        if not later_revisions:
+            self.skipTest(
+                "No migration revision after 0003_provenance_identity.py exists in this "
+                "worktree yet -- expected next: 0004 (BRIEF-FR-006 work order A1M owns it "
+                "and it is specified to carry the target_roles -> rank_only data migration, "
+                "per this work order's Overseer decision). This test composes 0003's "
+                "_D3_FILTER_SEED with every later revision's _D3_FILTER_SEED_OVERRIDES; with "
+                "no later revision present there is nothing to compose, and asserting 0003 "
+                "alone would wrongly assert a permanent pre-migration snapshot, so this test "
+                "skips rather than asserting a value it cannot verify at head yet."
+            )
+
+        for path in later_revisions:
+            module = self._load_migration_module(path.name)
+            overrides = getattr(module, "_D3_FILTER_SEED_OVERRIDES", None)
+            if overrides is None:
+                self.fail(
+                    f"{path.name} is a migration revision after 0003_provenance_identity.py "
+                    "but declares no `_D3_FILTER_SEED_OVERRIDES` module attribute for this "
+                    "test to compose. Either it changes no seeded filter default (in which "
+                    "case declare `_D3_FILTER_SEED_OVERRIDES = {}` to say so explicitly) or "
+                    "it does and must declare the override so this guard can verify the "
+                    "seeded state at head."
+                )
+            for filter_id, override in overrides.items():
+                # An override is a partial dict of the fields it changes
+                # (e.g. `{"mode": "rank_only"}`), not a full replacement
+                # tuple -- it merges onto the base seed row from 0003 (or a
+                # still-earlier override already folded into `seed_by_id`)
+                # so a later revision does not have to restate fields it
+                # leaves alone.
+                _, enabled, mode, params = seed_by_id[filter_id]
+                enabled = override.get("enabled", enabled)
+                mode = override.get("mode", mode)
+                params = override.get("params", params)
+                seed_by_id[filter_id] = [filter_id, enabled, mode, params]
+
         self.assertEqual(set(seed_by_id), {fd.filter_id for fd in FILTER_DEFINITIONS})
         for fd in FILTER_DEFINITIONS:
             _, enabled, mode, params = seed_by_id[fd.filter_id]
             self.assertEqual(enabled, fd.default_enabled, fd.filter_id)
             self.assertEqual(mode, fd.default_mode, fd.filter_id)
             self.assertEqual(params, fd.default_params, fd.filter_id)
+
+
+class TargetRolesDefaultModeTest(unittest.TestCase):
+    """B3 (BRIEF-FR-006), Overseer decision at FR-005 review §3.1: the
+    `target_roles` filter default reverts from the council-defect-4
+    `label_only` demotion back to `rank_only`."""
+
+    def test_target_roles_default_mode_is_rank_only(self):
+        fd = FILTER_DEFINITIONS_BY_ID["target_roles"]
+        self.assertEqual(fd.default_mode, "rank_only")
 
 
 class FilterSettingsRouteTest(ApiTestCase):
@@ -1967,6 +2501,33 @@ class FilterEngineOpportunitiesTest(ApiTestCase):
         order = [item["id"] for item in body["items"]]
         self.assertLess(order.index("opp-reordered"), order.index("opp-intern"))
 
+    def test_target_roles_family_taxonomy_prevents_fr005_defect_4_recurrence(self):
+        """Council review #1 finding 2 (BRIEF-FR-006 B3): `target_roles` now
+        compares committed title families (`matching/title_family.py`), the
+        same normalization `title_family_fit` (`matching/scorer.py`) scores
+        against, instead of raw token overlap -- that is what actually
+        justifies `rank_only` as the default (Overseer decision, FR-005
+        review Sec 3.1), not merely a comment saying so. This proves the
+        specific failure mode FR-005's council defect 4 existed to contain
+        cannot recur under the new comparison: a high-fit opportunity whose
+        title genuinely normalizes to the founder's declared target-role
+        family must not be ranked below a low-fit opportunity outside that
+        family. Uses the brief's own named non-collision pair (Data Engineer
+        vs Customer Engineer, BRIEF-FR-006 B3 Required behaviour #6)."""
+        _install_truth_graph(self.app, _graph_with_founder_preferences(target_role="Senior Data Engineer"))
+        self.seed_opportunity("opp-in-family", title="Data Engineer")
+        self.seed_evaluation("opp-in-family", decision="qualified", fit_score=95.0)
+        self.seed_opportunity("opp-out-of-family", title="Customer Engineer")
+        self.seed_evaluation("opp-out-of-family", decision="qualified", fit_score=30.0)
+
+        self._set_filter("target_roles", enabled=True, mode="rank_only")
+        items, body = self._items_by_id()
+
+        self.assertEqual(items["opp-in-family"]["flagged_by"], [])
+        self.assertIn("target_roles", items["opp-out-of-family"]["flagged_by"])
+        order = [item["id"] for item in body["items"]]
+        self.assertLess(order.index("opp-in-family"), order.index("opp-out-of-family"))
+
     def test_premium_fulltime_onsite_modes(self):
         # Council repair, defect 6: matched by the stable `signal_tags` entry
         # matching/scorer.py's premium rule now emits, not by a bare
@@ -2027,7 +2588,7 @@ class FilterEngineOpportunitiesTest(ApiTestCase):
         `GET /api/opportunities`), proving the `signal_tags` plumbing is
         genuinely wired end to end and not just shaped correctly in a test
         fixture."""
-        from opportunity.models import Compensation, CompensationInterval, EmploymentType, RemotePolicy
+        from opportunity.models import Compensation, CompensationInterval, EmploymentType, WorkMode
         from matching.evaluate_persist import evaluate_and_store
         from matching.test_qualification import create_test_graph, create_test_opportunity
         from storage.repository import StorageRepository
@@ -2058,7 +2619,7 @@ class FilterEngineOpportunitiesTest(ApiTestCase):
         domain_opp = create_test_opportunity(
             opp_id="opp-real-scorer",
             employment_type=EmploymentType.FULL_TIME,
-            remote_policy=RemotePolicy.ON_SITE,
+            work_mode=WorkMode.ONSITE,
             location_raw="Egypt",
             compensation=Compensation(
                 min_amount=40000, max_amount=40000, currency="EGP", interval=CompensationInterval.MONTHLY
@@ -2257,6 +2818,715 @@ class FilterEngineOpportunitiesTest(ApiTestCase):
         self.assertEqual(off_item["hidden_by"], [])
         self.assertEqual(off_item["decision"], decision_on)
         self.assertEqual(off_item["fit_score"], fit_score_on)
+
+
+class FacetsTest(ApiTestCase):
+    """C1 (BRIEF-FR-006): the generic facet engine, saved views, and C4's
+    hidden-reasons audit. `orders/C1-facets.md` acceptance rows C1.2-C1.7."""
+
+    def setUp(self):
+        super().setUp()
+        self.app = self.make_app()
+        self.client = self.logged_in_client(self.app)
+
+    # -- helpers ---------------------------------------------------------
+
+    def _seed_opp(self, opp_id: str, **attrs) -> OpportunityRecord:
+        defaults = dict(
+            track=attrs.pop("track", "employment"),
+            title=attrs.pop("title", f"Title {opp_id}"),
+            organization=attrs.pop("organization", f"Org {opp_id}"),
+            description=attrs.pop("description", "A synthetic opportunity for facet tests."),
+            source_id=attrs.pop("source_id", "himalayas"),
+            source_url=f"https://himalayas.app/jobs/{opp_id}",
+            content_hash=f"hash-{opp_id}",
+            posted_date=attrs.pop("posted_date", None),
+            created_at=attrs.pop("created_at", datetime.now(timezone.utc)),
+        )
+        defaults.update(attrs)
+        record = OpportunityRecord(id=opp_id, **defaults)
+        self.session.add(record)
+        self.session.commit()
+        return record
+
+    def _disable_all_filters(self):
+        for fd in FILTER_DEFINITIONS:
+            resp = self.client.put(f"/api/filters/{fd.filter_id}", json={"enabled": False})
+            self.assertEqual(resp.status_code, 200, resp.text)
+
+    def _set_facet(self, facet_id: str, *, include=None, exclude=None):
+        payload: dict = {}
+        if include is not None:
+            payload["include"] = include
+        if exclude is not None:
+            payload["exclude"] = exclude
+        resp = self.client.put(f"/api/facets/{facet_id}", json=payload)
+        self.assertEqual(resp.status_code, 200, resp.text)
+        return resp.json()
+
+    def _default_visible_ids(self) -> set[str]:
+        resp = self.client.get("/api/opportunities")
+        self.assertEqual(resp.status_code, 200, resp.text)
+        return {item["id"] for item in resp.json()["items"]}
+
+    # -- C1.2: all-off include_hidden equals SELECT count(*) --------------
+
+    def test_all_off_include_hidden_equals_table_count(self):
+        self._disable_all_filters()
+        for i in range(5):
+            self._seed_opp(f"opp-alloff-{i}")
+            self.seed_evaluation(f"opp-alloff-{i}", decision="qualified", fit_score=float(50 + i))
+
+        resp = self.client.get("/api/opportunities", params={"include_hidden": True})
+        self.assertEqual(resp.status_code, 200, resp.text)
+        api_total = resp.json()["total"]
+        raw_count = self.session.execute(text("SELECT count(*) FROM opportunities")).scalar()
+        print(f"C1.2: include_hidden total={api_total}  SELECT count(*) FROM opportunities={raw_count}")
+        self.assertEqual(api_total, raw_count)
+
+    # -- C1.3: every facet, include and exclude, through the API ----------
+
+    def test_every_facet_include_and_exclude_through_the_api(self):
+        now = datetime.now(timezone.utc)
+        self._seed_opp(
+            "opp-a", work_mode="remote", location_country="US", location_city="Austin",
+            remote_scope="global", employment_type="fulltime", seniority_level="senior",
+            title_family="engineering", track="employment", source_id="himalayas",
+            organization="Acme A", posted_date=now.date().isoformat(),
+        )
+        self.seed_evaluation("opp-a", decision="qualified", fit_score=90.0)
+        self.seed_compensation("opp-a", min_amount=100000, max_amount=120000, currency="USD")
+
+        self._seed_opp(
+            "opp-b", work_mode="onsite", location_country="EG", location_city="Cairo",
+            remote_scope="unspecified", employment_type="contract", seniority_level="junior",
+            title_family="design", track="procurement", source_id="remotive",
+            organization="Acme B", posted_date=(now - timedelta(days=120)).date().isoformat(),
+        )
+        self.seed_evaluation("opp-b", decision="ineligible", fit_score=20.0)
+        # opp-b has no seeded compensation -> compensation_stated bucket "no".
+
+        checks = [
+            ("work_mode", "remote", "onsite"),
+            ("location_country", "US", "EG"),
+            ("location_city", "Austin", "Cairo"),
+            ("remote_scope", "global", "unspecified"),
+            ("employment_type", "fulltime", "contract"),
+            ("seniority_level", "senior", "junior"),
+            ("title_family", "engineering", "design"),
+            ("track", "employment", "procurement"),
+            ("source_id", "himalayas", "remotive"),
+            ("employer", "Acme A", "Acme B"),
+            ("posted_within", "last_24h", "older"),
+            ("compensation_stated", "yes", "no"),
+            ("decision", "qualified", "ineligible"),
+            ("fit_score", "75-100", "0-25"),
+        ]
+
+        table_rows: list[tuple[str, int, int]] = []
+        for facet_id, value_a, value_b in checks:
+            self._set_facet(facet_id, include=[], exclude=[])
+
+            self._set_facet(facet_id, include=[value_a])
+            visible_include = self._default_visible_ids()
+            self.assertIn("opp-a", visible_include)
+            self.assertNotIn("opp-b", visible_include)
+
+            self._set_facet(facet_id, include=[], exclude=[value_b])
+            visible_exclude = self._default_visible_ids()
+            self.assertIn("opp-a", visible_exclude)
+            self.assertNotIn("opp-b", visible_exclude)
+
+            self._set_facet(facet_id, include=[], exclude=[])
+            table_rows.append((facet_id, len(visible_include), len(visible_exclude)))
+
+        print("facet_id | include_result_count | exclude_result_count")
+        for facet_id, include_count, exclude_count in table_rows:
+            print(f"{facet_id} | {include_count} | {exclude_count}")
+        self.assertEqual(len(table_rows), len(checks))
+
+        # language: declared per the brief, but has no persisted data source
+        # (see api/facets.py::_LANGUAGE_UNAVAILABLE_REASON) -- the API must
+        # refuse to accept an include/exclude selection for it rather than
+        # silently accepting one that can never match anything.
+        resp = self.client.put("/api/facets/language", json={"include": ["en"]})
+        self.assertEqual(resp.status_code, 422, resp.text)
+        print(f"language | n/a (unavailable: {resp.json()['detail']})")
+
+    # -- C1.4: a facet never changes decision or fit_score -----------------
+
+    def test_no_re_judgement_under_every_facet_exclusion(self):
+        now = datetime.now(timezone.utc)
+        self._seed_opp(
+            "opp-target", work_mode="remote", location_country="US", location_city="Austin",
+            remote_scope="global", employment_type="fulltime", seniority_level="senior",
+            title_family="engineering", track="employment", source_id="himalayas",
+            organization="Acme A", posted_date=now.date().isoformat(),
+        )
+        self.seed_evaluation("opp-target", decision="qualified", fit_score=88.0)
+        self.seed_compensation("opp-target", min_amount=100000, max_amount=120000, currency="USD")
+
+        before = self.client.get("/api/opportunities", params={"include_hidden": True}).json()
+        before_item = next(i for i in before["items"] if i["id"] == "opp-target")
+        decision_before, fit_score_before = before_item["decision"], before_item["fit_score"]
+
+        values_by_facet = {
+            "work_mode": "remote", "location_country": "US", "location_city": "Austin",
+            "remote_scope": "global", "employment_type": "fulltime", "seniority_level": "senior",
+            "title_family": "engineering", "track": "employment", "source_id": "himalayas",
+            "employer": "Acme A", "posted_within": "last_24h", "compensation_stated": "yes",
+            "decision": "qualified", "fit_score": "75-100",
+        }
+        for facet_id, value in values_by_facet.items():
+            self._set_facet(facet_id, include=[], exclude=[value])
+            resp = self.client.get("/api/opportunities", params={"include_hidden": True})
+            item = next(i for i in resp.json()["items"] if i["id"] == "opp-target")
+            self.assertIn(f"facet:{facet_id}", item["hidden_by"])
+            self.assertEqual(item["decision"], decision_before)
+            self.assertEqual(item["fit_score"], fit_score_before)
+            self._set_facet(facet_id, include=[], exclude=[])
+
+        print(
+            f"C1.4: decision={decision_before!r} fit_score={fit_score_before!r} "
+            f"unchanged across {len(values_by_facet)} facet exclusions"
+        )
+
+    # -- C1.5: defaults -- only red-line and excluded-industry hits hidden -
+
+    def test_defaults_only_red_line_and_excluded_industry_hidden(self):
+        _install_truth_graph(self.app, _graph_with_red_line_and_excluded_industry())
+        self._seed_opp("opp-redline", description="We guarantee placement for every candidate within 30 days.")
+        self.seed_evaluation("opp-redline", decision="qualified", fit_score=80.0)
+        self._seed_opp("opp-industry", description="A role at a Gambling company.")
+        self.seed_evaluation("opp-industry", decision="qualified", fit_score=70.0)
+        self._seed_opp("opp-clean")
+        self.seed_evaluation("opp-clean", decision="qualified", fit_score=60.0)
+
+        resp = self.client.get("/api/opportunities", params={"include_hidden": True})
+        self.assertEqual(resp.status_code, 200, resp.text)
+        body = resp.json()
+        hidden_ids = {item["id"] for item in body["items"] if item["hidden_by"]}
+        print(f"C1.5: hidden_ids={sorted(hidden_ids)} hidden_count={body['hidden_count']}")
+        self.assertEqual(hidden_ids, {"opp-redline", "opp-industry"})
+        self.assertEqual(body["hidden_count"], 2)
+
+    # -- C1.6: saved-view round trip through a fresh session ---------------
+
+    def test_saved_view_round_trip_survives_fresh_session(self):
+        resp = self.client.post(
+            "/api/saved-views",
+            json={
+                "name": "Remote data eng, EU/US, last 7 days",
+                "facets": {
+                    "work_mode": {"include": ["remote"], "exclude": []},
+                    "posted_within": {"include": ["last_7d"], "exclude": []},
+                },
+                "search_query": "data engineer",
+                "is_default": True,
+            },
+        )
+        self.assertEqual(resp.status_code, 200, resp.text)
+        created = resp.json()
+
+        # A genuinely fresh session, not self.session and not a cached
+        # Python object -- the round-trip claim this order requires.
+        fresh_session = self.session_factory()
+        try:
+            row = fresh_session.query(FounderSavedViewRecord).filter_by(id=created["id"]).first()
+            self.assertIsNotNone(row)
+            self.assertEqual(row.name, created["name"])
+            self.assertEqual(json.loads(row.facets_json), created["facets"])
+            self.assertEqual(row.search_query, created["search_query"])
+            self.assertTrue(bool(row.is_default))
+        finally:
+            fresh_session.close()
+
+        resp2 = self.client.get("/api/saved-views")
+        self.assertEqual(resp2.status_code, 200, resp2.text)
+        views = resp2.json()["views"]
+        self.assertEqual(len(views), 1)
+        self.assertEqual(views[0]["id"], created["id"])
+        self.assertTrue(views[0]["is_default"])
+        print(
+            f"C1.6: saved view {created['id']!r} round-tripped through a fresh session; "
+            f"is_default={views[0]['is_default']}"
+        )
+
+    # -- C1.7: hidden-reasons audit + unhide-all-by-reason ------------------
+
+    def test_hidden_reasons_audit_and_unhide_by_reason(self):
+        _install_truth_graph(self.app, _graph_with_red_line_and_excluded_industry())
+        self._seed_opp("opp-redline", description="We guarantee placement for every candidate within 30 days.")
+        self.seed_evaluation("opp-redline", decision="qualified", fit_score=80.0)
+        self._seed_opp("opp-industry", description="A role at a Gambling company.")
+        self.seed_evaluation("opp-industry", decision="qualified", fit_score=70.0)
+        self._seed_opp("opp-facet-hidden", work_mode="onsite")
+        self.seed_evaluation("opp-facet-hidden", decision="qualified", fit_score=65.0)
+        self._set_facet("work_mode", include=[], exclude=["onsite"])
+        self._seed_opp("opp-clean")
+        self.seed_evaluation("opp-clean", decision="qualified", fit_score=60.0)
+
+        resp = self.client.get("/api/hidden-reasons")
+        self.assertEqual(resp.status_code, 200, resp.text)
+        reasons = resp.json()["reasons"]
+        print("reason | count")
+        for entry in reasons:
+            print(f"{entry['reason']} | {entry['count']}")
+        reason_map = {entry["reason"]: entry["count"] for entry in reasons}
+        self.assertEqual(reason_map.get("facet: work_mode"), 1)
+        self.assertIn("red line: Never imply guaranteed employment outcomes.", reason_map)
+        self.assertIn("excluded industry: Gambling", reason_map)
+
+        before_visible = self._default_visible_ids()
+        self.assertNotIn("opp-facet-hidden", before_visible)
+
+        unhide_resp = self.client.post("/api/hidden-reasons/unhide", json={"reason": "facet: work_mode"})
+        self.assertEqual(unhide_resp.status_code, 200, unhide_resp.text)
+
+        after_visible = self._default_visible_ids()
+        self.assertIn("opp-facet-hidden", after_visible)
+        # "nothing else" -- the red-line/excluded-industry hits are untouched
+        # by an unhide targeted at a different reason.
+        self.assertNotIn("opp-redline", after_visible)
+        self.assertNotIn("opp-industry", after_visible)
+        print(
+            f"C1.7: unhide-all-by-reason('facet: work_mode') changed visible set "
+            f"from {sorted(before_visible)} to {sorted(after_visible)}"
+        )
+
+
+class PollHideFractionWarningTest(unittest.TestCase):
+    """C4: 'any facet or red line hiding more than 10% of new rows in a poll
+    triggers a visible warning.' A pure-function test against
+    `api.facets.poll_hide_fraction_warnings` -- no HTTP layer, no database
+    needed, since the warning is a deterministic function of
+    (poll_inserted, contexts, settings). Constructs exactly a >10% case and
+    exactly a 9% case (acceptance row C1.8)."""
+
+    @staticmethod
+    def _ctx(opp_id: str, work_mode: str) -> OpportunityFilterContext:
+        opp = OpportunityRecord(
+            id=opp_id, track="employment", title="t", organization="o", description="d",
+            source_id="s", source_url="u", content_hash="h", work_mode=work_mode,
+        )
+        return OpportunityFilterContext(
+            opp=opp, decision=None, fit_score=None, reasons=[], evaluation_detail={},
+            dimension_scores=[], compensation_min=None, compensation_max=None,
+            compensation_currency=None, truth_graph=None,
+        )
+
+    def test_over_10_percent_warns_9_percent_does_not(self):
+        facet_settings = {"work_mode": FacetSettingsRow(include=(), exclude=("onsite",))}
+
+        # Scenario A: 10 new rows, 2 onsite -> 20% > 10% -> warns.
+        contexts_a = [self._ctx(f"a{i}", "onsite" if i < 2 else "remote") for i in range(10)]
+        warnings_a = poll_hide_fraction_warnings(10, contexts_a, {}, facet_settings)
+        print(f"C1.8 (>10% case): 2/10 onsite hidden by facet:work_mode -> warnings={warnings_a}")
+        self.assertTrue(any(w["cause"] == "facet: work_mode" for w in warnings_a))
+
+        # Scenario B: 100 new rows, 9 onsite -> exactly 9% -> no warning.
+        contexts_b = [self._ctx(f"b{i}", "onsite" if i < 9 else "remote") for i in range(100)]
+        warnings_b = poll_hide_fraction_warnings(100, contexts_b, {}, facet_settings)
+        print(f"C1.8 (9% case): 9/100 onsite hidden by facet:work_mode -> warnings={warnings_b}")
+        self.assertFalse(any(w["cause"] == "facet: work_mode" for w in warnings_b))
+
+
+class B4ExerciseTest(ApiTestCase):
+    """B4: exercise `track_preference`, `premium_fulltime_onsite`, and
+    `stale_postings` against a founder-shaped fixture corpus and print each
+    affected count (acceptance row C1.9)."""
+
+    def setUp(self):
+        super().setUp()
+        self.app = self.make_app()
+        self.client = self.logged_in_client(self.app)
+
+    def test_b4_affected_counts_on_fixture_corpus(self):
+        graph = _graph_with_founder_preferences(preferred_track="employment", premium_threshold="8000")
+        _install_truth_graph(self.app, graph)
+
+        # track_preference: founder prefers "employment" -- 3 aligned rows,
+        # 2 misaligned ("procurement") rows.
+        for i in range(3):
+            self.seed_opportunity(f"opp-emp-{i}", track="employment")
+            self.seed_evaluation(f"opp-emp-{i}", decision="qualified", fit_score=60.0)
+        for i in range(2):
+            self.seed_opportunity(f"opp-proc-{i}", track="procurement")
+            self.seed_evaluation(f"opp-proc-{i}", decision="qualified", fit_score=55.0)
+
+        # premium_fulltime_onsite: one row carries the scorer's code-owned
+        # `premium_shortfall` signal tag on `compensation_fit`, one does not.
+        self.seed_opportunity("opp-premium-shortfall")
+        self.seed_evaluation(
+            "opp-premium-shortfall", decision="qualified", fit_score=50.0,
+            dimension_scores=[{
+                "dimension_name": "compensation_fit", "raw_score": 0.2, "weight": 0.15,
+                "weighted_score": 0.03, "explanation": "below premium threshold",
+                "signal_tags": ["premium_shortfall"],
+            }],
+        )
+        self.seed_opportunity("opp-premium-ok")
+        self.seed_evaluation(
+            "opp-premium-ok", decision="qualified", fit_score=80.0,
+            dimension_scores=[{
+                "dimension_name": "compensation_fit", "raw_score": 0.9, "weight": 0.15,
+                "weighted_score": 0.135, "explanation": "meets premium threshold",
+                "signal_tags": [],
+            }],
+        )
+
+        opportunities = self.session.query(OpportunityRecord).all()
+        contexts = build_filter_contexts(self.session, graph, opportunities)
+
+        track_pref_fd = FILTER_DEFINITIONS_BY_ID["track_preference"]
+        premium_fd = FILTER_DEFINITIONS_BY_ID["premium_fulltime_onsite"]
+        stale_fd = FILTER_DEFINITIONS_BY_ID["stale_postings"]
+
+        track_pref_count = filter_affected_count(track_pref_fd, {}, contexts)
+        premium_count = filter_affected_count(premium_fd, {}, contexts)
+        stale_count = filter_affected_count(stale_fd, {}, contexts)
+        stale_query_count = self.session.query(OpportunityRecord).filter(OpportunityRecord.is_stale.is_(True)).count()
+
+        print(
+            f"B4 track_preference affected_count={track_pref_count} "
+            f"(query: opp.track.casefold() != founder's preferred track 'employment', "
+            f"over {len(contexts)} rows -- api/filters.py::_track_preference_matches)"
+        )
+        print(
+            f"B4 premium_fulltime_onsite affected_count={premium_count} "
+            f"(query: compensation_fit dimension's signal_tags contains 'premium_shortfall', "
+            f"over {len(contexts)} rows -- api/filters.py::_premium_fulltime_onsite_matches)"
+        )
+        print(
+            f"B4 stale_postings affected_count={stale_count} "
+            f"(query: SELECT count(*) FROM opportunities WHERE is_stale = true -> {stale_query_count}; "
+            f"zero is correct -- nothing in opportunity/persistence.py or any worker handler ever "
+            f"writes is_stale=True; see api/filters.py::_STALE_POSTINGS_UNAVAILABLE_REASON)"
+        )
+
+        self.assertEqual(track_pref_count, 2)
+        self.assertEqual(premium_count, 1)
+        self.assertEqual(stale_count, 0)
+        self.assertEqual(stale_query_count, 0)
+
+
+# ---------------------------------------------------------------------------
+# C5 (BRIEF-FR-006): extraction fields on the feed item / detail response,
+# GET /api/manual-sources, GET /api/polls/{poll_id}/over-hiding.
+# ---------------------------------------------------------------------------
+
+_C5_EXTRACTION_FIELD_NAMES = (
+    "work_mode",
+    "work_mode_source",
+    "location_country",
+    "location_city",
+    "location_region",
+    "remote_scope",
+    "remote_scope_regions",
+    "employment_type",
+    "seniority_level",
+    "compensation_min",
+    "compensation_max",
+    "compensation_currency",
+    "compensation_period",
+    "title_family",
+    "title_level",
+    "family_key",
+)
+
+
+class ExtractionFieldSerializationTest(ApiTestCase):
+    """C5.1 / C5.2: the founder's original complaint ("no card said whether
+    the job was remote, hybrid, or on-site, or where it was") is only fixed
+    once these `opportunities` columns (migration 0004) actually reach the
+    list item and the detail response."""
+
+    def setUp(self):
+        super().setUp()
+        self.app = self.make_app()
+        self.client = self.logged_in_client(self.app)
+
+    def _seed_full_row(self, opp_id: str, **overrides) -> OpportunityRecord:
+        record = OpportunityRecord(
+            id=opp_id,
+            track="employment",
+            title=f"Title {opp_id}",
+            organization=f"Org {opp_id}",
+            description="A synthetic opportunity for API tests.",
+            source_id="himalayas",
+            source_url=f"https://himalayas.app/jobs/{opp_id}",
+            content_hash=f"hash-{opp_id}",
+            created_at=datetime.now(timezone.utc),
+            work_mode=overrides.pop("work_mode", "remote"),
+            work_mode_source=overrides.pop("work_mode_source", "posting"),
+            location_country=overrides.pop("location_country", "EG"),
+            location_city=overrides.pop("location_city", "Cairo"),
+            location_region=overrides.pop("location_region", "MENA"),
+            remote_scope=overrides.pop("remote_scope", "worldwide"),
+            remote_scope_regions=overrides.pop("remote_scope_regions", json.dumps(["EG", "SA"])),
+            employment_type=overrides.pop("employment_type", "full_time"),
+            seniority_level=overrides.pop("seniority_level", "senior"),
+            compensation_min=overrides.pop("compensation_min", 4000),
+            compensation_max=overrides.pop("compensation_max", 6000),
+            compensation_currency=overrides.pop("compensation_currency", "USD"),
+            compensation_period=overrides.pop("compensation_period", "monthly"),
+            title_family=overrides.pop("title_family", "data_engineer"),
+            title_level=overrides.pop("title_level", "senior"),
+            family_key=overrides.pop("family_key", None),
+        )
+        assert not overrides, f"unrecognised overrides: {overrides}"
+        self.session.add(record)
+        self.session.commit()
+        backfill_search_tsv(self.session)
+        return record
+
+    def test_c5_1_every_extraction_field_present_in_list_and_detail(self):
+        self._seed_full_row("opp-full")
+
+        list_resp = self.client.get("/api/opportunities")
+        self.assertEqual(list_resp.status_code, 200, list_resp.text)
+        item = list_resp.json()["items"][0]
+        print(f"C5.1 list item: {json.dumps(item, indent=2, sort_keys=True)}")
+
+        detail_resp = self.client.get("/api/opportunities/opp-full")
+        self.assertEqual(detail_resp.status_code, 200, detail_resp.text)
+        detail = detail_resp.json()
+        print(f"C5.1 detail body: {json.dumps(detail, indent=2, sort_keys=True)}")
+
+        for field_name in _C5_EXTRACTION_FIELD_NAMES:
+            self.assertIn(field_name, item, f"{field_name!r} missing from list item")
+            self.assertIn(field_name, detail, f"{field_name!r} missing from detail body")
+
+        self.assertEqual(item["work_mode"], "remote")
+        self.assertEqual(item["location_city"], "Cairo")
+        self.assertEqual(item["remote_scope_regions"], ["EG", "SA"])
+        self.assertEqual(detail["compensation_min"], 4000)
+        self.assertEqual(detail["title_family"], "data_engineer")
+
+    def test_c5_1_family_size_present_for_clustered_row(self):
+        self.session.add(
+            OpportunityFamilyRecord(
+                family_key="fam-1",
+                employer="Org opp-fam",
+                normalized_title="Data Engineer",
+                member_count=14,
+                best_member_id="opp-fam",
+                split_out=False,
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
+        self.session.commit()
+        self._seed_full_row("opp-fam", family_key="fam-1")
+        self._seed_full_row("opp-unclustered", family_key=None)
+
+        body = self.client.get("/api/opportunities").json()
+        by_id = {item["id"]: item for item in body["items"]}
+        self.assertEqual(by_id["opp-fam"]["family_size"], 14)
+        self.assertIsNone(by_id["opp-unclustered"]["family_size"])
+
+        detail = self.client.get("/api/opportunities/opp-fam").json()
+        self.assertEqual(detail["family_size"], 14)
+
+    def test_work_mode_unspecified_serializes_verbatim_not_null_or_blank(self):
+        """`work_mode='unspecified'` is a real, storable value (47.8% of real
+        postings carry no work-mode signal at all per the brief) -- it must
+        come back as the literal string `'unspecified'`, never `null` or
+        `''`, so the UI can render 'not stated' rather than showing nothing."""
+        self._seed_full_row("opp-unspecified", work_mode="unspecified", work_mode_source=None)
+
+        item = self.client.get("/api/opportunities").json()["items"][0]
+        self.assertEqual(item["work_mode"], "unspecified")
+        self.assertIsNotNone(item["work_mode"])
+        self.assertNotEqual(item["work_mode"], "")
+        self.assertIn("work_mode_source", item)
+        self.assertIsNone(item["work_mode_source"])
+
+        detail = self.client.get("/api/opportunities/opp-unspecified").json()
+        self.assertEqual(detail["work_mode"], "unspecified")
+        self.assertIn("work_mode_source", detail)
+
+
+class NoReJudgementSerializationTest(ApiTestCase):
+    """C5.2: exposing the extraction fields must change nothing about
+    `decision`, `fit_score`, ordering, or which rows are hidden. Asserted by
+    cross-checking the HTTP response against the same underlying
+    `build_filter_contexts` / `apply_filters` computation the route itself
+    calls -- the serializer addition sits strictly downstream of that
+    decision, never upstream of it."""
+
+    def setUp(self):
+        super().setUp()
+        self.app = self.make_app()
+        self.client = self.logged_in_client(self.app)
+
+    def test_decision_fit_score_order_and_hidden_set_unchanged(self):
+        self.seed_opportunity("opp-a", posted_date="2026-08-20")
+        self.seed_evaluation("opp-a", decision="qualified", fit_score=90.0)
+        self.seed_opportunity("opp-b", posted_date="2026-08-21")
+        self.seed_evaluation("opp-b", decision="qualified", fit_score=40.0)
+        self.seed_opportunity("opp-redline")
+        self.seed_evaluation("opp-redline", decision="qualified", fit_score=70.0)
+
+        graph = TruthGraph()
+        graph.add_career_profile(
+            CareerProfile(
+                id="career-fixture",
+                red_lines=(
+                    RedLineRule(
+                        id="rl-1",
+                        pattern=r"Org opp-redline",
+                        reason="Never work for opp-redline.",
+                    ),
+                ),
+            )
+        )
+        self.app.state.loaded_truth_pack = LoadedPack(
+            graph=graph, truth_pack_hash="hash-x",
+            report=PackValidationReport(valid=True, section_counts=(), findings=()),
+        )
+
+        opportunities = self.session.query(OpportunityRecord).all()
+        contexts = build_filter_contexts(self.session, graph, opportunities)
+        filter_settings = {}
+        direct_decisions = {ctx.opp.id: ctx.decision for ctx in contexts}
+        direct_fit_scores = {ctx.opp.id: ctx.fit_score for ctx in contexts}
+        direct_hidden = {ctx.opp.id: bool(apply_filters(ctx, filter_settings).hidden_by) for ctx in contexts}
+
+        response = self.client.get("/api/opportunities", params={"include_hidden": True})
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+
+        for item in body["items"]:
+            self.assertEqual(item["decision"], direct_decisions[item["id"]])
+            self.assertEqual(item["fit_score"], direct_fit_scores[item["id"]])
+            self.assertEqual(bool(item["hidden_by"]), direct_hidden[item["id"]])
+
+        # fit_score-descending order is untouched by the new fields on each row;
+        # opp-redline is correctly excluded from the visible set by the red-line
+        # match, exactly matching the direct computation's hidden verdict.
+        visible_ids = [item["id"] for item in body["items"] if not item["hidden_by"]]
+        self.assertEqual(visible_ids, ["opp-a", "opp-b"])
+        self.assertTrue(direct_hidden.get("opp-redline") is True)
+
+
+class ManualSourcesRouteTest(ApiTestCase):
+    """C5.3: `GET /api/manual-sources` must return every
+    `opportunity.manual_sources.MANUAL_SOURCES` entry and must never make an
+    outbound network request -- these are deep links the founder clicks, the
+    API only ever templates the URL string."""
+
+    def setUp(self):
+        super().setUp()
+        self.app = self.make_app()
+        self.client = self.logged_in_client(self.app)
+
+    def test_returns_every_entry_and_makes_zero_outbound_requests(self):
+        import socket
+        from unittest.mock import patch
+
+        real_connect = socket.socket.connect
+        _LOOPBACK = {"127.0.0.1", "::1", "localhost"}
+
+        def _guarded_connect(self_socket, address, *args, **kwargs):
+            # Windows has no native `socketpair()`; CPython's asyncio proactor
+            # event loop emulates it with a real loopback TCP connection for
+            # its self-pipe (unittest's own event-loop bootstrapping, nothing
+            # to do with this route). Only a connection to a genuinely
+            # non-loopback host counts as "this route made an outbound
+            # request" -- exactly the thing a `manual_only` source's policy
+            # forbids an automated read of.
+            host = address[0] if isinstance(address, tuple) else address
+            if host not in _LOOPBACK:
+                raise AssertionError(
+                    f"GET /api/manual-sources made an outbound network connection to {address!r}"
+                )
+            return real_connect(self_socket, address, *args, **kwargs)
+
+        with patch.object(socket.socket, "connect", _guarded_connect):
+            response = self.client.get("/api/manual-sources")
+
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        returned_ids = {entry["source_id"] for entry in body["sources"]}
+        expected_ids = {item.source_id for item in MANUAL_SOURCES}
+        self.assertEqual(returned_ids, expected_ids)
+        self.assertEqual(len(body["sources"]), len(MANUAL_SOURCES))
+
+        by_id = {entry["source_id"]: entry for entry in body["sources"]}
+        for item in MANUAL_SOURCES:
+            entry = by_id[item.source_id]
+            self.assertEqual(entry["name"], item.name)
+            self.assertEqual(entry["deep_link"], item.deep_link())
+            self.assertEqual(entry["category"], item.category)
+        print(f"C5.3: {len(body['sources'])} manual sources returned, zero outbound connections made")
+
+
+class PollOverHidingRouteTest(ApiTestCase):
+    """C5.4: the route must report exactly what
+    `api.facets.poll_hide_fraction_warnings` itself computes for the same
+    inputs -- never a day-granular or filters-only approximation."""
+
+    def setUp(self):
+        super().setUp()
+        self.app = self.make_app()
+        self.client = self.logged_in_client(self.app)
+
+    def test_route_matches_underlying_computation(self):
+        started_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+        finished_at = datetime.now(timezone.utc)
+        poll = SourcePollRunRecord(
+            id="poll-1", source_id="himalayas", started_at=to_naive_utc(started_at),
+            finished_at=to_naive_utc(finished_at), status="success",
+            raw_ingested=10, unique_opportunities=10, inserted=10, unchanged=0, updated=0,
+        )
+        self.session.add(poll)
+        self.session.commit()
+
+        for i in range(10):
+            work_mode = "onsite" if i < 3 else "remote"
+            # `created_at` must be stored naive, exactly like `poll.started_at`
+            # above (`to_naive_utc`) -- a tz-aware value handed to psycopg2 for
+            # a naive column is converted using the session's `timezone` GUC
+            # first (storage/models.py's own documented convention), which
+            # would silently shift these rows outside the poll's window on a
+            # non-UTC session and make every row invisible to the route.
+            self.seed_opportunity(f"opp-poll-{i}", created_at=to_naive_utc(started_at + timedelta(seconds=i)))
+            record = self.session.query(OpportunityRecord).filter_by(id=f"opp-poll-{i}").one()
+            record.work_mode = work_mode
+            self.session.commit()
+
+        facet_row = FounderFacetRecord(
+            facet_id="work_mode", mode="filter",
+            values_json=json.dumps({"include": [], "exclude": ["onsite"]}),
+            updated_at=to_naive_utc(datetime.now(timezone.utc)),
+        )
+        self.session.add(facet_row)
+        self.session.commit()
+
+        opportunities = self.session.query(OpportunityRecord).all()
+        contexts = build_filter_contexts(self.session, None, opportunities)
+        facet_settings = {"work_mode": FacetSettingsRow(include=(), exclude=("onsite",))}
+        expected = poll_hide_fraction_warnings(poll.inserted, contexts, {}, facet_settings)
+
+        response = self.client.get("/api/polls/poll-1/over-hiding")
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        print(f"C5.4: route={body['warnings']} direct={expected}")
+
+        self.assertEqual(body["poll_inserted"], poll.inserted)
+        self.assertEqual(len(body["warnings"]), len(expected))
+        for got, want in zip(
+            sorted(body["warnings"], key=lambda w: w["cause"]),
+            sorted(expected, key=lambda w: w["cause"]),
+        ):
+            self.assertEqual(got["cause"], want["cause"])
+            self.assertEqual(got["hidden"], want["hidden"])
+            self.assertEqual(got["of"], want["of"])
+            self.assertAlmostEqual(got["fraction"], want["fraction"])
+
+    def test_unknown_poll_id_is_404(self):
+        response = self.client.get("/api/polls/does-not-exist/over-hiding")
+        self.assertEqual(response.status_code, 404)
 
 
 if __name__ == "__main__":

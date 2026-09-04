@@ -20,16 +20,21 @@ from feedback.service import FounderFeedbackService
 from matching.artifact_validation import validate_artifact_claims
 from matching.binary_export import BinaryArtifactExporter
 from matching.compiler_employment import EmploymentArtifactCompiler
+from matching.templates import TEMPLATES
+from opportunity.manual_sources import MANUAL_SOURCES
 from opportunity.models import Opportunity, Track
 from opportunity.registry import SourceRegistry
 from outbound.models import ActionStatus, ExecutionMode
 from storage.models import (
     FieldProvenanceRecord,
+    FounderFacetRecord,
     FounderFeedbackRecord,
     FounderFilterSettingRecord,
     FounderOpportunityViewRecord,
+    FounderSavedViewRecord,
     FounderTriageStateRecord,
     MatchEvaluationRecord,
+    OpportunityFamilyRecord,
     OpportunityRecord,
     OutboundActionRecordModel,
     SourcePollRunRecord,
@@ -39,7 +44,17 @@ from truth.pack import TruthPackInvalid, TruthPackMissing, load_founder_pack
 from truth.validator import ClaimValidator
 from worker.queue import BackgroundWorkerQueue
 
+from . import artifact_cache
 from .deps import get_db, get_repository, require_session
+from .facets import (
+    FACET_DEFINITIONS_BY_ID,
+    FacetSettingsRow,
+    apply_facets,
+    facet_payload,
+    hidden_reasons_audit,
+    poll_hide_fraction_warnings,
+    unhide_by_reason,
+)
 from .filters import (
     FILTER_DEFINITIONS,
     FILTER_DEFINITIONS_BY_ID,
@@ -53,9 +68,17 @@ from .filters import (
     unavailable_reason,
     validate_filter_params,
 )
+from .saved_views import (
+    create_saved_view,
+    delete_saved_view,
+    list_saved_views,
+    update_saved_view,
+)
+from .search import is_query_unparseable, rank_key, search_opportunity_ids
 from .serialization import (
     serialize_constraint,
     serialize_dimension_score,
+    serialize_opportunity_extraction_fields,
     strengths_gaps_unknowns_from_reasons,
     top_reasons_from_list,
     unpack_dimension_scores,
@@ -68,6 +91,7 @@ logger = get_logger("api.routes")
 router = APIRouter(prefix="/api", dependencies=[Depends(require_session)])
 
 DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+PDF_MEDIA_TYPE = "application/pdf"
 
 
 # --------------------------------------------------------------------------
@@ -274,6 +298,185 @@ def update_filter(
     }
 
 
+# --------------------------------------------------------------------------
+# C1: generic facets
+# --------------------------------------------------------------------------
+
+
+def _load_facet_settings(session: Session) -> dict[str, FacetSettingsRow]:
+    """Every `founder_facets` row, keyed by `facet_id`. A facet with no row
+    at all (every facet, on a fresh database -- migration 0004 seeds no
+    default facet selections, matching "nothing hides by default except the
+    founder's own red lines and excluded industries") is simply absent from
+    this dict; `facets.apply_facets` / `facets.facet_hides` treat that as
+    `include=() exclude=()` -- the "off" state."""
+    rows = session.query(FounderFacetRecord).all()
+    settings: dict[str, FacetSettingsRow] = {}
+    for row in rows:
+        payload = json.loads(row.values_json) if row.values_json else {}
+        settings[row.facet_id] = FacetSettingsRow(
+            include=tuple(payload.get("include") or []),
+            exclude=tuple(payload.get("exclude") or []),
+        )
+    return settings
+
+
+def _family_sizes(session: Session, family_keys: list[str | None]) -> dict[str, int]:
+    """C5: `OpportunityFamilyRecord.member_count` for every distinct,
+    non-null `family_key` among `family_keys`, batched into one query rather
+    than one lookup per row (contract: adding fields to the feed item must
+    not change how anything is ranked, hidden, or fetched -- N+1 here would
+    still be *correct*, just needlessly slow on a real feed page)."""
+    keys = {k for k in family_keys if k}
+    if not keys:
+        return {}
+    rows = (
+        session.query(OpportunityFamilyRecord.family_key, OpportunityFamilyRecord.member_count)
+        .filter(OpportunityFamilyRecord.family_key.in_(keys))
+        .all()
+    )
+    return {family_key: member_count for family_key, member_count in rows if member_count is not None}
+
+
+@router.get("/facets")
+def list_facets(request: Request, session: Session = Depends(get_db)):
+    facet_settings = _load_facet_settings(session)
+    filter_settings = _load_filter_settings(session)
+    truth_graph = _truth_graph_from_request(request)
+    opportunities = session.query(OpportunityRecord).all()
+    contexts = build_filter_contexts(session, truth_graph, opportunities)
+    # A facet only ever narrows what the policy filters already show -- the
+    # same base set `GET /api/opportunities` returns without
+    # `include_hidden`, before any facet narrows it further.
+    visible = [ctx for ctx in contexts if not apply_filters(ctx, filter_settings).hidden_by]
+    return {"facets": facet_payload(visible, facet_settings)}
+
+
+class FacetUpdateRequest(BaseModel):
+    include: list[str] | None = None
+    exclude: list[str] | None = None
+
+
+@router.put("/facets/{facet_id}")
+def update_facet(facet_id: str, payload: FacetUpdateRequest, response: Response, session: Session = Depends(get_db)):
+    fd = FACET_DEFINITIONS_BY_ID.get(facet_id)
+    if fd is None:
+        raise HTTPException(status_code=404, detail=f"unknown facet_id: {facet_id!r}")
+    if not fd.available:
+        response.status_code = 422
+        return {"detail": fd.unavailable_reason}
+
+    now = to_naive_utc(datetime.now(timezone.utc))
+    row = session.query(FounderFacetRecord).filter_by(facet_id=facet_id).first()
+    existing = json.loads(row.values_json) if (row is not None and row.values_json) else {}
+    include = payload.include if payload.include is not None else list(existing.get("include") or [])
+    exclude = payload.exclude if payload.exclude is not None else list(existing.get("exclude") or [])
+    mode = "off" if not include and not exclude else "active"
+    values_json = json.dumps({"include": include, "exclude": exclude})
+
+    if row is None:
+        row = FounderFacetRecord(facet_id=facet_id, mode=mode, values_json=values_json, updated_at=now)
+        session.add(row)
+    else:
+        row.mode = mode
+        row.values_json = values_json
+        row.updated_at = now
+    session.commit()
+
+    return {"facet_id": facet_id, "mode": mode, "include": include, "exclude": exclude}
+
+
+# --------------------------------------------------------------------------
+# C1: saved views
+# --------------------------------------------------------------------------
+
+
+@router.get("/saved-views")
+def list_saved_views_route(session: Session = Depends(get_db)):
+    return {"views": list_saved_views(session)}
+
+
+class SavedViewCreateRequest(BaseModel):
+    name: str
+    facets: dict[str, Any] = {}
+    search_query: str | None = None
+    is_default: bool = False
+
+
+@router.post("/saved-views")
+def create_saved_view_route(payload: SavedViewCreateRequest, session: Session = Depends(get_db)):
+    now = to_naive_utc(datetime.now(timezone.utc))
+    return create_saved_view(
+        session,
+        name=payload.name,
+        facets=payload.facets,
+        search_query=payload.search_query,
+        is_default=payload.is_default,
+        now=now,
+    )
+
+
+class SavedViewUpdateRequest(BaseModel):
+    name: str | None = None
+    facets: dict[str, Any] | None = None
+    search_query: str | None = None
+    is_default: bool | None = None
+
+
+@router.put("/saved-views/{view_id}")
+def update_saved_view_route(view_id: str, payload: SavedViewUpdateRequest, session: Session = Depends(get_db)):
+    now = to_naive_utc(datetime.now(timezone.utc))
+    result = update_saved_view(
+        session,
+        view_id,
+        name=payload.name,
+        facets=payload.facets,
+        search_query=payload.search_query,
+        is_default=payload.is_default,
+        now=now,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"unknown saved view: {view_id!r}")
+    return result
+
+
+@router.delete("/saved-views/{view_id}")
+def delete_saved_view_route(view_id: str, session: Session = Depends(get_db)):
+    ok = delete_saved_view(session, view_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"unknown saved view: {view_id!r}")
+    return {"id": view_id, "status": "deleted"}
+
+
+# --------------------------------------------------------------------------
+# C4: hidden-reasons audit
+# --------------------------------------------------------------------------
+
+
+@router.get("/hidden-reasons")
+def hidden_reasons_route(request: Request, session: Session = Depends(get_db)):
+    filter_settings = _load_filter_settings(session)
+    facet_settings = _load_facet_settings(session)
+    truth_graph = _truth_graph_from_request(request)
+    opportunities = session.query(OpportunityRecord).all()
+    contexts = build_filter_contexts(session, truth_graph, opportunities)
+    counts = hidden_reasons_audit(contexts, filter_settings, facet_settings, truth_graph)
+    return {"reasons": [{"reason": reason, "count": count} for reason, count in sorted(counts.items())]}
+
+
+class UnhideByReasonRequest(BaseModel):
+    reason: str
+
+
+@router.post("/hidden-reasons/unhide")
+def unhide_by_reason_route(payload: UnhideByReasonRequest, session: Session = Depends(get_db)):
+    now = to_naive_utc(datetime.now(timezone.utc))
+    ok = unhide_by_reason(session, payload.reason, now)
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"unrecognised reason: {payload.reason!r}")
+    return {"reason": payload.reason, "status": "unhidden"}
+
+
 @router.get("/opportunities")
 def list_opportunities(
     request: Request,
@@ -292,17 +495,39 @@ def list_opportunities(
         query = query.filter(OpportunityRecord.track == track)
     if since:
         query = query.filter(OpportunityRecord.created_at >= since)
-    if q:
-        like = f"%{q}%"
-        query = query.filter(
-            (OpportunityRecord.title.ilike(like)) | (OpportunityRecord.organization.ilike(like))
-        )
 
-    opportunities = query.all()
+    # BRIEF-FR-006 C2: full-text search replaces the old title/organization
+    # `ilike` match. `search_relevance` (id -> ts_rank) stays empty unless a
+    # search is active; everything downstream of this block (facet/filter
+    # application via `apply_filters`, `hidden_count`) is unchanged and runs
+    # against whatever `opportunities` ends up holding, so a search plus an
+    # active exclusion facet naturally returns their intersection and still
+    # counts the excluded rows. `search_message` is set only for genuinely
+    # unparseable input (api.search.is_query_unparseable) -- never for a
+    # query that legitimately matches zero rows -- and the response is an
+    # empty result, never a 500, either way.
+    search_relevance: dict[str, float] = {}
+    search_message: str | None = None
+    if q:
+        if is_query_unparseable(session, q):
+            search_message = "search query has no searchable terms"
+            opportunities: list[OpportunityRecord] = []
+        else:
+            hits = search_opportunity_ids(session, q)
+            search_relevance = {hit.opportunity_id: hit.relevance for hit in hits}
+            if search_relevance:
+                query = query.filter(OpportunityRecord.id.in_(search_relevance.keys()))
+                opportunities = query.all()
+            else:
+                opportunities = []
+    else:
+        opportunities = query.all()
 
     filter_settings = _load_filter_settings(session)
+    facet_settings = _load_facet_settings(session)
     truth_graph = _truth_graph_from_request(request)
     contexts = build_filter_contexts(session, truth_graph, opportunities)
+    family_sizes = _family_sizes(session, [o.family_key for o in opportunities])
 
     rows: list[dict[str, Any]] = []
     hidden_count = 0
@@ -316,46 +541,67 @@ def list_opportunities(
             continue
 
         outcome = apply_filters(ctx, filter_settings)
-        if outcome.hidden_by:
+        # C1 composition point: a facet only ever adds to `hidden_by` --
+        # never touches `decision`/`fit_score`/`flagged_by`/rank order. Facet
+        # hits are namespaced `facet:<facet_id>` so the UI (and the C4 audit)
+        # can tell a policy-filter hit from a facet hit in the same list.
+        facet_outcome = apply_facets(ctx, facet_settings)
+        combined_hidden_by = outcome.hidden_by + [f"facet:{facet_id}" for facet_id in facet_outcome.hidden_by]
+        if combined_hidden_by:
             hidden_count += 1
             if not include_hidden:
                 continue
 
-        rows.append(
-            {
-                "id": opp.id,
-                "title": opp.title,
-                "organization": opp.organization,
-                "source_id": opp.source_id,
-                "source_url": opp.source_url,
-                "track": opp.track,
-                "decision": opp_decision,
-                "fit_score": fit_score,
-                "top_reasons": top_reasons_from_list(ctx.reasons),
-                "deadline": opp.deadline,
-                "posted_date": opp.posted_date,
-                "is_stale": bool(opp.is_stale),
-                "action_state": _latest_action_state(session, opp.id),
-                "feedback_label": _latest_feedback_label(session, opp.id),
-                "hidden_by": outcome.hidden_by,
-                "flagged_by": outcome.flagged_by,
-                "_rank_penalty": outcome.rank_penalty,
-            }
-        )
+        row = {
+            "id": opp.id,
+            "title": opp.title,
+            "organization": opp.organization,
+            "source_id": opp.source_id,
+            "source_url": opp.source_url,
+            "track": opp.track,
+            "decision": opp_decision,
+            "fit_score": fit_score,
+            "top_reasons": top_reasons_from_list(ctx.reasons),
+            "deadline": opp.deadline,
+            "posted_date": opp.posted_date,
+            "is_stale": bool(opp.is_stale),
+            "action_state": _latest_action_state(session, opp.id),
+            "feedback_label": _latest_feedback_label(session, opp.id),
+            "hidden_by": combined_hidden_by,
+            "flagged_by": outcome.flagged_by,
+            "_rank_penalty": outcome.rank_penalty,
+        }
+        row.update(serialize_opportunity_extraction_fields(opp, family_sizes.get(opp.family_key)))
+        rows.append(row)
 
     # Rank-penalty tier first (contract section 4: demoted items sort after
-    # non-demoted ones at equal score, and never reorder within a tier), then
-    # the pre-existing key unchanged: fit_score descending, nulls last, then
+    # non-demoted ones at equal score, and never reorder within a tier).
+    # Below that tier: with an active search, BRIEF-FR-006 C2's ranking
+    # formula (relevance x fit, `api.search.rank_key`) descending -- this
+    # changes row *order* only; `decision`/`fit_score` themselves are read
+    # here, never written (see `api.search.rank_key`'s docstring and
+    # `api/test_search.py::NoReJudgementTest`). Without an active search, the
+    # pre-existing key is unchanged: fit_score descending, nulls last, then
     # posted_date descending, then id.
-    rows.sort(
-        key=lambda r: (
-            r["_rank_penalty"],
-            r["fit_score"] is None,
-            -(r["fit_score"] or 0),
-            _posted_date_sort_key(r["posted_date"]),
-            r["id"],
+    if q and search_relevance:
+        rows.sort(
+            key=lambda r: (
+                r["_rank_penalty"],
+                -rank_key(search_relevance.get(r["id"], 0.0), r["fit_score"]),
+                _posted_date_sort_key(r["posted_date"]),
+                r["id"],
+            )
         )
-    )
+    else:
+        rows.sort(
+            key=lambda r: (
+                r["_rank_penalty"],
+                r["fit_score"] is None,
+                -(r["fit_score"] or 0),
+                _posted_date_sort_key(r["posted_date"]),
+                r["id"],
+            )
+        )
     for r in rows:
         del r["_rank_penalty"]
 
@@ -365,7 +611,14 @@ def list_opportunities(
     start = (page - 1) * page_size
     page_items = rows[start : start + page_size]
 
-    return {"page": page, "page_size": page_size, "total": total, "hidden_count": hidden_count, "items": page_items}
+    return {
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "hidden_count": hidden_count,
+        "items": page_items,
+        "message": search_message,
+    }
 
 
 def _posted_date_sort_key(value: str | None) -> tuple[int, Any]:
@@ -461,7 +714,11 @@ def _build_opportunity_detail(session: Session, opp: OpportunityRecord) -> dict[
         .all()
     ]
 
-    return {
+    family_size = None
+    if opp.family_key:
+        family_size = _family_sizes(session, [opp.family_key]).get(opp.family_key)
+
+    detail_payload: dict[str, Any] = {
         "id": opp.id,
         "title": opp.title,
         "organization": opp.organization,
@@ -490,6 +747,55 @@ def _build_opportunity_detail(session: Session, opp: OpportunityRecord) -> dict[
         "evidence_links": evidence_links,
         "action_history": action_history,
         "feedback_history": feedback_history,
+    }
+    detail_payload.update(serialize_opportunity_extraction_fields(opp, family_size))
+    return detail_payload
+
+
+# --------------------------------------------------------------------------
+# "New since you last looked" (BRIEF-FR-006 E4)
+# --------------------------------------------------------------------------
+#
+# founder_opportunity_views (storage/models.py::FounderOpportunityViewRecord)
+# already gets one row per opportunity the founder opens (see get_opportunity
+# below, which is the only writer -- unchanged by this deliverable). "When
+# the founder last looked at the feed" is taken here as the single most
+# recent viewed_at across every such row, regardless of which opportunity it
+# was for: any opportunity first ingested (OpportunityRecord.created_at,
+# the same "how recent is this row" column api/routes_api.py's
+# dashboard_daily already uses) after that instant is "new since you last
+# looked". Named as an assumption in this work order's report -- the model
+# itself has no single "feed-level" viewed_at column to read instead.
+#
+# This is purely additive/read-only: it never writes decision, fit_score, or
+# hidden state, and marking a row seen (get_opportunity, below) never
+# touches them either -- both endpoints only ever read/write
+# founder_opportunity_views.viewed_at.
+#
+# Registered BEFORE `/opportunities/{opportunity_id}` below: FastAPI/Starlette
+# matches routes in registration order, and "new-since-last-view" would
+# otherwise be swallowed as an `opportunity_id` path value by that route.
+
+
+def _last_feed_viewed_at(session: Session) -> datetime | None:
+    return session.query(func.max(FounderOpportunityViewRecord.viewed_at)).scalar()
+
+
+@router.get("/opportunities/new-since-last-view")
+def opportunities_new_since_last_view(session: Session = Depends(get_db)):
+    last_viewed_at = _last_feed_viewed_at(session)
+
+    query = session.query(OpportunityRecord.id, OpportunityRecord.title, OpportunityRecord.created_at)
+    if last_viewed_at is not None:
+        query = query.filter(OpportunityRecord.created_at > last_viewed_at)
+    rows = query.order_by(OpportunityRecord.created_at.desc()).all()
+
+    return {
+        "last_viewed_at": _iso(last_viewed_at),
+        "count": len(rows),
+        "new_opportunities": [
+            {"id": r.id, "title": r.title, "created_at": _iso(r.created_at)} for r in rows
+        ],
     }
 
 
@@ -543,11 +849,32 @@ def _opportunity_to_domain(opp: OpportunityRecord, provenances: list[FieldProven
     )
 
 
-def _artifact_filename(kind: str, opportunity_id: str) -> str:
-    return f"{kind}-{opportunity_id}.docx"
+def _artifact_filename(kind: str, opportunity_id: str, ext: str) -> str:
+    return f"{kind}-{opportunity_id}.{ext}"
 
 
-def _compile_and_export(request: Request, opportunity_id: str, kind: str, session: Session) -> Response:
+def _validate_template_param(template: str | None) -> str:
+    """`template` defaults to Classic; an unrecognized name is a 422, never
+    a silent fallback that serves a different document than the founder
+    asked for (BRIEF-FR-006 D2 requirement 2)."""
+    if not template:
+        return "classic"
+    normalized = template.casefold()
+    if normalized not in TEMPLATES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown template {template!r}; valid: {sorted(TEMPLATES)}",
+        )
+    return normalized
+
+
+def _compile_artifact_or_response(
+    request: Request, opportunity_id: str, kind: str, session: Session,
+) -> tuple[Any, str] | Response:
+    """Compiles and validates the artifact. Returns `(artifact,
+    truth_pack_hash)` on success, or a `Response` (412/409) for the caller
+    to return unchanged -- a 409 returned from here must never be handed to
+    `artifact_cache.store()` (BRIEF-FR-006 D2 requirement 3)."""
     opp = session.query(OpportunityRecord).filter_by(id=opportunity_id).first()
     if opp is None:
         raise HTTPException(status_code=404, detail="opportunity not found")
@@ -587,30 +914,157 @@ def _compile_and_export(request: Request, opportunity_id: str, kind: str, sessio
                 "extra_data": {"opportunity_id": opportunity_id, "kind": kind, "finding_count": len(findings)},
             },
         )
-        # No docx is ever built past this point -- export_to_docx is not called.
+        # No docx/pdf is ever built past this point, and this Response is
+        # never passed to artifact_cache.store() by any caller below.
         return Response(
             status_code=409,
             media_type="application/json",
             content=json.dumps({"detail": "claim validation failed", "findings": findings}),
         )
 
-    docx_bytes = BinaryArtifactExporter.export_to_docx(artifact)
-    filename = _artifact_filename(kind, opportunity_id)
+    return artifact, loaded_pack.truth_pack_hash
+
+
+def _serve_artifact(
+    request: Request,
+    opportunity_id: str,
+    kind: str,
+    fmt: str,
+    session: Session,
+    template: str | None,
+    inline: bool,
+) -> Response:
+    """Shared DOCX/PDF path: validates the template, serves a cache hit
+    without recompiling, and otherwise compiles+validates+exports+caches.
+    `fmt` is `"docx"` or `"pdf"`; `inline` controls
+    `Content-Disposition` (PDF preview uses `inline`, every download uses
+    `attachment` -- BRIEF-FR-006 D2 requirement 1)."""
+    template_id = _validate_template_param(template)
+    media_type = DOCX_MEDIA_TYPE if fmt == "docx" else PDF_MEDIA_TYPE
+    cache_kind = artifact_cache.docx_kind(kind) if fmt == "docx" else artifact_cache.pdf_kind(kind)
+    filename = _artifact_filename(kind, opportunity_id, fmt)
+    disposition = "inline" if inline else "attachment"
+
+    opp = session.query(OpportunityRecord).filter_by(id=opportunity_id).first()
+    if opp is None:
+        raise HTTPException(status_code=404, detail="opportunity not found")
+
+    loaded_pack = request.app.state.loaded_truth_pack
+    if loaded_pack is None:
+        reason = request.app.state.truth_pack_error or "no truth pack loaded"
+        return Response(
+            status_code=412,
+            media_type="application/json",
+            content=json.dumps({"detail": "no truth pack loaded", "reason": reason}),
+        )
+
+    key = artifact_cache.cache_key(opportunity_id, loaded_pack.truth_pack_hash, template_id, cache_kind)
+    logger.info(
+        "artifact cache lookup",
+        extra={"component": "api.artifacts", "extra_data": {"cache_key": key, "kind": cache_kind}},
+    )
+    cached = artifact_cache.get(session, opportunity_id, loaded_pack.truth_pack_hash, template_id, cache_kind)
+    if cached is not None:
+        cached_content_type, cached_payload = cached
+        return Response(
+            content=cached_payload,
+            media_type=cached_content_type,
+            headers={"Content-Disposition": f'{disposition}; filename="{filename}"'},
+        )
+
+    result = _compile_artifact_or_response(request, opportunity_id, kind, session)
+    if isinstance(result, Response):
+        return result
+    artifact, truth_pack_hash = result
+
+    if fmt == "docx":
+        content = BinaryArtifactExporter.export_to_docx(artifact, template=template_id)
+    else:
+        content = BinaryArtifactExporter.export_to_pdf(artifact, template=template_id)
+
+    artifact_cache.store(session, opportunity_id, truth_pack_hash, template_id, cache_kind, media_type, content)
+
     return Response(
-        content=docx_bytes,
-        media_type=DOCX_MEDIA_TYPE,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'{disposition}; filename="{filename}"'},
     )
 
 
 @router.get("/opportunities/{opportunity_id}/artifacts/cv.docx")
-def get_cv_artifact(opportunity_id: str, request: Request, session: Session = Depends(get_db)):
-    return _compile_and_export(request, opportunity_id, "cv", session)
+def get_cv_artifact(
+    opportunity_id: str, request: Request, session: Session = Depends(get_db), template: str | None = None,
+):
+    return _serve_artifact(request, opportunity_id, "cv", "docx", session, template, inline=False)
 
 
 @router.get("/opportunities/{opportunity_id}/artifacts/cover-letter.docx")
-def get_cover_letter_artifact(opportunity_id: str, request: Request, session: Session = Depends(get_db)):
-    return _compile_and_export(request, opportunity_id, "cover-letter", session)
+def get_cover_letter_artifact(
+    opportunity_id: str, request: Request, session: Session = Depends(get_db), template: str | None = None,
+):
+    return _serve_artifact(request, opportunity_id, "cover-letter", "docx", session, template, inline=False)
+
+
+@router.get("/opportunities/{opportunity_id}/artifacts/cv.pdf")
+def get_cv_pdf_artifact(
+    opportunity_id: str,
+    request: Request,
+    session: Session = Depends(get_db),
+    template: str | None = None,
+    download: bool = False,
+):
+    """Inline by default (BRIEF-FR-006 D2 requirement 1, embedded preview);
+    `?download=true` returns the same bytes as `attachment` for saving."""
+    return _serve_artifact(request, opportunity_id, "cv", "pdf", session, template, inline=not download)
+
+
+@router.get("/opportunities/{opportunity_id}/artifacts/cover-letter.pdf")
+def get_cover_letter_pdf_artifact(
+    opportunity_id: str,
+    request: Request,
+    session: Session = Depends(get_db),
+    template: str | None = None,
+    download: bool = False,
+):
+    return _serve_artifact(request, opportunity_id, "cover-letter", "pdf", session, template, inline=not download)
+
+
+@router.get("/opportunities/{opportunity_id}/artifacts/{kind}/omitted")
+def get_artifact_omitted_items(
+    opportunity_id: str,
+    kind: str,
+    request: Request,
+    session: Session = Depends(get_db),
+    template: str | None = None,
+):
+    """D1's "what was left out and why" data
+    (`TailoredArtifact.omitted_items`), exposed as JSON so the drawer's
+    artifacts panel can render it next to the PDF preview without parsing a
+    binary document. Not cached -- it recompiles the same way
+    `_compile_artifact_or_response` always has; only the exported document
+    bytes are cached (BRIEF-FR-006 D2 requirement 3 concerns the document,
+    not this metadata)."""
+    if kind not in ("cv", "cover-letter"):
+        raise HTTPException(status_code=404, detail="unknown artifact kind")
+    template_id = _validate_template_param(template)
+
+    result = _compile_artifact_or_response(request, opportunity_id, kind, session)
+    if isinstance(result, Response):
+        return result
+    artifact, _truth_pack_hash = result
+
+    return {
+        "template": template_id,
+        "omitted_items": [
+            {
+                "section_id": item.section_id,
+                "text": item.text,
+                "reason": item.reason,
+                "claim_id": item.claim_id,
+            }
+            for item in artifact.omitted_items
+        ],
+    }
 
 
 # --------------------------------------------------------------------------
@@ -769,6 +1223,23 @@ def _upsert_triage_state(session: Session, opportunity_id: str, state: str, snoo
 
 
 # --------------------------------------------------------------------------
+# Digest (BRIEF-FR-006 F3) -- exposes the file worker.digest.generate_digest
+# (``python -m worker --digest``) already wrote to out/digest/. Read-only:
+# this endpoint never generates a digest itself, only reads the latest one
+# already on disk.
+# --------------------------------------------------------------------------
+
+@router.get("/digest/latest")
+def digest_latest():
+    from worker.digest import latest_digest
+
+    digest = latest_digest()
+    if digest is None:
+        raise HTTPException(status_code=404, detail="no digest has been generated yet")
+    return digest
+
+
+# --------------------------------------------------------------------------
 # Dashboard
 # --------------------------------------------------------------------------
 
@@ -848,9 +1319,82 @@ def dashboard_daily(request: Request, days: int = 7, session: Session = Depends(
     return {"days": days, "high_fit_threshold": high_fit_threshold, "series": series}
 
 
+@router.get("/polls/{poll_id}/over-hiding")
+def poll_over_hiding(poll_id: str, request: Request, session: Session = Depends(get_db)):
+    """BRIEF-FR-006 C5: `api/facets.py::poll_hide_fraction_warnings` is the
+    real, per-poll, filter-*and*-facet-aware "hid more than 10% of a poll's
+    new rows" computation (see its own docstring and
+    `PollHideFractionWarningTest`) -- but nothing called it, so the web side
+    had derived a day-granular, filters-only approximation from
+    `GET /api/dashboard/daily` instead (`web/lib/format/over-hiding.ts`,
+    both divergences named in its own docstring). This route calls the real
+    function directly against exactly the rows that specific poll inserted,
+    so the returned figure is never an approximation of the underlying
+    computation -- it *is* the underlying computation.
+
+    A poll run has no `opportunity_id` foreign key back to the specific rows
+    it inserted (frozen `storage/models.py` has no such column), so "the
+    rows this poll inserted" is taken as every `OpportunityRecord` whose
+    `created_at` falls within `[started_at, finished_at]` -- the same
+    poll-window convention `dashboard_daily` already uses at day
+    granularity, just narrowed to this one run's own window instead of a
+    calendar day. `finished_at` is null for a run still in flight; `now` is
+    used as the window's open end in that case.
+    """
+    poll = session.query(SourcePollRunRecord).filter_by(id=poll_id).first()
+    if poll is None:
+        raise HTTPException(status_code=404, detail="poll run not found")
+
+    window_end = poll.finished_at or datetime.now(timezone.utc)
+    new_opportunities = (
+        session.query(OpportunityRecord)
+        .filter(OpportunityRecord.created_at >= poll.started_at, OpportunityRecord.created_at <= window_end)
+        .all()
+    )
+    truth_graph = _truth_graph_from_request(request)
+    new_contexts = build_filter_contexts(session, truth_graph, new_opportunities)
+    filter_settings = _load_filter_settings(session)
+    facet_settings = _load_facet_settings(session)
+
+    warnings = poll_hide_fraction_warnings(poll.inserted, new_contexts, filter_settings, facet_settings)
+    return {"poll_id": poll.id, "poll_inserted": poll.inserted, "warnings": warnings}
+
+
 # --------------------------------------------------------------------------
 # Sources and worker
 # --------------------------------------------------------------------------
+
+@router.get("/manual-sources")
+def manual_sources_route():
+    """BRIEF-FR-006 C5: `opportunity/manual_sources.py::MANUAL_SOURCES` had
+    no serving route, so the web side had transcribed it statically into
+    `web/lib/data/manual-sources.ts` (drift risk named in that order's
+    return notes -- and that transcription had already drifted, still
+    listing `hacker_news_who_is_hiring`, which a later council review
+    removed from this module because it is a fully automated, read-allowed
+    adapter, not a manual fallback). This route serves the module's own
+    tuple directly -- read-only, in-process, no network I/O of any kind
+    (`ManualSource.deep_link` is pure string templating) -- so the founder's
+    "Check manually" panel can never again silently diverge from the
+    catalogue that actually governs which sources are manual-only."""
+    return {
+        "sources": [
+            {
+                "source_id": item.source_id,
+                "name": item.name,
+                "track": item.track.value,
+                "opportunity_type": item.opportunity_type,
+                "deep_link": item.deep_link(),
+                "category": item.category,
+                "policy_note": item.policy_note,
+                "alert_route_available": item.alert_route_available,
+                "alert_route_configured": item.alert_route_configured,
+                "readiness_checklist": list(item.readiness_checklist),
+            }
+            for item in MANUAL_SOURCES
+        ]
+    }
+
 
 @router.get("/sources/health")
 def sources_health(session: Session = Depends(get_db)):

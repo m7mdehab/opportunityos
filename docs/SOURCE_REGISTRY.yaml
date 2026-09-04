@@ -3,6 +3,7 @@ sources:
   - source_id: himalayas
     name: "himalayas"
     category: employment
+    poll_cadence_hours: 1
     access:
       discovery: public_get
       detail: public_get_or_unknown
@@ -57,6 +58,7 @@ sources:
   - source_id: remotive
     name: "remotive"
     category: employment
+    poll_cadence_hours: 1
     access:
       discovery: public_get
       detail: public_get_or_unknown
@@ -84,6 +86,7 @@ sources:
   - source_id: remote_ok
     name: "remote_ok"
     category: employment
+    poll_cadence_hours: 1
     access:
       discovery: public_get
       detail: public_get_or_unknown
@@ -111,6 +114,7 @@ sources:
   - source_id: we_work_remotely
     name: "we_work_remotely"
     category: employment
+    poll_cadence_hours: 1
     access:
       discovery: public_get
       detail: public_get_or_unknown
@@ -138,6 +142,7 @@ sources:
   - source_id: ungm
     name: "ungm"
     category: independent
+    poll_cadence_hours: 24
     access:
       discovery: public_get
       detail: public_get_or_unknown
@@ -165,6 +170,7 @@ sources:
   - source_id: world_bank
     name: "world_bank"
     category: independent
+    poll_cadence_hours: 24
     access:
       discovery: public_get
       detail: public_get_or_unknown
@@ -192,6 +198,7 @@ sources:
   - source_id: eu_ted
     name: "eu_ted"
     category: independent
+    poll_cadence_hours: 24
     access:
       discovery: public_get
       detail: public_get_or_unknown
@@ -247,7 +254,7 @@ sources:
     name: "freelancer"
     category: independent
     access:
-      discovery: public_get
+      discovery: credential_gated
       detail: public_get_or_unknown
       submit: prohibited_or_unknown
     attribution:
@@ -257,19 +264,20 @@ sources:
     commercial_use:
       status: review_required
     automation:
-      read: allowed
+      read: disabled
       prepare: disabled
       submit: disabled
-    policy_status: unknown_disable_actions
+    policy_status: manual_only
     observed:
       status: parse_empty
-      detail: "HTTP 200 parsed zero records"
+      detail: "2026-09-03 BRIEF-FR-006 E23 correction: prior HTTP 200/zero-records read from /api/projects/0.1/projects/active/ was an unauthenticated probe of a documented partner/OAuth-only endpoint. Per the brief ('Freelancer stays credential-gated'), automation.read is corrected to disabled; no adapter is bound. robots.txt (checked 2026-09-03) blocks JoobleBot/PetalBot explicitly and allows generic crawl, but the API itself requires an OAuth application key AGENTS.md forbids obtaining without founder credentials."
       request_metadata: "method=GET; endpoint=/api/projects/0.1/projects/active/"
       latency_ms: 733
       record_count: 0
-    last_policy_reviewed: 2026-08-28
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://www.freelancer.com/about/terms
+      - https://www.freelancer.com/robots.txt
   - source_id: etimad
     name: "etimad"
     category: independent
@@ -992,10 +1000,10 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt fetched (HTTP 200); it explicitly states automated access without LinkedIn's express permission is strictly prohibited. Registered manual_only; alert-mailbox route (FR-004 inbox adapter) available but unconfigured (founder has not provided a mailbox); deep link provided in opportunity/manual_sources.py."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
   - source_id: indeed
@@ -1018,10 +1026,10 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt fetched (HTTP 200); permits generic SEO crawling but documents no public job-data API. Registered manual_only; alert-mailbox route available but unconfigured; deep link provided in opportunity/manual_sources.py."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
   - source_id: glassdoor
@@ -1070,10 +1078,10 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt fetched (HTTP 200); uses Content-Signal directives (not classic Disallow) with no documented public jobs API. Alert-mailbox route (FR-004 inbox adapter) already built but unconfigured (no founder mailbox); deep link provided in opportunity/manual_sources.py."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
   - source_id: bayt
@@ -1096,10 +1104,10 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt fetched (HTTP 200); explicitly disallows named bots (008, LinkedInBot, IndexBot). Alert-mailbox route already built but unconfigured; deep link provided in opportunity/manual_sources.py."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
   - source_id: naukrigulf
@@ -1122,10 +1130,10 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt fetch timed out on two attempts (consistent with anti-bot mitigation against a non-browser user agent); not retried a third time in this session. Alert-mailbox route already built but unconfigured; deep link provided in opportunity/manual_sources.py."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
   - source_id: gulftalent
@@ -1148,10 +1156,10 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt fetched (HTTP 200); explicitly disallows named bots (008, JobdiggerSpider). Alert-mailbox route already built but unconfigured; deep link provided in opportunity/manual_sources.py."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
   - source_id: upwork
@@ -1174,10 +1182,10 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt request itself returned HTTP 403 (not the API -- the host blocks non-browser access outright), confirming the brief's note that the API is partner-only. Not retried. RSS search feeds named in the brief could not be safely reconned without a second request to an already-blocking host."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
   - source_id: mostaql
@@ -1200,10 +1208,10 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt fetched (HTTP 200); disallows /search* and /ajax/ but not general browsing. No documented public JSON/RSS projects API found within recon budget. Deep link with founder's search prefilled provided in opportunity/manual_sources.py."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
   - source_id: khamsat
@@ -1226,10 +1234,10 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt fetched (HTTP 200); allows general browsing with several dynamic-query disallows. No documented public API found. Deep link provided in opportunity/manual_sources.py."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
   - source_id: ureed
@@ -1278,10 +1286,10 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt fetched (HTTP 200 on retry after a transient local TLS-store error); uses Content-Signal directives (ai-train=no, search=yes). No documented public gigs API found. Deep link provided in opportunity/manual_sources.py."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
   - source_id: guru
@@ -1356,10 +1364,10 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt fetched (HTTP 200). Per brief, Toptal is application-based with no browsable open-project feed for unaccepted applicants. Deep link provided in opportunity/manual_sources.py."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
   - source_id: wellfound
@@ -1382,9 +1390,1585 @@ sources:
     policy_status: manual_only
     observed:
       status: deliberately_not_fetched
-      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter."
+      detail: "BRIEF-001 §6: listings were not fetched; evaluate public alert, deep-link, partnership, and terms routes before any future adapter. | 2026-09-03 BRIEF-FR-006 E23 recon: robots.txt fetched (HTTP 200; partial disallow on job/session query paths). Per brief, alerts route if API forbids -- job data requires an authenticated account. Alert route available but unconfigured; deep link provided in opportunity/manual_sources.py."
       latency_ms: 0
       record_count: 0
-    last_policy_reviewed: 2026-08-27
+    last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/m7mdehab/opportunityos/blob/main/briefs/BRIEF-001.md
+  - source_id: hacker_news_who_is_hiring
+    name: "hacker_news_who_is_hiring"
+    category: employment
+    poll_cadence_hours: 1
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: read_allowed
+    observed:
+      status: allowed_ok
+      detail: "2026-09-03 recon: robots.txt Allow: /*.json$ for all user agents; GET /v0/item/1.json returned HTTP 200. Public Firebase mirror, no auth. Adapter: opportunity/adapters/hacker_news.py (HackerNewsWhoIsHiringAdapter). Multi-step thread discovery is documented in that module as a fetch-orchestration seam for the Master to wire into worker/handlers.py."
+      request_metadata: "method=GET; endpoint=/v0/item/1.json"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://github.com/HackerNews/API
+      - https://hacker-news.firebaseio.com/robots.txt
+  - source_id: reddit_forhire
+    name: "reddit_forhire"
+    category: employment
+    poll_cadence_hours: 1
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: http_403
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200) but the public JSON endpoint (https://www.reddit.com/r/forhire.json) returned HTTP 403 on the first request (confirmed directly via r/forhire; generalized to this subreddit, which shares the same host, endpoint pattern, and anti-bot policy, to avoid a second request against an already-blocking host). AGENTS.md 403-stop rule observed; not retried. No browser automation used per brief Appendix 6. Council review 4, finding 13: the robots.txt response body (the actual User-agent: * directive text) was not captured or recorded at the time of this recon -- only its HTTP 200 status was. Compliance of the subsequent body request with robots.txt therefore CANNOT be established from this evidence; this is recorded as an open, unresolved question, not a compliant-by-default assumption. The host has since returned HTTP 403 to this project even for robots.txt, so the directive text cannot be safely re-fetched now. Regardless of that open question, this source stays manual_only/read: disabled -- the correction does not depend on resolving it."
+      request_metadata: "method=GET; endpoint=/r/forhire.json"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.redditinc.com/policies/reddit-rules
+      - https://www.reddit.com/robots.txt
+  - source_id: reddit_remotejobs
+    name: "reddit_remotejobs"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: inferred_from_sibling_403
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200) but the public JSON endpoint (https://www.reddit.com/r/remotejobs.json) returned HTTP 403 on the first request (confirmed directly via r/forhire; generalized to this subreddit, which shares the same host, endpoint pattern, and anti-bot policy, to avoid a second request against an already-blocking host). AGENTS.md 403-stop rule observed; not retried. No browser automation used per brief Appendix 6."
+      request_metadata: "method=GET; endpoint=/robots.txt (subreddit JSON not independently requested)"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.redditinc.com/policies/reddit-rules
+      - https://www.reddit.com/robots.txt
+  - source_id: reddit_machinelearningjobs
+    name: "reddit_machinelearningjobs"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: inferred_from_sibling_403
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200) but the public JSON endpoint (https://www.reddit.com/r/MachineLearningJobs.json) returned HTTP 403 on the first request (confirmed directly via r/forhire; generalized to this subreddit, which shares the same host, endpoint pattern, and anti-bot policy, to avoid a second request against an already-blocking host). AGENTS.md 403-stop rule observed; not retried. No browser automation used per brief Appendix 6."
+      request_metadata: "method=GET; endpoint=/robots.txt (subreddit JSON not independently requested)"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.redditinc.com/policies/reddit-rules
+      - https://www.reddit.com/robots.txt
+  - source_id: reddit_datajobs
+    name: "reddit_datajobs"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: inferred_from_sibling_403
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200) but the public JSON endpoint (https://www.reddit.com/r/datajobs.json) returned HTTP 403 on the first request (confirmed directly via r/forhire; generalized to this subreddit, which shares the same host, endpoint pattern, and anti-bot policy, to avoid a second request against an already-blocking host). AGENTS.md 403-stop rule observed; not retried. No browser automation used per brief Appendix 6."
+      request_metadata: "method=GET; endpoint=/robots.txt (subreddit JSON not independently requested)"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.redditinc.com/policies/reddit-rules
+      - https://www.reddit.com/robots.txt
+  - source_id: reddit_hiring
+    name: "reddit_hiring"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: inferred_from_sibling_403
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200) but the public JSON endpoint (https://www.reddit.com/r/hiring.json) returned HTTP 403 on the first request (confirmed directly via r/forhire; generalized to this subreddit, which shares the same host, endpoint pattern, and anti-bot policy, to avoid a second request against an already-blocking host). AGENTS.md 403-stop rule observed; not retried. No browser automation used per brief Appendix 6."
+      request_metadata: "method=GET; endpoint=/robots.txt (subreddit JSON not independently requested)"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.redditinc.com/policies/reddit-rules
+      - https://www.reddit.com/robots.txt
+  - source_id: reddit_jobbit
+    name: "reddit_jobbit"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: inferred_from_sibling_403
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200) but the public JSON endpoint (https://www.reddit.com/r/jobbit.json) returned HTTP 403 on the first request (confirmed directly via r/forhire; generalized to this subreddit, which shares the same host, endpoint pattern, and anti-bot policy, to avoid a second request against an already-blocking host). AGENTS.md 403-stop rule observed; not retried. No browser automation used per brief Appendix 6."
+      request_metadata: "method=GET; endpoint=/robots.txt (subreddit JSON not independently requested)"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.redditinc.com/policies/reddit-rules
+      - https://www.reddit.com/robots.txt
+  - source_id: reddit_bigdatajobs
+    name: "reddit_bigdatajobs"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: inferred_from_sibling_403
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200) but the public JSON endpoint (https://www.reddit.com/r/bigdatajobs.json) returned HTTP 403 on the first request (confirmed directly via r/forhire; generalized to this subreddit, which shares the same host, endpoint pattern, and anti-bot policy, to avoid a second request against an already-blocking host). AGENTS.md 403-stop rule observed; not retried. No browser automation used per brief Appendix 6."
+      request_metadata: "method=GET; endpoint=/robots.txt (subreddit JSON not independently requested)"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.redditinc.com/policies/reddit-rules
+      - https://www.reddit.com/robots.txt
+  - source_id: ycombinator_work_at_a_startup
+    name: "ycombinator_work_at_a_startup"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: no_public_api
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200, generic allow). No documented public JSON/RSS jobs API found within recon budget; full listings require an applicant account. Deep link only."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.workatastartup.com/robots.txt
+  - source_id: working_nomads
+    name: "working_nomads"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: no_public_api
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200, generic allow). Guessed RSS/API paths (/jobs.rss, /api/exposed_jobs/rss) returned HTTP 404 on two attempts. No documented public feed found within recon budget. Deep link only."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.workingnomads.com/robots.txt
+  - source_id: remote_co
+    name: "remote_co"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: robots_unreachable
+      detail: "2026-09-03 recon: robots.txt fetch timed out on two attempts, consistent with anti-bot mitigation against a non-browser user agent. Not retried a third time in this session. Deep link only."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://remote.co/robots.txt
+  - source_id: justremote
+    name: "justremote"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: no_public_api
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200, generic allow with a few path disallows). No documented public JSON/RSS jobs API found within recon budget. Deep link only."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://justremote.co/robots.txt
+  - source_id: arc_dev
+    name: "arc_dev"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: no_public_api
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200, generic allow). No documented public jobs API found within recon budget. Deep link only."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://arc.dev/robots.txt
+  - source_id: ai_jobs_net
+    name: "ai_jobs_net"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: robots_unreachable
+      detail: "2026-09-03 recon: robots.txt request returned an HTML SPA fallback page rather than a text robots file (retried after a local TLS-store error on the first attempt); a candidate API path (/api/v1/jobs) timed out on both attempts. Not confirmed reachable in this session; registered manual_only pending a future successful recon pass rather than claiming read access without confirmation."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://ai-jobs.net/robots.txt
+  - source_id: otta
+    name: "otta"
+    category: employment
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: credential_gated
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200, generic allow). Per brief, Otta is an alerts-route source -- job data requires an authenticated account. Alert route available but unconfigured (no founder mailbox). Deep link only."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://otta.com/robots.txt
+  - source_id: peopleperhour
+    name: "peopleperhour"
+    category: independent
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: no_public_api
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200, generic allow). No documented public projects API found within recon budget. Deep link only."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.peopleperhour.com/robots.txt
+  - source_id: preply
+    name: "preply"
+    category: independent
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: platform_application
+    observed:
+      status: not_a_postings_feed
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200). Per brief, tutoring platforms are platform-application, not postings; registered under track=tutoring with a deep link and readiness checklist in opportunity/manual_sources.py. No adapter."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://preply.com/robots.txt
+  - source_id: superprof
+    name: "superprof"
+    category: independent
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: platform_application
+    observed:
+      status: http_403
+      detail: "2026-09-03 recon: robots.txt request itself returned HTTP 403 (Cloudflare bot mitigation). Not retried. Per brief, tutoring platforms are platform-application, not postings; registered under track=tutoring with a deep link and readiness checklist. No adapter."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.superprof.com/robots.txt
+  - source_id: wyzant
+    name: "wyzant"
+    category: independent
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: platform_application
+    observed:
+      status: not_a_postings_feed
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200 on retry after a transient local TLS-store error). Per brief, tutoring platforms are platform-application, not postings; registered under track=tutoring with a deep link and readiness checklist. No adapter."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.wyzant.com/robots.txt
+  - source_id: tutor_com
+    name: "tutor_com"
+    category: independent
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: platform_application
+    observed:
+      status: not_a_postings_feed
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200). Per brief, tutoring platforms are platform-application, not postings; registered under track=tutoring with a deep link and readiness checklist. No adapter."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.tutor.com/robots.txt
+  - source_id: chegg
+    name: "chegg"
+    category: independent
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: platform_application
+    observed:
+      status: not_a_postings_feed
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200; blocks ia_archiver, partial disallow for others). Per brief, tutoring platforms are platform-application, not postings; registered under track=tutoring with a deep link and readiness checklist. No adapter."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.chegg.com/robots.txt
+  - source_id: cambly
+    name: "cambly"
+    category: independent
+    access:
+      discovery: manual_deeplink_or_alert
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: platform_application
+    observed:
+      status: not_a_postings_feed
+      detail: "2026-09-03 recon: robots.txt fetched (HTTP 200, generic allow with a few path disallows). Per brief, tutoring platforms are platform-application, not postings; registered under track=tutoring with a deep link and readiness checklist. No adapter."
+      request_metadata: "method=GET; endpoint=/robots.txt"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.cambly.com/robots.txt
+  - source_id: greenhouse:acquia
+    name: "greenhouse:acquia"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 5/11 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/acquia/jobs?content=true"
+      latency_ms: 436
+      record_count: 11
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:aestudio
+    name: "greenhouse:aestudio"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 4/6 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/aestudio/jobs?content=true"
+      latency_ms: 1288
+      record_count: 6
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:alphasights
+    name: "greenhouse:alphasights"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 6/83 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/alphasights/jobs?content=true"
+      latency_ms: 1669
+      record_count: 83
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:asana
+    name: "greenhouse:asana"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 56/119 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/asana/jobs?content=true"
+      latency_ms: 3543
+      record_count: 119
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:axios
+    name: "greenhouse:axios"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 2/30 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/axios/jobs?content=true"
+      latency_ms: 1315
+      record_count: 30
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:bitwarden
+    name: "greenhouse:bitwarden"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 23/36 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/bitwarden/jobs?content=true"
+      latency_ms: 838
+      record_count: 36
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:cabify
+    name: "greenhouse:cabify"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 4/65 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/cabify/jobs?content=true"
+      latency_ms: 1850
+      record_count: 65
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:calendly
+    name: "greenhouse:calendly"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 6/10 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/calendly/jobs?content=true"
+      latency_ms: 1016
+      record_count: 10
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:canonical
+    name: "greenhouse:canonical"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 132/302 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/canonical/jobs?content=true"
+      latency_ms: 6763
+      record_count: 302
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:chainguard
+    name: "greenhouse:chainguard"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 46/85 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/chainguard/jobs?content=true"
+      latency_ms: 2880
+      record_count: 85
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:circleci
+    name: "greenhouse:circleci"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 2/6 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/circleci/jobs?content=true"
+      latency_ms: 687
+      record_count: 6
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:comet
+    name: "greenhouse:comet"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 1/3 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/comet/jobs?content=true"
+      latency_ms: 418
+      record_count: 3
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:consensys
+    name: "greenhouse:consensys"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 3/6 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/consensys/jobs?content=true"
+      latency_ms: 418
+      record_count: 6
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:coursera
+    name: "greenhouse:coursera"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 12/24 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/coursera/jobs?content=true"
+      latency_ms: 633
+      record_count: 24
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:dashlane
+    name: "greenhouse:dashlane"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 8/14 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/dashlane/jobs?content=true"
+      latency_ms: 15111
+      record_count: 14
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:datacamp
+    name: "greenhouse:datacamp"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 4/32 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/datacamp/jobs?content=true"
+      latency_ms: 1063
+      record_count: 32
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:discord
+    name: "greenhouse:discord"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 32/48 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/discord/jobs?content=true"
+      latency_ms: 1222
+      record_count: 48
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:doximity
+    name: "greenhouse:doximity"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 4/10 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/doximity/jobs?content=true"
+      latency_ms: 554
+      record_count: 10
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:dropbox
+    name: "greenhouse:dropbox"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 16/42 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/dropbox/jobs?content=true"
+      latency_ms: 2395
+      record_count: 42
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:ebury
+    name: "greenhouse:ebury"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 89/172 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/ebury/jobs?content=true"
+      latency_ms: 5162
+      record_count: 172
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:elastic
+    name: "greenhouse:elastic"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 234/360 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/elastic/jobs?content=true"
+      latency_ms: 9861
+      record_count: 360
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:fastly
+    name: "greenhouse:fastly"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 20/51 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/fastly/jobs?content=true"
+      latency_ms: 3264
+      record_count: 51
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:fingerprint
+    name: "greenhouse:fingerprint"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 8/23 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/fingerprint/jobs?content=true"
+      latency_ms: 385
+      record_count: 23
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:fleetio
+    name: "greenhouse:fleetio"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 9/22 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/fleetio/jobs?content=true"
+      latency_ms: 841
+      record_count: 22
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:flip
+    name: "greenhouse:flip"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 4/12 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/flip/jobs?content=true"
+      latency_ms: 665
+      record_count: 12
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:gitlab
+    name: "greenhouse:gitlab"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 128/233 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/gitlab/jobs?content=true"
+      latency_ms: 3902
+      record_count: 233
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:godaddy
+    name: "greenhouse:godaddy"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 16/32 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/godaddy/jobs?content=true"
+      latency_ms: 1754
+      record_count: 32
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: greenhouse:gremlin
+    name: "greenhouse:gremlin"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 2/3 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://boards-api.greenhouse.io/v1/boards/gremlin/jobs?content=true"
+      latency_ms: 346
+      record_count: 3
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.greenhouse.com/terms-of-use
+  - source_id: lever:activecampaign
+    name: "lever:activecampaign"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 3/13 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://api.lever.co/v0/postings/activecampaign?mode=json"
+      latency_ms: 11277
+      record_count: 13
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.lever.co/terms
+  - source_id: lever:aerostrat
+    name: "lever:aerostrat"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 2/3 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://api.lever.co/v0/postings/aerostrat?mode=json"
+      latency_ms: 1482
+      record_count: 3
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.lever.co/terms
+  - source_id: lever:anomali
+    name: "lever:anomali"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 2/10 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://api.lever.co/v0/postings/anomali?mode=json"
+      latency_ms: 23063
+      record_count: 10
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.lever.co/terms
+  - source_id: lever:bounteous
+    name: "lever:bounteous"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 14/37 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://api.lever.co/v0/postings/bounteous?mode=json"
+      latency_ms: 17864
+      record_count: 37
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.lever.co/terms
+  - source_id: lever:collabora
+    name: "lever:collabora"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 1/3 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://api.lever.co/v0/postings/collabora?mode=json"
+      latency_ms: 2099
+      record_count: 3
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.lever.co/terms
+  - source_id: lever:dronedeploy
+    name: "lever:dronedeploy"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 3/9 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://api.lever.co/v0/postings/dronedeploy?mode=json"
+      latency_ms: 8462
+      record_count: 9
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.lever.co/terms
+  - source_id: lever:findem
+    name: "lever:findem"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 2/3 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://api.lever.co/v0/postings/findem?mode=json"
+      latency_ms: 1383
+      record_count: 3
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.lever.co/terms
+  - source_id: lever:gojob
+    name: "lever:gojob"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: shared_per_ats_host
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: unknown_disable_actions
+    observed:
+      status: allowed_ok
+      detail: "HTTP 200; 2/62 postings in target title families within 90 days"
+      request_metadata: "method=GET; endpoint=https://api.lever.co/v0/postings/gojob?mode=json"
+      latency_ms: 63223
+      record_count: 62
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://www.lever.co/terms

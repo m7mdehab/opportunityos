@@ -1,0 +1,24 @@
+test_logging (unittest.loader._FailedTest.test_logging) ... ERROR
+
+======================================================================
+ERROR: test_logging (unittest.loader._FailedTest.test_logging)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_logging
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\unittest\loader.py", line 396, in _find_test_path
+    module = self._get_module_from_name(name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\unittest\loader.py", line 339, in _get_module_from_name
+    __import__(name)
+  File "C:\Users\M7mdEhab\projects\OpportunityOS\core\test_logging.py", line 3, in <module>
+    import logging
+  File "C:\Users\M7mdEhab\projects\OpportunityOS\core\logging.py", line 44, in <module>
+    class StructuredLogFormatter(logging.Formatter):
+                                 ^^^^^^^^^^^^^^^^^
+AttributeError: partially initialized module 'logging' has no attribute 'Formatter' (most likely due to a circular import)
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (errors=1)

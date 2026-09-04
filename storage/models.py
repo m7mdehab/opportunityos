@@ -12,8 +12,10 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    LargeBinary,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -40,8 +42,52 @@ class OpportunityRecord(Base):
     raw_payload_json = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
+    # A1M (BRIEF-FR-006, migration 0004_founder_control) -- founder-control
+    # columns. Field names are the contract shared with the concurrent
+    # opportunity/models.py work order; do not rename.
+    work_mode = Column(String(16), nullable=False, default="unspecified", index=True)
+    work_mode_source = Column(String(16), nullable=True)
+    location_country = Column(String(2), nullable=True, index=True)
+    location_city = Column(String(128), nullable=True)
+    location_region = Column(String(64), nullable=True)
+    remote_scope = Column(String(24), nullable=False, default="unspecified")
+    remote_scope_regions = Column(Text, nullable=True)
+    employment_type = Column(String(24), nullable=False, default="unspecified")
+    seniority_level = Column(String(24), nullable=False, default="unspecified")
+    compensation_min = Column(Integer, nullable=True)
+    compensation_max = Column(Integer, nullable=True)
+    compensation_currency = Column(String(8), nullable=True)
+    compensation_period = Column(String(16), nullable=True)
+    title_family = Column(String(64), nullable=True, index=True)
+    title_level = Column(String(24), nullable=True)
+    family_key = Column(String(64), nullable=True, index=True)
+    # Text().with_variant(...): plain TEXT on every non-PostgreSQL dialect
+    # (SQLite, used by several test suites' Base.metadata.create_all(), has no
+    # tsvector type and cannot compile a bare TSVECTOR column) and the real
+    # ``tsvector`` type on PostgreSQL, where migration 0004_founder_control's
+    # GIN index (ix_opportunities_search_tsv) actually lives.
+    search_tsv = Column(Text().with_variant(TSVECTOR(), "postgresql"), nullable=True)
+
     provenances = relationship("FieldProvenanceRecord", back_populates="opportunity", cascade="all, delete-orphan")
     feedback = relationship("FounderFeedbackRecord", back_populates="opportunity", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        # Council review #3, finding 7: `storage/models.py` declared none of
+        # migration 0004's five indexes, so `compare_metadata` reported five
+        # spurious `remove_index` operations at head, `init_db()`'s
+        # `create_all` produced a schema missing the GIN index entirely, and
+        # `alembic revision --autogenerate` would have proposed dropping all
+        # five. This GIN index matches
+        # `0004_founder_control.py::upgrade`'s `ix_opportunities_search_tsv`
+        # exactly (name and `postgresql_using='gin'`); the other four are
+        # `index=True` on the columns above (also name-matching the
+        # migration's `ix_opportunities_<column>` indexes).
+        Index(
+            "ix_opportunities_search_tsv",
+            "search_tsv",
+            postgresql_using="gin",
+        ),
+    )
 
 
 class FieldProvenanceRecord(Base):
@@ -336,3 +382,57 @@ class FounderFilterSettingRecord(Base):
     mode = Column(String(16), nullable=False)
     params_json = Column(Text, nullable=True)
     updated_at = Column(DateTime, nullable=False)
+
+
+class OpportunityFamilyRecord(Base):
+    """A1M (BRIEF-FR-006, migration 0004_founder_control)."""
+
+    __tablename__ = "opportunity_families"
+
+    family_key = Column(String(64), primary_key=True)
+    employer = Column(String(256), nullable=True)
+    normalized_title = Column(String(256), nullable=True)
+    member_count = Column(Integer, nullable=True)
+    best_member_id = Column(String(64), nullable=True)
+    split_out = Column(Boolean, nullable=False, default=False)
+    updated_at = Column(DateTime, nullable=True)
+
+
+class FounderFacetRecord(Base):
+    """A1M (BRIEF-FR-006, migration 0004_founder_control)."""
+
+    __tablename__ = "founder_facets"
+
+    facet_id = Column(String(64), primary_key=True)
+    mode = Column(String(16), nullable=False, default="off")
+    values_json = Column(Text, nullable=True)
+    updated_at = Column(DateTime, nullable=True)
+
+
+class FounderSavedViewRecord(Base):
+    """A1M (BRIEF-FR-006, migration 0004_founder_control)."""
+
+    __tablename__ = "founder_saved_views"
+
+    id = Column(String(64), primary_key=True)
+    name = Column(String(128), nullable=False, unique=True)
+    facets_json = Column(Text, nullable=True)
+    search_query = Column(Text, nullable=True)
+    is_default = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, nullable=True)
+
+
+class ArtifactCacheRecord(Base):
+    """A1M (BRIEF-FR-006, migration 0004_founder_control)."""
+
+    __tablename__ = "artifact_cache"
+
+    cache_key = Column(String(128), primary_key=True)
+    opportunity_id = Column(String(64), nullable=True)
+    truth_pack_hash = Column(String(64), nullable=True)
+    template_id = Column(String(32), nullable=True)
+    artifact_kind = Column(String(32), nullable=True)
+    content_type = Column(String(128), nullable=True)
+    payload = Column(LargeBinary, nullable=True)
+    created_at = Column(DateTime, nullable=True)

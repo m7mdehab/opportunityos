@@ -1,0 +1,44 @@
+test_adv_01_high_priority_signal_cannot_disappear_into_noise (test_adversarial.AdversarialInboxTests.test_adv_01_high_priority_signal_cannot_disappear_into_noise)
+Prove interview / recruiter / client requests achieve 100% recall and are never categorized as noise. ... ok
+test_adv_02_complete_correlation_attacks_suite (test_adversarial.AdversarialInboxTests.test_adv_02_complete_correlation_attacks_suite)
+Adversarially test the complete required 9-point correlation attack set. ... ok
+test_adv_03_real_partial_batch_crash_recovery (test_adversarial.AdversarialInboxTests.test_adv_03_real_partial_batch_crash_recovery)
+Prove that a process crash after message 2 in a 5-message batch resumes messages 3-5 without duplicating 1-2. ... ok
+test_adv_03b_crash_after_evidence_before_classification (test_adversarial.AdversarialInboxTests.test_adv_03b_crash_after_evidence_before_classification)
+Prove that a crash right after evidence persistence but before signal classification resumes safely without dropping messages or duplicating evidence. ... ok
+test_adv_03c_crash_after_pipeline_event_before_notification (test_adversarial.AdversarialInboxTests.test_adv_03c_crash_after_pipeline_event_before_notification)
+Prove that a crash right after pipeline event persistence but before notification emission resumes safely with exact-once semantics. ... ok
+test_adv_04_unknown_outcome_inbound_reconciliation (test_adversarial.AdversarialInboxTests.test_adv_04_unknown_outcome_inbound_reconciliation)
+Prove inbound confirmation creates reconciliation record for UNKNOWN_OUTCOME action without silent mutation. ... ok
+test_adv_05_learning_engine_strictly_forbidden_from_truth_or_permission_mutation (test_adversarial.AdversarialInboxTests.test_adv_05_learning_engine_strictly_forbidden_from_truth_or_permission_mutation)
+Prove learning loop raises PermissionError if attempting to mutate TruthGraph or permissions. ... ok
+test_adv_06_multi_dimensional_analytics_coverage (test_adversarial.AdversarialInboxTests.test_adv_06_multi_dimensional_analytics_coverage)
+Prove analytics computes metrics across all supported dimensions and explicitly marks UNAVAILABLE. ... ok
+test_adv_07_zero_event_pipeline_state_has_no_fabricated_confirmation (test_adversarial.AdversarialInboxTests.test_adv_07_zero_event_pipeline_state_has_no_fabricated_confirmation)
+Prove zero-event replay returns NO_EVENTS stage without fabricated confirmation. ... ok
+test_adv_08_out_of_order_message_chronology (test_adversarial.AdversarialInboxTests.test_adv_08_out_of_order_message_chronology)
+Prove out-of-order delivery derives final state from source message timestamp, not classifier time. ... ok
+test_adv_09_legacy_schema_migration_and_idempotency (test_adversarial.AdversarialInboxTests.test_adv_09_legacy_schema_migration_and_idempotency)
+Prove that opening a real pre-PR56 BRIEF-006 legacy SQLite database upgrades cleanly without data loss or error. ... ok
+test_adv_09b_legacy_event_before_notification_migration_and_replay (test_adversarial.AdversarialInboxTests.test_adv_09b_legacy_event_before_notification_migration_and_replay)
+Mandatory test: PR55 legacy DB with pipeline event persisted but NO founder notification and unadvanced cursor. ... ok
+test_adv_10_strict_reference_prefix_collision_and_receipt_authority (test_adversarial.AdversarialInboxTests.test_adv_10_strict_reference_prefix_collision_and_receipt_authority)
+Prove stored REQ-12345 + inbound REQ-1234 is NOT authoritative, and receipt_reference is a first-class exact authority. ... ok
+test_adv_11_qualified_conversation_analytics_derivation (test_adversarial.AdversarialInboxTests.test_adv_11_qualified_conversation_analytics_derivation)
+Prove qualified_conversation analytics derives accurately from pipeline events while unobserved remain pending. ... ok
+test_complete_gold_employment_messages_recall_and_precision (test_classifier.TestResponseClassifier.test_complete_gold_employment_messages_recall_and_precision) ... ok
+test_complete_gold_independent_messages_recall_and_precision (test_classifier.TestResponseClassifier.test_complete_gold_independent_messages_recall_and_precision) ... ok
+test_high_priority_signals_flag_founder_action (test_classifier.TestResponseClassifier.test_high_priority_signals_flag_founder_action) ... ok
+test_ambiguous_same_company_distinct_opportunities_strictly_unlinked (test_correlation.TestOpportunityCorrelation.test_ambiguous_same_company_distinct_opportunities_strictly_unlinked) ... ok
+test_exact_reference_id_correlation (test_correlation.TestOpportunityCorrelation.test_exact_reference_id_correlation) ... ok
+test_gmail_adapter_read_and_pagination_execution (test_ingestion.TestInboxIngestion.test_gmail_adapter_read_and_pagination_execution) ... ok
+test_mailbox_mutation_strictly_prohibited (test_ingestion.TestInboxIngestion.test_mailbox_mutation_strictly_prohibited) ... ok
+test_read_only_inbound_ingestion_and_durable_deduplication (test_ingestion.TestInboxIngestion.test_read_only_inbound_ingestion_and_durable_deduplication) ... ok
+test_inbound_evidence_hashing (test_models.TestInboxModels.test_inbound_evidence_hashing) ... ok
+test_notification_idempotency_on_repeated_signal (test_pipeline_and_notifications.TestPipelineAndNotifications.test_notification_idempotency_on_repeated_signal) ... ok
+test_pipeline_event_recording_and_deterministic_replay (test_pipeline_and_notifications.TestPipelineAndNotifications.test_pipeline_event_recording_and_deterministic_replay) ... ok
+
+----------------------------------------------------------------------
+Ran 25 tests in 0.484s
+
+OK

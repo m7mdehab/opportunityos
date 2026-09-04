@@ -1,0 +1,100 @@
+test_audit_serialization_populates_extracted_geo_allow (test_audit.AuditSerializationTests.test_audit_serialization_populates_extracted_geo_allow) ... ok
+test_audit_serialization_populates_extracted_geo_deny (test_audit.AuditSerializationTests.test_audit_serialization_populates_extracted_geo_deny) ... ok
+test_audit_serialization_reflects_both_allow_and_deny_evidence (test_audit.AuditSerializationTests.test_audit_serialization_reflects_both_allow_and_deny_evidence) ... ok
+test_africa_membership_representative (test_classification.ClassificationTests.test_africa_membership_representative)
+Test that representative African countries are in AFRICA region. ... ok
+test_americas_membership (test_classification.ClassificationTests.test_americas_membership)
+Test that Americas region is correctly defined. ... ok
+test_apac_membership (test_classification.ClassificationTests.test_apac_membership)
+Test that APAC includes Asia-Pacific countries. ... ok
+test_derivation_egypt_default (test_classification.ClassificationTests.test_derivation_egypt_default)
+Test that eligibility_for defaults to Egypt (ADR-0003). ... ok
+test_eea_membership_complete (test_classification.ClassificationTests.test_eea_membership_complete)
+Test that EEA includes EU-27 plus Norway, Iceland, Liechtenstein. ... ok
+test_eeo_citizenship_mention_is_not_a_work_authorization_requirement (test_classification.ClassificationTests.test_eeo_citizenship_mention_is_not_a_work_authorization_requirement) ... ok
+test_egypt_region_consistency (test_classification.ClassificationTests.test_egypt_region_consistency)
+Test Egypt's membership is consistent with ADR-0003. ... ok
+test_emea_comprehensive (test_classification.ClassificationTests.test_emea_comprehensive)
+Test that EMEA includes Europe, Middle East, and Africa. ... ok
+test_eu_membership_complete (test_classification.ClassificationTests.test_eu_membership_complete)
+Test that all 27 EU member states are included. ... ok
+test_europe_membership_complete (test_classification.ClassificationTests.test_europe_membership_complete)
+Test that EUROPE includes EEA plus additional European countries. ... ok
+test_explicit_citizenship_requirements_are_excluded (test_classification.ClassificationTests.test_explicit_citizenship_requirements_are_excluded) ... ok
+test_gcc_membership (test_classification.ClassificationTests.test_gcc_membership)
+Test that GCC includes Gulf Cooperation Council countries. ... ok
+test_generalization_cases (test_classification.ClassificationTests.test_generalization_cases) ... ok
+test_latam_membership (test_classification.ClassificationTests.test_latam_membership)
+Test that LATAM includes Latin American countries. ... ok
+test_mandated_eligibility (test_classification.ClassificationTests.test_mandated_eligibility) ... ok
+test_mandated_exclusions (test_classification.ClassificationTests.test_mandated_exclusions) ... ok
+test_mandated_individual_eligibility (test_classification.ClassificationTests.test_mandated_individual_eligibility) ... ok
+test_mandated_unclear (test_classification.ClassificationTests.test_mandated_unclear) ... ok
+test_mena_membership (test_classification.ClassificationTests.test_mena_membership)
+Test that MENA region includes Middle East and North African countries. ... ok
+test_non_us_only_locations_use_their_own_residency_tokens (test_classification.ClassificationTests.test_non_us_only_locations_use_their_own_residency_tokens) ... ok
+test_north_africa_membership (test_classification.ClassificationTests.test_north_africa_membership)
+Test that North African countries are correctly grouped. ... ok
+test_region_membership_and_unbounded_allow (test_classification.ClassificationTests.test_region_membership_and_unbounded_allow) ... ok
+test_regional_hierarchy_invariants (test_classification.ClassificationTests.test_regional_hierarchy_invariants)
+Test mathematical set hierarchy invariants across defined regions. ... ok
+test_stored_rule_cases (test_classification.ClassificationTests.test_stored_rule_cases) ... ok
+test_e23_recon_sweep_never_retried_a_blocked_source (test_e23_transport_log.TransportLogGuardTests.test_e23_recon_sweep_never_retried_a_blocked_source) ... ok
+test_guard_allows_repeated_requests_that_are_not_blocking (test_e23_transport_log.TransportLogGuardTests.test_guard_allows_repeated_requests_that_are_not_blocking) ... ok
+test_guard_refuses_a_second_request_after_a_block (test_e23_transport_log.TransportLogGuardTests.test_guard_refuses_a_second_request_after_a_block) ... ok
+test_arbitrary_post_is_rejected (test_external_policy.ExternalPolicyTests.test_arbitrary_post_is_rejected) ... ok
+test_mutating_verbs_are_rejected (test_external_policy.ExternalPolicyTests.test_mutating_verbs_are_rejected) ... ok
+test_other_ted_post_is_rejected (test_external_policy.ExternalPolicyTests.test_other_ted_post_is_rejected) ... ok
+test_ted_adapter_has_only_documented_search_fields (test_external_policy.ExternalPolicyTests.test_ted_adapter_has_only_documented_search_fields) ... ok
+test_ted_search_post_is_permitted (test_external_policy.ExternalPolicyTests.test_ted_search_post_is_permitted) ... ok
+test_watchlist_has_25_unique_configured_boards (test_external_policy.ExternalPolicyTests.test_watchlist_has_25_unique_configured_boards) ... ok
+test_allowlist_omitting_country_is_excluded (test_geography_remediation.EligibilityDerivationTests.test_allowlist_omitting_country_is_excluded) ... ok
+test_disqualifying_conditions_beat_worldwide (test_geography_remediation.EligibilityDerivationTests.test_disqualifying_conditions_beat_worldwide) ... ok
+test_matching_country_or_region_allow_is_eligible (test_geography_remediation.EligibilityDerivationTests.test_matching_country_or_region_allow_is_eligible) ... ok
+test_south_africa_maps_to_za_not_africa (test_geography_remediation.EligibilityDerivationTests.test_south_africa_maps_to_za_not_africa) ... ok
+test_specific_location_precedes_worldwide_body_signal (test_geography_remediation.EligibilityDerivationTests.test_specific_location_precedes_worldwide_body_signal) ... ok
+test_timezone_with_country_allowlist_omitting_country_is_excluded (test_geography_remediation.EligibilityDerivationTests.test_timezone_with_country_allowlist_omitting_country_is_excluded) ... ok
+test_timezone_with_empty_or_worldwide_allow_is_unclear (test_geography_remediation.EligibilityDerivationTests.test_timezone_with_empty_or_worldwide_allow_is_unclear) ... ok
+test_timezone_with_matching_country_is_still_unclear (test_geography_remediation.EligibilityDerivationTests.test_timezone_with_matching_country_is_still_unclear) ... ok
+test_us_central_time_schedule_is_timezone_only (test_geography_remediation.EligibilityDerivationTests.test_us_central_time_schedule_is_timezone_only) ... ok
+test_work_from_anywhere_within_us_maps_to_us_not_worldwide (test_geography_remediation.EligibilityDerivationTests.test_work_from_anywhere_within_us_maps_to_us_not_worldwide) ... ok
+test_canadian_residency_list_is_a_country_restriction (test_geography_remediation.RestrictionExtractionTests.test_canadian_residency_list_is_a_country_restriction) ... ok
+test_no_sponsorship_variants (test_geography_remediation.RestrictionExtractionTests.test_no_sponsorship_variants) ... ok
+test_timezone_schedule_variants (test_geography_remediation.RestrictionExtractionTests.test_timezone_schedule_variants) ... ok
+test_us_only_and_us_based_are_residency_requirements (test_geography_remediation.RestrictionExtractionTests.test_us_only_and_us_based_are_residency_requirements) ... ok
+test_us_registered_entity_residency_requirement (test_geography_remediation.RestrictionExtractionTests.test_us_registered_entity_residency_requirement) ... ok
+test_us_work_authorization_variants (test_geography_remediation.RestrictionExtractionTests.test_us_work_authorization_variants) ... ok
+test_all_required_city_expansions_resolve (test_geography_remediation.StructuredPlaceTests.test_all_required_city_expansions_resolve) ... ok
+test_ambiguous_city_or_subdivision_without_context_is_not_mapped (test_geography_remediation.StructuredPlaceTests.test_ambiguous_city_or_subdivision_without_context_is_not_mapped) ... ok
+test_city_country_and_subdivision_combinations_resolve (test_geography_remediation.StructuredPlaceTests.test_city_country_and_subdivision_combinations_resolve) ... ok
+test_mojibake_and_accents_are_normalized (test_geography_remediation.StructuredPlaceTests.test_mojibake_and_accents_are_normalized) ... ok
+test_new_country_and_region_aliases_resolve (test_geography_remediation.StructuredPlaceTests.test_new_country_and_region_aliases_resolve) ... ok
+test_structured_location_header_resolves (test_geography_remediation.StructuredPlaceTests.test_structured_location_header_resolves) ... ok
+test_bare_anywhere_in_world_prose_is_not_applicant_scope (test_geography_remediation.WorldwideScopeTests.test_bare_anywhere_in_world_prose_is_not_applicant_scope) ... ok
+test_collaboration_and_product_boilerplate_never_creates_worldwide (test_geography_remediation.WorldwideScopeTests.test_collaboration_and_product_boilerplate_never_creates_worldwide) ... ok
+test_company_marketing_does_not_create_worldwide_or_us_allow (test_geography_remediation.WorldwideScopeTests.test_company_marketing_does_not_create_worldwide_or_us_allow) ... ok
+test_explicit_applicant_worldwide_language_is_allowed (test_geography_remediation.WorldwideScopeTests.test_explicit_applicant_worldwide_language_is_allowed) ... ok
+test_explicit_listing_is_bounded_to_its_clause (test_geography_remediation.WorldwideScopeTests.test_explicit_listing_is_bounded_to_its_clause) ... ok
+test_timezone_qualified_anywhere_is_not_worldwide (test_geography_remediation.WorldwideScopeTests.test_timezone_qualified_anywhere_is_not_worldwide) ... ok
+test_get_source_returns_closed_vocabulary_status (test_health_vocab.HealthVocabTest.test_get_source_returns_closed_vocabulary_status)
+A GET source that reaches HTTP returns an allowed_ok health status. ... ok
+test_permits_false_raises_systemexit_not_health_status (test_health_vocab.HealthVocabTest.test_permits_false_raises_systemexit_not_health_status)
+A non-GET source that fails permits() is a configuration error. ... ok
+test_boards_module_refuses_to_generate_an_ashby_entry (test_registry_generated.RegistryEnumerationTests.test_boards_module_refuses_to_generate_an_ashby_entry)
+Defense in depth alongside the above: `opportunity.discovery.boards`'s own ... ok
+test_every_entry_has_policy_status_and_a_dated_review (test_registry_generated.RegistryEnumerationTests.test_every_entry_has_policy_status_and_a_dated_review) ... ok
+test_every_entry_loads_via_the_registry_loader (test_registry_generated.RegistryEnumerationTests.test_every_entry_loads_via_the_registry_loader) ... ok
+test_newly_discovered_boards_are_read_allowed_and_generated_from_template (test_registry_generated.RegistryEnumerationTests.test_newly_discovered_boards_are_read_allowed_and_generated_from_template) ... ok
+test_no_generated_entry_for_a_disabled_host (test_registry_generated.RegistryEnumerationTests.test_no_generated_entry_for_a_disabled_host)
+Council review 4, finding 7: a generated `{kind}:*` entry must never be ... ok
+test_registry_is_nonempty (test_registry_generated.RegistryEnumerationTests.test_registry_is_nonempty) ... ok
+test_zero_entries_have_prepare_or_submit_other_than_disabled (test_registry_generated.RegistryEnumerationTests.test_zero_entries_have_prepare_or_submit_other_than_disabled) ... ok
+test_compound_mapped_location_has_no_unmapped_segment (test_unmapped.UnmappedPhraseTrackingTests.test_compound_mapped_location_has_no_unmapped_segment) ... ok
+test_generic_work_modes_are_not_marked_unmapped (test_unmapped.UnmappedPhraseTrackingTests.test_generic_work_modes_are_not_marked_unmapped) ... ok
+test_mapped_locations_are_not_marked_unmapped (test_unmapped.UnmappedPhraseTrackingTests.test_mapped_locations_are_not_marked_unmapped) ... ok
+test_newly_mapped_location_is_not_captured_as_unmapped (test_unmapped.UnmappedPhraseTrackingTests.test_newly_mapped_location_is_not_captured_as_unmapped) ... ok
+
+----------------------------------------------------------------------
+Ran 77 tests in 0.448s
+
+OK

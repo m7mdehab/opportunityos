@@ -27,6 +27,7 @@ import uuid
 
 from core.logging import get_logger
 from storage.engine import ProductionDatabaseConfigurationError, get_engine, get_production_db_url, get_session_factory
+from worker.digest import generate_digest
 from worker.handlers import default_handler_registry
 from worker.runner import WorkerRunner
 from worker.scheduler import PollScheduler
@@ -72,6 +73,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "only -- fetches nothing itself. Mutually exclusive with --once/--max-jobs/--schedule."
         ),
     )
+    mode_group.add_argument(
+        "--digest",
+        action="store_true",
+        help=(
+            "Write the F3 daily Markdown+HTML digest of new, high-fit opportunities to "
+            "out/digest/ (worker.digest.generate_digest), from stored rows only, then exit 0. "
+            "Makes zero network requests. Mutually exclusive with --once/--max-jobs/--schedule/--poll-now."
+        ),
+    )
     parser.add_argument("--worker-id", default=None, help="Override the worker id (default: a generated id).")
     parser.add_argument("--poll-interval", type=float, default=1.0, help="Idle poll interval in seconds.")
     parser.add_argument("--lease-seconds", type=int, default=60, help="Job lease duration in seconds.")
@@ -109,6 +119,22 @@ def main(argv: list[str] | None = None) -> int:
             extra={"component": "worker.__main__", "extra_data": {"enqueued": enqueued}},
         )
         print(f"poll-now: enqueued poll_source for {len(enqueued)} source(s): {enqueued}")
+        return 0
+
+    if args.digest:
+        session = session_factory()
+        try:
+            summary = generate_digest(session)
+        finally:
+            session.close()
+        logger.info(
+            "worker.digest_completed",
+            extra={"component": "worker.__main__", "extra_data": summary},
+        )
+        print(
+            f"digest: {summary['count']} new high-fit item(s) for {summary['date']} written to "
+            f"{summary['markdown_path']} and {summary['html_path']}"
+        )
         return 0
 
     handlers = default_handler_registry()

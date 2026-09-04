@@ -8,7 +8,11 @@ from truth.models import AssertionType, CareerProfile, EvidenceRecord
 class TruthGraphTests(unittest.TestCase):
     def test_indexes_atomic_evidence_and_profiles(self):
         graph = synthetic_graph()
-        self.assertEqual("Uses Python for data engineering.", graph.evidence("ev-python").content)
+        self.assertEqual(
+            "Uses Python for data engineering at an expert self-assessed proficiency level, "
+            "categorized under Languages skills.",
+            graph.evidence("ev-python").content,
+        )
         self.assertEqual("Data Engineer", graph.entity("job-synthetic").title)
         self.assertIn("career-synthetic", graph.profiles)
         self.assertIn("capability-synthetic", graph.profiles)

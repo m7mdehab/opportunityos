@@ -107,6 +107,26 @@ export const handlers = [
     ({ request, params }) =>
       artifactResponse(request, String(params.id), "cover-letter")
   ),
+  // BRIEF-FR-006 D2 — inline PDF preview + download variant.
+  http.get("/api/opportunities/:id/artifacts/cv.pdf", ({ request, params }) =>
+    artifactPdfResponse(request, String(params.id), "cv")
+  ),
+  http.get(
+    "/api/opportunities/:id/artifacts/cover-letter.pdf",
+    ({ request, params }) =>
+      artifactPdfResponse(request, String(params.id), "cover-letter")
+  ),
+  // D1's "what was left out and why" data, as JSON for the drawer's
+  // artifacts panel.
+  http.get(
+    "/api/opportunities/:id/artifacts/:kind/omitted",
+    ({ request, params }) =>
+      omittedItemsResponse(
+        request,
+        String(params.id),
+        params.kind as "cv" | "cover-letter"
+      )
+  ),
 
   // ---- feedback / actions ----
   http.post("/api/opportunities/:id/feedback", async ({ request, params }) => {
@@ -199,6 +219,96 @@ export const handlers = [
     return HttpResponse.json(result)
   }),
 
+  // ---- facets (C1) ----
+  http.get("/api/facets", ({ request }) => {
+    if (!requireAuth(request)) return unauthorized()
+    return HttpResponse.json(store().listFacets())
+  }),
+
+  http.put("/api/facets/:facet_id", async ({ request, params }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const facetId = String(params.facet_id)
+    const body = (await request.json().catch(() => ({}))) as {
+      include?: string[]
+      exclude?: string[]
+    }
+    const result = store().updateFacet(facetId, body)
+    if (result === "not_found") {
+      return HttpResponse.json({ detail: "unknown facet_id" }, { status: 404 })
+    }
+    if (result === "unavailable") {
+      return HttpResponse.json(
+        { detail: "this facet has no data source yet" },
+        { status: 422 }
+      )
+    }
+    return HttpResponse.json(result)
+  }),
+
+  // ---- saved views (C1) ----
+  http.get("/api/saved-views", ({ request }) => {
+    if (!requireAuth(request)) return unauthorized()
+    return HttpResponse.json(store().listSavedViews())
+  }),
+
+  http.post("/api/saved-views", async ({ request }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const body = (await request.json().catch(() => ({}))) as {
+      name?: string
+      facets?: Record<string, { include: string[]; exclude: string[] }>
+      search_query?: string | null
+      is_default?: boolean
+    }
+    return HttpResponse.json(
+      store().createSavedView({
+        name: body.name ?? "",
+        facets: body.facets ?? {},
+        search_query: body.search_query ?? null,
+        is_default: body.is_default ?? false,
+      })
+    )
+  }),
+
+  http.put("/api/saved-views/:view_id", async ({ request, params }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const body = (await request.json().catch(() => ({}))) as {
+      name?: string
+      facets?: Record<string, { include: string[]; exclude: string[] }>
+      search_query?: string | null
+      is_default?: boolean
+    }
+    const result = store().updateSavedView(String(params.view_id), body)
+    if (!result) {
+      return HttpResponse.json({ detail: "unknown saved view" }, { status: 404 })
+    }
+    return HttpResponse.json(result)
+  }),
+
+  http.delete("/api/saved-views/:view_id", ({ request, params }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const ok = store().deleteSavedView(String(params.view_id))
+    if (!ok) {
+      return HttpResponse.json({ detail: "unknown saved view" }, { status: 404 })
+    }
+    return HttpResponse.json({ id: String(params.view_id), status: "deleted" })
+  }),
+
+  // ---- hidden reasons (C4) ----
+  http.get("/api/hidden-reasons", ({ request }) => {
+    if (!requireAuth(request)) return unauthorized()
+    return HttpResponse.json(store().hiddenReasonsAudit())
+  }),
+
+  http.post("/api/hidden-reasons/unhide", async ({ request }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const body = (await request.json().catch(() => ({}))) as { reason?: string }
+    const ok = store().unhideByReason(body.reason ?? "")
+    if (!ok) {
+      return HttpResponse.json({ detail: "unrecognised reason" }, { status: 404 })
+    }
+    return HttpResponse.json({ reason: body.reason, status: "unhidden" })
+  }),
+
   // ---- dashboard ----
   http.get("/api/dashboard/daily", ({ request }) => {
     if (!requireAuth(request)) return unauthorized()
@@ -274,5 +384,127 @@ function artifactResponse(
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "Content-Disposition": `attachment; filename="${filename}"`,
     },
+  })
+}
+
+const REJECTED_FINDINGS = [
+  {
+    claim: "5+ years of directly relevant field experience",
+    assertion_type: "experience_duration",
+    rejection_reasons: [
+      "no truth pack evidence supports this duration for the target field",
+    ],
+  },
+]
+
+/** A tiny, syntactically valid one-page PDF (Chromium's built-in viewer can
+ * render it) whose page text embeds `label`, so different templates
+ * produce genuinely different response bytes -- not merely a different
+ * request URL (BRIEF-FR-006 D2.6: "assert the rendered result, not the
+ * absence of an error"). */
+function minimalPdfBytes(label: string): Uint8Array {
+  const content = `BT /F1 18 Tf 50 700 Td (OpportunityOS mock: ${label}) Tj ET`
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+  ]
+  let body = "%PDF-1.4\n"
+  const offsets: number[] = []
+  objects.forEach((obj, i) => {
+    offsets.push(body.length)
+    body += `${i + 1} 0 obj\n${obj}\nendobj\n`
+  })
+  const xrefStart = body.length
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+  for (const off of offsets) {
+    body += `${off.toString().padStart(10, "0")} 00000 n \n`
+  }
+  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`
+  return new TextEncoder().encode(body)
+}
+
+function artifactPdfResponse(
+  request: Request,
+  id: string,
+  kind: "cv" | "cover-letter"
+) {
+  if (!requireAuth(request)) return unauthorized()
+  const s = store()
+
+  if (!s.truthStatus().loaded) {
+    return HttpResponse.json(
+      {
+        detail: "no truth pack loaded",
+        reason: "no founder truth pack is currently loaded",
+      },
+      { status: 412 }
+    )
+  }
+
+  if (s.artifactClaimsRejected(id)) {
+    return HttpResponse.json(
+      { detail: "claim validation failed", findings: REJECTED_FINDINGS },
+      { status: 409 }
+    )
+  }
+
+  const url = new URL(request.url)
+  const template = url.searchParams.get("template") ?? "classic"
+  const download = url.searchParams.get("download") === "true"
+  const filename = `${kind}-${id}.pdf`
+  const body = minimalPdfBytes(`${kind}, ${id}, ${template}`)
+  return new HttpResponse(body, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${filename}"`,
+    },
+  })
+}
+
+function omittedItemsResponse(
+  request: Request,
+  id: string,
+  kind: "cv" | "cover-letter"
+) {
+  if (!requireAuth(request)) return unauthorized()
+  const s = store()
+
+  if (!s.truthStatus().loaded) {
+    return HttpResponse.json(
+      {
+        detail: "no truth pack loaded",
+        reason: "no founder truth pack is currently loaded",
+      },
+      { status: 412 }
+    )
+  }
+
+  if (s.artifactClaimsRejected(id)) {
+    return HttpResponse.json(
+      { detail: "claim validation failed", findings: REJECTED_FINDINGS },
+      { status: 409 }
+    )
+  }
+
+  const url = new URL(request.url)
+  const template = url.searchParams.get("template") ?? "classic"
+  return HttpResponse.json({
+    template,
+    omitted_items: [
+      {
+        section_id: kind === "cv" ? "skills" : "summary",
+        text:
+          kind === "cv"
+            ? "Rust (advanced)"
+            : "A sentence about a certification not in the truth pack",
+        reason:
+          "Not enough truth-pack evidence to support this at the strength the source posting implies; kept out rather than overstated.",
+        claim_id: `claim-${kind}-omitted-1`,
+      },
+    ],
   })
 }

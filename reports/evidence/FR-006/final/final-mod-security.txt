@@ -1,0 +1,8 @@
+test_detect_injection_in_job_description (test_prompt_injection.TestUntrustedContentAndPromptInjectionSafety.test_detect_injection_in_job_description) ... ok
+test_malicious_alert_cannot_alter_truth_or_permissions (test_prompt_injection.TestUntrustedContentAndPromptInjectionSafety.test_malicious_alert_cannot_alter_truth_or_permissions) ... ok
+test_malicious_claim_in_artifact_fails_closed (test_prompt_injection.TestUntrustedContentAndPromptInjectionSafety.test_malicious_claim_in_artifact_fails_closed) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.001s
+
+OK

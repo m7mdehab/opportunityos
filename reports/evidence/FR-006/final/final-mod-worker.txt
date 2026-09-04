@@ -1,0 +1,131 @@
+test_digest_generation_makes_zero_network_requests (test_digest.TestGenerateDigest.test_digest_generation_makes_zero_network_requests) ... ok
+test_digest_includes_new_high_fit_items_and_writes_md_and_html (test_digest.TestGenerateDigest.test_digest_includes_new_high_fit_items_and_writes_md_and_html) ... ok
+test_latest_digest_reads_back_the_most_recently_written_file (test_digest.TestGenerateDigest.test_latest_digest_reads_back_the_most_recently_written_file) ... ok
+test_latest_digest_returns_none_when_none_written_yet (test_digest.TestGenerateDigest.test_latest_digest_returns_none_when_none_written_yet) ... ok
+test_all_seven_a1_fields_and_compensation_survive_reconstruction (test_reconstruct_opportunity.TestReconstructOpportunityRoundTrip.test_all_seven_a1_fields_and_compensation_survive_reconstruction) ... ok
+test_no_signal_at_all_reconstructs_unspecified_not_fabricated (test_reconstruct_opportunity.TestReconstructOpportunityRoundTrip.test_no_signal_at_all_reconstructs_unspecified_not_fabricated) ... ok
+test_unbackfilled_row_falls_back_to_legacy_remote_policy_provenance (test_reconstruct_opportunity.TestReconstructOpportunityRoundTrip.test_unbackfilled_row_falls_back_to_legacy_remote_policy_provenance)
+A row written before this brief's adapters: work_mode is still at its ... ok
+test_batching_is_interruption_safe_across_multiple_pages (test_reextract_all.TestReextractAllIdempotency.test_batching_is_interruption_safe_across_multiple_pages) ... {"timestamp": "2026-09-04T00:00:49.842853+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.reextract_all_completed", "component": "worker.handlers", "data": {"scanned": 5, "changed": 5}}
+ok
+test_second_run_changes_zero_rows (test_reextract_all.TestReextractAllIdempotency.test_second_run_changes_zero_rows) ... {"timestamp": "2026-09-04T00:00:50.306014+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.reextract_all_completed", "component": "worker.handlers", "data": {"scanned": 3, "changed": 2}}
+{"timestamp": "2026-09-04T00:00:50.317305+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.reextract_all_completed", "component": "worker.handlers", "data": {"scanned": 3, "changed": 0}}
+ok
+test_reports_zero_rows_extractor_unavailable (test_reextract_all.TestReextractAllNoOpWhenExtractorUnavailable.test_reports_zero_rows_extractor_unavailable) ... {"timestamp": "2026-09-04T00:00:50.933532+00:00", "level": "WARNING", "logger": "opportunityos.worker.handlers", "message": "worker.reextract_all_extractor_unavailable", "component": "worker.handlers", "data": {"scanned": 0, "changed": 0}}
+ok
+test_hacker_news_poll_ingests_rows_through_governed_fetch (test_runner.TestHackerNewsGovernedWiring.test_hacker_news_poll_ingests_rows_through_governed_fetch) ... {"timestamp": "2026-09-04T00:00:51.348713+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.poll_source_fetching", "component": "worker.handlers", "data": {"source_id": "hacker_news_who_is_hiring"}}
+_refresh_search_tsv: skipped for opportunity hacker_news_who_is_hiring:4001 -- non-PostgreSQL bind (sqlite); search_tsv was not refreshed
+{"timestamp": "2026-09-04T00:00:51.866032+00:00", "level": "WARNING", "logger": "opportunityos.worker.handlers", "message": "worker.poll_source_evaluate_skipped_no_pack", "component": "worker.handlers", "data": {"source_id": "hacker_news_who_is_hiring", "reason": "TruthPackMissing"}}
+{"timestamp": "2026-09-04T00:00:51.888490+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.poll_source_persisted", "component": "worker.handlers", "data": {"source_id": "hacker_news_who_is_hiring", "inserted": 1, "unchanged": 0, "updated": 0, "evaluated_inline": 0}}
+ok
+test_poll_source_fetches_and_ingests_for_read_allowed_source (test_runner.TestPollSourceHandler.test_poll_source_fetches_and_ingests_for_read_allowed_source) ... E4F3.8 hacker_news_who_is_hiring rows ingested: 1
+{"timestamp": "2026-09-04T00:00:51.917863+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.poll_source_fetching", "component": "worker.handlers", "data": {"source_id": "himalayas"}}
+{"timestamp": "2026-09-04T00:00:52.832373+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.poll_source_persisted", "component": "worker.handlers", "data": {"source_id": "himalayas", "inserted": 1, "unchanged": 0, "updated": 0, "evaluated_inline": 1}}
+ok
+test_poll_source_refuses_read_disabled_source_without_fetching (test_runner.TestPollSourceHandler.test_poll_source_refuses_read_disabled_source_without_fetching) ... {"timestamp": "2026-09-04T00:00:52.845622+00:00", "level": "WARNING", "logger": "opportunityos.worker.handlers", "message": "worker.poll_source_refused", "component": "worker.handlers", "data": {"source_id": "ashby:openai", "reason": "read_disabled_by_policy"}}
+ok
+test_acquisition_service_keys_rate_limiter_by_host_not_source_id (test_runner.TestSharedRateLimiterPerATSHost.test_acquisition_service_keys_rate_limiter_by_host_not_source_id) ... ok
+test_pacing_shared_across_boards_on_same_host_and_across_jobs (test_runner.TestSharedRateLimiterPerATSHost.test_pacing_shared_across_boards_on_same_host_and_across_jobs) ... {"timestamp": "2026-09-04T00:00:53.699703+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.poll_source_fetching", "component": "worker.handlers", "data": {"source_id": "greenhouse:cloudflare"}}
+{"timestamp": "2026-09-04T00:00:53.699703+00:00", "level": "WARNING", "logger": "opportunityos.worker.handlers", "message": "worker.poll_source_evaluate_skipped_no_pack", "component": "worker.handlers", "data": {"source_id": "greenhouse:cloudflare", "reason": "TruthPackMissing"}}
+{"timestamp": "2026-09-04T00:00:53.712450+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.poll_source_persisted", "component": "worker.handlers", "data": {"source_id": "greenhouse:cloudflare", "inserted": 0, "unchanged": 0, "updated": 0, "evaluated_inline": 0}}
+ok
+test_handler_exception_triggers_fail_job (test_runner.TestWorkerRunner.test_handler_exception_triggers_fail_job) ... {"timestamp": "2026-09-04T00:00:54.112807+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "w-fail", "job_id": "job-b4b2bd93ab39", "job_type": "explode", "payload_summary": {"payload_keys": []}}}
+{"timestamp": "2026-09-04T00:00:54.122844+00:00", "level": "ERROR", "logger": "opportunityos.worker.runner", "message": "worker.job_failed", "component": "worker.runner", "data": {"worker_id": "w-fail", "job_id": "job-b4b2bd93ab39", "job_type": "explode", "error": "Handler raised: boom"}}
+ok
+test_heartbeat_renews_lease_so_slow_handler_still_completes_once (test_runner.TestWorkerRunner.test_heartbeat_renews_lease_so_slow_handler_still_completes_once)
+A handler that outlives lease_seconds must still complete exactly once: ... {"timestamp": "2026-09-04T00:00:54.495781+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "w-heartbeat", "job_id": "job-533acf4bf206", "job_type": "slow", "payload_summary": {"payload_keys": []}}}
+{"timestamp": "2026-09-04T00:00:55.809224+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_completed", "component": "worker.runner", "data": {"worker_id": "w-heartbeat", "job_id": "job-533acf4bf206", "job_type": "slow"}}
+ok
+test_repeated_failures_reach_dead_letter_after_max_retries (test_runner.TestWorkerRunner.test_repeated_failures_reach_dead_letter_after_max_retries) ... {"timestamp": "2026-09-04T00:00:56.394845+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "w-deadletter", "job_id": "job-952aa93a60d2", "job_type": "explode", "payload_summary": {"payload_keys": []}}}
+{"timestamp": "2026-09-04T00:00:56.416029+00:00", "level": "ERROR", "logger": "opportunityos.worker.runner", "message": "worker.job_failed", "component": "worker.runner", "data": {"worker_id": "w-deadletter", "job_id": "job-952aa93a60d2", "job_type": "explode", "error": "Handler raised: always fails"}}
+{"timestamp": "2026-09-04T00:00:56.437046+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "w-deadletter", "job_id": "job-952aa93a60d2", "job_type": "explode", "payload_summary": {"payload_keys": []}}}
+{"timestamp": "2026-09-04T00:00:56.452945+00:00", "level": "ERROR", "logger": "opportunityos.worker.runner", "message": "worker.job_failed", "component": "worker.runner", "data": {"worker_id": "w-deadletter", "job_id": "job-952aa93a60d2", "job_type": "explode", "error": "Handler raised: always fails"}}
+ok
+test_run_forever_honours_max_jobs (test_runner.TestWorkerRunner.test_run_forever_honours_max_jobs) ... {"timestamp": "2026-09-04T00:00:57.175831+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.started", "component": "worker.runner", "data": {"worker_id": "w-maxjobs", "max_jobs": 3}}
+{"timestamp": "2026-09-04T00:00:57.192400+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "w-maxjobs", "job_id": "job-ed257d80450c", "job_type": "noop", "payload_summary": {"payload_keys": ["i"]}}}
+{"timestamp": "2026-09-04T00:00:57.207613+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_completed", "component": "worker.runner", "data": {"worker_id": "w-maxjobs", "job_id": "job-ed257d80450c", "job_type": "noop"}}
+{"timestamp": "2026-09-04T00:00:57.217664+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "w-maxjobs", "job_id": "job-28290f39f281", "job_type": "noop", "payload_summary": {"payload_keys": ["i"]}}}
+{"timestamp": "2026-09-04T00:00:57.234598+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_completed", "component": "worker.runner", "data": {"worker_id": "w-maxjobs", "job_id": "job-28290f39f281", "job_type": "noop"}}
+{"timestamp": "2026-09-04T00:00:57.246565+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "w-maxjobs", "job_id": "job-9039b712ed4e", "job_type": "noop", "payload_summary": {"payload_keys": ["i"]}}}
+{"timestamp": "2026-09-04T00:00:57.258947+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_completed", "component": "worker.runner", "data": {"worker_id": "w-maxjobs", "job_id": "job-9039b712ed4e", "job_type": "noop"}}
+{"timestamp": "2026-09-04T00:00:57.259944+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.stopped", "component": "worker.runner", "data": {"worker_id": "w-maxjobs", "processed": 3}}
+ok
+test_run_forever_honours_stop_event (test_runner.TestWorkerRunner.test_run_forever_honours_stop_event) ... {"timestamp": "2026-09-04T00:00:57.702765+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.started", "component": "worker.runner", "data": {"worker_id": "w-stopped", "max_jobs": 10}}
+{"timestamp": "2026-09-04T00:00:57.702765+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.stopped", "component": "worker.runner", "data": {"worker_id": "w-stopped", "processed": 0}}
+ok
+test_run_forever_stop_event_set_concurrently_halts_loop (test_runner.TestWorkerRunner.test_run_forever_stop_event_set_concurrently_halts_loop) ... {"timestamp": "2026-09-04T00:00:58.542679+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.started", "component": "worker.runner", "data": {"worker_id": "w-concurrent-stop", "max_jobs": null}}
+{"timestamp": "2026-09-04T00:00:58.562061+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "w-concurrent-stop", "job_id": "job-b3bd79bf1d9c", "job_type": "noop", "payload_summary": {"payload_keys": ["i"]}}}
+{"timestamp": "2026-09-04T00:00:58.617461+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_completed", "component": "worker.runner", "data": {"worker_id": "w-concurrent-stop", "job_id": "job-b3bd79bf1d9c", "job_type": "noop"}}
+{"timestamp": "2026-09-04T00:00:58.627524+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "w-concurrent-stop", "job_id": "job-554bc19bfe35", "job_type": "noop", "payload_summary": {"payload_keys": ["i"]}}}
+{"timestamp": "2026-09-04T00:00:58.679142+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_completed", "component": "worker.runner", "data": {"worker_id": "w-concurrent-stop", "job_id": "job-554bc19bfe35", "job_type": "noop"}}
+{"timestamp": "2026-09-04T00:00:58.680140+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.stopped", "component": "worker.runner", "data": {"worker_id": "w-concurrent-stop", "processed": 2}}
+ok
+test_run_once_dispatches_to_registered_handler (test_runner.TestWorkerRunner.test_run_once_dispatches_to_registered_handler) ... {"timestamp": "2026-09-04T00:00:59.182484+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "w-dispatch", "job_id": "job-88f385a357bf", "job_type": "noop", "payload_summary": {"payload_keys": ["a"]}}}
+{"timestamp": "2026-09-04T00:00:59.192809+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_completed", "component": "worker.runner", "data": {"worker_id": "w-dispatch", "job_id": "job-88f385a357bf", "job_type": "noop"}}
+ok
+test_run_once_returns_false_when_no_work (test_runner.TestWorkerRunner.test_run_once_returns_false_when_no_work) ... {"timestamp": "2026-09-04T00:00:59.696313+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.idle_poll", "component": "worker.runner", "data": {"worker_id": "w-idle"}}
+ok
+test_stolen_lease_refuses_to_write_outcome (test_runner.TestWorkerRunner.test_stolen_lease_refuses_to_write_outcome)
+If another worker's stale-lease sweep has already taken over a job, this ... ok
+test_unknown_job_type_fails_with_distinctive_message (test_runner.TestWorkerRunner.test_unknown_job_type_fails_with_distinctive_message) ... {"timestamp": "2026-09-04T00:01:00.698490+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "w-unknown", "job_id": "job-49772628eeea", "job_type": "does_not_exist", "payload_summary": {"payload_keys": []}}}
+{"timestamp": "2026-09-04T00:01:00.698490+00:00", "level": "ERROR", "logger": "opportunityos.worker.runner", "message": "worker.job_unknown_type", "component": "worker.runner", "data": {"worker_id": "w-unknown", "job_id": "job-49772628eeea", "job_type": "does_not_exist"}}
+{"timestamp": "2026-09-04T00:01:00.717311+00:00", "level": "ERROR", "logger": "opportunityos.worker.runner", "message": "worker.job_failed", "component": "worker.runner", "data": {"worker_id": "w-unknown", "job_id": "job-49772628eeea", "job_type": "does_not_exist", "error": "UNKNOWN_JOB_TYPE: no handler registered for job_type 'does_not_exist'"}}
+ok
+test_a_403_blocked_source_is_never_rescheduled_this_session (test_scheduler.TestBlockedSourceNotRescheduledThisSession.test_a_403_blocked_source_is_never_rescheduled_this_session) ... {"timestamp": "2026-09-04T00:01:01.294806+00:00", "level": "INFO", "logger": "opportunityos.worker.scheduler", "message": "worker.scheduler_skip_blocked", "component": "worker.scheduler", "data": {"source_id": "fixture_allowed"}}
+{"timestamp": "2026-09-04T00:01:01.302815+00:00", "level": "INFO", "logger": "opportunityos.worker.scheduler", "message": "worker.scheduler_skip_blocked", "component": "worker.scheduler", "data": {"source_id": "fixture_allowed"}}
+ok
+test_a_429_blocked_source_is_never_rescheduled_this_session (test_scheduler.TestBlockedSourceNotRescheduledThisSession.test_a_429_blocked_source_is_never_rescheduled_this_session) ... {"timestamp": "2026-09-04T00:01:02.092703+00:00", "level": "INFO", "logger": "opportunityos.worker.scheduler", "message": "worker.scheduler_skip_blocked", "component": "worker.scheduler", "data": {"source_id": "fixture_allowed"}}
+ok
+test_an_unblocked_source_is_unaffected (test_scheduler.TestBlockedSourceNotRescheduledThisSession.test_an_unblocked_source_is_unaffected) ... {"timestamp": "2026-09-04T00:01:02.526971+00:00", "level": "INFO", "logger": "opportunityos.worker.scheduler", "message": "worker.scheduler_enqueued", "component": "worker.scheduler", "data": {"source_id": "fixture_allowed"}}
+ok
+test_each_source_class_is_scheduled_at_its_own_declared_cadence (test_scheduler.TestCadenceFieldPerSource.test_each_source_class_is_scheduled_at_its_own_declared_cadence) ... {"timestamp": "2026-09-04T00:01:02.874089+00:00", "level": "INFO", "logger": "opportunityos.worker.scheduler", "message": "worker.scheduler_enqueued", "component": "worker.scheduler", "data": {"source_id": "fixture_hourly"}}
+{"timestamp": "2026-09-04T00:01:02.878842+00:00", "level": "INFO", "logger": "opportunityos.worker.scheduler", "message": "worker.scheduler_enqueued", "component": "worker.scheduler", "data": {"source_id": "fixture_daily"}}
+{"timestamp": "2026-09-04T00:01:02.882357+00:00", "level": "INFO", "logger": "opportunityos.worker.scheduler", "message": "worker.scheduler_enqueued", "component": "worker.scheduler", "data": {"source_id": "fixture_no_cadence_field"}}
+{"timestamp": "2026-09-04T00:01:02.894534+00:00", "level": "INFO", "logger": "opportunityos.worker.scheduler", "message": "worker.scheduler_enqueued", "component": "worker.scheduler", "data": {"source_id": "fixture_hourly"}}
+{"timestamp": "2026-09-04T00:01:02.905706+00:00", "level": "INFO", "logger": "opportunityos.worker.scheduler", "message": "worker.scheduler_enqueued", "component": "worker.scheduler", "data": {"source_id": "fixture_hourly"}}
+{"timestamp": "2026-09-04T00:01:02.909776+00:00", "level": "INFO", "logger": "opportunityos.worker.scheduler", "message": "worker.scheduler_enqueued", "component": "worker.scheduler", "data": {"source_id": "fixture_no_cadence_field"}}
+ok
+test_get_cadence_hours_reads_the_registry_field (test_scheduler.TestCadenceFieldPerSource.test_get_cadence_hours_reads_the_registry_field) ... ok
+test_source_with_no_cadence_field_gets_the_default (test_scheduler.TestCadenceFieldPerSource.test_source_with_no_cadence_field_gets_the_default) ... ok
+test_default_when_unset (test_scheduler.TestGetPollIntervalHours.test_default_when_unset) ... ok
+test_falls_back_on_invalid_value (test_scheduler.TestGetPollIntervalHours.test_falls_back_on_invalid_value) ... {"timestamp": "2026-09-04T00:01:03.618995+00:00", "level": "WARNING", "logger": "opportunityos.worker.scheduler", "message": "worker.scheduler_invalid_interval_env", "component": "worker.scheduler", "data": {"raw_value": "not-a-number"}}
+ok
+test_falls_back_on_nonpositive_value (test_scheduler.TestGetPollIntervalHours.test_falls_back_on_nonpositive_value) ... {"timestamp": "2026-09-04T00:01:03.622018+00:00", "level": "WARNING", "logger": "opportunityos.worker.scheduler", "message": "worker.scheduler_nonpositive_interval_env", "component": "worker.scheduler", "data": {"raw_value": "0"}}
+{"timestamp": "2026-09-04T00:01:03.622525+00:00", "level": "WARNING", "logger": "opportunityos.worker.scheduler", "message": "worker.scheduler_nonpositive_interval_env", "component": "worker.scheduler", "data": {"raw_value": "-5"}}
+ok
+test_reads_env_override (test_scheduler.TestGetPollIntervalHours.test_reads_env_override) ... ok
+test_real_os_environ_used_when_env_not_injected (test_scheduler.TestGetPollIntervalHours.test_real_os_environ_used_when_env_not_injected) ... ok
+test_first_tick_on_a_fresh_scheduler_is_always_due (test_scheduler.TestIntervalMath.test_first_tick_on_a_fresh_scheduler_is_always_due) ... {"timestamp": "2026-09-04T00:01:03.932626+00:00", "level": "INFO", "logger": "opportunityos.worker.scheduler", "message": "worker.scheduler_enqueued", "component": "worker.scheduler", "data": {"source_id": "fixture_allowed"}}
+ok
+test_interval_elapsed_gates_reenqueue_with_injected_clock (test_scheduler.TestIntervalMath.test_interval_elapsed_gates_reenqueue_with_injected_clock) ... {"timestamp": "2026-09-04T00:01:04.428764+00:00", "level": "INFO", "logger": "opportunityos.worker.scheduler", "message": "worker.scheduler_enqueued", "component": "worker.scheduler", "data": {"source_id": "fixture_allowed"}}
+{"timestamp": "2026-09-04T00:01:04.457578+00:00", "level": "INFO", "logger": "opportunityos.worker.scheduler", "message": "worker.scheduler_enqueued", "component": "worker.scheduler", "data": {"source_id": "fixture_allowed"}}
+ok
+test_enqueues_again_once_the_prior_job_is_no_longer_pending (test_scheduler.TestOneJobPerSourcePerTick.test_enqueues_again_once_the_prior_job_is_no_longer_pending) ... {"timestamp": "2026-09-04T00:01:04.965470+00:00", "level": "INFO", "logger": "opportunityos.worker.scheduler", "message": "worker.scheduler_enqueued", "component": "worker.scheduler", "data": {"source_id": "fixture_allowed"}}
+{"timestamp": "2026-09-04T00:01:04.982402+00:00", "level": "INFO", "logger": "opportunityos.worker.scheduler", "message": "worker.scheduler_enqueued", "component": "worker.scheduler", "data": {"source_id": "fixture_allowed"}}
+ok
+test_no_duplicate_while_a_poll_source_job_is_already_pending (test_scheduler.TestOneJobPerSourcePerTick.test_no_duplicate_while_a_poll_source_job_is_already_pending) ... {"timestamp": "2026-09-04T00:01:05.462994+00:00", "level": "INFO", "logger": "opportunityos.worker.scheduler", "message": "worker.scheduler_enqueued", "component": "worker.scheduler", "data": {"source_id": "fixture_allowed"}}
+{"timestamp": "2026-09-04T00:01:05.465987+00:00", "level": "INFO", "logger": "opportunityos.worker.scheduler", "message": "worker.scheduler_skip_pending", "component": "worker.scheduler", "data": {"source_id": "fixture_allowed"}}
+ok
+test_no_duplicate_while_a_retry_poll_source_job_is_pending (test_scheduler.TestOneJobPerSourcePerTick.test_no_duplicate_while_a_retry_poll_source_job_is_pending) ... {"timestamp": "2026-09-04T00:01:05.925245+00:00", "level": "INFO", "logger": "opportunityos.worker.scheduler", "message": "worker.scheduler_enqueued", "component": "worker.scheduler", "data": {"source_id": "fixture_allowed"}}
+{"timestamp": "2026-09-04T00:01:05.934102+00:00", "level": "INFO", "logger": "opportunityos.worker.scheduler", "message": "worker.scheduler_skip_pending", "component": "worker.scheduler", "data": {"source_id": "fixture_allowed"}}
+ok
+test_read_disabled_sources_never_enqueued (test_scheduler.TestReadPolicyBoundary.test_read_disabled_sources_never_enqueued) ... {"timestamp": "2026-09-04T00:01:06.505762+00:00", "level": "INFO", "logger": "opportunityos.worker.scheduler", "message": "worker.scheduler_enqueued", "component": "worker.scheduler", "data": {"source_id": "fixture_allowed"}}
+ok
+test_enqueue_and_claim (test_worker.TestBackgroundWorkerQueue.test_enqueue_and_claim) ... ok
+test_retry_and_dead_letter (test_worker.TestBackgroundWorkerQueue.test_retry_and_dead_letter) ... ok
+test_stale_lease_reclaim_dead_letters_poison_job (test_worker.TestBackgroundWorkerQueue.test_stale_lease_reclaim_dead_letters_poison_job)
+A poison job (its handler always kills the worker process before ... ok
+test_stale_lease_recovery (test_worker.TestBackgroundWorkerQueue.test_stale_lease_recovery) ... ok
+
+----------------------------------------------------------------------
+Ran 46 tests in 23.192s
+
+OK
+se_reclaim_dead_letters_poison_job)
+A poison job (its handler always kills the worker process before ... ok
+test_stale_lease_recovery (worker.test_worker.TestBackgroundWorkerQueue.test_stale_lease_recovery) ... ok
+
+----------------------------------------------------------------------
+Ran 46 tests in 24.312s
+
+OK

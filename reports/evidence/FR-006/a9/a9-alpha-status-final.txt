@@ -1,0 +1,9 @@
+alpha status
+------------
+  worker: down
+  api: down
+  web: down
+  postgres: listening on 127.0.0.1:5432 (external/pre-existing)
+
+last poll per source:
+  (no polls recorded yet)

@@ -13,6 +13,7 @@ from typing import Any, TypeVar
 from .graph import TruthGraph
 from .models import (
     Achievement,
+    ApprovedPhrase,
     AssertionType,
     AtomicAssertion,
     BusinessCapacity,
@@ -24,6 +25,7 @@ from .models import (
     EmploymentRecord,
     EngagementType,
     EvidenceRecord,
+    Identity,
     LanguageRecord,
     MetricAssertion,
     MetricVerification,
@@ -310,11 +312,12 @@ def parse_certification(value: Any) -> CertificationRecord:
 
 def parse_skill(value: Any, context: str = "skill") -> SkillRecord:
     data = _mapping(value, context)
-    _validate_keys(data, context, required={"id", "name", "evidence_ids"}, optional={"proficiency"})
+    _validate_keys(data, context, required={"id", "name", "evidence_ids"}, optional={"proficiency", "category"})
     return SkillRecord(
         id=data["id"], name=canonicalize_skill(data["name"]),
         evidence_ids=_strings(data["evidence_ids"], f"{context}.evidence_ids"),
         proficiency=data.get("proficiency"),
+        category=data.get("category"),
     )
 
 
@@ -556,12 +559,54 @@ def parse_capability_profile(value: Any) -> CapabilityProfile:
     )
 
 
+def parse_identity(value: Any) -> Identity:
+    data = _mapping(value, "identity")
+    _validate_keys(
+        data, "identity",
+        required={"name", "evidence_ids"},
+        optional={
+            "headline", "email", "phone", "linkedin", "github", "website",
+            "location_city", "location_country",
+        },
+    )
+    return Identity(
+        id="identity",
+        name=data["name"],
+        evidence_ids=_strings(data["evidence_ids"], "identity.evidence_ids"),
+        headline=data.get("headline"),
+        email=data.get("email"),
+        phone=data.get("phone"),
+        linkedin=data.get("linkedin"),
+        github=data.get("github"),
+        website=data.get("website"),
+        location_city=data.get("location_city"),
+        location_country=data.get("location_country"),
+    )
+
+
+def parse_approved_phrase(value: Any) -> ApprovedPhrase:
+    data = _mapping(value, "approved_phrase")
+    _validate_keys(
+        data, "approved_phrase",
+        required={"id", "text", "evidence_ids"},
+        optional={"tags"},
+    )
+    return ApprovedPhrase(
+        id=data["id"], text=data["text"],
+        evidence_ids=_strings(data["evidence_ids"], "approved_phrase.evidence_ids"),
+        tags=_strings(data.get("tags"), "approved_phrase.tags"),
+    )
+
+
 def graph_from_dict(value: Any) -> TruthGraph:
     data = _mapping(value, "document")
     _validate_keys(
         data, "document",
         required={"evidence"},
-        optional={"career_profile", "capability_profile", "assertions", "relations", "metrics"},
+        optional={
+            "career_profile", "capability_profile", "assertions", "relations", "metrics",
+            "identity", "approved_phrases",
+        },
     )
     evidence_nodes = tuple(parse_evidence(item) for item in _tuple(data["evidence"], "evidence"))
     assertions = tuple(parse_assertion(item) for item in _tuple(data.get("assertions"), "assertions"))
@@ -573,6 +618,10 @@ def graph_from_dict(value: Any) -> TruthGraph:
         graph.add_career_profile(parse_career_profile(data["career_profile"]))
     if data.get("capability_profile") is not None:
         graph.add_capability_profile(parse_capability_profile(data["capability_profile"]))
+    if data.get("identity") is not None:
+        graph.add_identity(parse_identity(data["identity"]))
+    for item in _tuple(data.get("approved_phrases"), "approved_phrases"):
+        graph.add_approved_phrase(parse_approved_phrase(item))
     return graph
 
 

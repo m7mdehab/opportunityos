@@ -1,0 +1,1 @@
+RULE ADR_STATUS FAILED: docs\adr\ADR-0017-document-model.md. REMEDY: add a Status field with proposed, accepted, or superseded

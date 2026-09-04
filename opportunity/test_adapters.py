@@ -1,11 +1,14 @@
 """Integration and parsing tests for all opportunity feed adapters."""
 import json
+import tempfile
 from pathlib import Path
 import unittest
 
+from opportunity.acquisition import AcquisitionService
 from opportunity.adapters import (
     EUTEDAdapter,
     GreenhouseAdapter,
+    HackerNewsWhoIsHiringAdapter,
     HimalayasAdapter,
     LeverAdapter,
     RemoteOKAdapter,
@@ -14,12 +17,17 @@ from opportunity.adapters import (
     WeWorkRemotelyAdapter,
     WorldBankAdapter,
 )
+from opportunity.adapters.hacker_news import SourceReadRefused, fetch_who_is_hiring_payload
 from opportunity.models import (
     EmploymentType,
     RemotePolicy,
+    RemoteScope,
     SeniorityLevel,
     Track,
+    WorkMode,
 )
+from opportunity.registry import SourceRegistry
+from opportunity.transport import MockTransport, TransportResponse
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -171,6 +179,151 @@ class AdapterTests(unittest.TestCase):
         self.assertIn("Modernization", opp.title)
         self.assertIsNotNone(opp.procurement_metadata)
         self.assertIn("72000000", opp.procurement_metadata.cpv_codes)  # type: ignore
+
+    def test_hacker_news_who_is_hiring_adapter(self):
+        # Inline fixture (not opportunity/fixtures/**, which A1 owns this wave): a minimal,
+        # already-assembled Hacker News Firebase payload matching HackerNewsWhoIsHiringAdapter's
+        # documented PAYLOAD SHAPE (see opportunity/adapters/hacker_news.py).
+        payload = json.dumps({
+            "thread_id": 99999999,
+            "thread_title": "Ask HN: Who is hiring? (September 2026)",
+            "comments": [
+                {
+                    "id": 111111,
+                    "by": "hn_recruiter",
+                    "time": 1767225600,
+                    "text": (
+                        "NimbusData | Remote (Worldwide) | Full-time | $140k-$180k<p>"
+                        "We are hiring a Senior Machine Learning Engineer to build our "
+                        "recommendation platform. Python, PyTorch, Kubernetes required."
+                    ),
+                },
+                {
+                    "id": 222222,
+                    "by": "another_recruiter",
+                    "time": 1767225700,
+                    "text": "",  # empty text should be skipped, not raise
+                },
+            ],
+        })
+        adapter = HackerNewsWhoIsHiringAdapter()
+        result = adapter.parse_payload(payload, raw_pointer="fixture:hn", fetched_at="2026-09-03")
+
+        self.assertEqual(2, result.records_raw_count)
+        opportunities = result.opportunities
+        self.assertEqual(1, len(opportunities))
+        opp = opportunities[0]
+        self.assertEqual("hacker_news_who_is_hiring", opp.source)
+        self.assertEqual("NimbusData", opp.organization)
+        self.assertIn("NimbusData", opp.title)
+        self.assertEqual("https://news.ycombinator.com/item?id=111111", opp.source_url)
+        self.assertIn("Python", opp.description)
+        # BRIEF-FR-006 A1 defect fix: HN "who is hiring" comments carry no native
+        # structured work-mode field -- "Remote (Worldwide)" is free text, so this
+        # must be inference, and work_mode_source must say so (never silently
+        # "adapter" for a fact the adapter never actually mapped).
+        self.assertEqual(WorkMode.REMOTE, opp.work_mode)
+        self.assertEqual("inference", opp.work_mode_source)
+        self.assertEqual(RemoteScope.WORLDWIDE, opp.remote_scope)
+        self.assertEqual(RemotePolicy.REMOTE, opp.remote_policy)
+
+
+_HN_DISABLED_REGISTRY_YAML = """
+sources:
+  - source_id: hacker_news_who_is_hiring
+    name: "hacker_news_who_is_hiring"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: manual_only
+    observed:
+      status: allowed_ok
+      detail: "test fixture: disabled for E5.2"
+      request_metadata: "method=GET; endpoint=/v0/item/1.json"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-03
+    policy_evidence:
+      - https://github.com/HackerNews/API
+"""
+
+
+class HackerNewsGovernedFetchTests(unittest.TestCase):
+    """Council review 4, finding 10: ``fetch_who_is_hiring_payload`` must route every
+    GET through ``AcquisitionService.acquire`` and refuse -- not fetch -- when the
+    registry entry is ``read: disabled``."""
+
+    def test_flipping_registry_to_disabled_refuses_not_fetches(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            registry_path = Path(tmp_dir) / "registry.yaml"
+            registry_path.write_text(_HN_DISABLED_REGISTRY_YAML, encoding="utf-8")
+            registry = SourceRegistry(registry_path)
+
+            class CountingTransport(MockTransport):
+                def __init__(self):
+                    super().__init__()
+                    self.calls = 0
+
+                def fetch(self, request):
+                    self.calls += 1
+                    return TransportResponse(status_code=200, body='{"submitted": [1]}', latency_ms=5)
+
+            transport = CountingTransport()
+            service = AcquisitionService(registry=registry, transport=transport)
+
+            with self.assertRaises(SourceReadRefused):
+                fetch_who_is_hiring_payload(service)
+
+            # The registry gate must refuse before transport is ever touched --
+            # this is what makes it "refuse, not fetch".
+            self.assertEqual(0, transport.calls)
+
+    def test_read_allowed_fetches_through_acquisition_service(self):
+        registry = SourceRegistry()  # real, committed docs/SOURCE_REGISTRY.yaml: read-allowed
+        transport = MockTransport()
+        transport.set_response(
+            "hacker_news_who_is_hiring",
+            TransportResponse(status_code=200, body=json.dumps({"submitted": []}), latency_ms=5),
+        )
+        service = AcquisitionService(registry=registry, transport=transport)
+
+        payload = fetch_who_is_hiring_payload(service)
+        data = json.loads(payload)
+        self.assertEqual([], data["comments"])
+
+    def test_403_mid_orchestration_stops_and_returns_partial_not_raise(self):
+        registry = SourceRegistry()
+
+        class SequencedTransport(MockTransport):
+            def __init__(self):
+                super().__init__()
+                self._calls = 0
+
+            def fetch(self, request):
+                self._calls += 1
+                if self._calls == 1:
+                    return TransportResponse(status_code=200, body=json.dumps({"submitted": [42]}), latency_ms=5)
+                return TransportResponse(status_code=403, body="", latency_ms=5)
+
+        transport = SequencedTransport()
+        service = AcquisitionService(registry=registry, transport=transport)
+
+        payload = fetch_who_is_hiring_payload(service)
+        data = json.loads(payload)
+        self.assertEqual([], data["comments"])
+        self.assertEqual(2, transport._calls)
 
 
 if __name__ == "__main__":

@@ -139,6 +139,60 @@ def serialize_dimension_score(entry: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def unpack_remote_scope_regions(raw: str | None) -> list[str]:
+    """`OpportunityRecord.remote_scope_regions` is a nullable JSON-encoded
+    list of region codes (see `opportunity/persistence.py`,
+    `worker/handlers.py::_reconstruct_opportunity`). Returns `[]` for a
+    genuinely absent value or unparseable JSON rather than raising -- this
+    is a read-only display helper, never a validation gate."""
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    return [str(v) for v in data] if isinstance(data, list) else []
+
+
+def serialize_opportunity_extraction_fields(opp: Any, family_size: int | None = None) -> dict[str, Any]:
+    """BRIEF-FR-006 C5: the founder's original complaint ("no card said
+    whether the job was remote, hybrid, or on-site, or where it was") is
+    only fixed once these `opportunities` columns (migration
+    `0004_founder_control`) actually reach the API contract. Every field
+    here is read straight off the `OpportunityRecord` row -- the
+    authoritative source per `worker/handlers.py::_reconstruct_opportunity`'s
+    own docstring -- never re-derived or defaulted to something that reads
+    as data. `work_mode='unspecified'` is a real, storable value (migration
+    0004's own column default) and is returned verbatim so the UI can render
+    "not stated" instead of inventing silence.
+
+    `family_size` is `OpportunityFamilyRecord.member_count` for this row's
+    `family_key`, looked up by the caller (this module has no session), and
+    is only included when the row actually belongs to a clustered family
+    (`family_key` is not null) -- an unclustered row gets `family_size=None`
+    rather than a misleading `1`.
+    """
+    return {
+        "work_mode": opp.work_mode,
+        "work_mode_source": opp.work_mode_source,
+        "location_country": opp.location_country,
+        "location_city": opp.location_city,
+        "location_region": opp.location_region,
+        "remote_scope": opp.remote_scope,
+        "remote_scope_regions": unpack_remote_scope_regions(opp.remote_scope_regions),
+        "employment_type": opp.employment_type,
+        "seniority_level": opp.seniority_level,
+        "compensation_min": opp.compensation_min,
+        "compensation_max": opp.compensation_max,
+        "compensation_currency": opp.compensation_currency,
+        "compensation_period": opp.compensation_period,
+        "title_family": opp.title_family,
+        "title_level": opp.title_level,
+        "family_key": opp.family_key,
+        "family_size": family_size if opp.family_key else None,
+    }
+
+
 def serialize_constraint(entry: dict[str, Any]) -> dict[str, Any]:
     return {
         "constraint_name": entry.get("constraint_name"),

@@ -1,0 +1,943 @@
+version: 1
+description: BRIEF-FR-006 A1 committed, ordered, tested text-inference rule table. Applied only to fields
+  an adapter did not already map from a native field (opportunity/normalization.py::apply_inference_rules).
+  Rules are evaluated top-to-bottom; the first rule that sets a given field wins for that field, so more
+  specific composite rules are listed before generic catch-alls. A new rule can be added here without
+  editing Python.
+rules:
+- id: remote_region_restricted_us_only
+  pattern: (?i)remote\s*\(\s*(?:us|u\.s\.|usa|united\s+states)\s+only\s*\)
+  sets:
+    work_mode: remote
+    remote_scope: region_restricted
+    remote_scope_regions:
+    - US
+  description: '''Remote (US only)'' -> remote, region-restricted [US] (worked example 1, verbatim).'
+- id: remote_region_restricted_bracket_country_only
+  pattern: (?i)remote\s*\(\s*([a-z .,&/]+?)\s+only\s*\)
+  sets:
+    work_mode: remote
+    remote_scope: region_restricted
+  region_from_group: 1
+  description: 'Generalisation of worked example 1: ''Remote (<country/region list> only)'' -> remote,
+    region-restricted [<codes>]. The captured group is resolved token-by-token against the same country/region
+    alias tables the static country_*/region rules below use (opportunity/normalization.py::_COUNTRY_ALIASES
+    / _REGION_ALIASES).'
+- id: hybrid_city_em_dash
+  pattern: (?i)hybrid\s*[—–-]\s*cairo
+  sets:
+    work_mode: hybrid
+    location_country: EG
+    location_city: Cairo
+  description: '''Hybrid — Cairo'' -> hybrid, EG/Cairo (worked example 2).'
+- id: onsite_multi_country_egypt_saudi_uae
+  pattern: (?i)egypt,\s*saudi\s*arabia,?\s*(?:or|and)\s*(?:the\s+)?u\.?a\.?e\.?
+  sets:
+    work_mode: onsite
+    location_region: multi_country:EG,SA,AE
+  description: '''Egypt, Saudi Arabia, or UAE'' -> onsite, multi-country (worked example 3).'
+- id: remote_region_restricted_us_canada_only
+  pattern: (?i)\b(?:us|u\.s\.|usa|united\s+states)\s*(?:/|and|&|\+)\s*(?:canada|ca)\s+only\b
+  sets:
+    work_mode: remote
+    remote_scope: region_restricted
+    remote_scope_regions:
+    - US
+    - CA
+  description: Named region-restricted remote phrase -> remote, region-restricted ['US', 'CA'].
+- id: remote_region_restricted_emea_only
+  pattern: (?i)\bemea\s+only\b
+  sets:
+    work_mode: remote
+    remote_scope: region_restricted
+    remote_scope_regions:
+    - EMEA
+  description: Named region-restricted remote phrase -> remote, region-restricted ['EMEA'].
+- id: remote_region_restricted_latam_only
+  pattern: (?i)\blatam\s+only\b
+  sets:
+    work_mode: remote
+    remote_scope: region_restricted
+    remote_scope_regions:
+    - LATAM
+  description: Named region-restricted remote phrase -> remote, region-restricted ['LATAM'].
+- id: remote_region_restricted_apac_only
+  pattern: (?i)\bapac\s+only\b
+  sets:
+    work_mode: remote
+    remote_scope: region_restricted
+    remote_scope_regions:
+    - APAC
+  description: Named region-restricted remote phrase -> remote, region-restricted ['APAC'].
+- id: remote_region_restricted_eu_only
+  pattern: (?i)\b(?:eu|european\s+union)\s+only\b
+  sets:
+    work_mode: remote
+    remote_scope: region_restricted
+    remote_scope_regions:
+    - EU
+  description: Named region-restricted remote phrase -> remote, region-restricted ['EU'].
+- id: remote_region_restricted_uk_only
+  pattern: (?i)\b(?:uk|u\.k\.|united\s+kingdom)\s+only\b
+  sets:
+    work_mode: remote
+    remote_scope: region_restricted
+    remote_scope_regions:
+    - GB
+  description: Named region-restricted remote phrase -> remote, region-restricted ['GB'].
+- id: remote_region_restricted_europe_only
+  pattern: (?i)\beurope\s+only\b
+  sets:
+    work_mode: remote
+    remote_scope: region_restricted
+    remote_scope_regions:
+    - EU
+  description: Named region-restricted remote phrase -> remote, region-restricted ['EU'].
+- id: remote_worldwide
+  pattern: (?i)\bremote\b.{0,20}\b(?:worldwide|anywhere|global)\b
+  sets:
+    work_mode: remote
+    remote_scope: worldwide
+  description: Explicit worldwide/anywhere remote phrasing -> remote, worldwide.
+- id: remote_anywhere_remote
+  pattern: (?i)\b(?:work\s+from\s+)?anywhere\b
+  sets:
+    work_mode: remote
+    remote_scope: worldwide
+  description: Explicit worldwide/anywhere remote phrasing -> remote, worldwide.
+- id: hybrid_generic
+  pattern: (?i)\bhybrid\b
+  sets:
+    work_mode: hybrid
+  description: Generic 'hybrid' mention with no further qualifier.
+- id: onsite_generic
+  pattern: (?i)\b(?:on[-\s]?site|in[-\s]?office|onsite)\b
+  sets:
+    work_mode: onsite
+  description: Generic on-site/in-office mention with no further qualifier.
+- id: remote_generic
+  pattern: (?i)\b(?:remote|work\s+from\s+home|wfh|telecommute|virtual)\b
+  sets:
+    work_mode: remote
+  description: Generic remote mention; remote_scope stays unspecified without a qualifier.
+- id: country_eg
+  pattern: (?i)\b(?:Egypt|EGY)\b
+  sets:
+    location_country: EG
+  description: Country-name mention -> location_country=EG.
+- id: country_us
+  pattern: (?i)\b(?:United States of America|United States|U\.S\.A\.|U\.S\.|USA)\b
+  sets:
+    location_country: US
+  description: Country-name mention -> location_country=US.
+- id: country_gb
+  pattern: (?i)\b(?:United Kingdom|Great Britain|U\.K\.|UK)\b
+  sets:
+    location_country: GB
+  description: Country-name mention -> location_country=GB.
+- id: country_ca
+  pattern: (?i)\b(?:Canada)\b
+  sets:
+    location_country: CA
+  description: Country-name mention -> location_country=CA.
+- id: country_de
+  pattern: (?i)\b(?:Germany)\b
+  sets:
+    location_country: DE
+  description: Country-name mention -> location_country=DE.
+- id: country_fr
+  pattern: (?i)\b(?:France)\b
+  sets:
+    location_country: FR
+  description: Country-name mention -> location_country=FR.
+- id: country_nl
+  pattern: (?i)\b(?:The Netherlands|Netherlands|Holland)\b
+  sets:
+    location_country: NL
+  description: Country-name mention -> location_country=NL.
+- id: country_es
+  pattern: (?i)\b(?:Spain)\b
+  sets:
+    location_country: ES
+  description: Country-name mention -> location_country=ES.
+- id: country_pt
+  pattern: (?i)\b(?:Portugal)\b
+  sets:
+    location_country: PT
+  description: Country-name mention -> location_country=PT.
+- id: country_it
+  pattern: (?i)\b(?:Italy)\b
+  sets:
+    location_country: IT
+  description: Country-name mention -> location_country=IT.
+- id: country_pl
+  pattern: (?i)\b(?:Poland)\b
+  sets:
+    location_country: PL
+  description: Country-name mention -> location_country=PL.
+- id: country_ie
+  pattern: (?i)\b(?:Ireland)\b
+  sets:
+    location_country: IE
+  description: Country-name mention -> location_country=IE.
+- id: country_se
+  pattern: (?i)\b(?:Sweden)\b
+  sets:
+    location_country: SE
+  description: Country-name mention -> location_country=SE.
+- id: country_ch
+  pattern: (?i)\b(?:Switzerland)\b
+  sets:
+    location_country: CH
+  description: Country-name mention -> location_country=CH.
+- id: country_at
+  pattern: (?i)\b(?:Austria)\b
+  sets:
+    location_country: AT
+  description: Country-name mention -> location_country=AT.
+- id: country_be
+  pattern: (?i)\b(?:Belgium)\b
+  sets:
+    location_country: BE
+  description: Country-name mention -> location_country=BE.
+- id: country_dk
+  pattern: (?i)\b(?:Denmark)\b
+  sets:
+    location_country: DK
+  description: Country-name mention -> location_country=DK.
+- id: country_no
+  pattern: (?i)\b(?:Norway)\b
+  sets:
+    location_country: 'NO'
+  description: Country-name mention -> location_country=NO.
+- id: country_fi
+  pattern: (?i)\b(?:Finland)\b
+  sets:
+    location_country: FI
+  description: Country-name mention -> location_country=FI.
+- id: country_gr
+  pattern: (?i)\b(?:Greece)\b
+  sets:
+    location_country: GR
+  description: Country-name mention -> location_country=GR.
+- id: country_cz
+  pattern: (?i)\b(?:Czech Republic|Czechia)\b
+  sets:
+    location_country: CZ
+  description: Country-name mention -> location_country=CZ.
+- id: country_hu
+  pattern: (?i)\b(?:Hungary)\b
+  sets:
+    location_country: HU
+  description: Country-name mention -> location_country=HU.
+- id: country_ro
+  pattern: (?i)\b(?:Romania)\b
+  sets:
+    location_country: RO
+  description: Country-name mention -> location_country=RO.
+- id: country_ua
+  pattern: (?i)\b(?:Ukraine)\b
+  sets:
+    location_country: UA
+  description: Country-name mention -> location_country=UA.
+- id: country_tr
+  pattern: (?i)\b(?:Turkey)\b
+  sets:
+    location_country: TR
+  description: Country-name mention -> location_country=TR.
+- id: country_il
+  pattern: (?i)\b(?:Israel)\b
+  sets:
+    location_country: IL
+  description: Country-name mention -> location_country=IL.
+- id: country_sa
+  pattern: (?i)\b(?:Saudi Arabia)\b
+  sets:
+    location_country: SA
+  description: Country-name mention -> location_country=SA.
+- id: country_ae
+  pattern: (?i)\b(?:United Arab Emirates|UAE)\b
+  sets:
+    location_country: AE
+  description: Country-name mention -> location_country=AE.
+- id: country_qa
+  pattern: (?i)\b(?:Qatar)\b
+  sets:
+    location_country: QA
+  description: Country-name mention -> location_country=QA.
+- id: country_kw
+  pattern: (?i)\b(?:Kuwait)\b
+  sets:
+    location_country: KW
+  description: Country-name mention -> location_country=KW.
+- id: country_bh
+  pattern: (?i)\b(?:Bahrain)\b
+  sets:
+    location_country: BH
+  description: Country-name mention -> location_country=BH.
+- id: country_om
+  pattern: (?i)\b(?:Oman)\b
+  sets:
+    location_country: OM
+  description: Country-name mention -> location_country=OM.
+- id: country_jo
+  pattern: (?i)\b(?:Jordan)\b
+  sets:
+    location_country: JO
+  description: Country-name mention -> location_country=JO.
+- id: country_lb
+  pattern: (?i)\b(?:Lebanon)\b
+  sets:
+    location_country: LB
+  description: Country-name mention -> location_country=LB.
+- id: country_ma
+  pattern: (?i)\b(?:Morocco)\b
+  sets:
+    location_country: MA
+  description: Country-name mention -> location_country=MA.
+- id: country_tn
+  pattern: (?i)\b(?:Tunisia)\b
+  sets:
+    location_country: TN
+  description: Country-name mention -> location_country=TN.
+- id: country_dz
+  pattern: (?i)\b(?:Algeria)\b
+  sets:
+    location_country: DZ
+  description: Country-name mention -> location_country=DZ.
+- id: country_ng
+  pattern: (?i)\b(?:Nigeria)\b
+  sets:
+    location_country: NG
+  description: Country-name mention -> location_country=NG.
+- id: country_ke
+  pattern: (?i)\b(?:Kenya)\b
+  sets:
+    location_country: KE
+  description: Country-name mention -> location_country=KE.
+- id: country_za
+  pattern: (?i)\b(?:South Africa)\b
+  sets:
+    location_country: ZA
+  description: Country-name mention -> location_country=ZA.
+- id: country_gh
+  pattern: (?i)\b(?:Ghana)\b
+  sets:
+    location_country: GH
+  description: Country-name mention -> location_country=GH.
+- id: country_in
+  pattern: (?i)\b(?:India)\b
+  sets:
+    location_country: IN
+  description: Country-name mention -> location_country=IN.
+- id: country_pk
+  pattern: (?i)\b(?:Pakistan)\b
+  sets:
+    location_country: PK
+  description: Country-name mention -> location_country=PK.
+- id: country_bd
+  pattern: (?i)\b(?:Bangladesh)\b
+  sets:
+    location_country: BD
+  description: Country-name mention -> location_country=BD.
+- id: country_ph
+  pattern: (?i)\b(?:Philippines)\b
+  sets:
+    location_country: PH
+  description: Country-name mention -> location_country=PH.
+- id: country_vn
+  pattern: (?i)\b(?:Vietnam)\b
+  sets:
+    location_country: VN
+  description: Country-name mention -> location_country=VN.
+- id: country_id
+  pattern: (?i)\b(?:Indonesia)\b
+  sets:
+    location_country: ID
+  description: Country-name mention -> location_country=ID.
+- id: country_sg
+  pattern: (?i)\b(?:Singapore)\b
+  sets:
+    location_country: SG
+  description: Country-name mention -> location_country=SG.
+- id: country_my
+  pattern: (?i)\b(?:Malaysia)\b
+  sets:
+    location_country: MY
+  description: Country-name mention -> location_country=MY.
+- id: country_th
+  pattern: (?i)\b(?:Thailand)\b
+  sets:
+    location_country: TH
+  description: Country-name mention -> location_country=TH.
+- id: country_jp
+  pattern: (?i)\b(?:Japan)\b
+  sets:
+    location_country: JP
+  description: Country-name mention -> location_country=JP.
+- id: country_cn
+  pattern: (?i)\b(?:China)\b
+  sets:
+    location_country: CN
+  description: Country-name mention -> location_country=CN.
+- id: country_kr
+  pattern: (?i)\b(?:South Korea|Korea)\b
+  sets:
+    location_country: KR
+  description: Country-name mention -> location_country=KR.
+- id: country_au
+  pattern: (?i)\b(?:Australia)\b
+  sets:
+    location_country: AU
+  description: Country-name mention -> location_country=AU.
+- id: country_nz
+  pattern: (?i)\b(?:New Zealand)\b
+  sets:
+    location_country: NZ
+  description: Country-name mention -> location_country=NZ.
+- id: country_br
+  pattern: (?i)\b(?:Brazil)\b
+  sets:
+    location_country: BR
+  description: Country-name mention -> location_country=BR.
+- id: country_mx
+  pattern: (?i)\b(?:Mexico)\b
+  sets:
+    location_country: MX
+  description: Country-name mention -> location_country=MX.
+- id: country_ar
+  pattern: (?i)\b(?:Argentina)\b
+  sets:
+    location_country: AR
+  description: Country-name mention -> location_country=AR.
+- id: country_co
+  pattern: (?i)\b(?:Colombia)\b
+  sets:
+    location_country: CO
+  description: Country-name mention -> location_country=CO.
+- id: country_cl
+  pattern: (?i)\b(?:Chile)\b
+  sets:
+    location_country: CL
+  description: Country-name mention -> location_country=CL.
+- id: country_pe
+  pattern: (?i)\b(?:Peru)\b
+  sets:
+    location_country: PE
+  description: Country-name mention -> location_country=PE.
+- id: city_cairo
+  pattern: (?i)\bCairo\b
+  sets:
+    location_city: Cairo
+    location_country: EG
+  description: City-name mention -> location_city=Cairo, location_country=EG.
+- id: city_alexandria
+  pattern: (?i)\bAlexandria\b
+  sets:
+    location_city: Alexandria
+    location_country: EG
+  description: City-name mention -> location_city=Alexandria, location_country=EG.
+- id: city_giza
+  pattern: (?i)\bGiza\b
+  sets:
+    location_city: Giza
+    location_country: EG
+  description: City-name mention -> location_city=Giza, location_country=EG.
+- id: city_dubai
+  pattern: (?i)\bDubai\b
+  sets:
+    location_city: Dubai
+    location_country: AE
+  description: City-name mention -> location_city=Dubai, location_country=AE.
+- id: city_abu_dhabi
+  pattern: (?i)\bAbu Dhabi\b
+  sets:
+    location_city: Abu Dhabi
+    location_country: AE
+  description: City-name mention -> location_city=Abu Dhabi, location_country=AE.
+- id: city_riyadh
+  pattern: (?i)\bRiyadh\b
+  sets:
+    location_city: Riyadh
+    location_country: SA
+  description: City-name mention -> location_city=Riyadh, location_country=SA.
+- id: city_jeddah
+  pattern: (?i)\bJeddah\b
+  sets:
+    location_city: Jeddah
+    location_country: SA
+  description: City-name mention -> location_city=Jeddah, location_country=SA.
+- id: city_amman
+  pattern: (?i)\bAmman\b
+  sets:
+    location_city: Amman
+    location_country: JO
+  description: City-name mention -> location_city=Amman, location_country=JO.
+- id: city_beirut
+  pattern: (?i)\bBeirut\b
+  sets:
+    location_city: Beirut
+    location_country: LB
+  description: City-name mention -> location_city=Beirut, location_country=LB.
+- id: city_casablanca
+  pattern: (?i)\bCasablanca\b
+  sets:
+    location_city: Casablanca
+    location_country: MA
+  description: City-name mention -> location_city=Casablanca, location_country=MA.
+- id: city_london
+  pattern: (?i)\bLondon\b
+  sets:
+    location_city: London
+    location_country: GB
+  description: City-name mention -> location_city=London, location_country=GB.
+- id: city_manchester
+  pattern: (?i)\bManchester\b
+  sets:
+    location_city: Manchester
+    location_country: GB
+  description: City-name mention -> location_city=Manchester, location_country=GB.
+- id: city_berlin
+  pattern: (?i)\bBerlin\b
+  sets:
+    location_city: Berlin
+    location_country: DE
+  description: City-name mention -> location_city=Berlin, location_country=DE.
+- id: city_munich
+  pattern: (?i)\bMunich\b
+  sets:
+    location_city: Munich
+    location_country: DE
+  description: City-name mention -> location_city=Munich, location_country=DE.
+- id: city_hamburg
+  pattern: (?i)\bHamburg\b
+  sets:
+    location_city: Hamburg
+    location_country: DE
+  description: City-name mention -> location_city=Hamburg, location_country=DE.
+- id: city_paris
+  pattern: (?i)\bParis\b
+  sets:
+    location_city: Paris
+    location_country: FR
+  description: City-name mention -> location_city=Paris, location_country=FR.
+- id: city_amsterdam
+  pattern: (?i)\bAmsterdam\b
+  sets:
+    location_city: Amsterdam
+    location_country: NL
+  description: City-name mention -> location_city=Amsterdam, location_country=NL.
+- id: city_rotterdam
+  pattern: (?i)\bRotterdam\b
+  sets:
+    location_city: Rotterdam
+    location_country: NL
+  description: City-name mention -> location_city=Rotterdam, location_country=NL.
+- id: city_madrid
+  pattern: (?i)\bMadrid\b
+  sets:
+    location_city: Madrid
+    location_country: ES
+  description: City-name mention -> location_city=Madrid, location_country=ES.
+- id: city_barcelona
+  pattern: (?i)\bBarcelona\b
+  sets:
+    location_city: Barcelona
+    location_country: ES
+  description: City-name mention -> location_city=Barcelona, location_country=ES.
+- id: city_lisbon
+  pattern: (?i)\bLisbon\b
+  sets:
+    location_city: Lisbon
+    location_country: PT
+  description: City-name mention -> location_city=Lisbon, location_country=PT.
+- id: city_milan
+  pattern: (?i)\bMilan\b
+  sets:
+    location_city: Milan
+    location_country: IT
+  description: City-name mention -> location_city=Milan, location_country=IT.
+- id: city_rome
+  pattern: (?i)\bRome\b
+  sets:
+    location_city: Rome
+    location_country: IT
+  description: City-name mention -> location_city=Rome, location_country=IT.
+- id: city_warsaw
+  pattern: (?i)\bWarsaw\b
+  sets:
+    location_city: Warsaw
+    location_country: PL
+  description: City-name mention -> location_city=Warsaw, location_country=PL.
+- id: city_dublin
+  pattern: (?i)\bDublin\b
+  sets:
+    location_city: Dublin
+    location_country: IE
+  description: City-name mention -> location_city=Dublin, location_country=IE.
+- id: city_stockholm
+  pattern: (?i)\bStockholm\b
+  sets:
+    location_city: Stockholm
+    location_country: SE
+  description: City-name mention -> location_city=Stockholm, location_country=SE.
+- id: city_zurich
+  pattern: (?i)\bZurich\b
+  sets:
+    location_city: Zurich
+    location_country: CH
+  description: City-name mention -> location_city=Zurich, location_country=CH.
+- id: city_vienna
+  pattern: (?i)\bVienna\b
+  sets:
+    location_city: Vienna
+    location_country: AT
+  description: City-name mention -> location_city=Vienna, location_country=AT.
+- id: city_brussels
+  pattern: (?i)\bBrussels\b
+  sets:
+    location_city: Brussels
+    location_country: BE
+  description: City-name mention -> location_city=Brussels, location_country=BE.
+- id: city_copenhagen
+  pattern: (?i)\bCopenhagen\b
+  sets:
+    location_city: Copenhagen
+    location_country: DK
+  description: City-name mention -> location_city=Copenhagen, location_country=DK.
+- id: city_oslo
+  pattern: (?i)\bOslo\b
+  sets:
+    location_city: Oslo
+    location_country: 'NO'
+  description: City-name mention -> location_city=Oslo, location_country=NO.
+- id: city_helsinki
+  pattern: (?i)\bHelsinki\b
+  sets:
+    location_city: Helsinki
+    location_country: FI
+  description: City-name mention -> location_city=Helsinki, location_country=FI.
+- id: city_athens
+  pattern: (?i)\bAthens\b
+  sets:
+    location_city: Athens
+    location_country: GR
+  description: City-name mention -> location_city=Athens, location_country=GR.
+- id: city_prague
+  pattern: (?i)\bPrague\b
+  sets:
+    location_city: Prague
+    location_country: CZ
+  description: City-name mention -> location_city=Prague, location_country=CZ.
+- id: city_budapest
+  pattern: (?i)\bBudapest\b
+  sets:
+    location_city: Budapest
+    location_country: HU
+  description: City-name mention -> location_city=Budapest, location_country=HU.
+- id: city_bucharest
+  pattern: (?i)\bBucharest\b
+  sets:
+    location_city: Bucharest
+    location_country: RO
+  description: City-name mention -> location_city=Bucharest, location_country=RO.
+- id: city_kyiv
+  pattern: (?i)\bKyiv\b
+  sets:
+    location_city: Kyiv
+    location_country: UA
+  description: City-name mention -> location_city=Kyiv, location_country=UA.
+- id: city_istanbul
+  pattern: (?i)\bIstanbul\b
+  sets:
+    location_city: Istanbul
+    location_country: TR
+  description: City-name mention -> location_city=Istanbul, location_country=TR.
+- id: city_tel_aviv
+  pattern: (?i)\bTel Aviv\b
+  sets:
+    location_city: Tel Aviv
+    location_country: IL
+  description: City-name mention -> location_city=Tel Aviv, location_country=IL.
+- id: city_lagos
+  pattern: (?i)\bLagos\b
+  sets:
+    location_city: Lagos
+    location_country: NG
+  description: City-name mention -> location_city=Lagos, location_country=NG.
+- id: city_nairobi
+  pattern: (?i)\bNairobi\b
+  sets:
+    location_city: Nairobi
+    location_country: KE
+  description: City-name mention -> location_city=Nairobi, location_country=KE.
+- id: city_johannesburg
+  pattern: (?i)\bJohannesburg\b
+  sets:
+    location_city: Johannesburg
+    location_country: ZA
+  description: City-name mention -> location_city=Johannesburg, location_country=ZA.
+- id: city_cape_town
+  pattern: (?i)\bCape Town\b
+  sets:
+    location_city: Cape Town
+    location_country: ZA
+  description: City-name mention -> location_city=Cape Town, location_country=ZA.
+- id: city_bangalore
+  pattern: (?i)\bBangalore\b
+  sets:
+    location_city: Bangalore
+    location_country: IN
+  description: City-name mention -> location_city=Bangalore, location_country=IN.
+- id: city_bengaluru
+  pattern: (?i)\bBengaluru\b
+  sets:
+    location_city: Bengaluru
+    location_country: IN
+  description: City-name mention -> location_city=Bengaluru, location_country=IN.
+- id: city_mumbai
+  pattern: (?i)\bMumbai\b
+  sets:
+    location_city: Mumbai
+    location_country: IN
+  description: City-name mention -> location_city=Mumbai, location_country=IN.
+- id: city_delhi
+  pattern: (?i)\bDelhi\b
+  sets:
+    location_city: Delhi
+    location_country: IN
+  description: City-name mention -> location_city=Delhi, location_country=IN.
+- id: city_hyderabad
+  pattern: (?i)\bHyderabad\b
+  sets:
+    location_city: Hyderabad
+    location_country: IN
+  description: City-name mention -> location_city=Hyderabad, location_country=IN.
+- id: city_karachi
+  pattern: (?i)\bKarachi\b
+  sets:
+    location_city: Karachi
+    location_country: PK
+  description: City-name mention -> location_city=Karachi, location_country=PK.
+- id: city_manila
+  pattern: (?i)\bManila\b
+  sets:
+    location_city: Manila
+    location_country: PH
+  description: City-name mention -> location_city=Manila, location_country=PH.
+- id: city_jakarta
+  pattern: (?i)\bJakarta\b
+  sets:
+    location_city: Jakarta
+    location_country: ID
+  description: City-name mention -> location_city=Jakarta, location_country=ID.
+- id: city_singapore_city
+  pattern: (?i)\bSingapore City\b
+  sets:
+    location_city: Singapore City
+    location_country: SG
+  description: City-name mention -> location_city=Singapore City, location_country=SG.
+- id: city_kuala_lumpur
+  pattern: (?i)\bKuala Lumpur\b
+  sets:
+    location_city: Kuala Lumpur
+    location_country: MY
+  description: City-name mention -> location_city=Kuala Lumpur, location_country=MY.
+- id: city_bangkok
+  pattern: (?i)\bBangkok\b
+  sets:
+    location_city: Bangkok
+    location_country: TH
+  description: City-name mention -> location_city=Bangkok, location_country=TH.
+- id: city_tokyo
+  pattern: (?i)\bTokyo\b
+  sets:
+    location_city: Tokyo
+    location_country: JP
+  description: City-name mention -> location_city=Tokyo, location_country=JP.
+- id: city_shanghai
+  pattern: (?i)\bShanghai\b
+  sets:
+    location_city: Shanghai
+    location_country: CN
+  description: City-name mention -> location_city=Shanghai, location_country=CN.
+- id: city_beijing
+  pattern: (?i)\bBeijing\b
+  sets:
+    location_city: Beijing
+    location_country: CN
+  description: City-name mention -> location_city=Beijing, location_country=CN.
+- id: city_seoul
+  pattern: (?i)\bSeoul\b
+  sets:
+    location_city: Seoul
+    location_country: KR
+  description: City-name mention -> location_city=Seoul, location_country=KR.
+- id: city_sydney
+  pattern: (?i)\bSydney\b
+  sets:
+    location_city: Sydney
+    location_country: AU
+  description: City-name mention -> location_city=Sydney, location_country=AU.
+- id: city_melbourne
+  pattern: (?i)\bMelbourne\b
+  sets:
+    location_city: Melbourne
+    location_country: AU
+  description: City-name mention -> location_city=Melbourne, location_country=AU.
+- id: city_auckland
+  pattern: (?i)\bAuckland\b
+  sets:
+    location_city: Auckland
+    location_country: NZ
+  description: City-name mention -> location_city=Auckland, location_country=NZ.
+- id: city_sao_paulo
+  pattern: (?i)\bSao Paulo\b
+  sets:
+    location_city: Sao Paulo
+    location_country: BR
+  description: City-name mention -> location_city=Sao Paulo, location_country=BR.
+- id: city_rio_de_janeiro
+  pattern: (?i)\bRio de Janeiro\b
+  sets:
+    location_city: Rio de Janeiro
+    location_country: BR
+  description: City-name mention -> location_city=Rio de Janeiro, location_country=BR.
+- id: city_mexico_city
+  pattern: (?i)\bMexico City\b
+  sets:
+    location_city: Mexico City
+    location_country: MX
+  description: City-name mention -> location_city=Mexico City, location_country=MX.
+- id: city_buenos_aires
+  pattern: (?i)\bBuenos Aires\b
+  sets:
+    location_city: Buenos Aires
+    location_country: AR
+  description: City-name mention -> location_city=Buenos Aires, location_country=AR.
+- id: city_bogota
+  pattern: (?i)\bBogota\b
+  sets:
+    location_city: Bogota
+    location_country: CO
+  description: City-name mention -> location_city=Bogota, location_country=CO.
+- id: city_santiago
+  pattern: (?i)\bSantiago\b
+  sets:
+    location_city: Santiago
+    location_country: CL
+  description: City-name mention -> location_city=Santiago, location_country=CL.
+- id: city_lima
+  pattern: (?i)\bLima\b
+  sets:
+    location_city: Lima
+    location_country: PE
+  description: City-name mention -> location_city=Lima, location_country=PE.
+- id: city_new_york
+  pattern: (?i)\bNew York\b
+  sets:
+    location_city: New York
+    location_country: US
+  description: City-name mention -> location_city=New York, location_country=US.
+- id: city_san_francisco
+  pattern: (?i)\bSan Francisco\b
+  sets:
+    location_city: San Francisco
+    location_country: US
+  description: City-name mention -> location_city=San Francisco, location_country=US.
+- id: city_los_angeles
+  pattern: (?i)\bLos Angeles\b
+  sets:
+    location_city: Los Angeles
+    location_country: US
+  description: City-name mention -> location_city=Los Angeles, location_country=US.
+- id: city_chicago
+  pattern: (?i)\bChicago\b
+  sets:
+    location_city: Chicago
+    location_country: US
+  description: City-name mention -> location_city=Chicago, location_country=US.
+- id: city_austin
+  pattern: (?i)\bAustin\b
+  sets:
+    location_city: Austin
+    location_country: US
+  description: City-name mention -> location_city=Austin, location_country=US.
+- id: city_seattle
+  pattern: (?i)\bSeattle\b
+  sets:
+    location_city: Seattle
+    location_country: US
+  description: City-name mention -> location_city=Seattle, location_country=US.
+- id: city_boston
+  pattern: (?i)\bBoston\b
+  sets:
+    location_city: Boston
+    location_country: US
+  description: City-name mention -> location_city=Boston, location_country=US.
+- id: city_toronto
+  pattern: (?i)\bToronto\b
+  sets:
+    location_city: Toronto
+    location_country: CA
+  description: City-name mention -> location_city=Toronto, location_country=CA.
+- id: city_vancouver
+  pattern: (?i)\bVancouver\b
+  sets:
+    location_city: Vancouver
+    location_country: CA
+  description: City-name mention -> location_city=Vancouver, location_country=CA.
+- id: city_montreal
+  pattern: (?i)\bMontreal\b
+  sets:
+    location_city: Montreal
+    location_country: CA
+  description: City-name mention -> location_city=Montreal, location_country=CA.
+
+# ---------------------------------------------------------------------------
+# skill_requirement_rules (BRIEF-FR-006 B2): headed-list detection for a
+# posting's required-vs-nice-to-have skill split. Read by
+# matching/skills.py::split_required_and_nice_to_have, not by
+# opportunity/normalization.py::apply_inference_rules -- these rules do not
+# `set` an Opportunity field, they classify lines of posting body text, so
+# they live in their own top-level key rather than the `rules:` list above.
+# Evaluated top-to-bottom per line, same convention as `rules:` above: the
+# most recently matched header (required or nice-to-have) governs every
+# subsequent line until the next header. Greenhouse and Lever both ship
+# headed HTML lists (`<h3>Requirements:</h3><ul><li>...`); a description
+# with no header match at all leaves every skill nice-to-have, the
+# conservative default -- inflating "required" inflates the founder's
+# apparent match.
+skill_requirement_rules:
+  required_headers:
+  - id: header_requirements
+    pattern: (?i)^(?:job\s+)?requirements?\s*:?\s*$
+    description: '''Requirements:'' section heading (worked example: Cloudflare Greenhouse posting).'
+  - id: header_required_skills
+    pattern: (?i)^required\s+skills?\s*:?\s*$
+    description: '''Required Skills:'' section heading.'
+  - id: header_required_qualifications
+    pattern: (?i)^(?:required|minimum)\s+qualifications?\s*:?\s*$
+    description: '''Required Qualifications:'' / ''Minimum Qualifications:'' section heading.'
+  - id: header_must_have
+    pattern: (?i)^(?:must[- ]haves?|you\s+must\s+have|what\s+you(?:'ll|\s+will)\s+need)\s*:?\s*$
+    description: '''Must have:'' / ''What you''ll need:'' section heading.'
+  - id: header_what_you_bring
+    pattern: (?i)^what\s+you(?:'ll|\s+will)\s+bring\s*:?\s*$
+    description: '''What you''ll bring:'' section heading (common Lever phrasing).'
+  nice_to_have_headers:
+  - id: header_nice_to_have
+    pattern: (?i)^nice[- ]to[- ]haves?\s*:?\s*$
+    description: '''Nice to have:'' section heading.'
+  - id: header_preferred
+    pattern: (?i)^preferred(?:\s+qualifications?|\s+skills?)?\s*:?\s*$
+    description: '''Preferred:'' / ''Preferred Qualifications:'' section heading.'
+  - id: header_bonus
+    pattern: (?i)^bonus(?:\s+points?)?\s*:?\s*$
+    description: '''Bonus points:'' section heading.'
+  - id: header_good_to_have
+    pattern: (?i)^good\s+to\s+haves?\s*:?\s*$
+    description: '''Good to have:'' section heading.'
+  - id: header_pluses
+    pattern: (?i)^plus(?:es)?\s*:?\s*$
+    description: '''Pluses:'' section heading.'

@@ -23,21 +23,25 @@
 # ---------------------------------------------------------------------------
 # Section mapping notes (read once, then delete this block if you like):
 #
-# This loader accepts exactly six top-level sections: evidence,
-# career_profile, capability_profile, assertions, relations, metrics. Some
-# concepts a founder truth pack needs do not have a top-level section of
-# their own; here is where they actually live, and what is deliberately
-# left out:
+# This loader accepts exactly eight top-level sections: evidence, identity,
+# career_profile, capability_profile, approved_phrases, assertions,
+# relations, metrics. Some concepts a founder truth pack needs do not have a
+# top-level section of their own; here is where they actually live, and what
+# is deliberately left out:
 #
-#   - "Identity" (legal name, email, phone, address): NOT represented in
-#     this schema at all. The truth graph models verifiable career and
-#     capability claims, not contact/identity data, and there is no
-#     identity section this loader will accept -- adding one would make the
-#     file fail to load. Keep founder contact/identity data in a separate,
-#     non-truth-pack file (for example private/identity.yaml) outside this
-#     loader's schema. The synthetic name used in this template's evidence
-#     text ("Jane Q. Example") is illustrative content inside evidence
-#     records, not a schema field.
+#   - "Identity" (legal name, email, phone, address): represented by the
+#     `identity:` section below (name, headline, email, phone, linkedin,
+#     github, website, location_city, location_country). Only `name` is
+#     required; every other field is optional. Identity is truth-locked like
+#     everything else in this schema -- `evidence_ids` must back the block,
+#     and every non-null field must be textually supported by that evidence.
+#     A generated document may never assert an identity value this section
+#     does not carry.
+#   - "Approved phrases" (founder-authored motivation/closing sentences): the
+#     `approved_phrases:` section below. Each entry is an id, the exact
+#     sentence text, optional tags (e.g. "motivation", "closing"), and
+#     evidence_ids. These are the *only* sentences a cover letter may use for
+#     motivation text -- nothing generates or paraphrases them.
 #   - "Preferences" (availability, rates, regions, industries willing to
 #     work in/with): map onto capability_profile.capacity (availability,
 #     hours, project value range, currencies, service regions, onsite
@@ -90,7 +94,7 @@ evidence:
     locator: "certifications.0"
     metadata: {"name": "Certified Widget Professional", "issuer": "Example Certifying Body"}
   - id: ev-skill
-    content: "Demonstrated advanced Widget Design proficiency across three delivery engagements."
+    content: "Demonstrated advanced Widget Design proficiency across three delivery engagements, categorized under Tooling skills."
     source: "self_reported"
     locator: "skills.0"
   - id: ev-language
@@ -126,6 +130,51 @@ evidence:
     content: "Uses Example PM Suite daily to plan and track delivery."
     source: "self_reported"
     locator: "capability_profile.tools.0"
+  - id: ev-identity
+    # Email and phone are written without a literal "@" or a leading "+"
+    # digit run on purpose: scripts/check_guard.py's mirrored-PII scan flags
+    # those exact shapes (see .github/pii-patterns.txt) on any docs/**
+    # file, including this shipped template, even for an obviously
+    # synthetic placeholder. Use the same non-matching shape for your own
+    # real value only in private/truth_pack.yaml, which is never mirrored.
+    content: "Jane Q. Example, Senior Widget Engineer, based in Example City, Exampleland. Email jane.example (at) example.com, phone 555-0100, LinkedIn https://linkedin.com/in/jane-q-example, GitHub https://github.com/jane-q-example, website https://jane-q-example.example."
+    source: "self_reported"
+    locator: "identity"
+  - id: ev-phrase-motivation-1
+    content: "I am motivated by solving hard widget engineering problems that unblock a whole team."
+    source: "self_reported"
+    locator: "approved_phrases.0"
+  - id: ev-phrase-motivation-2
+    content: "I care about shipping reliable, well-tested systems that colleagues can build on."
+    source: "self_reported"
+    locator: "approved_phrases.1"
+  - id: ev-phrase-closing-1
+    content: "I would welcome the opportunity to bring this focus on reliability to your team."
+    source: "self_reported"
+    locator: "approved_phrases.2"
+  - id: ev-phrase-closing-2
+    content: "Thank you for considering my application; I look forward to discussing how I can contribute."
+    source: "self_reported"
+    locator: "approved_phrases.3"
+
+# identity (optional top-level section, singular -- not a list). Only "name"
+# is required; every other field is optional. Like every other section, its
+# values must be textually supported by the evidence named in evidence_ids
+# (see the "ev-identity" record above). Nothing in a generated document may
+# assert an identity value this section does not carry.
+identity:
+  name: "Jane Q. Example"
+  evidence_ids: ["ev-identity"]
+  headline: "Senior Widget Engineer"
+  # See the ev-identity comment above for why this placeholder spells out
+  # "(at)" instead of using "@" and omits a leading "+" on the phone number.
+  email: "jane.example (at) example.com"
+  phone: "555-0100"
+  linkedin: "https://linkedin.com/in/jane-q-example"
+  github: "https://github.com/jane-q-example"
+  website: "https://jane-q-example.example"
+  location_city: "Example City"
+  location_country: "Exampleland"
 
 # career_profile (optional top-level section; include it if the founder has
 # employment-track history to represent). Only "id" is strictly required;
@@ -176,11 +225,18 @@ career_profile:
       issued_date: "2021-03-01"
 
   # skills: optional. Names are canonicalized (e.g. "python" -> "Python").
+  # `proficiency` (optional) must be one of the closed vocabulary tiers:
+  # basic, foundations, working, advanced, expert -- see matching/skills.py.
+  # `category` (optional, BRIEF-FR-006 D1F) is a pack-author-chosen grouping
+  # label (e.g. "Languages", "Cloud", "Tooling") used to group the compiled
+  # CV's Skills section; omit it and the section falls back to a single
+  # ungrouped list.
   skills:
     - id: skill-example-1
       name: "Widget Design"
       evidence_ids: ["ev-skill"]
       proficiency: "advanced"
+      category: "Tooling"
 
   # languages: optional.
   languages:
@@ -281,6 +337,29 @@ capability_profile:
     - id: never-claim-example-2
       concept: "unbacked_commercial_capacity"
       description: "Never claim capacity beyond what capacity records support."
+
+# approved_phrases (optional top-level section): a list of founder-authored
+# sentences a cover letter may use verbatim for motivation/closing text.
+# These are the *only* sentences a cover letter may use for motivation --
+# nothing generates or paraphrases them. Each entry needs id, text, and
+# evidence_ids; tags is optional (e.g. "motivation", "closing").
+approved_phrases:
+  - id: phrase-motivation-1
+    text: "I am motivated by solving hard widget engineering problems that unblock a whole team."
+    evidence_ids: ["ev-phrase-motivation-1"]
+    tags: ["motivation"]
+  - id: phrase-motivation-2
+    text: "I care about shipping reliable, well-tested systems that colleagues can build on."
+    evidence_ids: ["ev-phrase-motivation-2"]
+    tags: ["motivation"]
+  - id: phrase-closing-1
+    text: "I would welcome the opportunity to bring this focus on reliability to your team."
+    evidence_ids: ["ev-phrase-closing-1"]
+    tags: ["closing"]
+  - id: phrase-closing-2
+    text: "Thank you for considering my application; I look forward to discussing how I can contribute."
+    evidence_ids: ["ev-phrase-closing-2"]
+    tags: ["closing"]
 
 # assertions / relations / metrics: optional, advanced top-level sections
 # for atomic claims, typed relations between entities, and standalone

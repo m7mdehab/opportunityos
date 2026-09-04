@@ -18,6 +18,7 @@ class Track(str, Enum):
     CONTRACT = "contract"
     FREELANCE = "freelance"
     PROCUREMENT = "procurement"
+    TUTORING = "tutoring"  # BRIEF-FR-006 E23: platform-application tutoring track, not a postings track.
 
 
 class SeniorityLevel(str, Enum):
@@ -37,6 +38,7 @@ class EmploymentType(str, Enum):
     FREELANCE = "freelance"
     INTERNSHIP = "internship"
     TEMPORARY = "temporary"
+    PLATFORM_APPLICATION = "platform_application"  # BRIEF-FR-006 E23: tutoring platforms; not a posting.
     UNSPECIFIED = "unspecified"
 
 
@@ -45,6 +47,27 @@ class RemotePolicy(str, Enum):
     HYBRID = "hybrid"
     ON_SITE = "on_site"
     UNSPECIFIED = "unspecified"
+
+
+class WorkMode(str, Enum):
+    """BRIEF-FR-006 A1 canonical work-mode field (values per the brief: remote |
+    hybrid | onsite | unspecified -- distinct spelling from ``RemotePolicy.ON_SITE``,
+    which predates this field and stays for backward compatibility; see
+    ``_WORK_MODE_TO_REMOTE_POLICY`` below for the mapping)."""
+    REMOTE = "remote"
+    HYBRID = "hybrid"
+    ONSITE = "onsite"
+    UNSPECIFIED = "unspecified"
+
+
+class RemoteScope(str, Enum):
+    """Only meaningful when ``work_mode`` is ``REMOTE`` (or, loosely, ``HYBRID``)."""
+    WORLDWIDE = "worldwide"
+    REGION_RESTRICTED = "region_restricted"
+    UNSPECIFIED = "unspecified"
+
+
+WORK_MODE_SOURCE_VALUES: frozenset[str] = frozenset({"adapter", "inference", "none"})
 
 
 class CompensationInterval(str, Enum):
@@ -99,7 +122,12 @@ MATERIAL_OPPORTUNITY_FIELD_RULES: tuple[MaterialFieldRule, ...] = (
     MaterialFieldRule("seniority", lambda opp: opp.seniority != SeniorityLevel.UNSPECIFIED),
     MaterialFieldRule("employment_type", lambda opp: opp.employment_type != EmploymentType.UNSPECIFIED),
     MaterialFieldRule("location_raw", lambda opp: bool(opp.location_raw)),
-    MaterialFieldRule("remote_policy", lambda opp: opp.remote_policy != RemotePolicy.UNSPECIFIED),
+    # BRIEF-FR-006 A1: ``work_mode`` (not ``remote_policy``) is now the canonical
+    # populated-field signal and the field every adapter attaches a FieldProvenance
+    # entry to. ``remote_policy`` stays as a constructor-compatible, always-synced
+    # alias (see Opportunity.__post_init__) but is deliberately not re-checked here
+    # to avoid requiring two separate provenance entries for one underlying fact.
+    MaterialFieldRule("work_mode", lambda opp: opp.work_mode != WorkMode.UNSPECIFIED),
     MaterialFieldRule("geographic_eligibility", lambda opp: bool(opp.geographic_eligibility)),
     MaterialFieldRule("compensation", lambda opp: opp.compensation is not None, ("compensation",)),
     MaterialFieldRule("compensation.min_amount", lambda opp: opp.compensation is not None and opp.compensation.min_amount is not None, ("compensation.min_amount",)),
@@ -204,6 +232,24 @@ class GeographicEligibility:
             raise ValueError(f"invalid geographic eligibility status: '{self.status}'")
 
 
+# BRIEF-FR-006 A1 Master decision: ``work_mode`` is the new canonical field.
+# ``Opportunity.remote_policy`` stays reachable (not deleted -- BRIEF-003 and
+# every frozen matching/api/truth call site keep constructing and reading it)
+# but its value is always derived to agree with ``work_mode`` -- see
+# ``Opportunity.__post_init__``. Literal `on_site` (RemotePolicy) vs. `onsite`
+# (WorkMode) is intentional: the brief specifies `onsite` for the new field and
+# `on_site` already shipped in RemotePolicy before this deliverable.
+_WORK_MODE_TO_REMOTE_POLICY: dict[WorkMode, RemotePolicy] = {
+    WorkMode.REMOTE: RemotePolicy.REMOTE,
+    WorkMode.HYBRID: RemotePolicy.HYBRID,
+    WorkMode.ONSITE: RemotePolicy.ON_SITE,
+    WorkMode.UNSPECIFIED: RemotePolicy.UNSPECIFIED,
+}
+_REMOTE_POLICY_TO_WORK_MODE: dict[RemotePolicy, WorkMode] = {
+    remote_policy: work_mode for work_mode, remote_policy in _WORK_MODE_TO_REMOTE_POLICY.items()
+}
+
+
 def compute_canonical_content_hash(
     organization: str,
     title: str,
@@ -236,7 +282,13 @@ def compute_dedup_key(
 def compute_deterministic_id(source: str, remote_id: str, title: str, organization: str, raw_pointer: str) -> str:
     if remote_id and remote_id.strip():
         clean_remote = re.sub(r"[^\w\-.]", "_", remote_id.strip())
-        return f"{source}:{clean_remote}"
+        candidate = f"{source}:{clean_remote}"
+        if len(candidate) <= 64:
+            return candidate
+        # Composed id exceeds storage.models.Opportunity.id's 64-char primary key
+        # bound (e.g. We Work Remotely slugs). Fall back to the same bounded,
+        # deterministic hash form already used below for the empty-remote_id case,
+        # so long remote_ids never overflow the column or collide via truncation.
     digest = hashlib.sha256(f"{organization}:{title}:{raw_pointer}".encode("utf-8")).hexdigest()[:16]
     return f"{source}:{digest}"
 
@@ -257,7 +309,19 @@ class Opportunity:
     seniority: SeniorityLevel = SeniorityLevel.UNSPECIFIED
     employment_type: EmploymentType = EmploymentType.UNSPECIFIED
     location_raw: str = ""
-    remote_policy: RemotePolicy = RemotePolicy.UNSPECIFIED
+    # BRIEF-FR-006 A1 fields. ``work_mode`` is the new canonical, writable field;
+    # ``remote_policy`` below is a read-only derived @property (Master decision #1)
+    # -- NOT a constructor parameter any more. See the FR-006 A1 report: this is a
+    # breaking change for any `Opportunity(remote_policy=...)` call site outside
+    # this deliverable's allowed file set (six frozen files identified and named
+    # in that report; they must be repointed at `work_mode=` in a follow-up).
+    work_mode: WorkMode = WorkMode.UNSPECIFIED
+    work_mode_source: str = "none"  # "adapter" | "inference" | "none"
+    location_country: str = ""  # ISO-2
+    location_city: str = ""
+    location_region: str = ""
+    remote_scope: RemoteScope = RemoteScope.UNSPECIFIED
+    remote_scope_regions: tuple[str, ...] = ()
     geographic_eligibility: GeographicEligibility | None = None
     compensation: Compensation | None = None
     posted_date: str | None = None
@@ -285,8 +349,14 @@ class Opportunity:
             raise ValueError(f"seniority must be an instance of SeniorityLevel enum, got {type(self.seniority)}")
         if not isinstance(self.employment_type, EmploymentType):
             raise ValueError(f"employment_type must be an instance of EmploymentType enum, got {type(self.employment_type)}")
-        if not isinstance(self.remote_policy, RemotePolicy):
-            raise ValueError(f"remote_policy must be an instance of RemotePolicy enum, got {type(self.remote_policy)}")
+        if not isinstance(self.work_mode, WorkMode):
+            raise ValueError(f"work_mode must be an instance of WorkMode enum, got {type(self.work_mode)}")
+        if not isinstance(self.remote_scope, RemoteScope):
+            raise ValueError(f"remote_scope must be an instance of RemoteScope enum, got {type(self.remote_scope)}")
+        if self.work_mode_source not in WORK_MODE_SOURCE_VALUES:
+            raise ValueError(
+                f"work_mode_source must be one of {sorted(WORK_MODE_SOURCE_VALUES)}, got {self.work_mode_source!r}"
+            )
 
         # Ensure content_hash is populated deterministically
         if not self.content_hash:
@@ -301,6 +371,14 @@ class Opportunity:
                 self.organization, self.title, self.location_raw
             )
             object.__setattr__(self, "dedup_key", computed_dedup)
+
+    @property
+    def remote_policy(self) -> RemotePolicy:
+        """Read-only derived alias of ``work_mode`` (BRIEF-FR-006 A1 Master decision
+        #1). Kept so BRIEF-003 call sites that only *read* ``opp.remote_policy``
+        keep working; it is deliberately not a constructor parameter -- ``work_mode``
+        is the single writable source of truth."""
+        return _WORK_MODE_TO_REMOTE_POLICY[self.work_mode]
 
 
 def validate_opportunity_provenance(opp: Opportunity) -> tuple[bool, str]:

@@ -1,0 +1,187 @@
+test_class_1_get_production_db_url_raises_when_env_unset (test_fail_closed_probe.FailClosedProbeMisconfigurationTest.test_class_1_get_production_db_url_raises_when_env_unset) ... ok
+test_class_2_get_engine_default_constructor_raises_when_env_unset (test_fail_closed_probe.FailClosedProbeMisconfigurationTest.test_class_2_get_engine_default_constructor_raises_when_env_unset) ... ok
+test_class_3_get_production_db_url_raises_for_sqlite_env (test_fail_closed_probe.FailClosedProbeMisconfigurationTest.test_class_3_get_production_db_url_raises_for_sqlite_env) ... ok
+test_class_4_production_components_raise_when_env_unset (test_fail_closed_probe.FailClosedProbeMisconfigurationTest.test_class_4_production_components_raise_when_env_unset) ... ok
+test_class_5_postgres_inbox_store_raises_for_explicit_sqlite_arg (test_fail_closed_probe.FailClosedProbeMisconfigurationTest.test_class_5_postgres_inbox_store_raises_for_explicit_sqlite_arg) ... ok
+test_class_6_postgres_idempotency_ledger_raises_for_explicit_sqlite_arg (test_fail_closed_probe.FailClosedProbeMisconfigurationTest.test_class_6_postgres_idempotency_ledger_raises_for_explicit_sqlite_arg) ... ok
+test_class_7_orchestrator_raises_for_store_none (test_fail_closed_probe.FailClosedProbeMisconfigurationTest.test_class_7_orchestrator_raises_for_store_none) ... ok
+test_valid_dsn_1_outbound_browser_engine_carries_postgres_ledger (test_fail_closed_probe.FailClosedProbeValidDsnTest.test_valid_dsn_1_outbound_browser_engine_carries_postgres_ledger) ... ok
+test_valid_dsn_2_inbound_ingestion_service_carries_postgres_store (test_fail_closed_probe.FailClosedProbeValidDsnTest.test_valid_dsn_2_inbound_ingestion_service_carries_postgres_store) ... ok
+test_valid_dsn_3_pipeline_event_store_carries_postgres_store (test_fail_closed_probe.FailClosedProbeValidDsnTest.test_valid_dsn_3_pipeline_event_store_carries_postgres_store) ... ok
+test_valid_dsn_4_notification_engine_carries_postgres_store (test_fail_closed_probe.FailClosedProbeValidDsnTest.test_valid_dsn_4_notification_engine_carries_postgres_store) ... ok
+test_valid_dsn_5_production_operational_orchestrator_carries_postgres_store (test_fail_closed_probe.FailClosedProbeValidDsnTest.test_valid_dsn_5_production_operational_orchestrator_carries_postgres_store) ... ok
+test_migrate_inbox_sqlite (test_migration.TestLegacyMigration.test_migrate_inbox_sqlite) ... ok
+test_migrate_outbound_sqlite (test_migration.TestLegacyMigration.test_migrate_outbound_sqlite) ... ok
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:572: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces/commas for version_locations.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+test_case_t_family_upsert_and_split_out_round_trip (test_postgres_integration.A1MFounderControlRoundTripTest.test_case_t_family_upsert_and_split_out_round_trip)
+A2.6 (BRIEF-FR-006 clustering): StorageRepository's ... ok
+test_every_new_column_round_trips_with_values (test_postgres_integration.A1MFounderControlRoundTripTest.test_every_new_column_round_trips_with_values) ... ok
+test_every_nullable_new_column_round_trips_with_null (test_postgres_integration.A1MFounderControlRoundTripTest.test_every_nullable_new_column_round_trips_with_null) ... ok
+test_new_tables_round_trip_via_orm (test_postgres_integration.A1MFounderControlRoundTripTest.test_new_tables_round_trip_via_orm)
+Direct ORM round-trip for the four genuinely-new A1M tables ... ok
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+test_case_a_and_b_alembic_upgrade_downgrade_smoke (test_postgres_integration.PostgresProductionIntegrationTest.test_case_a_and_b_alembic_upgrade_downgrade_smoke)
+Case A & B: empty DB -> Alembic head -> downgrade smoke -> upgrade to head. ... INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running downgrade 0004_founder_control -> 0003_provenance_identity, 0004_founder_control
+INFO  [alembic.runtime.migration] Running downgrade 0003_provenance_identity -> 0002_match_evaluations, 0003_provenance_identity
+INFO  [alembic.runtime.migration] Running downgrade 0002_match_evaluations -> 0001_baseline_schema, 0002_match_evaluations
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade 0001_baseline_schema -> 0002_match_evaluations, 0002_match_evaluations
+INFO  [alembic.runtime.migration] Running upgrade 0002_match_evaluations -> 0003_provenance_identity, 0003_provenance_identity
+INFO  [alembic.runtime.migration] Running upgrade 0003_provenance_identity -> 0004_founder_control, 0004_founder_control
+ok
+test_case_c_exact_historical_inbox_sqlite_to_postgres (test_postgres_integration.PostgresProductionIntegrationTest.test_case_c_exact_historical_inbox_sqlite_to_postgres)
+Case C: Exact historical inbox SQLite -> PostgreSQL migration with 100% fidelity. ... ok
+test_case_d_exact_historical_outbound_sqlite_to_postgres (test_postgres_integration.PostgresProductionIntegrationTest.test_case_d_exact_historical_outbound_sqlite_to_postgres)
+Case D: Exact historical outbound SQLite -> PostgreSQL migration. ... ok
+test_case_e_f_g_preservation_of_unknown_outcome_and_reconciliations (test_postgres_integration.PostgresProductionIntegrationTest.test_case_e_f_g_preservation_of_unknown_outcome_and_reconciliations)
+Case E, F, G: UNKNOWN_OUTCOME freeze and reconciliation records in PostgreSQL. ... ok
+test_case_h_duplicate_notification_event_replay (test_postgres_integration.PostgresProductionIntegrationTest.test_case_h_duplicate_notification_event_replay)
+Case H: Duplicate notification and pipeline event replay produces 0 duplicate records. ... ok
+test_case_i_two_independent_idempotency_transactions_racing (test_postgres_integration.PostgresProductionIntegrationTest.test_case_i_two_independent_idempotency_transactions_racing)
+Case I: Two independent PostgreSQL sessions racing for the same idempotency key. ... ok
+test_case_j_two_independent_workers_racing_with_skip_locked (test_postgres_integration.PostgresProductionIntegrationTest.test_case_j_two_independent_workers_racing_with_skip_locked)
+Case J: Two independent workers racing for one job with SKIP LOCKED. ... ok
+test_case_k_worker_stale_lease_recovery_after_restart (test_postgres_integration.PostgresProductionIntegrationTest.test_case_k_worker_stale_lease_recovery_after_restart)
+Case K: Stale leased worker job is cleanly recovered after lease expiration. ... ok
+test_case_l_transaction_rollback_after_induced_failure (test_postgres_integration.PostgresProductionIntegrationTest.test_case_l_transaction_rollback_after_induced_failure)
+Case L: Transaction rolls back completely on induced failure. ... ok
+test_case_m_backup_wipe_restore_postgres_cycle (test_postgres_integration.PostgresProductionIntegrationTest.test_case_m_backup_wipe_restore_postgres_cycle)
+Case M: Full backup -> wipe database -> restore -> verify all models. ... INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001_baseline_schema, 0001_baseline_schema
+INFO  [alembic.runtime.migration] Running upgrade 0001_baseline_schema -> 0002_match_evaluations, 0002_match_evaluations
+INFO  [alembic.runtime.migration] Running upgrade 0002_match_evaluations -> 0003_provenance_identity, 0003_provenance_identity
+INFO  [alembic.runtime.migration] Running upgrade 0003_provenance_identity -> 0004_founder_control, 0004_founder_control
+ok
+test_case_n_founder_feedback_duplicate_and_identity (test_postgres_integration.PostgresProductionIntegrationTest.test_case_n_founder_feedback_duplicate_and_identity)
+Case N: Founder feedback duplicate replay produces 0 duplicate records and returns exact persisted ID. ... ok
+test_case_o_process_restart_against_migrated_postgres (test_postgres_integration.PostgresProductionIntegrationTest.test_case_o_process_restart_against_migrated_postgres)
+Case O: Process restarts against PostgreSQL maintain complete state continuity. ... ok
+test_case_p_no_implicit_production_sqlite_fallback (test_postgres_integration.PostgresProductionIntegrationTest.test_case_p_no_implicit_production_sqlite_fallback)
+Case P: Storage engine and all production components fail closed to PostgreSQL with no silent SQLite fallback. ... ok
+test_case_q_outbound_browser_engine_with_postgres_ledger (test_postgres_integration.PostgresProductionIntegrationTest.test_case_q_outbound_browser_engine_with_postgres_ledger)
+Case Q: Real OutboundBrowserEngine executes against PostgresIdempotencyLedger through full lifecycle. ... ok
+test_case_r_production_operational_orchestrator_with_postgres_store (test_postgres_integration.PostgresProductionIntegrationTest.test_case_r_production_operational_orchestrator_with_postgres_store)
+Case R: Real ProductionOperationalOrchestrator executes against PostgresInboxStore through full lifecycle. ... ok
+test_case_s_worker_runner_end_to_end (test_postgres_integration.PostgresProductionIntegrationTest.test_case_s_worker_runner_end_to_end)
+Case S: two concurrent WorkerRunners drain a mixed job queue against real PostgreSQL. ... A2.6 split_out round-trip row counts: after_insert=1 after_split=1 after_collapse=1
+{"timestamp": "2026-09-03T23:57:41.263099+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.started", "component": "worker.runner", "data": {"worker_id": "s-runner-1", "max_jobs": 5}}
+INFO  [opportunityos.worker.runner] worker.started
+{"timestamp": "2026-09-03T23:57:41.266323+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.started", "component": "worker.runner", "data": {"worker_id": "s-runner-2", "max_jobs": 5}}
+INFO  [opportunityos.worker.runner] worker.started
+{"timestamp": "2026-09-03T23:57:41.275053+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "s-runner-1", "job_id": "job-d33ff78db220", "job_type": "noop", "payload_summary": {"marker": "noop-2", "payload_keys": ["marker"]}}}
+INFO  [opportunityos.worker.runner] worker.job_claimed
+{"timestamp": "2026-09-03T23:57:41.275053+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "s-runner-2", "job_id": "job-fce4501ff990", "job_type": "noop", "payload_summary": {"marker": "noop-1", "payload_keys": ["marker"]}}}
+INFO  [opportunityos.worker.runner] worker.job_claimed
+{"timestamp": "2026-09-03T23:57:41.283197+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_completed", "component": "worker.runner", "data": {"worker_id": "s-runner-1", "job_id": "job-d33ff78db220", "job_type": "noop"}}
+INFO  [opportunityos.worker.runner] worker.job_completed
+{"timestamp": "2026-09-03T23:57:41.283197+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_completed", "component": "worker.runner", "data": {"worker_id": "s-runner-2", "job_id": "job-fce4501ff990", "job_type": "noop"}}
+INFO  [opportunityos.worker.runner] worker.job_completed
+{"timestamp": "2026-09-03T23:57:41.292859+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "s-runner-1", "job_id": "job-5958d391883b", "job_type": "noop", "payload_summary": {"marker": "noop-3", "payload_keys": ["marker"]}}}
+INFO  [opportunityos.worker.runner] worker.job_claimed
+{"timestamp": "2026-09-03T23:57:41.292859+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "s-runner-2", "job_id": "job-cb7263e74625", "job_type": "poll_source", "payload_summary": {"source_id": "ashby:openai", "marker": "poll-ashby", "payload_keys": ["marker", "source_id"]}}}
+INFO  [opportunityos.worker.runner] worker.job_claimed
+{"timestamp": "2026-09-03T23:57:41.292859+00:00", "level": "WARNING", "logger": "opportunityos.worker.handlers", "message": "worker.poll_source_refused", "component": "worker.handlers", "data": {"source_id": "ashby:openai", "reason": "read_disabled_by_policy"}}
+WARNI [opportunityos.worker.handlers] worker.poll_source_refused
+{"timestamp": "2026-09-03T23:57:41.303063+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_completed", "component": "worker.runner", "data": {"worker_id": "s-runner-1", "job_id": "job-5958d391883b", "job_type": "noop"}}
+INFO  [opportunityos.worker.runner] worker.job_completed
+{"timestamp": "2026-09-03T23:57:41.306731+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_claimed", "component": "worker.runner", "data": {"worker_id": "s-runner-1", "job_id": "job-4cae5dad034a", "job_type": "always_failing", "payload_summary": {"marker": "always-fail", "payload_keys": ["marker"]}}}
+INFO  [opportunityos.worker.runner] worker.job_claimed
+{"timestamp": "2026-09-03T23:57:41.323336+00:00", "level": "ERROR", "logger": "opportunityos.worker.runner", "message": "worker.job_failed", "component": "worker.runner", "data": {"worker_id": "s-runner-1", "job_id": "job-4cae5dad034a", "job_type": "always_failing", "error": "Handler raised: induced permanent failure"}}
+ERROR [opportunityos.worker.runner] worker.job_failed
+{"timestamp": "2026-09-03T23:57:41.323336+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.stopped", "component": "worker.runner", "data": {"worker_id": "s-runner-1", "processed": 3}}
+INFO  [opportunityos.worker.runner] worker.stopped
+{"timestamp": "2026-09-03T23:57:41.499186+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.job_completed", "component": "worker.runner", "data": {"worker_id": "s-runner-2", "job_id": "job-cb7263e74625", "job_type": "poll_source"}}
+INFO  [opportunityos.worker.runner] worker.job_completed
+{"timestamp": "2026-09-03T23:57:41.499186+00:00", "level": "INFO", "logger": "opportunityos.worker.runner", "message": "worker.stopped", "component": "worker.runner", "data": {"worker_id": "s-runner-2", "processed": 2}}
+INFO  [opportunityos.worker.runner] worker.stopped
+ok
+test_case_t_stale_lease_reclaim_race (test_postgres_integration.PostgresProductionIntegrationTest.test_case_t_stale_lease_reclaim_race)
+Case T: two sessions race to reclaim one job whose lease has already ... ok
+test_case_u_poll_source_persists_idempotently (test_postgres_integration.PostgresProductionIntegrationTest.test_case_u_poll_source_persists_idempotently)
+Case U: poll_source persists a fixture batch idempotently against real PostgreSQL. ... {"timestamp": "2026-09-03T23:57:42.677077+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.poll_source_fetching", "component": "worker.handlers", "data": {"source_id": "himalayas"}}
+INFO  [opportunityos.worker.handlers] worker.poll_source_fetching
+{"timestamp": "2026-09-03T23:57:43.118774+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.poll_source_persisted", "component": "worker.handlers", "data": {"source_id": "himalayas", "inserted": 1, "unchanged": 0, "updated": 0, "evaluated_inline": 1}}
+INFO  [opportunityos.worker.handlers] worker.poll_source_persisted
+{"timestamp": "2026-09-03T23:57:43.123287+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.poll_source_fetching", "component": "worker.handlers", "data": {"source_id": "himalayas"}}
+INFO  [opportunityos.worker.handlers] worker.poll_source_fetching
+{"timestamp": "2026-09-03T23:57:43.264276+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.poll_source_persisted", "component": "worker.handlers", "data": {"source_id": "himalayas", "inserted": 0, "unchanged": 1, "updated": 0, "evaluated_inline": 1}}
+INFO  [opportunityos.worker.handlers] worker.poll_source_persisted
+{"timestamp": "2026-09-03T23:57:43.272254+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.poll_source_fetching", "component": "worker.handlers", "data": {"source_id": "himalayas"}}
+INFO  [opportunityos.worker.handlers] worker.poll_source_fetching
+{"timestamp": "2026-09-03T23:57:43.443145+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.poll_source_persisted", "component": "worker.handlers", "data": {"source_id": "himalayas", "inserted": 0, "unchanged": 0, "updated": 1, "evaluated_inline": 1}}
+INFO  [opportunityos.worker.handlers] worker.poll_source_persisted
+ok
+test_case_v_evaluate_new_persists_match_evaluations (test_postgres_integration.PostgresProductionIntegrationTest.test_case_v_evaluate_new_persists_match_evaluations)
+Case V: evaluate_new persists match_evaluations rows against real PostgreSQL. ... {"timestamp": "2026-09-03T23:57:43.808184+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.evaluate_new_completed", "component": "worker.handlers", "data": {"truth_pack_hash": "truth-pack-hash-v1", "evaluated_count": 2}}
+INFO  [opportunityos.worker.handlers] worker.evaluate_new_completed
+{"timestamp": "2026-09-03T23:57:43.814228+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.evaluate_new_completed", "component": "worker.handlers", "data": {"truth_pack_hash": "truth-pack-hash-v1", "evaluated_count": 0}}
+INFO  [opportunityos.worker.handlers] worker.evaluate_new_completed
+{"timestamp": "2026-09-03T23:57:43.826210+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.evaluate_new_completed", "component": "worker.handlers", "data": {"truth_pack_hash": "truth-pack-hash-v2", "evaluated_count": 2}}
+INFO  [opportunityos.worker.handlers] worker.evaluate_new_completed
+ok
+test_d3_target_roles_filter_seed_reverts_to_rank_only (test_postgres_integration.PostgresProductionIntegrationTest.test_d3_target_roles_filter_seed_reverts_to_rank_only)
+A1S (BRIEF-FR-006 order A1S-seed): 0004's data migration reverts the ... INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running downgrade 0004_founder_control -> 0003_provenance_identity, 0004_founder_control
+INFO  [alembic.runtime.migration] Running downgrade 0003_provenance_identity -> 0002_match_evaluations, 0003_provenance_identity
+INFO  [alembic.runtime.migration] Running downgrade 0002_match_evaluations -> 0001_baseline_schema, 0002_match_evaluations
+INFO  [alembic.runtime.migration] Running downgrade 0001_baseline_schema -> , 0001_baseline_schema
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001_baseline_schema, 0001_baseline_schema
+INFO  [alembic.runtime.migration] Running upgrade 0001_baseline_schema -> 0002_match_evaluations, 0002_match_evaluations
+INFO  [alembic.runtime.migration] Running upgrade 0002_match_evaluations -> 0003_provenance_identity, 0003_provenance_identity
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade 0003_provenance_identity -> 0004_founder_control, 0004_founder_control
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running downgrade 0004_founder_control -> 0003_provenance_identity, 0004_founder_control
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade 0003_provenance_identity -> 0004_founder_control, 0004_founder_control
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+ok
+test_match_evaluations_unique_constraint_enforced_by_database (test_postgres_integration.PostgresProductionIntegrationTest.test_match_evaluations_unique_constraint_enforced_by_database)
+(opportunity_id, truth_pack_hash) duplicates are rejected by PostgreSQL itself. ... ok
+test_search_backfill_finds_pre_0004_rows (test_postgres_integration.PostgresProductionIntegrationTest.test_search_backfill_finds_pre_0004_rows)
+Council review #3, finding 6: a row inserted while the schema was ... INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running downgrade 0004_founder_control -> 0003_provenance_identity, 0004_founder_control
+INFO  [alembic.runtime.migration] Running downgrade 0003_provenance_identity -> 0002_match_evaluations, 0003_provenance_identity
+INFO  [alembic.runtime.migration] Running downgrade 0002_match_evaluations -> 0001_baseline_schema, 0002_match_evaluations
+INFO  [alembic.runtime.migration] Running downgrade 0001_baseline_schema -> , 0001_baseline_schema
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001_baseline_schema, 0001_baseline_schema
+INFO  [alembic.runtime.migration] Running upgrade 0001_baseline_schema -> 0002_match_evaluations, 0002_match_evaluations
+INFO  [alembic.runtime.migration] Running upgrade 0002_match_evaluations -> 0003_provenance_identity, 0003_provenance_identity
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade 0003_provenance_identity -> 0004_founder_control, 0004_founder_control
+ok
+test_search_tsv_gin_index_exists_at_head (test_postgres_integration.PostgresProductionIntegrationTest.test_search_tsv_gin_index_exists_at_head)
+BRIEF-FR-006 C2.3: `ix_opportunities_search_tsv` (migration ... INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+ok
+test_founder_feedback (test_storage.TestStorageRepository.test_founder_feedback) ... ok
+test_save_and_get_opportunity (test_storage.TestStorageRepository.test_save_and_get_opportunity) ... ok
+
+----------------------------------------------------------------------
+Ran 43 tests in 22.806s
+
+OK
+C2.3: pg_indexes for opportunities = ['ix_opportunities_content_hash', 'ix_opportunities_family_key', 'ix_opportunities_location_country', 'ix_opportunities_organization', 'ix_opportunities_search_tsv', 'ix_opportunities_source_id', 'ix_opportunities_title_family', 'ix_opportunities_track', 'ix_opportunities_work_mode', 'opportunities_pkey']

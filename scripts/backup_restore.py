@@ -11,6 +11,7 @@ import os
 import sys
 import json
 import argparse
+import base64
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,6 +39,10 @@ from storage.models import (
     FounderOpportunityViewRecord,
     FounderTriageStateRecord,
     FounderFilterSettingRecord,
+    OpportunityFamilyRecord,
+    FounderFacetRecord,
+    FounderSavedViewRecord,
+    ArtifactCacheRecord,
 )
 
 # Repository root, derived from this file's location (not the process CWD).
@@ -87,6 +92,10 @@ DUMP_SECTION_TABLE_MAP = {
     "founder_opportunity_views": "founder_opportunity_views",
     "founder_triage_states": "founder_triage_states",
     "founder_filter_settings": "founder_filter_settings",
+    "opportunity_families": "opportunity_families",
+    "founder_facets": "founder_facets",
+    "founder_saved_views": "founder_saved_views",
+    "artifact_cache": "artifact_cache",
 }
 
 
@@ -197,6 +206,10 @@ def dump_database(db_url: str, output_file: str) -> int:
         "founder_opportunity_views": [],
         "founder_triage_states": [],
         "founder_filter_settings": [],
+        "opportunity_families": [],
+        "founder_facets": [],
+        "founder_saved_views": [],
+        "artifact_cache": [],
     }
 
     # 1. Opportunities & Field Provenances
@@ -208,6 +221,16 @@ def dump_database(db_url: str, output_file: str) -> int:
             "geographic_scope": opp.geographic_scope, "posted_date": opp.posted_date, "deadline": opp.deadline,
             "is_stale": opp.is_stale, "reverified_at": opp.reverified_at.isoformat() if opp.reverified_at else None,
             "raw_payload_json": opp.raw_payload_json, "created_at": opp.created_at.isoformat() if opp.created_at else None,
+            # A1M (BRIEF-FR-006, migration 0004_founder_control) columns.
+            "work_mode": opp.work_mode, "work_mode_source": opp.work_mode_source,
+            "location_country": opp.location_country, "location_city": opp.location_city,
+            "location_region": opp.location_region, "remote_scope": opp.remote_scope,
+            "remote_scope_regions": opp.remote_scope_regions, "employment_type": opp.employment_type,
+            "seniority_level": opp.seniority_level, "compensation_min": opp.compensation_min,
+            "compensation_max": opp.compensation_max, "compensation_currency": opp.compensation_currency,
+            "compensation_period": opp.compensation_period, "title_family": opp.title_family,
+            "title_level": opp.title_level, "family_key": opp.family_key,
+            "search_tsv": opp.search_tsv,
         })
         for prov in opp.provenances:
             data["field_provenances"].append({
@@ -372,6 +395,44 @@ def dump_database(db_url: str, output_file: str) -> int:
             "filter_id": setting.filter_id, "enabled": setting.enabled, "mode": setting.mode,
             "params_json": setting.params_json,
             "updated_at": setting.updated_at.isoformat() if setting.updated_at else None,
+        })
+
+    # 16. Opportunity Families (A1M, BRIEF-FR-006) -- no FK dependency;
+    # family_key is a derived clustering key, not an opportunity reference.
+    for fam in session.query(OpportunityFamilyRecord).all():
+        data["opportunity_families"].append({
+            "family_key": fam.family_key, "employer": fam.employer,
+            "normalized_title": fam.normalized_title, "member_count": fam.member_count,
+            "best_member_id": fam.best_member_id, "split_out": fam.split_out,
+            "updated_at": fam.updated_at.isoformat() if fam.updated_at else None,
+        })
+
+    # 17. Founder Facets (A1M, BRIEF-FR-006) -- no FK dependency.
+    for facet in session.query(FounderFacetRecord).all():
+        data["founder_facets"].append({
+            "facet_id": facet.facet_id, "mode": facet.mode, "values_json": facet.values_json,
+            "updated_at": facet.updated_at.isoformat() if facet.updated_at else None,
+        })
+
+    # 18. Founder Saved Views (A1M, BRIEF-FR-006) -- no FK dependency.
+    for sv in session.query(FounderSavedViewRecord).all():
+        data["founder_saved_views"].append({
+            "id": sv.id, "name": sv.name, "facets_json": sv.facets_json,
+            "search_query": sv.search_query, "is_default": sv.is_default,
+            "created_at": sv.created_at.isoformat() if sv.created_at else None,
+            "updated_at": sv.updated_at.isoformat() if sv.updated_at else None,
+        })
+
+    # 19. Artifact Cache (A1M, BRIEF-FR-006) -- opportunity_id is a plain
+    # column, not a relationship()-backed FK, so no ordering dependency here.
+    # `payload` is LargeBinary; base64-encode it for JSON transport.
+    for art in session.query(ArtifactCacheRecord).all():
+        data["artifact_cache"].append({
+            "cache_key": art.cache_key, "opportunity_id": art.opportunity_id,
+            "truth_pack_hash": art.truth_pack_hash, "template_id": art.template_id,
+            "artifact_kind": art.artifact_kind, "content_type": art.content_type,
+            "payload": base64.b64encode(art.payload).decode("ascii") if art.payload is not None else None,
+            "created_at": art.created_at.isoformat() if art.created_at else None,
         })
 
     # Row-count completeness check, run in the same session/transaction the
@@ -725,6 +786,40 @@ def restore_database(dump_file: str, db_url: str) -> None:
             setting_dict["updated_at"] = datetime.fromisoformat(setting_dict["updated_at"])
         setting = FounderFilterSettingRecord(**setting_dict)
         session.merge(setting)
+
+    # 16. Opportunity Families (A1M, BRIEF-FR-006) -- no FK dependency.
+    for fam_dict in data.get("opportunity_families", []):
+        if fam_dict.get("updated_at"):
+            fam_dict["updated_at"] = datetime.fromisoformat(fam_dict["updated_at"])
+        fam = OpportunityFamilyRecord(**fam_dict)
+        session.merge(fam)
+
+    # 17. Founder Facets (A1M, BRIEF-FR-006) -- no FK dependency.
+    for facet_dict in data.get("founder_facets", []):
+        if facet_dict.get("updated_at"):
+            facet_dict["updated_at"] = datetime.fromisoformat(facet_dict["updated_at"])
+        facet = FounderFacetRecord(**facet_dict)
+        session.merge(facet)
+
+    # 18. Founder Saved Views (A1M, BRIEF-FR-006) -- no FK dependency.
+    for sv_dict in data.get("founder_saved_views", []):
+        if sv_dict.get("created_at"):
+            sv_dict["created_at"] = datetime.fromisoformat(sv_dict["created_at"])
+        if sv_dict.get("updated_at"):
+            sv_dict["updated_at"] = datetime.fromisoformat(sv_dict["updated_at"])
+        sv = FounderSavedViewRecord(**sv_dict)
+        session.merge(sv)
+
+    # 19. Artifact Cache (A1M, BRIEF-FR-006) -- opportunity_id is a plain
+    # column, not a relationship()-backed FK; see the flush() note after
+    # section 1 for why that distinction matters for ordering.
+    for art_dict in data.get("artifact_cache", []):
+        if art_dict.get("created_at"):
+            art_dict["created_at"] = datetime.fromisoformat(art_dict["created_at"])
+        if art_dict.get("payload") is not None:
+            art_dict["payload"] = base64.b64decode(art_dict["payload"])
+        art = ArtifactCacheRecord(**art_dict)
+        session.merge(art)
 
     session.commit()
     session.close()

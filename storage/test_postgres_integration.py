@@ -27,6 +27,7 @@ from storage.models import (
     WorkerJobRecord,
     FounderFeedbackRecord,
     MatchEvaluationRecord,
+    OpportunityFamilyRecord,
 )
 from storage.engine import (
     get_engine,
@@ -169,6 +170,119 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
                 {"names": list(migration_0002_tables)},
             )
             self.assertEqual(res.scalar(), 4, "all four 0002 tables must exist again after re-upgrading to head")
+
+    def test_d3_target_roles_filter_seed_reverts_to_rank_only(self):
+        """A1S (BRIEF-FR-006 order A1S-seed): 0004's data migration reverts the
+        `target_roles` filter's seeded `mode` from 0003's `label_only` (a
+        council repair) back to `rank_only` (Overseer decision, FR-005 review
+        §3.1), guarded on the row's current value so re-running `upgrade` at
+        head is a data no-op and `downgrade` never clobbers a mode the founder
+        set by hand to something else."""
+        alembic_cfg = Config("alembic.ini")
+        alembic_cfg.set_main_option("sqlalchemy.url", self.db_url)
+
+        def target_roles_row():
+            with self.engine.connect() as conn:
+                return conn.execute(
+                    text(
+                        "SELECT filter_id, mode FROM founder_filter_settings "
+                        "WHERE filter_id = 'target_roles'"
+                    )
+                ).fetchone()
+
+        # Seed a scratch DB through 0003 only -- its own upgrade() inserts the
+        # `label_only` row for target_roles -- before 0004 ever runs.
+        command.downgrade(alembic_cfg, "base")
+        command.upgrade(alembic_cfg, "0003_provenance_identity")
+        row = target_roles_row()
+        self.assertIsNotNone(row, "0003 must seed a target_roles row")
+        self.assertEqual(tuple(row), ("target_roles", "label_only"))
+
+        # A1S.1: alembic upgrade head -> rank_only.
+        command.upgrade(alembic_cfg, "head")
+        row = target_roles_row()
+        self.assertEqual(tuple(row), ("target_roles", "rank_only"))
+
+        # A1S.2: alembic downgrade -1 -> label_only.
+        command.downgrade(alembic_cfg, "-1")
+        row = target_roles_row()
+        self.assertEqual(tuple(row), ("target_roles", "label_only"))
+
+        # A1S.3: alembic upgrade head twice in a row -- second run is a
+        # data no-op, the row stays rank_only, both calls exit 0 (no raise).
+        command.upgrade(alembic_cfg, "head")
+        row = target_roles_row()
+        self.assertEqual(tuple(row), ("target_roles", "rank_only"))
+        command.upgrade(alembic_cfg, "head")
+        row = target_roles_row()
+        self.assertEqual(tuple(row), ("target_roles", "rank_only"))
+
+    def test_search_tsv_gin_index_exists_at_head(self):
+        """BRIEF-FR-006 C2.3: `ix_opportunities_search_tsv` (migration
+        `0004_founder_control`, frozen for this work order) is present on
+        `opportunities` after `alembic upgrade head`."""
+        alembic_cfg = Config("alembic.ini")
+        alembic_cfg.set_main_option("sqlalchemy.url", self.db_url)
+        command.upgrade(alembic_cfg, "head")
+
+        with self.engine.connect() as conn:
+            names = {
+                row[0]
+                for row in conn.execute(
+                    text("SELECT indexname FROM pg_indexes WHERE tablename = 'opportunities'")
+                )
+            }
+        print(f"C2.3: pg_indexes for opportunities = {sorted(names)}")
+        self.assertIn("ix_opportunities_search_tsv", names)
+
+    def test_search_backfill_finds_pre_0004_rows(self):
+        """Council review #3, finding 6: a row inserted while the schema was
+        at `0003_provenance_identity` (before `search_tsv` existed) must be
+        findable by full-text search after `alembic upgrade head` -- 0004's
+        `upgrade()` must backfill `search_tsv` for pre-existing rows, not
+        just add the column and index for rows written afterward."""
+        alembic_cfg = Config("alembic.ini")
+        alembic_cfg.set_main_option("sqlalchemy.url", self.db_url)
+
+        command.downgrade(alembic_cfg, "base")
+        command.upgrade(alembic_cfg, "0003_provenance_identity")
+
+        with self.engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO opportunities "
+                    "(id, track, title, organization, description, source_id, source_url, content_hash) "
+                    "VALUES (:id, :track, :title, :organization, :description, :source_id, :source_url, :content_hash)"
+                ),
+                {
+                    "id": "OPP-PRE-0004",
+                    "track": "EMPLOYMENT",
+                    "title": "Distributed Systems Engineer",
+                    "organization": "Alexandria Cloud Labs",
+                    "description": "Build resilient distributed systems.",
+                    "source_id": "greenhouse:alexandria-pre",
+                    "source_url": "https://boards.greenhouse.io/alexandria/pre-0004",
+                    "content_hash": "hash-pre-0004",
+                },
+            )
+
+        command.upgrade(alembic_cfg, "head")
+
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT id FROM opportunities "
+                    "WHERE search_tsv @@ plainto_tsquery('english', 'Distributed Systems') "
+                    "AND id = :id"
+                ),
+                {"id": "OPP-PRE-0004"},
+            ).fetchone()
+        self.assertIsNotNone(
+            row,
+            "a row inserted at 0003 must be findable by full-text search "
+            "after upgrading to head -- 0004 must backfill search_tsv for "
+            "pre-existing rows, not leave it NULL",
+        )
 
     def test_match_evaluations_unique_constraint_enforced_by_database(self):
         """(opportunity_id, truth_pack_hash) duplicates are rejected by PostgreSQL itself."""
@@ -1560,6 +1674,263 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             self.assertIsNone(job2.lease_expires_at)
         finally:
             verify_session2.close()
+
+
+class A1MFounderControlRoundTripTest(unittest.TestCase):
+    """A1M (BRIEF-FR-006, migration 0004_founder_control) -- round-trip every
+    new ``opportunities`` column through StorageRepository.save_opportunity /
+    get_opportunity, including the null case for every nullable column."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.db_url = os.environ.get("OPPORTUNITYOS_DB_URL")
+        if not cls.db_url or not cls.db_url.startswith("postgresql"):
+            if os.environ.get("CI"):
+                raise AssertionError(
+                    "CI is set but OPPORTUNITYOS_DB_URL is missing or not a "
+                    "PostgreSQL URL (postgresql+psycopg2://...). PostgreSQL "
+                    "integration tests must fail loudly in CI, not skip. Got: "
+                    f"{cls.db_url!r}."
+                )
+            raise unittest.SkipTest(f"PostgreSQL integration tests require real PostgreSQL backend, got: {cls.db_url}")
+
+        cls.engine = get_engine(cls.db_url)
+        cls.SessionFactory = get_session_factory(cls.engine)
+
+        alembic_cfg = Config("alembic.ini")
+        alembic_cfg.set_main_option("sqlalchemy.url", cls.db_url)
+        command.upgrade(alembic_cfg, "head")
+
+    def setUp(self):
+        with self.engine.begin() as conn:
+            for table in reversed(Base.metadata.sorted_tables):
+                conn.execute(text(f'TRUNCATE TABLE "{table.name}" CASCADE;'))
+
+    def _base_opp_data(self, opp_id: str) -> dict:
+        return {
+            "id": opp_id,
+            "track": "employment",
+            "title": "Backend Engineer",
+            "organization": "Acme Corp",
+            "description": "Build things.",
+            "source_id": "src-1",
+            "source_url": "https://example.com/job/1",
+            "content_hash": f"hash-{opp_id}",
+        }
+
+    def test_every_new_column_round_trips_with_values(self):
+        session = self.SessionFactory()
+        try:
+            repository = StorageRepository(session)
+            opp_data = self._base_opp_data("opp-a1m-full")
+            opp_data.update({
+                "work_mode": "hybrid",
+                "work_mode_source": "extracted",
+                "location_country": "EG",
+                "location_city": "Cairo",
+                "location_region": "MENA",
+                "remote_scope": "regional",
+                "remote_scope_regions": json.dumps(["EG", "AE"]),
+                "employment_type": "full_time",
+                "seniority_level": "senior",
+                "compensation_min": 50000,
+                "compensation_max": 80000,
+                "compensation_currency": "USD",
+                "compensation_period": "annual",
+                "title_family": "engineering",
+                "title_level": "senior",
+                "family_key": "acme:backend-engineer",
+                "search_tsv": "'backend':1 'engineer':2",
+            })
+            repository.save_opportunity(opp_data, provenances=[])
+
+            fetched = repository.get_opportunity("opp-a1m-full")
+            self.assertIsNotNone(fetched)
+            self.assertEqual(fetched.work_mode, "hybrid")
+            self.assertEqual(fetched.work_mode_source, "extracted")
+            self.assertEqual(fetched.location_country, "EG")
+            self.assertEqual(fetched.location_city, "Cairo")
+            self.assertEqual(fetched.location_region, "MENA")
+            self.assertEqual(fetched.remote_scope, "regional")
+            self.assertEqual(fetched.remote_scope_regions, json.dumps(["EG", "AE"]))
+            self.assertEqual(fetched.employment_type, "full_time")
+            self.assertEqual(fetched.seniority_level, "senior")
+            self.assertEqual(fetched.compensation_min, 50000)
+            self.assertEqual(fetched.compensation_max, 80000)
+            self.assertEqual(fetched.compensation_currency, "USD")
+            self.assertEqual(fetched.compensation_period, "annual")
+            self.assertEqual(fetched.title_family, "engineering")
+            self.assertEqual(fetched.title_level, "senior")
+            self.assertEqual(fetched.family_key, "acme:backend-engineer")
+            self.assertIsNotNone(fetched.search_tsv)
+        finally:
+            session.close()
+
+    def test_every_nullable_new_column_round_trips_with_null(self):
+        session = self.SessionFactory()
+        try:
+            repository = StorageRepository(session)
+            # Deliberately omit every new column: opp_data.get(...) defaults
+            # apply (the four NOT NULL columns fall back to "unspecified";
+            # every nullable new column is left unset -> None).
+            opp_data = self._base_opp_data("opp-a1m-null")
+            repository.save_opportunity(opp_data, provenances=[])
+
+            fetched = repository.get_opportunity("opp-a1m-null")
+            self.assertIsNotNone(fetched)
+            # NOT NULL columns: default applied, never None.
+            self.assertEqual(fetched.work_mode, "unspecified")
+            self.assertEqual(fetched.remote_scope, "unspecified")
+            self.assertEqual(fetched.employment_type, "unspecified")
+            self.assertEqual(fetched.seniority_level, "unspecified")
+            # Nullable columns: the null case.
+            self.assertIsNone(fetched.work_mode_source)
+            self.assertIsNone(fetched.location_country)
+            self.assertIsNone(fetched.location_city)
+            self.assertIsNone(fetched.location_region)
+            self.assertIsNone(fetched.remote_scope_regions)
+            self.assertIsNone(fetched.compensation_min)
+            self.assertIsNone(fetched.compensation_max)
+            self.assertIsNone(fetched.compensation_currency)
+            self.assertIsNone(fetched.compensation_period)
+            self.assertIsNone(fetched.title_family)
+            self.assertIsNone(fetched.title_level)
+            self.assertIsNone(fetched.family_key)
+            # BRIEF-FR-006 C2 (search): superseded assertion -- at A1M time
+            # `search_tsv` genuinely stayed NULL because nothing populated
+            # it yet. C2's whole job is to populate it on every
+            # `save_opportunity` call (see `storage.repository.
+            # _refresh_search_tsv`), so a row with real title/organization/
+            # description text -- exactly what `_base_opp_data` supplies --
+            # must come back indexed, not NULL, even though every *other*
+            # new column here was deliberately left unset.
+            self.assertIsNotNone(fetched.search_tsv)
+        finally:
+            session.close()
+
+    def test_new_tables_round_trip_via_orm(self):
+        """Direct ORM round-trip for the four genuinely-new A1M tables
+        (opportunity_families, founder_facets, founder_saved_views,
+        artifact_cache) -- StorageRepository has no dedicated methods for
+        these yet (out of this work order's scope), so this exercises the
+        ORM models/migration directly."""
+        from storage.models import (
+            ArtifactCacheRecord,
+            FounderFacetRecord,
+            FounderSavedViewRecord,
+            OpportunityFamilyRecord,
+        )
+
+        session = self.SessionFactory()
+        try:
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+            session.add(OpportunityFamilyRecord(
+                family_key="acme:backend-engineer", employer="Acme Corp",
+                normalized_title="Backend Engineer", member_count=3,
+                best_member_id="opp-a1m-full", split_out=False, updated_at=now,
+            ))
+            session.add(FounderFacetRecord(
+                facet_id="work_mode", mode="include", values_json=json.dumps(["remote"]), updated_at=now,
+            ))
+            session.add(FounderSavedViewRecord(
+                id="view-1", name="Remote Only", facets_json=json.dumps({}),
+                search_query="python", is_default=True, created_at=now, updated_at=now,
+            ))
+            session.add(ArtifactCacheRecord(
+                cache_key="cache-1", opportunity_id="opp-a1m-full",
+                truth_pack_hash="tph-1", template_id="tmpl-1", artifact_kind="resume",
+                content_type="application/pdf", payload=b"%PDF-fake", created_at=now,
+            ))
+            session.commit()
+
+            fam = session.query(OpportunityFamilyRecord).filter_by(family_key="acme:backend-engineer").first()
+            self.assertIsNotNone(fam)
+            self.assertEqual(fam.employer, "Acme Corp")
+            self.assertTrue(fam.split_out is False)
+
+            facet = session.query(FounderFacetRecord).filter_by(facet_id="work_mode").first()
+            self.assertIsNotNone(facet)
+            self.assertEqual(facet.mode, "include")
+
+            sv = session.query(FounderSavedViewRecord).filter_by(id="view-1").first()
+            self.assertIsNotNone(sv)
+            self.assertTrue(sv.is_default is True)
+
+            art = session.query(ArtifactCacheRecord).filter_by(cache_key="cache-1").first()
+            self.assertIsNotNone(art)
+            self.assertEqual(bytes(art.payload), b"%PDF-fake")
+        finally:
+            session.close()
+
+    def test_case_t_family_upsert_and_split_out_round_trip(self):
+        """A2.6 (BRIEF-FR-006 clustering): StorageRepository's
+        opportunity_families methods -- upsert_family is idempotent and
+        preserves a founder's split_out choice across a re-cluster, and
+        set_family_split_out round-trips: collapse -> split -> collapse."""
+        session = self.SessionFactory()
+        repo = StorageRepository(session)
+        try:
+            fam = repo.upsert_family(
+                family_key="cf:senior-customer-engineer",
+                employer="Cloudflare",
+                normalized_title="customer_solutions_engineering:senior",
+                member_count=14,
+                best_member_id="cf-sce-05",
+            )
+            self.assertEqual(fam.member_count, 14)
+            self.assertFalse(fam.split_out)
+            row_count_after_insert = session.query(OpportunityFamilyRecord).count()
+            self.assertEqual(row_count_after_insert, 1, "collapsed: one row per family")
+
+            # Step 1 (collapse, baseline): fetched family is collapsed.
+            fetched = repo.get_family("cf:senior-customer-engineer")
+            self.assertIsNotNone(fetched)
+            self.assertFalse(fetched.split_out)
+
+            # Step 2 (split): set_family_split_out(True) persists the toggle.
+            split = repo.set_family_split_out("cf:senior-customer-engineer", True)
+            self.assertIsNotNone(split)
+            self.assertTrue(split.split_out)
+            after_split = repo.get_family("cf:senior-customer-engineer")
+            self.assertTrue(after_split.split_out)
+            row_count_after_split = session.query(OpportunityFamilyRecord).count()
+            self.assertEqual(row_count_after_split, 1, "split_out toggles a flag, never adds/removes family rows")
+
+            # A re-cluster (upsert with fresh member_count/best_member_id) must
+            # not silently undo the founder's split_out choice.
+            reupserted = repo.upsert_family(
+                family_key="cf:senior-customer-engineer",
+                employer="Cloudflare",
+                normalized_title="customer_solutions_engineering:senior",
+                member_count=15,
+                best_member_id="cf-sce-06",
+            )
+            self.assertEqual(reupserted.member_count, 15)
+            self.assertTrue(reupserted.split_out, "re-clustering must preserve an existing split_out choice")
+
+            # Step 3 (collapse again): set_family_split_out(False) reverses it.
+            collapsed_again = repo.set_family_split_out("cf:senior-customer-engineer", False)
+            self.assertFalse(collapsed_again.split_out)
+            after_collapse = repo.get_family("cf:senior-customer-engineer")
+            self.assertFalse(after_collapse.split_out)
+            row_count_after_collapse = session.query(OpportunityFamilyRecord).count()
+            self.assertEqual(row_count_after_collapse, 1)
+
+            print(
+                "A2.6 split_out round-trip row counts: "
+                f"after_insert={row_count_after_insert} after_split={row_count_after_split} "
+                f"after_collapse={row_count_after_collapse}"
+            )
+
+            # set_family_split_out on a non-existent family: no write, returns None.
+            missing = repo.set_family_split_out("no-such-family", True)
+            self.assertIsNone(missing)
+
+            families = repo.list_families()
+            self.assertEqual(len(families), 1)
+        finally:
+            session.close()
 
 
 if __name__ == "__main__":

@@ -11,18 +11,29 @@ import { ApiError } from "@/lib/contract/types"
 import type {
   ActionResponse,
   ActionType,
+  ArtifactTemplateId,
   AuthenticatedResponse,
   DashboardResponse,
+  FacetsResponse,
+  FacetUpdateRequest,
+  Facet,
   FeedbackLabel,
   FeedbackResponse,
   FilterUpdateRequest,
   FiltersResponse,
   FounderFilter,
+  HiddenReasonsResponse,
+  OmittedItemsResponse,
   OpportunityDetail,
   OpportunityListResponse,
   PollNowResponse,
+  SavedView,
+  SavedViewCreateRequest,
+  SavedViewsResponse,
+  SavedViewUpdateRequest,
   SourcesHealthResponse,
   TruthStatusResponse,
+  UnhideByReasonResponse,
 } from "@/lib/contract/types"
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -92,6 +103,25 @@ export const api = {
       request<OpportunityDetail>(`/api/opportunities/${id}`),
     artifactUrl: (id: string, kind: "cv" | "cover-letter") =>
       `/api/opportunities/${id}/artifacts/${kind === "cv" ? "cv.docx" : "cover-letter.docx"}`,
+    // BRIEF-FR-006 D2 — inline preview URL for the drawer's embedded PDF
+    // viewer (`<embed src=...>`). No `download` param: inline is the
+    // default per the deliverable text.
+    artifactPdfUrl: (
+      id: string,
+      kind: "cv" | "cover-letter",
+      template: ArtifactTemplateId = "classic"
+    ) =>
+      `/api/opportunities/${id}/artifacts/${
+        kind === "cv" ? "cv.pdf" : "cover-letter.pdf"
+      }?template=${template}`,
+    omittedItems: (
+      id: string,
+      kind: "cv" | "cover-letter",
+      template: ArtifactTemplateId = "classic"
+    ) =>
+      request<OmittedItemsResponse>(
+        `/api/opportunities/${id}/artifacts/${kind}/omitted?template=${template}`
+      ),
     submitFeedback: (id: string, label: FeedbackLabel, note: string | null) =>
       request<FeedbackResponse>(`/api/opportunities/${id}/feedback`, {
         method: "POST",
@@ -118,6 +148,46 @@ export const api = {
       }),
   },
 
+  // C1 — the 15-attribute generic facet surface. Separate control set from
+  // `filters` above: `include` / `exclude` / `off` per value, never
+  // `hide` / `rank_only` / `label_only`.
+  facets: {
+    list: () => request<FacetsResponse>("/api/facets"),
+    update: (facetId: string, body: FacetUpdateRequest) =>
+      request<Pick<Facet, "facet_id" | "include" | "exclude"> & { mode: string }>(
+        `/api/facets/${facetId}`,
+        { method: "PUT", body: JSON.stringify(body) }
+      ),
+  },
+
+  savedViews: {
+    list: () => request<SavedViewsResponse>("/api/saved-views"),
+    create: (body: SavedViewCreateRequest) =>
+      request<SavedView>("/api/saved-views", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    update: (viewId: string, body: SavedViewUpdateRequest) =>
+      request<SavedView>(`/api/saved-views/${viewId}`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
+    delete: (viewId: string) =>
+      request<{ id: string; status: string }>(`/api/saved-views/${viewId}`, {
+        method: "DELETE",
+      }),
+  },
+
+  // C4 — the audit table the dashboard's HIDDEN number links to.
+  hiddenReasons: {
+    list: () => request<HiddenReasonsResponse>("/api/hidden-reasons"),
+    unhide: (reason: string) =>
+      request<UnhideByReasonResponse>("/api/hidden-reasons/unhide", {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      }),
+  },
+
   sources: {
     health: () => request<SourcesHealthResponse>("/api/sources/health"),
   },
@@ -135,12 +205,21 @@ export const api = {
 }
 
 /** Downloads a binary artifact, surfacing 409/412 as typed ApiErrors instead
- * of trying to parse binary content as JSON. */
+ * of trying to parse binary content as JSON. `format` defaults to `"docx"`
+ * (the pre-existing behaviour); `"pdf"` fetches
+ * `?download=true` so the PDF route returns `attachment`, not the
+ * preview's `inline` (BRIEF-FR-006 D2 requirement 1). */
 export async function downloadArtifact(
   id: string,
-  kind: "cv" | "cover-letter"
+  kind: "cv" | "cover-letter",
+  options?: { format?: "docx" | "pdf"; template?: ArtifactTemplateId }
 ): Promise<{ blob: Blob; filename: string }> {
-  const url = api.opportunities.artifactUrl(id, kind)
+  const format = options?.format ?? "docx"
+  const template = options?.template ?? "classic"
+  const url =
+    format === "docx"
+      ? `${api.opportunities.artifactUrl(id, kind)}?template=${template}`
+      : `${api.opportunities.artifactPdfUrl(id, kind, template)}&download=true`
   const res = await fetch(url, { credentials: "same-origin" })
 
   if (!res.ok) {
@@ -150,7 +229,7 @@ export async function downloadArtifact(
 
   const disposition = res.headers.get("content-disposition") ?? ""
   const match = /filename="?([^"]+)"?/.exec(disposition)
-  const filename = match?.[1] ?? `${kind}-${id}.docx`
+  const filename = match?.[1] ?? `${kind}-${id}.${format}`
   const blob = await res.blob()
   return { blob, filename }
 }

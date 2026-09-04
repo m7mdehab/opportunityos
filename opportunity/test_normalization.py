@@ -6,8 +6,10 @@ from opportunity.models import (
     DerivationType,
     EmploymentType,
     RemotePolicy,
+    RemoteScope,
     SeniorityLevel,
     Track,
+    WorkMode,
 )
 from opportunity.normalization import (
     clean_text,
@@ -20,6 +22,8 @@ from opportunity.normalization import (
     extract_seniority,
     extract_skills_from_text,
     extract_track,
+    extract_work_location,
+    extract_work_mode,
     parse_iso_date,
 )
 
@@ -61,6 +65,56 @@ class NormalizationTests(unittest.TestCase):
         self.assertEqual(extract_remote_policy("Hybrid - San Francisco, CA"), RemotePolicy.HYBRID)
         self.assertEqual(extract_remote_policy("On-site New York, NY"), RemotePolicy.ON_SITE)
         self.assertEqual(extract_remote_policy("San Francisco, CA"), RemotePolicy.UNSPECIFIED)
+
+    # --- BRIEF-FR-006 A1: work_mode / location / remote_scope inference engine ---
+
+    def test_extract_work_mode_generic(self) -> None:
+        self.assertEqual(extract_work_mode("Remote"), WorkMode.REMOTE)
+        self.assertEqual(extract_work_mode("Hybrid - San Francisco, CA"), WorkMode.HYBRID)
+        self.assertEqual(extract_work_mode("On-site New York, NY"), WorkMode.ONSITE)
+        self.assertEqual(extract_work_mode("Just a job title, no location signal"), WorkMode.UNSPECIFIED)
+
+    def test_worked_example_1_remote_us_only(self) -> None:
+        """Brief worked example: 'Remote (US only)' -> remote, region-restricted [US]."""
+        result = extract_work_location("Remote (US only)", "")
+        self.assertEqual(WorkMode.REMOTE, result.work_mode)
+        self.assertEqual("inference", result.work_mode_source)
+        self.assertEqual(RemoteScope.REGION_RESTRICTED, result.remote_scope)
+        self.assertEqual(("US",), result.remote_scope_regions)
+
+    def test_worked_example_2_hybrid_cairo(self) -> None:
+        """Brief worked example: 'Hybrid — Cairo' -> hybrid, EG/Cairo."""
+        result = extract_work_location("Hybrid — Cairo", "")
+        self.assertEqual(WorkMode.HYBRID, result.work_mode)
+        self.assertEqual("EG", result.location_country)
+        self.assertEqual("Cairo", result.location_city)
+
+    def test_worked_example_3_onsite_multi_country(self) -> None:
+        """Brief worked example: 'Egypt, Saudi Arabia, or UAE' -> onsite, multi-country."""
+        result = extract_work_location("Egypt, Saudi Arabia, or UAE", "")
+        self.assertEqual(WorkMode.ONSITE, result.work_mode)
+        self.assertIn("EG", result.location_region)
+        self.assertIn("SA", result.location_region)
+        self.assertIn("AE", result.location_region)
+
+    def test_native_mapping_wins_over_inference(self) -> None:
+        """Adapter-native work_mode must never be overwritten by text inference."""
+        result = extract_work_location(
+            "Onsite in Berlin", "This role is fully remote.", native_work_mode=WorkMode.HYBRID
+        )
+        self.assertEqual(WorkMode.HYBRID, result.work_mode)
+        self.assertEqual("adapter", result.work_mode_source)
+
+    def test_no_signal_yields_unspecified_and_none_source(self) -> None:
+        result = extract_work_location("", "")
+        self.assertEqual(WorkMode.UNSPECIFIED, result.work_mode)
+        self.assertEqual("none", result.work_mode_source)
+        self.assertEqual(RemoteScope.UNSPECIFIED, result.remote_scope)
+        self.assertEqual("", result.location_country)
+
+    def test_country_name_inference(self) -> None:
+        result = extract_work_location("Onsite - Cairo, Egypt", "")
+        self.assertEqual("EG", result.location_country)
 
     def test_extract_compensation_no_fabricated_defaults(self) -> None:
         # 1. "5-10 years experience" -> NO compensation

@@ -68,6 +68,13 @@ SOURCE_ENDPOINT_RULES: dict[str, EndpointRule] = {
         allowed_methods=frozenset({"POST"}),
         require_https=True,
     ),
+    # BRIEF-FR-006 E23: public Firebase mirror of Hacker News; GET-only, no auth.
+    "hacker_news_who_is_hiring": EndpointRule(
+        allowed_hosts=frozenset({"hacker-news.firebaseio.com"}),
+        allowed_path_prefix="/v0/",
+        allowed_methods=frozenset({"GET"}),
+        require_https=True,
+    ),
 }
 
 

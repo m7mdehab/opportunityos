@@ -1,0 +1,6 @@
+{
+  "source_id": "remote_ok",
+  "request_url": "https://remoteok.com/api",
+  "fetched_at": "2026-09-03T13:46:15.618175+00:00",
+  "raw_body": "[{\"slug\": \"remote-employee-hartmann-group-international-1137232\", \"id\": \"1137232\", \"epoch\": 1788166321, \"date\": \"2026-08-31T08:52:01+00:00\", \"company\": \"HARTMANN GROUP International\", \"company_logo\": \"\", \"position\": \"Employee\", \"tags\": [\"education\", \"exec\", \"ops\", \"engineer\", \"amazon\", \"web dev\", \"cloud\", \"aws\"], \"description\": \"<strong>404<br><br></strong>This page doesn\\u00e2\\u0080\\u0099t exist.<br><br><strong>Beware, our IT man might be in a bad mood!<br><br></strong>You better take a look here.<br/><br/>Please mention the word **DUMBFOUNDING** and tag RNDEuMzkuMjQ4Ljkz when applying to show you read the job post completely (#RNDEuMzkuMjQ4Ljkz). This is a beta feature to avoid spam applicants. Companies can search these words to find applicants that read this and see they're human.\", \"location\": \"Warangal Rural, \", \"apply_url\": \"https://remoteOK.com/remote-jobs/remote-employee-hartmann-group-international-1137232\", \"salary_min\": 0, \"salary_max\": 0, \"logo\": \"\", \"url\": \"https://remoteOK.com/remote-jobs/remote-employee-hartmann-group-international-1137232\"}]"
+}

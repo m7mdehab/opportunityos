@@ -29,7 +29,43 @@ export type FeedbackLabel =
   | "duplicate_issue"
   | "review_required"
 
-export interface OpportunityListItem {
+/**
+ * BRIEF-FR-006 C5: the founder's original complaint was "no card said
+ * whether the job was remote, hybrid, or on-site, or where it was" — these
+ * fields are how it gets fixed. Shared between `OpportunityListItem` and
+ * `OpportunityDetail` because `api/serialization.py::serialize_opportunity_extraction_fields`
+ * emits the identical shape into both.
+ *
+ * `work_mode = "unspecified"` is a real, storable value (47.8% of real
+ * postings carry no work-mode signal at all) — render it as "not stated",
+ * never coerce it to blank or hide the row's work-mode field entirely.
+ * `work_mode_source` rides along whenever `work_mode` does, so the UI can
+ * distinguish an extracted value from an inferred one.
+ */
+export interface OpportunityExtractionFields {
+  work_mode: string
+  work_mode_source: string | null
+  location_country: string | null
+  location_city: string | null
+  location_region: string | null
+  remote_scope: string
+  remote_scope_regions: string[]
+  employment_type: string
+  seniority_level: string
+  compensation_min: number | null
+  compensation_max: number | null
+  compensation_currency: string | null
+  compensation_period: string | null
+  title_family: string | null
+  title_level: string | null
+  family_key: string | null
+  /** `OpportunityFamilyRecord.member_count` for this row's `family_key`.
+   * `null` when the row is not part of a clustered family — never a
+   * misleading `1`. */
+  family_size: number | null
+}
+
+export interface OpportunityListItem extends OpportunityExtractionFields {
   id: string
   title: string
   organization: string
@@ -174,7 +210,7 @@ export interface FeedbackHistoryEntry {
   created_at: string
 }
 
-export interface OpportunityDetail {
+export interface OpportunityDetail extends OpportunityExtractionFields {
   id: string
   title: string
   organization: string
@@ -304,9 +340,132 @@ export interface AuthenticatedResponse {
   authenticated: boolean
 }
 
+/** C1 — the 15-attribute generic facet surface (`GET /api/facets`),
+ * deliberately separate from the ten `FounderFilter` policy filters above:
+ * a facet uses `include` / `exclude` / `off` per value, never
+ * `hide` / `rank_only` / `label_only`, and never touches `decision` or
+ * `fit_score` — it only ever adds a `facet:<facet_id>` entry to an
+ * opportunity's `hidden_by`. */
+export type FacetValueState = "include" | "exclude" | "off"
+
+export interface FacetValue {
+  value: string
+  count: number
+  state: FacetValueState
+}
+
+export interface Facet {
+  facet_id: string
+  value_type: "enum" | "string" | "boolean" | "range" | "date-window"
+  description: string
+  /** `false` only for `language` today — no language is ever persisted
+   * anywhere in the schema. Render as visibly unavailable with
+   * `unavailable_reason`, exactly like `FounderFilter.unavailable_reason` —
+   * never hidden, never rendered as though it works. */
+  available: boolean
+  unavailable_reason: string | null
+  values: FacetValue[]
+  /** How many currently policy-visible rows this facet's own current
+   * include/exclude selection hides — exactly the number "Show N excluded
+   * by <facet>" needs. */
+  excluded_count: number
+  include: string[]
+  exclude: string[]
+}
+
+export interface FacetsResponse {
+  facets: Facet[]
+}
+
+/** Body for `PUT /api/facets/{facet_id}`. Either key omitted leaves that
+ * side unchanged; an empty array on both sides is the "off" state. */
+export interface FacetUpdateRequest {
+  include?: string[]
+  exclude?: string[]
+}
+
+/** C1 — saved views: a named facet selection (+ free-text search query) the
+ * founder can create, pick, and set as the default. */
+export interface SavedView {
+  id: string
+  name: string
+  facets: Record<string, { include: string[]; exclude: string[] }>
+  search_query: string | null
+  is_default: boolean
+}
+
+export interface SavedViewsResponse {
+  views: SavedView[]
+}
+
+export interface SavedViewCreateRequest {
+  name: string
+  facets: Record<string, { include: string[]; exclude: string[] }>
+  search_query?: string | null
+  is_default?: boolean
+}
+
+export interface SavedViewUpdateRequest {
+  name?: string
+  facets?: Record<string, { include: string[]; exclude: string[] }>
+  search_query?: string | null
+  is_default?: boolean
+}
+
+/** C4 — the hidden-reasons audit the dashboard's HIDDEN number links to.
+ * `reason` is one of the specific strings `api/facets.py::hidden_reasons_for_context`
+ * produces — `"red line: <rule>"`, `"excluded industry: <name>"`,
+ * `"filter: <filter_id>"`, or `"facet: <facet_id>"` — never a generic label. */
+export interface HiddenReason {
+  reason: string
+  count: number
+}
+
+export interface HiddenReasonsResponse {
+  reasons: HiddenReason[]
+}
+
+export interface UnhideByReasonResponse {
+  reason: string
+  status: "unhidden"
+}
+
 export interface ApiErrorBody {
   detail: string
   [key: string]: unknown
+}
+
+/** BRIEF-FR-006 D2 — the three committed ATS-safe templates
+ * (`matching/templates/__init__.py::TEMPLATES`). */
+export type ArtifactTemplateId = "classic" | "compact" | "modern"
+
+export const ARTIFACT_TEMPLATES: ArtifactTemplateId[] = [
+  "classic",
+  "compact",
+  "modern",
+]
+
+/** A bullet, skill, summary variant, or entry the compiler considered but
+ * did not select for this opportunity, with the reason
+ * (`matching/models.py::OmittedItem`, "what was left out and why"). */
+export interface OmittedItem {
+  section_id: string
+  text: string
+  reason: string
+  claim_id: string
+}
+
+export interface OmittedItemsResponse {
+  template: ArtifactTemplateId
+  omitted_items: OmittedItem[]
+}
+
+/** Shape of one entry in a 409 artifact-validation-rejection body's
+ * `findings` array (`matching/artifact_validation.py`). */
+export interface ArtifactValidationFinding {
+  claim: string
+  assertion_type: string
+  rejection_reasons: string[]
 }
 
 /** Thrown by the api client for any non-2xx response. Carries the parsed body

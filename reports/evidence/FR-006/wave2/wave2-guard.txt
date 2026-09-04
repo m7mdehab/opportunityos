@@ -1,0 +1,3 @@
+RULE PII_API_KEY_SHAPE FAILED: reports/evidence/FR-006/baseline/baseline-full-suite.txt. REMEDY: remove or redact the personal identifier before mirroring.
+RULE PII_INTERNATIONAL_PHONE FAILED: docs/adr/ADR-0017-document-model.md. REMEDY: remove or redact the personal identifier before mirroring.
+RULE SECRET_OPENAI_KEY FAILED: reports/evidence/FR-006/baseline/baseline-full-suite.txt. REMEDY: remove and rotate the credential, then use the designated secret store.

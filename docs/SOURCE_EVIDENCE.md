@@ -178,3 +178,122 @@ No host returned `allowed`. Session outbound HTTPS worked for all three hosts (T
 **What changed in `docs/SOURCE_REGISTRY.yaml`:** for all 15 entries, `last_policy_reviewed` was updated to `2026-09-02`, and each entry's `observed.detail` and `observed.request_metadata` were updated to describe the request actually made (`method=GET; endpoint=/robots.txt`) and its outcome, per the table above. `observed.status` remains `robots_unreachable` for all 15, matching the newly observed result. `observed.latency_ms` and `observed.record_count` were left at `0` — no job feed or listing endpoint was fetched for any of the 15 entries in this pass, only `robots.txt`.
 
 **What did not change, and why:** `automation.read` stays `disabled` for all 15 entries. None of the three robots verdicts was `allowed`, so the flip condition in D11 ("only if the recon result and the registry's own policy rules permit it") is not met on the robots signal alone, and no entry's `policy_status` (`unknown_disable_actions`) changed — the registry header's own rule ("status records observed read access, not future action permission") and the still-`review_required` `commercial_use.status` / `attribution.required` fields mean a favorable robots verdict would not by itself have been sufficient either. `access`, `attribution`, `rate_limits`, `commercial_use`, `automation.prepare`/`automation.submit`, `policy_status`, and `policy_evidence` were left untouched for all 15 entries. No entry was fetched beyond its robots.txt.
+
+## Recon 2026-09-03 (BRIEF-FR-006 E23 — Track E, nodes E2+E3)
+
+**What was requested:** recon every source named in work order E23 (aggregators, communities,
+regional/Arabic boards, freelance platforms, tutoring platforms), record a dated outcome for each
+— including sources never fetched because their terms forbid it — and build an adapter only where
+recon permits reading. Full per-source dated detail lives in each source's
+`docs/SOURCE_REGISTRY.yaml` entry (`last_policy_reviewed: 2026-09-03`); this table is the required
+"Source health" summary. All requests were unauthenticated `GET` using the project's existing
+truthful user agent (`OpportunityOS-SourceRecon/1.1`), robots.txt first, one source-body request
+only where robots allowed and a documented public endpoint was known (Hacker News, and the single
+Reddit route that returned 403). No account, sign-in, or credential was used anywhere. No browser
+automation was used against Reddit or Hacker News (brief Appendix 6) — every request below is a
+plain unauthenticated HTTP GET.
+
+| Source | Status | Latency ms | Records | Detail |
+|---|---|---:|---:|---|
+| hacker_news_who_is_hiring | allowed_ok | n/a (multi-request) | 0 (bound path, this session) | robots.txt Allow: /*.json$. **Correction (council review 4, finding 11):** the "192 rows" figure previously reported here came from a manual, disconnected smoke run of `fetch_who_is_hiring_payload()` invoked directly against live Hacker News -- not from the bound production path. At the time of that figure, `OpportunityPipeline.execute_discovery` fetched only `HackerNewsWhoIsHiringAdapter.feed_url` (the `whoishiring` user object) as a single GET and handed it to `parse_payload`, which requires a `comments` key the user object never has -- so the bound path always yielded 0 rows and permanent `has_schema_drift=True` health, regardless of what a manual smoke run produced. `worker/handlers.py` now wires a governed, registry-gated, multi-step fetch (`_fetch_hacker_news_who_is_hiring_governed`) into the bound poll path for this source, but this offline work order made no network request (per its own constraint), so no production run of the bound path has been executed or measured this session -- the honest, measured row count for the bound path in this session is **0**. |
+| reddit_forhire | http_403 | 0 | 0 | `GET /r/forhire.json` → HTTP 403 on the first request. Not retried. Registered `manual_only` with a deep link — this is Reddit's one attempted route and its dated closure. **Correction (council review 4, finding 13):** the `robots.txt` fetch that preceded this request returned HTTP 200, but its response body (the `User-agent: *` directive text) was never recorded — only the status code was. Whether the subsequent `/r/forhire.json` request was itself robots-compliant therefore cannot be established from this evidence; this is an open, unresolved question, recorded honestly rather than guessed. `www.reddit.com` has since returned HTTP 403 to this project even for `robots.txt`, so the directive text cannot be safely re-fetched. This source stays `manual_only`/`read: disabled` regardless of how that question resolves. |
+| reddit_remotejobs | inferred_from_sibling_403 | 0 | 0 | Same host/endpoint pattern as reddit_forhire; not independently requested to avoid a second request to an already-blocking host. `manual_only`, deep link. |
+| reddit_machinelearningjobs | inferred_from_sibling_403 | 0 | 0 | See reddit_forhire. `manual_only`, deep link. |
+| reddit_datajobs | inferred_from_sibling_403 | 0 | 0 | See reddit_forhire. `manual_only`, deep link. |
+| reddit_hiring | inferred_from_sibling_403 | 0 | 0 | See reddit_forhire. `manual_only`, deep link. |
+| reddit_jobbit | inferred_from_sibling_403 | 0 | 0 | See reddit_forhire. `manual_only`, deep link. |
+| reddit_bigdatajobs | inferred_from_sibling_403 | 0 | 0 | See reddit_forhire. `manual_only`, deep link. |
+| ycombinator_work_at_a_startup | no_public_api | 0 | 0 | robots.txt allowed; no documented public jobs API found within recon budget. `manual_only`, deep link. |
+| working_nomads | no_public_api | 0 | 0 | robots.txt allowed; guessed RSS/API paths returned HTTP 404 twice. `manual_only`, deep link. |
+| remote_co | robots_unreachable | 0 | 0 | robots.txt timed out twice; not retried a third time. `manual_only`, deep link. |
+| justremote | no_public_api | 0 | 0 | robots.txt allowed; no documented public jobs API found. `manual_only`, deep link. |
+| wellfound | credential_gated | 0 | 0 | robots.txt allowed (partial disallow); per brief, alerts route — job data requires an account. `manual_only`, alert route unconfigured, deep link. |
+| arc_dev | no_public_api | 0 | 0 | robots.txt allowed; no documented public jobs API found. `manual_only`, deep link. |
+| ai_jobs_net | robots_unreachable | 0 | 0 | robots.txt returned an HTML SPA fallback, not a real robots file; candidate API path timed out twice. Not confirmed reachable. `manual_only`, deep link. |
+| otta | credential_gated | 0 | 0 | robots.txt allowed; per brief, alerts route — job data requires an account. `manual_only`, alert route unconfigured, deep link. |
+| jobicy | http_403 (pre-existing, not re-probed) | 0 | 0 | Already registered `manual_only` from the 2026-09-02 re-recon (HTTP 403 on all three robots.txt attempts). Not re-probed per this order's facts. |
+| wuzzuf | not_a_postings_adapter | 0 | 0 | robots.txt allowed (Content-Signal directives). Brief-designated alert/deep-link route; alert unconfigured (no founder mailbox). `manual_only`. |
+| bayt | not_a_postings_adapter | 0 | 0 | robots.txt disallows named bots. Brief-designated alert/deep-link route; alert unconfigured. `manual_only`. |
+| gulftalent | not_a_postings_adapter | 0 | 0 | robots.txt disallows named bots. Brief-designated alert/deep-link route; alert unconfigured. `manual_only`. |
+| naukrigulf | robots_unreachable | 0 | 0 | robots.txt timed out twice; not retried. Brief-designated alert/deep-link route; alert unconfigured. `manual_only`. |
+| linkedin | policy_prohibited | 0 | 0 | robots.txt explicitly prohibits automated access without permission. Alert route unconfigured. `manual_only`. |
+| indeed | not_a_postings_adapter | 0 | 0 | robots.txt permits generic SEO crawl; no public job-data API documented. Alert route unconfigured. `manual_only`. |
+| mostaql | no_public_api | 0 | 0 | robots.txt allowed (disallows /search*, /ajax/). No documented public projects API. `manual_only`, deep link. |
+| khamsat | no_public_api | 0 | 0 | robots.txt allowed. No documented public API. `manual_only`, deep link. |
+| contra | no_public_api | 0 | 0 | robots.txt allowed (Content-Signal). No documented public gigs API. `manual_only`, deep link. |
+| peopleperhour | no_public_api | 0 | 0 | robots.txt allowed. No documented public projects API. `manual_only`, deep link. |
+| toptal | application_based | 0 | 0 | Per brief, application-based; no browsable open-project feed. `manual_only`, deep link. |
+| upwork | http_403 | 0 | 0 | `GET /robots.txt` → HTTP 403 (host itself blocks non-browser access). Not retried; confirms the API is partner-only per the brief. `manual_only`. |
+| freelancer | credential_gated (corrected) | 733 | 0 | Pre-existing entry incorrectly had `automation.read: allowed`; corrected 2026-09-03 to `disabled`/`manual_only` per the brief's explicit "stays credential-gated." No adapter is or was bound to it. |
+| preply | not_a_postings_adapter | 0 | 0 | robots.txt allowed. Platform application, not postings. `track=tutoring`, `platform_application`, deep link + readiness checklist. |
+| superprof | http_403 | 0 | 0 | `GET /robots.txt` → HTTP 403 (Cloudflare). Not retried. `track=tutoring`, `platform_application`, deep link + readiness checklist. |
+| wyzant | not_a_postings_adapter | 0 | 0 | robots.txt allowed. `track=tutoring`, `platform_application`, deep link + readiness checklist. |
+| tutor_com | not_a_postings_adapter | 0 | 0 | robots.txt allowed. `track=tutoring`, `platform_application`, deep link + readiness checklist. |
+| chegg | not_a_postings_adapter | 0 | 0 | robots.txt allowed (blocks ia_archiver only). `track=tutoring`, `platform_application`, deep link + readiness checklist. |
+| cambly | not_a_postings_adapter | 0 | 0 | robots.txt allowed. `track=tutoring`, `platform_application`, deep link + readiness checklist. |
+
+**New read-allowed sources that actually produced rows: 0.** `hacker_news_who_is_hiring` is
+read-allowed and now has a governed fetch wired into its bound poll path (see the row above and
+finding 11's correction), but no network request was made this offline session, so zero rows have
+actually been produced and measured through the bound path as of this evidence.
+The brief's E2 acceptance text names "at least 8"; per this order's binding rule ("reaching fewer
+than 8 read-allowed sources is reported as the number reached... do not stretch a policy reading to
+raise a count"), the true number reached is reported as 0 rows actually produced this session
+(`hacker_news_who_is_hiring` is read-allowed with a bound, governed fetch path, but unmeasured
+against live Hacker News this session -- see above). Every other aggregator/regional/freelance
+source's terms, robots outcome, or brief-designated alert/application-only status forecloses safe
+automated reading within this session; each is `manual_only` (or `platform_application` for
+tutoring) with a dated recon outcome and a resolvable deep link, which the brief and AGENTS.md both
+treat as a completed deliverable, not a failure.
+
+**403/429 responses received, and confirmation none was retried:** `reddit_forhire` (`GET
+/r/forhire.json` → 403), `upwork` (`GET /robots.txt` → 403), `superprof` (`GET /robots.txt` → 403).
+`upwork` and `superprof` each received exactly one request (their `robots.txt` fetch, which itself
+was the 403). `www.reddit.com` received two: `robots.txt` (HTTP 200) and then the body request
+`/r/forhire.json` (HTTP 403) -- the blocking request, not a retry of an earlier one. No host was
+requested a second time *after* a 403/429 was observed; the transport-log replay in
+`recon/test_e23_transport_log.py::test_e23_recon_sweep_never_retried_a_blocked_source` asserts this
+against a manual, hand-typed transcription of the ordered request sequence (the probe scripts that
+made these requests were not committed, so this is not a machine-captured log -- see that test's
+docstring) and would raise `BlockedSourceRetryError` if any of the three appeared a second time in
+that transcription. None was recorded as requested again.
+
+**Not fetched at all, and why:** the 13 tutoring/alert-route/application-only sources above were
+never sent a body request beyond `robots.txt` — the brief itself designates them alert-route,
+application-based, or platform-application, so no further recon request was warranted once that
+designation was confirmed. No credentials, accounts, sign-ins, or CAPTCHAs were encountered or
+attempted anywhere in this sweep.
+
+
+## Re-recon 2026-09-03 (BRIEF-FR-006 E1)
+
+**Ashby re-recon.** E1 authorizes a re-check of Ashby read access using "the documented public
+posting API host" -- `api.ashbyhq.com`, the same host `recon/sources.py:ats_sources()` already
+calls for every `ashby:*` entry (`/posting-api/job-board/{token}`). A single unauthenticated
+`GET https://api.ashbyhq.com/robots.txt` was made (one request, not retried): **HTTP 401**,
+identical to the 2026-09-02 FR-003 D11 finding above. As a secondary check (not a policy basis
+by itself, recorded for completeness only), `GET https://jobs.ashbyhq.com/robots.txt` --
+Ashby's public candidate-facing career-page host, a different host from the documented posting
+API -- returned HTTP 200 with `Disallow: /meeting/`, `Disallow: /b/`, `Disallow: /api/`; it does
+not disallow crawling generally, but it is not the posting-API host and its robots file does not
+speak to `api.ashbyhq.com`, so it cannot supply the permission E1 requires. **Decision: Ashby
+`automation.read` stays `disabled`.** Per the E1 order, "if robots is still unreachable or
+forbids, Ashby stays disabled and that is a valid closure"; robots.txt on the documented posting
+API host is unreachable (401) exactly as before, so the flip condition (robots AND terms permit)
+is not met. No entry in `docs/SOURCE_REGISTRY.yaml` was changed by this re-recon (the existing
+2026-09-02 record already reflects this state).
+
+**Board discovery sweep.** Seeds used:
+- `remoteintech_directory`: https://github.com/remoteintech/remote-jobs, accessed 2026-09-03,
+  license ISC per the repository README. 882 company-name slugs were read once from the
+  repository file tree (`https://api.github.com/repos/remoteintech/remote-jobs/git/trees/main`,
+  one API call) and committed verbatim to
+  `opportunity/discovery/seeds/remoteintech_companies.json` for citation and reproducibility.
+  Each slug is a discovery CANDIDATE token tried against Greenhouse and Lever only (never
+  asserted to be the company'''s real ATS token until a live probe confirms it); Ashby was
+  excluded from this sweep for the reason given above.
+- `founder_watchlist`: `private/watchlist.yaml` (founder-private, never read by this session's
+  tests); it did not exist at run time, so it contributed 0 candidates this run.
+
+Results, relevance filter, and the full classification breakdown are in
+`reports/evidence/FR-006/e1-discovery-run.md`.
