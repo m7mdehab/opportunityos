@@ -1,0 +1,27 @@
+control_plane:
+  repository: m7mdehab/ai-engineering-control-plane
+  tracking_ref: main
+  baseline: AI_ENGINEERING_OPERATING_SYSTEM_v2.0.md
+  amendments:
+    - AI_ENGINEERING_OPERATING_SYSTEM_v2.0.1_ADDENDUM.md
+  operations_layer: CONTROL_PLANE_OPERATIONS_v2.1.md
+  fresh_session_acceptance: FRESH_SESSION_ACCEPTANCE.md
+  last_verified_control_plane_sha: 503727089753bca1703fc34786ec0debcfe8c329
+
+project:
+  agents: AGENTS.md
+  authority_index: docs/AUTHORITY_INDEX.md
+  chat_resume: docs/CHAT_RESUME.md
+  state: docs/STATE.md
+  architecture: docs/ARCHITECTURE_CURRENT.md
+  roadmap: docs/ROADMAP_CURRENT.md
+  active_brief_glob: briefs/BRIEF-*.md
+  report_glob: reports/REPORT-*.md
+
+operations:
+  session_commands: SESSION_COMMANDS.md
+  context_integrity_check: scripts/check_control_plane_adoption.py
+  closeout_requires_canonical_reconciliation: true
+  least_expensive_capable_executor: true
+  direct_cross_provider_invocation_requires_runtime_capability: true
+  github_handoff_when_direct_invocation_unavailable: true
