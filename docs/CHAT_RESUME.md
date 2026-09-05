@@ -12,7 +12,9 @@ A new chat may begin with:
 
 The Owner/Overseer should then read `AGENTS.md`, `docs/AUTHORITY_INDEX.md`, this file, generated `docs/STATE.md`, inspect current GitHub `main` and any active branch/PR, then load only the active brief and task-relevant ADRs/evidence.
 
-Do not ask the founder to re-explain project history that can be recovered from the canonical repository layer.
+Cross-project procedure is defined by `m7mdehab/ai-engineering-control-plane`, using the locked `AI_ENGINEERING_OPERATING_SYSTEM_v2.0.md` baseline plus the current `AI_ENGINEERING_OPERATING_SYSTEM_v2.0.1_ADDENDUM.md`. The repository-only cold-boot acceptance contract is `FRESH_SESSION_ACCEPTANCE.md` in that control-plane repository.
+
+Do not ask Mohammed to re-explain project history that can be recovered from the canonical repository layer. A stale ChatGPT Project snapshot is not authority; re-read the repositories.
 
 ## Project In One Paragraph
 
@@ -20,12 +22,18 @@ OpportunityOS is an autonomous opportunity-acquisition platform for MENA that co
 
 ## Authority
 
-- Founder/final product authority: the founder.
-- Owner/Overseer: ChatGPT. Owns context, architecture judgment, task briefing, independent verification, and final PASS/NOT PASS closure.
-- Master Agent: dynamically selected by task. Codex is preferred for architecture-sensitive/stateful/concurrency/provenance/submission-authority work when capacity permits; Gemini/Antigravity is strong high-volume/bounded/browser execution capacity; Copilot is secondary/mechanical capacity.
-- Independent auditors/councils are evidence-producing roles, not closure authority.
+- Founder/final product authority: Mohammed.
+- Owner/Overseer: ChatGPT. Owns cross-project context continuity, architecture/product judgment, consequence classification, task briefing, Master selection, independent verification, and final PASS/NOT PASS closure.
+- Master Agent: dynamically selected by task. Codex is preferred for architecture-sensitive/stateful/concurrency/provenance/submission-authority work when capacity permits; Gemini/Antigravity is strong high-volume/bounded/browser execution capacity; Copilot is secondary/mechanical capacity; Claude Code is also valid Master/reviewer capacity when selected for the task.
+- Workers, independent auditors, and councils are evidence-producing/subordinate roles, not closure authority.
 
 A role is not a model.
+
+For state claims: runtime/live behavior where applicable > merged `origin/main` > explicitly active PR/branch > machine evidence > generated state > reports > chat memory.
+
+For intent: latest Founder decision > Product Constitution/accepted ADR/PDR > current brief/roadmap > Master Plan > old reports/handoffs/chats.
+
+For procedure: global control plane > local `AGENTS.md` > OPOS execution/permissions contracts > active brief.
 
 ## Truth Law
 
@@ -42,11 +50,13 @@ Never weaken these:
 
 See `docs/PRODUCT_CONSTITUTION.md` and accepted ADRs for full law.
 
-## Current Verified Repository State
+## Current Verified Product State
 
-Snapshot `main` on 2026-09-05:
+Product-state snapshot on 2026-09-05 before the governance-only context integration:
 
 `7e90eed48f1308d9cbeaa03f111e3dc206c6d26c`
+
+Later governance-only commits may move `main`. Always re-read current `origin/main` and current PRs before treating that snapshot SHA as the repository head.
 
 Generated state reports:
 
@@ -55,13 +65,13 @@ Generated state reports:
 - phase status: in progress;
 - BRIEF-007 / Multi-Tenant Family Alpha blocked until Founder Web Alpha is live and validated.
 
-There are no open PRs at this snapshot.
-
-The generated state says zero open acceptance items, but `reports/REPORT-FR-006.md` concludes `PASS_WITH_NOT_CLOSED`. Treat that as a state/report inconsistency to verify, not something to reconcile by assertion.
+The generated state says zero open acceptance items, but `reports/REPORT-FR-006.md` concludes `PASS_WITH_NOT_CLOSED`. Treat that as a state/report inconsistency to verify, not something to reconcile by assertion or hand-editing generated state.
 
 ## Current Active Brief - BRIEF-FR-006
 
 Title: `Nothing Missed, Nothing Hidden, Nothing Ugly`.
+
+This is the interrupted product brief to resume after repository/context boot is proven. Do not restart it from scratch.
 
 The brief responded to real founder-use failures including generic uncertainty, missing work-mode/location clarity, duplicate cards, weak seniority semantics, and poor generated CV output.
 
@@ -99,7 +109,7 @@ Current FR-006 report explicitly records material gaps:
 - several acceptance claims remain `NOT_CLOSED` or partial;
 - `stale_postings` has a writer that is not yet invoked.
 
-Do not make these disappear by relabeling the report or editing targets.
+Do not make these disappear by relabeling the report, weakening targets, or treating a partial result as terminal PASS.
 
 ## Owner/Overseer Items From Current Report
 
@@ -107,8 +117,10 @@ Before definitive FR-006 closure:
 
 1. resolve undefined matrix labels by real `req_id`, never invented mappings;
 2. independently verify the truth-lock/guard-neutralisation mutation property reserved for Overseer checking;
-3. reconcile whether the brief should receive a bounded closure pass or whether separable unmet breadth targets belong in the next explicit brief;
-4. make generated `STATE.md` coherent with the actual terminal verdict only through the generator/source facts, never by hand editing.
+3. determine from the brief's actual terminal contract whether remaining work receives a bounded closure pass or genuinely separable unmet breadth targets move into an explicit next brief;
+4. make generated `STATE.md` coherent with the actual terminal verdict only through generator/source facts, never by hand editing.
+
+A pre-existing Mandatory CI defect also exists around founder-readiness coverage, where unittest method identifiers are being surfaced as if they were founder opportunities. It predates the governance integration. Do not corrupt readiness data or weaken semantic coverage checks merely to green that gate. Treat it as an explicit engineering defect when BRIEF-FR-006 closure work resumes.
 
 ## Founder Value Priority
 
@@ -143,18 +155,23 @@ Preserve:
 
 ## Context Loading Rules
 
-Default startup does NOT require the full `docs/MASTER_PLAN.md`, the 100k+ source registry, all reports, or old Overseer handoff files.
+Default startup does NOT require the full `docs/MASTER_PLAN.md`, the 100k+ source registry, all reports, old Overseer handoff files, or old chat transcripts.
+
+Root `CLAUDE.md`, `GEMINI.md`, and `.github/copilot-instructions.md` are small routing shims to `AGENTS.md`; they are not parallel policy sources.
 
 Load deeper context only as required:
 
 - full long-horizon plan: `docs/MASTER_PLAN.md`
 - truth/product constitution: `docs/PRODUCT_CONSTITUTION.md`
+- current architecture: `docs/ARCHITECTURE_CURRENT.md`
+- current roadmap: `docs/ROADMAP_CURRENT.md`
 - exact architecture decisions: `docs/adr/`
 - active implementation contract: `briefs/BRIEF-FR-006.md`
 - current gate narrative: `reports/REPORT-FR-006.md`
 - detailed evidence: `reports/evidence/FR-006/`
-- source policy/status: `docs/SOURCE_REGISTRY.yaml`, `docs/SOURCE_EVIDENCE.md`
+- source policy/status only when source work requires it: `docs/SOURCE_REGISTRY.yaml`, `docs/SOURCE_EVIDENCE.md`
 - execution mechanics: `docs/AGENT_EXECUTION_PROTOCOL.md`
+- action permissions: `docs/AGENT_PERMISSIONS.yaml`
 
 ## Engineering Operating Rules
 
@@ -166,7 +183,23 @@ Load deeper context only as required:
 - change strategy after repeated failure instead of looping;
 - respect measured host/concurrency limits;
 - agents do every solvable task and surface only genuine founder-only blockers;
-- once a brief is genuinely closed, freeze it absent concrete regression.
+- once a brief is genuinely closed, freeze it absent concrete regression;
+- use exact vocabulary: built, landed, verified, closed;
+- never call a failing gate green;
+- the control-plane pre-existing/unrelated-failure exception may be used only with exact evidence and only for a bounded recovery/governance path that does not mask high-consequence risk.
+
+## Exact Resume Order
+
+After this repository/context setup is proven, resume product execution as follows:
+
+1. verify current `main`, open PRs, and current BRIEF-FR-006/report/evidence rather than trusting this snapshot blindly;
+2. recover the interrupted FR-006 terminal contract and current unresolved ledger;
+3. investigate and repair the pre-existing founder-readiness test/collector defect semantically if still present;
+4. resolve the Owner-reserved FR-006 verification items above;
+5. close FR-006 honestly against its contract, with exact CI/evidence and generated state reconciliation;
+6. only then move to the next explicit brief/product phase.
+
+Do not skip directly to BRIEF-007. It remains blocked until Founder Web Alpha is live and validated.
 
 ## Next Direction After FR-006
 
@@ -177,9 +210,15 @@ Load deeper context only as required:
 5. continue safe outbound and outcome-monitoring operations;
 6. keep BRIEF-007 multi-tenant work blocked until Founder Web Alpha is live and validated.
 
+## Founder-Only Boundaries
+
+Agents execute everything available tools can safely do. Mohammed should only be required for genuine external boundaries such as interactive authentication/OAuth, inaccessible accounts/credentials that cannot be securely injected, payment, accepting binding terms, professional legal/accounting sign-off, human communication the system cannot perform, or product/business judgment explicitly reserved to him.
+
+Do not hand back technical commands, configuration derivation, tests, reversible implementation choices, or repository changes merely because a human could do them.
+
 ## Secrets
 
-Never store credential values, private founder data, application history, or raw Truth Graph content in this file or the public docs mirror.
+Never store credential values, private founder data, application history, raw Truth Graph content, passwords, tokens, connection strings, or other sensitive operational data in this file or the public docs mirror.
 
 Read credentials supplied for verification are used only through secure/approved access and are never echoed into canonical docs.
 
