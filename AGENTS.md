@@ -2,6 +2,14 @@
 
 OpportunityOS is an opportunity-acquisition platform for MENA, beginning with a founder-focused dual track for employment and independent professional work and expanding only through evidence-backed phases.
 
+Cross-project procedural authority:
+
+- repository: `m7mdehab/ai-engineering-control-plane`
+- locked baseline: `AI_ENGINEERING_OPERATING_SYSTEM_v2.0.md`
+- effective date: 2026-09-05
+
+OpportunityOS-specific product, truth, source-policy, permissions, architecture, and state remain authoritative in this repository. For procedure, apply the authority ladder defined by the control plane.
+
 **Read `docs/STATE.md` first.** It is generated from repository facts and is the shared handoff for every assistant.
 
 ## Hard Rules
