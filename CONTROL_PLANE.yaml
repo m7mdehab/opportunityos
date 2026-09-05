@@ -6,7 +6,7 @@ control_plane:
     - AI_ENGINEERING_OPERATING_SYSTEM_v2.0.1_ADDENDUM.md
   operations_layer: CONTROL_PLANE_OPERATIONS_v2.1.md
   fresh_session_acceptance: FRESH_SESSION_ACCEPTANCE.md
-  last_verified_control_plane_sha: 503727089753bca1703fc34786ec0debcfe8c329
+  last_verified_control_plane_sha: 290a63f9fa15dedac5a7ef4254a0b8e088829905
 
 project:
   agents: AGENTS.md
