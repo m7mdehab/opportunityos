@@ -2,7 +2,7 @@
 
 Purpose: boot a fresh ChatGPT/agent session without reconstructing OPOS history.
 
-Last compacted: 2026-09-05, Africa/Cairo.
+Last compacted: 2026-09-06, Africa/Cairo.
 
 ## Resume Command
 
@@ -10,9 +10,9 @@ A new chat may begin with:
 
 `Resume OPOS from canonical state.`
 
-The Owner/Overseer should then read `AGENTS.md`, `docs/AUTHORITY_INDEX.md`, this file, generated `docs/STATE.md`, inspect current GitHub `main` and any active branch/PR, then load only the active brief and task-relevant ADRs/evidence.
+The Owner/Overseer should then read `AGENTS.md`, root `CONTROL_PLANE.yaml`, `docs/AUTHORITY_INDEX.md`, this file, generated `docs/STATE.md`, inspect current GitHub `main` and any active branch/PR, then load only the active brief and task-relevant ADRs/evidence.
 
-Cross-project procedure is defined by `m7mdehab/ai-engineering-control-plane`, using the locked `AI_ENGINEERING_OPERATING_SYSTEM_v2.0.md` baseline plus the current `AI_ENGINEERING_OPERATING_SYSTEM_v2.0.1_ADDENDUM.md`. The repository-only cold-boot acceptance contract is `FRESH_SESSION_ACCEPTANCE.md` in that control-plane repository.
+Cross-project procedure is defined by `m7mdehab/ai-engineering-control-plane`, using the locked `AI_ENGINEERING_OPERATING_SYSTEM_v2.0.md` baseline, `AI_ENGINEERING_OPERATING_SYSTEM_v2.0.1_ADDENDUM.md`, and `CONTROL_PLANE_OPERATIONS_v2.1.md`. The repository-only cold-boot acceptance contract is `FRESH_SESSION_ACCEPTANCE.md`. Compare the adoption marker in `CONTROL_PLANE.yaml` with current control-plane `main` before assuming procedure has not drifted.
 
 Do not ask Mohammed to re-explain project history that can be recovered from the canonical repository layer. A stale ChatGPT Project snapshot is not authority; re-read the repositories.
 
@@ -23,17 +23,17 @@ OpportunityOS is an autonomous opportunity-acquisition platform for MENA that co
 ## Authority
 
 - Founder/final product authority: Mohammed.
-- Owner/Overseer: ChatGPT. Owns cross-project context continuity, architecture/product judgment, consequence classification, task briefing, Master selection, independent verification, and final PASS/NOT PASS closure.
-- Master Agent: dynamically selected by task. Codex is preferred for architecture-sensitive/stateful/concurrency/provenance/submission-authority work when capacity permits; Gemini/Antigravity is strong high-volume/bounded/browser execution capacity; Copilot is secondary/mechanical capacity; Claude Code is also valid Master/reviewer capacity when selected for the task.
+- Owner/Overseer: ChatGPT. Owns cross-project context continuity, architecture/product judgment, consequence classification, task briefing, Master selection/routing, independent verification, and final PASS/NOT PASS closure.
+- Master Agent: dynamically selected by task. Codex remains preferred for architecture-sensitive/stateful/concurrency/provenance/submission-authority work when capacity permits; Gemini/Antigravity is preferred for broad/high-volume/bounded/browser work; Copilot is preferred for narrow mechanical/low-ambiguity work; Claude Code is valid Master/reviewer capacity when selected by task fit.
 - Workers, independent auditors, and councils are evidence-producing/subordinate roles, not closure authority.
 
-A role is not a model.
+A role is not a model. Route bounded work to the least expensive capable executor actually available. Repository policy cannot create a missing nested-agent capability.
 
 For state claims: runtime/live behavior where applicable > merged `origin/main` > explicitly active PR/branch > machine evidence > generated state > reports > chat memory.
 
 For intent: latest Founder decision > Product Constitution/accepted ADR/PDR > current brief/roadmap > Master Plan > old reports/handoffs/chats.
 
-For procedure: global control plane > local `AGENTS.md` > OPOS execution/permissions contracts > active brief.
+For procedure: global control plane > local `AGENTS.md`/`CONTROL_PLANE.yaml` > OPOS execution/permissions contracts > active brief.
 
 ## Truth Law
 
@@ -183,6 +183,10 @@ Load deeper context only as required:
 - change strategy after repeated failure instead of looping;
 - respect measured host/concurrency limits;
 - agents do every solvable task and surface only genuine founder-only blockers;
+- route bounded work to the least expensive capable executor actually available;
+- preserve ChatGPT Owner/Overseer capacity for consequence, architecture/product judgment, routing, evidence adjudication, correction briefs, adversarial verification, and closure;
+- perform provider capability preflight before promising cross-provider delegation;
+- if direct Gemini/Copilot/Claude/Codex-subagent invocation is unavailable, use the durable GitHub handoff protocol rather than pretending it happened;
 - once a brief is genuinely closed, freeze it absent concrete regression;
 - use exact vocabulary: built, landed, verified, closed;
 - never call a failing gate green;
@@ -230,7 +234,10 @@ Before moving to another chat:
 2. update `ARCHITECTURE_CURRENT.md` only if architecture changed;
 3. update `ROADMAP_CURRENT.md` only if priorities changed;
 4. regenerate `docs/STATE.md` from repository facts;
-5. replace this file with the compact current delta/next action;
-6. do not copy history already preserved in reports/ADRs/briefs.
+5. reconcile active brief/report/evidence and workflow state;
+6. replace this file last with the compact current delta/next action;
+7. run `python scripts/check_control_plane_adoption.py` plus applicable repository checks;
+8. ensure no durable truth exists only in chat;
+9. do not copy history already preserved in reports/ADRs/briefs.
 
 This file is a bootloader, not an archive.
