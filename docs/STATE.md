@@ -11,7 +11,7 @@ Next: complete active brief.
 ## Repository
 
 - **Generated:** 2026-09-02T19:37:39Z
-- **State generated at commit:** `eeeaad2` — governance: finalize OPOS repository-only chat resume
+- **State generated at commit:** `63278eb` — Governance: align OPOS bootloader with Operations Layer v2.1
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
