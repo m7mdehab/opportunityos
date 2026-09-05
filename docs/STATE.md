@@ -11,7 +11,7 @@ Next: complete active brief.
 ## Repository
 
 - **Generated:** 2026-09-02T19:37:39Z
-- **State generated at commit:** `49ede98` — docs(fr-006): A-2 passes in the report; api isolation defect to next-phase
+- **State generated at commit:** `eeeaad2` — governance: finalize OPOS repository-only chat resume
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
