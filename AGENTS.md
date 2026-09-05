@@ -2,17 +2,29 @@
 
 OpportunityOS is an opportunity-acquisition platform for MENA, beginning with a founder-focused dual track for employment and independent professional work and expanding only through evidence-backed phases.
 
+Cross-project procedural authority:
+
+- repository: `m7mdehab/ai-engineering-control-plane`
+- locked baseline: `AI_ENGINEERING_OPERATING_SYSTEM_v2.0.md`
+- current amendment: `AI_ENGINEERING_OPERATING_SYSTEM_v2.0.1_ADDENDUM.md`
+- fresh-session acceptance: `FRESH_SESSION_ACCEPTANCE.md`
+- effective date: 2026-09-05
+
+Project-specific truth, provenance, source/action policy, architecture, generated state, briefs, reports, and runtime evidence remain authoritative in this repository.
+
 ## Authority
 
-1. The founder is the final product authority.
+1. Mohammed is Founder and final product authority.
 2. ChatGPT is the Owner/Overseer for project context, architecture judgment, execution briefs, independent verification, and final PASS/NOT PASS closure.
-3. The Master Agent is selected per task. Codex, Gemini/Antigravity, Copilot, or another proven executor may fill that role.
+3. The Master Agent is selected per task. Codex, Gemini/Antigravity, Copilot, Claude Code, or another proven executor may fill that role.
 4. Workers, councils, and independent auditors are subordinate evidence-producing roles, not closure authorities.
 5. Repository state, deterministic gates, CI, runtime behavior, and persisted evidence outrank agent prose.
 
-A role is not a model. Do not permanently encode one provider as Master, reviewer, or architect.
+A role is not a model. Do not permanently encode one provider as Master, reviewer, architect, or closure authority.
 
 **Read `docs/AUTHORITY_INDEX.md` first, then `docs/CHAT_RESUME.md` and generated `docs/STATE.md`.** The generated state remains the operational state handoff; the authority index and chat resume define how a fresh session loads only the context it needs.
+
+A fresh chat must be able to recover the project from the repository alone using `Resume OPOS from canonical state.` without asking Mohammed to restate retrievable history.
 
 ## Hard Rules
 
@@ -73,6 +85,8 @@ prohibited. PUT, PATCH, and DELETE remain prohibited for every external host.
 7. Inspect tests, workflows, prior reports, and task-specific evidence before changing behavior.
 8. Load `docs/MASTER_PLAN.md` only to the extent needed by the active task; do not consume the full long plan by default when compact architecture/state documents suffice.
 
+Do not default-load the full master plan, full source registry, all reports/evidence, or old external handoffs merely to reconstruct context.
+
 ## Finishing Work
 
 1. Write or update the phase gate report under `reports/`.
@@ -92,7 +106,7 @@ Briefs execute under `docs/AGENT_EXECUTION_PROTOCOL.md`.
 - Use one branch per brief and one worktree per parallel sub-agent.
 - Keep shared contracts serial until stable; isolate parallel-safe work in separate worktrees.
 - No agent is the sole approver of its own work; route checker failures back through repair and re-test.
-- Merge only through pull requests after required checks pass; keep `main` green.
+- Merge through pull requests and keep `main` green. A required failing check may be excepted only under the strict pre-existing/unrelated-failure conditions in the global v2.0.1 addendum; the failing gate is never called green and remains an explicit unresolved defect.
 - Respect the repository's measured concurrency limit. Do not exceed known host capacity merely because more agents are available.
 
 ## Model Routing
@@ -106,6 +120,7 @@ Current default routing principles:
 - Codex is preferred for architecture-sensitive, stateful, concurrency, provenance, submission-authority, and difficult cross-cutting OPOS work when capacity permits.
 - Gemini/Antigravity is preferred for high-volume bounded implementation, repository exploration, browser work, and parallel execution where its tooling is advantageous.
 - Copilot is secondary capacity for mechanical or narrow repository tasks.
+- Claude Code is valid Master or reviewer capacity when selected for the task; it has no standing authority above other providers.
 - Independent review should use a genuinely independent provider/session/tool when the consequence justifies it.
 - Councils are exceptional and targeted, not a ritual on deterministic tasks.
 - Escalate because consequence or repeated failure warrants it, not because one model is prestigious.
@@ -114,6 +129,12 @@ A brief may carry a routing table assigning roles/tiers. Record material escalat
 
 Install the advisory local checks with `bash scripts/install_hooks.sh`. The pre-push hook runs the same state, integrity, secret, and mirrored-PII checks as CI. Private `main` is not server-protected on the zero-budget GitHub plan; PR discipline is convention under ADR-0002.
 
+## Provider Entry Shims
+
+`CLAUDE.md`, `GEMINI.md`, and `.github/copilot-instructions.md` are routing shims only. They direct the executor to this `AGENTS.md` and must not become parallel governance documents.
+
+Provider-specific implementation hints are allowed only when they do not alter authority, truth ordering, safety, source/action policy, or closure rules.
+
 ## Standing Delegation Rule
 
 > **Delegation rule.** Anything the agent can do, the agent does. Never return a
@@ -121,10 +142,12 @@ Install the advisory local checks with `bash scripts/install_hooks.sh`. The pre-
 > any request for founder action, check it against the exception list; if it is
 > not on that list, do it.
 >
-> **Exceptions, exhaustive:** interactive authentication requiring the founder's
+> **Founder-only exceptions:** interactive authentication requiring the founder's
 > own credentials or a browser OAuth flow; any action requiring payment;
 > accepting terms of service or entering a binding agreement; professional legal
-> or accounting sign-off; and communication with another human being.
+> or accounting sign-off; communication with another human being where the
+> system cannot act; inaccessible external accounts; and product/business
+> judgment explicitly reserved to the Founder.
 >
 > Everything else is the agent's: deriving values, generating configuration,
 > setting secrets where the environment permits it, choosing names, installing
@@ -141,12 +164,20 @@ Plan a capability preflight before execution. Logical maker/checker roles must m
 
 A brief is not closed because the Master, an auditor, generated state, or a council labels it closed.
 
+Use exact vocabulary:
+
+- built: exists on a branch/PR;
+- landed: merged to authoritative `main`;
+- verified: independently checked against applicable evidence;
+- closed: verified against the active acceptance contract and explicitly passed by the Owner/Overseer.
+
 The Owner/Overseer independently verifies the applicable repository, test, CI, audit, mirror, and runtime evidence, then issues the final PASS/NOT PASS and freeze/unblock decision.
 
 Once a brief is genuinely closed, freeze it absent a concrete regression. Do not invent unrelated hardening work merely to keep the brief open.
 
 ## Governing Documents
 
+- Cross-project procedure: `m7mdehab/ai-engineering-control-plane`
 - Authority/startup map: `docs/AUTHORITY_INDEX.md`
 - Compact chat bootloader: `docs/CHAT_RESUME.md`
 - Current generated state: `docs/STATE.md`
