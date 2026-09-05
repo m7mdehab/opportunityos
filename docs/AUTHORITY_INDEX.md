@@ -34,7 +34,7 @@ A report can be wrong. Generated state can be premature. Repository/runtime evid
 
 For how work must be performed, use this order:
 
-1. cross-project AI Engineering Operating System;
+1. cross-project AI Engineering Operating System v2.0 plus the current `AI_ENGINEERING_OPERATING_SYSTEM_v2.0.1_ADDENDUM.md` in `m7mdehab/ai-engineering-control-plane`;
 2. repository `AGENTS.md`;
 3. `docs/AGENT_EXECUTION_PROTOCOL.md` and `docs/AGENT_PERMISSIONS.yaml`;
 4. accepted ADRs governing the subsystem;
@@ -45,14 +45,17 @@ For how work must be performed, use this order:
 For a normal fresh chat or Master session:
 
 1. `AGENTS.md`
-2. `docs/CHAT_RESUME.md`
-3. generated `docs/STATE.md`
-4. current `origin/main` and any active PR/branch
-5. active brief
-6. relevant ADRs and exact subsystem tests/evidence
-7. only the task-relevant sections of `docs/MASTER_PLAN.md`
+2. this `docs/AUTHORITY_INDEX.md`
+3. `docs/CHAT_RESUME.md`
+4. generated `docs/STATE.md`
+5. current `origin/main` and any active PR/branch
+6. active brief
+7. relevant ADRs and exact subsystem tests/evidence
+8. only the task-relevant sections of `docs/MASTER_PLAN.md`
 
 Do not ingest the entire 100k+ source registry, full master plan, old overseer handoff, or all phase reports unless the task genuinely requires them.
+
+Root provider files such as `CLAUDE.md`, `GEMINI.md`, and `.github/copilot-instructions.md` are routing shims to `AGENTS.md`, not independent governance or deep context.
 
 ## Canonical Current Documents
 
@@ -113,3 +116,5 @@ When sources disagree:
 `AUTHORITY_INDEX.md`, `CHAT_RESUME.md`, `STATE.md`, and the active brief should usually be enough to begin work.
 
 Compact files point to deep evidence. They do not copy it.
+
+A fresh session must satisfy the control-plane `FRESH_SESSION_ACCEPTANCE.md` using canonical repositories alone. If it needs the full master plan, full source registry, all reports, or old chat history merely to become oriented, the boot layer has failed.
