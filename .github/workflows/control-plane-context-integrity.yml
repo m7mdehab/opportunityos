@@ -1,0 +1,17 @@
+name: Control Plane / Context Integrity
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  context-integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Control Plane Operations Layer v2.1 adoption
+        run: python scripts/check_control_plane_adoption.py
