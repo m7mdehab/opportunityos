@@ -1,0 +1,1 @@
+Read root `AGENTS.md` first and follow it as the canonical local instruction surface. Preserve the Founder -> ChatGPT Owner/Overseer -> dynamically selected Master -> workers/reviewers -> evidence -> Owner closure hierarchy and all OPOS truth/source/action safety rules. Do not create a Copilot-specific governance layer or default-load deep historical context.
