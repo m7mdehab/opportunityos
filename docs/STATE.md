@@ -10,8 +10,8 @@ Next: complete active brief.
 
 ## Repository
 
-- **Generated:** 2026-09-07T20:41:40Z
-- **State generated at commit:** `9b4a4c1` — feat(product): FR-006 continuation, tutoring lane, and truth-lock hardening
+- **Generated:** 2026-09-07T20:46:49Z
+- **State generated at commit:** `0cc0a18` — docs(evidence): add durable tutoring evidence and independent truth-lock audit
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
