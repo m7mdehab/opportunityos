@@ -1,0 +1,15 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Users\norha\projects\OpportunityOS\opportunityos
+configfile: pyproject.toml
+plugins: anyio-4.15.1
+collected 109 items
+
+truth\test_validator.py ...........                                      [ 10%]
+truth\test_adversarial.py .............................................. [ 52%]
+                                                                         [ 52%]
+truth\test_pack.py .............                                         [ 64%]
+truth\test_predicates.py ..........                                      [ 73%]
+matching\test_adversarial.py .............................               [100%]
+
+============================= 109 passed in 2.36s =============================

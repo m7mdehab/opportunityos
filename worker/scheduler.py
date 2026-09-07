@@ -57,8 +57,10 @@ DEFAULT_POLL_INTERVAL_HOURS = 6.0
 
 #: Job types this scheduler is responsible for enqueuing.
 _SCHEDULED_JOB_TYPE = "poll_source"
+_SCHEDULED_REVERIFY_JOB_TYPE = "reverify_stale"
 
 #: A zero-arg callable returning a new SQLAlchemy ``Session``.
+
 SessionFactory = Callable[[], object]
 
 #: A zero-arg callable returning the current UTC time, injectable so
@@ -178,6 +180,7 @@ class PollScheduler:
         # one-directional (never cleared) so a still-blocking source is not
         # retried just because its cadence interval elapsed again.
         self._blocked_this_session: set[str] = set()
+        self._last_reverify_at: Optional[datetime] = None
 
     def _load_cadence_hours(self) -> dict[str, float]:
         try:
@@ -307,6 +310,29 @@ class PollScheduler:
                         "extra_data": {"source_id": source_id},
                     },
                 )
+
+            # Periodically enqueue reverify_stale (every 24h)
+            reverify_due = (
+                self._last_reverify_at is None
+                or (now - self._last_reverify_at).total_seconds() >= 86400.0
+            )
+            if reverify_due:
+                pending_reverify = (
+                    session.query(WorkerJobRecord.id)
+                    .filter(
+                        WorkerJobRecord.job_type == _SCHEDULED_REVERIFY_JOB_TYPE,
+                        WorkerJobRecord.status.in_(("pending", "retry")),
+                    )
+                    .first()
+                )
+                if not pending_reverify:
+                    queue.enqueue_job(_SCHEDULED_REVERIFY_JOB_TYPE, {})
+                    self._last_reverify_at = now
+                    logger.info(
+                        "worker.scheduler_enqueued_reverify",
+                        extra={"component": "worker.scheduler"},
+                    )
+
             return enqueued
         finally:
             session.close()

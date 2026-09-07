@@ -20,7 +20,13 @@ export const EMPTY_FILTERS: FeedFilters = {
   q: "",
 }
 
-const TRACKS: Track[] = ["employment", "contract", "freelance", "procurement"]
+const TRACKS: Track[] = [
+  "employment",
+  "contract",
+  "freelance",
+  "procurement",
+  "tutoring",
+]
 const DECISIONS: Exclude<Decision, null>[] = [
   "qualified",
   "ineligible",

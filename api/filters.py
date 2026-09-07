@@ -33,6 +33,7 @@ see the `signal_tags` read).
 
 from __future__ import annotations
 
+import functools
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -248,6 +249,22 @@ def _work_mode_onsite_matches(ctx: OpportunityFilterContext, params: dict[str, A
     return found and passed is not True
 
 
+@functools.lru_cache(maxsize=128)
+def _compile_rule_pattern(pattern: str) -> re.Pattern | None:
+    try:
+        return re.compile(pattern, flags=re.IGNORECASE)
+    except re.error:
+        return None
+
+
+@functools.lru_cache(maxsize=128)
+def _compile_industry_pattern(name: str) -> re.Pattern | None:
+    try:
+        return re.compile(rf"\b{re.escape(name)}\b", flags=re.IGNORECASE)
+    except re.error:
+        return None
+
+
 def _red_lines_matches(ctx: OpportunityFilterContext, params: dict[str, Any]) -> bool:
     if ctx.truth_graph is None:
         return False
@@ -256,14 +273,9 @@ def _red_lines_matches(ctx: OpportunityFilterContext, params: dict[str, Any]) ->
         return False
     text = f"{ctx.opp.title}\n{ctx.opp.description}\n{ctx.opp.organization}"
     for rule in red_lines:
-        try:
-            if re.search(rule.pattern, text, flags=re.IGNORECASE):
-                return True
-        except re.error:
-            # An invalid pattern is a truth-pack authoring defect surfaced
-            # elsewhere (truth/validator.py raises on it when validating a
-            # generated claim); a filter scan must not crash the feed over it.
-            continue
+        rx = _compile_rule_pattern(rule.pattern)
+        if rx is not None and rx.search(text):
+            return True
     return False
 
 
@@ -281,11 +293,9 @@ def matched_red_line_rule(ctx: OpportunityFilterContext, truth_graph: TruthGraph
         return None
     text = f"{ctx.opp.title}\n{ctx.opp.description}\n{ctx.opp.organization}"
     for rule in red_lines:
-        try:
-            if re.search(rule.pattern, text, flags=re.IGNORECASE):
-                return rule
-        except re.error:
-            continue
+        rx = _compile_rule_pattern(rule.pattern)
+        if rx is not None and rx.search(text):
+            return rule
     return None
 
 
@@ -303,20 +313,26 @@ def matched_excluded_industry(ctx: OpportunityFilterContext, truth_graph: TruthG
         name = industry.strip()
         if not name:
             continue
-        try:
-            if re.search(rf"\b{re.escape(name)}\b", haystack, flags=re.IGNORECASE):
-                return name
-        except re.error:
-            continue
+        rx = _compile_industry_pattern(name)
+        if rx is not None and rx.search(haystack):
+            return name
     return None
 
 
+_EXCLUDED_INDUSTRIES_CACHE: dict[int, tuple[str, ...]] = {}
+
+
 def _excluded_industries(truth_graph: TruthGraph) -> tuple[str, ...]:
+    tg_id = id(truth_graph)
+    if tg_id in _EXCLUDED_INDUSTRIES_CACHE:
+        return _EXCLUDED_INDUSTRIES_CACHE[tg_id]
     industries: list[str] = []
     for profile in truth_graph.profiles.values():
         if isinstance(profile, CapabilityProfile):
             industries.extend(profile.excluded_industries)
-    return tuple(industries)
+    res = tuple(industries)
+    _EXCLUDED_INDUSTRIES_CACHE[tg_id] = res
+    return res
 
 
 def _excluded_industries_matches(ctx: OpportunityFilterContext, params: dict[str, Any]) -> bool:
@@ -335,15 +351,14 @@ def _excluded_industries_matches(ctx: OpportunityFilterContext, params: dict[str
         name = industry.strip()
         if not name:
             continue
-        try:
-            if re.search(rf"\b{re.escape(name)}\b", haystack, flags=re.IGNORECASE):
-                return True
-        except re.error:
-            continue
+        rx = _compile_industry_pattern(name)
+        if rx is not None and rx.search(haystack):
+            return True
     return False
 
 
 _KNOWN_TRACK_TOKENS = {"employment", "procurement"}
+_TRACK_PREFERENCE_CACHE: dict[int, str | None] = {}
 
 
 def _founder_track_preference(truth_graph: TruthGraph | None) -> str | None:
@@ -354,6 +369,9 @@ def _founder_track_preference(truth_graph: TruthGraph | None) -> str | None:
     never guessed."""
     if truth_graph is None:
         return None
+    tg_id = id(truth_graph)
+    if tg_id in _TRACK_PREFERENCE_CACHE:
+        return _TRACK_PREFERENCE_CACHE[tg_id]
     candidates = sorted(
         (
             a
@@ -363,9 +381,12 @@ def _founder_track_preference(truth_graph: TruthGraph | None) -> str | None:
         key=lambda a: a.id,
     )
     if not candidates:
+        _TRACK_PREFERENCE_CACHE[tg_id] = None
         return None
     first_token = str(candidates[0].value).split(",")[0].strip().casefold()
-    return first_token if first_token in _KNOWN_TRACK_TOKENS else None
+    res = first_token if first_token in _KNOWN_TRACK_TOKENS else None
+    _TRACK_PREFERENCE_CACHE[tg_id] = res
+    return res
 
 
 def _track_preference_matches(ctx: OpportunityFilterContext, params: dict[str, Any]) -> bool:
@@ -405,6 +426,9 @@ def _founder_target_roles(truth_graph: TruthGraph | None) -> tuple[str, ...]:
     )
 
 
+_TARGET_ROLE_FAMILIES_CACHE: dict[int, frozenset[str]] = {}
+
+
 def _founder_target_role_families(truth_graph: TruthGraph | None) -> frozenset[str]:
     """Council review #1 finding 2 (BRIEF-FR-006 B3): the families the
     founder's verified `career.target_role` assertions normalize onto, via
@@ -414,9 +438,16 @@ def _founder_target_role_families(truth_graph: TruthGraph | None) -> frozenset[s
     heuristic that can drift from it. `other` is excluded: a target role
     that does not itself normalize to a real family gives this filter
     nothing reliable to compare an opportunity's family against."""
+    if truth_graph is None:
+        return frozenset()
+    tg_id = id(truth_graph)
+    if tg_id in _TARGET_ROLE_FAMILIES_CACHE:
+        return _TARGET_ROLE_FAMILIES_CACHE[tg_id]
     families = {normalize_title(target)[0] for target in _founder_target_roles(truth_graph)}
     families.discard("other")
-    return frozenset(families)
+    res = frozenset(families)
+    _TARGET_ROLE_FAMILIES_CACHE[tg_id] = res
+    return res
 
 
 def _target_roles_matches(ctx: OpportunityFilterContext, params: dict[str, Any]) -> bool:
@@ -675,24 +706,44 @@ def build_filter_contexts(
     truth_graph: TruthGraph | None,
     opportunities: list[OpportunityRecord],
 ) -> list[OpportunityFilterContext]:
+    if not opportunities:
+        return []
+
+    from storage.models import MatchEvaluationRecord
     from .serialization import unpack_reasons
+
+    opp_ids = [opp.id for opp in opportunities]
+
+    eval_rows = (
+        session.query(MatchEvaluationRecord)
+        .filter(MatchEvaluationRecord.opportunity_id.in_(opp_ids))
+        .order_by(MatchEvaluationRecord.evaluated_at.desc(), MatchEvaluationRecord.created_at.desc())
+        .all()
+    )
+    latest_eval_by_opp: dict[str, MatchEvaluationRecord] = {}
+    for ev in eval_rows:
+        if ev.opportunity_id not in latest_eval_by_opp:
+            latest_eval_by_opp[ev.opportunity_id] = ev
+
+    comp_rows = (
+        session.query(FieldProvenanceRecord)
+        .filter(
+            FieldProvenanceRecord.opportunity_id.in_(opp_ids),
+            FieldProvenanceRecord.field_name.in_(_COMPENSATION_FIELD_NAMES),
+        )
+        .all()
+    )
+    comp_by_opp: dict[str, dict[str, Any]] = {}
+    for row in comp_rows:
+        comp_by_opp.setdefault(row.opportunity_id, {})[row.field_name] = row.normalized_value
 
     contexts: list[OpportunityFilterContext] = []
     for opp in opportunities:
-        evaluation = _latest_evaluation_for_context(session, opp.id)
+        evaluation = latest_eval_by_opp.get(opp.id)
         evaluation_detail = unpack_evaluation_detail(evaluation.evaluation_detail_json if evaluation else None)
         dimension_scores = unpack_dimension_scores(evaluation.dimension_scores_json if evaluation else None)
         reasons = unpack_reasons(evaluation.reasons_json if evaluation else None)
-
-        comp_rows = (
-            session.query(FieldProvenanceRecord)
-            .filter(
-                FieldProvenanceRecord.opportunity_id == opp.id,
-                FieldProvenanceRecord.field_name.in_(_COMPENSATION_FIELD_NAMES),
-            )
-            .all()
-        )
-        comp_by_field = {row.field_name: row.normalized_value for row in comp_rows}
+        comp_by_field = comp_by_opp.get(opp.id, {})
 
         contexts.append(
             OpportunityFilterContext(

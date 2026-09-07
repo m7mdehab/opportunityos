@@ -98,10 +98,13 @@ def _get_clause_context(text: str, match_start: int, match_end: int) -> str:
     return text[clause_start:clause_end]
 
 
+_PHONE_PATTERN = re.compile(r"(?:\b|\+)\d[\d\s\-\.\(\)]{5,}\d\b")
+
+
 def _parse_structured_metrics_with_context(text: str) -> list[tuple[float | int, str, str]]:
     results = []
     metric_pattern = re.compile(
-        r"(?<![\w-])(?:(?P<curr>[$€£])\s*)?(?P<val>\d+(?:[.,]\d+)?)(?:\s*(?P<unit>%|[xX]\b|hours?|days?|weeks?|months?|users?|clients?|projects?|engagements?|requests?|seconds?|minutes?|USD|EUR|GBP))?",
+        r"(?<![\w-])(?:(?P<curr>[$€£])\s*)?(?P<val>\d+(?:[.,]\d+)?)(?:[-\s]*(?P<unit>%|[xX]\b|hours?|days?|weeks?|months?|users?|clients?|projects?|tickets?|engagements?|requests?|seconds?|minutes?|USD|EUR|GBP))?",
         re.IGNORECASE,
     )
     for match in metric_pattern.finditer(text):
@@ -109,8 +112,19 @@ def _parse_structured_metrics_with_context(text: str) -> list[tuple[float | int,
         val_str = match.group("val").replace(",", "")
         unit = (match.group("unit") or curr or "count").strip().casefold()
         digits = re.sub(r"\D", "", val_str)
-        if re.fullmatch(r"(?:19|20)\d{2}", digits) and unit == "count":
-            continue
+        if unit == "count":
+            if re.fullmatch(r"(?:19|20)\d{2}", digits):
+                continue
+            # ADR-0018: excuse digit runs that are part of a phone-shaped token
+            is_phone = False
+            for pm in _PHONE_PATTERN.finditer(text):
+                if pm.start() <= match.start() and match.end() <= pm.end():
+                    phone_digits = re.sub(r"\D", "", pm.group(0))
+                    if len(phone_digits) >= 7:
+                        is_phone = True
+                        break
+            if is_phone:
+                continue
         try:
             val_num = float(val_str) if "." in val_str else int(val_str)
             ctx = _get_clause_context(text, match.start(), match.end()).strip()
@@ -118,6 +132,7 @@ def _parse_structured_metrics_with_context(text: str) -> list[tuple[float | int,
         except ValueError:
             continue
     return results
+
 
 
 def _material_metrics(value: str) -> tuple[str, ...]:

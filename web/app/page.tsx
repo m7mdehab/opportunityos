@@ -10,9 +10,10 @@ import { FiltersDrawer } from "@/components/feed/filters-drawer"
 import { FacetsPanel } from "@/components/feed/facets-panel"
 import { HiddenReasonsPanel } from "@/components/feed/hidden-reasons-panel"
 import { ManualSourcesPanel } from "@/components/feed/manual-sources-panel"
+import { TutoringSurface } from "@/components/feed/tutoring-surface"
 import { OverHidingWarningBanner } from "@/components/feed/over-hiding-warning"
 import { Button } from "@/components/ui/button"
-import { EyeOff, Eye, SlidersHorizontal, Search } from "lucide-react"
+import { EyeOff, Eye, SlidersHorizontal, Search, GraduationCap } from "lucide-react"
 import {
   NoTruthPackState,
   InvalidTruthPackState,
@@ -324,6 +325,21 @@ export default function FeedPage() {
             <Search aria-hidden="true" className="size-3.5" />
             Check manually
           </Button>
+          <Button
+            type="button"
+            variant={filters.track === "tutoring" ? "default" : "outline"}
+            size="sm"
+            data-testid="toggle-tutoring-lane"
+            onClick={() =>
+              setFilters({
+                ...filters,
+                track: filters.track === "tutoring" ? "" : "tutoring",
+              })
+            }
+          >
+            <GraduationCap aria-hidden="true" className="size-3.5" />
+            Tutoring Lane
+          </Button>
         </div>
       )}
 
@@ -336,6 +352,8 @@ export default function FeedPage() {
           ) : (
             <NoTruthPackState path={truth.path} />
           )
+        ) : filters.track === "tutoring" ? (
+          <TutoringSurface />
         ) : listLoading && !items ? (
           <p className="text-sm text-muted-foreground">Loading opportunities…</p>
         ) : listError ? (

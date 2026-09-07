@@ -263,7 +263,7 @@ def _get_clause_context(text: str, match_start: int, match_end: int) -> str:
 def _parse_metrics_with_context(text: str) -> list[tuple[float | int, str, str]]:
     results = []
     metric_pattern = re.compile(
-        r"(?<![\w-])(?:(?P<curr>[$€£])\s*)?(?P<val>\d+(?:[.,]\d+)?)(?:\s*(?P<unit>%|[xX]\b|hours?|days?|weeks?|months?|users?|clients?|projects?|tickets?|engagements?|requests?|seconds?|minutes?|USD|EUR|GBP))?",
+        r"(?<![\w-])(?:(?P<curr>[$€£])\s*)?(?P<val>\d+(?:[.,]\d+)?)(?:[-\s]*(?P<unit>%|[xX]\b|hours?|days?|weeks?|months?|users?|clients?|projects?|tickets?|engagements?|requests?|seconds?|minutes?|USD|EUR|GBP))?",
         re.IGNORECASE,
     )
     for match in metric_pattern.finditer(text):
@@ -1031,7 +1031,7 @@ class TruthGraph:
         verification: MetricVerification = MetricVerification.UNAVAILABLE,
     ) -> None:
         metric_pattern = re.compile(
-            r"(?<![\w-])(?:(?P<curr>[$€£])\s*)?(?P<val>\d+(?:[.,]\d+)?)(?:\s*(?P<unit>%|[xX]\b|hours?|days?|weeks?|months?|users?|clients?|projects?|requests?|seconds?|minutes?|USD|EUR|GBP))?",
+            r"(?<![\w-])(?:(?P<curr>[$€£])\s*)?(?P<val>\d+(?:[.,]\d+)?)(?:[-\s]*(?P<unit>%|[xX]\b|hours?|days?|weeks?|months?|users?|clients?|projects?|tickets?|engagements?|requests?|seconds?|minutes?|USD|EUR|GBP))?",
             re.IGNORECASE,
         )
         matches = list(metric_pattern.finditer(text))

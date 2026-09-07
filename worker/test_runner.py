@@ -254,6 +254,37 @@ class TestWorkerRunner(unittest.TestCase):
         self.assertEqual(job.status, "RUNNING")
         self.assertEqual(job.lease_owner, "w-thief")
 
+    def test_reverify_stale_handler_execution(self):
+        from worker.handlers import make_reverify_stale_handler
+
+        old_time = datetime.now(timezone.utc) - timedelta(days=20)
+        opp = OpportunityRecord(
+            id="opp-stale-test",
+            source_id="himalayas",
+            source_url="https://himalayas.app/jobs/opp-stale-test",
+            organization="Stale Corp",
+            title="Old Dev",
+            description="Stale job description",
+            content_hash="hash-opp-stale-test",
+            track="employment",
+            created_at=old_time,
+            is_stale=False,
+        )
+        self.setup_session.add(opp)
+        self.setup_session.commit()
+
+        fake_reverify = lambda url: {"status_code": 404, "is_stale": True, "error": None}
+        handler = make_reverify_stale_handler(
+            session_factory=self.session_factory,
+            reverify_fn=fake_reverify,
+            stale_after_days=14,
+        )
+        handler({})
+
+        refreshed = self.setup_session.query(OpportunityRecord).filter_by(id="opp-stale-test").first()
+        self.assertTrue(refreshed.is_stale)
+        self.assertIsNotNone(refreshed.reverified_at)
+
 
 class TestPollSourceHandler(unittest.TestCase):
     """Coverage for worker.handlers.poll_source's two branches: refused and fetched.
@@ -263,6 +294,23 @@ class TestPollSourceHandler(unittest.TestCase):
     with no network I/O: MockTransport (or a wrapper around it) is always the injected
     transport.
     """
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        db_path = os.path.join(self.temp_dir.name, "test_poll.db")
+        self.engine = get_engine(f"sqlite:///{db_path}")
+        init_db(self.engine)
+        self.session_factory = get_session_factory(self.engine)
+
+    def tearDown(self):
+        self.engine.dispose()
+        try:
+            self.temp_dir.cleanup()
+        except Exception:
+            pass
+
+    def _no_pack(self, _path):
+        raise TruthPackMissing("no truth pack in this offline test")
 
     def test_poll_source_refuses_read_disabled_source_without_fetching(self):
         registry = SourceRegistry()
@@ -316,6 +364,8 @@ class TestPollSourceHandler(unittest.TestCase):
             registry=registry,
             transport=RecordingTransport(inner_transport),
             refusal_sink=refusals.append,
+            session_factory=self.session_factory,
+            pack_loader=self._no_pack,
         )
 
         handler({"source_id": "himalayas"})
@@ -528,3 +578,4 @@ class TestSharedRateLimiterPerATSHost(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

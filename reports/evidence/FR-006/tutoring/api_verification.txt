@@ -1,0 +1,54 @@
+=== GET /api/tutoring/platforms ===
+Status code: 200
+Platforms count: 6
+Platform: preply (Preply)
+  Acquisition type: platform_application
+  Status: preparing_profile
+  Next action: Complete remaining readiness items (2/5 done)
+  Readiness checklist items count: 5
+  Checklist state: {'Founder profile photo and bio drafted': True, 'Subject/skill areas selected': True, 'Identity verification documents ready (platform-specific)': False, 'Availability calendar defined': False, 'Introductory/demo video recorded (where required)': False}
+Platform: superprof (Superprof)
+  Acquisition type: platform_application
+  Status: not_started
+  Next action: Review platform requirements and draft profile bio
+  Readiness checklist items count: 5
+  Checklist state: {'Founder profile photo and bio drafted': False, 'Subject/skill areas selected': False, 'Identity verification documents ready (platform-specific)': False, 'Availability calendar defined': False, 'Introductory/demo video recorded (where required)': False}
+Platform: wyzant (Wyzant)
+  Acquisition type: platform_application
+  Status: not_started
+  Next action: Review platform requirements and draft profile bio
+  Readiness checklist items count: 5
+  Checklist state: {'Founder profile photo and bio drafted': False, 'Subject/skill areas selected': False, 'Identity verification documents ready (platform-specific)': False, 'Availability calendar defined': False, 'Introductory/demo video recorded (where required)': False}
+Platform: tutor_com (Tutor.com)
+  Acquisition type: platform_application
+  Status: not_started
+  Next action: Review platform requirements and draft profile bio
+  Readiness checklist items count: 5
+  Checklist state: {'Founder profile photo and bio drafted': False, 'Subject/skill areas selected': False, 'Identity verification documents ready (platform-specific)': False, 'Availability calendar defined': False, 'Introductory/demo video recorded (where required)': False}
+Platform: chegg (Chegg Tutors)
+  Acquisition type: platform_application
+  Status: not_started
+  Next action: Review platform requirements and draft profile bio
+  Readiness checklist items count: 5
+  Checklist state: {'Founder profile photo and bio drafted': False, 'Subject/skill areas selected': False, 'Identity verification documents ready (platform-specific)': False, 'Availability calendar defined': False, 'Introductory/demo video recorded (where required)': False}
+Platform: cambly (Cambly)
+  Acquisition type: platform_application
+  Status: not_started
+  Next action: Review platform requirements and draft profile bio
+  Readiness checklist items count: 5
+  Checklist state: {'Founder profile photo and bio drafted': False, 'Subject/skill areas selected': False, 'Identity verification documents ready (platform-specific)': False, 'Availability calendar defined': False, 'Introductory/demo video recorded (where required)': False}
+
+=== PUT /api/tutoring/platforms/preply ===
+Status code: 200
+Updated status: preparing_profile
+Updated next_action: Complete remaining readiness items (2/5 done)
+Updated checklist_state: {'Founder profile photo and bio drafted': True, 'Subject/skill areas selected': True, 'Identity verification documents ready (platform-specific)': False, 'Availability calendar defined': False, 'Introductory/demo video recorded (where required)': False}
+Updated notes: Verified test persistence
+
+=== GET /api/tutoring/profile-material ===
+Status code: 200
+Verified status: True
+Approved summaries count: 1
+Tutoring skills count: 38
+Languages count: 2
+Evidence IDs count: 4

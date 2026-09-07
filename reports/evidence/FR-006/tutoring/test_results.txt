@@ -1,0 +1,49 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Users\norha\projects\OpportunityOS\opportunityos
+configfile: pyproject.toml
+plugins: anyio-4.15.1
+collected 7 items
+
+api\test_api.py ..                                                       [ 28%]
+opportunity\test_manual_sources.py .....                                 [100%]
+
+============================== warnings summary ===============================
+..\..\..\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\testclient.py:1
+  C:\Users\norha\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+..\..\..\AppData\Local\Programs\Python\Python312\Lib\site-packages\starlette\testclient.py:53
+  C:\Users\norha\AppData\Local\Programs\Python\Python312\Lib\site-packages\starlette\testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+api/test_api.py::TutoringRoutesTest::test_list_tutoring_platforms_returns_all_six_with_readiness
+  C:\Users\norha\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+    util.warn_deprecated(
+
+api/test_api.py::TutoringRoutesTest::test_list_tutoring_platforms_returns_all_six_with_readiness
+  C:\Users\norha\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:572: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces/commas for version_locations.  Consider adding path_separator=os to Alembic config.
+    util.warn_deprecated(
+
+api/test_api.py::TutoringRoutesTest::test_list_tutoring_platforms_returns_all_six_with_readiness
+api/test_api.py::TutoringRoutesTest::test_update_tutoring_platform_status_and_checklist
+  C:\Users\norha\projects\OpportunityOS\opportunityos\api\app.py:117: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+api/test_api.py::TutoringRoutesTest::test_list_tutoring_platforms_returns_all_six_with_readiness
+api/test_api.py::TutoringRoutesTest::test_update_tutoring_platform_status_and_checklist
+  C:\Users\norha\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 7 passed, 8 warnings in 6.09s ========================

@@ -33,6 +33,10 @@ import type {
   SavedViewUpdateRequest,
   SourcesHealthResponse,
   TruthStatusResponse,
+  TutoringPlatform,
+  TutoringPlatformsResponse,
+  TutoringProfileMaterialResponse,
+  TutoringStatus,
   UnhideByReasonResponse,
 } from "@/lib/contract/types"
 
@@ -201,6 +205,24 @@ export const api = {
     status: () => request<TruthStatusResponse>("/api/truth/status"),
     reload: () =>
       request<TruthStatusResponse>("/api/truth/reload", { method: "POST" }),
+  },
+
+  tutoring: {
+    platforms: () => request<TutoringPlatformsResponse>("/api/tutoring/platforms"),
+    updatePlatform: (
+      id: string,
+      payload: {
+        status?: TutoringStatus
+        checklist?: Record<string, boolean>
+        notes?: string
+      }
+    ) =>
+      request<TutoringPlatform>(`/api/tutoring/platforms/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      }),
+    profileMaterial: () =>
+      request<TutoringProfileMaterialResponse>("/api/tutoring/profile-material"),
   },
 }
 

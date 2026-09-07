@@ -1,0 +1,62 @@
+=== INDEPENDENT TRUTH-LOCK MUTATION AUDIT (A-11 DURABLE EVIDENCE) ===
+Checker Role: Independent Quality Auditor / Verification System
+Session / Tool: pytest 9.1.1 / Python 3.12.10 (automated audit harness)
+Tested Commit SHA: 93c08267140776d591a5641fed51f52c35342b9b
+
+1. Validator File SHA-256 Before Mutation:
+   fbadc6d64412f0d039a04d43c64d8f80dc836af0c4b4ac38c0aa3ca3df16bd8c
+
+2. Baseline Verification (Unmutated Validator):
+   matching/test_artifacts_e2e.py: exit code 0 (26 passed)
+   truth/test_adversarial.py:      exit code 0 (46 passed)
+   truth/test_validator.py:        exit code 0 (11 passed)
+
+3. Neutralized Guard Specification:
+   File: truth/validator.py (ClaimValidator.validate_claim)
+   Target Guard: Step 9 Lexical Coverage & Material Claim Provenance (lines 450-458)
+   Neutralization Diff:
+     - if uncovered:
+     + if False and uncovered:
+   Impact: Bypasses rejection when material claim terms are absent from supporting evidence.
+   Mutated File SHA-256: 80001465547d2b22c0854f33efff0e6bdb5e8304fc1c6fdee8ea31b9694140c9
+
+4. Execution Against Mutated Validator (>= 2 Protected Suites Must Fail):
+   Protected Suite 1 (matching/test_artifacts_e2e.py): exit code 1 (FAILED)
+     -> E   AssertionError: Items in the second set but not the first:
+     -> E   AssertionError: Items in the second set but not the first:
+     -> FAILED matching/test_artifacts_e2e.py::TestSyntheticArtifactsE2E::test_mutated_non_narrative_claim_rejected_alone
+     -> FAILED matching/test_artifacts_e2e.py::TestFounderShapedArtifactsE2E::test_mutated_non_narrative_claim_rejected_alone
+   Protected Suite 2 (truth/test_adversarial.py):      exit code 1 (FAILED)
+     -> E       AssertionError: True is not false
+     -> truth\test_adversarial.py:29: AssertionError
+     -> E       AssertionError: True is not false
+     -> truth\test_adversarial.py:344: AssertionError
+     -> FAILED truth/test_adversarial.py::AdversarialTruthTests::test_evidence_laundering_cannot_append_an_unbacked_skill
+     -> FAILED truth/test_adversarial.py::AdversarialTruthTests::test_field_level_atomic_mismatch_attacks
+
+5. Restored Validator File:
+   SHA-256 After Restoration: fbadc6d64412f0d039a04d43c64d8f80dc836af0c4b4ac38c0aa3ca3df16bd8c
+   Byte-for-Byte Equality:   True
+
+6. Post-Restoration Suite Execution:
+   matching/test_artifacts_e2e.py: exit code 0 (26 passed)
+   truth/test_adversarial.py:      exit code 0 (46 passed)
+   truth/test_validator.py:        exit code 0 (11 passed)
+
+7. Unsupported Claim Rejection & Zero Document Bytes Proof:
+   Direct Claim: '10 years of Kubernetes cluster architecture experience'
+   Allowed: False (Expected: False)
+   Assertion Type: unsupported_claim (Expected: unsupported_claim)
+   Verification Status: unverified (Expected: unverified)
+   Rejection Reasons: ['no evidence record supports the material claim']
+
+   Artifact Compilation Dispatch Check:
+   Findings Count: 1 (Expected: >= 1)
+   Rejected Claim ID: claim-identity-name
+   Findings Reasons: ['claim contains material terms absent from evidence: skill, unsupported, zorbaflex']
+
+   Production Gate Invariant (api/routes_api.py:938-953):
+   findings != [] -> return Response(status_code=409, detail='claim validation failed')
+   Zero document bytes (DOCX/PDF) emitted, stored, or cached.
+
+Audit Verdict: PROVEN (Mutation caught by 2 protected suites, byte-identical restoration confirmed, zero document bytes on unverified claims).
