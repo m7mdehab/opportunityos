@@ -197,17 +197,9 @@ def build_identity_block(graph: TruthGraph) -> IdentityBlock | None:
             continue
         text = str(a.value)
         values[field_name] = text
-        if _LEADING_METRIC_RE.search(text):
-            # E.g. a phone number written with a leading country code
-            # ("+20-555-0101"): rendered on its own, this reads to
-            # `ClaimValidator._validate_metric_provenance` as a bare
-            # numeric claim ("20") with no verified metric backing it, and
-            # is rejected -- not a content problem, a validator false
-            # positive on short digit-led values. Per the work order's hard
-            # stop this compiler does not touch the validator; it omits the
-            # field from the rendered document instead and reports the
-            # case. The value is still resolved on `IdentityBlock` for any
-            # non-claim internal use.
+        # ADR-0018: phone numbers are excused by ClaimValidator._parse_structured_metrics_with_context
+        # and should not be omitted as unsupported bare metrics.
+        if field_name != "phone" and _LEADING_METRIC_RE.search(text):
             omitted.append(OmittedItem(
                 section_id="identity",
                 text=text,
@@ -219,6 +211,7 @@ def build_identity_block(graph: TruthGraph) -> IdentityBlock | None:
                 claim_id=f"claim-identity-{field_name}",
             ))
             continue
+
         items.append(DocumentItem(GeneratedClaim(
             claim_id=f"claim-identity-{field_name}",
             text=text,
@@ -827,7 +820,8 @@ def build_achievements_section(graph: TruthGraph) -> DocumentSection:
     for m in metric_assertions:
         unit_str = f" {m.unit}" if m.unit and m.unit not in ("count", "number") else ""
         metric_context = m.context.rstrip(".")
-        text = f"{metric_context}: {m.numeric_value}{unit_str}"
+        val_disp = int(m.numeric_value) if float(m.numeric_value).is_integer() else m.numeric_value
+        text = f"{metric_context}: {val_disp}{unit_str}"
         items.append(DocumentItem(GeneratedClaim(
             claim_id=f"claim-metric-{m.id}",
             text=text,

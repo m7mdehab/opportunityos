@@ -11,7 +11,47 @@
  *    must be rendered as a percentage.
  */
 
-export type Track = "employment" | "contract" | "freelance" | "procurement"
+export type Track =
+  | "employment"
+  | "contract"
+  | "freelance"
+  | "procurement"
+  | "tutoring"
+
+export type TutoringStatus =
+  | "not_started"
+  | "preparing_profile"
+  | "ready_to_apply"
+  | "applied"
+  | "approved"
+  | "rejected_unavailable"
+
+export interface TutoringPlatform {
+  id: string
+  name: string
+  acquisition_type: string
+  track: string
+  canonical_url: string
+  policy_posture: string
+  readiness_checklist: string[]
+  checklist_state: Record<string, boolean>
+  status: TutoringStatus
+  next_action: string
+  notes: string
+  updated_at: string | null
+}
+
+export interface TutoringPlatformsResponse {
+  platforms: TutoringPlatform[]
+}
+
+export interface TutoringProfileMaterialResponse {
+  verified: boolean
+  approved_summaries: string[]
+  tutoring_skills: Array<{ name: string; proficiency: string }>
+  languages: Array<{ language: string; proficiency: string }>
+  evidence_ids: string[]
+}
 
 export type Decision = "qualified" | "ineligible" | "uncertain" | null
 

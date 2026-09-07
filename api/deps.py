@@ -20,7 +20,12 @@ def get_db(request: Request) -> Iterator[Session]:
     try:
         yield session
     finally:
+        try:
+            session.rollback()
+        except Exception:
+            pass
         session.close()
+
 
 
 def get_repository(session: Session = Depends(get_db)) -> StorageRepository:

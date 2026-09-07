@@ -313,7 +313,17 @@ class ApiTestCase(unittest.TestCase):
         _reseed_founder_filter_settings(self.session)
 
     def tearDown(self):
+        try:
+            self.session.rollback()
+        except Exception:
+            pass
         self.session.close()
+        for app in getattr(self, "_apps_to_dispose", []):
+            try:
+                app.state.engine.dispose()
+            except Exception:
+                pass
+        self._apps_to_dispose = []
 
     # -- helpers ------------------------------------------------------
 
@@ -347,7 +357,12 @@ class ApiTestCase(unittest.TestCase):
             high_fit_threshold=high_fit_threshold,
             truth_pack_path=truth_pack_path or self.missing_pack_path(),
         )
-        return create_app(settings=settings)
+        app = create_app(settings=settings)
+        if not hasattr(self, "_apps_to_dispose"):
+            self._apps_to_dispose = []
+        self._apps_to_dispose.append(app)
+        return app
+
 
     def logged_in_client(self, app) -> TestClient:
         client = TestClient(app)
@@ -3529,5 +3544,63 @@ class PollOverHidingRouteTest(ApiTestCase):
         self.assertEqual(response.status_code, 404)
 
 
+class TutoringRoutesTest(ApiTestCase):
+    def setUp(self):
+        super().setUp()
+        self.app = self.make_app()
+        self.client = self.logged_in_client(self.app)
+
+    def test_list_tutoring_platforms_returns_all_six_with_readiness(self):
+        response = self.client.get("/api/tutoring/platforms")
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        platforms = data["platforms"]
+        self.assertEqual(len(platforms), 6)
+        expected_ids = {"preply", "superprof", "wyzant", "tutor_com", "chegg", "cambly"}
+        self.assertEqual({p["id"] for p in platforms}, expected_ids)
+        for p in platforms:
+            self.assertEqual(p["acquisition_type"], "platform_application")
+            self.assertEqual(p["track"], "tutoring")
+            self.assertTrue(p["canonical_url"].startswith("https://"))
+            self.assertEqual(len(p["readiness_checklist"]), 5)
+            self.assertIn(p["status"], {"not_started", "preparing_profile", "ready_to_apply", "applied", "approved", "rejected_unavailable"})
+            self.assertTrue(p["next_action"])
+
+    def test_update_tutoring_platform_status_and_checklist(self):
+        # Update Preply status and checklist
+        payload = {
+            "status": "preparing_profile",
+            "checklist": {
+                "Founder profile photo and bio drafted": True,
+                "Subject/skill areas selected": True,
+            },
+            "notes": "Bio prepared from verified truth pack",
+        }
+        res = self.client.put("/api/tutoring/platforms/preply", json=payload)
+        self.assertEqual(res.status_code, 200, res.text)
+        data = res.json()
+        self.assertEqual(data["id"], "preply")
+        self.assertEqual(data["status"], "preparing_profile")
+        self.assertTrue(data["checklist_state"]["Founder profile photo and bio drafted"])
+        self.assertTrue(data["checklist_state"]["Subject/skill areas selected"])
+        self.assertFalse(data["checklist_state"]["Introductory/demo video recorded (where required)"])
+        self.assertEqual(data["notes"], "Bio prepared from verified truth pack")
+
+        # Verify persisted via GET
+        get_res = self.client.get("/api/tutoring/platforms")
+        preply = next(p for p in get_res.json()["platforms"] if p["id"] == "preply")
+        self.assertEqual(preply["status"], "preparing_profile")
+        self.assertTrue(preply["checklist_state"]["Founder profile photo and bio drafted"])
+
+        # Invalid status returns 422
+        bad_res = self.client.put("/api/tutoring/platforms/preply", json={"status": "invalid_status"})
+        self.assertEqual(bad_res.status_code, 422)
+
+        # Unknown platform returns 404
+        nf_res = self.client.put("/api/tutoring/platforms/unknown_tutoring_site", json={"status": "applied"})
+        self.assertEqual(nf_res.status_code, 404)
+
+
 if __name__ == "__main__":
     unittest.main()
+

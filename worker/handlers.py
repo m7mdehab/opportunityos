@@ -1047,6 +1047,45 @@ def make_backfill_family_keys_handler(
         finally:
             session.close()
 
+def make_reverify_stale_handler(
+    *,
+    session_factory: Optional[SessionFactory] = None,
+    registry: Optional[SourceRegistry] = None,
+    rate_limiter: Optional[RateLimiter] = None,
+    reverify_fn: Optional[Callable[[str], dict]] = None,
+    stale_after_days: int = 14,
+) -> Callable[[dict], None]:
+    """Build the ``reverify_stale`` job handler bound to the given dependencies."""
+    from opportunity.reverification import StaleOpportunityReverifier
+
+    _session_factory_holder: list[Optional[SessionFactory]] = [session_factory]
+
+    def _resolve_session_factory() -> SessionFactory:
+        if _session_factory_holder[0] is None:
+            _session_factory_holder[0] = _production_session_factory()
+        return _session_factory_holder[0]
+
+    def handler(payload: dict) -> None:
+        session = _resolve_session_factory()()
+        try:
+            days = payload.get("stale_after_days", stale_after_days) if payload else stale_after_days
+            result = StaleOpportunityReverifier.reverify_stale_opportunities(
+                session,
+                registry=registry,
+                rate_limiter=rate_limiter,
+                reverify_fn=reverify_fn,
+                stale_after_days=days,
+            )
+            logger.info(
+                "worker.reverify_stale_completed",
+                extra={"component": "worker.handlers", "extra_data": result},
+            )
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
     return handler
 
 
@@ -1089,4 +1128,9 @@ def default_handler_registry(
         ),
         "reextract_all": make_reextract_all_handler(session_factory=session_factory),
         "backfill_family_keys": make_backfill_family_keys_handler(session_factory=session_factory),
+        "reverify_stale": make_reverify_stale_handler(
+            session_factory=session_factory,
+            registry=registry,
+        ),
     }
+

@@ -613,7 +613,7 @@ def graph_from_dict(value: Any) -> TruthGraph:
     relations = tuple(parse_relation(item) for item in _tuple(data.get("relations"), "relations"))
     metrics = tuple(parse_metric_assertion(item) for item in _tuple(data.get("metrics"), "metrics"))
 
-    graph = TruthGraph(evidence=evidence_nodes, assertions=assertions, relations=relations, metrics=metrics)
+    graph = TruthGraph(evidence=evidence_nodes, assertions=assertions)
     if data.get("career_profile") is not None:
         graph.add_career_profile(parse_career_profile(data["career_profile"]))
     if data.get("capability_profile") is not None:
@@ -622,6 +622,12 @@ def graph_from_dict(value: Any) -> TruthGraph:
         graph.add_identity(parse_identity(data["identity"]))
     for item in _tuple(data.get("approved_phrases"), "approved_phrases"):
         graph.add_approved_phrase(parse_approved_phrase(item))
+    graph._pending_relations = relations
+    for metric in metrics:
+        graph.add_metric_assertion(metric)
+    for relation in relations:
+        graph.add_relation(relation)
+    graph._pending_relations = ()
     return graph
 
 

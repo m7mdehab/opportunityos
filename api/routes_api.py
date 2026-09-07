@@ -21,9 +21,10 @@ from matching.artifact_validation import validate_artifact_claims
 from matching.binary_export import BinaryArtifactExporter
 from matching.compiler_employment import EmploymentArtifactCompiler
 from matching.templates import TEMPLATES
-from opportunity.manual_sources import MANUAL_SOURCES
+from opportunity.manual_sources import MANUAL_SOURCES, tutoring_platform_cards
 from opportunity.models import Opportunity, Track
 from opportunity.registry import SourceRegistry
+from truth.models import CareerProfile
 from outbound.models import ActionStatus, ExecutionMode
 from storage.models import (
     FieldProvenanceRecord,
@@ -139,38 +140,63 @@ def _latest_evaluation(session: Session, opportunity_id: str) -> MatchEvaluation
     )
 
 
-def _latest_action_state(session: Session, opportunity_id: str) -> str | None:
-    triage = session.query(FounderTriageStateRecord).filter_by(opportunity_id=opportunity_id).first()
-    if triage is not None:
+def _batch_action_states(session: Session, opportunity_ids: list[str]) -> dict[str, str]:
+    if not opportunity_ids:
+        return {}
+    results: dict[str, str] = {}
+    triages = (
+        session.query(FounderTriageStateRecord)
+        .filter(FounderTriageStateRecord.opportunity_id.in_(opportunity_ids))
+        .all()
+    )
+    now = datetime.now(timezone.utc)
+    needs_submitted = set(opportunity_ids)
+    for triage in triages:
         if triage.state == "snoozed":
             snoozed_until = _as_aware_utc(triage.snoozed_until)
-            snooze_still_active = snoozed_until is None or snoozed_until > datetime.now(timezone.utc)
+            snooze_still_active = snoozed_until is None or snoozed_until > now
             if snooze_still_active:
-                return "snoozed"
-            # Expired snooze: no longer suppress the opportunity from the
-            # feed -- fall through to check for a submitted action instead
-            # of reporting a stale "snoozed" state forever.
+                results[triage.opportunity_id] = "snoozed"
+                needs_submitted.discard(triage.opportunity_id)
         else:
-            return triage.state
-    submitted = (
-        session.query(OutboundActionRecordModel)
-        .filter_by(opportunity_id=opportunity_id, action_status=ActionStatus.SUBMITTED.value)
-        .order_by(OutboundActionRecordModel.created_at.desc())
-        .first()
+            results[triage.opportunity_id] = triage.state
+            needs_submitted.discard(triage.opportunity_id)
+
+    if needs_submitted:
+        submitted_opp_ids = {
+            row[0]
+            for row in session.query(OutboundActionRecordModel.opportunity_id)
+            .filter(
+                OutboundActionRecordModel.opportunity_id.in_(needs_submitted),
+                OutboundActionRecordModel.action_status == ActionStatus.SUBMITTED.value,
+            )
+            .all()
+        }
+        for opp_id in submitted_opp_ids:
+            results[opp_id] = "submitted"
+
+    return results
+
+
+def _batch_feedback_labels(session: Session, opportunity_ids: list[str]) -> dict[str, str]:
+    if not opportunity_ids:
+        return {}
+    fbs = (
+        session.query(FounderFeedbackRecord)
+        .filter(FounderFeedbackRecord.opportunity_id.in_(opportunity_ids))
+        .order_by(FounderFeedbackRecord.created_at.asc())
+        .all()
     )
-    if submitted is not None:
-        return "submitted"
-    return None
+    return {fb.opportunity_id: fb.feedback_label for fb in fbs if fb.feedback_label}
+
+
+def _latest_action_state(session: Session, opportunity_id: str) -> str | None:
+    return _batch_action_states(session, [opportunity_id]).get(opportunity_id)
 
 
 def _latest_feedback_label(session: Session, opportunity_id: str) -> str | None:
-    fb = (
-        session.query(FounderFeedbackRecord)
-        .filter_by(opportunity_id=opportunity_id)
-        .order_by(FounderFeedbackRecord.created_at.desc())
-        .first()
-    )
-    return fb.feedback_label if fb is not None else None
+    return _batch_feedback_labels(session, [opportunity_id]).get(opportunity_id)
+
 
 
 # --------------------------------------------------------------------------
@@ -528,6 +554,9 @@ def list_opportunities(
     truth_graph = _truth_graph_from_request(request)
     contexts = build_filter_contexts(session, truth_graph, opportunities)
     family_sizes = _family_sizes(session, [o.family_key for o in opportunities])
+    opp_ids = [o.id for o in opportunities]
+    action_states = _batch_action_states(session, opp_ids)
+    feedback_labels = _batch_feedback_labels(session, opp_ids)
 
     rows: list[dict[str, Any]] = []
     hidden_count = 0
@@ -565,8 +594,8 @@ def list_opportunities(
             "deadline": opp.deadline,
             "posted_date": opp.posted_date,
             "is_stale": bool(opp.is_stale),
-            "action_state": _latest_action_state(session, opp.id),
-            "feedback_label": _latest_feedback_label(session, opp.id),
+            "action_state": action_states.get(opp.id),
+            "feedback_label": feedback_labels.get(opp.id),
             "hidden_by": combined_hidden_by,
             "flagged_by": outcome.flagged_by,
             "_rank_penalty": outcome.rank_penalty,
@@ -1393,6 +1422,191 @@ def manual_sources_route():
             }
             for item in MANUAL_SOURCES
         ]
+    }
+
+
+TUTORING_VALID_STATUSES = {
+    "not_started",
+    "preparing_profile",
+    "ready_to_apply",
+    "applied",
+    "approved",
+    "rejected_unavailable",
+}
+
+
+def _derive_tutoring_next_action(status: str, checklist: dict[str, bool], total_items: int) -> str:
+    if status == "not_started":
+        return "Review platform requirements and draft profile bio"
+    if status == "preparing_profile":
+        completed = sum(1 for v in checklist.values() if v)
+        if completed == total_items:
+            return "Ready to apply — open canonical application link"
+        return f"Complete remaining readiness items ({completed}/{total_items} done)"
+    if status == "ready_to_apply":
+        return "Open canonical application link and submit profile"
+    if status == "applied":
+        return "Monitor platform verification and email activation"
+    if status == "approved":
+        return "Profile live — active to receive student bookings"
+    if status == "rejected_unavailable":
+        return "Application closed or platform paused"
+    return "Review platform requirements"
+
+
+class TutoringPlatformUpdateRequest(BaseModel):
+    status: str | None = None
+    checklist: dict[str, bool] | None = None
+    checklist_state: dict[str, bool] | None = None
+    notes: str | None = None
+
+
+@router.get("/tutoring/platforms")
+def list_tutoring_platforms(session: Session = Depends(get_db)):
+    """Return all platform_application tutoring platforms with readiness checklists and founder status."""
+    cards = tutoring_platform_cards()
+    filter_ids = [f"tutoring_platform_{c.source_id}" for c in cards]
+    rows = {
+        r.filter_id: r
+        for r in session.query(FounderFilterSettingRecord).filter(
+            FounderFilterSettingRecord.filter_id.in_(filter_ids)
+        ).all()
+    }
+
+    platforms = []
+    for card in cards:
+        fid = f"tutoring_platform_{card.source_id}"
+        row = rows.get(fid)
+        persisted_data = json.loads(row.params_json) if row and row.params_json else {}
+        status = persisted_data.get("status", "not_started")
+        if status not in TUTORING_VALID_STATUSES:
+            status = "not_started"
+        checklist_state = persisted_data.get("checklist", {})
+        normalized_checklist = {
+            item: bool(checklist_state.get(item, False)) for item in card.readiness_checklist
+        }
+        next_action = _derive_tutoring_next_action(
+            status, normalized_checklist, len(card.readiness_checklist)
+        )
+        platforms.append(
+            {
+                "id": card.source_id,
+                "name": card.name,
+                "acquisition_type": card.opportunity_type,
+                "track": card.track.value,
+                "canonical_url": card.deep_link(),
+                "policy_posture": card.policy_note,
+                "readiness_checklist": list(card.readiness_checklist),
+                "checklist_state": normalized_checklist,
+                "status": status,
+                "next_action": next_action,
+                "notes": persisted_data.get("notes", ""),
+                "updated_at": row.updated_at.isoformat() if row and row.updated_at else None,
+            }
+        )
+    return {"platforms": platforms}
+
+
+@router.put("/tutoring/platforms/{platform_id}")
+def update_tutoring_platform(
+    platform_id: str,
+    payload: TutoringPlatformUpdateRequest,
+    response: Response,
+    session: Session = Depends(get_db),
+):
+    """Update activation status, checklist, or notes for a tutoring platform."""
+    cards = {c.source_id: c for c in tutoring_platform_cards()}
+    card = cards.get(platform_id)
+    if card is None:
+        raise HTTPException(status_code=404, detail=f"unknown tutoring platform_id: {platform_id!r}")
+
+    if payload.status is not None and payload.status not in TUTORING_VALID_STATUSES:
+        response.status_code = 422
+        return {"detail": "invalid status", "allowed": sorted(TUTORING_VALID_STATUSES)}
+
+    fid = f"tutoring_platform_{platform_id}"
+    row = session.query(FounderFilterSettingRecord).filter_by(filter_id=fid).first()
+    now = to_naive_utc(datetime.now(timezone.utc))
+    if row is None:
+        row = FounderFilterSettingRecord(
+            filter_id=fid,
+            enabled=True,
+            mode="tutoring",
+            params_json=json.dumps({"status": "not_started", "checklist": {}, "notes": ""}),
+            updated_at=now,
+        )
+        session.add(row)
+
+    current_params = json.loads(row.params_json) if row.params_json else {}
+    if payload.status is not None:
+        current_params["status"] = payload.status
+    ck = payload.checklist if payload.checklist is not None else payload.checklist_state
+    if ck is not None:
+        merged = current_params.get("checklist", {})
+        merged.update({str(k): bool(v) for k, v in ck.items()})
+        current_params["checklist"] = merged
+    if payload.notes is not None:
+        current_params["notes"] = payload.notes
+    row.mode = "tutoring"
+    row.params_json = json.dumps(current_params)
+    row.updated_at = now
+    session.commit()
+
+    saved_status = current_params.get("status", "not_started")
+    normalized_checklist = {
+        item: bool(current_params.get("checklist", {}).get(item, False))
+        for item in card.readiness_checklist
+    }
+    next_action = _derive_tutoring_next_action(
+        saved_status, normalized_checklist, len(card.readiness_checklist)
+    )
+    return {
+        "id": platform_id,
+        "name": card.name,
+        "acquisition_type": card.opportunity_type,
+        "track": card.track.value,
+        "canonical_url": card.deep_link(),
+        "policy_posture": card.policy_note,
+        "readiness_checklist": list(card.readiness_checklist),
+        "checklist_state": normalized_checklist,
+        "status": saved_status,
+        "next_action": next_action,
+        "notes": current_params.get("notes", ""),
+        "updated_at": row.updated_at.isoformat(),
+    }
+
+
+@router.get("/tutoring/profile-material")
+def get_tutoring_profile_material(request: Request):
+    """Serve verified, truth-locked founder profile material suitable for tutoring platform bios."""
+    graph = _truth_graph_from_request(request)
+    if graph is None:
+        raise HTTPException(status_code=412, detail="no truth pack loaded")
+
+    summaries = []
+    skills = []
+    languages = []
+    evidence_ids = set()
+
+    for p in graph._profiles.values():
+        if isinstance(p, CareerProfile):
+            summaries.extend(p.approved_summaries)
+            evidence_ids.update(p.evidence_ids)
+            for s in p.skills:
+                prof = s.proficiency.value if hasattr(s.proficiency, "value") else (s.proficiency or "")
+                skills.append({"name": s.name, "proficiency": prof})
+                evidence_ids.update(s.evidence_ids)
+            for lang in p.languages:
+                prof = lang.proficiency.value if hasattr(lang.proficiency, "value") else (lang.proficiency or "")
+                languages.append({"language": lang.language, "proficiency": prof})
+                evidence_ids.update(lang.evidence_ids)
+
+    return {
+        "verified": True,
+        "approved_summaries": list(summaries),
+        "tutoring_skills": skills,
+        "languages": languages,
+        "evidence_ids": sorted(evidence_ids),
     }
 
 

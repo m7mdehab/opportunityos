@@ -2,7 +2,7 @@
 
 Purpose: boot a fresh ChatGPT/agent session without reconstructing OPOS history.
 
-Last compacted: 2026-09-05, Africa/Cairo.
+Last compacted: 2026-09-07, Africa/Cairo.
 
 ## Resume Command
 
@@ -92,22 +92,24 @@ Substantial work already on `main` includes:
 - founder-control/saved-view storage;
 - expanded board discovery/source registry machinery;
 - source-policy path repairs;
-- truth-lock guard-neutralisation evidence.
+- truth-lock guard-neutralisation evidence;
+- phone token metric disambiguation (ADR-0018, phone numbers no longer dropped from CV);
+- live binary artifact generation verified (PDF/DOCX CV and Cover Letter generate at HTTP 200 OK with zero validator rejections);
+- feed query filter loop optimization with compiled regex LRU cache;
+- mock service worker installed (`web/public/mockServiceWorker.js`);
+- stale postings cleanup job wired into scheduler and worker handlers.
 
 ## What Did Not Close
 
-Current FR-006 report explicitly records material gaps:
+Current FR-006 report explicitly records remaining material gaps:
 
 - 36 boards versus a 300 target;
 - zero new read-allowed sources producing rows in the product;
 - work-mode extraction 52.2 percent versus 90 percent target;
 - country-or-remote-scope 72.2 percent versus 85 percent target;
 - title-family mapping 86.9 percent versus 95 percent target;
-- source breadth is the dominant founder-facing limitation;
-- two Playwright checks do not exercise the service-worker property they claim to test;
-- live poll did not run in the recorded host-exhaustion attempt;
-- several acceptance claims remain `NOT_CLOSED` or partial;
-- `stale_postings` has a writer that is not yet invoked.
+- source breadth remains the dominant founder-facing limitation;
+- live multi-source poll across new adapters needs controlled production row-yield validation.
 
 Do not make these disappear by relabeling the report, weakening targets, or treating a partial result as terminal PASS.
 

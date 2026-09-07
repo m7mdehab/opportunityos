@@ -108,6 +108,27 @@ class ClaimValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "rejected claims"):
             self.validator.require_valid((VERIFIED_CLAIMS[1], UNBACKED_CLAIMS[0]))
 
+    def test_adr_0018_phone_tokens_are_not_parsed_as_metrics(self):
+        from truth.validator import _parse_structured_metrics_with_context
+
+        # Phone numbers should NOT be parsed as metrics
+        self.assertEqual([], _parse_structured_metrics_with_context("+20-555-0101"))
+        self.assertEqual([], _parse_structured_metrics_with_context("+1-555-0199"))
+        self.assertEqual([], _parse_structured_metrics_with_context("+20 100 123 4567"))
+        self.assertEqual([], _parse_structured_metrics_with_context("Call me at +20-555-0101 today"))
+
+        # Real quantified metrics MUST still be parsed
+        team_metric = _parse_structured_metrics_with_context("led a team of 20")
+        self.assertEqual(1, len(team_metric))
+        self.assertEqual(20, team_metric[0][0])
+        self.assertEqual("count", team_metric[0][1])
+
+        percent_metric = _parse_structured_metrics_with_context("increased speed by 25%")
+        self.assertEqual(1, len(percent_metric))
+        self.assertEqual(25, percent_metric[0][0])
+        self.assertEqual("%", percent_metric[0][1])
+
 
 if __name__ == "__main__":
     unittest.main()
+

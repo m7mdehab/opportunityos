@@ -10,7 +10,7 @@ Next: complete active brief.
 
 ## Repository
 
-- **Generated:** 2026-09-02T19:37:39Z
+- **Generated:** 2026-09-07T15:06:40Z
 - **State generated at commit:** `eeeaad2` — governance: finalize OPOS repository-only chat resume
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
@@ -63,6 +63,7 @@ Next: complete active brief.
 - [ADR-0015 — Predicate Contract Between the Truth Graph and the Matching Engine](adr/ADR-0015-predicate-contract.md)
 - [ADR-0016 — Founder Seniority From Employment Tenure, Not Title Keywords](adr/ADR-0016-seniority-model.md)
 - [ADR-0017: The CV/cover-letter document model](adr/ADR-0017-document-model.md)
+- [ADR-0018 — Phone Token Metric Disambiguation in Claim Validator](adr/ADR-0018-phone-token-metric-disambiguation.md)
 
 ## Blocked Items
 
