@@ -10,8 +10,8 @@ Next: complete active brief.
 
 ## Repository
 
-- **Generated:** 2026-09-07T15:06:40Z
-- **State generated at commit:** `eeeaad2` — governance: finalize OPOS repository-only chat resume
+- **Generated:** 2026-09-07T20:41:40Z
+- **State generated at commit:** `9b4a4c1` — feat(product): FR-006 continuation, tutoring lane, and truth-lock hardening
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
