@@ -10,8 +10,8 @@ Next: complete active brief.
 
 ## Repository
 
-- **Generated:** 2026-09-08T20:32:31Z
-- **State generated at commit:** `74b9d63` — feat(normalization): deterministic channel segregation and adversarial safety tests
+- **Generated:** 2026-09-08T21:21:18Z
+- **State generated at commit:** `7a857a8` — fix(normalization): explicit channel routing and remove description bleed from bare regions
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
