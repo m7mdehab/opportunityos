@@ -10,7 +10,7 @@ Next: complete active brief.
 
 ## Repository
 
-- **Generated:** 2026-09-08T21:21:18Z
+- **Generated:** 2026-09-08T23:07:00Z
 - **State generated at commit:** `7a857a8` — fix(normalization): explicit channel routing and remove description bleed from bare regions
 - **Mirror sync:** `not yet recorded` at not yet recorded
 

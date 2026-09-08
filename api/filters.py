@@ -265,18 +265,68 @@ def _compile_industry_pattern(name: str) -> re.Pattern | None:
         return None
 
 
+_RED_LINES_SPEC_CACHE: dict[int, tuple[tuple[re.Pattern | None, tuple[str, ...]], ...]] = {}
+_RED_LINES_MATCH_CACHE: dict[tuple[int, str], bool] = {}
+
+
+def _extract_rule_tokens(pattern: str) -> tuple[str, ...]:
+    p = re.sub(r"^\(\?[aiLmsux]+\)", "", pattern)
+    m = re.match(r"^\((.*)\)$", p)
+    if m:
+        sub = m.group(1)
+        parts = sub.split("|")
+        clean = []
+        for part in parts:
+            c = re.sub(r"[^a-zA-Z0-9 -]", "", part).strip().lower()
+            if len(c) >= 3:
+                clean.append(c)
+        if clean:
+            return tuple(clean)
+    words = set(re.findall(r"[a-zA-Z]{3,}", p))
+    return tuple(w.lower() for w in words)
+
+
 def _red_lines_matches(ctx: OpportunityFilterContext, params: dict[str, Any]) -> bool:
     if ctx.truth_graph is None:
         return False
-    red_lines, _never_claims = ctx.truth_graph.rules()
-    if not red_lines:
+    tg_id = id(ctx.truth_graph)
+    cache_key = (tg_id, ctx.opp.id)
+    if cache_key in _RED_LINES_MATCH_CACHE:
+        return _RED_LINES_MATCH_CACHE[cache_key]
+
+    if tg_id not in _RED_LINES_SPEC_CACHE:
+        red_lines, _never_claims = ctx.truth_graph.rules()
+        specs = []
+        for rule in red_lines:
+            rx = _compile_rule_pattern(rule.pattern)
+            tokens = _extract_rule_tokens(rule.pattern)
+            specs.append((rx, tokens))
+        _RED_LINES_SPEC_CACHE[tg_id] = tuple(specs)
+
+    specs = _RED_LINES_SPEC_CACHE[tg_id]
+    if not specs:
+        _RED_LINES_MATCH_CACHE[cache_key] = False
         return False
+
     text = f"{ctx.opp.title}\n{ctx.opp.description}\n{ctx.opp.organization}"
-    for rule in red_lines:
-        rx = _compile_rule_pattern(rule.pattern)
-        if rx is not None and rx.search(text):
-            return True
-    return False
+    text_lower: str | None = None
+    matched = False
+    for rx, tokens in specs:
+        if rx is None:
+            continue
+        if tokens:
+            if text_lower is None:
+                text_lower = text.lower()
+            if not any(tok in text_lower for tok in tokens):
+                continue
+        if rx.search(text):
+            matched = True
+            break
+
+    if len(_RED_LINES_MATCH_CACHE) > 30000:
+        _RED_LINES_MATCH_CACHE.clear()
+    _RED_LINES_MATCH_CACHE[cache_key] = matched
+    return matched
 
 
 def matched_red_line_rule(ctx: OpportunityFilterContext, truth_graph: TruthGraph | None):
@@ -335,6 +385,10 @@ def _excluded_industries(truth_graph: TruthGraph) -> tuple[str, ...]:
     return res
 
 
+_EXCLUDED_INDUSTRIES_SPEC_CACHE: dict[int, tuple[tuple[re.Pattern | None, str], ...]] = {}
+_EXCLUDED_INDUSTRIES_MATCH_CACHE: dict[tuple[int, str], bool] = {}
+
+
 def _excluded_industries_matches(ctx: OpportunityFilterContext, params: dict[str, Any]) -> bool:
     """Council defect 5: a plain `in` substring check hid postings on
     accidental substring collisions (e.g. an excluded "Finance" matching
@@ -343,18 +397,45 @@ def _excluded_industries_matches(ctx: OpportunityFilterContext, params: dict[str
     industry only matches whole words in the opportunity text."""
     if ctx.truth_graph is None:
         return False
-    excluded = _excluded_industries(ctx.truth_graph)
-    if not excluded:
+    tg_id = id(ctx.truth_graph)
+    cache_key = (tg_id, ctx.opp.id)
+    if cache_key in _EXCLUDED_INDUSTRIES_MATCH_CACHE:
+        return _EXCLUDED_INDUSTRIES_MATCH_CACHE[cache_key]
+
+    if tg_id not in _EXCLUDED_INDUSTRIES_SPEC_CACHE:
+        excluded = _excluded_industries(ctx.truth_graph)
+        specs = []
+        for industry in excluded:
+            clean = industry.strip().lower()
+            if not clean:
+                continue
+            rx = _compile_industry_pattern(industry.strip())
+            specs.append((rx, clean))
+        _EXCLUDED_INDUSTRIES_SPEC_CACHE[tg_id] = tuple(specs)
+
+    specs = _EXCLUDED_INDUSTRIES_SPEC_CACHE[tg_id]
+    if not specs:
+        _EXCLUDED_INDUSTRIES_MATCH_CACHE[cache_key] = False
         return False
+
     haystack = f"{ctx.opp.title} {ctx.opp.organization} {ctx.opp.description}"
-    for industry in excluded:
-        name = industry.strip()
-        if not name:
+    haystack_lower: str | None = None
+    matched = False
+    for rx, clean_name in specs:
+        if rx is None:
             continue
-        rx = _compile_industry_pattern(name)
-        if rx is not None and rx.search(haystack):
-            return True
-    return False
+        if haystack_lower is None:
+            haystack_lower = haystack.lower()
+        if clean_name not in haystack_lower:
+            continue
+        if rx.search(haystack):
+            matched = True
+            break
+
+    if len(_EXCLUDED_INDUSTRIES_MATCH_CACHE) > 30000:
+        _EXCLUDED_INDUSTRIES_MATCH_CACHE.clear()
+    _EXCLUDED_INDUSTRIES_MATCH_CACHE[cache_key] = matched
+    return matched
 
 
 _KNOWN_TRACK_TOKENS = {"employment", "procurement"}
@@ -465,7 +546,9 @@ def _target_roles_matches(ctx: OpportunityFilterContext, params: dict[str, Any])
     target_families = _founder_target_role_families(ctx.truth_graph)
     if not target_families:
         return False
-    opp_family, _opp_level, _opp_rule = normalize_title(ctx.opp.title)
+    opp_family = ctx.opp.title_family
+    if opp_family is None:
+        opp_family, _opp_level, _opp_rule = normalize_title(ctx.opp.title)
     return opp_family not in target_families  # True: misaligned, filter matches
 
 
