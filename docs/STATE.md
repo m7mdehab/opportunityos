@@ -10,7 +10,7 @@ Next: complete active brief.
 
 ## Repository
 
-- **Generated:** 2026-09-07T21:30:12Z
+- **Generated:** 2026-09-08T00:07:29Z
 - **State generated at commit:** `635513a` — docs(evidence): add durable truth-lock mutation proof for FR-006 A-11
 - **Mirror sync:** `not yet recorded` at not yet recorded
 

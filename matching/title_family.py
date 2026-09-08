@@ -48,12 +48,16 @@ _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
 
 
+import unicodedata
+
+
 def _normalize_for_matching(title: str) -> str:
     """Casefold and collapse every run of non-alphanumeric characters to a
     single space, so punctuation, dashes, commas, and parentheses never break
     a phrase match: 'Senior Data Engineer, Platform (Remote — EU)' reads
     as 'senior data engineer platform remote eu'."""
-    return _NON_ALNUM_RE.sub(" ", title.casefold()).strip()
+    deaccented = unicodedata.normalize("NFKD", title or "").encode("ascii", "ignore").decode("utf-8")
+    return _NON_ALNUM_RE.sub(" ", deaccented.casefold()).strip()
 
 
 def _alias_to_pattern(alias: str) -> re.Pattern[str]:

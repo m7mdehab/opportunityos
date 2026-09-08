@@ -99,10 +99,12 @@ class LeverAdapter(BaseAdapter):
             seniority = extract_seniority(title, description)
             emp_type = extract_employment_type(commitment, title, description)
             track = extract_track(self.track, commitment, title, description)
-            native_workplace_type = clean_text(categories.get("workplaceType")).casefold()
+            raw_workplace_type = str(posting.get("workplaceType") or categories.get("workplaceType") or "")
+            native_workplace_type = clean_text(raw_workplace_type).casefold()
             native_work_mode = _LEVER_WORKPLACE_TYPE.get(native_workplace_type)
+            native_country = clean_text(str(posting.get("country") or ""))
             work_loc = extract_work_location(
-                location_raw, description, native_work_mode=native_work_mode
+                location_raw, description, native_work_mode=native_work_mode, native_country=native_country
             )
             comp = extract_compensation(description)
             geo = derive_geographic_eligibility(
@@ -121,6 +123,7 @@ class LeverAdapter(BaseAdapter):
                 payload=payload,
             )
 
+            workplace_pointer = f"{item_pointer}.workplaceType" if posting.get("workplaceType") else f"{item_pointer}.categories.workplaceType"
             prov_list: list[FieldProvenance] = [
                 create_field_provenance("track", commitment, track.value, DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "extract_track"),
                 create_field_provenance("organization", self.company_name, self.company_name, DerivationType.SOURCE_METADATA_DERIVATION, item_pointer, record_checksum, "lever_site_metadata"),
@@ -130,12 +133,14 @@ class LeverAdapter(BaseAdapter):
                 create_field_provenance("seniority", title, seniority.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.text", record_checksum, "extract_seniority"),
                 create_field_provenance("employment_type", commitment, emp_type.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.categories.commitment", record_checksum, "extract_employment_type"),
                 create_field_provenance(
-                    "work_mode", categories.get("workplaceType") or raw_loc, work_loc.work_mode.value,
+                    "work_mode", raw_workplace_type or raw_loc, work_loc.work_mode.value,
                     DerivationType.SOURCE_METADATA_DERIVATION if work_loc.work_mode_source == "adapter" else (DerivationType.RULE_DERIVATION if work_loc.work_mode_source == "inference" else DerivationType.UNASSERTED_ABSENT),
-                    f"{item_pointer}.categories.workplaceType", record_checksum, work_loc.work_mode_rule_id or "extract_work_location",
+                    workplace_pointer, record_checksum, work_loc.work_mode_rule_id or "extract_work_location",
                 ),
                 create_field_provenance("geographic_eligibility", location_raw, geo.status, DerivationType.RULE_DERIVATION, f"{item_pointer}.categories.location", record_checksum, "classify_geography"),
             ]
+            if native_country:
+                prov_list.append(create_field_provenance("location_country", native_country, work_loc.location_country, DerivationType.SOURCE_METADATA_DERIVATION, f"{item_pointer}.country", record_checksum, "lever_country"))
 
             if skills:
                 prov_list.append(create_field_provenance("skills", f"{title} {description[:50]}", ", ".join(skills), DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "extract_skills"))

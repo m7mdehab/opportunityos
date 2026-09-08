@@ -105,6 +105,57 @@ rules:
     work_mode: remote
     remote_scope: worldwide
   description: Explicit worldwide/anywhere remote phrasing -> remote, worldwide.
+- id: linkedin_hybrid_tag
+  pattern: (?i)#li-hybrid\b
+  sets:
+    work_mode: hybrid
+  description: LinkedIn hashtag in postings -> hybrid
+- id: linkedin_remote_tag
+  pattern: (?i)#li-remote\b
+  sets:
+    work_mode: remote
+  description: LinkedIn hashtag in postings -> remote
+- id: linkedin_onsite_tag
+  pattern: (?i)#li-onsite\b
+  sets:
+    work_mode: onsite
+  description: LinkedIn hashtag in postings -> onsite
+- id: remote_us_phrases
+  pattern: (?i)\b(?:remote[\s,-]+u\.?s\.?a?|u\.?s\.?a?[\s,-]+remote|remote\s+united\s+states)\b
+  sets:
+    work_mode: remote
+    location_country: US
+    remote_scope: region_restricted
+    remote_scope_regions:
+      - US
+  description: Remote US phrases -> remote, location_country=US, region_restricted [US]
+- id: remote_state_phrases
+  pattern: (?i)\bremote\s*-\s*(?:alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|new\s+hampshire|new\s+jersey|new\s+mexico|new\s+york|north\s+carolina|north\s+dakota|ohio|oklahoma|oregon|pennsylvania|rhode\s+island|south\s+carolina|south\s+dakota|tennessee|texas|utah|vermont|virginia|washington|west\s+virginia|wisconsin|wyoming)\b
+  sets:
+    work_mode: remote
+    location_country: US
+  description: Remote - <State> -> remote, location_country=US
+- id: remote_country_phrases
+  pattern: (?i)\b(?:germany\s+remote|remote\s*-\s*cyprus|remote\s*-\s*estonia)\b
+  sets:
+    work_mode: remote
+  description: Remote country phrases -> remote
+- id: remote_eligible_phrase
+  pattern: (?i)\b(?:u\.?s\.?\s*-\s*remote\s+eligible|remote\s+eligible)\b
+  sets:
+    work_mode: remote
+  description: Remote eligible phrasing -> remote
+- id: office_attendance_onsite
+  pattern: (?i)\b(?:in-person\s+office\s+attendance|office\s+attendance|in-office\s+attendance)\b
+  sets:
+    work_mode: onsite
+  description: In-person office attendance -> onsite
+- id: remote_scope_worldwide_bare
+  pattern: (?i)\b(?:worldwide|global|anywhere)\b
+  sets:
+    work_mode: remote
+    remote_scope: worldwide
+  description: Bare worldwide/global mention in location -> remote, worldwide.
 - id: hybrid_generic
   pattern: (?i)\bhybrid\b
   sets:
@@ -130,6 +181,31 @@ rules:
   sets:
     location_country: US
   description: Country-name mention -> location_country=US.
+- id: us_state_pattern
+  pattern: '(?:\b(?:Alabama|Alaska|Arizona|Arkansas|California|Colorado|Connecticut|Delaware|Florida|Georgia|Hawaii|Idaho|Illinois|Indiana|Iowa|Kansas|Kentucky|Louisiana|Maine|Maryland|Massachusetts|Michigan|Minnesota|Mississippi|Missouri|Montana|Nebraska|Nevada|New\s+Hampshire|New\s+Jersey|New\s+Mexico|New\s+York|North\s+Carolina|North\s+Dakota|Ohio|Oklahoma|Oregon|Pennsylvania|Rhode\s+Island|South\s+Carolina|South\s+Dakota|Tennessee|Texas|Utah|Vermont|Virginia|Washington|West\s+Virginia|Wisconsin|Wyoming)\b|,\s*(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)\b)'
+  sets:
+    location_country: US
+  description: US State name or postal code -> location_country=US.
+- id: country_hk
+  pattern: (?i)\b(?:Hong Kong)\b
+  sets:
+    location_country: HK
+  description: Country-name mention -> location_country=HK.
+- id: country_kh
+  pattern: (?i)\b(?:Cambodia)\b
+  sets:
+    location_country: KH
+  description: Country-name mention -> location_country=KH.
+- id: country_cy
+  pattern: (?i)\b(?:Cyprus)\b
+  sets:
+    location_country: CY
+  description: Country-name mention -> location_country=CY.
+- id: country_ee
+  pattern: (?i)\b(?:Estonia)\b
+  sets:
+    location_country: EE
+  description: Country-name mention -> location_country=EE.
 - id: country_gb
   pattern: (?i)\b(?:United Kingdom|Great Britain|U\.K\.|UK)\b
   sets:

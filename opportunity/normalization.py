@@ -369,7 +369,7 @@ def extract_work_location(
     the FIRST rule (top to bottom) that matches -- so more specific rules
     must be listed before generic catch-alls in the YAML file.
     """
-    search_text = f"{location_raw} {text[:400]}".strip()
+    search_text = f"{location_raw} {text[:4000]}".strip()
 
     resolved: dict[str, Any] = {}
     rule_ids: dict[str, str] = {}

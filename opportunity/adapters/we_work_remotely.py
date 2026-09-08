@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as element_tree
+from dataclasses import replace
 from typing import Any
 
 from opportunity.adapters.base import BaseAdapter
@@ -12,6 +13,7 @@ from opportunity.models import (
     FieldProvenance,
     Opportunity,
     ParseResult,
+    RemoteScope,
     Track,
     WorkMode,
     compute_deterministic_id,
@@ -103,6 +105,8 @@ class WeWorkRemotelyAdapter(BaseAdapter):
                 native_work_mode=WorkMode.REMOTE,
                 native_region=location_raw,
             )
+            if work_loc.remote_scope == RemoteScope.UNSPECIFIED and not work_loc.location_country:
+                work_loc = replace(work_loc, remote_scope=RemoteScope.WORLDWIDE)
             comp = extract_compensation(description)
             geo = derive_geographic_eligibility(
                 title=title,

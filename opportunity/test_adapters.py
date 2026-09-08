@@ -325,6 +325,30 @@ class HackerNewsGovernedFetchTests(unittest.TestCase):
         self.assertEqual([], data["comments"])
         self.assertEqual(2, transport._calls)
 
+    def test_hacker_news_long_title_clamped_and_provenance_preserved(self):
+        adapter = HackerNewsWhoIsHiringAdapter()
+        long_line = "Acme Corp | Remote | " + ("Very Long Title Word " * 25)
+        payload = json.dumps({
+            "thread_id": 99999,
+            "thread_title": "Ask HN: Who is hiring? (Test)",
+            "comments": [{
+                "id": 12345,
+                "by": "test_user",
+                "time": 1700000000,
+                "text": f"{long_line}\nWe are hiring engineers to build distributed systems in Python and Go.",
+            }],
+        })
+        opportunities = adapter.parse_payload(payload, raw_pointer="test:hn", fetched_at="2026-09-08")
+        self.assertEqual(1, len(opportunities))
+        opp = opportunities[0]
+        # Title must be clamped to 255 for database schema VARCHAR(255) safety
+        self.assertLessEqual(len(opp.title), 255)
+        self.assertLessEqual(len(opp.organization), 255)
+        # Field provenance must retain the full un-truncated string in raw_value
+        title_prov = next(p for p in opp.field_provenances if p.field_name == "title")
+        self.assertGreater(len(title_prov.raw_value), 255)
+        self.assertIn("Acme Corp", title_prov.raw_value)
+
 
 if __name__ == "__main__":
     unittest.main()

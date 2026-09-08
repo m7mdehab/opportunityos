@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from typing import Any
 
 from opportunity.adapters.base import BaseAdapter
@@ -11,6 +12,7 @@ from opportunity.models import (
     FieldProvenance,
     Opportunity,
     ParseResult,
+    RemoteScope,
     Track,
     WorkMode,
     compute_deterministic_id,
@@ -94,6 +96,8 @@ class RemotiveAdapter(BaseAdapter):
                 native_work_mode=WorkMode.REMOTE,
                 native_region=raw_loc,
             )
+            if work_loc.remote_scope == RemoteScope.UNSPECIFIED and not work_loc.location_country:
+                work_loc = replace(work_loc, remote_scope=RemoteScope.WORLDWIDE)
             comp = extract_compensation(str(job.get("salary") or "")) or extract_compensation(description)
             geo = derive_geographic_eligibility(
                 title=title,

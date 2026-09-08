@@ -1,602 +1,672 @@
-
-# B3 (BRIEF-FR-006) -- committed target-role family definitions.
-#
-# `matching/title_family.py::normalize_title` loads this file and evaluates
-# `families` in the order they appear here (list order, not dict/hash
-# iteration order, so results are deterministic regardless of Python's dict
-# implementation). For each family, `aliases` are checked before `patterns`,
-# and within each list, entries are checked in the order written. The first
-# family with a matching alias/pattern -- and no matching `negative_patterns`
-# entry for that same family -- wins. `other` is the deliberate catch-all and
-# must remain last with empty rule lists.
-#
-# All matching happens against a normalized copy of the title: casefolded,
-# with every run of non-alphanumeric characters collapsed to a single space
-# (see `title_family.py::_normalize_for_matching`). Aliases are plain phrases
-# (matched as whole words via an auto-derived word-boundary regex); `patterns`
-# are raw regexes evaluated with `re.search` against the same normalized text.
-#
-# Ordering rationale (specific families first, generic/broad ones last, so a
-# narrower, more identifying family wins a title before a broader one gets a
-# chance): customer/solutions engineering and ML/AI engineering are checked
-# first because "engineer" alone is not diagnostic and these two are the
-# collision pair the brief calls out by name (Customer Engineer vs Data
-# Engineer; ML Engineer vs Sales Engineer). data_migration is checked before
-# devops_platform so "cloud migration" wins over a generic "cloud" reading.
-# `other` always resolves; nothing is ever left unresolved.
-
 version: 1
 families:
-  - id: customer_solutions_engineering
-    display_name: Customer / Solutions Engineering
-    aliases:
-      - "customer engineer"
-      - "customer success engineer"
-      - "solutions engineer"
-      - "solution engineer"
-      - "sales engineer"
-      - "presales engineer"
-      - "pre sales engineer"
-      - "technical account manager"
-      - "solutions consultant"
-    patterns:
-      - '\bcustomer\s+(success\s+)?engineer\b'
-      - '\bsolutions?\s+engineer\b'
-      - '\bsales\s+engineer\b'
-      - '\b(pre\s*sales)\s+engineer\b'
-      - '\btechnical\s+account\s+manager\b'
-      - '\bsales\s+engineering\b'
-    negative_patterns:
-      - '\bdata\b'
-
-  - id: ml_ai_engineering
-    display_name: ML / AI Engineering
-    aliases:
-      - "machine learning engineer"
-      - "ml engineer"
-      - "ai engineer"
-      - "artificial intelligence engineer"
-      - "deep learning engineer"
-      - "nlp engineer"
-      - "computer vision engineer"
-      - "mlops engineer"
-    patterns:
-      - '\bmachine\s+learning\s+engineer\b'
-      - '\bml\s+engineer\b'
-      - '\bai\s+engineer\b'
-      - '\bartificial\s+intelligence\s+engineer\b'
-      - '\b(deep\s+learning|nlp|computer\s+vision|mlops)\s+engineer\b'
-    negative_patterns: []
-
-  - id: data_science
-    display_name: Data Science
-    aliases:
-      - "data scientist"
-      - "statistical consultant"
-      - "statistician"
-      - "quantitative analyst"
-    patterns:
-      - '\bdata\s+scientist\b'
-      - '\bstatistic(ian|al)\b'
-      - '\bquantitative\s+analyst\b'
-      - '\bdata\s+science\s+(manager|lead|director)\b'
-    negative_patterns: []
-
-  - id: data_migration
-    display_name: Data Migration
-    aliases:
-      - "data migration"
-      - "cloud migration"
-      - "migration engineer"
-      - "migration specialist"
-      - "platform migration"
-      - "system migration"
-    patterns:
-      - '\b(data|cloud|system|platform|infrastructure)\s+migration\b'
-      - '\bmigration\s+(engineer|specialist|consultant|lead)\b'
-    negative_patterns: []
-
-  - id: analytics_bi
-    display_name: Analytics / BI
-    aliases:
-      - "data analyst"
-      - "business intelligence analyst"
-      - "bi analyst"
-      - "bi engineer"
-      - "analytics engineer"
-      - "reporting analyst"
-      - "insights analyst"
-    patterns:
-      - '\bdata\s+analyst\b'
-      - '\b(business\s+intelligence|bi)\s+(analyst|engineer|developer)\b'
-      - '\banalytics\s+(engineer|analyst|specialist)\b'
-      - '\breporting\s+analyst\b'
-      - '\bdata\s+analytics\b'
-      - '\badvanced\s+analytics\b'
-      - '\banalytics\b'
-    negative_patterns: []
-
-  - id: tutoring
-    display_name: Tutoring / Teaching
-    aliases:
-      - "tutor"
-      - "private tutor"
-      - "instructor"
-      - "teaching assistant"
-    patterns:
-      - '\btutor(ing)?\b'
-      - '\binstructor\b'
-      - '\bteaching\s+assistant\b'
-    negative_patterns: []
-
-  - id: data_engineering
-    display_name: Data Engineering
-    aliases:
-      - "data engineer"
-      - "etl engineer"
-      - "data platform engineer"
-      - "big data engineer"
-      - "data infrastructure engineer"
-      - "data pipeline engineer"
-      - "data architect"
-    patterns:
-      - '\bdata\s+(platform\s+|infrastructure\s+|pipeline\s+)?engineer\b'
-      - '\betl\s+engineer\b'
-      - '\bbig\s*data\s+engineer\b'
-      - '\bdata\s+architect\b'
-      - '\bdata\s+platform\b'
-    negative_patterns:
-      - '\b(customer|sales|solutions?)\b'
-
-  - id: web_frontend
-    display_name: Web / Frontend
-    aliases:
-      - "frontend engineer"
-      - "front end engineer"
-      - "frontend developer"
-      - "front end developer"
-      - "ui engineer"
-      - "react developer"
-      - "web developer"
-      - "full stack developer"
-      - "fullstack developer"
-      - "fullstack engineer"
-    patterns:
-      - '\bfront[\s-]?end\s+(engineer|developer)\b'
-      - '\b(react|angular|vue)\s+developer\b'
-      - '\bui\s+engineer\b'
-      - '\bweb\s+developer\b'
-      - '\bfull[\s-]?stack\s+(developer|engineer)\b'
-    negative_patterns: []
-
-  - id: backend
-    display_name: Backend
-    aliases:
-      - "backend engineer"
-      - "back end engineer"
-      - "backend developer"
-      - "backend architect"
-      - "api engineer"
-      - "server side engineer"
-    patterns:
-      - '\bback[\s-]?end\s+(engineer|developer|architect)\b'
-      - '\bengineer\s+back[\s-]?end\b'
-      - '\bapi\s+engineer\b'
-      - '\bserver[\s-]?side\s+engineer\b'
-    negative_patterns: []
-
-  - id: devops_platform
-    display_name: DevOps / Platform
-    aliases:
-      - "devops engineer"
-      - "site reliability engineer"
-      - "platform engineer"
-      - "infrastructure engineer"
-      - "cloud engineer"
-      - "cloud architect"
-      - "systems engineer"
-      - "systems architect"
-      - "kubernetes engineer"
-    patterns:
-      - '\bdevops\s+engineer\b'
-      - '\bsite\s+reliability\s+engineer\b'
-      - '\bsre\b'
-      - '\bplatform\s+engineer\b'
-      - '\binfrastructure\s+engineer\b'
-      - '\bcloud\s+(engineer|architect)\b'
-      - '\bsystems?\s+(engineer|architect)\b'
-      - '\bkubernetes\s+engineer\b'
-      - '\binfrastructure\s+operations\b'
-      - '\bdata\s+center\b'
-    negative_patterns: []
-
-  - id: product
-    display_name: Product
-    aliases:
-      - "product manager"
-      - "product owner"
-      - "product designer"
-      - "product marketing manager"
-      - "product management"
-    patterns:
-      - '\bproduct\s+(manager|owner|designer|lead|management)\b'
-      - '\bdirector\b.*\bproduct\b'
-    negative_patterns: []
-
-  - id: project_program_management
-    display_name: Project / Program Management
-    aliases:
-      - "project manager"
-      - "program manager"
-      - "delivery manager"
-      - "scrum master"
-      - "program coordinator"
-      - "project coordinator"
-    patterns:
-      - '\b(project|program)\s+(manager|coordinator|lead)\b'
-      - '\bdelivery\s+manager\b'
-      - '\bscrum\s+master\b'
-    negative_patterns: []
-
-  - id: sales_account_management
-    display_name: Sales / Account Management
-    # Council review #2 finding (BRIEF-FR-006 B3): the founder-target-only
-    # taxonomy measured 20.6% family coverage over the committed 540-payload
-    # corpus. Sales/account roles ("Account Executive" and its many
-    # regional/segment variants) are the single largest cluster in that
-    # corpus (100+ titles) and were entirely unclassified. `other` must mean
-    # "genuinely unclassifiable", not "outside the founder's target roles" --
-    # relevance to the founder is title_family_fit's job, not this facet's.
-    aliases:
-      - "account executive"
-      - "account manager"
-      - "business development representative"
-      - "business development manager"
-      - "business development associate"
-      - "sales development representative"
-      - "channel account executive"
-      - "client executive"
-      - "inside sales"
-      - "deal desk"
-      - "sales manager"
-      - "sales representative"
-      - "sales lead"
-      - "sales director"
-    patterns:
-      - '\baccounts?\s+(executive|manager|management)\b'
-      - '\bbusiness\s+development\s+(representative|manager|associate|rep)\b'
-      - '\bsales\s+(development\s+representative|representative|manager|lead|director|contractor)\b'
-      - '\b(bdr|sdr)\b'
-      - '\bclient\s+executive\b'
-      - '\binside\s+sales\b'
-      - '\bdeal\s+desk\b'
-      - '\bdirector\b.*\b(sales|accounts?)\b'
-      - '\b(sales|accounts?)\b.*\bdirector\b'
-      - '\bsales?\s+(analyst|manager)\b'
-    negative_patterns:
-      - '\bengineer\b'
-      - '\bsuccess\b'
-      - '\bsupport\b'
-
-  - id: marketing
-    display_name: Marketing
-    aliases:
-      - "marketing manager"
-      - "marketing coordinator"
-      - "marketing specialist"
-      - "marketing lead"
-      - "marketing strategy"
-      - "growth marketing"
-      - "brand marketing"
-      - "product marketing"
-      - "partner marketing"
-      - "field marketing"
-      - "customer marketing"
-      - "content marketing"
-      - "digital marketing"
-      - "communications manager"
-      - "communications director"
-      - "community manager"
-      - "localization manager"
-      - "copywriting"
-      - "creative director"
-    patterns:
-      - '\bmarketing\s+(manager|coordinator|specialist|lead|director|analyst|strategy|expert|intern)\b'
-      - '\b(growth|brand|product|partner|field|customer|content|digital|crm)\s+marketing\b'
-      - '\bcommunications?\s+(manager|director|specialist)\b'
-      - '\bcommunications?\b.*\b(manager|director|specialist|lead)\b'
-      - '\bcommunity\s+manager\b'
-      - '\bcopywriting\b'
-      - '\bcreative\s+director\b'
-      - '\bdirector\b.*\b(marketing|communications?|campaigns?)\b'
-      - '\bhead\s+of\b.*\b(marketing|communications?|community)\b'
-      - '\blocalization\s+manager\b'
-      - '\bpublic\s+policy\b'
-      - '\bgovernment\s+affairs\b'
-      - '\bcommunity\s+engagement\b'
-    negative_patterns: []
-
-  - id: support_success
-    display_name: Customer Support / Success
-    aliases:
-      - "customer success"
-      - "customer support"
-      - "customer experience"
-      - "customer enablement"
-      - "customer advocacy"
-      - "client success"
-      - "technical support"
-      - "it support"
-      - "help desk"
-      - "concierge specialist"
-      - "support specialist"
-      - "support manager"
-      - "support supervisor"
-      - "support administrator"
-      - "retention specialist"
-    patterns:
-      - '\bcustomer\s+(success|support|experience|enablement|advocacy)\b'
-      - '\bclient\s+success\b'
-      - '\btechnical\s+support\b'
-      - '\bit\s+support\b'
-      - '\bhelp\s+desk\b'
-      - '\bconcierge\s+specialist\b'
-      - '\bsupport\s+(specialist|manager|supervisor|administrator|partner|coordinator)\b'
-      - '\bmanager\b.*\bsupport\b'
-      - '\bretention\s+specialist\b'
-    negative_patterns:
-      - '\bengineer\b'
-
-  - id: operations_logistics
-    display_name: Operations / Logistics
-    aliases:
-      - "operations manager"
-      - "operations coordinator"
-      - "operations associate"
-      - "operations specialist"
-      - "operations lead"
-      - "supply chain"
-      - "logistics"
-      - "freight manager"
-      - "store manager"
-      - "branch manager"
-      - "area manager"
-      - "country manager"
-      - "delivery driver"
-      - "warehouse"
-      - "business operations"
-    patterns:
-      - '\boperations\s+(manager|coordinator|associate|specialist|lead|analyst)\b'
-      - '\b(air|ocean)\s+(operations|planning)\b'
-      - '\bsupply\s+chain\b'
-      - '\blogistics\b'
-      - '\bfreight\s+manager\b'
-      - '\b(store|branch|area|country|market)\s+(manager|director)\b'
-      - '\bdelivery\s+driver\b'
-      - '\bwarehouse\b'
-      - '\bdirector\b.*\boperations\b'
-      - '\bcustoms\b'
-      - '\bbusiness\s+operations\b'
-      - '\bcapacity\s+planning\b'
-      - '\bdemand\s+planning\b'
-    negative_patterns:
-      - '\bengineer\b'
-
-  - id: finance_accounting
-    display_name: Finance / Accounting
-    aliases:
-      - "accountant"
-      - "accounting manager"
-      - "accounting analyst"
-      - "financial analyst"
-      - "finance manager"
-      - "treasury"
-      - "payroll"
-      - "revenue accounting"
-      - "credit risk analyst"
-      - "controller"
-    patterns:
-      - '\baccountant\b'
-      - '\baccounting\s+(manager|analyst|specialist)\b'
-      - '\bfinanc(e|ial)\s+(manager|analyst|controller)\b'
-      - '\btreasury\s+(operations|analyst|manager)\b'
-      - '\bpayroll\s+(clerk|specialist|manager)\b'
-      - '\bcredit\s+risk\s+analyst\b'
-      - '\brevenue\s+accounting\b'
-      - '\bdirector\b.*\baccounting\b'
-      - '\binternal\s+audit\b'
-      - '\bwealth\b'
-      - '\bbilling\s+specialist\b'
-    negative_patterns: []
-
-  - id: legal
-    display_name: Legal / Compliance
-    aliases:
-      - "counsel"
-      - "general counsel"
-      - "corporate counsel"
-      - "compliance manager"
-      - "compliance analyst"
-      - "compliance officer"
-      - "compliance associate"
-      - "compliance specialist"
-      - "privacy compliance"
-      - "paralegal"
-      - "legal counsel"
-    patterns:
-      - '\bcounsel\b'
-      - '\bcompliance\s+(manager|analyst|officer|associate|specialist|operations|technology)\b'
-      - '\bcompliance\b.*\b(manager|officer|analyst|specialist)\b'
-      - '\bprivacy\s+(compliance|analyst|counsel)\b'
-      - '\banalyst\b.*\bprivacy\b'
-      - '\bparalegal\b'
-    negative_patterns: []
-
-  - id: people_recruiting
-    display_name: People / Recruiting
-    aliases:
-      - "recruiter"
-      - "recruiting"
-      - "talent acquisition"
-      - "talent management"
-      - "hr generalist"
-      - "hr business partner"
-      - "people lead"
-      - "people partner"
-      - "compensation manager"
-      - "sourcer"
-    patterns:
-      - '\brecruit(er|ing)\b'
-      - '\btalent\s+(acquisition|management)\b'
-      - '\bhr\s+(generalist|business\s+partner|manager)\b'
-      - '\bpeople\s+(lead|partner|operations)\b'
-      - '\bcompensation\s+(manager|partner|analyst)\b'
-      - '\bsourcer\b'
-      - '\bdirector\b.*\btalent\b'
-      - '\bhead\s+of\b.*\btalent\b'
-    negative_patterns: []
-
-  - id: design_ux
-    display_name: Design / UX
-    aliases:
-      - "ux designer"
-      - "ui designer"
-      - "visual designer"
-      - "brand designer"
-      - "graphic designer"
-      - "designer advocate"
-      - "ux researcher"
-    patterns:
-      - '\b(ux|ui|visual|graphic|brand)\s+design(er)?\b'
-      - '\bdesigner\s+advocate\b'
-      - '\bux\s+research(er)?\b'
-      - '\bdigital\s+design\b'
-    negative_patterns: []
-
-  - id: security
-    display_name: Security / Risk
-    aliases:
-      - "security engineer"
-      - "security analyst"
-      - "security operations"
-      - "information security"
-      - "cyber security"
-      - "fraud specialist"
-      - "fraud operations"
-      - "trust and safety"
-    patterns:
-      - '\bsecurity\s+(engineer|analyst|operations|manager|specialist|officer)\b'
-      - '\b(cyber|information)\s+security\b'
-      - '\bfraud\s+(specialist|operations|analyst)\b'
-      - '\brisk\s+(analyst|management)\b'
-      - '\btrust\s+and\s+safety\b'
-      - '\bdirector\b.*\bsecurity\b'
-    negative_patterns: []
-
-  - id: research_science
-    display_name: Research / Science
-    aliases:
-      - "research scientist"
-      - "applied scientist"
-      - "research associate"
-    patterns:
-      - '\b(research|applied)\s+scientist\b'
-      - '\bresearch\s+(associate|analyst)\b'
-    negative_patterns: []
-
-  - id: hardware_embedded
-    display_name: Hardware / Embedded
-    aliases:
-      - "hardware engineer"
-      - "embedded engineer"
-      - "electrical engineer"
-      - "mechanical engineer"
-      - "field technician"
-      - "maintenance technician"
-      - "vehicle technician"
-      - "data center technician"
-      - "automation specialist"
-    patterns:
-      - '\b(hardware|embedded|electrical|mechanical)\s+engineer\b'
-      - '\b(field|maintenance|vehicle|data\s+center)\s+technician\b'
-      - '\bautomation\s+(specialist|engineer|technician)\b'
-    negative_patterns: []
-
-  - id: healthcare_clinical
-    display_name: Healthcare / Clinical
-    aliases:
-      - "registered nurse"
-      - "nurse practitioner"
-      - "physician"
-      - "patient care"
-      - "medical assistant"
-    patterns:
-      - '\b(registered\s+nurse|nurse\s+practitioner)\b'
-      - '\bclinical\s+(specialist|coordinator|research)\b'
-      - '\bphysician\b'
-      - '\bpatient\s+care\b'
-      - '\bsite\s+activation\b'
-    negative_patterns: []
-
-  - id: education
-    display_name: Education
-    aliases:
-      - "curriculum manager"
-      - "instructional designer"
-      - "teacher"
-      - "professor"
-      - "academic advisor"
-    patterns:
-      - '\bcurriculum\s+(manager|designer|specialist)\b'
-      - '\binstructional\s+design(er)?\b'
-      - '\bteacher\b'
-      - '\bprofessor\b'
-    negative_patterns: []
-
-  - id: qa_test
-    display_name: QA / Test
-    aliases:
-      - "qa engineer"
-      - "quality assurance"
-      - "test engineer"
-      - "sdet"
-      - "quality analyst"
-    patterns:
-      - '\bqa\s+(engineer|analyst|lead|manager)\b'
-      - '\bquality\s+assurance\b'
-      - '\btest\s+engineer\b'
-      - '\bsdet\b'
-      - '\bqa\b'
-      - '\bquality\b.*\bmanager\b'
-      - '\bmanager\b.*\bquality\b'
-    negative_patterns: []
-
-  - id: software_engineering
-    display_name: Software Engineering (General)
-    # Defect 1 (council review #1, BRIEF-FR-006 B3): a bare Engineer /
-    # Developer / Architect title with no more specific domain signal must
-    # still land in a real family, not `other` -- `other` means "not a role
-    # family we recognise", not "we had no rule". This family is
-    # deliberately generic and evaluated last, after every more specific
-    # family above, so it never steals a title a specific family should own
-    # (e.g. "Backend Engineer" still resolves to `backend`, not here,
-    # because `backend` is checked first and returns before this family is
-    # ever reached).
-    aliases:
-      - "software engineer"
-      - "software developer"
-      - "engineer"
-      - "developer"
-      - "architect"
-      - "programmer"
-      - "engineering manager"
-      - "technical lead"
-    patterns:
-      - '\bdirector\b.*\bengineering\b'
-    negative_patterns: []
-
-  - id: other
-    display_name: Other / Unclassified
-    aliases: []
-    patterns: []
-    negative_patterns: []
+- id: customer_solutions_engineering
+  display_name: Customer / Solutions Engineering
+  aliases:
+  - customer engineer
+  - customer success engineer
+  - solutions engineer
+  - solution engineer
+  - sales engineer
+  - presales engineer
+  - pre sales engineer
+  - technical account manager
+  - solutions consultant
+  - customer solutions engineer
+  - forward deployed engineer
+  - solutions architect
+  - delivery solutions architect
+  patterns:
+  - \bcustomer\s+(success\s+)?engineer\b
+  - \bsolutions?\s+engineer\b
+  - \bsales\s+engineer\b
+  - \b(pre\s*sales)\s+engineer\b
+  - \btechnical\s+account\s+manager\b
+  - \bsales\s+engineering\b
+  - \bcustomer\s+solutions?\s+engineer\b
+  - \bforward\s+deployed\s+engineer\b
+  - \bsolutions?\s+architect\b
+  negative_patterns:
+  - \bdata\b
+- id: ml_ai_engineering
+  display_name: ML / AI Engineering
+  aliases:
+  - machine learning engineer
+  - ml engineer
+  - ai engineer
+  - artificial intelligence engineer
+  - deep learning engineer
+  - nlp engineer
+  - computer vision engineer
+  - mlops engineer
+  - ai research engineer
+  patterns:
+  - \bmachine\s+learning\s+engineer\b
+  - \bml\s+engineer\b
+  - \bai\s+engineer\b
+  - \bartificial\s+intelligence\s+engineer\b
+  - \b(deep\s+learning|nlp|computer\s+vision|mlops)\s+engineer\b
+  - \bai\s+research\b
+  negative_patterns: []
+- id: data_science
+  display_name: Data Science
+  aliases:
+  - data scientist
+  - statistical consultant
+  - statistician
+  - quantitative analyst
+  patterns:
+  - \bdata\s+scientist\b
+  - \bstatistic(ian|al)\b
+  - \bquantitative\s+analyst\b
+  - \bdata\s+science\s+(manager|lead|director)\b
+  negative_patterns: []
+- id: data_migration
+  display_name: Data Migration
+  aliases:
+  - data migration
+  - cloud migration
+  - migration engineer
+  - migration specialist
+  - platform migration
+  - system migration
+  patterns:
+  - \b(data|cloud|system|platform|infrastructure)\s+migration\b
+  - \bmigration\s+(engineer|specialist|consultant|lead)\b
+  negative_patterns: []
+- id: analytics_bi
+  display_name: Analytics / BI
+  aliases:
+  - data analyst
+  - business intelligence analyst
+  - bi analyst
+  - bi engineer
+  - analytics engineer
+  - reporting analyst
+  - insights analyst
+  - business systems analyst
+  - business analyst
+  - it business analyst
+  - crm lead
+  patterns:
+  - \bdata\s+analyst\b
+  - \b(business\s+intelligence|bi)\s+(analyst|engineer|developer)\b
+  - \banalytics\s+(engineer|analyst|specialist)\b
+  - \breporting\s+analyst\b
+  - \bdata\s+analytics\b
+  - \badvanced\s+analytics\b
+  - \banalytics\b
+  - \bbusiness\s+systems?\s+analyst\b
+  - \bbusiness\s+analyst\b
+  - ^\s*analyst\s*$
+  negative_patterns: []
+- id: tutoring
+  display_name: Tutoring / Teaching
+  aliases:
+  - tutor
+  - private tutor
+  - instructor
+  - teaching assistant
+  patterns:
+  - \btutor(ing)?\b
+  - \binstructor\b
+  - \bteaching\s+assistant\b
+  negative_patterns: []
+- id: data_engineering
+  display_name: Data Engineering
+  aliases:
+  - data engineer
+  - etl engineer
+  - data platform engineer
+  - big data engineer
+  - data infrastructure engineer
+  - data pipeline engineer
+  - data architect
+  patterns:
+  - \bdata\s+(platform\s+|infrastructure\s+|pipeline\s+)?engineer\b
+  - \betl\s+engineer\b
+  - \bbig\s*data\s+engineer\b
+  - \bdata\s+architect\b
+  - \bdata\s+platform\b
+  negative_patterns:
+  - \b(customer|sales|solutions?)\b
+- id: web_frontend
+  display_name: Web / Frontend
+  aliases:
+  - frontend engineer
+  - front end engineer
+  - frontend developer
+  - front end developer
+  - ui engineer
+  - react developer
+  - web developer
+  - full stack developer
+  - fullstack developer
+  - fullstack engineer
+  - android engineer
+  - ios engineer
+  - mobile engineer
+  - rails engineer
+  patterns:
+  - \bfront[\s-]?end\s+(engineer|developer)\b
+  - \b(react|angular|vue)\s+developer\b
+  - \bui\s+engineer\b
+  - \bweb\s+developer\b
+  - \bfull[\s-]?stack\s+(developer|engineer)\b
+  - \b(android|ios|mobile)\s+(engineer|developer)\b
+  - \brails\s+(engineer|developer)\b
+  negative_patterns: []
+- id: backend
+  display_name: Backend
+  aliases:
+  - backend engineer
+  - back end engineer
+  - backend developer
+  - backend architect
+  - api engineer
+  - server side engineer
+  - golang developer
+  - go developer
+  patterns:
+  - \bback[\s-]?end\s+(engineer|developer|architect)\b
+  - \bengineer\s+back[\s-]?end\b
+  - \bapi\s+engineer\b
+  - \bserver[\s-]?side\s+engineer\b
+  - \b(golang|go)\s+(developer|engineer)\b
+  negative_patterns: []
+- id: devops_platform
+  display_name: DevOps / Platform
+  aliases:
+  - devops engineer
+  - site reliability engineer
+  - platform engineer
+  - infrastructure engineer
+  - cloud engineer
+  - cloud architect
+  - systems engineer
+  - systems architect
+  - kubernetes engineer
+  patterns:
+  - \bdevops\s+engineer\b
+  - \bsite\s+reliability\s+engineer\b
+  - \bsre\b
+  - \bplatform\s+engineer\b
+  - \binfrastructure\s+engineer\b
+  - \bcloud\s+(engineer|architect)\b
+  - \bsystems?\s+(engineer|architect)\b
+  - \bkubernetes\s+engineer\b
+  - \binfrastructure\s+operations\b
+  - \bdata\s+center\b
+  - \bcloud\s+computing\b
+  - \bincident\s+commander\b
+  negative_patterns: []
+- id: product
+  display_name: Product
+  aliases:
+  - product manager
+  - product owner
+  - product designer
+  - product marketing manager
+  - product management
+  patterns:
+  - \bproduct\s+(manager|owner|designer|lead|management)\b
+  - \bdirector\b.*\bproduct\b
+  negative_patterns: []
+- id: project_program_management
+  display_name: Project / Program Management
+  aliases:
+  - project manager
+  - program manager
+  - delivery manager
+  - scrum master
+  - program coordinator
+  - project coordinator
+  patterns:
+  - \b(project|program)\s+(manager|coordinator|lead)\b
+  - \bdelivery\s+manager\b
+  - \bscrum\s+master\b
+  - \bproject\s+planning\b
+  negative_patterns: []
+- id: sales_account_management
+  display_name: Sales / Account Management
+  aliases:
+  - account executive
+  - account manager
+  - business development representative
+  - business development manager
+  - business development associate
+  - sales development representative
+  - channel account executive
+  - client executive
+  - inside sales
+  - deal desk
+  - sales manager
+  - sales representative
+  - sales lead
+  - sales director
+  - appointment setter
+  - cold caller
+  - account service delivery
+  - account managment
+  - sales jedi
+  patterns:
+  - \baccounts?\s+(executive|manager|management)\b
+  - \bbusiness\s+development\s+(representative|manager|associate|rep)\b
+  - \bsales\s+(development\s+representative|representative|manager|lead|director|contractor)\b
+  - \b(bdr|sdr)\b
+  - \bclient\s+executive\b
+  - \binside\s+sales\b
+  - \bdeal\s+desk\b
+  - \bdirector\b.*\b(sales|accounts?)\b
+  - \b(sales|accounts?)\b.*\bdirector\b
+  - \bsales?\s+(analyst|manager)\b
+  - \bappointment\s+setter\b
+  - \bcold\s+caller\b
+  - \baccounts?\s+(service|delivery)\b
+  - \baccounts?\s+manag(e)?ment\b
+  - \bassociate\b.*\baccount\b
+  - \baccount\b.*\bassociate\b
+  - \bsales\s+jedi\b
+  negative_patterns:
+  - \bengineer\b
+  - \bsuccess\b
+  - \bsupport\b
+- id: marketing
+  display_name: Marketing
+  aliases:
+  - marketing manager
+  - marketing coordinator
+  - marketing specialist
+  - marketing lead
+  - marketing strategy
+  - growth marketing
+  - brand marketing
+  - product marketing
+  - partner marketing
+  - field marketing
+  - customer marketing
+  - content marketing
+  - digital marketing
+  - communications manager
+  - communications director
+  - community manager
+  - localization manager
+  - copywriting
+  - creative director
+  - acquisition manager
+  - freelance writer
+  - writer
+  - managing editor
+  - executive producer
+  - amazon specialist
+  patterns:
+  - \bmarketing\s+(manager|coordinator|specialist|lead|director|analyst|strategy|expert|intern)\b
+  - \b(growth|brand|product|partner|field|customer|content|digital|crm)\s+marketing\b
+  - \bcommunications?\s+(manager|director|specialist)\b
+  - \bcommunications?\b.*\b(manager|director|specialist|lead)\b
+  - \bcommunity\s+manager\b
+  - \bcopywriting\b
+  - \bcreative\s+director\b
+  - \bdirector\b.*\b(marketing|communications?|campaigns?)\b
+  - \bhead\s+of\b.*\b(marketing|communications?|community)\b
+  - \blocalization\s+manager\b
+  - \bpublic\s+policy\b
+  - \bgovernment\s+affairs\b
+  - \bcommunity\s+engagement\b
+  - \bacquisition\s+manager\b
+  - \b(freelance\s+)?writer\b
+  - \bmanaging\s+editor\b
+  - \bexecutive\s+producer\b
+  - \bamazon\s+specialist\b
+  - \bconseiller.*marketing\b
+  negative_patterns: []
+- id: support_success
+  display_name: Customer Support / Success
+  aliases:
+  - customer success
+  - customer support
+  - customer experience
+  - customer enablement
+  - customer advocacy
+  - client success
+  - technical support
+  - it support
+  - help desk
+  - concierge specialist
+  - support specialist
+  - support manager
+  - support supervisor
+  - support administrator
+  - retention specialist
+  - product support
+  - service desk engineer
+  patterns:
+  - \bcustomer\s+(success|support|experience|enablement|advocacy)\b
+  - \bclient\s+success\b
+  - \btechnical\s+support\b
+  - \bit\s+support\b
+  - \bhelp\s+desk\b
+  - \bconcierge\s+specialist\b
+  - \bsupport\s+(specialist|manager|supervisor|administrator|partner|coordinator)\b
+  - \bmanager\b.*\bsupport\b
+  - \bretention\s+specialist\b
+  - \bproduct\s+support\b
+  - \bsoutien\b
+  - \bservice\s+desk\b
+  negative_patterns:
+  - \bengineer\b
+- id: operations_logistics
+  display_name: Operations / Logistics
+  aliases:
+  - operations manager
+  - operations coordinator
+  - operations associate
+  - operations specialist
+  - operations lead
+  - supply chain
+  - logistics
+  - freight manager
+  - store manager
+  - branch manager
+  - area manager
+  - country manager
+  - delivery driver
+  - warehouse
+  - business operations
+  - administrative assistant
+  - executive assistant
+  - office assistant
+  - chief of staff
+  - business planning
+  - claims manager
+  - estimator
+  - detailer
+  - vehicle detailer
+  - merchandiser
+  - visual merchandiser
+  - janitor
+  - carpenter
+  - joiner
+  - chief steward
+  - housekeeping manager
+  - kitchen porter
+  - parts person
+  - picker
+  - produce clerk
+  - production lead
+  - mail carrier
+  - field officer
+  - fire officer
+  - handyman
+  - handywoman
+  - cto operations lead
+  - av production specialist
+  - content reviewer
+  patterns:
+  - \boperations\s+(manager|coordinator|associate|specialist|lead|analyst)\b
+  - \b(air|ocean)\s+(operations|planning)\b
+  - \bsupply\s+chain\b
+  - \blogistics\b
+  - \bfreight\s+manager\b
+  - \b(store|branch|area|country|market)\s+(manager|director)\b
+  - \bdelivery\s+driver\b
+  - \bwarehouse\b
+  - \bdirector\b.*\boperations\b
+  - \bcustoms\b
+  - \bbusiness\s+operations\b
+  - \bcapacity\s+planning\b
+  - \bdemand\s+planning\b
+  - \badministrat(ive|or)\s+assistant\b
+  - \bexecutive\s+assistant\b
+  - \boffice\s+assistant\b
+  - \bchief\s+of\s+staff\b
+  - \bbusiness\s+planning\b
+  - \bclaims?\s+(manager|specialist|analyst)\b
+  - \breclamations?\b
+  - \bestimator\b
+  - \bdetailer\b
+  - \bmerchandis(er|ing)\b
+  - \bjanitor\b
+  - \bcarpenter\b
+  - \bjoiner\b
+  - \bsteward\b
+  - \bhousekeeping\b
+  - \bkitchen\s+porter\b
+  - \bparts\s+(person|specialist)\b
+  - \bpicker\b
+  - \bproduce\s+clerk\b
+  - \bproduction\s+lead\b
+  - \bmail\s+carrier\b
+  - \b(field|fire)\s+officer\b
+  - \bhandy(man|woman)\b
+  - \boperations\s+lead\b
+  - \bconstruction\b
+  - \bav\s+production\b
+  - \bcontent\s+reviewer\b
+  - \blabor\s+management\b
+  negative_patterns:
+  - \bengineer\b
+- id: finance_accounting
+  display_name: Finance / Accounting
+  aliases:
+  - accountant
+  - accounting manager
+  - accounting analyst
+  - financial analyst
+  - finance manager
+  - treasury
+  - payroll
+  - revenue accounting
+  - credit risk analyst
+  - controller
+  patterns:
+  - \baccountant\b
+  - \baccounting\s+(manager|analyst|specialist)\b
+  - \bfinanc(e|ial)\s+(manager|analyst|controller)\b
+  - \btreasury\s+(operations|analyst|manager)\b
+  - \bpayroll\s+(clerk|specialist|manager)\b
+  - \bcredit\s+risk\s+analyst\b
+  - \brevenue\s+accounting\b
+  - \bdirector\b.*\baccounting\b
+  - \binternal\s+audit\b
+  - \bwealth\b
+  - \bbilling\s+specialist\b
+  - \b(loan|salability|mortgage)\b
+  negative_patterns: []
+- id: legal
+  display_name: Legal / Compliance
+  aliases:
+  - counsel
+  - general counsel
+  - corporate counsel
+  - compliance manager
+  - compliance analyst
+  - compliance officer
+  - compliance associate
+  - compliance specialist
+  - privacy compliance
+  - paralegal
+  - legal counsel
+  patterns:
+  - \bcounsel\b
+  - \bcompliance\s+(manager|analyst|officer|associate|specialist|operations|technology)\b
+  - \bcompliance\b.*\b(manager|officer|analyst|specialist)\b
+  - \bprivacy\s+(compliance|analyst|counsel)\b
+  - \banalyst\b.*\bprivacy\b
+  - \bparalegal\b
+  negative_patterns: []
+- id: people_recruiting
+  display_name: People / Recruiting
+  aliases:
+  - recruiter
+  - recruiting
+  - talent acquisition
+  - talent management
+  - hr generalist
+  - hr business partner
+  - people lead
+  - people partner
+  - compensation manager
+  - sourcer
+  patterns:
+  - \brecruit(er|ing)\b
+  - \btalent\s+(acquisition|management)\b
+  - \bhr\s+(generalist|business\s+partner|manager)\b
+  - \bpeople\s+(lead|partner|operations)\b
+  - \bcompensation\s+(manager|partner|analyst)\b
+  - \bsourcer\b
+  - \bdirector\b.*\btalent\b
+  - \bhead\s+of\b.*\btalent\b
+  - \brewards\b
+  negative_patterns: []
+- id: design_ux
+  display_name: Design / UX
+  aliases:
+  - ux designer
+  - ui designer
+  - visual designer
+  - brand designer
+  - graphic designer
+  - designer advocate
+  - ux researcher
+  patterns:
+  - \b(ux|ui|visual|graphic|brand)\s+design(er)?\b
+  - \bdesigner\s+advocate\b
+  - \bux\s+research(er)?\b
+  - \bdigital\s+design\b
+  - \bux\s*/?\s*ai\b
+  - \bweb2print\b
+  negative_patterns: []
+- id: security
+  display_name: Security / Risk
+  aliases:
+  - security engineer
+  - security analyst
+  - security operations
+  - information security
+  - cyber security
+  - fraud specialist
+  - fraud operations
+  - trust and safety
+  - siem engineer
+  - detection engineer
+  patterns:
+  - \bsecurity\s+(engineer|analyst|operations|manager|specialist|officer)\b
+  - \b(cyber|information)\s+security\b
+  - \bfraud\s+(specialist|operations|analyst)\b
+  - \brisk\s+(analyst|management)\b
+  - \btrust\s+and\s+safety\b
+  - \bdirector\b.*\bsecurity\b
+  - \bred\s+team\b
+  - \bsecurity\s+research\b
+  - \b(siem|detection)\s+engineer\b
+  negative_patterns: []
+- id: research_science
+  display_name: Research / Science
+  aliases:
+  - research scientist
+  - applied scientist
+  - research associate
+  patterns:
+  - \b(research|applied)\s+scientist\b
+  - \bresearch\s+(associate|analyst)\b
+  negative_patterns: []
+- id: hardware_embedded
+  display_name: Hardware / Embedded
+  aliases:
+  - hardware engineer
+  - embedded engineer
+  - electrical engineer
+  - mechanical engineer
+  - field technician
+  - maintenance technician
+  - vehicle technician
+  - data center technician
+  - automation specialist
+  patterns:
+  - \b(hardware|embedded|electrical|mechanical)\s+engineer\b
+  - \b(field|maintenance|vehicle|data\s+center)\s+technician\b
+  - \bautomation\s+(specialist|engineer|technician)\b
+  - \bkitchen\s+technician\b
+  - \bplant\s+fitter\b
+  negative_patterns: []
+- id: healthcare_clinical
+  display_name: Healthcare / Clinical
+  aliases:
+  - registered nurse
+  - nurse practitioner
+  - physician
+  - patient care
+  - medical assistant
+  patterns:
+  - \b(registered\s+nurse|nurse\s+practitioner)\b
+  - \bclinical\s+(specialist|coordinator|research)\b
+  - \bphysician\b
+  - \bpatient\s+care\b
+  - \bsite\s+activation\b
+  negative_patterns: []
+- id: education
+  display_name: Education
+  aliases:
+  - curriculum manager
+  - instructional designer
+  - teacher
+  - professor
+  - academic advisor
+  patterns:
+  - \bcurriculum\s+(manager|designer|specialist)\b
+  - \binstructional\s+design(er)?\b
+  - \bteacher\b
+  - \bprofessor\b
+  negative_patterns: []
+- id: qa_test
+  display_name: QA / Test
+  aliases:
+  - qa engineer
+  - quality assurance
+  - test engineer
+  - sdet
+  - quality analyst
+  patterns:
+  - \bqa\s+(engineer|analyst|lead|manager)\b
+  - \bquality\s+assurance\b
+  - \btest\s+engineer\b
+  - \bsdet\b
+  - \bqa\b
+  - \bquality\b.*\bmanager\b
+  - \bmanager\b.*\bquality\b
+  - \bqualite\b
+  negative_patterns: []
+- id: software_engineering
+  display_name: Software Engineering (General)
+  aliases:
+  - software engineer
+  - software developer
+  - engineer
+  - developer
+  - architect
+  - programmer
+  - engineering manager
+  - technical lead
+  - software architect
+  - peoplesoft developer
+  - roblox developer
+  - agentic python engineer
+  - systems developer
+  - applications developer
+  - principal engineer
+  - blockchain developer
+  - crm developer
+  patterns:
+  - \bdirector\b.*\bengineering\b
+  - \b(systems?|applications?|firmware)\s+(engineer|developer)\b
+  - \bprincipal\s+engineer\b
+  - \bengineer(ing)?\s+manager\b
+  - \bblockchain\s+developer\b
+  - \bcrm\s+developer\b
+  negative_patterns: []
+- id: other
+  display_name: Other / Unclassified
+  aliases: []
+  patterns: []
+  negative_patterns: []
