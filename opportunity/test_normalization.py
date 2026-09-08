@@ -227,6 +227,63 @@ class NormalizationTests(unittest.TestCase):
         self.assertEqual(fp.normalized_value, "Lead Engineer")
         self.assertEqual(fp.derivation_type, "raw_extraction")
 
+    # --- Adversarial Channel Segregation Tests (BRIEF-FR-006 Inference Safety Delta) ---
+
+    def test_adversarial_channel_segregation_negative_control_a(self) -> None:
+        """Negative control A: 'We are a global company. This role is onsite in Cairo.'
+        Must NOT infer remote/worldwide from generic employer prose; onsite + Cairo/EG only.
+        """
+        result = extract_work_location("", "We are a global company. This role is onsite in Cairo.")
+        self.assertEqual(WorkMode.ONSITE, result.work_mode)
+        self.assertEqual(RemoteScope.UNSPECIFIED, result.remote_scope)
+        self.assertEqual("EG", result.location_country)
+        self.assertEqual("Cairo", result.location_city)
+
+    def test_adversarial_channel_segregation_negative_control_b(self) -> None:
+        """Negative control B: 'Support customers in California and India. Role location: Cairo.'
+        Must NOT infer US or India as job country; Cairo/EG inferred from explicit role-location.
+        """
+        result = extract_work_location("", "Support customers in California and India. Role location: Cairo.")
+        self.assertNotIn(result.location_country, ("US", "IN"))
+        self.assertEqual("EG", result.location_country)
+        self.assertEqual("Cairo", result.location_city)
+
+    def test_adversarial_channel_segregation_negative_control_c(self) -> None:
+        """Negative control C: 'Global team; hybrid role in London.'
+        Must NOT infer worldwide remote; hybrid + London/GB only.
+        """
+        result = extract_work_location("", "Global team; hybrid role in London.")
+        self.assertEqual(WorkMode.HYBRID, result.work_mode)
+        self.assertEqual(RemoteScope.UNSPECIFIED, result.remote_scope)
+        self.assertEqual("GB", result.location_country)
+        self.assertEqual("London", result.location_city)
+
+    def test_adversarial_channel_segregation_negative_control_d(self) -> None:
+        """Negative control D: 'Work with teams anywhere in the world.'
+        With no role/candidate location semantics, must NOT infer remote/worldwide.
+        """
+        result = extract_work_location("", "Work with teams anywhere in the world.")
+        self.assertEqual(WorkMode.UNSPECIFIED, result.work_mode)
+        self.assertEqual(RemoteScope.UNSPECIFIED, result.remote_scope)
+
+    def test_adversarial_channel_segregation_positive_control_e(self) -> None:
+        """Positive control E: raw location = 'Worldwide' -> remote / worldwide."""
+        result = extract_work_location("Worldwide", "")
+        self.assertEqual(WorkMode.REMOTE, result.work_mode)
+        self.assertEqual(RemoteScope.WORLDWIDE, result.remote_scope)
+
+    def test_adversarial_channel_segregation_positive_control_f(self) -> None:
+        """Positive control F: 'This position is fully remote and may be worked from anywhere.' -> remote / worldwide."""
+        result = extract_work_location("", "This position is fully remote and may be worked from anywhere.")
+        self.assertEqual(WorkMode.REMOTE, result.work_mode)
+        self.assertEqual(RemoteScope.WORLDWIDE, result.remote_scope)
+
+    def test_adversarial_channel_segregation_positive_control_g(self) -> None:
+        """Positive control G: 'Must be based in California.' -> US."""
+        result = extract_work_location("", "Must be based in California.")
+        self.assertEqual("US", result.location_country)
+
 
 if __name__ == "__main__":
     unittest.main()
+

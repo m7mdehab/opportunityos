@@ -10,8 +10,8 @@ Next: complete active brief.
 
 ## Repository
 
-- **Generated:** 2026-09-08T00:08:06Z
-- **State generated at commit:** `78ec85a` — feat(product): P1-P4 improvements for work-mode, location, title families, and HN poll defect
+- **Generated:** 2026-09-08T20:32:06Z
+- **State generated at commit:** `1c6b560` — feat(normalization): deterministic channel segregation and adversarial safety tests
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief

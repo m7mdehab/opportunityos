@@ -287,6 +287,31 @@ def country_code_to_name(iso2_or_region: str) -> str:
     return code
 
 
+_BOTH_CHANNEL_RULE_IDS: frozenset[str] = frozenset(
+    {
+        "remote_region_restricted_us_only",
+        "remote_region_restricted_bracket_country_only",
+        "hybrid_city_em_dash",
+        "remote_region_restricted_us_canada_only",
+        "remote_region_restricted_emea_only",
+        "remote_region_restricted_latam_only",
+        "remote_region_restricted_apac_only",
+        "remote_region_restricted_eu_only",
+        "remote_region_restricted_uk_only",
+        "remote_region_restricted_europe_only",
+        "remote_anywhere_remote",
+        "linkedin_hybrid_tag",
+        "linkedin_remote_tag",
+        "linkedin_onsite_tag",
+        "remote_us_phrases",
+        "remote_state_phrases",
+        "remote_country_phrases",
+        "remote_eligible_phrase",
+        "office_attendance_onsite",
+    }
+)
+
+
 @functools.lru_cache(maxsize=1)
 def _load_inference_rules() -> tuple[dict[str, Any], ...]:
     """Load and compile ``inference_rules.yaml`` once per process."""
@@ -297,15 +322,39 @@ def _load_inference_rules() -> tuple[dict[str, Any], ...]:
     raw_rules = doc.get("rules", []) if isinstance(doc, dict) else []
     compiled: list[dict[str, Any]] = []
     for raw_rule in raw_rules:
+        rule_id = raw_rule["id"]
+        channel = raw_rule.get("channel")
+        if not channel:
+            channel = "both" if rule_id in _BOTH_CHANNEL_RULE_IDS else "location"
         compiled.append(
             {
-                "id": raw_rule["id"],
+                "id": rule_id,
                 "regex": re.compile(raw_rule["pattern"]),
                 "sets": dict(raw_rule.get("sets") or {}),
                 "region_from_group": raw_rule.get("region_from_group"),
+                "location_from_group": raw_rule.get("location_from_group"),
+                "channel": channel,
             }
         )
     return tuple(compiled)
+
+
+def _resolve_location_string(location_text: str) -> dict[str, tuple[Any, str]]:
+    """Resolve an explicit location string against location-channel rules."""
+    cleaned = clean_text(location_text).strip(" ,;.-")
+    if not cleaned:
+        return {}
+    res: dict[str, tuple[Any, str]] = {}
+    for r in _load_inference_rules():
+        if r["channel"] not in ("location", "both"):
+            continue
+        m = r["regex"].search(cleaned)
+        if not m:
+            continue
+        for f, v in r["sets"].items():
+            if f not in res:
+                res[f] = (v, r["id"])
+    return res
 
 
 def _resolve_region_tokens(raw_group: str) -> tuple[str, ...]:
@@ -357,20 +406,15 @@ def extract_work_location(
 ) -> WorkLocationExtraction:
     """Adapter-native mapping first, text inference second (BRIEF-FR-006 A1).
 
-    ``native_*`` kwargs are whatever an adapter already parsed from a native
-    source field (Lever ``workplaceType`` / ``categories.location``,
-    Greenhouse ``location.name`` / ``offices``, Himalayas
-    ``locationRestrictions``, Remotive ``candidate_required_location``,
-    RemoteOK ``location``, WWR region, UNGM/World Bank/TED duty station /
-    buyer country). When a native value is given for a field, no rule is ever
-    allowed to overwrite it; ``work_mode_source`` records this distinction.
-    Text inference (``opportunity/inference_rules.yaml``) only fills fields
-    still unset after native mapping, and only ever sets a given field from
-    the FIRST rule (top to bottom) that matches -- so more specific rules
-    must be listed before generic catch-alls in the YAML file.
+    Segregates inference into deterministic evidence channels:
+    - Channel A (Location Channel): bare geographic/location tokens operate on
+      raw_location, explicit source location field, or equivalent typed metadata.
+    - Channel B (Description Channel): description text infers work mode or
+      location strictly from explicit role/candidate semantics (e.g. 'this role is
+      remote', 'work from anywhere', 'role location: Cairo', 'must be based in...').
+      Generic employer/customer prose ('global company', 'customers in California',
+      'teams anywhere') never creates unsupported job facts.
     """
-    search_text = f"{location_raw} {text[:4000]}".strip()
-
     resolved: dict[str, Any] = {}
     rule_ids: dict[str, str] = {}
 
@@ -391,9 +435,15 @@ def extract_work_location(
         resolved["location_region"] = native_region.strip()
         rule_ids["location_region"] = "adapter_native"
 
-    if search_text.strip():
-        for rule in _load_inference_rules():
-            match = rule["regex"].search(search_text)
+    rules = _load_inference_rules()
+
+    # Channel A: Location-channel rules (evaluate raw_location)
+    loc_clean = location_raw.strip()
+    if loc_clean:
+        for rule in rules:
+            if rule["channel"] not in ("location", "both"):
+                continue
+            match = rule["regex"].search(loc_clean)
             if not match:
                 continue
 
@@ -405,7 +455,59 @@ def extract_work_location(
                     captured = ""
                 codes = _resolve_region_tokens(captured) if captured else ()
                 if not codes:
-                    continue  # nothing resolvable in the bracket -> rule does not apply
+                    continue
+                resolved["remote_scope_regions"] = list(codes)
+                rule_ids["remote_scope_regions"] = rule["id"]
+
+            loc_group = rule.get("location_from_group")
+            if loc_group is not None:
+                try:
+                    captured_loc = match.group(loc_group)
+                except IndexError:  # pragma: no cover - defensive
+                    captured_loc = ""
+                loc_res = _resolve_location_string(captured_loc)
+                for f, (v, rid) in loc_res.items():
+                    if f not in resolved:
+                        resolved[f] = v
+                        rule_ids[f] = rid
+
+            for field, value in rule["sets"].items():
+                if field in resolved:
+                    continue
+                resolved[field] = value
+                rule_ids[field] = rule["id"]
+
+    # Channel B: Description-channel rules (explicit role/candidate semantics ONLY)
+    desc_clean = text[:4000].strip()
+    if desc_clean:
+        for rule in rules:
+            if rule["channel"] not in ("description", "both"):
+                continue
+            match = rule["regex"].search(desc_clean)
+            if not match:
+                continue
+
+            loc_group = rule.get("location_from_group")
+            if loc_group is not None:
+                try:
+                    captured_loc = match.group(loc_group)
+                except IndexError:  # pragma: no cover - defensive
+                    captured_loc = ""
+                loc_res = _resolve_location_string(captured_loc)
+                for f, (v, rid) in loc_res.items():
+                    if f not in resolved:
+                        resolved[f] = v
+                        rule_ids[f] = rid
+
+            region_group = rule.get("region_from_group")
+            if region_group is not None and "remote_scope_regions" not in resolved:
+                try:
+                    captured = match.group(region_group)
+                except IndexError:  # pragma: no cover - defensive
+                    captured = ""
+                codes = _resolve_region_tokens(captured) if captured else ()
+                if not codes:
+                    continue
                 resolved["remote_scope_regions"] = list(codes)
                 rule_ids["remote_scope_regions"] = rule["id"]
 

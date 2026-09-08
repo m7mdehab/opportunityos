@@ -319,7 +319,8 @@ families:
   - \bexecutive\s+producer\b
   - \bamazon\s+specialist\b
   - \bconseiller.*marketing\b
-  negative_patterns: []
+  negative_patterns:
+  - \btalent\b
 - id: support_success
   display_name: Customer Support / Success
   aliases:

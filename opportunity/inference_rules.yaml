@@ -5,6 +5,66 @@ description: BRIEF-FR-006 A1 committed, ordered, tested text-inference rule tabl
   specific composite rules are listed before generic catch-alls. A new rule can be added here without
   editing Python.
 rules:
+- id: desc_role_fully_remote
+  pattern: (?i)\b(?:this\s+(?:role|position|job)\s+is\s+(?:fully\s+)?remote|(?:100%|fully)\s+remote\s+(?:role|position|job)|position\s+is\s+(?:fully\s+)?remote|role\s+is\s+(?:fully\s+)?remote|remote\s+(?:role|position))\b
+  sets:
+    work_mode: remote
+  channel: description
+  description: Explicit role/position remote phrasing in description -> remote
+- id: desc_work_from_anywhere
+  pattern: (?i)\b(?:(?:work|working|worked)\s+from\s+anywhere|can\s+(?:be\s+)?worked\s+from\s+anywhere|work\s+remotely\s+from\s+anywhere)\b
+  sets:
+    work_mode: remote
+    remote_scope: worldwide
+  channel: description
+  description: Explicit work from anywhere phrasing in description -> remote, worldwide
+- id: desc_role_hybrid
+  pattern: (?i)\b(?:this\s+(?:role|position|job)\s+is\s+hybrid|hybrid\s+(?:role|position|job|work\s+schedule))\b
+  sets:
+    work_mode: hybrid
+  channel: description
+  description: Explicit role/position hybrid phrasing in description -> hybrid
+- id: desc_role_onsite
+  pattern: (?i)\b(?:this\s+(?:role|position|job)\s+is\s+(?:on[-\s]?site|in[-\s]?office)|(?:on[-\s]?site|in[-\s]?office)\s+(?:role|position|job)|(?:mandatory|in-person|in-office)\s+office\s+attendance\b)\b
+  sets:
+    work_mode: onsite
+  channel: description
+  description: Explicit role/position onsite phrasing in description -> onsite
+- id: desc_hybrid_role_in_location
+  pattern: (?i)\bhybrid\s+(?:role|position|job)?\s*in\s+([a-zA-Z .,&/'’‘-]+?)(?=[.;,\n]|\s+(?:and\s+report|reporting|or|who|with|to)\b|$)
+  sets:
+    work_mode: hybrid
+  location_from_group: 1
+  channel: description
+  description: 'Hybrid role in <loc> -> hybrid, location resolved from <loc>'
+- id: desc_onsite_role_in_location
+  pattern: (?i)\b(?:this\s+(?:role|position|job)\s+is\s+)?(?:on[-\s]?site|in[-\s]?office)\s*(?:role|position|job)?\s*(?:in|at)\s+([a-zA-Z .,&/'’‘-]+?)(?=[.;,\n]|\s+(?:and\s+report|reporting|or|who|with|to)\b|$)
+  sets:
+    work_mode: onsite
+  location_from_group: 1
+  channel: description
+  description: 'Onsite in <loc> -> onsite, location resolved from <loc>'
+- id: desc_role_location_colon
+  pattern: (?i)\b(?:role|job|position)\s+location\s*:\s*([a-zA-Z .,&/'’‘-]+?)(?=[.;,\n]|\s+(?:and\s+report|reporting|or|who|with|to)\b|$)
+  location_from_group: 1
+  channel: description
+  description: 'Role location: <loc> -> location resolved from <loc>'
+- id: desc_role_located_in
+  pattern: (?i)\b(?:position|role|job)\s+located\s+in\s+([a-zA-Z .,&/'’‘-]+?)(?=[.;,\n]|\s+(?:and\s+report|reporting|or|who|with|to)\b|$)
+  location_from_group: 1
+  channel: description
+  description: 'Position located in <loc> -> location resolved from <loc>'
+- id: desc_candidate_must_be_based_in
+  pattern: (?i)\b(?:candidate\s+must\s+reside\s+in|must\s+reside\s+in|must\s+be\s+based\s+in|candidate\s+must\s+be\s+based\s+in|this\s+(?:role|position|job)\s+is\s+based\s+in)\s+([a-zA-Z .,&/'’‘-]+?)(?=[.;,\n]|\s+(?:and\s+report|reporting|or|who|with|to)\b|$)
+  location_from_group: 1
+  channel: description
+- id: desc_remote_worldwide_bracket
+  pattern: (?i)\bremote\s*(?:\(\s*|\s*[-–—:/|]\s*)(?:worldwide|anywhere|global)\s*\)?
+  sets:
+    work_mode: remote
+    remote_scope: worldwide
+  channel: both
+  description: 'Explicit Remote (Worldwide) / Remote - Worldwide phrasing -> remote, worldwide'
 - id: remote_region_restricted_us_only
   pattern: (?i)remote\s*\(\s*(?:us|u\.s\.|usa|united\s+states)\s+only\s*\)
   sets:
@@ -100,11 +160,12 @@ rules:
     remote_scope: worldwide
   description: Explicit worldwide/anywhere remote phrasing -> remote, worldwide.
 - id: remote_anywhere_remote
-  pattern: (?i)\b(?:work\s+from\s+)?anywhere\b
+  pattern: (?i)\b(?:work|working|worked)\s+from\s+anywhere\b
+  channel: both
   sets:
     work_mode: remote
     remote_scope: worldwide
-  description: Explicit worldwide/anywhere remote phrasing -> remote, worldwide.
+  description: Explicit work from anywhere remote phrasing -> remote, worldwide.
 - id: linkedin_hybrid_tag
   pattern: (?i)#li-hybrid\b
   sets:
