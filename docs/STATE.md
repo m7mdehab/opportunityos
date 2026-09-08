@@ -10,8 +10,8 @@ Next: complete active brief.
 
 ## Repository
 
-- **Generated:** 2026-09-08T00:07:29Z
-- **State generated at commit:** `635513a` — docs(evidence): add durable truth-lock mutation proof for FR-006 A-11
+- **Generated:** 2026-09-08T00:08:06Z
+- **State generated at commit:** `78ec85a` — feat(product): P1-P4 improvements for work-mode, location, title families, and HN poll defect
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
