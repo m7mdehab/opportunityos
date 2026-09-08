@@ -151,8 +151,8 @@ def _build_opp_data(opp: Opportunity, *, is_stale: bool) -> Dict[str, Any]:
     return {
         "id": opp.id,
         "track": opp.track.value,
-        "title": opp.title,
-        "organization": opp.organization,
+        "title": (opp.title or "")[:255],
+        "organization": (opp.organization or "")[:255],
         "description": opp.description,
         "source_id": opp.source,
         "source_url": opp.source_url,

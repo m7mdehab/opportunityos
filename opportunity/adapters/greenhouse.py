@@ -12,6 +12,7 @@ from opportunity.models import (
     Opportunity,
     ParseResult,
     Track,
+    WorkMode,
     compute_deterministic_id,
 )
 from opportunity.normalization import (
@@ -88,14 +89,46 @@ class GreenhouseAdapter(BaseAdapter):
             seniority = extract_seniority(title, description)
             emp_type = extract_employment_type(str(job.get("employment_type") or ""), title, description)
             track = extract_track(self.track, str(job.get("employment_type") or ""), title, description)
-            # Native mapping first (brief: Greenhouse `location.name` + `offices`):
-            # `offices` is a list of office dicts; use the first office's name as a
-            # native city/region hint when the primary `location.name` didn't
-            # already resolve one via text inference.
+            # Native mapping first (brief: Greenhouse `location.name` + `offices` + `metadata`):
+            metadata = job.get("metadata") if isinstance(job.get("metadata"), list) else []
+            native_work_mode = None
+            metadata_loc = ""
+            for m in metadata:
+                if isinstance(m, dict):
+                    m_name = clean_text(str(m.get("name") or "")).casefold()
+                    m_val = m.get("value")
+                    if m_name in ("workplace type", "workplace_type"):
+                        v_str = clean_text(str(m_val or "")).casefold()
+                        if "remote" in v_str:
+                            native_work_mode = WorkMode.REMOTE
+                        elif "hybrid" in v_str:
+                            native_work_mode = WorkMode.HYBRID
+                        elif "onsite" in v_str or "office" in v_str:
+                            native_work_mode = WorkMode.ONSITE
+                    elif m_name in ("job posting location", "geography") and m_val:
+                        if isinstance(m_val, list) and m_val:
+                            metadata_loc = clean_text(", ".join(str(v) for v in m_val))
+                        elif isinstance(m_val, str):
+                            metadata_loc = clean_text(m_val)
+
             offices = job.get("offices") if isinstance(job.get("offices"), list) else []
-            native_office_name = clean_text(offices[0].get("name")) if offices and isinstance(offices[0], dict) else ""
+            office_locs = [clean_text(o.get("location")) for o in offices if isinstance(o, dict) and o.get("location")]
+            office_names = [clean_text(o.get("name")) for o in offices if isinstance(o, dict) and o.get("name")]
+            first_office_loc = office_locs[0] if office_locs else ""
+            native_office_name = office_names[0] if office_names else ""
+
+            effective_location = location_raw
+            if location_raw.casefold() in ("hybrid", "remote", "onsite") or not location_raw:
+                loc_hint = first_office_loc or native_office_name or metadata_loc
+                if loc_hint:
+                    effective_location = f"{location_raw}; {loc_hint}".strip("; ")
+            elif first_office_loc and first_office_loc not in location_raw:
+                effective_location = f"{location_raw}; {first_office_loc}".strip("; ")
+
             work_loc = extract_work_location(
-                location_raw, description, native_region=native_office_name
+                effective_location, description,
+                native_work_mode=native_work_mode,
+                native_region=native_office_name,
             )
             comp = extract_compensation(description)
             geo = derive_geographic_eligibility(
@@ -124,7 +157,7 @@ class GreenhouseAdapter(BaseAdapter):
                 create_field_provenance("employment_type", job.get("employment_type"), emp_type.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.employment_type", record_checksum, "extract_employment_type"),
                 create_field_provenance(
                     "work_mode", raw_loc, work_loc.work_mode.value,
-                    DerivationType.RULE_DERIVATION if work_loc.work_mode_source == "inference" else DerivationType.UNASSERTED_ABSENT,
+                    DerivationType.SOURCE_METADATA_DERIVATION if work_loc.work_mode_source == "adapter" else (DerivationType.RULE_DERIVATION if work_loc.work_mode_source == "inference" else DerivationType.UNASSERTED_ABSENT),
                     f"{item_pointer}.location", record_checksum, work_loc.work_mode_rule_id or "extract_work_location",
                 ),
                 create_field_provenance("geographic_eligibility", location_raw, geo.status, DerivationType.RULE_DERIVATION, f"{item_pointer}.location", record_checksum, "classify_geography"),

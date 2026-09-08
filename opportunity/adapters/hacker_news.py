@@ -201,14 +201,16 @@ class HackerNewsWhoIsHiringAdapter(BaseAdapter):
                 continue
 
             # Convention for "who is hiring" posts: "Company | Location | Role details ..."
-            first_line = plain_text.split("\n", 1)[0][:300].strip()
-            title = clean_text(first_line) or clean_text(plain_text[:120])
-            if not title:
+            first_line = plain_text.split("\n", 1)[0].strip() or plain_text[:120].strip()
+            raw_title = clean_text(first_line) or clean_text(plain_text[:120])
+            if not raw_title:
                 continue
+            title = raw_title[:255]
 
-            organization = ""
+            raw_organization = ""
             if "|" in first_line:
-                organization = clean_text(first_line.split("|", 1)[0])
+                raw_organization = clean_text(first_line.split("|", 1)[0])
+            organization = raw_organization[:255]
 
             description = clean_text(plain_text)
             url = f"https://news.ycombinator.com/item?id={remote_id}"
@@ -242,8 +244,8 @@ class HackerNewsWhoIsHiringAdapter(BaseAdapter):
 
             prov_list: list[FieldProvenance] = [
                 create_field_provenance("track", "", track.value, DerivationType.RULE_DERIVATION, item_pointer, record_checksum, "extract_track"),
-                create_field_provenance("organization", first_line, organization, DerivationType.RAW_EXTRACTION if organization else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.text", record_checksum, "clean_text"),
-                create_field_provenance("title", first_line, title, DerivationType.RAW_EXTRACTION, f"{item_pointer}.text", record_checksum, "clean_text"),
+                create_field_provenance("organization", first_line, raw_organization, DerivationType.RAW_EXTRACTION if raw_organization else DerivationType.UNASSERTED_ABSENT, f"{item_pointer}.text", record_checksum, "clean_text"),
+                create_field_provenance("title", first_line, raw_title, DerivationType.RAW_EXTRACTION, f"{item_pointer}.text", record_checksum, "clean_text"),
                 create_field_provenance("description", raw_text[:100], description[:100], DerivationType.RAW_EXTRACTION, f"{item_pointer}.text", record_checksum, "clean_text"),
                 create_field_provenance("seniority", title, seniority.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.text", record_checksum, "extract_seniority"),
                 create_field_provenance("employment_type", "", emp_type.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.text", record_checksum, "extract_employment_type"),

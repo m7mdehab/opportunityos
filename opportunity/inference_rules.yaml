@@ -5,6 +5,74 @@ description: BRIEF-FR-006 A1 committed, ordered, tested text-inference rule tabl
   specific composite rules are listed before generic catch-alls. A new rule can be added here without
   editing Python.
 rules:
+- id: desc_role_fully_remote
+  pattern: (?i)\b(?:this\s+(?:role|position|job)\s+is\s+(?:fully\s+)?remote|(?:100%|fully)\s+remote\s+(?:role|position|job)|position\s+is\s+(?:fully\s+)?remote|role\s+is\s+(?:fully\s+)?remote|remote\s+(?:role|position))\b
+  sets:
+    work_mode: remote
+  channel: description
+  description: Explicit role/position remote phrasing in description -> remote
+- id: desc_work_from_anywhere
+  pattern: (?i)\b(?:(?:work|working|worked)\s+from\s+anywhere|can\s+(?:be\s+)?worked\s+from\s+anywhere|work\s+remotely\s+from\s+anywhere)\b
+  sets:
+    work_mode: remote
+    remote_scope: worldwide
+  channel: description
+  description: Explicit work from anywhere phrasing in description -> remote, worldwide
+- id: desc_role_hybrid
+  pattern: (?i)\b(?:this\s+(?:role|position|job)\s+is\s+hybrid|hybrid\s+(?:role|position|job|work\s+schedule))\b
+  sets:
+    work_mode: hybrid
+  channel: description
+  description: Explicit role/position hybrid phrasing in description -> hybrid
+- id: desc_role_onsite
+  pattern: (?i)\b(?:this\s+(?:role|position|job)\s+is\s+(?:on[-\s]?site|in[-\s]?office)|(?:on[-\s]?site|in[-\s]?office)\s+(?:role|position|job))\b
+  sets:
+    work_mode: onsite
+  channel: description
+  description: Explicit role/position onsite phrasing in description -> onsite
+- id: desc_hybrid_role_in_location
+  pattern: (?i)\bhybrid\s+(?:role|position|job)?\s*in\s+([a-zA-Z .,&/'’‘-]+?)(?=[.;,\n]|\s+(?:and\s+report|reporting|or|who|with|to)\b|$)
+  sets:
+    work_mode: hybrid
+  location_from_group: 1
+  channel: description
+  description: 'Hybrid role in <loc> -> hybrid, location resolved from <loc>'
+- id: desc_onsite_role_in_location
+  pattern: (?i)\b(?:this\s+(?:role|position|job)\s+is\s+)?(?:on[-\s]?site|in[-\s]?office)\s*(?:role|position|job)?\s*(?:in|at)\s+([a-zA-Z .,&/'’‘-]+?)(?=[.;,\n]|\s+(?:and\s+report|reporting|or|who|with|to)\b|$)
+  sets:
+    work_mode: onsite
+  location_from_group: 1
+  channel: description
+  description: 'Onsite in <loc> -> onsite, location resolved from <loc>'
+- id: desc_role_location_colon
+  pattern: (?i)\b(?:role|job|position)\s+location\s*:\s*([a-zA-Z .,&/'’‘-]+?)(?=[.;,\n]|\s+(?:and\s+report|reporting|or|who|with|to)\b|$)
+  location_from_group: 1
+  channel: description
+  description: 'Role location: <loc> -> location resolved from <loc>'
+- id: desc_role_located_in
+  pattern: (?i)\b(?:position|role|job)\s+located\s+in\s+([a-zA-Z .,&/'’‘-]+?)(?=[.;,\n]|\s+(?:and\s+report|reporting|or|who|with|to)\b|$)
+  location_from_group: 1
+  channel: description
+  description: 'Position located in <loc> -> location resolved from <loc>'
+- id: desc_candidate_must_be_based_in
+  pattern: (?i)\b(?:candidate\s+must\s+reside\s+in|must\s+reside\s+in|must\s+be\s+based\s+in|candidate\s+must\s+be\s+based\s+in|this\s+(?:role|position|job)\s+is\s+based\s+in)\s+([a-zA-Z .,&/'’‘-]+?)(?=[.;,\n]|\s+(?:and\s+report|reporting|or|who|with|to)\b|$)
+  location_from_group: 1
+  channel: description
+- id: desc_remote_worldwide_bracket
+  pattern: (?i)\bremote\s*(?:\(\s*|\s*[-–—:/|]\s*)(?:worldwide|anywhere|global)\s*\)?
+  sets:
+    work_mode: remote
+    remote_scope: worldwide
+  channel: both
+  description: 'Explicit Remote (Worldwide) / Remote - Worldwide phrasing -> remote, worldwide'
+- id: desc_remote_role_region_restricted
+  pattern: (?i)\b(?:this\s+(?:is\s+a\s+)?remote\s+(?:role|position|job)|remote\s+(?:role|position|job)|(?:100%|fully\s+)?remote\s+(?:role|position|job)?)\b[^.\n;]{0,60}?\b((?:us|u\.s\.|usa|united\s+states|ca|canada|emea|latam|apac|eu|european\s+union|europe|uk|u\.k\.|united\s+kingdom)(?:\s*(?:/|and|&|\+)\s*(?:us|u\.s\.|usa|united\s+states|ca|canada|emea|latam|apac|eu|european\s+union|europe|uk|u\.k\.|united\s+kingdom))*)\s+only\b
+  sets:
+    work_mode: remote
+    remote_scope: region_restricted
+  region_from_group: 1
+  channel: description
+  description: Explicit remote role restricted to region in description -> remote, region_restricted
 - id: remote_region_restricted_us_only
   pattern: (?i)remote\s*\(\s*(?:us|u\.s\.|usa|united\s+states)\s+only\s*\)
   sets:
@@ -12,6 +80,7 @@ rules:
     remote_scope: region_restricted
     remote_scope_regions:
     - US
+  channel: both
   description: '''Remote (US only)'' -> remote, region-restricted [US] (worked example 1, verbatim).'
 - id: remote_region_restricted_bracket_country_only
   pattern: (?i)remote\s*\(\s*([a-z .,&/]+?)\s+only\s*\)
@@ -19,6 +88,7 @@ rules:
     work_mode: remote
     remote_scope: region_restricted
   region_from_group: 1
+  channel: both
   description: 'Generalisation of worked example 1: ''Remote (<country/region list> only)'' -> remote,
     region-restricted [<codes>]. The captured group is resolved token-by-token against the same country/region
     alias tables the static country_*/region rules below use (opportunity/normalization.py::_COUNTRY_ALIASES
@@ -29,6 +99,7 @@ rules:
     work_mode: hybrid
     location_country: EG
     location_city: Cairo
+  channel: both
   description: '''Hybrid — Cairo'' -> hybrid, EG/Cairo (worked example 2).'
 - id: onsite_multi_country_egypt_saudi_uae
   pattern: (?i)egypt,\s*saudi\s*arabia,?\s*(?:or|and)\s*(?:the\s+)?u\.?a\.?e\.?
@@ -100,11 +171,71 @@ rules:
     remote_scope: worldwide
   description: Explicit worldwide/anywhere remote phrasing -> remote, worldwide.
 - id: remote_anywhere_remote
-  pattern: (?i)\b(?:work\s+from\s+)?anywhere\b
+  pattern: (?i)\b(?:work|working|worked)\s+from\s+anywhere\b
+  channel: both
   sets:
     work_mode: remote
     remote_scope: worldwide
-  description: Explicit worldwide/anywhere remote phrasing -> remote, worldwide.
+  description: Explicit work from anywhere remote phrasing -> remote, worldwide.
+- id: linkedin_hybrid_tag
+  pattern: (?i)#li-hybrid\b
+  sets:
+    work_mode: hybrid
+  channel: both
+  description: LinkedIn hashtag in postings -> hybrid
+- id: linkedin_remote_tag
+  pattern: (?i)#li-remote\b
+  sets:
+    work_mode: remote
+  channel: both
+  description: LinkedIn hashtag in postings -> remote
+- id: linkedin_onsite_tag
+  pattern: (?i)#li-onsite\b
+  sets:
+    work_mode: onsite
+  channel: both
+  description: LinkedIn hashtag in postings -> onsite
+- id: remote_us_phrases
+  pattern: (?i)\b(?:remote[\s,-]+u\.?s\.?a?|u\.?s\.?a?[\s,-]+remote|remote\s+united\s+states)\b
+  sets:
+    work_mode: remote
+    location_country: US
+    remote_scope: region_restricted
+    remote_scope_regions:
+      - US
+  channel: both
+  description: Remote US phrases -> remote, location_country=US, region_restricted [US]
+- id: remote_state_phrases
+  pattern: (?i)\bremote\s*-\s*(?:alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|new\s+hampshire|new\s+jersey|new\s+mexico|new\s+york|north\s+carolina|north\s+dakota|ohio|oklahoma|oregon|pennsylvania|rhode\s+island|south\s+carolina|south\s+dakota|tennessee|texas|utah|vermont|virginia|washington|west\s+virginia|wisconsin|wyoming)\b
+  sets:
+    work_mode: remote
+    location_country: US
+  channel: both
+  description: Remote - <State> -> remote, location_country=US
+- id: remote_country_phrases
+  pattern: (?i)\b(?:germany\s+remote|remote\s*-\s*cyprus|remote\s*-\s*estonia)\b
+  sets:
+    work_mode: remote
+  channel: both
+  description: Remote country phrases -> remote
+- id: remote_eligible_phrase
+  pattern: (?i)\b(?:u\.?s\.?\s*-\s*remote\s+eligible|remote\s+eligible)\b
+  sets:
+    work_mode: remote
+  channel: both
+  description: Remote eligible phrasing -> remote
+- id: office_attendance_onsite
+  pattern: (?i)\b(?:this\s+(?:role|position|job)\s+requires\s+(?:full-time\s+)?(?:in-office|office)\s+attendance|mandatory\s+(?:in-person\s+|in-office\s+)?office\s+attendance)\b
+  sets:
+    work_mode: onsite
+  channel: both
+  description: Mandatory role/candidate office attendance -> onsite
+- id: remote_scope_worldwide_bare
+  pattern: (?i)\b(?:worldwide|global|anywhere)\b
+  sets:
+    work_mode: remote
+    remote_scope: worldwide
+  description: Bare worldwide/global mention in location -> remote, worldwide.
 - id: hybrid_generic
   pattern: (?i)\bhybrid\b
   sets:
@@ -130,6 +261,31 @@ rules:
   sets:
     location_country: US
   description: Country-name mention -> location_country=US.
+- id: us_state_pattern
+  pattern: '(?:\b(?:Alabama|Alaska|Arizona|Arkansas|California|Colorado|Connecticut|Delaware|Florida|Georgia|Hawaii|Idaho|Illinois|Indiana|Iowa|Kansas|Kentucky|Louisiana|Maine|Maryland|Massachusetts|Michigan|Minnesota|Mississippi|Missouri|Montana|Nebraska|Nevada|New\s+Hampshire|New\s+Jersey|New\s+Mexico|New\s+York|North\s+Carolina|North\s+Dakota|Ohio|Oklahoma|Oregon|Pennsylvania|Rhode\s+Island|South\s+Carolina|South\s+Dakota|Tennessee|Texas|Utah|Vermont|Virginia|Washington|West\s+Virginia|Wisconsin|Wyoming)\b|,\s*(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)\b)'
+  sets:
+    location_country: US
+  description: US State name or postal code -> location_country=US.
+- id: country_hk
+  pattern: (?i)\b(?:Hong Kong)\b
+  sets:
+    location_country: HK
+  description: Country-name mention -> location_country=HK.
+- id: country_kh
+  pattern: (?i)\b(?:Cambodia)\b
+  sets:
+    location_country: KH
+  description: Country-name mention -> location_country=KH.
+- id: country_cy
+  pattern: (?i)\b(?:Cyprus)\b
+  sets:
+    location_country: CY
+  description: Country-name mention -> location_country=CY.
+- id: country_ee
+  pattern: (?i)\b(?:Estonia)\b
+  sets:
+    location_country: EE
+  description: Country-name mention -> location_country=EE.
 - id: country_gb
   pattern: (?i)\b(?:United Kingdom|Great Britain|U\.K\.|UK)\b
   sets:
