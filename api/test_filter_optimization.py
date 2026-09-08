@@ -196,6 +196,131 @@ class FilterOptimizationTest(unittest.TestCase):
         ctx_fb = _make_context(opp_fallback, tg)
         self.assertFalse(_target_roles_matches(ctx_fb, {}))
 
+    def test_prefilter_failsafe_fallback(self):
+        """When _extract_rule_tokens cannot prove that a literal token is a
+        strictly necessary condition for a regex to match, it must return ()
+        and the matcher must still execute the regex normally (never dropping
+        a policy match)."""
+        pattern = r"(?i)(crypto|foo|\d{4})"
+        tokens = _extract_rule_tokens(pattern)
+        self.assertEqual(tokens, (), "Expected fail-safe empty tokens for unprovable pattern")
+
+        # Graph with the unprovable rule
+        tg = TruthGraph()
+        tg.add_career_profile(
+            CareerProfile(
+                id="career-unprovable",
+                red_lines=(
+                    RedLineRule(
+                        id="rl-unprovable",
+                        pattern=pattern,
+                        reason="Pattern with non-literal branch",
+                    ),
+                ),
+            )
+        )
+
+        # Text matches the \d{4} branch without containing 'crypto' or 'foo'
+        opp = OpportunityRecord(
+            id="opp-digit-match",
+            title="Accountant",
+            organization="Standard Corp",
+            description="Reference code: 4892 in the department.",
+        )
+        ctx = _make_context(opp, tg)
+        self.assertTrue(
+            _red_lines_matches(ctx, {}),
+            "Matcher must execute fallback regex and match even when tokens are empty",
+        )
+
+    def test_update_invalidation_red_lines(self):
+        """Opportunity content updates must invalidate cached match outcomes
+        even when the opportunity ID and TruthGraph ID remain identical."""
+        tg = _build_test_graph()
+
+        opp = OpportunityRecord(
+            id="opp-mutable-redline",
+            title="Python Engineer",
+            organization="Tech Co",
+            description="Developing web APIs.",
+            content_hash="hash-initial-1",
+        )
+        ctx = _make_context(opp, tg)
+        # Initial evaluation: no red line
+        self.assertFalse(_red_lines_matches(ctx, {}))
+
+        # Update description and content_hash (same opp.id)
+        opp_updated = OpportunityRecord(
+            id="opp-mutable-redline",
+            title="Python Engineer",
+            organization="Tech Co",
+            description="Developing online sportsbook and casino betting algorithms.",
+            content_hash="hash-updated-2",
+        )
+        ctx_updated = _make_context(opp_updated, tg)
+        # Next evaluation MUST return True (cache invalidated by content_hash change)
+        self.assertTrue(
+            _red_lines_matches(ctx_updated, {}),
+            "Updated content must miss stale cache and re-evaluate to True",
+        )
+
+    def test_update_invalidation_excluded_industries(self):
+        """Excluded-industry matcher must invalidate cache when content updates."""
+        tg = _build_test_graph()
+
+        opp = OpportunityRecord(
+            id="opp-mutable-industry",
+            title="Platform Architect",
+            organization="Retail Co",
+            description="E-commerce infrastructure.",
+            content_hash="hash-ind-1",
+        )
+        ctx = _make_context(opp, tg)
+        self.assertFalse(_excluded_industries_matches(ctx, {}))
+
+        # Update description to match excluded industry (Finance) with new hash
+        opp_updated = OpportunityRecord(
+            id="opp-mutable-industry",
+            title="Platform Architect",
+            organization="Retail Co",
+            description="Core finance banking system integration.",
+            content_hash="hash-ind-2",
+        )
+        ctx_updated = _make_context(opp_updated, tg)
+        self.assertTrue(
+            _excluded_industries_matches(ctx_updated, {}),
+            "Updated content must miss stale cache and match excluded industry",
+        )
+
+    def test_update_invalidation_fallback_without_content_hash(self):
+        """When content_hash is None, the fingerprint falls back to title/org/desc."""
+        tg = _build_test_graph()
+
+        opp = OpportunityRecord(
+            id="opp-no-hash",
+            title="Developer",
+            organization="Corp",
+            description="Simple tools.",
+            content_hash=None,
+        )
+        ctx = _make_context(opp, tg)
+        self.assertFalse(_red_lines_matches(ctx, {}))
+
+        # Modify description directly
+        opp_updated = OpportunityRecord(
+            id="opp-no-hash",
+            title="Developer",
+            organization="Corp",
+            description="Online casino systems.",
+            content_hash=None,
+        )
+        ctx_updated = _make_context(opp_updated, tg)
+        self.assertTrue(
+            _red_lines_matches(ctx_updated, {}),
+            "Fingerprint without content_hash must invalidate on description change",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
+

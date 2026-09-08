@@ -266,31 +266,82 @@ def _compile_industry_pattern(name: str) -> re.Pattern | None:
 
 
 _RED_LINES_SPEC_CACHE: dict[int, tuple[tuple[re.Pattern | None, tuple[str, ...]], ...]] = {}
-_RED_LINES_MATCH_CACHE: dict[tuple[int, str], bool] = {}
+_RED_LINES_MATCH_CACHE: dict[tuple[int, str, Any], bool] = {}
+
+
+def _opp_matcher_fingerprint(opp: OpportunityRecord) -> str | tuple[str, str, str]:
+    content_hash = getattr(opp, "content_hash", None)
+    if content_hash:
+        return content_hash
+    return (opp.title or "", opp.organization or "", opp.description or "")
 
 
 def _extract_rule_tokens(pattern: str) -> tuple[str, ...]:
-    p = re.sub(r"^\(\?[aiLmsux]+\)", "", pattern)
+    """Extract literal tokens that are guaranteed necessary conditions for the
+    pattern to match. If we cannot prove that every alternation branch requires
+    at least one literal token of length >= 3, return () to disable the prefilter
+    and execute the full regex normally (fail-safe: slower, never a false negative).
+    """
+    p = re.sub(r"^\(\?[aiLmsux]+\)", "", pattern).strip()
+    if not p or p.endswith("?") or p.endswith("*"):
+        return ()
+
     m = re.match(r"^\((.*)\)$", p)
-    if m:
-        sub = m.group(1)
-        parts = sub.split("|")
-        clean = []
-        for part in parts:
-            c = re.sub(r"[^a-zA-Z0-9 -]", "", part).strip().lower()
-            if len(c) >= 3:
-                clean.append(c)
-        if clean:
-            return tuple(clean)
-    words = set(re.findall(r"[a-zA-Z]{3,}", p))
-    return tuple(w.lower() for w in words)
+    body = m.group(1) if m else p
+
+    # Split top-level branches on '|' respecting parentheses
+    branches: list[str] = []
+    current: list[str] = []
+    depth = 0
+    for ch in body:
+        if ch == "(" and (not current or current[-1] != "\\"):
+            depth += 1
+            current.append(ch)
+        elif ch == ")" and (not current or current[-1] != "\\"):
+            depth -= 1
+            current.append(ch)
+        elif ch == "|" and depth == 0:
+            branches.append("".join(current))
+            current = []
+        else:
+            current.append(ch)
+    branches.append("".join(current))
+
+    tokens: list[str] = []
+    for branch in branches:
+        branch = branch.strip()
+        if not branch or branch == ".*":
+            return ()
+
+        stripped = re.sub(r"\\[bBsS]", " ", branch)
+        stripped = re.sub(r"\(\?[a-zA-Z:=!]+", " ", stripped)
+
+        words = re.findall(r"[a-zA-Z]{3,}", stripped)
+        if not words:
+            # Branch contains no >=3-character literal; a string could match
+            # without containing any of our candidate tokens. Fail safe.
+            return ()
+
+        clean_phrase = re.sub(r"[^a-zA-Z0-9 -]", "", stripped).strip().lower()
+        clean_phrase = re.sub(r"\s+", " ", clean_phrase)
+        if (
+            len(clean_phrase) >= 3
+            and " " in clean_phrase
+            and not any(meta in branch for meta in "()[]{}*+?^$\\")
+        ):
+            tokens.append(clean_phrase)
+        else:
+            for w in words:
+                tokens.append(w.lower())
+
+    return tuple(dict.fromkeys(tokens))
 
 
 def _red_lines_matches(ctx: OpportunityFilterContext, params: dict[str, Any]) -> bool:
     if ctx.truth_graph is None:
         return False
     tg_id = id(ctx.truth_graph)
-    cache_key = (tg_id, ctx.opp.id)
+    cache_key = (tg_id, ctx.opp.id, _opp_matcher_fingerprint(ctx.opp))
     if cache_key in _RED_LINES_MATCH_CACHE:
         return _RED_LINES_MATCH_CACHE[cache_key]
 
@@ -386,7 +437,7 @@ def _excluded_industries(truth_graph: TruthGraph) -> tuple[str, ...]:
 
 
 _EXCLUDED_INDUSTRIES_SPEC_CACHE: dict[int, tuple[tuple[re.Pattern | None, str], ...]] = {}
-_EXCLUDED_INDUSTRIES_MATCH_CACHE: dict[tuple[int, str], bool] = {}
+_EXCLUDED_INDUSTRIES_MATCH_CACHE: dict[tuple[int, str, Any], bool] = {}
 
 
 def _excluded_industries_matches(ctx: OpportunityFilterContext, params: dict[str, Any]) -> bool:
@@ -398,7 +449,7 @@ def _excluded_industries_matches(ctx: OpportunityFilterContext, params: dict[str
     if ctx.truth_graph is None:
         return False
     tg_id = id(ctx.truth_graph)
-    cache_key = (tg_id, ctx.opp.id)
+    cache_key = (tg_id, ctx.opp.id, _opp_matcher_fingerprint(ctx.opp))
     if cache_key in _EXCLUDED_INDUSTRIES_MATCH_CACHE:
         return _EXCLUDED_INDUSTRIES_MATCH_CACHE[cache_key]
 
