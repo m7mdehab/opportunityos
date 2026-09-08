@@ -287,31 +287,6 @@ def country_code_to_name(iso2_or_region: str) -> str:
     return code
 
 
-_BOTH_CHANNEL_RULE_IDS: frozenset[str] = frozenset(
-    {
-        "remote_region_restricted_us_only",
-        "remote_region_restricted_bracket_country_only",
-        "hybrid_city_em_dash",
-        "remote_region_restricted_us_canada_only",
-        "remote_region_restricted_emea_only",
-        "remote_region_restricted_latam_only",
-        "remote_region_restricted_apac_only",
-        "remote_region_restricted_eu_only",
-        "remote_region_restricted_uk_only",
-        "remote_region_restricted_europe_only",
-        "remote_anywhere_remote",
-        "linkedin_hybrid_tag",
-        "linkedin_remote_tag",
-        "linkedin_onsite_tag",
-        "remote_us_phrases",
-        "remote_state_phrases",
-        "remote_country_phrases",
-        "remote_eligible_phrase",
-        "office_attendance_onsite",
-    }
-)
-
-
 @functools.lru_cache(maxsize=1)
 def _load_inference_rules() -> tuple[dict[str, Any], ...]:
     """Load and compile ``inference_rules.yaml`` once per process."""
@@ -323,9 +298,7 @@ def _load_inference_rules() -> tuple[dict[str, Any], ...]:
     compiled: list[dict[str, Any]] = []
     for raw_rule in raw_rules:
         rule_id = raw_rule["id"]
-        channel = raw_rule.get("channel")
-        if not channel:
-            channel = "both" if rule_id in _BOTH_CHANNEL_RULE_IDS else "location"
+        channel = raw_rule.get("channel", "location")
         compiled.append(
             {
                 "id": rule_id,

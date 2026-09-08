@@ -283,7 +283,40 @@ class NormalizationTests(unittest.TestCase):
         result = extract_work_location("", "Must be based in California.")
         self.assertEqual("US", result.location_country)
 
+    def test_adversarial_channel_segregation_negative_control_h(self) -> None:
+        """Negative control H: 'Our customers are in EMEA only.'
+        Must NOT infer remote/region_restricted from description prose without explicit role semantics.
+        """
+        result = extract_work_location("", "Our customers are in EMEA only.")
+        self.assertEqual(WorkMode.UNSPECIFIED, result.work_mode)
+        self.assertEqual(RemoteScope.UNSPECIFIED, result.remote_scope)
+
+    def test_adversarial_channel_segregation_negative_control_i(self) -> None:
+        """Negative control I: 'Sales territory: US and Canada only.'
+        Must NOT infer remote/region_restricted from sales territory prose.
+        """
+        result = extract_work_location("", "Sales territory: US and Canada only.")
+        self.assertEqual(WorkMode.UNSPECIFIED, result.work_mode)
+        self.assertEqual(RemoteScope.UNSPECIFIED, result.remote_scope)
+
+    def test_adversarial_channel_segregation_negative_control_j(self) -> None:
+        """Negative control J: 'Benefits include optional office attendance.'
+        Must NOT classify optional/benefit office attendance as onsite.
+        """
+        result = extract_work_location("", "Benefits include optional office attendance.")
+        self.assertEqual(WorkMode.UNSPECIFIED, result.work_mode)
+
+    def test_adversarial_channel_segregation_positive_control_k(self) -> None:
+        """Positive control K: 'This is a remote role open to EMEA only.'
+        Must infer remote, region_restricted, EMEA from explicit remote role phrasing.
+        """
+        result = extract_work_location("", "This is a remote role open to EMEA only.")
+        self.assertEqual(WorkMode.REMOTE, result.work_mode)
+        self.assertEqual(RemoteScope.REGION_RESTRICTED, result.remote_scope)
+        self.assertIn("EMEA", result.remote_scope_regions)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
