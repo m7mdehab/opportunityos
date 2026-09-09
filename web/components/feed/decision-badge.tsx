@@ -14,24 +14,24 @@ export function DecisionBadge({
       ? {
           Icon: CheckCircle2,
           label: "Qualified",
-          classes: "border-emerald-600/30 bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
+          classes: "border-emerald-500/30 bg-emerald-950/40 text-emerald-300 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300",
         }
       : decision === "ineligible"
         ? {
             Icon: XCircle,
             label: "Ineligible",
-            classes: "border-red-600/30 bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-300",
+            classes: "border-red-500/30 bg-red-950/40 text-red-300 dark:border-red-500/30 dark:bg-red-950/40 dark:text-red-300",
           }
         : decision === "uncertain"
           ? {
               Icon: CircleHelp,
               label: "Uncertain",
-              classes: "border-amber-600/30 bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+              classes: "border-amber-500/30 bg-amber-950/40 text-amber-300 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300",
             }
           : {
               Icon: Clock,
               label: "Not yet evaluated",
-              classes: "border-border bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+              classes: "border-border bg-muted/60 text-muted-foreground",
             }
 
   const { Icon, label, classes } = config

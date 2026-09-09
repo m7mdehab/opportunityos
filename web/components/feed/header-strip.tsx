@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils"
 import type { DashboardResponse, SourceHealth } from "@/lib/contract/types"
 import { RefreshCw } from "lucide-react"
 
+import { ThemeToggle } from "@/components/theme-toggle"
+
 const STATS: Array<{ key: keyof DashboardResponse["series"][number]; label: string }> = [
   { key: "fetched", label: "Fetched" },
   { key: "unique_new", label: "New" },
@@ -25,11 +27,11 @@ const STATS: Array<{ key: keyof DashboardResponse["series"][number]; label: stri
 ]
 
 function sourceDotColor(source: SourceHealth): string {
-  if (source.read_policy === "disabled") return "bg-gray-300 dark:bg-gray-700"
-  if (!source.last_poll) return "bg-gray-400"
+  if (source.read_policy === "disabled") return "bg-zinc-700"
+  if (!source.last_poll) return "bg-zinc-500"
   if (source.last_status === "ok") return "bg-emerald-500"
   if (source.last_status === "parse_empty") return "bg-amber-500"
-  return "bg-red-500"
+  return "bg-rose-500"
 }
 
 export function HeaderStrip({
@@ -134,6 +136,8 @@ export function HeaderStrip({
             />
             {polling ? "Polling…" : "Poll now"}
           </Button>
+
+          <ThemeToggle />
         </div>
       </div>
     </header>

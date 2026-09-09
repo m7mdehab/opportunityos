@@ -19,17 +19,17 @@ export function ConstraintOutcomeBadge({
     PASS: {
       Icon: CheckCircle2,
       label: "Passed",
-      classes: "border-emerald-600/30 bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
+      classes: "border-emerald-500/30 bg-emerald-950/40 text-emerald-300 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300",
     },
     FAIL: {
       Icon: XCircle,
       label: "Failed",
-      classes: "border-red-600/30 bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-300",
+      classes: "border-red-500/30 bg-red-950/40 text-red-300 dark:border-red-500/30 dark:bg-red-950/40 dark:text-red-300",
     },
     UNKNOWN: {
       Icon: CircleHelp,
       label: "Could not determine",
-      classes: "border-amber-600/30 bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+      classes: "border-amber-500/30 bg-amber-950/40 text-amber-300 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300",
     },
   }[outcome]
 

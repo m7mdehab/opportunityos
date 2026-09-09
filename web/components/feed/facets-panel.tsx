@@ -32,7 +32,7 @@ import { api } from "@/lib/api/client"
 import type { Facet, FacetValueState, SavedView } from "@/lib/contract/types"
 
 const selectClasses =
-  "h-7 rounded-lg border border-input bg-transparent px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+  "h-7 rounded-lg border border-input bg-card text-foreground px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
 
 function facetTitle(facetId: string): string {
   return facetId.replaceAll("_", " ")

@@ -13,7 +13,7 @@ export function OverHidingWarningBanner({ warning }: { warning: OverHidingWarnin
     <div
       role="alert"
       data-testid="over-hiding-warning"
-      className="mx-4 mt-3 flex items-start gap-2 rounded-md border border-amber-600/40 bg-amber-50 px-3 py-2 text-xs text-amber-900 sm:mx-6 dark:bg-amber-950 dark:text-amber-200"
+      className="mx-4 mt-3 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-950/40 px-3 py-2 text-xs text-amber-300 sm:mx-6 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300"
     >
       <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
       <p>

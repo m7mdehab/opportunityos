@@ -18,15 +18,15 @@ function EmptyStateShell({
       className={
         "mx-auto flex max-w-lg flex-col items-center gap-3 rounded-lg border p-8 text-center " +
         (tone === "warning"
-          ? "border-amber-600/30 bg-amber-50 dark:bg-amber-950"
-          : "border-border bg-card")
+          ? "border-amber-500/30 bg-amber-950/40 text-foreground"
+          : "border-border bg-card text-foreground")
       }
     >
       <Icon
         aria-hidden="true"
         className={
           "size-8 " +
-          (tone === "warning" ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground")
+          (tone === "warning" ? "text-amber-400" : "text-muted-foreground")
         }
       />
       <h2 className="text-base font-semibold">{title}</h2>

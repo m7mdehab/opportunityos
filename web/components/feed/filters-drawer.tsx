@@ -20,7 +20,7 @@ import { filterTitle } from "@/components/feed/filter-labels"
 import type { FilterMode, FounderFilter } from "@/lib/contract/types"
 
 const selectClasses =
-  "h-7 rounded-lg border border-input bg-transparent px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+  "h-7 rounded-lg border border-input bg-card text-foreground px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
 
 /** `unavailable_reason` is a repair landing after D3's original API/web
  * split, so a real API that has not deployed it yet will omit the key
@@ -263,7 +263,7 @@ function FilterSection({
         className={cn(
           "flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide",
           tone === "warning"
-            ? "text-amber-800 dark:text-amber-300"
+            ? "text-amber-400"
             : "text-muted-foreground"
         )}
       >

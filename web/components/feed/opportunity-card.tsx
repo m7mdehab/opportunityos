@@ -79,7 +79,7 @@ export const OpportunityCard = forwardRef<
           // muted fill in addition to the badge below (never colour or
           // border alone).
           isHidden
-            ? "border-dashed border-amber-600/40 bg-amber-50/40 dark:bg-amber-950/20"
+            ? "border-dashed border-amber-500/40 bg-amber-950/20 dark:bg-amber-950/20"
             : "border-border bg-card",
           // The keyboard cursor also gets its own ring even when the
           // browser's native focus-visible heuristic doesn't apply (e.g.
