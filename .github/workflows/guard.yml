@@ -8,9 +8,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: guard-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   guard:
-    runs-on: ubuntu-latest
+    # Pure checkout + Python repository scan. Keep the same guard on the lower-cost slim runner.
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
     env:
       FOUNDER_NAME_PATTERNS: ${{ secrets.FOUNDER_NAME_PATTERNS }}
     steps:
