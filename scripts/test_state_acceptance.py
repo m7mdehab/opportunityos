@@ -91,6 +91,41 @@ class ActiveStateReportTruthTest(unittest.TestCase):
         self.assertIn("A-23 breadth — unresolved in latest report", state)
         self.assertNotIn("BRIEF-FR-006 — 2026-09-04", state)
 
+    def test_latest_fr_brief_wins_over_superseded_partial_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "docs" / "adr").mkdir(parents=True)
+            (root / "briefs").mkdir(parents=True)
+            (root / "reports").mkdir(parents=True)
+            state_path = root / "docs" / "STATE.md"
+
+            for tag in ("004", "006"):
+                (root / "briefs" / f"BRIEF-FR-{tag}.md").write_text(
+                    f"# BRIEF-FR-{tag}\n", encoding="utf-8"
+                )
+            (root / "reports" / "REPORT-FR-004.md").write_text(
+                "**Date:** 2026-09-02\n\n**Decision: `PASS_WITH_NOT_CLOSED`.**\n",
+                encoding="utf-8",
+            )
+            (root / "reports" / "REPORT-FR-006.md").write_text(
+                "**Date:** 2026-09-04\n\n"
+                "**Decision: `PASS_WITH_NOT_CLOSED`.**\n\n"
+                "| Claim | Result |\n|---|---|\n"
+                "| A-23 breadth | **NOT_CLOSED** — below target |\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(generate_state, "ROOT", root), mock.patch.object(
+                generate_state, "STATE_PATH", state_path
+            ):
+                generate_state.main()
+
+            state = state_path.read_text(encoding="utf-8")
+
+        self.assertIn("Active work: BRIEF-FR-006.", state)
+        self.assertNotIn("Active work: BRIEF-FR-004.", state)
+        self.assertIn("A-23 breadth — unresolved in latest report", state)
+
 
 if __name__ == "__main__":
     unittest.main()
