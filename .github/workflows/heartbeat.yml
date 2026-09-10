@@ -19,7 +19,10 @@ concurrency:
 jobs:
   heartbeat:
     if: github.event_name != 'workflow_run' || (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.event != 'pull_request')
-    runs-on: ubuntu-latest
+    # Git/Python/SSH status publication only. Keep the same cadence and write
+    # semantics while using the lower-cost slim runner.
+    runs-on: ubuntu-slim
+    timeout-minutes: 12
     env:
       GH_TOKEN: ${{ github.token }}
       FOUNDER_NAME_PATTERNS: ${{ secrets.FOUNDER_NAME_PATTERNS }}
