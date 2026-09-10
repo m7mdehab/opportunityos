@@ -17,7 +17,9 @@ concurrency:
 
 jobs:
   mirror:
-    runs-on: ubuntu-latest
+    # Git/Python/SSH only. Preserve mirror semantics on the lower-cost slim runner.
+    runs-on: ubuntu-slim
+    timeout-minutes: 12
     env:
       FOUNDER_NAME_PATTERNS: ${{ secrets.FOUNDER_NAME_PATTERNS }}
     steps:
