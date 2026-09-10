@@ -55,27 +55,51 @@ def custom_files(directory: str, prefix: str) -> dict[str, Path]:
     return result
 
 
-def gate_files(directory: str, prefix: str) -> dict[str, Path]:
-    return custom_files(directory, prefix)
-
-
 def section(text: str, title: str) -> str:
     match = re.search(
-        rf"(?ims)^##+\s+(?:\d+\.\s+)?{re.escape(title)}\s*$\n(.*?)(?=^##+\s+|\Z)", text
+        rf"(?ims)^##+\s+(?:\d+\.\s+)?{re.escape(title)}\s*$\n(.*?)(?=^##+\s+|\Z)",
+        text,
     )
     return match.group(1).strip() if match else ""
 
 
+def _clean_markdown(text: str) -> str:
+    return re.sub(r"[*_`#]", "", text).strip()
+
+
 def decision_line(text: str) -> str:
+    """Return the report's declared decision without treating prose as a gate.
+
+    Historical reports use both a ``## Decision`` section and inline forms such
+    as ``**Decision: `PASS_WITH_NOT_CLOSED`.**``. Generated state must understand
+    both forms because a non-terminal PASS_WITH_NOT_CLOSED must never disappear
+    merely because the report chose the inline form.
+    """
     decision_text = section(text, "Decision")
     for raw in decision_text.splitlines():
         line = raw.strip().lstrip("- ").strip()
-        if not line:
-            continue
-        cleaned = re.sub(r"[\*_`#]", "", line).strip()
+        cleaned = _clean_markdown(line)
         if cleaned:
             return cleaned
+
+    inline_patterns = (
+        r"(?im)^\s*\*\*Decision:\*\*\s*(.+?)\s*$",
+        r"(?im)^\s*\*\*Decision:\s*(.+?)\*\*\s*$",
+        r"(?im)^\s*Decision:\s*(.+?)\s*$",
+    )
+    for pattern in inline_patterns:
+        match = re.search(pattern, text)
+        if match:
+            return _clean_markdown(match.group(1)).strip().rstrip(".")
     return "undecided"
+
+
+def is_terminal_pass(decision: str) -> bool:
+    """True only for a terminal PASS, never PASS_WITH_NOT_CLOSED/partial debt."""
+    normalized = _clean_markdown(decision).casefold().replace("-", "_").replace(" ", "_")
+    if any(marker in normalized for marker in ("not_closed", "partial", "not_pass", "fail")):
+        return False
+    return bool(re.search(r"(^|[/_])pass($|[/_])", normalized))
 
 
 def report_date(path: Path) -> str:
@@ -87,11 +111,11 @@ def brief_status(number: int, reports: dict[int, Path]) -> str:
     if number not in reports:
         return "in progress"
     report = reports[number].read_text(encoding="utf-8")
-    decision = decision_line(report)
-    return "passed" if "pass" in decision.lower() else "in progress"
+    return "passed" if is_terminal_pass(decision_line(report)) else "in progress"
 
 
 def acceptance_items(brief_path: Path) -> list[str]:
+    """Read structured acceptance metrics from briefs that carry that header."""
     text = brief_path.read_text(encoding="utf-8")
     metrics_match = re.search(
         r"(?ims)^required_acceptance_metrics:\s*\n(.*?)(?=^\w|\Z)", text
@@ -106,6 +130,38 @@ def acceptance_items(brief_path: Path) -> list[str]:
         elif ":" in line:
             key, _, value = line.partition(":")
             items.append(f"{key.strip()}: {value.strip()}")
+    return items
+
+
+def report_open_acceptance_items(report_path: Path) -> list[str]:
+    """Return explicitly unresolved A-* acceptance rows from the latest report.
+
+    Reports are evidence; a generated state file must not claim zero open items
+    while the active report itself says A-12/A-23/etc. are NOT_CLOSED. We only
+    consume named acceptance rows, never infer product truth from narrative.
+    """
+    text = report_path.read_text(encoding="utf-8")
+    items: list[str] = []
+    for raw in text.splitlines():
+        if not raw.lstrip().startswith("|"):
+            continue
+        cells = [cell.strip() for cell in raw.strip().strip("|").split("|")]
+        if len(cells) < 2:
+            continue
+        label = _clean_markdown(cells[0])
+        if not re.match(r"^A-\d+\b", label):
+            continue
+        row_text = _clean_markdown(" | ".join(cells[1:])).upper()
+        if "NOT_CLOSED" in row_text or "NOT CLOSED" in row_text or "PARTIAL" in row_text:
+            items.append(f"{label} — unresolved in latest report")
+
+    # A non-terminal report must never render as zero merely because it used
+    # prose rather than a per-claim table. This fallback names the report fact,
+    # not an invented acceptance criterion.
+    if not items and not is_terminal_pass(decision_line(text)):
+        decision = decision_line(text)
+        if decision != "undecided":
+            items.append(f"Latest report decision is {decision}")
     return items
 
 
@@ -166,8 +222,6 @@ def bullets(items: list[str], empty: str) -> str:
 
 _LIST_MARKER_RE = re.compile(r"^[-*]\s*")
 _EMPHASIS_RE = re.compile(r"[*_`]")
-# A sentence terminator only counts when followed by whitespace or end of
-# string, so it does not fire on things like "Next.js" or "e.g.io".
 _SENTENCE_END_RE = re.compile(r"[.!?](?=\s|$)")
 _NEXT_SUMMARY_FALLBACK = "complete active brief"
 
@@ -198,14 +252,6 @@ def _finalize_summary(text: str) -> str:
 
 
 def _join_lines_until_sentence(lines: list[str]) -> tuple[str | None, str]:
-    """Progressively join cleaned `lines` (non-empty) until a sentence
-    terminator is found — used both for a colon lead-in and for prose
-    hard-wrapped across physical lines with no terminator on the first
-    line. Returns (sentence, full_paragraph): `sentence` is the first
-    complete sentence found across line boundaries, or None if no line in
-    `lines` ever completes one; when None, `full_paragraph` is every line
-    joined (the loop only runs to completion, without an early break, in
-    that case), for use as the whole-paragraph fallback."""
     joined = lines[0]
     sentence = _first_sentence(joined)
     for line in lines[1:]:
@@ -217,12 +263,6 @@ def _join_lines_until_sentence(lines: list[str]) -> tuple[str | None, str]:
 
 
 def next_summary_from_prerequisites(prerequisites: str) -> str:
-    """Render the first complete sentence (or whole first paragraph, capped
-    at 300 chars) of a prerequisites section, never a fragment ending in
-    ':' or ':.'. A sentence may span several physical lines — a lead-in
-    colon, or hard-wrapped prose with no terminator on its first line —
-    joining stops as soon as a terminator is reached; only a paragraph
-    with no terminator anywhere falls back to the whole joined text."""
     if not prerequisites.strip():
         return f"{_NEXT_SUMMARY_FALLBACK}."
 
@@ -237,7 +277,6 @@ def next_summary_from_prerequisites(prerequisites: str) -> str:
 
     sentence, joined_paragraph = _join_lines_until_sentence(clean_lines)
     result = sentence if sentence is not None else joined_paragraph
-
     result = _truncate_on_word_boundary(result)
     return _finalize_summary(result)
 
@@ -245,34 +284,32 @@ def next_summary_from_prerequisites(prerequisites: str) -> str:
 def main() -> None:
     briefs = numbered_files("briefs", "BRIEF")
     reports = numbered_files("reports", "REPORT")
-    
     fr_briefs = custom_files("briefs", "BRIEF-FR")
     fr_reports = custom_files("reports", "REPORT-FR")
-    
-    gate_brief_files = gate_files("briefs", "GATE")
-    
+
     statuses = {number: brief_status(number, reports) for number in sorted(briefs)}
     active_number = next(
         (number for number in sorted(briefs) if statuses[number] != "passed"), None
     )
-    
-    # Check FR series active status
+
     active_fr_tag = None
     for tag in sorted(fr_briefs):
         if tag not in fr_reports:
             active_fr_tag = f"FR-{tag}"
             break
-        else:
-            rep_text = fr_reports[tag].read_text(encoding="utf-8")
-            if "pass" not in decision_line(rep_text).lower():
-                active_fr_tag = f"FR-{tag}"
-                break
-                
+        rep_text = fr_reports[tag].read_text(encoding="utf-8")
+        if not is_terminal_pass(decision_line(rep_text)):
+            active_fr_tag = f"FR-{tag}"
+            break
+
     if active_fr_tag:
         active_label = f"BRIEF-{active_fr_tag}"
         tag_suffix = active_fr_tag.removeprefix("FR-")
         phase_status = "in progress"
-        open_items = acceptance_items(fr_briefs[tag_suffix])
+        if tag_suffix in fr_reports:
+            open_items = report_open_acceptance_items(fr_reports[tag_suffix])
+        else:
+            open_items = acceptance_items(fr_briefs[tag_suffix])
     elif active_number is not None:
         active_label = f"BRIEF-{active_number:03d}"
         phase_status = statuses[active_number]
@@ -289,15 +326,15 @@ def main() -> None:
     ]
     if "001" in fr_reports:
         rep_001 = fr_reports["001"].read_text(encoding="utf-8")
-        if "pass" in decision_line(rep_001).lower():
+        if is_terminal_pass(decision_line(rep_001)):
             completed.append(f"GATE-FR-001 — {report_date(fr_reports['001'])}")
     for tag in sorted(fr_reports):
         if tag == "001":
             continue
         rep_text = fr_reports[tag].read_text(encoding="utf-8")
-        if "pass" in decision_line(rep_text).lower():
+        if is_terminal_pass(decision_line(rep_text)):
             completed.append(f"BRIEF-FR-{tag} — {report_date(fr_reports[tag])}")
-    
+
     latest_report_text = ""
     latest_report_name = ""
     if fr_reports:
@@ -309,17 +346,27 @@ def main() -> None:
         latest_report_text = reports[latest_number].read_text(encoding="utf-8")
         latest_report_name = f"BRIEF-{latest_number:03d}"
 
-    outcome = f"{latest_report_name} — {decision_line(latest_report_text)}" if latest_report_text else "No phase report yet"
-    
-    # Handle prerequisites & recommendations from report
+    outcome = (
+        f"{latest_report_name} — {decision_line(latest_report_text)}"
+        if latest_report_text
+        else "No phase report yet"
+    )
+
     prerequisites = section(latest_report_text, "Next phase prerequisites") if latest_report_text else ""
     if not prerequisites and latest_report_text:
-        rec_match = re.search(r"(?m)^(?:\*\*)?FINAL RECOMMENDATION:(?:\*\*)?\s*(.+)$", latest_report_text)
+        prerequisites = section(latest_report_text, "Next phase")
+    if not prerequisites and latest_report_text:
+        rec_match = re.search(
+            r"(?m)^(?:\*\*)?FINAL RECOMMENDATION:(?:\*\*)?\s*(.+)$",
+            latest_report_text,
+        )
         if rec_match:
             rec_line = rec_match.group(1).strip("* ")
-            prerequisites = f"- {rec_line}\n- Phase 0/1 Foundation & Web Integration (PostgreSQL, background workers, FastAPI API layer, Next.js Web Dashboard)."
-        else:
-            prerequisites = section(latest_report_text, "Next phase prerequisites")
+            prerequisites = (
+                f"- {rec_line}\n"
+                "- Phase 0/1 Foundation & Web Integration (PostgreSQL, background workers, "
+                "FastAPI API layer, Next.js Web Dashboard)."
+            )
 
     blocked: list[str] = [
         "BRIEF-007 / Phase 6: Multi-Tenant Family Alpha (strictly blocked until Founder Web Alpha is live and validated)"
