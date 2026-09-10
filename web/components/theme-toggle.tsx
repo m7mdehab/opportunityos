@@ -1,6 +1,6 @@
 "use client"
 
-import { useSyncExternalStore } from "react"
+import { useEffect, useSyncExternalStore } from "react"
 import { Moon, Sun } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -24,17 +24,22 @@ function getServerSnapshot(): "midnight" | "light" {
 export function ThemeToggle() {
   const theme = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 
+  useEffect(() => {
+    if (theme === "light") {
+      document.documentElement.classList.remove("dark")
+      document.documentElement.classList.add("light")
+      document.documentElement.style.colorScheme = "light"
+    } else {
+      document.documentElement.classList.remove("light")
+      document.documentElement.classList.add("dark")
+      document.documentElement.style.colorScheme = "dark"
+    }
+  }, [theme])
+
   const toggle = () => {
     try {
       const next = theme === "midnight" ? "light" : "midnight"
       localStorage.setItem("opos_theme", next)
-      if (next === "light") {
-        document.documentElement.classList.remove("dark")
-        document.documentElement.classList.add("light")
-      } else {
-        document.documentElement.classList.remove("light")
-        document.documentElement.classList.add("dark")
-      }
       window.dispatchEvent(new Event("storage"))
     } catch {
       // ignore
