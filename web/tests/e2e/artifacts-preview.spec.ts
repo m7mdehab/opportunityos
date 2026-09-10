@@ -4,12 +4,51 @@ import { test, expect, type Page } from "@playwright/test"
  * BRIEF-FR-006 D2 acceptance (D2.6): open a card, see the PDF preview
  * render, switch template and see it change, download DOCX. Every
  * assertion below is on the *rendered result* (actual response bytes
- * fetched through the browser context, an actually-different `<embed>`
+ * fetched through the browser page, an actually-different `<embed>`
  * `src`, an actual `download` event with the expected filename) — never
  * merely "no error was thrown".
+ *
+ * The mock layer is a browser service worker. Playwright's `page.request`
+ * uses a separate APIRequestContext and therefore bypasses that service
+ * worker. Artifact bytes are deliberately fetched inside the page context
+ * so this spec exercises the same authenticated/service-worker path as the
+ * Founder UI instead of testing an unrelated network client.
  */
 const FOUNDER_PASSWORD =
   process.env.E2E_FOUNDER_PASSWORD ?? "founder-mock-pass"
+
+type BrowserArtifactResponse = {
+  status: number
+  contentType: string | null
+  contentDisposition: string | null
+  prefix: string
+  sha256: string
+}
+
+async function fetchArtifactThroughPage(
+  page: Page,
+  url: string
+): Promise<BrowserArtifactResponse> {
+  return page.evaluate(async (artifactUrl) => {
+    const response = await fetch(artifactUrl, { credentials: "same-origin" })
+    const bytes = new Uint8Array(await response.arrayBuffer())
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))
+    const sha256 = Array.from(digest)
+      .map((value) => value.toString(16).padStart(2, "0"))
+      .join("")
+    const prefix = Array.from(bytes.slice(0, 4))
+      .map((value) => String.fromCharCode(value))
+      .join("")
+
+    return {
+      status: response.status,
+      contentType: response.headers.get("content-type"),
+      contentDisposition: response.headers.get("content-disposition"),
+      prefix,
+      sha256,
+    }
+  }, url)
+}
 
 async function login(page: Page) {
   await page.goto("/")
@@ -38,15 +77,13 @@ test.describe("D2 artifacts panel: PDF preview, template switch, DOCX download",
     expect(classicSrc).toContain("cv.pdf")
     expect(classicSrc).toContain("template=classic")
 
-    // The rendered result itself: fetch the preview URL through the same
-    // authenticated browser context and assert it is a real, distinct PDF
-    // response, not just a plausible-looking URL.
-    const classicResponse = await page.request.get(classicSrc!)
-    expect(classicResponse.status()).toBe(200)
-    expect(classicResponse.headers()["content-type"]).toBe("application/pdf")
-    expect(classicResponse.headers()["content-disposition"]).toContain("inline")
-    const classicBody = await classicResponse.body()
-    expect(classicBody.subarray(0, 4).toString()).toBe("%PDF")
+    // Fetch through the browser page, not page.request: MSW is a service
+    // worker and only the page fetch traverses the same path as the UI.
+    const classicResponse = await fetchArtifactThroughPage(page, classicSrc!)
+    expect(classicResponse.status).toBe(200)
+    expect(classicResponse.contentType).toBe("application/pdf")
+    expect(classicResponse.contentDisposition).toContain("inline")
+    expect(classicResponse.prefix).toBe("%PDF")
 
     // "What was left out and why" is visible alongside the preview.
     await expect(drawer.getByTestId("artifact-omitted-panel")).toBeVisible()
@@ -58,12 +95,12 @@ test.describe("D2 artifacts panel: PDF preview, template switch, DOCX download",
     await expect(preview).toHaveAttribute("src", /template=modern/)
     const modernSrc = await preview.getAttribute("src")
 
-    const modernResponse = await page.request.get(modernSrc!)
-    expect(modernResponse.status()).toBe(200)
-    const modernBody = await modernResponse.body()
-    expect(modernBody.subarray(0, 4).toString()).toBe("%PDF")
+    const modernResponse = await fetchArtifactThroughPage(page, modernSrc!)
+    expect(modernResponse.status).toBe(200)
+    expect(modernResponse.contentType).toBe("application/pdf")
+    expect(modernResponse.prefix).toBe("%PDF")
     // The actual rendered document changed, not merely the request URL.
-    expect(Buffer.compare(classicBody, modernBody)).not.toBe(0)
+    expect(modernResponse.sha256).not.toBe(classicResponse.sha256)
 
     // ---- download DOCX ----
     const downloadPromise = page.waitForEvent("download")
