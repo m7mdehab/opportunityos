@@ -35,7 +35,7 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: opportunityos
-          POSTGRES_PASSWORD: testpassword123
+          POSTGRES_PASSWORD: ${{ github.run_id }}
           POSTGRES_DB: opportunityos_test
         ports:
           - 5432:5432
@@ -45,13 +45,13 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      # OPPORTUNITYOS_DB_URL is the application/test DSN. PGPASSWORD is also
+      # OPPORTUNITYOS_DB_URL is the application/test DSN. The per-run GitHub
+      # run id is an ephemeral CI-only database password, so password auth is
+      # preserved without committing a reusable credential. PGPASSWORD is also
       # supplied because scripts/dev_env.py intentionally emits passwordless
-      # localhost DSNs for its local test-database helpers; libpq consumes this
-      # environment variable in CI rather than weakening PostgreSQL auth to
-      # trust merely to make the integration probe pass.
-      OPPORTUNITYOS_DB_URL: "postgresql+psycopg2://opportunityos:testpassword123@localhost:5432/opportunityos_test"
-      PGPASSWORD: "testpassword123"
+      # localhost DSNs for its local test-database helpers; libpq consumes it.
+      OPPORTUNITYOS_DB_URL: postgresql+psycopg2://opportunityos:${{ github.run_id }}@localhost:5432/opportunityos_test
+      PGPASSWORD: ${{ github.run_id }}
     steps:
       - uses: actions/checkout@v7
       - name: Set up Python
