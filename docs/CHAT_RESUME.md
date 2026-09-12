@@ -2,7 +2,7 @@
 
 Purpose: boot a fresh ChatGPT/agent session without reconstructing OPOS history.
 
-Last compacted: 2026-09-07, Africa/Cairo.
+Last compacted: 2026-09-13, Africa/Cairo.
 
 ## Resume Command
 
@@ -52,20 +52,9 @@ See `docs/PRODUCT_CONSTITUTION.md` and accepted ADRs for full law.
 
 ## Current Verified Product State
 
-Product-state snapshot on 2026-09-05 before the governance-only context integration:
+PR #78 is the authoritative FR-006 recovery branch until merged. Its final pre-report integration checkpoint (`e41f06a`, run `34724239556`) is green: 1095 Linux/PostgreSQL tests with zero skips, Playwright 22/22, governance, Guard, State, Mirror, and bounded live-evidence checks.
 
-`7e90eed48f1308d9cbeaa03f111e3dc206c6d26c`
-
-Later governance-only commits may move `main`. Always re-read current `origin/main` and current PRs before treating that snapshot SHA as the repository head.
-
-Generated state reports:
-
-- last shipped: BRIEF-FR-005;
-- active: BRIEF-FR-006;
-- phase status: in progress;
-- BRIEF-007 / Multi-Tenant Family Alpha blocked until Founder Web Alpha is live and validated.
-
-The generated state says zero open acceptance items, but `reports/REPORT-FR-006.md` concludes `PASS_WITH_NOT_CLOSED`. Treat that as a state/report inconsistency to verify, not something to reconcile by assertion or hand-editing generated state.
+Generated State follows `reports/REPORT-FR-006.md`: BRIEF-FR-006 remains active with only its explicit `NOT_CLOSED` frozen outcomes. BRIEF-007 / Multi-Tenant Family Alpha is blocked until Founder Web Alpha is live and personally validated.
 
 ## Current Active Brief - BRIEF-FR-006
 
@@ -101,28 +90,16 @@ Substantial work already on `main` includes:
 
 ## What Did Not Close
 
-Current FR-006 report explicitly records remaining material gaps:
+- A-12 work mode: 419/540 (77.6%) versus 90%, at the honest committed-signal ceiling. Country/scope 98.5% and uncertainty 10.4% pass.
+- A-23 persisted source yield: 0/8 in the bounded live session. The independent board target passes at 334/300; Reddit remains BLOCKED_POLICY/manual-only.
+- A-20 exact Cloudflare subset: absent from the frozen corpus and retained as a historical corpus/contract exception; full-corpus clustering invariants pass.
+- A-6: accepted historical scope exception under ADR-0020.
 
-- 36 boards versus a 300 target;
-- zero new read-allowed sources producing rows in the product;
-- work-mode extraction 52.2 percent versus 90 percent target;
-- country-or-remote-scope 72.2 percent versus 85 percent target;
-- title-family mapping 86.9 percent versus 95 percent target;
-- source breadth remains the dominant founder-facing limitation;
-- live multi-source poll across new adapters needs controlled production row-yield validation.
-
-Do not make these disappear by relabeling the report, weakening targets, or treating a partial result as terminal PASS.
+Do not make these disappear by relabeling the report, weakening targets, or fabricating evidence.
 
 ## Owner/Overseer Items From Current Report
 
-Before definitive FR-006 closure:
-
-1. resolve undefined matrix labels by real `req_id`, never invented mappings;
-2. independently verify the truth-lock/guard-neutralisation mutation property reserved for Overseer checking;
-3. determine from the brief's actual terminal contract whether remaining work receives a bounded closure pass or genuinely separable unmet breadth targets move into an explicit next brief;
-4. make generated `STATE.md` coherent with the actual terminal verdict only through generator/source facts, never by hand editing.
-
-A pre-existing Mandatory CI defect also exists around founder-readiness coverage, where unittest method identifiers are being surfaced as if they were founder opportunities. It predates the governance integration. Do not corrupt readiness data or weaken semantic coverage checks merely to green that gate. Treat it as an explicit engineering defect when BRIEF-FR-006 closure work resumes.
+No remediable engineering item remains. ADR-0019 deprecates dead readiness aliases without invented mappings; truth-lock remains intact; ADR-0021 unifies artifact validation under canonical semantics; generated State is reconciled through its generator. Merge PR #78 after its final authoritative evidence/State checkpoint is green, verify `main`, then stop at Founder Web Alpha validation.
 
 ## Founder Value Priority
 

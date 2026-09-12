@@ -297,3 +297,42 @@ is not met. No entry in `docs/SOURCE_REGISTRY.yaml` was changed by this re-recon
 
 Results, relevance filter, and the full classification breakdown are in
 `reports/evidence/FR-006/e1-discovery-run.md`.
+
+## A-23 exact-link closure run (2026-09-13)
+
+The bounded exact-public-ATS probe was executed by GitHub Actions run `34722384079`,
+job `103630503093` (the live result was produced 2026-09-12 and reviewed during this
+closure run). The five public seed checkouts used by that job were
+`remoteintech/remote-jobs`, `poteto/hiring-without-whiteboards`,
+`vanshb03/Summer2027-Internships`, `vanshb03/New-Grad-2027`, and
+`northwesternfintech/2027QuantInternships`. The immutable job log records the exact
+seed commits as `c6e7a7deaf768160e83df88206c0b8c7215fd04b`,
+`b96912cd94e264837bb60cec82309b2b899f489e`,
+`609cac4e49c775f77cd419c76026251a4b62163b`,
+`d69b33c329ae797a137550e89ceb9672d01962c2`, and
+`e61d1999bbfba5afaea4c535e179cd04b61feb8e`, respectively. No network call was
+made during this integration.
+
+The result is committed as
+`reports/evidence/FR-006/closure-current/a23-exact-seed-probe.json`; the resumable
+progress cache is deliberately not committed. It reports 482 exact explicit ATS URLs
+(338 Greenhouse, 144 Lever), 468 pending candidates probed once, with `live=309`,
+`empty=31`, `absent=128`, `blocked=0`, and `error=0`. The 286 new boards are all
+HTTP-200, read-allowed, recent/title-family-relevant entries with at least one matched
+posting. Together with 48 existing ATS entries this gives 334/300 live relevant boards.
+The generated fragment was mechanically checked for zero duplicate IDs, zero overlap
+with the base registry, expected ATS endpoint hosts, `automation.read: allowed`, and
+`automation.prepare`/`automation.submit: disabled`. Registry entries are source
+configuration evidence only; these 286 boards are **not** counted as Opportunity rows
+because this run did not execute product ingestion/persistence for them.
+
+The separate `>=8` new fixture/product-row clause remains unmeasured at **0/8** in
+this run: no new fixture corpus or product-row production was claimed. The bound
+Hacker News Who-Is-Hiring path remains at **0 live rows measured in this session**;
+its existing fixture seam is not substituted for live production evidence. Reddit is
+**BLOCKED_POLICY/manual-only**: `reddit_forhire` returned one HTTP 403 and was not
+retried; sibling Reddit routes remain manual-only under the documented inferred
+same-host block. The freelance alternative is satisfied only as the policy-valid
+manual/deep-link route (for example `mostaql` and `khamsat`, with additional catalogue
+entries), not as automated product rows. No policy defaults or prepare/submit authority
+changed.

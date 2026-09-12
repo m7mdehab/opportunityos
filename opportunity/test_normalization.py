@@ -112,6 +112,34 @@ class NormalizationTests(unittest.TestCase):
         self.assertEqual(RemoteScope.UNSPECIFIED, result.remote_scope)
         self.assertEqual("", result.location_country)
 
+    def test_description_signals_after_prefix_are_not_discarded(self) -> None:
+        # Greenhouse appends LinkedIn work-mode tags near the end of some full
+        # posting bodies.  The extractor must inspect the committed text after
+        # the old 4,000-character prefix as well.
+        description = "x" * 4_001 + " <p>#LI-Hybrid</p>"
+        result = extract_work_location("Paris, France", description)
+        self.assertEqual(WorkMode.HYBRID, result.work_mode)
+        self.assertEqual("inference", result.work_mode_source)
+        self.assertEqual("linkedin_hybrid_tag", result.work_mode_rule_id)
+
+    def test_explicit_role_work_arrangements_are_inferred(self) -> None:
+        cases = (
+            ("This is a full time role within a hybrid environment or remote.", WorkMode.HYBRID),
+            ("This role is available remotely in the United States.", WorkMode.REMOTE),
+            ("This is a full time role (in office 2 days/week) or remotely.", WorkMode.HYBRID),
+            ("Hybrid: 50% remote work permitted.", WorkMode.HYBRID),
+        )
+        for description, expected in cases:
+            with self.subTest(description=description):
+                result = extract_work_location("", description)
+                self.assertEqual(expected, result.work_mode)
+                self.assertEqual("inference", result.work_mode_source)
+
+    def test_generic_employer_work_language_stays_unspecified(self) -> None:
+        result = extract_work_location("", "We operate as a hybrid workplace across our global offices.")
+        self.assertEqual(WorkMode.UNSPECIFIED, result.work_mode)
+        self.assertEqual("none", result.work_mode_source)
+
     def test_country_name_inference(self) -> None:
         result = extract_work_location("Onsite - Cairo, Egypt", "")
         self.assertEqual("EG", result.location_country)

@@ -93,6 +93,17 @@ class WorkModeCoverageTests(unittest.TestCase):
         self.assertNotIn("NOT AVAILABLE", out)
         self.assertIn("work_mode != unspecified: 0/3 (0.0%)", out)
 
+    def test_residuals_are_reported_by_source_and_with_an_honest_ceiling(self) -> None:
+        fake = types.SimpleNamespace
+        opps = [
+            fake(id="a:1", title="Unknown A", source="source_a", work_mode="unspecified"),
+            fake(id="b:1", title="Known B", source="source_b", work_mode="remote"),
+        ]
+        out = _capture(corpus_metrics.report_work_mode_coverage, opps)
+        self.assertIn("source_a: 1", out)
+        self.assertIn("source_a | a:1 | Unknown A", out)
+        self.assertIn("honest signal ceiling (committed fields/text, no invented defaults): 1/2 (50.0%)", out)
+
 
 class LocationCoverageTests(unittest.TestCase):
     def test_missing_attribute_reports_not_available(self) -> None:

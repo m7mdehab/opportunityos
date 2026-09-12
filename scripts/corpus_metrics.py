@@ -102,6 +102,30 @@ def report_work_mode_coverage(opportunities: list[Opportunity]) -> None:
     # as non-unspecified.
     non_unspecified = sum(1 for o in opportunities if getattr(o, "work_mode") != "unspecified")
     print_denominator_line("work_mode != unspecified", non_unspecified, len(opportunities))
+    residuals = [o for o in opportunities if getattr(o, "work_mode") == "unspecified"]
+    print(f"work-mode residuals (unspecified): {len(residuals)}/{len(opportunities)}")
+    by_source: collections.Counter[str] = collections.Counter(
+        str(getattr(o, "source", "<unknown>")) for o in residuals
+    )
+    print("--- work-mode residuals by source ---")
+    for source_id, count in sorted(by_source.items()):
+        print(f"{source_id}: {count}")
+    print("--- work-mode residual IDs and titles ---")
+    for opp in sorted(
+        residuals,
+        key=lambda item: (str(getattr(item, "source", "")), str(getattr(item, "id", ""))),
+    ):
+        print(
+            f"{getattr(opp, 'source', '<unknown>')} | "
+            f"{getattr(opp, 'id', '<unknown>')} | {getattr(opp, 'title', '<untitled>')}"
+        )
+    # Bounded ceiling from the committed fields/text: residual rows remain
+    # unknown, so no unsupported default is counted as a signal.
+    pct = (100.0 * non_unspecified / len(opportunities)) if opportunities else 0.0
+    print(
+        "honest signal ceiling (committed fields/text, no invented defaults): "
+        f"{non_unspecified}/{len(opportunities)} ({pct:.1f}%)"
+    )
 
 
 def report_location_coverage(opportunities: list[Opportunity]) -> None:

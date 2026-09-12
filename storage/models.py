@@ -49,7 +49,9 @@ class OpportunityRecord(Base):
     work_mode_source = Column(String(16), nullable=True)
     location_country = Column(String(2), nullable=True, index=True)
     location_city = Column(String(128), nullable=True)
-    location_region = Column(String(64), nullable=True)
+    # Source-native remote regions may be a comma-separated list of countries;
+    # this must not be truncated because it is retained source truth.
+    location_region = Column(Text, nullable=True)
     remote_scope = Column(String(24), nullable=False, default="unspecified")
     remote_scope_regions = Column(Text, nullable=True)
     employment_type = Column(String(24), nullable=False, default="unspecified")
