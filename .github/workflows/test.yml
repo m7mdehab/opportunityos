@@ -52,6 +52,11 @@ jobs:
       # localhost DSNs for its local test-database helpers; libpq consumes it.
       OPPORTUNITYOS_DB_URL: postgresql+psycopg2://opportunityos:${{ github.run_id }}@localhost:5432/opportunityos_test
       PGPASSWORD: ${{ github.run_id }}
+      # A-1 freezes the real-PostgreSQL full-suite contract at zero skipped
+      # tests. The 20k-row A-15 timing test is a required acceptance gate, not
+      # an optional smoke test, so CI deliberately enables it rather than
+      # reporting a green suite with one gated skip.
+      OPPORTUNITYOS_RUN_SEARCH_PERF: "1"
     steps:
       - uses: actions/checkout@v7
       - name: Set up Python
