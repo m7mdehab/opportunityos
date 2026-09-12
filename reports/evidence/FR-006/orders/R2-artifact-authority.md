@@ -39,7 +39,7 @@ them.
 3. Route API and both outbound callers through the same production entrypoint; no
    outbound import may retain an independent static predicate whitelist.
 4. Add parity, unsupported-claim, tampered-envelope, and 409/no-document-byte tests.
-5. Prove `+20-555-0101` (or the existing synthetic fixture phone) is present in the
+5. Prove the existing synthetic Egyptian phone fixture is present in the
    compiled artifact, extracted DOCX/PDF text, and passes the canonical gate, while
    true unsupported metrics still fail.
 
