@@ -11,7 +11,7 @@ Next: See reports/evidence/FR-006/next-prerequisites-draft.md.
 ## Repository
 
 - **Generated:** 2026-09-08T23:16:30Z
-- **State generated at commit:** `333783b` — test(state): pin latest FR active-work semantics
+- **State generated at commit:** `b880ee4` — fix(state): preserve underscores in report decisions
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -92,8 +92,7 @@ See `reports/evidence/FR-006/next-prerequisites-draft.md`. Ordered by what most 
 nothing new reaches the feed; the `api` suite cannot be run standalone (a session left idle in
 transaction deadlocks it against `TRUNCATE match_evaluations`); extraction is the ceiling on
 qualification quality; the title taxonomy
-needs a different kind of input rather than more patterns; two artifact validators;
-`stale_postings` has a writer nothing calls; the `identity.phone` false positive; the gold set
-under-specifies every honest dimension; and the process items — cap concurrency at four, size
-orders to the harness's real 60-turn limit, route scope changes through committed order files, and
-partition by seam.
+needs a different kind of input rather than more patterns; two artifact validators; `stale_postings`
+has a writer nothing calls; the `identity.phone` false positive; the gold set under-specifies every
+honest dimension; and the process items — cap concurrency at four, size orders to the harness's real
+60-turn limit, route scope changes through committed order files, and partition by seam.
