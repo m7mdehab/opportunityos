@@ -451,7 +451,11 @@ def extract_work_location(
                 rule_ids[field] = rule["id"]
 
     # Channel B: Description-channel rules (explicit role/candidate semantics ONLY)
-    desc_clean = text[:4000].strip()
+    # Scan the complete committed description.  Source adapters retain the
+    # full payload text, and some ATS-native role tags (for example Greenhouse
+    # ``#LI-Hybrid``/``#LI-Onsite`` markers) are appended after the body.  A
+    # prefix-only scan silently discarded those explicit posting signals.
+    desc_clean = text.strip()
     if desc_clean:
         for rule in rules:
             if rule["channel"] not in ("description", "both"):

@@ -30,6 +30,42 @@ rules:
     work_mode: onsite
   channel: description
   description: Explicit role/position onsite phrasing in description -> onsite
+- id: desc_hybrid_in_office_days
+  pattern: (?i)\b(?:work|working)\s+in[- ]office\b[^.<]{0,100}\b\d+\s+days?\s*(?:/|per)\s*week\b
+  sets:
+    work_mode: hybrid
+  channel: description
+  description: Explicit multi-day in-office schedule -> hybrid
+- id: desc_role_hybrid_office_days
+  pattern: (?i)\bthis\s+(?:is\s+a\s+full[-\s]?time\s+)?(?:role|position)\b[^.<]{0,180}\bin\s+office\s+\d+\s+days?\s*(?:/|per)\s*week\b
+  sets:
+    work_mode: hybrid
+  channel: description
+  description: Explicit role-level multi-day in-office schedule -> hybrid
+- id: desc_role_hybrid_work_arrangement
+  pattern: (?i)\bthis\s+(?:is\s+a\s+full[-\s]?time\s+)?(?:role|position)\b[^.<]{0,220}\bhybrid(?:\s+(?:working|environment|work\s+model|\([^)]+\)\s+work\s+schedule))?\b
+  sets:
+    work_mode: hybrid
+  channel: description
+  description: Explicit role-level hybrid work arrangement in description -> hybrid
+- id: desc_role_hybrid_model
+  pattern: (?i)\bthis\s+role\b[^<]{0,260}\bhybrid\s+work\s+model\b
+  sets:
+    work_mode: hybrid
+  channel: description
+  description: Explicit role-level hybrid work model in description -> hybrid
+- id: desc_hybrid_remote_schedule
+  pattern: (?i)\bhybrid\s*:\s*\d+%\s+remote\s+work\s+permitted\b
+  sets:
+    work_mode: hybrid
+  channel: description
+  description: Explicit hybrid schedule with permitted remote work -> hybrid
+- id: desc_role_remote_work_arrangement
+  pattern: (?i)\bthis\s+(?:is\s+a\s+full[-\s]?time\s+)?(?:role|position)\b[^.<]{0,220}\bremote(?:ly)?\b
+  sets:
+    work_mode: remote
+  channel: description
+  description: Explicit role-level remote arrangement in description -> remote
 - id: desc_hybrid_role_in_location
   pattern: (?i)\bhybrid\s+(?:role|position|job)?\s*in\s+([a-zA-Z .,&/'’‘-]+?)(?=[.;,\n]|\s+(?:and\s+report|reporting|or|who|with|to)\b|$)
   sets:
