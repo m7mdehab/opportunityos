@@ -1,0 +1,58 @@
+name: FR-006 Live Evidence
+
+on:
+  pull_request:
+    paths:
+      - "scripts/fr006_live_poll.py"
+      - ".github/workflows/fr006-live-evidence.yml"
+      - "opportunity/**"
+      - "worker/**"
+      - "matching/**"
+      - "storage/**"
+      - "truth/**"
+      - "docs/SOURCE_REGISTRY.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  a9-live-poll:
+    name: a9-live-poll
+    # The live acceptance is deliberately scoped to the FR-006 recovery PR.
+    # Normal product PRs must not acquire nondeterministic public-network gates.
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'fix/fr006-final-closure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: opportunityos
+          POSTGRES_PASSWORD: ${{ github.run_id }}
+          POSTGRES_DB: opportunityos_alpha
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      OPPORTUNITYOS_DB_URL: postgresql+psycopg2://opportunityos:${{ github.run_id }}@localhost:5432/opportunityos_alpha
+      PGPASSWORD: ${{ github.run_id }}
+      FR006_LIVE_SOURCE_ID: himalayas
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Migrate fresh alpha database
+        run: alembic upgrade head
+      - name: Run governed A-9 live poll
+        run: python scripts/fr006_live_poll.py
