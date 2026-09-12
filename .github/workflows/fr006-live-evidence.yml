@@ -65,9 +65,24 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - name: Checkout public remote-company seed repository
+      - name: Checkout public exact-link seed repositories
         run: |
+          set -euo pipefail
           git clone --depth 1 https://github.com/remoteintech/remote-jobs.git /tmp/remoteintech
+          git clone --depth 1 https://github.com/poteto/hiring-without-whiteboards.git /tmp/hww
+          git clone --depth 1 https://github.com/vanshb03/Summer2027-Internships.git /tmp/summer2027
+          git clone --depth 1 https://github.com/vanshb03/New-Grad-2027.git /tmp/newgrad2027
+          git clone --depth 1 https://github.com/northwesternfintech/2027QuantInternships.git /tmp/quant2027
           echo "REMOTEINTECH_SHA=$(git -C /tmp/remoteintech rev-parse HEAD)"
-      - name: Extract exact ATS career URLs
-        run: python scripts/fr006_exact_seed_scan.py /tmp/remoteintech/src/companies
+          echo "HWW_SHA=$(git -C /tmp/hww rev-parse HEAD)"
+          echo "SUMMER2027_SHA=$(git -C /tmp/summer2027 rev-parse HEAD)"
+          echo "NEWGRAD2027_SHA=$(git -C /tmp/newgrad2027 rev-parse HEAD)"
+          echo "QUANT2027_SHA=$(git -C /tmp/quant2027 rev-parse HEAD)"
+      - name: Extract and deduplicate exact ATS career URLs
+        run: >-
+          python scripts/fr006_exact_seed_scan.py
+          /tmp/remoteintech
+          /tmp/hww
+          /tmp/summer2027
+          /tmp/newgrad2027
+          /tmp/quant2027
