@@ -126,11 +126,13 @@ test.describe("D2 artifacts panel: PDF preview, template switch, DOCX download",
     // the DOCX 409 path elsewhere in this suite's mock store. It is hidden
     // by default, so expose hidden opportunities through the same accessible
     // UI control a founder would use before opening the card.
-    const showHidden = page.getByRole("button", { name: /show \d+ hidden/i })
-    if (await showHidden.count()) {
-      await showHidden.click()
-    }
-    await page.getByTestId("opportunity-card-opp-002").click()
+    const showHidden = page.getByTestId("toggle-hidden-opportunities")
+    await expect(showHidden).toBeVisible()
+    await showHidden.click()
+
+    const rejectedOpportunity = page.getByTestId("opportunity-card-opp-002")
+    await expect(rejectedOpportunity).toBeVisible()
+    await rejectedOpportunity.click()
     const drawer = page.getByRole("dialog")
     await expect(drawer).toBeVisible()
 
