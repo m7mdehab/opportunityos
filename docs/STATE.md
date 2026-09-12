@@ -10,8 +10,8 @@ Next: See reports/evidence/FR-006/next-prerequisites-draft.md.
 
 ## Repository
 
-- **Generated:** 2026-09-08T23:16:30Z
-- **State generated at commit:** `435c5b1` — docs(fr006): avoid phone-shaped evidence literal
+- **Generated:** 2026-09-12T22:59:45Z
+- **State generated at commit:** `572c690` — ci(fr006): stop completed live evidence reruns
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -69,6 +69,7 @@ Next: See reports/evidence/FR-006/next-prerequisites-draft.md.
 - [ADR-0016 — Founder Seniority From Employment Tenure, Not Title Keywords](adr/ADR-0016-seniority-model.md)
 - [ADR-0017: The CV/cover-letter document model](adr/ADR-0017-document-model.md)
 - [ADR-0018 — Phone Token Metric Disambiguation in Claim Validator](adr/ADR-0018-phone-token-metric-disambiguation.md)
+- [ADR-0021 — Canonical Artifact Claim Validation Boundary](adr/ADR-0021-artifact-validator-authority.md)
 
 ## Blocked Items
 
@@ -76,7 +77,7 @@ Next: See reports/evidence/FR-006/next-prerequisites-draft.md.
 
 ## Source Status Counts
 
-- allowed_ok: 56
+- allowed_ok: 342
 - credential_gated: 1
 - deliberately_not_fetched: 16
 - http_403: 2
