@@ -141,11 +141,13 @@ class PollScheduler:
     like ``worker.runner.WorkerRunner`` -- a ``PollScheduler`` (and the
     sessions it creates) must never be shared across threads.
 
-    Due-ness is tracked in-memory (``_last_enqueued_at``, keyed by
-    source_id), not in the database: this is why ``clock`` is injectable --
-    tests drive interval math by advancing a fake clock across ``run_once``
-    calls instead of sleeping for real hours. A freshly constructed
-    scheduler treats every read-allowed source as due on its first tick.
+    Poll due-ness is tracked in-memory (``_last_enqueued_at``, keyed by
+    source_id), while the 24-hour re-verification cadence is derived from its
+    durable ``worker_jobs.run_after`` rows. This is why ``clock`` is injectable
+    -- tests drive both interval calculations by advancing a fake clock across
+    ``run_once`` calls instead of sleeping for real hours. A freshly
+    constructed scheduler treats every read-allowed source as due on its first
+    tick, but does not reset re-verification cadence after a restart.
     """
 
     def __init__(
@@ -180,7 +182,6 @@ class PollScheduler:
         # one-directional (never cleared) so a still-blocking source is not
         # retried just because its cadence interval elapsed again.
         self._blocked_this_session: set[str] = set()
-        self._last_reverify_at: Optional[datetime] = None
 
     def _load_cadence_hours(self) -> dict[str, float]:
         try:
@@ -259,6 +260,42 @@ class PollScheduler:
                 pending.add(source_id)
         return pending
 
+    @staticmethod
+    def _as_utc(value: Optional[datetime]) -> Optional[datetime]:
+        """Normalize SQLAlchemy's naive SQLite timestamps for clock math."""
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    def _reverify_is_due(self, session, now: datetime) -> bool:
+        """Return whether the durable 24-hour re-verification cadence elapsed.
+
+        ``worker_jobs.run_after`` is the scheduler's durable enqueue timestamp.
+        A pending/retry/running row always suppresses another enqueue, while a
+        completed or dead-letter row suppresses it until 24 hours after it was
+        scheduled. This survives a scheduler process restart and keeps the
+        queue's canonical uppercase status values in one place.
+        """
+        rows = (
+            session.query(WorkerJobRecord.status, WorkerJobRecord.run_after)
+            .filter(WorkerJobRecord.job_type == _SCHEDULED_REVERIFY_JOB_TYPE)
+            .order_by(WorkerJobRecord.run_after.desc())
+            .all()
+        )
+        if not rows:
+            return True
+
+        active_statuses = {"PENDING", "RETRY", "RUNNING"}
+        if any((status or "").upper() in active_statuses for status, _ in rows):
+            return False
+
+        latest_run_after = self._as_utc(rows[0][1])
+        if latest_run_after is None:
+            return True
+        return (now - latest_run_after).total_seconds() >= 86400.0
+
     # -- one tick ---------------------------------------------------------------
 
     def run_once(self) -> list[str]:
@@ -311,27 +348,15 @@ class PollScheduler:
                     },
                 )
 
-            # Periodically enqueue reverify_stale (every 24h)
-            reverify_due = (
-                self._last_reverify_at is None
-                or (now - self._last_reverify_at).total_seconds() >= 86400.0
-            )
-            if reverify_due:
-                pending_reverify = (
-                    session.query(WorkerJobRecord.id)
-                    .filter(
-                        WorkerJobRecord.job_type == _SCHEDULED_REVERIFY_JOB_TYPE,
-                        WorkerJobRecord.status.in_(("pending", "retry")),
-                    )
-                    .first()
+            # Periodically enqueue reverify_stale (every 24h). The cadence and
+            # in-flight suppression are derived from durable worker-job rows so
+            # a scheduler restart cannot reset the clock or duplicate work.
+            if self._reverify_is_due(session, now):
+                queue.enqueue_job(_SCHEDULED_REVERIFY_JOB_TYPE, {}, run_after=now)
+                logger.info(
+                    "worker.scheduler_enqueued_reverify",
+                    extra={"component": "worker.scheduler"},
                 )
-                if not pending_reverify:
-                    queue.enqueue_job(_SCHEDULED_REVERIFY_JOB_TYPE, {})
-                    self._last_reverify_at = now
-                    logger.info(
-                        "worker.scheduler_enqueued_reverify",
-                        extra={"component": "worker.scheduler"},
-                    )
 
             return enqueued
         finally:

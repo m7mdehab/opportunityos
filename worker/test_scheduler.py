@@ -70,6 +70,27 @@ class TestPollSchedulerBase(unittest.TestCase):
         finally:
             session.close()
 
+    def _reverify_jobs(self):
+        session = self.session_factory()
+        try:
+            return (
+                session.query(WorkerJobRecord)
+                .filter_by(job_type="reverify_stale")
+                .order_by(WorkerJobRecord.run_after.asc())
+                .all()
+            )
+        finally:
+            session.close()
+
+    def _set_reverify_status(self, status):
+        session = self.session_factory()
+        try:
+            job = session.query(WorkerJobRecord).filter_by(job_type="reverify_stale").one()
+            job.status = status
+            session.commit()
+        finally:
+            session.close()
+
 
 class TestReadPolicyBoundary(TestPollSchedulerBase):
     def test_read_disabled_sources_never_enqueued(self):
@@ -177,6 +198,110 @@ class TestIntervalMath(TestPollSchedulerBase):
     def test_first_tick_on_a_fresh_scheduler_is_always_due(self):
         scheduler = PollScheduler(self.session_factory, registry=self.registry, interval_hours=6)
         self.assertEqual(scheduler.run_once(), ["fixture_allowed"])
+
+
+class TestDurableReverifyCadence(TestPollSchedulerBase):
+    def _scheduler(self, clock_state):
+        return PollScheduler(
+            self.session_factory,
+            registry=self.registry,
+            interval_hours=6,
+            clock=lambda: clock_state["now"],
+        )
+
+    def test_first_tick_enqueues_one_reverify_job_with_durable_timestamp(self):
+        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        scheduler = self._scheduler({"now": base})
+
+        scheduler.run_once()
+
+        jobs = self._reverify_jobs()
+        self.assertEqual(len(jobs), 1)
+        self.assertEqual(jobs[0].status, "PENDING")
+        self.assertEqual(jobs[0].run_after.replace(tzinfo=timezone.utc), base)
+
+    def test_less_than_24_hours_does_not_enqueue_again(self):
+        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        clock_state = {"now": base}
+        scheduler = self._scheduler(clock_state)
+        scheduler.run_once()
+        self._set_reverify_status("COMPLETED")
+
+        clock_state["now"] = base + timedelta(hours=23, minutes=59)
+        scheduler.run_once()
+
+        self.assertEqual(len(self._reverify_jobs()), 1)
+
+    def test_at_least_24_hours_enqueues_once(self):
+        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        clock_state = {"now": base}
+        scheduler = self._scheduler(clock_state)
+        scheduler.run_once()
+        self._set_reverify_status("COMPLETED")
+
+        clock_state["now"] = base + timedelta(hours=24)
+        scheduler.run_once()
+
+        jobs = self._reverify_jobs()
+        self.assertEqual(len(jobs), 2)
+        self.assertEqual(jobs[-1].run_after.replace(tzinfo=timezone.utc), clock_state["now"])
+
+    def test_pending_and_retry_rows_deduplicate_even_when_due(self):
+        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        clock_state = {"now": base}
+        scheduler = self._scheduler(clock_state)
+        scheduler.run_once()
+
+        clock_state["now"] = base + timedelta(hours=24)
+        scheduler.run_once()
+        self.assertEqual(len(self._reverify_jobs()), 1)
+
+        self._set_reverify_status("RETRY")
+        scheduler.run_once()
+        self.assertEqual(len(self._reverify_jobs()), 1)
+
+    def test_fresh_scheduler_instance_preserves_recent_cadence(self):
+        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        first_clock = {"now": base}
+        self._scheduler(first_clock).run_once()
+        self._set_reverify_status("COMPLETED")
+
+        restarted_clock = {"now": base + timedelta(hours=12)}
+        self._scheduler(restarted_clock).run_once()
+
+        self.assertEqual(len(self._reverify_jobs()), 1)
+
+    def test_evidence_records_durable_queue_rows_and_cadence_decisions(self):
+        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        clock_state = {"now": base}
+
+        def snapshot(label):
+            rows = [
+                {
+                    "id": job.id,
+                    "status": job.status,
+                    "run_after": job.run_after.isoformat(),
+                }
+                for job in self._reverify_jobs()
+            ]
+            print(
+                "R3_QUEUE_SNAPSHOT "
+                + json.dumps({"label": label, "now": clock_state["now"].isoformat(), "rows": rows})
+            )
+
+        self._scheduler(clock_state).run_once()
+        snapshot("first_tick_enqueued")
+
+        self._set_reverify_status("COMPLETED")
+        clock_state["now"] = base + timedelta(hours=23, minutes=59)
+        self._scheduler(clock_state).run_once()
+        snapshot("less_than_24h_suppressed")
+
+        clock_state["now"] = base + timedelta(hours=24)
+        self._scheduler(clock_state).run_once()
+        snapshot("at_24h_enqueued")
+
+        self.assertEqual(len(self._reverify_jobs()), 2)
 
 
 class TestGetPollIntervalHours(unittest.TestCase):
