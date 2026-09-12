@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Extract exact public Greenhouse/Lever board tokens from a checked-out seed directory.
+"""Extract exact public Greenhouse/Lever board tokens from checked-out seed directories.
 
-FR-006 A-23 recovery helper.  Unlike the historical company-name -> ATS-token
-heuristic, this scanner only emits a candidate when the public seed itself
-contains an explicit Greenhouse/Lever careers URL.  It performs no network I/O;
-the workflow supplies a pinned/public checkout and records its commit SHA.
+FR-006 A-23 recovery helper. Unlike the historical company-name -> ATS-token
+heuristic, this scanner only emits a candidate when a public seed itself
+contains an explicit Greenhouse/Lever careers URL. It performs no network I/O;
+the workflow supplies public checkouts and records their commit SHAs.
 """
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ _GREENHOUSE_HOSTS = {
 }
 _LEVER_HOSTS = {"jobs.lever.co", "api.lever.co"}
 _URL_RE = re.compile(r"https?://[^\s<>\]\[\)\(\"']+", re.IGNORECASE)
+_TEXT_SUFFIXES = {".md", ".markdown", ".txt", ".json", ".yaml", ".yml", ".csv", ".html"}
 
 
 def _candidate_from_url(raw_url: str) -> tuple[str, str] | None:
@@ -29,8 +30,6 @@ def _candidate_from_url(raw_url: str) -> tuple[str, str] | None:
     host = parsed.netloc.casefold().split(":", 1)[0]
     parts = [part for part in parsed.path.split("/") if part]
     if host in _GREENHOUSE_HOSTS:
-        # Candidate-facing Greenhouse URLs are normally /<board> or
-        # /v1/boards/<board>/... on API links.
         if len(parts) >= 3 and parts[0].casefold() == "v1" and parts[1].casefold() == "boards":
             token = parts[2]
         elif parts:
@@ -39,7 +38,6 @@ def _candidate_from_url(raw_url: str) -> tuple[str, str] | None:
             return None
         return "greenhouse", token.casefold()
     if host in _LEVER_HOSTS:
-        # Candidate-facing Lever URLs are /<site>; API links are /v0/postings/<site>.
         if len(parts) >= 3 and parts[0].casefold() == "v0" and parts[1].casefold() == "postings":
             token = parts[2]
         elif parts:
@@ -50,32 +48,36 @@ def _candidate_from_url(raw_url: str) -> tuple[str, str] | None:
     return None
 
 
-def scan(root: Path) -> dict[str, list[str]]:
+def scan(roots: list[Path]) -> dict[str, list[str]]:
     found: dict[str, set[str]] = {"greenhouse": set(), "lever": set()}
-    for path in sorted(root.rglob("*.md")):
-        try:
-            text = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            continue
-        for raw_url in _URL_RE.findall(text):
-            candidate = _candidate_from_url(raw_url)
-            if candidate is None:
+    for root in roots:
+        for path in sorted(root.rglob("*")):
+            if not path.is_file() or path.suffix.casefold() not in _TEXT_SUFFIXES:
                 continue
-            kind, token = candidate
-            if token:
-                found[kind].add(token)
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            for raw_url in _URL_RE.findall(text):
+                candidate = _candidate_from_url(raw_url)
+                if candidate is None:
+                    continue
+                kind, token = candidate
+                if token:
+                    found[kind].add(token)
     return {kind: sorted(tokens) for kind, tokens in found.items()}
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("root", type=Path)
+    parser.add_argument("roots", type=Path, nargs="+")
     args = parser.parse_args()
-    result = scan(args.root)
+    result = scan(args.roots)
     total = sum(len(v) for v in result.values())
     print(
         "A-23 exact ATS seed scan: "
-        f"greenhouse={len(result['greenhouse'])} lever={len(result['lever'])} total={total}"
+        f"roots={len(args.roots)} greenhouse={len(result['greenhouse'])} "
+        f"lever={len(result['lever'])} total={total}"
     )
     print("A23_EXACT_SEEDS_JSON=" + json.dumps(result, separators=(",", ":"), sort_keys=True))
     return 0
