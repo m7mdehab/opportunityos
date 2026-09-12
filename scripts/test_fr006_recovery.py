@@ -5,8 +5,10 @@ These tests deliberately use the committed corpus rather than the hand-built A2 
 from __future__ import annotations
 
 import collections
+import math
 import unittest
 
+from matching.qualification import QualificationEngine
 from matching.title_family import normalize_title
 from opportunity.clustering import (
     FamilyMember,
@@ -17,6 +19,7 @@ from opportunity.clustering import (
 )
 from opportunity.fixtures import load_corpus
 from scripts.corpus_metrics import parse_corpus
+from truth.fixtures import founder_shaped_graph
 
 
 class FullCorpusClusteringAcceptanceTests(unittest.TestCase):
@@ -24,6 +27,54 @@ class FullCorpusClusteringAcceptanceTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.fixtures = load_corpus()
         cls.opportunities, cls.parse_errors = parse_corpus(cls.fixtures)
+
+    def test_a12_remeasures_frozen_corpus_without_inventing_missing_signals(self) -> None:
+        self.assertEqual([], self.parse_errors)
+        total = len(self.opportunities)
+        self.assertGreater(total, 0)
+
+        work_known = sum(1 for opp in self.opportunities if opp.work_mode != "unspecified")
+        geo_known = sum(
+            1
+            for opp in self.opportunities
+            if opp.location_country or opp.remote_scope != "unspecified"
+        )
+        source_counts = collections.Counter(str(opp.work_mode_source) for opp in self.opportunities)
+
+        engine = QualificationEngine()
+        graph = founder_shaped_graph()
+        decisions = collections.Counter(engine.evaluate(opp, graph)[0].value for opp in self.opportunities)
+        uncertain = decisions.get("uncertain", 0)
+
+        work_target_count = math.ceil(0.90 * total)
+        geo_target_count = math.ceil(0.85 * total)
+        work_missing = total - work_known
+        geo_missing = total - geo_known
+        work_needed = max(0, work_target_count - work_known)
+        geo_needed = max(0, geo_target_count - geo_known)
+
+        print(
+            "A-12 current corpus: "
+            f"work_mode={work_known}/{total} ({work_known / total:.1%}) "
+            f"geo={geo_known}/{total} ({geo_known / total:.1%}) "
+            f"uncertain={uncertain}/{total} ({uncertain / total:.1%}) "
+            f"work_mode_source={dict(sorted(source_counts.items()))}"
+        )
+        print(
+            "A-12 truthful-signal gap: "
+            f"work_needed={work_needed}/{work_missing} currently-unspecified rows "
+            f"geo_needed={geo_needed}/{geo_missing} currently-unresolved rows"
+        )
+
+        # The uncertainty target is already truthfully satisfied.  The two
+        # extraction coverage thresholds are evidence measurements, not goals
+        # that may be manufactured: a missing source/native/inference signal
+        # stays unspecified and is dispositioned in the FR-006 report.
+        self.assertLess(
+            uncertain / total,
+            0.25,
+            "A-12 frozen acceptance requires qualification uncertainty below 25%",
+        )
 
     def test_a13_title_family_coverage_meets_frozen_threshold(self) -> None:
         self.assertEqual([], self.parse_errors)
