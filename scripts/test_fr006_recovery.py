@@ -4,8 +4,10 @@ These tests deliberately use the committed corpus rather than the hand-built A2 
 """
 from __future__ import annotations
 
+import collections
 import unittest
 
+from matching.title_family import normalize_title
 from opportunity.clustering import (
     FamilyMember,
     check_family_invariants,
@@ -22,6 +24,26 @@ class FullCorpusClusteringAcceptanceTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.fixtures = load_corpus()
         cls.opportunities, cls.parse_errors = parse_corpus(cls.fixtures)
+
+    def test_a13_title_family_coverage_meets_frozen_threshold(self) -> None:
+        self.assertEqual([], self.parse_errors)
+        total = len(self.opportunities)
+        mapped = [opp for opp in self.opportunities if normalize_title(opp.title)[0] != "other"]
+        residual = collections.Counter(
+            opp.title for opp in self.opportunities if normalize_title(opp.title)[0] == "other"
+        )
+        coverage = (len(mapped) / total) if total else 0.0
+        print(
+            "A-13 title-family coverage: "
+            f"mapped={len(mapped)}/{total} ({coverage:.1%}) residual_unique={len(residual)}"
+        )
+        if residual:
+            print("A-13 residual titles: " + repr(residual.most_common(30)))
+        self.assertGreaterEqual(
+            coverage,
+            0.95,
+            "A-13 frozen acceptance requires >=95% of committed-corpus opportunity titles to map to a real family",
+        )
 
     def test_a20_runs_on_complete_committed_corpus(self) -> None:
         self.assertGreaterEqual(len(self.fixtures), 200)
