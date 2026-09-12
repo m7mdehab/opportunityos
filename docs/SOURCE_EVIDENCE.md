@@ -305,10 +305,13 @@ job `103630503093` (the live result was produced 2026-09-12 and reviewed during 
 closure run). The five public seed checkouts used by that job were
 `remoteintech/remote-jobs`, `poteto/hiring-without-whiteboards`,
 `vanshb03/Summer2027-Internships`, `vanshb03/New-Grad-2027`, and
-`northwesternfintech/2027QuantInternships`. The job log's emitted seed commit SHAs
-were not included in the supplied result bundle; they remain a required provenance
-field to copy from the immutable job log before any later claim treats the seed set
-as independently reproducible. No network call was made during this integration.
+`northwesternfintech/2027QuantInternships`. The immutable job log records the exact
+seed commits as `c6e7a7deaf768160e83df88206c0b8c7215fd04b`,
+`b96912cd94e264837bb60cec82309b2b899f489e`,
+`609cac4e49c775f77cd419c76026251a4b62163b`,
+`d69b33c329ae797a137550e89ceb9672d01962c2`, and
+`e61d1999bbfba5afaea4c535e179cd04b61feb8e`, respectively. No network call was
+made during this integration.
 
 The result is committed as
 `reports/evidence/FR-006/closure-current/a23-exact-seed-probe.json`; the resumable
