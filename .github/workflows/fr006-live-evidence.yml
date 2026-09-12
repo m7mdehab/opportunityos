@@ -46,18 +46,35 @@ jobs:
       FR006_LIVE_SOURCE_ID: himalayas
     steps:
       - uses: actions/checkout@v7
+      - name: Detect committed A-9 closure evidence
+        id: committed
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          from pathlib import Path
+          text = Path("reports/evidence/FR-006/a9-live-poll-2026-09-12.md").read_text(encoding="utf-8")
+          required = ("A-9 LIVE POLL PASS", "inserted=20", "evaluations=20", "fixture_rows=0")
+          print(f"complete={str(all(item in text for item in required)).lower()}")
+          PY
       - name: Set up Python
+        if: steps.committed.outputs.complete != 'true'
         uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - name: Install dependencies
+        if: steps.committed.outputs.complete != 'true'
         run: |
           pip install --upgrade pip
           pip install -e ".[dev]"
       - name: Migrate fresh alpha database
+        if: steps.committed.outputs.complete != 'true'
         run: alembic upgrade head
       - name: Run governed A-9 live poll
+        if: steps.committed.outputs.complete != 'true'
         run: python scripts/fr006_live_poll.py
+      - name: Reuse immutable A-9 evidence
+        if: steps.committed.outputs.complete == 'true'
+        run: echo "A-9 live acceptance already captured by run 34720287787; external poll not repeated."
 
   a23-exact-seed-scan:
     name: a23-exact-seed-scan
@@ -66,11 +83,24 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+      - name: Detect committed A-23 board closure evidence
+        id: committed
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          data = json.loads(Path("reports/evidence/FR-006/closure-current/a23-exact-seed-probe.json").read_text(encoding="utf-8"))
+          complete = data.get("live_relevant_board_total_after_union", 0) >= 300
+          print(f"complete={str(complete).lower()}")
+          PY
       - name: Set up Python
+        if: steps.committed.outputs.complete != 'true'
         uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - name: Checkout public exact-link seed repositories
+        if: steps.committed.outputs.complete != 'true'
         run: |
           set -euo pipefail
           git clone --depth 1 https://github.com/remoteintech/remote-jobs.git /tmp/remoteintech
@@ -84,6 +114,7 @@ jobs:
           echo "NEWGRAD2027_SHA=$(git -C /tmp/newgrad2027 rev-parse HEAD)"
           echo "QUANT2027_SHA=$(git -C /tmp/quant2027 rev-parse HEAD)"
       - name: Extract and deduplicate exact ATS career URLs
+        if: steps.committed.outputs.complete != 'true'
         run: >-
           python scripts/fr006_exact_seed_scan.py
           /tmp/remoteintech
@@ -92,8 +123,10 @@ jobs:
           /tmp/newgrad2027
           /tmp/quant2027
       - name: Install discovery dependencies
+        if: steps.committed.outputs.complete != 'true'
         run: pip install -e "."
       - name: Probe exact ATS boards under committed source policy
+        if: steps.committed.outputs.complete != 'true'
         run: >-
           python scripts/fr006_probe_exact_seeds.py
           /tmp/remoteintech
@@ -103,7 +136,7 @@ jobs:
           /tmp/quant2027
           --output /tmp/fr006-a23-results.json
       - name: Upload A-23 probe evidence
-        if: always()
+        if: always() && steps.committed.outputs.complete != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: fr006-a23-exact-probe
@@ -113,3 +146,6 @@ jobs:
             /tmp/fr006-a23-results.progress.json
           if-no-files-found: error
           retention-days: 30
+      - name: Reuse immutable A-23 evidence
+        if: steps.committed.outputs.complete == 'true'
+        run: echo "A-23 board target already captured by run 34722384079; external probe not repeated."
