@@ -11,7 +11,7 @@ Next: See reports/evidence/FR-006/next-prerequisites-draft.md.
 ## Repository
 
 - **Generated:** 2026-09-08T23:16:30Z
-- **State generated at commit:** `1f0fc5a` — test(web): await hidden feed before artifact rejection
+- **State generated at commit:** `4d6b02c` — test(fr006): record absent A20 corpus subset truthfully
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
