@@ -6,27 +6,21 @@ Last shipped: BRIEF-FR-003 — 2026-09-02.
 Active work: BRIEF-FR-006.
 Phase status: in progress.
 Blocked: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha (strictly blocked until Founder Web Alpha is live and validated).
-Next: See reports/evidence/FR-006/next-prerequisites-draft.md.
+Next: Founder Web Alpha validation is next.
 
 ## Repository
 
-- **Generated:** 2026-09-12T22:59:45Z
-- **State generated at commit:** `572c690` — ci(fr006): stop completed live evidence reruns
+- **Generated:** 2026-09-12T23:08:34Z
+- **State generated at commit:** `8f9ed10` — docs(fr006): reconcile final closure evidence
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
 
 - **Brief:** BRIEF-FR-006
 - **Phase status:** in progress
-- **Open acceptance items:** 8
-- A-1 full suite — unresolved in latest report
-- A-6 scope diff — unresolved in latest report
-- A-8 Playwright — unresolved in latest report
-- A-9 live poll — unresolved in latest report
-- A-12 extraction — unresolved in latest report
-- A-13 scoring — unresolved in latest report
-- A-20 clustering — unresolved in latest report
-- A-23 breadth — unresolved in latest report
+- **Open acceptance items:** 2
+- A-12 — unresolved in latest report
+- A-23 — unresolved in latest report
 
 ## Completed Briefs
 
@@ -89,11 +83,4 @@ Next: See reports/evidence/FR-006/next-prerequisites-draft.md.
 
 ## Next Prerequisites
 
-See `reports/evidence/FR-006/next-prerequisites-draft.md`. Ordered by what most limits the founder:
-nothing new reaches the feed; the `api` suite cannot be run standalone (a session left idle in
-transaction deadlocks it against `TRUNCATE match_evaluations`); extraction is the ceiling on
-qualification quality; the title taxonomy
-needs a different kind of input rather than more patterns; two artifact validators; `stale_postings`
-has a writer nothing calls; the `identity.phone` false positive; the gold set under-specifies every
-honest dimension; and the process items — cap concurrency at four, size orders to the harness's real
-60-turn limit, route scope changes through committed order files, and partition by seam.
+Founder Web Alpha validation is next. Use the real private Founder Truth Pack only in the founder-controlled environment and validate useful daily opportunity yield, work-mode/location clarity, duplicate collapse, artifact quality, and safe outbound behavior. Do not start BRIEF-007 / Phase 6 until the Founder personally validates and accepts Founder Web Alpha.
