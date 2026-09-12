@@ -64,7 +64,9 @@ def section(text: str, title: str) -> str:
 
 
 def _clean_markdown(text: str) -> str:
-    return re.sub(r"[*_`#]", "", text).strip()
+    # Underscores are meaningful inside decision tokens such as
+    # PASS_WITH_NOT_CLOSED and must survive Markdown cleanup.
+    return re.sub(r"[*`#]", "", text).strip()
 
 
 def decision_line(text: str) -> str:
