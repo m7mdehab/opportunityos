@@ -11,7 +11,7 @@ Next: See reports/evidence/FR-006/next-prerequisites-draft.md.
 ## Repository
 
 - **Generated:** 2026-09-08T23:16:30Z
-- **State generated at commit:** `4d6b02c` — test(fr006): record absent A20 corpus subset truthfully
+- **State generated at commit:** `435c5b1` — docs(fr006): avoid phone-shaped evidence literal
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
