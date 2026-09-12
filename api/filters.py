@@ -422,24 +422,25 @@ def matched_excluded_industry(ctx: OpportunityFilterContext, truth_graph: TruthG
     return None
 
 
-_EXCLUDED_INDUSTRIES_CACHE: dict[int, tuple[str, ...]] = {}
+_EXCLUDED_INDUSTRIES_CACHE: dict[TruthGraph, tuple[str, ...]] = {}
 
 
 def _excluded_industries(truth_graph: TruthGraph) -> tuple[str, ...]:
-    tg_id = id(truth_graph)
-    if tg_id in _EXCLUDED_INDUSTRIES_CACHE:
-        return _EXCLUDED_INDUSTRIES_CACHE[tg_id]
+    if truth_graph in _EXCLUDED_INDUSTRIES_CACHE:
+        return _EXCLUDED_INDUSTRIES_CACHE[truth_graph]
     industries: list[str] = []
     for profile in truth_graph.profiles.values():
         if isinstance(profile, CapabilityProfile):
             industries.extend(profile.excluded_industries)
     res = tuple(industries)
-    _EXCLUDED_INDUSTRIES_CACHE[tg_id] = res
+    _EXCLUDED_INDUSTRIES_CACHE[truth_graph] = res
     return res
 
 
-_EXCLUDED_INDUSTRIES_SPEC_CACHE: dict[int, tuple[tuple[re.Pattern | None, str], ...]] = {}
-_EXCLUDED_INDUSTRIES_MATCH_CACHE: dict[tuple[int, str, Any], bool] = {}
+_EXCLUDED_INDUSTRIES_SPEC_CACHE: dict[
+    TruthGraph, tuple[tuple[re.Pattern | None, str], ...]
+] = {}
+_EXCLUDED_INDUSTRIES_MATCH_CACHE: dict[tuple[TruthGraph, str, Any], bool] = {}
 
 
 def _excluded_industries_matches(ctx: OpportunityFilterContext, params: dict[str, Any]) -> bool:
@@ -450,13 +451,13 @@ def _excluded_industries_matches(ctx: OpportunityFilterContext, params: dict[str
     industry only matches whole words in the opportunity text."""
     if ctx.truth_graph is None:
         return False
-    tg_id = id(ctx.truth_graph)
-    cache_key = (tg_id, ctx.opp.id, _opp_matcher_fingerprint(ctx.opp))
+    truth_graph = ctx.truth_graph
+    cache_key = (truth_graph, ctx.opp.id, _opp_matcher_fingerprint(ctx.opp))
     if cache_key in _EXCLUDED_INDUSTRIES_MATCH_CACHE:
         return _EXCLUDED_INDUSTRIES_MATCH_CACHE[cache_key]
 
-    if tg_id not in _EXCLUDED_INDUSTRIES_SPEC_CACHE:
-        excluded = _excluded_industries(ctx.truth_graph)
+    if truth_graph not in _EXCLUDED_INDUSTRIES_SPEC_CACHE:
+        excluded = _excluded_industries(truth_graph)
         specs = []
         for industry in excluded:
             clean = industry.strip().lower()
@@ -464,9 +465,9 @@ def _excluded_industries_matches(ctx: OpportunityFilterContext, params: dict[str
                 continue
             rx = _compile_industry_pattern(industry.strip())
             specs.append((rx, clean))
-        _EXCLUDED_INDUSTRIES_SPEC_CACHE[tg_id] = tuple(specs)
+        _EXCLUDED_INDUSTRIES_SPEC_CACHE[truth_graph] = tuple(specs)
 
-    specs = _EXCLUDED_INDUSTRIES_SPEC_CACHE[tg_id]
+    specs = _EXCLUDED_INDUSTRIES_SPEC_CACHE[truth_graph]
     if not specs:
         _EXCLUDED_INDUSTRIES_MATCH_CACHE[cache_key] = False
         return False
@@ -492,7 +493,7 @@ def _excluded_industries_matches(ctx: OpportunityFilterContext, params: dict[str
 
 
 _KNOWN_TRACK_TOKENS = {"employment", "procurement"}
-_TRACK_PREFERENCE_CACHE: dict[int, str | None] = {}
+_TRACK_PREFERENCE_CACHE: dict[TruthGraph, str | None] = {}
 
 
 def _founder_track_preference(truth_graph: TruthGraph | None) -> str | None:
@@ -503,9 +504,8 @@ def _founder_track_preference(truth_graph: TruthGraph | None) -> str | None:
     never guessed."""
     if truth_graph is None:
         return None
-    tg_id = id(truth_graph)
-    if tg_id in _TRACK_PREFERENCE_CACHE:
-        return _TRACK_PREFERENCE_CACHE[tg_id]
+    if truth_graph in _TRACK_PREFERENCE_CACHE:
+        return _TRACK_PREFERENCE_CACHE[truth_graph]
     candidates = sorted(
         (
             a
@@ -515,11 +515,11 @@ def _founder_track_preference(truth_graph: TruthGraph | None) -> str | None:
         key=lambda a: a.id,
     )
     if not candidates:
-        _TRACK_PREFERENCE_CACHE[tg_id] = None
+        _TRACK_PREFERENCE_CACHE[truth_graph] = None
         return None
     first_token = str(candidates[0].value).split(",")[0].strip().casefold()
     res = first_token if first_token in _KNOWN_TRACK_TOKENS else None
-    _TRACK_PREFERENCE_CACHE[tg_id] = res
+    _TRACK_PREFERENCE_CACHE[truth_graph] = res
     return res
 
 
@@ -560,7 +560,7 @@ def _founder_target_roles(truth_graph: TruthGraph | None) -> tuple[str, ...]:
     )
 
 
-_TARGET_ROLE_FAMILIES_CACHE: dict[int, frozenset[str]] = {}
+_TARGET_ROLE_FAMILIES_CACHE: dict[TruthGraph, frozenset[str]] = {}
 
 
 def _founder_target_role_families(truth_graph: TruthGraph | None) -> frozenset[str]:
@@ -574,13 +574,12 @@ def _founder_target_role_families(truth_graph: TruthGraph | None) -> frozenset[s
     nothing reliable to compare an opportunity's family against."""
     if truth_graph is None:
         return frozenset()
-    tg_id = id(truth_graph)
-    if tg_id in _TARGET_ROLE_FAMILIES_CACHE:
-        return _TARGET_ROLE_FAMILIES_CACHE[tg_id]
+    if truth_graph in _TARGET_ROLE_FAMILIES_CACHE:
+        return _TARGET_ROLE_FAMILIES_CACHE[truth_graph]
     families = {normalize_title(target)[0] for target in _founder_target_roles(truth_graph)}
     families.discard("other")
     res = frozenset(families)
-    _TARGET_ROLE_FAMILIES_CACHE[tg_id] = res
+    _TARGET_ROLE_FAMILIES_CACHE[truth_graph] = res
     return res
 
 

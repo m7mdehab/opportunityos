@@ -130,6 +130,29 @@ class FilterOptimizationTest(unittest.TestCase):
             filters_module._RED_LINES_SPEC_CACHE.clear()
             filters_module._RED_LINES_MATCH_CACHE.clear()
 
+    def test_target_role_cache_uses_graph_identity_not_reusable_object_id(self):
+        empty_graph = TruthGraph()
+        target_role_graph = _build_test_graph()
+        opportunity = OpportunityRecord(
+            id="opp-target-cache-identity",
+            title="Nurse Practitioner",
+            title_family="medical",
+        )
+
+        filters_module._TARGET_ROLE_FAMILIES_CACHE.clear()
+        try:
+            with unittest.mock.patch("api.filters.id", return_value=42, create=True):
+                self.assertFalse(
+                    _target_roles_matches(_make_context(opportunity, empty_graph), {})
+                )
+                self.assertTrue(
+                    _target_roles_matches(
+                        _make_context(opportunity, target_role_graph), {}
+                    )
+                )
+        finally:
+            filters_module._TARGET_ROLE_FAMILIES_CACHE.clear()
+
     def test_extract_rule_tokens(self):
         tokens1 = _extract_rule_tokens(r"(?i)(gambling|betting|casino|sportsbook)")
         self.assertEqual(set(tokens1), {"gambling", "betting", "casino", "sportsbook"})
