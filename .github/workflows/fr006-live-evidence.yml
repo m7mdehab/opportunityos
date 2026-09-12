@@ -5,6 +5,7 @@ on:
     paths:
       - "scripts/fr006_live_poll.py"
       - "scripts/fr006_exact_seed_scan.py"
+      - "scripts/fr006_probe_exact_seeds.py"
       - ".github/workflows/fr006-live-evidence.yml"
       - "opportunity/**"
       - "worker/**"
@@ -62,9 +63,13 @@ jobs:
     name: a23-exact-seed-scan
     if: github.event_name == 'workflow_dispatch' || github.head_ref == 'fix/fr006-final-closure'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
       - name: Checkout public exact-link seed repositories
         run: |
           set -euo pipefail
@@ -86,3 +91,25 @@ jobs:
           /tmp/summer2027
           /tmp/newgrad2027
           /tmp/quant2027
+      - name: Install discovery dependencies
+        run: pip install -e "."
+      - name: Probe exact ATS boards under committed source policy
+        run: >-
+          python scripts/fr006_probe_exact_seeds.py
+          /tmp/remoteintech
+          /tmp/hww
+          /tmp/summer2027
+          /tmp/newgrad2027
+          /tmp/quant2027
+          --output /tmp/fr006-a23-results.json
+      - name: Upload A-23 probe evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fr006-a23-exact-probe
+          path: |
+            /tmp/fr006-a23-results.json
+            /tmp/fr006-a23-results.registry.yaml
+            /tmp/fr006-a23-results.progress.json
+          if-no-files-found: error
+          retention-days: 30
