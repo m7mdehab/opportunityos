@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "scripts/fr006_live_poll.py"
+      - "scripts/fr006_exact_seed_scan.py"
       - ".github/workflows/fr006-live-evidence.yml"
       - "opportunity/**"
       - "worker/**"
@@ -56,3 +57,17 @@ jobs:
         run: alembic upgrade head
       - name: Run governed A-9 live poll
         run: python scripts/fr006_live_poll.py
+
+  a23-exact-seed-scan:
+    name: a23-exact-seed-scan
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'fix/fr006-final-closure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Checkout public remote-company seed repository
+        run: |
+          git clone --depth 1 https://github.com/remoteintech/remote-jobs.git /tmp/remoteintech
+          echo "REMOTEINTECH_SHA=$(git -C /tmp/remoteintech rev-parse HEAD)"
+      - name: Extract exact ATS career URLs
+        run: python scripts/fr006_exact_seed_scan.py /tmp/remoteintech/src/companies
