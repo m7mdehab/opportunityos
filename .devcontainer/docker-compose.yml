@@ -1,0 +1,30 @@
+services:
+  app:
+    image: mcr.microsoft.com/devcontainers/python:1-3.12-bookworm
+    volumes:
+      - ../..:/workspaces/opportunityos:cached
+    command: sleep infinity
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      OPPORTUNITYOS_DB_URL: postgresql+psycopg2://opportunityos:opportunityos_local@db:5432/opportunityos_alpha
+      OPPORTUNITYOS_API_PORT: "8000"
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: opportunityos
+      POSTGRES_PASSWORD: opportunityos_local
+      POSTGRES_DB: opportunityos_alpha
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opportunityos -d opportunityos_alpha"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - opportunityos_codespaces_pg:/var/lib/postgresql/data
+
+volumes:
+  opportunityos_codespaces_pg:

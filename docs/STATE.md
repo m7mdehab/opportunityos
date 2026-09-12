@@ -2,24 +2,31 @@
 # OpportunityOS State
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
-Last shipped: BRIEF-FR-005 — 2026-09-03.
+Last shipped: BRIEF-FR-003 — 2026-09-02.
 Active work: BRIEF-FR-006.
 Phase status: in progress.
 Blocked: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha (strictly blocked until Founder Web Alpha is live and validated).
-Next: complete active brief.
+Next: See reports/evidence/FR-006/next-prerequisites-draft.md.
 
 ## Repository
 
 - **Generated:** 2026-09-08T23:16:30Z
-- **State generated at commit:** `65d8592` — fix(api): optimize filter matchers and prevent timeout under full feed (FA-002)
+- **State generated at commit:** `1f0fc5a` — test(web): await hidden feed before artifact rejection
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
 
 - **Brief:** BRIEF-FR-006
 - **Phase status:** in progress
-- **Open acceptance items:** 0
-- None
+- **Open acceptance items:** 8
+- A-1 full suite — unresolved in latest report
+- A-6 scope diff — unresolved in latest report
+- A-8 Playwright — unresolved in latest report
+- A-9 live poll — unresolved in latest report
+- A-12 extraction — unresolved in latest report
+- A-13 scoring — unresolved in latest report
+- A-20 clustering — unresolved in latest report
+- A-23 breadth — unresolved in latest report
 
 ## Completed Briefs
 
@@ -33,12 +40,10 @@ Next: complete active brief.
 - GATE-FR-001 — 2026-08-31
 - BRIEF-FR-002 — 2026-09-01
 - BRIEF-FR-003 — 2026-09-02
-- BRIEF-FR-004 — 2026-09-02
-- BRIEF-FR-005 — 2026-09-03
 
 ## Last Phase Outcome
 
-- BRIEF-FR-006 — undecided
+- BRIEF-FR-006 — PASS_WITH_NOT_CLOSED
 
 ## Decisions
 
@@ -83,4 +88,11 @@ Next: complete active brief.
 
 ## Next Prerequisites
 
-- None
+See `reports/evidence/FR-006/next-prerequisites-draft.md`. Ordered by what most limits the founder:
+nothing new reaches the feed; the `api` suite cannot be run standalone (a session left idle in
+transaction deadlocks it against `TRUNCATE match_evaluations`); extraction is the ceiling on
+qualification quality; the title taxonomy
+needs a different kind of input rather than more patterns; two artifact validators; `stale_postings`
+has a writer nothing calls; the `identity.phone` false positive; the gold set under-specifies every
+honest dimension; and the process items — cap concurrency at four, size orders to the harness's real
+60-turn limit, route scope changes through committed order files, and partition by seam.

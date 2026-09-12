@@ -14,13 +14,15 @@ concurrency:
 
 jobs:
   state:
-    # Repository-generation/integrity checks need Git + Python only.
+    # Repository-generation/integrity checks need Git + Python + PyYAML.
     runs-on: ubuntu-slim
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - name: Install state generator dependency
+        run: python -m pip install --disable-pip-version-check --no-cache-dir PyYAML
       - name: Verify generated state freshness
         env:
           STATE_PRESERVE_TIMESTAMP: "1"

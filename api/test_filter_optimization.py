@@ -20,6 +20,7 @@ from api.filters import (
     _red_lines_matches,
     _target_roles_matches,
 )
+from api import filters as filters_module
 from storage.models import OpportunityRecord
 from truth.graph import TruthGraph
 from truth.models import (
@@ -103,6 +104,55 @@ def _make_context(opp: OpportunityRecord, tg: TruthGraph | None) -> OpportunityF
 
 
 class FilterOptimizationTest(unittest.TestCase):
+    def test_red_line_cache_uses_graph_identity_not_reusable_object_id(self):
+        empty_graph = TruthGraph()
+        red_line_graph = _build_test_graph()
+        opportunity = OpportunityRecord(
+            id="opp-cache-identity",
+            title="Lead Developer",
+            organization="Betting Inc",
+            description="Online casino platform developer.",
+        )
+
+        filters_module._RED_LINES_SPEC_CACHE.clear()
+        filters_module._RED_LINES_MATCH_CACHE.clear()
+        try:
+            # Force the collision that occurs naturally when Python reuses the
+            # id of a collected TruthGraph during the full test suite.
+            with unittest.mock.patch("api.filters.id", return_value=42, create=True):
+                self.assertFalse(
+                    _red_lines_matches(_make_context(opportunity, empty_graph), {})
+                )
+                self.assertTrue(
+                    _red_lines_matches(_make_context(opportunity, red_line_graph), {})
+                )
+        finally:
+            filters_module._RED_LINES_SPEC_CACHE.clear()
+            filters_module._RED_LINES_MATCH_CACHE.clear()
+
+    def test_target_role_cache_uses_graph_identity_not_reusable_object_id(self):
+        empty_graph = TruthGraph()
+        target_role_graph = _build_test_graph()
+        opportunity = OpportunityRecord(
+            id="opp-target-cache-identity",
+            title="Nurse Practitioner",
+            title_family="medical",
+        )
+
+        filters_module._TARGET_ROLE_FAMILIES_CACHE.clear()
+        try:
+            with unittest.mock.patch("api.filters.id", return_value=42, create=True):
+                self.assertFalse(
+                    _target_roles_matches(_make_context(opportunity, empty_graph), {})
+                )
+                self.assertTrue(
+                    _target_roles_matches(
+                        _make_context(opportunity, target_role_graph), {}
+                    )
+                )
+        finally:
+            filters_module._TARGET_ROLE_FAMILIES_CACHE.clear()
+
     def test_extract_rule_tokens(self):
         tokens1 = _extract_rule_tokens(r"(?i)(gambling|betting|casino|sportsbook)")
         self.assertEqual(set(tokens1), {"gambling", "betting", "casino", "sportsbook"})

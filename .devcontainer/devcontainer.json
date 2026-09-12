@@ -1,0 +1,29 @@
+{
+  "name": "OpportunityOS Founder Alpha",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/opportunityos",
+  "shutdownAction": "stopCompose",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "24"
+    }
+  },
+  "forwardPorts": [3000, 8000],
+  "portsAttributes": {
+    "3000": {
+      "label": "OpportunityOS Founder Web Alpha",
+      "onAutoForward": "notify"
+    },
+    "8000": {
+      "label": "OpportunityOS FastAPI",
+      "onAutoForward": "silent"
+    }
+  },
+  "remoteEnv": {
+    "OPPORTUNITYOS_DB_URL": "postgresql+psycopg2://opportunityos:opportunityos_local@db:5432/opportunityos_alpha",
+    "OPPORTUNITYOS_API_PORT": "8000"
+  },
+  "postCreateCommand": "bash scripts/codespaces/bootstrap.sh",
+  "postStartCommand": "bash scripts/codespaces/start.sh"
+}

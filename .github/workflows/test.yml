@@ -9,14 +9,33 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  governance:
+    name: governance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Check Guard Boundary & PII
+        run: python scripts/check_guard.py --allow-missing-patterns
+      - name: Check Repository Integrity
+        run: python scripts/check_repository.py
+
+  backend:
+    name: backend
     runs-on: ubuntu-latest
     services:
       postgres:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: opportunityos
-          POSTGRES_PASSWORD: testpassword123
+          POSTGRES_PASSWORD: ${{ github.run_id }}
           POSTGRES_DB: opportunityos_test
         ports:
           - 5432:5432
@@ -25,7 +44,14 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-
+    env:
+      # OPPORTUNITYOS_DB_URL is the application/test DSN. The per-run GitHub
+      # run id is an ephemeral CI-only database password, so password auth is
+      # preserved without committing a reusable credential. PGPASSWORD is also
+      # supplied because scripts/dev_env.py intentionally emits passwordless
+      # localhost DSNs for its local test-database helpers; libpq consumes it.
+      OPPORTUNITYOS_DB_URL: postgresql+psycopg2://opportunityos:${{ github.run_id }}@localhost:5432/opportunityos_test
+      PGPASSWORD: ${{ github.run_id }}
     steps:
       - uses: actions/checkout@v7
       - name: Set up Python
@@ -37,17 +63,15 @@ jobs:
           pip install --upgrade pip
           pip install -e ".[dev]"
       - name: Run Database Migrations
-        env:
-          OPPORTUNITYOS_DB_URL: "postgresql+psycopg2://opportunityos:testpassword123@localhost:5432/opportunityos_test"
         run: alembic upgrade head
       - name: Run Full Subsystem Test Suite
-        env:
-          OPPORTUNITYOS_DB_URL: "postgresql+psycopg2://opportunityos:testpassword123@localhost:5432/opportunityos_test"
         run: python -m unittest discover -v
-      - name: Check Guard Boundary & PII
-        run: python scripts/check_guard.py --allow-missing-patterns
-      - name: Check Repository Integrity
-        run: python scripts/check_repository.py
+
+  web:
+    name: web-build-lint-playwright
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
@@ -68,8 +92,6 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Run Playwright Smoke
         working-directory: web
-        env:
-          OPPORTUNITYOS_DB_URL: "postgresql+psycopg2://opportunityos:testpassword123@localhost:5432/opportunityos_test"
         run: npx playwright test
       - name: Upload Playwright Report
         if: always()
