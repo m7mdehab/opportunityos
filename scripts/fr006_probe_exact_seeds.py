@@ -11,8 +11,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from dataclasses import asdict
 from pathlib import Path
+
+# ``python scripts/fr006_probe_exact_seeds.py`` places only ``scripts/`` on
+# ``sys.path``. Add the repository root so the local ``scripts`` package is
+# importable regardless of invocation style.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from opportunity.discovery.boards import (
     BoardCandidate,
