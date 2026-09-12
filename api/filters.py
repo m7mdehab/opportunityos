@@ -265,8 +265,10 @@ def _compile_industry_pattern(name: str) -> re.Pattern | None:
         return None
 
 
-_RED_LINES_SPEC_CACHE: dict[int, tuple[tuple[re.Pattern | None, tuple[str, ...]], ...]] = {}
-_RED_LINES_MATCH_CACHE: dict[tuple[int, str, Any], bool] = {}
+_RED_LINES_SPEC_CACHE: dict[
+    TruthGraph, tuple[tuple[re.Pattern | None, tuple[str, ...]], ...]
+] = {}
+_RED_LINES_MATCH_CACHE: dict[tuple[TruthGraph, str, Any], bool] = {}
 
 
 def _opp_matcher_fingerprint(opp: OpportunityRecord) -> str | tuple[str, str, str]:
@@ -340,21 +342,21 @@ def _extract_rule_tokens(pattern: str) -> tuple[str, ...]:
 def _red_lines_matches(ctx: OpportunityFilterContext, params: dict[str, Any]) -> bool:
     if ctx.truth_graph is None:
         return False
-    tg_id = id(ctx.truth_graph)
-    cache_key = (tg_id, ctx.opp.id, _opp_matcher_fingerprint(ctx.opp))
+    truth_graph = ctx.truth_graph
+    cache_key = (truth_graph, ctx.opp.id, _opp_matcher_fingerprint(ctx.opp))
     if cache_key in _RED_LINES_MATCH_CACHE:
         return _RED_LINES_MATCH_CACHE[cache_key]
 
-    if tg_id not in _RED_LINES_SPEC_CACHE:
-        red_lines, _never_claims = ctx.truth_graph.rules()
+    if truth_graph not in _RED_LINES_SPEC_CACHE:
+        red_lines, _never_claims = truth_graph.rules()
         specs = []
         for rule in red_lines:
             rx = _compile_rule_pattern(rule.pattern)
             tokens = _extract_rule_tokens(rule.pattern)
             specs.append((rx, tokens))
-        _RED_LINES_SPEC_CACHE[tg_id] = tuple(specs)
+        _RED_LINES_SPEC_CACHE[truth_graph] = tuple(specs)
 
-    specs = _RED_LINES_SPEC_CACHE[tg_id]
+    specs = _RED_LINES_SPEC_CACHE[truth_graph]
     if not specs:
         _RED_LINES_MATCH_CACHE[cache_key] = False
         return False
