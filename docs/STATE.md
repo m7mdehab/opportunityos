@@ -11,7 +11,7 @@ Next: See reports/evidence/FR-006/next-prerequisites-draft.md.
 ## Repository
 
 - **Generated:** 2026-09-08T23:16:30Z
-- **State generated at commit:** `097c5ef` — fix(api): isolate all truth-graph filter caches
+- **State generated at commit:** `1f0fc5a` — test(web): await hidden feed before artifact rejection
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
