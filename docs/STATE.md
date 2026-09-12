@@ -11,7 +11,7 @@ Next: See reports/evidence/FR-006/next-prerequisites-draft.md.
 ## Repository
 
 - **Generated:** 2026-09-08T23:16:30Z
-- **State generated at commit:** `e94d42c` — fix(api): key red-line caches by graph identity
+- **State generated at commit:** `097c5ef` — fix(api): isolate all truth-graph filter caches
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
