@@ -18,6 +18,11 @@ down_revision: Union[str, None] = "0004_founder_control"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+# This revision changes only the opportunity location schema; it does not
+# change any founder-filter seed defaults. Keep the explicit empty override
+# so FilterSeedSyncTest can compose every post-0003 revision deterministically.
+_D3_FILTER_SEED_OVERRIDES = {}
+
 
 def upgrade() -> None:
     op.alter_column(

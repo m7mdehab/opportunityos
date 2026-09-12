@@ -203,8 +203,10 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         row = target_roles_row()
         self.assertEqual(tuple(row), ("target_roles", "rank_only"))
 
-        # A1S.2: alembic downgrade -1 -> label_only.
-        command.downgrade(alembic_cfg, "-1")
+        # A1S.2: downgrade across the 0004 data migration -> label_only.
+        # The current head is 0005, whose schema-only downgrade must not
+        # reverse 0004's target_roles seed override by itself.
+        command.downgrade(alembic_cfg, "0003_provenance_identity")
         row = target_roles_row()
         self.assertEqual(tuple(row), ("target_roles", "label_only"))
 
