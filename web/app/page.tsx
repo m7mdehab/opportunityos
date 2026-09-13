@@ -34,6 +34,7 @@ import type {
 } from "@/lib/contract/types"
 
 type AuthPhase = "checking" | "authenticated" | "redirecting"
+const PAGE_SIZE = 50
 
 export default function FeedPage() {
   const router = useRouter()
@@ -46,6 +47,7 @@ export default function FeedPage() {
   const [filters, setFilters] = useState<FeedFilters>(EMPTY_FILTERS)
   const [items, setItems] = useState<OpportunityListItem[] | null>(null)
   const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
   const [listLoading, setListLoading] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
 
@@ -118,8 +120,8 @@ export default function FeedPage() {
         decision: filters.decision || undefined,
         min_score: filters.minScore ? Number(filters.minScore) : undefined,
         q: filters.q || undefined,
-        page: 1,
-        page_size: 50,
+        page,
+        page_size: PAGE_SIZE,
         include_hidden: includeHidden,
       })
       .then((res) => {
@@ -135,7 +137,12 @@ export default function FeedPage() {
         setListError("Could not load opportunities.")
       })
       .finally(() => setListLoading(false))
-  }, [filters, includeHidden, router])
+  }, [filters, includeHidden, page, router])
+
+  const refreshFromFirstPage = useCallback(() => {
+    if (page === 1) refreshList()
+    else setPage(1)
+  }, [page, refreshList])
 
   useEffect(() => {
     if (authPhase !== "authenticated") return
@@ -147,7 +154,7 @@ export default function FeedPage() {
   useEffect(() => {
     if (authPhase !== "authenticated") return
     // Standard data-fetching effect (React docs: "Fetching data" under
-    // "You Might Not Need an Effect"): setting a loading flag synchronously
+    // "You Might Not Need an Effect"): setting the loading flag synchronously
     // before the async call is the documented pattern, not an accidental
     // cascade — refetches are driven by `filters` changing, which is an
     // external input this effect is meant to synchronize against.
@@ -230,7 +237,7 @@ export default function FeedPage() {
     try {
       await api.worker.pollNow()
       refreshSources()
-      refreshList()
+      refreshFromFirstPage()
       refreshDashboard()
     } finally {
       setPolling(false)
@@ -273,6 +280,7 @@ export default function FeedPage() {
 
   const workerIdle =
     !!sources && sources.length > 0 && sources.every((s) => s.last_poll === null)
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   if (authPhase !== "authenticated") {
     return (
@@ -301,7 +309,10 @@ export default function FeedPage() {
         <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-4 py-2 sm:px-6">
           <FilterBar
             filters={filters}
-            onChange={setFilters}
+            onChange={(nextFilters) => {
+              setPage(1)
+              setFilters(nextFilters)
+            }}
             onOpenFounderFilters={() => setFiltersDrawerOpen(true)}
           />
           <Button
@@ -331,12 +342,13 @@ export default function FeedPage() {
             data-testid="toggle-tutoring-lane"
             disabled={!truth.loaded}
             title={!truth.loaded ? "A validated founder profile is required for tutoring materials" : undefined}
-            onClick={() =>
+            onClick={() => {
+              setPage(1)
               setFilters({
                 ...filters,
                 track: filters.track === "tutoring" ? "" : "tutoring",
               })
-            }
+            }}
           >
             <GraduationCap aria-hidden="true" className="size-3.5" />
             Tutoring Lane
@@ -365,7 +377,12 @@ export default function FeedPage() {
           </p>
         ) : items && items.length === 0 ? (
           hasActiveFilters ? (
-            <NoFilterMatchesState onClear={() => setFilters(EMPTY_FILTERS)} />
+            <NoFilterMatchesState
+              onClear={() => {
+                setPage(1)
+                setFilters(EMPTY_FILTERS)
+              }}
+            />
           ) : workerIdle ? (
             <WorkerIdleState onPollNow={handlePollNow} />
           ) : (
@@ -397,6 +414,35 @@ export default function FeedPage() {
                 />
               ))}
             </ul>
+            {pageCount > 1 && (
+              <nav
+                aria-label="Opportunity pages"
+                className="mt-5 flex items-center justify-center gap-3"
+                data-testid="opportunity-pagination"
+              >
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1 || listLoading}
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                >
+                  Previous
+                </Button>
+                <span className="text-xs text-muted-foreground" aria-live="polite">
+                  Page {page} of {pageCount}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= pageCount || listLoading}
+                  onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+                >
+                  Next
+                </Button>
+              </nav>
+            )}
           </>
         )}
 
@@ -412,7 +458,10 @@ export default function FeedPage() {
               variant="outline"
               size="sm"
               data-testid="toggle-hidden-opportunities"
-              onClick={() => setIncludeHidden((v) => !v)}
+              onClick={() => {
+                setPage(1)
+                setIncludeHidden((v) => !v)
+              }}
             >
               {includeHidden ? (
                 <>
@@ -434,7 +483,7 @@ export default function FeedPage() {
         open={filtersDrawerOpen}
         onOpenChange={setFiltersDrawerOpen}
         onFiltersChanged={() => {
-          refreshList()
+          refreshFromFirstPage()
           refreshDashboard()
         }}
       />
@@ -443,7 +492,7 @@ export default function FeedPage() {
         open={facetsPanelOpen}
         onOpenChange={setFacetsPanelOpen}
         onFacetsChanged={() => {
-          refreshList()
+          refreshFromFirstPage()
           refreshDashboard()
         }}
       />
@@ -452,7 +501,7 @@ export default function FeedPage() {
         open={hiddenReasonsOpen}
         onOpenChange={setHiddenReasonsOpen}
         onUnhidden={() => {
-          refreshList()
+          refreshFromFirstPage()
           refreshDashboard()
         }}
       />
