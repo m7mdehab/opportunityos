@@ -24,7 +24,10 @@ jobs:
     name: a9-live-poll
     # The live acceptance is deliberately scoped to the FR-006 recovery PR.
     # Normal product PRs must not acquire nondeterministic public-network gates.
-    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'fix/fr006-final-closure'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.head_ref == 'fix/fr006-final-closure' ||
+      github.head_ref == 'fix/fr006-public-alpha'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -79,7 +82,10 @@ jobs:
 
   a23-exact-seed-scan:
     name: a23-exact-seed-scan
-    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'fix/fr006-final-closure'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.head_ref == 'fix/fr006-final-closure' ||
+      github.head_ref == 'fix/fr006-public-alpha'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

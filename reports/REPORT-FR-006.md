@@ -82,6 +82,7 @@ All remediable engineering is complete. The only non-literal frozen outcome is A
 - A-12: `reports/evidence/FR-006/closure-current/a12-extraction.md`.
 - A-23: `reports/evidence/FR-006/closure-current/a23-exact-seed-probe.json` for board breadth and `reports/evidence/FR-006/closure-current/a23-live-ingestion.md` for real product rows.
 - Public deployment: `docs/DEPLOYMENT.md`; externally verified HTTPS/login/API/database smoke evidence is recorded below.
+- Public repository exposure: `reports/evidence/FR-006/closure-current/public-repository-safety.md`.
 
 ## 7. Next phase prerequisites
 
