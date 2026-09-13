@@ -212,8 +212,23 @@ class PollScheduler:
 
     # -- due-ness -------------------------------------------------------------
 
-    def _is_due(self, source_id: str, now: datetime) -> bool:
+    def _is_due(self, source_id: str, now: datetime, session) -> bool:
         last = self._last_enqueued_at.get(source_id)
+        if last is None:
+            # Cadence must survive a production restart.  Without this
+            # durable fallback, every fresh PollScheduler instance treats
+            # the entire source universe as immediately due and repeats a
+            # full warm-up even when those sources just completed.
+            latest = (
+                session.query(SourcePollRunRecord.started_at)
+                .filter(SourcePollRunRecord.source_id == source_id)
+                .order_by(SourcePollRunRecord.started_at.desc())
+                .first()
+            )
+            if latest is not None:
+                last = self._as_utc(latest[0])
+                if last is not None:
+                    self._last_enqueued_at[source_id] = last
         if last is None:
             return True
         elapsed_hours = (now - last).total_seconds() / 3600.0
@@ -326,7 +341,7 @@ class PollScheduler:
                         },
                     )
                     continue
-                if not self._is_due(source_id, now):
+                if not self._is_due(source_id, now, session):
                     continue
                 if source_id in already_pending:
                     logger.info(
