@@ -2,25 +2,24 @@
 # OpportunityOS State
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
-Last shipped: BRIEF-FR-003 — 2026-09-02.
-Active work: BRIEF-FR-006.
-Phase status: in progress.
+Last shipped: BRIEF-FR-006 — 2026-09-13.
+Active work: none.
+Phase status: passed.
 Blocked: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha (strictly blocked until Founder Web Alpha is live and validated).
-Next: Founder Web Alpha validation is next.
+Next: Founder Web Alpha is publicly reachable and authentication-protected.
 
 ## Repository
 
-- **Generated:** 2026-09-12T23:08:34Z
-- **State generated at commit:** `8f9ed10` — docs(fr006): reconcile final closure evidence
+- **Generated:** 2026-09-13T14:29:50Z
+- **State generated at commit:** `a173623` — chore(fr006): verify public repository safety
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
 
-- **Brief:** BRIEF-FR-006
-- **Phase status:** in progress
-- **Open acceptance items:** 2
-- A-12 — unresolved in latest report
-- A-23 — unresolved in latest report
+- **Brief:** none
+- **Phase status:** passed
+- **Open acceptance items:** 0
+- None
 
 ## Completed Briefs
 
@@ -34,10 +33,11 @@ Next: Founder Web Alpha validation is next.
 - GATE-FR-001 — 2026-08-31
 - BRIEF-FR-002 — 2026-09-01
 - BRIEF-FR-003 — 2026-09-02
+- BRIEF-FR-006 — 2026-09-13
 
 ## Last Phase Outcome
 
-- BRIEF-FR-006 — PASS_WITH_NOT_CLOSED
+- BRIEF-FR-006 — PASS_WITH_HISTORICAL_EXCEPTIONS
 
 ## Decisions
 
@@ -83,4 +83,4 @@ Next: Founder Web Alpha validation is next.
 
 ## Next Prerequisites
 
-Founder Web Alpha validation is next. Use the real private Founder Truth Pack only in the founder-controlled environment and validate useful daily opportunity yield, work-mode/location clarity, duplicate collapse, artifact quality, and safe outbound behavior. Do not start BRIEF-007 / Phase 6 until the Founder personally validates and accepts Founder Web Alpha.
+Founder Web Alpha is publicly reachable and authentication-protected. Founder validation is next. Inject the real private Founder Truth Pack only into a founder-controlled durable deployment; never commit it. Do not start BRIEF-007 / Phase 6 until the Founder personally validates and accepts Founder Web Alpha.

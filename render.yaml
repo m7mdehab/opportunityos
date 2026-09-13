@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: opportunityos-founder-alpha
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /login
+    autoDeployTrigger: commit
+    envVars:
+      - key: OPPORTUNITYOS_DB_URL
+        fromDatabase:
+          name: opportunityos-alpha-db
+          property: connectionString
+      - key: OPPORTUNITYOS_FOUNDER_PASSWORD
+        sync: false
+      - key: OPPORTUNITYOS_SESSION_SECRET
+        generateValue: true
+      - key: OPPORTUNITYOS_FORCE_SECURE_COOKIES
+        value: "1"
+
+databases:
+  - name: opportunityos-alpha-db
+    plan: free
+    databaseName: opportunityos_alpha
+    user: opportunityos
+    postgresMajorVersion: "16"

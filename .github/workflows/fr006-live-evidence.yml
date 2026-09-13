@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "scripts/fr006_live_poll.py"
+      - "scripts/fr006_a23_live_ingest.py"
       - "scripts/fr006_exact_seed_scan.py"
       - "scripts/fr006_probe_exact_seeds.py"
       - ".github/workflows/fr006-live-evidence.yml"
@@ -23,7 +24,10 @@ jobs:
     name: a9-live-poll
     # The live acceptance is deliberately scoped to the FR-006 recovery PR.
     # Normal product PRs must not acquire nondeterministic public-network gates.
-    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'fix/fr006-final-closure'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.head_ref == 'fix/fr006-final-closure' ||
+      github.head_ref == 'fix/fr006-public-alpha'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -78,7 +82,10 @@ jobs:
 
   a23-exact-seed-scan:
     name: a23-exact-seed-scan
-    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'fix/fr006-final-closure'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.head_ref == 'fix/fr006-final-closure' ||
+      github.head_ref == 'fix/fr006-public-alpha'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

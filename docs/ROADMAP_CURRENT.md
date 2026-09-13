@@ -12,7 +12,7 @@ Within the overall project portfolio, OPOS receives first claim on unconstrained
 
 PR #78 is the authoritative FR-006 recovery checkpoint until merged. Run `34724239556` is green with 1095 Linux/PostgreSQL tests and zero skips, Playwright 22/22, and passing governance. Companion Guard, State, Mirror, and bounded live-evidence checks are green.
 
-`reports/REPORT-FR-006.md` concludes `PASS_WITH_NOT_CLOSED`. The bounded technical recovery is complete; frozen exceptions stay visible: A-12 work-mode coverage 77.6% versus 90%, A-23 persisted source yield 0/8 despite 334/300 live boards, A-20's absent exact frozen-corpus subset, and A-6's accepted historical deviation.
+`reports/REPORT-FR-006.md` concludes `PASS_WITH_HISTORICAL_EXCEPTIONS`. A-23 is closed at 8/8 persisted sources plus 127 live Hacker News rows. Frozen exceptions stay visible: A-12 work-mode coverage 80.4% versus 90% after exhaustive evidence inventory, A-20's absent exact frozen-corpus subset, and A-6's accepted historical deviation. Founder Web Alpha is live; Founder validation is next.
 
 ## Immediate Goal - Founder Web Alpha validation
 

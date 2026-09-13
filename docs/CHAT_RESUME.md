@@ -54,7 +54,7 @@ See `docs/PRODUCT_CONSTITUTION.md` and accepted ADRs for full law.
 
 PR #78 is the authoritative FR-006 recovery branch until merged. Its final pre-report integration checkpoint (`e41f06a`, run `34724239556`) is green: 1095 Linux/PostgreSQL tests with zero skips, Playwright 22/22, governance, Guard, State, Mirror, and bounded live-evidence checks.
 
-Generated State follows `reports/REPORT-FR-006.md`: BRIEF-FR-006 remains active with only its explicit `NOT_CLOSED` frozen outcomes. BRIEF-007 / Multi-Tenant Family Alpha is blocked until Founder Web Alpha is live and personally validated.
+Generated State follows `reports/REPORT-FR-006.md`: BRIEF-FR-006 is terminal with narrowly documented historical exceptions. Founder Web Alpha is live; BRIEF-007 / Multi-Tenant Family Alpha remains blocked until it is personally validated.
 
 ## Current Active Brief - BRIEF-FR-006
 
@@ -90,8 +90,8 @@ Substantial work already on `main` includes:
 
 ## What Did Not Close
 
-- A-12 work mode: 419/540 (77.6%) versus 90%, at the honest committed-signal ceiling. Country/scope 98.5% and uncertainty 10.4% pass.
-- A-23 persisted source yield: 0/8 in the bounded live session. The independent board target passes at 334/300; Reddit remains BLOCKED_POLICY/manual-only.
+- A-12 work mode: 434/540 (80.4%) versus 90%, at the evidenced committed-signal ceiling after a fresh source-partitioned scan. The 106 residual absences are machine-inventoried; country/scope 98.5% and uncertainty 10.4% pass.
+- A-23 persisted source yield: 8/8 newly registered sources, 60 persisted/evaluated rows; the live HN production path adds 127 persisted/evaluated rows. The board target passes at 334/300; Reddit remains BLOCKED_POLICY/manual-only.
 - A-20 exact Cloudflare subset: absent from the frozen corpus and retained as a historical corpus/contract exception; full-corpus clustering invariants pass.
 - A-6: accepted historical scope exception under ADR-0020.
 

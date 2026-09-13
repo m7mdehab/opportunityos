@@ -1,0 +1,13 @@
+.git
+.github
+.claude
+out
+private
+reports
+briefs
+web/.next
+web/node_modules
+**/__pycache__
+*.pyc
+*.db
+.env*

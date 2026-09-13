@@ -135,8 +135,30 @@ class NormalizationTests(unittest.TestCase):
                 self.assertEqual(expected, result.work_mode)
                 self.assertEqual("inference", result.work_mode_source)
 
-    def test_generic_employer_work_language_stays_unspecified(self) -> None:
+    def test_explicit_employer_hybrid_policy_is_hybrid(self) -> None:
         result = extract_work_location("", "We operate as a hybrid workplace across our global offices.")
+        self.assertEqual(WorkMode.HYBRID, result.work_mode)
+
+    def test_generic_office_culture_language_stays_unspecified(self) -> None:
+        result = extract_work_location("", "We value our collaborative office culture.")
+        self.assertEqual(WorkMode.UNSPECIFIED, result.work_mode)
+
+    def test_explicit_three_day_office_requirement_is_hybrid(self) -> None:
+        result = extract_work_location(
+            "", "You are required to work from the Chicago office three (3) days per week."
+        )
+        self.assertEqual(WorkMode.HYBRID, result.work_mode)
+
+    def test_explicit_five_day_office_requirement_is_onsite(self) -> None:
+        result = extract_work_location("", "Requirement to be in office supporting 5 days a week.")
+        self.assertEqual(WorkMode.ONSITE, result.work_mode)
+
+    def test_explicit_named_office_requirement_is_onsite(self) -> None:
+        result = extract_work_location("", "Ability to work from our Pittsburgh, PA office.")
+        self.assertEqual(WorkMode.ONSITE, result.work_mode)
+
+    def test_office_duty_language_stays_unspecified(self) -> None:
+        result = extract_work_location("", "Complete tasks required to run the office efficiently.")
         self.assertEqual(WorkMode.UNSPECIFIED, result.work_mode)
         self.assertEqual("none", result.work_mode_source)
 
