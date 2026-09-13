@@ -157,6 +157,43 @@ class TestOneJobPerSourcePerTick(TestPollSchedulerBase):
         self.assertEqual(len(jobs), 2)
 
 
+class TestDurablePollCadence(TestPollSchedulerBase):
+    def test_restart_respects_latest_successful_poll_time(self):
+        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        clock_state = {"now": base + timedelta(hours=1)}
+
+        session = self.session_factory()
+        try:
+            session.add(
+                SourcePollRunRecord(
+                    id="spr-before-restart",
+                    source_id="fixture_allowed",
+                    started_at=base.replace(tzinfo=None),
+                    finished_at=base.replace(tzinfo=None),
+                    status="ok",
+                )
+            )
+            session.commit()
+        finally:
+            session.close()
+
+        scheduler = PollScheduler(
+            self.session_factory,
+            registry=self.registry,
+            interval_hours=6,
+            clock=lambda: clock_state["now"],
+        )
+
+        self.assertEqual(
+            scheduler.run_once(),
+            [],
+            "a restart must not repoll a source before its durable cadence elapses",
+        )
+
+        clock_state["now"] = base + timedelta(hours=6)
+        self.assertEqual(scheduler.run_once(), ["fixture_allowed"])
+
+
 class TestIntervalMath(TestPollSchedulerBase):
     def test_interval_elapsed_gates_reenqueue_with_injected_clock(self):
         base = datetime(2026, 1, 1, tzinfo=timezone.utc)
