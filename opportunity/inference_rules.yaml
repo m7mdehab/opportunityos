@@ -5,6 +5,30 @@ description: BRIEF-FR-006 A1 committed, ordered, tested text-inference rule tabl
   specific composite rules are listed before generic catch-alls. A new rule can be added here without
   editing Python.
 rules:
+- id: desc_employer_hybrid_workplace_policy
+  pattern: (?i)\bwe\s+operate\s+as\s+a\s+hybrid\s+workplace\b
+  sets:
+    work_mode: hybrid
+  channel: description
+  description: Explicit employer-wide workplace policy on the posting -> hybrid
+- id: desc_required_office_days_hybrid
+  pattern: (?i)\b(?:required|requirement)\s+to\s+(?:be|work)\s+(?:in|from)\s+(?:the\s+)?[^.<]{0,80}?office\b[^.<]{0,80}?\b(?:one|two|three|four|1|2|3|4)\s*(?:\([^)]*\)\s*)?days?\s+(?:a|per)\s+week\b
+  sets:
+    work_mode: hybrid
+  channel: description
+  description: Explicit one-to-four-day office requirement -> hybrid
+- id: desc_required_office_full_week_onsite
+  pattern: (?i)\b(?:required|requirement)\s+to\s+(?:be|work)\s+(?:in|from)\s+(?:the\s+)?[^.<]{0,80}?office\b[^.<]{0,80}?\b(?:five|5)\s*(?:\([^)]*\)\s*)?days?\s+(?:a|per)\s+week\b
+  sets:
+    work_mode: onsite
+  channel: description
+  description: Explicit five-day office requirement -> onsite
+- id: desc_ability_work_from_named_office
+  pattern: (?i)\bability\s+to\s+work\s+(?:from|in|at)\s+(?:the\s+|our\s+)?[a-z .,'’‘-]+\s+office\b
+  sets:
+    work_mode: onsite
+  channel: description
+  description: Explicit candidate requirement to work from the named office -> onsite
 - id: desc_role_fully_remote
   pattern: (?i)\b(?:this\s+(?:role|position|job)\s+is\s+(?:fully\s+)?remote|(?:100%|fully)\s+remote\s+(?:role|position|job)|position\s+is\s+(?:fully\s+)?remote|role\s+is\s+(?:fully\s+)?remote|remote\s+(?:role|position))\b
   sets:

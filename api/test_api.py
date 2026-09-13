@@ -349,13 +349,20 @@ class ApiTestCase(unittest.TestCase):
         )
         return str(target)
 
-    def make_app(self, *, truth_pack_path: str | None = None, high_fit_threshold: float = 70.0):
+    def make_app(
+        self,
+        *,
+        truth_pack_path: str | None = None,
+        high_fit_threshold: float = 70.0,
+        force_secure_cookies: bool = False,
+    ):
         settings = Settings(
             db_url=self.db_url,
             founder_password=FOUNDER_PASSWORD,
             session_secret=SESSION_SECRET,
             high_fit_threshold=high_fit_threshold,
             truth_pack_path=truth_pack_path or self.missing_pack_path(),
+            force_secure_cookies=force_secure_cookies,
         )
         app = create_app(settings=settings)
         if not hasattr(self, "_apps_to_dispose"):
@@ -634,6 +641,17 @@ class AuthFailClosedTest(ApiTestCase):
 
 
 class AuthSessionTest(ApiTestCase):
+    def test_public_reverse_proxy_can_force_secure_session_cookie(self):
+        app = self.make_app(force_secure_cookies=True)
+        client = TestClient(app)
+
+        response = client.post("/api/auth/login", json={"password": FOUNDER_PASSWORD})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Secure", response.headers["set-cookie"])
+        self.assertIn("HttpOnly", response.headers["set-cookie"])
+        self.assertIn("SameSite=lax", response.headers["set-cookie"])
+
     def test_login_me_logout_cycle(self):
         app = self.make_app()
         client = TestClient(app)

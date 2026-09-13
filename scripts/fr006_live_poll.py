@@ -10,8 +10,12 @@ source.
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from urllib.parse import urlparse
+
+# Keep direct ``python scripts/...`` execution pinned to this checkout.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from opportunity.registry import SourceRegistry
 from storage.engine import get_engine, get_session_factory
@@ -38,9 +42,9 @@ def main() -> int:
     if not db_url:
         raise RuntimeError("OPPORTUNITYOS_DB_URL is required")
     db_name = db_url.rsplit("/", 1)[-1].split("?", 1)[0]
-    if db_name != "opportunityos_alpha":
+    if db_name not in {"opportunityos_alpha", "opportunityos_a23_alpha"}:
         raise RuntimeError(
-            f"A-9 must run on fresh opportunityos_alpha, got database {db_name!r}"
+            f"live acceptance must run on a fresh alpha database, got {db_name!r}"
         )
 
     registry = SourceRegistry()

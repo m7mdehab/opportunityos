@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "scripts/fr006_live_poll.py"
+      - "scripts/fr006_a23_live_ingest.py"
       - "scripts/fr006_exact_seed_scan.py"
       - "scripts/fr006_probe_exact_seeds.py"
       - ".github/workflows/fr006-live-evidence.yml"

@@ -8,9 +8,9 @@ Validate useful daily opportunity yield, work-mode/location clarity, duplicate c
 
 ## 2. Retained frozen exceptions
 
-- A-12 work-mode coverage is 419/540 (77.6%) against 90%. The remaining 121 rows have no defensible committed work-mode signal; unknown remains unknown.
+- A-12 work-mode coverage is 434/540 (80.4%) against 90%. The remaining 106 rows have no defensible committed work-mode signal and are machine-inventoried; unknown remains unknown.
 - A-20's exact Cloudflare Senior Customer Engineer subset is absent from the frozen corpus. Full-corpus clustering invariants pass, but the absent subset is not called a normal PASS.
-- A-23 reaches 334/300 verified live relevant boards but has 0/8 new sources with persisted-row evidence in the bounded live session. Reddit remains BLOCKED_POLICY/manual-only; HN has governed/mock product-row proof but no live row captured in this session; the freelance manual deep-link alternative is preserved.
+- A-23 reaches 334/300 verified live relevant boards, 8/8 new persisted row-producing sources (60 rows), and 127 live HN rows. Reddit remains BLOCKED_POLICY/manual-only; the freelance manual deep-link alternative is preserved.
 - A-6 remains the accepted historical 739/740 scope deviation under ADR-0020.
 
 ## 3. Closed recovery items

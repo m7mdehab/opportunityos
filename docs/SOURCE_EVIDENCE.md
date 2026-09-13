@@ -195,7 +195,7 @@ plain unauthenticated HTTP GET.
 
 | Source | Status | Latency ms | Records | Detail |
 |---|---|---:|---:|---|
-| hacker_news_who_is_hiring | allowed_ok | n/a (multi-request) | 0 (bound path, this session) | robots.txt Allow: /*.json$. **Correction (council review 4, finding 11):** the "192 rows" figure previously reported here came from a manual, disconnected smoke run of `fetch_who_is_hiring_payload()` invoked directly against live Hacker News -- not from the bound production path. At the time of that figure, `OpportunityPipeline.execute_discovery` fetched only `HackerNewsWhoIsHiringAdapter.feed_url` (the `whoishiring` user object) as a single GET and handed it to `parse_payload`, which requires a `comments` key the user object never has -- so the bound path always yielded 0 rows and permanent `has_schema_drift=True` health, regardless of what a manual smoke run produced. `worker/handlers.py` now wires a governed, registry-gated, multi-step fetch (`_fetch_hacker_news_who_is_hiring_governed`) into the bound poll path for this source, but this offline work order made no network request (per its own constraint), so no production run of the bound path has been executed or measured this session -- the honest, measured row count for the bound path in this session is **0**. |
+| hacker_news_who_is_hiring | allowed_ok | n/a (multi-request) | 127 (bound production path) | robots.txt Allow: /*.json$. **Current measurement (2026-09-13):** the governed `worker/handlers.py` multi-step path ingested 189 raw comments, normalized 127 unique opportunities, and persisted/evaluated 127/127 against the synthetic acceptance graph. This supersedes the prior 0-row session measurement without reviving the older disconnected 192-row smoke claim. |
 | reddit_forhire | http_403 | 0 | 0 | `GET /r/forhire.json` → HTTP 403 on the first request. Not retried. Registered `manual_only` with a deep link — this is Reddit's one attempted route and its dated closure. **Correction (council review 4, finding 13):** the `robots.txt` fetch that preceded this request returned HTTP 200, but its response body (the `User-agent: *` directive text) was never recorded — only the status code was. Whether the subsequent `/r/forhire.json` request was itself robots-compliant therefore cannot be established from this evidence; this is an open, unresolved question, recorded honestly rather than guessed. `www.reddit.com` has since returned HTTP 403 to this project even for `robots.txt`, so the directive text cannot be safely re-fetched. This source stays `manual_only`/`read: disabled` regardless of how that question resolves. |
 | reddit_remotejobs | inferred_from_sibling_403 | 0 | 0 | Same host/endpoint pattern as reddit_forhire; not independently requested to avoid a second request to an already-blocking host. `manual_only`, deep link. |
 | reddit_machinelearningjobs | inferred_from_sibling_403 | 0 | 0 | See reddit_forhire. `manual_only`, deep link. |
@@ -326,13 +326,18 @@ with the base registry, expected ATS endpoint hosts, `automation.read: allowed`,
 configuration evidence only; these 286 boards are **not** counted as Opportunity rows
 because this run did not execute product ingestion/persistence for them.
 
-The separate `>=8` new fixture/product-row clause remains unmeasured at **0/8** in
-this run: no new fixture corpus or product-row production was claimed. The bound
-Hacker News Who-Is-Hiring path remains at **0 live rows measured in this session**;
-its existing fixture seam is not substituted for live production evidence. Reddit is
-**BLOCKED_POLICY/manual-only**: `reddit_forhire` returned one HTTP 403 and was not
-retried; sibling Reddit routes remain manual-only under the documented inferred
-same-host block. The freelance alternative is satisfied only as the policy-valid
-manual/deep-link route (for example `mostaql` and `khamsat`, with additional catalogue
-entries), not as automated product rows. No policy defaults or prepare/submit authority
-changed.
+The separate product-row clause was subsequently executed through the production
+worker/persistence/evaluation seam on 2026-09-13. Eight newly registered,
+read-allowed boards produced **60 persisted and 60 evaluated rows**: Greenhouse
+`ada18` (9), `ampsortation` (17), `aquaticcapitalmanagement` (8), and Lever
+`brilliant` (4), `demiurgestudios` (2), `gauntlet` (6), `teleo` (11), and
+`vailsys` (3). The governed Hacker News Who-Is-Hiring path separately produced
+**127 persisted and 127 evaluated live rows** from 189 raw comments. Full source
+IDs, row counts, URL hosts, and controls are in
+`reports/evidence/FR-006/closure-current/a23-live-ingestion.md`.
+
+Reddit remains **BLOCKED_POLICY/manual-only**: `reddit_forhire` returned one HTTP
+403 and was not retried; sibling Reddit routes remain manual-only under the
+documented inferred same-host block. The freelance alternative remains the
+policy-valid manual/deep-link route (`mostaql` and `khamsat`). No policy defaults
+or prepare/submit authority changed.

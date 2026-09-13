@@ -29,7 +29,12 @@ def _set_session_cookie(response: Response, request: Request, token: str) -> Non
     # Server-side signal only (ASGI scope["server"], the transport-reported
     # bind address) -- never a client-supplied header. See
     # api.security.is_localhost_bind for why.
-    secure = not is_localhost_bind(request.scope.get("server"))
+    # A same-container reverse proxy reaches FastAPI over loopback even when
+    # the founder-facing connection is public HTTPS. Production explicitly
+    # forces Secure so that topology cannot weaken the browser cookie.
+    secure = request.app.state.settings.force_secure_cookies or not is_localhost_bind(
+        request.scope.get("server")
+    )
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=token,

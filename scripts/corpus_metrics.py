@@ -110,14 +110,16 @@ def report_work_mode_coverage(opportunities: list[Opportunity]) -> None:
     print("--- work-mode residuals by source ---")
     for source_id, count in sorted(by_source.items()):
         print(f"{source_id}: {count}")
-    print("--- work-mode residual IDs and titles ---")
+    print("--- work-mode residual evidence inventory ---")
     for opp in sorted(
         residuals,
         key=lambda item: (str(getattr(item, "source", "")), str(getattr(item, "id", ""))),
     ):
         print(
             f"{getattr(opp, 'source', '<unknown>')} | "
-            f"{getattr(opp, 'id', '<unknown>')} | {getattr(opp, 'title', '<untitled>')}"
+            f"{getattr(opp, 'id', '<unknown>')} | {getattr(opp, 'title', '<untitled>')} | "
+            f"location_raw={getattr(opp, 'location_raw', None)!r} | "
+            "work_mode_evidence=none"
         )
     # Bounded ceiling from the committed fields/text: residual rows remain
     # unknown, so no unsupported default is counted as a signal.

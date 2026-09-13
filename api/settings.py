@@ -40,6 +40,7 @@ class Settings:
     session_secret: str
     high_fit_threshold: float = DEFAULT_HIGH_FIT_THRESHOLD
     truth_pack_path: str | None = None
+    force_secure_cookies: bool = False
 
 
 def _require_env(name: str) -> str:
@@ -83,6 +84,12 @@ def load_settings() -> Settings:
         high_fit_threshold = DEFAULT_HIGH_FIT_THRESHOLD
 
     truth_pack_path = os.environ.get("OPPORTUNITYOS_TRUTH_PACK_PATH") or None
+    force_secure_cookies = os.environ.get("OPPORTUNITYOS_FORCE_SECURE_COOKIES", "").casefold() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
     return Settings(
         db_url=db_url,
@@ -90,4 +97,5 @@ def load_settings() -> Settings:
         session_secret=session_secret,
         high_fit_threshold=high_fit_threshold,
         truth_pack_path=truth_pack_path,
+        force_secure_cookies=force_secure_cookies,
     )
