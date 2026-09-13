@@ -6,7 +6,7 @@
 
 ## 1. Summary
 
-The final closure remediates every fixable FR-006 item and ships the authenticated Founder Web Alpha at `https://retain-portable-theory-twice.trycloudflare.com`. The durable zero-dollar Render deployment is reproducible from `render.yaml`; provider account authorization remains the only step needed to replace the immediate tunnel URL with a durable `onrender.com` URL.
+The final closure remediates every fixable FR-006 item and ships the authenticated Founder Web Alpha at `https://retain-portable-theory-twice.trycloudflare.com`. PR #79 merged as `a2e5043540003242c658d01d73daec14e029d892`, and every required post-merge workflow on that SHA passed. The durable zero-dollar Render deployment is reproducible from `render.yaml`; provider account authorization remains the only step needed to replace the immediate tunnel URL with a durable `onrender.com` URL.
 
 The recovery closed the live-poll gap, current title-family target, browser preview regression, live-board target, stale-posting cadence, and duplicate-validator semantic divergence. It did not invent missing work-mode evidence or claim product rows that were never persisted.
 
@@ -28,9 +28,9 @@ All remediable engineering is complete. The only non-literal frozen outcome is A
 
 | Claim | Status | Current evidence |
 |---|---|---|
-| A-0 | PASS | Fail-closed persistence invariant remains covered in the green 1095-test suite. |
-| A-1 | PASS | Linux/PostgreSQL: **1095 tests**, 0 failures, 0 errors, **0 skipped**; N > 672. |
-| A-2 | PASS | The single full-suite test-id execution completed at 1095 without duplicate/failing discovery. |
+| A-0 | PASS | Fail-closed persistence invariant remains covered in the green 1102-test suite. |
+| A-1 | PASS | Linux/PostgreSQL: **1102 tests**, 0 failures, 0 errors, **0 skipped**; N > 672. |
+| A-2 | PASS | The single full-suite test-id execution completed at 1102 without duplicate/failing discovery. |
 | A-3 | PASS | Fresh PostgreSQL migration reaches head `0005_widen_location_region`; migration compatibility tests pass. |
 | A-4 | PASS | Governance, Guard, and repository-integrity checks pass. |
 | A-5 | PASS | Generated State freshness passes; `docs/STATE.md` is generator-owned. |
@@ -57,7 +57,7 @@ All remediable engineering is complete. The only non-literal frozen outcome is A
 
 | Measure | Result |
 |---|---|
-| A-1 | 1095 tests; failures=0; errors=0; skipped=0 |
+| A-1 | 1102 tests; failures=0; errors=0; skipped=0 |
 | A-8 | 22/22 Playwright |
 | A-9 | Himalayas; fetched=20; parsed=20; persisted=20; evaluated=20; fixture rows=0 |
 | A-12 | N=540; work=80.4%; country/scope=98.5%; uncertain=10.4%; adapter=33.3%; inference=47.0%; no-signal=19.6% |
@@ -83,6 +83,7 @@ All remediable engineering is complete. The only non-literal frozen outcome is A
 - A-23: `reports/evidence/FR-006/closure-current/a23-exact-seed-probe.json` for board breadth and `reports/evidence/FR-006/closure-current/a23-live-ingestion.md` for real product rows.
 - Public deployment: `docs/DEPLOYMENT.md`; externally verified HTTPS/login/API/database smoke evidence is recorded below.
 - Public repository exposure: `reports/evidence/FR-006/closure-current/public-repository-safety.md`.
+- Merge and post-merge verification: `reports/evidence/FR-006/closure-current/post-merge-verification.md`.
 
 ## 7. Next phase prerequisites
 
@@ -95,4 +96,4 @@ Founder Web Alpha is publicly reachable and authentication-protected. Founder va
 - External checks: DNS resolved; HTTPS returned 200; unauthenticated `/api/opportunities` returned 401; login returned 200; authenticated session returned 200; secure/HttpOnly/SameSite=Lax cookie flags present; web-to-API returned 60 fresh live ATS rows.
 - Browser smoke: desktop 1440x900 and mobile 390x844 both rendered login, authenticated, refreshed the deep link, displayed the live fetched count, and showed no mock banner.
 - Private Truth Pack: intentionally absent from the public preview. The UI visibly reports the fail-safe boundary; no synthetic evaluation data is deployed.
-- Limitation: this immediate account-less URL has no uptime guarantee. `render.yaml` and `Dockerfile` provide the durable free deployment path, but linking the private repository requires Founder authorization in Render.
+- Limitation: this immediate account-less URL has no uptime guarantee. `render.yaml` and `Dockerfile` provide the durable free deployment path, but activating it requires Founder authorization in Render.
