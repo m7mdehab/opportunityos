@@ -61,6 +61,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.loaded_truth_pack = None
     app.state.truth_pack_error = None
     app.state.truth_pack_findings = ()
+    # Until startup successfully loads a pack, the honest state is
+    # "missing", not "present but invalid". The loader below replaces this
+    # with the precise outcome before production begins serving requests.
+    app.state.truth_pack_missing = True
     app.state.truth_pack_path_display = resolved_settings.truth_pack_path or "private/truth_pack.yaml"
 
     @app.middleware("http")

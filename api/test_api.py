@@ -1911,7 +1911,8 @@ class TruthRoutesTest(ApiTestCase):
         self.assertFalse(body["loaded"])
         self.assertIsNone(body["hash"])
         self.assertFalse(body["validator"]["ok"])
-        self.assertGreaterEqual(body["validator"]["error_count"], 1)
+        self.assertEqual(body["validator"]["error_count"], 0)
+        self.assertGreaterEqual(len(body["validator"]["findings"]), 1)
 
     def test_reload_with_valid_pack(self):
         app = self.make_app(truth_pack_path=self.valid_pack_path())
@@ -1933,6 +1934,7 @@ class TruthRoutesTest(ApiTestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertFalse(body["loaded"])
+        self.assertGreaterEqual(body["validator"]["error_count"], 1)
         self.assertGreaterEqual(len(body["validator"]["findings"]), 1)
 
 

@@ -1660,14 +1660,18 @@ def poll_now(request: Request, session: Session = Depends(get_db)):
 def _truth_status_payload(request: Request) -> dict[str, Any]:
     loaded_pack = request.app.state.loaded_truth_pack
     if loaded_pack is None:
+        findings = list(request.app.state.truth_pack_findings or ["no truth pack loaded"])
         return {
             "loaded": False,
             "hash": None,
             "path": str(request.app.state.truth_pack_path_display),
             "validator": {
                 "ok": False,
-                "error_count": 1,
-                "findings": list(request.app.state.truth_pack_findings or ["no truth pack loaded"]),
+                # A missing pack is an expected deployment state, not a pack
+                # that failed validation.  The web contract uses zero to
+                # distinguish that state from a present-but-invalid pack.
+                "error_count": 0 if request.app.state.truth_pack_missing else len(findings),
+                "findings": findings,
             },
             "sections": [],
         }
@@ -1697,14 +1701,17 @@ def load_truth_pack_into_state(app: Any) -> None:
         app.state.loaded_truth_pack = loaded
         app.state.truth_pack_error = None
         app.state.truth_pack_findings = ()
+        app.state.truth_pack_missing = False
     except TruthPackMissing as error:
         app.state.loaded_truth_pack = None
         app.state.truth_pack_error = str(error)
         app.state.truth_pack_findings = (str(error),)
+        app.state.truth_pack_missing = True
     except TruthPackInvalid as error:
         app.state.loaded_truth_pack = None
         app.state.truth_pack_error = str(error)
         app.state.truth_pack_findings = tuple(error.findings)
+        app.state.truth_pack_missing = False
 
 
 @router.get("/truth/status")
