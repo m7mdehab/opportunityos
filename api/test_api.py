@@ -19,6 +19,7 @@ import unittest
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from alembic import command
 from alembic.config import Config
@@ -762,6 +763,30 @@ class OpportunityRoutesTest(ApiTestCase):
         self.assertEqual(paged.status_code, 200)
         self.assertEqual(paged.json()["page_size"], 1)
         self.assertEqual(len(paged.json()["items"]), 1)
+
+    def test_production_sized_routes_preserve_results_across_bounded_batches(self):
+        """The feed, filters, and facets must not require one all-row ORM load.
+
+        A one-row batch forces every three-row fixture through multiple query
+        chunks while preserving the same totals, ranking, and facet counts.
+        """
+        for index, score in enumerate((30.0, 90.0, 60.0), start=1):
+            opportunity_id = f"opp-batch-{index}"
+            self.seed_opportunity(opportunity_id, posted_date=f"2026-08-2{index}")
+            self.seed_evaluation(opportunity_id, decision="qualified", fit_score=score)
+
+        with patch("api.routes_api._OPPORTUNITY_BATCH_SIZE", 1):
+            feed = self.client.get("/api/opportunities", params={"page": 2, "page_size": 1})
+            filters = self.client.get("/api/filters")
+            facets = self.client.get("/api/facets")
+
+        self.assertEqual(feed.status_code, 200)
+        self.assertEqual(feed.json()["total"], 3)
+        self.assertEqual(feed.json()["items"][0]["id"], "opp-batch-3")
+        self.assertEqual(filters.status_code, 200)
+        self.assertEqual(facets.status_code, 200)
+        decision = next(item for item in facets.json()["facets"] if item["facet_id"] == "decision")
+        self.assertEqual(decision["values"], [{"value": "qualified", "count": 3, "state": "off"}])
 
     def test_detail_reaches_pass_fail_unknown_and_uncertain(self):
         """`UNKNOWN` being structurally distinct from `FAIL` is the brief's
@@ -2964,8 +2989,8 @@ class FacetsTest(ApiTestCase):
 
             self._set_facet(facet_id, include=[value_a])
             visible_include = self._default_visible_ids()
-            self.assertIn("opp-a", visible_include)
-            self.assertNotIn("opp-b", visible_include)
+            self.assertIn("opp-a", visible_include, facet_id)
+            self.assertNotIn("opp-b", visible_include, facet_id)
 
             self._set_facet(facet_id, include=[], exclude=[value_b])
             visible_exclude = self._default_visible_ids()
