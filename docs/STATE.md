@@ -10,8 +10,8 @@ Next: Founder Web Alpha is publicly reachable and authentication-protected.
 
 ## Repository
 
-- **Generated:** 2026-09-13T16:02:12Z
-- **State generated at commit:** `a102f06` — fix(scheduler): preserve poll cadence across restarts
+- **Generated:** 2026-09-13T22:50:46Z
+- **State generated at commit:** `724a722` — Scale production opportunity feed queries
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
