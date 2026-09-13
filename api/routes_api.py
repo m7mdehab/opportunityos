@@ -72,6 +72,7 @@ from .filters import (
     _founder_target_role_families,
     _founder_track_preference,
     _red_lines_matches,
+    _safe_float,
     to_naive_utc,
     unavailable_reason,
     validate_filter_params,
@@ -565,6 +566,100 @@ def list_facets(request: Request, session: Session = Depends(get_db)):
     facet_settings = _load_facet_settings(session)
     filter_settings = _load_filter_settings(session)
     truth_graph = _truth_graph_from_request(request)
+    loaded_pack = request.app.state.loaded_truth_pack
+
+    # The production defaults only hide the founder's red lines and excluded
+    # industries.  In that common case, fetch exactly the scalar fields the
+    # facet engine needs and avoid hydrating/unpacking every evaluation's
+    # reasons, dimensions, and detail JSON.  The matchers are the same ones
+    # used by apply_filters, so visibility and counts remain exact.
+    if loaded_pack is not None and _can_lightweight_prefilter_hidden(filter_settings, {}):
+        rows = (
+            session.query(
+                OpportunityRecord.id,
+                OpportunityRecord.title,
+                OpportunityRecord.organization,
+                OpportunityRecord.description,
+                OpportunityRecord.content_hash,
+                OpportunityRecord.work_mode,
+                OpportunityRecord.location_country,
+                OpportunityRecord.location_city,
+                OpportunityRecord.remote_scope,
+                OpportunityRecord.employment_type,
+                OpportunityRecord.seniority_level,
+                OpportunityRecord.title_family,
+                OpportunityRecord.track,
+                OpportunityRecord.source_id,
+                OpportunityRecord.posted_date,
+                MatchEvaluationRecord.qualification_decision,
+                MatchEvaluationRecord.fit_score,
+            )
+            .outerjoin(
+                MatchEvaluationRecord,
+                and_(
+                    MatchEvaluationRecord.opportunity_id == OpportunityRecord.id,
+                    MatchEvaluationRecord.truth_pack_hash == loaded_pack.truth_pack_hash,
+                ),
+            )
+            .all()
+        )
+        compensation: dict[str, dict[str, Any]] = {}
+        for provenance in (
+            session.query(
+                FieldProvenanceRecord.opportunity_id,
+                FieldProvenanceRecord.field_name,
+                FieldProvenanceRecord.normalized_value,
+            )
+            .filter(
+                FieldProvenanceRecord.field_name.in_(
+                    ("compensation.min_amount", "compensation.max_amount", "compensation.currency")
+                )
+            )
+            .all()
+        ):
+            compensation.setdefault(provenance.opportunity_id, {})[provenance.field_name] = provenance.normalized_value
+
+        red_lines_active = _filter_enabled_mode("red_lines", filter_settings) == (True, "hide")
+        industries_active = _filter_enabled_mode("excluded_industries", filter_settings) == (True, "hide")
+        contexts: list[OpportunityFilterContext] = []
+        for row in rows:
+            opp = SimpleNamespace(
+                id=row.id,
+                title=row.title,
+                organization=row.organization,
+                description=row.description,
+                content_hash=row.content_hash,
+                work_mode=row.work_mode,
+                location_country=row.location_country,
+                location_city=row.location_city,
+                remote_scope=row.remote_scope,
+                employment_type=row.employment_type,
+                seniority_level=row.seniority_level,
+                title_family=row.title_family,
+                track=row.track,
+                source_id=row.source_id,
+                posted_date=row.posted_date,
+            )
+            comp = compensation.get(row.id, {})
+            ctx = OpportunityFilterContext(
+                opp=opp,
+                decision=row.qualification_decision,
+                fit_score=row.fit_score,
+                reasons=[],
+                evaluation_detail={},
+                dimension_scores=[],
+                compensation_min=_safe_float(comp.get("compensation.min_amount")),
+                compensation_max=_safe_float(comp.get("compensation.max_amount")),
+                compensation_currency=comp.get("compensation.currency"),
+                truth_graph=truth_graph,
+            )
+            if red_lines_active and _red_lines_matches(ctx, {}):
+                continue
+            if industries_active and _excluded_industries_matches(ctx, {}):
+                continue
+            contexts.append(ctx)
+        return {"facets": facet_payload(contexts, facet_settings)}
+
     aggregate = facet_payload([], facet_settings)
     for opportunities in _opportunity_batches(_opportunity_query(session)):
         contexts = build_filter_contexts(session, truth_graph, opportunities)
