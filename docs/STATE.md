@@ -10,8 +10,8 @@ Next: Founder Web Alpha is publicly reachable and authentication-protected.
 
 ## Repository
 
-- **Generated:** 2026-09-13T22:50:46Z
-- **State generated at commit:** `724a722` — Scale production opportunity feed queries
+- **Generated:** 2026-09-13T23:09:36Z
+- **State generated at commit:** `fcc8de8` — Scale production facet aggregation
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
