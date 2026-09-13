@@ -11,7 +11,7 @@ Next: Founder Web Alpha is publicly reachable and authentication-protected.
 ## Repository
 
 - **Generated:** 2026-09-13T16:02:12Z
-- **State generated at commit:** `6d23680` — test(runtime): require production worker scheduler
+- **State generated at commit:** `24dc7e6` — fix(web): let founder browse beyond first 50 opportunities
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
