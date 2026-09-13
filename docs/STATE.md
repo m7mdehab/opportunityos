@@ -10,8 +10,8 @@ Next: Founder Web Alpha is publicly reachable and authentication-protected.
 
 ## Repository
 
-- **Generated:** 2026-09-13T14:40:53Z
-- **State generated at commit:** `b1fd8ea` — docs(fr006): record post-merge closure
+- **Generated:** 2026-09-13T16:02:12Z
+- **State generated at commit:** `86e07f3` — fix(web): keep feed usable without truth pack
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief

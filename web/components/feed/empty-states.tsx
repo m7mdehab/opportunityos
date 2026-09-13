@@ -37,24 +37,21 @@ function EmptyStateShell({
 
 export function NoTruthPackState({ path }: { path: string }) {
   return (
-    <EmptyStateShell icon={FileWarning} title="No truth pack loaded" tone="warning">
-      <p>
-        The founder truth pack was not found at <code className="rounded bg-muted px-1">{path}</code>.
-        Nothing can be evaluated or tailored until one is loaded.
-      </p>
-      <p className="mt-2 font-medium text-foreground">What to do next:</p>
-      <ol className="mt-1 list-decimal space-y-1 pl-5 text-left">
-        <li>
-          Copy <code className="rounded bg-muted px-1">docs/templates/truth_pack.template.yaml</code> to{" "}
-          <code className="rounded bg-muted px-1">private/truth_pack.yaml</code>.
-        </li>
-        <li>Fill in your details and evidence.</li>
-        <li>
-          Run <code className="rounded bg-muted px-1">python scripts/truth_check.py</code> until it exits 0.
-        </li>
-        <li>Come back and reload.</li>
-      </ol>
-    </EmptyStateShell>
+    <div
+      role="status"
+      data-testid="truth-pack-warning"
+      className="mb-4 flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-950/40 p-4"
+    >
+      <FileWarning aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-amber-400" />
+      <div>
+        <h2 className="text-sm font-semibold text-foreground">Founder profile not loaded</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          You can browse the live opportunity feed, but qualification, fit scores, and tailored
+          artifacts stay disabled until a validated private truth pack is loaded at{" "}
+          <code className="rounded bg-muted px-1">{path}</code>.
+        </p>
+      </div>
+    </div>
   )
 }
 
@@ -64,22 +61,25 @@ export function InvalidTruthPackState({
   findings: string[]
 }) {
   return (
-    <EmptyStateShell icon={AlertTriangle} title="Truth pack is invalid" tone="warning">
-      <p>
-        A truth pack was found but did not pass validation. Nothing can be
-        evaluated until these are fixed:
-      </p>
-      <ul className="mt-2 list-disc space-y-1 pl-5 text-left">
-        {findings.map((f) => (
-          <li key={f}>{f}</li>
-        ))}
-      </ul>
-      <p className="mt-2 font-medium text-foreground">What to do next:</p>
-      <p className="mt-1">
-        Edit <code className="rounded bg-muted px-1">private/truth_pack.yaml</code>, then run{" "}
-        <code className="rounded bg-muted px-1">python scripts/truth_check.py</code> until it exits 0, then reload.
-      </p>
-    </EmptyStateShell>
+    <div
+      role="alert"
+      data-testid="truth-pack-warning"
+      className="mb-4 flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-950/40 p-4"
+    >
+      <AlertTriangle aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-amber-400" />
+      <div>
+        <h2 className="text-sm font-semibold text-foreground">Founder profile needs attention</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          The live feed remains available, but evaluation and tailored artifacts stay disabled
+          until these validation findings are fixed:
+        </p>
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-left text-sm text-muted-foreground">
+          {findings.map((f) => (
+            <li key={f}>{f}</li>
+          ))}
+        </ul>
+      </div>
+    </div>
   )
 }
 

@@ -146,7 +146,6 @@ export default function FeedPage() {
 
   useEffect(() => {
     if (authPhase !== "authenticated") return
-    if (!truth?.loaded) return
     // Standard data-fetching effect (React docs: "Fetching data" under
     // "You Might Not Need an Effect"): setting a loading flag synchronously
     // before the async call is the documented pattern, not an accidental
@@ -154,7 +153,7 @@ export default function FeedPage() {
     // external input this effect is meant to synchronize against.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refreshList()
-  }, [authPhase, truth?.loaded, refreshList])
+  }, [authPhase, refreshList])
 
   // Keep the j/k cursor inside the current item list (a new query result,
   // toggling "Show hidden", etc. can shrink it).
@@ -298,7 +297,7 @@ export default function FeedPage() {
           lib/format/over-hiding.ts for what this is derived from. */}
       {overHidingWarning && <OverHidingWarningBanner warning={overHidingWarning} />}
 
-      {truth?.loaded && (
+      {truth && (
         <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-4 py-2 sm:px-6">
           <FilterBar
             filters={filters}
@@ -330,6 +329,8 @@ export default function FeedPage() {
             variant={filters.track === "tutoring" ? "default" : "outline"}
             size="sm"
             data-testid="toggle-tutoring-lane"
+            disabled={!truth.loaded}
+            title={!truth.loaded ? "A validated founder profile is required for tutoring materials" : undefined}
             onClick={() =>
               setFilters({
                 ...filters,
@@ -344,14 +345,16 @@ export default function FeedPage() {
       )}
 
       <main className="flex-1 px-4 py-4 sm:px-6">
-        {!truth ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : !truth.loaded ? (
+        {truth && !truth.loaded && (
           truth.validator.error_count > 0 ? (
             <InvalidTruthPackState findings={truth.validator.findings} />
           ) : (
             <NoTruthPackState path={truth.path} />
           )
+        )}
+
+        {!truth ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
         ) : filters.track === "tutoring" ? (
           <TutoringSurface />
         ) : listLoading && !items ? (
@@ -402,7 +405,7 @@ export default function FeedPage() {
             outside the branches above so it survives even when a hide
             filter's default leaves nothing else on the page (an entirely
             hidden feed is exactly the case this control exists for). */}
-        {truth?.loaded && !listLoading && !listError && (hiddenCount > 0 || includeHidden) && (
+        {truth && !listLoading && !listError && (hiddenCount > 0 || includeHidden) && (
           <div className="mt-4 flex justify-center">
             <Button
               type="button"
