@@ -9,7 +9,7 @@ from datetime import datetime, timezone, timedelta
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
 
@@ -1498,8 +1498,25 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             verify_session.close()
 
         # Re-running evaluate_new under the SAME hash must not duplicate rows
-        # (idempotent upsert on (opportunity_id, truth_pack_hash)).
-        handler_v1({})
+        # (idempotent upsert on (opportunity_id, truth_pack_hash)). It must
+        # also filter at the database rather than materialising every already
+        # evaluated opportunity -- repeated safety-net jobs are common after
+        # a broad source warm-up.
+        loaded_opportunity_ids = []
+
+        def _record_opportunity_load(target, _context):
+            loaded_opportunity_ids.append(target.id)
+
+        event.listen(OpportunityRecord, "load", _record_opportunity_load)
+        try:
+            handler_v1({})
+        finally:
+            event.remove(OpportunityRecord, "load", _record_opportunity_load)
+        self.assertEqual(
+            loaded_opportunity_ids,
+            [],
+            "a no-op evaluate_new run must not load already evaluated opportunity rows",
+        )
         verify_session = self.SessionFactory()
         try:
             unchanged_count = (

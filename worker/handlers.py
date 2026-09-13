@@ -810,15 +810,23 @@ def make_evaluate_new_handler(
         try:
             repository = StorageRepository(session)
 
-            already_evaluated_ids = {
-                row[0]
-                for row in session.query(MatchEvaluationRecord.opportunity_id)
-                .filter_by(truth_pack_hash=truth_pack_hash)
+            # Let PostgreSQL return only rows that are actually missing an
+            # evaluation for this pack.  Loading every opportunity (including
+            # its full description) and filtering in Python made each no-op
+            # safety-net job scan the entire production corpus.
+            evaluated_for_pack = (
+                session.query(MatchEvaluationRecord.opportunity_id)
+                .filter(
+                    MatchEvaluationRecord.opportunity_id == OpportunityRecord.id,
+                    MatchEvaluationRecord.truth_pack_hash == truth_pack_hash,
+                )
+                .exists()
+            )
+            pending_records = (
+                session.query(OpportunityRecord)
+                .filter(~evaluated_for_pack)
                 .all()
-            }
-            pending_records = [
-                r for r in session.query(OpportunityRecord).all() if r.id not in already_evaluated_ids
-            ]
+            )
 
             for record in pending_records:
                 opportunity = _reconstruct_opportunity(session, record)
