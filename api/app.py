@@ -18,7 +18,14 @@ from fastapi.responses import JSONResponse
 from core.logging import get_logger
 from storage.engine import get_engine, get_session_factory
 
-from .routes_api import load_truth_pack_into_state, router as api_router
+from .routes_api import (
+    _filter_affected_counts,
+    _lightweight_hidden_ids,
+    _load_filter_settings,
+    _opportunity_query,
+    load_truth_pack_into_state,
+    router as api_router,
+)
 from .routes_auth import router as auth_router
 from .security import LoginRateLimiter, make_serializer
 from .settings import Settings, load_settings
@@ -121,6 +128,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.on_event("startup")
     def _load_truth_pack_on_startup() -> None:
         load_truth_pack_into_state(app)
+        loaded_pack = app.state.loaded_truth_pack
+        if loaded_pack is None:
+            return
+        session = app.state.session_factory()
+        try:
+            hidden_ids = _lightweight_hidden_ids(
+                _opportunity_query(session),
+                loaded_pack.graph,
+                _load_filter_settings(session),
+            )
+            _filter_affected_counts(
+                session,
+                loaded_pack.graph,
+                loaded_pack,
+                _load_filter_settings(session),
+            )
+            logger.info(
+                "founder policy cache warmed",
+                extra={
+                    "component": "api.startup",
+                    "extra_data": {"hidden_count": len(hidden_ids)},
+                },
+            )
+        finally:
+            session.close()
 
     return app
 
