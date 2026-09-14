@@ -94,8 +94,11 @@ export function HeaderStrip({
           )}
         </dl>
 
-        <div className="flex items-center gap-3">
-          <ul aria-label="Source health" className="flex items-center gap-1.5">
+        <div className="flex min-w-0 max-w-full items-center gap-3">
+          <ul
+            aria-label="Source health"
+            className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-1"
+          >
             {(sources ?? []).map((s) => (
               <li key={s.source_id}>
                 <Tooltip>
