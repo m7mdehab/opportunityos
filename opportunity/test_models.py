@@ -384,9 +384,14 @@ class TestComputeDeterministicIdVarcharBound(unittest.TestCase):
         raw_pointer = "https://weworkremotely.com/listings/smartsheet-director"
 
         first = compute_deterministic_id(source, remote_id, title, organization, raw_pointer)
-        second = compute_deterministic_id(source, remote_id, title, organization, raw_pointer)
+        second = compute_deterministic_id(
+            source, remote_id, title, organization, "feed:item[37]"
+        )
 
-        self.assertEqual(first, second, "same inputs must yield the same id across calls")
+        self.assertEqual(
+            first, second,
+            "a stable long remote_id must not change when its feed position changes",
+        )
         self.assertLessEqual(len(first), 64)
         # Confirms it actually took the bounded fallback path (i.e. this test
         # is exercising the fix, not accidentally already fitting).
