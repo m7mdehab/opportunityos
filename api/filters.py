@@ -268,6 +268,7 @@ def _compile_industry_pattern(name: str) -> re.Pattern | None:
 _RED_LINES_SPEC_CACHE: dict[
     TruthGraph, tuple[tuple[re.Pattern | None, tuple[str, ...]], ...]
 ] = {}
+_MATCH_CACHE_MAX_ENTRIES = 100_000
 _RED_LINES_MATCH_CACHE: dict[tuple[TruthGraph, str, Any], bool] = {}
 
 
@@ -376,7 +377,7 @@ def _red_lines_matches(ctx: OpportunityFilterContext, params: dict[str, Any]) ->
             matched = True
             break
 
-    if len(_RED_LINES_MATCH_CACHE) > 30000:
+    if len(_RED_LINES_MATCH_CACHE) > _MATCH_CACHE_MAX_ENTRIES:
         _RED_LINES_MATCH_CACHE.clear()
     _RED_LINES_MATCH_CACHE[cache_key] = matched
     return matched
@@ -486,7 +487,7 @@ def _excluded_industries_matches(ctx: OpportunityFilterContext, params: dict[str
             matched = True
             break
 
-    if len(_EXCLUDED_INDUSTRIES_MATCH_CACHE) > 30000:
+    if len(_EXCLUDED_INDUSTRIES_MATCH_CACHE) > _MATCH_CACHE_MAX_ENTRIES:
         _EXCLUDED_INDUSTRIES_MATCH_CACHE.clear()
     _EXCLUDED_INDUSTRIES_MATCH_CACHE[cache_key] = matched
     return matched

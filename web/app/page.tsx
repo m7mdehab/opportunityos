@@ -147,9 +147,8 @@ export default function FeedPage() {
   useEffect(() => {
     if (authPhase !== "authenticated") return
     refreshTruth()
-    refreshDashboard()
     refreshSources()
-  }, [authPhase, refreshTruth, refreshDashboard, refreshSources])
+  }, [authPhase, refreshTruth, refreshSources])
 
   useEffect(() => {
     if (authPhase !== "authenticated") return
@@ -161,6 +160,15 @@ export default function FeedPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refreshList()
   }, [authPhase, refreshList])
+
+  // On a production-sized corpus both endpoints perform exact founder-policy
+  // matching. Let the founder-visible feed finish first instead of making the
+  // initial dashboard request compete with it for the reverse proxy's request
+  // window. Subsequent action/feedback refreshes remain immediate below.
+  useEffect(() => {
+    if (authPhase !== "authenticated" || items === null || dashboard !== null) return
+    refreshDashboard()
+  }, [authPhase, dashboard, items, refreshDashboard])
 
   // Keep the j/k cursor inside the current item list (a new query result,
   // toggling "Show hidden", etc. can shrink it).

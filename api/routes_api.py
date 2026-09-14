@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any, Iterator
@@ -236,6 +237,91 @@ def _can_lightweight_rank(filter_settings: dict[str, FilterSettingsRow]) -> bool
     return True
 
 
+_LIGHTWEIGHT_HIDDEN_CACHE_MAX_ENTRIES = 100_000
+_LIGHTWEIGHT_HIDDEN_CACHE: dict[tuple[Any, bool, bool, str, str], bool] = {}
+
+
+def _lightweight_hidden_ids(query, truth_graph: Any, filter_settings: dict[str, FilterSettingsRow]) -> set[str]:
+    """Return exact hidden IDs without hydrating full ORM/evaluation rows."""
+    red_lines_active = _filter_enabled_mode("red_lines", filter_settings) == (True, "hide")
+    industries_active = _filter_enabled_mode("excluded_industries", filter_settings) == (True, "hide")
+    if truth_graph is None or not (red_lines_active or industries_active):
+        return set()
+
+    if len(_LIGHTWEIGHT_HIDDEN_CACHE) > _LIGHTWEIGHT_HIDDEN_CACHE_MAX_ENTRIES:
+        _LIGHTWEIGHT_HIDDEN_CACHE.clear()
+
+    references = query.with_entities(OpportunityRecord.id, OpportunityRecord.content_hash).all()
+    reference_keys = [
+        (truth_graph, red_lines_active, industries_active, reference.id, reference.content_hash)
+        for reference in references
+    ]
+    missing_ids = [
+        reference.id
+        for reference, cache_key in zip(references, reference_keys)
+        if cache_key not in _LIGHTWEIGHT_HIDDEN_CACHE
+    ]
+    if not missing_ids:
+        return {
+            reference.id
+            for reference, cache_key in zip(references, reference_keys)
+            if _LIGHTWEIGHT_HIDDEN_CACHE[cache_key]
+        }
+
+    candidates = query.with_entities(
+        OpportunityRecord.id,
+        OpportunityRecord.title,
+        OpportunityRecord.organization,
+        OpportunityRecord.description,
+        OpportunityRecord.content_hash,
+    )
+    if len(missing_ids) != len(references):
+        candidates = candidates.filter(OpportunityRecord.id.in_(missing_ids))
+
+    def is_hidden(source) -> bool:
+        opp = SimpleNamespace(
+            id=source.id,
+            title=source.title,
+            organization=source.organization,
+            description=source.description,
+            content_hash=source.content_hash,
+        )
+        ctx = OpportunityFilterContext(
+            opp=opp,
+            decision=None,
+            fit_score=None,
+            reasons=[],
+            evaluation_detail={},
+            dimension_scores=[],
+            compensation_min=None,
+            compensation_max=None,
+            compensation_currency=None,
+            truth_graph=truth_graph,
+        )
+        return (
+            (red_lines_active and _red_lines_matches(ctx, {}))
+            or (industries_active and _excluded_industries_matches(ctx, {}))
+        )
+
+    source_rows = candidates.all()
+    if len(source_rows) < 1000:
+        hidden = list(map(is_hidden, source_rows))
+    else:
+        # The matchers spend almost all their time in independent C-level
+        # substring/regex scans over large descriptions. A small bounded pool
+        # keeps a cold production feed inside the reverse-proxy request window.
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            hidden = list(executor.map(is_hidden, source_rows, chunksize=64))
+    for source, matched in zip(source_rows, hidden):
+        cache_key = (truth_graph, red_lines_active, industries_active, source.id, source.content_hash)
+        _LIGHTWEIGHT_HIDDEN_CACHE[cache_key] = matched
+    return {
+        reference.id
+        for reference, cache_key in zip(references, reference_keys)
+        if _LIGHTWEIGHT_HIDDEN_CACHE.get(cache_key, False)
+    }
+
+
 def _lightweight_rank_penalty(
     *,
     track: str,
@@ -411,17 +497,148 @@ def _truth_graph_from_request(request: Request):
     return loaded_pack.graph if loaded_pack is not None else None
 
 
+_FILTER_AFFECTED_COUNTS_CACHE: dict[tuple[Any, ...], dict[str, int]] = {}
+
+
+def _filter_affected_counts(session: Session, truth_graph: Any, loaded_pack: Any, settings: dict[str, FilterSettingsRow]):
+    opportunity_marker = session.query(
+        func.count(OpportunityRecord.id),
+        func.max(OpportunityRecord.created_at),
+        func.max(OpportunityRecord.reverified_at),
+    ).one()
+    evaluation_marker = (0, None)
+    if loaded_pack is not None:
+        evaluation_marker = session.query(
+            func.count(MatchEvaluationRecord.id),
+            func.max(MatchEvaluationRecord.evaluated_at),
+        ).filter(MatchEvaluationRecord.truth_pack_hash == loaded_pack.truth_pack_hash).one()
+    settings_marker = tuple(
+        sorted(
+            (
+                filter_id,
+                row.enabled,
+                row.mode,
+                json.dumps(row.params, sort_keys=True, separators=(",", ":")),
+            )
+            for filter_id, row in settings.items()
+        )
+    )
+    cache_key = (
+        loaded_pack.truth_pack_hash if loaded_pack is not None else None,
+        tuple(opportunity_marker),
+        tuple(evaluation_marker),
+        settings_marker,
+    )
+    cached = _FILTER_AFFECTED_COUNTS_CACHE.get(cache_key)
+    if cached is not None:
+        return dict(cached)
+
+    affected_counts = {fd.filter_id: 0 for fd in FILTER_DEFINITIONS}
+    if loaded_pack is not None:
+        rows = (
+            session.query(
+                OpportunityRecord.id,
+                OpportunityRecord.title,
+                OpportunityRecord.organization,
+                OpportunityRecord.description,
+                OpportunityRecord.content_hash,
+                OpportunityRecord.track,
+                OpportunityRecord.title_family,
+                OpportunityRecord.is_stale,
+                MatchEvaluationRecord.qualification_decision,
+                MatchEvaluationRecord.fit_score,
+                MatchEvaluationRecord.evaluation_detail_json,
+                MatchEvaluationRecord.dimension_scores_json,
+            )
+            .outerjoin(
+                MatchEvaluationRecord,
+                and_(
+                    MatchEvaluationRecord.opportunity_id == OpportunityRecord.id,
+                    MatchEvaluationRecord.truth_pack_hash == loaded_pack.truth_pack_hash,
+                ),
+            )
+            .all()
+        )
+        compensation: dict[str, dict[str, Any]] = {}
+        for provenance in (
+            session.query(
+                FieldProvenanceRecord.opportunity_id,
+                FieldProvenanceRecord.field_name,
+                FieldProvenanceRecord.normalized_value,
+            )
+            .filter(
+                FieldProvenanceRecord.field_name.in_(
+                    ("compensation.min_amount", "compensation.max_amount", "compensation.currency")
+                )
+            )
+            .all()
+        ):
+            compensation.setdefault(provenance.opportunity_id, {})[provenance.field_name] = provenance.normalized_value
+
+        contexts = []
+        for row in rows:
+            opp = SimpleNamespace(
+                id=row.id,
+                title=row.title,
+                organization=row.organization,
+                description=row.description,
+                content_hash=row.content_hash,
+                track=row.track,
+                title_family=row.title_family,
+                is_stale=row.is_stale,
+            )
+            comp = compensation.get(row.id, {})
+            contexts.append(
+                OpportunityFilterContext(
+                    opp=opp,
+                    decision=row.qualification_decision,
+                    fit_score=row.fit_score,
+                    reasons=[],
+                    evaluation_detail=(
+                        unpack_evaluation_detail(row.evaluation_detail_json)
+                        if row.evaluation_detail_json
+                        and (
+                            "geographic_eligibility" in row.evaluation_detail_json
+                            or "work_mode_onsite" in row.evaluation_detail_json
+                        )
+                        else unpack_evaluation_detail(None)
+                    ),
+                    dimension_scores=(
+                        unpack_dimension_scores(row.dimension_scores_json)
+                        if row.dimension_scores_json and "premium_shortfall" in row.dimension_scores_json
+                        else []
+                    ),
+                    compensation_min=_safe_float(comp.get("compensation.min_amount")),
+                    compensation_max=_safe_float(comp.get("compensation.max_amount")),
+                    compensation_currency=comp.get("compensation.currency"),
+                    truth_graph=truth_graph,
+                )
+            )
+        for fd in FILTER_DEFINITIONS:
+            row = settings.get(fd.filter_id)
+            params = row.params if row is not None else fd.default_params
+            affected_counts[fd.filter_id] = filter_affected_count(fd, params, contexts)
+    else:
+        # A missing pack is a small/degraded-runtime path; preserve the
+        # legacy latest-evaluation behavior there.
+        for opportunities in _opportunity_batches(_opportunity_query(session)):
+            contexts = build_filter_contexts(session, truth_graph, opportunities)
+            for fd in FILTER_DEFINITIONS:
+                row = settings.get(fd.filter_id)
+                params = row.params if row is not None else fd.default_params
+                affected_counts[fd.filter_id] += filter_affected_count(fd, params, contexts)
+    if len(_FILTER_AFFECTED_COUNTS_CACHE) >= 8:
+        _FILTER_AFFECTED_COUNTS_CACHE.clear()
+    _FILTER_AFFECTED_COUNTS_CACHE[cache_key] = dict(affected_counts)
+    return affected_counts
+
+
 @router.get("/filters")
 def list_filters(request: Request, session: Session = Depends(get_db)):
     settings = _load_filter_settings(session)
     truth_graph = _truth_graph_from_request(request)
-    affected_counts = {fd.filter_id: 0 for fd in FILTER_DEFINITIONS}
-    for opportunities in _opportunity_batches(_opportunity_query(session)):
-        contexts = build_filter_contexts(session, truth_graph, opportunities)
-        for fd in FILTER_DEFINITIONS:
-            row = settings.get(fd.filter_id)
-            params = row.params if row is not None else fd.default_params
-            affected_counts[fd.filter_id] += filter_affected_count(fd, params, contexts)
+    loaded_pack = request.app.state.loaded_truth_pack
+    affected_counts = _filter_affected_counts(session, truth_graph, loaded_pack, settings)
 
     filters_payload = []
     for fd in FILTER_DEFINITIONS:
@@ -574,13 +791,12 @@ def list_facets(request: Request, session: Session = Depends(get_db)):
     # reasons, dimensions, and detail JSON.  The matchers are the same ones
     # used by apply_filters, so visibility and counts remain exact.
     if loaded_pack is not None and _can_lightweight_prefilter_hidden(filter_settings, {}):
+        hidden_ids = _lightweight_hidden_ids(_opportunity_query(session), truth_graph, filter_settings)
         rows = (
             session.query(
                 OpportunityRecord.id,
                 OpportunityRecord.title,
                 OpportunityRecord.organization,
-                OpportunityRecord.description,
-                OpportunityRecord.content_hash,
                 OpportunityRecord.work_mode,
                 OpportunityRecord.location_country,
                 OpportunityRecord.location_city,
@@ -594,6 +810,7 @@ def list_facets(request: Request, session: Session = Depends(get_db)):
                 MatchEvaluationRecord.qualification_decision,
                 MatchEvaluationRecord.fit_score,
             )
+            .filter(~OpportunityRecord.id.in_(hidden_ids) if hidden_ids else True)
             .outerjoin(
                 MatchEvaluationRecord,
                 and_(
@@ -619,16 +836,12 @@ def list_facets(request: Request, session: Session = Depends(get_db)):
         ):
             compensation.setdefault(provenance.opportunity_id, {})[provenance.field_name] = provenance.normalized_value
 
-        red_lines_active = _filter_enabled_mode("red_lines", filter_settings) == (True, "hide")
-        industries_active = _filter_enabled_mode("excluded_industries", filter_settings) == (True, "hide")
         contexts: list[OpportunityFilterContext] = []
         for row in rows:
             opp = SimpleNamespace(
                 id=row.id,
                 title=row.title,
                 organization=row.organization,
-                description=row.description,
-                content_hash=row.content_hash,
                 work_mode=row.work_mode,
                 location_country=row.location_country,
                 location_city=row.location_city,
@@ -653,10 +866,6 @@ def list_facets(request: Request, session: Session = Depends(get_db)):
                 compensation_currency=comp.get("compensation.currency"),
                 truth_graph=truth_graph,
             )
-            if red_lines_active and _red_lines_matches(ctx, {}):
-                continue
-            if industries_active and _excluded_industries_matches(ctx, {}):
-                continue
             contexts.append(ctx)
         return {"facets": facet_payload(contexts, facet_settings)}
 
@@ -856,45 +1065,8 @@ def list_opportunities(
     )
     hidden_count = 0
     if lightweight_prefiltered:
-        source_rows = query.with_entities(
-            OpportunityRecord.id,
-            OpportunityRecord.title,
-            OpportunityRecord.organization,
-            OpportunityRecord.description,
-            OpportunityRecord.content_hash,
-        ).all()
-        visible_ids: list[str] = []
-        red_lines_active = _filter_enabled_mode("red_lines", filter_settings) == (True, "hide")
-        industries_active = _filter_enabled_mode("excluded_industries", filter_settings) == (True, "hide")
-        for source in source_rows:
-            opp = SimpleNamespace(
-                id=source.id,
-                title=source.title,
-                organization=source.organization,
-                description=source.description,
-                content_hash=source.content_hash,
-            )
-            ctx = OpportunityFilterContext(
-                opp=opp,
-                decision=None,
-                fit_score=None,
-                reasons=[],
-                evaluation_detail={},
-                dimension_scores=[],
-                compensation_min=None,
-                compensation_max=None,
-                compensation_currency=None,
-                truth_graph=truth_graph,
-            )
-            hidden = (
-                (red_lines_active and _red_lines_matches(ctx, {}))
-                or (industries_active and _excluded_industries_matches(ctx, {}))
-            )
-            if hidden:
-                hidden_count += 1
-            else:
-                visible_ids.append(source.id)
-        query = query.filter(OpportunityRecord.id.in_(visible_ids))
+        hidden_ids = _lightweight_hidden_ids(query, truth_graph, filter_settings)
+        hidden_count = len(hidden_ids)
         # The only active hide-mode filters have already been applied. Disable
         # them during the lightweight rank pass so descriptions stay deferred.
         scan_filter_settings = dict(filter_settings)
@@ -929,20 +1101,41 @@ def list_opportunities(
             )
             .all()
         )
+        track_rank = _filter_enabled_mode("track_preference", filter_settings) == (True, "rank_only")
+        target_rank = _filter_enabled_mode("target_roles", filter_settings) == (True, "rank_only")
+        premium_rank = _filter_enabled_mode("premium_fulltime_onsite", filter_settings) == (True, "rank_only")
+        preferred_track = _founder_track_preference(truth_graph) if track_rank else None
+        target_families = _founder_target_role_families(truth_graph) if target_rank else frozenset()
+        normalized_families: dict[str, str] = {}
         for row in lightweight_rows:
+            if row.id in hidden_ids:
+                continue
+            rank_penalty = 0
+            if preferred_track is not None and row.track.casefold() != preferred_track:
+                rank_penalty += 1
+            if target_families:
+                family = row.title_family
+                if family is None:
+                    family = normalized_families.get(row.title)
+                    if family is None:
+                        family = normalize_title(row.title)[0]
+                        normalized_families[row.title] = family
+                if family not in target_families:
+                    rank_penalty += 1
+            if premium_rank and row.dimension_scores_json and "premium_shortfall" in row.dimension_scores_json:
+                dimensions = unpack_dimension_scores(row.dimension_scores_json)
+                if any(
+                    dim.get("dimension_name") == "compensation_fit"
+                    and "premium_shortfall" in (dim.get("signal_tags") or [])
+                    for dim in dimensions
+                ):
+                    rank_penalty += 1
             ranked.append(
                 {
                     "id": row.id,
                     "fit_score": row.fit_score,
                     "posted_date": row.posted_date,
-                    "_rank_penalty": _lightweight_rank_penalty(
-                        track=row.track,
-                        title=row.title,
-                        title_family=row.title_family,
-                        dimension_scores_json=row.dimension_scores_json,
-                        truth_graph=truth_graph,
-                        filter_settings=filter_settings,
-                    ),
+                    "_rank_penalty": rank_penalty,
                 }
             )
     else:
@@ -1731,9 +1924,12 @@ def dashboard_daily(request: Request, days: int = 7, session: Session = Depends(
             OpportunityRecord.created_at >= day_start,
             OpportunityRecord.created_at < day_end,
         )
-        for day_opportunities in _opportunity_batches(day_query):
-            day_contexts = build_filter_contexts(session, truth_graph, day_opportunities)
-            hidden_by_filters += sum(1 for ctx in day_contexts if apply_filters(ctx, filter_settings).hidden_by)
+        if _can_lightweight_prefilter_hidden(filter_settings, {}):
+            hidden_by_filters = len(_lightweight_hidden_ids(day_query, truth_graph, filter_settings))
+        else:
+            for day_opportunities in _opportunity_batches(day_query):
+                day_contexts = build_filter_contexts(session, truth_graph, day_opportunities)
+                hidden_by_filters += sum(1 for ctx in day_contexts if apply_filters(ctx, filter_settings).hidden_by)
 
         series.append(
             {
