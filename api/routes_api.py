@@ -1054,6 +1054,25 @@ def list_opportunities(
     facet_settings = _load_facet_settings(session)
     truth_graph = _truth_graph_from_request(request)
     loaded_pack = request.app.state.loaded_truth_pack
+
+    # Decision and score are persisted on the current truth-pack evaluation.
+    # Apply those selective predicates in PostgreSQL before building Python
+    # filter contexts; otherwise a qualified-only request still hydrates and
+    # evaluates the entire production corpus before discarding almost all of
+    # it, which can exceed the web proxy's request window.
+    if loaded_pack is not None and (decision is not None or min_score is not None):
+        query = query.join(
+            MatchEvaluationRecord,
+            and_(
+                MatchEvaluationRecord.opportunity_id == OpportunityRecord.id,
+                MatchEvaluationRecord.truth_pack_hash == loaded_pack.truth_pack_hash,
+            ),
+        )
+        if decision is not None:
+            query = query.filter(MatchEvaluationRecord.qualification_decision == decision)
+        if min_score is not None:
+            query = query.filter(MatchEvaluationRecord.fit_score >= min_score)
+
     scan_filter_settings = filter_settings
     lightweight_prefiltered = (
         not include_hidden

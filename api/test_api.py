@@ -788,6 +788,40 @@ class OpportunityRoutesTest(ApiTestCase):
         decision = next(item for item in facets.json()["facets"] if item["facet_id"] == "decision")
         self.assertEqual(decision["values"], [{"value": "qualified", "count": 3, "state": "off"}])
 
+    def test_decision_and_score_prefilter_before_context_scan(self):
+        from api.routes_api import _ranking_filter_contexts
+
+        _install_truth_graph(self.app, _graph_with_red_line_and_excluded_industry())
+        for opportunity_id, decision, score in (
+            ("opp-qualified", "qualified", 80.0),
+            ("opp-low", "qualified", 60.0),
+            ("opp-ineligible", "ineligible", 95.0),
+        ):
+            self.seed_opportunity(opportunity_id)
+            self.seed_evaluation(
+                opportunity_id,
+                decision=decision,
+                fit_score=score,
+                truth_pack_hash="test-truth-pack-hash",
+            )
+
+        scanned_ids: list[str] = []
+        original = _ranking_filter_contexts
+
+        def capture_scan(*args, **kwargs):
+            scanned_ids.extend(opportunity.id for opportunity in args[2])
+            return original(*args, **kwargs)
+
+        with patch("api.routes_api._ranking_filter_contexts", side_effect=capture_scan):
+            response = self.client.get(
+                "/api/opportunities",
+                params={"decision": "qualified", "min_score": 70},
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual([item["id"] for item in response.json()["items"]], ["opp-qualified"])
+        self.assertEqual(scanned_ids, ["opp-qualified"])
+
     def test_detail_reaches_pass_fail_unknown_and_uncertain(self):
         """`UNKNOWN` being structurally distinct from `FAIL` is the brief's
         single most emphatic requirement, so this proves it against real
