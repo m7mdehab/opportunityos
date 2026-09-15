@@ -52,9 +52,18 @@ See `docs/PRODUCT_CONSTITUTION.md` and accepted ADRs for full law.
 
 ## Current Verified Product State
 
-PR #78 is the authoritative FR-006 recovery branch until merged. Its final pre-report integration checkpoint (`e41f06a`, run `34724239556`) is green: 1095 Linux/PostgreSQL tests with zero skips, Playwright 22/22, governance, Guard, State, Mirror, and bounded live-evidence checks.
+BRIEF-FR-006 is terminal with its narrowly documented historical exceptions.
+Founder Web Alpha is live at <https://opportunityos.m7mdehab.com> and protected
+by Founder authentication. PR #90 landed stable long source-native identities;
+PR #91 added the posting-URL fallback for Himalayas rows whose upstream payload
+omits both `id` and `slug`. Production identity repairs and governed follow-up
+polls are recorded in
+`reports/evidence/FOUNDER_ALPHA_PRODUCTION_2026-09-16.md`.
 
-Generated State follows `reports/REPORT-FR-006.md`: BRIEF-FR-006 is terminal with narrowly documented historical exceptions. Founder Web Alpha is live; BRIEF-007 / Multi-Tenant Family Alpha remains blocked until it is personally validated.
+The live Alpha has full current-profile evaluation coverage and passed desktop,
+mobile, authentication, feed, filter, detail, source-health, artifact, and
+truth-lock smoke checks. Founder acceptance is the remaining gate. BRIEF-007 /
+Multi-Tenant Family Alpha remains blocked until that acceptance.
 
 ## Current Active Brief - BRIEF-FR-006
 
