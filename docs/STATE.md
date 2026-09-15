@@ -10,8 +10,8 @@ Next: Founder Web Alpha is publicly reachable and authentication-protected.
 
 ## Repository
 
-- **Generated:** 2026-09-15T20:52:49Z
-- **State generated at commit:** `1c2f926` — fix: stabilize Himalayas URL fallback identity
+- **Generated:** 2026-09-15T20:53:14Z
+- **State generated at commit:** `387d881` — fix: stabilize Himalayas URL fallback identity
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
