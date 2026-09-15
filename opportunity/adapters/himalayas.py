@@ -89,6 +89,13 @@ class HimalayasAdapter(BaseAdapter):
             )
 
             url = str(job.get("applicationLink") or job.get("url") or "")
+            # Some live Himalayas rows omit both ``id`` and ``slug`` while
+            # still providing a stable, posting-specific application URL.
+            # Treat that URL as the source-native identity instead of falling
+            # through to the positional raw_pointer hash, which changes when
+            # the API reorders its jobs array.
+            if not remote_id:
+                remote_id = url
             raw_pub = job.get("pubDate") or job.get("createdAt") or job.get("publishedAt")
             posted_date = parse_iso_date(raw_pub)
 

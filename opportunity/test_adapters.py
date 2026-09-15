@@ -94,6 +94,33 @@ class AdapterTests(unittest.TestCase):
         self.assertIsNotNone(opp.compensation)
         self.assertEqual(180000.0, opp.compensation.min_amount)  # type: ignore
 
+    def test_himalayas_missing_native_id_uses_stable_url_across_reordering(self):
+        adapter = HimalayasAdapter()
+        target = json.loads(read_fixture("himalayas.json"))["jobs"][0]
+        target.pop("id")
+        target.pop("slug")
+
+        original = adapter.parse_payload(
+            json.dumps({"jobs": [target]}),
+            raw_pointer="fixture:himalayas",
+            fetched_at="2026-08-30",
+        ).opportunities[0]
+        dummy = {
+            "id": "short-id",
+            "title": "Example Role",
+            "companyName": "Example Co",
+            "applicationLink": "https://himalayas.app/jobs/example-role",
+        }
+        reordered = adapter.parse_payload(
+            json.dumps({"jobs": [dummy, target]}),
+            raw_pointer="fixture:himalayas",
+            fetched_at="2026-08-30",
+        ).opportunities[1]
+
+        self.assertEqual(original.source_url, reordered.source_url)
+        self.assertEqual(original.source_id, original.source_url)
+        self.assertEqual(original.id, reordered.id)
+
     def test_remotive_adapter(self):
         adapter = RemotiveAdapter()
         payload = read_fixture("remotive.json")
