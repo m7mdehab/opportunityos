@@ -136,6 +136,36 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(SeniorityLevel.SENIOR, opp.seniority)
         self.assertEqual("eligible", opp.geographic_eligibility.status)
 
+    def test_we_work_remotely_long_guid_survives_feed_reordering(self):
+        adapter = WeWorkRemotelyAdapter()
+        payload = read_fixture("we_work_remotely.xml")
+        original = adapter.parse_payload(
+            payload, raw_pointer="fixture:wwr", fetched_at="2026-08-30"
+        )
+
+        dummy = """
+    <item>
+      <title>Example Co: Short Test Role</title>
+      <link>https://weworkremotely.com/remote-jobs/example-short-role</link>
+      <guid>example-short-role</guid>
+      <pubDate>Sun, 28 Aug 2026 09:00:00 GMT</pubDate>
+      <description>Example posting.</description>
+      <region>Anywhere in the World</region>
+    </item>
+"""
+        reordered_payload = payload.replace("    <item>", dummy + "    <item>", 1)
+        reordered = adapter.parse_payload(
+            reordered_payload, raw_pointer="fixture:wwr", fetched_at="2026-08-30"
+        )
+
+        original_datadog = next(o for o in original if o.organization == "Datadog")
+        reordered_datadog = next(o for o in reordered if o.organization == "Datadog")
+        self.assertEqual(original_datadog.source_url, reordered_datadog.source_url)
+        self.assertEqual(
+            original_datadog.id, reordered_datadog.id,
+            "RSS item reordering must not mint a new identity for the same WWR posting",
+        )
+
     def test_ungm_adapter(self):
         adapter = UNGMAdapter()
         payload = read_fixture("ungm.json")

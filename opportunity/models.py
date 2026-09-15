@@ -285,10 +285,13 @@ def compute_deterministic_id(source: str, remote_id: str, title: str, organizati
         candidate = f"{source}:{clean_remote}"
         if len(candidate) <= 64:
             return candidate
-        # Composed id exceeds storage.models.Opportunity.id's 64-char primary key
-        # bound (e.g. We Work Remotely slugs). Fall back to the same bounded,
-        # deterministic hash form already used below for the empty-remote_id case,
-        # so long remote_ids never overflow the column or collide via truncation.
+        # A non-empty remote_id is the source's stable posting identity even
+        # when it is too long for OpportunityRecord.id. Hash that identity,
+        # not raw_pointer: feed positions can change between polls (WWR is a
+        # concrete example), and including the pointer would mint a new row
+        # for the same posting every time its RSS index moved.
+        digest = hashlib.sha256(f"{source}:{clean_remote}".encode("utf-8")).hexdigest()[:16]
+        return f"{source}:{digest}"
     digest = hashlib.sha256(f"{organization}:{title}:{raw_pointer}".encode("utf-8")).hexdigest()[:16]
     return f"{source}:{digest}"
 
