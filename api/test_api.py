@@ -801,6 +801,33 @@ class OpportunityRoutesTest(ApiTestCase):
         self.assertTrue(all(sql.startswith(("SELECT", "SHOW")) for sql in statements), statements)
         self.assertEqual(self.session.execute(text("SELECT count(*) FROM feed_projection")).scalar(), 0)
 
+    def test_filter_write_refreshes_only_loaded_truth_pack_projection(self):
+        from storage.feed_projection import FeedProjectionRecord
+
+        _install_truth_graph(self.app, TruthGraph())
+        self.seed_opportunity("opp-two-packs")
+        self.seed_evaluation("opp-two-packs", decision="qualified", fit_score=40.0)
+        self.seed_evaluation(
+            "opp-two-packs", decision="qualified", fit_score=40.0,
+            truth_pack_hash="historical-pack-hash",
+        )
+
+        def stored_projection(truth_hash):
+            self.session.expire_all()
+            row = self.session.query(FeedProjectionRecord).filter_by(
+                opportunity_id="opp-two-packs", truth_pack_hash=truth_hash
+            ).one()
+            return {column.name: getattr(row, column.name)
+                    for column in FeedProjectionRecord.__table__.columns}
+
+        before_historical = stored_projection("historical-pack-hash")
+        response = self.client.put("/api/filters/min_fit_score", json={
+            "enabled": True, "mode": "hide", "params": {"min_score": 50}
+        })
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertFalse(stored_projection("test-truth-pack-hash")["visible"])
+        self.assertEqual(stored_projection("historical-pack-hash"), before_historical)
+
     def test_persisted_projection_http_filters_and_bounded_hydration(self):
         for opp_id, decision, score in (
             ("opp-a", "qualified", 90.0),
@@ -2482,6 +2509,7 @@ class FilterEngineOpportunitiesTest(ApiTestCase):
     def setUp(self):
         super().setUp()
         self.app = self.make_app()
+        _install_truth_graph(self.app, TruthGraph())
         self.client = self.logged_in_client(self.app)
 
     # -- helpers ------------------------------------------------------
@@ -2806,6 +2834,11 @@ class FilterEngineOpportunitiesTest(ApiTestCase):
             )
         )
 
+        self.app.state.loaded_truth_pack = LoadedPack(
+            graph=graph, truth_pack_hash="hash-real-scorer",
+            report=PackValidationReport(valid=True, section_counts=(), findings=()),
+        )
+
         self.seed_opportunity("opp-real-scorer", track="employment")
         domain_opp = create_test_opportunity(
             opp_id="opp-real-scorer",
@@ -3018,6 +3051,7 @@ class FacetsTest(ApiTestCase):
     def setUp(self):
         super().setUp()
         self.app = self.make_app()
+        _install_truth_graph(self.app, TruthGraph())
         self.client = self.logged_in_client(self.app)
 
     # -- helpers ---------------------------------------------------------

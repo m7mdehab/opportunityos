@@ -672,6 +672,20 @@ class FilterUpdateRequest(BaseModel):
     params: dict[str, Any] | None = None
 
 
+def _refresh_current_pack_projections(session: Session, request: Request) -> int:
+    """Publish a settings change only for the loaded Founder pack version."""
+    loaded_pack = request.app.state.loaded_truth_pack
+    if loaded_pack is None:
+        return 0
+    from storage.feed_projection_service import refresh_existing_feed_projections
+
+    return refresh_existing_feed_projections(
+        session,
+        truth_graph=loaded_pack.graph,
+        truth_pack_hash=loaded_pack.truth_pack_hash,
+    )
+
+
 @router.put("/filters/{filter_id}")
 def update_filter(
     filter_id: str,
@@ -723,9 +737,7 @@ def update_filter(
     row.updated_at = now
     session.commit()
 
-    from storage.feed_projection_service import refresh_existing_feed_projections
-
-    refresh_existing_feed_projections(session, truth_graph=_truth_graph_from_request(request))
+    _refresh_current_pack_projections(session, request)
     session.commit()
 
     params = json.loads(row.params_json) if row.params_json else {}
@@ -917,9 +929,7 @@ def update_facet(facet_id: str, payload: FacetUpdateRequest, response: Response,
         row.updated_at = now
     session.commit()
 
-    from storage.feed_projection_service import refresh_existing_feed_projections
-
-    refresh_existing_feed_projections(session, truth_graph=_truth_graph_from_request(request))
+    _refresh_current_pack_projections(session, request)
     session.commit()
 
     return {"facet_id": facet_id, "mode": mode, "include": include, "exclude": exclude}
@@ -1016,9 +1026,7 @@ def unhide_by_reason_route(payload: UnhideByReasonRequest, request: Request, ses
     ok = unhide_by_reason(session, payload.reason, now)
     if not ok:
         raise HTTPException(status_code=404, detail=f"unrecognised reason: {payload.reason!r}")
-    from storage.feed_projection_service import refresh_existing_feed_projections
-
-    refresh_existing_feed_projections(session, truth_graph=_truth_graph_from_request(request))
+    _refresh_current_pack_projections(session, request)
     session.commit()
     return {"reason": payload.reason, "status": "unhidden"}
 

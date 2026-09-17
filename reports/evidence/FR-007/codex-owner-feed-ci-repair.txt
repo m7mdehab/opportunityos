@@ -88,3 +88,28 @@ npm run lint: PASS (eslint --max-warnings=0).
 The branch-only reproduction workflow is removed from the final tree.
 The final SHA, remote required CI run, and State freshness are verified after
 this evidence file is committed and reported in the branch handoff.
+
+W10.1 Owner review repair:
+- Bulk refresh requires the loaded pack's explicit truth_pack_hash and reads
+  only projections with that hash. Historical and `active` rows remain intact.
+- Evaluation publication now raises on failure, rolls back its projection
+  transaction, and commits the projection on success. The evaluation upsert
+  remains idempotent after a failed publication.
+- `evaluate_new` retries a row with a committed evaluation but a missing
+  projection, so the worker does not treat that partial state as complete.
+- The HTTP write-path regression compares every persisted projection column
+  of a historical hash before and after a current-pack filter change.
+
+New regressions:
+storage.test_feed_projection_service.FeedProjectionMaterializationTest.test_settings_refresh_preserves_other_truth_hashes_and_synthetic_projection
+api.test_api.OpportunityRoutesTest.test_filter_write_refreshes_only_loaded_truth_pack_projection
+matching.test_evaluate_persist.EvaluateAndStoreTest.test_projection_publication_failure_raises_and_idempotent_retry_publishes
+matching.test_evaluate_persist.EvaluateAndStoreTest.test_worker_retry_republishes_committed_evaluation_without_duplicate
+
+W10.1 local focused command: python -m unittest storage.test_feed_projection_service
+storage.test_feed_query storage.test_feed_regression matching.test_evaluate_persist
+worker.test_reconstruct_opportunity worker.test_runner -v
+Result: Ran 47 tests in 22.151s; OK.
+Local HTTP/API command: python -m unittest api.test_api api.test_search -v
+Result: Ran 11 tests in 0.083s; OK (skipped=25; PostgreSQL unavailable locally).
+The exact PostgreSQL HTTP tests run in Mandatory CI on the final PR head.
