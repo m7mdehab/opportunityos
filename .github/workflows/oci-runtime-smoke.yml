@@ -15,6 +15,7 @@ on:
       - "scripts/check_cloud_readiness.py"
       - "worker/**"
       - "api/**"
+      - "truth/**"
       - ".github/workflows/oci-runtime-smoke.yml"
   pull_request:
     paths:
@@ -27,6 +28,7 @@ on:
       - "scripts/check_cloud_readiness.py"
       - "worker/**"
       - "api/**"
+      - "truth/**"
       - ".github/workflows/oci-runtime-smoke.yml"
   workflow_dispatch:
 

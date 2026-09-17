@@ -208,12 +208,47 @@ def compute_truth_pack_hash(graph: TruthGraph) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _redact_url(url: str) -> str:
+    """Redact query parameters, fragments, and credentials from a URL.
+
+    Prevents leaking SAS tokens, presigned signatures, or API keys in error
+    messages, findings, or logs.
+    """
+    if not url:
+        return ""
+    try:
+        parsed = urlsplit(str(url))
+        if parsed.scheme in ("http", "https", "s3"):
+            netloc = parsed.hostname or ""
+            if parsed.port:
+                netloc = f"{netloc}:{parsed.port}"
+            return f"{parsed.scheme}://{netloc}{parsed.path}"
+        elif parsed.scheme == "data":
+            meta, _, _ = url[5:].partition(",")
+            return f"data:{meta},[redacted]"
+        return str(url)
+    except Exception:
+        return "[redacted-uri]"
+
+
+def _is_cloud_mode(env: Mapping[str, str] | None = None) -> bool:
+    """Return True if running in cloud / production mode."""
+    target_env = os.environ if env is None else env
+    mode = target_env.get("OPPORTUNITYOS_ENVIRONMENT", "").lower()
+    return (
+        mode in {"production", "prod", "cloud"}
+        or target_env.get("MODE", "").lower() == "cloud"
+        or target_env.get("ENVIRONMENT", "").lower() in {"production", "prod", "cloud"}
+    )
+
+
 def _fetch_remote_bytes(
     url: str,
     auth_token: str | None = None,
     timeout_seconds: float = 30.0,
 ) -> tuple[bytes, str]:
     """Fetch raw bytes and determine format (yaml or json) from an HTTP(S) URL."""
+    redacted = _redact_url(url)
     headers = {"User-Agent": "OpportunityOS-TruthPack/1.0"}
     if auth_token and not any(p in url for p in ("token=", "Signature=", "apikey=", "X-Amz-Signature")):
         headers["Authorization"] = f"Bearer {auth_token}"
@@ -225,14 +260,14 @@ def _fetch_remote_bytes(
             content_type = resp.headers.get("Content-Type", "")
     except HTTPError as err:
         if err.code == 404:
-            raise TruthPackMissing(f"truth pack not found at {url} (HTTP 404)") from err
+            raise TruthPackMissing(f"truth pack not found at {redacted} (HTTP 404)") from err
         if err.code in (401, 403):
-            raise TruthPackInvalid(f"access denied to truth pack at {url} (HTTP {err.code})", (f"HTTP {err.code}",)) from err
-        raise TruthPackInvalid(f"failed to fetch truth pack from {url}: HTTP {err.code}", (f"HTTP {err.code}",)) from err
+            raise TruthPackInvalid(f"access denied to truth pack at {redacted} (HTTP {err.code})", (f"HTTP {err.code}",)) from err
+        raise TruthPackInvalid(f"failed to fetch truth pack from {redacted}: HTTP {err.code}", (f"HTTP {err.code}",)) from err
     except URLError as err:
-        raise TruthPackInvalid(f"network error fetching truth pack from {url}: {err.reason}", (str(err.reason),)) from err
+        raise TruthPackInvalid(f"network error fetching truth pack from {redacted}: {err.reason}", (str(err.reason),)) from err
     except Exception as err:
-        raise TruthPackInvalid(f"unexpected error fetching truth pack from {url}: {err}", (str(err),)) from err
+        raise TruthPackInvalid(f"unexpected error fetching truth pack from {redacted}: {err}", (str(err),)) from err
 
     path_part = urlsplit(url).path.lower()
     if path_part.endswith(".json") or "application/json" in content_type:
@@ -244,30 +279,12 @@ def _fetch_remote_bytes(
 
 
 def _fetch_s3_bytes(url: str) -> tuple[bytes, str]:
-    """Fetch raw bytes from an s3:// URI via boto3."""
-    parsed = urlsplit(url)
-    bucket = parsed.netloc
-    key = parsed.path.lstrip("/")
-    try:
-        import boto3
-        from botocore.exceptions import ClientError
-    except ImportError as err:
-        raise TruthPackInvalid("s3:// URIs require 'boto3' to be installed", ("missing boto3",)) from err
-
-    try:
-        s3 = boto3.client("s3")
-        obj = s3.get_object(Bucket=bucket, Key=key)
-        raw_bytes = obj["Body"].read()
-    except ClientError as err:
-        code = err.response.get("Error", {}).get("Code", "")
-        if code in ("NoSuchKey", "404", "NotFound"):
-            raise TruthPackMissing(f"truth pack not found at {url} ({code})") from err
-        raise TruthPackInvalid(f"S3 error fetching truth pack from {url}: {err}", (str(err),)) from err
-    except Exception as err:
-        raise TruthPackInvalid(f"unexpected error fetching truth pack from {url}: {err}", (str(err),)) from err
-
-    doc_format = "json" if key.lower().endswith(".json") else "yaml"
-    return raw_bytes, doc_format
+    """S3 storage is deferred for FR-007; HTTPS object store is the canonical remote mechanism."""
+    redacted = _redact_url(url)
+    raise TruthPackInvalid(
+        f"s3:// storage is deferred for FR-007 ({redacted}); HTTPS object store is the supported remote storage mechanism",
+        ("deferred s3 storage",),
+    )
 
 
 def _decode_data_uri(uri: str) -> tuple[bytes, str]:
@@ -296,7 +313,9 @@ def load_truth_pack(
     expected_hash: str | None = None,
     auth_token: str | None = None,
     timeout_seconds: float = 30.0,
-    allow_local_path: bool = True,
+    allow_local_path: bool | None = None,
+    allow_data_uri: bool | None = None,
+    cloud_mode: bool | None = None,
 ) -> LoadedPack:
     """Load, verify, hash, and report on a founder truth pack from a local path,
     remote HTTP(S) URL, S3 URI, or data URI.
@@ -304,12 +323,21 @@ def load_truth_pack(
     Fail-closed on missing pack, invalid schema, network errors, or SHA-256
     integrity hash mismatch.
     """
+    if cloud_mode is None:
+        cloud_mode = _is_cloud_mode()
+
     if target is None:
         target = (
             os.environ.get("OPPORTUNITYOS_TRUTH_PACK_URI")
             or os.environ.get("OPPORTUNITYOS_TRUTH_PACK_PATH")
-            or DEFAULT_TRUTH_PACK_PATH
         )
+        if not target:
+            if cloud_mode:
+                raise TruthPackMissing(
+                    "Missing required OPPORTUNITYOS_TRUTH_PACK_URI in cloud mode; "
+                    "local fallback to private/truth_pack.yaml is disabled"
+                )
+            target = DEFAULT_TRUTH_PACK_PATH
 
     if expected_hash is None:
         expected_hash = (
@@ -327,6 +355,26 @@ def load_truth_pack(
     if not target_str:
         raise TruthPackMissing("empty truth pack target specified")
 
+    redacted_target = _redact_url(target_str)
+
+    # Cloud mode transport & security constraints (Items B, D, E)
+    if cloud_mode:
+        if expected_hash is None:
+            raise TruthPackInvalid(
+                f"expected_hash is required in cloud mode for integrity verification ({redacted_target})",
+                ("missing expected_hash in cloud mode",),
+            )
+        if target_str.startswith("http://"):
+            raise TruthPackInvalid(
+                f"plain http:// is forbidden in cloud mode; HTTPS required ({redacted_target})",
+                ("insecure http transport in cloud mode",),
+            )
+        if target_str.startswith("data:") and not allow_data_uri:
+            raise TruthPackInvalid(
+                "data: URI is development/test fixture only and not accepted as production remote storage in cloud mode",
+                ("data URI forbidden in cloud mode",),
+            )
+
     if target_str.startswith("http://") or target_str.startswith("https://"):
         raw_bytes, doc_format = _fetch_remote_bytes(
             target_str, auth_token=auth_token, timeout_seconds=timeout_seconds
@@ -336,9 +384,11 @@ def load_truth_pack(
     elif target_str.startswith("data:"):
         raw_bytes, doc_format = _decode_data_uri(target_str)
     else:
-        if not allow_local_path:
+        # Local path check
+        local_allowed = allow_local_path if allow_local_path is not None else (not cloud_mode)
+        if not local_allowed:
             raise TruthPackInvalid(
-                f"local filesystem paths not allowed for truth pack in cloud mode: {target_str}",
+                f"local filesystem paths not allowed for truth pack in cloud mode: {redacted_target}",
                 ("forbidden local path in cloud mode",),
             )
         file_path = Path(target_str)
@@ -389,8 +439,8 @@ def load_truth_pack(
 def load_founder_pack(path: str | Path | None = None) -> LoadedPack:
     """Load, hash, and report on a founder truth pack.
 
-    `path` defaults to `DEFAULT_TRUTH_PACK_PATH` (private/truth_pack.yaml) or
-    the active environment URI. Never logs pack contents -- only counts and
-    section names.
+    Fails closed in cloud mode if no remote URI or container path is specified.
+    Never silently falls back to private/truth_pack.yaml in cloud mode.
+    Never logs pack contents -- only counts and section names.
     """
     return load_truth_pack(target=path)

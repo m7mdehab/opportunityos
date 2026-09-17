@@ -104,11 +104,23 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(plan.aliases["OPPORTUNITYOS_TRUTH_PACK_URI"], "https://storage.supabase.co/truth/pack.yaml")
         self.assertEqual(plan.aliases["OPPORTUNITYOS_TRUTH_PACK_HASH"], "a" * 64)
 
-    def test_worker_role_has_zero_blockers_and_builds_cleanly(self):
+    def test_worker_role_unconfigured_has_truth_pack_blocker(self):
         plan = plan_runtime_environment("worker", WORKER)
+        self.assertIn("OPPORTUNITYOS_TRUTH_PACK_URI", plan.blockers)
+        with self.assertRaisesRegex(CompatibilityError, "OPPORTUNITYOS_TRUTH_PACK_URI"):
+            build_runtime_environment("worker", WORKER)
+
+    def test_worker_role_with_truth_pack_has_zero_blockers_and_builds_cleanly(self):
+        configured_worker = dict(
+            WORKER,
+            OPPORTUNITYOS_TRUTH_PACK_URI="https://storage.supabase.co/truth/pack.yaml",
+            OPPORTUNITYOS_TRUTH_PACK_HASH="a" * 64,
+        )
+        plan = plan_runtime_environment("worker", configured_worker)
         self.assertEqual(plan.blockers, ())
-        env = build_runtime_environment("worker", WORKER)
+        env = build_runtime_environment("worker", configured_worker)
         self.assertEqual(env["OPPORTUNITYOS_DB_URL"], DB)
+        self.assertEqual(env["OPPORTUNITYOS_TRUTH_PACK_URI"], "https://storage.supabase.co/truth/pack.yaml")
 
     def test_scheduler_role_has_zero_blockers_and_builds_cleanly(self):
         sched_env = {"CLOUD_DATABASE_URL": DB}

@@ -30,7 +30,7 @@ class BridgePlan:
 BLOCKERS = {
     "web": ("NEXT_PUBLIC_DATA_API_URL", "NEXT_PUBLIC_DATA_ANON_KEY"),
     "api": ("OPPORTUNITYOS_FOUNDER_PASSWORD", "OPPORTUNITYOS_SESSION_SECRET"),
-    "worker": (),
+    "worker": ("OPPORTUNITYOS_TRUTH_PACK_URI",),
     "scheduler": (),
     "backup": ("BACKUP_DESTINATION_URL", "BACKUP_ACCESS_KEY",
                "BACKUP_ENCRYPTION_KEY"),
@@ -140,7 +140,13 @@ def plan_runtime_environment(role: str, source: Mapping[str, str]) -> BridgePlan
             blockers = list(BLOCKERS["api"])
         else:
             blockers = []
-    elif role in ("worker", "scheduler", "migrate", "readiness", "liveness"):
+    elif role == "worker":
+        blockers = []
+        if not truth_path:
+            blockers.append("OPPORTUNITYOS_TRUTH_PACK_URI")
+        elif truth_path.startswith("https://") and not truth_hash:
+            blockers.append("OPPORTUNITYOS_TRUTH_PACK_HASH")
+    elif role in ("scheduler", "migrate", "readiness", "liveness"):
         # Autonomous against PostgreSQL! Zero external broker or queue blockers.
         blockers = []
     else:

@@ -403,9 +403,10 @@ class OCIContainerSmokeRunner:
         """Step 12: Verify Truth Pack loading executes inside container without host mounts."""
         cmd = [
             self.engine, "run", "--rm",
+            "--entrypoint", "python",
             self.image_tag,
-            "python", "-c",
-            "from truth.pack import load_truth_pack; p = load_truth_pack('data:text/yaml,identity:\\n  name: Test Founder\\ncareer_profile:\\n  id: cp-1\\n  employment: []\\n  red_lines: []'); print('TRUTH_LOADED_OK:', p.report.valid)",
+            "-c",
+            "from truth.pack import load_truth_pack; p = load_truth_pack('data:text/yaml,identity:\\n  name: Test Founder\\ncareer_profile:\\n  id: cp-1\\n  employment: []\\n  red_lines: []', allow_data_uri=True); print('TRUTH_LOADED_OK:', p.report.valid)",
         ]
         res = self._exec(cmd, timeout=30.0)
         passed = (res.returncode == 0 and "TRUTH_LOADED_OK: True" in res.stdout)

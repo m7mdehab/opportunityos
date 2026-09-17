@@ -473,6 +473,78 @@ class LoadTruthPackRemoteAndIntegrityTest(unittest.TestCase):
                 load_truth_pack(path, allow_local_path=False)
             self.assertIn("local filesystem paths not allowed", str(ctx.exception))
 
+    def test_load_truth_pack_redacts_credentials_and_query_in_errors(self):
+        from unittest import mock
+        from urllib.error import HTTPError
+
+        sensitive_url = "https://user:secretpass@api.example.com/pack.yaml?token=SECRET_TOKEN&sig=XYZ123#frag"
+        err = HTTPError(sensitive_url, 404, "Not Found", {}, None)
+        with mock.patch("truth.pack.urlopen", side_effect=err):
+            with self.assertRaises(TruthPackMissing) as ctx:
+                load_truth_pack(sensitive_url)
+            msg = str(ctx.exception)
+            self.assertNotIn("SECRET_TOKEN", msg)
+            self.assertNotIn("XYZ123", msg)
+            self.assertNotIn("secretpass", msg)
+            self.assertIn("https://api.example.com/pack.yaml", msg)
+
+    def test_load_truth_pack_cloud_mode_rejects_plain_http(self):
+        with self.assertRaises(TruthPackInvalid) as ctx:
+            load_truth_pack(
+                "http://insecure.example.com/pack.yaml",
+                expected_hash=self.raw_hash,
+                cloud_mode=True,
+            )
+        self.assertIn("plain http:// is forbidden in cloud mode", str(ctx.exception))
+
+    def test_load_truth_pack_cloud_mode_requires_expected_hash(self):
+        with self.assertRaises(TruthPackInvalid) as ctx:
+            load_truth_pack(
+                "https://secure.example.com/pack.yaml",
+                expected_hash=None,
+                cloud_mode=True,
+            )
+        self.assertIn("expected_hash is required in cloud mode", str(ctx.exception))
+
+    def test_load_truth_pack_cloud_mode_rejects_data_uri_by_default(self):
+        import urllib.parse
+        quoted_uri = f"data:text/yaml,{urllib.parse.quote(self.yaml_content)}"
+        with self.assertRaises(TruthPackInvalid) as ctx:
+            load_truth_pack(
+                quoted_uri,
+                expected_hash=self.raw_hash,
+                cloud_mode=True,
+            )
+        self.assertIn("data: URI is development/test fixture only", str(ctx.exception))
+
+        # Explicit allow_data_uri=True passes
+        loaded = load_truth_pack(
+            quoted_uri,
+            expected_hash=self.raw_hash,
+            cloud_mode=True,
+            allow_data_uri=True,
+        )
+        self.assertIsInstance(loaded, LoadedPack)
+
+    def test_load_founder_pack_fails_closed_in_cloud_mode_without_uri(self):
+        import os
+        from unittest import mock
+
+        env = {
+            "OPPORTUNITYOS_ENVIRONMENT": "production",
+        }
+        with mock.patch.dict(os.environ, env, clear=True):
+            with self.assertRaises(TruthPackMissing) as ctx:
+                load_founder_pack()
+            self.assertIn("Missing required OPPORTUNITYOS_TRUTH_PACK_URI in cloud mode", str(ctx.exception))
+            self.assertIn("local fallback to private/truth_pack.yaml is disabled", str(ctx.exception))
+
+    def test_load_truth_pack_s3_deferred_notice(self):
+        with self.assertRaises(TruthPackInvalid) as ctx:
+            load_truth_pack("s3://bucket-name/path/truth_pack.yaml")
+        self.assertIn("s3:// storage is deferred for FR-007", str(ctx.exception))
+        self.assertIn("HTTPS object store is the supported remote storage mechanism", str(ctx.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -220,6 +220,9 @@ class SmokeContainerUnitTest(unittest.TestCase):
         self.assertTrue(res.passed)
         self.assertEqual(res.status, "PASS")
         self.assertEqual(res.marker, "TRUTH_PACK_CONTAINER_PASS")
+        called_cmd = mock_runner.call_args[0][0]
+        self.assertIn("--entrypoint", called_cmd)
+        self.assertIn("python", called_cmd)
 
     def test_smoke_worker_run_once_db(self) -> None:
         runner_no_db = OCIContainerSmokeRunner(engine="mock-docker", db_url=None)

@@ -220,8 +220,15 @@ def check_database_and_schema(
     return results
 
 
-def check_authentication(env: Mapping[str, str]) -> ReadinessCheckResult:
+def check_authentication(env: Mapping[str, str], role: str = "all") -> ReadinessCheckResult:
     """Verify production authentication configuration without disclosing secrets."""
+    if role not in ("api", "all"):
+        return ReadinessCheckResult(
+            name="Authentication",
+            status="PASS",
+            message=f"Server-side founder authentication not required for role '{role}'",
+        )
+
     founder_pw = env.get("OPPORTUNITYOS_FOUNDER_PASSWORD")
     session_sec = env.get("OPPORTUNITYOS_SESSION_SECRET")
 
@@ -251,52 +258,144 @@ def check_authentication(env: Mapping[str, str]) -> ReadinessCheckResult:
         )
 
 
-def check_truth_pack(env: Mapping[str, str]) -> ReadinessCheckResult:
+def check_truth_pack(env: Mapping[str, str], role: str = "all") -> ReadinessCheckResult:
     """Report Truth Pack storage location and verify non-local configuration in cloud mode."""
     target = env.get("OPPORTUNITYOS_TRUTH_PACK_URI") or env.get("OPPORTUNITYOS_TRUTH_PACK_PATH")
     if not target:
+        if role in ("worker", "all"):
+            return ReadinessCheckResult(
+                name="Truth Pack Storage",
+                status="BLOCKED",
+                message="Missing required OPPORTUNITYOS_TRUTH_PACK_URI for worker role; cannot evaluate opportunities without Founder context",
+                blockers=("OPPORTUNITYOS_TRUTH_PACK_URI",),
+            )
         return ReadinessCheckResult(
             name="Truth Pack Storage",
             status="PASS",
-            message="Truth Pack URI unset (defaults to fail-closed missing pack state or template fallback)",
+            message=f"Truth Pack URI unset (not required for role '{role}')",
         )
 
     target_str = str(target).strip()
+    from truth.pack import _redact_url
+    redacted = _redact_url(target_str)
     target_lower = target_str.lower()
+
     if target_str.startswith("private/") or "c:\\" in target_lower or "/users/" in target_lower:
         return ReadinessCheckResult(
             name="Truth Pack Storage",
             status="FAIL",
-            message=f"Forbidden local machine path in Truth Pack target: {target_str}",
+            message=f"Forbidden local machine path in Truth Pack target: {redacted}",
         )
 
-    if target_str.startswith("http://") or target_str.startswith("https://"):
+    if target_str.startswith("http://"):
+        return ReadinessCheckResult(
+            name="Truth Pack Storage",
+            status="FAIL",
+            message=f"Insecure plain http:// Truth Pack URI is forbidden in cloud mode; HTTPS required ({redacted})",
+        )
+
+    if target_str.startswith("data:"):
+        return ReadinessCheckResult(
+            name="Truth Pack Storage",
+            status="FAIL",
+            message="data: URI is development/test fixture only and not accepted as production remote storage",
+        )
+
+    if target_str.startswith("s3://"):
+        return ReadinessCheckResult(
+            name="Truth Pack Storage",
+            status="BLOCKED",
+            message=f"s3:// storage is deferred for FR-007 ({redacted}); HTTPS object store is the supported remote storage mechanism",
+            blockers=("OPPORTUNITYOS_TRUTH_PACK_URI",),
+        )
+
+    if target_str.startswith("https://"):
+        hash_val = env.get("OPPORTUNITYOS_TRUTH_PACK_HASH") or env.get("OPPORTUNITYOS_TRUTH_PACK_SHA256")
+        if not hash_val:
+            return ReadinessCheckResult(
+                name="Truth Pack Storage",
+                status="BLOCKED",
+                message=f"Missing required OPPORTUNITYOS_TRUTH_PACK_HASH for remote HTTPS Truth Pack integrity verification ({redacted})",
+                blockers=("OPPORTUNITYOS_TRUTH_PACK_HASH",),
+            )
         return ReadinessCheckResult(
             name="Truth Pack Storage",
             status="PASS",
-            message=f"Remote HTTPS Truth Pack endpoint configured ({target_str.split('?')[0]})",
+            message=f"Remote HTTPS Truth Pack endpoint configured ({redacted}) with SHA-256 integrity verification",
         )
-    elif target_str.startswith("s3://"):
-        return ReadinessCheckResult(
-            name="Truth Pack Storage",
-            status="PASS",
-            message=f"Remote S3 Truth Pack bucket/key configured ({target_str})",
-        )
-    else:
-        return ReadinessCheckResult(
-            name="Truth Pack Storage",
-            status="PASS",
-            message=f"Injected container Truth Pack path configured ({target_str})",
-        )
+
+    return ReadinessCheckResult(
+        name="Truth Pack Storage",
+        status="PASS",
+        message=f"Injected container Truth Pack path configured ({target_str})",
+    )
 
 
 def check_queue_durability(engine: Any | None = None, db_url: str | None = None) -> ReadinessCheckResult:
     """Verify PostgreSQL worker_jobs queue durability mechanism without external brokers."""
-    return ReadinessCheckResult(
-        name="Queue Durability (PostgreSQL)",
-        status="PASS",
-        message="PostgreSQL worker_jobs verified (atomic SKIP LOCKED claims, lease expiration recovery, dead-lettering, zero external broker dependency)",
-    )
+    active_engine = engine
+    if active_engine is None:
+        if not db_url:
+            return ReadinessCheckResult(
+                name="Queue Durability (PostgreSQL)",
+                status="FAIL",
+                message="No database engine or URL provided to verify queue durability",
+            )
+        try:
+            from storage.engine import get_engine
+            active_engine = get_engine(db_url)
+        except Exception as exc:
+            return ReadinessCheckResult(
+                name="Queue Durability (PostgreSQL)",
+                status="FAIL",
+                message=f"Failed to connect to database for queue durability check: {exc}",
+            )
+
+    try:
+        from sqlalchemy import inspect, text
+        inspector = inspect(active_engine)
+        tables = set(inspector.get_table_names())
+        if "worker_jobs" not in tables:
+            return ReadinessCheckResult(
+                name="Queue Durability (PostgreSQL)",
+                status="FAIL",
+                message="Missing required 'worker_jobs' table in database schema",
+            )
+
+        cols = {col["name"] for col in inspector.get_columns("worker_jobs")}
+        required_cols = {"id", "job_type", "payload_json", "status", "lease_owner", "lease_expires_at", "retry_count", "max_retries", "run_after"}
+        missing_cols = required_cols - cols
+        if missing_cols:
+            return ReadinessCheckResult(
+                name="Queue Durability (PostgreSQL)",
+                status="FAIL",
+                message=f"worker_jobs table missing required columns: {', '.join(sorted(missing_cols))}",
+            )
+
+        # Probe SKIP LOCKED support if connected to real PostgreSQL dialect
+        is_postgres = getattr(active_engine, "dialect", None) is not None and active_engine.dialect.name == "postgresql"
+        if is_postgres:
+            with active_engine.connect() as conn:
+                with conn.begin():
+                    conn.execute(
+                        text("SELECT id, status, lease_owner, lease_expires_at FROM worker_jobs WHERE status IN ('PENDING', 'RETRY') ORDER BY run_after ASC LIMIT 1 FOR UPDATE SKIP LOCKED")
+                    )
+            probe_msg = "PostgreSQL worker_jobs verified live (atomic FOR UPDATE SKIP LOCKED, lease recovery, dead-lettering, zero external broker dependency)"
+        else:
+            dialect_name = getattr(getattr(active_engine, "dialect", None), "name", "mock")
+            probe_msg = f"worker_jobs schema verified ({dialect_name} dialect; PostgreSQL required for production SKIP LOCKED)"
+
+        return ReadinessCheckResult(
+            name="Queue Durability (PostgreSQL)",
+            status="PASS",
+            message=probe_msg,
+        )
+    except Exception as exc:
+        return ReadinessCheckResult(
+            name="Queue Durability (PostgreSQL)",
+            status="FAIL",
+            message=f"Queue durability inspection failed: {exc}",
+        )
 
 
 def check_single_role_autonomy(role: str, env: Mapping[str, str]) -> ReadinessCheckResult:
@@ -377,20 +476,29 @@ def run_preflight_checks(
     results.append(check_pc_independence(env))
 
     # 3. Database connectivity and schema
-    db_url = env.get("CLOUD_DATABASE_URL") or env.get("OPPORTUNITYOS_DB_URL")
-    db_results = check_database_and_schema(engine=engine, db_url=db_url)
-    results.extend(db_results)
+    if role not in ("web", "liveness"):
+        db_url = env.get("CLOUD_DATABASE_URL") or env.get("OPPORTUNITYOS_DB_URL")
+        db_results = check_database_and_schema(engine=engine, db_url=db_url)
+        results.extend(db_results)
 
-    # 4. Queue durability (worker_jobs)
-    has_schema = any(r.name == "Schema Migrations & Tables" and r.passed for r in db_results)
-    if has_schema:
-        results.append(check_queue_durability(engine=engine, db_url=db_url))
+        # 4. Queue durability (worker_jobs)
+        has_schema = any(r.name == "Schema Migrations & Tables" and r.passed for r in db_results)
+        if has_schema:
+            results.append(check_queue_durability(engine=engine, db_url=db_url))
+        else:
+            results.append(
+                ReadinessCheckResult(
+                    name="Queue Durability (PostgreSQL)",
+                    status="FAIL",
+                    message="Cannot verify queue durability: database unreachable or schema tables missing",
+                )
+            )
 
     # 5. Authentication
-    results.append(check_authentication(env))
+    results.append(check_authentication(env, role=role))
 
     # 6. Truth Pack storage
-    results.append(check_truth_pack(env))
+    results.append(check_truth_pack(env, role=role))
 
     # 7. Role-specific autonomy
     roles_to_check = ("api", "worker", "scheduler", "migrate") if role == "all" else (role,)
