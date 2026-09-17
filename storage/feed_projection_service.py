@@ -343,6 +343,41 @@ def rebuild_feed_projection(
     )
 
 
+def refresh_existing_feed_projections(
+    session: Session, *, truth_graph: Any, batch_size: int = 500
+) -> int:
+    """Refresh persisted feed rows after an explicit founder settings change.
+
+    This runs on the write/maintenance path. The feed GET never calls it.
+    Only existing projection identities are refreshed; no missing projection
+    is silently manufactured during a read.
+    """
+    count = 0
+    cursor = None
+    while True:
+        query = session.query(
+            FeedProjectionRecord.id,
+            FeedProjectionRecord.opportunity_id,
+            FeedProjectionRecord.truth_pack_hash,
+        ).order_by(FeedProjectionRecord.id.asc())
+        if cursor is not None:
+            query = query.filter(FeedProjectionRecord.id > cursor)
+        rows = query.limit(batch_size).all()
+        if not rows:
+            break
+        for identity, opportunity_id, truth_pack_hash in rows:
+            refresh_opportunity_projection(
+                session,
+                opportunity_id=opportunity_id,
+                truth_pack_hash=truth_pack_hash,
+                truth_graph=truth_graph,
+                allow_unevaluated=True,
+            )
+            count += 1
+        cursor = rows[-1][0]
+    return count
+
+
 def refresh_opportunity_projection(
     session: Session,
     *,

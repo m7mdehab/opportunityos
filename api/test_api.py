@@ -24,7 +24,7 @@ from unittest.mock import patch
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
-from sqlalchemy import text
+from sqlalchemy import event, text
 
 from storage.engine import get_engine, get_session_factory
 from storage.repository import backfill_search_tsv
@@ -765,6 +765,69 @@ class OpportunityRoutesTest(ApiTestCase):
         super().setUp()
         self.app = self.make_app()
         self.client = self.logged_in_client(self.app)
+
+    def test_missing_projection_is_a_read_only_empty_feed(self):
+        self.seed_opportunity("opp-without-projection")
+        self.seed_evaluation("opp-without-projection", decision="qualified", fit_score=92.0)
+        self.session.execute(text("DELETE FROM feed_projection"))
+        self.session.commit()
+
+        statements = []
+
+        def capture_sql(_connection, _cursor, statement, _parameters, _context, _many):
+            statements.append(statement.lstrip().upper())
+
+        event.listen(self.engine, "before_cursor_execute", capture_sql)
+        try:
+            with (
+                patch("storage.feed_projection_service.rebuild_feed_projection", side_effect=AssertionError("rebuild")),
+                patch("matching.evaluate_persist.evaluate_and_store", side_effect=AssertionError("evaluate")),
+                patch("api.routes_api._opportunity_query", side_effect=AssertionError("corpus scan")),
+                patch("api.routes_api._ranking_filter_contexts", side_effect=AssertionError("hydrate absent page")),
+            ):
+                response = self.client.get("/api/opportunities", params={"decision": "qualified"})
+        finally:
+            event.remove(self.engine, "before_cursor_execute", capture_sql)
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json(), {
+            "page": 1, "page_size": 25, "total": 0, "hidden_count": 0,
+            "items": [], "message": None,
+        })
+        self.assertTrue(statements)
+        self.assertTrue(all(sql.startswith(("SELECT", "SHOW")) for sql in statements), statements)
+        self.assertEqual(self.session.execute(text("SELECT count(*) FROM feed_projection")).scalar(), 0)
+
+    def test_persisted_projection_http_filters_and_bounded_hydration(self):
+        for opp_id, decision, score in (
+            ("opp-a", "qualified", 90.0),
+            ("opp-b", "qualified", 60.0),
+            ("opp-c", "uncertain", 80.0),
+        ):
+            self.seed_opportunity(opp_id, title=f"Engineer {opp_id}")
+            self.seed_evaluation(opp_id, decision=decision, fit_score=score)
+
+        seen = []
+        from api.routes_api import _ranking_filter_contexts
+
+        def capture(*args, **kwargs):
+            seen.extend(opp.id for opp in args[2])
+            return _ranking_filter_contexts(*args, **kwargs)
+
+        with (
+            patch("storage.feed_projection_service.rebuild_feed_projection", side_effect=AssertionError("rebuild")),
+            patch("matching.evaluate_persist.evaluate_and_store", side_effect=AssertionError("evaluate")),
+            patch("api.routes_api._opportunity_query", side_effect=AssertionError("corpus scan")),
+            patch("api.routes_api._ranking_filter_contexts", side_effect=capture),
+        ):
+            response = self.client.get("/api/opportunities", params={
+                "decision": "qualified", "min_score": 50, "max_score": 95,
+                "q": "engineer", "page_size": 1, "page": 2,
+            })
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["total"], 2)
+        self.assertEqual([item["id"] for item in response.json()["items"]], ["opp-b"])
+        self.assertEqual(seen, ["opp-b"])
 
     def test_list_filters_sorts_and_paginates(self):
         self.seed_opportunity("opp-high", posted_date="2026-08-20")
@@ -2972,6 +3035,13 @@ class FacetsTest(ApiTestCase):
         record = OpportunityRecord(id=opp_id, **defaults)
         self.session.add(record)
         self.session.commit()
+        from storage.feed_projection_service import refresh_opportunity_projection
+
+        refresh_opportunity_projection(
+            self.session, opportunity_id=opp_id, truth_pack_hash="hash-fixture",
+            allow_unevaluated=True,
+        )
+        self.session.commit()
         return record
 
     def _disable_all_filters(self):
@@ -3403,6 +3473,13 @@ class ExtractionFieldSerializationTest(ApiTestCase):
         self.session.add(record)
         self.session.commit()
         backfill_search_tsv(self.session)
+        from storage.feed_projection_service import refresh_opportunity_projection
+
+        refresh_opportunity_projection(
+            self.session, opportunity_id=opp_id, truth_pack_hash="hash-fixture",
+            allow_unevaluated=True,
+        )
+        self.session.commit()
         return record
 
     def test_c5_1_every_extraction_field_present_in_list_and_detail(self):

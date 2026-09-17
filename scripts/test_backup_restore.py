@@ -33,6 +33,7 @@ from alembic import command as alembic_command
 
 from storage.engine import get_engine, get_session_factory
 from storage.repository import StorageRepository
+from storage.feed_projection import FeedProjectionRecord
 from storage.models import (
     Base,
     OpportunityRecord,
@@ -445,6 +446,15 @@ class TestBackupRestorePostgres(unittest.TestCase):
         self.assertEqual(me.evaluation_detail_json, detail_json)
         self.assertEqual(me.evaluated_at, match_eval_evaluated_at)
 
+        projection = dst_session.query(FeedProjectionRecord).filter_by(
+            opportunity_id="OPP-BACKUP-1", truth_pack_hash="active"
+        ).one()
+        self.assertIsNone(projection.qualification_decision)
+        self.assertIsNone(projection.fit_score)
+        self.assertEqual(projection.title, opp.title)
+        self.assertEqual(projection.opportunity_content_hash, opp.content_hash)
+        self.assertIsNotNone(projection.search_tsv)
+
         spr = dst_session.query(SourcePollRunRecord).filter_by(id="spr-backup-1").first()
         self.assertIsNotNone(spr, "source_poll_runs row must survive restore")
         self.assertEqual(spr.source_id, "greenhouse:alexandria")
@@ -526,6 +536,9 @@ class TestBackupRestorePostgres(unittest.TestCase):
         self.assertEqual(len(opp_after_second_restore.provenances), 1)
         me_count_after_second_restore = dst_session.query(MatchEvaluationRecord).filter_by(id="me-backup-1").count()
         self.assertEqual(me_count_after_second_restore, 1, "a second restore must not duplicate match_evaluations rows")
+        self.assertEqual(dst_session.query(FeedProjectionRecord).filter_by(
+            opportunity_id="OPP-BACKUP-1", truth_pack_hash="active"
+        ).count(), 1)
 
         dst_session.close()
         dst_engine.dispose()

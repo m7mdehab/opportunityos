@@ -723,6 +723,11 @@ def update_filter(
     row.updated_at = now
     session.commit()
 
+    from storage.feed_projection_service import refresh_existing_feed_projections
+
+    refresh_existing_feed_projections(session, truth_graph=_truth_graph_from_request(request))
+    session.commit()
+
     params = json.loads(row.params_json) if row.params_json else {}
     truth_graph = _truth_graph_from_request(request)
     affected_count = 0
@@ -887,7 +892,7 @@ class FacetUpdateRequest(BaseModel):
 
 
 @router.put("/facets/{facet_id}")
-def update_facet(facet_id: str, payload: FacetUpdateRequest, response: Response, session: Session = Depends(get_db)):
+def update_facet(facet_id: str, payload: FacetUpdateRequest, response: Response, request: Request, session: Session = Depends(get_db)):
     fd = FACET_DEFINITIONS_BY_ID.get(facet_id)
     if fd is None:
         raise HTTPException(status_code=404, detail=f"unknown facet_id: {facet_id!r}")
@@ -910,6 +915,11 @@ def update_facet(facet_id: str, payload: FacetUpdateRequest, response: Response,
         row.mode = mode
         row.values_json = values_json
         row.updated_at = now
+    session.commit()
+
+    from storage.feed_projection_service import refresh_existing_feed_projections
+
+    refresh_existing_feed_projections(session, truth_graph=_truth_graph_from_request(request))
     session.commit()
 
     return {"facet_id": facet_id, "mode": mode, "include": include, "exclude": exclude}
@@ -1015,6 +1025,7 @@ def list_opportunities(
     track: str | None = None,
     decision: str | None = None,
     min_score: float | None = None,
+    max_score: float | None = None,
     since: str | None = None,
     q: str | None = None,
     include_hidden: bool = False,
@@ -1059,28 +1070,12 @@ def list_opportunities(
             else:
                 truth_pack_hash = "active"
 
-    # If projections do not yet exist for this truth_pack_hash, rebuild once
-    if (
-        session.query(FeedProjectionRecord.id)
-        .filter(FeedProjectionRecord.truth_pack_hash == truth_pack_hash)
-        .first()
-        is None
-        and session.query(OpportunityRecord.id).first() is not None
-    ):
-        from storage.feed_projection_service import rebuild_feed_projection
-
-        truth_graph = _truth_graph_from_request(request)
-        try:
-            rebuild_feed_projection(session, truth_graph=truth_graph, truth_pack_hash=truth_pack_hash)
-            session.commit()
-        except Exception:
-            session.rollback()
-
     spec = FeedQuerySpec(
         truth_pack_hash=truth_pack_hash,
         track=track,
         decision=decision,
         min_score=min_score,
+        max_score=max_score,
         since=since,
         q=q,
         include_hidden=include_hidden,
