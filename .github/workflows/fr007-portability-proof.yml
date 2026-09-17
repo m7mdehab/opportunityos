@@ -2,7 +2,7 @@ name: FR-007 Disposable PostgreSQL Portability Proof
 
 on:
   push:
-    branches: [work/fr007-codex-live-proof-runner]
+    branches: [work/fr007-codex-live-proof-runner, work/fr007-codex-production-migration-readiness]
     paths:
       - '.github/workflows/fr007-portability-proof.yml'
       - 'scripts/live_portability_proof.py'
@@ -15,6 +15,9 @@ on:
       - 'scripts/test_db_migration_restore.py'
       - 'scripts/test_migration_baseline.py'
       - 'scripts/test_portability_integrity.py'
+      - 'scripts/production_db_preflight.py'
+      - 'scripts/production_migration_cutover.py'
+      - 'scripts/test_production_migration_readiness.py'
   workflow_dispatch:
 
 permissions:
@@ -46,6 +49,7 @@ jobs:
       OPOS_LIVE_PROOF_TEST: '1'
       OPOS_SOURCE_DB_URL: postgresql+psycopg2://opportunityos:${{ github.run_id }}@localhost:5432/source_db
       OPOS_TARGET_DB_URL: postgresql+psycopg2://opportunityos:${{ github.run_id }}@localhost:5432/target_db
+      OPOS_CUTOVER_DB_URL: postgresql+psycopg2://opportunityos:${{ github.run_id }}@localhost:5432/cutover_db
       PGPASSWORD: ${{ github.run_id }}
       FOUNDER_NAME_PATTERNS: ${{ secrets.FOUNDER_NAME_PATTERNS }}
     steps:
@@ -59,12 +63,14 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client
       - name: Create distinct disposable target database
-        run: psql -h localhost -U opportunityos -d source_db -v ON_ERROR_STOP=1 -c 'CREATE DATABASE target_db;'
+        run: |
+          psql -h localhost -U opportunityos -d source_db -v ON_ERROR_STOP=1 -c 'CREATE DATABASE target_db;'
+          psql -h localhost -U opportunityos -d source_db -v ON_ERROR_STOP=1 -c 'CREATE DATABASE cutover_db;'
       - name: Unit and real PostgreSQL portability proof
-        run: python -m unittest scripts.test_migration_baseline scripts.test_db_migration_restore scripts.test_portability_integrity scripts.test_live_portability_proof scripts.test_live_portability_postgres -v
+        run: python -m unittest scripts.test_migration_baseline scripts.test_db_migration_restore scripts.test_portability_integrity scripts.test_live_portability_proof scripts.test_production_migration_readiness scripts.test_live_portability_postgres -v
       - name: Compile, repository integrity and guard
         run: |
-          python -m py_compile scripts/live_portability_proof.py scripts/test_live_portability_proof.py scripts/test_live_portability_postgres.py scripts/migration_baseline.py scripts/db_migration_restore.py scripts/artifact_integrity.py scripts/portability_bundle.py
+          python -m py_compile scripts/live_portability_proof.py scripts/test_live_portability_proof.py scripts/test_live_portability_postgres.py scripts/migration_baseline.py scripts/db_migration_restore.py scripts/artifact_integrity.py scripts/portability_bundle.py scripts/production_db_preflight.py scripts/production_migration_cutover.py scripts/test_production_migration_readiness.py
           python scripts/check_repository.py
           if [ -n "${FOUNDER_NAME_PATTERNS:-}" ]; then
             python scripts/check_guard.py

@@ -12,11 +12,13 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 from scripts import artifact_integrity as artifacts
 from scripts import db_migration_restore as db
 from scripts import live_portability_proof as proof
 from scripts import portability_bundle as bundle
+from scripts import production_db_preflight as preflight
 
 
 @unittest.skipUnless(os.environ.get("OPOS_LIVE_PROOF_TEST") == "1", "dedicated disposable PostgreSQL job only")
@@ -152,6 +154,47 @@ class LivePostgresPortabilityTests(unittest.TestCase):
         self.assertNotIn("OPOS_SOURCE_DB_URL", json.dumps(verified))
         self.assertNotIn(os.environ[db.SOURCE], json.dumps(verified))
         self.assertNotIn(os.environ[db.TARGET], json.dumps(verified))
+
+    def test_production_preflight_and_cutover_rehearsal_on_second_fresh_target(self):
+        cutover_url = os.environ["OPOS_CUTOVER_DB_URL"]
+        with mock.patch.dict(os.environ, {db.TARGET: cutover_url}):
+            fresh = db.target_config()
+            checked = preflight.evaluate(fresh, connection_mode="direct", allow_insecure_local=True)
+            self.assertTrue(checked["ready"], checked)
+            self.assertEqual(checked["checks"]["target_empty"], "PASS")
+            self.assertEqual(checked["checks"]["transaction"], "PASS")
+            with tempfile.TemporaryDirectory(prefix="opos-cutover-proof-") as directory:
+                result = subprocess.run(
+                    [sys.executable, str(db.ROOT / "scripts" / "production_migration_cutover.py"),
+                     "--output-dir", directory, "--connection-mode", "direct",
+                     "--confirm-target-restore", "--acknowledge-source-writes-paused",
+                     "--acknowledge-target-writes-disabled", "--allow-insecure-local", "--allow-partial"],
+                    cwd=db.ROOT, capture_output=True, text=True, check=False, shell=False)
+                self.assertEqual(result.returncode, 0, result.stdout[-4000:])
+                report = json.loads(result.stdout)
+                for stage in ("source_baseline", "backup", "manifest_checksum", "target_migration",
+                              "restore_import", "revision_verification", "feed_projection_parity",
+                              "artifact_metadata"):
+                    self.assertEqual(report["stages"][stage], "PASS", stage)
+                self.assertEqual(report["stages"]["structural_parity"], "PARTIAL")
+                self.assertEqual(report["stages"]["artifact_body"], "PARTIAL")
+                self.assertEqual(report["rollback_decision"]["decision"], "AWAIT_OWNER_CUTOVER")
+                self.assertNotIn(cutover_url, result.stdout)
+                self.assertNotIn("synthetic artifact bytes", result.stdout)
+                # A separate disposable fixture with only the complete artifact
+                # proves metadata -> fetch -> checksum -> PASS end to end.
+                connection = db.connect(fresh)
+                try:
+                    cursor = connection.cursor()
+                    cursor.execute("DELETE FROM public.artifact_cache WHERE payload IS NULL")
+                    connection.commit()
+                finally:
+                    connection.close()
+                complete = artifacts.manifest(artifacts.PostgresPayloadReader(fresh))
+                self.assertEqual(complete["metadata_only"], 0)
+                self.assertEqual(artifacts.verify(complete, artifacts.PostgresPayloadReader(fresh)),
+                                 {"referenced": 1, "retrievable": 1, "missing": 0,
+                                  "checksum_mismatch": 0, "metadata_only": 0, "unexpected": 0})
 
 
 if __name__ == "__main__":
