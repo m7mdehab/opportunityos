@@ -47,7 +47,9 @@ Use the provider's direct database endpoint and its documented certificate
 configuration. A transaction or session pooler is blocked for migrations.
 The runner cannot independently identify every proxy: `--connection-mode
 direct` is an explicit operator declaration, recorded as unverified. Validate
-the endpoint in the provider control plane before using it. TLS must be active
+the endpoint in the provider control plane before using it. The SQL preflight
+reports the declared direct mode as `PARTIAL` until that independent check.
+TLS must be active
 and required by the DSN. `--allow-insecure-local` is accepted only for
 loopback disposable PostgreSQL and must not be used for production.
 

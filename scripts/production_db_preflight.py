@@ -63,7 +63,10 @@ def evaluate(settings, *, connection_mode=None, allow_insecure_local=False,
             result["details"]["tls"] = {"active": tls_active, "required_by_dsn": ssl_required,
                                          "local_exception": bool(allow_insecure_local and local)}
 
-            result["checks"]["connection_mode"] = _state(connection_mode == "direct", blocked=True)
+            # Endpoint topology cannot be established reliably from SQL alone.
+            # An explicit direct declaration permits rehearsal but remains
+            # partial until independently checked in the provider control plane.
+            result["checks"]["connection_mode"] = ("PARTIAL" if connection_mode == "direct" else "BLOCKED")
             result["details"]["connection_mode"] = {
                 "declared": connection_mode, "provider_verified": False}
 

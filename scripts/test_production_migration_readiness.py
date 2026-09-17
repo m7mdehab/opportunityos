@@ -76,7 +76,8 @@ class PreflightTests(TestCase):
         connection = FakeConnection()
         result = preflight.evaluate(self.settings, connection_mode="direct",
                                     connection_factory=lambda _: connection)
-        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["status"], "PARTIAL")
+        self.assertEqual(result["checks"]["connection_mode"], "PARTIAL")
         self.assertTrue(result["ready"])
         self.assertEqual(connection.rollbacks, 1)
         for sql in connection.fake_cursor.calls:
