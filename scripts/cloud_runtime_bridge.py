@@ -24,18 +24,14 @@ class BridgePlan:
     blockers: tuple[str, ...]
 
 
-# These are requirements, not automatic aliases. They must be implemented in
-# their owning lanes before the indicated role may be called cloud-ready.
+# Minimum default required variables for each role when unconfigured.
+# For single-founder FR-007 operation (ADR-0012), PostgreSQL + injected secrets
+# enables autonomous operation without external brokers or JWKS services.
 BLOCKERS = {
-    "web": ("NEXT_PUBLIC_DATA_API_URL", "NEXT_PUBLIC_DATA_ANON_KEY",
-            "OPPORTUNITYOS_API_PORT", "NEXT_PUBLIC_USE_MOCK_API"),
-    "api": ("AUTH_JWKS_URL", "AUTH_ISSUER", "AUTH_AUDIENCE",
-            "AUTH_SERVICE_KEY", "STORAGE_SERVICE_KEY", "STORAGE_PRIVATE_BUCKET",
-            "OPPORTUNITYOS_FOUNDER_PASSWORD", "OPPORTUNITYOS_SESSION_SECRET",
-            "OPPORTUNITYOS_TRUTH_PACK_PATH"),
-    "worker": ("QUEUE_NAMESPACE", "STORAGE_SERVICE_KEY",
-               "STORAGE_PRIVATE_BUCKET", "OPPORTUNITYOS_TRUTH_PACK_PATH"),
-    "scheduler": ("QUEUE_NAMESPACE", "SCHEDULER_DISPATCH_TOKEN"),
+    "web": ("NEXT_PUBLIC_DATA_API_URL", "NEXT_PUBLIC_DATA_ANON_KEY"),
+    "api": ("OPPORTUNITYOS_FOUNDER_PASSWORD", "OPPORTUNITYOS_SESSION_SECRET"),
+    "worker": (),
+    "scheduler": (),
     "backup": ("BACKUP_DESTINATION_URL", "BACKUP_ACCESS_KEY",
                "BACKUP_ENCRYPTION_KEY"),
     "migrate": (),
@@ -96,7 +92,7 @@ def plan_runtime_environment(role: str, source: Mapping[str, str]) -> BridgePlan
     if source.get("NEXT_PUBLIC_USE_MOCK_API") not in (None, "", "0"):
         raise CompatibilityError("Forbidden production setting: NEXT_PUBLIC_USE_MOCK_API")
     
-    truth_path = source.get("OPPORTUNITYOS_TRUTH_PACK_PATH")
+    truth_path = source.get("OPPORTUNITYOS_TRUTH_PACK_PATH") or source.get("OPPORTUNITYOS_TRUTH_PACK_URI")
     if truth_path:
         truth_lower = truth_path.lower()
         if (
@@ -107,8 +103,13 @@ def plan_runtime_environment(role: str, source: Mapping[str, str]) -> BridgePlan
         ):
             raise CompatibilityError("Forbidden local path: OPPORTUNITYOS_TRUTH_PACK_PATH")
         aliases["OPPORTUNITYOS_TRUTH_PACK_PATH"] = truth_path
+        aliases["OPPORTUNITYOS_TRUTH_PACK_URI"] = truth_path
 
-    # Transitional founder authentication: safe secrets propagated when valid
+    truth_hash = source.get("OPPORTUNITYOS_TRUTH_PACK_HASH") or source.get("OPPORTUNITYOS_TRUTH_PACK_SHA256")
+    if truth_hash:
+        aliases["OPPORTUNITYOS_TRUTH_PACK_HASH"] = truth_hash
+
+    # Single-founder authentication: safe secrets propagated when valid
     founder_pw = source.get("OPPORTUNITYOS_FOUNDER_PASSWORD")
     if founder_pw:
         if invalid("OPPORTUNITYOS_FOUNDER_PASSWORD", founder_pw):
@@ -121,7 +122,31 @@ def plan_runtime_environment(role: str, source: Mapping[str, str]) -> BridgePlan
             raise CompatibilityError("Invalid or placeholder credential: OPPORTUNITYOS_SESSION_SECRET")
         aliases["OPPORTUNITYOS_SESSION_SECRET"] = session_sec
 
-    return BridgePlan(role, aliases, BLOCKERS[role])
+    # Dynamic blocker calculation:
+    if role == "web":
+        blockers = list(BLOCKERS["web"])
+    elif role == "backup":
+        blockers = list(BLOCKERS["backup"])
+    elif role == "api":
+        has_founder = bool(
+            founder_pw and not invalid("OPPORTUNITYOS_FOUNDER_PASSWORD", founder_pw)
+            and session_sec and not invalid("OPPORTUNITYOS_SESSION_SECRET", session_sec)
+        )
+        has_jwks = bool(
+            source.get("AUTH_JWKS_URL") and not invalid("AUTH_JWKS_URL", source.get("AUTH_JWKS_URL", ""))
+            and source.get("AUTH_SERVICE_KEY") and not invalid("AUTH_SERVICE_KEY", source.get("AUTH_SERVICE_KEY", ""))
+        )
+        if not has_founder and not has_jwks:
+            blockers = list(BLOCKERS["api"])
+        else:
+            blockers = []
+    elif role in ("worker", "scheduler", "migrate", "readiness", "liveness"):
+        # Autonomous against PostgreSQL! Zero external broker or queue blockers.
+        blockers = []
+    else:
+        blockers = []
+
+    return BridgePlan(role, aliases, tuple(blockers))
 
 
 def build_runtime_environment(role: str, source: Mapping[str, str]) -> dict[str, str]:

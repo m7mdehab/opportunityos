@@ -12,16 +12,14 @@ from urllib.parse import urlsplit
 
 ROLES = ("web", "api", "worker", "scheduler", "backup", "migrate", "readiness", "liveness")
 
-# Required for startup of each role. Optional values are documented in the
-# contract; a role must not inherit another role's secret requirements.
+# Minimum required variables for startup of each role in FR-007.
+# For single-founder cloud operation (ADR-0012), PostgreSQL + injected secrets
+# provides autonomous execution without external message broker or JWKS service.
 REQUIRED = {
     "web": ("NEXT_PUBLIC_DATA_API_URL", "NEXT_PUBLIC_DATA_ANON_KEY"),
-    "api": ("CLOUD_DATABASE_URL", "AUTH_JWKS_URL", "AUTH_ISSUER",
-            "AUTH_AUDIENCE", "AUTH_SERVICE_KEY", "STORAGE_SERVICE_KEY",
-            "STORAGE_PRIVATE_BUCKET"),
-    "worker": ("CLOUD_DATABASE_URL", "QUEUE_NAMESPACE",
-               "STORAGE_SERVICE_KEY", "STORAGE_PRIVATE_BUCKET"),
-    "scheduler": ("CLOUD_DATABASE_URL", "QUEUE_NAMESPACE"),
+    "api": ("CLOUD_DATABASE_URL", "OPPORTUNITYOS_FOUNDER_PASSWORD", "OPPORTUNITYOS_SESSION_SECRET"),
+    "worker": ("CLOUD_DATABASE_URL",),
+    "scheduler": ("CLOUD_DATABASE_URL",),
     "backup": ("CLOUD_DATABASE_URL", "BACKUP_DESTINATION_URL",
                "BACKUP_ACCESS_KEY", "BACKUP_ENCRYPTION_KEY"),
     "migrate": ("CLOUD_DATABASE_URL",),
@@ -58,12 +56,19 @@ def invalid(name: str, value: str) -> bool:
 def validate(role: str, environ: dict[str, str]) -> list[str]:
     if role not in REQUIRED:
         return [f"unsupported role: {role}"]
-    if role == "api" and ("OPPORTUNITYOS_FOUNDER_PASSWORD" in environ and "AUTH_JWKS_URL" not in environ):
-        transitional_req = ("CLOUD_DATABASE_URL", "OPPORTUNITYOS_FOUNDER_PASSWORD", "OPPORTUNITYOS_SESSION_SECRET")
-        return [name for name in transitional_req if invalid(name, environ.get(name, ""))]
-    if role in ("worker", "scheduler") and ("QUEUE_NAMESPACE" not in environ and "STORAGE_SERVICE_KEY" not in environ):
-        runtime_req = ("CLOUD_DATABASE_URL",)
-        return [name for name in runtime_req if invalid(name, environ.get(name, ""))]
+    if role == "api":
+        if "AUTH_JWKS_URL" in environ:
+            req = ("CLOUD_DATABASE_URL", "AUTH_JWKS_URL", "AUTH_ISSUER", "AUTH_AUDIENCE", "AUTH_SERVICE_KEY", "STORAGE_SERVICE_KEY")
+        else:
+            req = ("CLOUD_DATABASE_URL", "OPPORTUNITYOS_FOUNDER_PASSWORD", "OPPORTUNITYOS_SESSION_SECRET")
+        return [name for name in req if invalid(name, environ.get(name, ""))]
+    if role in ("worker", "scheduler"):
+        req = ("CLOUD_DATABASE_URL",)
+        failures = [name for name in req if invalid(name, environ.get(name, ""))]
+        for opt in ("QUEUE_NAMESPACE", "STORAGE_SERVICE_KEY", "STORAGE_PRIVATE_BUCKET"):
+            if opt in environ and invalid(opt, environ.get(opt, "")):
+                failures.append(opt)
+        return failures
     return [name for name in REQUIRED[role] if invalid(name, environ.get(name, ""))]
 
 

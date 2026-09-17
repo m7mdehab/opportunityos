@@ -210,11 +210,66 @@ class SmokeContainerUnitTest(unittest.TestCase):
         self.assertEqual(res_with_db.status, "PASS")
         self.assertEqual(res_with_db.marker, "API_GRACEFUL_SHUTDOWN_PASS")
 
-    def test_smoke_worker_scheduler_cloud_dependencies_is_explicitly_blocked(self) -> None:
-        runner = OCIContainerSmokeRunner(engine="mock-docker")
-        res = runner.smoke_worker_scheduler_cloud_dependencies()
-        self.assertEqual(res.status, "BLOCKED")
-        self.assertIn("ROLE_LIVE_PROOF_BLOCKED", res.message)
+    def test_smoke_in_container_truth_pack_loading(self) -> None:
+        mock_runner = MagicMock()
+        runner = OCIContainerSmokeRunner(engine="mock-docker", runner_fn=mock_runner)
+        mock_runner.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="TRUTH_LOADED_OK: True\n", stderr=""
+        )
+        res = runner.smoke_in_container_truth_pack_loading()
+        self.assertTrue(res.passed)
+        self.assertEqual(res.status, "PASS")
+        self.assertEqual(res.marker, "TRUTH_PACK_CONTAINER_PASS")
+
+    def test_smoke_worker_run_once_db(self) -> None:
+        runner_no_db = OCIContainerSmokeRunner(engine="mock-docker", db_url=None)
+        self.assertEqual(runner_no_db.smoke_worker_run_once_db().status, "BLOCKED")
+
+        mock_runner = MagicMock()
+        runner_with_db = OCIContainerSmokeRunner(
+            engine="mock-docker",
+            db_url="postgresql+psycopg2://user:pass@db:5432/test",
+            runner_fn=mock_runner,
+        )
+        mock_runner.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="processed 0 jobs\n", stderr="")
+        res = runner_with_db.smoke_worker_run_once_db()
+        self.assertTrue(res.passed)
+        self.assertEqual(res.status, "PASS")
+        self.assertEqual(res.marker, "WORKER_RUN_ONCE_PASS")
+
+    def test_smoke_detached_scheduler_startup_and_sigterm(self) -> None:
+        runner_no_db = OCIContainerSmokeRunner(engine="mock-docker", db_url=None)
+        self.assertEqual(runner_no_db.smoke_detached_scheduler_startup_and_sigterm().status, "BLOCKED")
+
+        mock_runner = MagicMock()
+        runner_with_db = OCIContainerSmokeRunner(
+            engine="mock-docker",
+            db_url="postgresql+psycopg2://user:pass@db:5432/test",
+            runner_fn=mock_runner,
+        )
+        def side_effect(cmd, **kwargs):
+            if "logs" in cmd:
+                return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="worker.scheduler_start: polling", stderr="")
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        mock_runner.side_effect = side_effect
+        res = runner_with_db.smoke_detached_scheduler_startup_and_sigterm()
+        self.assertTrue(res.passed)
+        self.assertEqual(res.status, "PASS")
+        self.assertEqual(res.marker, "SCHEDULER_GRACEFUL_SHUTDOWN_PASS")
+
+    def test_smoke_worker_scheduler_cloud_dependencies(self) -> None:
+        # Without DB -> BLOCKED
+        runner_no_db = OCIContainerSmokeRunner(engine="mock-docker", db_url=None)
+        res_no_db = runner_no_db.smoke_worker_scheduler_cloud_dependencies()
+        self.assertEqual(res_no_db.status, "BLOCKED")
+        self.assertIn("ROLE_LIVE_PROOF_BLOCKED", res_no_db.message)
+
+        # With DB -> PASS (autonomous roles verified)
+        runner_db = OCIContainerSmokeRunner(engine="mock-docker", db_url="postgresql+psycopg2://user:pass@db:5432/test")
+        res_db = runner_db.smoke_worker_scheduler_cloud_dependencies()
+        self.assertEqual(res_db.status, "PASS")
+        self.assertEqual(res_db.marker, "ROLE_LIVE_PROOF_PASS")
 
     def test_run_all_smoke_tests_stops_if_build_fails(self) -> None:
         mock_runner = MagicMock()

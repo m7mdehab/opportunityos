@@ -21,10 +21,9 @@ WEB = {
 
 
 class BridgeTests(unittest.TestCase):
-    def test_supported_roles_have_explicit_blockers(self):
-        for role, values in (("web", WEB), ("worker", WORKER)):
-            with self.subTest(role=role):
-                self.assertTrue(plan_runtime_environment(role, values).blockers)
+    def test_unconfigured_roles_have_explicit_blockers(self):
+        # Web has unwired blockers
+        self.assertTrue(plan_runtime_environment("web", WEB).blockers)
         with self.assertRaisesRegex(CompatibilityError, "Unsupported role"):
             plan_runtime_environment("unknown", {})
 
@@ -69,17 +68,17 @@ class BridgeTests(unittest.TestCase):
             build_runtime_environment("web", WEB)
 
     def test_unwired_dependencies_are_explicit_and_block_launch(self):
-        plan = plan_runtime_environment("worker", WORKER)
-        self.assertIn("QUEUE_NAMESPACE", plan.blockers)
-        self.assertIn("OPPORTUNITYOS_TRUTH_PACK_PATH", plan.blockers)
-        with self.assertRaisesRegex(CompatibilityError, "QUEUE_NAMESPACE"):
-            build_runtime_environment("worker", WORKER)
+        # Web has unwired blockers and refuses to build
+        plan = plan_runtime_environment("web", WEB)
+        self.assertIn("NEXT_PUBLIC_DATA_API_URL", plan.blockers)
+        with self.assertRaisesRegex(CompatibilityError, "NEXT_PUBLIC_DATA_API_URL"):
+            build_runtime_environment("web", WEB)
 
     def test_matching_legacy_alias_is_accepted(self):
         self.assertEqual(plan_runtime_environment("worker", dict(WORKER, OPPORTUNITYOS_DB_URL=DB)).aliases,
                          {"OPPORTUNITYOS_DB_URL": DB})
 
-    def test_transitional_founder_auth_accepted_and_aliased(self):
+    def test_founder_auth_accepted_with_zero_blockers(self):
         api_env = {
             "CLOUD_DATABASE_URL": DB,
             "OPPORTUNITYOS_FOUNDER_PASSWORD": "valid-founder-password",
@@ -88,9 +87,35 @@ class BridgeTests(unittest.TestCase):
         plan = plan_runtime_environment("api", api_env)
         self.assertEqual(plan.aliases["OPPORTUNITYOS_FOUNDER_PASSWORD"], "valid-founder-password")
         self.assertEqual(plan.aliases["OPPORTUNITYOS_SESSION_SECRET"], "valid-session-secret-32-chars")
-        # Target cloud blockers remain explicit
-        self.assertIn("AUTH_JWKS_URL", plan.blockers)
-        self.assertIn("STORAGE_SERVICE_KEY", plan.blockers)
+        # Single-founder production auth clears all blockers in FR-007
+        self.assertEqual(plan.blockers, ())
+        env = build_runtime_environment("api", api_env)
+        self.assertEqual(env["OPPORTUNITYOS_DB_URL"], DB)
+        self.assertEqual(env["OPPORTUNITYOS_FOUNDER_PASSWORD"], "valid-founder-password")
+
+    def test_remote_truth_pack_uri_accepted_and_aliased(self):
+        env = {
+            "CLOUD_DATABASE_URL": DB,
+            "OPPORTUNITYOS_TRUTH_PACK_URI": "https://storage.supabase.co/truth/pack.yaml",
+            "OPPORTUNITYOS_TRUTH_PACK_HASH": "a" * 64,
+        }
+        plan = plan_runtime_environment("worker", env)
+        self.assertEqual(plan.aliases["OPPORTUNITYOS_TRUTH_PACK_PATH"], "https://storage.supabase.co/truth/pack.yaml")
+        self.assertEqual(plan.aliases["OPPORTUNITYOS_TRUTH_PACK_URI"], "https://storage.supabase.co/truth/pack.yaml")
+        self.assertEqual(plan.aliases["OPPORTUNITYOS_TRUTH_PACK_HASH"], "a" * 64)
+
+    def test_worker_role_has_zero_blockers_and_builds_cleanly(self):
+        plan = plan_runtime_environment("worker", WORKER)
+        self.assertEqual(plan.blockers, ())
+        env = build_runtime_environment("worker", WORKER)
+        self.assertEqual(env["OPPORTUNITYOS_DB_URL"], DB)
+
+    def test_scheduler_role_has_zero_blockers_and_builds_cleanly(self):
+        sched_env = {"CLOUD_DATABASE_URL": DB}
+        plan = plan_runtime_environment("scheduler", sched_env)
+        self.assertEqual(plan.blockers, ())
+        env = build_runtime_environment("scheduler", sched_env)
+        self.assertEqual(env["OPPORTUNITYOS_DB_URL"], DB)
 
     def test_migrate_role_has_zero_blockers_and_builds_cleanly(self):
         migrate_env = {"CLOUD_DATABASE_URL": DB}

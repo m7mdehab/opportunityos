@@ -51,18 +51,23 @@ what a founder wrote under those three top-level YAML keys. A pack with
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import logging
+import os
 import dataclasses
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Mapping
+from urllib.error import HTTPError, URLError
+from urllib.parse import unquote_to_bytes, urlsplit
+from urllib.request import Request, urlopen
 
 from .graph import TruthGraph
-from .ingest import IngestionError, load_path
+from .ingest import IngestionError, load_document, load_path
 from .models import CapabilityProfile, CareerProfile
 
 logger = logging.getLogger(__name__)
@@ -94,9 +99,13 @@ class TruthPackInvalid(ValueError):
     list of every problem in the document.
     """
 
-    def __init__(self, message: str, findings: tuple[str, ...]) -> None:
+    def __init__(self, message: str, findings: tuple[str, ...] = ()) -> None:
         super().__init__(message)
         self.findings = findings
+
+
+class TruthPackVerificationError(TruthPackInvalid):
+    """Raised when a truth pack's SHA-256 digest does not match the expected hash."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,29 +208,189 @@ def compute_truth_pack_hash(graph: TruthGraph) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def load_founder_pack(path: str | Path | None = None) -> LoadedPack:
-    """Load, hash, and report on a founder truth pack.
+def _fetch_remote_bytes(
+    url: str,
+    auth_token: str | None = None,
+    timeout_seconds: float = 30.0,
+) -> tuple[bytes, str]:
+    """Fetch raw bytes and determine format (yaml or json) from an HTTP(S) URL."""
+    headers = {"User-Agent": "OpportunityOS-TruthPack/1.0"}
+    if auth_token and not any(p in url for p in ("token=", "Signature=", "apikey=", "X-Amz-Signature")):
+        headers["Authorization"] = f"Bearer {auth_token}"
 
-    `path` defaults to `DEFAULT_TRUTH_PACK_PATH` (private/truth_pack.yaml).
-    Never logs pack contents -- only counts and section names.
-    """
-    target = Path(path) if path is not None else DEFAULT_TRUTH_PACK_PATH
+    req = Request(url, headers=headers)
+    try:
+        with urlopen(req, timeout=timeout_seconds) as resp:
+            raw_bytes = resp.read()
+            content_type = resp.headers.get("Content-Type", "")
+    except HTTPError as err:
+        if err.code == 404:
+            raise TruthPackMissing(f"truth pack not found at {url} (HTTP 404)") from err
+        if err.code in (401, 403):
+            raise TruthPackInvalid(f"access denied to truth pack at {url} (HTTP {err.code})", (f"HTTP {err.code}",)) from err
+        raise TruthPackInvalid(f"failed to fetch truth pack from {url}: HTTP {err.code}", (f"HTTP {err.code}",)) from err
+    except URLError as err:
+        raise TruthPackInvalid(f"network error fetching truth pack from {url}: {err.reason}", (str(err.reason),)) from err
+    except Exception as err:
+        raise TruthPackInvalid(f"unexpected error fetching truth pack from {url}: {err}", (str(err),)) from err
 
-    if not target.exists():
-        raise TruthPackMissing(f"truth pack not found at {target}")
+    path_part = urlsplit(url).path.lower()
+    if path_part.endswith(".json") or "application/json" in content_type:
+        doc_format = "json"
+    else:
+        doc_format = "yaml"
+
+    return raw_bytes, doc_format
+
+
+def _fetch_s3_bytes(url: str) -> tuple[bytes, str]:
+    """Fetch raw bytes from an s3:// URI via boto3."""
+    parsed = urlsplit(url)
+    bucket = parsed.netloc
+    key = parsed.path.lstrip("/")
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+    except ImportError as err:
+        raise TruthPackInvalid("s3:// URIs require 'boto3' to be installed", ("missing boto3",)) from err
 
     try:
-        graph = load_path(target)
+        s3 = boto3.client("s3")
+        obj = s3.get_object(Bucket=bucket, Key=key)
+        raw_bytes = obj["Body"].read()
+    except ClientError as err:
+        code = err.response.get("Error", {}).get("Code", "")
+        if code in ("NoSuchKey", "404", "NotFound"):
+            raise TruthPackMissing(f"truth pack not found at {url} ({code})") from err
+        raise TruthPackInvalid(f"S3 error fetching truth pack from {url}: {err}", (str(err),)) from err
+    except Exception as err:
+        raise TruthPackInvalid(f"unexpected error fetching truth pack from {url}: {err}", (str(err),)) from err
+
+    doc_format = "json" if key.lower().endswith(".json") else "yaml"
+    return raw_bytes, doc_format
+
+
+def _decode_data_uri(uri: str) -> tuple[bytes, str]:
+    """Decode an RFC 2397 data: URI."""
+    if not uri.startswith("data:"):
+        raise TruthPackInvalid("invalid data URI", ("invalid data URI",))
+    meta, _, payload = uri[5:].partition(",")
+    is_base64 = meta.endswith(";base64")
+    mime = meta[:-7] if is_base64 else meta
+    doc_format = "json" if "json" in mime else "yaml"
+
+    if is_base64:
+        try:
+            raw_bytes = base64.b64decode(payload)
+        except Exception as err:
+            raise TruthPackInvalid(f"invalid base64 payload in data URI: {err}", (str(err),)) from err
+    else:
+        raw_bytes = unquote_to_bytes(payload)
+
+    return raw_bytes, doc_format
+
+
+def load_truth_pack(
+    target: str | Path | None = None,
+    *,
+    expected_hash: str | None = None,
+    auth_token: str | None = None,
+    timeout_seconds: float = 30.0,
+    allow_local_path: bool = True,
+) -> LoadedPack:
+    """Load, verify, hash, and report on a founder truth pack from a local path,
+    remote HTTP(S) URL, S3 URI, or data URI.
+
+    Fail-closed on missing pack, invalid schema, network errors, or SHA-256
+    integrity hash mismatch.
+    """
+    if target is None:
+        target = (
+            os.environ.get("OPPORTUNITYOS_TRUTH_PACK_URI")
+            or os.environ.get("OPPORTUNITYOS_TRUTH_PACK_PATH")
+            or DEFAULT_TRUTH_PACK_PATH
+        )
+
+    if expected_hash is None:
+        expected_hash = (
+            os.environ.get("OPPORTUNITYOS_TRUTH_PACK_HASH")
+            or os.environ.get("OPPORTUNITYOS_TRUTH_PACK_SHA256")
+        )
+
+    if auth_token is None:
+        auth_token = (
+            os.environ.get("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN")
+            or os.environ.get("STORAGE_SERVICE_KEY")
+        )
+
+    target_str = str(target).strip()
+    if not target_str:
+        raise TruthPackMissing("empty truth pack target specified")
+
+    if target_str.startswith("http://") or target_str.startswith("https://"):
+        raw_bytes, doc_format = _fetch_remote_bytes(
+            target_str, auth_token=auth_token, timeout_seconds=timeout_seconds
+        )
+    elif target_str.startswith("s3://"):
+        raw_bytes, doc_format = _fetch_s3_bytes(target_str)
+    elif target_str.startswith("data:"):
+        raw_bytes, doc_format = _decode_data_uri(target_str)
+    else:
+        if not allow_local_path:
+            raise TruthPackInvalid(
+                f"local filesystem paths not allowed for truth pack in cloud mode: {target_str}",
+                ("forbidden local path in cloud mode",),
+            )
+        file_path = Path(target_str)
+        if not file_path.exists():
+            raise TruthPackMissing(f"truth pack not found at {file_path}")
+        try:
+            raw_bytes = file_path.read_bytes()
+        except OSError as err:
+            raise TruthPackInvalid(f"failed reading truth pack at {file_path}: {err}", (str(err),)) from err
+        doc_format = "json" if file_path.suffix.lower() == ".json" else "yaml"
+
+    raw_sha256 = hashlib.sha256(raw_bytes).hexdigest()
+
+    try:
+        raw_text = raw_bytes.decode("utf-8")
+    except UnicodeDecodeError as err:
+        raise TruthPackInvalid(f"truth pack is not valid UTF-8: {err}", (str(err),)) from err
+
+    try:
+        graph = load_document(raw_text, doc_format)
     except (IngestionError, ValueError) as error:
         message = str(error)
         raise TruthPackInvalid(f"truth pack failed to load: {message}", (message,)) from error
 
+    canonical_hash = compute_truth_pack_hash(graph)
+
+    # Integrity verification against expected_hash (accepts raw content SHA256 or canonical graph hash)
+    if expected_hash:
+        clean_expected = expected_hash.strip().lower()
+        if clean_expected not in (raw_sha256.lower(), canonical_hash.lower()):
+            raise TruthPackVerificationError(
+                f"truth pack integrity verification failed: expected hash {expected_hash}, "
+                f"got raw SHA-256 {raw_sha256} / graph canonical hash {canonical_hash}",
+                (f"expected {expected_hash}, got raw {raw_sha256} or graph {canonical_hash}",),
+            )
+
     report = _build_report(graph)
-    digest = compute_truth_pack_hash(graph)
 
     logger.info(
-        "truth pack loaded: sections=%s",
+        "truth pack loaded: sections=%s, canonical_hash=%s",
         sorted(name for name, count in report.section_counts if count > 0),
+        canonical_hash,
     )
 
-    return LoadedPack(graph=graph, report=report, truth_pack_hash=digest)
+    return LoadedPack(graph=graph, report=report, truth_pack_hash=canonical_hash)
+
+
+def load_founder_pack(path: str | Path | None = None) -> LoadedPack:
+    """Load, hash, and report on a founder truth pack.
+
+    `path` defaults to `DEFAULT_TRUTH_PACK_PATH` (private/truth_pack.yaml) or
+    the active environment URI. Never logs pack contents -- only counts and
+    section names.
+    """
+    return load_truth_pack(target=path)

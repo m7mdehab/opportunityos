@@ -13,9 +13,13 @@ import unittest
 from unittest.mock import MagicMock
 
 from scripts.check_cloud_readiness import (
+    check_authentication,
     check_database_and_schema,
     check_pc_independence,
+    check_queue_durability,
     check_secrets_and_config,
+    check_single_role_autonomy,
+    check_truth_pack,
     main,
     run_preflight_checks,
 )
@@ -129,9 +133,10 @@ class CheckCloudReadinessTest(unittest.TestCase):
             mock_inspect.return_value = mock_inspector
 
             with unittest.mock.patch.dict("os.environ", self.valid_env, clear=True):
-                # Migrate role has zero launch blockers and fully passes
-                code = main(["--role", "migrate", "--quiet"], engine=mock_engine)
-                self.assertEqual(code, 0)
+                # All autonomous roles (api, worker, scheduler, migrate, all) have zero launch blockers and pass
+                for r in ("migrate", "worker", "scheduler", "api", "all"):
+                    code = main(["--role", r, "--quiet"], engine=mock_engine)
+                    self.assertEqual(code, 0, f"Role '{r}' expected exit code 0, got {code}")
 
     def test_cli_exit_code_two_when_role_has_unresolved_blockers(self) -> None:
         mock_conn = MagicMock()
@@ -148,9 +153,13 @@ class CheckCloudReadinessTest(unittest.TestCase):
             ]
             mock_inspect.return_value = mock_inspector
 
-            with unittest.mock.patch.dict("os.environ", self.valid_env, clear=True):
-                # API role has unwired cloud dependencies (JWT/Storage) and returns BLOCKED (exit 2)
-                code = main(["--role", "api", "--quiet"], engine=mock_engine)
+            web_env = {
+                "NEXT_PUBLIC_DATA_API_URL": "https://api.cloud.invalid",
+                "NEXT_PUBLIC_DATA_ANON_KEY": "synthetic-public-key",
+            }
+            with unittest.mock.patch.dict("os.environ", web_env, clear=True):
+                # Web role has unwired cloud dependencies and returns BLOCKED (exit 2)
+                code = main(["--role", "web", "--quiet"], engine=mock_engine)
                 self.assertEqual(code, 2)
 
     def test_cli_exit_code_one_when_prerequisite_fails(self) -> None:
@@ -158,6 +167,47 @@ class CheckCloudReadinessTest(unittest.TestCase):
         with unittest.mock.patch.dict("os.environ", empty_env, clear=True):
             code = main(["--role", "api", "--quiet"])
             self.assertEqual(code, 1)
+
+    def test_check_authentication_founder_and_jwks(self) -> None:
+        # Founder credentials pass
+        res_founder = check_authentication(self.valid_env)
+        self.assertTrue(res_founder.passed)
+        self.assertIn("Founder", res_founder.name)
+
+        # JWKS credentials pass
+        jwks_env = {"AUTH_JWKS_URL": "https://auth.invalid/jwks", "AUTH_SERVICE_KEY": "syn-key"}
+        res_jwks = check_authentication(jwks_env)
+        self.assertTrue(res_jwks.passed)
+        self.assertIn("JWKS", res_jwks.name)
+
+        # Missing credentials return BLOCKED
+        res_missing = check_authentication({})
+        self.assertEqual("BLOCKED", res_missing.status)
+
+    def test_check_truth_pack_remote_and_local(self) -> None:
+        # Remote URL passes
+        res_remote = check_truth_pack({"OPPORTUNITYOS_TRUTH_PACK_URI": "https://bucket.s3.invalid/pack.yaml"})
+        self.assertTrue(res_remote.passed)
+        self.assertIn("Remote HTTPS", res_remote.message)
+
+        # Unset passes (fail-closed fallback / missing pack state)
+        res_unset = check_truth_pack({})
+        self.assertTrue(res_unset.passed)
+
+        # Forbidden local machine path fails
+        res_forbidden = check_truth_pack({"OPPORTUNITYOS_TRUTH_PACK_URI": "C:\\Users\\founder\\pack.yaml"})
+        self.assertEqual("FAIL", res_forbidden.status)
+        self.assertIn("Forbidden", res_forbidden.message)
+
+    def test_check_queue_durability(self) -> None:
+        res = check_queue_durability()
+        self.assertTrue(res.passed)
+        self.assertIn("worker_jobs", res.message)
+
+    def test_check_single_role_autonomy(self) -> None:
+        for role in ("api", "worker", "scheduler", "migrate"):
+            res = check_single_role_autonomy(role, self.valid_env)
+            self.assertTrue(res.passed, f"Role '{role}' expected autonomous pass, got: {res.message}")
 
 
 if __name__ == "__main__":
