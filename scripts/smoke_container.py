@@ -2,25 +2,28 @@
 """Deterministic OCI Container Build and Smoke Test Automation.
 
 Provides unified verification for OCI-capable hosts and CI environments:
-  1. Image builds successfully from Dockerfile
-  2. Runs as non-root user (appuser, UID 1000)
-  3. API role binds configurable PORT (0.0.0.0)
-  4. Worker role enforces role separation (rejects --schedule)
-  5. Scheduler role runs dedicated loop
-  6. Migrate role is explicitly invokable without starting daemons
-  7. Invalid roles fail closed immediately
-  8. Liveness and readiness commands execute deterministically
-  9. Graceful SIGTERM shutdown
-  10. Zero Founder-PC / host-filesystem dependency
+  1. Image builds successfully from Dockerfile (IMAGE_BUILD_PASS)
+  2. Runs as non-root user appuser UID 1000 (NON_ROOT_USER_PASS)
+  3. Liveness probe returns ok exit 0 (LIVENESS_PROBE_PASS)
+  4. Readiness probe fails closed without database (READINESS_FAIL_CLOSED_PASS)
+  5. Worker role enforces role separation, rejects --schedule (ROLE_SEPARATION_PASS)
+  6. Command construction contracts verify dry-run output without daemons
+  7. Invalid roles fail closed immediately (INVALID_ROLE_FAIL_CLOSED_PASS)
+  8. Zero Founder-PC / host-filesystem dependency (PC_INDEPENDENCE_PASS)
+  9. Live PostgreSQL migration execution when DB provided (MIGRATION_EXECUTION_PASS)
+  10. Live post-migration readiness probe when DB provided (READINESS_POST_MIGRATION_PASS)
+  11. Detached API startup with bounded log marker wait and graceful SIGTERM shutdown
+  12. Worker/Scheduler cloud dependencies audit (explicitly BLOCKED, never promoted to PASS)
 
 Exit codes:
-  0 = All executed smoke tests passed, OR no OCI engine present and --require-engine was not specified.
+  0 = All executed smoke tests passed and build contract verified (blocked dependencies explicit).
   1 = One or more smoke tests failed.
   2 = OCI engine (docker/podman) not found and --require-engine was specified.
 """
 from __future__ import annotations
 
 import argparse
+import atexit
 import shutil
 import subprocess
 import sys
@@ -36,6 +39,7 @@ class SmokeStepResult:
     message: str
     command: list[str]
     status: str = "PASS"  # "PASS", "BLOCKED", "FAIL"
+    marker: str | None = None  # Structured evidence marker
 
 
 def find_oci_runtime(preferred: str = "auto") -> str | None:
@@ -59,188 +63,409 @@ class OCIContainerSmokeRunner:
         image_tag: str = "opportunityos-smoke:test",
         runner_fn: Callable[..., subprocess.CompletedProcess] = subprocess.run,
         db_url: str | None = None,
+        default_timeout: float = 30.0,
     ):
         self.engine = engine
         self.image_tag = image_tag
         self.run_cmd = runner_fn
         self.db_url = db_url
+        self.default_timeout = default_timeout
+        self.active_containers: set[str] = set()
         self.results: list[SmokeStepResult] = []
+        atexit.register(self.cleanup)
 
-    def _exec(self, cmd: list[str], check: bool = False) -> subprocess.CompletedProcess:
-        return self.run_cmd(cmd, capture_output=True, text=True, check=check)
+    def cleanup(self) -> None:
+        """Ensure all tracked containers are removed."""
+        for name in list(self.active_containers):
+            try:
+                self.run_cmd(
+                    [self.engine, "rm", "-f", name],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+            except Exception:
+                pass
+        self.active_containers.clear()
 
+    def _exec(
+        self,
+        cmd: list[str],
+        timeout: float | None = None,
+        container_name: str | None = None,
+        check: bool = False,
+    ) -> subprocess.CompletedProcess:
+        """Execute a subprocess command with bounded per-command timeout and cleanup."""
+        to = timeout if timeout is not None else self.default_timeout
+        if container_name:
+            self.active_containers.add(container_name)
+
+        try:
+            return self.run_cmd(cmd, capture_output=True, text=True, check=check, timeout=to)
+        except subprocess.TimeoutExpired as exc:
+            stdout = exc.stdout or ""
+            stderr = exc.stderr or ""
+            if isinstance(stdout, bytes):
+                stdout = stdout.decode("utf-8", errors="replace")
+            if isinstance(stderr, bytes):
+                stderr = stderr.decode("utf-8", errors="replace")
+            sys.stderr.write(f"\n[TIMEOUT] Command timed out after {to}s: {' '.join(cmd)}\n")
+            sys.stderr.flush()
+            if container_name:
+                try:
+                    self.run_cmd([self.engine, "rm", "-f", container_name], capture_output=True, text=True, timeout=10)
+                    self.active_containers.discard(container_name)
+                except Exception:
+                    pass
+            return subprocess.CompletedProcess(
+                args=cmd,
+                returncode=-1,
+                stdout=stdout,
+                stderr=f"{stderr}\nCommand timed out after {to}s",
+            )
+
+    def _net_args(self) -> list[str]:
+        """Provide network args for container execution."""
+        if sys.platform.startswith("linux"):
+            return ["--network", "host"]
+        return []
+
+    # Step 1: OCI Image Build
     def smoke_build_image(self) -> SmokeStepResult:
         """Step 1: Verify container image builds deterministically."""
         cmd = [self.engine, "build", "-t", self.image_tag, "."]
-        res = self._exec(cmd)
+        res = self._exec(cmd, timeout=300.0)
         passed = (res.returncode == 0)
-        msg = "IMAGE_BUILD_PASS: Image built successfully" if passed else f"Build failed: {res.stderr.strip()}"
-        return SmokeStepResult(name="OCI Image Build", passed=passed, message=msg, command=cmd, status="PASS" if passed else "FAIL")
+        msg = "Image built successfully from Dockerfile" if passed else f"Build failed (code {res.returncode}): {res.stderr.strip()}"
+        return SmokeStepResult(
+            name="OCI Image Build",
+            passed=passed,
+            message=msg,
+            command=cmd,
+            status="PASS" if passed else "FAIL",
+            marker="IMAGE_BUILD_PASS" if passed else None,
+        )
 
+    # Step 2: Non-Root User Execution
     def smoke_non_root_user(self) -> SmokeStepResult:
-        """Step 2: Verify container executes as non-root user."""
+        """Step 2: Verify container executes as non-root user (appuser, UID 1000)."""
         cmd = [self.engine, "run", "--rm", "--entrypoint", "id", self.image_tag, "-u"]
-        res = self._exec(cmd)
+        res = self._exec(cmd, timeout=30.0)
         uid = res.stdout.strip()
-        passed = (res.returncode == 0 and uid != "0" and uid == "1000")
-        msg = f"Runs as non-root UID {uid}" if passed else f"Expected UID 1000, got: '{uid}' (err: {res.stderr.strip()})"
-        return SmokeStepResult(name="Non-Root User Check", passed=passed, message=msg, command=cmd, status="PASS" if passed else "FAIL")
+        passed = (res.returncode == 0 and uid == "1000")
+        msg = f"Container runs as non-root user (UID {uid})" if passed else f"Expected UID 1000, got: '{uid}' (code {res.returncode}, err: {res.stderr.strip()})"
+        return SmokeStepResult(
+            name="Non-Root User Execution",
+            passed=passed,
+            message=msg,
+            command=cmd,
+            status="PASS" if passed else "FAIL",
+            marker="NON_ROOT_USER_PASS" if passed else None,
+        )
 
-    def smoke_invalid_role_fails_closed(self) -> SmokeStepResult:
-        """Step 3: Verify invalid role exits non-zero."""
-        cmd = [self.engine, "run", "--rm", self.image_tag, "definitely-not-a-role"]
-        res = self._exec(cmd)
-        passed = (res.returncode != 0 and "Invalid role" in res.stderr)
-        msg = "Invalid role failed closed with diagnostic" if passed else f"Expected exit != 0 with diagnostic, got: {res.returncode}"
-        return SmokeStepResult(name="Invalid Role Fail-Closed", passed=passed, message=msg, command=cmd, status="PASS" if passed else "FAIL")
-
+    # Step 3: Liveness Probe
     def smoke_liveness_probe(self) -> SmokeStepResult:
-        """Step 4: Verify liveness command works."""
+        """Step 3: Verify liveness command returns ok."""
         cmd = [self.engine, "run", "--rm", self.image_tag, "liveness"]
-        res = self._exec(cmd)
+        res = self._exec(cmd, timeout=30.0)
         passed = (res.returncode == 0 and "liveness probe: ok" in res.stdout)
-        msg = "ROLE_LIVE_PROOF_PASS: liveness probe returned ok (exit 0)" if passed else f"Liveness probe failed: {res.stderr.strip()}"
-        return SmokeStepResult(name="Liveness Probe", passed=passed, message=msg, command=cmd, status="PASS" if passed else "FAIL")
+        msg = "Liveness probe returned ok (exit code 0)" if passed else f"Liveness probe failed (code {res.returncode}): {res.stderr.strip()}"
+        return SmokeStepResult(
+            name="Liveness Probe",
+            passed=passed,
+            message=msg,
+            command=cmd,
+            status="PASS" if passed else "FAIL",
+            marker="LIVENESS_PROBE_PASS" if passed else None,
+        )
 
+    # Step 4: Readiness Fail-Closed Without Database
     def smoke_readiness_fails_without_db(self) -> SmokeStepResult:
-        """Step 5: Verify readiness probe fails closed without database."""
+        """Step 4: Verify readiness probe fails closed when no DB is configured."""
         cmd = [self.engine, "run", "--rm", self.image_tag, "readiness"]
-        res = self._exec(cmd)
-        passed = (res.returncode != 0)
-        msg = "Readiness probe failed closed as expected without database" if passed else "Expected failure without DB, got 0"
-        return SmokeStepResult(name="Readiness Fail-Closed (No DB)", passed=passed, message=msg, command=cmd, status="PASS" if passed else "FAIL")
+        res = self._exec(cmd, timeout=30.0)
+        passed = (res.returncode != 0 and ("readiness probe: failed" in res.stderr or "Database connection failed" in res.stderr or "Missing required database configuration" in res.stderr or "No database URL" in res.stderr))
+        msg = f"Readiness probe failed closed as expected without DB (exit code {res.returncode})" if passed else f"Readiness unexpectedly succeeded or gave no error diagnostic (code {res.returncode})"
+        return SmokeStepResult(
+            name="Readiness Fail-Closed (No DB)",
+            passed=passed,
+            message=msg,
+            command=cmd,
+            status="PASS" if passed else "FAIL",
+            marker="READINESS_FAIL_CLOSED_PASS" if passed else None,
+        )
 
+    # Step 5: Worker Role Separation Enforcement
     def smoke_role_separation_worker(self) -> SmokeStepResult:
-        """Step 6: Verify worker role rejects --schedule."""
+        """Step 5: Verify dedicated worker role rejects --schedule flag."""
         cmd = [
             self.engine, "run", "--rm",
             "-e", "OPPORTUNITYOS_DB_URL=postgresql+psycopg2://user:pass@db:5432/test",
             self.image_tag, "worker", "--schedule"
         ]
-        res = self._exec(cmd)
+        res = self._exec(cmd, timeout=30.0)
         passed = (res.returncode != 0 and "Role separation violation" in res.stderr)
-        msg = "Worker rejected --schedule flag (role separation enforced)" if passed else "Worker failed to reject --schedule"
-        return SmokeStepResult(name="Worker Role Separation", passed=passed, message=msg, command=cmd, status="PASS" if passed else "FAIL")
+        msg = "Worker rejected --schedule flag with role separation violation" if passed else f"Worker failed to reject --schedule (code {res.returncode}, stderr: {res.stderr.strip()})"
+        return SmokeStepResult(
+            name="Worker Role Separation",
+            passed=passed,
+            message=msg,
+            command=cmd,
+            status="PASS" if passed else "FAIL",
+            marker="ROLE_SEPARATION_PASS" if passed else None,
+        )
 
-    def smoke_worker_startup_contract(self) -> SmokeStepResult:
-        """Step 7: Verify worker role startup command without NameError or schedule."""
-        cmd = [
-            self.engine, "run", "--rm",
-            "-e", "OPPORTUNITYOS_DB_URL=postgresql+psycopg2://user:pass@db:5432/test",
-            self.image_tag, "worker", "--help"
+    # Step 6: Invalid Role Fail-Closed
+    def smoke_invalid_role_fails_closed(self) -> SmokeStepResult:
+        """Step 6: Verify unrecognized role exits non-zero immediately."""
+        cmd = [self.engine, "run", "--rm", self.image_tag, "definitely-not-a-role"]
+        res = self._exec(cmd, timeout=30.0)
+        passed = (res.returncode != 0 and "Invalid role" in res.stderr)
+        msg = f"Invalid role rejected fail-closed (code {res.returncode})" if passed else f"Invalid role was not rejected cleanly (code {res.returncode})"
+        return SmokeStepResult(
+            name="Invalid Role Fail-Closed",
+            passed=passed,
+            message=msg,
+            command=cmd,
+            status="PASS" if passed else "FAIL",
+            marker="INVALID_ROLE_FAIL_CLOSED_PASS" if passed else None,
+        )
+
+    # Step 7: Command Construction Contracts (--dry-run)
+    def smoke_command_construction_contracts(self) -> SmokeStepResult:
+        """Step 7: Verify command construction contracts for all roles via --dry-run without starting daemons."""
+        roles_to_check = [
+            ("api", ["-e", "OPPORTUNITYOS_DB_URL=postgresql+psycopg2://user:pass@db:5432/test", "-e", "OPPORTUNITYOS_FOUNDER_PASSWORD=test-pass", "-e", "OPPORTUNITYOS_SESSION_SECRET=test-secret-32-chars-long", "-e", "PORT=9090"], ["uvicorn", "api.app:app", "0.0.0.0", "9090"]),
+            ("worker", ["-e", "OPPORTUNITYOS_DB_URL=postgresql+psycopg2://user:pass@db:5432/test"], ["worker"]),
+            ("scheduler", ["-e", "OPPORTUNITYOS_DB_URL=postgresql+psycopg2://user:pass@db:5432/test"], ["_scheduler_loop"]),
+            ("migrate", ["-e", "OPPORTUNITYOS_DB_URL=postgresql+psycopg2://user:pass@db:5432/test"], ["alembic", "upgrade", "head"]),
         ]
-        res = self._exec(cmd)
-        passed = ("usage" in res.stdout.lower() or "worker" in res.stdout.lower() or res.returncode == 0)
-        msg = "Worker startup contract verified without NameError" if passed else f"Worker startup failed: {res.stderr}"
-        return SmokeStepResult(name="Worker Startup Contract", passed=passed, message=msg, command=cmd, status="PASS" if passed else "FAIL")
+        failures = []
+        for role, env_flags, expected_substrings in roles_to_check:
+            cmd = [self.engine, "run", "--rm", *env_flags, self.image_tag, "--dry-run", role]
+            res = self._exec(cmd, timeout=30.0)
+            if res.returncode != 0 or "DRY_RUN_COMMAND:" not in res.stdout:
+                failures.append(f"{role}: exit {res.returncode}, stderr: {res.stderr.strip()}")
+                continue
+            for sub in expected_substrings:
+                if sub not in res.stdout:
+                    failures.append(f"{role}: missing expected token '{sub}' in stdout: {res.stdout.strip()}")
+                    break
 
-    def smoke_scheduler_startup_contract(self) -> SmokeStepResult:
-        """Step 8: Verify scheduler role startup command."""
-        cmd = [
-            self.engine, "run", "--rm",
-            "-e", "OPPORTUNITYOS_DB_URL=postgresql+psycopg2://user:pass@db:5432/test",
-            self.image_tag, "scheduler", "--help"
-        ]
-        res = self._exec(cmd)
-        passed = ("usage" in res.stdout.lower() or "scheduler" in res.stdout.lower() or res.returncode in (0, 1))
-        msg = "Scheduler startup contract verified" if passed else f"Scheduler contract failed: {res.stderr}"
-        return SmokeStepResult(name="Scheduler Startup Contract", passed=passed, message=msg, command=cmd, status="PASS" if passed else "FAIL")
+        passed = (len(failures) == 0)
+        msg = "Command construction contracts verified for api, worker, scheduler, and migrate" if passed else f"Command construction defects: {'; '.join(failures)}"
+        return SmokeStepResult(
+            name="Command Construction Contracts",
+            passed=passed,
+            message=msg,
+            command=[self.engine, "run", "--rm", self.image_tag, "--dry-run", "..."],
+            status="PASS" if passed else "FAIL",
+            marker="COMMAND_CONSTRUCTION_PASS" if passed else None,
+        )
 
-    def smoke_migrate_explicit_command(self) -> SmokeStepResult:
-        """Step 9: Verify migrate role builds alembic command without starting daemons."""
-        cmd = [
-            self.engine, "run", "--rm",
-            "-e", "OPPORTUNITYOS_DB_URL=postgresql+psycopg2://user:pass@db:5432/test",
-            self.image_tag, "migrate", "--help"
-        ]
-        res = self._exec(cmd)
-        passed = ("alembic" in res.stdout or "alembic" in res.stderr or res.returncode != 0)
-        msg = "Migrate role executes isolated alembic entrypoint" if passed else "Migrate role did not invoke alembic"
-        return SmokeStepResult(name="Migrate Role Isolation", passed=passed, message=msg, command=cmd, status="PASS" if passed else "FAIL")
-
-    def smoke_api_configurable_port(self) -> SmokeStepResult:
-        """Step 10: Verify API role command configures custom PORT and 0.0.0.0 host."""
-        cmd = [
-            self.engine, "run", "--rm",
-            "-e", "OPPORTUNITYOS_DB_URL=postgresql+psycopg2://user:pass@db:5432/test",
-            "-e", "OPPORTUNITYOS_FOUNDER_PASSWORD=test-pass",
-            "-e", "OPPORTUNITYOS_SESSION_SECRET=test-secret-key-32-bytes-long",
-            "-e", "PORT=9090",
-            self.image_tag, "api", "--help"
-        ]
-        res = self._exec(cmd)
-        passed = ("9090" in res.stdout or "0.0.0.0" in res.stdout or "uvicorn" in res.stdout or res.returncode in (0, 1))
-        msg = "API role honors configurable PORT=9090 and 0.0.0.0 host" if passed else "API role port configuration failed"
-        return SmokeStepResult(name="API Configurable Port", passed=passed, message=msg, command=cmd, status="PASS" if passed else "FAIL")
-
+    # Step 8: Founder PC Independence
     def smoke_pc_independence(self) -> SmokeStepResult:
-        """Step 11: Verify container runs without mounting local host volumes."""
+        """Step 8: Verify container runs cleanly without mounting local host volumes."""
         cmd = [self.engine, "run", "--rm", self.image_tag, "liveness"]
-        res = self._exec(cmd)
+        res = self._exec(cmd, timeout=30.0)
         passed = (res.returncode == 0)
-        msg = "Container executes cleanly with zero host volume mounts" if passed else "Host filesystem dependency detected"
-        return SmokeStepResult(name="Founder PC Independence", passed=passed, message=msg, command=cmd, status="PASS" if passed else "FAIL")
+        msg = "Container executes cleanly with zero host volume mounts" if passed else f"Host dependency detected (code {res.returncode})"
+        return SmokeStepResult(
+            name="Founder PC Independence",
+            passed=passed,
+            message=msg,
+            command=cmd,
+            status="PASS" if passed else "FAIL",
+            marker="PC_INDEPENDENCE_PASS" if passed else None,
+        )
 
-    def smoke_live_dependencies_evaluation(self) -> SmokeStepResult:
-        """Step 12: Distinguish fully verified roles from roles blocked by unwired cloud dependencies."""
-        if self.db_url:
-            msg = (
-                "ROLE_LIVE_PROOF_PASS: liveness, migrate, readiness (database connected); "
-                "ROLE_LIVE_PROOF_BLOCKED: worker (truth pack / storage unwired), "
-                "api (jwt auth unwired), scheduler (dispatch token unwired)"
-            )
+    # Step 9: Database Migration Execution Against PostgreSQL
+    def smoke_migrations_execute_db(self) -> SmokeStepResult:
+        """Step 9: Execute Alembic migrations to head against disposable PostgreSQL database."""
+        if not self.db_url:
             return SmokeStepResult(
-                name="Cloud Dependencies Audit",
+                name="PostgreSQL Database Migrations",
                 passed=True,
-                message=msg,
+                message="MIGRATIONS_BLOCKED: No PostgreSQL database URL supplied",
                 command=[],
-                status="PASS",
+                status="BLOCKED",
             )
-        else:
-            msg = (
-                "ROLE_LIVE_PROOF_PASS: liveness; "
-                "ROLE_LIVE_PROOF_BLOCKED: worker, api, scheduler, migrate (no external PostgreSQL provided)"
-            )
+        cmd = [
+            self.engine, "run", "--rm",
+            *self._net_args(),
+            "-e", f"OPPORTUNITYOS_DB_URL={self.db_url}",
+            self.image_tag, "migrate",
+        ]
+        res = self._exec(cmd, timeout=60.0)
+        passed = (res.returncode == 0)
+        msg = "Database migrations executed successfully against live PostgreSQL" if passed else f"Migration execution failed (code {res.returncode}): {res.stderr.strip()} (stdout: {res.stdout.strip()})"
+        return SmokeStepResult(
+            name="PostgreSQL Database Migrations",
+            passed=passed,
+            message=msg,
+            command=cmd,
+            status="PASS" if passed else "FAIL",
+            marker="MIGRATION_EXECUTION_PASS" if passed else None,
+        )
+
+    # Step 10: Readiness Post-Migration Against PostgreSQL
+    def smoke_readiness_post_migration(self) -> SmokeStepResult:
+        """Step 10: Verify readiness probe succeeds post-migration against live database."""
+        if not self.db_url:
             return SmokeStepResult(
-                name="Cloud Dependencies Audit",
+                name="Readiness Post-Migration Check",
                 passed=True,
-                message=msg,
+                message="READINESS_POST_MIGRATION_BLOCKED: No PostgreSQL database URL supplied",
                 command=[],
-                status="PASS",
+                status="BLOCKED",
             )
+        cmd = [
+            self.engine, "run", "--rm",
+            *self._net_args(),
+            "-e", f"OPPORTUNITYOS_DB_URL={self.db_url}",
+            self.image_tag, "readiness",
+        ]
+        res = self._exec(cmd, timeout=30.0)
+        passed = (res.returncode == 0 and "readiness probe: ok" in res.stdout)
+        msg = "Readiness probe confirmed DB connectivity and migration schema" if passed else f"Readiness probe failed post-migration (code {res.returncode}): {res.stderr.strip()}"
+        return SmokeStepResult(
+            name="Readiness Post-Migration Check",
+            passed=passed,
+            message=msg,
+            command=cmd,
+            status="PASS" if passed else "FAIL",
+            marker="READINESS_POST_MIGRATION_PASS" if passed else None,
+        )
+
+    # Step 11: Detached API Startup and Graceful SIGTERM
+    def smoke_detached_api_startup_and_sigterm(self) -> SmokeStepResult:
+        """Step 11: Start API container detached, verify listener startup log, and terminate gracefully via SIGTERM."""
+        if not self.db_url:
+            return SmokeStepResult(
+                name="API Detached Startup & SIGTERM",
+                passed=True,
+                message="API_LIVE_STARTUP_BLOCKED: No PostgreSQL database URL supplied",
+                command=[],
+                status="BLOCKED",
+            )
+
+        container_name = f"opos-smoke-api-{int(time.time())}"
+        cmd_run = [
+            self.engine, "run", "-d",
+            "--name", container_name,
+            *self._net_args(),
+            "-e", f"OPPORTUNITYOS_DB_URL={self.db_url}",
+            "-e", "OPPORTUNITYOS_FOUNDER_PASSWORD=test-founder-pass",
+            "-e", "OPPORTUNITYOS_SESSION_SECRET=test-session-secret-32-chars-long",
+            "-e", "PORT=9099",
+            self.image_tag, "api",
+        ]
+        run_res = self._exec(cmd_run, timeout=30.0, container_name=container_name)
+        if run_res.returncode != 0:
+            return SmokeStepResult(
+                name="API Detached Startup & SIGTERM",
+                passed=False,
+                message=f"Failed to launch detached API container: {run_res.stderr.strip()}",
+                command=cmd_run,
+                status="FAIL",
+            )
+
+        # Poll logs for up to 10s for startup confirmation marker
+        started = False
+        logs = ""
+        start_time = time.time()
+        while time.time() - start_time < 10.0:
+            log_res = self._exec([self.engine, "logs", container_name], timeout=5.0)
+            logs = log_res.stdout + log_res.stderr
+            if "Uvicorn running on" in logs or "Application startup complete" in logs or "Started server process" in logs:
+                started = True
+                break
+            time.sleep(0.5)
+
+        # Stop container with SIGTERM (-t 5)
+        stop_res = self._exec([self.engine, "stop", "-t", "5", container_name], timeout=15.0)
+        self._exec([self.engine, "rm", "-f", container_name], timeout=10.0)
+        self.active_containers.discard(container_name)
+
+        passed = (started and stop_res.returncode == 0)
+        msg = "API detached container started listener on port 9099 and terminated gracefully via SIGTERM" if passed else f"API startup or graceful shutdown failed (started={started}, stop_code={stop_res.returncode}, logs: {logs[:200]})"
+        return SmokeStepResult(
+            name="API Detached Startup & SIGTERM",
+            passed=passed,
+            message=msg,
+            command=cmd_run,
+            status="PASS" if passed else "FAIL",
+            marker="API_GRACEFUL_SHUTDOWN_PASS" if passed else None,
+        )
+
+    # Step 12: Worker & Scheduler Cloud Dependencies Assessment
+    def smoke_worker_scheduler_cloud_dependencies(self) -> SmokeStepResult:
+        """Step 12: Explicitly distinguish verified contracts from unwired cloud dependencies."""
+        msg = (
+            "ROLE_LIVE_PROOF_BLOCKED: worker (truth-pack blob storage and pubsub queue unwired in cloud mode); "
+            "scheduler (dispatch token and remote trigger unwired in cloud mode)"
+        )
+        return SmokeStepResult(
+            name="Worker & Scheduler Cloud Dependencies Audit",
+            passed=True,
+            message=msg,
+            command=[],
+            status="BLOCKED",  # Explicitly BLOCKED, never promoted to PASS
+        )
 
     def run_all_smoke_tests(self, skip_build: bool = False) -> list[SmokeStepResult]:
-        """Execute the complete smoke test suite."""
-        steps = []
+        """Execute the complete smoke test suite with step logging and bounded timing."""
+        steps: list[Callable[[], SmokeStepResult]] = []
         if not skip_build:
             steps.append(self.smoke_build_image)
 
         steps.extend([
             self.smoke_non_root_user,
-            self.smoke_invalid_role_fails_closed,
             self.smoke_liveness_probe,
             self.smoke_readiness_fails_without_db,
             self.smoke_role_separation_worker,
-            self.smoke_worker_startup_contract,
-            self.smoke_scheduler_startup_contract,
-            self.smoke_migrate_explicit_command,
-            self.smoke_api_configurable_port,
+            self.smoke_invalid_role_fails_closed,
+            self.smoke_command_construction_contracts,
             self.smoke_pc_independence,
-            self.smoke_live_dependencies_evaluation,
+            self.smoke_migrations_execute_db,
+            self.smoke_readiness_post_migration,
+            self.smoke_detached_api_startup_and_sigterm,
+            self.smoke_worker_scheduler_cloud_dependencies,
         ])
 
         results = []
-        for step in steps:
-            res = step()
+        for i, step in enumerate(steps, 1):
+            name = getattr(step, "__name__", f"step_{i}")
+            sys.stdout.write(f"\n[STEP {i}/{len(steps)}] Running: {name}...\n")
+            sys.stdout.flush()
+            t0 = time.time()
+            try:
+                res = step()
+            except Exception as exc:
+                t1 = time.time()
+                sys.stdout.write(f"[STEP {i}/{len(steps)}] ERROR in {name} ({t1-t0:.2f}s): {exc}\n")
+                sys.stdout.flush()
+                res = SmokeStepResult(name=name, passed=False, message=f"Unhandled exception: {exc}", command=[], status="FAIL")
+            else:
+                t1 = time.time()
+                sys.stdout.write(f"[STEP {i}/{len(steps)}] COMPLETED: {res.name} in {t1-t0:.2f}s -> [{res.status}]\n")
+                sys.stdout.flush()
+
             results.append(res)
-            # If build failed, stop further container run steps
             if res.name == "OCI Image Build" and not res.passed:
+                sys.stderr.write("[ABORT] Image build failed; stopping further smoke tests.\n")
                 break
+
         self.results = results
         return results
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(line_buffering=True)
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(line_buffering=True)
+
     parser = argparse.ArgumentParser(
         prog="python scripts/smoke_container.py",
         description="Run automated smoke tests against OpportunityOS OCI container.",
@@ -275,56 +500,51 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     engine_path = find_oci_runtime(args.engine)
     if not engine_path:
-        print("=" * 72)
+        print("=" * 78)
         print("OpportunityOS OCI Container Smoke Automation")
-        print("=" * 72)
+        print("=" * 78)
         print("[INFO] No OCI container runtime (docker/podman) found in PATH.")
         print("       Live container build and smoke tests require an installed OCI engine.")
         print("       Automated unit contracts can be verified via:")
         print("         python -m unittest scripts.test_smoke_container -v")
         print("         python -m unittest scripts.test_container_contract -v")
-        print("=" * 72)
+        print("=" * 78)
         if args.require_engine:
             print("[ERROR] --require-engine was specified, but no OCI engine is available.")
             return 2
         return 0
 
-    print("=" * 72)
+    print("=" * 78)
     print(f"OpportunityOS OCI Container Smoke Automation [engine={engine_path}]")
-    print("=" * 72)
+    print("=" * 78)
 
     runner = OCIContainerSmokeRunner(engine=engine_path, image_tag=args.image_tag, db_url=args.db_url)
     results = runner.run_all_smoke_tests(skip_build=args.skip_build)
 
-    print("-" * 72)
+    print("\n" + "=" * 78)
+    print("OpportunityOS OCI Container Smoke Test Results")
+    print("=" * 78)
     for r in results:
-        status = f"[{r.status}]" if hasattr(r, "status") else ("[PASS]" if r.passed else "[FAIL]")
-        print(f"{status} {r.name}: {r.message}")
-    print("-" * 72)
+        status_bracket = f"[{r.status}]"
+        print(f"{status_bracket:9} {r.name}: {r.message}")
+    print("-" * 78)
 
-    print("OCI Smoke Evidence Markers:")
+    print("Structured Evidence Markers:")
     for r in results:
-        if r.name == "OCI Image Build" and r.passed:
-            print("  IMAGE_BUILD_PASS")
-        elif r.name == "Non-Root Execution" and r.passed:
-            print("  NON_ROOT_USER_PASS")
-        elif r.name == "Liveness Probe" and r.passed:
-            print("  LIVENESS_PROBE_PASS")
-        elif r.name == "Readiness Fail-Closed (No DB)" and r.passed:
-            print("  READINESS_FAIL_CLOSED_PASS")
-        elif r.name == "Worker Role Separation" and r.passed:
-            print("  ROLE_SEPARATION_PASS")
-        elif r.name == "Cloud Dependencies Audit":
+        if r.marker and r.status == "PASS":
+            print(f"  {r.marker}")
+    for r in results:
+        if r.status == "BLOCKED":
             print(f"  {r.message}")
-    print("-" * 72)
+    print("=" * 78)
 
-    all_passed = all(r.passed for r in results)
-    if all_passed:
-        print("[SUCCESS] All container smoke tests passed.")
-        return 0
-    else:
-        print("[FAILURE] One or more container smoke tests failed.")
+    has_failures = any(r.status == "FAIL" or not r.passed for r in results)
+    if has_failures:
+        print("[FAILURE] One or more container smoke checks failed.")
         return 1
+    else:
+        print("[SUCCESS] All executable container contracts passed (unwired cloud roles explicitly BLOCKED).")
+        return 0
 
 
 if __name__ == "__main__":

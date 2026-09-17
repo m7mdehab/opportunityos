@@ -41,7 +41,7 @@ jobs:
   oci-smoke:
     name: oci-container-smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     services:
       postgres:
         image: postgres:16-alpine
@@ -67,8 +67,10 @@ jobs:
           docker --version
           docker info
       - name: Run OCI Container Build & Smoke Suite
+        env:
+          PYTHONUNBUFFERED: "1"
         run: |
           python scripts/smoke_container.py \
             --require-engine \
             --engine docker \
-            --db-url "postgresql+psycopg2://opportunityos:${{ github.run_id }}@172.17.0.1:5432/opportunityos_smoke"
+            --db-url "postgresql+psycopg2://opportunityos:${{ github.run_id }}@127.0.0.1:5432/opportunityos_smoke"

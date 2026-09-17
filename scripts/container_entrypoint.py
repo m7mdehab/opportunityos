@@ -319,6 +319,21 @@ def main(argv: Sequence[str] | None = None, exec_fn: Callable[..., Any] | None =
         )
         return 2
 
+    if args[0] in ("-h", "--help"):
+        sys.stdout.write(
+            f"Usage: python {sys.argv[0]} [--dry-run] <role> [args...]\n"
+            f"Supported roles: {', '.join(ROLES)}\n"
+        )
+        return 0
+
+    dry_run = False
+    if "--dry-run" in args:
+        dry_run = True
+        args.remove("--dry-run")
+        if not args:
+            sys.stderr.write("Error: No role specified after --dry-run.\n")
+            return 2
+
     role = args[0]
     extra_args = args[1:]
 
@@ -344,6 +359,12 @@ def main(argv: Sequence[str] | None = None, exec_fn: Callable[..., Any] | None =
     try:
         env = resolve_environment(role)
         os.environ.update(env)
+
+        if dry_run:
+            import json
+            cmd = build_role_command(role, extra_args, env)
+            sys.stdout.write(f"DRY_RUN_COMMAND: {json.dumps(cmd)}\n")
+            return 0
 
         if role == "readiness":
             return run_readiness()
