@@ -1,0 +1,52 @@
+FR-007 W10 Owner feed read path and Mandatory backend repair
+
+Required starting integration SHA: 2adf4b4a76c16a9a4f1e9e560a472f7723194fbc
+Branch: work/fr007-owner-feed-ci-repair-codex
+
+Authoritative pre-repair reproduction:
+The specified .github/workflows/mandatory.yml does not exist at the required SHA.
+The actual Mandatory workflow is .github/workflows/test.yml. Its backend command
+is `alembic upgrade head` then `python -m unittest discover -v` under PostgreSQL
+16-alpine with OPPORTUNITYOS_RUN_SEARCH_PERF=1.
+Disposable branch-only reproduction workflow run: 35274686771, job 105382287232
+https://github.com/m7mdehab/opportunityos/actions/runs/35274686771
+Exact raw test summary: Ran 1128 tests in 131.837s; FAILED (failures=21, errors=6).
+
+Pre-repair error names:
+api.test_api.ExtractionFieldSerializationTest.test_c5_1_every_extraction_field_present_in_list_and_detail
+api.test_api.ExtractionFieldSerializationTest.test_c5_1_family_size_present_for_clustered_row
+api.test_api.ExtractionFieldSerializationTest.test_work_mode_unspecified_serializes_verbatim_not_null_or_blank
+scripts.test_backup_restore.TestBackupRestorePostgres.test_full_backup_and_restore_cycle
+scripts.test_backup_restore.TestBackupRestorePostgres.test_restore_refuses_dump_with_column_delta
+storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_m_backup_wipe_restore_postgres_cycle
+
+Pre-repair failure names:
+api.test_api.FacetsTest.test_defaults_only_red_line_and_excluded_industry_hidden
+api.test_api.FacetsTest.test_every_facet_include_and_exclude_through_the_api
+api.test_api.FacetsTest.test_hidden_reasons_audit_and_unhide_by_reason
+api.test_api.FacetsTest.test_no_re_judgement_under_every_facet_exclusion
+api.test_api.FilterEngineOpportunitiesTest.test_compensation_floor_modes
+api.test_api.FilterEngineOpportunitiesTest.test_defaults_hidden_set_is_exactly_red_line_and_excluded_industry_hits
+api.test_api.FilterEngineOpportunitiesTest.test_excluded_industries_modes
+api.test_api.FilterEngineOpportunitiesTest.test_geo_eligibility_modes
+api.test_api.FilterEngineOpportunitiesTest.test_min_fit_score_modes
+api.test_api.FilterEngineOpportunitiesTest.test_premium_fulltime_onsite_modes
+api.test_api.FilterEngineOpportunitiesTest.test_red_line_toggled_off_shows_item_with_identical_decision_and_fit_score
+api.test_api.FilterEngineOpportunitiesTest.test_red_lines_modes
+api.test_api.FilterEngineOpportunitiesTest.test_stale_postings_modes
+api.test_api.FilterEngineOpportunitiesTest.test_target_roles_modes
+api.test_api.FilterEngineOpportunitiesTest.test_target_roles_token_match_ignores_word_order_and_seniority
+api.test_api.FilterEngineOpportunitiesTest.test_track_preference_modes
+api.test_api.FilterEngineOpportunitiesTest.test_work_mode_onsite_modes
+api.test_api.NoReJudgementSerializationTest.test_decision_fit_score_order_and_hidden_set_unchanged
+api.test_api.OpportunityRoutesTest.test_list_filters_sorts_and_paginates
+api.test_search.FacetCompositionTest.test_search_intersects_with_active_hide_filter
+api.test_search.PytorchCorpusSearchTest.test_pytorch_excludes_customer_engineer
+
+The three backup errors shared this exact exception:
+scripts.backup_restore.BackupCompletenessError: Backup completeness check failed:
+model tables missing from dump map: ['feed_projection']; dump map tables not
+present in model metadata: []. Update DUMP_SECTION_TABLE_MAP (and the
+corresponding dump/restore sections) to keep the backup complete.
+
+Post-repair verification: pending.

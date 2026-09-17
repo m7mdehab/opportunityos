@@ -487,7 +487,7 @@ class ApiTestCase(unittest.TestCase):
         reasons: list[dict] | None = None,
         evaluation_detail: dict | None = None,
         dimension_scores: list[dict] | None = None,
-        truth_pack_hash: str = "hash-fixture",
+        truth_pack_hash: str | None = None,
     ) -> MatchEvaluationRecord:
         """Seed a `match_evaluations` row using the canonical shapes
         `matching/evaluate_persist.py` actually writes:
@@ -523,6 +523,9 @@ class ApiTestCase(unittest.TestCase):
                 {"kind": "unknown", "dimension": "core_skills", "text": "reason three"},
             ]
         )
+        if truth_pack_hash is None:
+            pack = getattr(getattr(self, "app", None).state, "loaded_truth_pack", None) if hasattr(self, "app") else None
+            truth_pack_hash = pack.truth_pack_hash if pack is not None else "hash-fixture"
         record = MatchEvaluationRecord(
             id=f"eval-{uuid.uuid4().hex[:12]}",
             opportunity_id=opp_id,
@@ -777,7 +780,7 @@ class OpportunityRoutesTest(ApiTestCase):
         def capture_sql(_connection, _cursor, statement, _parameters, _context, _many):
             statements.append(statement.lstrip().upper())
 
-        event.listen(self.engine, "before_cursor_execute", capture_sql)
+        event.listen(self.app.state.engine, "before_cursor_execute", capture_sql)
         try:
             with (
                 patch("storage.feed_projection_service.rebuild_feed_projection", side_effect=AssertionError("rebuild")),
@@ -787,7 +790,7 @@ class OpportunityRoutesTest(ApiTestCase):
             ):
                 response = self.client.get("/api/opportunities", params={"decision": "qualified"})
         finally:
-            event.remove(self.engine, "before_cursor_execute", capture_sql)
+            event.remove(self.app.state.engine, "before_cursor_execute", capture_sql)
 
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json(), {
@@ -3583,9 +3586,14 @@ class NoReJudgementSerializationTest(ApiTestCase):
             )
         )
         self.app.state.loaded_truth_pack = LoadedPack(
-            graph=graph, truth_pack_hash="hash-x",
+            graph=graph, truth_pack_hash="hash-fixture",
             report=PackValidationReport(valid=True, section_counts=(), findings=()),
         )
+
+        from storage.feed_projection_service import rebuild_feed_projection
+
+        rebuild_feed_projection(self.session, truth_graph=graph, truth_pack_hash="hash-fixture")
+        self.session.commit()
 
         opportunities = self.session.query(OpportunityRecord).all()
         contexts = build_filter_contexts(self.session, graph, opportunities)
