@@ -18,6 +18,9 @@ import sys
 import re
 from urllib.parse import parse_qs, unquote, urlsplit
 
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = "OPOS_SOURCE_DB_URL"

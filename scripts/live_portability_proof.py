@@ -11,6 +11,9 @@ import json
 from pathlib import Path
 import sys
 
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from scripts import artifact_integrity as artifacts
 from scripts import db_migration_restore as db
 from scripts import portability_bundle as bundle
