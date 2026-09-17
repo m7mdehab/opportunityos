@@ -49,4 +49,42 @@ model tables missing from dump map: ['feed_projection']; dump map tables not
 present in model metadata: []. Update DUMP_SECTION_TABLE_MAP (and the
 corresponding dump/restore sections) to keep the backup complete.
 
-Post-repair verification: pending.
+Post-repair verification:
+Checkpoint 469004d, run 35275765487: Ran 1130 tests in 151.353s;
+FAILED (failures=14, errors=0).
+Checkpoint 2e3c243, run 35276311648: Ran 1130 tests in 139.157s;
+FAILED (failures=5, errors=0).
+Checkpoint f66545a, run 35276792279, job 105389241557:
+Ran 1130 tests in 142.576s; OK. No skips.
+https://github.com/m7mdehab/opportunityos/actions/runs/35276792279
+
+Semantic repairs:
+- GET /api/opportunities no longer rebuilds or commits projections.
+- Settings and unhide mutations refresh existing persisted projection rows;
+  ingestion and evaluation write paths persist their respective projections.
+- Evaluation fixtures now use the active Truth Pack hash, matching the
+  production projection identity contract.
+- NULL priority/score rows sort after evaluated rows in PostgreSQL.
+- Label-only filter detail is read only for the bounded returned page.
+- JSON backup/restore covers feed_projection and regenerates PostgreSQL
+  search_tsv from the backed-up search_text.
+
+Local focused command: python -m unittest storage.test_feed_query
+storage.test_feed_projection storage.test_feed_projection_service
+storage.test_feed_regression scripts.test_backup_restore -v
+Result: Ran 24 tests in 7.210s; OK (skipped=1; PostgreSQL unavailable locally).
+Local HTTP/API command: python -m unittest api.test_api api.test_search -v
+Result: Ran 11 tests in 0.060s; OK (skipped=25; PostgreSQL unavailable locally).
+Remote full backend run above exercised these classes with real PostgreSQL.
+python scripts/check_repository.py: Repository integrity checks passed.
+python scripts/check_guard.py: blocked locally because FOUNDER_NAME_PATTERNS
+is unset; python scripts/check_guard.py --allow-missing-patterns: Guard
+checks passed for repository and mirror boundary.
+python -m py_compile on changed Python files: PASS.
+npm ci: installed 651 packages, 0 vulnerabilities.
+npm run build: PASS (Next.js build, TypeScript, static pages).
+npm run lint: PASS (eslint --max-warnings=0).
+
+The branch-only reproduction workflow is removed from the final tree.
+The final SHA, remote required CI run, and State freshness are verified after
+this evidence file is committed and reported in the branch handoff.
