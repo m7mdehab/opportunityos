@@ -1,0 +1,19 @@
+COMMAND: python -m unittest scripts.test_db_migration_restore -v
+test_backup_command_is_deterministic_and_secret_free (scripts.test_db_migration_restore.HarnessTests.test_backup_command_is_deterministic_and_secret_free) ... ok
+test_baseline_handoff_is_explicit_when_missing (scripts.test_db_migration_restore.HarnessTests.test_baseline_handoff_is_explicit_when_missing) ... ok
+test_inspection_is_read_only (scripts.test_db_migration_restore.HarnessTests.test_inspection_is_read_only) ... ok
+test_migration_targets_only_supplied_target (scripts.test_db_migration_restore.HarnessTests.test_migration_targets_only_supplied_target) ... ok
+test_missing_configuration_and_tool_fail_closed (scripts.test_db_migration_restore.HarnessTests.test_missing_configuration_and_tool_fail_closed) ... ok
+test_parity_mismatch_has_distinct_exit_status (scripts.test_db_migration_restore.HarnessTests.test_parity_mismatch_has_distinct_exit_status) ... ok
+test_restore_requires_flag_and_empty_target (scripts.test_db_migration_restore.HarnessTests.test_restore_requires_flag_and_empty_target) ... ok
+test_source_target_configuration_is_separate (scripts.test_db_migration_restore.HarnessTests.test_source_target_configuration_is_separate) ... ok
+test_subprocess_never_uses_shell_or_leaks_error (scripts.test_db_migration_restore.HarnessTests.test_subprocess_never_uses_shell_or_leaks_error) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.029s
+
+OK
+EXIT: 0
+
+COMMAND: python -m py_compile scripts/db_migration_restore.py scripts/test_db_migration_restore.py
+EXIT: 0
