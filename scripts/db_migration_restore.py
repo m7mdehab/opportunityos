@@ -7,6 +7,7 @@ deliberately redacted because driver and process exceptions may contain DSNs.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -15,6 +16,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
 import re
 from urllib.parse import parse_qs, unquote, urlsplit
 
@@ -244,6 +246,35 @@ def application_commit():
     return result.stdout.strip()
 
 
+def filter_existing_public_schema_toc(contents):
+    """Keep all archive entries except CREATE SCHEMA public, present by default."""
+    lines = contents.splitlines(keepends=True)
+    return "".join(line for line in lines
+                   if not re.match(r"^\d+;.*\bSCHEMA - public(?:\s|$)", line))
+
+
+@contextmanager
+def restore_toc(archive, tool, env):
+    result = subprocess.run([tool, "--list", str(archive)], cwd=ROOT, env=env,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            check=False, shell=False)
+    if result.returncode:
+        raise HarnessError("backup archive TOC unavailable")
+    try:
+        listing = result.stdout.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise HarnessError("backup archive TOC invalid") from exc
+    filtered = filter_existing_public_schema_toc(listing)
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", prefix="opos-restore-toc-",
+                                     suffix=".list", delete=False) as stream:
+        path = Path(stream.name)
+        stream.write(filtered)
+    try:
+        yield path
+    finally:
+        path.unlink(missing_ok=True)
+
+
 def restore(settings, archive, *, manifest=None, confirmed=False):
     if not confirmed:
         raise HarnessError("explicit target restore confirmation required")
@@ -253,10 +284,14 @@ def restore(settings, archive, *, manifest=None, confirmed=False):
     verify_backup(path, manifest)
     inspect(settings, require_empty=True)
     tool = require_tool("pg_restore")
-    # No --clean or --create: an existing database/schema is never replaced.
-    argv = [tool, "--exit-on-error", "--single-transaction", "--no-owner",
-            "--no-privileges", "--dbname", settings["database"], str(path)]
-    run_command(argv, pg_environment(settings))
+    env = pg_environment(settings)
+    # A fresh PostgreSQL database already contains public. Skip only the
+    # archive's CREATE SCHEMA public TOC entry; never use --clean/--create.
+    with restore_toc(path, tool, env) as toc:
+        argv = [tool, "--exit-on-error", "--single-transaction", "--no-owner",
+                "--no-privileges", "--use-list", str(toc), "--dbname",
+                settings["database"], str(path)]
+        run_command(argv, env)
 
 
 def migrate(settings):

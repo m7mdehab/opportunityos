@@ -51,7 +51,9 @@ counts `public` tables, and reports Alembic revisions. A missing revision is
 `null`. `backup` uses `pg_dump --format=custom --schema=public --no-owner
 --no-privileges`; it requires a new destination file. `restore` uses
 `pg_restore --exit-on-error --single-transaction --no-owner --no-privileges`
-against the supplied target database. `migrate` runs the canonical
+against the supplied target database. A temporary restore TOC omits only
+`CREATE SCHEMA public`, since a fresh PostgreSQL database already has that
+schema; the verified archive is never modified. `migrate` runs the canonical
 `python -m alembic -c alembic.ini upgrade head` path against the target only.
 If a restore already has the repository head revision, migration is a no-op.
 Check source and target revision before parity; any intended revision change

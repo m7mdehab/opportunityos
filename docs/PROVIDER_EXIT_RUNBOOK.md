@@ -64,7 +64,8 @@ python scripts/db_migration_restore.py restore --archive /secure/exit/source.dum
 
 Restore is refused without the acknowledgement, a valid archive checksum, or
 an empty target `public` schema. It uses one transaction and no `--clean` or
-`--create` option.
+`--create` option. The temporary restore TOC omits only creation of the
+already-present default `public` schema.
 
 ## 6. Migration and revision validation
 

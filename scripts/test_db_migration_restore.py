@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout, nullcontext
 from unittest.mock import Mock, patch
 
 from scripts import db_migration_restore as db
@@ -127,13 +127,25 @@ class HarnessTests(unittest.TestCase):
             with patch.object(db, "inspect", return_value={"ready": True}), \
                  patch.object(db, "verify_backup"), \
                  patch.object(db, "require_tool", return_value="pg_restore"), \
+                 patch.object(db, "restore_toc", return_value=nullcontext("toc.list")), \
                  patch.object(db, "run_command") as run:
                 db.restore(db.config("target", self.env), archive, manifest="manifest.json", confirmed=True)
                 argv, env = run.call_args.args
                 self.assertEqual(argv[-3:], ["--dbname", "target_db", str(archive)])
                 self.assertNotIn("--clean", argv)
+                self.assertEqual(argv[argv.index("--use-list") + 1], "toc.list")
                 self.assertNotIn("target_secret", " ".join(argv))
                 self.assertEqual(env["PGPASSWORD"], "target_secret")
+
+    def test_restore_toc_filters_only_default_public_schema_creation(self):
+        listing = ("; archive header\n"
+                   "1; 2615 2200 SCHEMA - public fixture\n"
+                   "2; 1259 900 TABLE public opportunities fixture\n"
+                   "3; 0 0 COMMENT - SCHEMA public fixture\n")
+        filtered = db.filter_existing_public_schema_toc(listing)
+        self.assertNotIn("SCHEMA - public", filtered)
+        self.assertIn("TABLE public opportunities", filtered)
+        self.assertIn("COMMENT - SCHEMA public", filtered)
 
     def test_backup_manifest_detects_corruption_before_restore(self):
         with tempfile.TemporaryDirectory() as temp:
