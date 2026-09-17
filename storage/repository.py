@@ -217,6 +217,18 @@ class StorageRepository:
         # is application-side rather than a trigger/generated column.
         _refresh_search_tsv(self.session, opp_data["id"])
 
+        # Ingestion owns the initial persisted read model. Until an evaluation
+        # is written, its decision and score remain NULL, never qualified.
+        from storage.feed_projection_service import refresh_opportunity_projection
+
+        refresh_opportunity_projection(
+            self.session,
+            opportunity_id=opp_data["id"],
+            truth_pack_hash="active",
+            allow_unevaluated=True,
+        )
+        self.session.commit()
+
         return record
 
     def get_opportunity(self, opportunity_id: str) -> Optional[OpportunityRecord]:
