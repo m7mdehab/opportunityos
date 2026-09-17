@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import unittest
+from datetime import datetime, timezone
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from storage.feed_projection import FeedProjectionRecord, projection_identity
-from storage.models import Base
+from storage.models import Base, OpportunityRecord
 
 
 class FeedProjectionContractTest(unittest.TestCase):
@@ -46,42 +47,56 @@ class FeedProjectionContractTest(unittest.TestCase):
     def test_cold_process_correctness_is_persisted_not_cache_backed(self) -> None:
         session = self.Session()
         try:
-            record = FeedProjectionRecord(
-                id=projection_identity("opp-1", "truth-a"),
-                opportunity_id="opp-1",
-                opportunity_content_hash="h" * 64,
-                truth_pack_hash="truth-a",
-                projection_version="v1",
-                title="Data Engineer",
-                organization="Example",
-                source_id="example",
-                source_url="https://example.invalid/job/1",
-                posted_date="2026-09-17",
-                track="employment",
-                opportunity_type="employment",
-                title_family="data_engineering",
-                seniority_level="mid",
-                work_mode="remote",
-                location_country="EG",
-                location_city="Cairo",
-                location_region=None,
-                remote_scope="worldwide",
-                remote_scope_regions=None,
-                employment_type="full_time",
-                qualification_decision="QUALIFIED",
-                fit_score=82.0,
-                priority_score=82.0,
-                reasons_json="[]",
-                red_line_match=False,
-                excluded_industry_match=False,
-                visible=True,
-                visibility_reason=None,
-                search_text="Data Engineer Example Cairo remote",
-                search_tsv=None,
-                evaluated_at="2026-09-17 00:00:00+00:00",
-                projected_at="2026-09-17 00:00:00+00:00",
+            session.add(
+                OpportunityRecord(
+                    id="opp-1",
+                    track="employment",
+                    title="Data Engineer",
+                    organization="Example",
+                    description="Build data systems",
+                    source_id="example",
+                    source_url="https://example.invalid/job/1",
+                    content_hash="h" * 64,
+                )
             )
-            session.add(record)
+            now = datetime(2026, 9, 17, tzinfo=timezone.utc)
+            session.add(
+                FeedProjectionRecord(
+                    id=projection_identity("opp-1", "truth-a"),
+                    opportunity_id="opp-1",
+                    opportunity_content_hash="h" * 64,
+                    truth_pack_hash="truth-a",
+                    projection_version="v1",
+                    title="Data Engineer",
+                    organization="Example",
+                    source_id="example",
+                    source_url="https://example.invalid/job/1",
+                    posted_date="2026-09-17",
+                    track="employment",
+                    opportunity_type="employment",
+                    title_family="data_engineering",
+                    seniority_level="mid",
+                    work_mode="remote",
+                    location_country="EG",
+                    location_city="Cairo",
+                    location_region=None,
+                    remote_scope="worldwide",
+                    remote_scope_regions=None,
+                    employment_type="full_time",
+                    qualification_decision="QUALIFIED",
+                    fit_score=82.0,
+                    priority_score=82.0,
+                    reasons_json="[]",
+                    red_line_match=False,
+                    excluded_industry_match=False,
+                    visible=True,
+                    visibility_reason=None,
+                    search_text="Data Engineer Example Cairo remote",
+                    search_tsv=None,
+                    evaluated_at=now,
+                    projected_at=now,
+                )
+            )
             session.commit()
             session.expunge_all()
 
