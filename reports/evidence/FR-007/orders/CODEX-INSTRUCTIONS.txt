@@ -1,0 +1,1 @@
+Codex: checkout `work/fr007-codex-cloud-config`, read `reports/evidence/FR-007/orders/CODEX-W0-CONFIG.md`, execute only that order, commit, and stop. Do not merge.
