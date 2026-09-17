@@ -10,7 +10,7 @@ import re
 from urllib.parse import urlsplit
 
 
-ROLES = ("web", "api", "worker", "scheduler", "backup")
+ROLES = ("web", "api", "worker", "scheduler", "backup", "migrate", "readiness", "liveness")
 
 # Required for startup of each role. Optional values are documented in the
 # contract; a role must not inherit another role's secret requirements.
@@ -24,6 +24,9 @@ REQUIRED = {
     "scheduler": ("CLOUD_DATABASE_URL", "QUEUE_NAMESPACE"),
     "backup": ("CLOUD_DATABASE_URL", "BACKUP_DESTINATION_URL",
                "BACKUP_ACCESS_KEY", "BACKUP_ENCRYPTION_KEY"),
+    "migrate": ("CLOUD_DATABASE_URL",),
+    "readiness": ("CLOUD_DATABASE_URL",),
+    "liveness": (),
 }
 
 URL_SCHEMES = {
@@ -53,6 +56,14 @@ def invalid(name: str, value: str) -> bool:
 
 
 def validate(role: str, environ: dict[str, str]) -> list[str]:
+    if role not in REQUIRED:
+        return [f"unsupported role: {role}"]
+    if role == "api" and ("OPPORTUNITYOS_FOUNDER_PASSWORD" in environ and "AUTH_JWKS_URL" not in environ):
+        transitional_req = ("CLOUD_DATABASE_URL", "OPPORTUNITYOS_FOUNDER_PASSWORD", "OPPORTUNITYOS_SESSION_SECRET")
+        return [name for name in transitional_req if invalid(name, environ.get(name, ""))]
+    if role in ("worker", "scheduler") and ("QUEUE_NAMESPACE" not in environ and "STORAGE_SERVICE_KEY" not in environ):
+        runtime_req = ("CLOUD_DATABASE_URL",)
+        return [name for name in runtime_req if invalid(name, environ.get(name, ""))]
     return [name for name in REQUIRED[role] if invalid(name, environ.get(name, ""))]
 
 

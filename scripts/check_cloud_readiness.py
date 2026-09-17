@@ -38,10 +38,21 @@ REQUIRED_TABLES = ("alembic_version", "worker_jobs", "feed_projection", "source_
 
 
 class ReadinessCheckResult:
-    def __init__(self, name: str, passed: bool, message: str):
+    def __init__(
+        self,
+        name: str,
+        status: str,
+        message: str,
+        blockers: Sequence[str] = (),
+    ):
         self.name = name
-        self.passed = passed
+        self.status = status  # "PASS", "BLOCKED", "FAIL"
         self.message = message
+        self.blockers = tuple(blockers)
+
+    @property
+    def passed(self) -> bool:
+        return self.status == "PASS"
 
 
 def check_secrets_and_config(role: str, env: Mapping[str, str]) -> ReadinessCheckResult:
@@ -54,19 +65,19 @@ def check_secrets_and_config(role: str, env: Mapping[str, str]) -> ReadinessChec
             resolve_environment(role, env)
         return ReadinessCheckResult(
             name="Configuration & Secrets",
-            passed=True,
+            status="PASS",
             message="Required environment variables and secrets are present, valid, and non-conflicting",
         )
     except ConfigurationError as exc:
         return ReadinessCheckResult(
             name="Configuration & Secrets",
-            passed=False,
+            status="FAIL",
             message=f"Configuration error: {exc}",
         )
     except Exception as exc:
         return ReadinessCheckResult(
             name="Configuration & Secrets",
-            passed=False,
+            status="FAIL",
             message=f"Unexpected configuration error: {exc}",
         )
 
@@ -85,25 +96,26 @@ def check_pc_independence(env: Mapping[str, str]) -> ReadinessCheckResult:
         if is_cloud_mode and _is_loopback_host(parsed.hostname):
             return ReadinessCheckResult(
                 name="Founder PC Independence",
-                passed=False,
+                status="FAIL",
                 message="Database URL points to localhost/loopback while running in production/cloud mode",
             )
     except Exception:
         pass
 
     # Check for forbidden local path references
-    for key in ("OPPORTUNITYOS_DB_URL", "CLOUD_DATABASE_URL"):
+    for key in ("OPPORTUNITYOS_DB_URL", "CLOUD_DATABASE_URL", "OPPORTUNITYOS_TRUTH_PACK_PATH"):
         val = env.get(key, "")
-        if "c:\\" in val.lower() or "/users/" in val.lower():
+        val_lower = val.lower()
+        if "c:\\" in val_lower or "/users/" in val_lower or val.startswith("private/"):
             return ReadinessCheckResult(
                 name="Founder PC Independence",
-                passed=False,
-                message=f"Local absolute path detected in '{key}'",
+                status="FAIL",
+                message=f"Local absolute or private path detected in '{key}'",
             )
 
     return ReadinessCheckResult(
         name="Founder PC Independence",
-        passed=True,
+        status="PASS",
         message="No Founder-machine paths, localhost bindings, or desktop session dependencies detected",
     )
 
@@ -121,7 +133,7 @@ def check_database_and_schema(
             results.append(
                 ReadinessCheckResult(
                     name="Database Connectivity",
-                    passed=False,
+                    status="FAIL",
                     message="No database URL provided or found in environment",
                 )
             )
@@ -134,7 +146,7 @@ def check_database_and_schema(
             results.append(
                 ReadinessCheckResult(
                     name="Database Connectivity",
-                    passed=False,
+                    status="FAIL",
                     message=f"Failed to create SQLAlchemy engine: {exc}",
                 )
             )
@@ -148,7 +160,7 @@ def check_database_and_schema(
         results.append(
             ReadinessCheckResult(
                 name="Database Reachability",
-                passed=True,
+                status="PASS",
                 message="PostgreSQL database is reachable and accepting queries",
             )
         )
@@ -156,7 +168,7 @@ def check_database_and_schema(
         results.append(
             ReadinessCheckResult(
                 name="Database Reachability",
-                passed=False,
+                status="FAIL",
                 message=f"Database unreachable or connection refused: {exc}",
             )
         )
@@ -173,18 +185,17 @@ def check_database_and_schema(
             results.append(
                 ReadinessCheckResult(
                     name="Schema Migrations & Tables",
-                    passed=False,
+                    status="FAIL",
                     message=f"Missing required tables (run 'migrate' role first): {', '.join(missing_tables)}",
                 )
             )
         else:
-            # Query alembic_version revision
             with active_engine.connect() as conn:
                 rev = conn.execute(text("SELECT version_num FROM alembic_version LIMIT 1")).scalar()
             results.append(
                 ReadinessCheckResult(
                     name="Schema Migrations & Tables",
-                    passed=True,
+                    status="PASS",
                     message=f"All required runtime tables present (alembic head revision: {rev})",
                 )
             )
@@ -192,12 +203,48 @@ def check_database_and_schema(
         results.append(
             ReadinessCheckResult(
                 name="Schema Migrations & Tables",
-                passed=False,
+                status="FAIL",
                 message=f"Failed inspecting database schema: {exc}",
             )
         )
 
     return results
+
+
+def check_canonical_runtime_contract(role: str, env: Mapping[str, str]) -> ReadinessCheckResult:
+    """Validate canonical cloud runtime contract and detect unwired blockers."""
+    from scripts.cloud_runtime_bridge import CompatibilityError, plan_runtime_environment
+
+    roles_to_check = ("api", "worker", "scheduler", "migrate") if role == "all" else (role,)
+    unresolved_blockers: dict[str, list[str]] = {}
+
+    for r in roles_to_check:
+        try:
+            plan = plan_runtime_environment(r, env)
+            if plan.blockers:
+                unresolved_blockers[r] = list(plan.blockers)
+        except CompatibilityError as exc:
+            return ReadinessCheckResult(
+                name="Canonical Runtime Contract",
+                status="FAIL",
+                message=f"Contract validation failure for role '{r}': {exc}",
+            )
+
+    if unresolved_blockers:
+        formatted = "; ".join(f"{r}: [{', '.join(b)}]" for r, b in unresolved_blockers.items())
+        all_blockers = [b for b_list in unresolved_blockers.values() for b in b_list]
+        return ReadinessCheckResult(
+            name="Canonical Runtime Contract",
+            status="BLOCKED",
+            message=f"Unresolved cloud integration blockers: {formatted}",
+            blockers=all_blockers,
+        )
+
+    return ReadinessCheckResult(
+        name="Canonical Runtime Contract",
+        status="PASS",
+        message=f"Zero unresolved launch blockers for role '{role}'",
+    )
 
 
 def run_preflight_checks(
@@ -218,6 +265,9 @@ def run_preflight_checks(
     # 3. Database connectivity and schema
     db_url = env.get("CLOUD_DATABASE_URL") or env.get("OPPORTUNITYOS_DB_URL")
     results.extend(check_database_and_schema(engine=engine, db_url=db_url))
+
+    # 4. Canonical runtime contract and launch blockers
+    results.append(check_canonical_runtime_contract(role, env))
 
     return results
 
@@ -251,23 +301,31 @@ def main(argv: Sequence[str] | None = None, engine: Any | None = None) -> int:
 
     results = run_preflight_checks(role=args.role, environ=env, engine=engine)
 
-    all_passed = all(r.passed for r in results)
+    has_fail = any(r.status == "FAIL" for r in results)
+    has_blocked = any(r.status == "BLOCKED" for r in results)
 
     if not args.quiet:
         print("=" * 72)
         print(f"OpportunityOS FR-007 Cloud Deployment Readiness Preflight [role={args.role}]")
         print("=" * 72)
         for r in results:
-            status = "[PASS]" if r.passed else "[FAIL]"
-            print(f"{status} {r.name}: {r.message}")
+            print(f"[{r.status}] {r.name}: {r.message}")
         print("-" * 72)
 
-    if all_passed:
-        print("[SUCCESS] All FR-007 cloud deployment prerequisites are satisfied.")
-        return 0
-    else:
+    if has_fail:
         print("[FAILURE] One or more cloud deployment prerequisites failed.")
         return 1
+    elif has_blocked:
+        all_blockers = []
+        for r in results:
+            if r.blockers:
+                all_blockers.extend(r.blockers)
+        blocker_str = ", ".join(sorted(set(all_blockers)))
+        print(f"[BLOCKED] Role '{args.role}' has unresolved cloud integration blockers: {blocker_str}")
+        return 2
+    else:
+        print(f"[SUCCESS] All FR-007 cloud deployment prerequisites are satisfied for role '{args.role}'.")
+        return 0
 
 
 if __name__ == "__main__":

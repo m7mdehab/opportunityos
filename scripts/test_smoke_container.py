@@ -89,6 +89,54 @@ class SmokeContainerUnitTest(unittest.TestCase):
         res = runner.smoke_role_separation_worker()
         self.assertTrue(res.passed)
 
+    def test_smoke_worker_and_scheduler_startup_contracts(self) -> None:
+        mock_runner = MagicMock()
+        runner = OCIContainerSmokeRunner(engine="mock-docker", runner_fn=mock_runner)
+
+        mock_runner.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="usage: worker ...", stderr=""
+        )
+        res_worker = runner.smoke_worker_startup_contract()
+        self.assertTrue(res_worker.passed)
+        self.assertEqual(res_worker.status, "PASS")
+
+        mock_runner.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="usage: scheduler ...", stderr=""
+        )
+        res_sched = runner.smoke_scheduler_startup_contract()
+        self.assertTrue(res_sched.passed)
+        self.assertEqual(res_sched.status, "PASS")
+
+    def test_smoke_migrate_and_api_and_pc_independence(self) -> None:
+        mock_runner = MagicMock()
+        runner = OCIContainerSmokeRunner(engine="mock-docker", runner_fn=mock_runner)
+
+        mock_runner.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="alembic help", stderr=""
+        )
+        self.assertTrue(runner.smoke_migrate_explicit_command().passed)
+
+        mock_runner.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="uvicorn running on 0.0.0.0:9090", stderr=""
+        )
+        self.assertTrue(runner.smoke_api_configurable_port().passed)
+
+        mock_runner.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="liveness probe: ok", stderr=""
+        )
+        self.assertTrue(runner.smoke_pc_independence().passed)
+
+    def test_smoke_live_dependencies_evaluation(self) -> None:
+        runner_no_db = OCIContainerSmokeRunner(engine="mock-docker", db_url=None)
+        res_no_db = runner_no_db.smoke_live_dependencies_evaluation()
+        self.assertTrue(res_no_db.passed)
+        self.assertIn("ROLE_LIVE_PROOF_BLOCKED", res_no_db.message)
+
+        runner_with_db = OCIContainerSmokeRunner(engine="mock-docker", db_url="postgresql+psycopg2://user:pass@db:5432/test")
+        res_with_db = runner_with_db.smoke_live_dependencies_evaluation()
+        self.assertTrue(res_with_db.passed)
+        self.assertIn("ROLE_LIVE_PROOF_PASS", res_with_db.message)
+
     def test_run_all_smoke_tests_stops_if_build_fails(self) -> None:
         mock_runner = MagicMock()
         runner = OCIContainerSmokeRunner(engine="mock-docker", runner_fn=mock_runner)

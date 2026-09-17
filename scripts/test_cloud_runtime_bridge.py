@@ -79,6 +79,33 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(plan_runtime_environment("worker", dict(WORKER, OPPORTUNITYOS_DB_URL=DB)).aliases,
                          {"OPPORTUNITYOS_DB_URL": DB})
 
+    def test_transitional_founder_auth_accepted_and_aliased(self):
+        api_env = {
+            "CLOUD_DATABASE_URL": DB,
+            "OPPORTUNITYOS_FOUNDER_PASSWORD": "valid-founder-password",
+            "OPPORTUNITYOS_SESSION_SECRET": "valid-session-secret-32-chars",
+        }
+        plan = plan_runtime_environment("api", api_env)
+        self.assertEqual(plan.aliases["OPPORTUNITYOS_FOUNDER_PASSWORD"], "valid-founder-password")
+        self.assertEqual(plan.aliases["OPPORTUNITYOS_SESSION_SECRET"], "valid-session-secret-32-chars")
+        # Target cloud blockers remain explicit
+        self.assertIn("AUTH_JWKS_URL", plan.blockers)
+        self.assertIn("STORAGE_SERVICE_KEY", plan.blockers)
+
+    def test_migrate_role_has_zero_blockers_and_builds_cleanly(self):
+        migrate_env = {"CLOUD_DATABASE_URL": DB}
+        plan = plan_runtime_environment("migrate", migrate_env)
+        self.assertEqual(plan.blockers, ())
+        env = build_runtime_environment("migrate", migrate_env)
+        self.assertEqual(env["OPPORTUNITYOS_DB_URL"], DB)
+
+    def test_liveness_role_has_zero_blockers(self):
+        plan = plan_runtime_environment("liveness", {})
+        self.assertEqual(plan.blockers, ())
+        env = build_runtime_environment("liveness", {})
+        self.assertEqual(env, {})
+
 
 if __name__ == "__main__":
     unittest.main()
+

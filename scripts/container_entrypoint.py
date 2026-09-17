@@ -17,12 +17,18 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import pathlib
 import re
 import signal
 import sys
 import threading
 from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import urlsplit
+
+# Ensure repository root is on sys.path when invoked directly as a script
+REPO_ROOT = str(pathlib.Path(__file__).resolve().parent.parent)
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 
 ROLES = ("api", "worker", "scheduler", "migrate", "readiness", "liveness")
 
@@ -96,6 +102,8 @@ def resolve_environment(role: str, environ: Mapping[str, str] | None = None) -> 
 
     if cloud_db and not legacy_db:
         env["OPPORTUNITYOS_DB_URL"] = cloud_db
+    elif legacy_db and not cloud_db:
+        env["CLOUD_DATABASE_URL"] = legacy_db
     elif cloud_db and legacy_db and cloud_db != legacy_db:
         raise ConfigurationError("Conflicting variables: CLOUD_DATABASE_URL and OPPORTUNITYOS_DB_URL differ")
 
@@ -146,15 +154,23 @@ def resolve_environment(role: str, environ: Mapping[str, str] | None = None) -> 
                 f"Missing required API credentials: {', '.join(missing)}"
             )
 
-    # 4. Optional cloud runtime bridge integration
+    # 4. Authoritative cloud runtime bridge integration
     try:
-        from scripts.cloud_runtime_bridge import plan_runtime_environment  # type: ignore
-        try:
-            plan_runtime_environment(role, env)
-        except Exception:
-            pass
+        from scripts.cloud_runtime_bridge import (
+            CompatibilityError,
+            plan_runtime_environment,
+        )
     except ImportError:
-        pass
+        from cloud_runtime_bridge import (  # type: ignore[no-redef]
+            CompatibilityError,
+            plan_runtime_environment,
+        )
+
+    try:
+        bridge_plan = plan_runtime_environment(role, env)
+        env.update(bridge_plan.aliases)
+    except CompatibilityError as exc:
+        raise ConfigurationError(f"Cloud runtime validation failed: {exc}") from exc
 
     return env
 

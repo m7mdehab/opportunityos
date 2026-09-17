@@ -20,6 +20,7 @@ All four modes are mutually exclusive.
 from __future__ import annotations
 
 import argparse
+import os
 import signal
 import sys
 import threading

@@ -1,0 +1,74 @@
+name: OCI Container Runtime Smoke
+
+on:
+  push:
+    branches:
+      - "work/fr007-*"
+      - main
+    paths:
+      - "Dockerfile"
+      - "docker/**"
+      - "scripts/container_entrypoint.py"
+      - "scripts/smoke_container.py"
+      - "scripts/cloud_runtime_bridge.py"
+      - "scripts/validate_cloud_config.py"
+      - "scripts/check_cloud_readiness.py"
+      - "worker/**"
+      - "api/**"
+      - ".github/workflows/oci-runtime-smoke.yml"
+  pull_request:
+    paths:
+      - "Dockerfile"
+      - "docker/**"
+      - "scripts/container_entrypoint.py"
+      - "scripts/smoke_container.py"
+      - "scripts/cloud_runtime_bridge.py"
+      - "scripts/validate_cloud_config.py"
+      - "scripts/check_cloud_readiness.py"
+      - "worker/**"
+      - "api/**"
+      - ".github/workflows/oci-runtime-smoke.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  oci-smoke:
+    name: oci-container-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: opportunityos
+          POSTGRES_PASSWORD: ${{ github.run_id }}
+          POSTGRES_DB: opportunityos_smoke
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Verify Host Docker Engine
+        run: |
+          docker --version
+          docker info
+      - name: Run OCI Container Build & Smoke Suite
+        run: |
+          python scripts/smoke_container.py \
+            --require-engine \
+            --engine docker \
+            --db-url "postgresql+psycopg2://opportunityos:${{ github.run_id }}@172.17.0.1:5432/opportunityos_smoke"

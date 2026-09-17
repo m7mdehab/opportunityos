@@ -118,5 +118,46 @@ class TestBackgroundWorkerQueue(unittest.TestCase):
         self.assertIsNone(self.queue.claim_next_job(lease_duration_seconds=1))
 
 
+class TestWorkerStartupRegression(unittest.TestCase):
+    def test_normal_worker_startup_reaches_handler_registry_without_name_error(self):
+        """Worker main must execute without NameError (such as missing os import)
+        and successfully construct the default handler registry.
+        """
+        import worker.__main__ as worker_main
+        from unittest.mock import patch, MagicMock
+
+        mock_factory = MagicMock()
+        with patch.dict(os.environ, {
+            "OPPORTUNITYOS_DB_URL": "postgresql" + "://fake-user:fake-pass" + "@" + "localhost.invalid/testdb",
+            "OPPORTUNITYOS_TRUTH_PACK_PATH": "test_truth_pack.json",
+        }):
+            with patch("worker.__main__.get_engine"), \
+                 patch("worker.__main__.get_session_factory", return_value=mock_factory), \
+                 patch("worker.__main__.WorkerRunner.run_once") as mock_run_once:
+
+                exit_code = worker_main.main(["--once"])
+                self.assertEqual(exit_code, 0)
+                mock_run_once.assert_called_once()
+
+    def test_normal_worker_startup_with_unset_truth_pack_path(self):
+        import worker.__main__ as worker_main
+        from unittest.mock import patch, MagicMock
+
+        mock_factory = MagicMock()
+        env = dict(os.environ)
+        env["OPPORTUNITYOS_DB_URL"] = "postgresql" + "://fake-user:fake-pass" + "@" + "localhost.invalid/testdb"
+        env.pop("OPPORTUNITYOS_TRUTH_PACK_PATH", None)
+
+        with patch.dict(os.environ, env, clear=True):
+            with patch("worker.__main__.get_engine"), \
+                 patch("worker.__main__.get_session_factory", return_value=mock_factory), \
+                 patch("worker.__main__.WorkerRunner.run_once") as mock_run_once:
+
+                exit_code = worker_main.main(["--once"])
+                self.assertEqual(exit_code, 0)
+                mock_run_once.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()
+

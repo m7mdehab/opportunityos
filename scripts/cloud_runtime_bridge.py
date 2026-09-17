@@ -38,6 +38,9 @@ BLOCKERS = {
     "scheduler": ("QUEUE_NAMESPACE", "SCHEDULER_DISPATCH_TOKEN"),
     "backup": ("BACKUP_DESTINATION_URL", "BACKUP_ACCESS_KEY",
                "BACKUP_ENCRYPTION_KEY"),
+    "migrate": (),
+    "readiness": (),
+    "liveness": (),
 }
 
 
@@ -49,14 +52,18 @@ def plan_runtime_environment(role: str, source: Mapping[str, str]) -> BridgePlan
     correctness; they are not copied to the child process.
     """
     if role not in ROLES:
-        raise CompatibilityError("Unsupported role; expected web, api, worker, scheduler, or backup")
-    missing = [name for name in REQUIRED[role] if invalid(name, source.get(name, ""))]
+        raise CompatibilityError("Unsupported role; expected " + ", ".join(ROLES))
+    
+    from scripts.validate_cloud_config import validate
+    missing = validate(role, dict(source))
     if missing:
         raise CompatibilityError("Missing or invalid required variables: " + ", ".join(missing))
 
     aliases: dict[str, str] = {}
-    if role != "web":
-        cloud = source["CLOUD_DATABASE_URL"]
+    if role not in ("web", "liveness"):
+        cloud = source.get("CLOUD_DATABASE_URL") or source.get("OPPORTUNITYOS_DB_URL")
+        if not cloud:
+            raise CompatibilityError("Missing or invalid required variables: CLOUD_DATABASE_URL")
         # The current SQLAlchemy engine accepts these dialects. Never route
         # SQLite or a local host/file through a cloud production role.
         try:
@@ -70,10 +77,17 @@ def plan_runtime_environment(role: str, source: Mapping[str, str]) -> BridgePlan
                     pass
         except ValueError:
             local = True
-        if local:
+        is_cloud_mode = (
+            source.get("OPPORTUNITYOS_ENVIRONMENT", "").lower() in {"production", "prod", "cloud"}
+            or source.get("MODE", "").lower() == "cloud"
+            or "QUEUE_NAMESPACE" in source
+            or "AUTH_JWKS_URL" in source
+        )
+        if local and is_cloud_mode:
             raise CompatibilityError("Invalid cloud database endpoint: CLOUD_DATABASE_URL")
         legacy = source.get("OPPORTUNITYOS_DB_URL")
-        if legacy is not None and legacy != cloud:
+        cloud_raw = source.get("CLOUD_DATABASE_URL")
+        if legacy is not None and cloud_raw is not None and legacy != cloud_raw:
             raise CompatibilityError("Conflicting variables: CLOUD_DATABASE_URL, OPPORTUNITYOS_DB_URL")
         aliases["OPPORTUNITYOS_DB_URL"] = cloud
 
@@ -81,12 +95,32 @@ def plan_runtime_environment(role: str, source: Mapping[str, str]) -> BridgePlan
     # code currently ignores them. Do not propagate any unknown input keys.
     if source.get("NEXT_PUBLIC_USE_MOCK_API") not in (None, "", "0"):
         raise CompatibilityError("Forbidden production setting: NEXT_PUBLIC_USE_MOCK_API")
-    if source.get("OPPORTUNITYOS_TRUTH_PACK_PATH"):
-        raise CompatibilityError("Forbidden local path: OPPORTUNITYOS_TRUTH_PACK_PATH")
-    if source.get("OPPORTUNITYOS_FOUNDER_PASSWORD") or source.get("OPPORTUNITYOS_SESSION_SECRET"):
-        raise CompatibilityError(
-            "Unsupported local auth variables: OPPORTUNITYOS_FOUNDER_PASSWORD, OPPORTUNITYOS_SESSION_SECRET"
-        )
+    
+    truth_path = source.get("OPPORTUNITYOS_TRUTH_PACK_PATH")
+    if truth_path:
+        truth_lower = truth_path.lower()
+        if (
+            truth_path.startswith("private/")
+            or "c:\\" in truth_lower
+            or "/users/" in truth_lower
+            or invalid("OPPORTUNITYOS_TRUTH_PACK_PATH", truth_path)
+        ):
+            raise CompatibilityError("Forbidden local path: OPPORTUNITYOS_TRUTH_PACK_PATH")
+        aliases["OPPORTUNITYOS_TRUTH_PACK_PATH"] = truth_path
+
+    # Transitional founder authentication: safe secrets propagated when valid
+    founder_pw = source.get("OPPORTUNITYOS_FOUNDER_PASSWORD")
+    if founder_pw:
+        if invalid("OPPORTUNITYOS_FOUNDER_PASSWORD", founder_pw):
+            raise CompatibilityError("Invalid or placeholder credential: OPPORTUNITYOS_FOUNDER_PASSWORD")
+        aliases["OPPORTUNITYOS_FOUNDER_PASSWORD"] = founder_pw
+
+    session_sec = source.get("OPPORTUNITYOS_SESSION_SECRET")
+    if session_sec:
+        if invalid("OPPORTUNITYOS_SESSION_SECRET", session_sec):
+            raise CompatibilityError("Invalid or placeholder credential: OPPORTUNITYOS_SESSION_SECRET")
+        aliases["OPPORTUNITYOS_SESSION_SECRET"] = session_sec
+
     return BridgePlan(role, aliases, BLOCKERS[role])
 
 
