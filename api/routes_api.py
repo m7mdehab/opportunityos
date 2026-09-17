@@ -148,7 +148,7 @@ def _ranking_filter_contexts(
         definition = FILTER_DEFINITIONS_BY_ID[filter_id]
         enabled = row.enabled if row is not None else definition.default_enabled
         mode = row.mode if row is not None else definition.default_mode
-        return enabled and mode in {"hide", "rank_only"}
+        return enabled and mode in {"hide", "rank_only", "label_only"}
 
     compensation = filter_settings.get("compensation_floor")
     compensation_facet = facet_settings.get("compensation_stated")
@@ -1011,11 +1011,15 @@ class UnhideByReasonRequest(BaseModel):
 
 
 @router.post("/hidden-reasons/unhide")
-def unhide_by_reason_route(payload: UnhideByReasonRequest, session: Session = Depends(get_db)):
+def unhide_by_reason_route(payload: UnhideByReasonRequest, request: Request, session: Session = Depends(get_db)):
     now = to_naive_utc(datetime.now(timezone.utc))
     ok = unhide_by_reason(session, payload.reason, now)
     if not ok:
         raise HTTPException(status_code=404, detail=f"unrecognised reason: {payload.reason!r}")
+    from storage.feed_projection_service import refresh_existing_feed_projections
+
+    refresh_existing_feed_projections(session, truth_graph=_truth_graph_from_request(request))
+    session.commit()
     return {"reason": payload.reason, "status": "unhidden"}
 
 
