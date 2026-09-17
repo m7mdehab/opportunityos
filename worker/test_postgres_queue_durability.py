@@ -67,14 +67,13 @@ class TestPostgresQueueDurability(unittest.TestCase):
         self.test_job_ids: list[str] = []
         session = self.session_factory()
         try:
-            session.query(WorkerJobRecord).filter(
-                WorkerJobRecord.job_type == "poll_source"
-            ).delete(synchronize_session=False)
+            session.query(WorkerJobRecord).delete(synchronize_session=False)
             session.commit()
         except Exception:
             session.rollback()
         finally:
             session.close()
+
 
     def tearDown(self) -> None:
         if self.test_job_ids:
@@ -240,7 +239,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
         """PollScheduler does not enqueue duplicate active jobs for the same source."""
         session = self.session_factory()
         try:
-            scheduler = PollScheduler(self.session_factory, poll_interval=1.0)
+            scheduler = PollScheduler(self.session_factory, interval_hours=1.0)
             q = BackgroundWorkerQueue(session)
             job_id = self._enqueue(q, job_type="poll_source", payload={"source_id": "ted", "feed_id": "all"})
 
