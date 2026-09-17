@@ -22,8 +22,9 @@ from scripts import production_db_preflight as preflight
 
 
 STAGES = ("preflight", "source_baseline", "backup", "manifest_checksum",
-          "target_migration", "restore_import", "revision_verification",
-          "structural_parity", "feed_projection_parity", "artifact_metadata",
+          "fresh_target_validation", "target_migration", "restore_import", "revision_verification",
+          "structural_parity", "evaluation_parity", "feed_projection_parity",
+          "triage_state_parity", "artifact_metadata",
           "artifact_body", "final_acceptance")
 VALID = {"PASS", "PARTIAL", "NOT_RUN", "BLOCKED", "FAIL"}
 
@@ -63,7 +64,8 @@ def rollback_decision(report, *, traffic_cutover_occurred=False):
 
 
 def run(directory, *, connection_mode, confirm_restore=False, source_writes_paused=False,
-        target_writes_disabled=False, allow_insecure_local=False, artifact_backend="postgres_payload"):
+        target_writes_disabled=False, allow_insecure_local=False, artifact_backend="postgres_payload",
+        _test_hook=None):
     report = report_template()
     try:
         source = db.config("source")
@@ -74,6 +76,7 @@ def run(directory, *, connection_mode, confirm_restore=False, source_writes_paus
     checked = preflight.evaluate(target, connection_mode=connection_mode,
                                  allow_insecure_local=allow_insecure_local)
     record(report, "preflight", checked["status"], checked)
+    record(report, "fresh_target_validation", checked.get("checks", {}).get("target_empty", "NOT_RUN"))
     if not checked["ready"]:
         return finish(report)
     if artifact_backend != "postgres_payload":
@@ -112,7 +115,8 @@ def run(directory, *, connection_mode, confirm_restore=False, source_writes_paus
         db.write_backup_manifest(archive, manifest)
         db.verify_backup(archive, manifest_path)
         record(report, "manifest_checksum", "PASS", {"manifest": manifest_path.name,
-                                                        "checksum_verified": True})
+                                                        "checksum_verified": True,
+                                                        "sha256": manifest["sha256"]})
     except Exception:
         record(report, "backup" if report["stages"]["backup"] != "PASS" else "manifest_checksum",
                "FAIL", {"reason": "backup_or_integrity_failed"})
@@ -122,6 +126,8 @@ def run(directory, *, connection_mode, confirm_restore=False, source_writes_paus
     # empty target now would violate the fresh-target restore contract.
     record(report, "target_migration", "NOT_RUN", {"reason": "schema_bearing_archive_restored_first"})
     try:
+        if _test_hook:
+            _test_hook("before_restore", source, target, archive)
         db.restore(target, archive, manifest=manifest_path, confirmed=True)
         record(report, "restore_import", "PASS", {"fresh_target": True})
     except Exception:
@@ -129,6 +135,8 @@ def run(directory, *, connection_mode, confirm_restore=False, source_writes_paus
         return finish(report)
     try:
         db.migrate(target)
+        if _test_hook:
+            _test_hook("after_migration", source, target, archive)
         revision = db.inspect(target)["alembic_revision"]
         expected_revision = source_snapshot["alembic_revision"]
         if revision != expected_revision:
@@ -142,6 +150,8 @@ def run(directory, *, connection_mode, confirm_restore=False, source_writes_paus
         return finish(report)
 
     try:
+        if _test_hook:
+            _test_hook("before_parity", source, target, archive)
         connection = db.connect(target)
         try:
             target_snapshot = baseline.inspect(connection)
@@ -153,9 +163,30 @@ def run(directory, *, connection_mode, confirm_restore=False, source_writes_paus
         unsupported = sorted(set(baseline.unsupported(source_snapshot)) |
                              set(baseline.unsupported(target_snapshot)))
         record(report, "structural_parity", "FAIL" if differences else "PARTIAL" if unsupported else "PASS",
-               {"difference_count": len(differences), "unsupported": unsupported})
-        if differences:
-            return finish(report)
+               {"difference_count": len(differences), "difference_paths": differences,
+                "unsupported": unsupported})
+        evaluation_supported = (source_snapshot["tables"]["match_evaluations"] is not None and
+                                target_snapshot["tables"]["match_evaluations"] is not None)
+        evaluation_match = (evaluation_supported and
+                            source_snapshot["tables"]["match_evaluations"] == target_snapshot["tables"]["match_evaluations"] and
+                            source_snapshot["evaluation_coverage"] == target_snapshot["evaluation_coverage"] and
+                            source_snapshot["identity_digests"]["evaluation_bindings"] == target_snapshot["identity_digests"]["evaluation_bindings"] and
+                            source_snapshot["decision_distributions"]["match_evaluations"] == target_snapshot["decision_distributions"]["match_evaluations"])
+        record(report, "evaluation_parity", "PARTIAL" if not evaluation_supported else "PASS" if evaluation_match else "FAIL",
+               {"source_count": source_snapshot["tables"]["match_evaluations"],
+                "target_count": target_snapshot["tables"]["match_evaluations"],
+                "source_decisions": source_snapshot["decision_distributions"]["match_evaluations"],
+                "target_decisions": target_snapshot["decision_distributions"]["match_evaluations"]})
+        triage_tables = ("founder_triage_states", "founder_opportunity_views", "founder_filter_settings",
+                         "founder_facets", "founder_saved_views", "founder_feedback")
+        triage_supported = all(source_snapshot["tables"][name] is not None and
+                               target_snapshot["tables"][name] is not None for name in triage_tables)
+        triage_match = (triage_supported and all(source_snapshot["tables"][name] == target_snapshot["tables"][name]
+                                                for name in triage_tables) and
+                        source_snapshot["state_distributions"] == target_snapshot["state_distributions"])
+        record(report, "triage_state_parity", "PARTIAL" if not triage_supported else "PASS" if triage_match else "FAIL",
+               {"source_counts": {name: source_snapshot["tables"][name] for name in triage_tables},
+                "target_counts": {name: target_snapshot["tables"][name] for name in triage_tables}})
         feed = "feed_projection"
         if source_snapshot["tables"][feed] is None or target_snapshot["tables"][feed] is None:
             record(report, "feed_projection_parity", "PARTIAL", {"reason": "canonical_projection_unsupported"})
@@ -166,13 +197,15 @@ def run(directory, *, connection_mode, confirm_restore=False, source_writes_paus
                                for key in source_snapshot["null_counts"] if key.startswith(feed + ".")))
             record(report, "feed_projection_parity", "PASS" if matched else "FAIL",
                    {"count": target_snapshot["tables"][feed], "distributions_match": matched})
-            if not matched:
-                return finish(report)
+        if differences or report["stages"]["feed_projection_parity"] == "FAIL":
+            return finish(report)
     except Exception:
         record(report, "structural_parity", "FAIL", {"reason": "parity_inspection_failed"})
         return finish(report)
 
     try:
+        if _test_hook:
+            _test_hook("before_artifact", source, target, archive)
         expected = artifacts.manifest(artifacts.PostgresPayloadReader(source))
         actual = artifacts.manifest(artifacts.PostgresPayloadReader(target))
         (workspace / "artifacts.json").write_text(

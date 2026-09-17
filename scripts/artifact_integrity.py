@@ -122,7 +122,10 @@ def verify(expected, reader):
         if row is None:
             counts["missing"] += 1
         elif row["body_status"] == "metadata_only":
-            counts["metadata_only"] += 1
+            if entry["body_status"] == "retrievable":
+                counts["missing"] += 1
+            else:
+                counts["metadata_only"] += 1
         elif (entry.get("sha256") is not None and
               (row["sha256"] != entry["sha256"] or row["size_bytes"] != entry.get("size_bytes"))):
             counts["checksum_mismatch"] += 1
