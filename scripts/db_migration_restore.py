@@ -179,7 +179,7 @@ def backup_manifest(archive, revision, *, version, commit, created_at=None):
     path = Path(archive)
     if not path.is_file() or not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise HarnessError("backup or application revision unavailable")
-    if not re.fullmatch(r"pg_dump \(PostgreSQL\) [0-9][A-Za-z0-9. ]{0,40}", version):
+    if not re.fullmatch(r"pg_dump \(PostgreSQL\) [0-9][A-Za-z0-9.()+ -]{0,120}", version):
         raise HarnessError("invalid backup tool version")
     return {"format": 1, "created_at": created_at or datetime.now(timezone.utc).isoformat(),
             "archive_format": "pg_dump_custom", "expected_restore_type": "fresh_public_schema",
