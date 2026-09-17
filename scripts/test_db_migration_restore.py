@@ -219,7 +219,7 @@ class HarnessTests(unittest.TestCase):
             with self.assertRaises(db.HarnessError):
                 db.run_command(["pg_dump", "--dbname", "source_db"], {"PGPASSWORD": "source_secret"})
             self.assertIs(run.call_args.kwargs["shell"], False)
-            self.assertEqual(run.call_args.kwargs["stderr"], db.subprocess.DEVNULL)
+            self.assertEqual(run.call_args.kwargs["stderr"], db.subprocess.PIPE)
             self.assertEqual(run.call_args.kwargs["stdout"], db.subprocess.DEVNULL)
         with patch.dict(os.environ, self.env):
             stderr = io.StringIO()

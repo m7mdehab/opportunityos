@@ -37,6 +37,10 @@ def run(directory, *, confirmed=False):
             report["stages"][name] = state
             report["details"][name] = detail
             return state != "FAIL"
+        except db.HarnessError as exc:
+            report["stages"][name] = "FAIL"
+            report["details"][name] = {"reason": str(exc)}
+            return False
         except Exception:
             report["stages"][name] = "FAIL"
             report["details"][name] = {"reason": "operation_failed"}

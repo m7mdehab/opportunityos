@@ -103,8 +103,11 @@ def run_command(argv, env):
     # stdout/stderr are never forwarded: pg_dump/pg_restore/alembic may echo
     # connection settings, object names, or private row content on failure.
     result = subprocess.run(argv, cwd=ROOT, env=env, stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL, check=False, shell=False)
+                            stderr=subprocess.PIPE, check=False, shell=False)
     if result.returncode:
+        details = result.stderr.lower() if isinstance(result.stderr, bytes) else b""
+        if b'schema "public" already exists' in details:
+            raise HarnessError("database command failed: existing public schema")
         raise HarnessError("database command failed")
 
 
