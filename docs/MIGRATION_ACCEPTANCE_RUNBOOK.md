@@ -93,7 +93,8 @@ real-run output. Branch CI/evidence lives at
 fixtures only.
 
 `acceptance.json` has independent stage states, A-gate states, source/target
-fingerprints, commit, revisions, checksum, table counts, evaluation decisions,
+fingerprints, commit, revisions, checksum, per-table count status, separate
+canonical identity digest status, evaluation decisions,
 projection counts, artifact results, unsupported concepts, and an explicit
 `ACCEPT`/`REJECT` decision. The command exits 0 for `ACCEPT`, 1 for a failed
 stage, 2 for a blocked stage, and 3 for incomplete/partial evidence. Dry run

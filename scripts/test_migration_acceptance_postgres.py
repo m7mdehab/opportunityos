@@ -115,7 +115,8 @@ class AcceptancePostgresDrills(unittest.TestCase):
                          "artifact_body"):
                 self.assertEqual(result["stages"][name], "PASS", name)
             self.assertEqual(result["stages"]["structural_parity"], "PARTIAL")
-            self.assertEqual(result["table_parity"]["opportunities"]["status"], "PASS")
+            self.assertEqual(result["table_parity"]["opportunities"]["count_status"], "PASS")
+            self.assertEqual(result["identity_parity"]["opportunities"], "PASS")
             self.assertEqual(result["evaluation_distributions"]["target"], {"uncertain": 1})
             self.assertEqual(result["projection_counts"], {"source": 0, "target": 0})
             self.assertEqual(len(result["backup_sha256"]), 64)
@@ -157,6 +158,8 @@ class AcceptancePostgresDrills(unittest.TestCase):
                     self.sql(target, "UPDATE public.opportunities SET content_hash = %s", ("d" * 64,))
             result = self.execute(hook=mismatch)
             self.assertEqual(result["stages"]["structural_parity"], "FAIL")
+            self.assertEqual(result["table_parity"]["opportunities"]["count_status"], "PASS")
+            self.assertEqual(result["identity_parity"]["opportunities"], "FAIL")
             self.assertEqual(result["gates"]["A-9"]["status"], "FAIL")
 
     def test_stale_alembic_revision_rejects(self):

@@ -97,8 +97,14 @@ def assemble(raw, workspace, source=None, target=None, *, dry_run=False):
             source_count = source_snapshot["tables"].get(name)
             target_count = target_snapshot["tables"].get(name)
             tables[name] = {"source": source_count, "target": target_count,
-                            "status": "PARTIAL" if source_count is None or target_count is None
+                            "count_status": "PARTIAL" if source_count is None or target_count is None
                             else "PASS" if source_count == target_count else "FAIL"}
+    identities = {}
+    if source_snapshot and target_snapshot:
+        for name in ("opportunities", "evaluation_bindings"):
+            left = source_snapshot["identity_digests"].get(name)
+            right = target_snapshot["identity_digests"].get(name)
+            identities[name] = "PARTIAL" if left is None or right is None else "PASS" if left == right else "FAIL"
     manifest_path = workspace / "database.dump.manifest.json"
     checksum = None
     if raw["stages"].get("manifest_checksum") == "PASS" and manifest_path.is_file():
@@ -123,7 +129,7 @@ def assemble(raw, workspace, source=None, target=None, *, dry_run=False):
                   "source": source_snapshot.get("alembic_revision") if source_snapshot else None,
                   "target": target_snapshot.get("alembic_revision") if target_snapshot else None},
               "backup_sha256": checksum, "stages": stages, "stage_details": raw.get("details", {}),
-              "table_parity": tables,
+              "table_parity": tables, "identity_parity": identities,
               "evaluation_distributions": {
                   "source": source_snapshot.get("decision_distributions", {}).get("match_evaluations") if source_snapshot else None,
                   "target": target_snapshot.get("decision_distributions", {}).get("match_evaluations") if target_snapshot else None},
