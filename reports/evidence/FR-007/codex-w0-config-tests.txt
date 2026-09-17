@@ -1,0 +1,28 @@
+$ python scripts/validate_cloud_config.py --help
+usage: validate_cloud_config.py [-h] --role {web,api,worker,scheduler,backup}
+
+Validate FR-007 cloud config without exposing values
+
+options:
+  -h, --help            show this help message and exit
+  --role {web,api,worker,scheduler,backup}
+                        deployment role to preflight
+[exit 0]
+
+$ python -m unittest scripts.test_validate_cloud_config -v
+test_api_requires_server_only_auth_and_storage_secrets (scripts.test_validate_cloud_config.CloudConfigTests.test_api_requires_server_only_auth_and_storage_secrets) ... ok
+test_failure_output_never_prints_supplied_values (scripts.test_validate_cloud_config.CloudConfigTests.test_failure_output_never_prints_supplied_values) ... ok
+test_malformed_url_and_template_are_rejected (scripts.test_validate_cloud_config.CloudConfigTests.test_malformed_url_and_template_are_rejected) ... ok
+test_missing_database_url (scripts.test_validate_cloud_config.CloudConfigTests.test_missing_database_url) ... ok
+test_valid_worker (scripts.test_validate_cloud_config.CloudConfigTests.test_valid_worker) ... ok
+test_web_does_not_require_worker_secrets (scripts.test_validate_cloud_config.CloudConfigTests.test_web_does_not_require_worker_secrets) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.003s
+
+OK
+[exit 0]
+
+$ python scripts/validate_cloud_config.py --role worker
+Missing or invalid required variables: CLOUD_DATABASE_URL, QUEUE_NAMESPACE, STORAGE_SERVICE_KEY, STORAGE_PRIVATE_BUCKET
+[exit 1]
