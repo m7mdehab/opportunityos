@@ -39,7 +39,8 @@ Run from the repository root with Python, `psycopg2`, Alembic, `pg_dump`, and
 ```sh
 python scripts/db_migration_restore.py inspect
 python scripts/db_migration_restore.py backup --destination /secure/w5/source.dump
-python scripts/db_migration_restore.py restore --archive /secure/w5/source.dump --confirm-target-restore
+python scripts/db_migration_restore.py verify-backup --archive /secure/w5/source.dump --manifest /secure/w5/source.dump.manifest.json
+python scripts/db_migration_restore.py restore --archive /secure/w5/source.dump --manifest /secure/w5/source.dump.manifest.json --confirm-target-restore
 python scripts/db_migration_restore.py verify
 python scripts/db_migration_restore.py migrate
 python scripts/db_migration_restore.py verify
@@ -55,6 +56,11 @@ against the supplied target database. `migrate` runs the canonical
 If a restore already has the repository head revision, migration is a no-op.
 Check source and target revision before parity; any intended revision change
 needs explicit review because parity will report it.
+`backup` also creates a companion `.manifest.json` with UTC timestamp,
+Alembic revision, pg_dump version, application commit, compressed size and
+SHA-256. Uncompressed size is `null` because custom-format pg_dump does not
+provide it. `restore` verifies the manifest and archive checksum before it
+inspects or writes the target.
 
 ## Baseline/parity handoff
 
@@ -65,13 +71,15 @@ snapshot through this harness and compare the two files:
 python scripts/db_migration_restore.py snapshot --role source --output /secure/w5/source.json
 python scripts/db_migration_restore.py snapshot --role target --output /secure/w5/target.json
 python scripts/db_migration_restore.py parity --baseline /secure/w5/source.json --candidate /secure/w5/target.json
+python scripts/db_migration_restore.py parity-live
 ```
 
-The baseline module is intentionally absent from this lane. These commands
-fail with a dependency status until it is integrated; no code is copied from
-the prior branch. The baseline verifier defines the W5 structural parity
-contract. This harness suppresses its detailed output and emits only a
-machine-readable outcome, so private IDs/hashes are not printed in logs.
+The baseline module is included in this portability branch. `parity-live`
+reads both databases in separate read-only transactions and emits a JSON
+status plus a human-readable summary. It does not write snapshots to disk.
+The file-based `parity` command remains available for retained private
+evidence. The harness suppresses snapshot contents and emits only field names
+for differences, so private IDs/hashes are not printed in logs.
 
 ## Exit status
 
@@ -79,7 +87,8 @@ machine-readable outcome, so private IDs/hashes are not printed in logs.
 - `1`: baseline comparison found a parity mismatch (`status=mismatch`).
 - `2`: missing/invalid configuration, unavailable PostgreSQL tool, nonempty
   restore target, failed command, invalid archive, or database error.
-- `3`: baseline module has not yet been integrated.
+- `3`: structural concepts remain unsupported, or the baseline module is
+  unavailable. The JSON status distinguishes `partial` from a missing dependency.
 
 An `inspect` or `verify` success proves only connectivity and observed
 revision, not a complete restore. W5 still needs a real fresh-environment

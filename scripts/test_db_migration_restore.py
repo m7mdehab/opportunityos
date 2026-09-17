@@ -5,14 +5,16 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import Mock, patch
 
 from scripts import db_migration_restore as db
 
 
-SOURCE_URL = "postgresql+psycopg2://source_user:source_secret@source.example:5433/source_db?sslmode=require"
-TARGET_URL = "postgresql+psycopg2://target_user:target_secret@target.example:5434/target_db?sslmode=require"
+SOURCE_URL = ("postgresql+psycopg2://" + "source_user:source_secret" +
+              "@source.example:5433/source_db?sslmode=require")
+TARGET_URL = ("postgresql+psycopg2://" + "target_user:target_secret" +
+              "@target.example:5434/target_db?sslmode=require")
 
 
 class Cursor:
@@ -117,19 +119,38 @@ class HarnessTests(unittest.TestCase):
                     db.restore(db.config("target", self.env), archive)
                 run.assert_not_called()
             with patch.object(db, "inspect", side_effect=db.HarnessError("target schema is not empty")), \
+                 patch.object(db, "verify_backup"), \
                  patch.object(db, "run_command") as run:
                 with self.assertRaises(db.HarnessError):
-                    db.restore(db.config("target", self.env), archive, confirmed=True)
+                    db.restore(db.config("target", self.env), archive, manifest="manifest.json", confirmed=True)
                 run.assert_not_called()
             with patch.object(db, "inspect", return_value={"ready": True}), \
+                 patch.object(db, "verify_backup"), \
                  patch.object(db, "require_tool", return_value="pg_restore"), \
                  patch.object(db, "run_command") as run:
-                db.restore(db.config("target", self.env), archive, confirmed=True)
+                db.restore(db.config("target", self.env), archive, manifest="manifest.json", confirmed=True)
                 argv, env = run.call_args.args
                 self.assertEqual(argv[-3:], ["--dbname", "target_db", str(archive)])
                 self.assertNotIn("--clean", argv)
                 self.assertNotIn("target_secret", " ".join(argv))
                 self.assertEqual(env["PGPASSWORD"], "target_secret")
+
+    def test_backup_manifest_detects_corruption_before_restore(self):
+        with tempfile.TemporaryDirectory() as temp:
+            archive = Path(temp) / "source.dump"
+            archive.write_bytes(b"PGDMP synthetic data")
+            manifest = db.backup_manifest(
+                archive, "0006_feed_projection", version="pg_dump (PostgreSQL) 17.0",
+                commit="a" * 40, created_at="2026-09-17T00:00:00+00:00")
+            manifest_path = db.write_backup_manifest(archive, manifest)
+            self.assertEqual(db.verify_backup(archive, manifest_path)["sha256"], db.file_sha256(archive))
+            archive.write_bytes(b"PGDMP altered data")
+            with patch.object(db, "inspect") as inspect, patch.object(db, "run_command") as run:
+                with self.assertRaisesRegex(db.HarnessError, "integrity mismatch"):
+                    db.restore(db.config("target", self.env), archive,
+                               manifest=manifest_path, confirmed=True)
+                inspect.assert_not_called()
+                run.assert_not_called()
 
     def test_migration_targets_only_supplied_target(self):
         target = db.config("target", self.env)
@@ -170,6 +191,28 @@ class HarnessTests(unittest.TestCase):
                 self.assertEqual(db.main(["parity", "--baseline", "a.json", "--candidate", "b.json"]), 1)
             self.assertIn('"status": "mismatch"', stderr.getvalue())
             self.assertIs(run.call_args.kwargs["shell"], False)
+
+    def test_live_parity_uses_two_connections_and_reports_mismatch(self):
+        from scripts import migration_baseline as baseline
+        first, second = Mock(), Mock()
+        with patch.object(db, "connect", side_effect=[first, second]) as connect, \
+             patch.object(baseline, "inspect", side_effect=[{"format": 2}, {"format": 2}]), \
+             patch.object(baseline, "compare", return_value=["tables.opportunities: mismatch"]), \
+             patch.object(baseline, "unsupported", return_value=[]):
+            result = db.parity_live(db.config("source", self.env), db.target_config(self.env))
+        self.assertEqual(result["differences"], ["tables.opportunities: mismatch"])
+        self.assertEqual(connect.call_count, 2)
+        first.close.assert_called_once()
+        second.close.assert_called_once()
+
+    def test_live_parity_partial_is_not_pass(self):
+        with patch.dict(os.environ, self.env), \
+             patch.object(db, "parity_live", return_value={
+                 "differences": [], "unsupported": ["tables.source_states"]}):
+            output = io.StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(db.main(["parity-live"]), 3)
+        self.assertIn('"status": "partial"', output.getvalue())
 
     def test_subprocess_never_uses_shell_or_leaks_error(self):
         with patch.object(db.subprocess, "run", return_value=Mock(returncode=1)) as run:

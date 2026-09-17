@@ -7,12 +7,15 @@ deliberately redacted because driver and process exceptions may contain DSNs.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
+import re
 from urllib.parse import parse_qs, unquote, urlsplit
 
 
@@ -27,6 +30,10 @@ class HarnessError(Exception):
 
 
 class ParityMismatch(HarnessError):
+    pass
+
+
+class PartialParity(HarnessError):
     pass
 
 
@@ -160,12 +167,84 @@ def backup(settings, destination):
         raise HarnessError("backup file missing or empty")
 
 
-def restore(settings, archive, *, confirmed=False):
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def backup_manifest(archive, revision, *, version, commit, created_at=None):
+    path = Path(archive)
+    if not path.is_file() or not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise HarnessError("backup or application revision unavailable")
+    if not re.fullmatch(r"pg_dump \(PostgreSQL\) [0-9][A-Za-z0-9. ]{0,40}", version):
+        raise HarnessError("invalid backup tool version")
+    return {"format": 1, "created_at": created_at or datetime.now(timezone.utc).isoformat(),
+            "archive_format": "pg_dump_custom", "expected_restore_type": "fresh_public_schema",
+            "schema": "public", "alembic_revision": revision,
+            "pg_dump_version": version, "application_commit": commit,
+            "compressed_size_bytes": path.stat().st_size, "uncompressed_size_bytes": None,
+            "sha256": file_sha256(path)}
+
+
+def write_backup_manifest(archive, manifest):
+    path = Path(str(archive) + ".manifest.json")
+    if path.exists():
+        raise HarnessError("backup manifest already exists")
+    with path.open("x", encoding="utf-8") as stream:
+        json.dump(manifest, stream, sort_keys=True, separators=(",", ":"))
+        stream.write("\n")
+    return path
+
+
+def verify_backup(archive, manifest_path):
+    path = Path(archive).expanduser().resolve()
+    try:
+        with Path(manifest_path).open(encoding="utf-8") as stream:
+            manifest = json.load(stream)
+    except (OSError, ValueError) as exc:
+        raise HarnessError("backup manifest unavailable or invalid") from exc
+    if (not isinstance(manifest, dict) or manifest.get("format") != 1
+            or manifest.get("archive_format") != "pg_dump_custom"
+            or manifest.get("expected_restore_type") != "fresh_public_schema"
+            or manifest.get("schema") != "public"
+            or not isinstance(manifest.get("compressed_size_bytes"), int)
+            or not isinstance(manifest.get("sha256"), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", manifest["sha256"])):
+        raise HarnessError("backup manifest contract mismatch")
+    if (not path.is_file() or path.stat().st_size != manifest["compressed_size_bytes"]
+            or file_sha256(path) != manifest["sha256"]):
+        raise HarnessError("backup integrity mismatch")
+    return manifest
+
+
+def tool_version(name):
+    executable = require_tool(name)
+    result = subprocess.run([executable, "--version"], cwd=ROOT, env=pg_environment(config("source")),
+                            capture_output=True, text=True, check=False, shell=False)
+    if result.returncode:
+        raise HarnessError("backup tool version unavailable")
+    return result.stdout.strip()
+
+
+def application_commit():
+    tool = require_tool("git")
+    result = subprocess.run([tool, "rev-parse", "HEAD"], cwd=ROOT,
+                            capture_output=True, text=True, check=False, shell=False)
+    if result.returncode or not re.fullmatch(r"[0-9a-f]{40}", result.stdout.strip()):
+        raise HarnessError("application revision unavailable")
+    return result.stdout.strip()
+
+
+def restore(settings, archive, *, manifest=None, confirmed=False):
     if not confirmed:
         raise HarnessError("explicit target restore confirmation required")
+    if manifest is None:
+        raise HarnessError("backup manifest required")
     path = Path(archive).expanduser().resolve()
-    if not path.is_file():
-        raise HarnessError("backup archive missing")
+    verify_backup(path, manifest)
     inspect(settings, require_empty=True)
     tool = require_tool("pg_restore")
     # No --clean or --create: an existing database/schema is never replaced.
@@ -213,10 +292,29 @@ def baseline_handoff(operation, settings=None, baseline=None, candidate=None, ou
                                 check=False, shell=False)
         if result.returncode == 1:
             raise ParityMismatch("migration parity mismatch")
+        if result.returncode == 3:
+            raise PartialParity("unsupported parity concepts remain")
         if result.returncode:
             raise HarnessError("baseline comparison failed")
     else:
         raise HarnessError("unsupported baseline operation")
+
+
+def parity_live(source, target):
+    """Compare two independent read-only snapshots without writing private files."""
+    if not BASELINE.is_file():
+        raise HarnessError("migration baseline module unavailable; integrate its branch first")
+    from scripts import migration_baseline
+    snapshots = []
+    for settings in (source, target):
+        connection = connect(settings)
+        try:
+            snapshots.append(migration_baseline.inspect(connection))
+        finally:
+            connection.close()
+    return {"differences": migration_baseline.compare(*snapshots),
+            "unsupported": sorted(set(migration_baseline.unsupported(snapshots[0])) |
+                                  set(migration_baseline.unsupported(snapshots[1])))}
 
 
 def main(argv=None):
@@ -226,8 +324,12 @@ def main(argv=None):
     sub.add_parser("migrate")
     export = sub.add_parser("backup")
     export.add_argument("--destination", required=True)
+    check = sub.add_parser("verify-backup")
+    check.add_argument("--archive", required=True)
+    check.add_argument("--manifest", required=True)
     load = sub.add_parser("restore")
     load.add_argument("--archive", required=True)
+    load.add_argument("--manifest", required=True)
     load.add_argument("--confirm-target-restore", action="store_true")
     sub.add_parser("verify")
     snap = sub.add_parser("snapshot")
@@ -236,6 +338,7 @@ def main(argv=None):
     parity = sub.add_parser("parity")
     parity.add_argument("--baseline", required=True)
     parity.add_argument("--candidate", required=True)
+    sub.add_parser("parity-live")
     args = parser.parse_args(argv)
     try:
         if args.operation == "inspect":
@@ -246,11 +349,26 @@ def main(argv=None):
             migrate(settings)
             result = {"target": inspect(settings)}
         elif args.operation == "backup":
-            backup(config("source"), args.destination)
-            result = {"backup": "created"}
+            settings = config("source")
+            source_revision = inspect(settings)["alembic_revision"]
+            if source_revision is None:
+                raise HarnessError("source Alembic revision unavailable")
+            version = tool_version("pg_dump")
+            commit = application_commit()
+            backup(settings, args.destination)
+            try:
+                manifest = backup_manifest(args.destination, source_revision, version=version, commit=commit)
+                write_backup_manifest(args.destination, manifest)
+            except Exception:
+                Path(args.destination).unlink(missing_ok=True)
+                raise
+            result = {"backup": "created", "manifest": "created"}
+        elif args.operation == "verify-backup":
+            verify_backup(args.archive, args.manifest)
+            result = {"backup_integrity": "pass"}
         elif args.operation == "restore":
             settings = target_config()
-            restore(settings, args.archive, confirmed=args.confirm_target_restore)
+            restore(settings, args.archive, manifest=args.manifest, confirmed=args.confirm_target_restore)
             result = {"target": inspect(settings)}
         elif args.operation == "verify":
             result = {"target": inspect(target_config())}
@@ -260,14 +378,30 @@ def main(argv=None):
             settings = config("source") if args.role == "source" else target_config()
             baseline_handoff("snapshot", settings, output=args.output)
             result = {"snapshot": "created"}
-        else:
+        elif args.operation == "parity":
             baseline_handoff("compare", baseline=args.baseline, candidate=args.candidate)
             result = {"parity": "pass"}
+        else:
+            parity_result = parity_live(config("source"), target_config())
+            if parity_result["differences"]:
+                print(json.dumps({"status": "mismatch", **parity_result,
+                                  "summary": f"Parity failed: {len(parity_result['differences'])} structural differences"},
+                                 sort_keys=True))
+                return 1
+            if parity_result["unsupported"]:
+                print(json.dumps({"status": "partial", **parity_result,
+                                  "summary": f"Supported checks matched; {len(parity_result['unsupported'])} concepts unsupported"},
+                                 sort_keys=True))
+                return 3
+            result = {"parity": "pass", "summary": "Parity passed: all supported structural checks matched"}
         print(json.dumps({"status": "ok", **result}, sort_keys=True))
         return 0
     except ParityMismatch as exc:
         print(json.dumps({"status": "mismatch", "reason": str(exc)}), file=sys.stderr)
         return 1
+    except PartialParity as exc:
+        print(json.dumps({"status": "partial", "reason": str(exc)}), file=sys.stderr)
+        return 3
     except HarnessError as exc:
         # These are fixed, locally constructed messages, never driver errors.
         print(json.dumps({"status": "error", "reason": str(exc)}), file=sys.stderr)
