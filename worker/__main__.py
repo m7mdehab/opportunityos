@@ -137,7 +137,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
-    handlers = default_handler_registry()
+    truth_pack_path = os.environ.get("OPPORTUNITYOS_TRUTH_PACK_PATH") or None
+    handlers = default_handler_registry(truth_pack_path=truth_pack_path)
 
     if args.schedule:
         # A single threading.Event shared by the runner and the scheduler: the

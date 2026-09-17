@@ -176,6 +176,46 @@ class EnvironmentAndConfigBridgeTest(unittest.TestCase):
         self.assertIn("OPPORTUNITYOS_FOUNDER_PASSWORD", str(ctx.exception))
         self.assertIn("OPPORTUNITYOS_SESSION_SECRET", str(ctx.exception))
 
+    def test_malformed_database_scheme_fails_closed(self) -> None:
+        env = {
+            "OPPORTUNITYOS_DB_URL": "sqlite:///local.db",
+            "OPPORTUNITYOS_FOUNDER_PASSWORD": "password",
+            "OPPORTUNITYOS_SESSION_SECRET": "secret",
+        }
+        with self.assertRaises(ConfigurationError) as ctx:
+            resolve_environment("api", env)
+        self.assertIn("scheme must be one of", str(ctx.exception))
+
+    def test_placeholder_values_fail_closed(self) -> None:
+        env = {
+            "OPPORTUNITYOS_DB_URL": "postgresql+psycopg2://user:pass@cloud-pg:5432/opportunityos",
+            "OPPORTUNITYOS_FOUNDER_PASSWORD": "REPLACE_ME",
+            "OPPORTUNITYOS_SESSION_SECRET": "secret",
+        }
+        with self.assertRaises(ConfigurationError) as ctx:
+            resolve_environment("api", env)
+        self.assertIn("placeholder", str(ctx.exception))
+
+    def test_production_loopback_rejection(self) -> None:
+        env = {
+            "OPPORTUNITYOS_ENVIRONMENT": "production",
+            "CLOUD_DATABASE_URL": "postgresql+psycopg2://user:pass@localhost:5432/opportunityos",
+            "OPPORTUNITYOS_FOUNDER_PASSWORD": "password",
+            "OPPORTUNITYOS_SESSION_SECRET": "secret",
+        }
+        with self.assertRaises(ConfigurationError) as ctx:
+            resolve_environment("api", env)
+        self.assertIn("loopback host rejected", str(ctx.exception))
+
+    def test_local_dev_allows_loopback(self) -> None:
+        env = {
+            "CLOUD_DATABASE_URL": "postgresql+psycopg2://user:pass@127.0.0.1:5432/opportunityos",
+            "OPPORTUNITYOS_FOUNDER_PASSWORD": "password",
+            "OPPORTUNITYOS_SESSION_SECRET": "secret",
+        }
+        resolved = resolve_environment("api", env)
+        self.assertEqual(resolved["OPPORTUNITYOS_DB_URL"], env["CLOUD_DATABASE_URL"])
+
 
 class HealthAndReadinessContractTest(unittest.TestCase):
     """Test that readiness/liveness probes do not scan corpus or rebuild feed."""

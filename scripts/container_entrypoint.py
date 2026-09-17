@@ -15,16 +15,25 @@ cross-role violations immediately exit non-zero.
 """
 from __future__ import annotations
 
+import ipaddress
 import os
+import re
 import signal
 import sys
 import threading
 from typing import Any, Callable, Mapping, Sequence
+from urllib.parse import urlsplit
 
 ROLES = ("api", "worker", "scheduler", "migrate", "readiness", "liveness")
 
 # Internal command string for scheduler loop execution
 SCHEDULER_INTERNAL_COMMAND = "_scheduler_loop"
+
+# Template / placeholder detection pattern
+PLACEHOLDER_PATTERN = re.compile(r"(?i)(replace[_ -]?me|placeholder|your[_ -]|<[^>]+>|\$\{|example\.)")
+
+# Permitted database URL schemes for cloud/production PostgreSQL
+VALID_DB_SCHEMES = {"postgresql", "postgresql+psycopg2"}
 
 
 class ContainerRuntimeError(RuntimeError):
@@ -43,49 +52,106 @@ class RoleSeparationError(ContainerRuntimeError):
     """Raised when role boundaries or separation invariants are violated."""
 
 
+def _check_malformed_value(name: str, value: str) -> str | None:
+    """Return diagnostic error string if value is malformed, otherwise None.
+
+    Never includes or echoes secret values in the diagnostic message.
+    """
+    if not value or not value.strip():
+        return f"Variable '{name}' is empty or whitespace-only"
+    if value != value.strip():
+        return f"Variable '{name}' contains leading or trailing whitespace"
+    if any(ord(char) < 32 or ord(char) == 127 for char in value):
+        return f"Variable '{name}' contains illegal control characters"
+    if PLACEHOLDER_PATTERN.search(value):
+        return f"Variable '{name}' contains placeholder or unconfigured template text"
+    return None
+
+
+def _is_loopback_host(host: str | None) -> bool:
+    """Return True if host resolves to localhost/loopback."""
+    if not host:
+        return True
+    host_lower = host.lower()
+    if host_lower in {"localhost", "host.docker.internal"} or host_lower.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 def resolve_environment(role: str, environ: Mapping[str, str] | None = None) -> dict[str, str]:
     """Validate and adapt runtime environment for the requested role.
 
-    Fails closed if required variables are missing. Safely maps CLOUD_DATABASE_URL
-    to OPPORTUNITYOS_DB_URL if set, while rejecting conflicting definitions.
+    Fails closed if required variables are missing or malformed. Safely maps
+    CLOUD_DATABASE_URL to OPPORTUNITYOS_DB_URL if set, while rejecting conflicting
+    definitions. Never prints secret values.
     """
     env = dict(os.environ if environ is None else environ)
 
-    # Bridge CLOUD_DATABASE_URL to OPPORTUNITYOS_DB_URL for legacy database consumers
+    # 1. Database URL aliasing and conflict detection
     cloud_db = env.get("CLOUD_DATABASE_URL")
     legacy_db = env.get("OPPORTUNITYOS_DB_URL")
 
     if cloud_db and not legacy_db:
         env["OPPORTUNITYOS_DB_URL"] = cloud_db
     elif cloud_db and legacy_db and cloud_db != legacy_db:
-        raise ConfigurationError("Conflicting variables: CLOUD_DATABASE_URL and OPPORTUNITYOS_DB_URL")
+        raise ConfigurationError("Conflicting variables: CLOUD_DATABASE_URL and OPPORTUNITYOS_DB_URL differ")
 
-    # Role-specific fail-closed requirements
+    # 2. Check missing vs malformed database URL for DB-dependent roles
     if role in ("api", "worker", "scheduler", "migrate", "readiness"):
-        if not env.get("OPPORTUNITYOS_DB_URL"):
+        active_db = env.get("OPPORTUNITYOS_DB_URL")
+        if not active_db:
             raise ConfigurationError(
                 f"Missing required database configuration for role '{role}': "
                 "OPPORTUNITYOS_DB_URL or CLOUD_DATABASE_URL must be set."
             )
+        malformed = _check_malformed_value("DATABASE_URL", active_db)
+        if malformed:
+            raise ConfigurationError(f"Malformed configuration: {malformed}")
 
+        try:
+            parsed = urlsplit(active_db)
+            if parsed.scheme not in VALID_DB_SCHEMES or not parsed.hostname:
+                raise ConfigurationError(
+                    f"Malformed database configuration: scheme must be one of {VALID_DB_SCHEMES}, got '{parsed.scheme}'"
+                )
+        except ValueError as exc:
+            raise ConfigurationError(f"Malformed database URL: unparseable endpoint ({exc})") from exc
+
+        # Production loopback rejection
+        is_cloud_mode = (
+            env.get("OPPORTUNITYOS_ENVIRONMENT", "").lower() in {"production", "prod", "cloud"}
+            or env.get("MODE", "").lower() == "cloud"
+        )
+        if is_cloud_mode and _is_loopback_host(parsed.hostname):
+            raise ConfigurationError(
+                "Invalid cloud database endpoint: loopback host rejected in production/cloud mode"
+            )
+
+    # 3. Role-specific required credentials
     if role == "api":
         missing = []
-        if not env.get("OPPORTUNITYOS_FOUNDER_PASSWORD"):
-            missing.append("OPPORTUNITYOS_FOUNDER_PASSWORD")
-        if not env.get("OPPORTUNITYOS_SESSION_SECRET"):
-            missing.append("OPPORTUNITYOS_SESSION_SECRET")
+        for var_name in ("OPPORTUNITYOS_FOUNDER_PASSWORD", "OPPORTUNITYOS_SESSION_SECRET"):
+            val = env.get(var_name)
+            if not val:
+                missing.append(var_name)
+            else:
+                malformed = _check_malformed_value(var_name, val)
+                if malformed:
+                    raise ConfigurationError(f"Malformed configuration: {malformed}")
         if missing:
             raise ConfigurationError(
                 f"Missing required API credentials: {', '.join(missing)}"
             )
 
-    # Optional cloud runtime bridge integration if available in repo
+    # 4. Optional cloud runtime bridge integration
     try:
         from scripts.cloud_runtime_bridge import plan_runtime_environment  # type: ignore
         try:
             plan_runtime_environment(role, env)
         except Exception:
-            # If bridge defines stricter cloud blockers, let specific role handle it
             pass
     except ImportError:
         pass
@@ -242,7 +308,6 @@ def main(argv: Sequence[str] | None = None, exec_fn: Callable[..., Any] | None =
 
     # Internal subcommands
     if role == SCHEDULER_INTERNAL_COMMAND:
-        # Sync environment
         resolve_environment("scheduler")
         return run_scheduler()
 
@@ -262,7 +327,6 @@ def main(argv: Sequence[str] | None = None, exec_fn: Callable[..., Any] | None =
 
     try:
         env = resolve_environment(role)
-        # Apply resolved environment to current process
         os.environ.update(env)
 
         if role == "readiness":
@@ -279,7 +343,6 @@ def main(argv: Sequence[str] | None = None, exec_fn: Callable[..., Any] | None =
         if exec_fn is not None:
             return exec_fn(cmd)
 
-        # In production Linux container: replace process so it becomes PID 1
         if hasattr(os, "execvp"):
             os.execvp(cmd[0], cmd)
         else:
