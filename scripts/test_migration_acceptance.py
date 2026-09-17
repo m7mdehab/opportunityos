@@ -54,6 +54,15 @@ class AcceptanceTests(unittest.TestCase):
         self.assertEqual(report["gates"]["A-9"]["status"], "NOT_RUN")
         self.assertNotIn("OPOS_SOURCE_DB_URL", json.dumps(report))
 
+    def test_reused_output_directory_cannot_replay_stale_snapshot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            (path / "source-baseline.json").write_text('{"private":"marker"}', encoding="utf-8")
+            report = acceptance.run(directory, connection_mode="direct")
+        self.assertEqual(report["stages"]["preflight"], "BLOCKED")
+        self.assertIsNone(report["alembic_revision"]["source"])
+        self.assertNotIn("marker", json.dumps(report))
+
 
 if __name__ == "__main__":
     unittest.main()

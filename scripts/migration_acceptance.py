@@ -86,8 +86,11 @@ def _gate_statuses(stages):
 
 
 def assemble(raw, workspace, source=None, target=None, *, dry_run=False):
-    source_snapshot = _load_snapshot(workspace / "source-baseline.json")
-    target_snapshot = _load_snapshot(workspace / "target-baseline.json")
+    source_snapshot = (_load_snapshot(workspace / "source-baseline.json")
+                       if raw["stages"].get("source_baseline") == "PASS" else None)
+    target_snapshot = (_load_snapshot(workspace / "target-baseline.json")
+                       if raw["stages"].get("restore_import") == "PASS" and
+                       raw["stages"].get("structural_parity") != "NOT_RUN" else None)
     tables = {}
     if source_snapshot and target_snapshot:
         for name in baseline.TABLES:
@@ -98,7 +101,7 @@ def assemble(raw, workspace, source=None, target=None, *, dry_run=False):
                             else "PASS" if source_count == target_count else "FAIL"}
     manifest_path = workspace / "database.dump.manifest.json"
     checksum = None
-    if manifest_path.is_file():
+    if raw["stages"].get("manifest_checksum") == "PASS" and manifest_path.is_file():
         try:
             checksum = db.verify_backup(workspace / "database.dump", manifest_path)["sha256"]
         except Exception:
@@ -145,6 +148,10 @@ def run(directory, *, dry_run=False, connection_mode="unknown", artifact_backend
         confirm_restore=False, source_writes_paused=False, target_writes_disabled=False,
         allow_insecure_local=False, _test_hook=None):
     workspace = Path(directory).expanduser().resolve()
+    if not workspace.is_dir() or any(workspace.iterdir()):
+        raw = cutover.report_template()
+        cutover.record(raw, "preflight", "BLOCKED", {"reason": "output_directory_must_be_new_and_empty"})
+        return assemble(cutover.finish(raw), workspace, dry_run=dry_run)
     try:
         source = db.config("source")
         target = db.target_config()
