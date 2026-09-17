@@ -1,0 +1,1 @@
+Start from branch `work/fr007-codex-cloud-config` and execute exactly `reports/evidence/FR-007/orders/CODEX-W0-CONFIG.md`. Do not broaden scope. Commit your changes to that branch and return the commit SHA plus acceptance-output path. Do not merge.
