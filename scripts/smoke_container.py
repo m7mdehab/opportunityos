@@ -401,12 +401,19 @@ class OCIContainerSmokeRunner:
     # Step 12: In-Container Truth Pack Loading
     def smoke_in_container_truth_pack_loading(self) -> SmokeStepResult:
         """Step 12: Verify Truth Pack loading executes inside container without host mounts."""
+        probe_code = (
+            "from truth.pack import load_truth_pack; "
+            "from truth.test_pack import _minimal_pack_yaml; "
+            "import urllib.parse; "
+            "p = load_truth_pack('data:text/yaml,' + urllib.parse.quote(_minimal_pack_yaml()), allow_data_uri=True); "
+            "print('TRUTH_LOADED_OK:', p.report.valid)"
+        )
         cmd = [
             self.engine, "run", "--rm",
             "--entrypoint", "python",
             self.image_tag,
             "-c",
-            "from truth.pack import load_truth_pack; p = load_truth_pack('data:text/yaml,identity:\\n  name: Test Founder\\ncareer_profile:\\n  id: cp-1\\n  employment: []\\n  red_lines: []', allow_data_uri=True); print('TRUTH_LOADED_OK:', p.report.valid)",
+            probe_code,
         ]
         res = self._exec(cmd, timeout=30.0)
         passed = (res.returncode == 0 and "TRUTH_LOADED_OK: True" in res.stdout)
