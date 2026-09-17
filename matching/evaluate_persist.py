@@ -309,16 +309,20 @@ def evaluate_and_store(
         truth_pack_hash=truth_pack_hash,
         values=values,
     )
-    try:
-        from storage.feed_projection_service import refresh_opportunity_projection
+    from storage.feed_projection_service import refresh_opportunity_projection
 
-        refresh_opportunity_projection(
+    try:
+        projection = refresh_opportunity_projection(
             repository.session,
             opportunity_id=opportunity.id,
             truth_pack_hash=truth_pack_hash,
             truth_graph=truth_graph,
             projected_at=resolved_evaluated_at,
         )
+        if projection is None:
+            raise RuntimeError("evaluation persisted but feed projection was not published")
+        repository.session.commit()
     except Exception:
-        pass
+        repository.session.rollback()
+        raise
     return evaluation_record

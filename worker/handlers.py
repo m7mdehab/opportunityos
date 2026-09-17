@@ -17,7 +17,8 @@ Three job types are supported:
     persist counts), and an ``evaluate_new`` job is enqueued as a backfill
     safety net for whatever the inline pass missed.
   - ``evaluate_new``: evaluates every opportunity that has no
-    ``match_evaluations`` row for the *current* founder truth-pack hash (see
+    ``match_evaluations`` or ``feed_projection`` row for the *current*
+    founder truth-pack hash (see
     ``matching.evaluate_persist.evaluate_and_store``), reconstructing each
     ``Opportunity`` best-effort from ``OpportunityRecord``/
     ``field_provenances`` (see ``_reconstruct_opportunity`` -- this is
@@ -33,6 +34,8 @@ import json
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping, MutableMapping, Optional
+
+from sqlalchemy import or_
 
 from core.logging import get_logger, redact_data
 from matching.evaluate_persist import evaluate_and_store
@@ -55,6 +58,7 @@ from opportunity.pipeline import OpportunityPipeline
 from opportunity.registry import SourceRegistry
 from opportunity.transport import AcquisitionService, BaseTransport, HttpTransport, RateLimiter
 from storage.models import FieldProvenanceRecord, MatchEvaluationRecord, OpportunityRecord, SourcePollRunRecord
+from storage.feed_projection import FeedProjectionRecord
 try:
     # A1M's own reextract_all interface point (see below) into the concurrent
     # A1-extract work order's extraction functions. Imported defensively: if
@@ -759,8 +763,8 @@ def make_evaluate_new_handler(
 ) -> Callable[[dict], None]:
     """Build an ``evaluate_new`` handler bound to the given (injectable) dependencies.
 
-    Evaluates every opportunity that has no ``match_evaluations`` row for the
-    *current* founder truth-pack hash, via
+    Evaluates every opportunity that has no ``match_evaluations`` or
+    ``feed_projection`` row for the *current* founder truth-pack hash, via
     ``matching.evaluate_persist.evaluate_and_store``.
 
     ``pack_loader`` / ``truth_pack_path`` are the injectable pack source:
@@ -810,10 +814,9 @@ def make_evaluate_new_handler(
         try:
             repository = StorageRepository(session)
 
-            # Let PostgreSQL return only rows that are actually missing an
-            # evaluation for this pack.  Loading every opportunity (including
-            # its full description) and filtering in Python made each no-op
-            # safety-net job scan the entire production corpus.
+            # A committed evaluation without its projection is unfinished
+            # publication. Retry it after a projection failure instead of
+            # treating the evaluation row alone as successful completion.
             evaluated_for_pack = (
                 session.query(MatchEvaluationRecord.opportunity_id)
                 .filter(
@@ -822,9 +825,17 @@ def make_evaluate_new_handler(
                 )
                 .exists()
             )
+            projected_for_pack = (
+                session.query(FeedProjectionRecord.opportunity_id)
+                .filter(
+                    FeedProjectionRecord.opportunity_id == OpportunityRecord.id,
+                    FeedProjectionRecord.truth_pack_hash == truth_pack_hash,
+                )
+                .exists()
+            )
             pending_records = (
                 session.query(OpportunityRecord)
-                .filter(~evaluated_for_pack)
+                .filter(or_(~evaluated_for_pack, ~projected_for_pack))
                 .all()
             )
 

@@ -44,6 +44,7 @@ from storage.models import (
     FounderSavedViewRecord,
     ArtifactCacheRecord,
 )
+from storage.feed_projection import FeedProjectionRecord
 
 # Repository root, derived from this file's location (not the process CWD).
 # Used to resolve alembic.ini itself AND (see _build_alembic_config) to make
@@ -88,6 +89,7 @@ DUMP_SECTION_TABLE_MAP = {
     "worker_jobs": "worker_jobs",
     "founder_feedback": "founder_feedback",
     "match_evaluations": "match_evaluations",
+    "feed_projection": "feed_projection",
     "source_poll_runs": "source_poll_runs",
     "founder_opportunity_views": "founder_opportunity_views",
     "founder_triage_states": "founder_triage_states",
@@ -202,6 +204,7 @@ def dump_database(db_url: str, output_file: str) -> int:
         "worker_jobs": [],
         "founder_feedback": [],
         "match_evaluations": [],
+        "feed_projection": [],
         "source_poll_runs": [],
         "founder_opportunity_views": [],
         "founder_triage_states": [],
@@ -359,6 +362,19 @@ def dump_database(db_url: str, output_file: str) -> int:
             "evaluated_at": me.evaluated_at.isoformat() if me.evaluated_at else None,
             "created_at": me.created_at.isoformat() if me.created_at else None,
         })
+
+    # Persisted feed read model is part of the backup, including visibility
+    # and ranking. PostgreSQL's tsvector is regenerated from search_text.
+    for projection in session.query(FeedProjectionRecord).all():
+        row = {}
+        for column in FeedProjectionRecord.__table__.columns:
+            value = getattr(projection, column.name)
+            if column.name == "search_tsv":
+                value = None
+            elif isinstance(value, datetime):
+                value = value.isoformat()
+            row[column.name] = value
+        data["feed_projection"].append(row)
 
     # 12. Source Poll Runs (no FK dependency)
     for spr in session.query(SourcePollRunRecord).all():
@@ -750,6 +766,20 @@ def restore_database(dump_file: str, db_url: str) -> None:
             me_dict["created_at"] = datetime.fromisoformat(me_dict["created_at"])
         me = MatchEvaluationRecord(**me_dict)
         session.merge(me)
+
+    for projection_dict in data.get("feed_projection", []):
+        for date_field in ("evaluated_at", "projected_at"):
+            if projection_dict.get(date_field):
+                projection_dict[date_field] = datetime.fromisoformat(projection_dict[date_field])
+        session.merge(FeedProjectionRecord(**projection_dict))
+
+    session.flush()
+    if session.bind is not None and session.bind.dialect.name == "postgresql":
+        from sqlalchemy import text
+
+        session.execute(text(
+            "UPDATE feed_projection SET search_tsv = to_tsvector('simple', search_text)"
+        ))
 
     # 12. Source Poll Runs -- no FK dependency.
     for spr_dict in data.get("source_poll_runs", []):

@@ -98,8 +98,8 @@ def ordered_feed_query(query: Query) -> Query:
     """Apply deterministic founder-feed ordering entirely in SQL."""
 
     return query.order_by(
-        FeedProjectionRecord.priority_score.desc(),
-        FeedProjectionRecord.fit_score.desc(),
+        FeedProjectionRecord.priority_score.desc().nullslast(),
+        FeedProjectionRecord.fit_score.desc().nullslast(),
         FeedProjectionRecord.posted_date.desc().nullslast(),
         FeedProjectionRecord.id.asc(),
     )

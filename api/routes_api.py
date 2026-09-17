@@ -148,7 +148,7 @@ def _ranking_filter_contexts(
         definition = FILTER_DEFINITIONS_BY_ID[filter_id]
         enabled = row.enabled if row is not None else definition.default_enabled
         mode = row.mode if row is not None else definition.default_mode
-        return enabled and mode in {"hide", "rank_only"}
+        return enabled and mode in {"hide", "rank_only", "label_only"}
 
     compensation = filter_settings.get("compensation_floor")
     compensation_facet = facet_settings.get("compensation_stated")
@@ -672,6 +672,20 @@ class FilterUpdateRequest(BaseModel):
     params: dict[str, Any] | None = None
 
 
+def _refresh_current_pack_projections(session: Session, request: Request) -> int:
+    """Publish a settings change only for the loaded Founder pack version."""
+    loaded_pack = request.app.state.loaded_truth_pack
+    if loaded_pack is None:
+        return 0
+    from storage.feed_projection_service import refresh_existing_feed_projections
+
+    return refresh_existing_feed_projections(
+        session,
+        truth_graph=loaded_pack.graph,
+        truth_pack_hash=loaded_pack.truth_pack_hash,
+    )
+
+
 @router.put("/filters/{filter_id}")
 def update_filter(
     filter_id: str,
@@ -721,6 +735,9 @@ def update_filter(
     if validated_params is not None:
         row.params_json = json.dumps(validated_params)
     row.updated_at = now
+    session.commit()
+
+    _refresh_current_pack_projections(session, request)
     session.commit()
 
     params = json.loads(row.params_json) if row.params_json else {}
@@ -887,7 +904,7 @@ class FacetUpdateRequest(BaseModel):
 
 
 @router.put("/facets/{facet_id}")
-def update_facet(facet_id: str, payload: FacetUpdateRequest, response: Response, session: Session = Depends(get_db)):
+def update_facet(facet_id: str, payload: FacetUpdateRequest, response: Response, request: Request, session: Session = Depends(get_db)):
     fd = FACET_DEFINITIONS_BY_ID.get(facet_id)
     if fd is None:
         raise HTTPException(status_code=404, detail=f"unknown facet_id: {facet_id!r}")
@@ -910,6 +927,9 @@ def update_facet(facet_id: str, payload: FacetUpdateRequest, response: Response,
         row.mode = mode
         row.values_json = values_json
         row.updated_at = now
+    session.commit()
+
+    _refresh_current_pack_projections(session, request)
     session.commit()
 
     return {"facet_id": facet_id, "mode": mode, "include": include, "exclude": exclude}
@@ -1001,11 +1021,13 @@ class UnhideByReasonRequest(BaseModel):
 
 
 @router.post("/hidden-reasons/unhide")
-def unhide_by_reason_route(payload: UnhideByReasonRequest, session: Session = Depends(get_db)):
+def unhide_by_reason_route(payload: UnhideByReasonRequest, request: Request, session: Session = Depends(get_db)):
     now = to_naive_utc(datetime.now(timezone.utc))
     ok = unhide_by_reason(session, payload.reason, now)
     if not ok:
         raise HTTPException(status_code=404, detail=f"unrecognised reason: {payload.reason!r}")
+    _refresh_current_pack_projections(session, request)
+    session.commit()
     return {"reason": payload.reason, "status": "unhidden"}
 
 
@@ -1015,6 +1037,7 @@ def list_opportunities(
     track: str | None = None,
     decision: str | None = None,
     min_score: float | None = None,
+    max_score: float | None = None,
     since: str | None = None,
     q: str | None = None,
     include_hidden: bool = False,
@@ -1059,28 +1082,12 @@ def list_opportunities(
             else:
                 truth_pack_hash = "active"
 
-    # If projections do not yet exist for this truth_pack_hash, rebuild once
-    if (
-        session.query(FeedProjectionRecord.id)
-        .filter(FeedProjectionRecord.truth_pack_hash == truth_pack_hash)
-        .first()
-        is None
-        and session.query(OpportunityRecord.id).first() is not None
-    ):
-        from storage.feed_projection_service import rebuild_feed_projection
-
-        truth_graph = _truth_graph_from_request(request)
-        try:
-            rebuild_feed_projection(session, truth_graph=truth_graph, truth_pack_hash=truth_pack_hash)
-            session.commit()
-        except Exception:
-            session.rollback()
-
     spec = FeedQuerySpec(
         truth_pack_hash=truth_pack_hash,
         track=track,
         decision=decision,
         min_score=min_score,
+        max_score=max_score,
         since=since,
         q=q,
         include_hidden=include_hidden,

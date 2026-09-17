@@ -23,7 +23,8 @@ from storage.models import MatchEvaluationRecord, OpportunityRecord
 from storage.repository import StorageRepository, backfill_search_tsv
 
 from api.search import is_query_unparseable, rank_key, search_opportunity_ids
-from api.test_api import ApiTestCase
+from api.test_api import ApiTestCase, _install_truth_graph
+from truth.graph import TruthGraph
 
 
 # ---------------------------------------------------------------------------
@@ -235,6 +236,7 @@ class FacetCompositionTest(ApiTestCase):
     def setUp(self):
         super().setUp()
         self.app = self.make_app()
+        _install_truth_graph(self.app, TruthGraph())
         self.client = self.logged_in_client(self.app)
 
     def test_search_intersects_with_active_hide_filter(self):

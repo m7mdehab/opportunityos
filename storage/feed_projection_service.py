@@ -343,6 +343,46 @@ def rebuild_feed_projection(
     )
 
 
+def refresh_existing_feed_projections(
+    session: Session, *, truth_graph: Any, truth_pack_hash: str, batch_size: int = 500
+) -> int:
+    """Refresh persisted feed rows after an explicit founder settings change.
+
+    This runs on the write/maintenance path. The feed GET never calls it.
+    Only existing projection identities for the graph's authoritative pack
+    hash are refreshed. Historical and synthetic profiles remain untouched.
+    """
+    if not truth_pack_hash or truth_pack_hash == "active":
+        raise ValueError("an authoritative truth_pack_hash is required")
+    if batch_size < 1:
+        raise ValueError("batch_size must be >= 1")
+    count = 0
+    cursor = None
+    while True:
+        query = session.query(
+            FeedProjectionRecord.id,
+            FeedProjectionRecord.opportunity_id,
+        ).filter(
+            FeedProjectionRecord.truth_pack_hash == truth_pack_hash
+        ).order_by(FeedProjectionRecord.id.asc())
+        if cursor is not None:
+            query = query.filter(FeedProjectionRecord.id > cursor)
+        rows = query.limit(batch_size).all()
+        if not rows:
+            break
+        for identity, opportunity_id in rows:
+            refresh_opportunity_projection(
+                session,
+                opportunity_id=opportunity_id,
+                truth_pack_hash=truth_pack_hash,
+                truth_graph=truth_graph,
+                allow_unevaluated=True,
+            )
+            count += 1
+        cursor = rows[-1][0]
+    return count
+
+
 def refresh_opportunity_projection(
     session: Session,
     *,
