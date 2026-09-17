@@ -424,6 +424,23 @@ class ApiTestCase(unittest.TestCase):
         # backfill here keeps every seeded row searchable without changing
         # `seed_opportunity`'s return value or any of its existing callers.
         backfill_search_tsv(self.session)
+        graph = None
+        pack_hash = "hash-fixture"
+        if hasattr(self, "app") and hasattr(self.app.state, "loaded_truth_pack"):
+            pack = self.app.state.loaded_truth_pack
+            if pack is not None:
+                graph = pack.graph
+                pack_hash = pack.truth_pack_hash
+        from storage.feed_projection_service import refresh_opportunity_projection
+
+        refresh_opportunity_projection(
+            self.session,
+            opportunity_id=opp_id,
+            truth_pack_hash=pack_hash,
+            truth_graph=graph,
+            allow_unevaluated=True,
+        )
+        self.session.commit()
         return record
 
     def seed_compensation(
@@ -519,6 +536,20 @@ class ApiTestCase(unittest.TestCase):
             evaluated_at=evaluated_at or datetime.now(timezone.utc),
         )
         self.session.add(record)
+        self.session.commit()
+        graph = None
+        if hasattr(self, "app") and hasattr(self.app.state, "loaded_truth_pack"):
+            pack = self.app.state.loaded_truth_pack
+            if pack is not None:
+                graph = pack.graph
+        from storage.feed_projection_service import refresh_opportunity_projection
+
+        refresh_opportunity_projection(
+            self.session,
+            opportunity_id=opp_id,
+            truth_pack_hash=truth_pack_hash,
+            truth_graph=graph,
+        )
         self.session.commit()
         return record
 

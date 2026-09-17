@@ -45,10 +45,10 @@ class FeedProjectionRecord(Base):
     remote_scope_regions = Column(Text, nullable=True)
     employment_type = Column(String(24), nullable=False)
 
-    qualification_decision = Column(String(32), nullable=False)
-    fit_score = Column(Float, nullable=False)
-    priority_score = Column(Float, nullable=False)
-    reasons_json = Column(Text, nullable=False)
+    qualification_decision = Column(String(32), nullable=True)
+    fit_score = Column(Float, nullable=True)
+    priority_score = Column(Float, nullable=True)
+    reasons_json = Column(Text, nullable=False, default="[]")
 
     red_line_match = Column(Boolean, nullable=False, default=False)
     excluded_industry_match = Column(Boolean, nullable=False, default=False)

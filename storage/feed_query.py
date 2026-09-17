@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
-from sqlalchemy import func
+from sqlalchemy import func, literal_column
 from sqlalchemy.orm import Query, Session
 
 from storage.feed_projection import FeedProjectionRecord
@@ -23,6 +23,7 @@ class FeedQuerySpec:
     decision: str | None = None
     min_score: float | None = None
     max_score: float | None = None
+    since: str | None = None
     work_mode: str | None = None
     location_country: str | None = None
     title_family: str | None = None
@@ -74,6 +75,8 @@ def build_feed_query(session: Session, spec: FeedQuerySpec) -> Query:
         query = query.filter(FeedProjectionRecord.fit_score >= spec.min_score)
     if spec.max_score is not None:
         query = query.filter(FeedProjectionRecord.fit_score <= spec.max_score)
+    if spec.since:
+        query = query.filter(FeedProjectionRecord.posted_date >= spec.since)
     if spec.work_mode:
         query = query.filter(FeedProjectionRecord.work_mode == spec.work_mode)
     if spec.location_country:
@@ -85,7 +88,7 @@ def build_feed_query(session: Session, spec: FeedQuerySpec) -> Query:
     if spec.source_id:
         query = query.filter(FeedProjectionRecord.source_id == spec.source_id)
     if spec.q and spec.q.strip():
-        tsquery = func.websearch_to_tsquery("simple", spec.q.strip())
+        tsquery = func.websearch_to_tsquery(literal_column("'simple'"), spec.q.strip())
         query = query.filter(FeedProjectionRecord.search_tsv.op("@@")(tsquery))
 
     return query

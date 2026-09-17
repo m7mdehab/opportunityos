@@ -3,21 +3,21 @@
 
 OpportunityOS is an opportunity-acquisition platform for MENA.
 Last shipped: BRIEF-FR-006 — 2026-09-13.
-Active work: none.
-Phase status: passed.
+Active work: BRIEF-FR-007.
+Phase status: in progress.
 Blocked: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha (strictly blocked until Founder Web Alpha is live and validated).
 Next: Founder Web Alpha is publicly reachable and authentication-protected.
 
 ## Repository
 
-- **Generated:** 2026-09-15T21:03:10Z
-- **State generated at commit:** `67dcd5e` — docs: record Founder Alpha production verification
+- **Generated:** 2026-09-17T10:01:21Z
+- **State generated at commit:** `2356ebe` — fr007: test SQL-native feed query contract
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
 
-- **Brief:** none
-- **Phase status:** passed
+- **Brief:** BRIEF-FR-007
+- **Phase status:** in progress
 - **Open acceptance items:** 0
 - None
 
@@ -64,6 +64,7 @@ Next: Founder Web Alpha is publicly reachable and authentication-protected.
 - [ADR-0017: The CV/cover-letter document model](adr/ADR-0017-document-model.md)
 - [ADR-0018 — Phone Token Metric Disambiguation in Claim Validator](adr/ADR-0018-phone-token-metric-disambiguation.md)
 - [ADR-0021 — Canonical Artifact Claim Validation Boundary](adr/ADR-0021-artifact-validator-authority.md)
+- [ADR-0022 — Cloud-Native Runtime and Supabase Data Plane](adr/ADR-0022-cloud-native-runtime-and-supabase-data-plane.md)
 
 ## Blocked Items
 
