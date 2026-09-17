@@ -136,6 +136,43 @@ class BridgeTests(unittest.TestCase):
         env = build_runtime_environment("migrate", migrate_env)
         self.assertEqual(env["OPPORTUNITYOS_DB_URL"], DB)
 
+    def test_api_jwks_alone_does_not_clear_blockers(self):
+        jwks_env = {
+            "CLOUD_DATABASE_URL": DB,
+            "AUTH_JWKS_URL": "https://auth.invalid/jwks",
+            "AUTH_SERVICE_KEY": "synthetic-auth-key",
+            "OPPORTUNITYOS_FOUNDER_PASSWORD": "valid-founder-password",
+            "OPPORTUNITYOS_SESSION_SECRET": "valid-session-secret-32-chars",
+        }
+        # With founder secrets it passes
+        self.assertEqual(plan_runtime_environment("api", jwks_env).blockers, ())
+
+        # Without founder secrets, JWKS alone fails to validate or leaves blockers
+        jwks_only = {
+            "CLOUD_DATABASE_URL": DB,
+            "AUTH_JWKS_URL": "https://auth.invalid/jwks",
+            "AUTH_SERVICE_KEY": "synthetic-auth-key",
+        }
+        with self.assertRaises(CompatibilityError) as caught:
+            plan_runtime_environment("api", jwks_only)
+        self.assertIn("OPPORTUNITYOS_FOUNDER_PASSWORD", str(caught.exception))
+
+    def test_worker_role_local_container_truth_pack_is_blocked(self):
+        local_worker = dict(
+            WORKER,
+            OPPORTUNITYOS_TRUTH_PACK_PATH="/app/truth/founder.yaml",
+        )
+        plan = plan_runtime_environment("worker", local_worker)
+        self.assertIn("OPPORTUNITYOS_TRUTH_PACK_URI", plan.blockers)
+
+    def test_worker_role_https_without_hash_has_hash_blocker(self):
+        worker_no_hash = dict(
+            WORKER,
+            OPPORTUNITYOS_TRUTH_PACK_URI="https://storage.supabase.co/truth/pack.yaml",
+        )
+        plan = plan_runtime_environment("worker", worker_no_hash)
+        self.assertIn("OPPORTUNITYOS_TRUTH_PACK_HASH", plan.blockers)
+
     def test_liveness_role_has_zero_blockers(self):
         plan = plan_runtime_environment("liveness", {})
         self.assertEqual(plan.blockers, ())
@@ -145,4 +182,5 @@ class BridgeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
 

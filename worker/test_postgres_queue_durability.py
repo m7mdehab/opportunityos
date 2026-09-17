@@ -20,7 +20,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 from storage.engine import get_engine, get_session_factory
-from storage.models import WorkerJobRecord
+from storage.models import Base, WorkerJobRecord
 from worker.queue import BackgroundWorkerQueue
 from worker.scheduler import PollScheduler
 
@@ -33,23 +33,48 @@ def _get_pg_db_url() -> str | None:
     return None
 
 
-@unittest.skipUnless(
-    _get_pg_db_url() is not None,
-    "Real PostgreSQL database URL required for postgres queue durability tests"
+def _should_skip() -> bool:
+    if os.environ.get("CI"):
+        return False
+    return _get_pg_db_url() is None
+
+
+@unittest.skipIf(
+    _should_skip(),
+    "Real PostgreSQL database URL required for postgres queue durability tests (skipped outside CI when DB not configured)"
 )
 class TestPostgresQueueDurability(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.db_url = _get_pg_db_url()
+        if cls.db_url is None:
+            raise AssertionError(
+                "PostgreSQL database URL (CLOUD_DATABASE_URL or OPPORTUNITYOS_DB_URL) "
+                "required for postgres queue durability tests"
+            )
         cls.engine = get_engine(cls.db_url)
+        Base.metadata.create_all(cls.engine)
         cls.session_factory = get_session_factory(cls.engine)
 
     @classmethod
     def tearDownClass(cls) -> None:
-        cls.engine.dispose()
+        if hasattr(cls, "engine"):
+            cls.engine.dispose()
 
     def setUp(self) -> None:
+        if os.environ.get("CI") and _get_pg_db_url() is None:
+            self.fail("CI environment requires real PostgreSQL database for worker durability suite")
         self.test_job_ids: list[str] = []
+        session = self.session_factory()
+        try:
+            session.query(WorkerJobRecord).filter(
+                WorkerJobRecord.job_type == "poll_source"
+            ).delete(synchronize_session=False)
+            session.commit()
+        except Exception:
+            session.rollback()
+        finally:
+            session.close()
 
     def tearDown(self) -> None:
         if self.test_job_ids:
@@ -220,6 +245,8 @@ class TestPostgresQueueDurability(unittest.TestCase):
             job_id = self._enqueue(q, job_type="poll_source", payload={"source_id": "ted", "feed_id": "all"})
 
             enqueued = scheduler.run_once()
+            for eid in enqueued:
+                self.test_job_ids.append(eid)
             active_ted_jobs = session.query(WorkerJobRecord).filter(
                 WorkerJobRecord.job_type == "poll_source",
                 WorkerJobRecord.status.in_(["PENDING", "RETRY", "RUNNING"]),

@@ -57,11 +57,9 @@ def validate(role: str, environ: dict[str, str]) -> list[str]:
     if role not in REQUIRED:
         return [f"unsupported role: {role}"]
     if role == "api":
-        if "AUTH_JWKS_URL" in environ:
-            req = ("CLOUD_DATABASE_URL", "AUTH_JWKS_URL", "AUTH_ISSUER", "AUTH_AUDIENCE", "AUTH_SERVICE_KEY", "STORAGE_SERVICE_KEY")
-        else:
-            req = ("CLOUD_DATABASE_URL", "OPPORTUNITYOS_FOUNDER_PASSWORD", "OPPORTUNITYOS_SESSION_SECRET")
+        req = ("CLOUD_DATABASE_URL", "OPPORTUNITYOS_FOUNDER_PASSWORD", "OPPORTUNITYOS_SESSION_SECRET")
         return [name for name in req if invalid(name, environ.get(name, ""))]
+
     if role in ("worker", "scheduler"):
         req = ("CLOUD_DATABASE_URL",)
         failures = [name for name in req if invalid(name, environ.get(name, ""))]

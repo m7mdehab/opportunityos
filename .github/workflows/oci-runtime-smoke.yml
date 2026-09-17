@@ -76,3 +76,13 @@ jobs:
             --require-engine \
             --engine docker \
             --db-url "postgresql+psycopg2://opportunityos:${{ github.run_id }}@127.0.0.1:5432/opportunityos_smoke"
+      - name: Install Dependencies
+        run: |
+          pip install --no-cache-dir .
+      - name: Run PostgreSQL Queue Durability Suite
+        env:
+          CI: "true"
+          OPPORTUNITYOS_DB_URL: "postgresql+psycopg2://opportunityos:${{ github.run_id }}@127.0.0.1:5432/opportunityos_smoke"
+        run: |
+          python -m unittest worker.test_postgres_queue_durability -v
+

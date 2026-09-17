@@ -53,6 +53,15 @@ class CheckCloudReadinessTest(unittest.TestCase):
         ]
         return mock_inspector
 
+    def _mock_engine(self, mock_conn=None):
+        if mock_conn is None:
+            mock_conn = MagicMock()
+            mock_conn.execute.return_value.scalar.return_value = "0006_feed_projection"
+        mock_engine = MagicMock()
+        mock_engine.dialect.name = "postgresql"
+        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+        return mock_engine
+
     def test_secrets_and_config_passes_with_valid_env(self) -> None:
         result = check_secrets_and_config("all", self.valid_env)
         self.assertTrue(result.passed)
@@ -75,11 +84,7 @@ class CheckCloudReadinessTest(unittest.TestCase):
         self.assertIn("localhost/loopback", result.message)
 
     def test_database_and_schema_passes_when_all_tables_present(self) -> None:
-        mock_conn = MagicMock()
-        mock_conn.execute.return_value.scalar.return_value = "0006_feed_projection"
-
-        mock_engine = MagicMock()
-        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+        mock_engine = self._mock_engine()
 
         with unittest.mock.patch("sqlalchemy.inspect") as mock_inspect:
             mock_inspect.return_value = self._mock_inspector()
@@ -88,9 +93,7 @@ class CheckCloudReadinessTest(unittest.TestCase):
             self.assertTrue(all(r.passed for r in results))
 
     def test_database_and_schema_fails_when_tables_missing(self) -> None:
-        mock_conn = MagicMock()
-        mock_engine = MagicMock()
-        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+        mock_engine = self._mock_engine()
 
         with unittest.mock.patch("sqlalchemy.inspect") as mock_inspect:
             mock_inspector = MagicMock()
@@ -104,8 +107,7 @@ class CheckCloudReadinessTest(unittest.TestCase):
 
     def test_readiness_does_not_scan_opportunity_corpus(self) -> None:
         mock_conn = MagicMock()
-        mock_engine = MagicMock()
-        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+        mock_engine = self._mock_engine(mock_conn=mock_conn)
 
         with unittest.mock.patch("sqlalchemy.inspect") as mock_inspect:
             mock_inspect.return_value = self._mock_inspector()
@@ -121,9 +123,7 @@ class CheckCloudReadinessTest(unittest.TestCase):
                 self.assertNotIn("match_evaluations", sql_text)
 
     def test_cli_exit_code_zero_when_role_passes(self) -> None:
-        mock_conn = MagicMock()
-        mock_engine = MagicMock()
-        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+        mock_engine = self._mock_engine()
 
         with unittest.mock.patch("sqlalchemy.inspect") as mock_inspect:
             mock_inspect.return_value = self._mock_inspector()
@@ -135,9 +135,7 @@ class CheckCloudReadinessTest(unittest.TestCase):
                     self.assertEqual(code, 0, f"Role '{r}' expected exit code 0, got {code}")
 
     def test_cli_exit_code_two_when_role_has_unresolved_blockers(self) -> None:
-        mock_conn = MagicMock()
-        mock_engine = MagicMock()
-        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+        mock_engine = self._mock_engine()
 
         with unittest.mock.patch("sqlalchemy.inspect") as mock_inspect:
             mock_inspect.return_value = self._mock_inspector()
@@ -152,9 +150,7 @@ class CheckCloudReadinessTest(unittest.TestCase):
                 self.assertEqual(code, 2)
 
     def test_cli_exit_code_two_when_worker_missing_truth_pack(self) -> None:
-        mock_conn = MagicMock()
-        mock_engine = MagicMock()
-        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+        mock_engine = self._mock_engine()
 
         env_without_truth = {
             "CLOUD_DATABASE_URL": "postgresql+psycopg2" + "://user:pass" + "@" + "db.cloud.invalid:5432/opportunityos",
@@ -172,6 +168,7 @@ class CheckCloudReadinessTest(unittest.TestCase):
                 code_all = main(["--role", "all", "--quiet"], engine=mock_engine)
                 self.assertEqual(code_all, 2, "all without truth pack must exit 2 (BLOCKED)")
 
+
     def test_cli_exit_code_one_when_prerequisite_fails(self) -> None:
         empty_env = {}
         with unittest.mock.patch.dict("os.environ", empty_env, clear=True):
@@ -184,11 +181,13 @@ class CheckCloudReadinessTest(unittest.TestCase):
         self.assertTrue(res_founder.passed)
         self.assertIn("Founder", res_founder.name)
 
-        # JWKS credentials pass
+        # JWKS alone returns BLOCKED for FR-007 (parked for BRIEF-007)
         jwks_env = {"AUTH_JWKS_URL": "https://auth.invalid/jwks", "AUTH_SERVICE_KEY": "syn-key"}
         res_jwks = check_authentication(jwks_env)
-        self.assertTrue(res_jwks.passed)
+        self.assertEqual("BLOCKED", res_jwks.status)
         self.assertIn("JWKS", res_jwks.name)
+        self.assertIn("OPPORTUNITYOS_FOUNDER_PASSWORD", res_jwks.blockers)
+        self.assertIn("OPPORTUNITYOS_SESSION_SECRET", res_jwks.blockers)
 
         # Missing credentials return BLOCKED
         res_missing = check_authentication({})
@@ -207,6 +206,15 @@ class CheckCloudReadinessTest(unittest.TestCase):
         res_no_hash = check_truth_pack({"OPPORTUNITYOS_TRUTH_PACK_URI": "https://bucket.s3.invalid/pack.yaml"})
         self.assertEqual("BLOCKED", res_no_hash.status)
         self.assertIn("Missing required OPPORTUNITYOS_TRUTH_PACK_HASH", res_no_hash.message)
+
+        # Local container filesystem path returns BLOCKED for worker
+        res_local_worker = check_truth_pack({"OPPORTUNITYOS_TRUTH_PACK_URI": "/app/truth/founder.yaml"}, role="worker")
+        self.assertEqual("BLOCKED", res_local_worker.status)
+        self.assertIn("Local or container filesystem", res_local_worker.message)
+
+        # Local container filesystem path returns BLOCKED for all
+        res_local_all = check_truth_pack({"OPPORTUNITYOS_TRUTH_PACK_URI": "/app/truth/founder.yaml"}, role="all")
+        self.assertEqual("BLOCKED", res_local_all.status)
 
         # Unset returns BLOCKED for worker
         res_unset_worker = check_truth_pack({}, role="worker")
@@ -230,12 +238,22 @@ class CheckCloudReadinessTest(unittest.TestCase):
         self.assertIn("Forbidden", res_forbidden.message)
 
     def test_check_queue_durability(self) -> None:
-        mock_engine = MagicMock()
+        mock_engine = self._mock_engine()
         with unittest.mock.patch("sqlalchemy.inspect") as mock_inspect:
             mock_inspect.return_value = self._mock_inspector()
             res = check_queue_durability(engine=mock_engine)
             self.assertTrue(res.passed)
             self.assertIn("worker_jobs", res.message)
+
+        # Fails when dialect is not postgresql
+        mock_engine_sqlite = MagicMock()
+        mock_engine_sqlite.dialect.name = "sqlite"
+        with unittest.mock.patch("sqlalchemy.inspect") as mock_inspect:
+            mock_inspect.return_value = self._mock_inspector()
+            res_sqlite = check_queue_durability(engine=mock_engine_sqlite)
+            self.assertFalse(res_sqlite.passed)
+            self.assertEqual("FAIL", res_sqlite.status)
+            self.assertIn("Non-PostgreSQL dialect 'sqlite' detected", res_sqlite.message)
 
         # Fails when table missing
         with unittest.mock.patch("sqlalchemy.inspect") as mock_inspect:
@@ -250,6 +268,7 @@ class CheckCloudReadinessTest(unittest.TestCase):
         for role in ("api", "worker", "scheduler", "migrate"):
             res = check_single_role_autonomy(role, self.valid_env)
             self.assertTrue(res.passed, f"Role '{role}' expected autonomous pass, got: {res.message}")
+
 
 
 if __name__ == "__main__":

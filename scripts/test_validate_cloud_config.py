@@ -25,16 +25,18 @@ class CloudConfigTests(unittest.TestCase):
         values = {key: value for key, value in self.worker.items() if key != "CLOUD_DATABASE_URL"}
         self.assertEqual(config.validate("worker", values), ["CLOUD_DATABASE_URL"])
 
-    def test_api_requires_server_only_auth_and_storage_secrets(self):
+    def test_api_requires_founder_credentials(self):
         values = {
             "CLOUD_DATABASE_URL": self.worker["CLOUD_DATABASE_URL"],
-            "AUTH_JWKS_URL": "https://auth.invalid/keys",
-            "AUTH_ISSUER": "https://auth.invalid",
-            "AUTH_AUDIENCE": "authenticated",
-            "STORAGE_PRIVATE_BUCKET": "private-artifacts",
         }
         self.assertEqual(config.validate("api", values),
-                         ["AUTH_SERVICE_KEY", "STORAGE_SERVICE_KEY"])
+                         ["OPPORTUNITYOS_FOUNDER_PASSWORD", "OPPORTUNITYOS_SESSION_SECRET"])
+        valid_api = dict(values)
+        valid_api["OPPORTUNITYOS_FOUNDER_PASSWORD"] = "syn" + "-founder-pw-ok"
+        valid_api["OPPORTUNITYOS_SESSION_SECRET"] = "syn" + "-session-sec-ok"
+        self.assertEqual(config.validate("api", valid_api), [])
+
+
 
     def test_web_does_not_require_worker_secrets(self):
         values = {"NEXT_PUBLIC_DATA_API_URL": "https://data.invalid",

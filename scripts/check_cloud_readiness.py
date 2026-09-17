@@ -243,11 +243,12 @@ def check_authentication(env: Mapping[str, str], role: str = "all") -> Readiness
             status="PASS",
             message="Founder authentication credentials verified (single-founder replatforming, ADR-0012)",
         )
-    elif has_jwks:
+    elif env.get("AUTH_JWKS_URL"):
         return ReadinessCheckResult(
             name="Authentication (JWKS)",
-            status="PASS",
-            message="Multi-tenant JWKS authentication configured and verified",
+            status="BLOCKED",
+            message="JWKS authentication is parked for BRIEF-007 multi-tenancy; OPPORTUNITYOS_FOUNDER_PASSWORD and OPPORTUNITYOS_SESSION_SECRET required for FR-007",
+            blockers=("OPPORTUNITYOS_FOUNDER_PASSWORD", "OPPORTUNITYOS_SESSION_SECRET"),
         )
     else:
         return ReadinessCheckResult(
@@ -324,10 +325,19 @@ def check_truth_pack(env: Mapping[str, str], role: str = "all") -> ReadinessChec
             message=f"Remote HTTPS Truth Pack endpoint configured ({redacted}) with SHA-256 integrity verification",
         )
 
+    # Any generic local or container filesystem path (e.g. /app/truth/... or relative)
+    if role in ("worker", "all"):
+        return ReadinessCheckResult(
+            name="Truth Pack Storage",
+            status="BLOCKED",
+            message=f"Local or container filesystem Truth Pack path ('{target_str}') is not production cloud-ready; remote HTTPS object retrieval with SHA-256 integrity verification required",
+            blockers=("OPPORTUNITYOS_TRUTH_PACK_URI",),
+        )
+
     return ReadinessCheckResult(
         name="Truth Pack Storage",
         status="PASS",
-        message=f"Injected container Truth Pack path configured ({target_str})",
+        message=f"Truth Pack path configured for non-worker role '{role}' ({target_str})",
     )
 
 
@@ -374,22 +384,26 @@ def check_queue_durability(engine: Any | None = None, db_url: str | None = None)
 
         # Probe SKIP LOCKED support if connected to real PostgreSQL dialect
         is_postgres = getattr(active_engine, "dialect", None) is not None and active_engine.dialect.name == "postgresql"
-        if is_postgres:
-            with active_engine.connect() as conn:
-                with conn.begin():
-                    conn.execute(
-                        text("SELECT id, status, lease_owner, lease_expires_at FROM worker_jobs WHERE status IN ('PENDING', 'RETRY') ORDER BY run_after ASC LIMIT 1 FOR UPDATE SKIP LOCKED")
-                    )
-            probe_msg = "PostgreSQL worker_jobs verified live (atomic FOR UPDATE SKIP LOCKED, lease recovery, dead-lettering, zero external broker dependency)"
-        else:
-            dialect_name = getattr(getattr(active_engine, "dialect", None), "name", "mock")
-            probe_msg = f"worker_jobs schema verified ({dialect_name} dialect; PostgreSQL required for production SKIP LOCKED)"
+        if not is_postgres:
+            dialect_name = getattr(getattr(active_engine, "dialect", None), "name", "unknown")
+            return ReadinessCheckResult(
+                name="Queue Durability (PostgreSQL)",
+                status="FAIL",
+                message=f"Non-PostgreSQL dialect '{dialect_name}' detected. PostgreSQL required for production SKIP LOCKED queue durability.",
+            )
+
+        with active_engine.connect() as conn:
+            with conn.begin():
+                conn.execute(
+                    text("SELECT id, status, lease_owner, lease_expires_at FROM worker_jobs WHERE status IN ('PENDING', 'RETRY') ORDER BY run_after ASC LIMIT 1 FOR UPDATE SKIP LOCKED")
+                )
 
         return ReadinessCheckResult(
             name="Queue Durability (PostgreSQL)",
             status="PASS",
-            message=probe_msg,
+            message="PostgreSQL worker_jobs verified live (atomic FOR UPDATE SKIP LOCKED, lease recovery, dead-lettering, zero external broker dependency)",
         )
+
     except Exception as exc:
         return ReadinessCheckResult(
             name="Queue Durability (PostgreSQL)",

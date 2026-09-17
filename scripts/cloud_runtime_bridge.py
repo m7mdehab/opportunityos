@@ -132,20 +132,17 @@ def plan_runtime_environment(role: str, source: Mapping[str, str]) -> BridgePlan
             founder_pw and not invalid("OPPORTUNITYOS_FOUNDER_PASSWORD", founder_pw)
             and session_sec and not invalid("OPPORTUNITYOS_SESSION_SECRET", session_sec)
         )
-        has_jwks = bool(
-            source.get("AUTH_JWKS_URL") and not invalid("AUTH_JWKS_URL", source.get("AUTH_JWKS_URL", ""))
-            and source.get("AUTH_SERVICE_KEY") and not invalid("AUTH_SERVICE_KEY", source.get("AUTH_SERVICE_KEY", ""))
-        )
-        if not has_founder and not has_jwks:
+        if not has_founder:
             blockers = list(BLOCKERS["api"])
         else:
             blockers = []
     elif role == "worker":
         blockers = []
-        if not truth_path:
+        if not truth_path or not truth_path.startswith("https://"):
             blockers.append("OPPORTUNITYOS_TRUTH_PACK_URI")
-        elif truth_path.startswith("https://") and not truth_hash:
+        elif not truth_hash:
             blockers.append("OPPORTUNITYOS_TRUTH_PACK_HASH")
+
     elif role in ("scheduler", "migrate", "readiness", "liveness"):
         # Autonomous against PostgreSQL! Zero external broker or queue blockers.
         blockers = []
