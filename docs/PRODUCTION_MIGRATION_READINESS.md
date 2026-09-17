@@ -61,7 +61,8 @@ python scripts/production_db_preflight.py --connection-mode direct
 
 Preflight uses a repeatable-read, read-only transaction. It checks server
 version (PostgreSQL 14+), TLS, declared connection mode, extensions,
-database/schema CREATE and USAGE privileges, public schema ownership,
+required public schema CREATE and USAGE privileges (database CREATE is
+reported for context), public schema ownership,
 Alembic presence, existing public objects, transaction support, search path,
 UTC timezone, standard strings, default transaction read-only setting,
 statement/lock timeouts, and database size if readable. Non-ownership of

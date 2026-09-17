@@ -81,7 +81,9 @@ def evaluate(settings, *, connection_mode=None, allow_insecure_local=False,
                            "has_schema_privilege(current_user, 'public', 'USAGE'), "
                            "has_schema_privilege(current_user, 'public', 'CREATE')")
             privileges = tuple(bool(x) for x in cursor.fetchone())
-            result["checks"]["privileges"] = _state(all(privileges), blocked=True)
+            # Current migrations create objects in an existing public schema;
+            # database-level CREATE is informational, not a required grant.
+            result["checks"]["privileges"] = _state(all(privileges[1:]), blocked=True)
             result["details"]["privileges"] = dict(zip(
                 ("database_create", "public_usage", "public_create"), privileges))
 

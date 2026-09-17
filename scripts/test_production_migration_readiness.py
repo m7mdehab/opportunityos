@@ -14,9 +14,10 @@ from scripts import db_migration_restore as db
 
 
 class FakeCursor:
-    def __init__(self, *, nonempty=False):
+    def __init__(self, *, nonempty=False, database_create=True):
         self.calls = []
         self.nonempty = nonempty
+        self.database_create = database_create
         self.sql = ""
 
     def execute(self, sql, params=None):
@@ -30,7 +31,7 @@ class FakeCursor:
         if "pg_stat_ssl" in sql:
             return (True,)
         if "has_database_privilege" in sql:
-            return (True, True, True)
+            return (self.database_create, True, True)
         if "pg_get_userbyid" in sql:
             return (True,)
         if "count(*) FROM pg_class" in sql:
@@ -55,8 +56,8 @@ class FakeCursor:
 
 
 class FakeConnection:
-    def __init__(self, *, nonempty=False):
-        self.fake_cursor = FakeCursor(nonempty=nonempty)
+    def __init__(self, *, nonempty=False, database_create=True):
+        self.fake_cursor = FakeCursor(nonempty=nonempty, database_create=database_create)
         self.rollbacks = 0
 
     def cursor(self):
@@ -96,6 +97,13 @@ class PreflightTests(TestCase):
         plain = preflight.evaluate({**self.settings, "sslmode": "prefer"}, connection_mode="direct",
                                    connection_factory=lambda _: FakeConnection())
         self.assertEqual(plain["checks"]["tls"], "BLOCKED")
+
+    def test_database_create_is_not_required_for_public_schema_migrations(self):
+        result = preflight.evaluate(self.settings, connection_mode="direct",
+                                    connection_factory=lambda _: FakeConnection(database_create=False))
+        self.assertEqual(result["checks"]["privileges"], "PASS")
+        self.assertFalse(result["details"]["privileges"]["database_create"])
+        self.assertTrue(result["ready"])
 
     def test_local_override_cannot_apply_to_remote(self):
         result = preflight.evaluate(self.settings, connection_mode="direct", allow_insecure_local=True,
