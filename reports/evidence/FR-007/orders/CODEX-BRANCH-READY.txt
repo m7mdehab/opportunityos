@@ -1,0 +1,1 @@
+This branch-point marker exists only so the bounded Codex work branch can start from the same FR-007 contract head.
