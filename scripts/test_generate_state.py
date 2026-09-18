@@ -50,6 +50,74 @@ class GenerateStateTest(unittest.TestCase):
             self.assertIn("ORDERED SEQUENCE (C + A) -> B -> D", state_content)
             self.assertIn("Phase 0/1 Foundation & Web Integration", state_content)
 
+    def test_markdown_acceptance_table_is_exposed_for_active_fr_brief(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            brief = Path(temp_dir) / "BRIEF-FR-007.md"
+            brief.write_text(
+                "# BRIEF-FR-007\n\n"
+                "## Acceptance contract\n\n"
+                "| ID | Acceptance criterion |\n"
+                "|---|---|\n"
+                "| A-0 | Existing mandatory tests remain green. |\n"
+                "| A-1 | Production has no Founder-PC dependency. |\n",
+                encoding="utf-8",
+            )
+
+            items = generate_state.acceptance_items(brief)
+
+        self.assertEqual(
+            items,
+            [
+                "A-0 — Existing mandatory tests remain green.",
+                "A-1 — Production has no Founder-PC dependency.",
+            ],
+        )
+
+    def test_active_fr_without_report_uses_current_roadmap_immediate_goal(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "docs" / "adr").mkdir(parents=True)
+            (root / "briefs").mkdir(parents=True)
+            (root / "reports").mkdir(parents=True)
+            state_path = root / "docs" / "STATE.md"
+
+            (root / "briefs" / "BRIEF-FR-007.md").write_text(
+                "# BRIEF-FR-007\n\n"
+                "## Acceptance contract\n\n"
+                "| ID | Acceptance criterion |\n"
+                "|---|---|\n"
+                "| A-0 | Keep gates green. |\n",
+                encoding="utf-8",
+            )
+            (root / "reports" / "REPORT-FR-006.md").write_text(
+                "**Date:** 2026-09-13\n\n"
+                "## Next phase prerequisites\n\n"
+                "Founder validation is next.\n\n"
+                "## Decision\n\nPASS_WITH_HISTORICAL_EXCEPTIONS\n",
+                encoding="utf-8",
+            )
+            (root / "docs" / "ROADMAP_CURRENT.md").write_text(
+                "# Roadmap\n\n"
+                "## Immediate Goal\n\n"
+                "Connect hosted staging and prove migration parity before cutover.\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(generate_state, "ROOT", root), mock.patch.object(
+                generate_state, "STATE_PATH", state_path
+            ):
+                generate_state.main()
+
+            state = state_path.read_text(encoding="utf-8")
+
+        self.assertIn("Open acceptance items:** 1", state)
+        self.assertIn("A-0 — Keep gates green.", state)
+        self.assertIn(
+            "Next: Connect hosted staging and prove migration parity before cutover.",
+            state,
+        )
+        self.assertNotIn("Next: Founder validation is next.", state)
+
 
 class SourceCountsTest(unittest.TestCase):
     def test_counts_observed_status_per_source_from_yaml(self) -> None:
