@@ -97,6 +97,11 @@ def plan_runtime_environment(role: str, source: Mapping[str, str]) -> BridgePlan
         raise CompatibilityError("Forbidden production setting: NEXT_PUBLIC_USE_MOCK_API")
     
     truth_path = source.get("OPPORTUNITYOS_TRUTH_PACK_PATH") or source.get("OPPORTUNITYOS_TRUTH_PACK_URI")
+    truth_hash = source.get("OPPORTUNITYOS_TRUTH_PACK_HASH") or source.get("OPPORTUNITYOS_TRUTH_PACK_SHA256")
+    truth_auth = source.get("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN")
+    truth_api_key = source.get("OPPORTUNITYOS_TRUTH_PACK_API_KEY")
+    truth_is_supabase = False
+
     if truth_path:
         truth_lower = truth_path.lower()
         if (
@@ -106,16 +111,35 @@ def plan_runtime_environment(role: str, source: Mapping[str, str]) -> BridgePlan
             or invalid("OPPORTUNITYOS_TRUTH_PACK_PATH", truth_path)
         ):
             raise CompatibilityError("Forbidden local path: OPPORTUNITYOS_TRUTH_PACK_PATH")
-        aliases["OPPORTUNITYOS_TRUTH_PACK_PATH"] = truth_path
-        aliases["OPPORTUNITYOS_TRUTH_PACK_URI"] = truth_path
 
-    truth_hash = source.get("OPPORTUNITYOS_TRUTH_PACK_HASH") or source.get("OPPORTUNITYOS_TRUTH_PACK_SHA256")
-    if truth_hash:
-        aliases["OPPORTUNITYOS_TRUTH_PACK_HASH"] = truth_hash
+        try:
+            truth_uri = urlsplit(truth_path)
+        except ValueError as exc:
+            raise CompatibilityError("Invalid Truth Pack URI") from exc
 
-    truth_auth = source.get("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN")
-    truth_api_key = source.get("OPPORTUNITYOS_TRUTH_PACK_API_KEY")
-    truth_is_supabase = bool(truth_path and "supabase.co" in truth_path.lower())
+        if role in ("api", "worker") and _truth_is_cloud(source):
+            host = truth_uri.hostname
+            local = truth_uri.scheme != "https" or host is None
+            if host:
+                lowered = host.lower()
+                local = local or lowered in {"localhost", "host.docker.internal"} or lowered.endswith(".localhost")
+                try:
+                    local = local or ipaddress.ip_address(host).is_loopback
+                except ValueError:
+                    pass
+            if local:
+                raise CompatibilityError("Invalid cloud Truth Pack endpoint")
+            if truth_uri.username or truth_uri.password or truth_uri.query or truth_uri.fragment:
+                raise CompatibilityError("Credential-bearing Truth Pack URI is forbidden")
+            if "/object/public/" in truth_uri.path.lower():
+                raise CompatibilityError("Public Truth Pack object endpoint is forbidden")
+            truth_is_supabase = (
+                (host or "").lower().endswith("supabase.co")
+                or "/storage/v1/object/" in truth_uri.path.lower()
+            )
+            aliases["OPPORTUNITYOS_TRUTH_PACK_URI"] = truth_path
+            if truth_hash:
+                aliases["OPPORTUNITYOS_TRUTH_PACK_HASH"] = truth_hash
     if truth_auth and invalid("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN", truth_auth):
         raise CompatibilityError("Invalid or placeholder credential: OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN")
     if truth_api_key and invalid("OPPORTUNITYOS_TRUTH_PACK_API_KEY", truth_api_key):
