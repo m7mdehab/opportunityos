@@ -1,0 +1,13 @@
+FR-007 W12B cloud deployment manifests evidence
+===============================================
+branch: work/fr007-codex-cloud-deployment-manifests
+base_sha: 9339211e13f74243e73815fabb86fba3f5bb3a5e
+implementation_sha: recorded in final handoff
+manifest_roles: api, worker, scheduler, migrate
+deployment_modes: VALIDATE, WHAT_IF, DEPLOY_STAGING
+secret_names_only: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, CLOUD_DATABASE_URL, OPPORTUNITYOS_FOUNDER_PASSWORD, OPPORTUNITYOS_SESSION_SECRET, OPPORTUNITYOS_TRUTH_PACK_URI, OPPORTUNITYOS_TRUTH_PACK_HASH
+static_validation: NOT_RUN_AT_EVIDENCE_CAPTURE
+azure_execution: NOT_EXECUTED
+resources_mutated: NO
+provider_blocker: no Azure credentials or existing managed environment were available
+production_claim: NONE
