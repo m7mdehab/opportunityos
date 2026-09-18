@@ -11,7 +11,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 ## Repository
 
 - **Generated:** 2026-09-18T16:43:23Z
-- **State generated at commit:** `6c6a708` — feat(web): cloudflare workers staging deployment harness with OpenNext and same-origin API proxy
+- **State generated at commit:** `fcdf117` — FR-007 overseer make hosted staging smoke fail-closed and substantive
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
