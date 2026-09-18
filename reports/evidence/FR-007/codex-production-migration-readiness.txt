@@ -1,0 +1,124 @@
+FR-007 W8 production migration readiness evidence
+Branch: work/fr007-codex-production-migration-readiness
+CI-tested implementation SHA: a3a489f1e932e3ca4b46498a109f7d439d2af5a3
+Remote implementation proof:
+a3a489f1e932e3ca4b46498a109f7d439d2af5a3 refs/heads/work/fr007-codex-production-migration-readiness
+The final evidence commit SHA and matching remote SHA are in the task response. A committed file cannot contain its own SHA.
+
+CI: FR-007 Disposable PostgreSQL Portability Proof
+Run: https://github.com/m7mdehab/opportunityos/actions/runs/35232490956
+Run ID: 35232490956
+Job ID: 105239910283
+Head SHA: a3a489f1e932e3ca4b46498a109f7d439d2af5a3
+Conclusion: success
+CI acceptance output (verbatim excerpt):
+test_production_preflight_and_cutover_rehearsal_on_second_fresh_target (scripts.test_live_portability_postgres.LivePostgresPortabilityTests.test_production_preflight_and_cutover_rehearsal_on_second_fresh_target) ... ok
+Ran 45 tests in 3.340s
+OK
+Repository integrity checks passed.
+Guard checks passed for repository and mirror boundary.
+CI compile command exited 0: python -m py_compile scripts/live_portability_proof.py scripts/test_live_portability_proof.py scripts/test_live_portability_postgres.py scripts/migration_baseline.py scripts/db_migration_restore.py scripts/artifact_integrity.py scripts/portability_bundle.py scripts/production_db_preflight.py scripts/production_migration_cutover.py scripts/test_production_migration_readiness.py
+
+Changed files relative to W7 head 52cb0160d5e25d097247f5ff6a0c710896b00589:
+.github/workflows/fr007-portability-proof.yml
+docs/PRODUCTION_MIGRATION_READINESS.md
+reports/evidence/FR-007/codex-production-migration-readiness.txt
+scripts/production_db_preflight.py
+scripts/production_migration_cutover.py
+scripts/test_live_portability_postgres.py
+scripts/test_production_migration_readiness.py
+
+Code-complete stages: read-only target preflight; sanitized source baseline;
+custom-format backup; manifest and checksum; fresh-target restore; Alembic
+upgrade after schema-bearing restore; revision check; structural and separate
+feed projection parity; PostgreSQL artifact metadata and body checksum checks;
+provider-exit bundle; deterministic fail-closed rollback decision report.
+The CI fixture executes these stages on disposable PostgreSQL. The overall
+report remains PARTIAL because missing canonical source concepts and a
+metadata-only artifact are deliberate, and the direct endpoint declaration is
+unverified by SQL alone. The fixture also proves a separate all-retrievable
+artifact body path and retains missing, metadata-only, checksum mismatch, and
+unsupported backend cases.
+
+Requires real source/target or Supabase access: endpoint topology confirmation,
+production TLS and privilege results, actual source write pause and target write
+disablement, production backup/restore, row-level parity, storage capacity and
+timing, deployment smoke, DNS/API/frontend switch and its reversal. No such
+production operation was performed.
+Requires real artifact-store access: Supabase Storage or other external body
+location/read contract and retrieval checks. The current canonical database
+backend is artifact_cache.payload only.
+Unresolved schema concepts: source_states, sources, source_occurrences do not
+exist in storage/migrations/versions/0001-0006 or storage/models.py. A poll run
+source_id is not an equivalent source registry or occurrence identity.
+UNKNOWN != FALSE; UNSUPPORTED != PASS. Disposable PostgreSQL success is not
+production Supabase migration or cutover proof.
+
+Exact production command template (DSNs are injected by runtime secret store;
+no literal DSN or credential is placed in arguments or this evidence):
+Required injected environment names: OPOS_SOURCE_DB_URL (source),
+OPOS_TARGET_DB_URL (direct target, sslmode=verify-full).
+python scripts/production_db_preflight.py --connection-mode direct
+python scripts/production_migration_cutover.py --output-dir /secure/local/fr007-run --connection-mode direct --artifact-backend postgres_payload --acknowledge-source-writes-paused --acknowledge-target-writes-disabled --confirm-target-restore
+
+Raw local acceptance output follows.
+COMMAND: python -m unittest scripts.test_migration_baseline scripts.test_db_migration_restore scripts.test_portability_integrity scripts.test_live_portability_proof scripts.test_production_migration_readiness scripts.test_live_portability_postgres -v
+test_compare_exact_and_deterministic (scripts.test_migration_baseline.MigrationBaselineTests.test_compare_exact_and_deterministic) ... ok
+test_driver_error_is_redacted (scripts.test_migration_baseline.MigrationBaselineTests.test_driver_error_is_redacted) ... ok
+test_equal_snapshots_with_integrity_defect_do_not_pass (scripts.test_migration_baseline.MigrationBaselineTests.test_equal_snapshots_with_integrity_defect_do_not_pass) ... ok
+test_full_identity_digest_and_unknown_sensitive_counts_are_compared (scripts.test_migration_baseline.MigrationBaselineTests.test_full_identity_digest_and_unknown_sensitive_counts_are_compared) ... ok
+test_missing_optional_table_is_explicit_and_mismatch_fails (scripts.test_migration_baseline.MigrationBaselineTests.test_missing_optional_table_is_explicit_and_mismatch_fails) ... ok
+test_snapshot_is_allowlisted_and_read_only (scripts.test_migration_baseline.MigrationBaselineTests.test_snapshot_is_allowlisted_and_read_only) ... ok
+test_unsupported_is_distinct_from_pass (scripts.test_migration_baseline.MigrationBaselineTests.test_unsupported_is_distinct_from_pass) ... ok
+test_backup_command_is_deterministic_and_secret_free (scripts.test_db_migration_restore.HarnessTests.test_backup_command_is_deterministic_and_secret_free) ... ok
+test_backup_manifest_detects_corruption_before_restore (scripts.test_db_migration_restore.HarnessTests.test_backup_manifest_detects_corruption_before_restore) ... ok
+test_baseline_handoff_is_explicit_when_missing (scripts.test_db_migration_restore.HarnessTests.test_baseline_handoff_is_explicit_when_missing) ... ok
+test_inspection_is_read_only (scripts.test_db_migration_restore.HarnessTests.test_inspection_is_read_only) ... ok
+test_live_parity_partial_is_not_pass (scripts.test_db_migration_restore.HarnessTests.test_live_parity_partial_is_not_pass) ... ok
+test_live_parity_uses_two_connections_and_reports_mismatch (scripts.test_db_migration_restore.HarnessTests.test_live_parity_uses_two_connections_and_reports_mismatch) ... ok
+test_migration_targets_only_supplied_target (scripts.test_db_migration_restore.HarnessTests.test_migration_targets_only_supplied_target) ... ok
+test_missing_configuration_and_tool_fail_closed (scripts.test_db_migration_restore.HarnessTests.test_missing_configuration_and_tool_fail_closed) ... ok
+test_parity_mismatch_has_distinct_exit_status (scripts.test_db_migration_restore.HarnessTests.test_parity_mismatch_has_distinct_exit_status) ... ok
+test_restore_requires_flag_and_empty_target (scripts.test_db_migration_restore.HarnessTests.test_restore_requires_flag_and_empty_target) ... ok
+test_restore_toc_filters_only_default_public_schema_creation (scripts.test_db_migration_restore.HarnessTests.test_restore_toc_filters_only_default_public_schema_creation) ... ok
+test_source_target_configuration_is_separate (scripts.test_db_migration_restore.HarnessTests.test_source_target_configuration_is_separate) ... ok
+test_subprocess_never_uses_shell_or_leaks_error (scripts.test_db_migration_restore.HarnessTests.test_subprocess_never_uses_shell_or_leaks_error) ... ok
+test_artifact_external_backend_is_explicitly_unsupported (scripts.test_portability_integrity.PortabilityTests.test_artifact_external_backend_is_explicitly_unsupported) ... ok
+test_artifact_manifest_distinguishes_body_from_metadata (scripts.test_portability_integrity.PortabilityTests.test_artifact_manifest_distinguishes_body_from_metadata) ... ok
+test_bundle_rejects_path_escape (scripts.test_portability_integrity.PortabilityTests.test_bundle_rejects_path_escape) ... ok
+test_bundle_round_trip_and_corruption_detection (scripts.test_portability_integrity.PortabilityTests.test_bundle_round_trip_and_corruption_detection) ... ok
+test_postgres_payload_reader_fetches_bytes_read_only (scripts.test_portability_integrity.PortabilityTests.test_postgres_payload_reader_fetches_bytes_read_only) ... ok
+test_missing_configuration_fails_without_echoing_secret (scripts.test_live_portability_proof.ProofRunnerTests.test_missing_configuration_fails_without_echoing_secret) ... ok
+test_partial_is_never_pass_even_with_ci_exit_override (scripts.test_live_portability_proof.ProofRunnerTests.test_partial_is_never_pass_even_with_ci_exit_override) ... ok
+test_restore_confirmation_is_required_and_other_stages_not_run (scripts.test_live_portability_proof.ProofRunnerTests.test_restore_confirmation_is_required_and_other_stages_not_run) ... ok
+test_final_status_keeps_partial_distinct (scripts.test_production_migration_readiness.CutoverTests.test_final_status_keeps_partial_distinct) ... ok
+test_missing_configuration_and_confirmation_block (scripts.test_production_migration_readiness.CutoverTests.test_missing_configuration_and_confirmation_block) ... ok
+test_rollback_state_machine_never_claims_cutover (scripts.test_production_migration_readiness.CutoverTests.test_rollback_state_machine_never_claims_cutover) ... ok
+test_unsupported_artifact_backend_blocks_before_backup_or_restore (scripts.test_production_migration_readiness.CutoverTests.test_unsupported_artifact_backend_blocks_before_backup_or_restore) ... ok
+test_database_create_is_not_required_for_public_schema_migrations (scripts.test_production_migration_readiness.PreflightTests.test_database_create_is_not_required_for_public_schema_migrations) ... ok
+test_driver_error_is_redacted (scripts.test_production_migration_readiness.PreflightTests.test_driver_error_is_redacted) ... ok
+test_local_override_cannot_apply_to_remote (scripts.test_production_migration_readiness.PreflightTests.test_local_override_cannot_apply_to_remote) ... ok
+test_nonempty_pooler_and_tls_fail_closed (scripts.test_production_migration_readiness.PreflightTests.test_nonempty_pooler_and_tls_fail_closed) ... ok
+test_read_only_queries_and_ready_state (scripts.test_production_migration_readiness.PreflightTests.test_read_only_queries_and_ready_state) ... ok
+test_actual_postgres_flow_and_independent_states (scripts.test_live_portability_postgres.LivePostgresPortabilityTests.test_actual_postgres_flow_and_independent_states) ... skipped 'dedicated disposable PostgreSQL job only'
+test_artifact_retrievable_missing_metadata_only_and_checksum_mismatch (scripts.test_live_portability_postgres.LivePostgresPortabilityTests.test_artifact_retrievable_missing_metadata_only_and_checksum_mismatch) ... skipped 'dedicated disposable PostgreSQL job only'
+test_corrupted_archive_and_mismatched_checksum_fail_before_restore (scripts.test_live_portability_postgres.LivePostgresPortabilityTests.test_corrupted_archive_and_mismatched_checksum_fail_before_restore) ... skipped 'dedicated disposable PostgreSQL job only'
+test_malformed_dsn_and_secret_redaction (scripts.test_live_portability_postgres.LivePostgresPortabilityTests.test_malformed_dsn_and_secret_redaction) ... skipped 'dedicated disposable PostgreSQL job only'
+test_production_preflight_and_cutover_rehearsal_on_second_fresh_target (scripts.test_live_portability_postgres.LivePostgresPortabilityTests.test_production_preflight_and_cutover_rehearsal_on_second_fresh_target) ... skipped 'dedicated disposable PostgreSQL job only'
+test_provider_exit_bundle_integrity (scripts.test_live_portability_postgres.LivePostgresPortabilityTests.test_provider_exit_bundle_integrity) ... skipped 'dedicated disposable PostgreSQL job only'
+test_source_target_identity_and_nonempty_target_fail_closed (scripts.test_live_portability_postgres.LivePostgresPortabilityTests.test_source_target_identity_and_nonempty_target_fail_closed) ... skipped 'dedicated disposable PostgreSQL job only'
+test_unsupported_parity_is_not_pass (scripts.test_live_portability_postgres.LivePostgresPortabilityTests.test_unsupported_parity_is_not_pass) ... skipped 'dedicated disposable PostgreSQL job only'
+
+----------------------------------------------------------------------
+Ran 45 tests in 0.100s
+
+OK (skipped=8)
+EXIT: 0
+COMMAND: python -m py_compile scripts/live_portability_proof.py scripts/test_live_portability_proof.py scripts/test_live_portability_postgres.py scripts/migration_baseline.py scripts/db_migration_restore.py scripts/artifact_integrity.py scripts/portability_bundle.py scripts/production_db_preflight.py scripts/production_migration_cutover.py scripts/test_production_migration_readiness.py
+EXIT: 0
+COMMAND: python scripts/check_repository.py
+Repository integrity checks passed.
+EXIT: 0
+COMMAND: python scripts/check_guard.py --allow-missing-patterns
+Guard checks passed for repository and mirror boundary.
+EXIT: 0

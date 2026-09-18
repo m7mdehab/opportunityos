@@ -1,0 +1,92 @@
+FR-007 Codex portability/integrity evidence
+Branch: work/fr007-codex-portability-integrity
+Implementation SHA: cb76146db5d57bb77a5cca8ca304e1c178429dc9
+Remote SHA proof at implementation push:
+cb76146db5d57bb77a5cca8ca304e1c178429dc9 refs/heads/work/fr007-codex-portability-integrity
+Final branch SHA: see final response and final git ls-remote verification; this committed evidence file cannot contain its own commit SHA.
+
+Changed files relative to restore-harness branch (evidence file appended in final commit):
+docs/DATABASE_RESTORE_RUNBOOK.md
+docs/MIGRATION_PARITY.md
+docs/PROVIDER_EXIT_RUNBOOK.md
+reports/evidence/FR-007/codex-migration-baseline.txt
+reports/evidence/FR-007/codex-portability-integrity.txt
+scripts/artifact_integrity.py
+scripts/db_migration_restore.py
+scripts/migration_baseline.py
+scripts/portability_bundle.py
+scripts/test_db_migration_restore.py
+scripts/test_migration_baseline.py
+scripts/test_portability_integrity.py
+
+Executable without cloud access: synthetic parity, backup checksum manifest, restore preflight, provider-exit bundle, artifact retrieval adapter and all unit tests.
+Requires real source/target PostgreSQL: live snapshots/parity, pg_dump backup, fresh-target restore, Alembic migration/revision and data integrity verification.
+Requires real artifact-store access: retrieval of future external object-store bodies; current canonical artifact_cache.payload can be checked with database access.
+No live PostgreSQL/Supabase restore, off-provider transfer, or cloud artifact retrieval was performed.
+
+Raw acceptance output:
+COMMAND: python -m unittest scripts.test_migration_baseline -v
+test_compare_exact_and_deterministic (scripts.test_migration_baseline.MigrationBaselineTests.test_compare_exact_and_deterministic) ... ok
+test_driver_error_is_redacted (scripts.test_migration_baseline.MigrationBaselineTests.test_driver_error_is_redacted) ... ok
+test_equal_snapshots_with_integrity_defect_do_not_pass (scripts.test_migration_baseline.MigrationBaselineTests.test_equal_snapshots_with_integrity_defect_do_not_pass) ... ok
+test_full_identity_digest_and_unknown_sensitive_counts_are_compared (scripts.test_migration_baseline.MigrationBaselineTests.test_full_identity_digest_and_unknown_sensitive_counts_are_compared) ... ok
+test_missing_optional_table_is_explicit_and_mismatch_fails (scripts.test_migration_baseline.MigrationBaselineTests.test_missing_optional_table_is_explicit_and_mismatch_fails) ... ok
+test_snapshot_is_allowlisted_and_read_only (scripts.test_migration_baseline.MigrationBaselineTests.test_snapshot_is_allowlisted_and_read_only) ... ok
+test_unsupported_is_distinct_from_pass (scripts.test_migration_baseline.MigrationBaselineTests.test_unsupported_is_distinct_from_pass) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.005s
+
+OK
+EXIT: 0
+
+COMMAND: python -m unittest scripts.test_db_migration_restore -v
+test_backup_command_is_deterministic_and_secret_free (scripts.test_db_migration_restore.HarnessTests.test_backup_command_is_deterministic_and_secret_free) ... ok
+test_backup_manifest_detects_corruption_before_restore (scripts.test_db_migration_restore.HarnessTests.test_backup_manifest_detects_corruption_before_restore) ... ok
+test_baseline_handoff_is_explicit_when_missing (scripts.test_db_migration_restore.HarnessTests.test_baseline_handoff_is_explicit_when_missing) ... ok
+test_inspection_is_read_only (scripts.test_db_migration_restore.HarnessTests.test_inspection_is_read_only) ... ok
+test_live_parity_partial_is_not_pass (scripts.test_db_migration_restore.HarnessTests.test_live_parity_partial_is_not_pass) ... ok
+test_live_parity_uses_two_connections_and_reports_mismatch (scripts.test_db_migration_restore.HarnessTests.test_live_parity_uses_two_connections_and_reports_mismatch) ... ok
+test_migration_targets_only_supplied_target (scripts.test_db_migration_restore.HarnessTests.test_migration_targets_only_supplied_target) ... ok
+test_missing_configuration_and_tool_fail_closed (scripts.test_db_migration_restore.HarnessTests.test_missing_configuration_and_tool_fail_closed) ... ok
+test_parity_mismatch_has_distinct_exit_status (scripts.test_db_migration_restore.HarnessTests.test_parity_mismatch_has_distinct_exit_status) ... ok
+test_restore_requires_flag_and_empty_target (scripts.test_db_migration_restore.HarnessTests.test_restore_requires_flag_and_empty_target) ... ok
+test_source_target_configuration_is_separate (scripts.test_db_migration_restore.HarnessTests.test_source_target_configuration_is_separate) ... ok
+test_subprocess_never_uses_shell_or_leaks_error (scripts.test_db_migration_restore.HarnessTests.test_subprocess_never_uses_shell_or_leaks_error) ... ok
+
+----------------------------------------------------------------------
+Ran 12 tests in 0.045s
+
+OK
+EXIT: 0
+
+COMMAND: python -m unittest scripts.test_portability_integrity -v
+test_artifact_external_backend_is_explicitly_unsupported (scripts.test_portability_integrity.PortabilityTests.test_artifact_external_backend_is_explicitly_unsupported) ... ok
+test_artifact_manifest_distinguishes_body_from_metadata (scripts.test_portability_integrity.PortabilityTests.test_artifact_manifest_distinguishes_body_from_metadata) ... ok
+test_bundle_rejects_path_escape (scripts.test_portability_integrity.PortabilityTests.test_bundle_rejects_path_escape) ... ok
+test_bundle_round_trip_and_corruption_detection (scripts.test_portability_integrity.PortabilityTests.test_bundle_round_trip_and_corruption_detection) ... ok
+test_postgres_payload_reader_fetches_bytes_read_only (scripts.test_portability_integrity.PortabilityTests.test_postgres_payload_reader_fetches_bytes_read_only) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.035s
+
+OK
+EXIT: 0
+
+COMMAND: python -m py_compile scripts/migration_baseline.py scripts/test_migration_baseline.py scripts/db_migration_restore.py scripts/test_db_migration_restore.py scripts/artifact_integrity.py scripts/portability_bundle.py scripts/test_portability_integrity.py
+EXIT: 0
+
+COMMAND: python scripts/check_repository.py
+Repository integrity checks passed.
+EXIT: 0
+
+COMMAND: python scripts/check_guard.py --allow-missing-patterns
+Guard checks passed for repository and mirror boundary.
+EXIT: 0
+
+
+Full guard limitation:
+COMMAND: python scripts/check_guard.py
+RULE PII_FOUNDER_NAME_PATTERNS_MISSING FAILED: FOUNDER_NAME_PATTERNS is unset. REMEDY: restore the agent-derived repository secret or pass --allow-missing-patterns only for an explicit local structural scan.
+EXIT: 1
+The local structural guard with --allow-missing-patterns passed as shown above.
