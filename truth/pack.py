@@ -55,6 +55,7 @@ import base64
 import hashlib
 import json
 import logging
+import ipaddress
 import os
 import dataclasses
 from dataclasses import dataclass
@@ -231,6 +232,29 @@ def _redact_url(url: str) -> str:
         return "[redacted-uri]"
 
 
+
+
+def _is_loopback_remote_host(hostname: str | None) -> bool:
+    if not hostname:
+        return True
+    lowered = hostname.lower()
+    if lowered in {"localhost", "host.docker.internal"} or lowered.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(lowered).is_loopback
+    except ValueError:
+        return False
+
+
+def _is_supabase_storage_uri(url: str) -> bool:
+    try:
+        parsed = urlsplit(url)
+    except Exception:
+        return False
+    host = (parsed.hostname or "").lower()
+    path = parsed.path.lower()
+    return host.endswith("supabase.co") or "/storage/v1/object/" in path
+
 def _is_cloud_mode(env: Mapping[str, str] | None = None) -> bool:
     """Return True if running in cloud / production mode."""
     target_env = os.environ if env is None else env
@@ -268,9 +292,17 @@ def _fetch_remote_bytes(
             raise TruthPackInvalid(f"access denied to truth pack at {redacted} (HTTP {err.code})", (f"HTTP {err.code}",)) from err
         raise TruthPackInvalid(f"failed to fetch truth pack from {redacted}: HTTP {err.code}", (f"HTTP {err.code}",)) from err
     except URLError as err:
-        raise TruthPackInvalid(f"network error fetching truth pack from {redacted}: {err.reason}", (str(err.reason),)) from err
+        # Never surface provider/transport exception text: third-party error
+        # strings can echo Authorization headers or query credentials.
+        raise TruthPackInvalid(
+            f"network error fetching truth pack from {redacted}",
+            ("remote Truth Pack network failure",),
+        ) from err
     except Exception as err:
-        raise TruthPackInvalid(f"unexpected error fetching truth pack from {redacted}: {err}", (str(err),)) from err
+        raise TruthPackInvalid(
+            f"unexpected error fetching truth pack from {redacted}",
+            ("remote Truth Pack transport failure",),
+        ) from err
 
     path_part = urlsplit(url).path.lower()
     if path_part.endswith(".json") or "application/json" in content_type:
@@ -379,7 +411,12 @@ def load_truth_pack(
                     f"Truth Pack URI must not contain credentials, query, or fragment in cloud mode ({redacted_target})",
                     ("credential-bearing or signed URL forbidden in cloud mode",),
                 )
-            is_supabase = (parsed.hostname or "").lower().endswith("supabase.co")
+            if _is_loopback_remote_host(parsed.hostname):
+                raise TruthPackInvalid(
+                    f"localhost/loopback Truth Pack endpoint is forbidden in cloud mode ({redacted_target})",
+                    ("loopback remote endpoint forbidden",),
+                )
+            is_supabase = _is_supabase_storage_uri(target_str)
             if "/object/public/" in parsed.path.lower():
                 raise TruthPackInvalid(
                     f"public Supabase Storage object endpoint is forbidden in cloud mode ({redacted_target})",
