@@ -15,3 +15,7 @@ private_bucket_configured: NO
 service_key_values_in_evidence: NONE
 production_a11_claim: NONE
 blockers: real private bucket configuration and restart/retrieval proof are required
+
+overseer_hardening: explicit private-bucket verification; matching-orphan recovery; conflicting-orphan fail-closed; mixed-backend cleanup; external global-eviction coverage
+provider_private_bucket_runtime_verification: IMPLEMENTED / HOSTED_NOT_EXECUTED
+orphan_recovery_runtime_contract: deterministic existing object accepted only on exact body match
