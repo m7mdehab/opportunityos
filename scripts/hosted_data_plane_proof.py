@@ -125,6 +125,12 @@ def verify_live_distinctness(source: dict, target: dict, *, identity_factory=Non
     return source_live, target_live
 
 
+def live_identity_fingerprint(identity: dict) -> str:
+    """Hash live identity facts so evidence need not expose database/network identifiers."""
+    canonical = json.dumps(identity, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:24]
+
+
 def validate_configuration(mode: str, connection_mode: str, *, acknowledge_migration: bool = False,
                            source_writes_paused: bool = False,
                            target_writes_disabled: bool = False):
@@ -215,15 +221,27 @@ def run(mode: str, *, connection_mode: str, output_dir: str, acknowledge_migrati
     source_live = target_live = None
     if mode in ("MIGRATE_STAGING", "VERIFY_STAGING"):
         source_live, target_live = verify_live_distinctness(source, target)
-        report["details"]["source_live_identity"] = source_live
-        report["details"]["target_live_identity"] = target_live
+        report["details"]["source_live_identity"] = {
+            "fingerprint": live_identity_fingerprint(source_live),
+            "server_version_num": source_live.get("server_version_num"),
+        }
+        report["details"]["target_live_identity"] = {
+            "fingerprint": live_identity_fingerprint(target_live),
+            "server_version_num": target_live.get("server_version_num"),
+        }
     if mode == "VERIFY_STAGING":
-        verified = _verify_live(source, target)
-        report["details"]["verification"] = verified
-        report["stages"]["PRECHECK"] = "PASS"
-        report["stages"]["VERIFY"] = verified["status"]
+        checked = preflight.evaluate(target, connection_mode=connection_mode,
+                                     allow_insecure_local=allow_insecure_local)
+        report["details"]["preflight"] = checked
+        report["stages"]["PRECHECK"] = checked.get("status", "BLOCKED")
         report["stages"]["MIGRATE"] = "NOT_RUN"
         report["stages"]["CUTOVER_READY"] = "NOT_RUN"
+        if not checked.get("ready"):
+            report["stages"]["VERIFY"] = "BLOCKED"
+            return report
+        verified = _verify_live(source, target)
+        report["details"]["verification"] = verified
+        report["stages"]["VERIFY"] = verified["status"]
         return report
     checked = preflight.evaluate(target, connection_mode=connection_mode,
                                  allow_insecure_local=allow_insecure_local)
@@ -247,26 +265,32 @@ def run(mode: str, *, connection_mode: str, output_dir: str, acknowledge_migrati
         report["stages"]["VERIFY"] = ("PASS" if result.get("decision") == "ACCEPT" else
                                        "FAIL" if result.get("decision") == "REJECT" else "PARTIAL")
         report["stages"]["CUTOVER_READY"] = "NOT_RUN"
-    else:  # VERIFY_STAGING: inspect the prior acceptance artifact, never write.
-        acceptance_path = Path(output_dir).expanduser().resolve() / "acceptance.json"
-        if not acceptance_path.is_file():
-            report["stages"]["VERIFY"] = "BLOCKED"
-            report["details"]["verify"] = {"reason": "acceptance_report_required"}
-        else:
-            try:
-                prior = json.loads(acceptance_path.read_text(encoding="utf-8"))
-            except (OSError, ValueError) as exc:
-                raise HostedProofError("acceptance report is unavailable or invalid") from exc
-            report["details"]["acceptance"] = prior
-            report["stages"]["VERIFY"] = "PASS" if prior.get("decision") == "ACCEPT" else "FAIL"
     if report["stages"]["VERIFY"] == "PASS" and report["stages"]["PRECHECK"] == "PASS":
         report["stages"]["CUTOVER_READY"] = "PARTIAL"
     return report
 
 
+def _configured_secret_values() -> tuple[str, ...]:
+    values = []
+    for secret_name in ("OPOS_SOURCE_DB_URL", "OPOS_TARGET_DB_URL"):
+        secret = os.environ.get(secret_name)
+        if not secret:
+            continue
+        values.append(secret)
+        try:
+            password = urlsplit(secret).password
+        except Exception:
+            password = None
+        if password:
+            values.append(password)
+    return tuple(dict.fromkeys(value for value in values if len(value) >= 4))
+
+
 def write_evidence(report: dict, path: str):
     target = Path(path).expanduser().resolve()
     target.parent.mkdir(parents=True, exist_ok=True)
+    configured_secrets = _configured_secret_values()
+
     def check(value):
         if isinstance(value, dict):
             for nested in value.values():
@@ -279,10 +303,8 @@ def write_evidence(report: dict, path: str):
                 raise HostedProofError("evidence contains a database URL")
             if re.search(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s\"']+@[^\s\"']+", value):
                 raise HostedProofError("evidence contains URL credentials")
-            for secret_name in ("OPOS_SOURCE_DB_URL", "OPOS_TARGET_DB_URL"):
-                secret = os.environ.get(secret_name)
-                if secret and secret in value:
-                    raise HostedProofError("evidence contains configured secret")
+            if any(secret in value for secret in configured_secrets):
+                raise HostedProofError("evidence contains configured secret")
 
     check(report)
     text = json.dumps(report, sort_keys=True, separators=(",", ":")) + "\n"
