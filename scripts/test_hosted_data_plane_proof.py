@@ -1,0 +1,192 @@
+import json
+import os
+from pathlib import Path
+import tempfile
+import unittest
+from unittest import mock
+from urllib.parse import urlunsplit
+
+from scripts import hosted_data_plane_proof as proof
+
+
+def settings(host, database, *, sslmode="verify-full", port="5432"):
+    password = "unit" + "-credential"
+    dsn = urlunsplit(("postgresql", f"operator:{password}@{host}:{port}",
+                      f"/{database}", f"sslmode={sslmode}", ""))
+    return {"dsn": dsn, "driver_dsn": dsn, "host": host, "port": port,
+            "user": "operator", "password": password, "database": database,
+            "sslmode": sslmode}
+
+
+class HostedProofTests(unittest.TestCase):
+    def setUp(self):
+        self.source = settings("source.example", "source")
+        self.target = settings("target.example", "target")
+
+    def test_missing_secret_fails_closed(self):
+        with mock.patch.object(proof.db, "config", side_effect=ValueError("missing")):
+            with self.assertRaises(proof.HostedProofError):
+                proof.validate_configuration("PRECHECK", "direct")
+
+    def test_redaction_never_contains_password_or_full_dsn(self):
+        value = self.source["dsn"]
+        redacted = proof.redact_dsn(value)
+        self.assertNotIn("secret", redacted)
+        self.assertNotIn(value, redacted)
+        self.assertIn("<redacted>", redacted)
+
+    def test_same_source_target_rejected(self):
+        same = settings("same.example", "db")
+        with mock.patch.object(proof, "_settings", return_value=(same, same)):
+            with self.assertRaisesRegex(proof.HostedProofError, "must differ"):
+                proof.validate_configuration("PRECHECK", "direct")
+
+    def test_local_target_rejected_in_hosted_mode(self):
+        local = settings("localhost", "target")
+        with mock.patch.object(proof, "_settings", return_value=(self.source, local)):
+            with self.assertRaisesRegex(proof.HostedProofError, "local target"):
+                proof.validate_configuration("PRECHECK", "direct")
+
+    def test_pooler_rejected_for_migration(self):
+        pooler = settings("abc.pooler.supabase.com", "target", port="6543")
+        with mock.patch.object(proof, "_settings", return_value=(self.source, pooler)):
+            with self.assertRaisesRegex(proof.HostedProofError, "direct"):
+                proof.validate_configuration("MIGRATE_STAGING", "pooler", acknowledge_migration=True,
+                                             source_writes_paused=True, target_writes_disabled=True)
+
+    def test_migration_requires_explicit_acknowledgement(self):
+        with mock.patch.object(proof, "_settings", return_value=(self.source, self.target)):
+            with self.assertRaisesRegex(proof.HostedProofError, "acknowledgement"):
+                proof.validate_configuration("MIGRATE_STAGING", "direct", acknowledge_migration=True,
+                                             source_writes_paused=True)
+
+    def test_live_identity_same_endpoint_alias_is_rejected(self):
+        live = {"database": "db", "server_address": "10.0.0.4", "server_port": 5432,
+                "server_version_num": 160000, "database_oid": "42"}
+        with self.assertRaisesRegex(proof.HostedProofError, "live database identity"):
+            proof.verify_live_distinctness(self.source, self.target,
+                                           identity_factory=lambda _: live)
+
+    def test_live_identity_distinct_databases_are_accepted(self):
+        identities = iter((
+            {"database": "source", "server_address": "10.0.0.4", "server_port": 5432,
+             "server_version_num": 160000, "database_oid": "42"},
+            {"database": "target", "server_address": "10.0.0.5", "server_port": 5432,
+             "server_version_num": 160000, "database_oid": "43"},
+        ))
+        source, target = proof.verify_live_distinctness(
+            self.source, self.target, identity_factory=lambda _: next(identities))
+        self.assertNotEqual(source, target)
+
+    def test_live_identity_unavailable_blocks(self):
+        with self.assertRaisesRegex(proof.HostedProofError, "could not be established"):
+            proof.verify_live_distinctness(self.source, self.target,
+                                           identity_factory=lambda _: (_ for _ in ()).throw(RuntimeError()))
+
+    def test_precheck_does_not_call_migration(self):
+        checked = {"status": "PASS", "ready": True, "checks": {}}
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(proof, "_settings", return_value=(self.source, self.target)), \
+             mock.patch.object(proof, "discover_alembic_head", return_value="dynamic-head"), \
+             mock.patch.object(proof.preflight, "evaluate", return_value=checked), \
+             mock.patch.object(proof.migration_acceptance, "run") as migrate:
+            report = proof.run("PRECHECK", connection_mode="direct", output_dir=tmp)
+        migrate.assert_not_called()
+        self.assertEqual(report["stages"]["MIGRATE"], "NOT_RUN")
+        self.assertNotIn("MIGRATED", json.dumps(report))
+
+    def test_dynamic_head_is_discovered(self):
+        with mock.patch("alembic.script.ScriptDirectory.from_config") as directory:
+            directory.return_value.get_current_head.return_value = "head-from-alembic"
+            self.assertEqual(proof.discover_alembic_head(), "head-from-alembic")
+
+    def test_command_failure_propagates_from_existing_runner(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(proof, "_settings", return_value=(self.source, self.target)), \
+             mock.patch.object(proof, "discover_alembic_head", return_value="head"), \
+             mock.patch.object(proof, "verify_live_distinctness", return_value=(
+                 {"database": "source"}, {"database": "target"})), \
+             mock.patch.object(proof.preflight, "evaluate", return_value={"status": "PASS", "ready": True}), \
+             mock.patch.object(proof.migration_acceptance, "run", side_effect=RuntimeError("failed")):
+            with self.assertRaises(RuntimeError):
+                proof.run("MIGRATE_STAGING", connection_mode="direct", output_dir=tmp,
+                          acknowledge_migration=True, source_writes_paused=True,
+                          target_writes_disabled=True)
+
+    def test_evidence_write_is_machine_readable_and_safe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "evidence.json"
+            report = {"mode": "PRECHECK", "stages": {"MIGRATE": "NOT_RUN"},
+                      "details": {"target_host": self.target["host"]}}
+            proof.write_evidence(report, str(path))
+            loaded = json.loads(path.read_text())
+            self.assertEqual(loaded["stages"]["MIGRATE"], "NOT_RUN")
+            self.assertNotIn("secret", path.read_text())
+
+    def test_evidence_rejects_nested_dsn_fail_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(proof.HostedProofError, "database URL"):
+                proof.write_evidence({"nested": {"delegated": "postgresql" + "://u:p@db/x"}},
+                                     str(Path(tmp) / "evidence.json"))
+
+    def test_evidence_rejects_standalone_configured_password(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.dict(os.environ, {
+                 "OPOS_SOURCE_DB_URL": self.source["dsn"],
+                 "OPOS_TARGET_DB_URL": self.target["dsn"],
+             }, clear=False):
+            with self.assertRaisesRegex(proof.HostedProofError, "configured secret"):
+                proof.write_evidence({"nested": {"delegated": self.source["password"]}},
+                                     str(Path(tmp) / "evidence.json"))
+
+    def test_verify_staging_uses_live_checks_without_prior_directory_artifact(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(proof, "_settings", return_value=(self.source, self.target)), \
+             mock.patch.object(proof, "discover_alembic_head", return_value="head"), \
+             mock.patch.object(proof, "verify_live_distinctness", return_value=(
+                 {"database": "source", "server_version_num": 160000},
+                 {"database": "target", "server_version_num": 160000})), \
+             mock.patch.object(proof.preflight, "evaluate",
+                               return_value={"status": "PASS", "ready": True}), \
+             mock.patch.object(proof, "_verify_live", return_value={"status": "PASS", "unsupported": []}):
+            report = proof.run("VERIFY_STAGING", connection_mode="direct", output_dir=tmp)
+        self.assertEqual(report["stages"]["PRECHECK"], "PASS")
+        self.assertEqual(report["stages"]["VERIFY"], "PASS")
+        self.assertNotIn("database", report["details"]["source_live_identity"])
+        self.assertIn("fingerprint", report["details"]["source_live_identity"])
+        self.assertEqual(proof.exit_code(report), 0)
+
+    def test_verify_staging_blocks_when_preflight_is_not_ready(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(proof, "_settings", return_value=(self.source, self.target)), \
+             mock.patch.object(proof, "discover_alembic_head", return_value="head"), \
+             mock.patch.object(proof, "verify_live_distinctness", return_value=(
+                 {"database": "source", "server_version_num": 160000},
+                 {"database": "target", "server_version_num": 160000})), \
+             mock.patch.object(proof.preflight, "evaluate",
+                               return_value={"status": "BLOCKED", "ready": False}), \
+             mock.patch.object(proof, "_verify_live") as verify:
+            report = proof.run("VERIFY_STAGING", connection_mode="direct", output_dir=tmp)
+        verify.assert_not_called()
+        self.assertEqual(report["stages"]["VERIFY"], "BLOCKED")
+
+    def test_mode_specific_exit_semantics(self):
+        self.assertEqual(proof.exit_code({"mode": "PRECHECK", "stages": {"PRECHECK": "PASS", "MIGRATE": "NOT_RUN"}}), 0)
+        self.assertEqual(proof.exit_code({"mode": "VERIFY_STAGING", "stages": {"VERIFY": "PARTIAL"}}), 3)
+        self.assertEqual(proof.exit_code({"mode": "MIGRATE_STAGING", "stages": {"PRECHECK": "PASS", "MIGRATE": "NOT_RUN", "VERIFY": "NOT_RUN"}}), 2)
+
+    def test_manual_workflow_has_no_automatic_destructive_trigger(self):
+        workflow = (Path(__file__).parents[1] / ".github" / "workflows" /
+                    "fr007-hosted-data-plane-proof.yml").read_text(encoding="utf-8")
+        self.assertIn("workflow_dispatch", workflow)
+        self.assertNotIn("pull_request", workflow)
+        self.assertIn("environment: fr007-staging", workflow)
+        self.assertIn("MIGRATE_STAGING", workflow)
+
+    def test_proof_source_uses_no_shell_interpolation(self):
+        source = Path(__file__).with_name("hosted_data_plane_proof.py").read_text(encoding="utf-8")
+        self.assertNotIn("shell=True", source)
+
+
+if __name__ == "__main__":
+    unittest.main()

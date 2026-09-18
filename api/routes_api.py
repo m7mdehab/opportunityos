@@ -43,6 +43,8 @@ from storage.models import (
     OutboundActionRecordModel,
     SourcePollRunRecord,
 )
+from storage.feed_projection import FeedProjectionRecord
+from storage.feed_query import FeedQuerySpec, feed_page
 from storage.repository import StorageRepository
 from truth.pack import TruthPackInvalid, TruthPackMissing, load_founder_pack
 from truth.validator import ClaimValidator
@@ -146,7 +148,7 @@ def _ranking_filter_contexts(
         definition = FILTER_DEFINITIONS_BY_ID[filter_id]
         enabled = row.enabled if row is not None else definition.default_enabled
         mode = row.mode if row is not None else definition.default_mode
-        return enabled and mode in {"hide", "rank_only"}
+        return enabled and mode in {"hide", "rank_only", "label_only"}
 
     compensation = filter_settings.get("compensation_floor")
     compensation_facet = facet_settings.get("compensation_stated")
@@ -670,6 +672,20 @@ class FilterUpdateRequest(BaseModel):
     params: dict[str, Any] | None = None
 
 
+def _refresh_current_pack_projections(session: Session, request: Request) -> int:
+    """Publish a settings change only for the loaded Founder pack version."""
+    loaded_pack = request.app.state.loaded_truth_pack
+    if loaded_pack is None:
+        return 0
+    from storage.feed_projection_service import refresh_existing_feed_projections
+
+    return refresh_existing_feed_projections(
+        session,
+        truth_graph=loaded_pack.graph,
+        truth_pack_hash=loaded_pack.truth_pack_hash,
+    )
+
+
 @router.put("/filters/{filter_id}")
 def update_filter(
     filter_id: str,
@@ -719,6 +735,9 @@ def update_filter(
     if validated_params is not None:
         row.params_json = json.dumps(validated_params)
     row.updated_at = now
+    session.commit()
+
+    _refresh_current_pack_projections(session, request)
     session.commit()
 
     params = json.loads(row.params_json) if row.params_json else {}
@@ -885,7 +904,7 @@ class FacetUpdateRequest(BaseModel):
 
 
 @router.put("/facets/{facet_id}")
-def update_facet(facet_id: str, payload: FacetUpdateRequest, response: Response, session: Session = Depends(get_db)):
+def update_facet(facet_id: str, payload: FacetUpdateRequest, response: Response, request: Request, session: Session = Depends(get_db)):
     fd = FACET_DEFINITIONS_BY_ID.get(facet_id)
     if fd is None:
         raise HTTPException(status_code=404, detail=f"unknown facet_id: {facet_id!r}")
@@ -908,6 +927,9 @@ def update_facet(facet_id: str, payload: FacetUpdateRequest, response: Response,
         row.mode = mode
         row.values_json = values_json
         row.updated_at = now
+    session.commit()
+
+    _refresh_current_pack_projections(session, request)
     session.commit()
 
     return {"facet_id": facet_id, "mode": mode, "include": include, "exclude": exclude}
@@ -999,11 +1021,13 @@ class UnhideByReasonRequest(BaseModel):
 
 
 @router.post("/hidden-reasons/unhide")
-def unhide_by_reason_route(payload: UnhideByReasonRequest, session: Session = Depends(get_db)):
+def unhide_by_reason_route(payload: UnhideByReasonRequest, request: Request, session: Session = Depends(get_db)):
     now = to_naive_utc(datetime.now(timezone.utc))
     ok = unhide_by_reason(session, payload.reason, now)
     if not ok:
         raise HTTPException(status_code=404, detail=f"unrecognised reason: {payload.reason!r}")
+    _refresh_current_pack_projections(session, request)
+    session.commit()
     return {"reason": payload.reason, "status": "unhidden"}
 
 
@@ -1013,6 +1037,7 @@ def list_opportunities(
     track: str | None = None,
     decision: str | None = None,
     min_score: float | None = None,
+    max_score: float | None = None,
     since: str | None = None,
     q: str | None = None,
     include_hidden: bool = False,
@@ -1020,220 +1045,100 @@ def list_opportunities(
     page_size: int = 25,
     session: Session = Depends(get_db),
 ):
-    query = _opportunity_query(session)
-    if track:
-        query = query.filter(OpportunityRecord.track == track)
-    if since:
-        query = query.filter(OpportunityRecord.created_at >= since)
+    norm_page = max(1, page)
+    norm_page_size = max(1, min(page_size, 200))
 
-    # BRIEF-FR-006 C2: full-text search replaces the old title/organization
-    # `ilike` match. `search_relevance` (id -> ts_rank) stays empty unless a
-    # search is active; everything downstream of this block (facet/filter
-    # application via `apply_filters`, `hidden_count`) is unchanged and runs
-    # against whatever `opportunities` ends up holding, so a search plus an
-    # active exclusion facet naturally returns their intersection and still
-    # counts the excluded rows. `search_message` is set only for genuinely
-    # unparseable input (api.search.is_query_unparseable) -- never for a
-    # query that legitimately matches zero rows -- and the response is an
-    # empty result, never a 500, either way.
-    search_relevance: dict[str, float] = {}
     search_message: str | None = None
     if q:
         if is_query_unparseable(session, q):
             search_message = "search query has no searchable terms"
-            query = query.filter(False)
-        else:
-            hits = search_opportunity_ids(session, q)
-            search_relevance = {hit.opportunity_id: hit.relevance for hit in hits}
-            if search_relevance:
-                query = query.filter(OpportunityRecord.id.in_(search_relevance.keys()))
-            else:
-                query = query.filter(False)
+            return {
+                "page": norm_page,
+                "page_size": norm_page_size,
+                "total": 0,
+                "hidden_count": 0,
+                "items": [],
+                "message": search_message,
+            }
 
-    filter_settings = _load_filter_settings(session)
-    facet_settings = _load_facet_settings(session)
-    truth_graph = _truth_graph_from_request(request)
     loaded_pack = request.app.state.loaded_truth_pack
-
-    # Decision and score are persisted on the current truth-pack evaluation.
-    # Apply those selective predicates in PostgreSQL before building Python
-    # filter contexts; otherwise a qualified-only request still hydrates and
-    # evaluates the entire production corpus before discarding almost all of
-    # it, which can exceed the web proxy's request window.
-    if loaded_pack is not None and (decision is not None or min_score is not None):
-        query = query.join(
-            MatchEvaluationRecord,
-            and_(
-                MatchEvaluationRecord.opportunity_id == OpportunityRecord.id,
-                MatchEvaluationRecord.truth_pack_hash == loaded_pack.truth_pack_hash,
-            ),
+    truth_pack_hash = loaded_pack.truth_pack_hash if loaded_pack is not None else None
+    if not truth_pack_hash:
+        latest_row = (
+            session.query(FeedProjectionRecord.truth_pack_hash)
+            .order_by(FeedProjectionRecord.projected_at.desc())
+            .first()
         )
-        if decision is not None:
-            query = query.filter(MatchEvaluationRecord.qualification_decision == decision)
-        if min_score is not None:
-            query = query.filter(MatchEvaluationRecord.fit_score >= min_score)
+        if latest_row:
+            truth_pack_hash = latest_row[0]
+        else:
+            latest_eval = (
+                session.query(MatchEvaluationRecord.truth_pack_hash)
+                .order_by(MatchEvaluationRecord.evaluated_at.desc())
+                .first()
+            )
+            if latest_eval:
+                truth_pack_hash = latest_eval[0]
+            else:
+                truth_pack_hash = "active"
 
-    scan_filter_settings = filter_settings
-    lightweight_prefiltered = (
-        not include_hidden
-        and decision is None
-        and min_score is None
-        and loaded_pack is not None
-        and _can_lightweight_prefilter_hidden(filter_settings, facet_settings)
-        and _can_lightweight_rank(filter_settings)
+    spec = FeedQuerySpec(
+        truth_pack_hash=truth_pack_hash,
+        track=track,
+        decision=decision,
+        min_score=min_score,
+        max_score=max_score,
+        since=since,
+        q=q,
+        include_hidden=include_hidden,
+        page=norm_page,
+        page_size=norm_page_size,
     )
-    hidden_count = 0
-    if lightweight_prefiltered:
-        hidden_ids = _lightweight_hidden_ids(query, truth_graph, filter_settings)
-        hidden_count = len(hidden_ids)
-        # The only active hide-mode filters have already been applied. Disable
-        # them during the lightweight rank pass so descriptions stay deferred.
-        scan_filter_settings = dict(filter_settings)
-        for filter_id in ("red_lines", "excluded_industries"):
-            row = filter_settings.get(filter_id)
-            definition = FILTER_DEFINITIONS_BY_ID[filter_id]
-            scan_filter_settings[filter_id] = FilterSettingsRow(
-                enabled=False,
-                mode=row.mode if row is not None else definition.default_mode,
-                params=row.params if row is not None else dict(definition.default_params),
-            )
-        query = query.options(defer(OpportunityRecord.description))
+    feed = feed_page(session, spec)
 
-    ranked: list[dict[str, Any]] = []
-    if lightweight_prefiltered:
-        lightweight_rows = (
-            query.with_entities(
-                OpportunityRecord.id,
-                OpportunityRecord.track,
-                OpportunityRecord.title,
-                OpportunityRecord.title_family,
-                OpportunityRecord.posted_date,
-                MatchEvaluationRecord.fit_score,
-                MatchEvaluationRecord.dimension_scores_json,
-            )
-            .outerjoin(
-                MatchEvaluationRecord,
-                and_(
-                    MatchEvaluationRecord.opportunity_id == OpportunityRecord.id,
-                    MatchEvaluationRecord.truth_pack_hash == loaded_pack.truth_pack_hash,
-                ),
-            )
-            .all()
-        )
-        track_rank = _filter_enabled_mode("track_preference", filter_settings) == (True, "rank_only")
-        target_rank = _filter_enabled_mode("target_roles", filter_settings) == (True, "rank_only")
-        premium_rank = _filter_enabled_mode("premium_fulltime_onsite", filter_settings) == (True, "rank_only")
-        preferred_track = _founder_track_preference(truth_graph) if track_rank else None
-        target_families = _founder_target_role_families(truth_graph) if target_rank else frozenset()
-        normalized_families: dict[str, str] = {}
-        for row in lightweight_rows:
-            if row.id in hidden_ids:
-                continue
-            rank_penalty = 0
-            if preferred_track is not None and row.track.casefold() != preferred_track:
-                rank_penalty += 1
-            if target_families:
-                family = row.title_family
-                if family is None:
-                    family = normalized_families.get(row.title)
-                    if family is None:
-                        family = normalize_title(row.title)[0]
-                        normalized_families[row.title] = family
-                if family not in target_families:
-                    rank_penalty += 1
-            if premium_rank and row.dimension_scores_json and "premium_shortfall" in row.dimension_scores_json:
-                dimensions = unpack_dimension_scores(row.dimension_scores_json)
-                if any(
-                    dim.get("dimension_name") == "compensation_fit"
-                    and "premium_shortfall" in (dim.get("signal_tags") or [])
-                    for dim in dimensions
-                ):
-                    rank_penalty += 1
-            ranked.append(
-                {
-                    "id": row.id,
-                    "fit_score": row.fit_score,
-                    "posted_date": row.posted_date,
-                    "_rank_penalty": rank_penalty,
-                }
-            )
-    else:
-        for opportunities in _opportunity_batches(query):
-            contexts = _ranking_filter_contexts(
-                session, truth_graph, opportunities, scan_filter_settings, facet_settings
-            )
-            for opp, ctx in zip(opportunities, contexts):
-                opp_decision = ctx.decision
-                fit_score = ctx.fit_score
-
-                if decision and opp_decision != decision:
-                    continue
-                if min_score is not None and (fit_score is None or fit_score < min_score):
-                    continue
-
-                outcome = apply_filters(ctx, scan_filter_settings)
-                facet_outcome = apply_facets(ctx, facet_settings)
-                combined_hidden_by = outcome.hidden_by + [f"facet:{facet_id}" for facet_id in facet_outcome.hidden_by]
-                if combined_hidden_by:
-                    hidden_count += 1
-                    if not include_hidden:
-                        continue
-                ranked.append(
-                    {
-                        "id": opp.id,
-                        "fit_score": fit_score,
-                        "posted_date": opp.posted_date,
-                        "_rank_penalty": outcome.rank_penalty,
-                    }
-                )
-
-    # Rank-penalty tier first (contract section 4: demoted items sort after
-    # non-demoted ones at equal score, and never reorder within a tier).
-    # Below that tier: with an active search, BRIEF-FR-006 C2's ranking
-    # formula (relevance x fit, `api.search.rank_key`) descending -- this
-    # changes row *order* only; `decision`/`fit_score` themselves are read
-    # here, never written (see `api.search.rank_key`'s docstring and
-    # `api/test_search.py::NoReJudgementTest`). Without an active search, the
-    # pre-existing key is unchanged: fit_score descending, nulls last, then
-    # posted_date descending, then id.
-    if q and search_relevance:
-        ranked.sort(
-            key=lambda r: (
-                r["_rank_penalty"],
-                -rank_key(search_relevance.get(r["id"], 0.0), r["fit_score"]),
-                _posted_date_sort_key(r["posted_date"]),
-                r["id"],
-            )
-        )
-    else:
-        ranked.sort(
-            key=lambda r: (
-                r["_rank_penalty"],
-                r["fit_score"] is None,
-                -(r["fit_score"] or 0),
-                _posted_date_sort_key(r["posted_date"]),
-                r["id"],
-            )
-        )
-    total = len(ranked)
-    page = max(1, page)
-    page_size = max(1, min(page_size, 200))
-    start = (page - 1) * page_size
-    page_ids = [row["id"] for row in ranked[start : start + page_size]]
+    hidden_count_query = session.query(func.count(FeedProjectionRecord.id)).filter(
+        FeedProjectionRecord.truth_pack_hash == truth_pack_hash,
+        FeedProjectionRecord.visible.is_(False),
+    )
+    if track:
+        hidden_count_query = hidden_count_query.filter(FeedProjectionRecord.track == track)
+    hidden_count = hidden_count_query.scalar() or 0
 
     page_items: list[dict[str, Any]] = []
+    page_ids = [row.opportunity_id for row in feed.rows]
     if page_ids:
-        page_opportunities = _opportunity_query(session).filter(OpportunityRecord.id.in_(page_ids)).all()
+        page_opportunities = (
+            session.query(OpportunityRecord)
+            .filter(OpportunityRecord.id.in_(page_ids))
+            .all()
+        )
         by_id = {opp.id: opp for opp in page_opportunities}
-        page_opportunities = [by_id[opportunity_id] for opportunity_id in page_ids]
-        page_contexts = build_filter_contexts(session, truth_graph, page_opportunities)
-        family_sizes = _family_sizes(session, [opp.family_key for opp in page_opportunities])
+        ordered_opps = [by_id[opp_id] for opp_id in page_ids if opp_id in by_id]
+        truth_graph = _truth_graph_from_request(request)
+        filter_settings = _load_filter_settings(session)
+        facet_settings = _load_facet_settings(session)
+        # Bounded page contexts: exactly len(page_ids) <= 25 items, never the full corpus
+        contexts = _ranking_filter_contexts(
+            session, truth_graph, ordered_opps, filter_settings, facet_settings
+        )
+        ctx_by_id = {opp.id: ctx for opp, ctx in zip(ordered_opps, contexts)}
+        family_sizes = _family_sizes(session, [opp.family_key for opp in ordered_opps])
         action_states = _batch_action_states(session, page_ids)
         feedback_labels = _batch_feedback_labels(session, page_ids)
-        for opp, ctx in zip(page_opportunities, page_contexts):
-            outcome = apply_filters(ctx, filter_settings)
-            facet_outcome = apply_facets(ctx, facet_settings)
-            combined_hidden_by = outcome.hidden_by + [f"facet:{facet_id}" for facet_id in facet_outcome.hidden_by]
+
+        for proj in feed.rows:
+            opp = by_id.get(proj.opportunity_id)
+            if opp is None:
+                continue
+            ctx = ctx_by_id.get(opp.id)
+            flagged_by = []
+            if ctx is not None:
+                outcome = apply_filters(ctx, filter_settings)
+                flagged_by = outcome.flagged_by
+
+            hidden_by = json.loads(proj.visibility_reason) if proj.visibility_reason else []
+            reasons = unpack_reasons(proj.reasons_json)
+            top_reasons = top_reasons_from_list(reasons)
             row = {
                 "id": opp.id,
                 "title": opp.title,
@@ -1241,24 +1146,24 @@ def list_opportunities(
                 "source_id": opp.source_id,
                 "source_url": opp.source_url,
                 "track": opp.track,
-                "decision": ctx.decision,
-                "fit_score": ctx.fit_score,
-                "top_reasons": top_reasons_from_list(ctx.reasons),
+                "decision": proj.qualification_decision,
+                "fit_score": proj.fit_score,
+                "top_reasons": top_reasons,
                 "deadline": opp.deadline,
                 "posted_date": opp.posted_date,
                 "is_stale": bool(opp.is_stale),
                 "action_state": action_states.get(opp.id),
                 "feedback_label": feedback_labels.get(opp.id),
-                "hidden_by": combined_hidden_by,
-                "flagged_by": outcome.flagged_by,
+                "hidden_by": hidden_by,
+                "flagged_by": flagged_by,
             }
             row.update(serialize_opportunity_extraction_fields(opp, family_sizes.get(opp.family_key)))
             page_items.append(row)
 
     return {
-        "page": page,
-        "page_size": page_size,
-        "total": total,
+        "page": feed.page,
+        "page_size": feed.page_size,
+        "total": feed.total,
         "hidden_count": hidden_count,
         "items": page_items,
         "message": search_message,

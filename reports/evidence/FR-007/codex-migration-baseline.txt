@@ -1,0 +1,14 @@
+COMMAND: python -m unittest scripts.test_migration_baseline -v
+test_compare_exact_and_deterministic (scripts.test_migration_baseline.MigrationBaselineTests.test_compare_exact_and_deterministic) ... ok
+test_driver_error_is_redacted (scripts.test_migration_baseline.MigrationBaselineTests.test_driver_error_is_redacted) ... ok
+test_missing_optional_table_is_explicit_and_mismatch_fails (scripts.test_migration_baseline.MigrationBaselineTests.test_missing_optional_table_is_explicit_and_mismatch_fails) ... ok
+test_snapshot_is_allowlisted_and_read_only (scripts.test_migration_baseline.MigrationBaselineTests.test_snapshot_is_allowlisted_and_read_only) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.004s
+
+OK
+EXIT: 0
+
+COMMAND: python -m py_compile scripts/migration_baseline.py scripts/test_migration_baseline.py
+EXIT: 0

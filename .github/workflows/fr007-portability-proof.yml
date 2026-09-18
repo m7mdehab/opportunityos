@@ -1,0 +1,82 @@
+name: FR-007 Disposable PostgreSQL Portability Proof
+
+on:
+  push:
+    branches: [work/fr007-codex-live-proof-runner, work/fr007-codex-production-migration-readiness, work/fr007-codex-migration-acceptance]
+    paths:
+      - '.github/workflows/fr007-portability-proof.yml'
+      - 'scripts/live_portability_proof.py'
+      - 'scripts/test_live_portability_postgres.py'
+      - 'scripts/test_live_portability_proof.py'
+      - 'scripts/db_migration_restore.py'
+      - 'scripts/migration_baseline.py'
+      - 'scripts/artifact_integrity.py'
+      - 'scripts/portability_bundle.py'
+      - 'scripts/test_db_migration_restore.py'
+      - 'scripts/test_migration_baseline.py'
+      - 'scripts/test_portability_integrity.py'
+      - 'scripts/production_db_preflight.py'
+      - 'scripts/production_migration_cutover.py'
+      - 'scripts/test_production_migration_readiness.py'
+      - 'scripts/migration_acceptance.py'
+      - 'scripts/test_migration_acceptance.py'
+      - 'scripts/test_migration_acceptance_postgres.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fr007-portability-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  disposable-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: opportunityos
+          POSTGRES_PASSWORD: ${{ github.run_id }}
+          POSTGRES_DB: source_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      OPOS_LIVE_PROOF_TEST: '1'
+      OPOS_SOURCE_DB_URL: postgresql+psycopg2://opportunityos:${{ github.run_id }}@localhost:5432/source_db
+      OPOS_TARGET_DB_URL: postgresql+psycopg2://opportunityos:${{ github.run_id }}@localhost:5432/target_db
+      OPOS_CUTOVER_DB_URL: postgresql+psycopg2://opportunityos:${{ github.run_id }}@localhost:5432/cutover_db
+      PGPASSWORD: ${{ github.run_id }}
+      FOUNDER_NAME_PATTERNS: ${{ secrets.FOUNDER_NAME_PATTERNS }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install Python and PostgreSQL clients
+        run: |
+          python -m pip install -e '.[dev]'
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+      - name: Create distinct disposable target database
+        run: |
+          psql -h localhost -U opportunityos -d source_db -v ON_ERROR_STOP=1 -c 'CREATE DATABASE target_db;'
+          psql -h localhost -U opportunityos -d source_db -v ON_ERROR_STOP=1 -c 'CREATE DATABASE cutover_db;'
+      - name: Unit and real PostgreSQL portability proof
+        run: python -m unittest scripts.test_migration_baseline scripts.test_db_migration_restore scripts.test_portability_integrity scripts.test_live_portability_proof scripts.test_production_migration_readiness scripts.test_migration_acceptance scripts.test_live_portability_postgres scripts.test_migration_acceptance_postgres -v
+      - name: Compile, repository integrity and guard
+        run: |
+          python -m py_compile scripts/live_portability_proof.py scripts/test_live_portability_proof.py scripts/test_live_portability_postgres.py scripts/migration_baseline.py scripts/db_migration_restore.py scripts/artifact_integrity.py scripts/portability_bundle.py scripts/production_db_preflight.py scripts/production_migration_cutover.py scripts/test_production_migration_readiness.py scripts/migration_acceptance.py scripts/test_migration_acceptance.py scripts/test_migration_acceptance_postgres.py
+          python scripts/check_repository.py
+          if [ -n "${FOUNDER_NAME_PATTERNS:-}" ]; then
+            python scripts/check_guard.py
+          else
+            python scripts/check_guard.py --allow-missing-patterns
+          fi

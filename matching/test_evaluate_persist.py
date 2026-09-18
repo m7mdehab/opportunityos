@@ -12,12 +12,14 @@ import os
 import tempfile
 import unittest
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 from matching.evaluate_persist import evaluate_and_store
 from matching.models import QualificationDecision
 from matching.test_qualification import create_test_graph, create_test_opportunity
 from storage.engine import get_engine, get_session_factory, init_db
-from storage.models import MatchEvaluationRecord
+from storage.feed_projection import FeedProjectionRecord
+from storage.models import MatchEvaluationRecord, OpportunityRecord
 from storage.repository import StorageRepository
 
 
@@ -40,11 +42,26 @@ class EvaluateAndStoreTest(unittest.TestCase):
         except Exception:
             pass
 
+    def _evaluate_and_store(self, opportunity, truth_graph, repository, **kwargs):
+        if self.session.get(OpportunityRecord, opportunity.id) is None:
+            self.session.add(OpportunityRecord(
+                id=opportunity.id,
+                track=opportunity.track.value,
+                title=opportunity.title,
+                organization=opportunity.organization,
+                description=opportunity.description,
+                source_id=opportunity.source,
+                source_url=opportunity.source_url,
+                content_hash=f"fixture-{opportunity.id}",
+            ))
+            self.session.commit()
+        return evaluate_and_store(opportunity, truth_graph, repository, **kwargs)
+
     def test_insert_creates_one_row_with_expected_fields(self) -> None:
         opp = create_test_opportunity(opp_id="opp-insert-1", skills=("Python", "Go"))
         evaluated_at = datetime(2026, 9, 2, 12, 0, 0, tzinfo=timezone.utc)
 
-        record = evaluate_and_store(
+        record = self._evaluate_and_store(
             opp,
             self.truth_graph,
             self.repository,
@@ -80,12 +97,12 @@ class EvaluateAndStoreTest(unittest.TestCase):
 
     def test_same_hash_reevaluation_upserts_in_place(self) -> None:
         opp = create_test_opportunity(opp_id="opp-upsert-1")
-        first = evaluate_and_store(
+        first = self._evaluate_and_store(
             opp, self.truth_graph, self.repository, truth_pack_hash="hash-same"
         )
         first_id = first.id
 
-        second = evaluate_and_store(
+        second = self._evaluate_and_store(
             opp, self.truth_graph, self.repository, truth_pack_hash="hash-same"
         )
 
@@ -95,12 +112,82 @@ class EvaluateAndStoreTest(unittest.TestCase):
         ).all()
         self.assertEqual(len(rows), 1, "re-evaluating under the same hash must overwrite, not duplicate")
 
+    def test_projection_publication_failure_raises_and_idempotent_retry_publishes(self) -> None:
+        opp = create_test_opportunity(opp_id="opp-publication-retry")
+        with patch(
+            "storage.feed_projection_service.refresh_opportunity_projection",
+            side_effect=RuntimeError("synthetic publication failure"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "synthetic publication failure"):
+                self._evaluate_and_store(
+                    opp, self.truth_graph, self.repository, truth_pack_hash="truth-retry"
+                )
+
+        self.assertEqual(self.session.query(MatchEvaluationRecord).filter_by(
+            opportunity_id=opp.id, truth_pack_hash="truth-retry"
+        ).count(), 1)
+        self.assertEqual(self.session.query(FeedProjectionRecord).filter_by(
+            opportunity_id=opp.id, truth_pack_hash="truth-retry"
+        ).count(), 0)
+
+        self._evaluate_and_store(
+            opp, self.truth_graph, self.repository, truth_pack_hash="truth-retry"
+        )
+        self.assertEqual(self.session.query(MatchEvaluationRecord).filter_by(
+            opportunity_id=opp.id, truth_pack_hash="truth-retry"
+        ).count(), 1)
+        self.assertEqual(self.session.query(FeedProjectionRecord).filter_by(
+            opportunity_id=opp.id, truth_pack_hash="truth-retry"
+        ).count(), 1)
+
+    def test_worker_retry_republishes_committed_evaluation_without_duplicate(self) -> None:
+        from truth.pack import LoadedPack, PackValidationReport
+        from worker.handlers import make_evaluate_new_handler
+
+        opp = create_test_opportunity(opp_id="opp-worker-publication-retry")
+        self.session.add(OpportunityRecord(
+            id=opp.id, track=opp.track.value, title=opp.title,
+            organization=opp.organization, description=opp.description,
+            source_id=opp.source, source_url=opp.source_url,
+            content_hash="worker-retry-fixture",
+        ))
+        self.session.commit()
+        pack = LoadedPack(
+            graph=self.truth_graph,
+            truth_pack_hash="truth-worker-retry",
+            report=PackValidationReport(valid=True, section_counts=(), findings=()),
+        )
+        handler = make_evaluate_new_handler(
+            session_factory=self.session_factory, pack_loader=lambda _path: pack
+        )
+        with patch(
+            "storage.feed_projection_service.refresh_opportunity_projection",
+            side_effect=RuntimeError("synthetic publication failure"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "synthetic publication failure"):
+                handler({})
+
+        self.assertEqual(self.session.query(MatchEvaluationRecord).filter_by(
+            opportunity_id=opp.id, truth_pack_hash="truth-worker-retry"
+        ).count(), 1)
+        self.assertEqual(self.session.query(FeedProjectionRecord).filter_by(
+            opportunity_id=opp.id, truth_pack_hash="truth-worker-retry"
+        ).count(), 0)
+
+        handler({})
+        self.assertEqual(self.session.query(MatchEvaluationRecord).filter_by(
+            opportunity_id=opp.id, truth_pack_hash="truth-worker-retry"
+        ).count(), 1)
+        self.assertEqual(self.session.query(FeedProjectionRecord).filter_by(
+            opportunity_id=opp.id, truth_pack_hash="truth-worker-retry"
+        ).count(), 1)
+
     def test_different_hash_creates_second_row_and_leaves_first_intact(self) -> None:
         opp = create_test_opportunity(opp_id="opp-multi-hash-1")
-        first = evaluate_and_store(
+        first = self._evaluate_and_store(
             opp, self.truth_graph, self.repository, truth_pack_hash="hash-1"
         )
-        second = evaluate_and_store(
+        second = self._evaluate_and_store(
             opp, self.truth_graph, self.repository, truth_pack_hash="hash-2"
         )
 
@@ -126,7 +213,7 @@ class EvaluateAndStoreTest(unittest.TestCase):
         evaluate_and_store rewrote the decision before persisting it."""
         opp = create_test_opportunity(opp_id="opp-uncertain-1", geo_status="unclear")
 
-        record = evaluate_and_store(
+        record = self._evaluate_and_store(
             opp, self.truth_graph, self.repository, truth_pack_hash="hash-uncertain"
         )
 
@@ -146,13 +233,13 @@ class EvaluateAndStoreTest(unittest.TestCase):
     def test_missing_truth_pack_hash_raises(self) -> None:
         opp = create_test_opportunity(opp_id="opp-no-hash")
         with self.assertRaises(ValueError):
-            evaluate_and_store(opp, self.truth_graph, self.repository, truth_pack_hash="")
+            self._evaluate_and_store(opp, self.truth_graph, self.repository, truth_pack_hash="")
 
     def test_evaluated_at_defaults_to_real_now_not_scorer_hardcoded_default(self) -> None:
         opp = create_test_opportunity(opp_id="opp-default-time")
         before = datetime.now(timezone.utc)
 
-        record = evaluate_and_store(
+        record = self._evaluate_and_store(
             opp, self.truth_graph, self.repository, truth_pack_hash="hash-time"
         )
 
@@ -172,7 +259,7 @@ class EvaluateAndStoreTest(unittest.TestCase):
         null, never as false, and must carry the exact D6-agreed shape."""
         opp = create_test_opportunity(opp_id="opp-detail-1", geo_status="unclear")
 
-        record = evaluate_and_store(
+        record = self._evaluate_and_store(
             opp, self.truth_graph, self.repository, truth_pack_hash="hash-detail"
         )
 
@@ -213,7 +300,7 @@ class EvaluateAndStoreTest(unittest.TestCase):
         from matching.evaluate_persist import _upsert_match_evaluation
 
         opp = create_test_opportunity(opp_id="opp-race-1")
-        first = evaluate_and_store(
+        first = self._evaluate_and_store(
             opp, self.truth_graph, self.repository, truth_pack_hash="hash-race"
         )
 

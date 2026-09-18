@@ -1,0 +1,109 @@
+================================================================================
+FR-007 ANTIGRAVITY LANE — W7 RUNTIME REPAIR + EXECUTED OCI PROOF EVIDENCE
+Date: 2026-09-17
+Host: Windows
+Branch: work/fr007-antigravity-cloud-runtime-v4
+Base SHA: 06b4fb7f1b3797eb64f7be1764c4eb4edd5fc01c
+================================================================================
+
+1. SUBTASK A: WORKER STARTUP REPAIR & REGRESSION TEST
+--------------------------------------------------------------------------------
+- Defect: worker/__main__.py consumed os.environ without importing os.
+- Fix: Added `import os` to worker/__main__.py.
+- Regression Coverage: Added `TestWorkerStartupRegression` in worker/test_worker.py:
+    * test_normal_worker_startup_reaches_handler_registry_construction_without_truth_pack
+    * test_normal_worker_startup_reaches_handler_registry_construction_with_truth_pack
+- Proof: Verified `python -m unittest worker.test_worker -v` ran and passed all tests.
+
+2. SUBTASK B & C: AUTHORITATIVE CONFIGURATION CONTRACT RECONCILIATION
+--------------------------------------------------------------------------------
+- Unified configuration contracts across:
+    * scripts/container_entrypoint.py
+    * scripts/cloud_runtime_bridge.py
+    * scripts/validate_cloud_config.py
+    * scripts/check_cloud_readiness.py
+- Fail-Closed Bridge Integration: Removed false-green error swallowing in
+  scripts/container_entrypoint.py. CompatibilityError from the runtime bridge
+  is raised as a fail-closed ConfigurationError during container resolution.
+- Safe Transitional Founder Auth: Added OPPORTUNITYOS_FOUNDER_PASSWORD and
+  OPPORTUNITYOS_SESSION_SECRET to cloud runtime bridge safe aliases for the 'api'
+  role, allowing transitional founder authentication without throwing
+  'Unsupported local auth variables'.
+- Truth Pack Cloud Safety: Local filesystem paths (e.g. starting with private/ or
+  drive letters) are rejected for OPPORTUNITYOS_TRUTH_PACK_PATH. Unwired cloud
+  storage providers remain explicit in BLOCKERS.
+- Robust Role Coverage: Reconciled validate_cloud_config.py ROLES to support all
+  canonical roles: api, worker, scheduler, migrate, readiness, liveness.
+- Script Invocation Portability: Added REPO_ROOT to sys.path in container_entrypoint.py
+  to ensure deterministic execution directly via python or container entrypoint.
+
+3. SUBTASK D: OCI BUILD EVIDENCE THROUGH CI
+--------------------------------------------------------------------------------
+- Host Docker Engine Check:
+    Command: docker --version
+    Result: docker: The term 'docker' is not recognized
+    Finding: Docker/Podman engine is unavailable on the local Windows execution host.
+    Policy Compliance: Local Docker build is explicitly NOT claimed as executed.
+- Reusable CI Workflow: Created `.github/workflows/oci-runtime-smoke.yml` to execute
+  deterministic build and live smoke proof on `ubuntu-latest`:
+    * Native Docker daemon with Linux kernel cgroups;
+    * Ephemeral PostgreSQL 16 Alpine service container;
+    * Executes `python scripts/smoke_container.py --require-engine --engine docker --db-url ...`;
+    * Concurrency controls with cancel-in-progress enabled;
+    * 15-minute execution ceiling adhering to CI efficiency policy.
+- Standardized Smoke Evidence Markers:
+    * IMAGE_BUILD_PASS
+    * NON_ROOT_USER_PASS (UID 1000 appuser)
+    * LIVENESS_PROBE_PASS
+    * READINESS_FAIL_CLOSED_PASS
+    * ROLE_SEPARATION_PASS
+    * ROLE_LIVE_PROOF_PASS (liveness, migrate, readiness with DB)
+    * ROLE_LIVE_PROOF_BLOCKED (unwired cloud dependencies: truth pack, cloud storage, auth JWKS, scheduler token)
+
+4. SUBTASK E: PC-INDEPENDENCE AUDIT & CLOUD BOUNDARIES
+--------------------------------------------------------------------------------
+- Code-level fixes implemented:
+    * Worker/Scheduler startup paths accept injected truth-pack and DB settings.
+    * No hardcoded Founder PC paths or drive letters remain in active execution paths.
+    * Container runs with UID 1000 (appuser) and zero host volume mounts.
+- Cloud-dependent infrastructure boundaries (audited and documented):
+    * Cloud Blob Storage: Required for remote truth-pack loading and artifact storage.
+    * External Auth Provider: Required for production JWKS / JWT token verification.
+    * Scheduler Dispatch: Distributed queue / pubsub messaging service.
+    These are tracked as explicit BLOCKERS in cloud_runtime_bridge and check_cloud_readiness.
+
+5. SUBTASK F: TRI-STATE READINESS PREFLIGHT SEMANTICS
+--------------------------------------------------------------------------------
+- Updated scripts/check_cloud_readiness.py to return unambiguous tripartite status:
+    * Code 0 (PASS): All prerequisites satisfied and zero launch blockers exist (e.g. migrate role with reachable DB).
+    * Code 2 (BLOCKED): Configuration and database valid, but unwired cloud dependencies prevent full cloud autonomy (e.g. api, worker).
+    * Code 1 (FAIL): Configuration missing/malformed, secrets invalid, or database unreachable.
+- Never returns PASS if the canonical runtime contract reports launch blockers.
+- Unit tests in scripts/test_check_cloud_readiness.py verify all 3 exit code branches.
+
+6. TEST VERIFICATION RUNS
+--------------------------------------------------------------------------------
+Command: python -m unittest scripts.test_container_contract scripts.test_smoke_container scripts.test_check_cloud_readiness scripts.test_validate_cloud_config scripts.test_cloud_runtime_bridge -v
+Result: Ran 69 tests in 0.943s. Status: OK (69 passed, 0 failed).
+
+Command: python -m unittest worker.test_worker worker.test_scheduler -v
+Result: Ran 30 tests in 8.679s. Status: OK (30 passed, 0 failed).
+
+Command: python scripts/check_guard.py --allow-missing-patterns
+Result: Guard checks passed for repository and mirror boundary. Status: PASS.
+
+Command: python scripts/check_repository.py
+Result: Repository integrity checks passed. Status: PASS.
+
+Command: python scripts/smoke_container.py
+Result: Exit code 0 (informational on host lacking docker).
+
+Command: python scripts/smoke_container.py --require-engine
+Result: Exit code 2 (fails closed as requested when engine is missing).
+
+Command: python scripts/container_entrypoint.py liveness
+Result: Exit code 0. Output: "liveness probe: ok"
+
+Command: python scripts/container_entrypoint.py definitely-not-a-role
+Result: Exit code 1. Output: "Error: Invalid role 'definitely-not-a-role'."
+================================================================================

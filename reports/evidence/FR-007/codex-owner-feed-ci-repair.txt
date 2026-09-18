@@ -1,0 +1,115 @@
+FR-007 W10 Owner feed read path and Mandatory backend repair
+
+Required starting integration SHA: 2adf4b4a76c16a9a4f1e9e560a472f7723194fbc
+Branch: work/fr007-owner-feed-ci-repair-codex
+
+Authoritative pre-repair reproduction:
+The specified .github/workflows/mandatory.yml does not exist at the required SHA.
+The actual Mandatory workflow is .github/workflows/test.yml. Its backend command
+is `alembic upgrade head` then `python -m unittest discover -v` under PostgreSQL
+16-alpine with OPPORTUNITYOS_RUN_SEARCH_PERF=1.
+Disposable branch-only reproduction workflow run: 35274686771, job 105382287232
+https://github.com/m7mdehab/opportunityos/actions/runs/35274686771
+Exact raw test summary: Ran 1128 tests in 131.837s; FAILED (failures=21, errors=6).
+
+Pre-repair error names:
+api.test_api.ExtractionFieldSerializationTest.test_c5_1_every_extraction_field_present_in_list_and_detail
+api.test_api.ExtractionFieldSerializationTest.test_c5_1_family_size_present_for_clustered_row
+api.test_api.ExtractionFieldSerializationTest.test_work_mode_unspecified_serializes_verbatim_not_null_or_blank
+scripts.test_backup_restore.TestBackupRestorePostgres.test_full_backup_and_restore_cycle
+scripts.test_backup_restore.TestBackupRestorePostgres.test_restore_refuses_dump_with_column_delta
+storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_m_backup_wipe_restore_postgres_cycle
+
+Pre-repair failure names:
+api.test_api.FacetsTest.test_defaults_only_red_line_and_excluded_industry_hidden
+api.test_api.FacetsTest.test_every_facet_include_and_exclude_through_the_api
+api.test_api.FacetsTest.test_hidden_reasons_audit_and_unhide_by_reason
+api.test_api.FacetsTest.test_no_re_judgement_under_every_facet_exclusion
+api.test_api.FilterEngineOpportunitiesTest.test_compensation_floor_modes
+api.test_api.FilterEngineOpportunitiesTest.test_defaults_hidden_set_is_exactly_red_line_and_excluded_industry_hits
+api.test_api.FilterEngineOpportunitiesTest.test_excluded_industries_modes
+api.test_api.FilterEngineOpportunitiesTest.test_geo_eligibility_modes
+api.test_api.FilterEngineOpportunitiesTest.test_min_fit_score_modes
+api.test_api.FilterEngineOpportunitiesTest.test_premium_fulltime_onsite_modes
+api.test_api.FilterEngineOpportunitiesTest.test_red_line_toggled_off_shows_item_with_identical_decision_and_fit_score
+api.test_api.FilterEngineOpportunitiesTest.test_red_lines_modes
+api.test_api.FilterEngineOpportunitiesTest.test_stale_postings_modes
+api.test_api.FilterEngineOpportunitiesTest.test_target_roles_modes
+api.test_api.FilterEngineOpportunitiesTest.test_target_roles_token_match_ignores_word_order_and_seniority
+api.test_api.FilterEngineOpportunitiesTest.test_track_preference_modes
+api.test_api.FilterEngineOpportunitiesTest.test_work_mode_onsite_modes
+api.test_api.NoReJudgementSerializationTest.test_decision_fit_score_order_and_hidden_set_unchanged
+api.test_api.OpportunityRoutesTest.test_list_filters_sorts_and_paginates
+api.test_search.FacetCompositionTest.test_search_intersects_with_active_hide_filter
+api.test_search.PytorchCorpusSearchTest.test_pytorch_excludes_customer_engineer
+
+The three backup errors shared this exact exception:
+scripts.backup_restore.BackupCompletenessError: Backup completeness check failed:
+model tables missing from dump map: ['feed_projection']; dump map tables not
+present in model metadata: []. Update DUMP_SECTION_TABLE_MAP (and the
+corresponding dump/restore sections) to keep the backup complete.
+
+Post-repair verification:
+Checkpoint 469004d, run 35275765487: Ran 1130 tests in 151.353s;
+FAILED (failures=14, errors=0).
+Checkpoint 2e3c243, run 35276311648: Ran 1130 tests in 139.157s;
+FAILED (failures=5, errors=0).
+Checkpoint f66545a, run 35276792279, job 105389241557:
+Ran 1130 tests in 142.576s; OK. No skips.
+https://github.com/m7mdehab/opportunityos/actions/runs/35276792279
+
+Semantic repairs:
+- GET /api/opportunities no longer rebuilds or commits projections.
+- Settings and unhide mutations refresh existing persisted projection rows;
+  ingestion and evaluation write paths persist their respective projections.
+- Evaluation fixtures now use the active Truth Pack hash, matching the
+  production projection identity contract.
+- NULL priority/score rows sort after evaluated rows in PostgreSQL.
+- Label-only filter detail is read only for the bounded returned page.
+- JSON backup/restore covers feed_projection and regenerates PostgreSQL
+  search_tsv from the backed-up search_text.
+
+Local focused command: python -m unittest storage.test_feed_query
+storage.test_feed_projection storage.test_feed_projection_service
+storage.test_feed_regression scripts.test_backup_restore -v
+Result: Ran 24 tests in 7.210s; OK (skipped=1; PostgreSQL unavailable locally).
+Local HTTP/API command: python -m unittest api.test_api api.test_search -v
+Result: Ran 11 tests in 0.060s; OK (skipped=25; PostgreSQL unavailable locally).
+Remote full backend run above exercised these classes with real PostgreSQL.
+python scripts/check_repository.py: Repository integrity checks passed.
+python scripts/check_guard.py: blocked locally because FOUNDER_NAME_PATTERNS
+is unset; python scripts/check_guard.py --allow-missing-patterns: Guard
+checks passed for repository and mirror boundary.
+python -m py_compile on changed Python files: PASS.
+npm ci: installed 651 packages, 0 vulnerabilities.
+npm run build: PASS (Next.js build, TypeScript, static pages).
+npm run lint: PASS (eslint --max-warnings=0).
+
+The branch-only reproduction workflow is removed from the final tree.
+The final SHA, remote required CI run, and State freshness are verified after
+this evidence file is committed and reported in the branch handoff.
+
+W10.1 Owner review repair:
+- Bulk refresh requires the loaded pack's explicit truth_pack_hash and reads
+  only projections with that hash. Historical and `active` rows remain intact.
+- Evaluation publication now raises on failure, rolls back its projection
+  transaction, and commits the projection on success. The evaluation upsert
+  remains idempotent after a failed publication.
+- `evaluate_new` retries a row with a committed evaluation but a missing
+  projection, so the worker does not treat that partial state as complete.
+- The HTTP write-path regression compares every persisted projection column
+  of a historical hash before and after a current-pack filter change.
+
+New regressions:
+storage.test_feed_projection_service.FeedProjectionMaterializationTest.test_settings_refresh_preserves_other_truth_hashes_and_synthetic_projection
+api.test_api.OpportunityRoutesTest.test_filter_write_refreshes_only_loaded_truth_pack_projection
+matching.test_evaluate_persist.EvaluateAndStoreTest.test_projection_publication_failure_raises_and_idempotent_retry_publishes
+matching.test_evaluate_persist.EvaluateAndStoreTest.test_worker_retry_republishes_committed_evaluation_without_duplicate
+
+W10.1 local focused command: python -m unittest storage.test_feed_projection_service
+storage.test_feed_query storage.test_feed_regression matching.test_evaluate_persist
+worker.test_reconstruct_opportunity worker.test_runner -v
+Result: Ran 47 tests in 22.151s; OK.
+Local HTTP/API command: python -m unittest api.test_api api.test_search -v
+Result: Ran 11 tests in 0.083s; OK (skipped=25; PostgreSQL unavailable locally).
+The exact PostgreSQL HTTP tests run in Mandatory CI on the final PR head.

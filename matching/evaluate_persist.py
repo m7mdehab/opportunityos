@@ -302,10 +302,27 @@ def evaluate_and_store(
         "evaluated_at": _to_utc_naive(resolved_evaluated_at),
     }
 
-    return _upsert_match_evaluation(
+    evaluation_record = _upsert_match_evaluation(
         repository.session,
         record_id=record_id,
         opportunity_id=opportunity.id,
         truth_pack_hash=truth_pack_hash,
         values=values,
     )
+    from storage.feed_projection_service import refresh_opportunity_projection
+
+    try:
+        projection = refresh_opportunity_projection(
+            repository.session,
+            opportunity_id=opportunity.id,
+            truth_pack_hash=truth_pack_hash,
+            truth_graph=truth_graph,
+            projected_at=resolved_evaluated_at,
+        )
+        if projection is None:
+            raise RuntimeError("evaluation persisted but feed projection was not published")
+        repository.session.commit()
+    except Exception:
+        repository.session.rollback()
+        raise
+    return evaluation_record

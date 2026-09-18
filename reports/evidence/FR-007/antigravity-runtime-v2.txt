@@ -1,0 +1,46 @@
+================================================================================
+FR-007 ANTIGRAVITY LANE — W4 CLOUD CONTAINER / ROLE RUNTIME EVIDENCE
+Date: 2026-09-17
+Host: Windows
+Branch: work/fr007-antigravity-runtime-v2
+Base SHA: 2adf4b4a76c16a9a4f1e9e560a472f7723194fbc
+================================================================================
+
+1. DOCKER AVAILABILITY CHECK
+--------------------------------------------------------------------------------
+Command: docker --version
+Result:
+docker: The term 'docker' is not recognized as a name of a cmdlet, function, script file, or executable program.
+Docker is UNAVAILABLE in this execution environment.
+Per contract requirement: Docker unavailability is explicitly stated; container build was not executed and container build success is NOT claimed.
+
+2. TEST CONTAINER CONTRACT SUITE
+--------------------------------------------------------------------------------
+Command: python -m unittest scripts.test_container_contract -v
+test_invalid_role_fails_closed (scripts.test_container_contract.ContainerRoleDispatchTest.test_invalid_role_fails_closed) ... ok test_role_dispatch_api_custom_host_and_port (scripts.test_container_contract.ContainerRoleDispatchTest.test_role_dispatch_api_custom_host_and_port) ... ok test_role_dispatch_api_defaults (scripts.test_container_contract.ContainerRoleDispatchTest.test_role_dispatch_api_defaults) ... ok test_role_dispatch_api_respects_opportunityos_port_var (scripts.test_container_contract.ContainerRoleDispatchTest.test_role_dispatch_api_respects_opportunityos_port_var) ... ok test_role_dispatch_migrate (scripts.test_container_contract.ContainerRoleDispatchTest.test_role_dispatch_migrate) ... ok test_role_dispatch_scheduler (scripts.test_container_contract.ContainerRoleDispatchTest.test_role_dispatch_scheduler) ... ok test_role_dispatch_worker (scripts.test_container_contract.ContainerRoleDispatchTest.test_role_dispatch_worker) ... ok test_cloud_database_url_aliases_to_opportunityos_db_url (scripts.test_container_contract.EnvironmentAndConfigBridgeTest.test_cloud_database_url_aliases_to_opportunityos_db_url) ... ok test_conflicting_database_urls_fail_closed (scripts.test_container_contract.EnvironmentAndConfigBridgeTest.test_conflicting_database_urls_fail_closed) ... ok test_missing_api_credentials_fail_closed (scripts.test_container_contract.EnvironmentAndConfigBridgeTest.test_missing_api_credentials_fail_closed) ... ok test_missing_database_url_fails_closed (scripts.test_container_contract.EnvironmentAndConfigBridgeTest.test_missing_database_url_fails_closed) ... ok test_cli_dispatch_via_subprocess (scripts.test_container_contract.GracefulInvocationTest.test_cli_dispatch_via_subprocess) ... ok test_cli_empty_role_fails (scripts.test_container_contract.GracefulInvocationTest.test_cli_empty_role_fails) ... ok test_scheduler_graceful_stop_event (scripts.test_container_contract.GracefulInvocationTest.test_scheduler_graceful_stop_event) ... ok test_liveness_probe_succeeds (scripts.test_container_contract.HealthAndReadinessContractTest.test_liveness_probe_succeeds) ... ok test_readiness_probe_executes_lightweight_queries_only (scripts.test_container_contract.HealthAndReadinessContractTest.test_readiness_probe_executes_lightweight_queries_only) ... ok test_readiness_probe_fails_on_db_error (scripts.test_container_contract.HealthAndReadinessContractTest.test_readiness_probe_fails_on_db_error) ... readiness probe: failed (database unreachable) ok test_api_role_does_not_invoke_scheduler_or_migrations (scripts.test_container_contract.RoleSeparationContractTest.test_api_role_does_not_invoke_scheduler_or_migrations) ... ok test_migrate_role_does_not_invoke_api_or_worker (scripts.test_container_contract.RoleSeparationContractTest.test_migrate_role_does_not_invoke_api_or_worker) ... ok test_scheduler_role_does_not_invoke_worker_or_api (scripts.test_container_contract.RoleSeparationContractTest.test_scheduler_role_does_not_invoke_worker_or_api) ... ok test_worker_role_rejects_schedule_flag (scripts.test_container_contract.RoleSeparationContractTest.test_worker_role_rejects_schedule_flag) ... ok test_dockerfile_runs_as_non_root (scripts.test_container_contract.SecretIsolationAndPackagingTest.test_dockerfile_runs_as_non_root) ... ok test_dockerignore_excludes_secrets_and_caches (scripts.test_container_contract.SecretIsolationAndPackagingTest.test_dockerignore_excludes_secrets_and_caches) ... ok test_no_secrets_baked_into_entrypoint_or_dockerfile (scripts.test_container_contract.SecretIsolationAndPackagingTest.test_no_secrets_baked_into_entrypoint_or_dockerfile) ... ok  ---------------------------------------------------------------------- Ran 24 tests in 0.915s  OK liveness probe: ok readiness probe: ok (db reachable, migrations verified)
+
+3. INVALID ROLE CLI INVOCATION (FAIL-CLOSED PROOF)
+--------------------------------------------------------------------------------
+Command: python scripts/container_entrypoint.py definitely-not-a-role
+Exit Code: 1
+Output:
+Error: Invalid role 'definitely-not-a-role'. Supported roles: api, worker, scheduler, migrate, readiness, liveness
+
+4. LIVENESS PROBE INVOCATION
+--------------------------------------------------------------------------------
+Command: python scripts/container_entrypoint.py liveness
+Exit Code: 0
+Output:
+liveness probe: ok
+
+5. REPOSITORY INTEGRITY & GUARD CHECKS
+--------------------------------------------------------------------------------
+Command: python scripts/check_guard.py --allow-missing-patterns
+Guard checks passed for repository and mirror boundary.
+
+Command: python scripts/check_repository.py
+Repository integrity checks passed.
+
+================================================================================
+END OF EVIDENCE
+================================================================================
