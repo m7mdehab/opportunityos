@@ -53,8 +53,8 @@ def validate_cloudflare_package(root: Path = ROOT) -> list[str]:
         for token in FORBIDDEN_NETWORK_OPS:
             if f'"{token}"' in w_text or f"'{token}'" in w_text:
                 errors.append(f"production DNS or domain cutover forbidden in wrangler.jsonc: {token}")
-        if '"OPPORTUNITYOS_API_ORIGIN"' not in w_text:
-            errors.append("wrangler.jsonc must declare OPPORTUNITYOS_API_ORIGIN var")
+        if '"OPPORTUNITYOS_CLOUD_EDGE"' not in w_text or '"1"' not in w_text:
+            errors.append("wrangler.jsonc must mark the deployed runtime as OPPORTUNITYOS_CLOUD_EDGE=1")
 
     # 2. Check same-origin /api proxy route handler exists
     api_proxy_route = web_dir / "app" / "api" / "[...path]" / "route.ts"
@@ -64,12 +64,16 @@ def validate_cloudflare_package(root: Path = ROOT) -> list[str]:
         proxy_text = api_proxy_route.read_text(encoding="utf-8")
         if "OPPORTUNITYOS_API_ORIGIN" not in proxy_text:
             errors.append("proxy route handler must reference OPPORTUNITYOS_API_ORIGIN")
-        if "https://" not in proxy_text:
-            errors.append("proxy route handler must enforce HTTPS upstream origin")
-        if "localhost" in proxy_text and "configuredOrigin" in proxy_text:
-            # Check that localhost is only used as a dev fallback when OPPORTUNITYOS_API_ORIGIN is not set
-            if not re.search(r'if\s*\(\s*configuredOrigin\s*\)', proxy_text):
-                errors.append("cloud staging build must not depend unconditionally on localhost")
+        if "parsed.protocol !== \"https:\"" not in proxy_text:
+            errors.append("proxy route handler must enforce parsed HTTPS upstream origin")
+        if 'OPPORTUNITYOS_CLOUD_EDGE === "1"' not in proxy_text:
+            errors.append("proxy route handler must distinguish cloud edge from local development")
+        if "OPPORTUNITYOS_API_ORIGIN is required on the cloud edge" not in proxy_text:
+            errors.append("cloud edge must fail closed when API origin is absent")
+        if "localhost" not in proxy_text:
+            errors.append("local-development API fallback contract is missing")
+        if "getSetCookie" not in proxy_text:
+            errors.append("proxy must preserve multiple Set-Cookie response headers")
 
     # 3. Check browser client code uses relative /api routes, never hardcoded localhost/origin
     client_ts = web_dir / "lib" / "api" / "client.ts"
@@ -114,6 +118,14 @@ def validate_cloudflare_package(root: Path = ROOT) -> list[str]:
             errors.append("staging workflow must provide VALIDATE, DEPLOY_STAGING, and SMOKE_STAGING modes")
         if "acknowledge_staging_deployment" not in wf_text:
             errors.append("staging workflow must require explicit acknowledge_staging_deployment")
+        if 'DEPLOY_STAGING requires explicit acknowledgement.' not in wf_text:
+            errors.append("DEPLOY_STAGING must fail, not silently skip, without acknowledgement")
+        if 'OPPORTUNITYOS_API_ORIGIN must be a non-empty HTTPS origin.' not in wf_text:
+            errors.append("DEPLOY_STAGING must fail closed when API origin is absent or non-HTTPS")
+        if 'CLOUDFLARE_API_TOKEN is required.' not in wf_text or 'CLOUDFLARE_ACCOUNT_ID is required.' not in wf_text:
+            errors.append("DEPLOY_STAGING must validate Cloudflare credentials before mutation")
+        if 'OPOS_STAGING_WEB_URL must be a non-empty HTTPS URL.' not in wf_text:
+            errors.append("SMOKE_STAGING must require an HTTPS staging URL")
         for bad_word in ("dns", "cutover", "zone", "custom_domain"):
             if bad_word in wf_text.lower():
                 errors.append(f"forbidden network cutover term in workflow: {bad_word}")
