@@ -10,6 +10,10 @@ param maxReplicas int
 param cloudDatabaseUrl string
 @secure()
 param truthPackUri string = ''
+@secure()
+param truthPackAuthToken string = ''
+@secure()
+param truthPackApiKey string = ''
 param truthPackHash string = ''
 @secure()
 param founderPassword string = ''
@@ -30,6 +34,8 @@ resource app 'Microsoft.App/containerApps@2023-05-01' = {
         { name: 'cloud-database-url'; value: cloudDatabaseUrl }
       ], (isApi || isWorker) ? [
         { name: 'truth-pack-uri'; value: truthPackUri }
+        { name: 'truth-pack-auth-token'; value: truthPackAuthToken }
+        { name: 'truth-pack-api-key'; value: truthPackApiKey }
       ] : [], isApi ? [
         { name: 'founder-password'; value: founderPassword }
         { name: 'session-secret'; value: sessionSecret }
@@ -54,10 +60,14 @@ resource app 'Microsoft.App/containerApps@2023-05-01' = {
             { name: 'OPPORTUNITYOS_FOUNDER_PASSWORD'; secretRef: 'founder-password' }
             { name: 'OPPORTUNITYOS_SESSION_SECRET'; secretRef: 'session-secret' }
             { name: 'OPPORTUNITYOS_TRUTH_PACK_URI'; secretRef: 'truth-pack-uri' }
+            { name: 'OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN'; secretRef: 'truth-pack-auth-token' }
+            { name: 'OPPORTUNITYOS_TRUTH_PACK_API_KEY'; secretRef: 'truth-pack-api-key' }
             { name: 'OPPORTUNITYOS_TRUTH_PACK_HASH'; value: truthPackHash }
             { name: 'OPPORTUNITYOS_FORCE_SECURE_COOKIES'; value: '1' }
           ] : isWorker ? [
             { name: 'OPPORTUNITYOS_TRUTH_PACK_URI'; secretRef: 'truth-pack-uri' }
+            { name: 'OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN'; secretRef: 'truth-pack-auth-token' }
+            { name: 'OPPORTUNITYOS_TRUTH_PACK_API_KEY'; secretRef: 'truth-pack-api-key' }
             { name: 'OPPORTUNITYOS_TRUTH_PACK_HASH'; value: truthPackHash }
           ] : [])
         }
