@@ -7,7 +7,7 @@ from pathlib import Path
 
 from opportunity.registry import SourceRegistry
 from storage.engine import get_engine, get_session_factory, init_db
-from storage.models import SourcePollRunRecord, WorkerJobRecord
+from storage.models import SourcePollRunRecord, SourceScheduleRecord, WorkerJobRecord
 from worker.handlers import BLOCKED_POLL_STATUS
 from worker.scheduler import (
     DEFAULT_POLL_INTERVAL_HOURS,
