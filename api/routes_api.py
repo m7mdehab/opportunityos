@@ -688,6 +688,7 @@ def _enqueue_pack_projection_refresh(session: Session, request: Request) -> str 
     return queue.enqueue_job(
         "refresh_feed_projections",
         {"truth_pack_hash": loaded_pack.truth_pack_hash},
+        commit=False,
     )
 
 
@@ -740,8 +741,6 @@ def update_filter(
     if validated_params is not None:
         row.params_json = json.dumps(validated_params)
     row.updated_at = now
-    session.commit()
-
     _enqueue_pack_projection_refresh(session, request)
     session.commit()
 
@@ -932,8 +931,6 @@ def update_facet(facet_id: str, payload: FacetUpdateRequest, response: Response,
         row.mode = mode
         row.values_json = values_json
         row.updated_at = now
-    session.commit()
-
     _enqueue_pack_projection_refresh(session, request)
     session.commit()
 
@@ -1028,7 +1025,7 @@ class UnhideByReasonRequest(BaseModel):
 @router.post("/hidden-reasons/unhide")
 def unhide_by_reason_route(payload: UnhideByReasonRequest, request: Request, session: Session = Depends(get_db)):
     now = to_naive_utc(datetime.now(timezone.utc))
-    ok = unhide_by_reason(session, payload.reason, now)
+    ok = unhide_by_reason(session, payload.reason, now, commit=False)
     if not ok:
         raise HTTPException(status_code=404, detail=f"unrecognised reason: {payload.reason!r}")
     _enqueue_pack_projection_refresh(session, request)
