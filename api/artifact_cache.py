@@ -96,6 +96,9 @@ class SupabaseStorageClient:
     def _bucket_url(self):
         return self.base_url.rstrip("/") + "/storage/v1/bucket/" + quote(self.bucket, safe="")
 
+    def _bucket_objects_url(self):
+        return self.base_url.rstrip("/") + "/storage/v1/object/" + quote(self.bucket, safe="")
+
     def ensure_private_bucket(self):
         """Fail closed unless the configured bucket exists and is explicitly private."""
         if self._private_bucket_verified:
@@ -164,7 +167,32 @@ class SupabaseStorageClient:
         return bytes(result)
 
     def delete(self, key):
-        self._request("DELETE", key)
+        """Delete through Supabase Storage's object-delete API.
+
+        The remove contract is DELETE /storage/v1/object/<bucket> with a
+        JSON {"prefixes": [...]} body; deleting the authenticated object URL
+        directly is not the Storage API remove contract.
+        """
+        self.ensure_private_bucket()
+        if self.transport is not None:
+            try:
+                self.transport.delete(key, None)
+                return
+            except Exception as exc:
+                raise ArtifactStorageError("private artifact delete failed") from exc
+
+        body = json.dumps({"prefixes": [key]}, separators=(",", ":")).encode("utf-8")
+        request = Request(
+            self._bucket_objects_url(),
+            data=body,
+            method="DELETE",
+            headers=self._headers(content_type="application/json"),
+        )
+        try:
+            with urlopen(request, timeout=self.timeout) as response:
+                response.read()
+        except Exception as exc:
+            raise ArtifactStorageError("private artifact delete failed") from exc
 
 def _client(client=None):
     return client if client is not None else SupabaseStorageClient()
