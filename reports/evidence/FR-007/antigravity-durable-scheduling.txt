@@ -5,13 +5,15 @@ Host: Windows Local Dev & GitHub-Hosted Actions Runner (ubuntu-latest)
 Branch: work/fr007-antigravity-durable-scheduling
 Base SHA: 198483c1125a15e915189b482816b3f203a6a7bc (origin/brief/fr-007-cloud-replatform)
 Target PR: Targeting brief/fr-007-cloud-replatform
-Status: COMPLETED & INDEPENDENTLY VERIFIED (CI green on PR #98 against PostgreSQL 16)
+Status: IMPLEMENTATION VERIFIED IN DISPOSABLE/CI POSTGRESQL 16; HOSTED PRODUCTION ACCEPTANCE NOT YET EXECUTED
 ================================================================================
 
 1. EXECUTIVE SUMMARY & RESOLUTION OF W11 REQUIREMENTS
 --------------------------------------------------------------------------------
-Wave 11 permanently resolves Acceptance Criteria A-7, A-8, and removes synchronous
-bulk feed maintenance from founder-facing request paths:
+Wave 11 implements and verifies the repository-side behavior required by A-7 and A-8,
+and removes synchronous bulk feed maintenance from founder-facing request paths.
+This evidence does NOT close production A-7/A-8: hosted runtime execution and later
+FR-007 operational acceptance remain required:
 
 A. A-8: Durable Source Scheduling & Cadence State
    - Implemented `source_schedules` table via Alembic migration `0007_source_schedules.py`:
@@ -81,9 +83,11 @@ D. Real PostgreSQL 16 Durability & Restart Acceptance Suite
 
 2. VERIFICATION EVIDENCE
 --------------------------------------------------------------------------------
-- Branch: work/fr007-antigravity-durable-scheduling
-- Latest Remediation Head Commit: 26c111445337718f086d39aa95931bb5f51e470b
-- Pull Request: #98 targeting brief/fr-007-cloud-replatform (https://github.com/m7mdehab/opportunityos/pull/98)
+- Source implementation branch: work/fr007-antigravity-durable-scheduling
+- Source implementation verification head: 26c111445337718f086d39aa95931bb5f51e470b
+- Clean integration branch: integration/fr007-w11-clean
+- Integration target: brief/fr-007-cloud-replatform
+- PR #98 is historical/source-lane evidence; the clean integration candidate supersedes it for merge.
 - Authoritative CI Run:
   * GitHub Actions Workflow: OCI Container Runtime Smoke (oci-container-smoke.yml)
   * Run ID: 35335984720
@@ -99,3 +103,12 @@ D. Real PostgreSQL 16 Durability & Restart Acceptance Suite
   * python scripts/check_guard.py --allow-missing-patterns: PASSED
   * python scripts/check_repository.py: PASSED
 ================================================================================================================================================================
+
+
+3. ACCEPTANCE BOUNDARY
+--------------------------------------------------------------------------------
+- Repository/disposable PostgreSQL implementation proof: PASS
+- Hosted cloud API/worker/scheduler execution: NOT_EXECUTED in this evidence
+- Production A-7 closure: NOT CLAIMED
+- Production A-8 closure: NOT CLAIMED
+- FR-007 terminal acceptance: NOT CLAIMED
