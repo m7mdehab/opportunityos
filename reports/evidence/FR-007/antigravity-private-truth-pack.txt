@@ -22,3 +22,10 @@ Tests:
 
 Hosted proof: NOT_EXECUTED. No Founder pack was uploaded or fetched. Production
 W3.4 closure still requires a real private remote retrieval after cloud restart.
+
+Overseer hardening:
+- loopback/private-host cloud Truth Pack endpoints fail closed;
+- generic transport exceptions are redacted without echoing provider exception text;
+- Supabase Storage detection covers canonical object-path semantics, including custom domains;
+- scheduler/migrate receive no Truth Pack URI/hash/token/api-key aliases;
+- API readiness requires the same private remote Truth Pack contract as worker readiness.
