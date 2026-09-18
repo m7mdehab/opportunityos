@@ -44,7 +44,7 @@ def _table_exists(connection: Any, table: str) -> bool:
             return False
         return res[0] is not None
     except Exception:
-        return True
+        return False
 
 
 def _count(connection: Any, table: str) -> int | None:
@@ -199,7 +199,7 @@ def execute_a4_http_probe(dsn: str) -> dict[str, Any]:
             id="proof-job-failed-1",
             job_type="poll_source",
             payload_json=json.dumps({"source_id": "greenhouse:failing"}),
-            status="FAILED",
+            status="DEAD_LETTER",
             retry_count=3,
             max_retries=3,
             error_message="Proof synthetic failure",
@@ -253,10 +253,15 @@ def execute_a4_http_probe(dsn: str) -> dict[str, Any]:
     detail_matched = (detail_data.get("id") == "proof-opp-1")
 
     with factory() as session:
-        opportunity_count = session.query(OpportunityRecord).count()
-        projection_count = session.query(FeedProjectionRecord).count()
+        opportunity_count = session.query(OpportunityRecord).filter(
+            OpportunityRecord.id.in_(["proof-opp-1", "proof-opp-2"])
+        ).count()
+        projection_count = session.query(FeedProjectionRecord).filter(
+            FeedProjectionRecord.opportunity_id.in_(["proof-opp-1", "proof-opp-2"])
+        ).count()
         failed_or_stuck = session.query(WorkerJobRecord).filter(
-            WorkerJobRecord.status.in_(["FAILED", "RETRY", "RUNNING"])
+            WorkerJobRecord.id.in_(["proof-job-failed-1", "proof-job-stuck-1"]),
+            WorkerJobRecord.status.in_(["DEAD_LETTER", "RETRY", "RUNNING"]),
         ).count()
 
     return {
@@ -335,6 +340,8 @@ def execute_a5_source_probe(dsn: str) -> dict[str, Any]:
         SourcePollRunRecord,
         WorkerJobRecord,
     )
+    from api import artifact_cache
+    from storage.feed_query import FeedQuerySpec, feed_page
     from worker.handlers import make_poll_source_handler
     from worker.queue import BackgroundWorkerQueue
     from worker.runner import WorkerRunner
@@ -343,12 +350,15 @@ def execute_a5_source_probe(dsn: str) -> dict[str, Any]:
     engine = get_engine(dsn)
     factory = get_session_factory(engine)
 
-    # 1. Seed artifact cache body
+    # 1. Seed a real cache identity and body for retrieval after source failure.
+    proof_artifact_key = artifact_cache.cache_key(
+        "proof-cache-opp", "hash-proof-pack", "proof-tmpl-1", "cv"
+    )
     with factory() as session:
-        session.query(ArtifactCacheRecord).filter_by(cache_key="proof-cache-1").delete()
+        session.query(ArtifactCacheRecord).filter_by(cache_key=proof_artifact_key).delete()
         session.add(
             ArtifactCacheRecord(
-                cache_key="proof-cache-1",
+                cache_key=proof_artifact_key,
                 opportunity_id="proof-cache-opp",
                 truth_pack_hash="hash-proof-pack",
                 template_id="proof-tmpl-1",
@@ -440,14 +450,35 @@ def execute_a5_source_probe(dsn: str) -> dict[str, Any]:
             .first()
         )
         good_opp = session.get(OpportunityRecord, "greenhouse:cloudflare:9901")
-        feed_count = session.query(FeedProjectionRecord).count()
-        art = session.query(ArtifactCacheRecord).filter_by(cache_key="proof-cache-1").first()
+        feed = feed_page(
+            session,
+            FeedQuerySpec(
+                truth_pack_hash="hash-proof-pack",
+                include_hidden=True,
+                page=1,
+                page_size=25,
+            ),
+        )
+        artifact_hit = artifact_cache.get(
+            session,
+            "proof-cache-opp",
+            "hash-proof-pack",
+            "proof-tmpl-1",
+            "cv",
+        )
 
     bad_failed = bool(bad_job and bad_job.status in ("RETRY", "DEAD_LETTER") and bad_poll and bad_poll.status == "error")
     good_persisted = bool(good_job and good_job.status == "COMPLETED" and good_opp is not None and good_poll and good_poll.status == "ok")
-    runner_continued = (processed_1 == 1 and processed_2 == 1)
-    artifact_retrievable = bool(art and bytes(art.payload) == b"%PDF-proof-artifact-payload")
-    feed_readable = bool(feed_count >= 0)
+    runner_continued = bool(processed_1 and processed_2)
+    artifact_retrievable = bool(
+        artifact_hit
+        and artifact_hit[0] == "application/pdf"
+        and artifact_hit[1] == b"%PDF-proof-artifact-payload"
+    )
+    feed_readable = bool(
+        feed.total >= 2
+        and any(row.opportunity_id == "proof-opp-1" for row in feed.rows)
+    )
 
     return {
         "bad_job_id": bad_job_id,
@@ -576,7 +607,7 @@ def execute_a6_idempotency_probe(dsn: str) -> dict[str, Any]:
 
             provs = session.query(FieldProvenanceRecord).filter_by(opportunity_id=target_opp_id).all()
             provenance_cardinalities.append(len(provs))
-            nat_keys = [(p.opportunity_id, p.field_name) for p in provs]
+            nat_keys = [(p.opportunity_id, p.field_name, p.record_checksum) for p in provs]
             if len(nat_keys) != len(set(nat_keys)):
                 raise RuntimeError(f"Duplicate provenance natural keys found in poll {i}")
 
@@ -625,7 +656,7 @@ def execute_a6_idempotency_probe(dsn: str) -> dict[str, Any]:
         changed_reverified_at = changed_opp.reverified_at.isoformat() if changed_opp.reverified_at else None
 
         changed_provs = session.query(FieldProvenanceRecord).filter_by(opportunity_id=target_opp_id).all()
-        changed_nat_keys = [(p.opportunity_id, p.field_name) for p in changed_provs]
+        changed_nat_keys = [(p.opportunity_id, p.field_name, p.record_checksum) for p in changed_provs]
         no_duplicate_nat_keys = (len(changed_nat_keys) == len(set(changed_nat_keys)))
 
         changed_poll_run = session.query(SourcePollRunRecord).filter_by(job_id="proof-a6-poll-6-changed").first()
@@ -687,15 +718,22 @@ def execute_a6_idempotency_probe(dsn: str) -> dict[str, Any]:
     th2 = threading.Thread(target=race_worker, args=("worker-2",))
     th1.start(); th2.start()
     th1.join(timeout=10.0); th2.join(timeout=10.0)
+    race_threads_complete = not th1.is_alive() and not th2.is_alive()
+    if not race_threads_complete:
+        raise RuntimeError("concurrent persistence workers did not both complete")
 
     with factory() as session:
         race_count = session.query(OpportunityRecord).filter_by(id=race_opp_id).count()
         race_provs = session.query(FieldProvenanceRecord).filter_by(opportunity_id=race_opp_id).all()
-        race_nat_keys = [(p.opportunity_id, p.field_name) for p in race_provs]
+        race_nat_keys = [(p.opportunity_id, p.field_name, p.record_checksum) for p in race_provs]
         race_prov_dups = len(race_nat_keys) - len(set(race_nat_keys))
 
-    if any("Integrity" in outcome or "Operational" in outcome for outcome in race_outcomes.values()):
-        concurrency = "RETRYABLE_INTEGRITY_ERROR_WITH_CANONICAL_DB"
+    if set(race_outcomes) != {"worker-1", "worker-2"}:
+        concurrency = "INCOMPLETE_CONCURRENCY_OBSERVATION"
+    elif any("Integrity" in outcome or "Operational" in outcome for outcome in race_outcomes.values()):
+        # The direct persistence proof establishes canonical DB state, but does
+        # not itself prove WorkerRunner retry semantics for this exact race.
+        concurrency = "INTEGRITY_ERROR_WITH_CANONICAL_DB"
     elif all(outcome == "OK" for outcome in race_outcomes.values()):
         concurrency = "CONCURRENT_IDEMPOTENT"
     else:
@@ -718,6 +756,7 @@ def execute_a6_idempotency_probe(dsn: str) -> dict[str, Any]:
         "concurrent_opp_count": race_count,
         "concurrent_provenance_duplicates": race_prov_dups,
         "race_worker_outcomes": race_outcomes,
+        "race_threads_complete": race_threads_complete,
     }
 
 
@@ -730,8 +769,10 @@ def prove_a6(connection: Any, *, idempotency_probe: Callable[[], dict[str, Any]]
         required = ("stable_identity", "stable_provenance", "changed_content_reverified", "no_duplicate_identity")
         if not all(observed.get(key) for key in required):
             return _result("A6", "FAIL", reason="poll_idempotency_invariant_failed", observed=observed)
-        if observed.get("concurrency") not in ("CONCURRENT_IDEMPOTENT", "RETRYABLE_INTEGRITY_ERROR_WITH_CANONICAL_DB"):
+        if observed.get("concurrency") not in ("CONCURRENT_IDEMPOTENT", "INTEGRITY_ERROR_WITH_CANONICAL_DB"):
             return _result("A6", "FAIL", reason="concurrency_outcome_invalid", observed=observed)
+        if observed.get("race_threads_complete") is not True:
+            return _result("A6", "FAIL", reason="concurrency_workers_incomplete", observed=observed)
         if observed.get("concurrent_opp_count") != 1 or observed.get("concurrent_provenance_duplicates") != 0:
             return _result("A6", "FAIL", reason="concurrency_database_non_canonical", observed=observed)
         if len(observed.get("poll_counts", [])) != 5:
