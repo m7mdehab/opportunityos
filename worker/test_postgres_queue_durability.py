@@ -179,6 +179,13 @@ class TestPostgresQueueDurability(unittest.TestCase):
             truth_pack_path=self.valid_pack_path,
         )
         app = create_app(settings=settings)
+        # Starlette only guarantees startup-event execution when TestClient is
+        # used as a context manager. These tests intentionally keep a reusable
+        # client, so install the same validated pack explicitly instead of
+        # making W11 queue assertions depend on TestClient lifecycle details.
+        from api.routes_api import load_truth_pack_into_state
+        load_truth_pack_into_state(app)
+        self.assertIsNotNone(app.state.loaded_truth_pack)
         self._apps_to_dispose.append(app)
         return app
 
@@ -519,21 +526,23 @@ class TestPostgresQueueDurability(unittest.TestCase):
         sched2 = PollScheduler(self.session_factory, clock=lambda: now)
 
         barrier = threading.Barrier(2)
+        thread_errors: list[BaseException] = []
 
-        def tick1():
-            barrier.wait()
-            sched1.run_once()
+        def tick(scheduler):
+            try:
+                barrier.wait()
+                scheduler.run_once()
+            except BaseException as exc:
+                thread_errors.append(exc)
 
-        def tick2():
-            barrier.wait()
-            sched2.run_once()
-
-        t1 = threading.Thread(target=tick1)
-        t2 = threading.Thread(target=tick2)
+        t1 = threading.Thread(target=tick, args=(sched1,))
+        t2 = threading.Thread(target=tick, args=(sched2,))
         t1.start()
         t2.start()
         t1.join(timeout=10.0)
         t2.join(timeout=10.0)
+        self.assertFalse(t1.is_alive() or t2.is_alive(), "Concurrent scheduler test timed out")
+        self.assertEqual(thread_errors, [], f"Concurrent scheduler raised: {thread_errors!r}")
 
         session_check = self.session_factory()
         try:
