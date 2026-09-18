@@ -350,10 +350,7 @@ def load_truth_pack(
         )
 
     if auth_token is None:
-        auth_token = (
-            os.environ.get("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN")
-            or os.environ.get("STORAGE_SERVICE_KEY")
-        )
+        auth_token = os.environ.get("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN")
     if api_key is None:
         api_key = os.environ.get("OPPORTUNITYOS_TRUTH_PACK_API_KEY")
 
