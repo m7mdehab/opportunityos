@@ -36,7 +36,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 - A-14 — Production runs for ≥ 7 consecutive days with founder-owned production host processes disabled/offline while scheduled acquisition/evaluation continues successfully.
 - A-15 — A provider-neutral export/restore procedure is tested sufficiently to prove Supabase/compute-provider exit is possible without rewriting domain logic or losing canonical data.
 - A-16 — Desktop and 390px mobile authenticated smoke tests pass after cloud cutover, including feed, pagination, search, facets, detail, source link, Poll Now status, and artifact access.
-- A-17 — Current cost envelope and quota assumptions are documented, distinguishing permanent free allowances, temporary student credits, and paid-tier requirements. No paid resource is silently created.
+- A-17 — Current cost envelope and quota assumptions are documented, distinguishing permanent free allowances, temporary student credits, and paid-tier requirements. No paid resource is
 
 ## Completed Briefs
 
