@@ -63,8 +63,15 @@ def validate_package(root: Path = ROOT) -> list[str]:
         errors.append("immutable image parameter is missing")
     if not re.search(r"@secure\(\)\s*\nparam truthPackUri string", main):
         errors.append("Truth Pack URI must be a secure deployment parameter")
-    if "secretRef: 'truth-pack-uri'" not in app_module or "{ name: 'truth-pack-uri'; value: truthPackUri }" not in app_module:
-        errors.append("Truth Pack URI must be injected through a Container Apps secret reference")
+    for secret_name, env_name in (("truth-pack-uri", "OPPORTUNITYOS_TRUTH_PACK_URI"),
+                                  ("truth-pack-auth-token", "OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN"),
+                                  ("truth-pack-api-key", "OPPORTUNITYOS_TRUTH_PACK_API_KEY")):
+        if f"secretRef: '{secret_name}'" not in app_module or f"{{ name: '{secret_name}'; value:" not in app_module:
+            errors.append(f"{secret_name} must be injected through a Container Apps secret reference")
+        if f"{{ name: '{env_name}'; secretRef: '{secret_name}' }}" not in app_module:
+            errors.append(f"{env_name} must be wired from {secret_name}")
+    if "OPPORTUNITYOS_TRUTH_PACK" in job_module:
+        errors.append("migration job must not receive Truth Pack credentials")
     if "secrets:" not in job_module or "{ name: 'cloud-database-url'; value: cloudDatabaseUrl }" not in job_module:
         errors.append("migration job must declare the cloud database secret it references")
     if "manualTriggerConfig:" not in job_module or "parallelism: 1" not in job_module or "replicaCompletionCount: 1" not in job_module:
