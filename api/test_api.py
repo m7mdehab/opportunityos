@@ -381,7 +381,18 @@ class ApiTestCase(unittest.TestCase):
     def drain_maintenance_jobs(self) -> int:
         from worker.runner import WorkerRunner
         from worker.handlers import default_handler_registry
-        runner = WorkerRunner(self.session_factory, handlers=default_handler_registry())
+
+        app = getattr(self, "app", None)
+        loaded_pack = getattr(getattr(app, "state", None), "loaded_truth_pack", None)
+        handlers = default_handler_registry(
+            session_factory=self.session_factory,
+            pack_loader=(lambda _path: loaded_pack) if loaded_pack is not None else None,
+        )
+        runner = WorkerRunner(
+            self.session_factory,
+            handlers=handlers,
+            worker_id=f"api-test-maintenance-{id(self)}",
+        )
         total = 0
         while True:
             processed = runner.run_once()
