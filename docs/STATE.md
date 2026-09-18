@@ -10,8 +10,8 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 
 ## Repository
 
-- **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `430ea05` — FR-007 integrate and harden Azure staging deployment package
+- **Generated:** 2026-09-18T17:40:07Z
+- **State generated at commit:** `ecc95ad` — Record reliability harness implementation SHA
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief

@@ -42,6 +42,12 @@ jobs:
         run: python -m alembic upgrade head
       - name: Run reliability proof tests
         run: python -m unittest scripts.test_fr007_reliability_proof -v
+      - name: Run worker regression suites
+        run: python -m unittest worker.test_runner worker.test_scheduler worker.test_postgres_queue_durability -v
+      - name: Run opportunity and storage regression suites
+        run: python -m unittest opportunity.test_persistence storage.test_feed_query storage.test_feed_projection_service -v
+      - name: Run API read and auth regression suites
+        run: python -m unittest api.test_api.AuthFailClosedTest api.test_api.AuthSessionTest api.test_api.OpportunityRoutesTest -v
       - name: Compile and repository checks
         run: |
           python -m py_compile scripts/fr007_reliability_proof.py scripts/test_fr007_reliability_proof.py
