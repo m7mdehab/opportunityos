@@ -571,7 +571,7 @@ def make_poll_source_handler(
             # the current truth-pack hash, so evaluate_new is a fast no-op
             # for them.
             queue = BackgroundWorkerQueue(session)
-            queue.enqueue_job("evaluate_new", {})
+            queue.enqueue_job("evaluate_new", {}, commit=False)
 
             poll_run = SourcePollRunRecord(
                 id=f"spr-{uuid.uuid4().hex[:16]}",
