@@ -53,12 +53,20 @@ def validate_package(root: Path = ROOT) -> list[str]:
             if "output " in text.lower():
                 errors.append(f"secret-like or unapproved template output in {relative}")
     main = (azure / "main.bicep").read_text(encoding="utf-8") if (azure / "main.bicep").is_file() else ""
+    app_module = (azure / "modules/container-app.bicep").read_text(encoding="utf-8") if (azure / "modules/container-app.bicep").is_file() else ""
+    job_module = (azure / "modules/container-job.bicep").read_text(encoding="utf-8") if (azure / "modules/container-job.bicep").is_file() else ""
     if "existingManagedEnvironmentResourceId" not in main:
         errors.append("existing managed environment resource ID is required")
     if "deployApplicationRoles" not in main or "deployApplicationRoles=false" not in _workflow(root):
         errors.append("migration-first application rollout switch is missing")
     if not re.search(r"param image string", main):
         errors.append("immutable image parameter is missing")
+    if "@secure()\nparam truthPackUri string" not in main:
+        errors.append("private Truth Pack URI must be a secure deployment parameter")
+    if "name: 'cloud-database-url'" not in job_module or "value: cloudDatabaseUrl" not in job_module:
+        errors.append("migration job must declare the database secret it references")
+    if "OPPORTUNITYOS_TRUTH_PACK_URI'; secretRef: 'truth-pack-uri'" not in app_module:
+        errors.append("API/worker Truth Pack URI must be injected through a Container Apps secret")
     for role in ROLES:
         spec = roles.get(role, {}) if isinstance(roles, dict) else {}
         if spec.get("commandRole") != role:
@@ -87,9 +95,11 @@ def validate_package(root: Path = ROOT) -> list[str]:
         errors.append("VALIDATE/WHAT_IF/DEPLOY_STAGING Azure commands are incomplete")
     if "az network" in workflow.lower() or "dns" in workflow.lower() or "cutover" in workflow.lower():
         errors.append("DNS/network cutover operations are forbidden")
-    order = [workflow.find("deployApplicationRoles=false"), workflow.find("containerapp job start"), workflow.find("deployApplicationRoles=true")]
+    order = [workflow.find("deployApplicationRoles=false"), workflow.find("containerapp job start"), workflow.find("Migration execution succeeded."), workflow.find("deployApplicationRoles=true")]
     if any(position < 0 for position in order) or order != sorted(order):
-        errors.append("migration job must precede application rollout")
+        errors.append("migration job must complete successfully before application rollout")
+    if "containerapp job execution show" not in workflow or "properties.status" not in workflow:
+        errors.append("deployment workflow must verify migration execution status")
     return errors
 
 
