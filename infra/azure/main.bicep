@@ -12,6 +12,7 @@ param cloudDatabaseUrl string
 param founderPassword string = ''
 @secure()
 param sessionSecret string = ''
+@secure()
 param truthPackUri string
 param truthPackHash string
 param deployApplicationRoles bool = true
