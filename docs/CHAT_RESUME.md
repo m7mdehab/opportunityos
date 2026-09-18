@@ -1,224 +1,216 @@
 # OpportunityOS Chat Resume
 
-Purpose: boot a fresh ChatGPT/agent session without reconstructing OPOS history.
+Purpose: boot a fresh ChatGPT/agent session without reconstructing OPOS history from chat transcripts.
 
-Last compacted: 2026-09-13, Africa/Cairo.
+Last compacted: 2026-09-18, Africa/Cairo.
 
 ## Resume Command
 
-A new chat may begin with:
+A new session may begin with:
 
 `Resume OPOS from canonical state.`
 
-The Owner/Overseer should then read `AGENTS.md`, `docs/AUTHORITY_INDEX.md`, this file, generated `docs/STATE.md`, inspect current GitHub `main` and any active branch/PR, then load only the active brief and task-relevant ADRs/evidence.
+The Owner/Overseer should then read, in order:
 
-Cross-project procedure is defined by `m7mdehab/ai-engineering-control-plane`, using the locked `AI_ENGINEERING_OPERATING_SYSTEM_v2.0.md` baseline plus the current `AI_ENGINEERING_OPERATING_SYSTEM_v2.0.1_ADDENDUM.md`. The repository-only cold-boot acceptance contract is `FRESH_SESSION_ACCEPTANCE.md` in that control-plane repository.
+1. `AGENTS.md`;
+2. `docs/AUTHORITY_INDEX.md`;
+3. this file;
+4. generated `docs/STATE.md`;
+5. `docs/ROADMAP_CURRENT.md`;
+6. `docs/ARCHITECTURE_CURRENT.md`;
+7. the active FR-007 brief and task-relevant ADR/evidence;
+8. live GitHub branch/PR/CI state.
 
-Do not ask Mohammed to re-explain project history that can be recovered from the canonical repository layer. A stale ChatGPT Project snapshot is not authority; re-read the repositories.
+Do not ask Mohammed to reconstruct repository history that can be recovered from the canonical repository layer.
 
 ## Project In One Paragraph
 
-OpportunityOS is an autonomous opportunity-acquisition platform for MENA that covers employment and independent professional work, including freelance/consulting, contract, and procurement opportunities. Its core flow is `discover -> ingest -> qualify -> score -> truth-locked tailor -> prepare/fill/controlled-submit -> monitor outcomes -> learn safely`. The system is designed to save the founder time and increase access to remote work, freelance/client work, and other economic opportunities without fabricating founder claims or bypassing source/platform rules.
+OpportunityOS is an autonomous opportunity-acquisition platform for MENA spanning employment and independent professional work. Its core flow is:
+
+`discover -> ingest -> qualify -> score -> persist projection -> truth-locked tailor -> prepare/fill/controlled-submit -> monitor outcomes -> learn safely`.
+
+The system exists to increase useful opportunity throughput while preserving Founder truth, provenance, source policy, action authority and duplicate safety.
 
 ## Authority
 
 - Founder/final product authority: Mohammed.
-- Owner/Overseer: ChatGPT. Owns cross-project context continuity, architecture/product judgment, consequence classification, task briefing, Master selection, independent verification, and final PASS/NOT PASS closure.
-- Master Agent: dynamically selected by task. Codex is preferred for architecture-sensitive/stateful/concurrency/provenance/submission-authority work when capacity permits; Gemini/Antigravity is strong high-volume/bounded/browser execution capacity; Copilot is secondary/mechanical capacity; Claude Code is also valid Master/reviewer capacity when selected for the task.
-- Workers, independent auditors, and councils are evidence-producing/subordinate roles, not closure authority.
+- Owner/Overseer: ChatGPT / GPT-5.6 Sol.
+- Executors are bounded implementation capacity, not closure authority.
+- Repository/runtime truth outranks executor self-report.
 
-A role is not a model.
+For state claims:
 
-For state claims: runtime/live behavior where applicable > merged `origin/main` > explicitly active PR/branch > machine evidence > generated state > reports > chat memory.
+runtime/live behavior > merged authoritative branch > active PR/branch > machine evidence > generated state > reports > chat memory.
 
-For intent: latest Founder decision > Product Constitution/accepted ADR/PDR > current brief/roadmap > Master Plan > old reports/handoffs/chats.
+For intent:
 
-For procedure: global control plane > local `AGENTS.md` > OPOS execution/permissions contracts > active brief.
+latest Founder decision > Product Constitution/accepted ADR/PDR > active brief/roadmap > Master Plan > historical reports/chats.
+
+## Locked Overseer Operating Model
+
+`docs/OVERSEER_EXECUTION_LOCK.md` is standing governance.
+
+Default loop:
+
+`Sol pre-solves -> executor implements -> Sol independently verifies -> at most one focused executor remediation -> Sol closes ordinary residuals/integration -> executor moves to next useful independent lane`.
+
+Routine CI/state/PR/test-fixture/integration friction is Overseer work, not grounds for repeated executor ping-pong.
+
+Keep independent Codex and Antigravity capacity productively occupied when non-overlapping work exists.
 
 ## Truth Law
 
-Never weaken these:
+Never weaken:
 
 - `UNKNOWN != FALSE`;
 - `ABSENT != INELIGIBLE`;
-- material founder claims require evidence authority;
+- material Founder claims require evidence authority;
 - planned credentials never become held;
-- unsupported facts/commitments are omitted, marked uncertain, or paused;
-- no weaker parallel generator may bypass the Truth Graph;
+- unsupported facts/commitments are omitted, marked uncertain or paused;
 - source coverage is not permission;
-- external side effects fail closed when authority is missing or outcome is uncertain.
-
-See `docs/PRODUCT_CONSTITUTION.md` and accepted ADRs for full law.
-
-## Current Verified Product State
-
-BRIEF-FR-006 is terminal with its narrowly documented historical exceptions.
-Founder Web Alpha is live at <https://opportunityos.m7mdehab.com> and protected
-by Founder authentication. PR #90 landed stable long source-native identities;
-PR #91 added the posting-URL fallback for Himalayas rows whose upstream payload
-omits both `id` and `slug`. Production identity repairs and governed follow-up
-polls are recorded in
-`reports/evidence/FOUNDER_ALPHA_PRODUCTION_2026-09-16.md`.
-
-The live Alpha has full current-profile evaluation coverage and passed desktop,
-mobile, authentication, feed, filter, detail, source-health, artifact, and
-truth-lock smoke checks. Founder acceptance is the remaining gate. BRIEF-007 /
-Multi-Tenant Family Alpha remains blocked until that acceptance.
-
-## Current Active Brief - BRIEF-FR-006
-
-Title: `Nothing Missed, Nothing Hidden, Nothing Ugly`.
-
-This is the interrupted product brief to resume after repository/context boot is proven. Do not restart it from scratch.
-
-The brief responded to real founder-use failures including generic uncertainty, missing work-mode/location clarity, duplicate cards, weak seniority semantics, and poor generated CV output.
-
-Substantial work already on `main` includes:
-
-- richer opportunity extraction;
-- tenure/leadership-based seniority rather than title substring heuristics;
-- proficiency-aware skills;
-- broader title-family normalization;
-- deterministic opportunity-family clustering;
-- facets and full-text search;
-- cards exposing work mode/location/remote scope;
-- structured CV/document model;
-- three ATS templates;
-- DOCX/PDF generation;
-- in-browser preview and unsupported-sentence visibility;
-- artifact cache;
-- founder-control/saved-view storage;
-- expanded board discovery/source registry machinery;
-- source-policy path repairs;
-- truth-lock guard-neutralisation evidence;
-- phone token metric disambiguation (ADR-0018, phone numbers no longer dropped from CV);
-- live binary artifact generation verified (PDF/DOCX CV and Cover Letter generate at HTTP 200 OK with zero validator rejections);
-- feed query filter loop optimization with compiled regex LRU cache;
-- mock service worker installed (`web/public/mockServiceWorker.js`);
-- stale postings cleanup job wired into scheduler and worker handlers.
-
-## What Did Not Close
-
-- A-12 work mode: 434/540 (80.4%) versus 90%, at the evidenced committed-signal ceiling after a fresh source-partitioned scan. The 106 residual absences are machine-inventoried; country/scope 98.5% and uncertainty 10.4% pass.
-- A-23 persisted source yield: 8/8 newly registered sources, 60 persisted/evaluated rows; the live HN production path adds 127 persisted/evaluated rows. The board target passes at 334/300; Reddit remains BLOCKED_POLICY/manual-only.
-- A-20 exact Cloudflare subset: absent from the frozen corpus and retained as a historical corpus/contract exception; full-corpus clustering invariants pass.
-- A-6: accepted historical scope exception under ADR-0020.
-
-Do not make these disappear by relabeling the report, weakening targets, or fabricating evidence.
-
-## Owner/Overseer Items From Current Report
-
-No remediable engineering item remains. ADR-0019 deprecates dead readiness aliases without invented mappings; truth-lock remains intact; ADR-0021 unifies artifact validation under canonical semantics; generated State is reconciled through its generator. Merge PR #78 after its final authoritative evidence/State checkpoint is green, verify `main`, then stop at Founder Web Alpha validation.
-
-## Founder Value Priority
-
-OPOS should optimize for real founder leverage:
-
-- higher-quality remote/employment opportunity discovery;
-- freelance/consulting/client/procurement opportunities;
-- fewer duplicate/irrelevant cards;
-- explainable fit;
-- truthful tailored artifacts;
-- less repetitive form/application work;
-- safe operational follow-up;
-- meaningful time saved.
-
-Source-count growth that does not produce useful compliant opportunities is not success.
-
-## External Action Safety
-
-Preserve:
-
-- `DRY_RUN` default;
-- `ASSISTED` may fill/navigate/upload where permitted but not submit;
-- `CONTROLLED_SUBMIT` only for explicitly graduated/authorized paths;
-- Red/legal/sensitive/ambiguous answers pause unless exact founder-approved policy exists;
-- kill switch immediately before side effect;
-- CAPTCHA/MFA/bot challenge stop;
-- no bypass services;
-- durable atomic idempotency reservation;
-- `UNKNOWN_OUTCOME` means no automatic retry;
-- confirmation evidence required for success;
+- 403/429/CAPTCHA/MFA/policy restrictions are stop conditions;
+- uncertain external outcome never becomes automatic retry;
 - duplicate submission tolerance is zero.
 
-## Context Loading Rules
+## Current Product Phase
 
-Default startup does NOT require the full `docs/MASTER_PLAN.md`, the 100k+ source registry, all reports, old Overseer handoff files, or old chat transcripts.
+BRIEF-FR-006 is historical/closed with its documented exceptions.
 
-Root `CLAUDE.md`, `GEMINI.md`, and `.github/copilot-instructions.md` are small routing shims to `AGENTS.md`; they are not parallel policy sources.
+Founder Web Alpha exists, but FR-007 is now the active brief because cloud reliability and Founder-PC independence are not yet accepted.
 
-Load deeper context only as required:
+BRIEF-007 / Multi-Tenant Family Alpha remains blocked until FR-007 is closed and the Founder personally validates the resulting cloud-hosted Alpha.
 
-- full long-horizon plan: `docs/MASTER_PLAN.md`
-- truth/product constitution: `docs/PRODUCT_CONSTITUTION.md`
-- current architecture: `docs/ARCHITECTURE_CURRENT.md`
-- current roadmap: `docs/ROADMAP_CURRENT.md`
-- exact architecture decisions: `docs/adr/`
-- active implementation contract: `briefs/BRIEF-FR-006.md`
-- current gate narrative: `reports/REPORT-FR-006.md`
-- detailed evidence: `reports/evidence/FR-006/`
-- source policy/status only when source work requires it: `docs/SOURCE_REGISTRY.yaml`, `docs/SOURCE_EVIDENCE.md`
-- execution mechanics: `docs/AGENT_EXECUTION_PROTOCOL.md`
-- action permissions: `docs/AGENT_PERMISSIONS.yaml`
+## Current FR-007 Integration State
 
-## Engineering Operating Rules
+Authoritative branch:
 
-- repository/runtime truth outranks agent reports;
-- generated state is never hand-edited;
-- one branch per brief, isolated worktrees for writable parallel tasks;
-- no agent self-approves high-consequence work;
-- councils are targeted exceptions, not default process;
-- change strategy after repeated failure instead of looping;
-- respect measured host/concurrency limits;
-- agents do every solvable task and surface only genuine founder-only blockers;
-- once a brief is genuinely closed, freeze it absent concrete regression;
-- use exact vocabulary: built, landed, verified, closed;
-- never call a failing gate green;
-- the control-plane pre-existing/unrelated-failure exception may be used only with exact evidence and only for a bounded recovery/governance path that does not mask high-consequence risk.
+`brief/fr-007-cloud-replatform`
 
-## Exact Resume Order
+Integrated repository-side capabilities include:
 
-After this repository/context setup is proven, resume product execution as follows:
+- durable PostgreSQL `feed_projection`;
+- SQL-native normal feed path;
+- durable PostgreSQL `worker_jobs` queue;
+- lease recovery, fencing, retry/dead-letter and `FOR UPDATE SKIP LOCKED`;
+- persisted per-source `source_schedules`;
+- due-only generic Poll Now;
+- explicit permitted-source Poll Now semantics;
+- persisted cooldown / Retry-After handling;
+- async Founder filter/facet/unhide projection maintenance;
+- OCI roles: `api`, `worker`, `scheduler`, `migrate`;
+- remote HTTPS Truth Pack + SHA-256 integrity verification;
+- migration/backup/restore/parity/provider-exit tooling;
+- manual hosted PostgreSQL/Supabase proof harness;
+- W11 real PostgreSQL 16 durability/concurrency suite: 15 tests, zero skips.
 
-1. verify current `main`, open PRs, and current BRIEF-FR-006/report/evidence rather than trusting this snapshot blindly;
-2. recover the interrupted FR-006 terminal contract and current unresolved ledger;
-3. investigate and repair the pre-existing founder-readiness test/collector defect semantically if still present;
-4. resolve the Owner-reserved FR-006 verification items above;
-5. close FR-006 honestly against its contract, with exact CI/evidence and generated state reconciliation;
-6. only then move to the next explicit brief/product phase.
+W11 implementation proof does not itself close production A-7/A-8.
 
-Do not skip directly to BRIEF-007. It remains blocked until Founder Web Alpha is live and validated.
+The hosted data-plane harness does not itself close A-9.
 
-## Next Direction After FR-006
+## Current Parallel Execution
 
-1. improve compliant productive source yield;
-2. validate Founder Web Alpha on real daily use;
-3. improve extraction only from real evidence, not pattern inflation;
-4. strengthen the founder daily workflow and end-to-end opportunity-to-artifact path;
-5. continue safe outbound and outcome-monitoring operations;
-6. keep BRIEF-007 multi-tenant work blocked until Founder Web Alpha is live and validated.
+At this compaction point:
+
+- Codex is working on the FR-007 cloud deployment manifests + staging release harness;
+- Antigravity is working on a separate non-overlapping FR-007 lane;
+- Overseer has integrated W11 through clean PR #102 and closed superseded PRs #98/#101;
+- PR #93 remains the draft umbrella FR-007 PR.
+
+Always re-read live GitHub state because agent branches may have moved since this file was written.
+
+## Remaining FR-007 Sequence
+
+1. real hosted PostgreSQL/Supabase staging connectivity;
+2. real staging migration and parity;
+3. private durable Truth Pack storage;
+4. private durable artifact/object storage;
+5. hosted API/worker/scheduler/migrate deployment;
+6. independent frontend/cloud-edge wiring;
+7. shadow polling;
+8. repeated-poll duplicate/identity proof;
+9. worker/source failure-isolation proof;
+10. cold-start/feed SLO proof;
+11. production secret/RLS/privacy proof;
+12. external monitoring + test alert;
+13. encrypted off-provider backup;
+14. fresh-environment restore drill;
+15. provider-exit execution proof;
+16. public cutover;
+17. desktop + 390px authenticated cloud smoke;
+18. documented cost/quota envelope;
+19. >=7 consecutive days with Founder-owned production host offline;
+20. terminal A-0..A-17 evidence review;
+21. Founder validation;
+22. only then consider BRIEF-007.
 
 ## Founder-Only Boundaries
 
-Agents execute everything available tools can safely do. Mohammed should only be required for genuine external boundaries such as interactive authentication/OAuth, inaccessible accounts/credentials that cannot be securely injected, payment, accepting binding terms, professional legal/accounting sign-off, human communication the system cannot perform, or product/business judgment explicitly reserved to him.
+Agents execute every safely solvable technical task available through tools.
 
-Do not hand back technical commands, configuration derivation, tests, reversible implementation choices, or repository changes merely because a human could do them.
+Founder intervention is reserved for genuine boundaries such as:
 
-## Secrets
+- interactive provider login/OAuth/verification;
+- inaccessible credentials that cannot be injected through connected tooling;
+- payment or paid-resource approval;
+- acceptance of binding provider terms;
+- irreversible external actions;
+- legal/compliance judgment;
+- subjective final product acceptance.
 
-Never store credential values, private founder data, application history, raw Truth Graph content, passwords, tokens, connection strings, or other sensitive operational data in this file or the public docs mirror.
+Do not hand routine technical commands, reversible configuration or ordinary engineering judgment back to the Founder.
 
-Read credentials supplied for verification are used only through secure/approved access and are never echoed into canonical docs.
+## Cloud Acceptance Boundary
+
+Do not confuse:
+
+- code merged;
+- CI green;
+- disposable PostgreSQL proof;
+- staging deployment;
+- production cutover;
+- terminal FR-007 acceptance.
+
+They are separate evidence levels.
+
+Real hosted evidence is still required for the cloud acceptance criteria.
+
+## Security / Privacy
+
+Never store in Git or public docs:
+
+- credential values;
+- DB connection strings;
+- service-role/storage signing secrets;
+- private Founder Truth Pack contents;
+- raw personal/application history;
+- auth tokens/passwords.
+
+Evidence should contain names, hashes, safe fingerprints and operational conclusions, not secrets.
+
+## Context Loading Rules
+
+Load only what the task requires:
+
+- product law: `docs/PRODUCT_CONSTITUTION.md`
+- current architecture: `docs/ARCHITECTURE_CURRENT.md`
+- current roadmap: `docs/ROADMAP_CURRENT.md`
+- cloud ADR: `docs/adr/ADR-0022-cloud-native-runtime-and-supabase-data-plane.md`
+- long horizon: `docs/MASTER_PLAN.md`
+- source policy/status: `docs/SOURCE_REGISTRY.yaml`, `docs/SOURCE_EVIDENCE.md`
+- execution mechanics: `docs/AGENT_EXECUTION_PROTOCOL.md`
+- Overseer loop: `docs/OVERSEER_EXECUTION_LOCK.md`
+- action permissions: `docs/AGENT_PERMISSIONS.yaml`
+- exact gate evidence: relevant `reports/evidence/FR-007/`
+
+Provider chat histories are never the sole state authority.
 
 ## Compaction Rule
 
 Before moving to another chat:
 
-1. record durable product/architecture decisions in ADR/PDR form;
-2. update `ARCHITECTURE_CURRENT.md` only if architecture changed;
-3. update `ROADMAP_CURRENT.md` only if priorities changed;
-4. regenerate `docs/STATE.md` from repository facts;
-5. replace this file with the compact current delta/next action;
-6. do not copy history already preserved in reports/ADRs/briefs.
-
-This file is a bootloader, not an archive.
+1. persist durable architecture/product decisions in repository docs/ADRs;
+2. reconcile `ARCHITECTURE_CURRENT.md` when architecture changes;
+3. reconcile `ROADMAP_CURRENT.md` when execution priority changes;
+4. regenerate/reconcile `docs/STATE.md`;
+5. update this file with only the compact current delta/next action;
+6. do not duplicate history already preserved in reports/ADRs/briefs.
