@@ -1,90 +1,115 @@
 # OpportunityOS Current Roadmap
 
-This is the compact execution map. `docs/MASTER_PLAN.md` remains the full long-horizon plan and requirement source.
+This is the compact execution map. `docs/MASTER_PLAN.md` remains the long-horizon requirement source.
 
-## Portfolio Priority
+## Current Phase — FR-007 Cloud-Native Founder Alpha Replatform
 
-OPOS is a high-leverage founder system because it can improve employment, remote-job, freelance/consulting, and procurement opportunity throughput while reducing repetitive application work.
+Founder Web Alpha exists, but production reliability is not yet accepted because the current product must be proven independent of a Founder-owned PC and local runtime.
 
-Within the overall project portfolio, OPOS receives first claim on unconstrained engineering capacity unless another project has a real external deadline, production incident, or time-sensitive launch that temporarily preempts it.
+FR-007 is therefore the active execution priority. BRIEF-007 / Multi-Tenant Family Alpha remains blocked until FR-007 is accepted and the Founder validates the resulting cloud-hosted Alpha.
 
-## Current Phase
+## Already Integrated
 
-PR #78 is the authoritative FR-006 recovery checkpoint until merged. Run `34724239556` is green with 1095 Linux/PostgreSQL tests and zero skips, Playwright 22/22, and passing governance. Companion Guard, State, Mirror, and bounded live-evidence checks are green.
+The FR-007 integration branch now contains:
 
-`reports/REPORT-FR-006.md` concludes `PASS_WITH_HISTORICAL_EXCEPTIONS`. A-23 is closed at 8/8 persisted sources plus 127 live Hacker News rows. Frozen exceptions stay visible: A-12 work-mode coverage 80.4% versus 90% after exhaustive evidence inventory, A-20's absent exact frozen-corpus subset, and A-6's accepted historical deviation. Founder Web Alpha is live; Founder validation is next.
+- persisted PostgreSQL `feed_projection` and SQL-native feed reads;
+- durable PostgreSQL `worker_jobs` queue with leases, retry/dead-letter behavior and `FOR UPDATE SKIP LOCKED`;
+- persisted `source_schedules` for cadence, next-due, cooldown, last-attempt and last-success state;
+- due-only generic Poll Now plus permitted explicit-source semantics;
+- durable Retry-After/policy cooldown behavior;
+- asynchronous Founder settings/facet/unhide projection maintenance;
+- OCI-separated `api`, `worker`, `scheduler`, and `migrate` roles;
+- remote HTTPS Truth Pack loading with hash verification and no cloud-mode local-file fallback;
+- migration, parity, backup/restore and provider-exit tooling;
+- a manual-only hosted PostgreSQL/Supabase proof harness;
+- real PostgreSQL 16 W11 durability/concurrency proof: 15 tests, zero skips.
 
-## Immediate Goal - Founder Web Alpha validation
+These are implementation proofs. They do not by themselves close hosted-production acceptance criteria.
 
-Merge the green reconciled PR, verify `main`, then validate the founder experience with the private Truth Pack outside Git. Do not restart closed recovery work without a concrete regression, invent missing signals, or relabel frozen exceptions as ordinary PASS.
+## Active Parallel Work
 
-BRIEF-007 / Multi-Tenant Family Alpha remains blocked until Founder Web Alpha is live and personally validated.
+Two bounded implementation lanes are active:
 
-## Next Product Direction After Founder Web Alpha
+1. cloud deployment manifests + staging release harness;
+2. a separate non-overlapping FR-007 implementation lane.
 
-Priority order is economic usefulness, not architectural novelty.
+The Overseer owns independent review, ordinary remediation, CI, integration and the authoritative checklist.
 
-### 1. Better real opportunity yield
+## Remaining Execution Order
 
-- expand compliant, productive source coverage;
-- improve board/source discovery quality;
-- improve extraction where real payload evidence supports it;
-- prioritize sources that actually yield Egypt/MENA/remote-eligible opportunities rather than maximizing registry size;
-- preserve source permission and provenance rules.
+### 1. Hosted data plane
 
-### 2. Founder daily workflow
+- provision/connect the real hosted PostgreSQL/Supabase staging target;
+- run the repository preflight;
+- execute staging migration;
+- prove count/invariant/content-hash parity;
+- keep local production authoritative until the cutover gates pass.
 
-The founder should be able to open OPOS and quickly answer:
+### 2. Private cloud state
 
-- what opportunities are worth opening today;
-- why each one fits or does not fit;
-- what evidence supports the fit;
-- what tailored material is ready;
-- what is blocked by truth/policy rather than hidden behind generic uncertainty;
-- which actions require founder judgment versus can be executed autonomously.
+- move the production Founder Truth Pack to private durable cloud storage;
+- move generated/private artifacts to private durable object storage;
+- preserve truth-pack/template/validator version binding;
+- verify authorized retrieval after service restart.
 
-### 3. Application/outbound operational quality
+### 3. Hosted runtime
 
-Continue to harden real-world preparation/fill/controlled-submit paths only under existing action authority, idempotency, confirmation, and no-bypass rules.
+- deploy API, worker, scheduler and migrate roles using the same OCI image;
+- deploy frontend independently behind Cloudflare;
+- prove no Founder-PC/local-filesystem dependency;
+- prove workers may fail without taking down feed/search/detail.
 
-### 4. Outcome monitoring and learning
+### 4. Shadow and reliability proof
 
-Use recruiter/client/inbox signals and application outcomes to improve prioritization and operations without letting statistical learning overwrite deterministic founder truth or source/action policy.
+- run cloud polling in shadow/non-authoritative mode;
+- prove repeated polling is identity/idempotency safe;
+- prove one-source failure isolation;
+- measure cold-start/feed SLO;
+- verify Poll Now behavior in the actual hosted runtime.
 
-### 5. Founder Web Alpha validation
+### 5. Monitoring, backup and portability
 
-Validate the product on real founder use, not only fixtures:
+- external uptime monitoring;
+- application-error capture;
+- job/queue heartbeat;
+- source-freshness alerts;
+- worker-stall detection;
+- backup heartbeat and a real test incident;
+- encrypted off-provider backup;
+- restore into a fresh staging environment;
+- provider-neutral export/restore proof.
 
-- useful opportunity yield;
-- duplicate collapse;
-- location/remote clarity;
-- artifact quality;
-- unsupported-sentence rate;
-- time saved;
-- false-negative/false-positive qualification behavior;
-- outbound safety and duplicate prevention;
-- end-to-end usability.
+### 6. Cutover and soak
 
-### 6. Multi-Tenant Family Alpha
+- public DNS/runtime cutover only after staging evidence authorizes it;
+- authenticated desktop and 390px mobile cloud smoke;
+- document real cost/quota assumptions;
+- run at least 7 consecutive days with Founder-owned production host processes disabled/offline.
 
-Remain blocked until Founder Web Alpha is live and validated under the accepted tenancy decision.
+### 7. Terminal acceptance
 
-Do not incur multi-tenant complexity early merely because the schema can support it later.
+Close A-0 through A-17 only from persisted evidence and independent verification.
+
+FR-007 closure does not automatically start BRIEF-007. Founder product validation remains a separate gate.
 
 ## Engineering Priority Rules
 
-- truth/provenance and external side effects outrank cosmetic speed;
-- zero-tolerance properties stay zero tolerance: duplicate submission, unsupported founder claims, unauthorized submission, Red-class auto-answering, cross-tenant leakage, prohibited-channel contact;
-- independent review is targeted at high-consequence properties, not every deterministic edit;
-- after two failures on the same criterion, change strategy rather than looping;
-- respect measured host/concurrency limits;
-- agents execute all solvable work and surface only genuine founder-only blockers.
+- repository/runtime truth outranks executor self-report;
+- truth/provenance and external side-effect safety outrank convenience;
+- UNKNOWN is not FALSE and ABSENT is not INELIGIBLE;
+- source coverage is not permission;
+- 403/429/CAPTCHA/MFA/policy restrictions are stop conditions;
+- no paid infrastructure is silently created;
+- no production secret or private Founder truth enters Git;
+- backups are not accepted until restore proof passes;
+- provider-specific infrastructure must not rewrite core domain logic;
+- use the locked Overseer loop in `docs/OVERSEER_EXECUTION_LOCK.md`: pre-solve -> one executor wave -> independent verification -> at most one focused remediation -> Overseer closes ordinary residuals.
 
 ## What Not To Optimize For
 
-- registry/source count without productive compliant yield;
-- automatic application volume at the expense of truth or duplicate safety;
-- false certainty from missing founder data;
+- registry/source count without compliant productive yield;
+- deployment activity mistaken for acceptance;
 - premature multi-tenancy;
-- councils for routine deterministic work;
-- provider/model prestige rather than measured project outcomes.
+- Kubernetes/Kafka/Redis/search infrastructure without measured need;
+- repeated executor ping-pong for ordinary last-mile defects;
+- provider/model prestige rather than proven product outcomes.
