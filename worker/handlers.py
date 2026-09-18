@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from email.utils import parsedate_to_datetime
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Mapping, MutableMapping, Optional
 
@@ -260,9 +261,9 @@ def _write_poll_run_record(
 #: Status recorded on ``source_poll_runs`` when a source's own poll returned
 #: HTTP 403/429 this run: distinct from ``"ok"`` (empty-but-authorized) and
 #: ``"refused"`` (registry read policy) so ``worker.scheduler.PollScheduler``
-#: can tell "nothing to fetch" apart from "stop asking this source" and never
-#: reschedule the latter for the rest of this process's session (see its
-#: ``_blocked_source_ids_from_db``). Cadence is a floor, not a licence.
+#: can tell "nothing to fetch" apart from "cool this source down". The
+#: durable source_schedules row controls when it becomes eligible again.
+#: Cadence is a floor, not a licence.
 BLOCKED_POLL_STATUS = "blocked"
 
 #: HTTP status codes that mean "stop asking this source this session",
@@ -271,11 +272,40 @@ BLOCKED_POLL_STATUS = "blocked"
 _BLOCKED_STATUS_CODES = frozenset({403, 429})
 
 #: Health statuses (see ``opportunity.health.SourceHealthMonitor.record_run``)
-#: that correspond to the same 403/429 "stop asking this session" condition
+#: that correspond to the same 403/429 durable-cooldown condition
 #: for a source polled through the normal ``OpportunityPipeline.execute_discovery``
 #: / ``process_payloads`` path (which never raises for a non-2xx transport
 #: response -- it just health-reports it and yields zero opportunities).
 _BLOCKED_HEALTH_STATUSES = frozenset({SourceHealthStatus.POLICY_RESTRICTION, SourceHealthStatus.RATE_LIMITED})
+
+
+def _retry_after_seconds(report: Any, now: datetime) -> Optional[float]:
+    """Parse a Retry-After health diagnostic into a non-negative delay.
+
+    Supports both RFC integer delta-seconds and HTTP-date values. Invalid or
+    absent values return None so callers can apply a conservative fallback.
+    """
+    try:
+        raw = dict(report.diagnostics).get("retry_after")
+    except Exception:
+        return None
+    if raw is None:
+        return None
+    text_value = str(raw).strip()
+    if not text_value:
+        return None
+    try:
+        seconds = float(text_value)
+        return max(0.0, seconds)
+    except ValueError:
+        pass
+    try:
+        parsed = parsedate_to_datetime(text_value)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return max(0.0, (parsed.astimezone(timezone.utc) - now.astimezone(timezone.utc)).total_seconds())
+    except (TypeError, ValueError, OverflowError):
+        return None
 
 #: The one source this work order wires a live, governed, multi-step fetch
 #: for (see ``_fetch_hacker_news_who_is_hiring_governed`` below). Every other
@@ -573,12 +603,13 @@ def make_poll_source_handler(
             queue = BackgroundWorkerQueue(session)
             queue.enqueue_job("evaluate_new", {}, commit=False)
 
+            finished_at = datetime.now(timezone.utc)
             poll_run = SourcePollRunRecord(
                 id=f"spr-{uuid.uuid4().hex[:16]}",
                 source_id=source_id,
                 job_id=job_id,
                 started_at=_to_utc_naive(started_at),
-                finished_at=_to_utc_naive(datetime.now(timezone.utc)),
+                finished_at=_to_utc_naive(finished_at),
                 status=BLOCKED_POLL_STATUS if blocked_report is not None else "ok",
                 refusal_reason=(f"blocked_{blocked_report.status.value}" if blocked_report is not None else None),
                 raw_ingested=batch.total_raw_ingested,
@@ -588,13 +619,23 @@ def make_poll_source_handler(
                 updated=result.updated_count,
             )
             session.add(poll_run)
-            cd_secs = 3600.0 if (blocked_report is not None and blocked_report.status == SourceHealthStatus.RATE_LIMITED) else (86400.0 if blocked_report is not None else None)
+            cd_secs = None
+            if blocked_report is not None:
+                retry_after = _retry_after_seconds(blocked_report, finished_at)
+                if blocked_report.status == SourceHealthStatus.RATE_LIMITED:
+                    # Respect Retry-After when present; otherwise use a bounded
+                    # conservative fallback. Never permit an immediate retry.
+                    cd_secs = max(60.0, retry_after if retry_after is not None else 3600.0)
+                else:
+                    # Policy/WAF restrictions receive a longer floor even if a
+                    # short or malformed Retry-After is returned.
+                    cd_secs = max(86400.0, retry_after or 0.0)
             _update_source_schedule(
                 session,
                 source_id,
                 started_at,
                 poll_run.status,
-                finished_at=datetime.now(timezone.utc),
+                finished_at=finished_at,
                 cooldown_seconds=cd_secs,
             )
             session.commit()
