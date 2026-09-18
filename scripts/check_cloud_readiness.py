@@ -261,19 +261,23 @@ def check_authentication(env: Mapping[str, str], role: str = "all") -> Readiness
 
 def check_truth_pack(env: Mapping[str, str], role: str = "all") -> ReadinessCheckResult:
     """Report Truth Pack storage location and verify non-local configuration in cloud mode."""
+    cloud_mode = (
+        env.get("OPPORTUNITYOS_ENVIRONMENT", "").lower() in {"cloud", "prod", "production"}
+        or env.get("MODE", "").lower() == "cloud"
+    )
     target = env.get("OPPORTUNITYOS_TRUTH_PACK_URI") or env.get("OPPORTUNITYOS_TRUTH_PACK_PATH")
     if not target:
-        if role in ("api", "worker", "all"):
+        if role in ("worker", "all") or (cloud_mode and role == "api"):
             return ReadinessCheckResult(
                 name="Truth Pack Storage",
                 status="BLOCKED",
-                message="Missing required OPPORTUNITYOS_TRUTH_PACK_URI for worker role; cannot evaluate opportunities without Founder context",
+                message="Missing required OPPORTUNITYOS_TRUTH_PACK_URI for cloud evaluation runtime",
                 blockers=("OPPORTUNITYOS_TRUTH_PACK_URI",),
             )
         return ReadinessCheckResult(
             name="Truth Pack Storage",
             status="PASS",
-            message=f"Truth Pack URI unset (not required for role '{role}')",
+            message=f"Truth Pack URI unset (not required for role '{role}' in this mode)",
         )
 
     target_str = str(target).strip()
@@ -333,7 +337,6 @@ def check_truth_pack(env: Mapping[str, str], role: str = "all") -> ReadinessChec
                 message=f"Missing required OPPORTUNITYOS_TRUTH_PACK_HASH for remote HTTPS Truth Pack integrity verification ({redacted})",
                 blockers=("OPPORTUNITYOS_TRUTH_PACK_HASH",),
             )
-        cloud_mode = env.get("OPPORTUNITYOS_ENVIRONMENT", "").lower() in {"cloud", "prod", "production"} or env.get("MODE", "").lower() == "cloud"
         auth = env.get("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN")
         api_key = env.get("OPPORTUNITYOS_TRUTH_PACK_API_KEY")
         if cloud_mode and not auth:
