@@ -10,8 +10,8 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 
 ## Repository
 
-- **Generated:** 2026-09-18T17:40:07Z
-- **State generated at commit:** `ecc95ad` — Record reliability harness implementation SHA
+- **Generated:** 2026-09-18T17:40:51Z
+- **State generated at commit:** `27a3509` — FR-007 W13C.1: eliminate false-green stubs from reliability proof harness
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
