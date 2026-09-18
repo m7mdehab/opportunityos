@@ -1,7 +1,7 @@
 import os
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from scripts.fr007_reliability_proof import prove_a4, prove_a5, prove_a6, run
 from storage.engine import get_engine, get_session_factory, init_db
@@ -12,7 +12,8 @@ from worker.runner import WorkerRunner
 
 class ReliabilityProofContractTests(unittest.TestCase):
     def test_missing_postgres_is_blocked_not_pass(self):
-        report = run(None)
+        with patch.dict(os.environ, {}, clear=True):
+            report = run(None)
         self.assertEqual(report["status"], "BLOCKED")
         self.assertEqual({item["state"] for item in report["scenarios"]}, {"BLOCKED"})
 
@@ -20,16 +21,18 @@ class ReliabilityProofContractTests(unittest.TestCase):
         self.assertEqual(prove_a4(Mock(), http_probe=None)["state"], "BLOCKED")
 
     def test_a4_rejects_insufficient_persisted_data(self):
-        result = prove_a4(Mock(), http_probe=lambda: {
+        with patch("scripts.fr007_reliability_proof._table_exists", return_value=True):
+            result = prove_a4(Mock(), http_probe=lambda: {
             "opportunity_count": 1,
             "projection_count": 1,
             "failed_or_stuck_job_count": 0,
-            "worker_started": False,
-        })
+                "worker_started": False,
+            })
         self.assertEqual(result["state"], "FAIL")
 
     def test_a4_rejects_worker_started(self):
-        result = prove_a4(Mock(), http_probe=lambda: {
+        with patch("scripts.fr007_reliability_proof._table_exists", return_value=True):
+            result = prove_a4(Mock(), http_probe=lambda: {
             "opportunity_count": 2,
             "projection_count": 2,
             "failed_or_stuck_job_count": 2,
@@ -39,12 +42,13 @@ class ReliabilityProofContractTests(unittest.TestCase):
             "detail_status": 200,
             "pagination_status": 200,
             "search_matched": True,
-            "pagination_distinct": True,
-        })
+                "pagination_distinct": True,
+            })
         self.assertEqual(result["state"], "FAIL")
 
     def test_a4_validates_http_read_statuses(self):
-        result = prove_a4(Mock(), http_probe=lambda: {
+        with patch("scripts.fr007_reliability_proof._table_exists", return_value=True):
+            result = prove_a4(Mock(), http_probe=lambda: {
             "opportunity_count": 2,
             "projection_count": 2,
             "failed_or_stuck_job_count": 2,
@@ -54,8 +58,8 @@ class ReliabilityProofContractTests(unittest.TestCase):
             "detail_status": 200,
             "pagination_status": 200,
             "search_matched": True,
-            "pagination_distinct": True,
-        })
+                "pagination_distinct": True,
+            })
         self.assertEqual(result["state"], "FAIL")
 
     def test_a5_requires_real_handler_probe(self):
@@ -175,7 +179,7 @@ class DisposablePostgresReliabilityTests(unittest.TestCase):
     def test_end_to_end_state_contract(self):
         dsn = os.environ["OPPORTUNITYOS_DB_URL"]
         report = run(dsn)
-        self.assertEqual(report["status"], "PASS")
+        self.assertEqual(report["status"], "PASS", report)
         scenarios = {item["scenario"]: item for item in report["scenarios"]}
         self.assertEqual(set(scenarios.keys()), {"A4", "A5", "A6"})
         for name, item in scenarios.items():
