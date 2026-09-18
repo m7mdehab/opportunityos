@@ -129,16 +129,46 @@ class HostedProofTests(unittest.TestCase):
                 proof.write_evidence({"nested": {"delegated": "postgresql" + "://u:p@db/x"}},
                                      str(Path(tmp) / "evidence.json"))
 
+    def test_evidence_rejects_standalone_configured_password(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.dict(os.environ, {
+                 "OPOS_SOURCE_DB_URL": self.source["dsn"],
+                 "OPOS_TARGET_DB_URL": self.target["dsn"],
+             }, clear=False):
+            with self.assertRaisesRegex(proof.HostedProofError, "configured secret"):
+                proof.write_evidence({"nested": {"delegated": self.source["password"]}},
+                                     str(Path(tmp) / "evidence.json"))
+
     def test_verify_staging_uses_live_checks_without_prior_directory_artifact(self):
         with tempfile.TemporaryDirectory() as tmp, \
              mock.patch.object(proof, "_settings", return_value=(self.source, self.target)), \
              mock.patch.object(proof, "discover_alembic_head", return_value="head"), \
              mock.patch.object(proof, "verify_live_distinctness", return_value=(
-                 {"database": "source"}, {"database": "target"})), \
+                 {"database": "source", "server_version_num": 160000},
+                 {"database": "target", "server_version_num": 160000})), \
+             mock.patch.object(proof.preflight, "evaluate",
+                               return_value={"status": "PASS", "ready": True}), \
              mock.patch.object(proof, "_verify_live", return_value={"status": "PASS", "unsupported": []}):
             report = proof.run("VERIFY_STAGING", connection_mode="direct", output_dir=tmp)
+        self.assertEqual(report["stages"]["PRECHECK"], "PASS")
         self.assertEqual(report["stages"]["VERIFY"], "PASS")
+        self.assertNotIn("database", report["details"]["source_live_identity"])
+        self.assertIn("fingerprint", report["details"]["source_live_identity"])
         self.assertEqual(proof.exit_code(report), 0)
+
+    def test_verify_staging_blocks_when_preflight_is_not_ready(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(proof, "_settings", return_value=(self.source, self.target)), \
+             mock.patch.object(proof, "discover_alembic_head", return_value="head"), \
+             mock.patch.object(proof, "verify_live_distinctness", return_value=(
+                 {"database": "source", "server_version_num": 160000},
+                 {"database": "target", "server_version_num": 160000})), \
+             mock.patch.object(proof.preflight, "evaluate",
+                               return_value={"status": "BLOCKED", "ready": False}), \
+             mock.patch.object(proof, "_verify_live") as verify:
+            report = proof.run("VERIFY_STAGING", connection_mode="direct", output_dir=tmp)
+        verify.assert_not_called()
+        self.assertEqual(report["stages"]["VERIFY"], "BLOCKED")
 
     def test_mode_specific_exit_semantics(self):
         self.assertEqual(proof.exit_code({"mode": "PRECHECK", "stages": {"PRECHECK": "PASS", "MIGRATE": "NOT_RUN"}}), 0)
