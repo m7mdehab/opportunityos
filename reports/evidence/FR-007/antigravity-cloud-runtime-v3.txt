@@ -1,0 +1,121 @@
+================================================================================
+FR-007 ANTIGRAVITY LANE — W6 CLOUD RUNTIME READINESS BUNDLE EVIDENCE
+Date: 2026-09-17
+Host: Windows
+Branch: work/fr007-antigravity-cloud-runtime-v3
+Base SHA: e7fcf9fe76cdeb44a6ea5ddebea963deca46f5a5
+================================================================================
+
+1. DOCKER AVAILABILITY CHECK
+--------------------------------------------------------------------------------
+Command: docker --version
+Result:
+docker: The term 'docker' is not recognized as a name of a cmdlet, function, script file, or executable program.
+Docker/Podman is UNAVAILABLE in this execution environment.
+Per contract requirement: Docker unavailability is explicitly stated; container build was not executed on this host and container build success is NOT claimed.
+Automated container smoke test harness (scripts/smoke_container.py) was implemented and verified with 10 unit test cases mocking container execution.
+
+2. RUNTIME AND CONTRACT TEST SUITES
+--------------------------------------------------------------------------------
+Command: python -m unittest scripts.test_container_contract scripts.test_smoke_container scripts.test_check_cloud_readiness scripts.test_validate_cloud_config scripts.test_cloud_runtime_bridge -v
+Ran 62 tests in 0.940s
+Result: OK
+Coverage:
+  - Container contract & role separation (24 tests)
+  - OCI smoke test harness verification (10 tests)
+  - Cloud deployment readiness preflight (8 tests)
+  - Cloud config validation & fail-closed checks (6 tests)
+  - Cloud runtime bridge & secret isolation (14 tests)
+
+Command: python -m unittest worker.test_worker worker.test_scheduler -v
+Ran 28 tests in 8.996s
+Result: OK
+Coverage:
+  - Worker job processing, truth-pack override injection, durable retry
+  - Scheduler interval math, single-job-per-source gating, durable reverify
+
+3. CLI AND SMOKE AUTOMATION EXECUTION
+--------------------------------------------------------------------------------
+Command: python scripts/smoke_container.py
+Exit Code: 0
+Output:
+========================================================================
+OpportunityOS OCI Container Smoke Automation
+========================================================================
+[INFO] No OCI container runtime (docker/podman) found in PATH.
+       Live container build and smoke tests require an installed OCI engine.
+       Automated unit contracts can be verified via:
+         python -m unittest scripts.test_smoke_container -v
+         python -m unittest scripts.test_container_contract -v
+========================================================================
+
+Command: python scripts/smoke_container.py --require-engine
+Exit Code: 2
+Output:
+[ERROR] --require-engine was specified, but no OCI engine is available.
+
+Command: python scripts/check_cloud_readiness.py
+Exit Code: 1
+Output:
+========================================================================
+OpportunityOS FR-007 Cloud Deployment Readiness Preflight [role=all]
+========================================================================
+[FAIL] Configuration & Secrets: Configuration error: Missing required database configuration for role 'api': OPPORTUNITYOS_DB_URL or CLOUD_DATABASE_URL must be set.
+[PASS] Founder PC Independence: No Founder-machine paths, localhost bindings, or desktop session dependencies detected
+[FAIL] Database Connectivity: No database URL provided or found in environment
+------------------------------------------------------------------------
+[FAILURE] One or more cloud deployment prerequisites failed.
+
+Command: python scripts/container_entrypoint.py definitely-not-a-role
+Exit Code: 1
+Output:
+Error: Invalid role 'definitely-not-a-role'. Supported roles: api, worker, scheduler, migrate, readiness, liveness
+
+Command: python scripts/container_entrypoint.py liveness
+Exit Code: 0
+Output:
+liveness probe: ok
+
+4. DELIVERABLES SUMMARY
+--------------------------------------------------------------------------------
+Item A (OCI Build & Smoke Automation):
+  - scripts/smoke_container.py: Automated runner verifying build, UID 1000, roles, fail-closed, probes, SIGTERM.
+  - scripts/test_smoke_container.py: 10 unit tests for smoke runner contracts.
+
+Item B (Deployment Contract Specification):
+  - docs/DEPLOYMENT_CONTRACT.md: Provider-neutral deployment contract defining resources, ports, health probes, restart policies, secret matrix, and storage requirements for api, worker, scheduler, and migrate roles.
+
+Item C (Cloud Config Validation & Secret Isolation):
+  - scripts/validate_cloud_config.py: Preflight validator for cloud environments.
+  - scripts/cloud_runtime_bridge.py: Config mapping and diagnostic isolation.
+  - scripts/container_entrypoint.py: Loopback host rejection in cloud mode, template placeholder detection, fail-closed secret validation, and value redaction.
+  - docs/CLOUD_RUNTIME_CONFIG.md & docs/CLOUD_RUNTIME_COMPATIBILITY.md: Documentation.
+
+Item D (Worker/Scheduler PC-Independence Audit):
+  - worker/__main__.py: Added explicit support for injecting OPPORTUNITYOS_TRUTH_PACK_PATH into default_handler_registry, removing hardcoded Founder-machine file expectations.
+
+Item E (Deployment Readiness Preflight):
+  - scripts/check_cloud_readiness.py: Single unified command verifying cloud launch readiness without scanning corpus, evaluating opportunities, or requiring Founder machine.
+  - scripts/test_check_cloud_readiness.py: 8 unit tests validating preflight behaviors.
+
+5. CODE-COMPLETE STATUS & REAL CLOUD DEPENDENCIES
+--------------------------------------------------------------------------------
+Code-complete:
+  - All container entrypoints, role dispatch, smoke automation, deployment contracts, configuration validation, and preflight readiness checks are fully implemented and unit-tested.
+
+Real cloud dependencies required for live production operation:
+  - External PostgreSQL database reachable over TLS (with alembic migrations applied)
+  - Hosted OCI container execution engine (ECS, Cloud Run, Fly.io, Nomad, or Kubernetes)
+  - Supabase Auth JWKS endpoint and API credentials
+  - Object storage / S3 bucket credentials for persistent truth packs / attachments
+
+6. REPOSITORY INTEGRITY & GUARD CHECKS
+--------------------------------------------------------------------------------
+Command: python scripts/check_guard.py --allow-missing-patterns
+Result: PASS
+Command: python scripts/check_repository.py
+Result: PASS
+
+================================================================================
+END OF EVIDENCE
+================================================================================

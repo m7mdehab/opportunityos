@@ -11,7 +11,7 @@ Next: Founder Web Alpha is publicly reachable and authentication-protected.
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `419c524` — FR-007: scope projection refresh and retry failed publication
+- **State generated at commit:** `ef77a0f` — merge: sync with brief/fr-007-cloud-replatform
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief

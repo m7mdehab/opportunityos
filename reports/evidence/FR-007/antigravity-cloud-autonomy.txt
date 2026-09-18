@@ -1,0 +1,113 @@
+================================================================================
+FR-007 ANTIGRAVITY LANE — W9 MINIMUM-DEPENDENCY AUTONOMOUS CLOUD RUNTIME
+Date: 2026-09-17
+Host: Windows Local Dev & GitHub-Hosted Actions Runner (ubuntu-latest)
+Branch: work/fr007-antigravity-cloud-autonomy
+Base Head SHA: b7a5f3be8f87d2d0daffdcdb2c8b60a07bf4823d
+Status: COMPLETED & VERIFIED
+================================================================================
+
+1. EXECUTIVE SUMMARY & BLOCKER AUDIT
+--------------------------------------------------------------------------------
+In W8, container build, runtime packaging, and fail-safe process supervision
+were proven in CI (run 35228078563). In W9, every reported cloud blocker was
+challenged against the authoritative product requirements and ADR-0012:
+
+A. Blocker 1: External Message Broker / PubSub (RabbitMQ, Redis, SQS, etc.)
+   - DETERMINATION: NOT REQUIRED.
+   - FINDING: OpportunityOS already implements PostgreSQL worker_jobs with
+     transactional row locking (with_for_update(skip_locked=True)), bounded
+     retries with dead-letter termination, and crash recovery with stale lease
+     reclaiming.
+   - PROOF: Implemented and executed worker/test_queue_durability.py proving:
+       * Concurrent worker claims with SKIP LOCKED prevent double-execution;
+       * Crash recovery reclaims abandoned/dead worker leases safely;
+       * Bounded retries mark exhausted failures as DEAD_LETTER;
+       * Guarded complete_job prevents clobbering renewed leases;
+       * PollScheduler.run_once() deduplication prevents duplicate enqueueing
+         across process restarts.
+   - CONCLUSION: Zero additional queue infrastructure is required.
+
+B. Blocker 2: External JWT / JWKS Identity Provider
+   - DETERMINATION: BRIEF-007 MULTI-TENANT WORK, NOT FR-007.
+   - FINDING: ADR-0012 explicitly defines FR-007 as a single-founder cloud
+     replatforming milestone. The authoritative production authentication path
+     is OPPORTUNITYOS_FOUNDER_PASSWORD + OPPORTUNITYOS_SESSION_SECRET with
+     signed cookie authentication.
+   - RECONCILIATION: Updated scripts/validate_cloud_config.py,
+     scripts/cloud_runtime_bridge.py, and scripts/check_cloud_readiness.py to
+     recognize single-founder credentials as the canonical production auth.
+     External JWKS is preserved as an optional alternative for multi-tenant alpha.
+   - CONCLUSION: Zero external IdP dependency is required for FR-007.
+
+C. Blocker 3: Remote Truth Pack / Blob Storage
+   - DETERMINATION: REQUIRED PROVIDER-NEUTRAL ABSTRACTION.
+   - FINDING: Truth Pack loading previously assumed local filesystem paths on the
+     Founder PC. In cloud deployment, the container must load the Truth Pack
+     autonomously via remote HTTPS, S3, data URI, or mounted secret volume.
+   - IMPLEMENTATION: Extended 	ruth/pack.py with load_truth_pack():
+       * Supports HTTP/HTTPS URLs with optional Authorization Bearer token;
+       * Supports S3 URLs (s3://bucket/key);
+       * Supports RFC 2397 Data URIs (data:text/yaml,... and base64);
+       * Verifies SHA-256 integrity hash against either raw byte content or
+         canonical graph hash, failing closed with TruthPackVerificationError
+         on mismatch;
+       * Rejects local filesystem paths when llow_local_path=False (cloud mode).
+   - CONCLUSION: Truth Pack can be supplied via standard secret manager or object
+     store without Founder PC involvement.
+
+2. READINESS PREFLIGHT EVALUATION (ZERO FALSE BLOCKERS)
+--------------------------------------------------------------------------------
+Executed:
+  python scripts/check_cloud_readiness.py --role all
+
+With database connectivity and injected credentials:
+  [PASS] Configuration & Secrets: Validated for all cloud roles
+  [PASS] Founder PC Independence: No Founder-machine paths or localhost bindings
+  [PASS] Database Reachability: PostgreSQL database reachable and accepting queries
+  [PASS] Schema Migrations & Tables: All required tables present
+  [PASS] Authentication (Founder Session): Production single-founder auth configured
+  [PASS] Truth Pack Storage: Configured and accessible
+  [PASS] Worker Queue Durability: Backed by PostgreSQL worker_jobs (FOR UPDATE SKIP LOCKED)
+  [PASS] Role Autonomy [api]: Autonomous production execution verified
+  [PASS] Role Autonomy [worker]: Autonomous production execution verified
+  [PASS] Role Autonomy [scheduler]: Autonomous production execution verified
+  [PASS] Role Autonomy [migrate]: Autonomous production execution verified
+  [SUCCESS] All FR-007 cloud deployment prerequisites are satisfied for role 'all'.
+  Exit Code: 0 (Zero blockers).
+
+3. OCI CONTAINER SMOKE AUTOMATION ENHANCEMENTS
+--------------------------------------------------------------------------------
+Updated scripts/smoke_container.py to execute 15 comprehensive smoke steps:
+  1. smoke_build_image -> OCI_BUILD_PASS
+  2. smoke_api_dry_run -> DRY_RUN_API_PASS
+  3. smoke_worker_dry_run -> DRY_RUN_WORKER_PASS
+  4. smoke_scheduler_dry_run -> DRY_RUN_SCHEDULER_PASS
+  5. smoke_migrate_dry_run -> DRY_RUN_MIGRATE_PASS
+  6. smoke_non_root_user -> NON_ROOT_USER_PASS
+  7. smoke_missing_db_fails_fast -> FAIL_FAST_PASS
+  8. smoke_run_migrations_to_head -> MIGRATION_EXECUTION_PASS
+  9. smoke_readiness_probe_post_migration -> READINESS_POST_MIGRATION_PASS
+  10. smoke_api_listener_startup_and_sigterm -> API_GRACEFUL_SHUTDOWN_PASS
+  11. smoke_in_container_truth_pack_loading -> TRUTH_PACK_CONTAINER_PASS
+  12. smoke_worker_run_once_db -> WORKER_RUN_ONCE_PASS
+  13. smoke_detached_scheduler_startup_and_sigterm -> SCHEDULER_GRACEFUL_SHUTDOWN_PASS
+  14. smoke_worker_scheduler_cloud_dependencies -> ROLE_LIVE_PROOF_PASS
+  15. smoke_readiness_script_standalone -> READINESS_PREFLIGHT_PASS
+
+4. REPOSITORY & UNIT TEST VERIFICATION
+--------------------------------------------------------------------------------
+All 108 unit and contract tests pass with 100% OK:
+  - truth.test_pack (20 tests)
+  - worker.test_queue_durability (5 tests)
+  - scripts.test_validate_cloud_config (6 tests)
+  - scripts.test_cloud_runtime_bridge (16 tests)
+  - scripts.test_check_cloud_readiness (13 tests)
+  - scripts.test_smoke_container (20 tests)
+  - scripts.test_container_contract (28 tests)
+
+Repository integrity and mirror boundary checks:
+  - python scripts/check_guard.py --mirror-only --allow-missing-patterns -> PASS
+  - python scripts/check_guard.py --scan-file truth/test_pack.py --allow-missing-patterns -> PASS
+  - python scripts/check_repository.py -> PASS
+================================================================================
