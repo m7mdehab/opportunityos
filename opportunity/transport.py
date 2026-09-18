@@ -187,10 +187,12 @@ class HttpTransport(BaseTransport):
         except urllib.error.HTTPError as e:
             latency_ms = int((time.perf_counter() - start_time) * 1000)
             err_body = e.read().decode("utf-8", errors="replace") if e.fp else ""
+            err_headers = tuple((k, str(v)) for k, v in e.headers.items()) if e.headers else ()
             return TransportResponse(
                 status_code=e.code,
                 body=err_body,
                 latency_ms=latency_ms,
+                headers=err_headers,
                 error_message=f"HTTP {e.code}: {e.reason}",
             )
         except urllib.error.URLError as e:
