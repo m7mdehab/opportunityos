@@ -11,7 +11,7 @@ Next: Founder Web Alpha is publicly reachable and authentication-protected.
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `de54384` — FR-007 record hosted proof implementation SHA
+- **State generated at commit:** `0837434` — FR-007 overseer add hosted proof regression coverage
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
