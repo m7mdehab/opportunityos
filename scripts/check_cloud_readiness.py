@@ -341,6 +341,39 @@ def check_truth_pack(env: Mapping[str, str], role: str = "all") -> ReadinessChec
     )
 
 
+def check_artifact_storage(env: Mapping[str, str]) -> ReadinessCheckResult:
+    """Validate private artifact placement statically; never calls the provider."""
+    from api.artifact_cache import BACKENDS, validate_storage_config
+
+    cloud = env.get("OPPORTUNITYOS_ENVIRONMENT", "").lower() in {"cloud", "production", "prod"}
+    backend = env.get("OPPORTUNITYOS_ARTIFACT_STORAGE_BACKEND", "")
+    if not backend and cloud:
+        return ReadinessCheckResult(
+            name="Artifact Storage",
+            status="BLOCKED",
+            message="Cloud artifact storage backend must be explicit (postgres_payload or supabase_storage)",
+            blockers=("OPPORTUNITYOS_ARTIFACT_STORAGE_BACKEND",),
+        )
+    if not backend:
+        backend = "postgres_payload"
+    if backend not in BACKENDS:
+        return ReadinessCheckResult(name="Artifact Storage", status="FAIL",
+                                    message="Unsupported artifact storage backend")
+    failures = validate_storage_config({**env, "OPPORTUNITYOS_ARTIFACT_STORAGE_BACKEND": backend})
+    if failures:
+        return ReadinessCheckResult(name="Artifact Storage", status="BLOCKED",
+                                    message="Supabase private artifact storage configuration is incomplete",
+                                    blockers=tuple(failures))
+    if backend == "postgres_payload" and cloud:
+        return ReadinessCheckResult(
+            name="Artifact Storage", status="BLOCKED",
+            message="postgres_payload is compatibility storage and does not satisfy final cloud A-11 private object placement",
+            blockers=("OPPORTUNITYOS_ARTIFACT_STORAGE_BACKEND=supabase_storage",),
+        )
+    return ReadinessCheckResult(name="Artifact Storage", status="PASS",
+                                message=f"Artifact backend configured: {backend} (static check only)")
+
+
 def check_queue_durability(engine: Any | None = None, db_url: str | None = None) -> ReadinessCheckResult:
     """Verify PostgreSQL worker_jobs queue durability mechanism without external brokers."""
     active_engine = engine
@@ -524,6 +557,9 @@ def run_preflight_checks(
 
     # 6. Truth Pack storage
     results.append(check_truth_pack(env, role=role))
+
+    # 6b. Durable private artifact body placement
+    results.append(check_artifact_storage(env))
 
     # 7. Role-specific autonomy
     roles_to_check = ("api", "worker", "scheduler", "migrate") if role == "all" else (role,)

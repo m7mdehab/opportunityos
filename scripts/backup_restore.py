@@ -451,6 +451,9 @@ def dump_database(db_url: str, output_file: str) -> int:
             "truth_pack_hash": art.truth_pack_hash, "template_id": art.template_id,
             "artifact_kind": art.artifact_kind, "content_type": art.content_type,
             "payload": base64.b64encode(art.payload).decode("ascii") if art.payload is not None else None,
+            "storage_backend": art.storage_backend or "postgres_payload",
+            "object_key": art.object_key, "payload_sha256": art.payload_sha256,
+            "size_bytes": art.size_bytes, "generation_version": art.generation_version,
             "created_at": art.created_at.isoformat() if art.created_at else None,
         })
 
@@ -863,6 +866,12 @@ def restore_database(dump_file: str, db_url: str) -> None:
     # column, not a relationship()-backed FK; see the flush() note after
     # section 1 for why that distinction matters for ordering.
     for art_dict in data.get("artifact_cache", []):
+        # Backups produced before 0008 remain valid PostgreSQL-payload rows.
+        art_dict.setdefault("storage_backend", "postgres_payload")
+        art_dict.setdefault("object_key", None)
+        art_dict.setdefault("payload_sha256", None)
+        art_dict.setdefault("size_bytes", len(base64.b64decode(art_dict["payload"])) if art_dict.get("payload") else None)
+        art_dict.setdefault("generation_version", None)
         if art_dict.get("created_at"):
             art_dict["created_at"] = datetime.fromisoformat(art_dict["created_at"])
         if art_dict.get("payload") is not None:
