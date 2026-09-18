@@ -2,6 +2,7 @@ FR-007 W13C reliability proof harness
 
 Branch: work/fr007-codex-reliability-proof-harness
 Base: brief/fr-007-cloud-replatform at 6298cb49a4897832d0a1a24ccb39f573b969df94
+Implementation SHA: 484a05c7011412a6a12c404f2e47a2d7a35a858d
 
 This evidence file is generated on the reliability-proof branch. The runner
 reports A4, A5, and A6 independently as PASS, FAIL, or BLOCKED. BLOCKED and
