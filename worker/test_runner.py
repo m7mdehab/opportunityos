@@ -13,7 +13,7 @@ from opportunity.adapters.greenhouse import GreenhouseAdapter
 from opportunity.registry import SourceRegistry
 from opportunity.transport import BaseTransport, MockTransport, RateLimiter, TransportResponse
 from storage.engine import get_engine, get_session_factory, init_db
-from storage.models import OpportunityRecord, SourcePollRunRecord, WorkerJobRecord
+from storage.models import OpportunityRecord, SourcePollRunRecord, SourceScheduleRecord, WorkerJobRecord
 from truth.pack import TruthPackMissing
 from worker.handlers import HACKER_NEWS_SOURCE_ID, _retry_after_seconds, make_poll_source_handler
 from worker.queue import BackgroundWorkerQueue
@@ -455,6 +455,61 @@ class TestHackerNewsGovernedWiring(unittest.TestCase):
                 latency_ms=1,
             ),
         })
+
+    def test_hacker_news_429_retry_after_persists_cooldown(self):
+        registry = SourceRegistry()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        session = self.session_factory()
+        try:
+            session.add(
+                SourceScheduleRecord(
+                    source_id=HACKER_NEWS_SOURCE_ID,
+                    cadence_hours=6.0,
+                    next_due_at=now,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            session.commit()
+        finally:
+            session.close()
+
+        base = "https://hacker-news.firebaseio.com/v0"
+        transport = MockTransport({
+            f"{base}/user/whoishiring.json": TransportResponse(
+                status_code=429,
+                body="",
+                latency_ms=1,
+                headers=(("Retry-After", "7200"),),
+                error_message="Too Many Requests",
+            )
+        })
+        handler = make_poll_source_handler(
+            registry=registry,
+            transport=transport,
+            session_factory=self.session_factory,
+            pack_loader=self._no_pack,
+        )
+        handler({"source_id": HACKER_NEWS_SOURCE_ID})
+
+        session = self.session_factory()
+        try:
+            run = session.query(SourcePollRunRecord).filter_by(
+                source_id=HACKER_NEWS_SOURCE_ID
+            ).one()
+            sched = session.query(SourceScheduleRecord).filter_by(
+                source_id=HACKER_NEWS_SOURCE_ID
+            ).one()
+            self.assertEqual(run.status, "blocked")
+            self.assertEqual(run.refusal_reason, "http_429")
+            self.assertIsNotNone(sched.cooldown_until)
+            self.assertAlmostEqual(
+                (sched.cooldown_until - run.finished_at).total_seconds(),
+                7200.0,
+                delta=1.0,
+            )
+        finally:
+            session.close()
 
     def test_hacker_news_poll_ingests_rows_through_governed_fetch(self):
         registry = SourceRegistry()
