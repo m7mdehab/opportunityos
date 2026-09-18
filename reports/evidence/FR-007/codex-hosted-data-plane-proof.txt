@@ -2,6 +2,7 @@ FR-007 hosted data-plane proof evidence
 =======================================
 branch: work/fr007-codex-hosted-data-plane-proof
 base: 198483c1125a15e915189b482816b3f203a6a7bc
+implementation_commit: 4eff0c5f6bde7374c23f0f34d437b323eed23d9b
 hosted_execution: NOT_EXECUTED
 reason: no real Supabase or hosted PostgreSQL credentials were available in this run
 source_identity: NOT_RUN
