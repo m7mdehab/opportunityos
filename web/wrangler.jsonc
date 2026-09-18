@@ -9,6 +9,6 @@
 		"binding": "ASSETS"
 	},
 	"vars": {
-		"OPPORTUNITYOS_API_ORIGIN": ""
+		"OPPORTUNITYOS_CLOUD_EDGE": "1"
 	}
 }
