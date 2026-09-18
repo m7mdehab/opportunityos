@@ -1,0 +1,69 @@
+FR-007 OWNER — W11 INTEGRATION & INDEPENDENT VERIFICATION
+===========================================================
+Date: 2026-09-18
+Integration branch: brief/fr-007-cloud-replatform
+
+SOURCE / INTEGRATION
+--------------------
+Clean integration PR: #102
+Verified PR head: a18ca8c2295691ce7ee7061c19bd5e07403f4cd8
+Merge commit: 5562a2f66bd5227554b04d9061aae18c8e83e8d0
+Merged tree: 34bb56cf3de608f48386a4735534822f953de754
+Verified PR-head tree: 34bb56cf3de608f48386a4735534822f953de754
+Tree equality: PASS
+
+SUPERSEDED LANES
+----------------
+PR #98: CLOSED / superseded by #102
+PR #101: CLOSED / superseded by #102
+
+INDEPENDENT REVIEW
+------------------
+Overseer reviewed the durable scheduling/queue/request-path implementation,
+the source schedule migration/model, Retry-After propagation, async projection
+maintenance, and PostgreSQL durability evidence.
+
+Key verified repository-side contracts:
+- generic Poll Now queues due/eligible sources rather than blind all-source work;
+- explicit permitted-source Poll Now respects cooldown and active-job dedupe;
+- source cadence/next_due/cooldown state is durable in PostgreSQL;
+- concurrent scheduler enqueue is serialized by source-schedule row locking;
+- request-path Founder settings/facet/unhide changes enqueue maintenance
+  transactionally with the settings write;
+- projection maintenance failures surface through the durable worker retry path;
+- existing persisted feed remains readable until refreshed publication;
+- source 403/429 health diagnostics can persist Retry-After-based cooldown.
+
+POSTGRESQL 16 PROOF
+-------------------
+OCI Container Runtime Smoke run: 35335984720
+Job: 105570883808
+Result: SUCCESS
+
+worker.test_postgres_queue_durability:
+- Ran 15 tests
+- 15 passed
+- 0 skipped
+
+CLEAN INTEGRATION PR #102 GATES
+-------------------------------
+Backend: SUCCESS
+Web build/lint/Playwright: SUCCESS
+Governance: SUCCESS
+State: SUCCESS
+Guard: SUCCESS
+Mirror: SUCCESS
+OCI Container Runtime Smoke: SUCCESS
+A9 live poll: SKIPPED by bounded trigger contract
+A23 exact seed scan: SKIPPED by bounded trigger contract
+
+CLAIM BOUNDARY
+--------------
+Repository/disposable PostgreSQL implementation proof: PASS
+Hosted cloud runtime execution: NOT_EXECUTED by this evidence
+Production A-7 closure: NOT CLAIMED
+Production A-8 closure: NOT CLAIMED
+FR-007 terminal closure: NOT CLAIMED
+
+The Antigravity W11 evidence was corrected before integration so it no longer
+states that disposable/CI proof permanently closes production A-7/A-8.
