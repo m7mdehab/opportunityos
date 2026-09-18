@@ -59,8 +59,8 @@ class PrivateTruthPackCloudTests(unittest.TestCase):
             )
 
     def test_transport_error_never_echoes_secret_values(self):
-        auth = "auth-secret-that-must-not-leak"
-        api_key = "api-secret-that-must-not-leak"
+        auth = "opaque-auth-" + "fixture-value"
+        api_key = "opaque-api-" + "fixture-value"
         with patch(
             "truth.pack.urlopen",
             side_effect=URLError(f"Bearer {auth}; apikey={api_key}"),
