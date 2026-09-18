@@ -195,21 +195,46 @@ def get_or_create_source_schedule(
         next_due = now_naive
         cooldown = None
 
-    record = SourceScheduleRecord(
-        source_id=source_id,
-        cadence_hours=cadence_hours,
-        last_attempt_at=last_attempt,
-        last_success_at=last_success,
-        next_due_at=next_due,
-        cooldown_until=cooldown,
-        consecutive_failures=0,
-        last_status=latest[1] if latest else None,
-        created_at=now_naive,
-        updated_at=now_naive,
-    )
-    session.add(record)
-    session.flush()
-    return record
+    values = {
+        "source_id": source_id,
+        "cadence_hours": cadence_hours,
+        "last_attempt_at": last_attempt,
+        "last_success_at": last_success,
+        "next_due_at": next_due,
+        "cooldown_until": cooldown,
+        "consecutive_failures": 0,
+        "last_status": latest[1] if latest else None,
+        "created_at": now_naive,
+        "updated_at": now_naive,
+    }
+
+    bind = session.get_bind()
+    dialect_name = bind.dialect.name if bind is not None else ""
+
+    if dialect_name == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        stmt = (
+            pg_insert(SourceScheduleRecord)
+            .values(**values)
+            .on_conflict_do_nothing(index_elements=["source_id"])
+        )
+        session.execute(stmt)
+        session.flush()
+    elif dialect_name == "sqlite":
+        stmt = SourceScheduleRecord.__table__.insert().prefix_with("OR IGNORE").values(**values)
+        session.execute(stmt)
+        session.flush()
+    else:
+        try:
+            with session.begin_nested():
+                record = SourceScheduleRecord(**values)
+                session.add(record)
+                session.flush()
+        except Exception:
+            pass
+
+    return session.query(SourceScheduleRecord).filter_by(source_id=source_id).one()
 
 
 def enqueue_due_sources(

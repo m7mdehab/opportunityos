@@ -368,7 +368,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
         session = self.session_factory()
         try:
             sched = SourceScheduleRecord(
-                source_id="remoteok",
+                source_id="remote_ok",
                 cadence_hours=6.0,
                 last_attempt_at=_to_naive_utc(now - timedelta(hours=1)),
                 last_success_at=_to_naive_utc(now - timedelta(hours=1)),
@@ -386,11 +386,11 @@ class TestPostgresQueueDurability(unittest.TestCase):
         enqueued_sources = fresh_scheduler.run_once()
 
         # Remoteok is not due; verify it was not enqueued
-        self.assertNotIn("remoteok", enqueued_sources, "Not-due source must not be enqueued on restart")
+        self.assertNotIn("remote_ok", enqueued_sources, "Not-due source must not be enqueued on restart")
 
         session_check = self.session_factory()
         try:
-            record = session_check.query(SourceScheduleRecord).filter_by(source_id="remoteok").one()
+            record = session_check.query(SourceScheduleRecord).filter_by(source_id="remote_ok").one()
             self.assertEqual(record.next_due_at, _to_naive_utc(future_due), "next_due_at must survive restart intact")
         finally:
             session_check.close()
@@ -407,7 +407,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
         session = self.session_factory()
         try:
             sched_due = SourceScheduleRecord(
-                source_id="remoteok",
+                source_id="remote_ok",
                 cadence_hours=6.0,
                 last_attempt_at=_to_naive_utc(now - timedelta(hours=7)),
                 last_success_at=_to_naive_utc(now - timedelta(hours=7)),
@@ -433,13 +433,13 @@ class TestPostgresQueueDurability(unittest.TestCase):
         fresh_scheduler = PollScheduler(self.session_factory, clock=lambda: now)
         enqueued_sources = fresh_scheduler.run_once()
 
-        self.assertIn("remoteok", enqueued_sources, "Due source must be enqueued on fresh scheduler startup")
+        self.assertIn("remote_ok", enqueued_sources, "Due source must be enqueued on fresh scheduler startup")
         self.assertNotIn("himalayas", enqueued_sources, "Non-due source must not be enqueued")
 
         session_check = self.session_factory()
         try:
-            remoteok_sched = session_check.query(SourceScheduleRecord).filter_by(source_id="remoteok").one()
-            self.assertGreater(remoteok_sched.next_due_at, _to_naive_utc(now), "Enqueued source next_due_at must advance")
+            remote_ok_sched = session_check.query(SourceScheduleRecord).filter_by(source_id="remote_ok").one()
+            self.assertGreater(remote_ok_sched.next_due_at, _to_naive_utc(now), "Enqueued source next_due_at must advance")
         finally:
             session_check.close()
 
@@ -454,7 +454,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
         try:
             # Due source
             sched_due = SourceScheduleRecord(
-                source_id="remoteok",
+                source_id="remote_ok",
                 cadence_hours=6.0,
                 next_due_at=_to_naive_utc(now - timedelta(minutes=5)),
                 created_at=_to_naive_utc(now),
@@ -485,7 +485,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
         fresh_scheduler = PollScheduler(self.session_factory, clock=lambda: now)
         enqueued_sources = fresh_scheduler.run_once()
 
-        self.assertIn("remoteok", enqueued_sources)
+        self.assertIn("remote_ok", enqueued_sources)
         self.assertNotIn("himalayas", enqueued_sources)
         self.assertNotIn("jobicy", enqueued_sources)
         # Verify read_disabled sources from registry are never enqueued
@@ -504,7 +504,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
         session = self.session_factory()
         try:
             sched = SourceScheduleRecord(
-                source_id="remoteok",
+                source_id="remote_ok",
                 cadence_hours=6.0,
                 next_due_at=_to_naive_utc(now - timedelta(minutes=10)),
                 created_at=_to_naive_utc(now),
@@ -537,11 +537,11 @@ class TestPostgresQueueDurability(unittest.TestCase):
 
         session_check = self.session_factory()
         try:
-            remoteok_jobs = session_check.query(WorkerJobRecord).filter(
+            remote_ok_jobs = session_check.query(WorkerJobRecord).filter(
                 WorkerJobRecord.job_type == "poll_source",
                 WorkerJobRecord.status.in_(["PENDING", "RETRY", "RUNNING"]),
             ).all()
-            matched = [j for j in remoteok_jobs if json.loads(j.payload_json).get("source_id") == "remoteok"]
+            matched = [j for j in remote_ok_jobs if json.loads(j.payload_json).get("source_id") == "remote_ok"]
             self.assertEqual(len(matched), 1, "Concurrent schedulers must enqueue exactly one job for the due source")
         finally:
             session_check.close()
@@ -557,7 +557,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
         session = self.session_factory()
         try:
             sched = SourceScheduleRecord(
-                source_id="remoteok",
+                source_id="remote_ok",
                 cadence_hours=6.0,
                 last_status="blocked_by_policy",
                 cooldown_until=_to_naive_utc(future_cooldown),
@@ -573,11 +573,11 @@ class TestPostgresQueueDurability(unittest.TestCase):
         fresh_scheduler = PollScheduler(self.session_factory, clock=lambda: now)
         enqueued_sources = fresh_scheduler.run_once()
 
-        self.assertNotIn("remoteok", enqueued_sources, "Cooling-down source must be suppressed on restart")
+        self.assertNotIn("remote_ok", enqueued_sources, "Cooling-down source must be suppressed on restart")
 
         session_check = self.session_factory()
         try:
-            record = session_check.query(SourceScheduleRecord).filter_by(source_id="remoteok").one()
+            record = session_check.query(SourceScheduleRecord).filter_by(source_id="remote_ok").one()
             self.assertEqual(record.cooldown_until, _to_naive_utc(future_cooldown))
         finally:
             session_check.close()
@@ -593,7 +593,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
         session = self.session_factory()
         try:
             sched = SourceScheduleRecord(
-                source_id="remoteok",
+                source_id="remote_ok",
                 cadence_hours=6.0,
                 last_status="blocked_by_policy",
                 cooldown_until=_to_naive_utc(past_cooldown),
@@ -609,7 +609,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
         fresh_scheduler = PollScheduler(self.session_factory, clock=lambda: now)
         enqueued_sources = fresh_scheduler.run_once()
 
-        self.assertIn("remoteok", enqueued_sources, "Expired cooldown source must become eligible automatically")
+        self.assertIn("remote_ok", enqueued_sources, "Expired cooldown source must become eligible automatically")
 
     def test_7_scheduler_worker_crash_recovery(self) -> None:
         """TEST 7: Scheduler/worker crash recovery: Worker crashes holding lease;
@@ -622,11 +622,11 @@ class TestPostgresQueueDurability(unittest.TestCase):
         session = self.session_factory()
         try:
             q = BackgroundWorkerQueue(session, worker_id="crashed-worker")
-            job_id = q.enqueue_job("poll_source", {"source_id": "remoteok"})
+            job_id = q.enqueue_job("poll_source", {"source_id": "remote_ok"})
             self.test_job_ids.append(job_id)
 
             sched = SourceScheduleRecord(
-                source_id="remoteok",
+                source_id="remote_ok",
                 cadence_hours=6.0,
                 next_due_at=_to_naive_utc(now),
                 created_at=_to_naive_utc(now),
@@ -652,12 +652,12 @@ class TestPostgresQueueDurability(unittest.TestCase):
 
             # Handler updates source schedule on success
             completion_time = now + timedelta(minutes=5)
-            _update_source_schedule(session2, "remoteok", "ok", completion_time)
+            _update_source_schedule(session2, "remote_ok", "ok", completion_time)
             ok = q2.complete_job(job_id)
             self.assertTrue(ok)
             session2.commit()
 
-            sched_row = session2.query(SourceScheduleRecord).filter_by(source_id="remoteok").one()
+            sched_row = session2.query(SourceScheduleRecord).filter_by(source_id="remote_ok").one()
             self.assertEqual(sched_row.last_status, "ok")
             self.assertEqual(sched_row.last_success_at, _to_naive_utc(completion_time))
             self.assertEqual(sched_row.consecutive_failures, 0)
@@ -708,11 +708,12 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 fit_score=90.0,
                 visible=True,
                 search_text="staff platform engineer acme systems",
+                evaluated_at=_to_naive_utc(now),
                 projected_at=_to_naive_utc(now),
             )
             session.add(proj)
 
-            # himalayas is due, remoteok is not due
+            # himalayas is due, remote_ok is not due
             sched_himalayas = SourceScheduleRecord(
                 source_id="himalayas",
                 cadence_hours=6.0,
@@ -720,14 +721,14 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 created_at=_to_naive_utc(now),
                 updated_at=_to_naive_utc(now),
             )
-            sched_remoteok = SourceScheduleRecord(
-                source_id="remoteok",
+            sched_remote_ok = SourceScheduleRecord(
+                source_id="remote_ok",
                 cadence_hours=6.0,
                 next_due_at=_to_naive_utc(now + timedelta(hours=4)),
                 created_at=_to_naive_utc(now),
                 updated_at=_to_naive_utc(now),
             )
-            session.add_all([sched_himalayas, sched_remoteok])
+            session.add_all([sched_himalayas, sched_remote_ok])
             session.commit()
         finally:
             session.close()
@@ -740,8 +741,8 @@ class TestPostgresQueueDurability(unittest.TestCase):
         skipped_sids = {s["source_id"]: s["reason"] for s in data.get("skipped", [])}
 
         self.assertIn("himalayas", enqueued_sids)
-        self.assertIn("remoteok", skipped_sids)
-        self.assertEqual(skipped_sids["remoteok"], "not_due")
+        self.assertIn("remote_ok", skipped_sids)
+        self.assertEqual(skipped_sids["remote_ok"], "not_due")
 
         # Verify job is asynchronous (in PENDING state, not executed inline)
         session_check = self.session_factory()
@@ -762,11 +763,11 @@ class TestPostgresQueueDurability(unittest.TestCase):
         self.assertEqual(feed_data["items"][0]["id"], "opp-test-1")
 
         # 2. Explicit poll-now with force=True enqueues the requested source
-        res_explicit = client.post("/api/worker/poll-now", json={"source_id": "remoteok", "force": True})
+        res_explicit = client.post("/api/worker/poll-now", json={"source_id": "remote_ok", "force": True})
         self.assertEqual(res_explicit.status_code, 200)
         data_explicit = res_explicit.json()
         explicit_enqueued = [e["source_id"] for e in data_explicit.get("enqueued", [])]
-        self.assertIn("remoteok", explicit_enqueued)
+        self.assertIn("remote_ok", explicit_enqueued)
 
     def test_9_async_projection_maintenance(self) -> None:
         """TEST 9: Async projection maintenance: Modify a filter setting; verify HTTP
@@ -821,6 +822,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 fit_score=60.0,
                 visible=True,
                 search_text="lead backend architect beta labs",
+                evaluated_at=_to_naive_utc(now),
                 projected_at=_to_naive_utc(now),
             )
             session.add_all([opp, eval_record, proj])
@@ -918,6 +920,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 fit_score=95.0,
                 visible=True,
                 search_text="data platform engineer gamma corp",
+                evaluated_at=_to_naive_utc(now),
                 projected_at=_to_naive_utc(now),
             )
             session.add_all([opp, eval_record, proj])
