@@ -263,7 +263,7 @@ def check_truth_pack(env: Mapping[str, str], role: str = "all") -> ReadinessChec
     """Report Truth Pack storage location and verify non-local configuration in cloud mode."""
     target = env.get("OPPORTUNITYOS_TRUTH_PACK_URI") or env.get("OPPORTUNITYOS_TRUTH_PACK_PATH")
     if not target:
-        if role in ("worker", "all"):
+        if role in ("api", "worker", "all"):
             return ReadinessCheckResult(
                 name="Truth Pack Storage",
                 status="BLOCKED",
@@ -311,6 +311,20 @@ def check_truth_pack(env: Mapping[str, str], role: str = "all") -> ReadinessChec
         )
 
     if target_str.startswith("https://"):
+        from urllib.parse import urlsplit
+        parsed = urlsplit(target_str)
+        if _is_loopback_host(parsed.hostname):
+            return ReadinessCheckResult(
+                name="Truth Pack Storage", status="BLOCKED",
+                message=f"PUBLIC_OR_UNAUTHENTICATED_REMOTE_BLOCKED: localhost/loopback endpoint ({redacted})",
+                blockers=("OPPORTUNITYOS_TRUTH_PACK_URI",),
+            )
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            return ReadinessCheckResult(
+                name="Truth Pack Storage", status="BLOCKED",
+                message=f"PRIVATE_REMOTE_READY requires a credential-free HTTPS object URI ({redacted})",
+                blockers=("OPPORTUNITYOS_TRUTH_PACK_URI",),
+            )
         hash_val = env.get("OPPORTUNITYOS_TRUTH_PACK_HASH") or env.get("OPPORTUNITYOS_TRUTH_PACK_SHA256")
         if not hash_val:
             return ReadinessCheckResult(
@@ -319,14 +333,39 @@ def check_truth_pack(env: Mapping[str, str], role: str = "all") -> ReadinessChec
                 message=f"Missing required OPPORTUNITYOS_TRUTH_PACK_HASH for remote HTTPS Truth Pack integrity verification ({redacted})",
                 blockers=("OPPORTUNITYOS_TRUTH_PACK_HASH",),
             )
+        cloud_mode = env.get("OPPORTUNITYOS_ENVIRONMENT", "").lower() in {"cloud", "prod", "production"} or env.get("MODE", "").lower() == "cloud"
+        auth = env.get("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN")
+        api_key = env.get("OPPORTUNITYOS_TRUTH_PACK_API_KEY")
+        if cloud_mode and not auth:
+            return ReadinessCheckResult(
+                name="Truth Pack Storage", status="BLOCKED",
+                message="PRIVATE_REMOTE_READY requires OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN",
+                blockers=("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN",),
+            )
+        if "/object/public/" in parsed.path.lower():
+            return ReadinessCheckResult(
+                name="Truth Pack Storage", status="BLOCKED",
+                message="PUBLIC_OR_UNAUTHENTICATED_REMOTE_BLOCKED: public Supabase object endpoint",
+                blockers=("OPPORTUNITYOS_TRUTH_PACK_URI",),
+            )
+        is_supabase_storage = (
+            (parsed.hostname or "").lower().endswith("supabase.co")
+            or "/storage/v1/object/" in parsed.path.lower()
+        )
+        if cloud_mode and is_supabase_storage and not api_key:
+            return ReadinessCheckResult(
+                name="Truth Pack Storage", status="BLOCKED",
+                message="PRIVATE_REMOTE_READY requires OPPORTUNITYOS_TRUTH_PACK_API_KEY for Supabase Storage",
+                blockers=("OPPORTUNITYOS_TRUTH_PACK_API_KEY",),
+            )
         return ReadinessCheckResult(
             name="Truth Pack Storage",
             status="PASS",
-            message=f"Remote HTTPS Truth Pack endpoint configured ({redacted}) with SHA-256 integrity verification",
+            message=f"PRIVATE_REMOTE_READY: private Remote HTTPS Truth Pack endpoint configured ({redacted}) with SHA-256 integrity verification",
         )
 
     # Any generic local or container filesystem path (e.g. /app/truth/... or relative)
-    if role in ("worker", "all"):
+    if role in ("api", "worker", "all"):
         return ReadinessCheckResult(
             name="Truth Pack Storage",
             status="BLOCKED",
@@ -339,6 +378,7 @@ def check_truth_pack(env: Mapping[str, str], role: str = "all") -> ReadinessChec
         status="PASS",
         message=f"Truth Pack path configured for non-worker role '{role}' ({target_str})",
     )
+
 
 
 def check_artifact_storage(env: Mapping[str, str]) -> ReadinessCheckResult:
