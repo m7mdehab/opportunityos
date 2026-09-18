@@ -212,7 +212,7 @@ def store(session: Session, opportunity_id: str, truth_pack_hash: str, template_
     if session.query(ArtifactCacheRecord).filter_by(cache_key=key).first() is not None:
         return
     backend = configured_backend()
-    client = _client(storage_client) if backend == "supabase_storage" else None
+    client = storage_client if storage_client is not None else (_client() if backend == "supabase_storage" else None)
     stale = session.query(ArtifactCacheRecord).filter(
         ArtifactCacheRecord.opportunity_id == opportunity_id,
         ArtifactCacheRecord.artifact_kind == artifact_kind,
