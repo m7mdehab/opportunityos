@@ -20,11 +20,15 @@ Required server-only configuration for the Supabase backend:
 value and is never included in evidence or error text. Bucket provisioning is
 outside this repository lane.
 
-The deterministic object key is `artifacts/<sha256(cache_key)>` and contains
-no Founder text. Exact cache hits do not regenerate or upload. Stale truth-pack
-rows and global-cap victims delete external objects before metadata deletion.
-Upload or checksum failures fail closed; metadata persistence failures attempt
-compensating object deletion.
+The deterministic object key is `artifacts/<cache_key>` where `cache_key` is the
+canonical SHA-256 artifact identity; it contains no Founder text. The storage
+client verifies through the provider API that the configured bucket exists and
+is explicitly private before object access. Exact cache hits do not regenerate
+or upload. A deterministic object left behind by an interrupted metadata write
+is recoverable only when its bytes exactly match the canonical payload; a
+conflicting body fails closed. Stale truth-pack rows and global-cap victims
+delete external objects before metadata deletion. Upload or checksum failures
+fail closed; metadata persistence failures attempt compensating object deletion.
 
 Migration `0008_artifact_storage` preserves existing rows as
 `postgres_payload` rows. Database backup/restore carries metadata and any
