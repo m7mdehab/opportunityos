@@ -11,7 +11,7 @@ Next: Founder Web Alpha is publicly reachable and authentication-protected.
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `e4e60fc` — Merge brief/fr-007-cloud-replatform into migration acceptance after runtime integration
+- **State generated at commit:** `925a201` — fix(tests): drain async maintenance jobs in api tests and fix durability test assertions
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
