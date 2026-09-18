@@ -7,7 +7,7 @@ from pathlib import Path
 
 from opportunity.registry import SourceRegistry
 from storage.engine import get_engine, get_session_factory, init_db
-from storage.models import SourcePollRunRecord, WorkerJobRecord
+from storage.models import SourcePollRunRecord, SourceScheduleRecord, WorkerJobRecord
 from worker.handlers import BLOCKED_POLL_STATUS
 from worker.scheduler import (
     DEFAULT_POLL_INTERVAL_HOURS,
@@ -473,10 +473,11 @@ class TestCadenceFieldPerSource(unittest.TestCase):
         self.assertEqual(set(scheduler.run_once()), {"fixture_hourly", "fixture_no_cadence_field"})
 
 
-# E4F3.3: cadence is a floor, not a licence -- a source that returned 403 or
-# 429 (worker.handlers.BLOCKED_POLL_STATUS) is not rescheduled in the same
-# scheduler session no matter how due its cadence says it is.
-class TestBlockedSourceNotRescheduledThisSession(unittest.TestCase):
+# FR-007 W11: blocked transport outcomes become durable cooldown state, not
+# permanent historical bans. A restart before cooldown expiry remains
+# suppressed; once the persisted cooldown/next-due instant expires, the source
+# becomes eligible again without manual intervention.
+class TestBlockedSourceDurableCooldown(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         registry_path = Path(self.temp_dir.name) / "fixture_registry.yaml"
@@ -512,28 +513,45 @@ class TestBlockedSourceNotRescheduledThisSession(unittest.TestCase):
         finally:
             session.close()
 
-    def test_a_403_blocked_source_is_never_rescheduled_this_session(self):
+    def test_blocked_history_suppresses_restart_until_bootstrap_cooldown_expires(self):
         self._seed_blocked_run("fixture_allowed", 403)
-        # interval_hours=0: every source is "due" on every tick regardless of
-        # clock advancement, isolating the block check as the only thing that
-        # could prevent an enqueue here.
-        scheduler = PollScheduler(self.session_factory, registry=self.registry, interval_hours=0)
+        scheduler = PollScheduler(
+            self.session_factory,
+            registry=self.registry,
+            interval_hours=6,
+            clock=lambda: datetime(2026, 1, 1, 1, tzinfo=timezone.utc),
+        )
+        self.assertEqual(scheduler.run_once(), [])
 
-        self.assertEqual(scheduler.run_once(), [], "a 403-blocked source must not be enqueued")
-        self.assertEqual(scheduler.run_once(), [], "still not enqueued on a later tick this session")
+        session = self.session_factory()
+        try:
+            row = session.query(SourceScheduleRecord).filter_by(source_id="fixture_allowed").one()
+            self.assertEqual(row.cooldown_until, datetime(2026, 1, 2))
+            self.assertEqual(row.next_due_at, datetime(2026, 1, 2))
+        finally:
+            session.close()
 
-    def test_a_429_blocked_source_is_never_rescheduled_this_session(self):
+    def test_expired_bootstrap_cooldown_becomes_eligible_after_restart(self):
         self._seed_blocked_run("fixture_allowed", 429)
-        scheduler = PollScheduler(self.session_factory, registry=self.registry, interval_hours=0)
+        before = PollScheduler(
+            self.session_factory,
+            registry=self.registry,
+            interval_hours=6,
+            clock=lambda: datetime(2026, 1, 1, 23, 59, tzinfo=timezone.utc),
+        )
+        self.assertEqual(before.run_once(), [])
 
-        self.assertEqual(scheduler.run_once(), [], "a 429-blocked source must not be enqueued")
+        after = PollScheduler(
+            self.session_factory,
+            registry=self.registry,
+            interval_hours=6,
+            clock=lambda: datetime(2026, 1, 2, tzinfo=timezone.utc),
+        )
+        self.assertEqual(after.run_once(), ["fixture_allowed"])
 
-    def test_an_unblocked_source_is_unaffected(self):
-        # No blocked row seeded at all -- sanity check that the block-lookup
-        # machinery itself doesn't suppress a normal, healthy source.
+    def test_unblocked_source_is_unaffected(self):
         scheduler = PollScheduler(self.session_factory, registry=self.registry, interval_hours=0)
         self.assertEqual(scheduler.run_once(), ["fixture_allowed"])
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -32,7 +32,8 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Mapping, MutableMapping, Optional
 
 from sqlalchemy import or_
@@ -57,7 +58,7 @@ from opportunity.persistence import persist_batch
 from opportunity.pipeline import OpportunityPipeline
 from opportunity.registry import SourceRegistry
 from opportunity.transport import AcquisitionService, BaseTransport, HttpTransport, RateLimiter
-from storage.models import FieldProvenanceRecord, MatchEvaluationRecord, OpportunityRecord, SourcePollRunRecord
+from storage.models import FieldProvenanceRecord, MatchEvaluationRecord, OpportunityRecord, SourcePollRunRecord, SourceScheduleRecord
 from storage.feed_projection import FeedProjectionRecord
 try:
     # A1M's own reextract_all interface point (see below) into the concurrent
@@ -141,6 +142,41 @@ def _production_session_factory() -> Any:
     return get_session_factory(engine)
 
 
+def _update_source_schedule(
+    session: Any,
+    source_id: str,
+    started_at: datetime,
+    status: str,
+    *,
+    finished_at: Optional[datetime] = None,
+    error_message: Optional[str] = None,
+    cooldown_seconds: Optional[float] = None,
+) -> None:
+    """Update durable SourceScheduleRecord state to keep cadence and cooldowns in sync."""
+    sched = session.query(SourceScheduleRecord).filter_by(source_id=source_id).first()
+    if sched is None:
+        return
+    fin = finished_at or datetime.now(timezone.utc)
+    sched.last_attempt_at = _to_utc_naive(started_at)
+    sched.updated_at = _to_utc_naive(fin)
+    sched.last_status = status
+    sched.error_message = error_message
+    if status == "ok":
+        sched.last_success_at = _to_utc_naive(fin)
+        sched.consecutive_failures = 0
+        sched.cooldown_until = None
+        sched.next_due_at = _to_utc_naive(started_at + timedelta(hours=sched.cadence_hours))
+    elif status == BLOCKED_POLL_STATUS:
+        sched.consecutive_failures += 1
+        cd_secs = cooldown_seconds if cooldown_seconds is not None else 3600.0
+        cd_until = _to_utc_naive(fin + timedelta(seconds=cd_secs))
+        sched.cooldown_until = cd_until
+        if sched.next_due_at is None or cd_until > sched.next_due_at:
+            sched.next_due_at = cd_until
+    else:
+        sched.consecutive_failures += 1
+
+
 def _write_poll_run_record(
     resolve_session_factory: Callable[[], SessionFactory],
     *,
@@ -155,6 +191,7 @@ def _write_poll_run_record(
     unchanged: int = 0,
     updated: int = 0,
     error_message: Optional[str] = None,
+    cooldown_seconds: Optional[float] = None,
 ) -> None:
     """Write one ``source_poll_runs`` row on its own, independent session.
 
@@ -187,12 +224,13 @@ def _write_poll_run_record(
 
     session = session_factory()
     try:
+        now_utc = datetime.now(timezone.utc)
         record = SourcePollRunRecord(
             id=f"spr-{uuid.uuid4().hex[:16]}",
             source_id=source_id,
             job_id=job_id,
             started_at=_to_utc_naive(started_at),
-            finished_at=_to_utc_naive(datetime.now(timezone.utc)),
+            finished_at=_to_utc_naive(now_utc),
             status=status,
             refusal_reason=refusal_reason,
             raw_ingested=raw_ingested,
@@ -203,6 +241,15 @@ def _write_poll_run_record(
             error_message=error_message,
         )
         session.add(record)
+        _update_source_schedule(
+            session,
+            source_id,
+            started_at,
+            status,
+            finished_at=now_utc,
+            error_message=error_message,
+            cooldown_seconds=cooldown_seconds,
+        )
         session.commit()
     except Exception:
         session.rollback()
@@ -214,9 +261,9 @@ def _write_poll_run_record(
 #: Status recorded on ``source_poll_runs`` when a source's own poll returned
 #: HTTP 403/429 this run: distinct from ``"ok"`` (empty-but-authorized) and
 #: ``"refused"`` (registry read policy) so ``worker.scheduler.PollScheduler``
-#: can tell "nothing to fetch" apart from "stop asking this source" and never
-#: reschedule the latter for the rest of this process's session (see its
-#: ``_blocked_source_ids_from_db``). Cadence is a floor, not a licence.
+#: can tell "nothing to fetch" apart from "cool this source down". The
+#: durable source_schedules row controls when it becomes eligible again.
+#: Cadence is a floor, not a licence.
 BLOCKED_POLL_STATUS = "blocked"
 
 #: HTTP status codes that mean "stop asking this source this session",
@@ -225,11 +272,40 @@ BLOCKED_POLL_STATUS = "blocked"
 _BLOCKED_STATUS_CODES = frozenset({403, 429})
 
 #: Health statuses (see ``opportunity.health.SourceHealthMonitor.record_run``)
-#: that correspond to the same 403/429 "stop asking this session" condition
+#: that correspond to the same 403/429 durable-cooldown condition
 #: for a source polled through the normal ``OpportunityPipeline.execute_discovery``
 #: / ``process_payloads`` path (which never raises for a non-2xx transport
 #: response -- it just health-reports it and yields zero opportunities).
 _BLOCKED_HEALTH_STATUSES = frozenset({SourceHealthStatus.POLICY_RESTRICTION, SourceHealthStatus.RATE_LIMITED})
+
+
+def _retry_after_seconds(report: Any, now: datetime) -> Optional[float]:
+    """Parse a Retry-After health diagnostic into a non-negative delay.
+
+    Supports both RFC integer delta-seconds and HTTP-date values. Invalid or
+    absent values return None so callers can apply a conservative fallback.
+    """
+    try:
+        raw = dict(report.diagnostics).get("retry_after")
+    except Exception:
+        return None
+    if raw is None:
+        return None
+    text_value = str(raw).strip()
+    if not text_value:
+        return None
+    try:
+        seconds = float(text_value)
+        return max(0.0, seconds)
+    except ValueError:
+        pass
+    try:
+        parsed = parsedate_to_datetime(text_value)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return max(0.0, (parsed.astimezone(timezone.utc) - now.astimezone(timezone.utc)).total_seconds())
+    except (TypeError, ValueError, OverflowError):
+        return None
 
 #: The one source this work order wires a live, governed, multi-step fetch
 #: for (see ``_fetch_hacker_news_who_is_hiring_governed`` below). Every other
@@ -525,14 +601,15 @@ def make_poll_source_handler(
             # the current truth-pack hash, so evaluate_new is a fast no-op
             # for them.
             queue = BackgroundWorkerQueue(session)
-            queue.enqueue_job("evaluate_new", {})
+            queue.enqueue_job("evaluate_new", {}, commit=False)
 
+            finished_at = datetime.now(timezone.utc)
             poll_run = SourcePollRunRecord(
                 id=f"spr-{uuid.uuid4().hex[:16]}",
                 source_id=source_id,
                 job_id=job_id,
                 started_at=_to_utc_naive(started_at),
-                finished_at=_to_utc_naive(datetime.now(timezone.utc)),
+                finished_at=_to_utc_naive(finished_at),
                 status=BLOCKED_POLL_STATUS if blocked_report is not None else "ok",
                 refusal_reason=(f"blocked_{blocked_report.status.value}" if blocked_report is not None else None),
                 raw_ingested=batch.total_raw_ingested,
@@ -542,6 +619,25 @@ def make_poll_source_handler(
                 updated=result.updated_count,
             )
             session.add(poll_run)
+            cd_secs = None
+            if blocked_report is not None:
+                retry_after = _retry_after_seconds(blocked_report, finished_at)
+                if blocked_report.status == SourceHealthStatus.RATE_LIMITED:
+                    # Respect Retry-After when present; otherwise use a bounded
+                    # conservative fallback. Never permit an immediate retry.
+                    cd_secs = max(60.0, retry_after if retry_after is not None else 3600.0)
+                else:
+                    # Policy/WAF restrictions receive a longer floor even if a
+                    # short or malformed Retry-After is returned.
+                    cd_secs = max(86400.0, retry_after or 0.0)
+            _update_source_schedule(
+                session,
+                source_id,
+                started_at,
+                poll_run.status,
+                finished_at=finished_at,
+                cooldown_seconds=cd_secs,
+            )
             session.commit()
             logger.info(
                 "worker.poll_source_persisted",
@@ -1151,5 +1247,84 @@ def default_handler_registry(
             session_factory=session_factory,
             registry=registry,
         ),
+        "refresh_feed_projections": make_refresh_feed_projections_handler(
+            session_factory=session_factory,
+            truth_pack_path=truth_pack_path,
+            pack_loader=pack_loader,
+        ),
     }
+
+
+def make_refresh_feed_projections_handler(
+    *,
+    session_factory: Optional[SessionFactory] = None,
+    truth_pack_path: Optional[Any] = None,
+    pack_loader: Optional[PackLoader] = None,
+) -> Callable[[dict], None]:
+    """Build a handler for ``refresh_feed_projections`` background jobs.
+
+    Asynchronously refreshes feed projections scoped to the authoritative
+    loaded truth_pack_hash without blocking founder settings requests.
+    """
+    _session_factory_holder: list[Optional[SessionFactory]] = [session_factory]
+    pack_loader_fn = pack_loader or load_founder_pack
+
+    def _resolve_session_factory() -> SessionFactory:
+        if _session_factory_holder[0] is None:
+            _session_factory_holder[0] = _production_session_factory()
+        return _session_factory_holder[0]
+
+    def handler(payload: dict) -> None:
+        target_hash = payload.get("truth_pack_hash") if payload else None
+        if not target_hash:
+            logger.warning(
+                "worker.refresh_projections_no_hash",
+                extra={"component": "worker.handlers"},
+            )
+            return
+
+        try:
+            pack = pack_loader_fn(truth_pack_path)
+        except (TruthPackMissing, TruthPackInvalid) as exc:
+            logger.warning(
+                "worker.refresh_projections_skipped_no_pack",
+                extra={"component": "worker.handlers", "extra_data": {"reason": type(exc).__name__}},
+            )
+            raise
+
+        if pack.truth_pack_hash != target_hash:
+            logger.info(
+                "worker.refresh_projections_hash_mismatch",
+                extra={
+                    "component": "worker.handlers",
+                    "extra_data": {"expected": target_hash, "current": pack.truth_pack_hash},
+                },
+            )
+            return
+
+        session = _resolve_session_factory()()
+        try:
+            from storage.feed_projection_service import refresh_existing_feed_projections
+
+            count = refresh_existing_feed_projections(
+                session,
+                truth_graph=pack.graph,
+                truth_pack_hash=target_hash,
+            )
+            session.commit()
+            logger.info(
+                "worker.refresh_projections_completed",
+                extra={
+                    "component": "worker.handlers",
+                    "extra_data": {"refreshed_count": count, "truth_pack_hash": target_hash},
+                },
+            )
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    return handler
+
 

@@ -2,33 +2,16 @@
 
 One tick enqueues at most one ``poll_source`` job per read-allowed source
 whose interval has elapsed, and never enqueues a duplicate while a
-PENDING/RETRY ``poll_source`` job for that source is already queued -- a
-scheduler that piles up jobs while the worker is slow (or a source's poll
-takes longer than the tick) is a defect, not an optimisation.
+PENDING/RETRY/RUNNING ``poll_source`` job for that source is already in flight.
 
 Read-disabled sources are never enqueued. This is a policy boundary
 enforced by ``opportunity.registry.SourceRegistry.is_read_allowed`` (backed
-by ``docs/SOURCE_REGISTRY.yaml``), not a scheduler optimisation -- the same
-boundary ``worker.handlers.make_poll_source_handler`` itself re-checks
-before ever calling a transport, and that ``api/routes_api.py``'s
-``/worker/poll-now`` endpoint already enforces the same way.
+by ``docs/SOURCE_REGISTRY.yaml``).
 
-On ``evaluate_new``: this scheduler does **not** enqueue ``evaluate_new``
-itself. ``worker.handlers.make_poll_source_handler`` already enqueues one
-``evaluate_new`` job after every successful ``poll_source`` persist (see its
-docstring: "``evaluate_new`` is still enqueued unconditionally after a
-successful persist... it is now a backfill/safety net for whatever [the
-handler's own inline evaluation] pass missed"). A scheduler-level enqueue on
-top of that would be a redundant duplicate for the very same tick's
-already-enqueued ``evaluate_new`` job, with nothing new for it to do beyond
-what the inline pass and the handler's own enqueue already cover. The one
-case a scheduler-level enqueue would additionally help -- re-evaluating
-existing opportunities after the founder edits their truth pack, with no
-new poll in between -- is out of scope for this deliverable (D8 is the
-poll scheduler and the local runner, not truth-pack-change reactivity) and
-is not exercised by any acceptance criterion here; a future deliverable can
-add a periodic, poll-independent ``evaluate_new`` re-check if that gap
-needs closing.
+FR-007 Wave 11: Source cadence, next-due timestamps, and rate-limit cooldowns
+are persisted in the PostgreSQL ``source_schedules`` table. Scheduler and
+worker process restarts do not reset next_due timestamps or trigger warm-up
+storms.
 """
 from __future__ import annotations
 
@@ -36,44 +19,35 @@ import json
 import os
 import re
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Mapping, Optional
+
+from sqlalchemy import or_
 
 from core.logging import get_logger
 from opportunity.registry import SourceRegistry
-from storage.models import SourcePollRunRecord, WorkerJobRecord
+from storage.models import SourcePollRunRecord, SourceScheduleRecord, WorkerJobRecord
 from worker.handlers import BLOCKED_POLL_STATUS
 from worker.queue import BackgroundWorkerQueue
 
 logger = get_logger("opportunityos.worker.scheduler")
 
-#: Environment variable controlling the poll interval, in hours. See
-#: ``get_poll_interval_hours``.
+#: Environment variable controlling the poll interval, in hours.
 ENV_POLL_INTERVAL_HOURS = "OPPORTUNITYOS_POLL_INTERVAL_HOURS"
 
-#: Default poll interval, in hours, when the environment variable above is
-#: unset, empty, or not a valid positive number.
+#: Default poll interval, in hours, when the environment variable above is unset.
 DEFAULT_POLL_INTERVAL_HOURS = 6.0
 
 #: Job types this scheduler is responsible for enqueuing.
 _SCHEDULED_JOB_TYPE = "poll_source"
 _SCHEDULED_REVERIFY_JOB_TYPE = "reverify_stale"
 
-#: A zero-arg callable returning a new SQLAlchemy ``Session``.
-
 SessionFactory = Callable[[], object]
-
-#: A zero-arg callable returning the current UTC time, injectable so
-#: interval math is testable without sleeping.
 Clock = Callable[[], datetime]
 
 
 def get_poll_interval_hours(env: Optional[Mapping[str, str]] = None) -> float:
-    """Read ``OPPORTUNITYOS_POLL_INTERVAL_HOURS`` from ``env`` (default: ``os.environ``).
-
-    Falls back to ``DEFAULT_POLL_INTERVAL_HOURS`` if the variable is unset,
-    empty, not parseable as a number, or not strictly positive.
-    """
+    """Read ``OPPORTUNITYOS_POLL_INTERVAL_HOURS`` from ``env`` (default: ``os.environ``)."""
     source = env if env is not None else os.environ
     raw = source.get(ENV_POLL_INTERVAL_HOURS)
     if not raw:
@@ -99,24 +73,11 @@ def _default_clock() -> datetime:
     return datetime.now(timezone.utc)
 
 
-#: Matches a ``poll_cadence_hours: <number>`` line anywhere within one
-#: source's YAML block in ``docs/SOURCE_REGISTRY.yaml`` (or a test fixture
-#: shaped like it). Line-oriented on purpose, mirroring
-#: ``opportunity.registry.SourceRegistry._parse_yaml_sources``'s own
-#: dependency-free regex parser exactly (this module must not add a YAML
-#: library dependency, and ``opportunity/registry.py`` is frozen for this
-#: work order so the cadence field cannot live on its ``SourcePolicy``
-#: dataclass -- the scheduler reads the registry file itself instead).
 _CADENCE_FIELD_RE = re.compile(r"(?m)^\s*poll_cadence_hours:\s*([0-9.]+)")
 
 
 def _parse_cadence_hours(content: str) -> dict[str, float]:
-    """Per-source ``poll_cadence_hours:`` -> hours, parsed the same way
-    ``SourceRegistry._parse_yaml_sources`` splits the file into one chunk per
-    ``- source_id: ...`` entry. A source with no ``poll_cadence_hours`` field
-    is simply absent from the returned mapping -- callers apply their own
-    default (see ``PollScheduler.get_cadence_hours``).
-    """
+    """Per-source ``poll_cadence_hours:`` -> hours from registry YAML."""
     cadences: dict[str, float] = {}
     chunks = re.split(r"(?m)^\s*-\s+source_id:\s*", content)
     for chunk in chunks[1:]:
@@ -133,22 +94,281 @@ def _parse_cadence_hours(content: str) -> dict[str, float]:
     return cadences
 
 
-class PollScheduler:
-    """Enqueues ``poll_source`` for every read-allowed source on an interval.
+def _to_naive_utc(value: Optional[datetime]) -> Optional[datetime]:
+    if value is None:
+        return None
+    if value.tzinfo is not None:
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value
 
-    Each call into ``run_once`` that touches the database opens its own
-    session from ``session_factory`` and closes it before returning, exactly
-    like ``worker.runner.WorkerRunner`` -- a ``PollScheduler`` (and the
-    sessions it creates) must never be shared across threads.
 
-    Poll due-ness is tracked in-memory (``_last_enqueued_at``, keyed by
-    source_id), while the 24-hour re-verification cadence is derived from its
-    durable ``worker_jobs.run_after`` rows. This is why ``clock`` is injectable
-    -- tests drive both interval calculations by advancing a fake clock across
-    ``run_once`` calls instead of sleeping for real hours. A freshly
-    constructed scheduler treats every read-allowed source as due on its first
-    tick, but does not reset re-verification cadence after a restart.
+def _as_utc(value: Optional[datetime]) -> Optional[datetime]:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _active_poll_source_ids(session) -> set[str]:
+    """source_ids with an active (PENDING, RETRY, or RUNNING) poll_source job."""
+    rows = (
+        session.query(WorkerJobRecord.payload_json)
+        .filter(
+            WorkerJobRecord.job_type == _SCHEDULED_JOB_TYPE,
+            WorkerJobRecord.status.in_(["PENDING", "RETRY", "RUNNING"]),
+        )
+        .all()
+    )
+    active: set[str] = set()
+    for (payload_json,) in rows:
+        try:
+            payload = json.loads(payload_json) if payload_json else {}
+        except (TypeError, ValueError):
+            continue
+        source_id = payload.get("source_id") if isinstance(payload, dict) else None
+        if source_id:
+            active.add(source_id)
+    return active
+
+
+def _blocked_source_ids_from_db(session) -> set[str]:
+    """source_ids with any ``source_poll_runs`` row recording BLOCKED_POLL_STATUS."""
+    rows = (
+        session.query(SourcePollRunRecord.source_id)
+        .filter(SourcePollRunRecord.status == BLOCKED_POLL_STATUS)
+        .distinct()
+        .all()
+    )
+    return {source_id for (source_id,) in rows}
+
+
+def get_or_create_source_schedule(
+    session,
+    source_id: str,
+    cadence_hours: float,
+    now: datetime,
+) -> SourceScheduleRecord:
+    """Retrieve or bootstrap the durable SourceScheduleRecord for a source.
+
+    Initial bootstrap rule:
+    - If never polled before: next_due_at is set to now (immediately eligible on initial bootstrap).
+    - If prior SourcePollRunRecord rows exist:
+      last_attempt_at is latest run started_at.
+      last_success_at is latest ok run started_at.
+      next_due_at is last_attempt_at + cadence_hours.
+      If latest run was blocked, cooldown_until is preserved.
+
+    Restart is NOT bootstrap: an existing row's next_due_at / cooldown_until
+    is preserved across restarts.
     """
+    now_naive = _to_naive_utc(now) or datetime.now(timezone.utc).replace(tzinfo=None)
+    record = session.query(SourceScheduleRecord).filter_by(source_id=source_id).first()
+    if record is not None:
+        if record.cadence_hours != cadence_hours:
+            record.cadence_hours = cadence_hours
+        return record
+
+    latest = (
+        session.query(SourcePollRunRecord.started_at, SourcePollRunRecord.status)
+        .filter(SourcePollRunRecord.source_id == source_id)
+        .order_by(SourcePollRunRecord.started_at.desc())
+        .first()
+    )
+    if latest is not None:
+        last_attempt = _to_naive_utc(latest[0])
+        ok_run = (
+            session.query(SourcePollRunRecord.started_at)
+            .filter(SourcePollRunRecord.source_id == source_id, SourcePollRunRecord.status == "ok")
+            .order_by(SourcePollRunRecord.started_at.desc())
+            .first()
+        )
+        last_success = _to_naive_utc(ok_run[0]) if ok_run else None
+        next_due = (last_attempt or now_naive) + timedelta(hours=cadence_hours)
+        cooldown = None
+        if latest[1] == BLOCKED_POLL_STATUS:
+            cooldown = (last_attempt or now_naive) + timedelta(hours=24)
+            next_due = max(next_due, cooldown)
+    else:
+        last_attempt = None
+        last_success = None
+        next_due = now_naive
+        cooldown = None
+
+    values = {
+        "source_id": source_id,
+        "cadence_hours": cadence_hours,
+        "last_attempt_at": last_attempt,
+        "last_success_at": last_success,
+        "next_due_at": next_due,
+        "cooldown_until": cooldown,
+        "consecutive_failures": 0,
+        "last_status": latest[1] if latest else None,
+        "created_at": now_naive,
+        "updated_at": now_naive,
+    }
+
+    bind = session.get_bind()
+    dialect_name = bind.dialect.name if bind is not None else ""
+
+    if dialect_name == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        stmt = (
+            pg_insert(SourceScheduleRecord)
+            .values(**values)
+            .on_conflict_do_nothing(index_elements=["source_id"])
+        )
+        session.execute(stmt)
+        session.flush()
+    elif dialect_name == "sqlite":
+        stmt = SourceScheduleRecord.__table__.insert().prefix_with("OR IGNORE").values(**values)
+        session.execute(stmt)
+        session.flush()
+    else:
+        try:
+            with session.begin_nested():
+                record = SourceScheduleRecord(**values)
+                session.add(record)
+                session.flush()
+        except Exception:
+            pass
+
+    return session.query(SourceScheduleRecord).filter_by(source_id=source_id).one()
+
+
+def enqueue_due_sources(
+    session,
+    *,
+    registry: Optional[SourceRegistry] = None,
+    now: Optional[datetime] = None,
+    source_id: Optional[str] = None,
+    interval_hours: Optional[float] = None,
+    force: bool = False,
+) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    """Enqueue due/eligible poll_source jobs.
+
+    Returns (enqueued, skipped) lists:
+      enqueued: [{"source_id": str, "job_id": str}, ...]
+      skipped: [{"source_id": str, "reason": str}, ...]
+    """
+    reg = registry or SourceRegistry()
+    curr_now = now or datetime.now(timezone.utc)
+    curr_now_naive = _to_naive_utc(curr_now) or datetime.now(timezone.utc).replace(tzinfo=None)
+    default_interval = interval_hours if interval_hours is not None else get_poll_interval_hours()
+
+    try:
+        content = reg.path.read_text(encoding="utf-8")
+        cadence_map = _parse_cadence_hours(content)
+    except OSError:
+        cadence_map = {}
+
+    def _cadence_for(sid: str) -> float:
+        return cadence_map.get(sid, default_interval)
+
+    queue = BackgroundWorkerQueue(session)
+    enqueued: list[dict[str, str]] = []
+    skipped: list[dict[str, str]] = []
+
+    # Single-source explicit request
+    if source_id is not None:
+        if not reg.is_read_allowed(source_id):
+            skipped.append({"source_id": source_id, "reason": "read_disabled_by_policy"})
+            return enqueued, skipped
+
+        get_or_create_source_schedule(session, source_id, _cadence_for(source_id), curr_now)
+
+        # Serialize eligibility + enqueue + cadence advancement on the durable
+        # source schedule row. The queue insert is flushed without committing
+        # so another scheduler cannot observe an unlocked, still-due row.
+        bind = session.get_bind()
+        is_postgres = bool(bind and bind.dialect.name == "postgresql")
+        sched_query = session.query(SourceScheduleRecord).filter_by(source_id=source_id)
+        if is_postgres:
+            sched_query = sched_query.with_for_update()
+        sched = sched_query.one()
+
+        if sched.cooldown_until is not None and sched.cooldown_until > curr_now_naive:
+            skipped.append({"source_id": source_id, "reason": "cooling_down"})
+            return enqueued, skipped
+
+        active = _active_poll_source_ids(session)
+        if source_id in active:
+            skipped.append({"source_id": source_id, "reason": "already_queued"})
+            return enqueued, skipped
+
+        if not force and sched.next_due_at > curr_now_naive:
+            skipped.append({"source_id": source_id, "reason": "not_due"})
+            return enqueued, skipped
+
+        job_id = queue.enqueue_job(
+            _SCHEDULED_JOB_TYPE, {"source_id": source_id}, commit=False
+        )
+        sched.last_attempt_at = curr_now_naive
+        sched.next_due_at = curr_now_naive + timedelta(hours=sched.cadence_hours)
+        sched.updated_at = curr_now_naive
+        enqueued.append({"source_id": source_id, "job_id": job_id})
+        return enqueued, skipped
+
+    # Generic request: evaluate all sources in registry
+    read_allowed = [s for s in reg._sources if reg.is_read_allowed(s)]
+    read_disabled = [s for s in reg._sources if not reg.is_read_allowed(s)]
+    for s in read_disabled:
+        skipped.append({"source_id": s, "reason": "read_disabled_by_policy"})
+
+    if not read_allowed:
+        return enqueued, skipped
+
+    # Ensure schedules exist for all read_allowed sources
+    for s in read_allowed:
+        get_or_create_source_schedule(session, s, _cadence_for(s), curr_now)
+
+    # In PostgreSQL, lock schedule rows with FOR UPDATE SKIP LOCKED. The
+    # queue insert and next_due_at advancement remain in the same transaction,
+    # so overlapping scheduler instances cannot both enqueue the same source.
+    bind = session.get_bind()
+    is_postgres = bool(bind and bind.dialect.name == "postgresql")
+
+    query = session.query(SourceScheduleRecord).filter(
+        SourceScheduleRecord.source_id.in_(read_allowed),
+    )
+    if is_postgres:
+        query = query.with_for_update(skip_locked=True)
+
+    schedules = query.all()
+    active_sources = _active_poll_source_ids(session)
+    for sched in schedules:
+        sid = sched.source_id
+
+        # Durable cooldown/Retry-After state is the scheduling authority.
+        # Historical blocked poll rows must not suppress a source forever
+        # after its persisted cooldown has expired.
+        if sched.cooldown_until is not None and sched.cooldown_until > curr_now_naive:
+            skipped.append({"source_id": sid, "reason": "cooling_down"})
+            continue
+
+        if sid in active_sources:
+            skipped.append({"source_id": sid, "reason": "already_queued"})
+            continue
+
+        if sched.next_due_at > curr_now_naive:
+            skipped.append({"source_id": sid, "reason": "not_due"})
+            continue
+
+        job_id = queue.enqueue_job(
+            _SCHEDULED_JOB_TYPE, {"source_id": sid}, commit=False
+        )
+        sched.last_attempt_at = curr_now_naive
+        sched.next_due_at = curr_now_naive + timedelta(hours=sched.cadence_hours)
+        sched.updated_at = curr_now_naive
+        active_sources.add(sid)
+        enqueued.append({"source_id": sid, "job_id": job_id})
+
+    return enqueued, skipped
+
+
+class PollScheduler:
+    """Enqueues ``poll_source`` for read-allowed due sources on their durable cadence."""
 
     def __init__(
         self,
@@ -169,18 +389,7 @@ class PollScheduler:
         self.tick_interval_seconds = tick_interval_seconds
         self.stop_event = stop_event or threading.Event()
         self._last_enqueued_at: dict[str, datetime] = {}
-        # Per-source cadence read once at construction from the same
-        # docs/SOURCE_REGISTRY.yaml (or fixture) file self.registry loaded --
-        # policy data next to the source's rate limits, not a Python table.
-        # A source absent from this mapping (no `poll_cadence_hours:` field)
-        # falls back to `self.interval_hours` in get_cadence_hours below.
         self._cadence_hours: dict[str, float] = self._load_cadence_hours()
-        # Sources that returned 403/429 on a poll this session (see
-        # _blocked_source_ids_from_db): once observed, a source_id stays in
-        # this set for the rest of this PollScheduler instance's lifetime --
-        # cadence is a floor, not a licence, and this union is deliberately
-        # one-directional (never cleared) so a still-blocking source is not
-        # retried just because its cadence interval elapsed again.
         self._blocked_this_session: set[str] = set()
 
     def _load_cadence_hours(self) -> dict[str, float]:
@@ -191,108 +400,34 @@ class PollScheduler:
         return _parse_cadence_hours(content)
 
     def get_cadence_hours(self, source_id: str) -> float:
-        """The declared cadence for ``source_id``, or ``self.interval_hours``
-        (the existing global default) when the registry entry has no
-        ``poll_cadence_hours`` field."""
         return self._cadence_hours.get(source_id, self.interval_hours)
 
-    # -- source enumeration -------------------------------------------------
-
     def _read_allowed_source_ids(self) -> list[str]:
-        # SourceRegistry (opportunity/registry.py, out of D8's file scope) has
-        # no public "list all sources" accessor -- only per-id lookups
-        # (get_policy/is_read_allowed). `_sources` is read-only here; nothing
-        # is mutated. This mirrors the identical, already-committed pattern
-        # in api/routes_api.py's /sources/health and /worker/poll-now.
         return [
             source_id
             for source_id in self.registry._sources
             if self.registry.is_read_allowed(source_id)
         ]
 
-    # -- due-ness -------------------------------------------------------------
-
     def _is_due(self, source_id: str, now: datetime, session) -> bool:
-        last = self._last_enqueued_at.get(source_id)
-        if last is None:
-            # Cadence must survive a production restart.  Without this
-            # durable fallback, every fresh PollScheduler instance treats
-            # the entire source universe as immediately due and repeats a
-            # full warm-up even when those sources just completed.
-            latest = (
-                session.query(SourcePollRunRecord.started_at)
-                .filter(SourcePollRunRecord.source_id == source_id)
-                .order_by(SourcePollRunRecord.started_at.desc())
-                .first()
-            )
-            if latest is not None:
-                last = self._as_utc(latest[0])
-                if last is not None:
-                    self._last_enqueued_at[source_id] = last
-        if last is None:
-            return True
-        elapsed_hours = (now - last).total_seconds() / 3600.0
-        return elapsed_hours >= self.get_cadence_hours(source_id)
-
-    # -- 403/429 session blocklist -------------------------------------------
+        now_naive = _to_naive_utc(now) or datetime.now(timezone.utc).replace(tzinfo=None)
+        cadence = self.get_cadence_hours(source_id)
+        sched = get_or_create_source_schedule(session, source_id, cadence, now)
+        if sched.cooldown_until is not None and sched.cooldown_until > now_naive:
+            return False
+        return sched.next_due_at <= now_naive
 
     def _blocked_source_ids_from_db(self, session) -> set[str]:
-        """source_ids with any ``source_poll_runs`` row recorded
-        ``status="blocked"`` (worker.handlers.BLOCKED_POLL_STATUS) -- a poll
-        that returned HTTP 403 or 429. Cadence is a floor, not a licence:
-        such a source is never re-enqueued by this scheduler instance again,
-        regardless of how much time (or how many due cadence intervals)
-        pass -- see ``_blocked_this_session``.
-        """
-        rows = (
-            session.query(SourcePollRunRecord.source_id)
-            .filter(SourcePollRunRecord.status == BLOCKED_POLL_STATUS)
-            .distinct()
-            .all()
-        )
-        return {source_id for (source_id,) in rows}
-
-    # -- duplicate suppression -------------------------------------------------
+        return _blocked_source_ids_from_db(session)
 
     def _pending_poll_source_ids(self, session) -> set[str]:
-        """source_ids with a PENDING/RETRY ``poll_source`` job already queued."""
-        rows = (
-            session.query(WorkerJobRecord.payload_json)
-            .filter(
-                WorkerJobRecord.job_type == _SCHEDULED_JOB_TYPE,
-                WorkerJobRecord.status.in_(["PENDING", "RETRY"]),
-            )
-            .all()
-        )
-        pending: set[str] = set()
-        for (payload_json,) in rows:
-            try:
-                payload = json.loads(payload_json) if payload_json else {}
-            except (TypeError, ValueError):
-                continue
-            source_id = payload.get("source_id") if isinstance(payload, dict) else None
-            if source_id:
-                pending.add(source_id)
-        return pending
+        return _active_poll_source_ids(session)
 
     @staticmethod
     def _as_utc(value: Optional[datetime]) -> Optional[datetime]:
-        """Normalize SQLAlchemy's naive SQLite timestamps for clock math."""
-        if value is None:
-            return None
-        if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
+        return _as_utc(value)
 
     def _reverify_is_due(self, session, now: datetime) -> bool:
-        """Return whether the durable 24-hour re-verification cadence elapsed.
-
-        ``worker_jobs.run_after`` is the scheduler's durable enqueue timestamp.
-        A pending/retry/running row always suppresses another enqueue, while a
-        completed or dead-letter row suppresses it until 24 hours after it was
-        scheduled. This survives a scheduler process restart and keeps the
-        queue's canonical uppercase status values in one place.
-        """
         rows = (
             session.query(WorkerJobRecord.status, WorkerJobRecord.run_after)
             .filter(WorkerJobRecord.job_type == _SCHEDULED_REVERIFY_JOB_TYPE)
@@ -306,81 +441,48 @@ class PollScheduler:
         if any((status or "").upper() in active_statuses for status, _ in rows):
             return False
 
-        latest_run_after = self._as_utc(rows[0][1])
+        latest_run_after = _as_utc(rows[0][1])
         if latest_run_after is None:
             return True
         return (now - latest_run_after).total_seconds() >= 86400.0
 
-    # -- one tick ---------------------------------------------------------------
-
     def run_once(self) -> list[str]:
-        """Enqueue ``poll_source`` for every read-allowed, due source that has
-        no PENDING/RETRY ``poll_source`` job already queued.
-
-        Returns the list of source_ids actually enqueued this tick (empty if
-        none were due, or all due sources already had a job in flight).
-        """
         now = self.clock()
         session = self.session_factory()
         try:
             queue = BackgroundWorkerQueue(session)
-            already_pending = self._pending_poll_source_ids(session)
-            # Monotonic union: a source_id observed blocked (403/429) on any
-            # prior tick of this scheduler instance stays blocked for the
-            # rest of its session even if this tick's DB query no longer
-            # returns it for some reason.
-            self._blocked_this_session |= self._blocked_source_ids_from_db(session)
-            enqueued: list[str] = []
-            for source_id in self._read_allowed_source_ids():
-                if source_id in self._blocked_this_session:
-                    logger.info(
-                        "worker.scheduler_skip_blocked",
-                        extra={
-                            "component": "worker.scheduler",
-                            "extra_data": {"source_id": source_id},
-                        },
-                    )
-                    continue
-                if not self._is_due(source_id, now, session):
-                    continue
-                if source_id in already_pending:
-                    logger.info(
-                        "worker.scheduler_skip_pending",
-                        extra={
-                            "component": "worker.scheduler",
-                            "extra_data": {"source_id": source_id},
-                        },
-                    )
-                    continue
-                queue.enqueue_job(_SCHEDULED_JOB_TYPE, {"source_id": source_id})
-                self._last_enqueued_at[source_id] = now
-                enqueued.append(source_id)
+            enqueued_items, _ = enqueue_due_sources(
+                session,
+                registry=self.registry,
+                now=now,
+                interval_hours=self.interval_hours,
+            )
+            for item in enqueued_items:
+                self._last_enqueued_at[item["source_id"]] = now
                 logger.info(
                     "worker.scheduler_enqueued",
                     extra={
                         "component": "worker.scheduler",
-                        "extra_data": {"source_id": source_id},
+                        "extra_data": {"source_id": item["source_id"]},
                     },
                 )
 
-            # Periodically enqueue reverify_stale (every 24h). The cadence and
-            # in-flight suppression are derived from durable worker-job rows so
-            # a scheduler restart cannot reset the clock or duplicate work.
             if self._reverify_is_due(session, now):
-                queue.enqueue_job(_SCHEDULED_REVERIFY_JOB_TYPE, {}, run_after=now)
+                queue.enqueue_job(_SCHEDULED_REVERIFY_JOB_TYPE, {}, run_after=now, commit=False)
                 logger.info(
                     "worker.scheduler_enqueued_reverify",
                     extra={"component": "worker.scheduler"},
                 )
 
-            return enqueued
+            session.commit()
+            return [item["source_id"] for item in enqueued_items]
+        except Exception:
+            session.rollback()
+            raise
         finally:
             session.close()
 
-    # -- continuous loop ----------------------------------------------------------
-
     def run_forever(self) -> None:
-        """Tick every ``tick_interval_seconds`` until ``stop_event`` is set."""
         logger.info(
             "worker.scheduler_started",
             extra={
@@ -395,7 +497,7 @@ class PollScheduler:
             while not self.stop_event.is_set():
                 try:
                     self.run_once()
-                except Exception as exc:  # noqa: BLE001 - a transient DB error must not kill the scheduler
+                except Exception as exc:
                     logger.error(
                         "worker.scheduler_tick_error",
                         extra={"component": "worker.scheduler", "extra_data": {"error": str(exc)}},

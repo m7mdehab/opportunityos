@@ -43,14 +43,23 @@ class CheckCloudReadinessTest(unittest.TestCase):
             "worker_jobs",
             "feed_projection",
             "source_poll_runs",
+            "source_schedules",
             "opportunities",
         ]
-        mock_inspector.get_columns.return_value = [
-            {"name": col} for col in (
-                "id", "job_type", "payload_json", "status", "lease_owner",
-                "lease_expires_at", "retry_count", "max_retries", "run_after"
-            )
-        ]
+        def _get_columns(tbl):
+            if tbl == "source_schedules":
+                return [
+                    {"name": col} for col in (
+                        "source_id", "cadence_hours", "next_due_at", "cooldown_until", "consecutive_failures"
+                    )
+                ]
+            return [
+                {"name": col} for col in (
+                    "id", "job_type", "payload_json", "status", "lease_owner",
+                    "lease_expires_at", "retry_count", "max_retries", "run_after"
+                )
+            ]
+        mock_inspector.get_columns.side_effect = _get_columns
         return mock_inspector
 
     def _mock_engine(self, mock_conn=None):

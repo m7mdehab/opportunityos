@@ -15,7 +15,7 @@ from opportunity.transport import BaseTransport, MockTransport, RateLimiter, Tra
 from storage.engine import get_engine, get_session_factory, init_db
 from storage.models import OpportunityRecord, SourcePollRunRecord, WorkerJobRecord
 from truth.pack import TruthPackMissing
-from worker.handlers import HACKER_NEWS_SOURCE_ID, make_poll_source_handler
+from worker.handlers import HACKER_NEWS_SOURCE_ID, _retry_after_seconds, make_poll_source_handler
 from worker.queue import BackgroundWorkerQueue
 from worker.runner import UNKNOWN_JOB_TYPE_MARKER, WorkerRunner
 
@@ -284,6 +284,25 @@ class TestWorkerRunner(unittest.TestCase):
         refreshed = self.setup_session.query(OpportunityRecord).filter_by(id="opp-stale-test").first()
         self.assertTrue(refreshed.is_stale)
         self.assertIsNotNone(refreshed.reverified_at)
+
+
+class TestRetryAfterParsing(unittest.TestCase):
+    def test_delta_seconds(self):
+        report = type("Report", (), {"diagnostics": (("retry_after", "120"),)})()
+        now = datetime(2026, 9, 18, 10, 0, tzinfo=timezone.utc)
+        self.assertEqual(_retry_after_seconds(report, now), 120.0)
+
+    def test_http_date(self):
+        report = type("Report", (), {
+            "diagnostics": (("retry_after", "Fri, 18 Sep 2026 10:10:00 GMT"),)
+        })()
+        now = datetime(2026, 9, 18, 10, 0, tzinfo=timezone.utc)
+        self.assertEqual(_retry_after_seconds(report, now), 600.0)
+
+    def test_invalid_value_falls_back(self):
+        report = type("Report", (), {"diagnostics": (("retry_after", "not-a-date"),)})()
+        now = datetime(2026, 9, 18, 10, 0, tzinfo=timezone.utc)
+        self.assertIsNone(_retry_after_seconds(report, now))
 
 
 class TestPollSourceHandler(unittest.TestCase):
