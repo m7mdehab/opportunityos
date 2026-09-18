@@ -304,7 +304,9 @@ def enqueue_due_sources(
         job_id = queue.enqueue_job(
             _SCHEDULED_JOB_TYPE, {"source_id": source_id}, commit=False
         )
-        sched.last_attempt_at = curr_now_naive
+        # Enqueue reserves the next cadence window but is not itself a
+        # source attempt. last_attempt_at is written only by the poll handler
+        # when acquisition actually begins/completes.
         sched.next_due_at = curr_now_naive + timedelta(hours=sched.cadence_hours)
         sched.updated_at = curr_now_naive
         enqueued.append({"source_id": source_id, "job_id": job_id})
@@ -358,7 +360,9 @@ def enqueue_due_sources(
         job_id = queue.enqueue_job(
             _SCHEDULED_JOB_TYPE, {"source_id": sid}, commit=False
         )
-        sched.last_attempt_at = curr_now_naive
+        # Enqueue reserves the next cadence window but is not itself a
+        # source attempt. last_attempt_at is written only by the poll handler
+        # when acquisition actually begins/completes.
         sched.next_due_at = curr_now_naive + timedelta(hours=sched.cadence_hours)
         sched.updated_at = curr_now_naive
         active_sources.add(sid)
