@@ -1,0 +1,101 @@
+================================================================================
+FR-007 ANTIGRAVITY LANE — W11: DURABLE DUE-ONLY SCHEDULING + ASYNC MAINTENANCE
+Date: 2026-09-18
+Host: Windows Local Dev & GitHub-Hosted Actions Runner (ubuntu-latest)
+Branch: work/fr007-antigravity-durable-scheduling
+Base SHA: 198483c1125a15e915189b482816b3f203a6a7bc (origin/brief/fr-007-cloud-replatform)
+Target PR: Targeting brief/fr-007-cloud-replatform
+Status: COMPLETED & INDEPENDENTLY VERIFIED (CI green on PR #98 against PostgreSQL 16)
+================================================================================
+
+1. EXECUTIVE SUMMARY & RESOLUTION OF W11 REQUIREMENTS
+--------------------------------------------------------------------------------
+Wave 11 permanently resolves Acceptance Criteria A-7, A-8, and removes synchronous
+bulk feed maintenance from founder-facing request paths:
+
+A. A-8: Durable Source Scheduling & Cadence State
+   - Implemented `source_schedules` table via Alembic migration `0007_source_schedules.py`:
+       Columns:
+         source_id VARCHAR(128) PRIMARY KEY
+         cadence_hours FLOAT NOT NULL
+         last_attempt_at TIMESTAMP NULL
+         last_success_at TIMESTAMP NULL
+         next_due_at TIMESTAMP NOT NULL (INDEXED)
+         cooldown_until TIMESTAMP NULL (INDEXED)
+         consecutive_failures INTEGER NOT NULL DEFAULT 0
+         last_status VARCHAR(32) NULL
+         error_message TEXT NULL
+         created_at TIMESTAMP NOT NULL
+         updated_at TIMESTAMP NOT NULL
+   - Persisted source schedules survive scheduler and worker process restarts:
+     * Restart is NOT bootstrap: existing rows are queried directly and preserved.
+     * Bootstrap rule: never-polled sources have next_due_at set to now (immediately eligible);
+       sources with existing run history compute next_due_at = last_attempt + cadence_hours.
+     * Prevents all-source warm-up storms upon container restart or deployment rollouts.
+   - Integrated into scripts/backup_restore.py, scripts/check_cloud_readiness.py,
+     and tests (14 passed in check_cloud_readiness, 4 passed / 3 skipped in backup_restore).
+
+B. A-7: Asynchronous, Due-Only Poll Now HTTP Semantics
+   - Updated `POST /api/worker/poll-now`:
+     * Accepts optional payload `{"source_id": str | None, "force": bool = False}`.
+     * In generic mode (`source_id=None`), evaluates all read-allowed sources and enqueues
+       ONLY those whose durable next_due_at <= now, skipping sources that are not_due,
+       cooling_down, already_queued, or read_disabled_by_policy.
+     * In explicit mode (`source_id="remote_ok"`), checks policy permissions, cooldown,
+       and active queue status; enqueues when due or when `force=True`.
+     * Returns HTTP 200 asynchronously immediately after enqueuing jobs to `worker_jobs`.
+       Never performs network ingestion or match evaluation inline during the HTTP request.
+     * Leaves current feed visible and intact (`GET /api/opportunities` verified).
+
+C. Async Projection Maintenance on Founder Settings Writes
+   - Replaced synchronous `_refresh_current_pack_projections` calls in:
+       `PUT /api/filters/{filter_id}`
+       `PUT /api/facets/{facet_id}`
+       `POST /api/hidden-reasons/unhide`
+     with `_enqueue_pack_projection_refresh(session, request)` which enqueues an
+     idempotent `refresh_feed_projections` job to `worker_jobs`.
+   - Settings writes return immediately without traversing feed projections or opportunities.
+   - Registered `make_refresh_feed_projections_handler` in `default_handler_registry()`,
+     allowing background worker runners to refresh projections asynchronously.
+   - Repeated rapid writes execute idempotently without corrupting projection state.
+
+D. Real PostgreSQL 16 Durability & Restart Acceptance Suite
+   - 15 total tests in `worker/test_postgres_queue_durability.py`:
+     * test_concurrent_worker_claims_skip_locked
+     * test_lease_expiration_and_recovery
+     * test_dead_letter_handling
+     * test_guarded_completion_rejects_stale_worker
+     * test_scheduler_deduplication
+     * test_1_cadence_survives_restart
+     * test_2_due_source_survives_restart
+     * test_3_no_warmup_storm
+     * test_4_concurrent_schedulers
+     * test_5_persisted_cooldown
+     * test_6_cooldown_expiry
+     * test_7_scheduler_worker_crash_recovery
+     * test_8_poll_now_http
+     * test_9_async_projection_maintenance
+     * test_10_duplicate_maintenance
+   - Zero skips in CI against real PostgreSQL 16 service container (15 passed / 0 skipped).
+
+
+2. VERIFICATION EVIDENCE
+--------------------------------------------------------------------------------
+- Branch: work/fr007-antigravity-durable-scheduling
+- Latest Remediation Head Commit: 26c111445337718f086d39aa95931bb5f51e470b
+- Pull Request: #98 targeting brief/fr-007-cloud-replatform (https://github.com/m7mdehab/opportunityos/pull/98)
+- Authoritative CI Run:
+  * GitHub Actions Workflow: OCI Container Runtime Smoke (oci-container-smoke.yml)
+  * Run ID: 35335984720
+  * Job ID: 105570883808
+  * Status: SUCCESS / GREEN
+  * Executed against real PostgreSQL 16 Alpine service container:
+    `python -m unittest worker.test_postgres_queue_durability -v` -> 15 tests PASSED, 0 skipped.
+
+- Local Unit & Subsystem Tests:
+  * pytest worker/test_scheduler.py: 24 passed
+  * pytest worker/test_runner.py: 16 passed
+  * pytest scripts/ test_backup_restore.py & test_check_cloud_readiness.py: 18 passed
+  * python scripts/check_guard.py --allow-missing-patterns: PASSED
+  * python scripts/check_repository.py: PASSED
+================================================================================================================================================================
