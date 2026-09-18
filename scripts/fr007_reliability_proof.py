@@ -211,7 +211,7 @@ def execute_a4_http_probe(dsn: str) -> dict[str, Any]:
             job_type="poll_source",
             payload_json=json.dumps({"source_id": "greenhouse:stuck"}),
             status="RUNNING",
-            locked_by="stale-worker-id",
+            lease_owner="stale-worker-id",
             lease_expires_at=now - timedelta(minutes=15),
             created_at=now - timedelta(hours=1),
             updated_at=now - timedelta(minutes=20),
@@ -431,7 +431,7 @@ def execute_a5_source_probe(dsn: str) -> dict[str, Any]:
 
     # 6. Check scheduler tick
     scheduler = PollScheduler(factory, registry=registry)
-    scheduler.tick()
+    scheduler_enqueued = scheduler.run_once()
 
     # 7. Observe and derive all values from PostgreSQL
     with factory() as session:
@@ -491,7 +491,8 @@ def execute_a5_source_probe(dsn: str) -> dict[str, Any]:
         "good_opp_id": good_opp.id if good_opp else None,
         "good_poll_run_status": good_poll.status if good_poll else None,
         "runner_continued": runner_continued,
-        "scheduler_tick_ok": True,
+        "scheduler_tick_ok": isinstance(scheduler_enqueued, list),
+        "scheduler_enqueued_count": len(scheduler_enqueued),
         "feed_readable": feed_readable,
         "artifact_retrievable": artifact_retrievable,
     }
