@@ -8,6 +8,10 @@ Founder Web Alpha exists, but production reliability is not yet accepted because
 
 FR-007 is therefore the active execution priority. BRIEF-007 / Multi-Tenant Family Alpha remains blocked until FR-007 is accepted and the Founder validates the resulting cloud-hosted Alpha.
 
+## Immediate Goal
+
+Complete the real hosted staging path: connect the managed PostgreSQL/Supabase target, execute migration/parity proof, establish private durable Truth Pack/artifact storage, and deploy the OCI runtime without giving production authority to the new stack until the staging gates pass.
+
 ## Already Integrated
 
 The FR-007 integration branch now contains:
