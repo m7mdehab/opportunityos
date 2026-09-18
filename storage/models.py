@@ -438,3 +438,30 @@ class ArtifactCacheRecord(Base):
     content_type = Column(String(128), nullable=True)
     payload = Column(LargeBinary, nullable=True)
     created_at = Column(DateTime, nullable=True)
+
+
+class SourceScheduleRecord(Base):
+    """FR-007 W11: Persisted source scheduling, cadence, next-due, and cooldown state.
+
+    Ensures that source cadence and rate-limit cooldowns survive scheduler/worker
+    process restarts without warm-up storms.
+    """
+
+    __tablename__ = "source_schedules"
+
+    source_id = Column(String(128), primary_key=True)
+    cadence_hours = Column(Float, nullable=False)
+    last_attempt_at = Column(DateTime, nullable=True)
+    last_success_at = Column(DateTime, nullable=True)
+    next_due_at = Column(DateTime, nullable=False, index=True)
+    cooldown_until = Column(DateTime, nullable=True, index=True)
+    consecutive_failures = Column(Integer, default=0, nullable=False)
+    last_status = Column(String(32), nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
