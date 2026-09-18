@@ -1,0 +1,49 @@
+name: FR-007 Reliability Proof Harness
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/fr007_reliability_proof.py'
+      - 'scripts/test_fr007_reliability_proof.py'
+      - 'worker/**'
+      - 'opportunity/**'
+      - 'storage/**'
+      - '.github/workflows/fr007-reliability-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  disposable-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: opportunityos
+          POSTGRES_PASSWORD: reliability-proof
+          POSTGRES_DB: opportunityos
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U opportunityos -d opportunityos"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      OPPORTUNITYOS_DB_URL: postgresql+psycopg2://opportunityos:reliability-proof@localhost:5432/opportunityos
+      FR007_RELIABILITY_POSTGRES: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -e '.[dev]'
+      - name: Apply repository migrations
+        run: python -m alembic upgrade head
+      - name: Run reliability proof tests
+        run: python -m unittest scripts.test_fr007_reliability_proof -v
+      - name: Compile and repository checks
+        run: |
+          python -m py_compile scripts/fr007_reliability_proof.py scripts/test_fr007_reliability_proof.py
+          python scripts/check_repository.py
+          python scripts/check_guard.py --allow-missing-patterns

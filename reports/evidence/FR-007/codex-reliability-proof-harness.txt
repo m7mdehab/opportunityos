@@ -1,0 +1,36 @@
+FR-007 W13C reliability proof harness
+
+Branch: work/fr007-codex-reliability-proof-harness
+Base: brief/fr-007-cloud-replatform at 6298cb49a4897832d0a1a24ccb39f573b969df94
+
+This evidence file is generated on the reliability-proof branch. The runner
+reports A4, A5, and A6 independently as PASS, FAIL, or BLOCKED. BLOCKED and
+unsupported infrastructure are never converted to PASS. The PostgreSQL CI
+workflow uses postgres:16-alpine, applies the repository Alembic head, and
+uses synthetic fixtures only. No hosted source, artifact store, or production
+credentials are used.
+
+Local execution without OPPORTUNITYOS_DB_URL reports BLOCKED. The CI workflow
+is the executable disposable-PostgreSQL proof path and uses postgres:16-alpine
+with Alembic head. Hosted Supabase execution remains NOT_EXECUTED and requires
+real credentials and an approved staging environment.
+
+Local results (2026-09-18):
+- python -m unittest scripts.test_fr007_reliability_proof -v: 8 tests, OK,
+  1 PostgreSQL-only test skipped because no disposable PostgreSQL was available.
+- python -m unittest worker.test_runner worker.test_scheduler opportunity.test_persistence
+  storage.test_feed_query storage.test_feed_projection_service -v: 62 tests, OK.
+- py_compile: PASS.
+- scripts/check_repository.py: PASS.
+- scripts/check_guard.py --allow-missing-patterns: PASS.
+- STATE_PRESERVE_TIMESTAMP=1 python scripts/generate_state.py followed by
+  git diff --exit-code -- docs/STATE.md: PASS after committing generated State.
+
+Scenario semantics:
+- A4 is PASS only after persisted opportunities/feed projections can be read
+  with worker_started=false; missing tables or PostgreSQL are BLOCKED.
+- A5 is PASS only when an injected real poll handler/runner probe observes a
+  failed SOURCE_BAD, a persisted SOURCE_GOOD, and continued runner progress.
+- A6 is PASS only when an injected real persist_batch probe observes stable
+  identity/provenance, changed-content re-verification, and no duplicate id.
+  Concurrent retryable integrity errors remain explicit details.
