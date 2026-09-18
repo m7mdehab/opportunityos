@@ -276,12 +276,17 @@ def enqueue_due_sources(
             skipped.append({"source_id": source_id, "reason": "read_disabled_by_policy"})
             return enqueued, skipped
 
-        sched = get_or_create_source_schedule(session, source_id, _cadence_for(source_id), curr_now)
-        # Blocked runs or active cooldown check
-        db_blocked = _blocked_source_ids_from_db(session)
-        if source_id in db_blocked:
-            skipped.append({"source_id": source_id, "reason": "blocked_by_policy"})
-            return enqueued, skipped
+        get_or_create_source_schedule(session, source_id, _cadence_for(source_id), curr_now)
+
+        # Serialize eligibility + enqueue + cadence advancement on the durable
+        # source schedule row. The queue insert is flushed without committing
+        # so another scheduler cannot observe an unlocked, still-due row.
+        bind = session.get_bind()
+        is_postgres = bool(bind and bind.dialect.name == "postgresql")
+        sched_query = session.query(SourceScheduleRecord).filter_by(source_id=source_id)
+        if is_postgres:
+            sched_query = sched_query.with_for_update()
+        sched = sched_query.one()
 
         if sched.cooldown_until is not None and sched.cooldown_until > curr_now_naive:
             skipped.append({"source_id": source_id, "reason": "cooling_down"})
@@ -296,7 +301,9 @@ def enqueue_due_sources(
             skipped.append({"source_id": source_id, "reason": "not_due"})
             return enqueued, skipped
 
-        job_id = queue.enqueue_job(_SCHEDULED_JOB_TYPE, {"source_id": source_id})
+        job_id = queue.enqueue_job(
+            _SCHEDULED_JOB_TYPE, {"source_id": source_id}, commit=False
+        )
         sched.last_attempt_at = curr_now_naive
         sched.next_due_at = curr_now_naive + timedelta(hours=sched.cadence_hours)
         sched.updated_at = curr_now_naive
@@ -316,10 +323,9 @@ def enqueue_due_sources(
     for s in read_allowed:
         get_or_create_source_schedule(session, s, _cadence_for(s), curr_now)
 
-    active_sources = _active_poll_source_ids(session)
-    db_blocked_sources = _blocked_source_ids_from_db(session)
-
-    # In PostgreSQL, lock schedule rows with FOR UPDATE SKIP LOCKED to prevent duplicate scheduling
+    # In PostgreSQL, lock schedule rows with FOR UPDATE SKIP LOCKED. The
+    # queue insert and next_due_at advancement remain in the same transaction,
+    # so overlapping scheduler instances cannot both enqueue the same source.
     bind = session.get_bind()
     is_postgres = bool(bind and bind.dialect.name == "postgresql")
 
@@ -330,12 +336,13 @@ def enqueue_due_sources(
         query = query.with_for_update(skip_locked=True)
 
     schedules = query.all()
+    active_sources = _active_poll_source_ids(session)
     for sched in schedules:
         sid = sched.source_id
-        if sid in db_blocked_sources:
-            skipped.append({"source_id": sid, "reason": "blocked_by_policy"})
-            continue
 
+        # Durable cooldown/Retry-After state is the scheduling authority.
+        # Historical blocked poll rows must not suppress a source forever
+        # after its persisted cooldown has expired.
         if sched.cooldown_until is not None and sched.cooldown_until > curr_now_naive:
             skipped.append({"source_id": sid, "reason": "cooling_down"})
             continue
@@ -348,11 +355,13 @@ def enqueue_due_sources(
             skipped.append({"source_id": sid, "reason": "not_due"})
             continue
 
-        # Sched is due and eligible
-        job_id = queue.enqueue_job(_SCHEDULED_JOB_TYPE, {"source_id": sid})
+        job_id = queue.enqueue_job(
+            _SCHEDULED_JOB_TYPE, {"source_id": sid}, commit=False
+        )
         sched.last_attempt_at = curr_now_naive
         sched.next_due_at = curr_now_naive + timedelta(hours=sched.cadence_hours)
         sched.updated_at = curr_now_naive
+        active_sources.add(sid)
         enqueued.append({"source_id": sid, "job_id": job_id})
 
     return enqueued, skipped
@@ -459,7 +468,7 @@ class PollScheduler:
                 )
 
             if self._reverify_is_due(session, now):
-                queue.enqueue_job(_SCHEDULED_REVERIFY_JOB_TYPE, {}, run_after=now)
+                queue.enqueue_job(_SCHEDULED_REVERIFY_JOB_TYPE, {}, run_after=now, commit=False)
                 logger.info(
                     "worker.scheduler_enqueued_reverify",
                     extra={"component": "worker.scheduler"},
