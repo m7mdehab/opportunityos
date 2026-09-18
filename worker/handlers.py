@@ -279,16 +279,8 @@ _BLOCKED_STATUS_CODES = frozenset({403, 429})
 _BLOCKED_HEALTH_STATUSES = frozenset({SourceHealthStatus.POLICY_RESTRICTION, SourceHealthStatus.RATE_LIMITED})
 
 
-def _retry_after_seconds(report: Any, now: datetime) -> Optional[float]:
-    """Parse a Retry-After health diagnostic into a non-negative delay.
-
-    Supports both RFC integer delta-seconds and HTTP-date values. Invalid or
-    absent values return None so callers can apply a conservative fallback.
-    """
-    try:
-        raw = dict(report.diagnostics).get("retry_after")
-    except Exception:
-        return None
+def _parse_retry_after_value(raw: Any, now: datetime) -> Optional[float]:
+    """Parse RFC Retry-After delta-seconds or HTTP-date into a delay."""
     if raw is None:
         return None
     text_value = str(raw).strip()
@@ -303,9 +295,22 @@ def _retry_after_seconds(report: Any, now: datetime) -> Optional[float]:
         parsed = parsedate_to_datetime(text_value)
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=timezone.utc)
-        return max(0.0, (parsed.astimezone(timezone.utc) - now.astimezone(timezone.utc)).total_seconds())
+        now_utc = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
+        return max(
+            0.0,
+            (parsed.astimezone(timezone.utc) - now_utc.astimezone(timezone.utc)).total_seconds(),
+        )
     except (TypeError, ValueError, OverflowError):
         return None
+
+
+def _retry_after_seconds(report: Any, now: datetime) -> Optional[float]:
+    """Parse a Retry-After health diagnostic into a non-negative delay."""
+    try:
+        raw = dict(report.diagnostics).get("retry_after")
+    except Exception:
+        return None
+    return _parse_retry_after_value(raw, now)
 
 #: The one source this work order wires a live, governed, multi-step fetch
 #: for (see ``_fetch_hacker_news_who_is_hiring_governed`` below). Every other
@@ -316,26 +321,33 @@ HACKER_NEWS_SOURCE_ID = "hacker_news_who_is_hiring"
 _HN_FIREBASE_BASE = "https://hacker-news.firebaseio.com/v0"
 
 
-def _hn_governed_get(acquisition: AcquisitionService, source_id: str, url: str) -> tuple[Optional[Any], Optional[int]]:
-    """One governed GET -- registry preflight, shared rate limiter, injectable
-    transport, all via ``AcquisitionService.acquire`` -- returning
-    ``(parsed_json_or_None, status_code)``.
-    """
+def _hn_governed_get(
+    acquisition: AcquisitionService, source_id: str, url: str
+) -> tuple[Optional[Any], Optional[int], Optional[str]]:
+    """One governed GET returning parsed payload, status, and Retry-After."""
     result = acquisition.acquire(source_id=source_id, url=url, method="GET")
     status = result.response.status_code
+    retry_after = next(
+        (
+            str(value).strip()
+            for name, value in result.response.headers
+            if str(name).casefold() == "retry-after"
+        ),
+        None,
+    )
     if not result.authorized or not result.response.is_success or not result.response.body:
-        return None, status
+        return None, status, retry_after
     try:
-        return json.loads(result.response.body), status
+        return json.loads(result.response.body), status, retry_after
     except (TypeError, ValueError):
-        return None, status
+        return None, status, retry_after
 
 
 def _fetch_hacker_news_who_is_hiring_governed(
     acquisition: AcquisitionService,
     source_id: str = HACKER_NEWS_SOURCE_ID,
     max_comments: int = 200,
-) -> tuple[Optional[str], Optional[int]]:
+) -> tuple[Optional[str], Optional[int], Optional[str]]:
     """Governed re-implementation of the multi-step Firebase orchestration
     documented (but left un-wired, on purpose) by
     ``opportunity.adapters.hacker_news.fetch_who_is_hiring_payload``.
@@ -354,27 +366,27 @@ def _fetch_hacker_news_who_is_hiring_governed(
     recording the blocking status rather than raising -- the moment any step
     returns 403/429, per this source's own read-only policy gate.
     """
-    user, status = _hn_governed_get(acquisition, source_id, f"{_HN_FIREBASE_BASE}/user/whoishiring.json")
+    user, status, retry_after = _hn_governed_get(acquisition, source_id, f"{_HN_FIREBASE_BASE}/user/whoishiring.json")
     if user is None:
-        return None, status
+        return None, status, retry_after
     submitted_ids = list(user.get("submitted", []))[:60]
 
     thread_item: Optional[dict] = None
     for item_id in submitted_ids:
-        item, status = _hn_governed_get(acquisition, source_id, f"{_HN_FIREBASE_BASE}/item/{item_id}.json")
+        item, status, retry_after = _hn_governed_get(acquisition, source_id, f"{_HN_FIREBASE_BASE}/item/{item_id}.json")
         if status in _BLOCKED_STATUS_CODES:
-            return None, status
+            return None, status, retry_after
         if item and isinstance(item, dict) and str(item.get("title", "")).lower().startswith("ask hn: who is hiring"):
             thread_item = item
             break
     if thread_item is None:
-        return json.dumps({"thread_id": None, "thread_title": "", "comments": []}), 200
+        return json.dumps({"thread_id": None, "thread_title": "", "comments": []}), 200, None
 
     comments: list[dict] = []
     for kid_id in list(thread_item.get("kids", []))[:max_comments]:
-        kid, status = _hn_governed_get(acquisition, source_id, f"{_HN_FIREBASE_BASE}/item/{kid_id}.json")
+        kid, status, retry_after = _hn_governed_get(acquisition, source_id, f"{_HN_FIREBASE_BASE}/item/{kid_id}.json")
         if status in _BLOCKED_STATUS_CODES:
-            return None, status
+            return None, status, retry_after
         if not kid or kid.get("deleted") or kid.get("dead"):
             continue
         comments.append(kid)
@@ -386,6 +398,7 @@ def _fetch_hacker_news_who_is_hiring_governed(
             "comments": comments,
         }),
         200,
+        None,
     )
 
 
@@ -511,9 +524,20 @@ def make_poll_source_handler(
                 # recorded (status="blocked") and this poll returns cleanly, the
                 # same "stop asking this source, don't crash the worker"
                 # contract every other source gets from health_reports below.
-                hn_payload, hn_status = _fetch_hacker_news_who_is_hiring_governed(hn_acquisition, source_id)
+                hn_payload, hn_status, hn_retry_after = _fetch_hacker_news_who_is_hiring_governed(hn_acquisition, source_id)
                 if hn_payload is None:
                     blocked = hn_status in _BLOCKED_STATUS_CODES
+                    cooldown_seconds = None
+                    if blocked:
+                        parsed_retry = _parse_retry_after_value(
+                            hn_retry_after, datetime.now(timezone.utc)
+                        )
+                        if hn_status == 429:
+                            cooldown_seconds = max(
+                                60.0, parsed_retry if parsed_retry is not None else 3600.0
+                            )
+                        else:
+                            cooldown_seconds = max(86400.0, parsed_retry or 0.0)
                     _write_poll_run_record(
                         _resolve_session_factory,
                         source_id=source_id,
@@ -522,6 +546,7 @@ def make_poll_source_handler(
                         status=BLOCKED_POLL_STATUS if blocked else "error",
                         refusal_reason=f"http_{hn_status}" if blocked else None,
                         error_message=None if blocked else f"hacker_news_who_is_hiring fetch failed (status={hn_status})",
+                        cooldown_seconds=cooldown_seconds,
                     )
                     return
                 batch = pipeline.process_payloads(
