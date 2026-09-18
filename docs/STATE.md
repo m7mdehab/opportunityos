@@ -11,7 +11,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `40ce68e` — test(state): cover FR acceptance tables and current roadmap next step
+- **State generated at commit:** `eb9d79b` — docs(evidence): record independent W11 integration proof
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
