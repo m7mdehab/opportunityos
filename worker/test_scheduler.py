@@ -185,6 +185,50 @@ class TestDurablePollCadence(TestPollSchedulerBase):
         finally:
             session.close()
 
+    def test_cadence_change_recomputes_due_from_last_attempt(self):
+        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        session = self.session_factory()
+        try:
+            session.add(
+                SourcePollRunRecord(
+                    id="spr-cadence-change",
+                    source_id="fixture_allowed",
+                    started_at=base.replace(tzinfo=None),
+                    finished_at=base.replace(tzinfo=None),
+                    status="ok",
+                )
+            )
+            session.commit()
+        finally:
+            session.close()
+
+        # Bootstrap durable state under the old six-hour cadence.
+        old = PollScheduler(
+            self.session_factory,
+            registry=self.registry,
+            interval_hours=6,
+            clock=lambda: base + timedelta(hours=1),
+        )
+        self.assertEqual(old.run_once(), [])
+
+        # Configuration changes to two hours. The existing durable deadline
+        # must be recomputed from the actual prior attempt, not remain at +6h.
+        changed = PollScheduler(
+            self.session_factory,
+            registry=self.registry,
+            interval_hours=2,
+            clock=lambda: base + timedelta(hours=1),
+        )
+        self.assertEqual(changed.run_once(), [])
+
+        due = PollScheduler(
+            self.session_factory,
+            registry=self.registry,
+            interval_hours=2,
+            clock=lambda: base + timedelta(hours=2),
+        )
+        self.assertEqual(due.run_once(), ["fixture_allowed"])
+
     def test_restart_respects_latest_successful_poll_time(self):
         base = datetime(2026, 1, 1, tzinfo=timezone.utc)
         clock_state = {"now": base + timedelta(hours=1)}
