@@ -11,7 +11,7 @@ Next: Founder Web Alpha is publicly reachable and authentication-protected.
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `7c6ae3f` — fix(tests): import durable schedule model in scheduler regression
+- **State generated at commit:** `fbd92a9` — docs(evidence): bound W11 claims to implementation proof
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
