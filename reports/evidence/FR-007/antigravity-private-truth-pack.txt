@@ -1,0 +1,31 @@
+FR-007 W14A private durable cloud Truth Pack
+
+Branch: work/fr007-antigravity-private-truth-pack
+Base: 6298cb49a4897832d0a1a24ccb39f573b969df94
+
+Implementation:
+- Existing truth.pack remote loader retained and extended with credential-free
+  HTTPS URI validation, hash binding, Authorization Bearer, and Supabase apikey.
+- Cloud bridge propagates private Truth Pack credentials only to API/worker.
+- Scheduler and migrate roles receive no Truth Pack credentials.
+- Azure API/worker use secure parameters and Container Apps secretRef wiring.
+- Static readiness distinguishes PRIVATE_REMOTE_READY from public/unauthenticated
+  blocking states.
+
+Tests:
+- python -m unittest scripts.test_private_truth_pack_cloud scripts.test_cloud_runtime_bridge scripts.test_check_cloud_readiness scripts.test_validate_cloud_deployment scripts.test_validate_cloud_config scripts.test_container_contract scripts.test_smoke_container truth.test_pack -v: 125 tests, OK.
+- py_compile changed Python files: PASS.
+- scripts/check_repository.py: PASS.
+- scripts/check_guard.py --allow-missing-patterns: PASS.
+- STATE_PRESERVE_TIMESTAMP=1 python scripts/generate_state.py and
+  git diff --exit-code -- docs/STATE.md: generated canonical State; commit included.
+
+Hosted proof: NOT_EXECUTED. No Founder pack was uploaded or fetched. Production
+W3.4 closure still requires a real private remote retrieval after cloud restart.
+
+Overseer hardening:
+- loopback/private-host cloud Truth Pack endpoints fail closed;
+- generic transport exceptions are redacted without echoing provider exception text;
+- Supabase Storage detection covers canonical object-path semantics, including custom domains;
+- scheduler/migrate receive no Truth Pack URI/hash/token/api-key aliases;
+- API readiness requires the same private remote Truth Pack contract as worker readiness.
