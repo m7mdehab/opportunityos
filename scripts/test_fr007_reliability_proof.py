@@ -96,15 +96,16 @@ class ReliabilityProofContractTests(unittest.TestCase):
             "stable_provenance": True,
             "changed_content_reverified": True,
             "no_duplicate_identity": True,
-            "concurrency": "RETRYABLE_INTEGRITY_ERROR_WITH_CANONICAL_DB",
+            "concurrency": "INTEGRITY_ERROR_WITH_CANONICAL_DB",
             "concurrent_opp_count": 1,
             "concurrent_provenance_duplicates": 0,
+            "race_threads_complete": True,
             "poll_counts": [1, 2, 3, 4, 5],
             "poll_run_outcomes": ["inserted", "unchanged", "unchanged", "unchanged", "unchanged"],
             "changed_poll_run_outcome": "updated",
         })
         self.assertEqual(result["state"], "PASS")
-        self.assertEqual(result["details"]["concurrency"], "RETRYABLE_INTEGRITY_ERROR_WITH_CANONICAL_DB")
+        self.assertEqual(result["details"]["concurrency"], "INTEGRITY_ERROR_WITH_CANONICAL_DB")
 
     def test_a6_rejects_non_canonical_database(self):
         result = prove_a6(Mock(), idempotency_probe=lambda: {
@@ -112,9 +113,25 @@ class ReliabilityProofContractTests(unittest.TestCase):
             "stable_provenance": True,
             "changed_content_reverified": True,
             "no_duplicate_identity": True,
-            "concurrency": "RETRYABLE_INTEGRITY_ERROR_WITH_CANONICAL_DB",
+            "concurrency": "INTEGRITY_ERROR_WITH_CANONICAL_DB",
             "concurrent_opp_count": 2,
             "concurrent_provenance_duplicates": 1,
+            "poll_counts": [1, 2, 3, 4, 5],
+            "poll_run_outcomes": ["inserted", "unchanged", "unchanged", "unchanged", "unchanged"],
+            "changed_poll_run_outcome": "updated",
+        })
+        self.assertEqual(result["state"], "FAIL")
+
+    def test_a6_rejects_incomplete_concurrency_observation(self):
+        result = prove_a6(Mock(), idempotency_probe=lambda: {
+            "stable_identity": True,
+            "stable_provenance": True,
+            "changed_content_reverified": True,
+            "no_duplicate_identity": True,
+            "concurrency": "CONCURRENT_IDEMPOTENT",
+            "concurrent_opp_count": 1,
+            "concurrent_provenance_duplicates": 0,
+            "race_threads_complete": False,
             "poll_counts": [1, 2, 3, 4, 5],
             "poll_run_outcomes": ["inserted", "unchanged", "unchanged", "unchanged", "unchanged"],
             "changed_poll_run_outcome": "updated",
@@ -196,8 +213,9 @@ class DisposablePostgresReliabilityTests(unittest.TestCase):
         self.assertTrue(a6_details["no_duplicate_identity"])
         self.assertIn(
             a6_details["concurrency"],
-            ("CONCURRENT_IDEMPOTENT", "RETRYABLE_INTEGRITY_ERROR_WITH_CANONICAL_DB"),
+            ("CONCURRENT_IDEMPOTENT", "INTEGRITY_ERROR_WITH_CANONICAL_DB"),
         )
+        self.assertTrue(a6_details["race_threads_complete"])
         self.assertEqual(a6_details["concurrent_opp_count"], 1)
         self.assertEqual(a6_details["concurrent_provenance_duplicates"], 0)
         self.assertEqual(len(a6_details["poll_counts"]), 5)
