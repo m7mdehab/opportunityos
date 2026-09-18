@@ -11,7 +11,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `7376ba8` — docs(evidence): record W13A overseer hardening
+- **State generated at commit:** `419e151` — fix(migration): declare no filter seed overrides in 0008
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
