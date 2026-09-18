@@ -331,7 +331,7 @@ def hidden_reasons_audit(
     return counts
 
 
-def unhide_by_reason(session, reason: str, now: datetime) -> bool:
+def unhide_by_reason(session, reason: str, now: datetime, *, commit: bool = True) -> bool:
     """The one-click "unhide all by this reason" action. The schema (frozen
     for this order -- `0004` has no per-rule override column) only offers two
     levers: clear a facet's include/exclude back to off (`facet: <id>`
@@ -357,7 +357,8 @@ def unhide_by_reason(session, reason: str, now: datetime) -> bool:
             row.mode = "off"
             row.values_json = json.dumps({"include": [], "exclude": []})
             row.updated_at = now
-        session.commit()
+        if commit:
+            session.commit()
         return True
 
     if reason.startswith("red line: "):
@@ -384,7 +385,8 @@ def unhide_by_reason(session, reason: str, now: datetime) -> bool:
     else:
         row.enabled = False
         row.updated_at = now
-    session.commit()
+    if commit:
+        session.commit()
     return True
 
 

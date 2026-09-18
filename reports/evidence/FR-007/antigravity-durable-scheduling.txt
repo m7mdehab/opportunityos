@@ -1,0 +1,184 @@
+================================================================================
+FR-007 W11 — DURABLE DUE-ONLY SCHEDULING + ASYNC MAINTENANCE
+Owner-independent verification record
+Date: 2026-09-18
+Branch verified: work/fr007-owner-w11-closure
+Implementation snapshot verified: 26c111445337718f086d39aa95931bb5f51e470b
+Original executor PR: #98
+Status: IMPLEMENTATION VERIFIED; HOSTED/PRODUCTION ACCEPTANCE NOT YET CLAIMED
+================================================================================
+
+1. ACCEPTANCE BOUNDARY
+--------------------------------------------------------------------------------
+This wave proves repository implementation and real PostgreSQL 16 runtime
+behavior for FR-007 A-7/A-8 mechanics. It does NOT close production A-7/A-8.
+Hosted API/worker/scheduler execution and final A-0..A-17 acceptance remain
+separate FR-007 gates.
+
+2. DURABLE SOURCE SCHEDULING STATE
+--------------------------------------------------------------------------------
+Alembic migration:
+  storage/migrations/versions/0007_source_schedules.py
+
+Durable source_schedules fields:
+  source_id (PK)
+  cadence_hours
+  last_attempt_at
+  last_success_at
+  next_due_at (indexed)
+  cooldown_until (indexed)
+  consecutive_failures
+  last_status
+  error_message
+  created_at
+  updated_at
+
+Semantics verified:
+- Existing schedule rows survive scheduler/worker restart unchanged.
+- Restart is not treated as bootstrap.
+- Never-polled sources bootstrap deterministically as due.
+- Existing poll history bootstraps next_due_at from durable history.
+- Generic scheduling enqueues only policy-eligible sources that are due.
+- Persisted cooldown suppresses scheduling until expiry.
+- Expired cooldown becomes eligible again without manual intervention.
+- Active PENDING/RETRY/RUNNING source work is deduplicated.
+- PostgreSQL source-row locking plus transaction-scoped queue insertion makes
+  eligibility, enqueue, and next_due advancement atomic across overlapping
+  scheduler instances.
+- Historical blocked poll rows do not permanently ban a source after its
+  durable cooldown has expired.
+- 429 Retry-After is retained through transport/health diagnostics and used
+  for persisted cooldown timing on the standard polling path, with a safe
+  fallback when missing or malformed.
+- Source policy remains authoritative; force does not bypass read policy or
+  active cooldown.
+
+3. POLL NOW / A-7 IMPLEMENTATION
+--------------------------------------------------------------------------------
+POST /api/worker/poll-now:
+- returns after durable enqueue and never waits for source acquisition,
+  normalization, evaluation, or projection publication;
+- generic Poll Now is due-only and never blind all-source enqueue;
+- explicit source requests obey source policy, cooldown, and active-job
+  deduplication; force may override only the not-due condition;
+- current persisted feed remains independently readable while poll work is
+  pending.
+
+The PostgreSQL acceptance fixture deliberately gives every other read-allowed
+production-registry source a future next_due_at and asserts the generic request
+enqueues exactly one known due source. This prevents a false-green test where
+unrelated never-polled sources could silently warm up.
+
+4. ASYNC PROJECTION MAINTENANCE
+--------------------------------------------------------------------------------
+Founder filter/facet/unhide mutations no longer synchronously refresh the
+feed_projection corpus.
+
+The authoritative settings mutation and truth-pack-scoped
+refresh_feed_projections job insertion are committed atomically.
+
+Worker maintenance:
+- loads the authoritative Truth Pack;
+- requires the queued truth_pack_hash to match;
+- refreshes only existing projections for that truth_pack_hash;
+- leaves historical/synthetic projection hashes untouched;
+- is retryable through the durable worker queue;
+- permits GET /api/opportunities to continue serving the previous persisted
+  projection until publication completes.
+
+Important scope note:
+Some settings routes still calculate response metadata such as affected_count.
+This wave removes synchronous bulk projection publication from the request
+path; it does not claim every settings endpoint performs zero opportunity-row
+inspection.
+
+5. BACKUP / READINESS INTEGRATION
+--------------------------------------------------------------------------------
+source_schedules is included in:
+- database backup completeness mapping;
+- dump/restore serialization;
+- restore round-trip verification;
+- cloud readiness required-table inspection;
+- queue/scheduling schema readiness checks.
+
+6. OWNER HARDENING DURING INDEPENDENT REVIEW
+--------------------------------------------------------------------------------
+Independent verification found and repaired:
+- missing WorkerRunner worker_id/test dependency injection;
+- stale MatchEvaluationRecord test fields;
+- schedule-update argument mismatch;
+- FK fixture ordering;
+- canonical feed_projection identity mismatches;
+- TestClient startup-dependent Truth Pack fixture behavior;
+- a real scheduler race caused by queue enqueue committing before schedule
+  advancement;
+- permanent suppression caused by historical blocked poll rows;
+- non-atomic settings mutation / maintenance enqueue;
+- non-atomic poll outcome / evaluate_new follow-up enqueue;
+- lost HTTP Retry-After metadata on normal source polling;
+- false-green restart tests that used the full production registry while
+  asserting only one named source.
+
+7. REAL POSTGRESQL 16 / OCI REMOTE EVIDENCE
+--------------------------------------------------------------------------------
+GitHub Actions workflow:
+  OCI Container Runtime Smoke
+
+Run ID:
+  35335984720
+
+Job ID:
+  105570883808
+
+Conclusion:
+  SUCCESS
+
+Container smoke result:
+  [SUCCESS] All executable container contracts passed.
+
+Real PostgreSQL durability suite command:
+  python -m unittest worker.test_postgres_queue_durability -v
+
+Result:
+  Ran 15 tests in 2.376s
+  OK
+  Zero skips
+
+15 PostgreSQL tests:
+  test_concurrent_worker_claims_skip_locked
+  test_lease_expiration_and_recovery
+  test_dead_letter_handling
+  test_guarded_completion_rejects_stale_worker
+  test_scheduler_deduplication
+  test_1_cadence_survives_restart
+  test_2_due_source_survives_restart
+  test_3_no_warmup_storm
+  test_4_concurrent_schedulers
+  test_5_persisted_cooldown
+  test_6_cooldown_expiry
+  test_7_scheduler_worker_crash_recovery
+  test_8_poll_now_http
+  test_9_async_projection_maintenance
+  test_10_duplicate_maintenance
+
+8. REMAINING FR-007 EVIDENCE / PROVIDER GATES
+--------------------------------------------------------------------------------
+Still required before production acceptance:
+- integrate this verified W11 package into the current FR-007 integration head;
+- Mandatory / State / Guard / Mirror / OCI gates on the integrated tree;
+- real hosted PostgreSQL/Supabase migration and parity execution;
+- live cloud API/worker/scheduler deployment;
+- hosted Poll Now and scheduler restart proof;
+- failure-isolation and repeated-poll duplicate proof;
+- private Truth Pack / private artifact storage;
+- monitoring/test-alert proof;
+- encrypted off-provider backup + fresh restore;
+- provider-exit execution;
+- cold-start/public SLO evidence;
+- seven-day Founder-PC-off soak;
+- terminal A-0..A-17 verification.
+
+A-7 production closure: NOT YET CLAIMED
+A-8 production closure: NOT YET CLAIMED
+BRIEF-007: STILL BLOCKED
+================================================================================

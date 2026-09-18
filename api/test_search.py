@@ -254,6 +254,16 @@ class FacetCompositionTest(ApiTestCase):
             json={"enabled": True, "mode": "hide", "params": {"min_score": 50}},
         )
         self.assertEqual(put_resp.status_code, 200, put_resp.text)
+        from worker.runner import WorkerRunner
+        from worker.handlers import default_handler_registry
+        WorkerRunner(
+            self.session_factory,
+            handlers=default_handler_registry(
+                session_factory=self.session_factory,
+                pack_loader=lambda _path: self.app.state.loaded_truth_pack,
+            ),
+            worker_id=f"search-test-maintenance-{id(self)}",
+        ).run_once()
 
         response = self.client.get("/api/opportunities", params={"q": "pytorch"})
         self.assertEqual(response.status_code, 200, response.text)

@@ -34,7 +34,7 @@ from scripts.container_entrypoint import (
     resolve_environment,
 )
 
-REQUIRED_TABLES = ("alembic_version", "worker_jobs", "feed_projection", "source_poll_runs")
+REQUIRED_TABLES = ("alembic_version", "worker_jobs", "feed_projection", "source_poll_runs", "source_schedules")
 
 
 class ReadinessCheckResult:
@@ -381,6 +381,17 @@ def check_queue_durability(engine: Any | None = None, db_url: str | None = None)
                 status="FAIL",
                 message=f"worker_jobs table missing required columns: {', '.join(sorted(missing_cols))}",
             )
+
+        if "source_schedules" in tables:
+            sched_cols = {col["name"] for col in inspector.get_columns("source_schedules")}
+            required_sched_cols = {"source_id", "cadence_hours", "next_due_at", "cooldown_until", "consecutive_failures"}
+            missing_sched_cols = required_sched_cols - sched_cols
+            if missing_sched_cols:
+                return ReadinessCheckResult(
+                    name="Queue Durability (PostgreSQL)",
+                    status="FAIL",
+                    message=f"source_schedules table missing required columns: {', '.join(sorted(missing_sched_cols))}",
+                )
 
         # Probe SKIP LOCKED support if connected to real PostgreSQL dialect
         is_postgres = getattr(active_engine, "dialect", None) is not None and active_engine.dialect.name == "postgresql"

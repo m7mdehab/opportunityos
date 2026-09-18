@@ -672,17 +672,23 @@ class FilterUpdateRequest(BaseModel):
     params: dict[str, Any] | None = None
 
 
-def _refresh_current_pack_projections(session: Session, request: Request) -> int:
-    """Publish a settings change only for the loaded Founder pack version."""
-    loaded_pack = request.app.state.loaded_truth_pack
-    if loaded_pack is None:
-        return 0
-    from storage.feed_projection_service import refresh_existing_feed_projections
+def _enqueue_pack_projection_refresh(session: Session, request: Request) -> str | None:
+    """Publish a settings change asynchronously via a durable worker queue job.
 
-    return refresh_existing_feed_projections(
-        session,
-        truth_graph=loaded_pack.graph,
-        truth_pack_hash=loaded_pack.truth_pack_hash,
+    Enqueues an idempotent projection-refresh job scoped to the loaded
+    authoritative truth_pack_hash. The HTTP request returns without walking
+    feed_projection rows or waiting for publication.
+    """
+    loaded_pack = getattr(request.app.state, "loaded_truth_pack", None)
+    if loaded_pack is None:
+        return None
+    from worker.queue import BackgroundWorkerQueue
+
+    queue = BackgroundWorkerQueue(session)
+    return queue.enqueue_job(
+        "refresh_feed_projections",
+        {"truth_pack_hash": loaded_pack.truth_pack_hash},
+        commit=False,
     )
 
 
@@ -735,9 +741,7 @@ def update_filter(
     if validated_params is not None:
         row.params_json = json.dumps(validated_params)
     row.updated_at = now
-    session.commit()
-
-    _refresh_current_pack_projections(session, request)
+    _enqueue_pack_projection_refresh(session, request)
     session.commit()
 
     params = json.loads(row.params_json) if row.params_json else {}
@@ -927,9 +931,7 @@ def update_facet(facet_id: str, payload: FacetUpdateRequest, response: Response,
         row.mode = mode
         row.values_json = values_json
         row.updated_at = now
-    session.commit()
-
-    _refresh_current_pack_projections(session, request)
+    _enqueue_pack_projection_refresh(session, request)
     session.commit()
 
     return {"facet_id": facet_id, "mode": mode, "include": include, "exclude": exclude}
@@ -1023,10 +1025,10 @@ class UnhideByReasonRequest(BaseModel):
 @router.post("/hidden-reasons/unhide")
 def unhide_by_reason_route(payload: UnhideByReasonRequest, request: Request, session: Session = Depends(get_db)):
     now = to_naive_utc(datetime.now(timezone.utc))
-    ok = unhide_by_reason(session, payload.reason, now)
+    ok = unhide_by_reason(session, payload.reason, now, commit=False)
     if not ok:
         raise HTTPException(status_code=404, detail=f"unrecognised reason: {payload.reason!r}")
-    _refresh_current_pack_projections(session, request)
+    _enqueue_pack_projection_refresh(session, request)
     session.commit()
     return {"reason": payload.reason, "status": "unhidden"}
 
@@ -2162,18 +2164,29 @@ def sources_health(session: Session = Depends(get_db)):
     return {"sources": sources}
 
 
+class PollNowRequest(BaseModel):
+    source_id: str | None = None
+    force: bool = False
+
+
 @router.post("/worker/poll-now")
-def poll_now(request: Request, session: Session = Depends(get_db)):
+def poll_now(
+    request: Request,
+    payload: PollNowRequest | None = None,
+    session: Session = Depends(get_db),
+):
+    from worker.scheduler import enqueue_due_sources
+
     registry = SourceRegistry()
-    queue = BackgroundWorkerQueue(session)
-    enqueued = []
-    skipped = []
-    for source_id in registry._sources:
-        if registry.is_read_allowed(source_id):
-            job_id = queue.enqueue_job("poll_source", {"source_id": source_id})
-            enqueued.append({"source_id": source_id, "job_id": job_id})
-        else:
-            skipped.append({"source_id": source_id, "reason": "read_disabled_by_policy"})
+    source_id = payload.source_id if payload else None
+    force = payload.force if payload else False
+    enqueued, skipped = enqueue_due_sources(
+        session,
+        registry=registry,
+        source_id=source_id,
+        force=force,
+    )
+    session.commit()
     return {"enqueued": enqueued, "skipped": skipped}
 
 

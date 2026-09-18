@@ -14,7 +14,23 @@ class BackgroundWorkerQueue:
         self.session = session
         self.worker_id = worker_id or f"worker-{uuid.uuid4().hex[:8]}"
 
-    def enqueue_job(self, job_type: str, payload: Dict[str, Any], run_after: Optional[datetime] = None, max_retries: int = 3) -> str:
+    def enqueue_job(
+        self,
+        job_type: str,
+        payload: Dict[str, Any],
+        run_after: Optional[datetime] = None,
+        max_retries: int = 3,
+        *,
+        commit: bool = True,
+    ) -> str:
+        """Persist a queue row and return its job id.
+
+        ``commit=True`` preserves the historical queue API for ordinary callers.
+        Transactional schedulers may pass ``commit=False`` so the job insert and
+        the schedule-row advancement are committed atomically while the
+        ``source_schedules`` row lock is still held. In that mode this method
+        only flushes; the caller owns the surrounding transaction.
+        """
         job_id = f"job-{uuid.uuid4().hex[:12]}"
         record = WorkerJobRecord(
             id=job_id,
@@ -26,7 +42,10 @@ class BackgroundWorkerQueue:
             max_retries=max_retries,
         )
         self.session.add(record)
-        self.session.commit()
+        if commit:
+            self.session.commit()
+        else:
+            self.session.flush()
         return job_id
 
     def _invoke_claim_hook(self, claim_hook: Optional[Callable[[], None]]) -> None:

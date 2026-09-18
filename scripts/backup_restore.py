@@ -43,6 +43,7 @@ from storage.models import (
     FounderFacetRecord,
     FounderSavedViewRecord,
     ArtifactCacheRecord,
+    SourceScheduleRecord,
 )
 from storage.feed_projection import FeedProjectionRecord
 
@@ -98,6 +99,7 @@ DUMP_SECTION_TABLE_MAP = {
     "founder_facets": "founder_facets",
     "founder_saved_views": "founder_saved_views",
     "artifact_cache": "artifact_cache",
+    "source_schedules": "source_schedules",
 }
 
 
@@ -213,6 +215,7 @@ def dump_database(db_url: str, output_file: str) -> int:
         "founder_facets": [],
         "founder_saved_views": [],
         "artifact_cache": [],
+        "source_schedules": [],
     }
 
     # 1. Opportunities & Field Provenances
@@ -449,6 +452,22 @@ def dump_database(db_url: str, output_file: str) -> int:
             "artifact_kind": art.artifact_kind, "content_type": art.content_type,
             "payload": base64.b64encode(art.payload).decode("ascii") if art.payload is not None else None,
             "created_at": art.created_at.isoformat() if art.created_at else None,
+        })
+
+    # 20. Source Schedules (W11, FR-007) -- no FK dependency.
+    for sched in session.query(SourceScheduleRecord).all():
+        data["source_schedules"].append({
+            "source_id": sched.source_id,
+            "cadence_hours": sched.cadence_hours,
+            "last_attempt_at": sched.last_attempt_at.isoformat() if sched.last_attempt_at else None,
+            "last_success_at": sched.last_success_at.isoformat() if sched.last_success_at else None,
+            "next_due_at": sched.next_due_at.isoformat() if sched.next_due_at else None,
+            "cooldown_until": sched.cooldown_until.isoformat() if sched.cooldown_until else None,
+            "consecutive_failures": sched.consecutive_failures,
+            "last_status": sched.last_status,
+            "error_message": sched.error_message,
+            "created_at": sched.created_at.isoformat() if sched.created_at else None,
+            "updated_at": sched.updated_at.isoformat() if sched.updated_at else None,
         })
 
     # Row-count completeness check, run in the same session/transaction the
@@ -850,6 +869,21 @@ def restore_database(dump_file: str, db_url: str) -> None:
             art_dict["payload"] = base64.b64decode(art_dict["payload"])
         art = ArtifactCacheRecord(**art_dict)
         session.merge(art)
+
+    # 20. Source Schedules (W11, FR-007) -- no FK dependency.
+    for sched_dict in data.get("source_schedules", []):
+        for date_field in (
+            "last_attempt_at",
+            "last_success_at",
+            "next_due_at",
+            "cooldown_until",
+            "created_at",
+            "updated_at",
+        ):
+            if sched_dict.get(date_field):
+                sched_dict[date_field] = datetime.fromisoformat(sched_dict[date_field])
+        sched = SourceScheduleRecord(**sched_dict)
+        session.merge(sched)
 
     session.commit()
     session.close()
