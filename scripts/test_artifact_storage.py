@@ -20,10 +20,16 @@ class FakeTransport:
         self.uploads = []
         self.deletes = []
         self.fail_upload = False
+        self.bucket_public = False
+
+    def bucket_info(self):
+        return {"id": "private-artifacts", "public": self.bucket_public}
 
     def post(self, key, body):
         if self.fail_upload:
             raise RuntimeError("transport failure with service key")
+        if key in self.objects:
+            raise ac.ArtifactObjectExists("already exists")
         self.uploads.append(key)
         self.objects[key] = bytes(body)
         return b""
@@ -80,6 +86,60 @@ class ArtifactStorageTests(unittest.TestCase):
         self.assertEqual(row.payload_sha256, hashlib.sha256(b"private artifact bytes").hexdigest())
         self._store()
         self.assertEqual(len(self.transport.uploads), 1)
+
+    def test_matching_orphan_is_recovered_without_duplicate_upload(self):
+        key = ac.cache_key("opp-1", "truth-a", "classic", "cv")
+        object_key = f"artifacts/{key}"
+        self.transport.objects[object_key] = b"private artifact bytes"
+        with patch.dict(os.environ, self.env, clear=False):
+            ac.store(
+                self.session,
+                "opp-1",
+                "truth-a",
+                "classic",
+                "cv",
+                "application/octet-stream",
+                b"private artifact bytes",
+                storage_client=self.client,
+            )
+        self.assertEqual(self.transport.uploads, [])
+        row = self.session.get(ArtifactCacheRecord, key)
+        self.assertIsNotNone(row)
+        self.assertEqual(row.object_key, object_key)
+
+    def test_conflicting_orphan_fails_closed_without_metadata(self):
+        key = ac.cache_key("opp-1", "truth-a", "classic", "cv")
+        self.transport.objects[f"artifacts/{key}"] = b"different bytes"
+        with patch.dict(os.environ, self.env, clear=False):
+            with self.assertRaisesRegex(ac.ArtifactStorageError, "conflicts"):
+                ac.store(
+                    self.session,
+                    "opp-1",
+                    "truth-a",
+                    "classic",
+                    "cv",
+                    "application/octet-stream",
+                    b"private artifact bytes",
+                    storage_client=self.client,
+                )
+        self.assertIsNone(self.session.get(ArtifactCacheRecord, key))
+
+    def test_public_bucket_is_rejected_before_write(self):
+        self.transport.bucket_public = True
+        with patch.dict(os.environ, self.env, clear=False):
+            with self.assertRaisesRegex(ac.ArtifactStorageError, "must exist and be private"):
+                ac.store(
+                    self.session,
+                    "opp-1",
+                    "truth-a",
+                    "classic",
+                    "cv",
+                    "application/octet-stream",
+                    b"private artifact bytes",
+                    storage_client=self.client,
+                )
+        self.assertEqual(self.transport.uploads, [])
+        self.assertEqual(self.session.query(ArtifactCacheRecord).count(), 0)
 
     def test_external_cache_hit_and_checksum_mismatch_fail_closed(self):
         key = self._store()
