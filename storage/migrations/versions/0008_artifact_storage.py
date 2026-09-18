@@ -9,6 +9,10 @@ down_revision: Union[str, None] = "0007_source_schedules"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+# This revision does not change BRIEF-FR-005 D3 seeded filter defaults.
+# Declared explicitly so the migration-chain guard can compose seed state.
+_D3_FILTER_SEED_OVERRIDES: dict[str, str] = {}
+
 
 def upgrade() -> None:
     op.add_column("artifact_cache", sa.Column("storage_backend", sa.String(length=32), nullable=False, server_default="postgres_payload"))
