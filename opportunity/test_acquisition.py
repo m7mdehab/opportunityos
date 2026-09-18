@@ -199,6 +199,24 @@ class TestAcquisitionAndRegistryAuthority(unittest.TestCase):
         report = next(r for r in batch.health_reports if r.source_id == "himalayas")
         self.assertEqual(report.fetch_latency_ms, 187)
 
+    def test_retry_after_header_survives_into_health_diagnostics(self) -> None:
+        self.transport.set_response(
+            "himalayas",
+            TransportResponse(
+                status_code=429,
+                body="",
+                latency_ms=12,
+                headers=(("Retry-After", "900"),),
+                error_message="Too Many Requests",
+            ),
+        )
+        pipeline = OpportunityPipeline(transport=self.transport)
+        batch = pipeline.execute_discovery(source_ids=["himalayas"])
+
+        report = next(r for r in batch.health_reports if r.source_id == "himalayas")
+        self.assertEqual(report.status, SourceHealthStatus.RATE_LIMITED)
+        self.assertEqual(dict(report.diagnostics).get("retry_after"), "900")
+
 
 if __name__ == "__main__":
     unittest.main()
