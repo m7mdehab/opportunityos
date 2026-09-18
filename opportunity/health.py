@@ -24,6 +24,7 @@ class SourceHealthMonitor:
         fetch_latency_ms: int = 0,
         has_schema_drift: bool = False,
         parser_error: str | None = None,
+        response_headers: Sequence[tuple[str, str]] | None = None,
         now_iso: str | None = None,
     ) -> SourceHealthReport:
         """Record an acquisition and ingestion run with separated transport and parser diagnostics."""
@@ -80,6 +81,11 @@ class SourceHealthMonitor:
             diag_list.append(("transport_error", transport_error))
         if parser_error:
             diag_list.append(("parser_error", parser_error))
+        if response_headers:
+            for header_name, header_value in response_headers:
+                if str(header_name).casefold() == "retry-after":
+                    diag_list.append(("retry_after", str(header_value).strip()))
+                    break
 
         last_success = timestamp if overall_status is SourceHealthStatus.HEALTHY else (
             self._reports[source_id].last_successful_ingestion if source_id in self._reports else None
