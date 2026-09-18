@@ -10,8 +10,8 @@ Next: Founder Web Alpha is publicly reachable and authentication-protected.
 
 ## Repository
 
-- **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `8df6753` — fix(worker): race-safe schedule creation, canonical remote_ok ID, and valid projection fixtures
+- **Generated:** 2026-09-18T10:43:05Z
+- **State generated at commit:** `fa60c57` — docs(evidence): record verified green CI run 35335984720 and regenerate state for PR #98
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
