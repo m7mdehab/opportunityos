@@ -1,0 +1,17 @@
+FR-007 W13A private durable artifact storage evidence
+=====================================================
+branch: work/fr007-codex-private-artifact-storage
+base_sha: 6298cb49a4897832d0a1a24ccb39f573b969df94
+implementation_sha: 8adfe71ffb65fc102f2c5cd75b63811af384696e
+backends: postgres_payload, supabase_storage
+migration: 0008_artifact_storage
+tests: 109 passed, 1 existing live-PostgreSQL test skipped without database URL
+compile: PASS
+repository_integrity: PASS
+guard: PASS with documented local missing-pattern allowance
+state_freshness: PASS
+hosted_storage_execution: NOT_EXECUTED
+private_bucket_configured: NO
+service_key_values_in_evidence: NONE
+production_a11_claim: NONE
+blockers: real private bucket configuration and restart/retrieval proof are required
