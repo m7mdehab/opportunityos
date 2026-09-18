@@ -1,0 +1,17 @@
+FR-007 hosted data-plane proof evidence
+=======================================
+branch: work/fr007-codex-hosted-data-plane-proof
+base: 198483c1125a15e915189b482816b3f203a6a7bc
+hosted_execution: NOT_EXECUTED
+reason: no real Supabase or hosted PostgreSQL credentials were available in this run
+source_identity: NOT_RUN
+target_identity: NOT_RUN
+preflight: NOT_RUN
+migration: NOT_RUN
+verification: NOT_RUN
+cutover_ready: NOT_RUN
+secrets_in_evidence: NONE
+
+The executable path and unit tests are present. A real hosted run remains
+required for A-9 evidence; disposable PostgreSQL and PRECHECK do not prove
+Supabase migration or production parity.
