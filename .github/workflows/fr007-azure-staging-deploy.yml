@@ -81,9 +81,44 @@ jobs:
       - name: Deploy migration job only
         if: inputs.mode == 'DEPLOY_STAGING' && inputs.acknowledge_staging_deployment == true
         run: az deployment group create --resource-group "$AZURE_RESOURCE_GROUP" --template-file infra/azure/main.bicep --parameters @"$RUNNER_TEMP/fr007-azure-parameters.json" deployApplicationRoles=false
-      - name: Run migration job before application rollout
+      - name: Run migration job and require successful completion
         if: inputs.mode == 'DEPLOY_STAGING' && inputs.acknowledge_staging_deployment == true
-        run: az containerapp job start --name "${OPOS_AZURE_NAME_PREFIX}-migrate" --resource-group "$AZURE_RESOURCE_GROUP"
+        run: |
+          set -euo pipefail
+          JOB_NAME="${OPOS_AZURE_NAME_PREFIX}-migrate"
+          BEFORE_EXECUTION="$(az containerapp job execution list --name "$JOB_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query "sort_by(@,&properties.startTime)[-1].name" -o tsv 2>/dev/null || true)"
+          az containerapp job start --name "$JOB_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --only-show-errors >/dev/null
+
+          EXECUTION_NAME=""
+          for _ in $(seq 1 30); do
+            LATEST="$(az containerapp job execution list --name "$JOB_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query "sort_by(@,&properties.startTime)[-1].name" -o tsv 2>/dev/null || true)"
+            if [ -n "$LATEST" ] && [ "$LATEST" != "$BEFORE_EXECUTION" ]; then
+              EXECUTION_NAME="$LATEST"
+              break
+            fi
+            sleep 5
+          done
+          if [ -z "$EXECUTION_NAME" ]; then
+            echo "Migration execution did not become observable; refusing application rollout." >&2
+            exit 1
+          fi
+
+          for _ in $(seq 1 180); do
+            STATUS="$(az containerapp job execution show --name "$JOB_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --job-execution-name "$EXECUTION_NAME" --query "properties.status" -o tsv)"
+            case "$STATUS" in
+              Succeeded)
+                echo "Migration execution succeeded."
+                exit 0
+                ;;
+              Failed|Stopped|Degraded)
+                echo "Migration execution failed with status: $STATUS; refusing application rollout." >&2
+                exit 1
+                ;;
+            esac
+            sleep 10
+          done
+          echo "Migration execution timed out before success; refusing application rollout." >&2
+          exit 1
       - name: Deploy API worker and scheduler
         if: inputs.mode == 'DEPLOY_STAGING' && inputs.acknowledge_staging_deployment == true
         run: az deployment group create --resource-group "$AZURE_RESOURCE_GROUP" --template-file infra/azure/main.bicep --parameters @"$RUNNER_TEMP/fr007-azure-parameters.json" deployApplicationRoles=true
