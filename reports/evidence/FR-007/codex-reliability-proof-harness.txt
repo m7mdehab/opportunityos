@@ -1,0 +1,64 @@
+FR-007 W13C.1 reliability proof harness
+
+Branch: work/fr007-codex-reliability-proof-harness
+Base: brief/fr-007-cloud-replatform at 6298cb49a4897832d0a1a24ccb39f573b969df94
+Remediation Wave: W13C.1 (Eliminated false-green stub lambdas)
+
+Execution States:
+- local_unit_state: PASS
+- remote_disposable_postgres_state: NOT_EXECUTED
+
+This evidence file records the reliability-proof harness state after removing
+all static assertion lambdas. Probes now derive all counts, statuses, and
+invariants directly from real PostgreSQL tables, HTTP test client responses,
+worker queues, and production handlers.
+
+Local execution without OPPORTUNITYOS_DB_URL reports BLOCKED for live database
+scenarios and passes contract tests. In CI, the disposable PostgreSQL container
+(postgres:16-alpine with Alembic upgrade head and FR007_RELIABILITY_POSTGRES=1)
+executes the full end-to-end reliability suite with ZERO relevant skips.
+
+Local results (2026-09-18):
+- python -m unittest scripts.test_fr007_reliability_proof -v: 14 tests, OK (1 skipped: disposable PostgreSQL workflow only).
+- python -m unittest worker.test_runner worker.test_scheduler opportunity.test_persistence storage.test_feed_query storage.test_feed_projection_service -v: 62 tests, OK.
+- py_compile scripts/fr007_reliability_proof.py scripts/test_fr007_reliability_proof.py: PASS.
+- scripts/check_repository.py: PASS.
+- scripts/check_guard.py --allow-missing-patterns: PASS.
+
+Scenario derivation and validation semantics:
+- A4 (Real HTTP Read Surface):
+  Seeds real PostgreSQL with >=2 OpportunityRecords, FieldProvenanceRecords,
+  MatchEvaluationRecords, FeedProjectionRecords, backfilled search_tsv, and
+  WorkerJobRecords (>=1 FAILED/RETRY, >=1 RUNNING/stale). Authenticates via
+  POST /api/auth/login and exercises GET /api/opportunities (200), search (200),
+  pagination (200, page 1 vs page 2 distinct items), and detail (200). Asserts
+  worker_started=false and failed/stuck worker jobs remain present while reads
+  succeed. Zero-row SQL results fail closed.
+- A5 (Real Queue/Runner/Poll Handler):
+  Enqueues poll_source jobs for read-allowed greenhouse:datadog (bad) and
+  greenhouse:cloudflare (good) into BackgroundWorkerQueue. Dispatches via
+  WorkerRunner and make_poll_source_handler with deterministic fixture transport.
+  Derives bad job failure (status=RETRY, poll_run=error), good job success
+  (status=COMPLETED, poll_run=ok), opportunity persistence (greenhouse:cloudflare:9901),
+  runner continuation across both jobs, subsequent scheduler tick success,
+  persisted feed readability, and seeded ArtifactCacheRecord payload retrieval.
+- A6 (Idempotency, Changed Content & Concurrency):
+  Executes 5 sequential polls on greenhouse:duolingo (posting 8801) through the
+  production poll handler. Derives from PostgreSQL that canonical count == 1,
+  id is unchanged, content_hash is stable, provenance natural identities have
+  zero duplicates, provenance cardinality does not grow, and poll runs record
+  1 insert and 4 unchanged. Executes 6th poll with changed content on the same
+  remote ID: derives new content_hash, updated title, reverified_at set, zero
+  duplicate provenance identities, and poll run marked updated.
+  Exercises deterministic concurrency race on greenhouse:duolingo:8899 across two
+  threads synchronized at the persistence lookup boundary using a barrier:
+  derives canonical row count == 1, zero duplicate provenance natural identities,
+  and records RETRYABLE_INTEGRITY_ERROR_WITH_CANONICAL_DB.
+
+Overseer hardening:
+- table-existence probe now fails closed on inspection errors;
+- A4 counts only the seeded proof opportunities/projections and canonical dead/stuck jobs;
+- A5 feed proof uses the real persisted feed query and artifact retrieval uses artifact_cache.get;
+- provenance duplicate checks use the schema's real natural identity (opportunity_id, field_name, record_checksum);
+- concurrent proof fails if either thread hangs or fails to report;
+- direct persistence IntegrityError is no longer mislabeled as proven WorkerRunner retryability.
