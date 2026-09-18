@@ -121,20 +121,39 @@ def brief_status(number: int, reports: dict[int, Path]) -> str:
 
 
 def acceptance_items(brief_path: Path) -> list[str]:
+    """Return the brief's acceptance items from either legacy YAML-style metrics
+    or the Markdown A-N acceptance table used by newer FR briefs."""
     text = brief_path.read_text(encoding="utf-8")
     metrics_match = re.search(
         r"(?ims)^required_acceptance_metrics:\s*\n(.*?)(?=^\w|\Z)", text
     )
-    if not metrics_match:
-        return []
+    if metrics_match:
+        items: list[str] = []
+        for raw in metrics_match.group(1).splitlines():
+            line = raw.strip()
+            if line.startswith("-"):
+                items.append(line.lstrip("- ").strip())
+            elif ":" in line:
+                key, _, value = line.partition(":")
+                items.append(f"{key.strip()}: {value.strip()}")
+        return items
+
     items: list[str] = []
-    for raw in metrics_match.group(1).splitlines():
-        line = raw.strip()
-        if line.startswith("-"):
-            items.append(line.lstrip("- ").strip())
-        elif ":" in line:
-            key, _, value = line.partition(":")
-            items.append(f"{key.strip()}: {value.strip()}")
+    for raw in text.splitlines():
+        if not raw.lstrip().startswith("|"):
+            continue
+        cells = [cell.strip() for cell in raw.strip().strip("|").split("|")]
+        if len(cells) < 2:
+            continue
+        label = _clean_markdown(cells[0])
+        if not re.fullmatch(r"A-\d+", label):
+            continue
+        criterion = _clean_markdown(cells[1])
+        if criterion:
+            criterion = _truncate_on_word_boundary(criterion, 180)
+            items.append(f"{label} — {criterion}")
+        else:
+            items.append(label)
     return items
 
 
@@ -374,11 +393,22 @@ def main() -> None:
         else "No phase report yet"
     )
 
-    prerequisites = (
-        section(latest_report_text, "Next phase prerequisites")
-        if latest_report_text
-        else ""
-    )
+    # An active FR brief with no report must not inherit the previous phase's
+    # stale "next phase" text. Prefer the current Owner-maintained roadmap.
+    prerequisites = ""
+    if current_fr_tag is not None and current_fr_tag not in fr_reports:
+        roadmap_path = ROOT / "docs" / "ROADMAP_CURRENT.md"
+        if roadmap_path.exists():
+            prerequisites = section(
+                roadmap_path.read_text(encoding="utf-8"), "Immediate Goal"
+            )
+
+    if not prerequisites:
+        prerequisites = (
+            section(latest_report_text, "Next phase prerequisites")
+            if latest_report_text
+            else ""
+        )
     if not prerequisites and latest_report_text:
         prerequisites = section(latest_report_text, "Next phase")
     if not prerequisites and latest_report_text:
