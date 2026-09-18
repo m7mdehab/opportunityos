@@ -14,83 +14,87 @@ Complete the real hosted staging path: connect the managed PostgreSQL/Supabase t
 
 ## Already Integrated
 
-The FR-007 integration branch now contains:
+The FR-007 integration branch now contains repository/disposable-runtime proof for:
 
-- persisted PostgreSQL `feed_projection` and SQL-native feed reads;
+- persisted PostgreSQL `feed_projection` and SQL-native feed/search/filter/pagination reads;
 - durable PostgreSQL `worker_jobs` queue with leases, retry/dead-letter behavior and `FOR UPDATE SKIP LOCKED`;
 - persisted `source_schedules` for cadence, next-due, cooldown, last-attempt and last-success state;
 - due-only generic Poll Now plus permitted explicit-source semantics;
 - durable Retry-After/policy cooldown behavior;
 - asynchronous Founder settings/facet/unhide projection maintenance;
 - OCI-separated `api`, `worker`, `scheduler`, and `migrate` roles;
-- remote HTTPS Truth Pack loading with hash verification and no cloud-mode local-file fallback;
+- Azure Container Apps/Jobs staging deployment manifests and migration-first release harness;
+- Cloudflare Workers/OpenNext staging frontend with same-origin `/api/*` proxy and hosted Desktop + 390px smoke contract;
+- private Supabase Storage artifact backend with checksum/size verification and deterministic object identity;
+- private remote HTTPS Truth Pack runtime contract with hash binding and server-only credentials;
 - migration, parity, backup/restore and provider-exit tooling;
 - a manual-only hosted PostgreSQL/Supabase proof harness;
-- real PostgreSQL 16 W11 durability/concurrency proof: 15 tests, zero skips.
+- real PostgreSQL 16 W11 durability/concurrency proof: 15 tests, zero skips;
+- repository/disposable-PostgreSQL reliability proof for A-4/A-5/A-6, including worker absence, source-failure isolation, repeated polling and canonical identity preservation.
 
-These are implementation proofs. They do not by themselves close hosted-production acceptance criteria.
+These are implementation/repository proofs. They do not by themselves close hosted-production acceptance criteria.
 
 ## Active Parallel Work
 
-Two bounded implementation lanes are active:
+The next large repository-side lanes are:
 
-1. cloud deployment manifests + staging release harness;
-2. a separate non-overlapping FR-007 implementation lane.
+1. hosted-grade single-Founder authentication/session hardening plus PostgreSQL/Supabase RLS policy authority;
+2. cloud observability/release/soak control plane: uptime/error/job/source/backup heartbeats, test-alert contract, cost/quota ledger and hosted evidence orchestration.
 
 The Overseer owns independent review, ordinary remediation, CI, integration and the authoritative checklist.
 
 ## Remaining Execution Order
 
-### 1. Hosted data plane
+### 1. Hosted-grade auth and data-access boundary
 
-- provision/connect the real hosted PostgreSQL/Supabase staging target;
-- run the repository preflight;
-- execute staging migration;
+- replace the localhost-only auth posture before public exposure;
+- add durable session revocation/rate-limit/audit semantics while preserving single-Founder tenancy;
+- add explicit RLS policy authority for browser-visible Supabase relations/views;
+- prove server/service-role and browser/anon boundaries separately.
+
+### 2. Real hosted data plane
+
+- connect the real hosted PostgreSQL/Supabase staging target;
+- execute repository preflight and migrations;
 - prove count/invariant/content-hash parity;
-- keep local production authoritative until the cutover gates pass.
+- keep current production authority unchanged until staging gates pass.
 
-### 2. Private cloud state
+### 3. Private cloud state execution
 
-- move the production Founder Truth Pack to private durable cloud storage;
-- move generated/private artifacts to private durable object storage;
-- preserve truth-pack/template/validator version binding;
-- verify authorized retrieval after service restart.
+- configure a real private Truth Pack object and verify retrieval after API/worker restart;
+- configure a real private artifact bucket and verify generation/retrieval after restart;
+- prove secrets remain server-side and object bodies remain private.
 
-### 3. Hosted runtime
+### 4. Hosted runtime + frontend execution
 
-- deploy API, worker, scheduler and migrate roles using the same OCI image;
+- deploy API, worker, scheduler and migrate roles from the same immutable OCI image;
 - deploy frontend independently behind Cloudflare;
 - prove no Founder-PC/local-filesystem dependency;
-- prove workers may fail without taking down feed/search/detail.
+- run hosted A-4/A-5/A-6/A-7/A-8 evidence and cold-start/feed SLO measurement.
 
-### 4. Shadow and reliability proof
+### 5. Shadow migration and source parity
 
 - run cloud polling in shadow/non-authoritative mode;
-- prove repeated polling is identity/idempotency safe;
-- prove one-source failure isolation;
-- measure cold-start/feed SLO;
-- verify Poll Now behavior in the actual hosted runtime.
+- compare canonical identities/source occurrences to the authoritative runtime;
+- resolve discrepancies before production authority moves.
 
-### 5. Monitoring, backup and portability
+### 6. Monitoring, backup and portability
 
-- external uptime monitoring;
-- application-error capture;
-- job/queue heartbeat;
-- source-freshness alerts;
-- worker-stall detection;
-- backup heartbeat and a real test incident;
-- encrypted off-provider backup;
+- activate external uptime monitoring and application-error capture;
+- activate job/queue/source-freshness/worker-stall/backup heartbeats;
+- generate a real test alert/incident;
+- produce encrypted off-provider backup;
 - restore into a fresh staging environment;
-- provider-neutral export/restore proof.
+- execute provider-neutral export/restore proof.
 
-### 6. Cutover and soak
+### 7. Cutover and soak
 
 - public DNS/runtime cutover only after staging evidence authorizes it;
 - authenticated desktop and 390px mobile cloud smoke;
-- document real cost/quota assumptions;
+- document the real cost/quota envelope;
 - run at least 7 consecutive days with Founder-owned production host processes disabled/offline.
 
-### 7. Terminal acceptance
+### 8. Terminal acceptance
 
 Close A-0 through A-17 only from persisted evidence and independent verification.
 
