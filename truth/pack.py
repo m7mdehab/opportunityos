@@ -55,6 +55,7 @@ import base64
 import hashlib
 import json
 import logging
+import ipaddress
 import os
 import dataclasses
 from dataclasses import dataclass
@@ -231,6 +232,29 @@ def _redact_url(url: str) -> str:
         return "[redacted-uri]"
 
 
+
+
+def _is_loopback_remote_host(hostname: str | None) -> bool:
+    if not hostname:
+        return True
+    lowered = hostname.lower()
+    if lowered in {"localhost", "host.docker.internal"} or lowered.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(lowered).is_loopback
+    except ValueError:
+        return False
+
+
+def _is_supabase_storage_uri(url: str) -> bool:
+    try:
+        parsed = urlsplit(url)
+    except Exception:
+        return False
+    host = (parsed.hostname or "").lower()
+    path = parsed.path.lower()
+    return host.endswith("supabase.co") or "/storage/v1/object/" in path
+
 def _is_cloud_mode(env: Mapping[str, str] | None = None) -> bool:
     """Return True if running in cloud / production mode."""
     target_env = os.environ if env is None else env
@@ -245,13 +269,16 @@ def _is_cloud_mode(env: Mapping[str, str] | None = None) -> bool:
 def _fetch_remote_bytes(
     url: str,
     auth_token: str | None = None,
+    api_key: str | None = None,
     timeout_seconds: float = 30.0,
 ) -> tuple[bytes, str]:
     """Fetch raw bytes and determine format (yaml or json) from an HTTP(S) URL."""
     redacted = _redact_url(url)
     headers = {"User-Agent": "OpportunityOS-TruthPack/1.0"}
-    if auth_token and not any(p in url for p in ("token=", "Signature=", "apikey=", "X-Amz-Signature")):
+    if auth_token:
         headers["Authorization"] = f"Bearer {auth_token}"
+    if api_key:
+        headers["apikey"] = api_key
 
     req = Request(url, headers=headers)
     try:
@@ -265,9 +292,17 @@ def _fetch_remote_bytes(
             raise TruthPackInvalid(f"access denied to truth pack at {redacted} (HTTP {err.code})", (f"HTTP {err.code}",)) from err
         raise TruthPackInvalid(f"failed to fetch truth pack from {redacted}: HTTP {err.code}", (f"HTTP {err.code}",)) from err
     except URLError as err:
-        raise TruthPackInvalid(f"network error fetching truth pack from {redacted}: {err.reason}", (str(err.reason),)) from err
+        # Never surface provider/transport exception text: third-party error
+        # strings can echo Authorization headers or query credentials.
+        raise TruthPackInvalid(
+            f"network error fetching truth pack from {redacted}",
+            ("remote Truth Pack network failure",),
+        ) from err
     except Exception as err:
-        raise TruthPackInvalid(f"unexpected error fetching truth pack from {redacted}: {err}", (str(err),)) from err
+        raise TruthPackInvalid(
+            f"unexpected error fetching truth pack from {redacted}",
+            ("remote Truth Pack transport failure",),
+        ) from err
 
     path_part = urlsplit(url).path.lower()
     if path_part.endswith(".json") or "application/json" in content_type:
@@ -312,6 +347,7 @@ def load_truth_pack(
     *,
     expected_hash: str | None = None,
     auth_token: str | None = None,
+    api_key: str | None = None,
     timeout_seconds: float = 30.0,
     allow_local_path: bool | None = None,
     allow_data_uri: bool | None = None,
@@ -346,10 +382,9 @@ def load_truth_pack(
         )
 
     if auth_token is None:
-        auth_token = (
-            os.environ.get("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN")
-            or os.environ.get("STORAGE_SERVICE_KEY")
-        )
+        auth_token = os.environ.get("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN")
+    if api_key is None:
+        api_key = os.environ.get("OPPORTUNITYOS_TRUTH_PACK_API_KEY")
 
     target_str = str(target).strip()
     if not target_str:
@@ -369,6 +404,34 @@ def load_truth_pack(
                 f"plain http:// is forbidden in cloud mode; HTTPS required ({redacted_target})",
                 ("insecure http transport in cloud mode",),
             )
+        if target_str.startswith("https://"):
+            parsed = urlsplit(target_str)
+            if parsed.username or parsed.password or parsed.query or parsed.fragment:
+                raise TruthPackInvalid(
+                    f"Truth Pack URI must not contain credentials, query, or fragment in cloud mode ({redacted_target})",
+                    ("credential-bearing or signed URL forbidden in cloud mode",),
+                )
+            if _is_loopback_remote_host(parsed.hostname):
+                raise TruthPackInvalid(
+                    f"localhost/loopback Truth Pack endpoint is forbidden in cloud mode ({redacted_target})",
+                    ("loopback remote endpoint forbidden",),
+                )
+            is_supabase = _is_supabase_storage_uri(target_str)
+            if "/object/public/" in parsed.path.lower():
+                raise TruthPackInvalid(
+                    f"public Supabase Storage object endpoint is forbidden in cloud mode ({redacted_target})",
+                    ("public object endpoint forbidden",),
+                )
+            if is_supabase and (not auth_token or not api_key):
+                raise TruthPackInvalid(
+                    "Supabase Storage Truth Pack access requires both auth token and API key",
+                    ("missing Supabase private storage credentials",),
+                )
+            if not auth_token:
+                raise TruthPackInvalid(
+                    "private HTTPS Truth Pack access requires OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN",
+                    ("missing private Truth Pack auth token",),
+                )
         if target_str.startswith("data:") and not allow_data_uri:
             raise TruthPackInvalid(
                 "data: URI is development/test fixture only and not accepted as production remote storage in cloud mode",
@@ -377,7 +440,7 @@ def load_truth_pack(
 
     if target_str.startswith("http://") or target_str.startswith("https://"):
         raw_bytes, doc_format = _fetch_remote_bytes(
-            target_str, auth_token=auth_token, timeout_seconds=timeout_seconds
+            target_str, auth_token=auth_token, api_key=api_key, timeout_seconds=timeout_seconds
         )
     elif target_str.startswith("s3://"):
         raw_bytes, doc_format = _fetch_s3_bytes(target_str)
