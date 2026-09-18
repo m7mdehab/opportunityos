@@ -31,12 +31,8 @@ def _result(scenario: str, state: str, **details: Any) -> dict[str, Any]:
 def _table_exists(connection: Any, table: str) -> bool:
     if not _SAFE_IDENTIFIER.fullmatch(table):
         raise ValueError("unsafe table name")
-    cursor = connection.cursor()
-    try:
-        cursor.execute("SELECT to_regclass(%s)", (f"public.{table}",))
-        return cursor.fetchone()[0] is not None
-    finally:
-        cursor.close()
+    from sqlalchemy import text
+    return connection.execute(text("SELECT to_regclass(:table_name)"), {"table_name": f"public.{table}"}).fetchone()[0] is not None
 
 
 def _count(connection: Any, table: str) -> int | None:
