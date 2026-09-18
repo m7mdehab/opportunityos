@@ -9,8 +9,11 @@
     "lint": "eslint . --max-warnings=0",
     "test:e2e": "playwright test",
     "test:e2e:real": "playwright test --config=playwright.real.config.ts",
+    "test:e2e:staging": "playwright test --config=playwright.staging.config.ts",
     "axe": "playwright test tests/e2e/axe.spec.ts",
-    "evidence:screenshots": "playwright test tests/e2e/screenshots.spec.ts"
+    "evidence:screenshots": "playwright test tests/e2e/screenshots.spec.ts",
+    "build:worker": "opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion",
+    "preview:worker": "opennextjs-cloudflare preview"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -28,6 +31,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
+    "@opennextjs/cloudflare": "^1.20.6",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
@@ -37,7 +41,8 @@
     "eslint-config-next": "16.3.4",
     "msw": "^2.15.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "^4.135.0"
   },
   "msw": {
     "workerDirectory": [
