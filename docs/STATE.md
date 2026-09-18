@@ -11,7 +11,7 @@ Next: Founder Web Alpha is publicly reachable and authentication-protected.
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `925a201` — fix(tests): drain async maintenance jobs in api tests and fix durability test assertions
+- **State generated at commit:** `7919a73` — docs(evidence): document PR and commit SHAs for W11 durable scheduling
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
