@@ -80,6 +80,8 @@ export default defineConfig({
   // or axe.spec.ts/screenshots.spec.ts -- a pattern, not a file list, so a
   // new real-stack-safe spec only needs the right filename to be included.
   testMatch: /\/(smoke|filters)\.spec\.ts$/,
+  // Hosted-only smoke must never run against local/mock webServer configs.
+  testIgnore: /staging-smoke\.spec\.ts$/,
   fullyParallel: false,
   workers: 1,
   retries: 0,
