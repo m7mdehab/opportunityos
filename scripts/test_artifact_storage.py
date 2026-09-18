@@ -174,6 +174,39 @@ class ArtifactStorageTests(unittest.TestCase):
         self.assertIn(f"artifacts/{old_key}", self.transport.deletes)
         self.assertIsNone(self.session.get(ArtifactCacheRecord, old_key))
 
+    def test_global_eviction_removes_external_body(self):
+        first_key = self._store("truth-a", b"first")
+        with patch.object(ac, "MAX_CACHE_ROWS", 1), patch.dict(os.environ, self.env, clear=False):
+            ac.store(
+                self.session,
+                "opp-2",
+                "truth-b",
+                "classic",
+                "cv",
+                "application/octet-stream",
+                b"second",
+                storage_client=self.client,
+            )
+        self.assertIn(f"artifacts/{first_key}", self.transport.deletes)
+        self.assertIsNone(self.session.get(ArtifactCacheRecord, first_key))
+
+    def test_backend_switch_cleans_external_stale_body_before_metadata(self):
+        old_key = self._store("truth-old")
+        postgres_env = {"OPPORTUNITYOS_ARTIFACT_STORAGE_BACKEND": "postgres_payload"}
+        with patch.dict(os.environ, postgres_env, clear=True):
+            ac.store(
+                self.session,
+                "opp-1",
+                "truth-new",
+                "classic",
+                "cv",
+                "application/octet-stream",
+                b"replacement",
+                storage_client=self.client,
+            )
+        self.assertIn(f"artifacts/{old_key}", self.transport.deletes)
+        self.assertIsNone(self.session.get(ArtifactCacheRecord, old_key))
+
     def test_object_key_contains_no_founder_content(self):
         key = ac.cache_key("opp-founder-private-description", "truth-founder-private", "classic", "cv")
         self.assertEqual(ac.object_key_for(key), f"artifacts/{key}")
