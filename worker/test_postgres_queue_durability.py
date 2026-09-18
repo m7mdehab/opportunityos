@@ -41,7 +41,7 @@ from api.app import create_app
 from api.settings import Settings
 from opportunity.registry import SourceRegistry
 from storage.engine import get_engine, get_session_factory
-from storage.feed_projection import FeedProjectionRecord
+from storage.feed_projection import FeedProjectionRecord, projection_identity
 from storage.models import (
     Base,
     FounderFacetRecord,
@@ -707,7 +707,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
             session.add(opp)
             session.flush()  # Materialize FK parent before inserting feed_projection.
             proj = FeedProjectionRecord(
-                id=f"opp-test-1:{self.truth_pack_hash}:v1",
+                id=projection_identity("opp-test-1", self.truth_pack_hash),
                 opportunity_id="opp-test-1",
                 opportunity_content_hash="hash-opp-1",
                 truth_pack_hash=self.truth_pack_hash,
@@ -823,7 +823,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 evaluated_at=_to_naive_utc(now),
             )
             proj = FeedProjectionRecord(
-                id=f"opp-proj-1:{self.truth_pack_hash}:v1",
+                id=projection_identity("opp-proj-1", self.truth_pack_hash),
                 opportunity_id="opp-proj-1",
                 opportunity_content_hash="hash-opp-proj-1",
                 truth_pack_hash=self.truth_pack_hash,
@@ -886,7 +886,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
             self.assertEqual(job_done.status, "COMPLETED")
 
             updated_proj = session_after.query(FeedProjectionRecord).filter_by(
-                id=f"opp-proj-1:{self.truth_pack_hash}:v1"
+                id=projection_identity("opp-proj-1", self.truth_pack_hash)
             ).one()
             # Since fit_score was 60.0 and min_score is now 80.0, it should be hidden
             self.assertFalse(updated_proj.visible)
@@ -930,7 +930,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 evaluated_at=_to_naive_utc(now),
             )
             proj = FeedProjectionRecord(
-                id=f"opp-idemp-1:{self.truth_pack_hash}:v1",
+                id=projection_identity("opp-idemp-1", self.truth_pack_hash),
                 opportunity_id="opp-idemp-1",
                 opportunity_content_hash="hash-opp-idemp-1",
                 truth_pack_hash=self.truth_pack_hash,
@@ -989,7 +989,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
 
             # Verify final projection is coherent and visible (fit 95.0 >= min 80.0)
             proj_final = session_check.query(FeedProjectionRecord).filter_by(
-                id=f"opp-idemp-1:{self.truth_pack_hash}:v1"
+                id=projection_identity("opp-idemp-1", self.truth_pack_hash)
             ).one()
             self.assertTrue(proj_final.visible)
         finally:
