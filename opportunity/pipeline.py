@@ -228,6 +228,7 @@ class OpportunityPipeline:
                     transport_status_code=acq_res.response.status_code,
                     transport_error=acq_res.refusal_reason,
                     fetch_latency_ms=acq_res.response.latency_ms,
+                    response_headers=acq_res.response.headers,
                     now_iso=timestamp,
                 )
             elif not acq_res.response.is_success:
@@ -236,6 +237,7 @@ class OpportunityPipeline:
                     transport_status_code=acq_res.response.status_code,
                     transport_error=acq_res.response.error_message,
                     fetch_latency_ms=acq_res.response.latency_ms,
+                    response_headers=acq_res.response.headers,
                     now_iso=timestamp,
                 )
             else:
