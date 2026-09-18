@@ -81,6 +81,11 @@ D. Real PostgreSQL 16 Durability & Restart Acceptance Suite
 
 2. VERIFICATION EVIDENCE
 --------------------------------------------------------------------------------
+- Branch: work/fr007-antigravity-durable-scheduling
+- Latest Commit: 120c9b1 (docs(state): update generated state for W11 durable scheduling)
+- Implementation Commit: 745bd2e (feat(worker): durable source scheduling, due-only poll-now, and async feed projection maintenance)
+- Pull Request: #98 targeting brief/fr-007-cloud-replatform (https://github.com/m7mdehab/opportunityos/pull/98)
+
 - Local Unit & Subsystem Tests:
   * pytest worker/test_scheduler.py: 24 passed in 9.8s
   * pytest worker/test_runner.py: 16 passed in 7.5s
