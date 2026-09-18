@@ -158,6 +158,33 @@ class TestOneJobPerSourcePerTick(TestPollSchedulerBase):
 
 
 class TestDurablePollCadence(TestPollSchedulerBase):
+    def test_enqueue_does_not_fabricate_last_attempt(self):
+        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        scheduler = PollScheduler(
+            self.session_factory,
+            registry=self.registry,
+            interval_hours=6,
+            clock=lambda: base,
+        )
+
+        self.assertEqual(scheduler.run_once(), ["fixture_allowed"])
+
+        session = self.session_factory()
+        try:
+            schedule = session.query(SourceScheduleRecord).filter_by(
+                source_id="fixture_allowed"
+            ).one()
+            self.assertIsNone(
+                schedule.last_attempt_at,
+                "durable last_attempt_at must mean an actual poll attempt, not enqueue time",
+            )
+            self.assertEqual(
+                schedule.next_due_at,
+                (base + timedelta(hours=6)).replace(tzinfo=None),
+            )
+        finally:
+            session.close()
+
     def test_restart_respects_latest_successful_poll_time(self):
         base = datetime(2026, 1, 1, tzinfo=timezone.utc)
         clock_state = {"now": base + timedelta(hours=1)}
