@@ -1,0 +1,68 @@
+name: FR-007 hosted data-plane proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "PRECHECK, MIGRATE_STAGING, or VERIFY_STAGING"
+        required: true
+        type: choice
+        options: [PRECHECK, MIGRATE_STAGING, VERIFY_STAGING]
+      connection_mode:
+        description: "Use direct for DDL-capable migration connections"
+        required: true
+        default: direct
+        type: choice
+        options: [direct, pooler, unknown]
+      acknowledge_staging_migration:
+        description: "Authorize staging migration execution"
+        required: false
+        type: boolean
+        default: false
+      acknowledge_source_writes_paused:
+        description: "Confirm source writes are paused"
+        required: false
+        type: boolean
+        default: false
+      acknowledge_target_writes_disabled:
+        description: "Confirm target writes are disabled and isolated"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  hosted-proof:
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install repository dependencies
+        run: python -m pip install -e .
+      - name: Run hosted proof
+        env:
+          OPOS_SOURCE_DB_URL: ${{ secrets.OPOS_SOURCE_DB_URL }}
+          OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+        run: |
+          mkdir -p hosted-proof-evidence/run
+          python scripts/hosted_data_plane_proof.py \
+            --mode "${{ inputs.mode }}" \
+            --connection-mode "${{ inputs.connection_mode }}" \
+            --output-dir hosted-proof-evidence/run \
+            --evidence hosted-proof-evidence/report.json \
+            ${{ inputs.acknowledge_staging_migration == true && '--acknowledge-staging-migration' || '' }} \
+            ${{ inputs.acknowledge_source_writes_paused == true && '--acknowledge-source-writes-paused' || '' }} \
+            ${{ inputs.acknowledge_target_writes_disabled == true && '--acknowledge-target-writes-disabled' || '' }}
+      - name: Upload sanitized evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fr007-hosted-data-plane-proof-${{ github.run_id }}
+          path: hosted-proof-evidence/report.json
+          if-no-files-found: error
