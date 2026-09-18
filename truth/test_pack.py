@@ -18,7 +18,9 @@ from truth.pack import (
     LoadedPack,
     TruthPackInvalid,
     TruthPackMissing,
+    TruthPackVerificationError,
     load_founder_pack,
+    load_truth_pack,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -359,6 +361,189 @@ class TruthCheckScriptTest(unittest.TestCase):
             for value in TEMPLATE_DISTINCTIVE_VALUES:
                 self.assertNotIn(value, result.stdout)
                 self.assertNotIn(value.lower(), result.stdout.lower())
+
+
+class LoadTruthPackRemoteAndIntegrityTest(unittest.TestCase):
+    def setUp(self):
+        self.yaml_content = _minimal_pack_yaml()
+        self.raw_bytes = self.yaml_content.encode("utf-8")
+        import hashlib
+        self.raw_hash = hashlib.sha256(self.raw_bytes).hexdigest()
+
+    def test_load_truth_pack_from_http_success(self):
+        import io
+        from unittest import mock
+        from urllib.error import HTTPError
+
+        mock_resp = io.BytesIO(self.raw_bytes)
+        mock_resp.headers = {"Content-Type": "application/x-yaml"}
+
+        with mock.patch("truth.pack.urlopen", return_value=mock_resp) as mock_urlopen:
+            loaded = load_truth_pack("https://storage.supabase.co/v1/object/authenticated/truth/pack.yaml")
+            self.assertIsInstance(loaded, LoadedPack)
+            self.assertTrue(loaded.report.valid)
+            self.assertEqual(64, len(loaded.truth_pack_hash))
+            mock_urlopen.assert_called_once()
+
+    def test_load_truth_pack_http_auth_token_header(self):
+        import io
+        from unittest import mock
+
+        mock_resp = io.BytesIO(self.raw_bytes)
+        mock_resp.headers = {"Content-Type": "application/x-yaml"}
+
+        with mock.patch("truth.pack.urlopen", return_value=mock_resp) as mock_urlopen:
+            tok = "val-tok"
+            loaded = load_truth_pack(
+                "https://api.example.com/truth_pack.yaml",
+                auth_token=tok,
+            )
+            self.assertIsInstance(loaded, LoadedPack)
+            req = mock_urlopen.call_args[0][0]
+            self.assertEqual("Bearer val-tok", req.headers.get("Authorization"))
+
+    def test_load_truth_pack_http_404_raises_truth_pack_missing(self):
+        from unittest import mock
+        from urllib.error import HTTPError
+
+        err = HTTPError("https://api.example.com/pack.yaml", 404, "Not Found", {}, None)
+        with mock.patch("truth.pack.urlopen", side_effect=err):
+            with self.assertRaises(TruthPackMissing):
+                load_truth_pack("https://api.example.com/pack.yaml")
+
+    def test_load_truth_pack_http_403_raises_truth_pack_invalid(self):
+        from unittest import mock
+        from urllib.error import HTTPError
+
+        err = HTTPError("https://api.example.com/pack.yaml", 403, "Forbidden", {}, None)
+        with mock.patch("truth.pack.urlopen", side_effect=err):
+            with self.assertRaises(TruthPackInvalid) as ctx:
+                load_truth_pack("https://api.example.com/pack.yaml")
+            self.assertIn("HTTP 403", str(ctx.exception))
+
+    def test_load_truth_pack_data_uri_plain_and_base64(self):
+        import base64
+        import urllib.parse
+
+        # Plain data URI
+        plain_uri = f"data:text/yaml,{urllib.parse.quote(self.yaml_content)}"
+        loaded_plain = load_truth_pack(plain_uri)
+        self.assertIsInstance(loaded_plain, LoadedPack)
+
+        # Base64 data URI
+        b64_payload = base64.b64encode(self.raw_bytes).decode("ascii")
+        b64_uri = f"data:application/x-yaml;base64,{b64_payload}"
+        loaded_b64 = load_truth_pack(b64_uri)
+        self.assertIsInstance(loaded_b64, LoadedPack)
+        self.assertEqual(loaded_plain.truth_pack_hash, loaded_b64.truth_pack_hash)
+
+    def test_load_truth_pack_integrity_hash_verification(self):
+        import urllib.parse
+
+        quoted_uri = f"data:text/yaml,{urllib.parse.quote(self.yaml_content)}"
+        # 1. Matching raw SHA-256 succeeds
+        loaded = load_truth_pack(
+            quoted_uri,
+            expected_hash=self.raw_hash,
+        )
+        self.assertIsInstance(loaded, LoadedPack)
+
+        # 2. Matching canonical graph hash succeeds
+        canonical_hash = loaded.truth_pack_hash
+        loaded_by_canonical = load_truth_pack(
+            quoted_uri,
+            expected_hash=canonical_hash,
+        )
+        self.assertEqual(canonical_hash, loaded_by_canonical.truth_pack_hash)
+
+        # 3. Mismatched hash raises TruthPackVerificationError (and TruthPackInvalid)
+        bogus_hash = "0" * 64
+        with self.assertRaises(TruthPackVerificationError) as ctx:
+            load_truth_pack(
+                quoted_uri,
+                expected_hash=bogus_hash,
+            )
+        self.assertIsInstance(ctx.exception, TruthPackInvalid)
+        self.assertIn("integrity verification failed", str(ctx.exception))
+
+    def test_load_truth_pack_cloud_mode_rejects_local_path(self):
+        with TemporaryDirectory() as tmp:
+            path = _write(Path(tmp), "pack.yaml", self.yaml_content)
+            with self.assertRaises(TruthPackInvalid) as ctx:
+                load_truth_pack(path, allow_local_path=False)
+            self.assertIn("local filesystem paths not allowed", str(ctx.exception))
+
+    def test_load_truth_pack_redacts_credentials_and_query_in_errors(self):
+        from unittest import mock
+        from urllib.error import HTTPError
+
+        sensitive_url = "https://user:secretpass@api.example.com/pack.yaml?token=SECRET_TOKEN&sig=XYZ123#frag"
+        err = HTTPError(sensitive_url, 404, "Not Found", {}, None)
+        with mock.patch("truth.pack.urlopen", side_effect=err):
+            with self.assertRaises(TruthPackMissing) as ctx:
+                load_truth_pack(sensitive_url)
+            msg = str(ctx.exception)
+            self.assertNotIn("SECRET_TOKEN", msg)
+            self.assertNotIn("XYZ123", msg)
+            self.assertNotIn("secretpass", msg)
+            self.assertIn("https://api.example.com/pack.yaml", msg)
+
+    def test_load_truth_pack_cloud_mode_rejects_plain_http(self):
+        with self.assertRaises(TruthPackInvalid) as ctx:
+            load_truth_pack(
+                "http://insecure.example.com/pack.yaml",
+                expected_hash=self.raw_hash,
+                cloud_mode=True,
+            )
+        self.assertIn("plain http:// is forbidden in cloud mode", str(ctx.exception))
+
+    def test_load_truth_pack_cloud_mode_requires_expected_hash(self):
+        with self.assertRaises(TruthPackInvalid) as ctx:
+            load_truth_pack(
+                "https://secure.example.com/pack.yaml",
+                expected_hash=None,
+                cloud_mode=True,
+            )
+        self.assertIn("expected_hash is required in cloud mode", str(ctx.exception))
+
+    def test_load_truth_pack_cloud_mode_rejects_data_uri_by_default(self):
+        import urllib.parse
+        quoted_uri = f"data:text/yaml,{urllib.parse.quote(self.yaml_content)}"
+        with self.assertRaises(TruthPackInvalid) as ctx:
+            load_truth_pack(
+                quoted_uri,
+                expected_hash=self.raw_hash,
+                cloud_mode=True,
+            )
+        self.assertIn("data: URI is development/test fixture only", str(ctx.exception))
+
+        # Explicit allow_data_uri=True passes
+        loaded = load_truth_pack(
+            quoted_uri,
+            expected_hash=self.raw_hash,
+            cloud_mode=True,
+            allow_data_uri=True,
+        )
+        self.assertIsInstance(loaded, LoadedPack)
+
+    def test_load_founder_pack_fails_closed_in_cloud_mode_without_uri(self):
+        import os
+        from unittest import mock
+
+        env = {
+            "OPPORTUNITYOS_ENVIRONMENT": "production",
+        }
+        with mock.patch.dict(os.environ, env, clear=True):
+            with self.assertRaises(TruthPackMissing) as ctx:
+                load_founder_pack()
+            self.assertIn("Missing required OPPORTUNITYOS_TRUTH_PACK_URI in cloud mode", str(ctx.exception))
+            self.assertIn("local fallback to private/truth_pack.yaml is disabled", str(ctx.exception))
+
+    def test_load_truth_pack_s3_deferred_notice(self):
+        with self.assertRaises(TruthPackInvalid) as ctx:
+            load_truth_pack("s3://bucket-name/path/truth_pack.yaml")
+        self.assertIn("s3:// storage is deferred for FR-007", str(ctx.exception))
+        self.assertIn("HTTPS object store is the supported remote storage mechanism", str(ctx.exception))
 
 
 if __name__ == "__main__":

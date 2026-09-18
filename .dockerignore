@@ -1,13 +1,53 @@
+# Git and IDE
 .git
 .github
 .claude
-out
-private
-reports
-briefs
-web/.next
-web/node_modules
-**/__pycache__
-*.pyc
-*.db
+.gemini
+.idea
+.vscode
+
+# Secrets and private configuration
 .env*
+private/
+*.pem
+*.key
+*.cert
+*.crt
+
+# Build outputs, temp, and caches
+out/
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.py[cod]
+*.class
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Local databases and dumps
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.sql
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Documentation, briefs, and reports (not needed in runtime container)
+briefs/
+reports/
+
+# Web frontend (built and deployed separately)
+web/
+
+# OS artifacts
+.DS_Store
+Thumbs.db

@@ -1,0 +1,108 @@
+================================================================================
+FR-007 ANTIGRAVITY LANE — W8 FINISH OCI PROOF, REMOVE HANGS, ZERO FALSE-GREEN
+Date: 2026-09-17
+Host: Windows & GitHub-Hosted Actions Runner (ubuntu-latest)
+Branch: work/fr007-antigravity-cloud-runtime-v5
+Base SHA: 96c95acc94be4c5f21e04a157abec38d749c89e9
+Previous Cancelled Run ID: 35224983310
+New Successful Run ID: 35228078563
+Workflow Conclusion: SUCCESS
+================================================================================
+
+1. EXACT FAILING / HANGING W7 STEP ROOT CAUSE
+--------------------------------------------------------------------------------
+In the W7 smoke suite (GitHub run 35224983310):
+- Step `smoke_api_configurable_port` executed:
+    `docker run --rm ... api --help`
+- `scripts/container_entrypoint.py` ignored `extra_args` for the `api` role and
+  unconditionally launched `uvicorn api.app:app` as a foreground process.
+- Because `subprocess.run` had no timeout and CI had no per-command watchdog,
+  Uvicorn listened on port 9090 indefinitely waiting for HTTP requests.
+- Similarly, `scheduler --help` ignored `--help` and would launch an infinite
+  scheduler loop.
+- The workflow ran until GitHub Actions hit its 15-minute job timeout and cancelled
+  run 35224983310.
+
+2. EXACT REPAIR IMPLEMENTATION
+--------------------------------------------------------------------------------
+A. Bounded Process Execution & Watchdogs:
+   - Added bounded per-command timeout to `_exec` in `scripts/smoke_container.py`
+     (default 30s, 300s for image build, 60s for migrations).
+   - On `subprocess.TimeoutExpired`, logs clear error diagnostic, terminates the
+     process tree, forcibly kills and cleans up any running container (`docker rm -f`),
+     and fails the step immediately.
+   - Set `PYTHONUNBUFFERED: "1"` in the workflow and unbuffered output in Python.
+   - Reduced workflow timeout to 10 minutes.
+
+B. Decoupled Role Verification Contracts:
+   - Added `--dry-run` to `scripts/container_entrypoint.py` for pure command construction
+     contracts without launching background servers or daemons.
+   - Replaced fragile `--help` calls with deterministic `--dry-run` verification for
+     api, worker, scheduler, and migrate roles.
+   - Handled `--help` gracefully (exits 0 with usage text).
+
+C. Eliminated Weak Assertions & Enforced Strict Tri-State Semantics:
+   - Removed arbitrary exit code 1 checks and stdout coincidence checks.
+   - A step is PASS only when its exact functional property is demonstrated.
+   - Roles with unwired cloud infrastructure (worker blob storage, scheduler token)
+     are strictly marked `BLOCKED`, never promoted to `PASS`.
+
+D. Fixed Evidence-Marker Generation:
+   - Fixed step naming mismatch: "Non-Root User Execution" emits `NON_ROOT_USER_PASS`.
+   - Markers derive directly from structured result objects (`r.marker`), eliminating
+     string-matching coincidence.
+
+E. PostgreSQL-Backed Live Proof:
+   - Reuses PostgreSQL service container on GitHub Actions `ubuntu-latest`.
+   - Executes real Alembic migrations (`migrate` role) to head -> `MIGRATION_EXECUTION_PASS`.
+   - Proves post-migration readiness probe succeeds -> `READINESS_POST_MIGRATION_PASS`.
+   - Proves detached API container launches listener, confirms log marker, and
+     shuts down gracefully via SIGTERM -> `API_GRACEFUL_SHUTDOWN_PASS`.
+
+3. PASS / BLOCKED / FAIL MATRIX (EXECUTED ON RUN 35228078563)
+--------------------------------------------------------------------------------
+| Step Name | Status | Duration | Marker / Evidence |
+| :--- | :--- | :--- | :--- |
+| OCI Image Build | PASS | 26.43s | IMAGE_BUILD_PASS |
+| Non-Root User Execution | PASS | 0.20s | NON_ROOT_USER_PASS (UID 1000) |
+| Liveness Probe | PASS | 0.49s | LIVENESS_PROBE_PASS |
+| Readiness Fail-Closed (No DB) | PASS | 0.40s | READINESS_FAIL_CLOSED_PASS |
+| Worker Role Separation | PASS | 0.41s | ROLE_SEPARATION_PASS |
+| Invalid Role Fail-Closed | PASS | 0.96s | INVALID_ROLE_FAIL_CLOSED_PASS |
+| Command Construction Contracts | PASS | 1.58s | COMMAND_CONSTRUCTION_PASS |
+| Founder PC Independence | PASS | 0.34s | PC_INDEPENDENCE_PASS |
+| PostgreSQL Database Migrations | PASS | 1.28s | MIGRATION_EXECUTION_PASS |
+| Readiness Post-Migration Check | PASS | 0.74s | READINESS_POST_MIGRATION_PASS |
+| API Detached Startup & SIGTERM | PASS | 2.07s | API_GRACEFUL_SHUTDOWN_PASS |
+| Worker & Scheduler Cloud Audit | BLOCKED| 0.00s | ROLE_LIVE_PROOF_BLOCKED |
+
+Total Suite Execution Time: ~35 seconds.
+Zero timed-out steps. Zero cancelled steps.
+
+4. STRUCTURED EVIDENCE OUTPUT FROM RUN 35228078563
+--------------------------------------------------------------------------------
+Structured Evidence Markers:
+  IMAGE_BUILD_PASS
+  NON_ROOT_USER_PASS
+  LIVENESS_PROBE_PASS
+  READINESS_FAIL_CLOSED_PASS
+  ROLE_SEPARATION_PASS
+  INVALID_ROLE_FAIL_CLOSED_PASS
+  COMMAND_CONSTRUCTION_PASS
+  PC_INDEPENDENCE_PASS
+  MIGRATION_EXECUTION_PASS
+  READINESS_POST_MIGRATION_PASS
+  API_GRACEFUL_SHUTDOWN_PASS
+  ROLE_LIVE_PROOF_BLOCKED: worker (truth-pack blob storage and pubsub queue unwired in cloud mode); scheduler (dispatch token and remote trigger unwired in cloud mode)
+[SUCCESS] All executable container contracts passed (unwired cloud roles explicitly BLOCKED).
+
+5. REMAINING REAL-CLOUD DEPENDENCIES
+--------------------------------------------------------------------------------
+The container packaging and execution contracts are verified. Full cloud autonomy
+remains blocked by the following external infrastructure services:
+- Remote Object Storage (S3/GCS/Supabase): `STORAGE_SERVICE_KEY`, `STORAGE_PRIVATE_BUCKET`
+  for remote truth pack and artifact persistence.
+- External Auth Provider: `AUTH_JWKS_URL`, `AUTH_ISSUER`, `AUTH_AUDIENCE` for production
+  JWT token validation.
+- Message Queue / Event Bus: Distributed pubsub for scheduler dispatching to worker nodes.
+================================================================================
