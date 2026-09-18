@@ -11,7 +11,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `6f97f52` — fix(tests): avoid secret-like literals in Truth Pack redaction fixtures
+- **State generated at commit:** `934375c` — fix(readiness): scope private Truth Pack requirement to cloud API
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
