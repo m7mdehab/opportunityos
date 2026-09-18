@@ -35,7 +35,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from starlette.testclient import TestClient
+from fastapi.testclient import TestClient
 
 from api.app import create_app
 from api.settings import Settings
@@ -74,6 +74,12 @@ def _should_skip() -> bool:
     if os.environ.get("CI"):
         return False
     return _get_pg_db_url() is None
+
+
+def _to_naive_utc(dt: datetime) -> datetime:
+    if dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
 
 
 @unittest.skipIf(
@@ -337,8 +343,6 @@ class TestPostgresQueueDurability(unittest.TestCase):
             job_id = self._enqueue(q, job_type="poll_source", payload={"source_id": "ted", "feed_id": "all"})
 
             enqueued = scheduler.run_once()
-            for eid in enqueued:
-                self.test_job_ids.append(eid)
             active_ted_jobs = session.query(WorkerJobRecord).filter(
                 WorkerJobRecord.job_type == "poll_source",
                 WorkerJobRecord.status.in_(["PENDING", "RETRY", "RUNNING"]),
@@ -358,7 +362,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
         scheduler/worker, instantiate fresh instances; verify next_due_at is
         preserved in PostgreSQL and zero jobs are enqueued before the due time.
         """
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(timezone.utc)
         future_due = now + timedelta(hours=5)
 
         session = self.session_factory()
@@ -366,11 +370,11 @@ class TestPostgresQueueDurability(unittest.TestCase):
             sched = SourceScheduleRecord(
                 source_id="remoteok",
                 cadence_hours=6.0,
-                last_attempt_at=now - timedelta(hours=1),
-                last_success_at=now - timedelta(hours=1),
-                next_due_at=future_due,
-                created_at=now,
-                updated_at=now,
+                last_attempt_at=_to_naive_utc(now - timedelta(hours=1)),
+                last_success_at=_to_naive_utc(now - timedelta(hours=1)),
+                next_due_at=_to_naive_utc(future_due),
+                created_at=_to_naive_utc(now),
+                updated_at=_to_naive_utc(now),
             )
             session.add(sched)
             session.commit()
@@ -379,21 +383,15 @@ class TestPostgresQueueDurability(unittest.TestCase):
 
         # Simulate fresh process restart
         fresh_scheduler = PollScheduler(self.session_factory, clock=lambda: now)
-        enqueued_ids = fresh_scheduler.run_once()
-        self.test_job_ids.extend(enqueued_ids)
+        enqueued_sources = fresh_scheduler.run_once()
 
         # Remoteok is not due; verify it was not enqueued
+        self.assertNotIn("remoteok", enqueued_sources, "Not-due source must not be enqueued on restart")
+
         session_check = self.session_factory()
         try:
-            jobs = session_check.query(WorkerJobRecord).filter(
-                WorkerJobRecord.job_type == "poll_source",
-                WorkerJobRecord.id.in_(enqueued_ids) if enqueued_ids else False,
-            ).all()
-            remoteok_jobs = [j for j in jobs if json.loads(j.payload_json).get("source_id") == "remoteok"]
-            self.assertEqual(len(remoteok_jobs), 0, "Not-due source must not be enqueued on restart")
-
             record = session_check.query(SourceScheduleRecord).filter_by(source_id="remoteok").one()
-            self.assertEqual(record.next_due_at, future_due, "next_due_at must survive restart intact")
+            self.assertEqual(record.next_due_at, _to_naive_utc(future_due), "next_due_at must survive restart intact")
         finally:
             session_check.close()
 
@@ -402,7 +400,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
 
         shut down, start fresh instances; verify exactly the due source is enqueued once.
         """
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(timezone.utc)
         past_due = now - timedelta(minutes=15)
         future_due = now + timedelta(hours=3)
 
@@ -411,20 +409,20 @@ class TestPostgresQueueDurability(unittest.TestCase):
             sched_due = SourceScheduleRecord(
                 source_id="remoteok",
                 cadence_hours=6.0,
-                last_attempt_at=now - timedelta(hours=7),
-                last_success_at=now - timedelta(hours=7),
-                next_due_at=past_due,
-                created_at=now - timedelta(hours=7),
-                updated_at=now - timedelta(hours=7),
+                last_attempt_at=_to_naive_utc(now - timedelta(hours=7)),
+                last_success_at=_to_naive_utc(now - timedelta(hours=7)),
+                next_due_at=_to_naive_utc(past_due),
+                created_at=_to_naive_utc(now - timedelta(hours=7)),
+                updated_at=_to_naive_utc(now - timedelta(hours=7)),
             )
             sched_not_due = SourceScheduleRecord(
                 source_id="himalayas",
                 cadence_hours=6.0,
-                last_attempt_at=now - timedelta(hours=3),
-                last_success_at=now - timedelta(hours=3),
-                next_due_at=future_due,
-                created_at=now - timedelta(hours=3),
-                updated_at=now - timedelta(hours=3),
+                last_attempt_at=_to_naive_utc(now - timedelta(hours=3)),
+                last_success_at=_to_naive_utc(now - timedelta(hours=3)),
+                next_due_at=_to_naive_utc(future_due),
+                created_at=_to_naive_utc(now - timedelta(hours=3)),
+                updated_at=_to_naive_utc(now - timedelta(hours=3)),
             )
             session.add_all([sched_due, sched_not_due])
             session.commit()
@@ -433,22 +431,15 @@ class TestPostgresQueueDurability(unittest.TestCase):
 
         # Simulate process restart with fresh scheduler instance
         fresh_scheduler = PollScheduler(self.session_factory, clock=lambda: now)
-        enqueued_ids = fresh_scheduler.run_once()
-        self.test_job_ids.extend(enqueued_ids)
+        enqueued_sources = fresh_scheduler.run_once()
+
+        self.assertIn("remoteok", enqueued_sources, "Due source must be enqueued on fresh scheduler startup")
+        self.assertNotIn("himalayas", enqueued_sources, "Non-due source must not be enqueued")
 
         session_check = self.session_factory()
         try:
-            jobs = session_check.query(WorkerJobRecord).filter(
-                WorkerJobRecord.job_type == "poll_source",
-                WorkerJobRecord.id.in_(enqueued_ids),
-            ).all()
-            enqueued_sources = [json.loads(j.payload_json).get("source_id") for j in jobs]
-            self.assertIn("remoteok", enqueued_sources, "Due source must be enqueued on fresh scheduler startup")
-            self.assertNotIn("himalayas", enqueued_sources, "Non-due source must not be enqueued")
-
-            # Verify next_due_at was updated to future
             remoteok_sched = session_check.query(SourceScheduleRecord).filter_by(source_id="remoteok").one()
-            self.assertGreater(remoteok_sched.next_due_at, now, "Enqueued source next_due_at must advance")
+            self.assertGreater(remoteok_sched.next_due_at, _to_naive_utc(now), "Enqueued source next_due_at must advance")
         finally:
             session_check.close()
 
@@ -457,7 +448,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
 
         start fresh scheduler; assert only the due subset is enqueued.
         """
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(timezone.utc)
 
         session = self.session_factory()
         try:
@@ -465,26 +456,26 @@ class TestPostgresQueueDurability(unittest.TestCase):
             sched_due = SourceScheduleRecord(
                 source_id="remoteok",
                 cadence_hours=6.0,
-                next_due_at=now - timedelta(minutes=5),
-                created_at=now,
-                updated_at=now,
+                next_due_at=_to_naive_utc(now - timedelta(minutes=5)),
+                created_at=_to_naive_utc(now),
+                updated_at=_to_naive_utc(now),
             )
             # Not due source
             sched_not_due = SourceScheduleRecord(
                 source_id="himalayas",
                 cadence_hours=6.0,
-                next_due_at=now + timedelta(hours=2),
-                created_at=now,
-                updated_at=now,
+                next_due_at=_to_naive_utc(now + timedelta(hours=2)),
+                created_at=_to_naive_utc(now),
+                updated_at=_to_naive_utc(now),
             )
             # Cooling down source
             sched_cooling = SourceScheduleRecord(
                 source_id="jobicy",
                 cadence_hours=6.0,
-                next_due_at=now - timedelta(hours=1),
-                cooldown_until=now + timedelta(hours=12),
-                created_at=now,
-                updated_at=now,
+                next_due_at=_to_naive_utc(now - timedelta(hours=1)),
+                cooldown_until=_to_naive_utc(now + timedelta(hours=12)),
+                created_at=_to_naive_utc(now),
+                updated_at=_to_naive_utc(now),
             )
             session.add_all([sched_due, sched_not_due, sched_cooling])
             session.commit()
@@ -492,42 +483,32 @@ class TestPostgresQueueDurability(unittest.TestCase):
             session.close()
 
         fresh_scheduler = PollScheduler(self.session_factory, clock=lambda: now)
-        enqueued_ids = fresh_scheduler.run_once()
-        self.test_job_ids.extend(enqueued_ids)
+        enqueued_sources = fresh_scheduler.run_once()
 
-        session_check = self.session_factory()
-        try:
-            jobs = session_check.query(WorkerJobRecord).filter(
-                WorkerJobRecord.job_type == "poll_source",
-                WorkerJobRecord.id.in_(enqueued_ids),
-            ).all()
-            enqueued_sources = [json.loads(j.payload_json).get("source_id") for j in jobs]
-            self.assertIn("remoteok", enqueued_sources)
-            self.assertNotIn("himalayas", enqueued_sources)
-            self.assertNotIn("jobicy", enqueued_sources)
-            # Verify read_disabled sources from registry are never enqueued
-            reg = SourceRegistry()
-            read_disabled = [s for s in reg._sources if not reg.is_read_allowed(s)]
-            for s in read_disabled:
-                self.assertNotIn(s, enqueued_sources)
-        finally:
-            session_check.close()
+        self.assertIn("remoteok", enqueued_sources)
+        self.assertNotIn("himalayas", enqueued_sources)
+        self.assertNotIn("jobicy", enqueued_sources)
+        # Verify read_disabled sources from registry are never enqueued
+        reg = SourceRegistry()
+        read_disabled = [s for s in reg._sources if not reg.is_read_allowed(s)]
+        for s in read_disabled:
+            self.assertNotIn(s, enqueued_sources)
 
     def test_4_concurrent_schedulers(self) -> None:
         """TEST 4: Concurrent schedulers: Run two scheduler ticks simultaneously on the same DB;
 
         verify FOR UPDATE SKIP LOCKED / unique constraints prevent duplicate job enqueue.
         """
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(timezone.utc)
 
         session = self.session_factory()
         try:
             sched = SourceScheduleRecord(
                 source_id="remoteok",
                 cadence_hours=6.0,
-                next_due_at=now - timedelta(minutes=10),
-                created_at=now,
-                updated_at=now,
+                next_due_at=_to_naive_utc(now - timedelta(minutes=10)),
+                created_at=_to_naive_utc(now),
+                updated_at=_to_naive_utc(now),
             )
             session.add(sched)
             session.commit()
@@ -537,18 +518,15 @@ class TestPostgresQueueDurability(unittest.TestCase):
         sched1 = PollScheduler(self.session_factory, clock=lambda: now)
         sched2 = PollScheduler(self.session_factory, clock=lambda: now)
 
-        res1: list[str] = []
-        res2: list[str] = []
-
         barrier = threading.Barrier(2)
 
         def tick1():
             barrier.wait()
-            res1.extend(sched1.run_once())
+            sched1.run_once()
 
         def tick2():
             barrier.wait()
-            res2.extend(sched2.run_once())
+            sched2.run_once()
 
         t1 = threading.Thread(target=tick1)
         t2 = threading.Thread(target=tick2)
@@ -556,9 +534,6 @@ class TestPostgresQueueDurability(unittest.TestCase):
         t2.start()
         t1.join(timeout=10.0)
         t2.join(timeout=10.0)
-
-        all_enqueued = res1 + res2
-        self.test_job_ids.extend(all_enqueued)
 
         session_check = self.session_factory()
         try:
@@ -576,7 +551,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
 
         verify cooldown_until remains active and source is suppressed.
         """
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(timezone.utc)
         future_cooldown = now + timedelta(hours=20)
 
         session = self.session_factory()
@@ -585,10 +560,10 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 source_id="remoteok",
                 cadence_hours=6.0,
                 last_status="blocked_by_policy",
-                cooldown_until=future_cooldown,
-                next_due_at=now - timedelta(hours=1),
-                created_at=now,
-                updated_at=now,
+                cooldown_until=_to_naive_utc(future_cooldown),
+                next_due_at=_to_naive_utc(now - timedelta(hours=1)),
+                created_at=_to_naive_utc(now),
+                updated_at=_to_naive_utc(now),
             )
             session.add(sched)
             session.commit()
@@ -596,20 +571,14 @@ class TestPostgresQueueDurability(unittest.TestCase):
             session.close()
 
         fresh_scheduler = PollScheduler(self.session_factory, clock=lambda: now)
-        enqueued_ids = fresh_scheduler.run_once()
-        self.test_job_ids.extend(enqueued_ids)
+        enqueued_sources = fresh_scheduler.run_once()
+
+        self.assertNotIn("remoteok", enqueued_sources, "Cooling-down source must be suppressed on restart")
 
         session_check = self.session_factory()
         try:
-            jobs = session_check.query(WorkerJobRecord).filter(
-                WorkerJobRecord.job_type == "poll_source",
-                WorkerJobRecord.id.in_(enqueued_ids) if enqueued_ids else False,
-            ).all()
-            remoteok_jobs = [j for j in jobs if json.loads(j.payload_json).get("source_id") == "remoteok"]
-            self.assertEqual(len(remoteok_jobs), 0, "Cooling-down source must be suppressed on restart")
-
             record = session_check.query(SourceScheduleRecord).filter_by(source_id="remoteok").one()
-            self.assertEqual(record.cooldown_until, future_cooldown)
+            self.assertEqual(record.cooldown_until, _to_naive_utc(future_cooldown))
         finally:
             session_check.close()
 
@@ -618,7 +587,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
 
         becomes eligible again without manual intervention.
         """
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(timezone.utc)
         past_cooldown = now - timedelta(minutes=2)
 
         session = self.session_factory()
@@ -627,10 +596,10 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 source_id="remoteok",
                 cadence_hours=6.0,
                 last_status="blocked_by_policy",
-                cooldown_until=past_cooldown,
-                next_due_at=past_cooldown,
-                created_at=now - timedelta(hours=24),
-                updated_at=now - timedelta(hours=24),
+                cooldown_until=_to_naive_utc(past_cooldown),
+                next_due_at=_to_naive_utc(past_cooldown),
+                created_at=_to_naive_utc(now - timedelta(hours=24)),
+                updated_at=_to_naive_utc(now - timedelta(hours=24)),
             )
             session.add(sched)
             session.commit()
@@ -638,19 +607,9 @@ class TestPostgresQueueDurability(unittest.TestCase):
             session.close()
 
         fresh_scheduler = PollScheduler(self.session_factory, clock=lambda: now)
-        enqueued_ids = fresh_scheduler.run_once()
-        self.test_job_ids.extend(enqueued_ids)
+        enqueued_sources = fresh_scheduler.run_once()
 
-        session_check = self.session_factory()
-        try:
-            jobs = session_check.query(WorkerJobRecord).filter(
-                WorkerJobRecord.job_type == "poll_source",
-                WorkerJobRecord.id.in_(enqueued_ids),
-            ).all()
-            remoteok_jobs = [j for j in jobs if json.loads(j.payload_json).get("source_id") == "remoteok"]
-            self.assertEqual(len(remoteok_jobs), 1, "Expired cooldown source must become eligible automatically")
-        finally:
-            session_check.close()
+        self.assertIn("remoteok", enqueued_sources, "Expired cooldown source must become eligible automatically")
 
     def test_7_scheduler_worker_crash_recovery(self) -> None:
         """TEST 7: Scheduler/worker crash recovery: Worker crashes holding lease;
@@ -658,7 +617,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
         lease expires; new worker claims and completes; verify source schedule record
         reflects last_attempt_at / last_success_at appropriately.
         """
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(timezone.utc)
 
         session = self.session_factory()
         try:
@@ -669,9 +628,9 @@ class TestPostgresQueueDurability(unittest.TestCase):
             sched = SourceScheduleRecord(
                 source_id="remoteok",
                 cadence_hours=6.0,
-                next_due_at=now,
-                created_at=now,
-                updated_at=now,
+                next_due_at=_to_naive_utc(now),
+                created_at=_to_naive_utc(now),
+                updated_at=_to_naive_utc(now),
             )
             session.add(sched)
             session.commit()
@@ -700,7 +659,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
 
             sched_row = session2.query(SourceScheduleRecord).filter_by(source_id="remoteok").one()
             self.assertEqual(sched_row.last_status, "ok")
-            self.assertEqual(sched_row.last_success_at, completion_time)
+            self.assertEqual(sched_row.last_success_at, _to_naive_utc(completion_time))
             self.assertEqual(sched_row.consecutive_failures, 0)
         finally:
             session2.close()
@@ -711,7 +670,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
         before work runs, enqueues only due sources or the explicit requested source,
         and leaves feed visible.
         """
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(timezone.utc)
         app = self._make_app()
         client = self._logged_in_client(app)
 
@@ -727,7 +686,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 source_url="https://himalayas.app/jobs/opp-test-1",
                 description="Platform engineer role",
                 content_hash="hash-opp-1",
-                discovered_at=now,
+                created_at=_to_naive_utc(now),
                 raw_payload_json="{}",
             )
             session.add(opp)
@@ -749,7 +708,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 fit_score=90.0,
                 visible=True,
                 search_text="staff platform engineer acme systems",
-                projected_at=now,
+                projected_at=_to_naive_utc(now),
             )
             session.add(proj)
 
@@ -757,16 +716,16 @@ class TestPostgresQueueDurability(unittest.TestCase):
             sched_himalayas = SourceScheduleRecord(
                 source_id="himalayas",
                 cadence_hours=6.0,
-                next_due_at=now - timedelta(hours=1),
-                created_at=now,
-                updated_at=now,
+                next_due_at=_to_naive_utc(now - timedelta(hours=1)),
+                created_at=_to_naive_utc(now),
+                updated_at=_to_naive_utc(now),
             )
             sched_remoteok = SourceScheduleRecord(
                 source_id="remoteok",
                 cadence_hours=6.0,
-                next_due_at=now + timedelta(hours=4),
-                created_at=now,
-                updated_at=now,
+                next_due_at=_to_naive_utc(now + timedelta(hours=4)),
+                created_at=_to_naive_utc(now),
+                updated_at=_to_naive_utc(now),
             )
             session.add_all([sched_himalayas, sched_remoteok])
             session.commit()
@@ -815,7 +774,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
         returns immediately without bulk traversal, worker job is enqueued,
         worker runner executes refresh, projection is published.
         """
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(timezone.utc)
         app = self._make_app()
         client = self._logged_in_client(app)
 
@@ -830,7 +789,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 source_url="https://himalayas.app/jobs/opp-proj-1",
                 description="Backend architecture with python",
                 content_hash="hash-opp-proj-1",
-                discovered_at=now,
+                created_at=_to_naive_utc(now),
                 raw_payload_json="{}",
             )
             eval_record = MatchEvaluationRecord(
@@ -842,7 +801,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 decision="qualified",
                 overall_fit_score=60.0,
                 dimension_scores_json="{}",
-                evaluated_at=now,
+                evaluated_at=_to_naive_utc(now),
             )
             proj = FeedProjectionRecord(
                 id=f"opp-proj-1:{self.truth_pack_hash}:v1",
@@ -862,7 +821,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 fit_score=60.0,
                 visible=True,
                 search_text="lead backend architect beta labs",
-                projected_at=now,
+                projected_at=_to_naive_utc(now),
             )
             session.add_all([opp, eval_record, proj])
             session.commit()
@@ -912,7 +871,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
 
         verify jobs coalesce or execute idempotently without corrupting projection state.
         """
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(timezone.utc)
         app = self._make_app()
         client = self._logged_in_client(app)
 
@@ -927,7 +886,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 source_url="https://himalayas.app/jobs/opp-idemp-1",
                 description="Data pipelines and analytics",
                 content_hash="hash-opp-idemp-1",
-                discovered_at=now,
+                created_at=_to_naive_utc(now),
                 raw_payload_json="{}",
             )
             eval_record = MatchEvaluationRecord(
@@ -939,7 +898,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 decision="qualified",
                 overall_fit_score=95.0,
                 dimension_scores_json="{}",
-                evaluated_at=now,
+                evaluated_at=_to_naive_utc(now),
             )
             proj = FeedProjectionRecord(
                 id=f"opp-idemp-1:{self.truth_pack_hash}:v1",
@@ -959,7 +918,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 fit_score=95.0,
                 visible=True,
                 search_text="data platform engineer gamma corp",
-                projected_at=now,
+                projected_at=_to_naive_utc(now),
             )
             session.add_all([opp, eval_record, proj])
             session.commit()

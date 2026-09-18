@@ -378,6 +378,18 @@ class ApiTestCase(unittest.TestCase):
         assert response.status_code == 200, response.text
         return client
 
+    def drain_maintenance_jobs(self) -> int:
+        from worker.runner import WorkerRunner
+        from worker.handlers import default_handler_registry
+        runner = WorkerRunner(self.session_factory, handlers=default_handler_registry())
+        total = 0
+        while True:
+            processed = runner.run_once()
+            total += processed
+            if processed == 0:
+                break
+        return total
+
     def seed_opportunity(
         self,
         opp_id: str,
@@ -825,6 +837,7 @@ class OpportunityRoutesTest(ApiTestCase):
             "enabled": True, "mode": "hide", "params": {"min_score": 50}
         })
         self.assertEqual(response.status_code, 200, response.text)
+        self.drain_maintenance_jobs()
         self.assertFalse(stored_projection("test-truth-pack-hash")["visible"])
         self.assertEqual(stored_projection("historical-pack-hash"), before_historical)
 
@@ -2520,6 +2533,7 @@ class FilterEngineOpportunitiesTest(ApiTestCase):
             payload["params"] = params
         resp = self.client.put(f"/api/filters/{filter_id}", json=payload)
         self.assertEqual(resp.status_code, 200, resp.text)
+        self.drain_maintenance_jobs()
         return resp.json()
 
     def _items_by_id(self, **params):
@@ -3085,6 +3099,7 @@ class FacetsTest(ApiTestCase):
         for fd in FILTER_DEFINITIONS:
             resp = self.client.put(f"/api/filters/{fd.filter_id}", json={"enabled": False})
             self.assertEqual(resp.status_code, 200, resp.text)
+        self.drain_maintenance_jobs()
 
     def _set_facet(self, facet_id: str, *, include=None, exclude=None):
         payload: dict = {}
@@ -3094,6 +3109,7 @@ class FacetsTest(ApiTestCase):
             payload["exclude"] = exclude
         resp = self.client.put(f"/api/facets/{facet_id}", json=payload)
         self.assertEqual(resp.status_code, 200, resp.text)
+        self.drain_maintenance_jobs()
         return resp.json()
 
     def _default_visible_ids(self) -> set[str]:
@@ -3314,6 +3330,7 @@ class FacetsTest(ApiTestCase):
 
         unhide_resp = self.client.post("/api/hidden-reasons/unhide", json={"reason": "facet: work_mode"})
         self.assertEqual(unhide_resp.status_code, 200, unhide_resp.text)
+        self.drain_maintenance_jobs()
 
         after_visible = self._default_visible_ids()
         self.assertIn("opp-facet-hidden", after_visible)

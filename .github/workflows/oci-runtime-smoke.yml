@@ -78,7 +78,7 @@ jobs:
             --db-url "postgresql+psycopg2://opportunityos:${{ github.run_id }}@127.0.0.1:5432/opportunityos_smoke"
       - name: Install Dependencies
         run: |
-          pip install --no-cache-dir .
+          pip install --no-cache-dir ".[dev]"
       - name: Run PostgreSQL Queue Durability Suite
         env:
           CI: "true"
