@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import shutil
 
 from scripts import validate_cloud_deployment as validator
 
@@ -52,6 +53,35 @@ class CloudDeploymentValidatorTests(unittest.TestCase):
             main = copy / "infra/azure/main.bicep"
             main.write_text(main.read_text(encoding="utf-8") + "\nresource registry 'Microsoft.ContainerRegistry/registries@2023-01-01' = {}\n", encoding="utf-8")
             self.assertTrue(any("foundational" in error for error in validator.validate_package(copy)))
+
+    def test_missing_migration_database_secret_is_rejected(self):
+        root = Path(__file__).parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            copy = Path(tmp)
+            shutil.copytree(root / "infra" / "azure", copy / "infra" / "azure")
+            (copy / ".github" / "workflows").mkdir(parents=True)
+            workflow = root / ".github/workflows/fr007-azure-staging-deploy.yml"
+            shutil.copy2(workflow, copy / ".github/workflows/fr007-azure-staging-deploy.yml")
+            job = copy / "infra/azure/modules/container-job.bicep"
+            text = job.read_text(encoding="utf-8")
+            text = text.replace("      secrets: [\n        {\n          name: 'cloud-database-url'\n          value: cloudDatabaseUrl\n        }\n      ]\n", "")
+            job.write_text(text, encoding="utf-8")
+            errors = validator.validate_package(copy)
+            self.assertTrue(any("declare the database secret" in error for error in errors))
+
+    def test_rollout_without_migration_success_verification_is_rejected(self):
+        root = Path(__file__).parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            copy = Path(tmp)
+            shutil.copytree(root / "infra" / "azure", copy / "infra" / "azure")
+            (copy / ".github" / "workflows").mkdir(parents=True)
+            workflow = root / ".github/workflows/fr007-azure-staging-deploy.yml"
+            target = copy / ".github/workflows/fr007-azure-staging-deploy.yml"
+            text = workflow.read_text(encoding="utf-8")
+            text = text.replace("az containerapp job execution show", "az containerapp job execution inspect")
+            target.write_text(text, encoding="utf-8")
+            errors = validator.validate_package(copy)
+            self.assertTrue(any("verify migration execution status" in error for error in errors))
 
 
 if __name__ == "__main__":
