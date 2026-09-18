@@ -24,21 +24,48 @@ async function proxyRequest(
   // 1. In Cloudflare runtime / environment: process.env.OPPORTUNITYOS_API_ORIGIN
   // 2. In local dev fallback: http://localhost:<OPPORTUNITYOS_API_PORT || 8000>
   const configuredOrigin = process.env.OPPORTUNITYOS_API_ORIGIN?.trim();
+  const cloudEdge = process.env.OPPORTUNITYOS_CLOUD_EDGE === "1";
 
   let targetOrigin: string;
   if (configuredOrigin) {
-    // Cloud / Staging proxy safety: MUST be HTTPS only!
-    if (!configuredOrigin.startsWith("https://")) {
-      return new NextResponse(
-        JSON.stringify({
-          error: "Configuration Error: OPPORTUNITYOS_API_ORIGIN must use HTTPS in staging/production.",
-        }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
+    let parsed: URL;
+    try {
+      parsed = new URL(configuredOrigin);
+    } catch {
+      return NextResponse.json(
+        { error: "Configuration Error: OPPORTUNITYOS_API_ORIGIN is invalid." },
+        { status: 500 }
       );
     }
-    targetOrigin = configuredOrigin.replace(/\/+$/, "");
+    if (
+      parsed.protocol !== "https:" ||
+      parsed.username ||
+      parsed.password ||
+      parsed.pathname !== "/" ||
+      parsed.search ||
+      parsed.hash
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Configuration Error: OPPORTUNITYOS_API_ORIGIN must be a credential-free HTTPS origin.",
+        },
+        { status: 500 }
+      );
+    }
+    targetOrigin = parsed.origin;
   } else {
-    // Fallback for local development if called directly without next.config rewrite
+    if (cloudEdge) {
+      return NextResponse.json(
+        {
+          error:
+            "Configuration Error: OPPORTUNITYOS_API_ORIGIN is required on the cloud edge.",
+        },
+        { status: 500 }
+      );
+    }
+    // Local-development fallback only. Cloudflare staging sets
+    // OPPORTUNITYOS_CLOUD_EDGE=1 and therefore can never reach localhost.
     const port = process.env.OPPORTUNITYOS_API_PORT || "8000";
     targetOrigin = `http://localhost:${port}`;
   }
@@ -75,11 +102,23 @@ async function proxyRequest(
     const resHeaders = new Headers();
     upstreamRes.headers.forEach((value, key) => {
       const lower = key.toLowerCase();
-      // Forward all response headers including set-cookie, content-type, content-disposition
-      if (!FORBIDDEN_HEADERS.has(lower)) {
+      if (!FORBIDDEN_HEADERS.has(lower) && lower !== "set-cookie") {
         resHeaders.append(key, value);
       }
     });
+
+    // Preserve multiple Set-Cookie headers independently when the runtime
+    // exposes getSetCookie(); collapsing them can corrupt auth/session state.
+    const cookieHeaders = upstreamRes.headers as Headers & {
+      getSetCookie?: () => string[];
+    };
+    const setCookies = cookieHeaders.getSetCookie?.() ?? [];
+    if (setCookies.length > 0) {
+      for (const cookie of setCookies) resHeaders.append("set-cookie", cookie);
+    } else {
+      const cookie = upstreamRes.headers.get("set-cookie");
+      if (cookie) resHeaders.append("set-cookie", cookie);
+    }
 
     return new NextResponse(upstreamRes.body, {
       status: upstreamRes.status,
