@@ -1,157 +1,178 @@
 # OpportunityOS Current Architecture
 
-This document is a compact map of the architecture that exists now. Detailed requirement history remains in `docs/MASTER_PLAN.md`, ADRs, briefs, and reports.
+This document is the compact map of the architecture that exists now. Detailed requirement history remains in `docs/MASTER_PLAN.md`, ADRs, briefs and reports.
 
 ## Product Flow
 
-Current intended system flow:
+`discover -> ingest -> qualify -> score -> persist projection -> truth-locked tailor -> prepare/fill/controlled-submit -> monitor outcomes -> learn safely`
 
-`discover -> ingest -> qualify -> score -> truth-locked tailor -> prepare/fill/controlled-submit -> monitor outcomes -> learn safely`
-
-OPOS serves both employment and independent professional opportunity tracks, including contract, freelance/consulting, and procurement use cases.
+OPOS serves employment and independent professional opportunity tracks, including contract, freelance/consulting and procurement use cases.
 
 ## Authority Layers
 
 ### Founder Truth / Provenance
 
-The Truth Graph and `EvidenceClaim` model are the factual authority for material founder claims.
+The Truth Graph and evidence-backed founder profile remain the factual authority for material founder claims.
 
 Core invariants:
 
-- generated artifacts may select, reorder, summarize, and rewrite verified facts;
-- they may not invent employers, dates, titles, skills, credentials, outcomes, work authorization, compensation, availability, legal declarations, or other material facts/commitments;
+- generated artifacts may select, reorder, summarize and rewrite verified facts;
+- they may not invent employers, dates, titles, skills, credentials, outcomes, work authorization, compensation, availability, legal declarations or other material commitments;
 - material claims remain traceable to evidence;
-- credential states are explicit;
 - planned credentials never become held;
-- open-world semantics apply: unknown/absent is not false/ineligible.
-
-This authority is reused by later generators and outbound answers. Do not create a weaker parallel truth path.
+- open-world semantics apply: unknown/absent is not false/ineligible;
+- private Founder truth is not committed to Git or exposed broadly to the browser.
 
 ### Opportunity Discovery and Ingestion
 
-The opportunity layer normalizes multiple opportunity classes and sources under a central source-policy registry.
+The opportunity layer normalizes multiple opportunity classes under the central source-policy registry.
 
-Established capabilities include:
+Coverage is never permission. 403/429/CAPTCHA/MFA/verification and policy restrictions remain stop conditions.
 
-- employment, contract, freelance/consulting, and procurement opportunity types;
-- source registry at runtime;
-- source-policy/access-state tracking;
-- source health and schema/transport observations;
-- atomic provenance;
-- geographic eligibility classification;
-- conservative cross-source dedupe;
-- conservative compensation parsing;
-- ATS/source-specific adapters where permitted.
-
-Coverage is never permission. A source can be discoverable and still be manual-only or prohibited for automation.
+Polling is asynchronous. A source failure must not take down unrelated sources or interactive feed access.
 
 ### Matching and Qualification
 
-Matching is evidence-aware and explainable.
+Matching remains evidence-aware and explainable.
 
-Key rules:
+Hard rejection requires an explicit opportunity requirement plus a verified Founder conflict or explicit versioned policy. Missing evidence does not become a negative fact.
 
-- hard rejection requires an explicit opportunity requirement plus a verified founder conflict or an explicit versioned policy;
-- missing evidence does not become a negative fact;
-- auto-rejection remains disabled unless its founder-labeled precision requirement is actually met;
-- scoring may rank evidence but may not fabricate fit;
-- requirement/evidence status must remain inspectable.
+### Persisted Founder Feed
 
-Current Founder Web work adds richer extraction, title-family normalization, proficiency-aware skills, seniority derived from tenure/leadership evidence, clustering, facets, search, and user-facing cards.
+The normal feed path is a durable SQL read model.
+
+`feed_projection` binds opportunity state to a Founder truth-pack/profile hash and stores the founder-facing qualification/ranking/visibility/search projection.
+
+Interactive feed/search/filter requests do not rebuild the corpus, repoll sources or reevaluate the full corpus in Python.
+
+Founder settings/facet/unhide changes enqueue durable projection-refresh maintenance. The previous projection remains readable until the worker publishes the updated projection.
+
+### Durable Background Work
+
+`worker_jobs` is the PostgreSQL-backed durable queue.
+
+Properties include:
+
+- persisted jobs;
+- PENDING/RETRY/RUNNING/completed/dead-letter lifecycle;
+- leases and lease expiry;
+- fenced completion;
+- `SELECT ... FOR UPDATE SKIP LOCKED`;
+- retry behavior;
+- worker crash recovery;
+- no external broker requirement for FR-007.
+
+`source_schedules` persists per-source:
+
+- cadence;
+- next due;
+- last attempt;
+- last success;
+- cooldown/Retry-After;
+- failure/status state.
+
+Scheduler restarts therefore do not imply an all-source warm-up.
+
+### Poll Now
+
+Generic Poll Now means “enqueue currently due and eligible work”, not “poll every source now”.
+
+It returns after durable enqueue and never waits for source acquisition or evaluation.
+
+A permitted explicit source may be requested according to the source-policy/cooldown/active-job contract.
 
 ### Artifact Generation
 
-Employment and independent-work artifacts are truth-locked.
+Employment and independent-work artifacts remain truth-locked.
 
-Current document architecture includes structured CV/cover-letter models, multiple ATS templates, DOCX/PDF output, preview, artifact validation, and claim-support inspection.
-
-Artifact authority is bound to the correct founder/workspace/opportunity/truth-pack state. Stale, unsupported, or wrongly owned artifacts must fail closed.
+Generated bytes are currently represented by the canonical artifact cache contract; FR-007 still requires final production placement in private durable object storage with authorized retrieval and version binding.
 
 ### Outbound Action Authority
 
-Outbound action is governed by explicit execution modes and source/action permissions.
+Execution modes remain:
 
-Modes:
+- `DRY_RUN` — default, no external mutation;
+- `ASSISTED` — may navigate/fill/upload where allowed, never submit;
+- `CONTROLLED_SUBMIT` — only for explicitly graduated/authorized paths.
 
-- `DRY_RUN` - default, no external mutation;
-- `ASSISTED` - may navigate/fill/upload where allowed, must not submit;
-- `CONTROLLED_SUBMIT` - only for individually graduated adapters/actions with explicit authority and all pre-submit checks satisfied.
+CAPTCHA/MFA/bot challenges stop execution. Duplicate submission tolerance remains zero. `UNKNOWN_OUTCOME` never auto-retries.
 
-Critical invariants:
+## Cloud Runtime Architecture — FR-007
 
-- Yellow/policy answers require explicit versioned policy authority;
-- Red/legal/sensitive/ambiguous questions pause unless exact founder-approved authority exists;
-- global kill switch is checked immediately before side effect;
-- CAPTCHA/MFA/bot challenges stop execution;
-- durable atomic reservation/idempotency prevents duplicate submission;
-- uncertain external outcome becomes `UNKNOWN_OUTCOME`, never automatic retry;
-- success requires confirmation evidence, not a button click;
-- adapter graduation evidence must be real and persisted, not synthetic text hashed into authority.
+### Data plane
 
-### Operational Autonomy / Feedback
+PostgreSQL/Supabase is the target managed production source of truth.
 
-The later operational layer owns inbound/recruiter/client signal processing, pipeline synchronization, outcome monitoring, analytics, and safe learning loops without weakening deterministic truth authority.
+The repository remains migration authority.
 
-The system should automate repetitive monitoring/orchestration while preserving founder judgment at interviews, negotiation, ambiguous legal/commercial commitments, and other explicitly human gates.
+Browser-visible data must be explicitly RLS-protected when the final browser data plane is wired.
 
-### Founder Web Alpha
+### Compute plane
 
-The current FR series builds the founder-facing product/control plane over the earlier engine.
+One OCI image exposes explicit roles:
 
-At current `main`, work through BRIEF-FR-005 is shipped and BRIEF-FR-006 is active/not closed.
+- `api` — HTTP/session/domain API;
+- `worker` — durable queue consumer;
+- `scheduler` — due-only scheduler;
+- `migrate` — one-shot Alembic migration.
 
-BRIEF-FR-006 has delivered substantial founder-control and document/search improvements, including:
+Business/domain code is provider-neutral. Azure Container Apps/Jobs is the preferred initial deployment surface when available under the Founder/student entitlement without weakening the acceptance contract.
 
-- richer opportunity extraction;
-- seniority/skills/title-family corrections;
-- deterministic family clustering;
-- facets and full-text search;
-- improved cards with work mode/location/remote scope;
-- structured CV/document generation and preview;
-- saved views and founder-control storage;
-- artifact caching;
-- expanded source registry and board discovery machinery.
+### Truth Pack
 
-Its current limiting gap is source breadth/real feed yield, not the existence of the core matching/document machinery.
+Cloud mode accepts remote HTTPS Truth Pack loading with SHA-256 integrity verification and refuses silent local-file fallback.
 
-## Storage and State
+The final production private storage location is still an FR-007 deployment task.
 
-OPOS uses persistent database-backed state and migrations. Concurrency, idempotency, transaction boundaries, and migration backfills are correctness properties, not implementation details.
+### Storage
 
-Current architecture includes generated `docs/STATE.md` as a repository-state projection. It must be regenerated from the generator and never hand-edited.
+Generated artifacts and private uploaded assets required at runtime must end in private durable object storage. Ephemeral container disk is never authoritative.
 
-## Source Policy and Transport
+### Frontend edge
 
-The source registry distinguishes measured access behavior from permission.
+The frontend is independently deployable behind Cloudflare. It must not depend on the Founder PC or a local tunnel for correctness.
 
-- rate limits and transport failures are recorded rather than reinterpreted;
-- 403/429/CAPTCHA/MFA/verification are stop conditions, not bypass targets;
-- read-only POST is permitted only where explicitly documented as semantically read-only, such as the TED search exception;
-- direct fetch paths must not bypass the central policy/acquisition authority.
+### Backup / portability
+
+Repository tooling supports migration baseline, logical backup/restore, parity and provider-exit checks.
+
+FR-007 still requires real encrypted off-provider backup, fresh-environment restore and provider-exit execution evidence.
+
+## Reliability Invariants
+
+1. Opening the feed never polls sources or rebuilds the corpus.
+2. Every feed row is served from durable database state/projection.
+3. Process restart cannot invalidate correctness.
+4. Poll/evaluate/artifact/maintenance work is asynchronous and persisted where required.
+5. Failed source/worker processes do not take down the existing feed.
+6. Source permissions and cooldowns are never widened by cloud migration.
+7. Canonical identity/dedup remain deterministic across retries/redeploys.
+8. Private Founder truth and secrets never enter Git.
+9. Backups are valid only after restore proof.
+10. Provider-specific deployment may be replaced without rewriting domain logic.
 
 ## Tenancy
 
-Current product posture remains founder/single-user through the current Founder Web Alpha phase under accepted tenancy decisions.
+The product remains single-Founder for FR-007.
 
-Multi-tenant Family Alpha / BRIEF-007 remains blocked until the Founder Web Alpha is live and validated. Do not prematurely expand tenancy merely because the schema anticipates later isolation.
+BRIEF-007 / Multi-Tenant Family Alpha remains blocked until the reliable cloud-hosted Founder Alpha is accepted and personally validated.
 
-## Repository/Governance
+## Repository / Governance
 
 - private `opportunityos` is authoritative;
-- public `opportunityos-docs` mirrors only allowlisted documentation;
-- private founder truth/personal/application/credential data never enters the public mirror;
-- one branch per brief and isolated worktrees for writable parallel work;
-- deterministic gates, CI, persisted evidence, and independent review govern high-consequence closure;
-- the Owner/Overseer independently decides final PASS/NOT PASS.
+- public docs mirror receives only allowlisted material;
+- repository/runtime evidence outranks executor reports;
+- generated `docs/STATE.md` is a projection and must match repository facts;
+- consequential changes receive independent Overseer verification;
+- ordinary last-mile repair follows `docs/OVERSEER_EXECUTION_LOCK.md`;
+- final PASS/NOT PASS closure belongs to the Owner/Overseer.
 
 ## Detailed References
 
-Use task-specific sources rather than expanding this file:
-
 - truth/product law: `docs/PRODUCT_CONSTITUTION.md`
-- architecture decisions: `docs/adr/`
+- cloud architecture: `docs/adr/ADR-0022-cloud-native-runtime-and-supabase-data-plane.md`
 - full plan: `docs/MASTER_PLAN.md`
-- source details: `docs/SOURCE_REGISTRY.yaml`, `docs/SOURCE_EVIDENCE.md`
+- active FR-007 brief: repository FR-007 brief
 - execution: `docs/AGENT_EXECUTION_PROTOCOL.md`
+- Overseer loop: `docs/OVERSEER_EXECUTION_LOCK.md`
 - current state: `docs/STATE.md`
-- current brief/report/evidence under `briefs/`, `reports/`, and `reports/evidence/`.
