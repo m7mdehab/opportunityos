@@ -11,7 +11,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `f762d33` — FR-007 integrate W13B web/wrangler.jsonc
+- **State generated at commit:** `8b12d49` — integrate W14A after W13B: truth/pack.py
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
