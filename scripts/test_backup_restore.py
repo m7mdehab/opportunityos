@@ -47,6 +47,7 @@ from storage.models import (
     FounderFacetRecord,
     FounderSavedViewRecord,
     ArtifactCacheRecord,
+    SourceScheduleRecord,
 )
 import scripts.backup_restore as backup_restore
 from scripts.backup_restore import (
@@ -385,6 +386,20 @@ class TestBackupRestorePostgres(unittest.TestCase):
             payload=artifact_payload,
             created_at=artifact_created_at,
         ))
+        sched_next_due = datetime(2026, 9, 2, 14, 0, 0)
+        session.add(SourceScheduleRecord(
+            source_id="himalayas",
+            cadence_hours=6.0,
+            last_attempt_at=datetime(2026, 9, 2, 8, 0, 0),
+            last_success_at=datetime(2026, 9, 2, 8, 0, 0),
+            next_due_at=sched_next_due,
+            cooldown_until=None,
+            consecutive_failures=0,
+            last_status="ok",
+            error_message=None,
+            created_at=datetime(2026, 9, 1, 0, 0, 0),
+            updated_at=datetime(2026, 9, 2, 8, 0, 0),
+        ))
         session.commit()
         session.close()
         engine.dispose()
@@ -515,6 +530,12 @@ class TestBackupRestorePostgres(unittest.TestCase):
         self.assertEqual(artifact.content_type, "application/pdf")
         self.assertEqual(bytes(artifact.payload), artifact_payload, "the base64-encoded payload path must round-trip byte-for-byte")
         self.assertEqual(artifact.created_at, artifact_created_at)
+
+        sched = dst_session.query(SourceScheduleRecord).filter_by(source_id="himalayas").first()
+        self.assertIsNotNone(sched, "source_schedules row must survive restore")
+        self.assertEqual(sched.cadence_hours, 6.0)
+        self.assertEqual(sched.next_due_at, sched_next_due)
+        self.assertEqual(sched.last_status, "ok")
 
         # 5. The restored target has the Alembic head stamped (read the
         # head from the script directory, never hard-coded).

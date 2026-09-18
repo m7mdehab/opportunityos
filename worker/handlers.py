@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Mapping, MutableMapping, Optional
 
 from sqlalchemy import or_
@@ -57,7 +57,7 @@ from opportunity.persistence import persist_batch
 from opportunity.pipeline import OpportunityPipeline
 from opportunity.registry import SourceRegistry
 from opportunity.transport import AcquisitionService, BaseTransport, HttpTransport, RateLimiter
-from storage.models import FieldProvenanceRecord, MatchEvaluationRecord, OpportunityRecord, SourcePollRunRecord
+from storage.models import FieldProvenanceRecord, MatchEvaluationRecord, OpportunityRecord, SourcePollRunRecord, SourceScheduleRecord
 from storage.feed_projection import FeedProjectionRecord
 try:
     # A1M's own reextract_all interface point (see below) into the concurrent
@@ -141,6 +141,41 @@ def _production_session_factory() -> Any:
     return get_session_factory(engine)
 
 
+def _update_source_schedule(
+    session: Any,
+    source_id: str,
+    started_at: datetime,
+    status: str,
+    *,
+    finished_at: Optional[datetime] = None,
+    error_message: Optional[str] = None,
+    cooldown_seconds: Optional[float] = None,
+) -> None:
+    """Update durable SourceScheduleRecord state to keep cadence and cooldowns in sync."""
+    sched = session.query(SourceScheduleRecord).filter_by(source_id=source_id).first()
+    if sched is None:
+        return
+    fin = finished_at or datetime.now(timezone.utc)
+    sched.last_attempt_at = _to_utc_naive(started_at)
+    sched.updated_at = _to_utc_naive(fin)
+    sched.last_status = status
+    sched.error_message = error_message
+    if status == "ok":
+        sched.last_success_at = _to_utc_naive(fin)
+        sched.consecutive_failures = 0
+        sched.cooldown_until = None
+        sched.next_due_at = _to_utc_naive(started_at + timedelta(hours=sched.cadence_hours))
+    elif status == BLOCKED_POLL_STATUS:
+        sched.consecutive_failures += 1
+        cd_secs = cooldown_seconds if cooldown_seconds is not None else 3600.0
+        cd_until = _to_utc_naive(fin + timedelta(seconds=cd_secs))
+        sched.cooldown_until = cd_until
+        if sched.next_due_at is None or cd_until > sched.next_due_at:
+            sched.next_due_at = cd_until
+    else:
+        sched.consecutive_failures += 1
+
+
 def _write_poll_run_record(
     resolve_session_factory: Callable[[], SessionFactory],
     *,
@@ -155,6 +190,7 @@ def _write_poll_run_record(
     unchanged: int = 0,
     updated: int = 0,
     error_message: Optional[str] = None,
+    cooldown_seconds: Optional[float] = None,
 ) -> None:
     """Write one ``source_poll_runs`` row on its own, independent session.
 
@@ -187,12 +223,13 @@ def _write_poll_run_record(
 
     session = session_factory()
     try:
+        now_utc = datetime.now(timezone.utc)
         record = SourcePollRunRecord(
             id=f"spr-{uuid.uuid4().hex[:16]}",
             source_id=source_id,
             job_id=job_id,
             started_at=_to_utc_naive(started_at),
-            finished_at=_to_utc_naive(datetime.now(timezone.utc)),
+            finished_at=_to_utc_naive(now_utc),
             status=status,
             refusal_reason=refusal_reason,
             raw_ingested=raw_ingested,
@@ -203,6 +240,15 @@ def _write_poll_run_record(
             error_message=error_message,
         )
         session.add(record)
+        _update_source_schedule(
+            session,
+            source_id,
+            started_at,
+            status,
+            finished_at=now_utc,
+            error_message=error_message,
+            cooldown_seconds=cooldown_seconds,
+        )
         session.commit()
     except Exception:
         session.rollback()
@@ -542,6 +588,15 @@ def make_poll_source_handler(
                 updated=result.updated_count,
             )
             session.add(poll_run)
+            cd_secs = 3600.0 if (blocked_report is not None and blocked_report.status == SourceHealthStatus.RATE_LIMITED) else (86400.0 if blocked_report is not None else None)
+            _update_source_schedule(
+                session,
+                source_id,
+                started_at,
+                poll_run.status,
+                finished_at=datetime.now(timezone.utc),
+                cooldown_seconds=cd_secs,
+            )
             session.commit()
             logger.info(
                 "worker.poll_source_persisted",
@@ -1151,5 +1206,84 @@ def default_handler_registry(
             session_factory=session_factory,
             registry=registry,
         ),
+        "refresh_feed_projections": make_refresh_feed_projections_handler(
+            session_factory=session_factory,
+            truth_pack_path=truth_pack_path,
+            pack_loader=pack_loader,
+        ),
     }
+
+
+def make_refresh_feed_projections_handler(
+    *,
+    session_factory: Optional[SessionFactory] = None,
+    truth_pack_path: Optional[Any] = None,
+    pack_loader: Optional[PackLoader] = None,
+) -> Callable[[dict], None]:
+    """Build a handler for ``refresh_feed_projections`` background jobs.
+
+    Asynchronously refreshes feed projections scoped to the authoritative
+    loaded truth_pack_hash without blocking founder settings requests.
+    """
+    _session_factory_holder: list[Optional[SessionFactory]] = [session_factory]
+    pack_loader_fn = pack_loader or load_founder_pack
+
+    def _resolve_session_factory() -> SessionFactory:
+        if _session_factory_holder[0] is None:
+            _session_factory_holder[0] = _production_session_factory()
+        return _session_factory_holder[0]
+
+    def handler(payload: dict) -> None:
+        target_hash = payload.get("truth_pack_hash") if payload else None
+        if not target_hash:
+            logger.warning(
+                "worker.refresh_projections_no_hash",
+                extra={"component": "worker.handlers"},
+            )
+            return
+
+        try:
+            pack = pack_loader_fn(truth_pack_path)
+        except (TruthPackMissing, TruthPackInvalid) as exc:
+            logger.warning(
+                "worker.refresh_projections_skipped_no_pack",
+                extra={"component": "worker.handlers", "extra_data": {"reason": type(exc).__name__}},
+            )
+            raise
+
+        if pack.truth_pack_hash != target_hash:
+            logger.info(
+                "worker.refresh_projections_hash_mismatch",
+                extra={
+                    "component": "worker.handlers",
+                    "extra_data": {"expected": target_hash, "current": pack.truth_pack_hash},
+                },
+            )
+            return
+
+        session = _resolve_session_factory()()
+        try:
+            from storage.feed_projection_service import refresh_existing_feed_projections
+
+            count = refresh_existing_feed_projections(
+                session,
+                truth_graph=pack.graph,
+                truth_pack_hash=target_hash,
+            )
+            session.commit()
+            logger.info(
+                "worker.refresh_projections_completed",
+                extra={
+                    "component": "worker.handlers",
+                    "extra_data": {"refreshed_count": count, "truth_pack_hash": target_hash},
+                },
+            )
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    return handler
+
 
