@@ -652,7 +652,13 @@ class TestPostgresQueueDurability(unittest.TestCase):
 
             # Handler updates source schedule on success
             completion_time = now + timedelta(minutes=5)
-            _update_source_schedule(session2, "remote_ok", "ok", completion_time)
+            _update_source_schedule(
+                session2,
+                "remote_ok",
+                now,
+                "ok",
+                finished_at=completion_time,
+            )
             ok = q2.complete_job(job_id)
             self.assertTrue(ok)
             session2.commit()
@@ -690,6 +696,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 raw_payload_json="{}",
             )
             session.add(opp)
+            session.flush()  # Materialize FK parent before inserting feed_projection.
             proj = FeedProjectionRecord(
                 id=f"opp-test-1:{self.truth_pack_hash}:v1",
                 opportunity_id="opp-test-1",
@@ -708,8 +715,8 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 fit_score=90.0,
                 visible=True,
                 search_text="staff platform engineer acme systems",
-                evaluated_at=_to_naive_utc(now),
-                projected_at=_to_naive_utc(now),
+                evaluated_at=now,
+                projected_at=now,
             )
             session.add(proj)
 
@@ -793,15 +800,17 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 created_at=_to_naive_utc(now),
                 raw_payload_json="{}",
             )
+            session.add(opp)
+            session.flush()
             eval_record = MatchEvaluationRecord(
                 id="eval-proj-1",
                 opportunity_id="opp-proj-1",
-                opportunity_content_hash="hash-opp-proj-1",
                 truth_pack_hash=self.truth_pack_hash,
-                evaluator_version="v1",
-                decision="qualified",
-                overall_fit_score=60.0,
-                dimension_scores_json="{}",
+                qualification_decision="qualified",
+                fit_score=60.0,
+                dimension_scores_json="[]",
+                reasons_json="[]",
+                policy_version="v1",
                 evaluated_at=_to_naive_utc(now),
             )
             proj = FeedProjectionRecord(
@@ -822,17 +831,17 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 fit_score=60.0,
                 visible=True,
                 search_text="lead backend architect beta labs",
-                evaluated_at=_to_naive_utc(now),
-                projected_at=_to_naive_utc(now),
+                evaluated_at=now,
+                projected_at=now,
             )
-            session.add_all([opp, eval_record, proj])
+            session.add_all([eval_record, proj])
             session.commit()
         finally:
             session.close()
 
         # Update filter f_min_fit to 80.0
         res = client.put(
-            "/api/filters/f_min_fit",
+            "/api/filters/min_fit_score",
             json={"enabled": True, "params": {"min_score": 80.0}},
         )
         self.assertEqual(res.status_code, 200)
@@ -850,7 +859,14 @@ class TestPostgresQueueDurability(unittest.TestCase):
             session_check.close()
 
         # Run worker to execute projection maintenance
-        runner = WorkerRunner(self.session_factory, handlers=default_handler_registry())
+        runner = WorkerRunner(
+            self.session_factory,
+            handlers=default_handler_registry(
+                session_factory=self.session_factory,
+                truth_pack_path=self.valid_pack_path,
+            ),
+            worker_id="pg-maintenance-test-9",
+        )
         processed = runner.run_once()
         self.assertGreater(processed, 0)
 
@@ -891,15 +907,17 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 created_at=_to_naive_utc(now),
                 raw_payload_json="{}",
             )
+            session.add(opp)
+            session.flush()
             eval_record = MatchEvaluationRecord(
                 id="eval-idemp-1",
                 opportunity_id="opp-idemp-1",
-                opportunity_content_hash="hash-opp-idemp-1",
                 truth_pack_hash=self.truth_pack_hash,
-                evaluator_version="v1",
-                decision="qualified",
-                overall_fit_score=95.0,
-                dimension_scores_json="{}",
+                qualification_decision="qualified",
+                fit_score=95.0,
+                dimension_scores_json="[]",
+                reasons_json="[]",
+                policy_version="v1",
                 evaluated_at=_to_naive_utc(now),
             )
             proj = FeedProjectionRecord(
@@ -920,8 +938,8 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 fit_score=95.0,
                 visible=True,
                 search_text="data platform engineer gamma corp",
-                evaluated_at=_to_naive_utc(now),
-                projected_at=_to_naive_utc(now),
+                evaluated_at=now,
+                projected_at=now,
             )
             session.add_all([opp, eval_record, proj])
             session.commit()
@@ -929,15 +947,22 @@ class TestPostgresQueueDurability(unittest.TestCase):
             session.close()
 
         # Fire multiple rapid filter updates
-        r1 = client.put("/api/filters/f_min_fit", json={"enabled": True, "params": {"min_score": 70.0}})
-        r2 = client.put("/api/filters/f_min_fit", json={"enabled": True, "params": {"min_score": 75.0}})
-        r3 = client.put("/api/filters/f_min_fit", json={"enabled": True, "params": {"min_score": 80.0}})
+        r1 = client.put("/api/filters/min_fit_score", json={"enabled": True, "params": {"min_score": 70.0}})
+        r2 = client.put("/api/filters/min_fit_score", json={"enabled": True, "params": {"min_score": 75.0}})
+        r3 = client.put("/api/filters/min_fit_score", json={"enabled": True, "params": {"min_score": 80.0}})
         self.assertEqual(r1.status_code, 200)
         self.assertEqual(r2.status_code, 200)
         self.assertEqual(r3.status_code, 200)
 
         # Run worker until all projection refresh jobs are drained
-        runner = WorkerRunner(self.session_factory, handlers=default_handler_registry())
+        runner = WorkerRunner(
+            self.session_factory,
+            handlers=default_handler_registry(
+                session_factory=self.session_factory,
+                truth_pack_path=self.valid_pack_path,
+            ),
+            worker_id="pg-maintenance-test-10",
+        )
         while True:
             done = runner.run_once()
             if done == 0:
