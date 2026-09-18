@@ -8,6 +8,7 @@ param minReplicas int
 param maxReplicas int
 @secure()
 param cloudDatabaseUrl string
+@secure()
 param truthPackUri string = ''
 param truthPackHash string = ''
 @secure()
@@ -27,7 +28,9 @@ resource app 'Microsoft.App/containerApps@2023-05-01' = {
     configuration: union({
       secrets: concat([
         { name: 'cloud-database-url'; value: cloudDatabaseUrl }
-      ], isApi ? [
+      ], (isApi || isWorker) ? [
+        { name: 'truth-pack-uri'; value: truthPackUri }
+      ] : [], isApi ? [
         { name: 'founder-password'; value: founderPassword }
         { name: 'session-secret'; value: sessionSecret }
       ] : [])
@@ -50,11 +53,11 @@ resource app 'Microsoft.App/containerApps@2023-05-01' = {
           ], isApi ? [
             { name: 'OPPORTUNITYOS_FOUNDER_PASSWORD'; secretRef: 'founder-password' }
             { name: 'OPPORTUNITYOS_SESSION_SECRET'; secretRef: 'session-secret' }
-            { name: 'OPPORTUNITYOS_TRUTH_PACK_URI'; value: truthPackUri }
+            { name: 'OPPORTUNITYOS_TRUTH_PACK_URI'; secretRef: 'truth-pack-uri' }
             { name: 'OPPORTUNITYOS_TRUTH_PACK_HASH'; value: truthPackHash }
             { name: 'OPPORTUNITYOS_FORCE_SECURE_COOKIES'; value: '1' }
           ] : isWorker ? [
-            { name: 'OPPORTUNITYOS_TRUTH_PACK_URI'; value: truthPackUri }
+            { name: 'OPPORTUNITYOS_TRUTH_PACK_URI'; secretRef: 'truth-pack-uri' }
             { name: 'OPPORTUNITYOS_TRUTH_PACK_HASH'; value: truthPackHash }
           ] : [])
         }
