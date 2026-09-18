@@ -195,6 +195,24 @@ class TestPostgresQueueDurability(unittest.TestCase):
         self.assertEqual(res.status_code, 200, res.text)
         return client
 
+    def _registry(self, *source_ids: str, disabled: tuple[str, ...] = ()) -> SourceRegistry:
+        path = Path(self.tmp_dir) / f"registry-{uuid.uuid4().hex}.yaml"
+        chunks = ["sources:"]
+        disabled_set = set(disabled)
+        for source_id in source_ids:
+            read_state = "disabled" if source_id in disabled_set else "allowed"
+            chunks.extend([
+                f"  - source_id: {source_id}",
+                f"    name: \"{source_id}\"",
+                "    category: job_board",
+                f"    read: {read_state}",
+                "    status: active",
+                "    policy_status: approved",
+                "    poll_cadence_hours: 6",
+            ])
+        path.write_text("\n".join(chunks) + "\n", encoding="utf-8")
+        return SourceRegistry(registry_path=path)
+
     # -------------------------------------------------------------------------
     # Baseline Queue Durability Tests
     # -------------------------------------------------------------------------
@@ -389,11 +407,12 @@ class TestPostgresQueueDurability(unittest.TestCase):
             session.close()
 
         # Simulate fresh process restart
-        fresh_scheduler = PollScheduler(self.session_factory, clock=lambda: now)
+        fresh_scheduler = PollScheduler(
+            self.session_factory, registry=self._registry("remote_ok"), clock=lambda: now
+        )
         enqueued_sources = fresh_scheduler.run_once()
 
-        # Remoteok is not due; verify it was not enqueued
-        self.assertNotIn("remote_ok", enqueued_sources, "Not-due source must not be enqueued on restart")
+        self.assertEqual(enqueued_sources, [], "Restart must enqueue no not-due source")
 
         session_check = self.session_factory()
         try:
@@ -437,11 +456,14 @@ class TestPostgresQueueDurability(unittest.TestCase):
             session.close()
 
         # Simulate process restart with fresh scheduler instance
-        fresh_scheduler = PollScheduler(self.session_factory, clock=lambda: now)
+        fresh_scheduler = PollScheduler(
+            self.session_factory,
+            registry=self._registry("remote_ok", "himalayas"),
+            clock=lambda: now,
+        )
         enqueued_sources = fresh_scheduler.run_once()
 
-        self.assertIn("remote_ok", enqueued_sources, "Due source must be enqueued on fresh scheduler startup")
-        self.assertNotIn("himalayas", enqueued_sources, "Non-due source must not be enqueued")
+        self.assertEqual(enqueued_sources, ["remote_ok"], "Only the due source may enqueue after restart")
 
         session_check = self.session_factory()
         try:
@@ -489,17 +511,14 @@ class TestPostgresQueueDurability(unittest.TestCase):
         finally:
             session.close()
 
-        fresh_scheduler = PollScheduler(self.session_factory, clock=lambda: now)
+        registry = self._registry(
+            "remote_ok", "himalayas", "jobicy", "fixture_disabled",
+            disabled=("fixture_disabled",),
+        )
+        fresh_scheduler = PollScheduler(self.session_factory, registry=registry, clock=lambda: now)
         enqueued_sources = fresh_scheduler.run_once()
 
-        self.assertIn("remote_ok", enqueued_sources)
-        self.assertNotIn("himalayas", enqueued_sources)
-        self.assertNotIn("jobicy", enqueued_sources)
-        # Verify read_disabled sources from registry are never enqueued
-        reg = SourceRegistry()
-        read_disabled = [s for s in reg._sources if not reg.is_read_allowed(s)]
-        for s in read_disabled:
-            self.assertNotIn(s, enqueued_sources)
+        self.assertEqual(enqueued_sources, ["remote_ok"], "Mixed restart state must enqueue only the due subset")
 
     def test_4_concurrent_schedulers(self) -> None:
         """TEST 4: Concurrent schedulers: Run two scheduler ticks simultaneously on the same DB;
@@ -522,8 +541,9 @@ class TestPostgresQueueDurability(unittest.TestCase):
         finally:
             session.close()
 
-        sched1 = PollScheduler(self.session_factory, clock=lambda: now)
-        sched2 = PollScheduler(self.session_factory, clock=lambda: now)
+        registry = self._registry("remote_ok")
+        sched1 = PollScheduler(self.session_factory, registry=registry, clock=lambda: now)
+        sched2 = PollScheduler(self.session_factory, registry=registry, clock=lambda: now)
 
         barrier = threading.Barrier(2)
         thread_errors: list[BaseException] = []
@@ -579,10 +599,12 @@ class TestPostgresQueueDurability(unittest.TestCase):
         finally:
             session.close()
 
-        fresh_scheduler = PollScheduler(self.session_factory, clock=lambda: now)
+        fresh_scheduler = PollScheduler(
+            self.session_factory, registry=self._registry("remote_ok"), clock=lambda: now
+        )
         enqueued_sources = fresh_scheduler.run_once()
 
-        self.assertNotIn("remote_ok", enqueued_sources, "Cooling-down source must be suppressed on restart")
+        self.assertEqual(enqueued_sources, [], "Cooling-down source must be suppressed on restart")
 
         session_check = self.session_factory()
         try:
@@ -615,10 +637,12 @@ class TestPostgresQueueDurability(unittest.TestCase):
         finally:
             session.close()
 
-        fresh_scheduler = PollScheduler(self.session_factory, clock=lambda: now)
+        fresh_scheduler = PollScheduler(
+            self.session_factory, registry=self._registry("remote_ok"), clock=lambda: now
+        )
         enqueued_sources = fresh_scheduler.run_once()
 
-        self.assertIn("remote_ok", enqueued_sources, "Expired cooldown source must become eligible automatically")
+        self.assertEqual(enqueued_sources, ["remote_ok"], "Expired cooldown source must become eligible exactly once")
 
     def test_7_scheduler_worker_crash_recovery(self) -> None:
         """TEST 7: Scheduler/worker crash recovery: Worker crashes holding lease;
@@ -745,6 +769,21 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 updated_at=_to_naive_utc(now),
             )
             session.add_all([sched_himalayas, sched_remote_ok])
+            registry = SourceRegistry()
+            for source_id in registry._sources:
+                if (
+                    registry.is_read_allowed(source_id)
+                    and source_id not in {"himalayas", "remote_ok"}
+                ):
+                    session.add(
+                        SourceScheduleRecord(
+                            source_id=source_id,
+                            cadence_hours=6.0,
+                            next_due_at=_to_naive_utc(now + timedelta(hours=4)),
+                            created_at=_to_naive_utc(now),
+                            updated_at=_to_naive_utc(now),
+                        )
+                    )
             session.commit()
         finally:
             session.close()
@@ -756,7 +795,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
         enqueued_sids = [e["source_id"] for e in data.get("enqueued", [])]
         skipped_sids = {s["source_id"]: s["reason"] for s in data.get("skipped", [])}
 
-        self.assertIn("himalayas", enqueued_sids)
+        self.assertEqual(enqueued_sids, ["himalayas"], "Generic Poll Now must enqueue only the due source")
         self.assertIn("remote_ok", skipped_sids)
         self.assertEqual(skipped_sids["remote_ok"], "not_due")
 
