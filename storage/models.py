@@ -437,6 +437,11 @@ class ArtifactCacheRecord(Base):
     artifact_kind = Column(String(32), nullable=True)
     content_type = Column(String(128), nullable=True)
     payload = Column(LargeBinary, nullable=True)
+    storage_backend = Column(String(32), nullable=False, default="postgres_payload", server_default="postgres_payload")
+    object_key = Column(String(256), nullable=True)
+    payload_sha256 = Column(String(64), nullable=True)
+    size_bytes = Column(Integer, nullable=True)
+    generation_version = Column(String(64), nullable=True)
     created_at = Column(DateTime, nullable=True)
 
 

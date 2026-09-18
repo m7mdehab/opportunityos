@@ -66,8 +66,59 @@ class PostgresPayloadReader:
             connection.close()
 
 
+class SupabaseStorageReader:
+    """Read external artifact metadata and fetch bodies through an injected client."""
+    backend = "supabase_storage"
+
+    def __init__(self, settings, storage_client):
+        self.settings = settings
+        self.storage_client = storage_client
+
+    def inventory(self):
+        connection = db.connect(self.settings)
+        cursor = connection.cursor()
+        try:
+            cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            cursor.execute("SELECT cache_key, storage_backend, object_key, payload_sha256, size_bytes "
+                           "FROM public.artifact_cache WHERE storage_backend = 'supabase_storage' ORDER BY cache_key")
+            rows = []
+            for key, backend, object_key, expected_hash, expected_size in cursor.fetchall():
+                if not isinstance(key, str) or not KEY.fullmatch(key) or backend != "supabase_storage" or not object_key:
+                    raise db.HarnessError("invalid external artifact metadata")
+                try:
+                    body = self.storage_client.get(object_key)
+                    body_status = "retrievable"
+                    actual_hash = hashlib.sha256(body).hexdigest()
+                    actual_size = len(body)
+                    if actual_hash != expected_hash or actual_size != expected_size:
+                        body_status = "checksum_mismatch"
+                except Exception:
+                    body = None
+                    body_status = "missing"
+                    actual_hash = None
+                    actual_size = None
+                rows.append({"cache_key": key.lower(), "storage_backend": backend,
+                             "object_key": object_key, "sha256": actual_hash,
+                             "size_bytes": actual_size, "expected_sha256": expected_hash,
+                             "expected_size_bytes": expected_size, "body_status": body_status})
+            connection.rollback()
+            return rows
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            cursor.close()
+            connection.close()
+
+
 def manifest(reader):
     rows = reader.inventory()
+    if getattr(reader, "backend", "postgres_payload") == "supabase_storage":
+        return {"format": 2, "backend": "supabase_storage", "referenced": len(rows),
+                "retrievable": sum(row["body_status"] == "retrievable" for row in rows),
+                "missing": sum(row["body_status"] == "missing" for row in rows),
+                "checksum_mismatch": sum(row["body_status"] == "checksum_mismatch" for row in rows),
+                "artifacts": rows}
     return {"format": 1, "backend": "postgres_payload", "referenced": len(rows),
             "retrievable": sum(row["body_status"] == "retrievable" for row in rows),
             "metadata_only": sum(row["body_status"] == "metadata_only" for row in rows),
@@ -75,6 +126,26 @@ def manifest(reader):
 
 
 def validate_manifest(expected):
+    if isinstance(expected, dict) and expected.get("backend") == "supabase_storage":
+        if (expected.get("format") != 2 or not isinstance(expected.get("artifacts"), list)
+                or expected.get("referenced") != len(expected["artifacts"])):
+            raise db.HarnessError("external artifact manifest contract mismatch")
+        seen = set()
+        counts = {"retrievable": 0, "missing": 0, "checksum_mismatch": 0}
+        for entry in expected["artifacts"]:
+            required = {"cache_key", "storage_backend", "object_key", "sha256", "size_bytes",
+                        "expected_sha256", "expected_size_bytes", "body_status"}
+            if (set(entry) != required or not KEY.fullmatch(entry["cache_key"])
+                    or entry["storage_backend"] != "supabase_storage" or not entry["object_key"]
+                    or entry["cache_key"] in seen):
+                raise db.HarnessError("external artifact identity invalid")
+            seen.add(entry["cache_key"])
+            if entry["body_status"] not in counts:
+                raise db.HarnessError("external artifact body status invalid")
+            counts[entry["body_status"]] += 1
+        if any(expected.get(name) != value for name, value in counts.items()):
+            raise db.HarnessError("external artifact manifest counts mismatch")
+        return
     if (not isinstance(expected, dict)
             or set(expected) != {"format", "backend", "referenced", "retrievable", "metadata_only", "artifacts"}
             or expected["format"] != 1 or expected["backend"] != "postgres_payload"
@@ -111,6 +182,19 @@ def validate_manifest(expected):
 def verify(expected, reader):
     validate_manifest(expected)
     actual = {row["cache_key"]: row for row in reader.inventory()}
+    if expected.get("backend") == "supabase_storage":
+        counts = {"referenced": len(expected["artifacts"]), "retrievable": 0,
+                  "missing": 0, "checksum_mismatch": 0, "unexpected": 0}
+        for entry in expected["artifacts"]:
+            row = actual.get(entry["cache_key"])
+            if row is None or row["body_status"] == "missing":
+                counts["missing"] += 1
+            elif row["body_status"] == "checksum_mismatch":
+                counts["checksum_mismatch"] += 1
+            else:
+                counts["retrievable"] += 1
+        counts["unexpected"] = len(set(actual) - {e["cache_key"] for e in expected["artifacts"]})
+        return counts
     seen = set()
     counts = {"referenced": len(expected["artifacts"]), "retrievable": 0,
               "missing": 0, "checksum_mismatch": 0, "metadata_only": 0,
@@ -150,10 +234,14 @@ def main(argv=None):
     check.add_argument("--backend", default="postgres_payload")
     args = parser.parse_args(argv)
     try:
-        if args.backend != "postgres_payload":
-            raise UnsupportedBackend("external artifact location contract unavailable")
+        if args.backend not in ("postgres_payload", "supabase_storage"):
+            raise UnsupportedBackend("artifact backend unsupported")
         settings = db.config("source") if args.role == "source" else db.target_config()
-        reader = PostgresPayloadReader(settings)
+        if args.backend == "postgres_payload":
+            reader = PostgresPayloadReader(settings)
+        elif args.backend == "supabase_storage":
+            from api.artifact_cache import SupabaseStorageClient
+            reader = SupabaseStorageReader(settings, SupabaseStorageClient())
         if args.operation == "manifest":
             result = manifest(reader)
             path = Path(args.output).expanduser().resolve()
@@ -162,7 +250,8 @@ def main(argv=None):
             with path.open("x", encoding="utf-8") as stream:
                 json.dump(result, stream, sort_keys=True, separators=(",", ":"))
                 stream.write("\n")
-            summary = {key: result[key] for key in ("referenced", "retrievable", "metadata_only")}
+            summary_keys = ("referenced", "retrievable", "metadata_only") if result["backend"] == "postgres_payload" else ("referenced", "retrievable", "missing", "checksum_mismatch")
+            summary = {key: result[key] for key in summary_keys}
         else:
             with Path(args.manifest).open(encoding="utf-8") as stream:
                 expected = json.load(stream)
