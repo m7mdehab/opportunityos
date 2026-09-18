@@ -167,6 +167,16 @@ def get_or_create_source_schedule(
     if record is not None:
         if record.cadence_hours != cadence_hours:
             record.cadence_hours = cadence_hours
+            # Cadence configuration is authoritative. When an actual prior
+            # attempt exists, recalculate due time from that durable attempt
+            # instead of keeping a stale deadline derived from the old cadence.
+            # A persisted cooldown remains the stronger lower bound.
+            if record.last_attempt_at is not None:
+                recomputed_due = record.last_attempt_at + timedelta(hours=cadence_hours)
+                if record.cooldown_until is not None:
+                    recomputed_due = max(recomputed_due, record.cooldown_until)
+                record.next_due_at = recomputed_due
+            record.updated_at = now_naive
         return record
 
     latest = (
