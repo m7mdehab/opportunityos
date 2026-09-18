@@ -950,7 +950,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 evaluated_at=now,
                 projected_at=now,
             )
-            session.add_all([opp, eval_record, proj])
+            session.add_all([eval_record, proj])
             session.commit()
         finally:
             session.close()
