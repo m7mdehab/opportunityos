@@ -51,12 +51,37 @@ class HostedProofTests(unittest.TestCase):
         pooler = settings("abc.pooler.supabase.com", "target", port="6543")
         with mock.patch.object(proof, "_settings", return_value=(self.source, pooler)):
             with self.assertRaisesRegex(proof.HostedProofError, "direct"):
-                proof.validate_configuration("MIGRATE_STAGING", "pooler", confirm_staging=True)
+                proof.validate_configuration("MIGRATE_STAGING", "pooler", acknowledge_migration=True,
+                                             source_writes_paused=True, target_writes_disabled=True)
 
     def test_migration_requires_explicit_acknowledgement(self):
         with mock.patch.object(proof, "_settings", return_value=(self.source, self.target)):
             with self.assertRaisesRegex(proof.HostedProofError, "acknowledgement"):
-                proof.validate_configuration("MIGRATE_STAGING", "direct")
+                proof.validate_configuration("MIGRATE_STAGING", "direct", acknowledge_migration=True,
+                                             source_writes_paused=True)
+
+    def test_live_identity_same_endpoint_alias_is_rejected(self):
+        live = {"database": "db", "server_address": "10.0.0.4", "server_port": 5432,
+                "server_version_num": 160000, "database_oid": "42"}
+        with self.assertRaisesRegex(proof.HostedProofError, "live database identity"):
+            proof.verify_live_distinctness(self.source, self.target,
+                                           identity_factory=lambda _: live)
+
+    def test_live_identity_distinct_databases_are_accepted(self):
+        identities = iter((
+            {"database": "source", "server_address": "10.0.0.4", "server_port": 5432,
+             "server_version_num": 160000, "database_oid": "42"},
+            {"database": "target", "server_address": "10.0.0.5", "server_port": 5432,
+             "server_version_num": 160000, "database_oid": "43"},
+        ))
+        source, target = proof.verify_live_distinctness(
+            self.source, self.target, identity_factory=lambda _: next(identities))
+        self.assertNotEqual(source, target)
+
+    def test_live_identity_unavailable_blocks(self):
+        with self.assertRaisesRegex(proof.HostedProofError, "could not be established"):
+            proof.verify_live_distinctness(self.source, self.target,
+                                           identity_factory=lambda _: (_ for _ in ()).throw(RuntimeError()))
 
     def test_precheck_does_not_call_migration(self):
         checked = {"status": "PASS", "ready": True, "checks": {}}
@@ -79,21 +104,46 @@ class HostedProofTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, \
              mock.patch.object(proof, "_settings", return_value=(self.source, self.target)), \
              mock.patch.object(proof, "discover_alembic_head", return_value="head"), \
+             mock.patch.object(proof, "verify_live_distinctness", return_value=(
+                 {"database": "source"}, {"database": "target"})), \
              mock.patch.object(proof.preflight, "evaluate", return_value={"status": "PASS", "ready": True}), \
              mock.patch.object(proof.migration_acceptance, "run", side_effect=RuntimeError("failed")):
             with self.assertRaises(RuntimeError):
                 proof.run("MIGRATE_STAGING", connection_mode="direct", output_dir=tmp,
-                          confirm_staging=True)
+                          acknowledge_migration=True, source_writes_paused=True,
+                          target_writes_disabled=True)
 
     def test_evidence_write_is_machine_readable_and_safe(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "evidence.json"
             report = {"mode": "PRECHECK", "stages": {"MIGRATE": "NOT_RUN"},
-                      "details": {"target_dsn": proof.redact_dsn(self.target["dsn"])}}
+                      "details": {"target_host": self.target["host"]}}
             proof.write_evidence(report, str(path))
             loaded = json.loads(path.read_text())
             self.assertEqual(loaded["stages"]["MIGRATE"], "NOT_RUN")
             self.assertNotIn("secret", path.read_text())
+
+    def test_evidence_rejects_nested_dsn_fail_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(proof.HostedProofError, "database URL"):
+                proof.write_evidence({"nested": {"delegated": "postgresql" + "://u:p@db/x"}},
+                                     str(Path(tmp) / "evidence.json"))
+
+    def test_verify_staging_uses_live_checks_without_prior_directory_artifact(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(proof, "_settings", return_value=(self.source, self.target)), \
+             mock.patch.object(proof, "discover_alembic_head", return_value="head"), \
+             mock.patch.object(proof, "verify_live_distinctness", return_value=(
+                 {"database": "source"}, {"database": "target"})), \
+             mock.patch.object(proof, "_verify_live", return_value={"status": "PASS", "unsupported": []}):
+            report = proof.run("VERIFY_STAGING", connection_mode="direct", output_dir=tmp)
+        self.assertEqual(report["stages"]["VERIFY"], "PASS")
+        self.assertEqual(proof.exit_code(report), 0)
+
+    def test_mode_specific_exit_semantics(self):
+        self.assertEqual(proof.exit_code({"mode": "PRECHECK", "stages": {"PRECHECK": "PASS", "MIGRATE": "NOT_RUN"}}), 0)
+        self.assertEqual(proof.exit_code({"mode": "VERIFY_STAGING", "stages": {"VERIFY": "PARTIAL"}}), 3)
+        self.assertEqual(proof.exit_code({"mode": "MIGRATE_STAGING", "stages": {"PRECHECK": "PASS", "MIGRATE": "NOT_RUN", "VERIFY": "NOT_RUN"}}), 2)
 
     def test_manual_workflow_has_no_automatic_destructive_trigger(self):
         workflow = (Path(__file__).parents[1] / ".github" / "workflows" /

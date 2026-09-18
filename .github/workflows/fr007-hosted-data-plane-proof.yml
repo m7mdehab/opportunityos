@@ -14,8 +14,18 @@ on:
         default: direct
         type: choice
         options: [direct, pooler, unknown]
-      confirm_staging_migration:
-        description: "Required only for MIGRATE_STAGING"
+      acknowledge_staging_migration:
+        description: "Authorize staging migration execution"
+        required: false
+        type: boolean
+        default: false
+      acknowledge_source_writes_paused:
+        description: "Confirm source writes are paused"
+        required: false
+        type: boolean
+        default: false
+      acknowledge_target_writes_disabled:
+        description: "Confirm target writes are disabled and isolated"
         required: false
         type: boolean
         default: false
@@ -46,7 +56,9 @@ jobs:
             --connection-mode "${{ inputs.connection_mode }}" \
             --output-dir hosted-proof-evidence/run \
             --evidence hosted-proof-evidence/report.json \
-            ${{ inputs.confirm_staging_migration == true && '--confirm-staging-migration' || '' }}
+            ${{ inputs.acknowledge_staging_migration == true && '--acknowledge-staging-migration' || '' }} \
+            ${{ inputs.acknowledge_source_writes_paused == true && '--acknowledge-source-writes-paused' || '' }} \
+            ${{ inputs.acknowledge_target_writes_disabled == true && '--acknowledge-target-writes-disabled' || '' }}
       - name: Upload sanitized evidence
         if: always()
         uses: actions/upload-artifact@v4

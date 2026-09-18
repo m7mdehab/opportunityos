@@ -13,8 +13,10 @@ Inject these names at runtime only:
 * `OPOS_TARGET_DB_URL`
 
 Values are never printed or written to evidence. The report contains only
-short identity fingerprints and sanitized host names. The source and target
-must be different databases. Hosted mode rejects loopback targets.
+short configured/live identity fingerprints and sanitized host names. The
+source and target must be different databases, verified by read-only live
+PostgreSQL facts before a write-capable run. Hosted mode rejects loopback
+targets.
 
 Use a Supabase **direct/session-capable database endpoint** for migration.
 Transaction or session pooler endpoints are not accepted for
@@ -39,14 +41,17 @@ owner, the explicitly authorized staging run is:
 ```bash
 python scripts/hosted_data_plane_proof.py \
   --mode MIGRATE_STAGING --connection-mode direct \
-  --confirm-staging-migration \
+  --acknowledge-staging-migration \
+  --acknowledge-source-writes-paused \
+  --acknowledge-target-writes-disabled \
   --output-dir /secure/fr007-run \
   --evidence /secure/fr007-run/hosted-proof.json
 ```
 
-`VERIFY_STAGING` reads an existing `acceptance.json` in the output directory;
-it does not perform writes. Every dependent stage stops on a blocked or failed
-precondition. There is no automatic cutover or DNS/API/frontend change.
+`VERIFY_STAGING` performs a new read-only live revision and baseline/parity
+check against source and target. It does not depend on a prior runner's
+filesystem and performs no writes. Every dependent stage stops on a blocked or
+failed precondition. There is no automatic cutover or DNS/API/frontend change.
 
 ## GitHub Actions
 
@@ -63,7 +68,9 @@ The report distinguishes `PRECHECK`, `MIGRATE`, `VERIFY`, and
 `CUTOVER_READY` is only a partial readiness signal; this packet never performs
 traffic cutover. A real source-to-hosted-target run with credentials is needed
 for FR-007 A-9 evidence. Unit tests, disposable PostgreSQL, or a PRECHECK do
-not close A-9 and do not prove Supabase migration.
+not close A-9 and do not prove Supabase migration. Evidence contains no DSN,
+redacted or otherwise; only allowlisted fingerprints and operational facts are
+written.
 
 If verification fails, keep the source authoritative, isolate the target, and
 retry only with a new empty target after checking the backup manifest. Any

@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import sys
 from urllib.parse import urlsplit
 
@@ -76,7 +77,57 @@ def classify_topology(settings: dict) -> str:
     return "direct_or_unknown"
 
 
-def validate_configuration(mode: str, connection_mode: str, *, confirm_staging: bool = False):
+def live_identity(settings: dict, *, connection_factory=None) -> dict:
+    """Read provider-neutral identity facts in a read-only transaction."""
+    connection = None
+    try:
+        connection = (connection_factory or db.connect)(settings)
+        cursor = connection.cursor()
+        try:
+            cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            cursor.execute(
+                "SELECT current_database(), inet_server_addr()::text, inet_server_port(), "
+                "current_setting('server_version_num'), "
+                "(SELECT oid::text FROM pg_database WHERE datname = current_database())"
+            )
+            row = cursor.fetchone()
+            if not row or any(value in (None, "") for value in row):
+                raise HostedProofError("live database identity could not be established")
+            return {"database": str(row[0]), "server_address": str(row[1]),
+                    "server_port": int(row[2]), "server_version_num": int(row[3]),
+                    "database_oid": str(row[4])}
+        finally:
+            cursor.close()
+    except HostedProofError:
+        raise
+    except Exception as exc:
+        raise HostedProofError("live database identity could not be established") from exc
+    finally:
+        if connection is not None:
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+            connection.close()
+
+
+def verify_live_distinctness(source: dict, target: dict, *, identity_factory=None):
+    factory = identity_factory or live_identity
+    try:
+        source_live = factory(source)
+        target_live = factory(target)
+    except HostedProofError:
+        raise
+    except Exception as exc:
+        raise HostedProofError("live database identity could not be established") from exc
+    if source_live == target_live:
+        raise HostedProofError("source and target live database identity must differ")
+    return source_live, target_live
+
+
+def validate_configuration(mode: str, connection_mode: str, *, acknowledge_migration: bool = False,
+                           source_writes_paused: bool = False,
+                           target_writes_disabled: bool = False):
     if mode not in MODES:
         raise HostedProofError("unsupported hosted proof mode")
     if connection_mode not in {"direct", "pooler", "unknown"}:
@@ -87,8 +138,15 @@ def validate_configuration(mode: str, connection_mode: str, *, confirm_staging: 
     if classify_topology(target) == "local":
         raise HostedProofError("hosted mode rejects a local target")
     if mode == "MIGRATE_STAGING":
-        if not confirm_staging:
-            raise HostedProofError("MIGRATE_STAGING requires explicit staging acknowledgement")
+        missing = []
+        if not acknowledge_migration:
+            missing.append("staging migration acknowledgement")
+        if not source_writes_paused:
+            missing.append("source writes paused acknowledgement")
+        if not target_writes_disabled:
+            missing.append("target writes disabled acknowledgement")
+        if missing:
+            raise HostedProofError("MIGRATE_STAGING requires: " + ", ".join(missing))
         if connection_mode != "direct" or classify_topology(target) == "pooler":
             raise HostedProofError("migration requires a declared direct database endpoint")
         if target.get("sslmode") not in {"require", "verify-ca", "verify-full"}:
@@ -123,13 +181,50 @@ def _report(mode: str, source: dict, target: dict):
     }
 
 
-def run(mode: str, *, connection_mode: str, output_dir: str, confirm_staging: bool = False,
+def _verify_live(source: dict, target: dict):
+    source_inspection = db.inspect(source)
+    target_inspection = db.inspect(target)
+    if source_inspection.get("alembic_revision") != target_inspection.get("alembic_revision"):
+        return {"status": "FAIL", "revision": {"source": source_inspection.get("alembic_revision"),
+                                                   "target": target_inspection.get("alembic_revision")}}
+    from scripts import migration_baseline
+    snapshots = []
+    for settings in (source, target):
+        connection = db.connect(settings)
+        try:
+            snapshots.append(migration_baseline.inspect(connection))
+        finally:
+            connection.close()
+    differences = migration_baseline.compare(*snapshots)
+    unsupported = sorted(set(migration_baseline.unsupported(snapshots[0])) |
+                         set(migration_baseline.unsupported(snapshots[1])))
+    return {"status": "FAIL" if differences else "PARTIAL" if unsupported else "PASS",
+            "revision": {"source": source_inspection.get("alembic_revision"),
+                         "target": target_inspection.get("alembic_revision")},
+            "difference_paths": differences, "unsupported": unsupported}
+
+
+def run(mode: str, *, connection_mode: str, output_dir: str, acknowledge_migration: bool = False,
+        source_writes_paused: bool = False, target_writes_disabled: bool = False,
         allow_insecure_local: bool = False, artifact_backend: str = "postgres_payload"):
-    source, target = validate_configuration(mode, connection_mode, confirm_staging=confirm_staging)
+    source, target = validate_configuration(
+        mode, connection_mode, acknowledge_migration=acknowledge_migration,
+        source_writes_paused=source_writes_paused, target_writes_disabled=target_writes_disabled)
     report = _report(mode, source, target)
     report["alembic_head"] = discover_alembic_head()
-    report["details"]["source_dsn"] = redact_dsn(source["dsn"])
-    report["details"]["target_dsn"] = redact_dsn(target["dsn"])
+    source_live = target_live = None
+    if mode in ("MIGRATE_STAGING", "VERIFY_STAGING"):
+        source_live, target_live = verify_live_distinctness(source, target)
+        report["details"]["source_live_identity"] = source_live
+        report["details"]["target_live_identity"] = target_live
+    if mode == "VERIFY_STAGING":
+        verified = _verify_live(source, target)
+        report["details"]["verification"] = verified
+        report["stages"]["PRECHECK"] = "PASS"
+        report["stages"]["VERIFY"] = verified["status"]
+        report["stages"]["MIGRATE"] = "NOT_RUN"
+        report["stages"]["CUTOVER_READY"] = "NOT_RUN"
+        return report
     checked = preflight.evaluate(target, connection_mode=connection_mode,
                                  allow_insecure_local=allow_insecure_local)
     report["details"]["preflight"] = checked
@@ -143,7 +238,8 @@ def run(mode: str, *, connection_mode: str, output_dir: str, confirm_staging: bo
         workspace = Path(output_dir).expanduser().resolve()
         result = migration_acceptance.run(
             workspace, connection_mode=connection_mode, artifact_backend=artifact_backend,
-            confirm_restore=True, source_writes_paused=True, target_writes_disabled=True,
+            confirm_restore=True, source_writes_paused=source_writes_paused,
+            target_writes_disabled=target_writes_disabled,
             allow_insecure_local=allow_insecure_local)
         report["details"]["acceptance"] = result
         stages = result.get("stages", {})
@@ -171,11 +267,41 @@ def run(mode: str, *, connection_mode: str, output_dir: str, confirm_staging: bo
 def write_evidence(report: dict, path: str):
     target = Path(path).expanduser().resolve()
     target.parent.mkdir(parents=True, exist_ok=True)
-    # Reports contain only allowlisted metadata and nested existing reports.
+    def check(value):
+        if isinstance(value, dict):
+            for nested in value.values():
+                check(nested)
+        elif isinstance(value, (list, tuple)):
+            for nested in value:
+                check(nested)
+        elif isinstance(value, str):
+            if re.search(r"postgresql(?:\+[^:/\s]+)?://", value, re.I):
+                raise HostedProofError("evidence contains a database URL")
+            if re.search(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s\"']+@[^\s\"']+", value):
+                raise HostedProofError("evidence contains URL credentials")
+            for secret_name in ("OPOS_SOURCE_DB_URL", "OPOS_TARGET_DB_URL"):
+                secret = os.environ.get(secret_name)
+                if secret and secret in value:
+                    raise HostedProofError("evidence contains configured secret")
+
+    check(report)
     text = json.dumps(report, sort_keys=True, separators=(",", ":")) + "\n"
-    if "postgresql://" in text and "<redacted>" not in text:
-        raise HostedProofError("evidence redaction invariant failed")
     target.write_text(text, encoding="utf-8")
+
+
+def exit_code(report: dict) -> int:
+    states = report.get("stages", {})
+    mode = report.get("mode")
+    if mode == "PRECHECK":
+        state = states.get("PRECHECK", "FAIL")
+    elif mode == "VERIFY_STAGING":
+        state = states.get("VERIFY", "FAIL")
+    else:
+        required = {"PRECHECK", "MIGRATE", "VERIFY"}
+        values = {states.get(name, "FAIL") for name in required}
+        state = ("FAIL" if "FAIL" in values else "BLOCKED" if "BLOCKED" in values or "NOT_RUN" in values
+                 else "PARTIAL" if "PARTIAL" in values else "PASS")
+    return {"PASS": 0, "PARTIAL": 3, "BLOCKED": 2, "FAIL": 1, "NOT_RUN": 2}[state]
 
 
 def main(argv=None):
@@ -184,12 +310,17 @@ def main(argv=None):
     parser.add_argument("--connection-mode", choices=("direct", "pooler", "unknown"), required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--evidence", required=True)
-    parser.add_argument("--confirm-staging-migration", action="store_true")
+    parser.add_argument("--acknowledge-staging-migration", action="store_true")
+    parser.add_argument("--acknowledge-source-writes-paused", action="store_true")
+    parser.add_argument("--acknowledge-target-writes-disabled", action="store_true")
     parser.add_argument("--artifact-backend", default="postgres_payload")
     args = parser.parse_args(argv)
     try:
         report = run(args.mode, connection_mode=args.connection_mode, output_dir=args.output_dir,
-                     confirm_staging=args.confirm_staging_migration, artifact_backend=args.artifact_backend)
+                     acknowledge_migration=args.acknowledge_staging_migration,
+                     source_writes_paused=args.acknowledge_source_writes_paused,
+                     target_writes_disabled=args.acknowledge_target_writes_disabled,
+                     artifact_backend=args.artifact_backend)
         write_evidence(report, args.evidence)
     except HostedProofError as exc:
         report = {"format": 1, "mode": args.mode, "status": "BLOCKED", "reason": str(exc),
@@ -205,8 +336,7 @@ def main(argv=None):
                               "CUTOVER_READY": "NOT_RUN"}, "traffic_cutover_authorized": False}
         write_evidence(report, args.evidence)
     print(json.dumps(report, sort_keys=True))
-    states = set(report.get("stages", {}).values())
-    return 0 if states == {"PASS"} else 1 if "FAIL" in states else 2
+    return exit_code(report)
 
 
 if __name__ == "__main__":
