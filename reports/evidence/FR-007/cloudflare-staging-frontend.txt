@@ -1,0 +1,96 @@
+﻿================================================================================
+FR-007 ANTIGRAVITY LANE — W13B: CLOUDFLARE WORKERS STAGING FRONTEND
+Date: 2026-09-18
+Host: Windows Local Dev & GitHub Actions (ubuntu-latest)
+Branch: work/fr007-antigravity-cloudflare-staging
+Exact Base SHA: 6298cb49a4897832d0a1a24ccb39f573b969df94 (origin/brief/fr-007-cloud-replatform)
+Status: IMPLEMENTATION & LOCAL/PACKAGE VALIDATION COMPLETE; HOSTED DEPLOYMENT NOT YET EXECUTED
+================================================================================
+
+1. DEPLOYMENT PATH EVALUATION & SELECTION
+--------------------------------------------------------------------------------
+- Preferred path evaluated: vinext (1.0.0-beta.10)
+- Incompatibility encountered:
+  * Running `npx vinext build` failed initially with:
+    "Error: vinext: App Router detected but @vitejs/plugin-rsc is not installed."
+  * When `@vitejs/plugin-rsc` (0.5.35) was supplied, build failed during Rolldown bundling:
+    "Error: [vite]: Rolldown failed to resolve import "@vitejs/plugin-rsc/rsc" from "virtual:vinext-rsc-entry"."
+  * Demonstrates that vinext is in early beta and has unresolved Rolldown/RSC bundling issues with Next.js 16 App Router on this application.
+- Fallback path selected: @opennextjs/cloudflare (1.20.6)
+  * Successfully builds and bundles Next.js 16.3.4 App Router to Cloudflare Workers output (.open-next/worker.js).
+  * No architectural rewrite or React component changes required.
+
+2. SAME-ORIGIN BROWSER API PROXY CONTRACT
+--------------------------------------------------------------------------------
+- Browser client contract preserved:
+  * Browser continues making relative `fetch('/api/*')` requests with `credentials: "same-origin"`.
+  * Preserves single-Founder auth cookies without cross-origin/CORS complexities.
+- Upstream proxy route handler:
+  * Implemented at `web/app/api/[...path]/route.ts`.
+  * Reads server-side environment variable `OPPORTUNITYOS_API_ORIGIN`.
+  * Cloud/staging safety: MUST start with `https://` (fails closed with HTTP 500 otherwise).
+  * Local dev fallback: defaults to `http://localhost:${OPPORTUNITYOS_API_PORT || 8000}`.
+  * Preserves HTTP methods (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS), URL query parameters, and binary request/response bodies.
+  * Strips hop-by-hop headers (Host, Connection, Upgrade, etc.) while forwarding cookies, content-type, authorization, and accept.
+  * Downstream response preserves upstream status, Set-Cookie headers, Content-Type, and Content-Disposition (supporting DOCX downloads and PDF preview/retrieval).
+  * Prevents open proxying: routes strictly to the configured OpportunityOS API origin.
+
+3. REPOSITORY-OWNED CLOUDFLARE PACKAGE & CONFIGURATION
+--------------------------------------------------------------------------------
+- `web/open-next.config.ts`: Configures @opennextjs/cloudflare without paid R2 dependencies (in-memory/static asset cache).
+- `web/wrangler.jsonc`:
+  * Worker name: `opportunityos-web-staging`
+  * Main entry: `.open-next/worker.js`
+  * Compatibility date: `2024-09-23`
+  * Assets directory: `.open-next/assets`
+  * Declares `vars.OPPORTUNITYOS_API_ORIGIN`
+  * Zero paid foundational Cloudflare resources created (no R2 buckets, no KV namespaces, no D1, no Queues, no custom domains, no DNS cutover).
+- `.github/workflows/fr007-cloudflare-staging-deploy.yml`:
+  * `workflow_dispatch` only (zero automatic push/PR/schedule triggers).
+  * Protected environment: `fr007-staging`.
+  * Modes: `VALIDATE`, `DEPLOY_STAGING`, `SMOKE_STAGING`.
+  * `DEPLOY_STAGING` strictly requires `inputs.acknowledge_staging_deployment == true`.
+  * Uses standard `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets.
+  * Zero tokens or secret values output to logs or committed files.
+- `scripts/validate_cloudflare_deployment.py`:
+  * Deterministic static validator verifying no forbidden foundational resources, no DNS cutover, HTTPS upstream origin enforcement, relative API paths, and manual-only workflow triggers.
+  * Covered by `scripts/test_validate_cloudflare_deployment.py`.
+
+4. CLOUD PLAYWRIGHT STAGING SUITE CONTRACT
+--------------------------------------------------------------------------------
+- Configuration: `web/playwright.staging.config.ts`
+  * Reads `OPOS_STAGING_WEB_URL` and `E2E_FOUNDER_PASSWORD`.
+  * Starts NO local webServer or database processes.
+  * Defines two execution projects:
+    1. "Desktop Chrome" (standard desktop viewport)
+    2. "Mobile 390px" (390x844 viewport, touch enabled, mobile User Agent)
+- Test Suite: `web/tests/e2e/staging-smoke.spec.ts`
+  * Covers:
+    1. Login flow via E2E_FOUNDER_PASSWORD
+    2. Authenticated feed visibility and dashboard stats
+    3. Pagination / search interactions
+    4. Facets drawer interactions
+    5. Detail drawer open/close
+    6. Source link availability
+    7. Poll Now response state
+    8. DOCX artifact download path
+    9. PDF preview/retrieval path
+    10. Session logout and redirection to /login
+
+5. LOCAL REGRESSION & VERIFICATION RESULTS
+--------------------------------------------------------------------------------
+- ESLint: `npm run lint` -> 0 errors, 0 warnings.
+- Next.js build: `npm run build` -> Compiled successfully, all static pages + dynamic `/api/[...path]` generated.
+- Cloudflare OpenNext build: `npm run build:worker` -> Successfully bundled into `.open-next/worker.js`.
+- Local Playwright Mock E2E Suite: `npm run test:e2e` -> 24 passed (0 failed).
+- Static Cloudflare Deployment Validator: `python scripts/validate_cloudflare_deployment.py` -> PASSED cleanly.
+- Static Validator Unit Test: `python -m unittest scripts.test_validate_cloudflare_deployment` -> 1 test PASSED.
+- Repository Guard & Boundary: `python scripts/check_guard.py --allow-missing-patterns` -> PASSED.
+- Repository Integrity: `python scripts/check_repository.py` -> PASSED.
+
+6. HOSTED EXECUTION & ACCEPTANCE STATE
+--------------------------------------------------------------------------------
+- CLOUDFLARE_DEPLOYMENT: NOT_EXECUTED (credentials absent in current environment; workflow ready for execution in fr007-staging)
+- REMOTE_BROWSER_SMOKE: NOT_EXECUTED (requires live deployed Cloudflare staging URL and Azure API origin)
+- A-16 Status: NOT CLAIMED (reserved for real hosted execution against deployed staging environment)
+================================================================================
