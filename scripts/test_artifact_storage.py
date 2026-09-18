@@ -4,6 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
+import json
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -123,6 +124,35 @@ class ArtifactStorageTests(unittest.TestCase):
                     storage_client=self.client,
                 )
         self.assertIsNone(self.session.get(ArtifactCacheRecord, key))
+
+    def test_supabase_delete_uses_remove_api_contract(self):
+        client = ac.SupabaseStorageClient(
+            base_url=self.env["SUPABASE_STORAGE_URL"],
+            service_key=self.env["SUPABASE_SERVICE_ROLE_KEY"],
+            bucket=self.env["OPPORTUNITYOS_ARTIFACT_BUCKET"],
+        )
+        client._private_bucket_verified = True
+
+        response = MagicMock()
+        response.read.return_value = b"[]"
+        context = MagicMock()
+        context.__enter__.return_value = response
+        context.__exit__.return_value = False
+
+        with patch("api.artifact_cache.urlopen", return_value=context) as mocked:
+            client.delete("artifacts/" + "a" * 64)
+
+        request = mocked.call_args.args[0]
+        self.assertEqual(
+            request.full_url,
+            "https://project.supabase.co/storage/v1/object/private-artifacts",
+        )
+        self.assertEqual(request.get_method(), "DELETE")
+        self.assertEqual(
+            json.loads(request.data.decode("utf-8")),
+            {"prefixes": ["artifacts/" + "a" * 64]},
+        )
+        self.assertEqual(request.headers.get("Content-type"), "application/json")
 
     def test_public_bucket_is_rejected_before_write(self):
         self.transport.bucket_public = True
