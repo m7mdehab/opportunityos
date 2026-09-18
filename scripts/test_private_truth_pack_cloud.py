@@ -1,6 +1,7 @@
 import os
 import unittest
 from unittest.mock import patch
+from urllib.error import URLError
 
 from scripts.check_cloud_readiness import check_truth_pack
 from scripts.cloud_runtime_bridge import plan_runtime_environment
@@ -41,6 +42,39 @@ class PrivateTruthPackCloudTests(unittest.TestCase):
         self.assertNotIn("auth-secret", request.full_url)
         self.assertNotIn("api-secret", request.full_url)
 
+    def test_cloud_rejects_loopback_and_custom_supabase_storage_without_api_key(self):
+        with self.assertRaisesRegex(TruthPackInvalid, "loopback"):
+            load_truth_pack(
+                "https://127.0.0.1/pack.yaml",
+                expected_hash="a" * 64,
+                auth_token="token",
+                cloud_mode=True,
+            )
+        with self.assertRaisesRegex(TruthPackInvalid, "both"):
+            load_truth_pack(
+                "https://private.example/storage/v1/object/authenticated/truth/pack.yaml",
+                expected_hash="a" * 64,
+                auth_token="token",
+                cloud_mode=True,
+            )
+
+    def test_transport_error_never_echoes_secret_values(self):
+        auth = "auth-secret-that-must-not-leak"
+        api_key = "api-secret-that-must-not-leak"
+        with patch(
+            "truth.pack.urlopen",
+            side_effect=URLError(f"Bearer {auth}; apikey={api_key}"),
+        ):
+            with self.assertRaises(TruthPackInvalid) as captured:
+                _fetch_remote_bytes(
+                    "https://objects.example/pack.yaml",
+                    auth_token=auth,
+                    api_key=api_key,
+                )
+        rendered = str(captured.exception) + repr(captured.exception.findings)
+        self.assertNotIn(auth, rendered)
+        self.assertNotIn(api_key, rendered)
+
     def test_readiness_distinguishes_private_ready_and_public_blocked(self):
         ready = check_truth_pack({
             "OPPORTUNITYOS_ENVIRONMENT": "cloud",
@@ -72,7 +106,17 @@ class PrivateTruthPackCloudTests(unittest.TestCase):
         worker = plan_runtime_environment("worker", env)
         self.assertEqual(api.aliases["OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN"], "auth-secret")
         self.assertEqual(worker.aliases["OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN"], "auth-secret")
-        self.assertNotIn("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN", plan_runtime_environment("scheduler", {"CLOUD_DATABASE_URL": DB, **{k: v for k, v in env.items() if k != "CLOUD_DATABASE_URL"}}).aliases)
+
+        runtime_env = {"CLOUD_DATABASE_URL": DB, **{k: v for k, v in env.items() if k != "CLOUD_DATABASE_URL"}}
+        for role in ("scheduler", "migrate"):
+            aliases = plan_runtime_environment(role, runtime_env).aliases
+            for name in (
+                "OPPORTUNITYOS_TRUTH_PACK_URI",
+                "OPPORTUNITYOS_TRUTH_PACK_HASH",
+                "OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN",
+                "OPPORTUNITYOS_TRUTH_PACK_API_KEY",
+            ):
+                self.assertNotIn(name, aliases, f"{role} must not receive {name}")
 
 
 if __name__ == "__main__":
