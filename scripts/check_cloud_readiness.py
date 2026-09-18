@@ -49,6 +49,7 @@ class ReadinessCheckResult:
         self.status = status  # "PASS", "BLOCKED", "FAIL"
         self.message = message
         self.blockers = tuple(blockers)
+        self.classification = "PASS" if status == "PASS" else status
 
     @property
     def passed(self) -> bool:
@@ -311,6 +312,14 @@ def check_truth_pack(env: Mapping[str, str], role: str = "all") -> ReadinessChec
         )
 
     if target_str.startswith("https://"):
+        from urllib.parse import urlsplit
+        parsed = urlsplit(target_str)
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            return ReadinessCheckResult(
+                name="Truth Pack Storage", status="BLOCKED",
+                message=f"PRIVATE_REMOTE_READY requires a credential-free HTTPS object URI ({redacted})",
+                blockers=("OPPORTUNITYOS_TRUTH_PACK_URI",),
+            )
         hash_val = env.get("OPPORTUNITYOS_TRUTH_PACK_HASH") or env.get("OPPORTUNITYOS_TRUTH_PACK_SHA256")
         if not hash_val:
             return ReadinessCheckResult(
@@ -319,10 +328,31 @@ def check_truth_pack(env: Mapping[str, str], role: str = "all") -> ReadinessChec
                 message=f"Missing required OPPORTUNITYOS_TRUTH_PACK_HASH for remote HTTPS Truth Pack integrity verification ({redacted})",
                 blockers=("OPPORTUNITYOS_TRUTH_PACK_HASH",),
             )
+        cloud_mode = env.get("OPPORTUNITYOS_ENVIRONMENT", "").lower() in {"cloud", "prod", "production"} or env.get("MODE", "").lower() == "cloud"
+        auth = env.get("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN")
+        api_key = env.get("OPPORTUNITYOS_TRUTH_PACK_API_KEY")
+        if cloud_mode and not auth:
+            return ReadinessCheckResult(
+                name="Truth Pack Storage", status="BLOCKED",
+                message="PRIVATE_REMOTE_READY requires OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN",
+                blockers=("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN",),
+            )
+        if "/object/public/" in parsed.path.lower():
+            return ReadinessCheckResult(
+                name="Truth Pack Storage", status="BLOCKED",
+                message="PUBLIC_OR_UNAUTHENTICATED_REMOTE_BLOCKED: public Supabase object endpoint",
+                blockers=("OPPORTUNITYOS_TRUTH_PACK_URI",),
+            )
+        if cloud_mode and (parsed.hostname or "").lower().endswith("supabase.co") and not api_key:
+            return ReadinessCheckResult(
+                name="Truth Pack Storage", status="BLOCKED",
+                message="PRIVATE_REMOTE_READY requires OPPORTUNITYOS_TRUTH_PACK_API_KEY for Supabase Storage",
+                blockers=("OPPORTUNITYOS_TRUTH_PACK_API_KEY",),
+            )
         return ReadinessCheckResult(
             name="Truth Pack Storage",
             status="PASS",
-            message=f"Remote HTTPS Truth Pack endpoint configured ({redacted}) with SHA-256 integrity verification",
+            message=f"PRIVATE_REMOTE_READY: private Remote HTTPS Truth Pack endpoint configured ({redacted}) with SHA-256 integrity verification",
         )
 
     # Any generic local or container filesystem path (e.g. /app/truth/... or relative)

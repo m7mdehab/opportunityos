@@ -1,8 +1,8 @@
 {
   "format": 1,
   "roles": {
-    "api": {"kind": "containerApp", "externalIngress": true, "targetPort": 8000, "minReplicas": 1, "maxReplicas": 2, "commandRole": "api", "requiredSecrets": ["CLOUD_DATABASE_URL", "OPPORTUNITYOS_FOUNDER_PASSWORD", "OPPORTUNITYOS_SESSION_SECRET"], "requiredConfig": ["OPPORTUNITYOS_TRUTH_PACK_URI", "OPPORTUNITYOS_TRUTH_PACK_HASH", "OPPORTUNITYOS_ENVIRONMENT", "OPPORTUNITYOS_FORCE_SECURE_COOKIES"]},
-    "worker": {"kind": "containerApp", "externalIngress": false, "targetPort": null, "minReplicas": 1, "maxReplicas": 2, "commandRole": "worker", "requiredSecrets": ["CLOUD_DATABASE_URL"], "requiredConfig": ["OPPORTUNITYOS_TRUTH_PACK_URI", "OPPORTUNITYOS_TRUTH_PACK_HASH", "OPPORTUNITYOS_ENVIRONMENT"]},
+    "api": {"kind": "containerApp", "externalIngress": true, "targetPort": 8000, "minReplicas": 1, "maxReplicas": 2, "commandRole": "api", "requiredSecrets": ["CLOUD_DATABASE_URL", "OPPORTUNITYOS_FOUNDER_PASSWORD", "OPPORTUNITYOS_SESSION_SECRET", "OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN", "OPPORTUNITYOS_TRUTH_PACK_API_KEY"], "requiredConfig": ["OPPORTUNITYOS_TRUTH_PACK_URI", "OPPORTUNITYOS_TRUTH_PACK_HASH", "OPPORTUNITYOS_ENVIRONMENT", "OPPORTUNITYOS_FORCE_SECURE_COOKIES"]},
+    "worker": {"kind": "containerApp", "externalIngress": false, "targetPort": null, "minReplicas": 1, "maxReplicas": 2, "commandRole": "worker", "requiredSecrets": ["CLOUD_DATABASE_URL", "OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN", "OPPORTUNITYOS_TRUTH_PACK_API_KEY"], "requiredConfig": ["OPPORTUNITYOS_TRUTH_PACK_URI", "OPPORTUNITYOS_TRUTH_PACK_HASH", "OPPORTUNITYOS_ENVIRONMENT"]},
     "scheduler": {"kind": "containerApp", "externalIngress": false, "targetPort": null, "minReplicas": 1, "maxReplicas": 1, "commandRole": "scheduler", "requiredSecrets": ["CLOUD_DATABASE_URL"], "requiredConfig": ["OPPORTUNITYOS_ENVIRONMENT"]},
     "migrate": {"kind": "containerJob", "externalIngress": false, "targetPort": null, "minReplicas": null, "maxReplicas": null, "commandRole": "migrate", "requiredSecrets": ["CLOUD_DATABASE_URL"], "requiredConfig": ["OPPORTUNITYOS_ENVIRONMENT"]}
   },

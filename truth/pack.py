@@ -245,13 +245,16 @@ def _is_cloud_mode(env: Mapping[str, str] | None = None) -> bool:
 def _fetch_remote_bytes(
     url: str,
     auth_token: str | None = None,
+    api_key: str | None = None,
     timeout_seconds: float = 30.0,
 ) -> tuple[bytes, str]:
     """Fetch raw bytes and determine format (yaml or json) from an HTTP(S) URL."""
     redacted = _redact_url(url)
     headers = {"User-Agent": "OpportunityOS-TruthPack/1.0"}
-    if auth_token and not any(p in url for p in ("token=", "Signature=", "apikey=", "X-Amz-Signature")):
+    if auth_token:
         headers["Authorization"] = f"Bearer {auth_token}"
+    if api_key:
+        headers["apikey"] = api_key
 
     req = Request(url, headers=headers)
     try:
@@ -312,6 +315,7 @@ def load_truth_pack(
     *,
     expected_hash: str | None = None,
     auth_token: str | None = None,
+    api_key: str | None = None,
     timeout_seconds: float = 30.0,
     allow_local_path: bool | None = None,
     allow_data_uri: bool | None = None,
@@ -350,6 +354,8 @@ def load_truth_pack(
             os.environ.get("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN")
             or os.environ.get("STORAGE_SERVICE_KEY")
         )
+    if api_key is None:
+        api_key = os.environ.get("OPPORTUNITYOS_TRUTH_PACK_API_KEY")
 
     target_str = str(target).strip()
     if not target_str:
@@ -369,6 +375,29 @@ def load_truth_pack(
                 f"plain http:// is forbidden in cloud mode; HTTPS required ({redacted_target})",
                 ("insecure http transport in cloud mode",),
             )
+        if target_str.startswith("https://"):
+            parsed = urlsplit(target_str)
+            if parsed.username or parsed.password or parsed.query or parsed.fragment:
+                raise TruthPackInvalid(
+                    f"Truth Pack URI must not contain credentials, query, or fragment in cloud mode ({redacted_target})",
+                    ("credential-bearing or signed URL forbidden in cloud mode",),
+                )
+            is_supabase = (parsed.hostname or "").lower().endswith("supabase.co")
+            if "/object/public/" in parsed.path.lower():
+                raise TruthPackInvalid(
+                    f"public Supabase Storage object endpoint is forbidden in cloud mode ({redacted_target})",
+                    ("public object endpoint forbidden",),
+                )
+            if is_supabase and (not auth_token or not api_key):
+                raise TruthPackInvalid(
+                    "Supabase Storage Truth Pack access requires both auth token and API key",
+                    ("missing Supabase private storage credentials",),
+                )
+            if not auth_token:
+                raise TruthPackInvalid(
+                    "private HTTPS Truth Pack access requires OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN",
+                    ("missing private Truth Pack auth token",),
+                )
         if target_str.startswith("data:") and not allow_data_uri:
             raise TruthPackInvalid(
                 "data: URI is development/test fixture only and not accepted as production remote storage in cloud mode",
@@ -377,7 +406,7 @@ def load_truth_pack(
 
     if target_str.startswith("http://") or target_str.startswith("https://"):
         raw_bytes, doc_format = _fetch_remote_bytes(
-            target_str, auth_token=auth_token, timeout_seconds=timeout_seconds
+            target_str, auth_token=auth_token, api_key=api_key, timeout_seconds=timeout_seconds
         )
     elif target_str.startswith("s3://"):
         raw_bytes, doc_format = _fetch_s3_bytes(target_str)

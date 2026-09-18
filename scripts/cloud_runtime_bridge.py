@@ -40,6 +40,10 @@ BLOCKERS = {
 }
 
 
+def _truth_is_cloud(source: Mapping[str, str]) -> bool:
+    return source.get("OPPORTUNITYOS_ENVIRONMENT", "").lower() in {"cloud", "prod", "production"} or source.get("MODE", "").lower() == "cloud"
+
+
 def plan_runtime_environment(role: str, source: Mapping[str, str]) -> BridgePlan:
     """Validate W0 inputs and return safe aliases, never an implicit fallback.
 
@@ -109,6 +113,19 @@ def plan_runtime_environment(role: str, source: Mapping[str, str]) -> BridgePlan
     if truth_hash:
         aliases["OPPORTUNITYOS_TRUTH_PACK_HASH"] = truth_hash
 
+    truth_auth = source.get("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN")
+    truth_api_key = source.get("OPPORTUNITYOS_TRUTH_PACK_API_KEY")
+    truth_is_supabase = bool(truth_path and "supabase.co" in truth_path.lower())
+    if truth_auth and invalid("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN", truth_auth):
+        raise CompatibilityError("Invalid or placeholder credential: OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN")
+    if truth_api_key and invalid("OPPORTUNITYOS_TRUTH_PACK_API_KEY", truth_api_key):
+        raise CompatibilityError("Invalid or placeholder credential: OPPORTUNITYOS_TRUTH_PACK_API_KEY")
+    if role in ("api", "worker") and _truth_is_cloud(source):
+        if truth_auth:
+            aliases["OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN"] = truth_auth
+        if truth_api_key:
+            aliases["OPPORTUNITYOS_TRUTH_PACK_API_KEY"] = truth_api_key
+
     # Single-founder authentication: safe secrets propagated when valid
     founder_pw = source.get("OPPORTUNITYOS_FOUNDER_PASSWORD")
     if founder_pw:
@@ -142,12 +159,27 @@ def plan_runtime_environment(role: str, source: Mapping[str, str]) -> BridgePlan
             blockers.append("OPPORTUNITYOS_TRUTH_PACK_URI")
         elif not truth_hash:
             blockers.append("OPPORTUNITYOS_TRUTH_PACK_HASH")
+        if _truth_is_cloud(source) and not truth_auth:
+            blockers.append("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN")
+        if _truth_is_cloud(source) and truth_is_supabase and not truth_api_key:
+            blockers.append("OPPORTUNITYOS_TRUTH_PACK_API_KEY")
+
+    if role == "api" and _truth_is_cloud(source):
+        if not truth_path or not truth_path.startswith("https://"):
+            blockers.append("OPPORTUNITYOS_TRUTH_PACK_URI")
+        if not truth_hash:
+            blockers.append("OPPORTUNITYOS_TRUTH_PACK_HASH")
+        if not truth_auth:
+            blockers.append("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN")
+        if truth_is_supabase and not truth_api_key:
+            blockers.append("OPPORTUNITYOS_TRUTH_PACK_API_KEY")
 
     elif role in ("scheduler", "migrate", "readiness", "liveness"):
         # Autonomous against PostgreSQL! Zero external broker or queue blockers.
         blockers = []
-    else:
-        blockers = []
+    elif role in ("web", "backup"):
+        # Preserve the role's static blockers calculated above.
+        pass
 
     return BridgePlan(role, aliases, tuple(blockers))
 
