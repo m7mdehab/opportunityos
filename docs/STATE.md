@@ -6,20 +6,37 @@ Last shipped: BRIEF-FR-006 — 2026-09-13.
 Active work: BRIEF-FR-007.
 Phase status: in progress.
 Blocked: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha (strictly blocked until Founder Web Alpha is live and validated).
-Next: Founder Web Alpha is publicly reachable and authentication-protected.
+Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supabase target, execute migration/parity proof, establish private durable Truth Pack/artifact storage, and deploy the OCI runtime without giving production authority to the new stack until the staging gates pass.
 
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `dee71bb` — docs(resume): compact canonical FR-007 operating state
+- **State generated at commit:** `40ce68e` — test(state): cover FR acceptance tables and current roadmap next step
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
 
 - **Brief:** BRIEF-FR-007
 - **Phase status:** in progress
-- **Open acceptance items:** 0
-- None
+- **Open acceptance items:** 18
+- A-0 — All pre-existing mandatory backend/web/truth/source/action-safety tests remain green; no acceptance criterion is weakened.
+- A-1 — Public Founder Alpha has zero runtime dependency on a founder-owned PC, local PostgreSQL, local scheduler, local tunnel, or local filesystem for correctness.
+- A-2 — After a complete API/web/worker restart with cold process memory, the first authenticated feed request succeeds within the agreed public SLO and returns the same logical result
+- A-3 — Query-plan/regression evidence proves the default feed and common filters/search do not perform corpus-wide Python hydration/scans. Indexed SQL/projection access is used.
+- A-4 — Killing every poll/evaluation worker leaves the existing feed/search/detail experience available.
+- A-5 — Breaking one source adapter or forcing one source job failure does not stop unrelated sources, feed access, artifact downloads, or the scheduler.
+- A-6 — Polling the same stable source repeatedly is identity/idempotency safe: zero duplicate canonical opportunities and zero duplicate source occurrences for the same stable source
+- A-7 — Poll Now returns asynchronously, queues only due/eligible work (plus an explicitly requested source when applicable), leaves the current feed visible, and never triggers an
+- A-8 — Source cadence/cooldown/next-due state survives scheduler/worker restarts; restart produces no all-source warm-up storm.
+- A-9 — Cloud migration preserves all required canonical opportunity/provenance/evaluation/founder-action state and full current-profile evaluation coverage. Any intentional exclusions
+- A-10 — Founder private truth, credentials, service-role secrets, storage signing secrets, database credentials, and auth secrets are absent from Git history/public responses/logs.
+- A-11 — Generated artifacts are stored durably, privately retrievable after service restarts, and remain bound to opportunity/truth-pack/template/validator versions.
+- A-12 — A fresh staging environment is successfully restored from backup and passes schema migration, count/invariant, auth, feed, search, detail, and artifact smoke checks.
+- A-13 — External uptime/error/job heartbeat monitoring is active and produces a test alert/incident signal without relying on the Founder opening the site.
+- A-14 — Production runs for ≥ 7 consecutive days with founder-owned production host processes disabled/offline while scheduled acquisition/evaluation continues successfully.
+- A-15 — A provider-neutral export/restore procedure is tested sufficiently to prove Supabase/compute-provider exit is possible without rewriting domain logic or losing canonical data.
+- A-16 — Desktop and 390px mobile authenticated smoke tests pass after cloud cutover, including feed, pagination, search, facets, detail, source link, Poll Now status, and artifact access.
+- A-17 — Current cost envelope and quota assumptions are documented, distinguishing permanent free allowances, temporary student credits, and paid-tier requirements. No paid resource is silently created.
 
 ## Completed Briefs
 
@@ -84,4 +101,4 @@ Next: Founder Web Alpha is publicly reachable and authentication-protected.
 
 ## Next Prerequisites
 
-Founder Web Alpha is publicly reachable and authentication-protected. Founder validation is next. Inject the real private Founder Truth Pack only into a founder-controlled durable deployment; never commit it. Do not start BRIEF-007 / Phase 6 until the Founder personally validates and accepts Founder Web Alpha.
+Complete the real hosted staging path: connect the managed PostgreSQL/Supabase target, execute migration/parity proof, establish private durable Truth Pack/artifact storage, and deploy the OCI runtime without giving production authority to the new stack until the staging gates pass.
