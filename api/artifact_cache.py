@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from datetime import datetime, timezone
+from urllib.error import HTTPError
 from urllib.parse import quote, urlsplit
 from urllib.request import Request, urlopen
 
@@ -18,6 +20,10 @@ BACKENDS = frozenset(("postgres_payload", "supabase_storage"))
 
 class ArtifactStorageError(RuntimeError):
     """Safe storage failure without transport or credential text."""
+
+
+class ArtifactObjectExists(ArtifactStorageError):
+    """Deterministic object key already exists in private storage."""
 
 
 def cache_key(opportunity_id: str, truth_pack_hash: str, template_id: str, artifact_kind: str) -> str:
@@ -60,7 +66,7 @@ def validate_storage_config(environ=None) -> list[str]:
 
 
 class SupabaseStorageClient:
-    """Injectable server-side transport for a private Supabase Storage bucket."""
+    """Injectable server-side transport for a verified-private Supabase Storage bucket."""
 
     def __init__(self, base_url=None, service_key=None, bucket=None, transport=None, timeout=10):
         self.base_url = base_url or os.environ.get("SUPABASE_STORAGE_URL", "")
@@ -68,32 +74,88 @@ class SupabaseStorageClient:
         self.bucket = bucket or os.environ.get("OPPORTUNITYOS_ARTIFACT_BUCKET", "")
         self.transport = transport
         self.timeout = timeout
+        self._private_bucket_verified = False
         if not self.base_url or not self.service_key or not self.bucket:
             raise ArtifactStorageError("Supabase private storage configuration is incomplete")
         parsed = urlsplit(self.base_url)
         if parsed.scheme != "https" or not parsed.hostname:
             raise ArtifactStorageError("Supabase storage URL must use HTTPS")
 
+    def _headers(self, *, content_type=None):
+        headers = {
+            "Authorization": f"Bearer {self.service_key}",
+            "apikey": self.service_key,
+        }
+        if content_type:
+            headers["Content-Type"] = content_type
+        return headers
+
     def _url(self, key):
         return self.base_url.rstrip("/") + "/storage/v1/object/" + quote(self.bucket, safe="") + "/" + quote(key, safe="/")
 
+    def _bucket_url(self):
+        return self.base_url.rstrip("/") + "/storage/v1/bucket/" + quote(self.bucket, safe="")
+
+    def ensure_private_bucket(self):
+        """Fail closed unless the configured bucket exists and is explicitly private."""
+        if self._private_bucket_verified:
+            return
+        try:
+            if self.transport is not None:
+                info = self.transport.bucket_info()
+            else:
+                request = Request(self._bucket_url(), method="GET", headers=self._headers())
+                with urlopen(request, timeout=self.timeout) as response:
+                    info = json.loads(response.read().decode("utf-8"))
+        except Exception as exc:
+            raise ArtifactStorageError("private artifact bucket verification failed") from exc
+        if not isinstance(info, dict) or info.get("public") is not False:
+            raise ArtifactStorageError("artifact bucket must exist and be private")
+        self._private_bucket_verified = True
+
     def _request(self, method, key, body=None):
+        self.ensure_private_bucket()
         if self.transport is not None:
             try:
                 return getattr(self.transport, method.lower())(key, body)
+            except ArtifactObjectExists:
+                raise
             except Exception as exc:
                 raise ArtifactStorageError(f"private artifact {method.lower()} failed") from exc
-        request = Request(self._url(key), data=body, method=method, headers={
-            "Authorization": f"Bearer {self.service_key}", "apikey": self.service_key,
-            "Content-Type": "application/octet-stream", "x-upsert": "false"})
+        request = Request(
+            self._url(key),
+            data=body,
+            method=method,
+            headers={
+                **self._headers(content_type="application/octet-stream"),
+                "x-upsert": "false",
+            },
+        )
         try:
             with urlopen(request, timeout=self.timeout) as response:
                 return response.read()
+        except HTTPError as exc:
+            if method == "POST" and exc.code in (400, 409):
+                raise ArtifactObjectExists("artifact object already exists") from exc
+            raise ArtifactStorageError(f"private artifact {method.lower()} failed") from exc
         except Exception as exc:
             raise ArtifactStorageError(f"private artifact {method.lower()} failed") from exc
 
     def upload(self, key, body):
-        self._request("POST", key, body)
+        """Create if absent and recover a matching orphan after an interrupted metadata write.
+
+        Returns True only when this call created the object. A pre-existing
+        deterministic object is accepted only when its bytes exactly match.
+        """
+        self.ensure_private_bucket()
+        try:
+            self._request("POST", key, body)
+            return True
+        except ArtifactObjectExists:
+            existing = self.get(key)
+            if len(existing) != len(body) or hashlib.sha256(existing).digest() != hashlib.sha256(body).digest():
+                raise ArtifactStorageError("existing artifact object conflicts with canonical payload")
+            return False
 
     def get(self, key):
         result = self._request("GET", key)
@@ -103,7 +165,6 @@ class SupabaseStorageClient:
 
     def delete(self, key):
         self._request("DELETE", key)
-
 
 def _client(client=None):
     return client if client is not None else SupabaseStorageClient()
@@ -138,9 +199,11 @@ def get(session: Session, opportunity_id: str, truth_pack_hash: str, template_id
     return row.content_type, _verify_external(row, _client(storage_client).get(row.object_key))
 
 
-def _delete_external(row, client):
+def _delete_external(row, client=None):
     if _backend_for_row(row) == "supabase_storage" and row.object_key:
-        client.delete(row.object_key)
+        # A backend switch must never silently orphan old external objects.
+        # Resolve a server-side client or fail closed before metadata removal.
+        (client or _client()).delete(row.object_key)
 
 
 def store(session: Session, opportunity_id: str, truth_pack_hash: str, template_id: str,
@@ -164,8 +227,7 @@ def store(session: Session, opportunity_id: str, truth_pack_hash: str, template_
     uploaded = False
     if backend == "supabase_storage":
         object_key = object_key_for(key)
-        client.upload(object_key, body)
-        uploaded = True
+        uploaded = client.upload(object_key, body)
     session.add(ArtifactCacheRecord(
         cache_key=key, opportunity_id=opportunity_id, truth_pack_hash=truth_pack_hash,
         template_id=template_id, artifact_kind=artifact_kind, content_type=content_type,
