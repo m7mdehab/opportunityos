@@ -10,8 +10,8 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 
 ## Repository
 
-- **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `0b8bf32` — Merge PR #103: FR-007 W12B Azure staging deployment harness
+- **Generated:** 2026-09-18T16:43:23Z
+- **State generated at commit:** `6c6a708` — feat(web): cloudflare workers staging deployment harness with OpenNext and same-origin API proxy
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
