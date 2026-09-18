@@ -11,7 +11,7 @@ Next: Founder Web Alpha is publicly reachable and authentication-protected.
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `9336bd6` — test(worker): prove HN Retry-After cooldown persistence
+- **State generated at commit:** `93ff8f7` — test(worker): distinguish enqueue from source attempt
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
