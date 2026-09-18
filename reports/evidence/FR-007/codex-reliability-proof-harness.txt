@@ -54,3 +54,11 @@ Scenario derivation and validation semantics:
   threads synchronized at the persistence lookup boundary using a barrier:
   derives canonical row count == 1, zero duplicate provenance natural identities,
   and records RETRYABLE_INTEGRITY_ERROR_WITH_CANONICAL_DB.
+
+Overseer hardening:
+- table-existence probe now fails closed on inspection errors;
+- A4 counts only the seeded proof opportunities/projections and canonical dead/stuck jobs;
+- A5 feed proof uses the real persisted feed query and artifact retrieval uses artifact_cache.get;
+- provenance duplicate checks use the schema's real natural identity (opportunity_id, field_name, record_checksum);
+- concurrent proof fails if either thread hangs or fails to report;
+- direct persistence IntegrityError is no longer mislabeled as proven WorkerRunner retryability.
