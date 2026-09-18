@@ -14,6 +14,10 @@ param founderPassword string = ''
 param sessionSecret string = ''
 @secure()
 param truthPackUri string
+@secure()
+param truthPackAuthToken string = ''
+@secure()
+param truthPackApiKey string = ''
 param truthPackHash string
 param deployApplicationRoles bool = true
 
@@ -42,6 +46,8 @@ module api 'modules/container-app.bicep' = if (deployApplicationRoles) {
     founderPassword: founderPassword
     sessionSecret: sessionSecret
     truthPackUri: truthPackUri
+    truthPackAuthToken: truthPackAuthToken
+    truthPackApiKey: truthPackApiKey
     truthPackHash: truthPackHash
   }
 }
@@ -58,6 +64,8 @@ module worker 'modules/container-app.bicep' = if (deployApplicationRoles) {
     maxReplicas: 2
     cloudDatabaseUrl: cloudDatabaseUrl
     truthPackUri: truthPackUri
+    truthPackAuthToken: truthPackAuthToken
+    truthPackApiKey: truthPackApiKey
     truthPackHash: truthPackHash
   }
 }
