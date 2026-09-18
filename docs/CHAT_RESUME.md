@@ -88,60 +88,53 @@ Authoritative branch:
 
 Integrated repository-side capabilities include:
 
-- durable PostgreSQL `feed_projection`;
-- SQL-native normal feed path;
-- durable PostgreSQL `worker_jobs` queue;
-- lease recovery, fencing, retry/dead-letter and `FOR UPDATE SKIP LOCKED`;
-- persisted per-source `source_schedules`;
-- due-only generic Poll Now;
-- explicit permitted-source Poll Now semantics;
-- persisted cooldown / Retry-After handling;
-- async Founder filter/facet/unhide projection maintenance;
-- OCI roles: `api`, `worker`, `scheduler`, `migrate`;
-- remote HTTPS Truth Pack + SHA-256 integrity verification;
+- durable PostgreSQL `feed_projection` and SQL-native feed/search/filter/pagination;
+- durable PostgreSQL `worker_jobs` queue with leases, recovery, retry/dead-letter and `FOR UPDATE SKIP LOCKED`;
+- persisted per-source `source_schedules`, due-only Poll Now, cooldown/Retry-After and async projection maintenance;
+- real PostgreSQL 16 W11 durability/concurrency proof: 15 tests, zero skips;
+- repository/disposable-PostgreSQL A-4/A-5/A-6 reliability proof;
+- OCI runtime roles: `api`, `worker`, `scheduler`, `migrate`;
+- Azure Container Apps/Jobs staging deployment manifests and migration-first release harness;
+- Cloudflare Workers/OpenNext staging frontend with same-origin `/api/*` proxy and hosted Desktop + 390px Playwright contract;
+- private Supabase Storage artifact backend with checksum/size verification and durable metadata;
+- private remote HTTPS Truth Pack contract with hash binding, bearer/apikey support and Azure secret wiring;
 - migration/backup/restore/parity/provider-exit tooling;
-- manual hosted PostgreSQL/Supabase proof harness;
-- W11 real PostgreSQL 16 durability/concurrency suite: 15 tests, zero skips.
+- manual hosted PostgreSQL/Supabase execution harness.
 
-W11 implementation proof does not itself close production A-7/A-8.
-
-The hosted data-plane harness does not itself close A-9.
+Repository implementation proof is ahead of hosted execution. Production A-gates remain open until real provider/runtime evidence exists.
 
 ## Current Parallel Execution
 
-At this compaction point:
+Next executor lanes:
 
-- Codex is working on the FR-007 cloud deployment manifests + staging release harness;
-- Antigravity is working on a separate non-overlapping FR-007 lane;
-- Overseer has integrated W11 through clean PR #102 and closed superseded PRs #98/#101;
-- PR #93 remains the draft umbrella FR-007 PR.
+- Codex: hosted-grade single-Founder auth/session hardening plus PostgreSQL/Supabase RLS policy authority;
+- Antigravity: observability/release/soak control plane, including external heartbeat/test-alert contracts and cost/quota evidence.
 
-Always re-read live GitHub state because agent branches may have moved since this file was written.
+The Overseer owns PR/CI/integration, ordinary residual repair and the authoritative checklist.
 
 ## Remaining FR-007 Sequence
 
-1. real hosted PostgreSQL/Supabase staging connectivity;
-2. real staging migration and parity;
-3. private durable Truth Pack storage;
-4. private durable artifact/object storage;
-5. hosted API/worker/scheduler/migrate deployment;
-6. independent frontend/cloud-edge wiring;
-7. shadow polling;
-8. repeated-poll duplicate/identity proof;
-9. worker/source failure-isolation proof;
-10. cold-start/feed SLO proof;
-11. production secret/RLS/privacy proof;
-12. external monitoring + test alert;
-13. encrypted off-provider backup;
-14. fresh-environment restore drill;
-15. provider-exit execution proof;
-16. public cutover;
-17. desktop + 390px authenticated cloud smoke;
-18. documented cost/quota envelope;
-19. >=7 consecutive days with Founder-owned production host offline;
-20. terminal A-0..A-17 evidence review;
-21. Founder validation;
-22. only then consider BRIEF-007.
+1. hosted-grade auth/session/RLS boundary;
+2. connect real Supabase/PostgreSQL staging;
+3. real staging migration + parity;
+4. configure/test private Truth Pack retrieval;
+5. configure/test private artifact storage retrieval;
+6. deploy Azure API/worker/scheduler/migrate;
+7. deploy Cloudflare frontend;
+8. run hosted A-4/A-5/A-6/A-7/A-8 reliability proof;
+9. cold-start/feed SLO proof;
+10. shadow polling and identity/source-occurrence parity;
+11. external monitoring + test alert;
+12. encrypted off-provider backup;
+13. fresh-environment restore drill;
+14. provider-exit execution proof;
+15. public cutover;
+16. Desktop + 390px authenticated cloud smoke;
+17. real cost/quota envelope;
+18. >=7 consecutive days with Founder production host offline;
+19. terminal A-0..A-17 evidence review;
+20. Founder validation;
+21. only then consider BRIEF-007.
 
 ## Founder-Only Boundaries
 
