@@ -55,6 +55,8 @@ jobs:
           OPPORTUNITYOS_SESSION_SECRET: ${{ secrets.OPPORTUNITYOS_SESSION_SECRET }}
           OPPORTUNITYOS_TRUTH_PACK_URI: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_URI }}
           OPPORTUNITYOS_TRUTH_PACK_HASH: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_HASH }}
+          OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN }}
+          OPPORTUNITYOS_TRUTH_PACK_API_KEY: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_API_KEY }}
         run: |
           set -euo pipefail
           PARAM_FILE="$RUNNER_TEMP/fr007-azure-parameters.json"
@@ -69,6 +71,8 @@ jobs:
               "founderPassword": {"value": os.environ["OPPORTUNITYOS_FOUNDER_PASSWORD"]},
               "sessionSecret": {"value": os.environ["OPPORTUNITYOS_SESSION_SECRET"]},
               "truthPackUri": {"value": os.environ["OPPORTUNITYOS_TRUTH_PACK_URI"]},
+              "truthPackAuthToken": {"value": os.environ["OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN"]},
+              "truthPackApiKey": {"value": os.environ["OPPORTUNITYOS_TRUTH_PACK_API_KEY"]},
               "truthPackHash": {"value": os.environ["OPPORTUNITYOS_TRUTH_PACK_HASH"]}
           }
           with open(os.environ["PARAM_FILE"], "w", encoding="utf-8") as stream:
