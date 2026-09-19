@@ -11,7 +11,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `2495390` — evidence(fr007): add zero-dollar hosted readiness ledger
+- **State generated at commit:** `09103ef` — adr: identify ADR-0023 as ADR-0022 successor
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
