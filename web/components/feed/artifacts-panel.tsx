@@ -25,7 +25,7 @@ const TEMPLATE_LABEL: Record<ArtifactTemplateId, string> = {
 }
 
 const KIND_LABEL: Record<"cv" | "cover-letter", string> = {
-  cv: "Tailored CV",
+  cv: "Final matched CV",
   "cover-letter": "Cover letter",
 }
 
@@ -161,30 +161,32 @@ export function ArtifactsPanel({ opportunityId }: { opportunityId: string }) {
           ))}
         </div>
 
-        <Select
-          value={template}
-          onValueChange={(v) => setTemplate(v as ArtifactTemplateId)}
-        >
-          <SelectTrigger
-            className="w-[140px]"
-            data-testid="artifact-template-switcher"
-            aria-label="Template"
+        {kind === "cover-letter" && (
+          <Select
+            value={template}
+            onValueChange={(v) => setTemplate(v as ArtifactTemplateId)}
           >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {ARTIFACT_TEMPLATES.map((t) => (
-              <SelectItem key={t} value={t} data-testid={`artifact-template-option-${t}`}>
-                {TEMPLATE_LABEL[t]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+            <SelectTrigger
+              className="w-[140px]"
+              data-testid="artifact-template-switcher"
+              aria-label="Template"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ARTIFACT_TEMPLATES.map((t) => (
+                <SelectItem key={t} value={t} data-testid={`artifact-template-option-${t}`}>
+                  {TEMPLATE_LABEL[t]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       {loadingMeta && findings === null && (
         <p className="mt-2 text-xs text-muted-foreground">
-          Checking claims against your truth pack…
+          {kind === "cv" ? "Matching the approved CV portfolio…" : "Checking claims against your truth pack…"}
         </p>
       )}
 
@@ -244,16 +246,18 @@ export function ArtifactsPanel({ opportunityId }: { opportunityId: string }) {
         >
           {downloading === "pdf" ? "Preparing…" : "Download PDF"}
         </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={downloading !== null}
-          data-testid="artifact-download-docx"
-          onClick={() => handleDownload("docx")}
-        >
-          {downloading === "docx" ? "Preparing…" : "Download DOCX"}
-        </Button>
+        {kind === "cover-letter" && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={downloading !== null}
+            data-testid="artifact-download-docx"
+            onClick={() => handleDownload("docx")}
+          >
+            {downloading === "docx" ? "Preparing…" : "Download DOCX"}
+          </Button>
+        )}
       </div>
       {downloadError && (
         <p role="alert" className="mt-2 text-xs text-destructive">
