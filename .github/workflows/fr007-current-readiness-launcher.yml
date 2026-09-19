@@ -1,0 +1,12 @@
+name: FR-007 Current Readiness Launcher
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  readiness:
+    uses: m7mdehab/opportunityos/.github/workflows/fr007-zero-dollar-readiness.yml@brief/fr-007-cloud-replatform
+    secrets: inherit
