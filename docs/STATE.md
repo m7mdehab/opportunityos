@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `a914e38` — FR-007: refresh W17 runtime evidence
+- **Generated:** 2026-09-19T21:34:55Z
+- **State generated at commit:** `dd36494` — FR-007: issue W20 final hosted proof batch
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief

@@ -1,4 +1,4 @@
-﻿import { defineConfig, devices } from "@playwright/test";
+import { defineConfig, devices } from "@playwright/test";
 
 /**
  * Cloud / Hosted Staging Playwright configuration for OpportunityOS Founder Alpha.
@@ -13,6 +13,7 @@
 
 const stagingWebUrl = process.env.OPOS_STAGING_WEB_URL?.trim();
 const founderPassword = process.env.E2E_FOUNDER_PASSWORD?.trim();
+const founderEmail = process.env.E2E_FOUNDER_EMAIL?.trim();
 
 if (!stagingWebUrl) {
   throw new Error(
@@ -23,6 +24,12 @@ if (!stagingWebUrl) {
 if (!founderPassword) {
   throw new Error(
     "playwright.staging.config.ts requires E2E_FOUNDER_PASSWORD to be set for authenticating against staging."
+  );
+}
+
+if (!founderEmail) {
+  throw new Error(
+    "playwright.staging.config.ts requires E2E_FOUNDER_EMAIL to be set for authenticating against staging."
   );
 }
 

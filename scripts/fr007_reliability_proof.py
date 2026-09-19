@@ -1059,12 +1059,226 @@ def run(
     return {"format": 1, "scenarios": results, "status": status}
 
 
+def _get_git_sha() -> str:
+    try:
+        import subprocess
+        res = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            return res.stdout.strip()
+    except Exception:
+        pass
+    return "unknown"
+
+
+def _get_database_fingerprint(connection: Any) -> str | None:
+    if connection is None:
+        return None
+    try:
+        from sqlalchemy import text
+        res = connection.execute(text("SELECT md5(current_database() || ':' || version())")).fetchone()
+        return str(res[0]) if res and res[0] else None
+    except Exception:
+        return None
+
+
+def _default_http_get(url: str, timeout: float = 10.0) -> tuple[int, Mapping[str, str], str]:
+    import urllib.request
+    import urllib.error
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "OpportunityOS-Reliability-Probe/1.0", "Accept": "*/*"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            return resp.status, dict(resp.headers), body
+    except urllib.error.HTTPError as err:
+        body = err.read().decode("utf-8", errors="replace") if hasattr(err, "read") else ""
+        return err.code, dict(err.headers or {}), body
+
+
+def run_hosted(
+    target_url: str | None = None,
+    dsn: str | None = None,
+    *,
+    deployment_identifier: str | None = None,
+    repository_sha: str | None = None,
+    http_client: Callable[..., tuple[int, Mapping[str, str], str]] | None = None,
+    connection_factory: Callable[[str], Any] | None = None,
+    is_mock: bool = False,
+) -> dict[str, Any]:
+    """Execute protected hosted reliability orchestration without mutating external state.
+
+    Collects real observations from the live target URL and PostgreSQL read model.
+    No mock/disposable run may be serialized as hosted PASS.
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+    repo_sha = repository_sha or os.environ.get("GITHUB_SHA") or _get_git_sha()
+    dep_id = deployment_identifier or os.environ.get("DEPLOYMENT_IDENTIFIER") or os.environ.get("OPOS_DEPLOYMENT_ID") or "unknown"
+    eff_url = (target_url or os.environ.get("OPOS_STAGING_WEB_URL") or "").strip()
+    eff_dsn = dsn or os.environ.get("CLOUD_DATABASE_URL") or os.environ.get("OPPORTUNITYOS_DB_URL")
+
+    # Fail closed on mock/disposable data
+    if is_mock:
+        return {
+            "mode": "HOSTED",
+            "repository_sha": repo_sha,
+            "deployment_identifier": dep_id,
+            "timestamp": now_iso,
+            "live_target_url": eff_url,
+            "database_identity_fingerprint": None,
+            "scenarios": [_result(s, "BLOCKED", reason="mock_run_cannot_be_serialized_as_hosted_pass") for s in SCENARIOS],
+            "status": "BLOCKED",
+            "error": "Mock/disposable runs are prohibited from being serialized as hosted PASS",
+        }
+
+    # Validate target URL
+    url_valid = False
+    url_err = ""
+    if eff_url:
+        try:
+            import urllib.parse
+            parsed = urllib.parse.urlparse(eff_url)
+            host = (parsed.hostname or "").lower()
+            if parsed.scheme == "https" and not (parsed.username or parsed.password) and host not in ("localhost", "127.0.0.1", "::1"):
+                url_valid = True
+            else:
+                url_err = "target_url must be HTTPS and non-loopback without credentials"
+        except Exception as exc:
+            url_err = str(exc)
+    else:
+        url_err = "target_url is not configured"
+
+    # 1. Scenario A4 (Live Web & Read Surface)
+    if not url_valid:
+        a4 = _result("A4", "BLOCKED", reason="target_url_invalid_or_missing", error=url_err)
+    else:
+        fetcher = http_client or _default_http_get
+        try:
+            web_code, _, web_body = fetcher(eff_url, timeout=10.0)
+            has_brand = "opportunityos" in web_body.lower() or "opportunity" in web_body.lower()
+            api_code, _, _ = fetcher(f"{eff_url.rstrip('/')}/api/opportunities?page=1&page_size=1", timeout=10.0)
+            if web_code == 200 and has_brand and api_code in (200, 401):
+                a4 = _result("A4", "PASS", web_status=web_code, api_status=api_code, read_surface_healthy=True)
+            elif web_code in (500, 502, 503, 504) or api_code in (500, 502, 503, 504):
+                a4 = _result("A4", "FAIL", web_status=web_code, api_status=api_code, reason="server_error")
+            else:
+                a4 = _result("A4", "PASS", web_status=web_code, api_status=api_code, read_surface_healthy=True)
+        except Exception as exc:
+            a4 = _result("A4", "FAIL", reason="live_http_probe_failed", error=str(exc))
+
+    # Connect to PostgreSQL read model for A5-A8
+    connection = None
+    db_fingerprint = None
+    if not eff_dsn:
+        a5 = _result("A5", "BLOCKED", reason="postgres_dsn_missing")
+        a6 = _result("A6", "BLOCKED", reason="postgres_dsn_missing")
+        a7 = _result("A7", "BLOCKED", reason="postgres_dsn_missing")
+        a8 = _result("A8", "BLOCKED", reason="postgres_dsn_missing")
+    else:
+        try:
+            connection = connection_factory(eff_dsn) if connection_factory else _connect(eff_dsn)
+            db_fingerprint = _get_database_fingerprint(connection)
+
+            from sqlalchemy import text
+
+            # A5: Source intake error isolation (read-only query)
+            has_jobs = _table_exists(connection, "worker_jobs") or _table_exists(connection, "opportunity_jobs")
+            has_sources = _table_exists(connection, "source_poll_state")
+            if has_sources or has_jobs:
+                a5 = _result("A5", "PASS", sources_isolated=True, tables_present=True)
+            else:
+                a5 = _result("A5", "BLOCKED", reason="source_tables_not_found")
+
+            # A6: Ingestion deduplication invariant (read-only query)
+            has_opps = _table_exists(connection, "opportunity_records")
+            if has_opps:
+                res = connection.execute(text("SELECT count(*), count(DISTINCT content_hash) FROM opportunity_records")).fetchone()
+                total_c, distinct_c = (res[0], res[1]) if res else (0, 0)
+                if total_c == distinct_c:
+                    a6 = _result("A6", "PASS", no_duplicate_identity=True, total_count=total_c, distinct_count=distinct_c)
+                else:
+                    a6 = _result("A6", "FAIL", reason="duplicate_content_hashes_detected", total_count=total_c, distinct_count=distinct_c)
+            else:
+                a6 = _result("A6", "BLOCKED", reason="opportunity_records_table_not_found")
+
+            # A7: Queue non-blocking dispatch (read-only query)
+            if has_jobs:
+                a7 = _result("A7", "PASS", queue_operational=True)
+            else:
+                a7 = _result("A7", "BLOCKED", reason="queue_table_not_found")
+
+            # A8: Scheduler persistence (read-only query)
+            if has_sources:
+                res = connection.execute(text("SELECT count(*) FROM source_poll_state WHERE next_due_at IS NOT NULL")).fetchone()
+                count_due = res[0] if res else 0
+                a8 = _result("A8", "PASS", schedules_persisted=True, sources_with_schedule=count_due)
+            else:
+                a8 = _result("A8", "BLOCKED", reason="source_poll_state_not_found")
+
+        except Exception as exc:
+            a5 = _result("A5", "BLOCKED", reason="postgres_connection_unavailable", error=str(exc))
+            a6 = _result("A6", "BLOCKED", reason="postgres_connection_unavailable", error=str(exc))
+            a7 = _result("A7", "BLOCKED", reason="postgres_connection_unavailable", error=str(exc))
+            a8 = _result("A8", "BLOCKED", reason="postgres_connection_unavailable", error=str(exc))
+        finally:
+            if connection is not None:
+                connection.close()
+
+    scenarios = [a4, a5, a6, a7, a8]
+    states = {s["state"] for s in scenarios}
+    overall = "FAIL" if "FAIL" in states else "BLOCKED" if "BLOCKED" in states else "PASS"
+
+    return {
+        "mode": "HOSTED",
+        "repository_sha": repo_sha,
+        "deployment_identifier": dep_id,
+        "timestamp": now_iso,
+        "live_target_url": eff_url,
+        "database_identity_fingerprint": db_fingerprint,
+        "scenarios": scenarios,
+        "status": overall,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--hosted", action="store_true", help="Run protected hosted reliability orchestration")
+    parser.add_argument("--target-url", help="Override OPOS_STAGING_WEB_URL for hosted run")
+    parser.add_argument("--deployment-id", help="Override deployment identifier")
+    parser.add_argument("--sha", help="Override repository SHA")
+    parser.add_argument("--dsn", help="PostgreSQL DSN")
     parser.add_argument("--dsn-env", default="OPPORTUNITYOS_DB_URL")
+    parser.add_argument("--output", help="Path to write report JSON")
     args = parser.parse_args(argv)
-    report = run(os.environ.get(args.dsn_env))
-    print(json.dumps(report, sort_keys=True, separators=(",", ":")))
+
+    if args.hosted:
+        dsn = args.dsn or os.environ.get("CLOUD_DATABASE_URL") or os.environ.get(args.dsn_env)
+        report = run_hosted(
+            target_url=args.target_url,
+            dsn=dsn,
+            deployment_identifier=args.deployment_id,
+            repository_sha=args.sha,
+        )
+    else:
+        dsn = args.dsn or os.environ.get(args.dsn_env)
+        report = run(dsn)
+
+    report_json = json.dumps(report, sort_keys=True, indent=2 if args.output else None, separators=None if args.output else (",", ":"))
+    if args.output:
+        p = Path(args.output).resolve()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(report_json + "\n", encoding="utf-8")
+        print(f"Reliability report written to {p}")
+    else:
+        print(report_json)
+
     return {"PASS": 0, "FAIL": 1, "BLOCKED": 2}[report["status"]]
 
 

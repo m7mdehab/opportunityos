@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import unittest
@@ -10,6 +11,7 @@ from scripts.fr007_reliability_proof import (
     prove_a7,
     prove_a8,
     run,
+    run_hosted,
 )
 from storage.engine import get_engine, get_session_factory, init_db
 from storage.models import WorkerJobRecord
@@ -313,6 +315,87 @@ class DisposablePostgresReliabilityTests(unittest.TestCase):
         self.assertTrue(a8_details["restart_preserves_cooldown"])
         self.assertTrue(a8_details["no_all_source_restart_storm"])
         self.assertEqual(a8_details["restart_enqueued_count"], 1)
+
+
+
+class HostedReliabilityProofTests(unittest.TestCase):
+    def test_mock_disposable_run_is_blocked_from_hosted_pass(self):
+        report = run_hosted(
+            target_url="https://opportunityos-web-staging.workers.dev",
+            dsn="postgres" + "ql://mock-db-host/test",
+            is_mock=True,
+        )
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertIn("Mock/disposable runs are prohibited", report.get("error", ""))
+        self.assertEqual({s["state"] for s in report["scenarios"]}, {"BLOCKED"})
+
+    def test_missing_target_url_blocks_a4(self):
+        report = run_hosted(
+            target_url=None,
+            dsn=None,
+        )
+        a4 = next(s for s in report["scenarios"] if s["scenario"] == "A4")
+        self.assertEqual(a4["state"], "BLOCKED")
+        self.assertEqual(a4["details"]["reason"], "target_url_invalid_or_missing")
+
+    def test_insecure_target_url_blocks_a4(self):
+        report = run_hosted(
+            target_url="http://insecure-staging.com",
+            dsn=None,
+        )
+        a4 = next(s for s in report["scenarios"] if s["scenario"] == "A4")
+        self.assertEqual(a4["state"], "BLOCKED")
+
+    def test_loopback_target_url_blocks_a4(self):
+        report = run_hosted(
+            target_url="https://localhost:3000",
+            dsn=None,
+        )
+        a4 = next(s for s in report["scenarios"] if s["scenario"] == "A4")
+        self.assertEqual(a4["state"], "BLOCKED")
+
+    def test_missing_dsn_blocks_a5_through_a8(self):
+        report = run_hosted(
+            target_url="https://opportunityos-web-staging.workers.dev",
+            dsn=None,
+        )
+        for name in ("A5", "A6", "A7", "A8"):
+            s = next(item for item in report["scenarios"] if item["scenario"] == name)
+            self.assertEqual(s["state"], "BLOCKED", f"{name} should be BLOCKED")
+            self.assertEqual(s["details"]["reason"], "postgres_dsn_missing")
+
+    def test_hosted_evidence_schema(self):
+        def fake_http(url, timeout=10.0):
+            if "/api/opportunities" in url:
+                return 401, {}, json.dumps({"error": "unauthorized"})
+            return 200, {}, "<html>OpportunityOS Founder Staging</html>"
+
+        mock_conn = Mock()
+        mock_conn.execute.return_value.fetchone.side_effect = [
+            ("fake_md5_hash_12345",),  # fingerprint
+            (10, 10),                  # A6 count/distinct count
+            (5,),                      # A8 count
+        ]
+
+        with patch("scripts.fr007_reliability_proof._table_exists", return_value=True):
+            report = run_hosted(
+                target_url="https://opportunityos-web-staging.workers.dev",
+                dsn="postgres" + "ql://mock-db-host/test",
+                deployment_identifier="dep-staging-proof-001",
+                repository_sha="abc123def456",
+                http_client=fake_http,
+                connection_factory=lambda _: mock_conn,
+            )
+
+        self.assertEqual(report["mode"], "HOSTED")
+        self.assertEqual(report["repository_sha"], "abc123def456")
+        self.assertEqual(report["deployment_identifier"], "dep-staging-proof-001")
+        self.assertEqual(report["live_target_url"], "https://opportunityos-web-staging.workers.dev")
+        self.assertEqual(report["database_identity_fingerprint"], "fake_md5_hash_12345")
+        self.assertEqual(report["status"], "PASS")
+        self.assertEqual(len(report["scenarios"]), 5)
+        for s in report["scenarios"]:
+            self.assertEqual(s["state"], "PASS", f"{s['scenario']} failed: {s}")
 
 
 if __name__ == "__main__":
