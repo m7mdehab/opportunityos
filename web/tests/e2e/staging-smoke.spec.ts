@@ -1,12 +1,24 @@
 import { test, expect, type Page } from "@playwright/test";
 
+const FOUNDER_EMAIL = process.env.E2E_FOUNDER_EMAIL ?? "";
 const FOUNDER_PASSWORD = process.env.E2E_FOUNDER_PASSWORD ?? "";
 
 async function login(page: Page) {
   await page.goto("/");
-  await expect(page).toHaveURL(/\/login$/);
-  await page.getByLabel("Password").fill(FOUNDER_PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/login/);
+
+  // Support both email/password Supabase Auth and legacy password forms
+  const emailInput = page.getByLabel(/email/i);
+  if ((await emailInput.count()) > 0 && (await emailInput.isVisible())) {
+    if (!FOUNDER_EMAIL) {
+      throw new Error("E2E_FOUNDER_EMAIL environment variable is required for Supabase email+password login.");
+    }
+    await emailInput.fill(FOUNDER_EMAIL);
+  }
+
+  const passwordInput = page.getByLabel(/password/i);
+  await passwordInput.fill(FOUNDER_PASSWORD);
+  await page.getByRole("button", { name: /sign in|log in/i }).click();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "OpportunityOS" })).toBeVisible();
 }
@@ -51,8 +63,35 @@ async function pageBinary(page: Page, path: string) {
 }
 
 test.describe("Cloudflare staging hosted smoke", () => {
+  test("unauthorized access is rejected", async ({ page }) => {
+    // 1. Unauthenticated navigation to root redirects to /login
+    await page.goto("/");
+    await expect(page).toHaveURL(/\/login/);
+
+    // 2. Form submission with unauthorized/invalid credentials fails
+    const emailInput = page.getByLabel(/email/i);
+    if ((await emailInput.count()) > 0 && (await emailInput.isVisible())) {
+      await emailInput.fill("unauthorized-user@example.com");
+    }
+    const passwordInput = page.getByLabel(/password/i);
+    await passwordInput.fill("WrongPassword-12345678");
+    await page.getByRole("button", { name: /sign in|log in/i }).click();
+
+    // Verify user is not authenticated and remains on /login
+    await expect(page).toHaveURL(/\/login/);
+
+    // 3. Direct unauthenticated fetch to protected API endpoint fails with 401
+    const unauthed = await pageJson<{ error?: string }>(page, "/api/opportunities");
+    expect(unauthed.status).toBe(401);
+  });
+
   test("desktop/mobile same-origin founder flow", async ({ page }) => {
     await login(page);
+
+    // Session survival proof: reloading or navigating retains authenticated founder session
+    await page.reload();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole("heading", { name: "OpportunityOS" })).toBeVisible();
 
     // Persisted feed must already exist; this smoke does not poll in order to
     // make the page readable.
@@ -122,30 +161,40 @@ test.describe("Cloudflare staging hosted smoke", () => {
     const pdfPreview = drawer.getByTestId("artifact-pdf-preview");
     await expect(pdfPreview).toBeVisible();
 
-    // DOCX/PDF retrieval through the browser's same-origin proxy. These
-    // assertions fail rather than silently passing when staging lacks the
-    // Truth Pack or artifact backend required by A-16.
-    const docx = await pageBinary(
+    // ADR-0024 Fixed CV preview/download retrieval through same-origin proxy.
+    // Fixed CV portfolio serves immutable approved PDFs as cv-final.pdf.
+    const cvPreview = await pageBinary(
       page,
-      `/api/opportunities/${encodeURIComponent(first.id)}/artifacts/cv.docx?template=classic`
+      `/api/opportunities/${encodeURIComponent(first.id)}/artifacts/cv-final.pdf`
     );
-    expect(docx.ok, `DOCX returned ${docx.status}`).toBe(true);
-    expect(docx.contentType).toContain(
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    );
-    expect(docx.contentDisposition.toLowerCase()).toContain("attachment");
-    expect(docx.prefix.slice(0, 2)).toEqual([0x50, 0x4b]);
-    expect(docx.size).toBeGreaterThan(0);
+    expect(cvPreview.ok, `CV preview returned ${cvPreview.status}`).toBe(true);
+    expect(cvPreview.contentType).toContain("application/pdf");
+    expect(cvPreview.contentDisposition.toLowerCase()).toContain("inline");
+    expect(cvPreview.prefix).toEqual([0x25, 0x50, 0x44, 0x46]); // %PDF
+    expect(cvPreview.size).toBeGreaterThan(0);
 
-    const pdf = await pageBinary(
+    const cvDownload = await pageBinary(
       page,
-      `/api/opportunities/${encodeURIComponent(first.id)}/artifacts/cv.pdf?template=classic`
+      `/api/opportunities/${encodeURIComponent(first.id)}/artifacts/cv-final.pdf?download=true`
     );
-    expect(pdf.ok, `PDF returned ${pdf.status}`).toBe(true);
-    expect(pdf.contentType).toContain("application/pdf");
-    expect(pdf.contentDisposition.toLowerCase()).toContain("inline");
-    expect(pdf.prefix).toEqual([0x25, 0x50, 0x44, 0x46]);
-    expect(pdf.size).toBeGreaterThan(0);
+    expect(cvDownload.ok, `CV download returned ${cvDownload.status}`).toBe(true);
+    expect(cvDownload.contentType).toContain("application/pdf");
+    expect(cvDownload.contentDisposition.toLowerCase()).toContain("attachment");
+    expect(cvDownload.prefix).toEqual([0x25, 0x50, 0x44, 0x46]); // %PDF
+    expect(cvDownload.size).toBeGreaterThan(0);
+
+    // Generated artifact access where available (e.g. cover letter)
+    const coverLetter = await pageBinary(
+      page,
+      `/api/opportunities/${encodeURIComponent(first.id)}/artifacts/cover-letter.pdf?template=classic`
+    );
+    if (coverLetter.ok) {
+      expect(coverLetter.contentType).toContain("application/pdf");
+      expect(coverLetter.prefix).toEqual([0x25, 0x50, 0x44, 0x46]);
+    } else {
+      // Cover letter generation may be ungenerated for this item; verify standard API response
+      expect([404, 409, 412]).toContain(coverLetter.status);
+    }
 
     await page.keyboard.press("Escape");
     await expect(drawer).not.toBeVisible();
@@ -172,5 +221,9 @@ test.describe("Cloudflare staging hosted smoke", () => {
     expect(logout.ok, `logout returned ${logout.status}`).toBe(true);
     await page.goto("/");
     await expect(page).toHaveURL(/\/login$/);
+
+    // Session invalidation proof: direct API calls now fail closed with 401 Unauthorized
+    const postLogout = await pageJson<{ error?: string }>(page, "/api/opportunities");
+    expect(postLogout.status).toBe(401);
   });
 });
