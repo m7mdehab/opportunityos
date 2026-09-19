@@ -105,10 +105,10 @@ Repository implementation proof is ahead of hosted execution. Production A-gates
 
 ## Current Parallel Execution
 
-Next executor lanes:
+Executor lane status:
 
-- Codex: hosted-grade single-Founder auth/session hardening plus PostgreSQL/Supabase RLS policy authority;
-- Antigravity: observability/release/soak control plane, including external heartbeat/test-alert contracts and cost/quota evidence.
+- Antigravity: W15B.1 remediation complete on `work/fr007-antigravity-observability-release-wave15`. Workflow <-> CLI contract aligned (`--output-report`, `--output-incident`, `--backup-heartbeat-path`), alert action schema unified (`CREATE`, `UPDATE`, `RESOLVE`, `NONE`), fail-closed issue processor (`scripts/process_incident_alert.py`), durable soak evidence via Actions artifacts (90-day retention) and fetcher (`scripts/fetch_soak_artifacts.py`), fail-closed soak verifier enforcing `proof_scope == "FULL_HOSTED"`, audited hosted acceptance manifest (A-0, A-3 PASS repository-only; A-1, A-2, A-4..A-13, A-15, A-17 REPOSITORY_VERIFIED; A-14, A-16 NOT_EXECUTED), recomputed cost envelope (30-min Actions cadence = 1,440 billed min/mo, ACA student credit separated from permanent free tier), workflow contract validator, and expanded test suite (67/67 PASS) verified;
+- Codex: hosted-grade single-Founder auth/session hardening plus PostgreSQL/Supabase RLS policy authority.
 
 The Overseer owns PR/CI/integration, ordinary residual repair and the authoritative checklist.
 
