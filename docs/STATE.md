@@ -11,7 +11,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `a1c2c22` — truth: pin final CV-reconciled snapshot hash
+- **State generated at commit:** `4436c3c` — test: enforce immutable CV storage integrity and fail-closed retrieval
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
