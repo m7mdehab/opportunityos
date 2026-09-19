@@ -39,15 +39,6 @@ import type {
   TutoringStatus,
   UnhideByReasonResponse,
 } from "@/lib/contract/types"
-import {
-  currentUser as supabaseCurrentUser,
-  enqueuePollNow as supabaseEnqueuePollNow,
-  isSupabaseBrowserConfigured,
-  listOpportunities as supabaseListOpportunities,
-  signIn as supabaseSignIn,
-  signOut as supabaseSignOut,
-} from "@/lib/supabase/browser"
-
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const method = (init?.method ?? "GET").toUpperCase()
   const res = await fetch(path, {
@@ -80,27 +71,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   auth: {
-    login: async (password: string, email?: string) => {
-      if (isSupabaseBrowserConfigured()) {
-        const configuredEmail = email ?? process.env.NEXT_PUBLIC_FOUNDER_EMAIL?.trim()
-        if (!configuredEmail) throw new Error("NEXT_PUBLIC_FOUNDER_EMAIL is required for Supabase Auth")
-        return supabaseSignIn(configuredEmail, password)
-      }
-      return request<{ authenticated: true }>("/api/auth/login", {
+    login: (email: string, password: string) =>
+      request<{ authenticated: true }>("/api/auth/login", {
         method: "POST",
-        body: JSON.stringify({ password }),
-      })
-    },
+        body: JSON.stringify({ email, password }),
+      }),
     logout: () =>
-      isSupabaseBrowserConfigured()
-        ? supabaseSignOut()
-        : request<AuthenticatedResponse>("/api/auth/logout", { method: "POST" }),
+      request<AuthenticatedResponse>("/api/auth/logout", { method: "POST" }),
     logoutAll: () =>
-      request<AuthenticatedResponse>("/api/auth/logout-all", { method: "POST" }),
-    me: () =>
-      isSupabaseBrowserConfigured()
-        ? supabaseCurrentUser()
-        : request<AuthenticatedResponse>("/api/auth/me"),
+      request<AuthenticatedResponse>("/api/auth/logout", { method: "POST" }),
+    me: () => request<AuthenticatedResponse>("/api/auth/me"),
   },
 
   opportunities: {
@@ -117,7 +97,6 @@ export const api = {
        * populated on them) instead of being omitted. */
       include_hidden?: boolean
     }) => {
-      if (isSupabaseBrowserConfigured()) return supabaseListOpportunities(params)
       const search = new URLSearchParams()
       for (const [key, value] of Object.entries(params)) {
         if (value !== undefined && value !== "" && value !== null) {
@@ -226,9 +205,7 @@ export const api = {
 
   worker: {
     pollNow: () =>
-      isSupabaseBrowserConfigured()
-        ? supabaseEnqueuePollNow()
-        : request<PollNowResponse>("/api/worker/poll-now", { method: "POST" }),
+      request<PollNowResponse>("/api/worker/poll-now", { method: "POST" }),
   },
 
   truth: {
