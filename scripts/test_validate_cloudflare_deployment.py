@@ -32,7 +32,7 @@ class CloudflareDeploymentValidatorTests(unittest.TestCase):
             self._copy_package(root)
             route = root / "web" / "app" / "api" / "[...path]" / "route.ts"
             text = route.read_text(encoding="utf-8-sig").replace(
-                'process.env.OPPORTUNITYOS_CLOUD_EDGE === "1"',
+                'env.OPPORTUNITYOS_CLOUD_EDGE === "1"',
                 'false',
             )
             route.write_text(text, encoding="utf-8")
