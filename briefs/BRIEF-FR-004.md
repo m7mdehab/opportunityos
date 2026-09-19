@@ -19,6 +19,24 @@ So this brief builds the smallest slice that lets the founder run the master pla
 
 ---
 
+
+## Founder amendment — fixed CV portfolio (2026-09-19)
+
+ADR-0024 supersedes the employment-CV generation parts of this brief.
+
+For **employment CVs only**:
+
+- the six Founder-approved 2026 PDFs in `founder/cv_portfolio.yaml` are the complete authoritative portfolio;
+- OpportunityOS selects exactly one existing PDF per posting;
+- CV text/layout/formatting is never automatically generated, rewritten, reflowed, or restyled;
+- the selected PDF must be SHA-256 verified before attachment;
+- the Master CV is the fallback for hybrid/ambiguous roles;
+- ML Engineer postings resolve among AI Engineer / Data Scientist / Data Engineer according to the work described; no seventh CV is created.
+
+Truth-locked generation remains active for cover letters, application answers, proposals, and other non-CV artifacts.
+
+Any requirement below that says to compile/generate a tailored employment CV is historical and must be interpreted as **select the locked fixed CV variant**.
+
 ## 1. Frozen and unfrozen
 
 - **Frozen:** BRIEF-002…006 semantics; FR-002 fail-closed persistence invariant (A-0 probe must stay green); FR-003 deliverables.
