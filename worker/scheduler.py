@@ -34,6 +34,7 @@ logger = get_logger("opportunityos.worker.scheduler")
 
 #: Environment variable controlling the poll interval, in hours.
 ENV_POLL_INTERVAL_HOURS = "OPPORTUNITYOS_POLL_INTERVAL_HOURS"
+ENV_MAX_ENQUEUES_PER_TICK = "OPPORTUNITYOS_MAX_ENQUEUES_PER_TICK"
 
 #: Default poll interval, in hours, when the environment variable above is unset.
 DEFAULT_POLL_INTERVAL_HOURS = 6.0
@@ -67,6 +68,19 @@ def get_poll_interval_hours(env: Optional[Mapping[str, str]] = None) -> float:
         )
         return DEFAULT_POLL_INTERVAL_HOURS
     return value
+
+
+def get_max_enqueues_per_tick(env: Optional[Mapping[str, str]] = None) -> int | None:
+    """Optional production batch cap. Unset keeps historical unlimited behavior."""
+    source = env if env is not None else os.environ
+    raw = source.get(ENV_MAX_ENQUEUES_PER_TICK)
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
 
 
 def _default_clock() -> datetime:
@@ -148,6 +162,8 @@ def get_or_create_source_schedule(
     source_id: str,
     cadence_hours: float,
     now: datetime,
+    *,
+    read_allowed: bool = True,
 ) -> SourceScheduleRecord:
     """Retrieve or bootstrap the durable SourceScheduleRecord for a source.
 
@@ -167,6 +183,7 @@ def get_or_create_source_schedule(
     if record is not None:
         if record.cadence_hours != cadence_hours:
             record.cadence_hours = cadence_hours
+        record.read_allowed = bool(read_allowed)
         return record
 
     latest = (
@@ -198,6 +215,7 @@ def get_or_create_source_schedule(
     values = {
         "source_id": source_id,
         "cadence_hours": cadence_hours,
+        "read_allowed": bool(read_allowed),
         "last_attempt_at": last_attempt,
         "last_success_at": last_success,
         "next_due_at": next_due,
@@ -245,6 +263,7 @@ def enqueue_due_sources(
     source_id: Optional[str] = None,
     interval_hours: Optional[float] = None,
     force: bool = False,
+    max_enqueues: Optional[int] = None,
 ) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
     """Enqueue due/eligible poll_source jobs.
 
@@ -272,11 +291,17 @@ def enqueue_due_sources(
 
     # Single-source explicit request
     if source_id is not None:
-        if not reg.is_read_allowed(source_id):
+        allowed = reg.is_read_allowed(source_id)
+        existing = session.query(SourceScheduleRecord).filter_by(source_id=source_id).first()
+        if existing is not None:
+            existing.read_allowed = bool(allowed)
+        if not allowed:
             skipped.append({"source_id": source_id, "reason": "read_disabled_by_policy"})
             return enqueued, skipped
 
-        get_or_create_source_schedule(session, source_id, _cadence_for(source_id), curr_now)
+        get_or_create_source_schedule(
+            session, source_id, _cadence_for(source_id), curr_now, read_allowed=True
+        )
 
         # Serialize eligibility + enqueue + cadence advancement on the durable
         # source schedule row. The queue insert is flushed without committing
@@ -319,9 +344,21 @@ def enqueue_due_sources(
     if not read_allowed:
         return enqueued, skipped
 
-    # Ensure schedules exist for all read_allowed sources
+    # Persist the current registry policy snapshot. This is the durable
+    # authorization boundary consumed by the hosted enqueue_poll_now RPC.
+    existing_rows = (
+        session.query(SourceScheduleRecord)
+        .filter(SourceScheduleRecord.source_id.in_(list(reg._sources)))
+        .all()
+    )
+    for row in existing_rows:
+        row.read_allowed = bool(reg.is_read_allowed(row.source_id))
+
+    # Ensure schedules exist for all read-allowed sources.
     for s in read_allowed:
-        get_or_create_source_schedule(session, s, _cadence_for(s), curr_now)
+        get_or_create_source_schedule(
+            session, s, _cadence_for(s), curr_now, read_allowed=True
+        )
 
     # In PostgreSQL, lock schedule rows with FOR UPDATE SKIP LOCKED. The
     # queue insert and next_due_at advancement remain in the same transaction,
@@ -331,6 +368,7 @@ def enqueue_due_sources(
 
     query = session.query(SourceScheduleRecord).filter(
         SourceScheduleRecord.source_id.in_(read_allowed),
+        SourceScheduleRecord.read_allowed.is_(True),
     )
     if is_postgres:
         query = query.with_for_update(skip_locked=True)
@@ -353,6 +391,10 @@ def enqueue_due_sources(
 
         if sched.next_due_at > curr_now_naive:
             skipped.append({"source_id": sid, "reason": "not_due"})
+            continue
+
+        if max_enqueues is not None and len(enqueued) >= max_enqueues:
+            skipped.append({"source_id": sid, "reason": "deferred_by_batch_limit"})
             continue
 
         job_id = queue.enqueue_job(
@@ -379,6 +421,7 @@ class PollScheduler:
         clock: Clock = _default_clock,
         tick_interval_seconds: float = 30.0,
         stop_event: Optional[threading.Event] = None,
+        max_enqueues_per_tick: Optional[int] = None,
     ) -> None:
         self.session_factory = session_factory
         self.registry = registry or SourceRegistry()
@@ -388,6 +431,11 @@ class PollScheduler:
         self.clock = clock
         self.tick_interval_seconds = tick_interval_seconds
         self.stop_event = stop_event or threading.Event()
+        self.max_enqueues_per_tick = (
+            max_enqueues_per_tick
+            if max_enqueues_per_tick is not None
+            else get_max_enqueues_per_tick()
+        )
         self._last_enqueued_at: dict[str, datetime] = {}
         self._cadence_hours: dict[str, float] = self._load_cadence_hours()
         self._blocked_this_session: set[str] = set()
@@ -456,6 +504,7 @@ class PollScheduler:
                 registry=self.registry,
                 now=now,
                 interval_hours=self.interval_hours,
+                max_enqueues=self.max_enqueues_per_tick,
             )
             for item in enqueued_items:
                 self._last_enqueued_at[item["source_id"]] = now
