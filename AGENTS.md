@@ -174,6 +174,8 @@ Every active brief is an autonomous transaction. Maintain an internal unresolved
 
 Plan a capability preflight before execution. Logical maker/checker roles must map to capabilities actually exposed by the current harness. Independence may be satisfied by a genuinely separate approved model, tool, or session. Do not treat an unavailable nested-agent feature as a phase failure when an approved independent checker can be handed off to.
 
+Before dispatching a Master Agent, complete the pre-dispatch readiness gate in `docs/AGENT_EXECUTION_PROTOCOL.md`. Known blockers are resolved upstream: the Overseer executes Overseer-resolvable prerequisites, Founder-only prerequisites are requested and completed before dispatch, and work that the selected Master cannot authenticate or execute is re-scoped to a capability-aligned end goal. Do not knowingly send a Master a task whose terminal result is predictably `HARD_BLOCKED`.
+
 ## Closure
 
 A brief is not closed because the Master, an auditor, generated state, or a council labels it closed.
