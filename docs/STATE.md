@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `ebd227b` — FR-007: install bundle generator dependencies in integration regen
+- **State generated at commit:** `67ac98a` — FR-007: repair dollar quoting in hosted API policies
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief

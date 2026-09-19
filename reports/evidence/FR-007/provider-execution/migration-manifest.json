@@ -226,7 +226,7 @@
       "filename": "migrations/11_0011_hosted_api_surface.sql",
       "order": 11,
       "revision": "0011_hosted_api_surface",
-      "sha256": "f4f93694c79b537a1d67430ebd42d0f88a7575ff01a8c322e9ed17735aa77a49"
+      "sha256": "8725345adf513e54276bfd2a792df5a9c145ba37b454ad457ad5e4a73fca3e68"
     }
   ],
   "project_ref": "lrrcpwaapwynzdsxzwhy",

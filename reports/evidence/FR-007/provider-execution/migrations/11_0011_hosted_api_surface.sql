@@ -29,43 +29,43 @@ DO $$ BEGIN
       IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN EXECUTE 'REVOKE ALL ON public.founder_cv_selections FROM authenticated'; END IF;
     END $$;
 
-DO $ BEGIN
+DO $$ BEGIN
           IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
             EXECUTE 'DROP POLICY IF EXISTS source_poll_runs_browser_deny_authenticated ON public.source_poll_runs';
             EXECUTE 'DROP POLICY IF EXISTS source_poll_runs_founder_authenticated_read ON public.source_poll_runs';
             EXECUTE 'CREATE POLICY source_poll_runs_founder_authenticated_read ON public.source_poll_runs FOR SELECT TO authenticated USING (public.opos_is_founder())';
           END IF;
-        END $;
+        END $$;
 
-DO $ BEGIN
+DO $$ BEGIN
           IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
             EXECUTE 'DROP POLICY IF EXISTS opportunities_browser_deny_authenticated ON public.opportunities';
             EXECUTE 'DROP POLICY IF EXISTS opportunities_founder_authenticated_read ON public.opportunities';
             EXECUTE 'CREATE POLICY opportunities_founder_authenticated_read ON public.opportunities FOR SELECT TO authenticated USING (public.opos_is_founder())';
           END IF;
-        END $;
+        END $$;
 
-DO $ BEGIN
+DO $$ BEGIN
           IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
             EXECUTE 'DROP POLICY IF EXISTS match_evaluations_browser_deny_authenticated ON public.match_evaluations';
             EXECUTE 'DROP POLICY IF EXISTS match_evaluations_founder_authenticated_read ON public.match_evaluations';
             EXECUTE 'CREATE POLICY match_evaluations_founder_authenticated_read ON public.match_evaluations FOR SELECT TO authenticated USING (public.opos_is_founder())';
           END IF;
-        END $;
+        END $$;
 
-DO $ BEGIN
+DO $$ BEGIN
           IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
             EXECUTE 'DROP POLICY IF EXISTS founder_cv_selections_browser_deny_authenticated ON public.founder_cv_selections';
             EXECUTE 'DROP POLICY IF EXISTS founder_cv_selections_founder_authenticated_read ON public.founder_cv_selections';
             EXECUTE 'CREATE POLICY founder_cv_selections_founder_authenticated_read ON public.founder_cv_selections FOR SELECT TO authenticated USING (public.opos_is_founder())';
           END IF;
-        END $;
+        END $$;
 
-DO $ BEGIN
+DO $$ BEGIN
       IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
         EXECUTE 'GRANT SELECT ON public.founder_cv_selections TO authenticated';
       END IF;
-    END $;
+    END $$;
 
 CREATE OR REPLACE VIEW public.founder_opportunity_detail WITH (security_invoker = true) AS
       SELECT o.id, o.title, o.organization, o.source_id, o.source_url, o.track,
