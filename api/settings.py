@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from storage.engine import get_production_db_url, ProductionDatabaseConfigurationError
 
@@ -41,6 +42,9 @@ class Settings:
     high_fit_threshold: float = DEFAULT_HIGH_FIT_THRESHOLD
     truth_pack_path: str | None = None
     force_secure_cookies: bool = False
+    founder_password_hash: str | None = None
+    public_origin: str | None = None
+    cloud_mode: bool = False
 
 
 def _require_env(name: str) -> str:
@@ -68,8 +72,27 @@ def load_settings() -> Settings:
             f"Required environment variable 'OPPORTUNITYOS_DB_URL' is invalid: {error}"
         ) from error
 
-    founder_password = _require_env("OPPORTUNITYOS_FOUNDER_PASSWORD")
+    cloud_mode = os.environ.get("OPPORTUNITYOS_ENVIRONMENT", "").lower() in {"cloud", "prod", "production"} or os.environ.get("MODE", "").lower() == "cloud"
+    founder_password_hash = os.environ.get("OPPORTUNITYOS_FOUNDER_PASSWORD_HASH") or None
+    founder_password = os.environ.get("OPPORTUNITYOS_FOUNDER_PASSWORD") or None
+    if cloud_mode:
+        if founder_password:
+            raise MissingSettingError("OPPORTUNITYOS_FOUNDER_PASSWORD is forbidden in cloud mode; use OPPORTUNITYOS_FOUNDER_PASSWORD_HASH")
+        founder_password_hash = _require_env("OPPORTUNITYOS_FOUNDER_PASSWORD_HASH")
+        from .security import verify_founder_password
+        if not founder_password_hash.startswith("scrypt$v1$"):
+            raise MissingSettingError("OPPORTUNITYOS_FOUNDER_PASSWORD_HASH is malformed")
+    elif not founder_password and not founder_password_hash:
+        founder_password = _require_env("OPPORTUNITYOS_FOUNDER_PASSWORD")
     session_secret = _require_env("OPPORTUNITYOS_SESSION_SECRET")
+    public_origin = os.environ.get("OPPORTUNITYOS_PUBLIC_ORIGIN") or None
+    if cloud_mode:
+        if not public_origin:
+            raise MissingSettingError("Required environment variable 'OPPORTUNITYOS_PUBLIC_ORIGIN' is missing")
+        parsed_origin = urlsplit(public_origin)
+        if parsed_origin.scheme != "https" or not parsed_origin.netloc or parsed_origin.username or parsed_origin.password or parsed_origin.path not in ("", "/") or parsed_origin.query or parsed_origin.fragment:
+            raise MissingSettingError("OPPORTUNITYOS_PUBLIC_ORIGIN must be a credential-free HTTPS origin")
+        public_origin = f"{parsed_origin.scheme.lower()}://{parsed_origin.netloc.lower()}"
 
     threshold_raw = os.environ.get("OPPORTUNITYOS_HIGH_FIT_THRESHOLD")
     if threshold_raw:
@@ -98,4 +121,7 @@ def load_settings() -> Settings:
         high_fit_threshold=high_fit_threshold,
         truth_pack_path=truth_pack_path,
         force_secure_cookies=force_secure_cookies,
+        founder_password_hash=founder_password_hash,
+        public_origin=public_origin,
+        cloud_mode=cloud_mode,
     )
