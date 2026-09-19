@@ -11,7 +11,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `90eade9` — adr(fr007): align truth storage with Founder classification
+- **State generated at commit:** `a1c2c22` — truth: pin final CV-reconciled snapshot hash
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
