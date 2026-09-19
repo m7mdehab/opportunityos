@@ -59,7 +59,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 ## Decisions
 
 ### Open
-- [ADR-0023 — Zero-Dollar Founder Runtime on Supabase, Cloudflare, and GitHub](adr/ADR-0023-zero-dollar-founder-runtime.md)
+- [ADR-0022 — Cloud-Native Runtime and Supabase Data Plane](adr/ADR-0022-cloud-native-runtime-and-supabase-data-plane.md)
 
 ### Accepted
 - [ADR-0001 — Private Source with Public Documentation Mirror](adr/ADR-0001-repository-topology.md)
@@ -81,7 +81,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 - [ADR-0017: The CV/cover-letter document model](adr/ADR-0017-document-model.md)
 - [ADR-0018 — Phone Token Metric Disambiguation in Claim Validator](adr/ADR-0018-phone-token-metric-disambiguation.md)
 - [ADR-0021 — Canonical Artifact Claim Validation Boundary](adr/ADR-0021-artifact-validator-authority.md)
-- [ADR-0022 — Cloud-Native Runtime and Supabase Data Plane](adr/ADR-0022-cloud-native-runtime-and-supabase-data-plane.md)
+- [ADR-0023 — Zero-Dollar Founder Runtime on Supabase, Cloudflare, and GitHub](adr/ADR-0023-zero-dollar-founder-runtime.md)
 
 ## Blocked Items
 
