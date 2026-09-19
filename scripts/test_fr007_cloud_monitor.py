@@ -760,8 +760,10 @@ class TestReleaseEvidenceIndexer(unittest.TestCase):
         self.assertEqual(index["brief"], "FR-007")
         self.assertGreater(index["evidence_files_count"], 10)
         self.assertEqual(index["acceptance_criteria_summary"]["PASS"], 2)
-        self.assertEqual(index["acceptance_criteria_summary"]["REPOSITORY_VERIFIED"], 14)
+        self.assertEqual(index["acceptance_criteria_summary"]["REPOSITORY_VERIFIED"], 11)
+        self.assertEqual(index["acceptance_criteria_summary"]["PARTIAL"], 3)
         self.assertEqual(index["acceptance_criteria_summary"]["NOT_EXECUTED"], 2)
+        self.assertEqual(sum(index["acceptance_criteria_summary"].values()), 18)
 
         md = format_markdown_summary(index)
         self.assertIn("# FR-007 Release Evidence Index", md)
