@@ -321,11 +321,8 @@ def _postgres_downgrade() -> None:
         END $$
         """
     )
-    op.execute("REVOKE ALL ON FUNCTION public.enqueue_poll_now(text) FROM PUBLIC")
-    op.execute("REVOKE ALL ON FUNCTION public.poll_job_status(text) FROM PUBLIC")
     op.execute("DROP FUNCTION IF EXISTS public.enqueue_poll_now(text)")
     op.execute("DROP FUNCTION IF EXISTS public.poll_job_status(text)")
-    op.execute("DROP FUNCTION IF EXISTS public.opos_is_founder()")
     op.execute("DROP VIEW IF EXISTS public.founder_artifact_metadata")
     op.execute("DROP VIEW IF EXISTS public.founder_source_health")
     op.execute("DROP VIEW IF EXISTS public.founder_feed")
@@ -333,14 +330,15 @@ def _postgres_downgrade() -> None:
         op.execute(f"DROP POLICY IF EXISTS {table}_founder_authenticated_read ON public.{table}")
         op.execute(
             f"""
-            DO $$ BEGIN
+            DO $ BEGIN
               IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
                 EXECUTE 'CREATE POLICY {table}_browser_deny_authenticated ON public.{table} '
                      || 'FOR ALL TO authenticated USING (false) WITH CHECK (false)';
               END IF;
-            END $$
+            END $
             """
         )
+    op.execute("DROP FUNCTION IF EXISTS public.opos_is_founder()")
 
 
 def upgrade() -> None:
