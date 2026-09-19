@@ -4,8 +4,15 @@ targetScope = 'resourceGroup'
 param existingManagedEnvironmentResourceId string
 @description('Founder-stage application and job name prefix.')
 param namePrefix string
-@description('Immutable OCI image, preferably registry/repository@sha256:<64 hex>.')
+@description('Immutable OCI image in registry/repository@sha256:<64 hex> form.')
 param image string
+@description('Private OCI registry server.')
+param registryServer string = 'ghcr.io'
+@description('Private OCI registry username.')
+param registryUsername string
+@secure()
+@description('Long-lived read-only package token used by Azure to pull the private image.')
+param registryPassword string
 @secure()
 param cloudDatabaseUrl string
 @secure()
@@ -28,6 +35,9 @@ module migrate 'modules/container-job.bicep' = {
     name: '${namePrefix}-migrate'
     managedEnvironmentId: existingManagedEnvironmentResourceId
     image: image
+    registryServer: registryServer
+    registryUsername: registryUsername
+    registryPassword: registryPassword
     cloudDatabaseUrl: cloudDatabaseUrl
   }
 }
@@ -38,6 +48,9 @@ module api 'modules/container-app.bicep' = if (deployApplicationRoles) {
     name: '${namePrefix}-api'
     managedEnvironmentId: existingManagedEnvironmentResourceId
     image: image
+    registryServer: registryServer
+    registryUsername: registryUsername
+    registryPassword: registryPassword
     role: 'api'
     externalIngress: true
     targetPort: 8000
@@ -60,6 +73,9 @@ module worker 'modules/container-app.bicep' = if (deployApplicationRoles) {
     name: '${namePrefix}-worker'
     managedEnvironmentId: existingManagedEnvironmentResourceId
     image: image
+    registryServer: registryServer
+    registryUsername: registryUsername
+    registryPassword: registryPassword
     role: 'worker'
     externalIngress: false
     minReplicas: 1
@@ -78,6 +94,9 @@ module scheduler 'modules/container-app.bicep' = if (deployApplicationRoles) {
     name: '${namePrefix}-scheduler'
     managedEnvironmentId: existingManagedEnvironmentResourceId
     image: image
+    registryServer: registryServer
+    registryUsername: registryUsername
+    registryPassword: registryPassword
     role: 'scheduler'
     externalIngress: false
     minReplicas: 1
