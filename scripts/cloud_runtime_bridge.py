@@ -159,10 +159,16 @@ def plan_runtime_environment(role: str, source: Mapping[str, str]) -> BridgePlan
 
     # Single-founder authentication: safe secrets propagated when valid
     founder_pw = source.get("OPPORTUNITYOS_FOUNDER_PASSWORD")
+    founder_hash = source.get("OPPORTUNITYOS_FOUNDER_PASSWORD_HASH")
     if founder_pw:
         if invalid("OPPORTUNITYOS_FOUNDER_PASSWORD", founder_pw):
             raise CompatibilityError("Invalid or placeholder credential: OPPORTUNITYOS_FOUNDER_PASSWORD")
         aliases["OPPORTUNITYOS_FOUNDER_PASSWORD"] = founder_pw
+    if founder_hash:
+        if invalid("OPPORTUNITYOS_FOUNDER_PASSWORD_HASH", founder_hash) or not founder_hash.startswith("scrypt$v1$"):
+            raise CompatibilityError("Invalid or malformed credential: OPPORTUNITYOS_FOUNDER_PASSWORD_HASH")
+        if role == "api" and _truth_is_cloud(source):
+            aliases["OPPORTUNITYOS_FOUNDER_PASSWORD_HASH"] = founder_hash
 
     session_sec = source.get("OPPORTUNITYOS_SESSION_SECRET")
     if session_sec:
@@ -177,10 +183,16 @@ def plan_runtime_environment(role: str, source: Mapping[str, str]) -> BridgePlan
         blockers = list(BLOCKERS["backup"])
     elif role == "api":
         has_founder = bool(
-            founder_pw and not invalid("OPPORTUNITYOS_FOUNDER_PASSWORD", founder_pw)
+            ((founder_hash and not invalid("OPPORTUNITYOS_FOUNDER_PASSWORD_HASH", founder_hash)) or
+             (not _truth_is_cloud(source) and founder_pw and not invalid("OPPORTUNITYOS_FOUNDER_PASSWORD", founder_pw)))
             and session_sec and not invalid("OPPORTUNITYOS_SESSION_SECRET", session_sec)
         )
-        if not has_founder:
+        if _truth_is_cloud(source):
+            blockers = []
+            if not founder_hash: blockers.append("OPPORTUNITYOS_FOUNDER_PASSWORD_HASH")
+            if source.get("OPPORTUNITYOS_FOUNDER_PASSWORD"): blockers.append("OPPORTUNITYOS_FOUNDER_PASSWORD")
+            if not source.get("OPPORTUNITYOS_PUBLIC_ORIGIN"): blockers.append("OPPORTUNITYOS_PUBLIC_ORIGIN")
+        elif not has_founder:
             blockers = list(BLOCKERS["api"])
         else:
             blockers = []
