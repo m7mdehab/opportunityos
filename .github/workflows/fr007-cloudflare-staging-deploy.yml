@@ -90,7 +90,7 @@ jobs:
             echo "Verifying Cloudflare API token..."
             HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
               -H "Authorization: Bearer $CF_TOKEN" \
-              "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/tokens/verify")
+              "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/tokens/verify")
             if [ "$HTTP_STATUS" != "200" ]; then
               echo "Cloudflare token verification failed with status $HTTP_STATUS." >&2
               exit 1
@@ -119,7 +119,7 @@ jobs:
           # VALIDATE only needs a syntactically safe origin. DEPLOY_STAGING
           # builds with the exact protected staging origin that will be
           # supplied at runtime.
-          OPPORTUNITYOS_API_ORIGIN: ${{ inputs.mode == 'DEPLOY_STAGING' && vars.OPPORTUNITYOS_API_ORIGIN || 'https://validation.invalid' }}
+          OPPORTUNITYOS_API_ORIGIN: ${{ vars.OPPORTUNITYOS_API_ORIGIN }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || 'https://validation.invalid' }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'validation-publishable-key' }}
           OPPORTUNITYOS_CLOUD_EDGE: "1"
