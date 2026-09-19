@@ -217,6 +217,32 @@ class TestHttpProbes(unittest.TestCase):
         res = probe_api_liveness("")
         self.assertEqual(res.status, "NOT_CONFIGURED")
 
+    def test_supabase_native_health_probe_pass(self) -> None:
+        def mock_client(url: str, **kwargs: Any) -> tuple[int, Mapping[str, str], str]:
+            return 200, {}, '{"version": "v2.158.1", "name": "GoTrue"}'
+
+        res = probe_api_liveness(
+            None,
+            client=mock_client,
+            supabase_url="https://xyzcompany.supabase.co",
+        )
+        self.assertEqual(res.status, "PASS")
+        self.assertTrue(res.metrics.get("supabase_native"))
+
+    def test_api_liveness_fallback_to_supabase_on_404(self) -> None:
+        def mock_client(url: str, **kwargs: Any) -> tuple[int, Mapping[str, str], str]:
+            if "auth/v1/health" in url:
+                return 200, {}, '{"name": "GoTrue"}'
+            return 404, {}, "Use the Supabase browser runtime contract"
+
+        res = probe_api_liveness(
+            "https://opportunityos-web-staging.workers.dev",
+            client=mock_client,
+            supabase_url="https://xyzcompany.supabase.co",
+        )
+        self.assertEqual(res.status, "PASS")
+        self.assertTrue(res.metrics.get("supabase_native"))
+
 
 class MockJob:
     def __init__(
