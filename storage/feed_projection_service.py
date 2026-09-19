@@ -17,6 +17,7 @@ from api.filters import (
     apply_filters,
 )
 from api.serialization import unpack_dimension_scores, unpack_evaluation_detail, unpack_reasons
+from matching.cv_selector import select_cv_for_text
 from storage.feed_projection import FeedProjectionRecord, projection_identity
 from storage.models import (
     FieldProvenanceRecord,
@@ -187,12 +188,25 @@ def build_projection_record(
         fit_score = float(evaluation.fit_score)
         qualification_decision = evaluation.qualification_decision
         reasons_json = evaluation.reasons_json
+        dimension_scores_json = evaluation.dimension_scores_json or "[]"
+        evaluation_detail_json = evaluation.evaluation_detail_json or "{}"
+        policy_version = evaluation.policy_version
         evaluated_at = evaluation.evaluated_at
     else:
         fit_score = None
         qualification_decision = None
         reasons_json = "[]"
+        dimension_scores_json = "[]"
+        evaluation_detail_json = "{}"
+        policy_version = None
         evaluated_at = now
+
+    cv_selection = None
+    if opportunity.track == "employment":
+        cv_selection = select_cv_for_text(
+            opportunity.title,
+            opportunity.description or "",
+        )
 
     hidden_by: list[str] = []
     rank_penalty = 0
@@ -224,6 +238,10 @@ def build_projection_record(
         source_id=opportunity.source_id,
         source_url=opportunity.source_url,
         posted_date=opportunity.posted_date,
+        deadline=opportunity.deadline,
+        is_stale=bool(opportunity.is_stale),
+        reverified_at=opportunity.reverified_at,
+        description=opportunity.description or "",
         track=opportunity.track,
         opportunity_type=_opportunity_type(opportunity),
         title_family=opportunity.title_family,
@@ -239,6 +257,12 @@ def build_projection_record(
         fit_score=fit_score,
         priority_score=priority_score,
         reasons_json=reasons_json,
+        dimension_scores_json=dimension_scores_json,
+        evaluation_detail_json=evaluation_detail_json,
+        policy_version=policy_version,
+        selected_cv_variant=(cv_selection.selected.variant if cv_selection else None),
+        selected_cv_object_path=(cv_selection.selected.object_path if cv_selection else None),
+        selected_cv_sha256=(cv_selection.selected.sha256 if cv_selection else None),
         red_line_match=red_line,
         excluded_industry_match=industry_match,
         visible=not hidden_by,
