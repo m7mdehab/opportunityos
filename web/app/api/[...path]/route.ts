@@ -104,7 +104,12 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
     if (isCv && new Uint8Array(bytes.slice(0, 5)).toString() !== new Uint8Array(new TextEncoder().encode("%PDF-")).toString()) return hostedError("artifact content type mismatch", 412);
     if (expectedSize !== null && bytes.byteLength !== expectedSize) return hostedError("artifact size mismatch", 412);
     if (expectedHash) { const digest = await crypto.subtle.digest("SHA-256", bytes); const actual = Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join(""); if (actual !== expectedHash) return hostedError("artifact checksum mismatch", 412); }
-    return new NextResponse(bytes, { status: 200, headers: { "Content-Type": contentType, "Cache-Control": "private, no-store", "Content-Disposition": requested.includes("pdf") ? "inline" : "attachment" } });
+    const download = new URL(request.url).searchParams.get("download") === "true";
+    const extension = requested.includes("pdf") ? "pdf" : requested.includes("docx") ? "docx" : "bin";
+    const disposition = download || !requested.includes("pdf")
+      ? `attachment; filename="opportunity-${path[1]}-${isCv ? "cv" : "artifact"}.${extension}"`
+      : "inline";
+    return new NextResponse(bytes, { status: 200, headers: { "Content-Type": contentType, "Cache-Control": "private, no-store", "Content-Disposition": disposition } });
   }
   return hostedError("hosted API route is unsupported", 404);
 }
