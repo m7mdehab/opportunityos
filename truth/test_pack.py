@@ -14,6 +14,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from truth.pack import (
+    CANONICAL_REPO_TRUTH_PACK,
     DEFAULT_TRUTH_PACK_PATH,
     LoadedPack,
     TruthPackInvalid,
@@ -526,18 +527,19 @@ class LoadTruthPackRemoteAndIntegrityTest(unittest.TestCase):
         )
         self.assertIsInstance(loaded, LoadedPack)
 
-    def test_load_founder_pack_fails_closed_in_cloud_mode_without_uri(self):
+    def test_load_founder_pack_uses_repository_snapshot_in_cloud_mode_without_uri(self):
         import os
         from unittest import mock
 
+        self.assertEqual(Path("founder/truth_pack.yaml.gz.b64"), CANONICAL_REPO_TRUTH_PACK)
         env = {
             "OPPORTUNITYOS_ENVIRONMENT": "production",
         }
         with mock.patch.dict(os.environ, env, clear=True):
-            with self.assertRaises(TruthPackMissing) as ctx:
-                load_founder_pack()
-            self.assertIn("Missing required OPPORTUNITYOS_TRUTH_PACK_URI in cloud mode", str(ctx.exception))
-            self.assertIn("local fallback to private/truth_pack.yaml is disabled", str(ctx.exception))
+            loaded = load_founder_pack()
+        self.assertIsInstance(loaded, LoadedPack)
+        self.assertTrue(loaded.report.valid)
+        self.assertEqual(64, len(loaded.truth_pack_hash))
 
     def test_load_truth_pack_s3_deferred_notice(self):
         with self.assertRaises(TruthPackInvalid) as ctx:
