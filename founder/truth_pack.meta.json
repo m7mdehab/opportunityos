@@ -2,7 +2,7 @@
   "format_version": 1,
   "snapshot": "founder/truth_pack.yaml.gz.b64",
   "decoded_format": "yaml",
-  "decoded_raw_sha256": "7c5de5ad8f7f43af505aed79d7e081b6dca0bd820edcecfe4393971fb15d9869",
+  "decoded_raw_sha256": "0c438bbe12cf72ca02d81e6748500c2f0987ec4b0e12cc6b57fb44eee8696529",
   "updated_at": "2026-09-19",
   "founder_classification": "non-sensitive product truth",
   "sources": [
@@ -15,13 +15,14 @@
     "founder-stated policy carried forward from truth_pack(4).yaml"
   ],
   "canonical_updates": [
-    "Network International title: Data Engineer",
-    "Al Tayseer International title: Business Analyst Team Lead",
-    "Guksu title: Data Analyst & Supply Chain Analyst",
-    "DemoNow.ai Junior AI Engineer experience added",
+    "Network International canonical title reconciled to Data Engineer",
+    "Al Tayseer International canonical title reconciled to Business Analyst Team Lead",
+    "Guksu canonical title reconciled to Data Analyst & Supply Chain Analyst",
+    "DemoNow.ai Junior AI Engineer (Jan 2024-Jul 2025) added",
     "Databricks Certified Data Engineer Associate (2026) added",
     "leadership/activity evidence added",
     "Business Analyst target role added",
-    "role-specific approved summaries and skills reconciled across all six final CVs"
+    "six role-specific approved summaries added alongside Master summary",
+    "cross-CV skills reconciled into canonical career capability inventory"
   ]
 }
