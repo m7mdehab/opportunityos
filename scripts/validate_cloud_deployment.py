@@ -70,6 +70,12 @@ def validate_package(root: Path = ROOT) -> list[str]:
             errors.append(f"{secret_name} must be injected through a Container Apps secret reference")
         if f"{{ name: '{env_name}'; secretRef: '{secret_name}' }}" not in app_module:
             errors.append(f"{env_name} must be wired from {secret_name}")
+    if "founder-password-hash" not in app_module or "OPPORTUNITYOS_FOUNDER_PASSWORD_HASH" not in app_module:
+        errors.append("API must use the hashed Founder password secret")
+    if "{ name: 'OPPORTUNITYOS_FOUNDER_PASSWORD';" in app_module:
+        errors.append("plaintext Founder password must not be deployed")
+    if "OPPORTUNITYOS_PUBLIC_ORIGIN" not in app_module:
+        errors.append("API public origin configuration is missing")
     if "OPPORTUNITYOS_TRUTH_PACK" in job_module:
         errors.append("migration job must not receive Truth Pack credentials")
     if "secrets:" not in job_module or "{ name: 'cloud-database-url'; value: cloudDatabaseUrl }" not in job_module:
