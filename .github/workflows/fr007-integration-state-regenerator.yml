@@ -1,12 +1,7 @@
 name: FR-007 Integration State Regenerator
 
 on:
-  push:
-    branches:
-      - work/fr007-overseer-integration
-    paths-ignore:
-      - docs/STATE.md
-      - reports/evidence/FR-007/provider-execution/**
+  workflow_dispatch:
 
 permissions:
   contents: write
