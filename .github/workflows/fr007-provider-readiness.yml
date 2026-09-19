@@ -1,0 +1,134 @@
+name: FR-007 Provider Readiness
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/fr007-provider-readiness.yml'
+      - 'reports/evidence/FR-007/orders/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  provider-readiness:
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_MANAGED_ENVIRONMENT_ID: ${{ vars.AZURE_MANAGED_ENVIRONMENT_ID }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+      OPOS_AZURE_NAME_PREFIX: ${{ vars.OPOS_AZURE_NAME_PREFIX }}
+      OPOS_AZURE_IMAGE: ${{ vars.OPOS_AZURE_IMAGE }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL }}
+      OPPORTUNITYOS_FOUNDER_PASSWORD_HASH: ${{ secrets.OPPORTUNITYOS_FOUNDER_PASSWORD_HASH }}
+      OPPORTUNITYOS_SESSION_SECRET: ${{ secrets.OPPORTUNITYOS_SESSION_SECRET }}
+      OPPORTUNITYOS_TRUTH_PACK_URI: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_URI }}
+      OPPORTUNITYOS_TRUTH_PACK_HASH: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_HASH }}
+      OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN }}
+      OPPORTUNITYOS_TRUTH_PACK_API_KEY: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_API_KEY }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      OPPORTUNITYOS_FOUNDER_PASSWORD: ${{ secrets.OPPORTUNITYOS_FOUNDER_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check protected staging configuration presence
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os, re, sys
+          required = [
+              "AZURE_RESOURCE_GROUP", "AZURE_MANAGED_ENVIRONMENT_ID", "AZURE_LOCATION",
+              "OPOS_AZURE_NAME_PREFIX", "OPOS_AZURE_IMAGE",
+              "AZURE_CLIENT_ID", "AZURE_TENANT_ID", "AZURE_SUBSCRIPTION_ID",
+              "CLOUD_DATABASE_URL", "OPPORTUNITYOS_FOUNDER_PASSWORD_HASH",
+              "OPPORTUNITYOS_SESSION_SECRET", "OPPORTUNITYOS_TRUTH_PACK_URI",
+              "OPPORTUNITYOS_TRUTH_PACK_HASH", "CLOUDFLARE_API_TOKEN",
+              "CLOUDFLARE_ACCOUNT_ID", "OPPORTUNITYOS_FOUNDER_PASSWORD",
+          ]
+          missing = [name for name in required if not os.environ.get(name)]
+          if not (os.environ.get("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN") or
+                  os.environ.get("OPPORTUNITYOS_TRUTH_PACK_API_KEY")):
+              missing.append("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN|OPPORTUNITYOS_TRUTH_PACK_API_KEY")
+          image = os.environ.get("OPOS_AZURE_IMAGE", "")
+          if image and not re.search(r"@sha256:[0-9a-fA-F]{64}$", image):
+              print("READINESS_FAIL: OPOS_AZURE_IMAGE must be immutable digest form", file=sys.stderr)
+              sys.exit(2)
+          if missing:
+              print("READINESS_MISSING: " + ", ".join(sorted(missing)), file=sys.stderr)
+              sys.exit(2)
+          print("READINESS_CONFIG_PRESENT")
+          PY
+
+      - name: Azure OIDC login
+        uses: azure/login@v2
+        with:
+          auth-type: SERVICE_PRINCIPAL
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify Azure staging foundation read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          az account show --output none
+          az group show --name "$AZURE_RESOURCE_GROUP" --output none
+          az resource show --ids "$AZURE_MANAGED_ENVIRONMENT_ID" --output none
+          echo "AZURE_FOUNDATION_READY"
+
+      - name: Verify Supabase database credential read-only
+        shell: bash
+        run: |
+          python -m pip install -q psycopg2-binary
+          python - <<'PY'
+          import os, sys
+          import psycopg2
+          dsn = os.environ["CLOUD_DATABASE_URL"]
+          try:
+              conn = psycopg2.connect(dsn.replace("postgresql+psycopg2://", "postgresql://", 1), connect_timeout=10)
+              conn.set_session(readonly=True, autocommit=False)
+              with conn.cursor() as cur:
+                  cur.execute("SELECT version_num FROM public.alembic_version")
+                  row = cur.fetchone()
+                  if not row or row[0] != "0009_hosted_founder_auth":
+                      raise RuntimeError("unexpected hosted migration revision")
+              conn.rollback()
+              conn.close()
+          except Exception:
+              print("READINESS_FAIL: CLOUD_DATABASE_URL cannot read expected hosted target", file=sys.stderr)
+              sys.exit(3)
+          print("SUPABASE_DATABASE_READY")
+          PY
+
+      - name: Verify Cloudflare token read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN_JSON="$(mktemp)"
+          ACCOUNT_JSON="$(mktemp)"
+          trap 'rm -f "$TOKEN_JSON" "$ACCOUNT_JSON"' EXIT
+          curl --fail --silent --show-error             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/user/tokens/verify" > "$TOKEN_JSON"
+          curl --fail --silent --show-error             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID" > "$ACCOUNT_JSON"
+          python - "$TOKEN_JSON" "$ACCOUNT_JSON" <<'PY'
+          import json, sys
+          for path in sys.argv[1:]:
+              with open(path, encoding="utf-8") as stream:
+                  data=json.load(stream)
+              if data.get("success") is not True:
+                  raise SystemExit("READINESS_FAIL: Cloudflare credential check failed")
+          print("CLOUDFLARE_READY")
+          PY
+
+      - name: Readiness result
+        run: echo "READY_TO_DISPATCH_PROVIDER_RUNTIME=YES"
