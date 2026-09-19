@@ -28,6 +28,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: brief/fr-007-cloud-replatform
 
       - uses: actions/setup-python@v7
         with:
