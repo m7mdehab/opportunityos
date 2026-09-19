@@ -73,6 +73,15 @@ export function ArtifactsPanel({ opportunityId }: { opportunityId: string }) {
 
   useEffect(() => {
     let cancelled = false
+    if (kind === "cv") {
+      setOmittedItems([])
+      setFindings(null)
+      setMetaError(null)
+      setLoadingMeta(false)
+      return () => {
+        cancelled = true
+      }
+    }
     api.opportunities
       .omittedItems(opportunityId, kind, template)
       .then((res) => {
