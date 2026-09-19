@@ -1,70 +1,143 @@
-# FR-007 Cloud Cost & Quota Control Plane
+# FR-007 Zero-Dollar Cost & Quota Control Plane
 
-This document establishes the authoritative cost and quota envelope for OpportunityOS under BRIEF-FR-007.
+This document is the authoritative cost rule for the Founder Alpha under ADR-0023.
 
-In accordance with product principles and the Founder Acceptance Contract (§5, A-17):
-1. **Zero Silent Spend**: No paid resources may be provisioned or configured without explicit written authorization from Mohammed.
-2. **Quota Transparency**: All infrastructure choices must be backed by documented first-party tier limits and measured consumption estimates.
-3. **Automated Verification**: Resource envelopes are tracked in machine-readable JSON (`reports/evidence/FR-007/cloud-cost-quota.json`) and validated deterministically via `scripts/validate_cloud_cost_quota.py`.
+The Founder decision is stricter than "no out-of-pocket spend": **OpportunityOS must use only already-owned resources whose declared runtime envelope has a gross provider charge of $0.00.**
 
----
+Credits do not count as free.
 
-## 1. Service Breakdown & First-Party Quotas
+## Locked rules
 
-| Service / Provider | Tier & Pricing Model | Quota / Hard Limits | Projected OPOS Consumption | Monthly Out-of-Pocket | Inactivity / Defense |
-|---|---|---|---|---|---|
-| **Supabase** (PostgreSQL, Auth, Storage) | Free Tier (Permanent Free Allowance) | - 500 MB Database storage<br>- 1 GB File storage<br>- 5 GB Monthly egress<br>- 2 Active projects<br>- Pauses after 7 days inactivity | - DB storage: ~45 MB<br>- File storage: ~120 MB<br>- Monthly egress: ~850 MB<br>- 1 Project active | **$0.00** | Probed every 30 minutes by external cloud monitor, eliminating inactivity pauses. |
-| **Azure Container Apps** (API & Worker Engine) | Consumption Plan (Temporary Student Credit) | - 180,000 vCPU-seconds free/mo<br>- 360,000 GiB-seconds free/mo<br>- 2M HTTP requests free/mo<br>- $100 annual student credit buffer | - Allocation: 0.25 vCPU, 0.5 GiB<br>- Continuous runtime: 2,592,000 s/mo<br>- Billable vCPU-s: 468,000 ($11.23)<br>- Billable GiB-s: 936,000 ($2.81)<br>- Total Gross: $14.04/mo | **$0.00** (Absorbed by $100 annual student credit; NOT permanent free tier) | ACA scales to 1 min-instance for predictable polling and background processing. |
-| **Cloudflare Workers** (Founder Alpha Web / Edge) | Workers Free Plan (Permanent Free Allowance) | - 100,000 Requests/day<br>- 10 ms CPU time per request<br>- 100 Worker scripts | - ~1,500 Requests/day<br>- ~3.5 ms CPU time/request<br>- 2 Worker routes | **$0.00** | Global edge CDN and serverless runtime; zero idle compute cost. |
-| **GitHub Actions** (CI/CD & Observability) | Free Plan (Private Repo Allocation) | - 2,000 Linux runner minutes/mo<br>- Billed in whole minutes (rounded up) | - 30-min external monitor: 1,440 runs/mo<br>- Runner class: `ubuntu-slim`<br>- 1 billed min/run: 1,440 billed min/mo<br>- Remaining CI headroom: 560 min/mo | **$0.00** | 30-min cadence preserves 560 free minutes for PR and main CI. |
+1. **Gross provider charge = $0.00.**
+2. **Founder out-of-pocket charge = $0.00.**
+3. Student, trial, promotional, prepaid or reimbursed credits are not architecture.
+4. Azure is not an approved FR-007 runtime provider.
+5. No paid plan, paid add-on, larger GitHub runner, metered overage or automatic upgrade is allowed.
+6. When a free quota is exhausted, that subsystem fails closed, pauses or degrades without spend.
+7. Only the current approved provider set may be used: **Supabase, Cloudflare, GitHub**.
+8. Any future paid runtime requires a new explicit Founder decision and ADR.
 
----
+Machine-readable authority:
 
-## 2. ACA Compute Sizing & Economics
+`reports/evidence/FR-007/cloud-cost-quota.json`
 
-Azure Container Apps Consumption pricing charges:
-- **vCPU-seconds**: $0.000024 per vCPU-second above the 180,000 s free grant.
-- **Memory GiB-seconds**: $0.000003 per GiB-second above the 360,000 s free grant.
+Validation:
 
-For a continuous, single-instance deployment running 24x7 (30 days = 720 hours = 2,592,000 seconds) at minimal footprint (0.25 vCPU, 0.5 GiB RAM):
-1. **vCPU Usage**:
-   - Total vCPU-seconds: $2,592,000 \times 0.25 = 648,000\text{ s}$
-   - Free grant deduction: $-180,000\text{ s}$
-   - Net billable vCPU-seconds: $468,000\text{ s}$
-   - vCPU Cost: $468,000 \times \$0.000024 = \$11.232$
+`python scripts/validate_cloud_cost_quota.py --production`
 
-2. **Memory Usage**:
-   - Total GiB-seconds: $2,592,000 \times 0.5 = 1,296,000\text{ s}$
-   - Free grant deduction: $-360,000\text{ s}$
-   - Net billable GiB-seconds: $936,000\text{ s}$
-   - Memory Cost: $936,000 \times \$0.000003 = \$2.808$
+## Provider envelope
 
-3. **Total Monthly Gross Cost**:
-   $$\$11.232 + \$2.808 = \$14.04\text{ / month}$$
+| Provider | Active use | $0 basis | Fail-closed quota posture |
+|---|---|---|---|
+| **Supabase Free** | PostgreSQL, Auth, RLS, private Storage, Cron/pg_cron, optional thin Edge Functions | 500 MB DB, 1 GB file storage, 5 GB egress, 500k Edge Function invocations/month, 2 active Free projects | refuse paid add-ons/upgrades; monitor storage/egress/function usage; pause non-critical work before a paid path |
+| **Cloudflare Free / existing domain** | DNS/TLS, static frontend assets, thin Worker edge | Workers Free: 100k requests/day, 10 ms HTTP CPU/request, 5 cron triggers/account; static asset requests are free | keep heavy logic off Worker; fail when free request/CPU limits are exhausted; never switch the account to Workers Paid automatically |
+| **GitHub existing account** | source/CI, bounded Python worker jobs, external monitoring, encrypted logical backup artifacts | standard GitHub-hosted runners on the current public repository are no-charge; existing Pro artifact/cache allowance applies | standard runners only; no larger runners; artifact size/retention capped; if repository visibility/cost rules change, production execution stops pending a new envelope |
 
-This gross charge ($14.04/month) is absorbed by the Founder's Azure for Students credit ($100/year grant). It is explicitly classified as a **temporary student credit**, not a permanent free tier allowance. Net out-of-pocket expenditure is **$0.00**.
+## Runtime economics
 
----
+There is no always-on paid compute service.
 
-## 3. Quota Defenses & Invariants
+The active runtime shape is:
 
-1. **Supabase Inactivity Pause Defense**:
-   Supabase free tier projects pause after 7 consecutive days of inactivity. Our external monitor (`scripts/fr007_cloud_monitor.py`) runs every 30 minutes from GitHub Actions, querying public `/api/auth/me` and database queue status, ensuring the instance remains active without synthetic manual intervention.
+`Cloudflare web/edge -> Supabase Auth/RPC/PostgreSQL/Storage <- GitHub Actions bounded Python workers`
 
-2. **Actions Runner Billing Granularity & Headroom**:
-   GitHub Actions bills job execution rounded up to the nearest whole minute. A 30-second job consumes 1 full billed minute. At a 15-minute cadence, 2,880 runs would consume 2,880 billed minutes, exceeding the 2,000-minute free allocation. By setting the external monitor cadence to **30 minutes** (`*/30 * * * *`), monthly monitor consumption is exactly 1,440 billed minutes, leaving **560 billed minutes** of safety buffer for regular repository PR checks, guard scans, and main branch builds.
+Supabase Cron or persisted schedule state decides what is due. GitHub Actions provides disposable execution capacity for the existing Python domain engine.
 
-3. **Production Validation Gate**:
-   `scripts/validate_cloud_cost_quota.py` dynamically recomputes all figures and enforces consistency in CI:
-   - In `--staging` mode, it validates that all declared services remain within documented free tier or student credit limits.
-   - In `--production` mode, it strictly blocks on any unapproved paid resource or out-of-pocket cost > $0.00.
+The Founder PC is not a production worker.
 
----
+## GitHub Actions guardrails
 
-## 4. Exit and Portability Guarantee (A-15)
+The current repository is public, so GitHub's standard hosted runners are no-charge under GitHub's published Actions billing rules.
 
-The chosen architecture maintains strict provider neutrality:
-- Database: Standard PostgreSQL 16 schemas, migrations via Alembic, standard connection strings. Compatible with AWS RDS, Neon, DigitalOcean, or bare-metal PostgreSQL.
-- Object Storage: Standard S3-compatible API or Supabase Storage abstraction.
-- Web & API Containers: Standard Dockerfiles, deployable to AWS ECS, Google Cloud Run, Fly.io, or any Kubernetes cluster.
-- Exit requires zero changes to core opportunity ingestion, scoring, or matching logic.
+This is an explicit zero-dollar assumption.
+
+If the authoritative runtime repository becomes private, the cost validator/readiness gate must be revisited before scheduled production workers continue. Do not silently consume billable minutes.
+
+Allowed:
+
+- standard Ubuntu hosted runners;
+- scheduled or workflow-dispatch bounded jobs;
+- normal CI;
+- encrypted, size-capped artifacts.
+
+Forbidden:
+
+- larger runners;
+- paid Actions capacity;
+- unchecked artifact growth;
+- using Actions filesystem as canonical state.
+
+Canonical state always remains in Supabase.
+
+## Supabase guardrails
+
+Founder-Alpha projections are deliberately far below the Free limits.
+
+The control plane monitors:
+
+- database size;
+- file-storage size;
+- egress;
+- active-project count;
+- Edge Function invocations if used;
+- inactivity/pause risk.
+
+The system should naturally remain active through cron, worker and monitoring traffic. Synthetic traffic must not be used to conceal a broken runtime.
+
+No paid:
+
+- IPv4 add-on;
+- PITR;
+- automatic backup add-on;
+- custom Supabase domain;
+- read replicas;
+- compute upgrade.
+
+## Cloudflare guardrails
+
+Prefer static asset delivery so normal page assets do not consume Worker requests/CPU.
+
+The Worker is intentionally thin:
+
+- edge routing;
+- security headers;
+- optional lightweight request handling.
+
+Heavy polling, matching, document generation, or Python business logic never runs in Workers Free.
+
+The Worker deployment must remain on the Free plan.
+
+## Backup economics
+
+Supabase Free does not provide the paid backup/PITR posture assumed by higher tiers.
+
+FR-007 therefore uses:
+
+1. GitHub Actions standard runner;
+2. logical PostgreSQL export;
+3. encryption before persistence;
+4. encrypted Actions artifact only;
+5. max archive size enforced before upload;
+6. short bounded retention;
+7. fresh restore drill.
+
+No unencrypted Founder data may enter a GitHub artifact.
+
+If the encrypted backup cannot fit within the approved included artifact envelope, backup must fail and FR-007 cannot close until the Founder approves a new architecture. It must not create storage spend.
+
+## Verification invariant
+
+The cost validator must reject:
+
+- any service not in the approved provider set;
+- any gross charge greater than zero;
+- any student/trial credit dependency;
+- any paid resource flag;
+- Azure;
+- Cloudflare Workers Paid;
+- Supabase paid tier/add-on assumptions;
+- GitHub larger runners;
+- a private-repository Actions assumption that would exceed its included zero-cost allowance;
+- contradictory summary totals.
+
+A-17 closes only when runtime evidence proves the deployed configuration matches this envelope.
