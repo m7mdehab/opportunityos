@@ -22,6 +22,8 @@ from feedback.service import FounderFeedbackService
 from matching.artifact_validation import validate_artifact_claims
 from matching.binary_export import BinaryArtifactExporter
 from matching.compiler_employment import EmploymentArtifactCompiler
+from matching.cv_selector import select_cv_for_opportunity
+from matching.cv_storage import CVStorageError, fetch_cv_bytes
 from matching.templates import TEMPLATES
 from matching.title_family import normalize_title
 from opportunity.manual_sources import MANUAL_SOURCES, tutoring_platform_cards
@@ -1374,17 +1376,18 @@ def get_opportunity(opportunity_id: str, session: Session = Depends(get_db)):
 # --------------------------------------------------------------------------
 
 def _opportunity_to_domain(opp: OpportunityRecord, provenances: list[FieldProvenanceRecord]) -> Opportunity:
-    skills: tuple[str, ...] = ()
-    for p in provenances:
-        if p.field_name == "skills" and p.normalized_value:
+    def list_field(name: str) -> tuple[str, ...]:
+        for p in provenances:
+            if p.field_name != name or not p.normalized_value:
+                continue
             try:
                 parsed = json.loads(p.normalized_value)
                 if isinstance(parsed, list):
-                    skills = tuple(str(s) for s in parsed)
-                    break
+                    return tuple(str(item) for item in parsed)
             except (json.JSONDecodeError, TypeError):
-                skills = tuple(s.strip() for s in p.normalized_value.split(",") if s.strip())
-                break
+                pass
+            return tuple(item.strip() for item in p.normalized_value.split(",") if item.strip())
+        return ()
 
     return Opportunity(
         id=opp.id,
@@ -1395,7 +1398,9 @@ def _opportunity_to_domain(opp: OpportunityRecord, provenances: list[FieldProven
         organization=opp.organization,
         title=opp.title,
         description=opp.description,
-        skills=skills,
+        responsibilities=list_field("responsibilities"),
+        requirements=list_field("requirements"),
+        skills=list_field("skills"),
         content_hash=opp.content_hash,
     )
 
@@ -1417,6 +1422,60 @@ def _validate_template_param(template: str | None) -> str:
             detail=f"unknown template {template!r}; valid: {sorted(TEMPLATES)}",
         )
     return normalized
+
+
+def _serve_fixed_cv(
+    opportunity_id: str,
+    session: Session,
+    *,
+    inline: bool,
+) -> Response:
+    """Select and serve one Founder-approved immutable PDF.
+
+    This path never invokes the employment CV compiler or binary exporter.
+    The retrieved bytes must match the SHA-256 locked in the six-CV portfolio.
+    """
+    opp = session.query(OpportunityRecord).filter_by(id=opportunity_id).first()
+    if opp is None:
+        raise HTTPException(status_code=404, detail="opportunity not found")
+    if opp.track != Track.EMPLOYMENT.value:
+        raise HTTPException(status_code=409, detail="fixed CV portfolio is employment-only")
+
+    provenances = session.query(FieldProvenanceRecord).filter_by(opportunity_id=opp.id).all()
+    domain_opp = _opportunity_to_domain(opp, provenances)
+    selection = select_cv_for_opportunity(domain_opp)
+    try:
+        content = fetch_cv_bytes(selection.selected)
+    except CVStorageError as error:
+        logger.warning(
+            "fixed CV retrieval blocked",
+            extra={
+                "component": "api.artifacts",
+                "extra_data": {
+                    "opportunity_id": opportunity_id,
+                    "cv_variant": selection.selected.variant,
+                },
+            },
+        )
+        return Response(
+            status_code=503,
+            media_type="application/json",
+            content=json.dumps({
+                "detail": "selected fixed CV is unavailable or failed integrity verification",
+                "variant": selection.selected.variant,
+            }),
+        )
+
+    disposition = "inline" if inline else "attachment"
+    return Response(
+        content=content,
+        media_type=PDF_MEDIA_TYPE,
+        headers={
+            "Content-Disposition": f'{disposition}; filename="{selection.selected.filename}"',
+            "X-OpportunityOS-CV-Variant": selection.selected.variant,
+            "X-OpportunityOS-CV-SHA256": selection.selected.sha256,
+        },
+    )
 
 
 def _compile_artifact_or_response(
@@ -1546,7 +1605,15 @@ def _serve_artifact(
 def get_cv_artifact(
     opportunity_id: str, request: Request, session: Session = Depends(get_db), template: str | None = None,
 ):
-    return _serve_artifact(request, opportunity_id, "cv", "docx", session, template, inline=False)
+    """Legacy route retained fail-closed: final CVs exist only as approved PDFs."""
+    return Response(
+        status_code=410,
+        media_type="application/json",
+        content=json.dumps({
+            "detail": "generated CV DOCX is retired; use the immutable final PDF",
+            "pdf_url": f"/api/opportunities/{opportunity_id}/artifacts/cv.pdf?download=true",
+        }),
+    )
 
 
 @router.get("/opportunities/{opportunity_id}/artifacts/cover-letter.docx")
@@ -1564,9 +1631,8 @@ def get_cv_pdf_artifact(
     template: str | None = None,
     download: bool = False,
 ):
-    """Inline by default (BRIEF-FR-006 D2 requirement 1, embedded preview);
-    `?download=true` returns the same bytes as `attachment` for saving."""
-    return _serve_artifact(request, opportunity_id, "cv", "pdf", session, template, inline=not download)
+    """Serve the exact selected Founder-approved PDF; template is intentionally ignored."""
+    return _serve_fixed_cv(opportunity_id, session, inline=not download)
 
 
 @router.get("/opportunities/{opportunity_id}/artifacts/cover-letter.pdf")
@@ -1597,6 +1663,24 @@ def get_artifact_omitted_items(
     not this metadata)."""
     if kind not in ("cv", "cover-letter"):
         raise HTTPException(status_code=404, detail="unknown artifact kind")
+    if kind == "cv":
+        opp = session.query(OpportunityRecord).filter_by(id=opportunity_id).first()
+        if opp is None:
+            raise HTTPException(status_code=404, detail="opportunity not found")
+        provenances = session.query(FieldProvenanceRecord).filter_by(opportunity_id=opp.id).all()
+        selection = select_cv_for_opportunity(_opportunity_to_domain(opp, provenances))
+        return {
+            "template": "fixed-final",
+            "omitted_items": [],
+            "fixed_cv": {
+                "variant": selection.selected.variant,
+                "filename": selection.selected.filename,
+                "sha256": selection.selected.sha256,
+                "reasons": list(selection.reasons),
+                "scores": dict(selection.scores),
+            },
+        }
+
     template_id = _validate_template_param(template)
 
     result = _compile_artifact_or_response(request, opportunity_id, kind, session)
