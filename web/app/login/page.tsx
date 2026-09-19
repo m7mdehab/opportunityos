@@ -10,6 +10,7 @@ import { ApiError } from "@/lib/contract/types"
 
 export default function LoginPage() {
   const router = useRouter()
+  const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -19,7 +20,7 @@ export default function LoginPage() {
     setSubmitting(true)
     setError(null)
     try {
-      await api.auth.login(password)
+      await api.auth.login(email, password)
       router.push("/")
     } catch (err) {
       if (err instanceof ApiError && err.status === 429) {
@@ -56,13 +57,27 @@ export default function LoginPage() {
           noValidate
         >
           <div className="space-y-1.5">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              autoComplete="username"
+              autoFocus
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              aria-invalid={error ? true : undefined}
+            />
+          </div>
+
+          <div className="space-y-1.5">
             <Label htmlFor="password">Password</Label>
             <Input
               id="password"
               name="password"
               type="password"
               autoComplete="current-password"
-              autoFocus
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
