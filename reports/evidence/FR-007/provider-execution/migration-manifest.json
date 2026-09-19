@@ -1,6 +1,6 @@
 {
   "database_engine": "PostgreSQL 17",
-  "expected_final_revision": "0009_hosted_founder_auth",
+  "expected_final_revision": "0010_hosted_runtime",
   "format": 1,
   "migrations": [
     {
@@ -193,6 +193,24 @@
       "order": 9,
       "revision": "0009_hosted_founder_auth",
       "sha256": "98b333f5c6cf26f47c31fd323c29fdded518a65bb058fc07b6dd1ea9326f9321"
+    },
+    {
+      "down_revision": "0009_hosted_founder_auth",
+      "effects": {
+        "indexes": [
+          "ix_founder_identity_supabase_user_id"
+        ],
+        "tables_or_columns": [
+          "founder_identity"
+        ],
+        "touches_auth": true,
+        "touches_rls": true,
+        "touches_storage_metadata": true
+      },
+      "filename": "migrations/10_0010_hosted_runtime.sql",
+      "order": 10,
+      "revision": "0010_hosted_runtime",
+      "sha256": "eb8c4e2d73fd3ba3dde4b031e0e7548c75492267f5505ae743dd060b4c64b248"
     }
   ],
   "project_ref": "lrrcpwaapwynzdsxzwhy",
@@ -201,13 +219,13 @@
   "secret_policy": "runtime injection only; no credentials or private payloads",
   "verification_files": {
     "evidence-template.json": "8e08d05ee67e468b157de73c136ef7d3faeed050e367596c549dcf222c408052",
-    "execution-manifest.json": "0ec2e36fb5b2fc93622351236a2bf7e3543de87fbd439683d5e2f25792766b7e",
+    "execution-manifest.json": "e25ec8801c80de7fa835ab4bde3f3b05c4b1d9e1582e39e85af0c07171ed2954",
+    "provider-security.sql": "b5c741c82fd88b4d8714047a5a7631e98b257b569f757fd92dad863d18800d07",
     "storage-rollback.sql": "2e94435c07c4a997450726b823635c545a0f6298d6bcd3af74db0034627719e4",
     "storage.sql": "ce7247edb08f4284dfb2ceb9c71404d4d197b8bdf104834d413cae77f5298ece",
     "verify/parity.sql": "dfa128a1b72655b73c5d4883e893c5e4c23de48f2761c98aece230336248b070",
     "verify/rls.sql": "fd148c201c393caacd2304cd005592a9c554ffbda166c1f3097bb9dfe4d87e36",
     "verify/schema.sql": "a0b8fd460b413ecfc85766854e7118776db5fbfe392c8293d989d2d47d29387d",
-    "verify/storage.sql": "570948a0bc7d022c4eaa56ef3acf820c2dcef9e6c474c7f6c36b54f66b2668d2",
-    "provider-security.sql": "b5c741c82fd88b4d8714047a5a7631e98b257b569f757fd92dad863d18800d07"
+    "verify/storage.sql": "570948a0bc7d022c4eaa56ef3acf820c2dcef9e6c474c7f6c36b54f66b2668d2"
   }
 }

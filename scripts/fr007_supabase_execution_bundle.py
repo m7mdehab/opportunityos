@@ -74,11 +74,19 @@ def _effects(revision: str) -> dict[str, Any]:
         if node.func.attr in {"create_index", "drop_index"}:
             indexes.add(value)
     source = candidates[0].read_text(encoding="utf-8")
-    return {"tables_or_columns": sorted(tables), "indexes": sorted(indexes),
-            "touches_rls": "apply_postgres_deny_policies" in source or "remove_postgres_deny_policies" in source,
-            "touches_auth": "founder_auth" in source or "founder_sessions" in source,
-            "touches_storage_metadata": "artifact_cache" in source and
-            ("create_table" in source or "add_column" in source)}
+    return {
+        "tables_or_columns": sorted(tables),
+        "indexes": sorted(indexes),
+        "touches_rls": any(marker in source for marker in (
+            "apply_postgres_deny_policies", "remove_postgres_deny_policies",
+            "ENABLE ROW LEVEL SECURITY", "CREATE POLICY",
+        )),
+        "touches_auth": "founder_auth" in source or "founder_sessions" in source,
+        "touches_storage_metadata": (
+            "storage.objects" in source or "storage.buckets" in source or
+            ("artifact_cache" in source and any(marker in source for marker in ("add_column", "drop_column")))
+        ),
+    }
 
 
 def render(revision: str, down_revision: str | None) -> str:
@@ -319,6 +327,12 @@ def generate(output: Path = DEFAULT_OUTPUT) -> dict[str, Any]:
         digest = _write(migration_dir / filename, sql)
         migrations.append({"order": number, **item, "filename": f"migrations/{filename}",
                            "sha256": digest, "effects": _effects(revision)})
+    execution_manifest = json.loads(json.dumps(EXECUTION_MANIFEST))
+    execution_manifest["steps"][2]["operation"] = (
+        f"execute migrations/01_*.sql through migrations/{len(chain):02d}_*.sql in order on an empty target, "
+        "or run Alembic upgrade head after a full restore"
+    )
+    execution_manifest["steps"][2]["expected"] = f"Alembic revision {chain[-1]['revision']}"
     files = {
         "verify/schema.sql": SCHEMA_SQL,
         "verify/rls.sql": RLS_SQL,
@@ -327,7 +341,7 @@ def generate(output: Path = DEFAULT_OUTPUT) -> dict[str, Any]:
         "provider-security.sql": PROVIDER_SECURITY_SQL,
         "storage.sql": STORAGE_SQL,
         "storage-rollback.sql": STORAGE_ROLLBACK_SQL,
-        "execution-manifest.json": json.dumps(EXECUTION_MANIFEST, sort_keys=True, indent=2) + "\n",
+        "execution-manifest.json": json.dumps(execution_manifest, sort_keys=True, indent=2) + "\n",
         "evidence-template.json": json.dumps(EVIDENCE_TEMPLATE, sort_keys=True, indent=2) + "\n",
     }
     hashes = {name: _write(output / name, text) for name, text in files.items()}
@@ -361,7 +375,8 @@ def validate_evidence_document(document: dict[str, Any]) -> None:
     if not document.get("repository_sha") or not document.get("executed_at_utc"):
         raise BundleError("hosted PASS requires repository SHA and execution timestamp")
     migration = document.get("migration", {})
-    if migration.get("after_revision") != "0009_hosted_founder_auth":
+    from_expected = revisions()[-1]["revision"]
+    if migration.get("after_revision") != from_expected:
         raise BundleError("hosted PASS requires final migration revision")
     for section in ("parity", "rls", "storage_bootstrap", "truth_pack", "artifacts"):
         if document.get(section, {}).get("status") != "PASS":

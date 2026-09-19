@@ -6,9 +6,9 @@
 - Starting integration commit: `663ea97`
 - Batch commits: `95a9f8d` (Supabase runtime contract), `e4cf825`
   (authenticated encrypted backup)
-- Implementation commit before evidence amendment: `3402366`; the pushed
-  branch HEAD is the authoritative final commit recorded in the completion
-  packet.
+- R1 remediation is carried in the current branch on top of the preserved
+  W17/Overseer fixes; the final commit SHA is recorded by the completion
+  packet after this evidence update.
 - No production or hosted mutation was executed by Codex.
 
 ## Implemented
@@ -59,8 +59,50 @@
 ## Genuine remaining blockers
 
 The Overseer must execute the protected hosted workflow against the existing
-Supabase staging project, configure `app.founder_auth_uid` through a secure
-database session, run the generated runtime SQL, perform real role/RLS and
+Supabase staging project, bind the real Founder UUID in `founder_identity`
+through a secure database session, run migration 0010, perform real role/RLS and
 private-storage retrieval tests, and provide source credentials for parity.
 Those operations are intentionally absent here; this report does not claim
 FR-007 closure, production cutover, or live artifact/Truth Pack proof.
+
+## R1 remediation
+
+The R1 review defects were repaired in this batch:
+
+- `storage/migrations/versions/0010_hosted_runtime.py` is now the repository
+  migration authority after `0009_hosted_founder_auth`. It binds a durable
+  singleton Founder identity to the Supabase JWT subject, exposes narrow
+  security-invoker views, adds private Storage read policies, and restores
+  deny policies on downgrade.
+- `enqueue_poll_now` is due-only, cooldown-aware, row-locked,
+  active-job-deduplicated, policy-bound and transactionally advances durable
+  schedule state. It never creates a generic empty-payload job.
+- `scripts/fr007_supabase_execution_bundle.py` and committed provider
+  artifacts now discover and render the dynamic Alembic head
+  `0010_hosted_runtime` instead of hard-coding `0009`.
+- `scripts/db_migration_restore.py` now supports authenticated encrypted
+  restore through a temporary plaintext file that is always removed.
+- Web browser runtime wiring uses Supabase Auth, PostgREST feed reads, and the
+  Poll Now RPC when publishable browser configuration is present; the legacy
+  proxy is no longer required at the cloud edge for that path.
+- Workflow contract tests cover the crypto dependency, encrypted-only upload,
+  key non-disclosure, and the single bounded worker CLI mode.
+
+R1 verification:
+
+- Runtime/migration/provider/backup/hosted-proof/workflow suites: **56 tests,
+  0 failures**.
+- Python compile, repository integrity, guard, state generation and diff
+  checks: passed.
+- Web lint/build: passed locally after installing the lockfile dependencies
+  with `npm ci --ignore-scripts` (`npm run lint`, `npm run build`).
+
+The 0010 migration and provider bundle were also checked for role-optional
+execution: disposable/plain PostgreSQL can run the chain without Supabase
+browser roles, while a Supabase target applies the authenticated Founder
+policies when those roles exist.
+
+Hosted operations still not executed by Codex: applying migration 0010 to the
+real Supabase project, inserting the real Founder UUID, anon/non-Founder/
+Founder RLS probes, private CV/artifact retrieval after restart, and source
+parity. Those remain exact Overseer actions and are not represented as PASS.

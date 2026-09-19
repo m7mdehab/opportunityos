@@ -47,9 +47,9 @@ def _postgres_upgrade() -> None:
                 SELECT 1
                 FROM public.founder_identity
                 WHERE id = 'singleton'
-                  AND supabase_user_id::uuid = NULLIF(
+                  AND supabase_user_id = NULLIF(
                       current_setting('request.jwt.claim.sub', true), ''
-                  )::uuid
+                  )
             )
         $$
         """
@@ -114,26 +114,80 @@ def _postgres_upgrade() -> None:
     # remain denied by their 0009 policy.
     for table in _BROWSER_POLICY_TABLES:
         op.execute(f"DROP POLICY IF EXISTS {table}_browser_deny_authenticated ON public.{table}")
+        # Plain PostgreSQL disposable fixtures do not necessarily define the
+        # Supabase browser roles. Keep the migration executable there while
+        # creating the policy whenever the provider does expose the role.
         op.execute(
             f"""
-            CREATE POLICY {table}_founder_authenticated_read
-                ON public.{table} FOR SELECT TO authenticated
-                USING (public.opos_is_founder())
+            DO $$ BEGIN
+              IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+                EXECUTE 'CREATE POLICY {table}_founder_authenticated_read '
+                     || 'ON public.{table} FOR SELECT TO authenticated '
+                     || 'USING (public.opos_is_founder())';
+              END IF;
+            END $$
             """
         )
 
     # Views need no public/table grants beyond the deliberate SELECT surface.
-    op.execute("REVOKE ALL ON public.founder_feed FROM PUBLIC, anon, authenticated")
-    op.execute("GRANT SELECT ON public.founder_feed TO authenticated")
-    op.execute("REVOKE ALL ON public.founder_source_health FROM PUBLIC, anon, authenticated")
-    op.execute("GRANT SELECT ON public.founder_source_health TO authenticated")
-    op.execute("REVOKE ALL ON public.founder_artifact_metadata FROM PUBLIC, anon, authenticated")
-    op.execute("GRANT SELECT ON public.founder_artifact_metadata TO authenticated")
+    for view in ("founder_feed", "founder_source_health", "founder_artifact_metadata"):
+        op.execute(f"REVOKE ALL ON public.{view} FROM PUBLIC")
+        op.execute(
+            f"""
+            DO $$ BEGIN
+              IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+                EXECUTE 'REVOKE ALL ON public.{view} FROM anon';
+              END IF;
+              IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+                EXECUTE 'REVOKE ALL ON public.{view} FROM authenticated';
+                EXECUTE 'GRANT SELECT ON public.{view} TO authenticated';
+              END IF;
+            END $$
+            """
+        )
 
     # The identity table and queue are never directly writable/readable from a
     # browser.  SECURITY DEFINER functions below are the only exposed actions.
-    op.execute("REVOKE ALL ON public.founder_identity FROM PUBLIC, anon, authenticated")
-    op.execute("REVOKE ALL ON public.worker_jobs FROM anon, authenticated")
+    op.execute("REVOKE ALL ON public.founder_identity FROM PUBLIC")
+    op.execute("REVOKE ALL ON public.worker_jobs FROM PUBLIC")
+    op.execute(
+        """
+        DO $$ BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+            EXECUTE 'REVOKE ALL ON public.founder_identity FROM anon';
+            EXECUTE 'REVOKE ALL ON public.worker_jobs FROM anon';
+          END IF;
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+            EXECUTE 'REVOKE ALL ON public.founder_identity FROM authenticated';
+            EXECUTE 'REVOKE ALL ON public.worker_jobs FROM authenticated';
+          END IF;
+        END $$
+        """
+    )
+
+    # Supabase Storage remains private; browser downloads are allowed only for
+    # the bound Founder subject. The metadata tables are provider-owned and are
+    # touched only when this migration is executed against Supabase.
+    op.execute(
+        """
+        DO $$ BEGIN
+          IF to_regclass('storage.objects') IS NOT NULL THEN
+            EXECUTE 'DROP POLICY IF EXISTS founder_private_cv_select ON storage.objects';
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+              EXECUTE 'CREATE POLICY founder_private_cv_select ON storage.objects '
+                   || 'FOR SELECT TO authenticated USING '
+                   || '(bucket_id = ''founder-cv-portfolio'' AND public.opos_is_founder())';
+            END IF;
+            EXECUTE 'DROP POLICY IF EXISTS founder_private_artifact_select ON storage.objects';
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+              EXECUTE 'CREATE POLICY founder_private_artifact_select ON storage.objects '
+                   || 'FOR SELECT TO authenticated USING '
+                   || '(bucket_id = ''opportunity-artifacts'' AND public.opos_is_founder())';
+            END IF;
+          END IF;
+        END $$
+        """
+    )
 
     # A status read is deliberately constrained to the authenticated founder and
     # exposes no payload or error text.
@@ -157,7 +211,18 @@ def _postgres_upgrade() -> None:
         """
     )
     op.execute("REVOKE ALL ON FUNCTION public.poll_job_status(text) FROM PUBLIC")
-    op.execute("GRANT EXECUTE ON FUNCTION public.poll_job_status(text) TO authenticated")
+    op.execute(
+        """
+        DO $$ BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+            EXECUTE 'REVOKE ALL ON FUNCTION public.poll_job_status(text) FROM anon';
+          END IF;
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+            EXECUTE 'GRANT EXECUTE ON FUNCTION public.poll_job_status(text) TO authenticated';
+          END IF;
+        END $$
+        """
+    )
 
     # Poll Now uses only durable source_schedules rows.  Therefore the hosted
     # boundary cannot invent source IDs or bypass the repository read policy,
@@ -228,10 +293,31 @@ def _postgres_upgrade() -> None:
         """
     )
     op.execute("REVOKE ALL ON FUNCTION public.enqueue_poll_now(text) FROM PUBLIC")
-    op.execute("GRANT EXECUTE ON FUNCTION public.enqueue_poll_now(text) TO authenticated")
+    op.execute(
+        """
+        DO $$ BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+            EXECUTE 'REVOKE ALL ON FUNCTION public.enqueue_poll_now(text) FROM anon';
+          END IF;
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+            EXECUTE 'GRANT EXECUTE ON FUNCTION public.enqueue_poll_now(text) TO authenticated';
+          END IF;
+        END $$
+        """
+    )
 
 
 def _postgres_downgrade() -> None:
+    op.execute(
+        """
+        DO $$ BEGIN
+          IF to_regclass('storage.objects') IS NOT NULL THEN
+            EXECUTE 'DROP POLICY IF EXISTS founder_private_cv_select ON storage.objects';
+            EXECUTE 'DROP POLICY IF EXISTS founder_private_artifact_select ON storage.objects';
+          END IF;
+        END $$
+        """
+    )
     op.execute("REVOKE ALL ON FUNCTION public.enqueue_poll_now(text) FROM PUBLIC")
     op.execute("REVOKE ALL ON FUNCTION public.poll_job_status(text) FROM PUBLIC")
     op.execute("DROP FUNCTION IF EXISTS public.enqueue_poll_now(text)")

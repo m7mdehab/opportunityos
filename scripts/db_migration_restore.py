@@ -294,6 +294,26 @@ def restore(settings, archive, *, manifest=None, confirmed=False):
         run_command(argv, env)
 
 
+def restore_encrypted(settings, archive, encrypted_manifest, *, manifest=None, confirmed=False,
+                      environ=None):
+    """Decrypt an authenticated backup to a temporary file, then restore it.
+
+    The encrypted manifest proves ciphertext integrity.  The original pg_dump
+    manifest is still required so the restore checks the archive tool/schema
+    contract before touching the explicitly acknowledged, empty target.
+    """
+    if not confirmed:
+        raise HarnessError("explicit target restore confirmation required")
+    if manifest is None:
+        raise HarnessError("plain backup manifest required for encrypted restore")
+    try:
+        from scripts import encrypted_backup
+        with encrypted_backup.decrypted_backup(archive, encrypted_manifest, environ=environ) as plain:
+            restore(settings, plain, manifest=manifest, confirmed=True)
+    except encrypted_backup.EncryptedBackupError as exc:
+        raise HarnessError("encrypted backup verification failed") from exc
+
+
 def migrate(settings):
     if not (ROOT / "alembic.ini").is_file() or not (ROOT / "storage" / "migrations" / "env.py").is_file():
         raise HarnessError("repository migration path unavailable")
@@ -372,6 +392,11 @@ def main(argv=None):
     load.add_argument("--archive", required=True)
     load.add_argument("--manifest", required=True)
     load.add_argument("--confirm-target-restore", action="store_true")
+    encrypted = sub.add_parser("restore-encrypted")
+    encrypted.add_argument("--archive", required=True)
+    encrypted.add_argument("--encrypted-manifest", required=True)
+    encrypted.add_argument("--manifest", required=True)
+    encrypted.add_argument("--confirm-target-restore", action="store_true")
     sub.add_parser("verify")
     snap = sub.add_parser("snapshot")
     snap.add_argument("--role", choices=("source", "target"), required=True)
@@ -410,6 +435,18 @@ def main(argv=None):
         elif args.operation == "restore":
             settings = target_config()
             restore(settings, args.archive, manifest=args.manifest, confirmed=args.confirm_target_restore)
+            result = {"target": inspect(settings)}
+        elif args.operation == "restore-encrypted":
+            settings = target_config()
+            try:
+                with Path(args.encrypted_manifest).open(encoding="utf-8") as stream:
+                    encrypted_manifest = json.load(stream)
+                with Path(args.manifest).open(encoding="utf-8") as stream:
+                    manifest = json.load(stream)
+            except (OSError, ValueError) as exc:
+                raise HarnessError("encrypted restore manifests unavailable or invalid") from exc
+            restore_encrypted(settings, args.archive, encrypted_manifest, manifest=manifest,
+                              confirmed=args.confirm_target_restore)
             result = {"target": inspect(settings)}
         elif args.operation == "verify":
             result = {"target": inspect(target_config())}

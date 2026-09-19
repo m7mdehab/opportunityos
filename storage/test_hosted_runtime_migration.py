@@ -43,12 +43,15 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
             "founder_source_health",
             "founder_artifact_metadata",
             "security_invoker",
-            "GRANT SELECT ON public.founder_feed TO authenticated",
-            "GRANT SELECT ON public.founder_source_health TO authenticated",
-            "REVOKE ALL ON public.founder_identity FROM PUBLIC, anon, authenticated",
+            "REVOKE ALL ON public.founder_identity FROM PUBLIC",
         ):
             self.assertIn(required, self.source)
+        self.assertIn("GRANT SELECT ON public.{view} TO authenticated", self.source)
         self.assertNotIn("app.founder_auth_uid", self.source)
+        self.assertIn("founder_private_cv_select", self.source)
+        self.assertIn("founder_private_artifact_select", self.source)
+        self.assertIn("founder-cv-portfolio", self.source)
+        self.assertIn("opportunity-artifacts", self.source)
 
     def test_poll_now_is_due_only_and_scheduler_safe(self):
         for required in (

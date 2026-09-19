@@ -147,6 +147,22 @@ class HarnessTests(unittest.TestCase):
         self.assertIn("TABLE public opportunities", filtered)
         self.assertIn("COMMENT - SCHEMA public", filtered)
 
+    def test_encrypted_restore_requires_explicit_confirmation(self):
+        with self.assertRaisesRegex(db.HarnessError, "confirmation"):
+            db.restore_encrypted(db.config("target", self.env), "backup.enc", {},
+                                 manifest={}, confirmed=False)
+
+    def test_encrypted_restore_decrypts_then_uses_existing_restore_contract(self):
+        with patch("scripts.encrypted_backup.decrypted_backup") as decrypted, \
+             patch.object(db, "restore") as restore:
+            temporary = Path(tempfile.gettempdir()) / "opos-test-plain.dump"
+            decrypted.return_value.__enter__.return_value = temporary
+            db.restore_encrypted(db.config("target", self.env), "backup.enc", {"format": 1},
+                                 manifest={"archive_format": "pg_dump_custom"}, confirmed=True,
+                                 environ={"BACKUP_ENCRYPTION_KEY": "ab" * 32})
+            restore.assert_called_once()
+            self.assertTrue(restore.call_args.kwargs["confirmed"])
+
     def test_backup_manifest_detects_corruption_before_restore(self):
         with tempfile.TemporaryDirectory() as temp:
             archive = Path(temp) / "source.dump"

@@ -132,6 +132,17 @@ Task routing must follow actual tool access. Repository agents must not be assig
 
 ## Remaining FR-007 Sequence
 
+### W17-R1 runtime remediation delta
+
+- The runtime-closure branch now carries repository migration `0010_hosted_runtime`
+  for durable Founder identity, narrow Supabase views/RPCs, due-only Poll Now,
+  and private Storage policies.
+- The browser runtime uses publishable Supabase Auth/PostgREST configuration
+  when present; legacy API calls remain a compatibility fallback.
+- Hosted Supabase migration, identity binding, RLS probes, private object
+  retrieval, and source parity remain Overseer-owned operations and are not
+  claimed as repository PASS.
+
 1. execute real Supabase schema migration and hosted parity;
 2. prove hosted anon/authenticated/backend RLS boundaries;
 3. prove the repository-managed canonical Truth Pack loads and hash-verifies in cloud/background jobs;

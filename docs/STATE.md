@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `95a9f8d` — FR-007: add Supabase runtime SQL contract
+- **State generated at commit:** `5478474` — FR-007: wire browser Supabase runtime contract
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
