@@ -51,7 +51,8 @@ jobs:
         if: inputs.mode != 'VALIDATE'
         env:
           CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL }}
-          OPPORTUNITYOS_FOUNDER_PASSWORD: ${{ secrets.OPPORTUNITYOS_FOUNDER_PASSWORD }}
+          OPPORTUNITYOS_FOUNDER_PASSWORD_HASH: ${{ secrets.OPPORTUNITYOS_FOUNDER_PASSWORD_HASH }}
+          OPPORTUNITYOS_PUBLIC_ORIGIN: ${{ vars.OPPORTUNITYOS_PUBLIC_ORIGIN }}
           OPPORTUNITYOS_SESSION_SECRET: ${{ secrets.OPPORTUNITYOS_SESSION_SECRET }}
           OPPORTUNITYOS_TRUTH_PACK_URI: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_URI }}
           OPPORTUNITYOS_TRUTH_PACK_HASH: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_HASH }}
@@ -68,7 +69,8 @@ jobs:
               "namePrefix": {"value": os.environ["OPOS_AZURE_NAME_PREFIX"]},
               "image": {"value": os.environ["OPOS_AZURE_IMAGE"]},
               "cloudDatabaseUrl": {"value": os.environ["CLOUD_DATABASE_URL"]},
-              "founderPassword": {"value": os.environ["OPPORTUNITYOS_FOUNDER_PASSWORD"]},
+              "founderPasswordHash": {"value": os.environ["OPPORTUNITYOS_FOUNDER_PASSWORD_HASH"]},
+              "publicOrigin": {"value": os.environ["OPPORTUNITYOS_PUBLIC_ORIGIN"]},
               "sessionSecret": {"value": os.environ["OPPORTUNITYOS_SESSION_SECRET"]},
               "truthPackUri": {"value": os.environ["OPPORTUNITYOS_TRUTH_PACK_URI"]},
               "truthPackAuthToken": {"value": os.environ["OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN"]},
