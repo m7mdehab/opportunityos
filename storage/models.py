@@ -490,6 +490,9 @@ class SourceScheduleRecord(Base):
 
     source_id = Column(String(128), primary_key=True)
     cadence_hours = Column(Float, nullable=False)
+    # Durable policy snapshot maintained from docs/SOURCE_REGISTRY.yaml by the
+    # scheduler. Hosted RPCs must never infer permission merely from row existence.
+    read_allowed = Column(Boolean, default=False, nullable=False)
     last_attempt_at = Column(DateTime, nullable=True)
     last_success_at = Column(DateTime, nullable=True)
     next_due_at = Column(DateTime, nullable=False, index=True)
