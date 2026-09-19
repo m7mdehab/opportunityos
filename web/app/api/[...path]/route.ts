@@ -1,4 +1,5 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 // Hop-by-hop headers that should not be forwarded
 const FORBIDDEN_HEADERS = new Set([
@@ -20,9 +21,21 @@ type HostedConfig = { origin: string; key: string };
 
 type HostedSession = { access_token?: string; refresh_token?: string; expires_in?: number };
 
-function hostedConfig(): HostedConfig | null {
-  const raw = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const key = (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)?.trim();
+type RuntimeEnv = Record<string, string | undefined>;
+
+function runtimeEnv(): RuntimeEnv {
+  try {
+    const cloudflareEnv = getCloudflareContext().env as unknown as RuntimeEnv;
+    if (cloudflareEnv.OPPORTUNITYOS_CLOUD_EDGE === "1") return cloudflareEnv;
+  } catch {
+    // next dev / ordinary Node execution has no OpenNext Worker request context.
+  }
+  return process.env as RuntimeEnv;
+}
+
+function hostedConfig(env: RuntimeEnv = runtimeEnv()): HostedConfig | null {
+  const raw = env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const key = (env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? env.NEXT_PUBLIC_SUPABASE_ANON_KEY)?.trim();
   if (!raw || !key) return null;
   try { const url = new URL(raw); if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) return null; return { origin: url.origin, key }; } catch { return null; }
 }
@@ -62,7 +75,7 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
     return NextResponse.json({ views: Array.isArray(rows) ? rows.map((row: Record<string, unknown>) => ({ id: row.id, name: row.name, facets: typeof row.facets_json === "string" ? JSON.parse(row.facets_json) : {}, search_query: row.search_query ?? null, is_default: Boolean(row.is_default) })) : [] });
   }
   if (subpath === "truth/status" && method === "GET") {
-    const hash = process.env.NEXT_PUBLIC_TRUTH_PACK_HASH?.trim() || null;
+    const hash = runtimeEnv().NEXT_PUBLIC_TRUTH_PACK_HASH?.trim() || null;
     return NextResponse.json({ loaded: Boolean(hash), hash, path: "hosted-private-truth-pack", validator: { ok: Boolean(hash), error_count: 0, findings: [] }, sections: [] });
   }
   if (subpath === "dashboard/daily" && method === "GET") {
@@ -134,8 +147,9 @@ async function proxyRequest(
   // Determine target API origin:
   // 1. In Cloudflare runtime / environment: process.env.OPPORTUNITYOS_API_ORIGIN
   // 2. In local dev fallback: http://localhost:<OPPORTUNITYOS_API_PORT || 8000>
-  const configuredOrigin = process.env.OPPORTUNITYOS_API_ORIGIN?.trim();
-  const cloudEdge = process.env.OPPORTUNITYOS_CLOUD_EDGE === "1";
+  const env = runtimeEnv();
+  const configuredOrigin = env.OPPORTUNITYOS_API_ORIGIN?.trim();
+  const cloudEdge = env.OPPORTUNITYOS_CLOUD_EDGE === "1";
 
   let targetOrigin: string;
   if (configuredOrigin) {
@@ -169,7 +183,7 @@ async function proxyRequest(
     if (cloudEdge) return hostedRequest(request, path);
     // Local-development fallback only. Cloudflare staging sets
     // OPPORTUNITYOS_CLOUD_EDGE=1 and therefore can never reach localhost.
-    const port = process.env.OPPORTUNITYOS_API_PORT || "8000";
+    const port = env.OPPORTUNITYOS_API_PORT || "8000";
     targetOrigin = `http://localhost:${port}`;
   }
 
