@@ -143,7 +143,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          verify="$(curl --fail-with-body --silent --show-error             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             https://api.cloudflare.com/client/v4/user/tokens/verify)"
+          verify="$(curl --fail-with-body --silent --show-error             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/tokens/verify)"
           account="$(curl --fail-with-body --silent --show-error             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID")"
           python -c 'import json,sys; assert json.loads(sys.argv[1]).get("success") is True' "$verify"
           python -c 'import json,sys; assert json.loads(sys.argv[1]).get("success") is True' "$account"
