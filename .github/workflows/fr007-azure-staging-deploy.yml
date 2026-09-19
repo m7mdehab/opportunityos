@@ -27,8 +27,7 @@ jobs:
     env:
       AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
       AZURE_MANAGED_ENVIRONMENT_ID: ${{ vars.AZURE_MANAGED_ENVIRONMENT_ID }}
-      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
-      OPOS_AZURE_NAME_PREFIX: ${{ vars.OPOS_AZURE_NAME_PREFIX }}
+      OPOS_AZURE_NAME_PREFIX: opos-staging
     steps:
       - uses: actions/checkout@v4
 
