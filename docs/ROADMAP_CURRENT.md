@@ -23,7 +23,7 @@ The FR-007 integration branch now contains repository/disposable-runtime proof f
 - durable Retry-After/policy cooldown behavior;
 - asynchronous Founder settings/facet/unhide projection maintenance;
 - OCI-separated `api`, `worker`, `scheduler`, and `migrate` roles;
-- Azure Container Apps/Jobs staging deployment manifests and migration-first release harness;
+- historical Azure deployment manifests exist but are no longer an active runtime target under ADR-0023;
 - Cloudflare Workers/OpenNext staging frontend with same-origin `/api/*` proxy and hosted Desktop + 390px smoke contract;
 - private Supabase Storage artifact backend with checksum/size verification and deterministic object identity;
 - private remote HTTPS Truth Pack runtime contract with hash binding and server-only credentials;
@@ -69,11 +69,13 @@ The Overseer owns connected-provider operations available only through authentic
 - configure a real private artifact bucket and verify generation/retrieval after restart;
 - prove secrets remain server-side and object bodies remain private.
 
-### 3. Hosted runtime + frontend execution
+### 3. Zero-dollar hosted runtime + frontend execution
 
-- deploy API, worker, scheduler and migrate roles from the same immutable OCI image;
-- deploy frontend independently behind Cloudflare;
-- prove no Founder-PC/local-filesystem dependency;
+- wire Supabase Auth + Founder-only RLS/views/RPCs for interactive feed/search/detail/settings/Poll Now;
+- wire Supabase Cron/`pg_cron` to persisted source schedule state;
+- run bounded Python queue workers through standard GitHub Actions runners, with all state durable in Supabase;
+- deploy the frontend on the existing Cloudflare account/domain, preferring static/client-rendered delivery and a thin Worker edge;
+- prove no Founder-PC/local-filesystem/paid-compute dependency;
 - run hosted A-4/A-5/A-6/A-7/A-8 evidence and cold-start/feed SLO measurement.
 
 ### 4. Shadow migration and source parity
@@ -87,7 +89,7 @@ The Overseer owns connected-provider operations available only through authentic
 - activate external uptime monitoring and application-error capture;
 - activate job/queue/source-freshness/worker-stall/backup heartbeats;
 - generate a real test alert/incident;
-- produce encrypted off-provider backup;
+- produce an encrypted logical off-provider backup as a size-capped GitHub Actions artifact within the existing zero-dollar allowance;
 - restore into a fresh staging environment;
 - execute provider-neutral export/restore proof.
 
@@ -95,7 +97,7 @@ The Overseer owns connected-provider operations available only through authentic
 
 - public DNS/runtime cutover only after staging evidence authorizes it;
 - authenticated desktop and 390px mobile cloud smoke;
-- document the real cost/quota envelope;
+- prove the hard zero-dollar envelope: $0 gross charge, $0 out-of-pocket, no credit/trial dependency, and fail-closed quota behavior;
 - run at least 7 consecutive days with Founder-owned production host processes disabled/offline.
 
 ### 7. Terminal acceptance
@@ -111,7 +113,7 @@ FR-007 closure does not automatically start BRIEF-007. Founder product validatio
 - UNKNOWN is not FALSE and ABSENT is not INELIGIBLE;
 - source coverage is not permission;
 - 403/429/CAPTCHA/MFA/policy restrictions are stop conditions;
-- no paid infrastructure is silently created;
+- no paid infrastructure, student-credit resource, trial-credit resource or billable overage path is permitted;
 - no production secret or private Founder truth enters Git;
 - backups are not accepted until restore proof passes;
 - provider-specific infrastructure must not rewrite core domain logic;
