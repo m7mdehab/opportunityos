@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from calendar import monthrange
 from datetime import date
 import re
 from types import MappingProxyType
@@ -219,7 +220,15 @@ def _single_record_supports_value(
         abbr_pat = re.compile(rf"\b{m_abbr}\.?\s+{value.day},?\s+{value.year}\b|\b{value.day}\s+{m_abbr}\.?\s+{value.year}\b", re.I)
         if abbr_pat.search(content):
             return True
-        if value.day == 1:
+        normalized_month_boundary = (
+            (predicate is not None and predicate.endswith(".start_date") and value.day == 1)
+            or (
+                predicate is not None
+                and predicate.endswith(".end_date")
+                and value.day == monthrange(value.year, value.month)[1]
+            )
+        )
+        if normalized_month_boundary:
             month_only_pat = re.compile(
                 rf"\b(?:{m_name}|{m_abbr}\.?)\s+{value.year}\b",
                 re.I,
