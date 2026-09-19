@@ -1,5 +1,19 @@
 # FR-007 cloud runtime configuration contract (W0.3)
 
+> **Current FR-007 override (W15/W16):** the original W0 matrix below records the
+> provider-neutral planning vocabulary, but the implemented single-Founder runtime
+> now uses hosted durable Founder auth rather than JWKS/Supabase Auth. The cloud API
+> requires `CLOUD_DATABASE_URL`, `OPPORTUNITYOS_FOUNDER_PASSWORD_HASH`,
+> `OPPORTUNITYOS_SESSION_SECRET`, `OPPORTUNITYOS_PUBLIC_ORIGIN`, and the private
+> remote Truth Pack contract. Plaintext `OPPORTUNITYOS_FOUNDER_PASSWORD` is
+> forbidden in the cloud API. The worker requires the database plus the remote Truth
+> Pack URI/hash/private credential. Scheduler and migrate require only the database.
+> For Supabase Storage, a modern `sb_secret_` value in
+> `OPPORTUNITYOS_TRUTH_PACK_API_KEY` is sufficient by itself; the legacy bearer
+> token is only required for legacy/generic private HTTPS authentication. Runtime
+> deployment authority is the code plus `docs/PRIVATE_TRUTH_PACK_RUNTIME.md`,
+> `docs/HOSTED_AUTH_RLS.md`, and the Azure/Cloudflare deployment validators.
+
 This is a deployment preflight contract, not an assertion that the current application consumes these names. Values belong in provider secret/config stores, never Git, build logs, URLs, or browser bundles. Run `python scripts/validate_cloud_config.py --role ROLE` separately for `web`, `api`, `worker`, `scheduler`, and `backup` before starting each role. The validator checks presence and obvious template/URL mistakes; it cannot establish reachability, least privilege, RLS, encryption, backup validity, or application wiring. A passing preflight is not a production acceptance gate by itself.
 
 `R` means required for that role's startup; `O` means optional until the named capability is deployed. “Startup” values are checked before serving work; “runtime” values are used for operations after boot. The `web` values are compiled into browser-delivered assets and are **public**, including the publishable/anon key. All other names are server-only even when non-secret. Never put a service-role key, database URL, storage signing secret, or private truth in a `NEXT_PUBLIC_*` variable. Configure authenticated RLS-scoped browser reads; an anon key is not authorization.
