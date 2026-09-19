@@ -45,10 +45,10 @@ A real Supabase staging project now exists and is healthy:
 - region `eu-central-1`;
 - PostgreSQL 17;
 - safe API origin `https://lrrcpwaapwynzdsxzwhy.supabase.co`;
-- initial public schema/migration history empty;
+- hosted application schema present at Alembic revision `0009_hosted_founder_auth`, with the expected 26-table public RLS baseline;
 - project creation cost recorded as $0/month.
 
-Provider credentials and private artifact bodies remain outside Git. The canonical career Truth Pack is Founder-approved repository-managed product truth.
+Provider credentials and private artifact bodies remain outside Git. The canonical career Truth Pack is Founder-approved repository-managed product truth. All six fixed CV PDFs are now present in private Supabase Storage and have passed exact remote re-download SHA-256 verification against the committed catalog.
 
 The next execution is no longer another repository-preparation wave. It is the real hosted data-plane/private-state execution against this staging target.
 
@@ -66,7 +66,7 @@ The Overseer owns connected-provider operations available only through authentic
 ### 2. Career truth and private application-file execution
 
 - prove the repository-managed canonical Truth Pack decodes, loads and verifies its pinned SHA-256 in cloud/background execution;
-- upload the six Founder-approved fixed CV PDFs to the private `founder-cv-portfolio` bucket and verify every remote object against its committed SHA-256;
+- [complete] six Founder-approved fixed CV PDFs uploaded to private `founder-cv-portfolio` and every remote object verified against its committed SHA-256;
 - configure/verify generated artifact private storage and restart-safe retrieval;
 - prove secrets remain server-side and private file bodies remain private.
 
