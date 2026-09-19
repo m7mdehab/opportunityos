@@ -22,7 +22,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install --disable-pip-version-check --no-cache-dir PyYAML
+      - run: python -m pip install --disable-pip-version-check --no-cache-dir -e .
       - name: Generate provider execution bundle
         run: python scripts/fr007_supabase_execution_bundle.py generate
       - name: Generate canonical state
