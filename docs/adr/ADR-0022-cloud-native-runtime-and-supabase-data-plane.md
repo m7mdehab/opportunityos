@@ -1,8 +1,13 @@
 # ADR-0022 — Cloud-Native Runtime and Supabase Data Plane
 
-- **Status:** Accepted
+- **Status:** Superseded
+- **Superseded by:** ADR-0023
 - **Date:** 2026-09-17
 - **Related:** BRIEF-FR-007, ADR-0008, ADR-0009, ADR-0011, ADR-0012, ADR-0013
+
+## Supersession note
+
+ADR-0023 is the current Founder decision for FR-007 runtime economics and compute: Azure/student-credit/paid compute is no longer approved. Supabase + Cloudflare + GitHub are the only active runtime providers, with a hard $0 gross-spend invariant. The PostgreSQL/projection/queue/portability reasoning below remains historical architecture context where it does not conflict with ADR-0023.
 
 ## Context
 

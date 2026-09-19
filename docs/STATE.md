@@ -11,7 +11,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `bec0777` — rebase(w16a): apply scripts/test_fr007_supabase_execution_postgres.py
+- **State generated at commit:** `09103ef` — adr: identify ADR-0023 as ADR-0022 successor
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -36,7 +36,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 - A-14 — Production runs for ≥ 7 consecutive days with founder-owned production host processes disabled/offline while scheduled acquisition/evaluation continues successfully.
 - A-15 — A provider-neutral export/restore procedure is tested sufficiently to prove Supabase/compute-provider exit is possible without rewriting domain logic or losing canonical data.
 - A-16 — Desktop and 390px mobile authenticated smoke tests pass after cloud cutover, including feed, pagination, search, facets, detail, source link, Poll Now status, and artifact access.
-- A-17 — Current cost envelope and quota assumptions are documented, distinguishing permanent free allowances, temporary student credits, and paid-tier requirements. No paid resource is
+- A-17 — The runtime cost envelope proves $0 gross provider charge and $0 Founder out-of-pocket charge, with no student/trial-credit dependency, no paid tier/add-on and documented
 
 ## Completed Briefs
 
@@ -59,7 +59,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 ## Decisions
 
 ### Open
-- None
+- [ADR-0022 — Cloud-Native Runtime and Supabase Data Plane](adr/ADR-0022-cloud-native-runtime-and-supabase-data-plane.md)
 
 ### Accepted
 - [ADR-0001 — Private Source with Public Documentation Mirror](adr/ADR-0001-repository-topology.md)
@@ -81,7 +81,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 - [ADR-0017: The CV/cover-letter document model](adr/ADR-0017-document-model.md)
 - [ADR-0018 — Phone Token Metric Disambiguation in Claim Validator](adr/ADR-0018-phone-token-metric-disambiguation.md)
 - [ADR-0021 — Canonical Artifact Claim Validation Boundary](adr/ADR-0021-artifact-validator-authority.md)
-- [ADR-0022 — Cloud-Native Runtime and Supabase Data Plane](adr/ADR-0022-cloud-native-runtime-and-supabase-data-plane.md)
+- [ADR-0023 — Zero-Dollar Founder Runtime on Supabase, Cloudflare, and GitHub](adr/ADR-0023-zero-dollar-founder-runtime.md)
 
 ## Blocked Items
 

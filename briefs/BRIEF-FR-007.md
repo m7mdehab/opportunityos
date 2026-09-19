@@ -4,7 +4,7 @@
 **Date:** 2026-09-17  
 **Status:** ACTIVE ON BRIEF BRANCH; do not merge until all acceptance gates close  
 **Governing execution:** `AGENTS.md`, `docs/AUTHORITY_INDEX.md`, `docs/AGENT_EXECUTION_PROTOCOL.md`, `docs/CI_EFFICIENCY_POLICY.md`  
-**Related decision:** `docs/adr/ADR-0022-cloud-native-runtime-and-supabase-data-plane.md`  
+**Related decisions:** `docs/adr/ADR-0022-cloud-native-runtime-and-supabase-data-plane.md` (partially superseded), `docs/adr/ADR-0023-zero-dollar-founder-runtime.md` (current runtime/cost authority)  
 **Founder decision:** rebuild the Founder Alpha runtime as a real cloud/web product and remove all production dependence on a founder-owned PC.  
 **Phase boundary:** BRIEF-007 / Multi-Tenant Family Alpha remains blocked. This brief is reliability/replatform work required before Founder Alpha can be accepted.
 
@@ -51,17 +51,21 @@ Supabase becomes the managed production data platform:
 - private Storage holds generated artifacts and private uploaded assets where appropriate;
 - Realtime may update job/projection state but is not required for correctness;
 - durable queue/job state is persisted in PostgreSQL using Supabase Queues/`pgmq` where available, otherwise an equivalent PostgreSQL-backed lease table with the same semantics;
-- scheduling uses a durable cloud scheduler (`pg_cron`, a Cloudflare Cron dispatcher, or both) and never depends on GitHub Actions scheduling for correctness.
+- scheduling authority lives in durable PostgreSQL state (`source_schedules`) and Supabase Cron/`pg_cron` may enqueue due work; GitHub Actions may execute persisted jobs but is never the source of truth for cadence/cooldown.
 
 PostgreSQL remains authoritative. Do not replace the core datastore with Firestore, D1, Convex, or another non-relational store in this brief.
 
-### 1.3 Compute plane
+### 1.3 Compute plane — hard $0 Founder Alpha
 
-All heavy Python/domain work is container-portable.
+The active Founder-Alpha runtime uses **no Azure and no paid compute provider**.
 
-Initial founder-stage production compute should use a cloud container/job surface that can run with the founder's computer powered off. The preferred initial surface is Azure Container Apps / Container Apps Jobs when the GitHub Student/Azure for Students entitlement can provision it without payment-card dependence. If entitlement or account policy blocks that path, use the lowest-ops compatible managed container provider available without weakening the acceptance contract.
+Heavy Python/domain work remains provider-neutral and container-portable, but Founder Alpha executes it as bounded standard GitHub Actions jobs against persisted Supabase queue/schedule state.
 
-The code must not depend on Azure-specific APIs for business logic. A worker image must be deployable later to Railway, Fly.io, Cloud Run, ECS/Fargate, or a VM without rewriting the OpportunityOS engine.
+Interactive correctness must not require an always-on Python service. Normal feed/search/detail/auth should use Supabase Auth + RLS + indexed views/RPCs where practical, with Cloudflare serving the web/edge layer.
+
+GitHub runners are disposable compute only: all jobs, leases, retries, source cadence, canonical data and artifact metadata remain durable in Supabase. If a runner is delayed or terminated, the existing feed remains available and queued work remains recoverable.
+
+The existing OCI/FastAPI packaging remains a portability asset and future paid-runtime exit path, not an active production dependency.
 
 ### 1.4 GitHub
 
@@ -69,10 +73,11 @@ GitHub remains:
 
 - source control;
 - PR/CI/independent merge proof;
-- container image build/publish where useful;
-- migrations and bounded maintenance/backfill runner when explicitly invoked.
+- the approved zero-dollar Python execution surface for bounded Founder-Alpha poll/evaluate/artifact/maintenance jobs;
+- migrations, backup/restore verification and bounded backfills;
+- external monitoring/incident evidence.
 
-GitHub Actions is **not** the primary production scheduler and is not treated as an unlimited general-purpose production worker fleet.
+Scheduled Actions are permitted under ADR-0023 because the Founder locked the runtime to already-owned permanent-free resources. Durable schedule truth still lives in PostgreSQL; Actions timing is execution capacity, not canonical state.
 
 ### 1.5 Search
 
@@ -185,7 +190,7 @@ Binary artifacts live in private object storage, not in ephemeral local disk.
 
 **W0.1 — Freeze current production evidence.** Capture current `main`, schema revision, row/evaluation counts, source-health state, canonical-identity duplicate checks, active founder state counts, and current public smoke behavior. This is the migration comparison baseline.
 
-**W0.2 — Cloud capability preflight.** Verify which required capabilities are available in connected Supabase, Cloudflare, GitHub, and Azure/student accounts. Do not create paid resources or accept paid terms without Founder approval. Record only the minimum founder-only interactive-auth blockers.
+**W0.2 — Cloud capability preflight.** Verify required capabilities in the already-owned Supabase, Cloudflare and GitHub surfaces. Azure and any new paid provider are out of scope. The preflight must prove a $0 gross-spend path and record only genuine Founder-only interactive-auth blockers.
 
 **W0.3 — Infrastructure configuration contract.** Add provider-neutral environment/config schema, secret names, migration order, and deployment manifests. No secret values enter Git.
 
@@ -221,13 +226,13 @@ Binary artifacts live in private object storage, not in ephemeral local disk.
 
 ### Wave 4 — Containerized compute and cloud deployment
 
-**W4.1 — Worker image.** Produce one reproducible OCI image capable of explicit worker roles (`poll`, `evaluate`, `artifact`, `maintenance`) or a safe unified queue consumer.
+**W4.1 — Zero-dollar worker execution.** Keep Python worker roles reproducible and provider-neutral, but execute Founder-Alpha background jobs through bounded standard GitHub Actions runners. Jobs drain the durable PostgreSQL queue and never own canonical state.
 
-**W4.2 — API/domain image if still required.** Keep FastAPI only for operations that genuinely require Python/domain code. The normal feed path must not depend on it when direct Supabase/RPC access is simpler and safer.
+**W4.2 — Supabase-native browser/API boundary.** Use Supabase Auth plus explicit RLS/views/RPCs for normal feed/search/detail/settings/Poll Now behavior. Add Supabase Edge Functions only for thin privileged operations that cannot be expressed safely through RLS/RPC. FastAPI/OCI remains a portability/test asset, not a required production service.
 
-**W4.3 — Deploy cloud jobs/services.** Initial target: Azure Container Apps/Jobs under eligible student resources; fallback provider allowed only if acceptance semantics remain identical.
+**W4.3 — Durable zero-dollar dispatch.** Use Supabase Cron/`pg_cron` and/or bounded GitHub scheduled/dispatch workflows to execute due persisted work. The Founder PC is never part of dispatch or execution.
 
-**W4.4 — Independent frontend deploy.** Deploy web independently behind Cloudflare and point it to cloud data/services.
+**W4.4 — Independent frontend deploy.** Deploy the web application on the existing Cloudflare account/domain, preferring static/client-rendered delivery and a thin Worker edge.
 
 ### Wave 5 — Shadow migration and parity
 
@@ -243,7 +248,7 @@ Binary artifacts live in private object storage, not in ephemeral local disk.
 
 **W6.2 — Monitoring.** External uptime monitor, application error capture, job/queue heartbeat, source-freshness alerts, worker-stall detection, and backup heartbeat are active.
 
-**W6.3 — Backups.** Enable provider-native backup capability available on the selected Supabase tier and create an encrypted logical off-provider export to Cloudflare R2 (or an equivalent independent store).
+**W6.3 — Backups.** Produce encrypted logical PostgreSQL backups from GitHub Actions and retain only encrypted, size-capped artifacts within the existing GitHub allowance. Supabase paid backup/PITR and paid object-storage add-ons are not permitted. A restore drill is mandatory.
 
 **W6.4 — Restore drill.** Restore a backup into a fresh staging environment and run integrity/smoke checks.
 
@@ -280,7 +285,7 @@ Every row requires persisted evidence and independent verification before closur
 | A-14 | Production runs for ≥ 7 consecutive days with founder-owned production host processes disabled/offline while scheduled acquisition/evaluation continues successfully. |
 | A-15 | A provider-neutral export/restore procedure is tested sufficiently to prove Supabase/compute-provider exit is possible without rewriting domain logic or losing canonical data. |
 | A-16 | Desktop and 390px mobile authenticated smoke tests pass after cloud cutover, including feed, pagination, search, facets, detail, source link, Poll Now status, and artifact access. |
-| A-17 | Current cost envelope and quota assumptions are documented, distinguishing permanent free allowances, temporary student credits, and paid-tier requirements. No paid resource is silently created. |
+| A-17 | The runtime cost envelope proves **$0 gross provider charge and $0 Founder out-of-pocket charge**, with no student/trial-credit dependency, no paid tier/add-on and documented permanent-free quota headroom. Quota exhaustion fails closed rather than creating spend. |
 
 ---
 
@@ -324,7 +329,7 @@ Do not rewrite working source adapters, matching logic, truth-lock, artifact sem
 - Browser uses only public/anon client credentials plus authenticated RLS-scoped sessions.
 - Founder Truth Pack/private profile tables deny direct broad browser reads unless a field is intentionally exposed by a dedicated view/RPC.
 - Artifact buckets are private; downloads use authenticated/signed access.
-- Cloudflare/GitHub/Azure/Supabase secrets live in their respective secret stores/environment configuration, never committed files.
+- Cloudflare/GitHub/Supabase secrets live in their respective protected secret stores/environment configuration, never committed files.
 - Production logs redact credentials, raw private truth, auth tokens, and unnecessary source payload PII.
 - Backups containing founder/private state are encrypted before off-provider storage when the destination is not already an equivalently controlled private backup system.
 - Production migrations run under a dedicated migration credential/role where practical; normal app access is least privilege.
@@ -350,7 +355,7 @@ Do not rewrite working source adapters, matching logic, truth-lock, artifact sem
 
 Agents execute everything they can through available tooling. Founder action is limited to genuine boundaries:
 
-- interactive OAuth/login/verification for Supabase, Cloudflare, Azure, Resend, or monitoring providers when no connected tool can perform it;
+- interactive OAuth/login/verification for Supabase, Cloudflare, GitHub, or an explicitly Founder-approved zero-dollar integration when no connected tool can perform it;
 - accepting provider terms;
 - approving any paid tier/resource or payment-card requirement;
 - final product acceptance after the 7-day cloud soak.

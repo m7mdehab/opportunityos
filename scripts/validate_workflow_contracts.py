@@ -1,8 +1,8 @@
 """Validate GitHub Actions Observability Workflow Contracts.
 
 Ensures .github/workflows/fr007-cloud-observability.yml adheres to:
-- Proper runner selection (ubuntu-slim) under CI efficiency policy
-- Correct cron schedule (30-minute interval to prevent quota exhaustion)
+- Standard GitHub-hosted Ubuntu runner only; no larger/billable runner
+- Correct 30-minute external-monitor schedule
 - Proper permissions (issues: write, actions: read)
 - Non-cancelled concurrency for ordered alert execution
 - Artifact retention >= 7 days (set to 90 days)
@@ -30,8 +30,10 @@ def validate_workflow_contract(workflow_text: str) -> tuple[bool, list[str]]:
     errors: list[str] = []
 
     # 1. Runner class
-    if "runs-on: ubuntu-slim" not in workflow_text:
-        errors.append("Workflow must use 'runs-on: ubuntu-slim' for hosted cost discipline")
+    if "runs-on: ubuntu-latest" not in workflow_text:
+        errors.append("Workflow must use the standard 'ubuntu-latest' runner")
+    if "runs-on: ubuntu-slim" in workflow_text:
+        errors.append("Legacy ubuntu-slim cost model is forbidden under ADR-0023")
 
     # 2. Concurrency and non-cancellation
     if "cancel-in-progress: false" not in workflow_text:
@@ -45,7 +47,7 @@ def validate_workflow_contract(workflow_text: str) -> tuple[bool, list[str]]:
 
     # 4. Schedule cadence
     if 'cron: "*/30 * * * *"' not in workflow_text and "cron: '*/30 * * * *'" not in workflow_text:
-        errors.append("Workflow schedule must be '*/30 * * * *' to preserve free runner quota")
+        errors.append("Workflow schedule must remain '*/30 * * * *' for the hosted monitoring contract")
 
     # 5. CLI flag alignment
     if "--output-report" not in workflow_text:

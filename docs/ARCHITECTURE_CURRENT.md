@@ -109,20 +109,22 @@ Browser-visible data must be explicitly RLS-protected when the final browser dat
 
 ### Compute plane
 
-One OCI image exposes explicit roles:
+The active Founder-Alpha runtime is locked to **$0 gross spend** and uses no Azure/paid compute.
 
-- `api` — HTTP/session/domain API;
-- `worker` — durable queue consumer;
-- `scheduler` — due-only scheduler;
-- `migrate` — one-shot Alembic migration.
+- Cloudflare serves the public web/edge layer.
+- Supabase provides PostgreSQL, Auth, RLS, private Storage and durable scheduling primitives.
+- Supabase Cron/`pg_cron` may enqueue due work from persisted source schedule state.
+- Standard GitHub Actions runners execute bounded Python poll/evaluate/artifact/maintenance jobs against the durable Supabase queue.
+- Interactive feed/search/detail/auth should use Supabase Auth + explicit RLS/views/RPCs rather than an always-on Python API.
+- FastAPI/OCI roles remain portable test/exit assets, not a production dependency.
 
-Business/domain code is provider-neutral. Azure Container Apps/Jobs is the preferred initial deployment surface when available under the Founder/student entitlement without weakening the acceptance contract.
+GitHub runner loss/delay cannot lose canonical state: jobs, leases, retries, source cadence, projections and artifact metadata stay in PostgreSQL.
 
 ### Truth Pack
 
 Cloud mode accepts remote HTTPS Truth Pack loading with SHA-256 integrity verification and refuses silent local-file fallback.
 
-The final production private storage location is still an FR-007 deployment task.
+The production location is the private Supabase `founder-truth-pack` bucket. Browser access remains denied; background jobs retrieve it only through protected server-side credentials.
 
 ### Storage
 
@@ -130,13 +132,13 @@ Generated artifacts and private uploaded assets required at runtime must end in 
 
 ### Frontend edge
 
-The frontend is independently deployable behind Cloudflare. It must not depend on the Founder PC or a local tunnel for correctness.
+The frontend is independently deployable on the existing Cloudflare account/domain. Prefer static/client-rendered delivery; use a thin Worker only where edge routing/headers are required. It must not depend on the Founder PC or a local tunnel for correctness.
 
 ### Backup / portability
 
 Repository tooling supports migration baseline, logical backup/restore, parity and provider-exit checks.
 
-FR-007 still requires real encrypted off-provider backup, fresh-environment restore and provider-exit execution evidence.
+FR-007 still requires real encrypted off-provider backup, fresh-environment restore and provider-exit execution evidence. The zero-dollar design uses encrypted, size-capped GitHub Actions artifacts for the independent logical backup copy; paid Supabase backup/PITR and paid storage are excluded.
 
 ## Reliability Invariants
 
@@ -159,7 +161,7 @@ BRIEF-007 / Multi-Tenant Family Alpha remains blocked until the reliable cloud-h
 
 ## Repository / Governance
 
-- private `opportunityos` is authoritative;
+- the current `opportunityos` repository is public and authoritative; secrets/private Founder truth remain outside Git;
 - public docs mirror receives only allowlisted material;
 - repository/runtime evidence outranks executor reports;
 - generated `docs/STATE.md` is a projection and must match repository facts;
@@ -170,7 +172,7 @@ BRIEF-007 / Multi-Tenant Family Alpha remains blocked until the reliable cloud-h
 ## Detailed References
 
 - truth/product law: `docs/PRODUCT_CONSTITUTION.md`
-- cloud architecture: `docs/adr/ADR-0022-cloud-native-runtime-and-supabase-data-plane.md`
+- cloud architecture: `docs/adr/ADR-0023-zero-dollar-founder-runtime.md` (current); `docs/adr/ADR-0022-cloud-native-runtime-and-supabase-data-plane.md` (partially superseded)
 - full plan: `docs/MASTER_PLAN.md`
 - active FR-007 brief: repository FR-007 brief
 - execution: `docs/AGENT_EXECUTION_PROTOCOL.md`

@@ -94,10 +94,10 @@ Integrated repository-side capabilities include:
 - real PostgreSQL 16 W11 durability/concurrency proof: 15 tests, zero skips;
 - repository/disposable-PostgreSQL A-4/A-5/A-6 reliability proof;
 - OCI runtime roles: `api`, `worker`, `scheduler`, `migrate`;
-- Azure Container Apps/Jobs staging deployment manifests and migration-first release harness;
+- historical Azure deployment manifests exist but are superseded by the zero-dollar runtime decision;
 - Cloudflare Workers/OpenNext staging frontend with same-origin `/api/*` proxy and hosted Desktop + 390px Playwright contract;
 - private Supabase Storage artifact backend with checksum/size verification and durable metadata;
-- private remote HTTPS Truth Pack contract with hash binding, bearer/apikey support and Azure secret wiring;
+- private remote HTTPS Truth Pack contract with hash binding and protected server-side credential wiring;
 - migration/backup/restore/parity/provider-exit tooling;
 - manual hosted PostgreSQL/Supabase execution harness.
 
@@ -126,7 +126,7 @@ The failed precondition W16A attempt from the pre-W15 integration head is non-au
 
 ## Current Execution
 
-Next milestone: execute the real hosted Supabase data-plane/private-state path against the provisioned staging target, then proceed to Azure + Cloudflare runtime activation.
+Next milestone: finish the real hosted Supabase data-plane/private-state path, then activate the zero-dollar Founder runtime using Supabase + Cloudflare + GitHub only. Azure is explicitly excluded.
 
 Task routing must follow actual tool access. Repository agents must not be assigned provider mutations they cannot authenticate. The Overseer owns connected-provider actions available only through authenticated Supabase/GitHub tooling; Codex/Antigravity receive bounded end goals they can actually finish.
 
@@ -136,18 +136,18 @@ Task routing must follow actual tool access. Repository agents must not be assig
 2. prove hosted anon/authenticated/backend RLS boundaries;
 3. configure/test private Truth Pack retrieval;
 4. configure/test private artifact storage retrieval;
-5. deploy Azure API/worker/scheduler/migrate;
-6. deploy Cloudflare frontend;
-7. run hosted A-4/A-5/A-6/A-7/A-8 reliability proof;
-8. cold-start/feed SLO proof;
-9. shadow polling and identity/source-occurrence parity;
-10. external monitoring + real test alert;
-11. encrypted off-provider backup;
-12. fresh-environment restore drill;
+5. wire Supabase Auth + Founder-only RPC/RLS browser boundary;
+6. wire Supabase Cron/pg_cron + bounded GitHub Actions Python workers;
+7. deploy the Cloudflare frontend/edge on the existing domain;
+8. run hosted A-4/A-5/A-6/A-7/A-8 reliability proof;
+9. cold-start/feed SLO proof;
+10. shadow polling and identity/source-occurrence parity;
+11. external monitoring + real test alert;
+12. encrypted logical GitHub backup artifact + restore drill;
 13. provider-exit execution proof;
 14. public cutover;
 15. Desktop + 390px authenticated cloud smoke;
-16. real cost/quota observation;
+16. prove $0 gross/$0 out-of-pocket quota envelope with no credit dependency;
 17. start then complete >=7 consecutive days with Founder production host offline;
 18. terminal A-0..A-17 evidence review;
 19. Founder validation;
