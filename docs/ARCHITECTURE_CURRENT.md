@@ -161,7 +161,7 @@ BRIEF-007 / Multi-Tenant Family Alpha remains blocked until the reliable cloud-h
 
 ## Repository / Governance
 
-- private `opportunityos` is authoritative;
+- the current `opportunityos` repository is public and authoritative; secrets/private Founder truth remain outside Git;
 - public docs mirror receives only allowlisted material;
 - repository/runtime evidence outranks executor reports;
 - generated `docs/STATE.md` is a projection and must match repository facts;
