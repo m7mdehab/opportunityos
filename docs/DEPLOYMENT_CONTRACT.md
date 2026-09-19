@@ -25,19 +25,21 @@ OpportunityOS operates as a set of decoupled, purpose-specific roles packaged in
   - Internally dispatches to: `python -m uvicorn api.app:app --host 0.0.0.0 --port <PORT> --proxy-headers --forwarded-allow-ips=*`
 - **Scaling Contract**:
   - Fully stateless. May scale horizontally to arbitrary replica counts ($N \ge 1$) behind an L7 reverse proxy or load balancer.
-  - Sessions are cryptographically signed cookies (itsdangerous HMAC); any replica holding `OPPORTUNITYOS_SESSION_SECRET` can verify and decode sessions without shared in-memory caches.
+  - Cloud sessions are durable PostgreSQL session records keyed by hashed opaque cookie tokens; revocation survives replica/process restarts. `OPPORTUNITYOS_SESSION_SECRET` protects token digests and must be shared consistently across API replicas.
 - **Network Ingress**:
   - Listens on `0.0.0.0` on configurable port (`PORT` or `OPPORTUNITYOS_API_PORT`, default `8000`).
   - Expects standard reverse proxy headers (`X-Forwarded-Proto`, `X-Forwarded-For`).
 - **Required Environment Variables**:
   - `CLOUD_DATABASE_URL` (or `OPPORTUNITYOS_DB_URL`): PostgreSQL connection string (postgresql or postgresql+psycopg2 dialect).
-  - `OPPORTUNITYOS_FOUNDER_PASSWORD`: Founder authentication credential.
-  - `OPPORTUNITYOS_SESSION_SECRET`: Cryptographic session signing key.
+  - Cloud: `OPPORTUNITYOS_FOUNDER_PASSWORD_HASH` (scrypt v1; plaintext Founder password is forbidden in the cloud runtime).
+  - `OPPORTUNITYOS_SESSION_SECRET`: server-side session/token secret.
+  - Cloud: `OPPORTUNITYOS_PUBLIC_ORIGIN`: canonical HTTPS frontend origin used for Origin/CSRF enforcement.
+  - Cloud: `OPPORTUNITYOS_TRUTH_PACK_URI`, `OPPORTUNITYOS_TRUTH_PACK_HASH`, and private Storage API credential(s) for the remote Founder Truth Pack.
 - **Optional Environment Variables**:
   - `PORT` (or `OPPORTUNITYOS_API_PORT`): Port number to bind (default: `8000`).
   - `HOST` (or `OPPORTUNITYOS_API_HOST`): Host address to bind (default: `0.0.0.0`).
   - `OPPORTUNITYOS_HIGH_FIT_THRESHOLD`: Numeric threshold (default: `70.0`).
-  - `OPPORTUNITYOS_TRUTH_PACK_PATH`: Path to truth pack YAML (default: `private/truth_pack.yaml`).
+  - Local/dev only: `OPPORTUNITYOS_TRUTH_PACK_PATH`. Cloud mode refuses local filesystem fallback.
   - `OPPORTUNITYOS_FORCE_SECURE_COOKIES`: Force Secure flag on session cookies (`1` or `0`).
 - **Health / Readiness Probes**:
   - Liveness: `python scripts/container_entrypoint.py liveness` (or HTTP request to `/api/auth/me`).
@@ -127,15 +129,15 @@ OpportunityOS cloud containers are designed for ephemeral, stateless execution:
    - `/tmp` is used for temporary scratch files during document generation.
    - `/app/out` is pre-created and owned by `appuser` (UID 1000) for digest generation.
 3. **Truth Pack Storage**:
-   - Optional volume mount to inject the private founder truth pack: e.g. mount a Kubernetes Secret or ConfigMap to `/secrets/truth_pack.yaml` and set `OPPORTUNITYOS_TRUTH_PACK_PATH=/secrets/truth_pack.yaml`.
-   - If omitted, defaults to `private/truth_pack.yaml` inside container (which if absent is handled gracefully as `TruthPackMissing`).
+   - Cloud API/worker roles require a credential-free private HTTPS object URI plus SHA-256 integrity binding; local/container filesystem fallback is rejected in cloud mode.
+   - Local development may continue to use `OPPORTUNITYOS_TRUTH_PACK_PATH`; that compatibility path is not a cloud deployment contract.
 
 ---
 
 ## 4. Secret & Configuration Management
 
 1. **Classification**:
-   - **Secrets** (`CLOUD_DATABASE_URL`, `OPPORTUNITYOS_FOUNDER_PASSWORD`, `OPPORTUNITYOS_SESSION_SECRET`): Must be injected via orchestrator secret stores.
+   - **Secrets** (`CLOUD_DATABASE_URL`, `OPPORTUNITYOS_FOUNDER_PASSWORD_HASH`, `OPPORTUNITYOS_SESSION_SECRET`, private Truth Pack API credentials, private registry pull token): Must be injected via orchestrator secret stores. Plaintext `OPPORTUNITYOS_FOUNDER_PASSWORD` is local/test compatibility only and must not be deployed to the cloud API.
    - **Configuration** (`PORT`, `HOST`, `OPPORTUNITYOS_POLL_INTERVAL_HOURS`): Injected via environment variables or ConfigMaps.
 2. **Value Redaction**:
    - The runtime entrypoint and validation scripts redact all secret values in error and log output.
