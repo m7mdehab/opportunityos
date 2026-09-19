@@ -29,4 +29,4 @@ jobs:
           OPPORTUNITYOS_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
         run: |
           set -euo pipefail
-          python -m worker --once --max-jobs 1
+          python -m worker --once
