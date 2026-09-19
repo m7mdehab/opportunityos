@@ -852,12 +852,11 @@ def execute_a7_poll_now_probe(dsn: str) -> dict[str, Any]:
     skipped_map = {item["source_id"]: item["reason"] for item in skipped}
 
     settings = Settings(
-        database_url=dsn,
+        db_url=dsn,
         founder_password=founder_password,
         session_secret=session_secret,
-        testing=True,
     )
-    app = create_app(settings)
+    app = create_app(settings=settings)
     client = TestClient(app)
 
     unauth_resp = client.post("/api/worker/poll-now")
