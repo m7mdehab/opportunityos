@@ -365,6 +365,7 @@ def execute_a5_source_probe(dsn: str) -> dict[str, Any]:
                 artifact_kind="cv",
                 content_type="application/pdf",
                 payload=b"%PDF-proof-artifact-payload",
+                generation_version=artifact_cache.GENERATION_VERSION,
                 created_at=datetime.now(timezone.utc),
             )
         )
