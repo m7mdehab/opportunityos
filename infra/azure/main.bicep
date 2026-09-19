@@ -9,9 +9,10 @@ param image string
 @secure()
 param cloudDatabaseUrl string
 @secure()
-param founderPassword string = ''
+param founderPasswordHash string = ''
 @secure()
 param sessionSecret string = ''
+param publicOrigin string
 @secure()
 param truthPackUri string
 @secure()
@@ -43,8 +44,9 @@ module api 'modules/container-app.bicep' = if (deployApplicationRoles) {
     minReplicas: 1
     maxReplicas: 2
     cloudDatabaseUrl: cloudDatabaseUrl
-    founderPassword: founderPassword
+    founderPasswordHash: founderPasswordHash
     sessionSecret: sessionSecret
+    publicOrigin: publicOrigin
     truthPackUri: truthPackUri
     truthPackAuthToken: truthPackAuthToken
     truthPackApiKey: truthPackApiKey
