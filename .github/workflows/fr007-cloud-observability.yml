@@ -2,8 +2,8 @@ name: FR-007 Cloud Observability & Release Gates
 
 on:
   schedule:
-    # 30-minute interval for external liveness, queue, and database observability
-    # Preserves 560 billed minutes/month of CI headroom under the 2,000 minute free allowance
+    # 30-minute interval for external liveness, queue, and database observability.
+    # Standard hosted runners on the current public repository are no-charge; cadence is reliability-driven.
     - cron: "*/30 * * * *"
   workflow_dispatch:
     inputs:
@@ -37,7 +37,7 @@ concurrency:
 
 jobs:
   observability:
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -111,7 +111,7 @@ jobs:
           echo "Generating immutable soak snapshot for interval (exit code: ${MONITOR_EXIT_CODE})..."
           python scripts/fr007_soak_snapshot.py \
             --report-file .monitor_output/report.json \
-            --deployment-id "${TARGET_ENV}-cloudflare-aca" \
+            --deployment-id "${TARGET_ENV}-cloudflare-supabase-github" \
             --workflow-run-id "${{ github.run_id }}" \
             --output-dir .monitor_output/soak/
 
