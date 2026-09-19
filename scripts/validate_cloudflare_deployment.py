@@ -55,6 +55,8 @@ def validate_cloudflare_package(root: Path = ROOT) -> list[str]:
                 errors.append(f"production DNS or domain cutover forbidden in wrangler.jsonc: {token}")
         if '"OPPORTUNITYOS_CLOUD_EDGE"' not in w_text or '"1"' not in w_text:
             errors.append("wrangler.jsonc must mark the deployed runtime as OPPORTUNITYOS_CLOUD_EDGE=1")
+        if '"opportunityos-web-staging"' not in w_text:
+            errors.append("wrangler.jsonc must target Worker name opportunityos-web-staging")
 
     # 2. Check same-origin /api proxy route handler exists
     api_proxy_route = web_dir / "app" / "api" / "[...path]" / "route.ts"
@@ -63,13 +65,17 @@ def validate_cloudflare_package(root: Path = ROOT) -> list[str]:
     else:
         proxy_text = api_proxy_route.read_text(encoding="utf-8")
         if "OPPORTUNITYOS_API_ORIGIN" not in proxy_text:
-            errors.append("proxy route handler must retain the local/API compatibility boundary")
+            errors.append("proxy route handler must reference OPPORTUNITYOS_API_ORIGIN")
         if "parsed.protocol !== \"https:\"" not in proxy_text:
             errors.append("proxy route handler must enforce parsed HTTPS upstream origin")
         if 'OPPORTUNITYOS_CLOUD_EDGE === "1"' not in proxy_text:
             errors.append("proxy route handler must distinguish cloud edge from local development")
-        if "Supabase browser runtime contract" not in proxy_text:
-            errors.append("cloud edge must identify the Supabase-native runtime when legacy API origin is absent")
+        if "OPPORTUNITYOS_API_ORIGIN is required on the cloud edge" in proxy_text:
+            errors.append("false-green legacy error detected: cloud edge must not require external API origin")
+        if "NEXT_PUBLIC_SUPABASE_URL" not in proxy_text and "SUPABASE_URL" not in proxy_text:
+            errors.append("proxy route handler must support Supabase-backed request path")
+        if "handleSupabaseNativeRequest" not in proxy_text:
+            errors.append("proxy route handler must provide functional Supabase-native request routing")
         if "localhost" not in proxy_text:
             errors.append("local-development API fallback contract is missing")
         if "getSetCookie" not in proxy_text:
@@ -108,7 +114,7 @@ def validate_cloudflare_package(root: Path = ROOT) -> list[str]:
     else:
         wf_text = workflow_file.read_text(encoding="utf-8")
         if "workflow_dispatch:" not in wf_text:
-            errors.append("staging workflow must be workflow_dispatch only")
+            errors.append("staging workflow must provide workflow_dispatch")
         for trigger in ("push:", "pull_request:", "schedule:", "workflow_run:", "repository_dispatch:"):
             if re.search(rf"^\s*{re.escape(trigger)}", wf_text, re.MULTILINE):
                 errors.append(f"automatic trigger forbidden in staging workflow: {trigger}")
@@ -120,12 +126,18 @@ def validate_cloudflare_package(root: Path = ROOT) -> list[str]:
             errors.append("staging workflow must require explicit acknowledge_staging_deployment")
         if 'DEPLOY_STAGING requires explicit acknowledgement.' not in wf_text:
             errors.append("DEPLOY_STAGING must fail, not silently skip, without acknowledgement")
-        if "NEXT_PUBLIC_SUPABASE_URL" not in wf_text or "NEXT_PUBLIC_SUPABASE_ANON_KEY" not in wf_text:
-            errors.append("DEPLOY_STAGING must provide publishable Supabase browser configuration")
+        if 'OPPORTUNITYOS_API_ORIGIN must be a non-empty HTTPS origin' not in wf_text:
+            errors.append("DEPLOY_STAGING must fail closed when API origin is invalid or non-HTTPS")
         if 'CLOUDFLARE_API_TOKEN is required.' not in wf_text or 'CLOUDFLARE_ACCOUNT_ID is required.' not in wf_text:
             errors.append("DEPLOY_STAGING must validate Cloudflare credentials before mutation")
+        if 'tokens/verify' not in wf_text:
+            errors.append("DEPLOY_STAGING must verify Cloudflare token readiness against the Cloudflare API")
         if 'OPOS_STAGING_WEB_URL must be a non-empty HTTPS URL.' not in wf_text:
             errors.append("SMOKE_STAGING must require an HTTPS staging URL")
+        if "NEXT_PUBLIC_SUPABASE_URL" not in wf_text:
+            errors.append("staging workflow must support browser-safe NEXT_PUBLIC_SUPABASE_URL")
+        if "NEXT_PUBLIC_SUPABASE_ANON_KEY" not in wf_text:
+            errors.append("staging workflow must support browser-safe NEXT_PUBLIC_SUPABASE_ANON_KEY")
         for bad_word in ("dns", "cutover", "zone", "custom_domain"):
             if bad_word in wf_text.lower():
                 errors.append(f"forbidden network cutover term in workflow: {bad_word}")
