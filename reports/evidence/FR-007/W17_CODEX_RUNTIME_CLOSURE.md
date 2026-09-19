@@ -6,7 +6,9 @@
 - Starting integration commit: `663ea97`
 - Batch commits: `95a9f8d` (Supabase runtime contract), `e4cf825`
   (authenticated encrypted backup)
-- Final commit: `3402366`.
+- Implementation commit before evidence amendment: `3402366`; the pushed
+  branch HEAD is the authoritative final commit recorded in the completion
+  packet.
 - No production or hosted mutation was executed by Codex.
 
 ## Implemented
