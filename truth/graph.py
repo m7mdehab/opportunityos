@@ -195,7 +195,11 @@ def _single_record_supports_value(
         return bool(pattern.search(content))
 
     if isinstance(value, date):
-        # Exact date match required! Year-only string does NOT match exact date.
+        # Exact dates remain exact. CV/source records are frequently month-granular,
+        # while the canonical graph normalizes a month-only start/end to day 1.
+        # Admit "Jan 2026"/"January 2026" only when the canonical date is the
+        # first of that same month. A year-only source still cannot establish a
+        # month or day, and a month-only source cannot establish any non-first day.
         date_iso = value.isoformat()
         if date_iso in content:
             return True
@@ -215,6 +219,13 @@ def _single_record_supports_value(
         abbr_pat = re.compile(rf"\b{m_abbr}\.?\s+{value.day},?\s+{value.year}\b|\b{value.day}\s+{m_abbr}\.?\s+{value.year}\b", re.I)
         if abbr_pat.search(content):
             return True
+        if value.day == 1:
+            month_only_pat = re.compile(
+                rf"\b(?:{m_name}|{m_abbr}\.?)\s+{value.year}\b",
+                re.I,
+            )
+            if month_only_pat.search(content):
+                return True
         return False
 
     if isinstance(value, (tuple, list, set, frozenset)):
