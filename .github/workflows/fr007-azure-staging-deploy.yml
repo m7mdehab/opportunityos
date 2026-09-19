@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: read
+  packages: write
   id-token: write
 
 jobs:
@@ -28,14 +29,45 @@ jobs:
       AZURE_MANAGED_ENVIRONMENT_ID: ${{ vars.AZURE_MANAGED_ENVIRONMENT_ID }}
       AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
       OPOS_AZURE_NAME_PREFIX: ${{ vars.OPOS_AZURE_NAME_PREFIX }}
-      OPOS_AZURE_IMAGE: ${{ vars.OPOS_AZURE_IMAGE }}
+      OPOS_IMAGE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/opportunityos
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Static deployment contract validation
-        run: python scripts/validate_cloud_deployment.py --image "$OPOS_AZURE_IMAGE"
+        run: python scripts/validate_cloud_deployment.py --image "$OPOS_IMAGE_REPOSITORY@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+      - name: Log in to GHCR for immutable staging image publication
+        if: inputs.mode == 'DEPLOY_STAGING' && inputs.acknowledge_staging_deployment == true
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish immutable runtime image
+        id: image
+        if: inputs.mode == 'DEPLOY_STAGING' && inputs.acknowledge_staging_deployment == true
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ env.OPOS_IMAGE_REPOSITORY }}:${{ github.sha }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+
+      - name: Pin runtime image by digest
+        if: inputs.mode == 'DEPLOY_STAGING' && inputs.acknowledge_staging_deployment == true
+        shell: bash
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          case "$IMAGE_DIGEST" in
+            sha256:????????????????????????????????????????????????????????????????) ;;
+            *) echo "Image build did not return a sha256 digest." >&2; exit 1 ;;
+          esac
+          echo "OPOS_AZURE_IMAGE=$OPOS_IMAGE_REPOSITORY@$IMAGE_DIGEST" >> "$GITHUB_ENV"
       - name: Validate Bicep syntax
         if: inputs.mode == 'VALIDATE'
         run: az bicep build --file infra/azure/main.bicep --stdout > "$RUNNER_TEMP/fr007-main.bicep.json"
@@ -51,9 +83,13 @@ jobs:
         if: inputs.mode != 'VALIDATE'
         env:
           CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL }}
-          OPPORTUNITYOS_FOUNDER_PASSWORD_HASH: ${{ secrets.OPPORTUNITYOS_FOUNDER_PASSWORD_HASH }}
+          OPPORTUNITYOS_FOUNDER_PASSWORD: ${{ secrets.OPPORTUNITYOS_FOUNDER_PASSWORD }}
           OPPORTUNITYOS_PUBLIC_ORIGIN: ${{ vars.OPPORTUNITYOS_PUBLIC_ORIGIN }}
           OPPORTUNITYOS_SESSION_SECRET: ${{ secrets.OPPORTUNITYOS_SESSION_SECRET }}
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+          GHCR_PULL_USERNAME: ${{ github.repository_owner }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           OPPORTUNITYOS_TRUTH_PACK_URI: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_URI }}
           OPPORTUNITYOS_TRUTH_PACK_HASH: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_HASH }}
           OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN }}
@@ -63,14 +99,35 @@ jobs:
           PARAM_FILE="$RUNNER_TEMP/fr007-azure-parameters.json"
           export PARAM_FILE
           python - <<'PY'
-          import json, os
+          import json, os, urllib.request
+          from api.security import hash_founder_password
+
+          public_origin = os.environ.get("OPPORTUNITYOS_PUBLIC_ORIGIN", "").strip()
+          if not public_origin:
+              req = urllib.request.Request(
+                  f"https://api.cloudflare.com/client/v4/accounts/{os.environ['CLOUDFLARE_ACCOUNT_ID']}/workers/subdomain",
+                  headers={"Authorization": f"Bearer {os.environ['CLOUDFLARE_API_TOKEN']}"},
+              )
+              with urllib.request.urlopen(req, timeout=20) as response:
+                  payload_cf = json.load(response)
+              subdomain = (payload_cf.get("result") or {}).get("subdomain")
+              if not payload_cf.get("success") or not subdomain:
+                  raise SystemExit("Cloudflare workers.dev subdomain is unavailable")
+              public_origin = f"https://opportunityos-web-staging.{subdomain}.workers.dev"
+
+          founder_hash = hash_founder_password(os.environ["OPPORTUNITYOS_FOUNDER_PASSWORD"])
+          print(f"::add-mask::{founder_hash}")
+
           payload = {
               "existingManagedEnvironmentResourceId": {"value": os.environ["AZURE_MANAGED_ENVIRONMENT_ID"]},
               "namePrefix": {"value": os.environ["OPOS_AZURE_NAME_PREFIX"]},
-              "image": {"value": os.environ["OPOS_AZURE_IMAGE"]},
+              "image": {"value": os.environ.get("OPOS_AZURE_IMAGE") or f"{os.environ['OPOS_IMAGE_REPOSITORY']}@sha256:" + "0" * 64},
+              "registryServer": {"value": "ghcr.io"},
+              "registryUsername": {"value": os.environ["GHCR_PULL_USERNAME"]},
+              "registryPassword": {"value": os.environ["GHCR_PULL_TOKEN"]},
               "cloudDatabaseUrl": {"value": os.environ["CLOUD_DATABASE_URL"]},
-              "founderPasswordHash": {"value": os.environ["OPPORTUNITYOS_FOUNDER_PASSWORD_HASH"]},
-              "publicOrigin": {"value": os.environ["OPPORTUNITYOS_PUBLIC_ORIGIN"]},
+              "founderPasswordHash": {"value": founder_hash},
+              "publicOrigin": {"value": public_origin},
               "sessionSecret": {"value": os.environ["OPPORTUNITYOS_SESSION_SECRET"]},
               "truthPackUri": {"value": os.environ["OPPORTUNITYOS_TRUTH_PACK_URI"]},
               "truthPackAuthToken": {"value": os.environ["OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN"]},
