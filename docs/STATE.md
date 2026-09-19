@@ -11,7 +11,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `bec0777` — rebase(w16a): apply scripts/test_fr007_supabase_execution_postgres.py
+- **State generated at commit:** `426fb14` — cost(fr007): align soak retention with evidence workflow
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
