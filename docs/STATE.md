@@ -11,7 +11,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `8a95d6b` — docs(resume): compact current FR-007 execution state
+- **State generated at commit:** `e1bc585` — governance: forbid premature partial executor returns
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief

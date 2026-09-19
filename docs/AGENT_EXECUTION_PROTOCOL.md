@@ -76,3 +76,35 @@ Credential exposure; any external mutation; frozen-policy contradiction unresolv
 ## 10. Cost model this protocol assumes
 
 Opus for judgement only (Master + verifier). Sonnet for all volume. Haiku for all mechanical execution. Fable for the few high-consequence reviews, run in parallel so they don't extend the critical path. The expensive failure mode this protocol removes is Opus turns spent waiting, re-running, or narrating.
+
+
+## 11. Terminal execution contract — no premature partial returns
+
+Generic `PARTIAL` is not a terminal state for an executable brief.
+
+Before returning control, the active executor must exhaust every approved execution surface that can close the remaining evidence gap without crossing a hard external boundary: local tools, isolated worktrees, disposable containers, repository CI, draft pull requests, workflow dispatch, browser automation, and approved connected tools. A limitation of the current shell or machine is not a blocker when another already-approved repository surface can execute the proof.
+
+The execution ladder is:
+
+`implement -> narrow tests -> integration-contract tests -> disposable/runtime proof -> CI/PR proof when required -> independent verification -> remediation -> final report`.
+
+Rules:
+
+1. Do not stop at “harness implemented” when the harness can be executed safely now.
+2. Do not treat “no local DSN/runtime/browser” as terminal when CI, a disposable container, or another approved execution surface provides it.
+3. Pull-request creation is an approved verification mechanism when CI is required. Executors may open a draft or normal task PR when their environment is authenticated and the brief does not forbid external repository writes. Merge authority remains with the Owner/Overseer.
+4. If the executor cannot create the PR because its own GitHub surface is unauthenticated, that is an `OVERSEER_CI_HANDOFF`, not `PARTIAL`. Return the exact branch, head SHA, required workflow/proof, and continue every other independent requirement first.
+5. Report repository completion and live/hosted completion on separate axes. A repository package may be `REPOSITORY_PASS` while a genuinely external criterion is `HOSTED_NOT_EXECUTED`; do not collapse those into generic `PARTIAL`.
+6. The only terminal early return is `HARD_BLOCKED`: an unresolved boundary that requires Founder-only credentials/approval, payment, binding terms, inaccessible external ownership, production authority not granted, or another explicitly reserved action.
+7. Work orders and waves should be milestone-sized. After a workstream passes, immediately continue into the next dependency-ready work inside the same authorized objective instead of returning merely because one subsystem is complete.
+8. Unit-test success is not sufficient for glue code. Workflow/CLI/schema/artifact/browser/infrastructure contracts must be tested at the integration boundary that can actually fail.
+9. After one focused remediation return, ordinary residual closure belongs to the Owner/Overseer. Do not create indefinite executor ping-pong for small, safely correctable gaps.
+
+Preferred terminal vocabulary:
+
+- `PASS` — all currently executable in-scope evidence is complete.
+- `REPOSITORY_PASS / HOSTED_NOT_EXECUTED` — repository work is complete; only a genuine external hosted/live gate remains.
+- `OVERSEER_CI_HANDOFF` — implementation is complete and the only remaining repository proof requires an Overseer-accessible PR/CI surface.
+- `HARD_BLOCKED` — a true Founder/external authority boundary prevents further progress.
+
+The Master/Overseer must reject a return that uses `PARTIAL` without naming an actual hard boundary and proving that all approved fallback execution surfaces were exhausted.
