@@ -63,6 +63,22 @@ class CloudDeploymentValidatorTests(unittest.TestCase):
         self.assertIn("job execution list", workflow.read_text(encoding="utf-8"))
         self.assertIn("Succeeded) exit 0", workflow.read_text(encoding="utf-8"))
 
+    def test_private_registry_is_secret_backed_for_apps_and_jobs(self):
+        root = Path(__file__).parents[1]
+        main = (root / "infra" / "azure" / "main.bicep").read_text(encoding="utf-8")
+        app = (root / "infra" / "azure" / "modules" / "container-app.bicep").read_text(encoding="utf-8")
+        job = (root / "infra" / "azure" / "modules" / "container-job.bicep").read_text(encoding="utf-8")
+        workflow = (root / ".github" / "workflows" / "fr007-azure-staging-deploy.yml").read_text(encoding="utf-8")
+        self.assertIn("param registryServer string = 'ghcr.io'", main)
+        self.assertIn("@secure()\nparam registryPassword string", main)
+        for text in (app, job):
+            self.assertIn("passwordSecretRef: 'registry-password'", text)
+            self.assertIn("{ name: 'registry-password'; value: registryPassword }", text)
+        self.assertIn("docker/build-push-action@v6", workflow)
+        self.assertIn("GHCR_PULL_TOKEN", workflow)
+        self.assertIn("steps.image.outputs.digest", workflow)
+
+
     def test_truth_pack_uri_is_secret_ref_backed(self):
         root = Path(__file__).parents[1]
         main = (root / "infra/azure/main.bicep").read_text(encoding="utf-8")
