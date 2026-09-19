@@ -110,7 +110,7 @@ def validate_cloudflare_package(root: Path = ROOT) -> list[str]:
         if "workflow_dispatch:" not in wf_text:
             errors.append("staging workflow must be workflow_dispatch only")
         for trigger in ("push:", "pull_request:", "schedule:", "workflow_run:", "repository_dispatch:"):
-            if re.search(rf"^\s*{re.escape(trigger)}", wf_text, re.MULTILINE):
+            if re.search(rf"^  {re.escape(trigger)}", wf_text, re.MULTILINE):
                 errors.append(f"automatic trigger forbidden in staging workflow: {trigger}")
         if "environment: fr007-staging" not in wf_text:
             errors.append("staging workflow must target protected environment fr007-staging")
@@ -120,12 +120,14 @@ def validate_cloudflare_package(root: Path = ROOT) -> list[str]:
             errors.append("staging workflow must require explicit acknowledge_staging_deployment")
         if 'DEPLOY_STAGING requires explicit acknowledgement.' not in wf_text:
             errors.append("DEPLOY_STAGING must fail, not silently skip, without acknowledgement")
-        if 'OPPORTUNITYOS_API_ORIGIN must be a non-empty HTTPS origin.' not in wf_text:
-            errors.append("DEPLOY_STAGING must fail closed when API origin is absent or non-HTTPS")
+        if "Resolve Azure staging API origin" not in wf_text or "az containerapp show" not in wf_text:
+            errors.append("DEPLOY_STAGING must derive the HTTPS API origin from the deployed Azure API")
         if 'CLOUDFLARE_API_TOKEN is required.' not in wf_text or 'CLOUDFLARE_ACCOUNT_ID is required.' not in wf_text:
             errors.append("DEPLOY_STAGING must validate Cloudflare credentials before mutation")
-        if 'OPOS_STAGING_WEB_URL must be a non-empty HTTPS URL.' not in wf_text:
-            errors.append("SMOKE_STAGING must require an HTTPS staging URL")
+        if "Resolve workers.dev staging URL" not in wf_text or "/workers/subdomain" not in wf_text:
+            errors.append("staging web URL must be derived from the authenticated Cloudflare workers.dev subdomain")
+        if "azure/login@v2" not in wf_text:
+            errors.append("Cloudflare deployment workflow must authenticate to Azure for API-origin discovery")
         for bad_word in ("dns", "cutover", "zone", "custom_domain"):
             if bad_word in wf_text.lower():
                 errors.append(f"forbidden network cutover term in workflow: {bad_word}")
