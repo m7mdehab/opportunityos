@@ -6,7 +6,7 @@ Last shipped: BRIEF-FR-006 — 2026-09-13.
 Active work: BRIEF-FR-007.
 Phase status: in progress.
 Blocked: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha (strictly blocked until Founder Web Alpha is live and validated).
-Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supabase target, execute migration/parity proof, establish private durable Truth Pack/artifact storage, and deploy the OCI runtime without giving production authority to the new stack until the staging gates pass.
+Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/RLS, prove the repository-managed canonical Truth Pack, load and hash-verify the six private fixed CVs/artifacts, wire Supabase-native Founder browser boundaries and durable scheduling, then deploy the Cloudflare web/edge.
 
 ## Repository
 
@@ -102,4 +102,4 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 
 ## Next Prerequisites
 
-Complete the real hosted staging path: connect the managed PostgreSQL/Supabase target, execute migration/parity proof, establish private durable Truth Pack/artifact storage, and deploy the OCI runtime without giving production authority to the new stack until the staging gates pass.
+Complete the real zero-dollar hosted staging path: finish Supabase parity/RLS, prove the repository-managed canonical Truth Pack, load and hash-verify the six private fixed CVs/artifacts, wire Supabase-native Founder browser boundaries and durable scheduling, then deploy the Cloudflare web/edge path. FastAPI/OCI remains portability/test evidence, not production infrastructure.
