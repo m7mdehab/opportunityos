@@ -2,6 +2,7 @@ name: FR-007 Zero-Dollar Provider Readiness
 
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
