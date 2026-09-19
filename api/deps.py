@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from storage.repository import StorageRepository
 
-from .security import verify_session
+from .security import get_durable_session, verify_session
 from .settings import SESSION_COOKIE_NAME
 
 
@@ -39,9 +39,19 @@ def require_session(request: Request) -> None:
     router level, to every non-auth route rather than repeated per
     endpoint, so a route added later cannot accidentally ship unguarded.
     """
-    token = request.cookies.get(SESSION_COOKIE_NAME)
-    serializer = request.app.state.session_serializer
-    if not verify_session(serializer, token):
+    settings = request.app.state.settings
+    cookie_name = "__Host-oos_session" if settings.cloud_mode else SESSION_COOKIE_NAME
+    token = request.cookies.get(cookie_name)
+    if settings.cloud_mode:
+        session = request.app.state.session_factory()
+        try:
+            valid = get_durable_session(session, token, settings.session_secret) is not None
+            session.commit()
+        finally:
+            session.close()
+    else:
+        valid = verify_session(request.app.state.session_serializer, token)
+    if not valid:
         raise HTTPException(status_code=401, detail="not authenticated")
 
 
