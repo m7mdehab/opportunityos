@@ -11,7 +11,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `426fb14` — cost(fr007): align soak retention with evidence workflow
+- **State generated at commit:** `fedce70` — preflight(fr007): keep provider readiness manual until Founder setup completes
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
