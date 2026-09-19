@@ -6,6 +6,13 @@ param existingManagedEnvironmentResourceId string
 param namePrefix string
 @description('Immutable OCI image, preferably registry/repository@sha256:<64 hex>.')
 param image string
+@description('Private registry server for the immutable OCI image.')
+param registryServer string = 'ghcr.io'
+@description('Private registry username.')
+param registryUsername string
+@secure()
+@description('Private registry pull token/password. Stored only as Container Apps secret.')
+param registryPassword string
 @secure()
 param cloudDatabaseUrl string
 @secure()
@@ -28,6 +35,9 @@ module migrate 'modules/container-job.bicep' = {
     name: '${namePrefix}-migrate'
     managedEnvironmentId: existingManagedEnvironmentResourceId
     image: image
+    registryServer: registryServer
+    registryUsername: registryUsername
+    registryPassword: registryPassword
     cloudDatabaseUrl: cloudDatabaseUrl
   }
 }
