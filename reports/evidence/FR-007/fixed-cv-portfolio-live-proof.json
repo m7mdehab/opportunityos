@@ -1,0 +1,20 @@
+{
+  "proof_scope": "FR-007_FIXED_CV_PORTFOLIO_LIVE",
+  "observed_at_utc": "2026-09-19T17:20:10.708791Z",
+  "supabase_project_ref": "lrrcpwaapwynzdsxzwhy",
+  "bucket": "founder-cv-portfolio",
+  "bucket_public": false,
+  "verification": "Each exact PDF was SHA-256 verified before upload, downloaded again from private Supabase Storage through a server-side authenticated bootstrap, and SHA-256 verified byte-for-byte after retrieval.",
+  "objects": [
+    {"variant":"ai_engineer","path":"2026/Mohammed_Ehab_AI_Engineer_CV_2026.pdf","sha256":"24e84bbaf4cd7aaff59bcbbedefa3db3f3b673c19b9913b3ff7a9283dab01c52","bytes":76283},
+    {"variant":"business_analyst","path":"2026/Mohammed_Ehab_Business_Analyst_CV_2026.pdf","sha256":"1ef4a990b081b1c07ddce26cd28cc99e6058e39d8b9c06dea58c8f0858a65301","bytes":74773},
+    {"variant":"data_analyst","path":"2026/Mohammed_Ehab_Data_Analyst_CV_2026.pdf","sha256":"9d8c99bd46fe82200b286ac7901e69f533d5d2a0f7e59393d8f98f2996bd058d","bytes":74874},
+    {"variant":"data_engineer","path":"2026/Mohammed_Ehab_Data_Engineer_CV_2026.pdf","sha256":"9a01666790f34ed16aea8ebd7c414411f6d7ee4a8cf7fcc3ed5edd1866867516","bytes":76240},
+    {"variant":"data_scientist","path":"2026/Mohammed_Ehab_Data_Scientist_CV_2026.pdf","sha256":"d80953e57ea61d676001618b37ae73beb225659ad1835ee779500aa2bb470398","bytes":76080},
+    {"variant":"master","path":"2026/Mohammed_Ehab_Master_CV_2026.pdf","sha256":"4b52a32e58008afd59a93ebdf9edc5b165a624a7e4f2cd13eefadf009a44b7d5","bytes":76840}
+  ],
+  "temporary_bootstrap": {
+    "status": "LOCKED_AFTER_USE",
+    "note": "The one-time transfer endpoint was immediately redeployed fail-closed with JWT verification enabled after successful verification. No upload token or credential is recorded here."
+  }
+}
