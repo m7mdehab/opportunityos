@@ -62,16 +62,20 @@ def _postgres_upgrade() -> None:
         CREATE OR REPLACE VIEW public.founder_feed
         WITH (security_invoker = true)
         AS
-        SELECT
+        SELECT DISTINCT ON (opportunity_id)
             id, opportunity_id, opportunity_content_hash, truth_pack_hash,
             projection_version, title, organization, source_id, source_url,
-            posted_date, track, opportunity_type, title_family,
+            posted_date, deadline, is_stale, reverified_at, description,
+            track, opportunity_type, title_family,
             seniority_level, work_mode, location_country, location_city,
             location_region, remote_scope, remote_scope_regions,
             employment_type, qualification_decision, fit_score, priority_score,
-            reasons_json, red_line_match, excluded_industry_match, visible,
+            reasons_json, dimension_scores_json, evaluation_detail_json,
+            policy_version, selected_cv_variant, selected_cv_object_path,
+            selected_cv_sha256, red_line_match, excluded_industry_match, visible,
             visibility_reason, evaluated_at, projected_at
         FROM public.feed_projection
+        ORDER BY opportunity_id, projected_at DESC, evaluated_at DESC
         """
     )
     op.execute(
@@ -80,7 +84,7 @@ def _postgres_upgrade() -> None:
         WITH (security_invoker = true)
         AS
         SELECT
-            s.source_id, s.next_due_at, s.cooldown_until,
+            s.source_id, s.read_allowed, s.next_due_at, s.cooldown_until,
             s.consecutive_failures, s.last_status, s.last_success_at,
             s.updated_at,
             r.started_at AS last_poll_started_at,
@@ -224,11 +228,11 @@ def _postgres_upgrade() -> None:
         """
     )
 
-    # Poll Now uses only durable source_schedules rows.  Therefore the hosted
-    # boundary cannot invent source IDs or bypass the repository read policy,
-    # which remains authoritative in the Python scheduler/registry.  It is
-    # due-only (no force flag), cooldown-aware, active-job deduplicated and
-    # advances next_due_at in the same transaction as the queue insert.
+    # Poll Now uses the scheduler-maintained read_allowed snapshot on durable
+    # source_schedules rows. It is due-only (no force flag), cooldown-aware,
+    # active-job deduplicated, bounded, and advances next_due_at in the same
+    # transaction as the queue insert. The GitHub scheduler refreshes
+    # read_allowed from docs/SOURCE_REGISTRY.yaml before draining work.
     op.execute(
         """
         CREATE OR REPLACE FUNCTION public.enqueue_poll_now(p_source_id text DEFAULT NULL)
@@ -251,9 +255,11 @@ def _postgres_upgrade() -> None:
                 SELECT s.*
                 FROM public.source_schedules AS s
                 WHERE (p_source_id IS NULL OR s.source_id = p_source_id)
+                  AND s.read_allowed = true
                   AND s.next_due_at <= now()
                   AND (s.cooldown_until IS NULL OR s.cooldown_until <= now())
-                ORDER BY s.source_id
+                ORDER BY s.next_due_at, s.source_id
+                LIMIT 16
                 FOR UPDATE SKIP LOCKED
             LOOP
                 -- Payload is canonical JSON and is inspected for the same
@@ -351,6 +357,33 @@ def upgrade() -> None:
     )
     op.create_index("ix_founder_identity_supabase_user_id", "founder_identity", ["supabase_user_id"], unique=True)
 
+    op.add_column(
+        "source_schedules",
+        sa.Column("read_allowed", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+    )
+    op.add_column("feed_projection", sa.Column("deadline", sa.String(length=64), nullable=True))
+    op.add_column(
+        "feed_projection",
+        sa.Column("is_stale", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+    )
+    op.add_column("feed_projection", sa.Column("reverified_at", sa.DateTime(timezone=True), nullable=True))
+    op.add_column(
+        "feed_projection",
+        sa.Column("description", sa.Text(), nullable=False, server_default=sa.text("''")),
+    )
+    op.add_column(
+        "feed_projection",
+        sa.Column("dimension_scores_json", sa.Text(), nullable=False, server_default=sa.text("'[]'")),
+    )
+    op.add_column(
+        "feed_projection",
+        sa.Column("evaluation_detail_json", sa.Text(), nullable=False, server_default=sa.text("'{}'")),
+    )
+    op.add_column("feed_projection", sa.Column("policy_version", sa.String(length=64), nullable=True))
+    op.add_column("feed_projection", sa.Column("selected_cv_variant", sa.String(length=32), nullable=True))
+    op.add_column("feed_projection", sa.Column("selected_cv_object_path", sa.Text(), nullable=True))
+    op.add_column("feed_projection", sa.Column("selected_cv_sha256", sa.String(length=64), nullable=True))
+
     if op.get_bind().dialect.name == "postgresql":
         op.execute("ALTER TABLE public.founder_identity ENABLE ROW LEVEL SECURITY")
         _postgres_upgrade()
@@ -360,5 +393,21 @@ def downgrade() -> None:
     if op.get_bind().dialect.name == "postgresql":
         _postgres_downgrade()
         op.execute("ALTER TABLE public.founder_identity DISABLE ROW LEVEL SECURITY")
+
+    for column in (
+        "selected_cv_sha256",
+        "selected_cv_object_path",
+        "selected_cv_variant",
+        "policy_version",
+        "evaluation_detail_json",
+        "dimension_scores_json",
+        "description",
+        "reverified_at",
+        "is_stale",
+        "deadline",
+    ):
+        op.drop_column("feed_projection", column)
+    op.drop_column("source_schedules", "read_allowed")
+
     op.drop_index("ix_founder_identity_supabase_user_id", table_name="founder_identity")
     op.drop_table("founder_identity")
