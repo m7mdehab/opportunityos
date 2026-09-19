@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `24c1311` — FR-007: make restore drill wipe hosted views with schema
+- **State generated at commit:** `0021271` — FR-007: relaunch hosted proof for edge runtime changes
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
