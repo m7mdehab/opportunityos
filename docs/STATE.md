@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `dcbb5ac` — FR-007: align Cloudflare deploy with account token and public Supabase config
+- **State generated at commit:** `d0e85ff` — FR-007: repair 0011 upgrade and downgrade contracts
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
