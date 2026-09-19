@@ -60,6 +60,8 @@ def validate_cloudflare_package(root: Path = ROOT) -> list[str]:
                 errors.append(f"production DNS or domain cutover forbidden in wrangler.jsonc: {token}")
         if '"OPPORTUNITYOS_CLOUD_EDGE"' not in w_text or '"1"' not in w_text:
             errors.append("wrangler.jsonc must mark the deployed runtime as OPPORTUNITYOS_CLOUD_EDGE=1")
+        if "nodejs_compat_populate_process_env" not in w_text:
+            errors.append("wrangler.jsonc must populate process.env from Worker bindings for the hosted adapter")
 
     # 2. Check same-origin /api proxy route handler exists
     api_proxy_route = web_dir / "app" / "api" / "[...path]" / "route.ts"
