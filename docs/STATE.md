@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `14bbf9d` — test(truth): lock month-granular date provenance semantics
+- **State generated at commit:** `01e6ed7` — test(truth): cover normalized month-end evidence
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
