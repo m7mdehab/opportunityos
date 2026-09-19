@@ -1,0 +1,122 @@
+{
+  "envelope_version": "1.1.0",
+  "brief": "FR-007",
+  "generated_at_utc": "2026-09-19T00:00:00Z",
+  "monthly_budget_target_usd": 0.0,
+  "student_credit_buffer_usd": 100.0,
+  "services": {
+    "supabase": {
+      "provider": "Supabase",
+      "tier": "Free",
+      "tier_classification": "permanent_free_allowance",
+      "first_party_reference": "https://supabase.com/pricing",
+      "checked_date": "2026-09-18",
+      "limits": {
+        "database_storage_mb": 500,
+        "file_storage_mb": 1000,
+        "monthly_egress_mb": 5000,
+        "active_projects": 2,
+        "pause_inactivity_days": 7
+      },
+      "projected_usage": {
+        "database_storage_mb": 45.0,
+        "file_storage_mb": 120.0,
+        "monthly_egress_mb": 850.0,
+        "active_projects": 1,
+        "pause_prevention_mechanism": "30-minute external monitor synthetic query"
+      },
+      "covered_by_permanent_allowance": true,
+      "covered_by_student_credit": false,
+      "gross_provider_charge_usd": 0.0,
+      "student_credit_absorbed_usd": 0.0,
+      "net_founder_out_of_pocket_usd": 0.0,
+      "unapproved_paid_resource": false
+    },
+    "azure_container_apps": {
+      "provider": "Microsoft Azure",
+      "tier": "Consumption / Azure for Students",
+      "tier_classification": "temporary_student_credit",
+      "first_party_reference": "https://azure.microsoft.com/pricing/details/container-apps/",
+      "checked_date": "2026-09-18",
+      "limits": {
+        "monthly_free_vcpu_seconds": 180000,
+        "monthly_free_gib_seconds": 360000,
+        "monthly_free_requests": 2000000
+      },
+      "projected_usage": {
+        "instance_allocation": "0.25 vCPU, 0.5 GiB",
+        "monthly_seconds": 2592000,
+        "gross_vcpu_seconds": 648000,
+        "gross_gib_seconds": 1296000,
+        "net_billable_vcpu_seconds": 468000,
+        "net_billable_gib_seconds": 936000,
+        "rate_vcpu_second_usd": 0.000024,
+        "rate_gib_second_usd": 0.000003,
+        "gross_billable_cost_usd": 14.04
+      },
+      "covered_by_permanent_allowance": false,
+      "covered_by_student_credit": true,
+      "gross_provider_charge_usd": 14.04,
+      "student_credit_absorbed_usd": 14.04,
+      "net_founder_out_of_pocket_usd": 0.0,
+      "unapproved_paid_resource": false
+    },
+    "cloudflare_workers": {
+      "provider": "Cloudflare",
+      "tier": "Free Plan",
+      "tier_classification": "permanent_free_allowance",
+      "first_party_reference": "https://developers.cloudflare.com/workers/platform/pricing/",
+      "checked_date": "2026-09-18",
+      "limits": {
+        "daily_requests": 100000,
+        "cpu_ms_per_request": 10,
+        "worker_scripts": 100
+      },
+      "projected_usage": {
+        "daily_requests": 1500,
+        "cpu_ms_per_request": 3.5,
+        "worker_scripts": 2
+      },
+      "covered_by_permanent_allowance": true,
+      "covered_by_student_credit": false,
+      "gross_provider_charge_usd": 0.0,
+      "student_credit_absorbed_usd": 0.0,
+      "net_founder_out_of_pocket_usd": 0.0,
+      "unapproved_paid_resource": false
+    },
+    "github_actions": {
+      "provider": "GitHub",
+      "tier": "Free Plan (Private Repo Allowance)",
+      "tier_classification": "permanent_free_allowance",
+      "first_party_reference": "https://docs.github.com/en/billing/managing-billing-for-github-actions/about-billing-for-github-actions",
+      "checked_date": "2026-09-18",
+      "limits": {
+        "monthly_runner_minutes": 2000,
+        "billing_granularity_seconds": 60
+      },
+      "projected_usage": {
+        "cadence_minutes": 30,
+        "monthly_runs": 1440,
+        "runner_class": "ubuntu-slim",
+        "avg_run_seconds": 30,
+        "billed_minutes_per_run": 1,
+        "monthly_monitor_billed_minutes": 1440,
+        "remaining_ci_headroom_minutes": 560
+      },
+      "covered_by_permanent_allowance": true,
+      "covered_by_student_credit": false,
+      "gross_provider_charge_usd": 0.0,
+      "student_credit_absorbed_usd": 0.0,
+      "net_founder_out_of_pocket_usd": 0.0,
+      "unapproved_paid_resource": false
+    }
+  },
+  "summary": {
+    "total_gross_provider_charge_usd": 14.04,
+    "total_student_credit_applied_usd": 14.04,
+    "total_founder_out_of_pocket_usd": 0.0,
+    "all_covered_by_allowance_or_credit": true,
+    "all_within_permanent_free_allowance": false,
+    "unapproved_paid_resources_count": 0
+  }
+}
