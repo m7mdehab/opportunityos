@@ -71,11 +71,11 @@ All tests were executed locally and passed with zero defects:
 | **A-1** | Source Parity & Policy | Pre-existing baseline preserved. |
 | **A-2** | Opportunity Deduplication & Family Keys | Pre-existing baseline preserved; verified in persistence regression tests. |
 | **A-3** | Evaluation & Matching Engine | Preserved; ADR-0024 fixed CV catalog integrated. |
-| **A-4** | Feed/Search Usability without Active Workers | **PASS** (proven in `fr007_reliability_proof.py`). |
-| **A-5** | Single-Source Failure Isolation | **PASS** (proven in `fr007_reliability_proof.py`). |
-| **A-6** | Repeated Polling Idempotency | **PASS** (proven in `fr007_reliability_proof.py`). |
-| **A-7** | Poll Now Non-Blocking & Due-Only | **PASS** (implemented and proven in `fr007_reliability_proof.py`). |
-| **A-8** | Schedule/Cooldown Survival & No Restart Storm | **PASS** (implemented and proven in `fr007_reliability_proof.py`). |
+| **A-4** | Feed/Search Usability without Active Workers | **VERIFIED_REPOSITORY / IMPLEMENTED** (proven in `fr007_reliability_proof.py`; hosted PASS awaits protected staging run against deployed Cloudflare + Supabase). |
+| **A-5** | Single-Source Failure Isolation | **VERIFIED_REPOSITORY / IMPLEMENTED** (proven in `fr007_reliability_proof.py`; hosted PASS awaits protected staging run against deployed Cloudflare + Supabase). |
+| **A-6** | Repeated Polling Idempotency | **VERIFIED_REPOSITORY / IMPLEMENTED** (proven in `fr007_reliability_proof.py`; hosted PASS awaits protected staging run against deployed Cloudflare + Supabase). |
+| **A-7** | Poll Now Non-Blocking & Due-Only | **VERIFIED_REPOSITORY / IMPLEMENTED** (implemented and proven in `fr007_reliability_proof.py`; hosted PASS awaits protected staging run against deployed Cloudflare + Supabase). |
+| **A-8** | Schedule/Cooldown Survival & No Restart Storm | **VERIFIED_REPOSITORY / IMPLEMENTED** (implemented and proven in `fr007_reliability_proof.py`; hosted PASS awaits protected staging run against deployed Cloudflare + Supabase). |
 | **A-9** | Zero-Dollar Runtime Economics | **PASS** ($0.00 gross provider charge enforced by `validate_cloud_cost_quota.py`). |
 | **A-10** | External Observability & Probing | **READY FOR HOSTED RUN** (`fr007_cloud_monitor.py` verified across 69 tests). |
 | **A-11** | Synthetic Alert & Incident Lifecycle | **READY FOR HOSTED RUN** (GitHub Issue creation, dedup, and resolution verified). |
@@ -142,6 +142,49 @@ gh workflow run fr007-cloud-observability.yml \
   -f mode=MONITOR \
   -f target_env=staging
 ```
+
+---
+
+## 7. W18-R1 Overseer Remediation
+
+In response to the Overseer's remediation order (`reports/evidence/FR-007/orders/W18-R1-overseer-remediation.md`), the following fixes were executed:
+
+### 1. False-Green Cloudflare Deployment Path Closed
+- **Defect:** `web/app/api/[...path]/route.ts` returned HTTP 500 when `OPPORTUNITYOS_CLOUD_EDGE=1` and `OPPORTUNITYOS_API_ORIGIN` was absent, while `.github/workflows/fr007-cloudflare-staging-deploy.yml` made `OPPORTUNITYOS_API_ORIGIN` optional. `scripts/validate_cloudflare_deployment.py` had an assertion enforcing this exact fail-closed 500 error, creating a false-green deployment gate where builds succeeded but all `/api/*` endpoints failed.
+- **Fix:** 
+  - Implemented `handleSupabaseNativeRequest()` in `web/app/api/[...path]/route.ts` to route requests directly to Supabase Auth (`/auth/v1/token`, `/auth/v1/user`, `/auth/v1/logout`), Supabase PostgREST (`founder_feed` view for list, pagination, and detail), Supabase Storage (authenticated `opportunity-artifacts` and `founder-truth-pack` for fixed CV and generated artifacts), and RPC (`enqueue_poll_now`).
+  - Preserved backward-compatible HTTPS proxying when `OPPORTUNITYOS_API_ORIGIN` is explicitly set, and local dev fallback (`http://localhost:8000`) when running outside cloud edge.
+  - Removed the legacy fail-closed 500 requirement from `scripts/validate_cloudflare_deployment.py`. Added validator assertions requiring Supabase-native request routing and explicitly rejecting the legacy false-green origin requirement.
+  - Added unit tests in `scripts/test_validate_cloudflare_deployment.py` specifically ensuring that any reintroduced origin requirement or missing Supabase support fails validation (8/8 tests passing).
+
+### 2. Public Browser-Safe Supabase Configuration
+- `.github/workflows/fr007-cloudflare-staging-deploy.yml` now injects `vars.NEXT_PUBLIC_SUPABASE_URL` and `vars.NEXT_PUBLIC_SUPABASE_ANON_KEY` into both the OpenNext build environment and the `wrangler deploy` command.
+- Verified that no privileged secrets (`SUPABASE_SERVICE_ROLE_KEY`, `CLOUD_DATABASE_URL`, or Founder passwords) are exposed to client-side bundles.
+
+### 3. Hosted E2E Playwright Suite Hardening
+- `web/tests/e2e/staging-smoke.spec.ts` was enhanced to:
+  1. Test unauthorized user rejection (unauthenticated redirect to `/login`, invalid credentials form rejection, and HTTP 401 on protected APIs).
+  2. Require and exercise `E2E_FOUNDER_EMAIL` for Supabase Auth forms.
+  3. Verify session survival across navigation and full page reloads (`page.reload()`).
+  4. Verify that logout invalidates the session cookie and subsequent direct API requests fail with HTTP 401.
+  5. Retain comprehensive coverage of feed pagination, live token search, facets, detail dialog, original source links, asynchronous Poll Now, and fixed CV preview/download per ADR-0024.
+
+### 4. Reliability Evidence Labels Aligned
+- Evidence vocabulary updated in Section 4 and manifest: local and disposable PostgreSQL proofs for A-4 through A-8 are labeled `VERIFIED_REPOSITORY / IMPLEMENTED`.
+- Hosted `PASS` is reserved exclusively for runs executed in the protected GitHub `fr007-staging` environment against live Cloudflare and Supabase deployments.
+
+### 5. Observability for Supabase-Native Architecture
+- `scripts/fr007_cloud_monitor.py` updated so `OPOS_MONITOR_API_URL` is no longer mandatory; when omitted, the monitor probes the same-origin API endpoint (`/api/auth/me`) on `OPOS_MONITOR_WEB_URL`.
+- `.github/workflows/fr007-cloud-observability.yml` fixed to use `actions/checkout@v4` (ensuring scheduled runs check out `main`), and passed `--api-url` conditionally only when populated.
+
+### 6. Soak Continuity & Deployment Identity Enforced
+- `scripts/fr007_soak_verify.py` now records `deployment_identifiers` and `repository_shas` in `SoakVerificationResult`.
+- Enforces fail-closed validation: if `deployment_identifier` changes mid-soak, the continuity window is invalidated unless `--allow-deployment-change` is explicitly passed.
+- Added tests verifying missing interval failure, Founder PC dependency rejection, backup heartbeat requirement, and deployment identity tracking (72/72 tests passing).
+
+### 7. Codex Integration Boundary
+- Antigravity's Cloudflare route handler (`web/app/api/[...path]/route.ts`) maps directly to the schema artifacts produced by Codex on `work/fr007-codex-runtime-closure` (`founder_feed` view and `enqueue_poll_now` RPC in `storage/supabase_runtime.py`).
+- No duplicate migrations or schema changes were introduced on this branch. Final branch integration into `brief/fr-007-cloud-replatform` will combine Codex's runtime data plane with Antigravity's edge and observability control plane without structural conflict.
 
 ---
 

@@ -70,8 +70,12 @@ def validate_cloudflare_package(root: Path = ROOT) -> list[str]:
             errors.append("proxy route handler must enforce parsed HTTPS upstream origin")
         if 'OPPORTUNITYOS_CLOUD_EDGE === "1"' not in proxy_text:
             errors.append("proxy route handler must distinguish cloud edge from local development")
-        if "OPPORTUNITYOS_API_ORIGIN is required on the cloud edge" not in proxy_text:
-            errors.append("cloud edge must fail closed when API origin is absent")
+        if "OPPORTUNITYOS_API_ORIGIN is required on the cloud edge" in proxy_text:
+            errors.append("false-green legacy error detected: cloud edge must not require external API origin")
+        if "NEXT_PUBLIC_SUPABASE_URL" not in proxy_text and "SUPABASE_URL" not in proxy_text:
+            errors.append("proxy route handler must support Supabase-backed request path")
+        if "handleSupabaseNativeRequest" not in proxy_text:
+            errors.append("proxy route handler must provide functional Supabase-native request routing")
         if "localhost" not in proxy_text:
             errors.append("local-development API fallback contract is missing")
         if "getSetCookie" not in proxy_text:
@@ -130,6 +134,10 @@ def validate_cloudflare_package(root: Path = ROOT) -> list[str]:
             errors.append("DEPLOY_STAGING must verify Cloudflare token readiness against the Cloudflare API")
         if 'OPOS_STAGING_WEB_URL must be a non-empty HTTPS URL.' not in wf_text:
             errors.append("SMOKE_STAGING must require an HTTPS staging URL")
+        if "NEXT_PUBLIC_SUPABASE_URL" not in wf_text:
+            errors.append("staging workflow must support browser-safe NEXT_PUBLIC_SUPABASE_URL")
+        if "NEXT_PUBLIC_SUPABASE_ANON_KEY" not in wf_text:
+            errors.append("staging workflow must support browser-safe NEXT_PUBLIC_SUPABASE_ANON_KEY")
         for bad_word in ("dns", "cutover", "zone", "custom_domain"):
             if bad_word in wf_text.lower():
                 errors.append(f"forbidden network cutover term in workflow: {bad_word}")

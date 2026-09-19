@@ -558,6 +558,8 @@ def _make_snapshot(ts_iso: str, **kwargs: Any) -> dict[str, Any]:
         "founder_pc_dependency": False,
         "workflow_run_id": "123456",
         "monitor_run_id": "mon-123456",
+        "deployment_identifier": "test-deploy",
+        "repository_sha": "abcdef123456",
     }
     base.update(kwargs)
     return base
@@ -672,6 +674,43 @@ class TestSoakSnapshotAndVerification(unittest.TestCase):
         result = verify_soak_snapshots(snapshots, min_hours=168.0)
         self.assertEqual(result.result, "FAIL")
         self.assertTrue(any("database_state is NOT_CONFIGURED" in err for interval in result.failed_intervals for err in interval["reasons"]))
+
+    def test_soak_verify_records_deployment_and_sha_identity(self) -> None:
+        base_ts = datetime(2026, 9, 10, 0, 0, tzinfo=timezone.utc)
+        snapshots = [
+            _make_snapshot((base_ts + timedelta(hours=i * 2)).isoformat())
+            for i in range(85)
+        ]
+        result = verify_soak_snapshots(snapshots, min_hours=168.0)
+        self.assertEqual(result.result, "PASS")
+        self.assertIn("test-deploy", result.deployment_identifiers)
+        self.assertIn("abcdef123456", result.repository_shas)
+
+    def test_soak_verify_mutating_deployment_identity_fails(self) -> None:
+        base_ts = datetime(2026, 9, 10, 0, 0, tzinfo=timezone.utc)
+        snapshots = [
+            _make_snapshot((base_ts + timedelta(hours=i * 2)).isoformat())
+            for i in range(85)
+        ]
+        # Mutate deployment identity halfway through
+        snapshots[45]["deployment_identifier"] = "mutated-deploy-id"
+        result = verify_soak_snapshots(snapshots, min_hours=168.0)
+        self.assertEqual(result.result, "FAIL")
+        self.assertTrue(any("Deployment identity mutated during soak window" in r for r in result.reasons))
+
+        # Explicitly allowed deployment change passes
+        allowed_result = verify_soak_snapshots(snapshots, min_hours=168.0, allow_deployment_change=True)
+        self.assertEqual(allowed_result.result, "PASS")
+
+    def test_soak_verify_require_backup_enforced(self) -> None:
+        base_ts = datetime(2026, 9, 10, 0, 0, tzinfo=timezone.utc)
+        snapshots = [
+            _make_snapshot((base_ts + timedelta(hours=i * 2)).isoformat(), backup_state="NOT_CONFIGURED")
+            for i in range(85)
+        ]
+        result = verify_soak_snapshots(snapshots, min_hours=168.0, require_backup_pass=True)
+        self.assertEqual(result.result, "FAIL")
+        self.assertTrue(any("Unhealthy backup state" in err for interval in result.failed_intervals for err in interval["reasons"]))
 
 
 class TestHostedAcceptanceValidator(unittest.TestCase):

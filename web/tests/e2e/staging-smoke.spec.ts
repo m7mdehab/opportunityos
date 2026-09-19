@@ -7,12 +7,13 @@ async function login(page: Page) {
   await page.goto("/");
   await expect(page).toHaveURL(/\/login/);
 
-  // Support both email/password login and password-only forms
+  // Support both email/password Supabase Auth and legacy password forms
   const emailInput = page.getByLabel(/email/i);
   if ((await emailInput.count()) > 0 && (await emailInput.isVisible())) {
-    if (FOUNDER_EMAIL) {
-      await emailInput.fill(FOUNDER_EMAIL);
+    if (!FOUNDER_EMAIL) {
+      throw new Error("E2E_FOUNDER_EMAIL environment variable is required for Supabase email+password login.");
     }
+    await emailInput.fill(FOUNDER_EMAIL);
   }
 
   const passwordInput = page.getByLabel(/password/i);
@@ -63,17 +64,34 @@ async function pageBinary(page: Page, path: string) {
 
 test.describe("Cloudflare staging hosted smoke", () => {
   test("unauthorized access is rejected", async ({ page }) => {
-    // Unauthenticated navigation to root redirects to /login
+    // 1. Unauthenticated navigation to root redirects to /login
     await page.goto("/");
     await expect(page).toHaveURL(/\/login/);
 
-    // Direct unauthenticated fetch to protected API endpoint fails with 401
+    // 2. Form submission with unauthorized/invalid credentials fails
+    const emailInput = page.getByLabel(/email/i);
+    if ((await emailInput.count()) > 0 && (await emailInput.isVisible())) {
+      await emailInput.fill("unauthorized-user@example.com");
+    }
+    const passwordInput = page.getByLabel(/password/i);
+    await passwordInput.fill("WrongPassword-12345678");
+    await page.getByRole("button", { name: /sign in|log in/i }).click();
+
+    // Verify user is not authenticated and remains on /login
+    await expect(page).toHaveURL(/\/login/);
+
+    // 3. Direct unauthenticated fetch to protected API endpoint fails with 401
     const unauthed = await pageJson<{ error?: string }>(page, "/api/opportunities");
     expect(unauthed.status).toBe(401);
   });
 
   test("desktop/mobile same-origin founder flow", async ({ page }) => {
     await login(page);
+
+    // Session survival proof: reloading or navigating retains authenticated founder session
+    await page.reload();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole("heading", { name: "OpportunityOS" })).toBeVisible();
 
     // Persisted feed must already exist; this smoke does not poll in order to
     // make the page readable.
@@ -203,5 +221,9 @@ test.describe("Cloudflare staging hosted smoke", () => {
     expect(logout.ok, `logout returned ${logout.status}`).toBe(true);
     await page.goto("/");
     await expect(page).toHaveURL(/\/login$/);
+
+    // Session invalidation proof: direct API calls now fail closed with 401 Unauthorized
+    const postLogout = await pageJson<{ error?: string }>(page, "/api/opportunities");
+    expect(postLogout.status).toBe(401);
   });
 });

@@ -52,7 +52,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -98,14 +98,20 @@ jobs:
 
           echo "Running cloud health monitor in FULL hosted mode..."
           set +e
-          python scripts/fr007_cloud_monitor.py \
-            --mode FULL \
-            --web-url "${OPOS_MONITOR_WEB_URL}" \
-            --api-url "${OPOS_MONITOR_API_URL}" \
-            --db-url "${CLOUD_DATABASE_URL}" \
-            --backup-heartbeat-path "${OPOS_BACKUP_HEARTBEAT_PATH}" \
-            --output-report .monitor_output/report.json \
+          MONITOR_ARGS=(
+            --mode FULL
+            --web-url "${OPOS_MONITOR_WEB_URL}"
+            --db-url "${CLOUD_DATABASE_URL}"
+            --output-report .monitor_output/report.json
             --output-incident .monitor_output/incident.json
+          )
+          if [ -n "${OPOS_MONITOR_API_URL}" ]; then
+            MONITOR_ARGS+=(--api-url "${OPOS_MONITOR_API_URL}")
+          fi
+          if [ -n "${OPOS_BACKUP_HEARTBEAT_PATH}" ]; then
+            MONITOR_ARGS+=(--backup-heartbeat-path "${OPOS_BACKUP_HEARTBEAT_PATH}")
+          fi
+          python scripts/fr007_cloud_monitor.py "${MONITOR_ARGS[@]}"
           MONITOR_EXIT_CODE=$?
           set -e
 
