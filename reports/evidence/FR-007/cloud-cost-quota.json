@@ -94,7 +94,7 @@
         "runner_class": "standard_ubuntu",
         "encrypted_backup_artifact_max_mb": 100,
         "backup_retention_days": 7,
-        "soak_artifact_retention_days": 30
+        "soak_artifact_retention_days": 90
       },
       "covered_by_permanent_allowance": true,
       "covered_by_student_credit": false,
