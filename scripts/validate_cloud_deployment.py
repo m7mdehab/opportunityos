@@ -41,6 +41,11 @@ def validate_package(root: Path = ROOT) -> list[str]:
     roles = contract.get("roles")
     if not isinstance(roles, dict) or tuple(roles) != ROLES:
         errors.append("contract must represent exactly api, worker, scheduler, migrate")
+    registry = contract.get("registry")
+    if not isinstance(registry, dict) or registry.get("provider") != "ghcr" or registry.get("visibility") != "private":
+        errors.append("private GHCR registry contract is required")
+    if contract.get("imagePolicy") != "immutable_digest_required":
+        errors.append("immutable digest image policy is required")
     for relative in ("main.bicep", "modules/container-app.bicep", "modules/container-job.bicep"):
         path = azure / relative
         if not path.is_file():
@@ -61,6 +66,11 @@ def validate_package(root: Path = ROOT) -> list[str]:
         errors.append("migration-first application rollout switch is missing")
     if not re.search(r"param image string", main):
         errors.append("immutable image parameter is missing")
+    if not re.search(r"@secure\(\)\s*\n@description\([^\n]*\)\s*\nparam registryPassword string", main):
+        errors.append("private registry password must be a secure deployment parameter")
+    for module_name, module_text in (("container-app", app_module), ("container-job", job_module)):
+        if "passwordSecretRef: 'registry-password'" not in module_text or "server: registryServer" not in module_text:
+            errors.append(f"{module_name} must use a private registry password secret reference")
     if not re.search(r"@secure\(\)\s*\nparam truthPackUri string", main):
         errors.append("Truth Pack URI must be a secure deployment parameter")
     for secret_name, env_name in (("truth-pack-uri", "OPPORTUNITYOS_TRUTH_PACK_URI"),
@@ -102,6 +112,10 @@ def validate_package(root: Path = ROOT) -> list[str]:
             errors.append(f"automatic workflow trigger is forbidden: {trigger}")
     if "environment: fr007-staging" not in workflow or "id-token: write" not in workflow:
         errors.append("protected staging environment and OIDC permission are required")
+    if "packages: write" not in workflow or "docker/build-push-action@v6" not in workflow:
+        errors.append("deployment workflow must publish an immutable GHCR image")
+    if "GHCR_READ_TOKEN" not in workflow or "registryPassword" not in workflow:
+        errors.append("durable private GHCR pull credential wiring is required")
     if "acknowledge_staging_deployment" not in workflow:
         errors.append("DEPLOY_STAGING acknowledgement is required")
     if "azure/login@v2" not in workflow or "auth-type: SERVICE_PRINCIPAL" not in workflow:
