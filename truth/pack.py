@@ -52,6 +52,7 @@ what a founder wrote under those three top-level YAML keys. A pack with
 from __future__ import annotations
 
 import base64
+import gzip
 import hashlib
 import json
 import logging
@@ -75,7 +76,8 @@ logger = logging.getLogger(__name__)
 
 #: Default location of the founder's truth pack. Never read at import time;
 #: only used as the default argument to `load_founder_pack`.
-DEFAULT_TRUTH_PACK_PATH = Path("private/truth_pack.yaml")
+DEFAULT_TRUTH_PACK_PATH = Path("founder/truth_pack.yaml.gz.b64")
+CANONICAL_REPO_TRUTH_PACK = DEFAULT_TRUTH_PACK_PATH
 
 _CAREER_LIST_FIELDS = (
     "employment", "education", "certifications", "skills", "languages",
@@ -394,7 +396,8 @@ def load_truth_pack(
 
     # Cloud mode transport & security constraints (Items B, D, E)
     if cloud_mode:
-        if expected_hash is None:
+        repo_snapshot_target = target_str == CANONICAL_REPO_TRUTH_PACK.as_posix()
+        if expected_hash is None and not repo_snapshot_target:
             raise TruthPackInvalid(
                 f"expected_hash is required in cloud mode for integrity verification ({redacted_target})",
                 ("missing expected_hash in cloud mode",),
@@ -447,21 +450,39 @@ def load_truth_pack(
     elif target_str.startswith("data:"):
         raw_bytes, doc_format = _decode_data_uri(target_str)
     else:
-        # Local path check
+        # Local path check. Arbitrary cloud-local paths stay forbidden; the
+        # one repository-managed canonical snapshot is explicitly allowed.
         local_allowed = allow_local_path if allow_local_path is not None else (not cloud_mode)
+        file_path = Path(target_str)
+        # Founder decision 2026-09-19: the canonical career Truth Pack is
+        # non-sensitive product truth and is allowed to ship with the
+        # repository. Cloud mode may read exactly this repository-managed
+        # snapshot; arbitrary local-path fallback remains forbidden.
+        repo_snapshot = file_path.as_posix() == CANONICAL_REPO_TRUTH_PACK.as_posix()
+        if cloud_mode and repo_snapshot:
+            local_allowed = True
         if not local_allowed:
             raise TruthPackInvalid(
                 f"local filesystem paths not allowed for truth pack in cloud mode: {redacted_target}",
                 ("forbidden local path in cloud mode",),
             )
-        file_path = Path(target_str)
         if not file_path.exists():
             raise TruthPackMissing(f"truth pack not found at {file_path}")
         try:
             raw_bytes = file_path.read_bytes()
         except OSError as err:
             raise TruthPackInvalid(f"failed reading truth pack at {file_path}: {err}", (str(err),)) from err
-        doc_format = "json" if file_path.suffix.lower() == ".json" else "yaml"
+        if file_path.name.endswith(".yaml.gz.b64"):
+            try:
+                raw_bytes = gzip.decompress(base64.b64decode(raw_bytes, validate=True))
+            except Exception as err:
+                raise TruthPackInvalid(
+                    f"canonical truth pack snapshot could not be decoded: {file_path}",
+                    ("invalid gzip/base64 truth pack snapshot",),
+                ) from err
+            doc_format = "yaml"
+        else:
+            doc_format = "json" if file_path.suffix.lower() == ".json" else "yaml"
 
     raw_sha256 = hashlib.sha256(raw_bytes).hexdigest()
 
