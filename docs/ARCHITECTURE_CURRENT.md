@@ -122,9 +122,9 @@ GitHub runner loss/delay cannot lose canonical state: jobs, leases, retries, sou
 
 ### Truth Pack
 
-Cloud mode accepts remote HTTPS Truth Pack loading with SHA-256 integrity verification and refuses silent local-file fallback.
+Founder decision 2026-09-19 classifies the canonical career Truth Pack as non-sensitive product truth.
 
-The production location is the private Supabase `founder-truth-pack` bucket. Browser access remains denied; background jobs retrieve it only through protected server-side credentials.
+Cloud/background execution loads the repository-managed, gzip/base64-wrapped canonical snapshot at `founder/truth_pack.yaml.gz.b64` and verifies the pinned SHA-256 before use. Arbitrary local-file fallback remains forbidden in cloud mode. No Supabase Truth Pack object, signed URL, API key, or Truth Pack-specific secret is required.
 
 ### Storage
 
@@ -149,7 +149,7 @@ FR-007 still requires real encrypted off-provider backup, fresh-environment rest
 5. Failed source/worker processes do not take down the existing feed.
 6. Source permissions and cooldowns are never widened by cloud migration.
 7. Canonical identity/dedup remain deterministic across retries/redeploys.
-8. Private Founder truth and secrets never enter Git.
+8. Secrets and Founder-designated private artifacts never enter Git; the canonical career Truth Pack is explicitly Founder-approved repository-managed product truth.
 9. Backups are valid only after restore proof.
 10. Provider-specific deployment may be replaced without rewriting domain logic.
 
@@ -161,7 +161,7 @@ BRIEF-007 / Multi-Tenant Family Alpha remains blocked until the reliable cloud-h
 
 ## Repository / Governance
 
-- the current `opportunityos` repository is public and authoritative; secrets/private Founder truth remain outside Git;
+- the current `opportunityos` repository is public and authoritative; secrets and private artifact bodies remain outside Git, while the Founder-approved canonical career Truth Pack is repository-managed and hash-bound;
 - public docs mirror receives only allowlisted material;
 - repository/runtime evidence outranks executor reports;
 - generated `docs/STATE.md` is a projection and must match repository facts;
