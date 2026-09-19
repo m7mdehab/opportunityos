@@ -109,7 +109,9 @@ def validate_package(root: Path = ROOT) -> list[str]:
     if "workflow_dispatch:" not in workflow:
         errors.append("workflow_dispatch is required")
     for trigger in ("push:", "pull_request:", "schedule:", "workflow_run:", "repository_dispatch:"):
-        if re.search(rf"^\s*{re.escape(trigger)}", workflow, re.MULTILINE):
+        # Only reject event keys directly under top-level `on:` (two-space indent).
+        # Action inputs such as docker/build-push-action's `push: true` are not triggers.
+        if re.search(rf"^  {re.escape(trigger)}", workflow, re.MULTILINE):
             errors.append(f"automatic workflow trigger is forbidden: {trigger}")
     if "environment: fr007-staging" not in workflow or "id-token: write" not in workflow:
         errors.append("protected staging environment and OIDC permission are required")
