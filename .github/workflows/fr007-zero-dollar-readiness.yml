@@ -16,10 +16,8 @@ jobs:
       SUPABASE_URL: https://lrrcpwaapwynzdsxzwhy.supabase.co
       OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
       CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL }}
-      OPPORTUNITYOS_TRUTH_PACK_URI: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_URI }}
-      OPPORTUNITYOS_TRUTH_PACK_HASH: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_HASH }}
-      OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN }}
-      OPPORTUNITYOS_TRUTH_PACK_API_KEY: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_API_KEY }}
+      STORAGE_SERVICE_KEY: ${{ secrets.STORAGE_SERVICE_KEY }}
+      STORAGE_CV_BUCKET: founder-cv-portfolio
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
@@ -65,7 +63,7 @@ jobs:
             fi
           }
 
-          for name in             OPOS_TARGET_DB_URL CLOUD_DATABASE_URL             OPPORTUNITYOS_TRUTH_PACK_URI OPPORTUNITYOS_TRUTH_PACK_HASH             OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN OPPORTUNITYOS_TRUTH_PACK_API_KEY             CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID             BACKUP_ENCRYPTION_KEY; do
+          for name in             OPOS_TARGET_DB_URL CLOUD_DATABASE_URL             STORAGE_SERVICE_KEY             CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID             BACKUP_ENCRYPTION_KEY; do
             require "$name"
           done
 
@@ -112,20 +110,33 @@ jobs:
           print("SUPABASE_DATABASE=PASS")
           PY
 
-      - name: Verify private Truth Pack object and hash
+      - name: Verify repository-managed canonical Truth Pack
         if: ${{ success() }}
-        shell: bash
+        env:
+          OPPORTUNITYOS_ENVIRONMENT: cloud
         run: |
-          set -euo pipefail
-          tmp="$(mktemp)"
-          trap 'rm -f "$tmp"' EXIT
-          curl --fail --silent --show-error             -H "Authorization: Bearer $OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN"             -H "apikey: $OPPORTUNITYOS_TRUTH_PACK_API_KEY"             "$OPPORTUNITYOS_TRUTH_PACK_URI"             --output "$tmp"
-          actual="$(sha256sum "$tmp" | awk '{print $1}')"
-          [ "$actual" = "$OPPORTUNITYOS_TRUTH_PACK_HASH" ] || {
-            echo "::error::Private Truth Pack hash mismatch"
-            exit 1
-          }
-          echo "PRIVATE_TRUTH_PACK=PASS"
+          python - <<'PY'
+          from truth.pack import CANONICAL_REPO_TRUTH_PACK_RAW_SHA256, load_founder_pack
+          loaded = load_founder_pack()
+          assert loaded.report.valid
+          assert CANONICAL_REPO_TRUTH_PACK_RAW_SHA256
+          print("CANONICAL_TRUTH_PACK=PASS")
+          PY
+
+      - name: Verify six immutable CV objects and hashes
+        if: ${{ success() }}
+        env:
+          OPPORTUNITYOS_SUPABASE_URL: https://lrrcpwaapwynzdsxzwhy.supabase.co
+        run: |
+          python - <<'PY'
+          from matching.cv_selector import PORTFOLIO
+          from matching.cv_storage import fetch_cv_bytes
+          for variant in PORTFOLIO:
+              payload = fetch_cv_bytes(variant)
+              print(f"CV={variant.variant}=PASS bytes={len(payload)}")
+          assert len(PORTFOLIO) == 6
+          print("FIXED_CV_PORTFOLIO=PASS")
+          PY
 
       - name: Verify Cloudflare account/token
         if: ${{ success() }}
