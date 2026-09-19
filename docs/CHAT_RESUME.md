@@ -97,7 +97,7 @@ Integrated repository-side capabilities include:
 - historical Azure deployment manifests exist but are superseded by the zero-dollar runtime decision;
 - Cloudflare Workers/OpenNext staging frontend with same-origin `/api/*` proxy and hosted Desktop + 390px Playwright contract;
 - private Supabase Storage artifact backend with checksum/size verification and durable metadata;
-- private remote HTTPS Truth Pack contract with hash binding and protected server-side credential wiring;
+- Founder-approved repository-managed canonical Truth Pack snapshot with pinned hash verification;
 - migration/backup/restore/parity/provider-exit tooling;
 - manual hosted PostgreSQL/Supabase execution harness.
 
@@ -120,7 +120,7 @@ A real Supabase staging project is now provisioned and healthy:
 - plan/project creation cost: $0/month at provisioning;
 - initial public schema and project migration history are empty.
 
-Safe hosted-target metadata is persisted at `reports/evidence/FR-007/hosted-staging-target.json`. No database password, service-role key, storage signing secret, Founder credential, session secret or private Truth Pack content is stored in Git.
+Safe hosted-target metadata is persisted at `reports/evidence/FR-007/hosted-staging-target.json`. No database password, service-role key, storage signing secret, Founder credential or session secret is stored in Git. The canonical career Truth Pack is Founder-approved repository-managed product truth.
 
 The failed precondition W16A attempt from the pre-W15 integration head is non-authoritative and must not be reused.
 
@@ -134,8 +134,8 @@ Task routing must follow actual tool access. Repository agents must not be assig
 
 1. execute real Supabase schema migration and hosted parity;
 2. prove hosted anon/authenticated/backend RLS boundaries;
-3. configure/test private Truth Pack retrieval;
-4. configure/test private artifact storage retrieval;
+3. prove the repository-managed canonical Truth Pack loads and hash-verifies in cloud/background jobs;
+4. upload and prove private fixed-CV/generated-artifact storage retrieval with exact hash/version binding;
 5. wire Supabase Auth + Founder-only RPC/RLS browser boundary;
 6. wire Supabase Cron/pg_cron + bounded GitHub Actions Python workers;
 7. deploy the Cloudflare frontend/edge on the existing domain;
