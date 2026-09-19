@@ -65,19 +65,15 @@ export function ArtifactsPanel({ opportunityId }: { opportunityId: string }) {
   const requestKey = `${opportunityId}|${kind}|${template}`
   if (requestKey !== loadedKey) {
     setLoadedKey(requestKey)
-    setOmittedItems(null)
+    setOmittedItems(kind === "cv" ? [] : null)
     setFindings(null)
     setMetaError(null)
-    setLoadingMeta(true)
+    setLoadingMeta(kind !== "cv")
   }
 
   useEffect(() => {
     let cancelled = false
     if (kind === "cv") {
-      setOmittedItems([])
-      setFindings(null)
-      setMetaError(null)
-      setLoadingMeta(false)
       return () => {
         cancelled = true
       }
