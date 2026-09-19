@@ -70,6 +70,17 @@ def validate_package(root: Path = ROOT) -> list[str]:
             errors.append(f"{secret_name} must be injected through a Container Apps secret reference")
         if f"{{ name: '{env_name}'; secretRef: '{secret_name}' }}" not in app_module:
             errors.append(f"{env_name} must be wired from {secret_name}")
+    for module_name, module_text in (("container app", app_module), ("migration job", job_module)):
+        if "registry-password" not in module_text or "passwordSecretRef: 'registry-password'" not in module_text:
+            errors.append(f"{module_name} must use a secret-backed private registry credential")
+        if "registryServer" not in module_text or "registryUsername" not in module_text:
+            errors.append(f"{module_name} private registry configuration is incomplete")
+    if "GHCR_PULL_TOKEN" not in _workflow(root):
+        errors.append("deployment workflow must inject a durable GHCR pull token for Azure")
+    if "docker/build-push-action@v6" not in _workflow(root) or "steps.image.outputs.digest" not in _workflow(root):
+        errors.append("deployment workflow must build and pin the staging image by digest")
+    if "OPPORTUNITYOS_FOUNDER_PASSWORD_HASH: ${{ secrets.OPPORTUNITYOS_FOUNDER_PASSWORD_HASH }}" in _workflow(root):
+        errors.append("deployment workflow must derive the cloud password hash from the staging login secret")
     if "founder-password-hash" not in app_module or "OPPORTUNITYOS_FOUNDER_PASSWORD_HASH" not in app_module:
         errors.append("API must use the hashed Founder password secret")
     if "{ name: 'OPPORTUNITYOS_FOUNDER_PASSWORD';" in app_module:
