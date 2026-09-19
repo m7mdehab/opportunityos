@@ -91,6 +91,75 @@ def _postgres_upgrade() -> None:
       IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN EXECUTE 'REVOKE ALL ON public.founder_opportunity_detail FROM authenticated'; EXECUTE 'GRANT SELECT ON public.founder_opportunity_detail TO authenticated'; END IF;
     END $$""")
     op.execute("DROP FUNCTION IF EXISTS public.enqueue_poll_now(text)")
+    # Restore the exact 0010 RPC contract when downgrading one revision.
+    op.execute("""
+      CREATE OR REPLACE FUNCTION public.enqueue_poll_now(p_source_id text DEFAULT NULL)
+      RETURNS TABLE(job_id text, job_type text, status text)
+      LANGUAGE plpgsql
+      VOLATILE
+      SECURITY DEFINER
+      SET search_path = public
+      AS $
+      DECLARE
+          sched public.source_schedules%ROWTYPE;
+          new_id text;
+          payload text;
+      BEGIN
+          IF NOT public.opos_is_founder() THEN
+              RAISE EXCEPTION 'authorized founder required';
+          END IF;
+
+          FOR sched IN
+              SELECT s.*
+              FROM public.source_schedules AS s
+              WHERE (p_source_id IS NULL OR s.source_id = p_source_id)
+                AND s.next_due_at <= now()
+                AND (s.cooldown_until IS NULL OR s.cooldown_until <= now())
+              ORDER BY s.source_id
+              FOR UPDATE SKIP LOCKED
+          LOOP
+              IF EXISTS (
+                  SELECT 1
+                  FROM public.worker_jobs AS w
+                  WHERE w.job_type = 'poll_source'
+                    AND w.status IN ('PENDING', 'RETRY', 'RUNNING')
+                    AND (w.payload_json::jsonb ->> 'source_id') = sched.source_id
+              ) THEN
+                  CONTINUE;
+              END IF;
+
+              new_id := md5(clock_timestamp()::text || random()::text || sched.source_id);
+              payload := json_build_object('source_id', sched.source_id)::text;
+              INSERT INTO public.worker_jobs
+                  (id, job_type, payload_json, status, run_after, retry_count,
+                   max_retries, created_at, updated_at)
+              VALUES
+                  (new_id, 'poll_source', payload, 'PENDING', now(), 0, 3,
+                   now(), now());
+
+              UPDATE public.source_schedules
+              SET last_attempt_at = now(),
+                  next_due_at = now() + make_interval(hours => sched.cadence_hours),
+                  updated_at = now()
+              WHERE source_id = sched.source_id;
+
+              job_id := new_id;
+              job_type := 'poll_source';
+              status := 'PENDING';
+              RETURN NEXT;
+          END LOOP;
+      END;
+      $
+    """)
+    op.execute("REVOKE ALL ON FUNCTION public.enqueue_poll_now(text) FROM PUBLIC")
+    op.execute("""DO $ BEGIN
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
+        EXECUTE 'REVOKE ALL ON FUNCTION public.enqueue_poll_now(text) FROM anon';
+      END IF;
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
+        EXECUTE 'GRANT EXECUTE ON FUNCTION public.enqueue_poll_now(text) TO authenticated';
+      END IF;
+    END $""")
     op.execute("""
       CREATE OR REPLACE FUNCTION public.enqueue_poll_now(p_source_id text DEFAULT NULL)
       RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
