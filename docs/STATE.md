@@ -11,7 +11,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `b2b4329` — ops: add one-shot verified upload for six fixed CVs
+- **State generated at commit:** `18a2eb7` — evidence(fr007): reconcile hosted state with fixed CV and repo truth
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
