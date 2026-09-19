@@ -1,6 +1,6 @@
 # ADR-0022 — Cloud-Native Runtime and Supabase Data Plane
 
-- **Status:** Superseded in part by ADR-0023
+- **Status:** Superseded
 - **Date:** 2026-09-17
 - **Related:** BRIEF-FR-007, ADR-0008, ADR-0009, ADR-0011, ADR-0012, ADR-0013
 
