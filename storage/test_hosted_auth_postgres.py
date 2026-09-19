@@ -82,7 +82,16 @@ class HostedAuthPostgresAcceptance(unittest.TestCase):
         self._alembic("head")
         enabled, policies = self._state("opportunities")
         self.assertTrue(enabled)
-        self.assertGreaterEqual(policies, 2)
+        # At hosted head, anon remains fail-closed while authenticated access
+        # is deliberately replaced by the Founder-only read policy from 0011.
+        self.assertEqual(policies, 1)
+        with self.engine.connect() as conn:
+            founder_policy = conn.execute(sa.text(
+                "SELECT count(*) FROM pg_policies "
+                "WHERE schemaname='public' AND tablename='opportunities' "
+                "AND policyname='opportunities_founder_authenticated_read'"
+            )).scalar_one()
+        self.assertEqual(founder_policy, 1)
 
 
 if __name__ == "__main__":
