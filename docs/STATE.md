@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `2e20e44` — FR-007: issue W19 final hosted API batch
+- **State generated at commit:** `cdb140e` — FR-007: automate integration state regeneration
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
