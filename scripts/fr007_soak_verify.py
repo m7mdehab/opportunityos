@@ -42,8 +42,10 @@ class SoakVerificationResult:
     max_gap_hours: float
     workflow_run_ids: list[str]
     monitor_run_ids: list[str]
-    failed_intervals: list[dict[str, Any]]
-    reasons: list[str]
+    deployment_identifiers: list[str] = field(default_factory=list)
+    repository_shas: list[str] = field(default_factory=list)
+    failed_intervals: list[dict[str, Any]] = field(default_factory=list)
+    reasons: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -67,12 +69,15 @@ def verify_soak_snapshots(
     min_snapshots: int = 2,
     require_backup_pass: bool = False,
     enforce_full_hosted: bool = True,
+    allow_deployment_change: bool = False,
 ) -> SoakVerificationResult:
     """Analyze an ordered or unordered list of soak snapshots."""
     reasons: list[str] = []
     failed_intervals: list[dict[str, Any]] = []
     workflow_run_ids: set[str] = set()
     monitor_run_ids: set[str] = set()
+    deployment_identifiers: set[str] = set()
+    repository_shas: set[str] = set()
 
     if not snapshots:
         return SoakVerificationResult(
@@ -84,6 +89,8 @@ def verify_soak_snapshots(
             max_gap_hours=0.0,
             workflow_run_ids=[],
             monitor_run_ids=[],
+            deployment_identifiers=[],
+            repository_shas=[],
             failed_intervals=[],
             reasons=["No soak snapshots provided."],
         )
@@ -134,6 +141,12 @@ def verify_soak_snapshots(
         mon_id = snap.get("monitor_run_id")
         if mon_id:
             monitor_run_ids.add(str(mon_id))
+        dep_id = snap.get("deployment_identifier")
+        if dep_id:
+            deployment_identifiers.add(str(dep_id))
+        sha = snap.get("repository_sha")
+        if sha:
+            repository_shas.add(str(sha))
 
         interval_failures = []
 
@@ -191,6 +204,12 @@ def verify_soak_snapshots(
                     f"Gap of {gap:.2f}h between {prev_ts.isoformat()} and {ts.isoformat()} exceeds max allowable gap ({max_gap_hours:.2f}h)."
                 )
 
+    if len(deployment_identifiers) > 1 and not allow_deployment_change:
+        reasons.append(
+            f"Deployment identity mutated during soak window ({sorted(deployment_identifiers)}); "
+            "continuity window invalidated."
+        )
+
     if failed_intervals:
         reasons.append(f"{len(failed_intervals)} snapshot(s) exhibited unhealthy, static, or defective states.")
 
@@ -211,6 +230,8 @@ def verify_soak_snapshots(
         max_gap_hours=round(observed_max_gap, 2),
         workflow_run_ids=sorted(workflow_run_ids),
         monitor_run_ids=sorted(monitor_run_ids),
+        deployment_identifiers=sorted(deployment_identifiers),
+        repository_shas=sorted(repository_shas),
         failed_intervals=failed_intervals,
         reasons=reasons,
     )
@@ -267,6 +288,12 @@ def main() -> int:
         help="Require backup_state to be PASS or WARN.",
     )
     parser.add_argument(
+        "--allow-deployment-change",
+        action="store_true",
+        default=False,
+        help="Allow deployment identifier changes during the soak window without invalidating continuity.",
+    )
+    parser.add_argument(
         "--output",
         type=str,
         default="",
@@ -296,6 +323,7 @@ def main() -> int:
         min_hours=args.min_hours,
         max_gap_hours=args.max_gap_hours,
         require_backup_pass=args.require_backup,
+        allow_deployment_change=args.allow_deployment_change,
     )
 
     out_json = json.dumps(result.to_dict(), indent=2) + "\n"
