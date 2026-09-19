@@ -25,9 +25,20 @@ class PrivateTruthPackCloudTests(unittest.TestCase):
     def test_cloud_requires_private_auth_and_supabase_api_key(self):
         with self.assertRaisesRegex(TruthPackInvalid, "AUTH_TOKEN"):
             load_truth_pack("https://objects.example/pack.yaml", expected_hash="a" * 64, cloud_mode=True)
-        with self.assertRaisesRegex(TruthPackInvalid, "both"):
-            load_truth_pack("https://project.supabase.co/storage/v1/object/authenticated/truth/pack.yaml",
-                            expected_hash="a" * 64, auth_token="token", cloud_mode=True)
+        with self.assertRaisesRegex(TruthPackInvalid, "API_KEY"):
+            load_truth_pack(
+                "https://project.supabase.co/storage/v1/object/authenticated/truth/pack.yaml",
+                expected_hash="a" * 64,
+                auth_token="token",
+                cloud_mode=True,
+            )
+        with self.assertRaisesRegex(TruthPackInvalid, "legacy"):
+            load_truth_pack(
+                "https://project.supabase.co/storage/v1/object/authenticated/truth/pack.yaml",
+                expected_hash="a" * 64,
+                api_key="legacy-key",
+                cloud_mode=True,
+            )
 
     def test_remote_request_uses_headers_without_logging_values(self):
         class Response:
@@ -51,13 +62,41 @@ class PrivateTruthPackCloudTests(unittest.TestCase):
                 auth_token="token",
                 cloud_mode=True,
             )
-        with self.assertRaisesRegex(TruthPackInvalid, "both"):
+        with self.assertRaisesRegex(TruthPackInvalid, "API_KEY"):
             load_truth_pack(
                 "https://private.example/storage/v1/object/authenticated/truth/pack.yaml",
                 expected_hash="a" * 64,
                 auth_token="token",
                 cloud_mode=True,
             )
+
+    def test_modern_supabase_secret_key_needs_no_bearer_token(self):
+        class Response:
+            headers = {"Content-Type": "text/yaml"}
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self): return self_payload
+
+        self_payload = b"fixture: true"
+        with patch("truth.pack.urlopen", return_value=Response()) as opened:
+            _fetch_remote_bytes(
+                "https://project.supabase.co/storage/v1/object/authenticated/founder-truth-pack/founder.yaml",
+                api_key="sb_secret_fixture",
+            )
+        request = opened.call_args.args[0]
+        self.assertEqual(request.headers["Apikey"], "sb_secret_fixture")
+        self.assertNotIn("Authorization", request.headers)
+
+        env = {
+            "CLOUD_DATABASE_URL": DB,
+            "OPPORTUNITYOS_ENVIRONMENT": "cloud",
+            "OPPORTUNITYOS_TRUTH_PACK_URI": "https://project.supabase.co/storage/v1/object/authenticated/founder-truth-pack/founder.yaml",
+            "OPPORTUNITYOS_TRUTH_PACK_HASH": "a" * 64,
+            "OPPORTUNITYOS_TRUTH_PACK_API_KEY": "sb_secret_fixture",
+        }
+        self.assertEqual(plan_runtime_environment("worker", env).blockers, ())
+        ready = check_truth_pack(env, role="worker")
+        self.assertEqual(ready.status, "PASS")
 
     def test_transport_error_never_echoes_secret_values(self):
         auth = "opaque-auth-" + "fixture-value"
