@@ -1,0 +1,110 @@
+name: FR-007 Provider Readiness Preflight
+
+on:
+  push:
+    branches:
+      - preflight/fr007-provider-readiness
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  provider-readiness:
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_MANAGED_ENVIRONMENT_ID: ${{ vars.AZURE_MANAGED_ENVIRONMENT_ID }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+      OPOS_AZURE_NAME_PREFIX: ${{ vars.OPOS_AZURE_NAME_PREFIX }}
+      OPOS_AZURE_IMAGE: ${{ vars.OPOS_AZURE_IMAGE }}
+      OPPORTUNITYOS_PUBLIC_ORIGIN: ${{ vars.OPPORTUNITYOS_PUBLIC_ORIGIN }}
+      OPPORTUNITYOS_API_ORIGIN: ${{ vars.OPPORTUNITYOS_API_ORIGIN }}
+      OPOS_STAGING_WEB_URL: ${{ vars.OPOS_STAGING_WEB_URL }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL }}
+      OPPORTUNITYOS_FOUNDER_PASSWORD_HASH: ${{ secrets.OPPORTUNITYOS_FOUNDER_PASSWORD_HASH }}
+      OPPORTUNITYOS_SESSION_SECRET: ${{ secrets.OPPORTUNITYOS_SESSION_SECRET }}
+      OPPORTUNITYOS_TRUTH_PACK_URI: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_URI }}
+      OPPORTUNITYOS_TRUTH_PACK_HASH: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_HASH }}
+      OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN }}
+      OPPORTUNITYOS_TRUTH_PACK_API_KEY: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_API_KEY }}
+      OPPORTUNITYOS_FOUNDER_PASSWORD: ${{ secrets.OPPORTUNITYOS_FOUNDER_PASSWORD }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required configuration presence
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          require() {
+            local name="$1"
+            if [ -z "${!name:-}" ]; then
+              echo "::error title=Missing FR-007 staging configuration::${name} is not configured"
+              missing=1
+            else
+              echo "${name}=PRESENT"
+            fi
+          }
+
+          for name in             AZURE_RESOURCE_GROUP AZURE_MANAGED_ENVIRONMENT_ID AZURE_LOCATION             OPOS_AZURE_NAME_PREFIX OPOS_AZURE_IMAGE             AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID             CLOUD_DATABASE_URL OPPORTUNITYOS_FOUNDER_PASSWORD_HASH             OPPORTUNITYOS_SESSION_SECRET OPPORTUNITYOS_TRUTH_PACK_URI             OPPORTUNITYOS_TRUTH_PACK_HASH             CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
+            require "$name"
+          done
+
+          # At least one server-side Truth Pack auth mechanism must be present.
+          if [ -z "${OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN:-}" ] && [ -z "${OPPORTUNITYOS_TRUTH_PACK_API_KEY:-}" ]; then
+            echo "::error title=Missing FR-007 staging configuration::Truth Pack server authentication token/API key is not configured"
+            missing=1
+          else
+            echo "TRUTH_PACK_SERVER_AUTH=PRESENT"
+          fi
+
+          # Cloudflare deployment needs the Azure API origin; hosted browser smoke
+          # additionally needs the final web URL and Founder plaintext staging password.
+          if [ -n "${OPPORTUNITYOS_API_ORIGIN:-}" ]; then echo "OPPORTUNITYOS_API_ORIGIN=PRESENT"; else echo "OPPORTUNITYOS_API_ORIGIN=DEFERRED_UNTIL_AZURE_DEPLOY"; fi
+          if [ -n "${OPOS_STAGING_WEB_URL:-}" ]; then echo "OPOS_STAGING_WEB_URL=PRESENT"; else echo "OPOS_STAGING_WEB_URL=DEFERRED_UNTIL_CLOUDFLARE_DEPLOY"; fi
+          if [ -n "${OPPORTUNITYOS_FOUNDER_PASSWORD:-}" ]; then echo "OPPORTUNITYOS_FOUNDER_PASSWORD=PRESENT"; else echo "OPPORTUNITYOS_FOUNDER_PASSWORD=REQUIRED_BEFORE_HOSTED_SMOKE"; fi
+
+          exit "$missing"
+
+      - name: Azure OIDC authentication
+        if: ${{ success() }}
+        uses: azure/login@v2
+        with:
+          auth-type: SERVICE_PRINCIPAL
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify Azure staging resources
+        if: ${{ success() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          az account show --output none
+          az group show --name "$AZURE_RESOURCE_GROUP" --output none
+          az resource show --ids "$AZURE_MANAGED_ENVIRONMENT_ID" --output none
+          echo "AZURE_OIDC=PASS"
+          echo "AZURE_RESOURCE_GROUP=PASS"
+          echo "AZURE_MANAGED_ENVIRONMENT=PASS"
+
+      - name: Verify Cloudflare token/account access
+        if: ${{ success() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          verify="$(curl --fail-with-body --silent --show-error             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             -H "Content-Type: application/json"             https://api.cloudflare.com/client/v4/user/tokens/verify)"
+          account="$(curl --fail-with-body --silent --show-error             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             -H "Content-Type: application/json"             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID")"
+          python -c 'import json,sys; assert json.loads(sys.argv[1]).get("success") is True' "$verify"
+          python -c 'import json,sys; assert json.loads(sys.argv[1]).get("success") is True' "$account"
+          echo "CLOUDFLARE_TOKEN=PASS"
+          echo "CLOUDFLARE_ACCOUNT=PASS"
