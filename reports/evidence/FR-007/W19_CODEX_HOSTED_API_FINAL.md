@@ -38,3 +38,9 @@ The manual bootstrap workflow uses environment secret `OPOS_TARGET_DB_URL` and o
 - Repository readiness strengthened for A-9 migration/parity, A-10 hosted API/RLS surface, A-11 private CV/artifact retrieval, A-16 Founder web contract, and bounded zero-dollar bootstrap.
 - Hosted A-9/A-10/A-11/A-16 evidence remains `NOT_EXECUTED` until the Overseer runs the real Supabase/Cloudflare path. Unsupported or unavailable hosted operations are not represented as PASS.
 - FR-007 remains open for independent Owner/Overseer verification and closure.
+
+## Commit and remote proof
+
+- Implementation commit: `13cfa7098e1ef7478ef7761cba563d4a6421e7d5`.
+- Branch was pushed to `origin/work/fr007-codex-hosted-api-final`; the final remote SHA is recorded in the completion packet.
+
