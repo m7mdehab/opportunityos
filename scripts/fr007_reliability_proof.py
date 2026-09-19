@@ -356,19 +356,16 @@ def execute_a5_source_probe(dsn: str) -> dict[str, Any]:
     )
     with factory() as session:
         session.query(ArtifactCacheRecord).filter_by(cache_key=proof_artifact_key).delete()
-        session.add(
-            ArtifactCacheRecord(
-                cache_key=proof_artifact_key,
-                opportunity_id="proof-cache-opp",
-                truth_pack_hash="hash-proof-pack",
-                template_id="proof-tmpl-1",
-                artifact_kind="cv",
-                content_type="application/pdf",
-                payload=b"%PDF-proof-artifact-payload",
-                created_at=datetime.now(timezone.utc),
-            )
-        )
         session.commit()
+        artifact_cache.store(
+            session,
+            "proof-cache-opp",
+            "hash-proof-pack",
+            "proof-tmpl-1",
+            "cv",
+            "application/pdf",
+            b"%PDF-proof-artifact-payload",
+        )
 
     # 2. Injected deterministic transport
     class A5FixtureTransport(BaseTransport):
@@ -807,7 +804,7 @@ def execute_a7_poll_now_probe(dsn: str) -> dict[str, Any]:
     now_naive = now.replace(tzinfo=None)
 
     due_source = "greenhouse:cloudflare"
-    not_due_source = "ashby:anthropic"
+    not_due_source = "greenhouse:datadog"
     cooldown_source = "greenhouse:stripe"
 
     with factory() as session:
