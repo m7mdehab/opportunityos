@@ -73,8 +73,13 @@ def validate_cloudflare_package(root: Path = ROOT) -> list[str]:
             errors.append("proxy route handler must enforce parsed HTTPS upstream origin")
         if 'OPPORTUNITYOS_CLOUD_EDGE === "1"' not in proxy_text:
             errors.append("proxy route handler must distinguish cloud edge from local development")
-        if "Supabase browser runtime contract" not in proxy_text:
-            errors.append("cloud edge must identify the Supabase-native runtime when legacy API origin is absent")
+        if "hostedRequest(request, path)" not in proxy_text:
+            errors.append("cloud edge must route to the Supabase-native hosted runtime when legacy API origin is absent")
+        if "NEXT_PUBLIC_SUPABASE_URL" not in proxy_text or (
+            "NEXT_PUBLIC_SUPABASE_ANON_KEY" not in proxy_text
+            and "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" not in proxy_text
+        ):
+            errors.append("server-side hosted adapter must wire the public Supabase URL and publishable key")
         if "localhost" not in proxy_text:
             errors.append("local-development API fallback contract is missing")
         if "getSetCookie" not in proxy_text:
@@ -86,8 +91,12 @@ def validate_cloudflare_package(root: Path = ROOT) -> list[str]:
         errors.append("missing Supabase browser client at web/lib/supabase/browser.ts")
     else:
         sb_text = supabase_browser.read_text(encoding="utf-8")
-        if "NEXT_PUBLIC_SUPABASE_URL" not in sb_text or "NEXT_PUBLIC_SUPABASE_ANON_KEY" not in sb_text:
-            errors.append("Supabase browser client must wire NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY")
+        if '"/api/' not in sb_text and "`/api/" not in sb_text:
+            errors.append("Supabase browser client must use the same-origin /api boundary")
+        if "localStorage" in sb_text or "sessionStorage" in sb_text:
+            errors.append("browser client must not persist Supabase auth tokens in Web Storage")
+        if 'credentials: "same-origin"' not in sb_text:
+            errors.append("browser client must preserve secure same-origin session cookies")
         for secret_key in ("SUPABASE_SERVICE_ROLE_KEY", "CLOUD_DATABASE_URL", "DATABASE_URL", "FOUNDER_PASSWORD"):
             if secret_key in sb_text:
                 errors.append(f"forbidden secret found in browser client: {secret_key}")
