@@ -1,0 +1,32 @@
+FR-007 W15A hosted auth / RLS evidence
+
+Branch: work/fr007-codex-hosted-auth-rls-wave15
+Base: ce58a9bb779a1a69aaafa9d0ca8c7e88825a1f8f
+
+Repository implementation:
+- scrypt password records: PASS (versioned format, random salt, constant-time verification)
+- durable sessions/rate limit/audit: PASS in local API contract tests
+- logout-all ownership/revocation: PASS in local API contract tests
+- CSRF and hosted cookie posture: PASS; missing Origin is rejected in cloud mode
+- non-cloud hashed-password signed-session compatibility: PASS
+- migration 0009 RLS downgrade reversibility: implemented and covered by PostgreSQL CI test
+- RLS registry coverage: PASS; all ORM application tables classified, including 0009 auth tables
+- backup/restore: auth audit preserved; restored sessions revoked/expired; rate budget reset
+- migration: 0009_hosted_founder_auth after 0008_artifact_storage
+
+Tests:
+- hosted auth, RLS, cloud bridge/readiness, deployment/config/container, migration baseline: 90 tests, OK
+- API hosted auth contract: 7 tests, OK
+- PostgreSQL 16 RLS acceptance: not executed locally; test is wired for the existing PostgreSQL CI service
+- backup/restore contract: 4 tests, 1 environment-dependent skip
+- compile, repository integrity, guard: PASS
+
+Expected states after repository verification:
+- repository_hosted_auth: PASS
+- repository_rls: PASS
+- real_supabase_rls: NOT_EXECUTED
+- real_cloud_auth: NOT_EXECUTED
+
+No production password hash, session token, cookie, Founder data, or hosted
+credentials are included. Real Supabase `anon`/`authenticated` role execution
+and cloud restart/session persistence remain unexecuted.
