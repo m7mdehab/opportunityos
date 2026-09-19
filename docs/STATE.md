@@ -11,7 +11,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `09103ef` — adr: identify ADR-0023 as ADR-0022 successor
+- **State generated at commit:** `df49202` — evidence(fr007): record private fixed-CV bucket readiness
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -82,6 +82,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 - [ADR-0018 — Phone Token Metric Disambiguation in Claim Validator](adr/ADR-0018-phone-token-metric-disambiguation.md)
 - [ADR-0021 — Canonical Artifact Claim Validation Boundary](adr/ADR-0021-artifact-validator-authority.md)
 - [ADR-0023 — Zero-Dollar Founder Runtime on Supabase, Cloudflare, and GitHub](adr/ADR-0023-zero-dollar-founder-runtime.md)
+- [ADR-0024 — Founder-Locked CV Portfolio Selection](adr/ADR-0024-fixed-cv-portfolio-selection.md)
 
 ## Blocked Items
 
