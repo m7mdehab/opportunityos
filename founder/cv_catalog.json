@@ -1,0 +1,144 @@
+{
+  "catalog_version": "fixed-cv-v1",
+  "founder_approval_date": "2026-09-19",
+  "source": "founder-approved final PDFs",
+  "truth_pack_classification": {
+    "confidentiality_classification": "founder-approved non-sensitive",
+    "may_be_used_freely_by_opportunityos": true,
+    "may_be_committed_to_public_repository": true,
+    "may_be_loaded_without_authentication": true,
+    "integrity_requirement": "SHA-256 binding required for runtime loading",
+    "note": "Founder explicitly stated on 2026-09-19 that the Truth Pack contains no sensitive information and may be used freely to configure OpportunityOS."
+  },
+  "policy_version": "fixed-cv-v1",
+  "source_of_truth": "founder-approved fixed PDF library",
+  "generation_policy": "never_generate_or_rewrite_cv",
+  "selection_policy": "select_exactly_one_existing_final_pdf_for_each_employment_opportunity",
+  "fallback_cv_id": "master",
+  "preserve_binary_exactly": true,
+  "selection_notes": [
+    "ML Engineer / Machine Learning Engineer normally maps to ai_engineer unless the posting is statistics/modeling-heavy, then data_scientist may win.",
+    "Data Migration Engineer maps to data_engineer.",
+    "BI / Reporting roles map to data_analyst.",
+    "Cross-functional or ambiguous roles fall back to master.",
+    "Cover letters and application answers may be generated separately, but the selected CV PDF must not be edited, reflowed, regenerated, or reworded."
+  ],
+  "variants": [
+    {
+      "id": "ai_engineer",
+      "display_name": "AI Engineer",
+      "filename": "Mohammed_Ehab_AI_Engineer_CV_2026.pdf",
+      "sha256": "24e84bbaf4cd7aaff59bcbbedefa3db3f3b673c19b9913b3ff7a9283dab01c52",
+      "size_bytes": 76283,
+      "content_type": "application/pdf",
+      "pages": 2,
+      "status": "final",
+      "content_locked": true,
+      "allowed_mutations": [],
+      "primary_role_families": [
+        "AI Engineer",
+        "ML Engineer",
+        "Machine Learning Engineer",
+        "Generative AI Engineer",
+        "LLM Engineer"
+      ],
+      "summary": "AI Engineer with a BSc in Computer Science (Data Science major) and a 15-month Data Science & AI scholarship, building end-to- end AI and data products across generative AI, LLM applications, RAG, agents, deep learning, forecasting, and production software. Developing OpportunityOS with Python, FastAPI, PostgreSQL, Next.js, and governed multi-agent workflows; previously deployed a reproducible probabilistic forecasting platform and built 5 deep-learning models for SAR imagery. Brings strong data-engineering discipline from enterprise banking migrations, including data quality, validation, reconciliation, and reliable delivery."
+    },
+    {
+      "id": "business_analyst",
+      "display_name": "Business Analyst",
+      "filename": "Mohammed_Ehab_Business_Analyst_CV_2026.pdf",
+      "sha256": "1ef4a990b081b1c07ddce26cd28cc99e6058e39d8b9c06dea58c8f0858a65301",
+      "size_bytes": 74773,
+      "content_type": "application/pdf",
+      "pages": 2,
+      "status": "final",
+      "content_locked": true,
+      "allowed_mutations": [],
+      "primary_role_families": [
+        "Business Analyst",
+        "Business Systems Analyst",
+        "Data Business Analyst",
+        "Technical Business Analyst"
+      ],
+      "summary": "Business Analyst with hands-on experience translating business needs into data, reporting, mapping, validation, and delivery requirements across banking, manufacturing, supply chain, marketing, and commercial operations. Previously served as Business Analyst Team Lead and now works in enterprise banking data engineering, coordinating clients and internal teams around source- to-target specifications, transformation rules, data validation, issue resolution, and cutover readiness. Strong in requirements gathering, stakeholder management, KPI design, Power BI, Advanced Excel, SQL, reporting, and cross-functional delivery."
+    },
+    {
+      "id": "data_analyst",
+      "display_name": "Data Analyst",
+      "filename": "Mohammed_Ehab_Data_Analyst_CV_2026.pdf",
+      "sha256": "9d8c99bd46fe82200b286ac7901e69f533d5d2a0f7e59393d8f98f2996bd058d",
+      "size_bytes": 74874,
+      "content_type": "application/pdf",
+      "pages": 2,
+      "status": "final",
+      "content_locked": true,
+      "allowed_mutations": [],
+      "primary_role_families": [
+        "Data Analyst",
+        "BI Analyst",
+        "Business Intelligence Analyst",
+        "Reporting Analyst",
+        "Analytics Analyst"
+      ],
+      "summary": "Data Analyst with experience turning banking, sales, inventory, production, warehouse, marketing, and multi-brand performance data into trusted reporting and decision support. Combines SQL, Python, Power BI, Advanced Excel, KPI design, data validation, and cross-functional stakeholder work with a BSc in Computer Science (Data Science major). Current banking data-engineering work adds strong data quality, reconciliation, and complex-source experience to an analytics-focused profile."
+    },
+    {
+      "id": "data_engineer",
+      "display_name": "Data Engineer",
+      "filename": "Mohammed_Ehab_Data_Engineer_CV_2026.pdf",
+      "sha256": "9a01666790f34ed16aea8ebd7c414411f6d7ee4a8cf7fcc3ed5edd1866867516",
+      "size_bytes": 76240,
+      "content_type": "application/pdf",
+      "pages": 2,
+      "status": "final",
+      "content_locked": true,
+      "allowed_mutations": [],
+      "primary_role_families": [
+        "Data Engineer",
+        "Data Migration Engineer",
+        "ETL Engineer",
+        "Analytics Engineer",
+        "Data Integration Engineer"
+      ],
+      "summary": "Data Engineer with a BSc in Computer Science (Data Science major), a 15-month Data Science & AI scholarship, and the Databricks Certified Data Engineer Associate credential. Delivering enterprise banking data integration and migration across Africa and the GCC, with hands-on experience in ETL workflows, data pipelines, source-to-target mapping, transformation, data profiling, cleansing, validation, reconciliation, SQL, Python, and PostgreSQL. Strong at converting heterogeneous source data and business requirements into reliable, trusted target datasets."
+    },
+    {
+      "id": "data_scientist",
+      "display_name": "Data Scientist",
+      "filename": "Mohammed_Ehab_Data_Scientist_CV_2026.pdf",
+      "sha256": "d80953e57ea61d676001618b37ae73beb225659ad1835ee779500aa2bb470398",
+      "size_bytes": 76080,
+      "content_type": "application/pdf",
+      "pages": 2,
+      "status": "final",
+      "content_locked": true,
+      "allowed_mutations": [],
+      "primary_role_families": [
+        "Data Scientist",
+        "Applied Data Scientist",
+        "Machine Learning Scientist",
+        "Statistical Modeler"
+      ],
+      "summary": "Data Scientist with a BSc in Computer Science (Data Science major), a 15-month Data Science & AI scholarship, and hands-on work across statistical modeling, machine learning, deep learning, forecasting, NLP, model calibration, and data analysis. Built and deployed a probabilistic World Cup forecasting platform and an A+ SAR deep-learning suite, while current enterprise banking work strengthens production data quality, transformation, validation, and stakeholder delivery skills. Proficient in Python, pandas, NumPy, scikit-learn, TensorFlow, PyTorch, and SQL."
+    },
+    {
+      "id": "master",
+      "display_name": "Master",
+      "filename": "Mohammed_Ehab_Master_CV_2026.pdf",
+      "sha256": "4b52a32e58008afd59a93ebdf9edc5b165a624a7e4f2cd13eefadf009a44b7d5",
+      "size_bytes": 76840,
+      "content_type": "application/pdf",
+      "pages": 2,
+      "status": "final",
+      "content_locked": true,
+      "allowed_mutations": [],
+      "primary_role_families": [
+        "Data / AI / Analytics Professional",
+        "General Data Role",
+        "Ambiguous or cross-functional data/AI role"
+      ],
+      "summary": "Data, AI, and analytics professional with a BSc in Computer Science (Data Science major), a 15-month Data Science & AI scholarship, and the Databricks Certified Data Engineer Associate credential. Experience spans enterprise banking data engineering and migration, LLM / RAG application development, business and data analysis, supply-chain analytics, reporting and KPI design, machine learning, deep learning, forecasting, and end-to-end software delivery. Combines Python, SQL, PostgreSQL, Power BI, FastAPI, ML / AI, and stakeholder- facing delivery to translate business problems into reliable data products, analytical insights, and working technical systems."
+    }
+  ]
+}

@@ -1,0 +1,1107 @@
+evidence:
+- id: ev-summary
+  content: Data, AI, and analytics professional with a BSc in Computer Science (Data Science major), a 15-month Data Science & AI scholarship, and the Databricks Certified Data Engineer Associate credential. Experience spans enterprise banking data engineering and migration, LLM / RAG application development, business and data analysis, supply-chain analytics, reporting and KPI design, machine learning, deep learning, forecasting, and end-to-end software delivery. Combines Python, SQL, PostgreSQL, Power BI, FastAPI, ML / AI, and stakeholder-facing delivery to translate business problems into reliable data products, analytical insights, and working technical systems.
+  source: cv
+  locator: Mohammed_Ehab_Master_CV_2026.pdf#professional-summary
+- id: ev-identity
+  content: Mohammed Ehab ElNomany. Data / AI / Analytics Professional. Cairo, Egypt. +20 1280800643. M7mdehab999@gmail.com. linkedin.com/in/mohammed-ehab. github.com/m7mdehab.
+  source: cv
+  locator: Mohammed_Ehab_Master_CV_2026.pdf#header
+- id: ev-ni-org
+  content: Network International
+  source: cv
+  locator: employment.organization
+- id: ev-ni-title
+  content: Data Engineer
+  source: cv
+  locator: employment.title
+- id: ev-ni-dates
+  content: Data Engineer at Network International, 2026-01-01 to present. CV states Jan 2026 to Present.
+  source: cv
+  locator: Mohammed_Ehab_Master_CV_2026.pdf#experience
+- id: ev-ni-resp
+  content: Own end-to-end data engineering and migration workflows for two banks and support delivery for two additional banks, moving card and account data from legacy source databases into Network International systems for Way4 (OpenWay) integration. Design source-to-target mappings and define transformation and validation rules with banking clients, translating heterogeneous source structures into target-ready datasets. Protect data quality and integrity through profiling, cleansing, validation, and source-to-target reconciliation ahead of production cutovers. Coordinate client and internal stakeholders to resolve data issues and keep mapping specifications, timelines, and validation aligned.
+  source: cv
+  locator: Mohammed_Ehab_Master_CV_2026.pdf#experience
+- id: ev-ni-ach1
+  content: Own the end-to-end data-migration workflow for two banks and support migration delivery for two additional banks, moving card and account data from clients' legacy source databases into Network International's systems for integration with the Way4 card-management platform (OpenWay).
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#experience
+- id: ev-ati-org
+  content: Al Tayseer International for Mills & Food Industries (Al Tayseer Group)
+  source: cv
+  locator: employment.organization
+- id: ev-ati-title
+  content: Business Analyst Team Lead
+  source: cv
+  locator: employment.title
+- id: ev-ati-dates
+  content: Business Analyst Team Lead at Al Tayseer International for Mills & Food Industries (Al Tayseer Group), 2025-06-01 to 2026-01-31. One of three concurrent roles across Al Tayseer Group sister companies; CV states Jun 2025 to Jan 2026.
+  source: cv
+  locator: Mohammed_Ehab_Master_CV_2026.pdf#experience
+- id: ev-ati-resp
+  content: Built and maintained two WordPress brand websites aligned with commercial priorities and campaigns.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#experience
+- id: ev-ati-ach1
+  content: Consolidated multi-brand and external-agency performance data across four group companies into a single reporting view, aligning KPIs, timelines, and deliverables and producing monthly reports that informed commercial decisions.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#experience
+- id: ev-guksu-org
+  content: Guksu (Al Tayseer Group)
+  source: cv
+  locator: employment.organization
+- id: ev-guksu-title
+  content: Data Analyst & Supply Chain Analyst
+  source: cv
+  locator: employment.title
+- id: ev-guksu-dates
+  content: Data Analyst & Supply Chain Analyst at Guksu (Al Tayseer Group), 2025-08-01 to 2025-11-30. Al Tayseer Group sister company; CV states Aug 2025 to Nov 2025.
+  source: cv
+  locator: Mohammed_Ehab_Master_CV_2026.pdf#experience
+- id: ev-guksu-resp
+  content: Aligned monthly manufacturing and sales plans with available raw materials and finished goods to support on-time delivery and reduce supply risk.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#experience
+- id: ev-guksu-ach1
+  content: Built recurring sales, inventory, production, and warehouse reports to track performance and stock issues, and flagged demand trends that helped management shift from reactive to proactive planning.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#experience
+- id: ev-eat-org
+  content: Egyptian African Trade (Al Tayseer Group)
+  source: cv
+  locator: employment.organization
+- id: ev-eat-title
+  content: Technical Team Lead / Data Analyst
+  source: cv
+  locator: employment.title
+- id: ev-eat-dates
+  content: Technical Team Lead / Data Analyst at Egyptian African Trade (Al Tayseer Group), 2024-07-01 to 2025-06-30. Al Tayseer Group sister company; CV states Jul 2024 to Jun 2025.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#experience
+- id: ev-eat-resp
+  content: Extracted sales, inventory, and warehouse data from ERPNext and defined clear KPIs and reporting logic with operations and finance to build regular performance reports that answered key business questions. Linked paid-social performance metrics to commercial outcomes (sales impact and product movement) to guide decisions.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#experience
+- id: ev-orcas-org
+  content: Orcas Online
+  source: cv
+  locator: employment.organization
+- id: ev-orcas-title
+  content: Private Tutor (Computer Science & Data)
+  source: cv
+  locator: employment.title
+- id: ev-orcas-dates
+  content: Private Tutor (Computer Science & Data) at Orcas Online, 2024-01-01 to present. CV states Jan 2024 to Present.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#experience
+- id: ev-orcas-resp
+  content: Tutor students in Python, Java, data analysis, data science, and machine learning, adapting explanations and exercises to different levels, ages, and goals.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#experience
+- id: ev-freelance-org
+  content: Self-employed
+  source: cv
+  locator: employment.organization
+- id: ev-freelance-title
+  content: Freelance Web Developer / Consultant
+  source: cv
+  locator: employment.title
+- id: ev-freelance-dates
+  content: Freelance Web Developer / Consultant at Self-employed, 2024-01-01 to present. CV states Jan 2024 to Present.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#experience
+- id: ev-freelance-resp
+  content: Delivered two business websites end-to-end, from requirements and structure to launch, including hosting, domains, and basic analytics so clients can track visits and conversions.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#experience
+- id: ev-narss-org
+  content: National Authority for Remote Sensing & Space Sciences (NARSS)
+  source: cv
+  locator: employment.organization
+- id: ev-narss-title
+  content: Data / ML Intern
+  source: cv
+  locator: employment.title
+- id: ev-narss-dates
+  content: Data / ML Intern at National Authority for Remote Sensing & Space Sciences (NARSS), 2023-11-01 to 2023-12-31. Internship; CV states Nov to Dec 2023.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#experience
+- id: ev-narss-resp
+  content: Built enterprise systems for remote-sensing data analysis using ML and Deep Learning on cloud.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#experience
+- id: ev-zewail-org
+  content: Zewail City for Science & Technology
+  source: cv
+  locator: employment.organization
+- id: ev-zewail-title
+  content: ML Intern
+  source: cv
+  locator: employment.title
+- id: ev-zewail-dates
+  content: ML Intern at Zewail City for Science & Technology, 2023-08-01 to 2023-08-31. Internship; CV states Aug 2023.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#experience
+- id: ev-zewail-resp
+  content: Implemented machine-learning, deep-learning, and reinforcement-learning projects in Python.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#experience
+- id: ev-phpc-org
+  content: Pharaonic Petroleum Company (PhPC)
+  source: cv
+  locator: employment.organization
+- id: ev-phpc-title
+  content: IT Intern
+  source: cv
+  locator: employment.title
+- id: ev-phpc-dates
+  content: IT Intern at Pharaonic Petroleum Company (PhPC), 2023-09-01 to 2023-09-30. Internship; CV states Sep 2023.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#experience
+- id: ev-phpc-resp
+  content: Designed and implemented IT solutions.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#experience
+- id: ev-cic
+  content: Canadian International College, BSc Computer Science (Data Science Major), 2021-09-01 to 2024-08-31. CGPA 3.55. CV states Sep 2021 to Aug 2024.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#education
+- id: ev-exploreai
+  content: ExploreAI Academy / ALX / African Leadership University, Data Science & AI Scholarship, 2023-05-01 to 2024-07-31. 15-month scholarship; CV states May 2023 to Jul 2024.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#education
+- id: ev-manarat
+  content: Manarat Jeddah International Schools, High School Diploma (British Curriculum & IGCSE),  to 2017-06-30. 8 O-Level and 3 AS subjects; CV states 2017.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#education
+- id: ev-llm-name
+  content: AI / LLM Engineering
+  source: cv
+  locator: certification.name
+- id: ev-llm-issuer
+  content: Udemy (Ed Donner)
+  source: cv
+  locator: certification.issuer
+- id: ev-llm-status
+  content: AI / LLM Engineering, Udemy (Ed Donner), completed 2025.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#certifications
+- id: ev-dbx-name
+  content: Databricks Certified Data Engineer Associate
+  source: cv
+  locator: certification.name
+- id: ev-dbx-issuer
+  content: Databricks
+  source: cv
+  locator: certification.issuer
+- id: ev-dbx-status
+  content: Databricks Certified Data Engineer Associate, Databricks, completed 2026.
+  source: cv
+  locator: Mohammed_Ehab_Master_CV_2026.pdf#certifications
+- id: ev-mck-name
+  content: McKinsey Forward (Foundation & Advanced)
+  source: cv
+  locator: certification.name
+- id: ev-mck-issuer
+  content: McKinsey Academy
+  source: cv
+  locator: certification.issuer
+- id: ev-mck-status
+  content: McKinsey Forward (Foundation & Advanced), McKinsey Academy, completed 2024.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#certifications
+- id: ev-sql-name
+  content: Database Management with SQL
+  source: cv
+  locator: certification.name
+- id: ev-sql-issuer
+  content: Canadian International College
+  source: cv
+  locator: certification.issuer
+- id: ev-sql-status
+  content: Database Management with SQL, Canadian International College, completed 2022.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#certifications
+- id: ev-cpp-name
+  content: Problem Solving with C++
+  source: cv
+  locator: certification.name
+- id: ev-cpp-issuer
+  content: Coach Academy
+  source: cv
+  locator: certification.issuer
+- id: ev-cpp-status
+  content: Problem Solving with C++, Coach Academy, completed 2023.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#certifications
+- id: ev-udacity-name
+  content: Data Analysis, Web Development & Digital Marketing (Challenger, Professional & Advanced Levels)
+  source: cv
+  locator: certification.name
+- id: ev-udacity-issuer
+  content: Udacity / ITIDA
+  source: cv
+  locator: certification.issuer
+- id: ev-udacity-status
+  content: Data Analysis, Web Development & Digital Marketing (Challenger, Professional & Advanced Levels), Udacity / ITIDA, completed 2020.
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#certifications
+- id: ev-skills
+  content: 'Data Engineering & Migration: Advanced SQL, ETL & Data Pipelines, Data Migration, Source-to-Target Mapping, Data Transformation, Data Profiling, Data Cleansing, Data Validation, Data Reconciliation, PostgreSQL, Databricks. Analytics & BI: Power BI, Advanced Excel, KPI Design, Dashboards, Reporting & Analytics, Operational Analysis, Supply Chain Analytics, Marketing Analytics, ERPNext. Programming & Backend: Python, pandas, NumPy, scikit-learn, FastAPI, SQL, PostgreSQL, TypeScript / JavaScript (basic), Next.js, Supabase. Machine Learning & AI: Machine Learning, Deep Learning, TensorFlow, PyTorch, NLP, Generative AI, LLMs, RAG, Agents, Statistical & Probabilistic Modeling, Forecasting, Model Calibration & Validation. Business & Delivery: Requirements Gathering, Stakeholder Management, Cross-functional Collaboration, Business Analysis, Problem Solving, Team Leadership, Agile Development. Product & Deployment: API Integration, Web Application Delivery, Vercel, WordPress, pytest, Reproducibility, Versioned Runs, Rollback / Recovery.'
+  source: cv
+  locator: Mohammed_Ehab_Master_CV_2026.pdf#core-skills
+- id: ev-languages
+  content: 'Languages (Natively Bilingual): English (Native), Arabic (Native).'
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#languages
+- id: ev-wa-eg-jur
+  content: EG
+  source: founder_statement
+  locator: work_authorization.jurisdiction
+  assertion_type: user_assertion
+  verification_status: approximate
+- id: ev-wa-eg-status
+  content: citizen
+  source: founder_statement
+  locator: work_authorization.status
+  assertion_type: user_assertion
+  verification_status: approximate
+- id: ev-wa-note
+  content: Egyptian citizen. Grew up in Jeddah, Saudi Arabia for 18 years; no current GCC work permit is claimed. Open to remote, hybrid, full-time and relocation, including travel to the GCC; long-term goal is to immigrate to Canada.
+  source: founder_statement
+  locator: private/truth_pack.yaml
+  assertion_type: user_assertion
+  verification_status: approximate
+- id: ev-demonow-org
+  content: DemoNow.ai
+  source: cv
+  locator: employment.organization
+- id: ev-demonow-title
+  content: Junior AI Engineer
+  source: cv
+  locator: employment.title
+- id: ev-demonow-dates
+  content: Junior AI Engineer at DemoNow.ai, 2024-01-01 to 2025-07-31. CV states Jan 2024 to Jul 2025.
+  source: cv
+  locator: Mohammed_Ehab_Master_CV_2026.pdf#experience
+- id: ev-demonow-resp
+  content: Built and improved LLM-powered conversational agents, prompts, tool-calling flows, and agent behaviors for user-facing AI experiences. Implemented RAG and knowledge-base pipelines, including document processing, embeddings, retrieval, and grounded responses over company information. Integrated AI capabilities with Python / FastAPI backends, APIs, and product systems, and tested accuracy, hallucination resistance, latency, reliability, logging, and response quality.
+  source: cv
+  locator: Mohammed_Ehab_Master_CV_2026.pdf#experience
+- id: ev-pf-wc
+  content: 'World Cup 2026 Live Prediction Engine (Personal Project), 2025 to 2026. Python, Next.js, PostgreSQL / Supabase. Built and publicly deployed an end-to-end AI platform that forecasts every FIFA World Cup 2026 match and simulates the full tournament with Monte Carlo, scoring users'' brackets against the model. Delivered the full stack, from data pipeline through to a Next.js web app deployed on Vercel and Supabase. Engineered the forecasting model: a Dixon-Coles bivariate-Poisson fit with an Elo prior and host-advantage term, plus Platt / isotonic calibration and a documented fallback hierarchy. Implemented production-grade reproducibility: SHA-256-hashed data sources, fully versioned prediction runs (model, data, and RNG seed), automated pytest tests, and a rollback / recovery runbook, transparently publishing the model''s own backtest and calibration. Live demo https://presaira.com; source https://github.com/m7mdehab/WC2026-Live-Prediction-Engine'
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#projects
+- id: ev-pf-sar
+  content: 'SAR Satellite Deep-Learning Suite (Graduation Project, Final Grade: A+), 2024. Python, TensorFlow, PyTorch. Developed 5 deep-learning models and 2 web apps using SAR satellite imagery for marine oil-spill detection and optimal solar-installation site selection, achieving a final grade of A+. Source https://github.com/m7mdehab/oil-spill-detection and https://github.com/m7mdehab/SolarSiteSelection'
+  source: cv
+  locator: private/Mohammed_Ehab_CV_June_2026.pdf#projects
+- id: ev-pf-opos
+  content: 'OpportunityOS (Personal Project, 2026, in development): a governed opportunity-discovery and truth-locked application system with PostgreSQL persistence, a FastAPI service and a Next.js founder interface, built with an autonomous multi-agent engineering protocol. Public documentation mirror https://github.com/m7mdehab/opportunityos-docs'
+  source: founder_statement
+  locator: private/truth_pack.yaml
+  assertion_type: user_assertion
+  verification_status: approximate
+- id: ev-services
+  content: 'Engagement types offered: fixed price, time and materials, retainer, fractional. Services: Data migration and reconciliation - source-to-target mapping, transformation and validation rules, profiling, cleansing and reconciliation between source and target systems. Power BI dashboards and reporting - KPI design, recurring performance reports, consolidated multi-source reporting views. Machine learning and AI product development - end-to-end ML and AI products including LLM, RAG and agent applications, forecasting and probabilistic models. Web development and deployment - Next.js and WordPress business and brand websites, e-commerce and brand sites, hosting, domains and analytics on Vercel and Supabase. Digital marketing analytics and reporting - paid-social performance measurement linked to commercial outcomes, multi-brand and agency reporting. Tutoring in Python, Java, data analysis, data science and machine learning. Delivery languages English and Arabic. Available from 2026-10-02 (one month notice; contractual maximum two months). Legal capacity: individual freelancer alongside full-time employment; no registered company, no sole-trader registration, no bid bond capacity. Currencies: USD, EUR, EGP, SAR, AED, CAD. Regions: EG, remote worldwide, AE, SA, QA, KW, BH, OM, CA. Onsite willingness: remote preferred; hybrid and onsite acceptable in Egypt; open to travel and relocation to the GCC and to Canada.'
+  source: founder_statement
+  locator: private/truth_pack.yaml
+  assertion_type: user_assertion
+  verification_status: approximate
+- id: ev-pref
+  content: 'Residence: Cairo, Egypt (country EG). Target roles: Data Engineer, Data Scientist, AI Engineer, ML Engineer, Machine Learning Engineer, Data Migration Engineer, BI Analyst, Data Analyst, Business Analyst. Track preference in order: remote, freelance, hybrid, full-time, relocation. Full-time on-site nine-to-five roles only for premium payment. Career goal: immigrate to Canada, work and settle there; open to GCC travel and relocation on the way. Full-time on-site premium threshold: 50000 EGP per month or 1200 USD per month; this is a founder-toggleable ranking preference, not a hard filter.'
+  source: founder_statement
+  locator: private/truth_pack.yaml
+  assertion_type: user_assertion
+  verification_status: verified
+- id: ev-industries
+  content: 'Target industries (open, derived from experience): banking, fintech, payments, logistics, manufacturing, e-commerce, marketing, education, technology. Excluded industries: gambling, adult content, arms trade, fraud. Founder has no other hard exclusions.'
+  source: founder_statement
+  locator: private/truth_pack.yaml
+  assertion_type: user_assertion
+  verification_status: approximate
+- id: ev-leadership
+  content: Project Manager, 1st Micro-mouse competition in Egypt & MENA (IEEE, Nile University, 2019). Google Developer Student Club member (2021-2022). Head of Non-Technical Dept., Azimuth Wind Turbines (2018-2020).
+  source: cv
+  locator: Mohammed_Ehab_Master_CV_2026.pdf#leadership-activities
+assertions:
+- id: as-res-country
+  subject_id: career-mohammed-ehab
+  predicate: residence.country
+  value: EG
+  evidence_ids:
+  - ev-pref
+  assertion_type: user_assertion
+  verification_status: verified
+- id: as-res-city
+  subject_id: career-mohammed-ehab
+  predicate: residence.city
+  value: Cairo
+  evidence_ids:
+  - ev-pref
+  assertion_type: user_assertion
+  verification_status: verified
+- id: as-track
+  subject_id: career-mohammed-ehab
+  predicate: preference.track
+  value: remote
+  evidence_ids:
+  - ev-pref
+  assertion_type: user_assertion
+  verification_status: verified
+  qualifiers:
+  - 'order: remote, freelance, hybrid, full-time, relocation'
+- id: as-premium-egp
+  subject_id: career-mohammed-ehab
+  predicate: preference.fulltime_onsite_premium_monthly
+  value: 50000 EGP
+  evidence_ids:
+  - ev-pref
+  assertion_type: user_assertion
+  verification_status: verified
+  modality: at_least
+  qualifiers:
+  - applies only to full-time on-site roles
+  - toggleable ranking preference, never a hard filter
+- id: as-premium-usd
+  subject_id: career-mohammed-ehab
+  predicate: preference.fulltime_onsite_premium_monthly
+  value: 1200 USD
+  evidence_ids:
+  - ev-pref
+  assertion_type: user_assertion
+  verification_status: verified
+  modality: at_least
+  qualifiers:
+  - applies only to full-time on-site roles
+  - toggleable ranking preference, never a hard filter
+- id: as-goal
+  subject_id: career-mohammed-ehab
+  predicate: career.goal
+  value: immigrate to Canada
+  evidence_ids:
+  - ev-pref
+  assertion_type: user_assertion
+  verification_status: verified
+  modality: planned
+- id: as-target-1
+  subject_id: career-mohammed-ehab
+  predicate: career.target_role
+  value: Data Engineer
+  evidence_ids:
+  - ev-pref
+  assertion_type: user_assertion
+  verification_status: verified
+- id: as-target-2
+  subject_id: career-mohammed-ehab
+  predicate: career.target_role
+  value: Data Scientist
+  evidence_ids:
+  - ev-pref
+  assertion_type: user_assertion
+  verification_status: verified
+- id: as-target-3
+  subject_id: career-mohammed-ehab
+  predicate: career.target_role
+  value: AI Engineer
+  evidence_ids:
+  - ev-pref
+  assertion_type: user_assertion
+  verification_status: verified
+- id: as-target-4
+  subject_id: career-mohammed-ehab
+  predicate: career.target_role
+  value: ML Engineer
+  evidence_ids:
+  - ev-pref
+  assertion_type: user_assertion
+  verification_status: verified
+- id: as-target-5
+  subject_id: career-mohammed-ehab
+  predicate: career.target_role
+  value: Machine Learning Engineer
+  evidence_ids:
+  - ev-pref
+  assertion_type: user_assertion
+  verification_status: verified
+- id: as-target-6
+  subject_id: career-mohammed-ehab
+  predicate: career.target_role
+  value: Data Migration Engineer
+  evidence_ids:
+  - ev-pref
+  assertion_type: user_assertion
+  verification_status: verified
+- id: as-target-7
+  subject_id: career-mohammed-ehab
+  predicate: career.target_role
+  value: BI Analyst
+  evidence_ids:
+  - ev-pref
+  assertion_type: user_assertion
+  verification_status: verified
+- id: as-target-8
+  subject_id: career-mohammed-ehab
+  predicate: career.target_role
+  value: Data Analyst
+  evidence_ids:
+  - ev-pref
+  assertion_type: user_assertion
+  verification_status: verified
+- id: as-target-9
+  subject_id: career-mohammed-ehab
+  predicate: career.target_role
+  value: Business Analyst
+  evidence_ids:
+  - ev-pref
+  assertion_type: user_assertion
+  verification_status: verified
+career_profile:
+  id: career-mohammed-ehab
+  evidence_ids:
+  - ev-identity
+  - ev-summary
+  employment:
+  - id: job-ni
+    organization: Network International
+    title: Data Engineer
+    start_date: 2026-01-01
+    evidence_ids:
+    - ev-ni-org
+    - ev-ni-title
+    - ev-ni-dates
+    - ev-ni-resp
+    responsibilities:
+    - Own end-to-end data engineering and migration workflows for two banks and support delivery for two additional banks, moving card and account data from legacy source databases into Network International systems for Way4 (OpenWay) integration.
+    - Design source-to-target mappings and define transformation and validation rules with banking clients, translating heterogeneous source structures into target-ready datasets.
+    - Protect data quality and integrity through profiling, cleansing, validation, and source-to-target reconciliation ahead of production cutovers.
+    - Coordinate client and internal stakeholders to resolve data issues and keep mapping specifications, timelines, and validation aligned.
+    achievements:
+    - id: ach-ni-1
+      statement: Own the end-to-end data-migration workflow for two banks and support migration delivery for two additional banks, moving card and account data from clients' legacy source databases into Network International's systems for integration with the Way4 card-management platform (OpenWay).
+      evidence_ids:
+      - ev-ni-ach1
+      metric_verification: verified
+  - id: job-ati
+    organization: Al Tayseer International for Mills & Food Industries (Al Tayseer Group)
+    title: Business Analyst Team Lead
+    start_date: 2025-06-01
+    evidence_ids:
+    - ev-ati-org
+    - ev-ati-title
+    - ev-ati-dates
+    - ev-ati-resp
+    responsibilities:
+    - Built and maintained two WordPress brand websites aligned with commercial priorities and campaigns.
+    end_date: 2026-01-31
+    achievements:
+    - id: ach-ati-1
+      statement: Consolidated multi-brand and external-agency performance data across four group companies into a single reporting view, aligning KPIs, timelines, and deliverables and producing monthly reports that informed commercial decisions.
+      evidence_ids:
+      - ev-ati-ach1
+      metric_verification: verified
+  - id: job-guksu
+    organization: Guksu (Al Tayseer Group)
+    title: Data Analyst & Supply Chain Analyst
+    start_date: 2025-08-01
+    evidence_ids:
+    - ev-guksu-org
+    - ev-guksu-title
+    - ev-guksu-dates
+    - ev-guksu-resp
+    responsibilities:
+    - Aligned monthly manufacturing and sales plans with available raw materials and finished goods to support on-time delivery and reduce supply risk.
+    end_date: 2025-11-30
+    achievements:
+    - id: ach-guksu-1
+      statement: Built recurring sales, inventory, production, and warehouse reports to track performance and stock issues, and flagged demand trends that helped management shift from reactive to proactive planning.
+      evidence_ids:
+      - ev-guksu-ach1
+      metric_verification: unavailable
+  - id: job-eat
+    organization: Egyptian African Trade (Al Tayseer Group)
+    title: Technical Team Lead / Data Analyst
+    start_date: 2024-07-01
+    evidence_ids:
+    - ev-eat-org
+    - ev-eat-title
+    - ev-eat-dates
+    - ev-eat-resp
+    responsibilities:
+    - Extracted sales, inventory, and warehouse data from ERPNext and defined clear KPIs and reporting logic with operations and finance to build regular performance reports that answered key business questions.
+    - Linked paid-social performance metrics to commercial outcomes (sales impact and product movement) to guide decisions.
+    end_date: 2025-06-30
+  - id: job-demonow
+    organization: DemoNow.ai
+    title: Junior AI Engineer
+    start_date: '2024-01-01'
+    end_date: '2025-07-31'
+    evidence_ids:
+    - ev-demonow-org
+    - ev-demonow-title
+    - ev-demonow-dates
+    - ev-demonow-resp
+    responsibilities:
+    - Built and improved LLM-powered conversational agents, prompts, tool-calling flows, and agent behaviors for user-facing AI experiences.
+    - Implemented RAG and knowledge-base pipelines, including document processing, embeddings, retrieval, and grounded responses over company information.
+    - Integrated AI capabilities with Python / FastAPI backends, APIs, and product systems to turn model behavior into working application features.
+    - Tested and improved accuracy, hallucination resistance, latency, reliability, logging, and overall response quality across conversational workflows.
+  - id: job-orcas
+    organization: Orcas Online
+    title: Private Tutor (Computer Science & Data)
+    start_date: 2024-01-01
+    evidence_ids:
+    - ev-orcas-org
+    - ev-orcas-title
+    - ev-orcas-dates
+    - ev-orcas-resp
+    responsibilities:
+    - Tutor students in Python, Java, data analysis, data science, and machine learning, adapting explanations and exercises to different levels, ages, and goals.
+  - id: job-freelance
+    organization: Self-employed
+    title: Freelance Web Developer / Consultant
+    start_date: 2024-01-01
+    evidence_ids:
+    - ev-freelance-org
+    - ev-freelance-title
+    - ev-freelance-dates
+    - ev-freelance-resp
+    responsibilities:
+    - Delivered two business websites end-to-end, from requirements and structure to launch, including hosting, domains, and basic analytics so clients can track visits and conversions.
+  - id: job-narss
+    organization: National Authority for Remote Sensing & Space Sciences (NARSS)
+    title: Data / ML Intern
+    start_date: 2023-11-01
+    evidence_ids:
+    - ev-narss-org
+    - ev-narss-title
+    - ev-narss-dates
+    - ev-narss-resp
+    responsibilities:
+    - Built enterprise systems for remote-sensing data analysis using ML and Deep Learning on cloud.
+    end_date: 2023-12-31
+  - id: job-zewail
+    organization: Zewail City for Science & Technology
+    title: ML Intern
+    start_date: 2023-08-01
+    evidence_ids:
+    - ev-zewail-org
+    - ev-zewail-title
+    - ev-zewail-dates
+    - ev-zewail-resp
+    responsibilities:
+    - Implemented machine-learning, deep-learning, and reinforcement-learning projects in Python.
+    end_date: 2023-08-31
+  - id: job-phpc
+    organization: Pharaonic Petroleum Company (PhPC)
+    title: IT Intern
+    start_date: 2023-09-01
+    evidence_ids:
+    - ev-phpc-org
+    - ev-phpc-title
+    - ev-phpc-dates
+    - ev-phpc-resp
+    responsibilities:
+    - Designed and implemented IT solutions.
+    end_date: 2023-09-30
+  education:
+  - id: edu-cic
+    institution: Canadian International College
+    qualification: BSc Computer Science (Data Science Major)
+    end_date: 2024-08-31
+    evidence_ids:
+    - ev-cic
+    start_date: 2021-09-01
+  - id: edu-exploreai
+    institution: ExploreAI Academy / ALX / African Leadership University
+    qualification: Data Science & AI Scholarship
+    end_date: 2024-07-31
+    evidence_ids:
+    - ev-exploreai
+    start_date: 2023-05-01
+  - id: edu-manarat
+    institution: Manarat Jeddah International Schools
+    qualification: High School Diploma (British Curriculum & IGCSE)
+    end_date: 2017-06-30
+    evidence_ids:
+    - ev-manarat
+  certifications:
+  - id: cert-dbx
+    name: Databricks Certified Data Engineer Associate
+    issuer: Databricks
+    state: completed
+    evidence_ids:
+    - ev-dbx-name
+    - ev-dbx-issuer
+    - ev-dbx-status
+  - id: cert-llm
+    name: AI / LLM Engineering
+    issuer: Udemy (Ed Donner)
+    state: completed
+    evidence_ids:
+    - ev-llm-name
+    - ev-llm-issuer
+    - ev-llm-status
+  - id: cert-mck
+    name: McKinsey Forward (Foundation & Advanced)
+    issuer: McKinsey Academy
+    state: completed
+    evidence_ids:
+    - ev-mck-name
+    - ev-mck-issuer
+    - ev-mck-status
+  - id: cert-sql
+    name: Database Management with SQL
+    issuer: Canadian International College
+    state: completed
+    evidence_ids:
+    - ev-sql-name
+    - ev-sql-issuer
+    - ev-sql-status
+  - id: cert-cpp
+    name: Problem Solving with C++
+    issuer: Coach Academy
+    state: completed
+    evidence_ids:
+    - ev-cpp-name
+    - ev-cpp-issuer
+    - ev-cpp-status
+  - id: cert-udacity
+    name: Data Analysis, Web Development & Digital Marketing (Challenger, Professional & Advanced Levels)
+    issuer: Udacity / ITIDA
+    state: completed
+    evidence_ids:
+    - ev-udacity-name
+    - ev-udacity-issuer
+    - ev-udacity-status
+  skills:
+  - id: sk-01
+    name: SQL
+    evidence_ids:
+    - ev-skills
+  - id: sk-02
+    name: Power BI
+    evidence_ids:
+    - ev-skills
+  - id: sk-03
+    name: Advanced Excel
+    evidence_ids:
+    - ev-skills
+  - id: sk-04
+    name: ERPNext
+    evidence_ids:
+    - ev-skills
+  - id: sk-05
+    name: KPI Design
+    evidence_ids:
+    - ev-skills
+  - id: sk-06
+    name: Dashboards
+    evidence_ids:
+    - ev-skills
+  - id: sk-07
+    name: Reporting & Analytics
+    evidence_ids:
+    - ev-skills
+  - id: sk-08
+    name: Data Migration
+    evidence_ids:
+    - ev-skills
+  - id: sk-09
+    name: ETL
+    evidence_ids:
+    - ev-skills
+  - id: sk-10
+    name: Source-to-Target Mapping
+    evidence_ids:
+    - ev-skills
+  - id: sk-11
+    name: Data Cleansing & Validation
+    evidence_ids:
+    - ev-skills
+  - id: sk-12
+    name: Data Reconciliation
+    evidence_ids:
+    - ev-skills
+  - id: sk-13
+    name: PostgreSQL
+    evidence_ids:
+    - ev-skills
+  - id: sk-14
+    name: AWS
+    evidence_ids:
+    - ev-skills
+    proficiency: foundations
+  - id: sk-15
+    name: Python
+    evidence_ids:
+    - ev-skills
+  - id: sk-16
+    name: pandas
+    evidence_ids:
+    - ev-skills
+  - id: sk-17
+    name: NumPy
+    evidence_ids:
+    - ev-skills
+  - id: sk-18
+    name: scikit-learn
+    evidence_ids:
+    - ev-skills
+  - id: sk-19
+    name: TypeScript
+    evidence_ids:
+    - ev-skills
+    proficiency: basic
+  - id: sk-20
+    name: JavaScript
+    evidence_ids:
+    - ev-skills
+    proficiency: basic
+  - id: sk-21
+    name: Machine Learning
+    evidence_ids:
+    - ev-skills
+  - id: sk-22
+    name: Deep Learning
+    evidence_ids:
+    - ev-skills
+  - id: sk-23
+    name: TensorFlow
+    evidence_ids:
+    - ev-skills
+  - id: sk-24
+    name: PyTorch
+    evidence_ids:
+    - ev-skills
+  - id: sk-25
+    name: NLP
+    evidence_ids:
+    - ev-skills
+  - id: sk-26
+    name: Generative AI & LLMs
+    evidence_ids:
+    - ev-skills
+  - id: sk-27
+    name: RAG
+    evidence_ids:
+    - ev-skills
+  - id: sk-28
+    name: Statistical & Probabilistic Modeling
+    evidence_ids:
+    - ev-skills
+  - id: sk-29
+    name: Next.js
+    evidence_ids:
+    - ev-skills
+  - id: sk-30
+    name: Web Development
+    evidence_ids:
+    - ev-skills
+  - id: sk-31
+    name: Vercel
+    evidence_ids:
+    - ev-skills
+  - id: sk-32
+    name: Supabase
+    evidence_ids:
+    - ev-skills
+  - id: sk-33
+    name: WordPress
+    evidence_ids:
+    - ev-skills
+  - id: sk-34
+    name: Stakeholder Management
+    evidence_ids:
+    - ev-skills
+  - id: sk-35
+    name: Requirements Gathering
+    evidence_ids:
+    - ev-skills
+  - id: sk-36
+    name: Cross-functional Collaboration
+    evidence_ids:
+    - ev-skills
+  - id: sk-37
+    name: Team Leadership
+    evidence_ids:
+    - ev-skills
+  - id: sk-38
+    name: Marketing Analytics
+    evidence_ids:
+    - ev-skills
+  - id: sk-39
+    name: Databricks
+    evidence_ids:
+    - ev-skills
+  - id: sk-40
+    name: FastAPI
+    evidence_ids:
+    - ev-skills
+  - id: sk-41
+    name: Data Pipelines
+    evidence_ids:
+    - ev-skills
+  - id: sk-42
+    name: Data Transformation
+    evidence_ids:
+    - ev-skills
+  - id: sk-43
+    name: Data Profiling
+    evidence_ids:
+    - ev-skills
+  - id: sk-44
+    name: Model Calibration
+    evidence_ids:
+    - ev-skills
+  - id: sk-45
+    name: Model Validation
+    evidence_ids:
+    - ev-skills
+  - id: sk-46
+    name: Business Analysis
+    evidence_ids:
+    - ev-skills
+  - id: sk-47
+    name: Agile Development
+    evidence_ids:
+    - ev-skills
+  - id: sk-48
+    name: API Integration
+    evidence_ids:
+    - ev-skills
+  - id: sk-49
+    name: pytest
+    evidence_ids:
+    - ev-skills
+  - id: sk-50
+    name: Reproducibility
+    evidence_ids:
+    - ev-skills
+  - id: sk-51
+    name: Versioned Runs
+    evidence_ids:
+    - ev-skills
+  - id: sk-52
+    name: Rollback / Recovery
+    evidence_ids:
+    - ev-skills
+  - id: sk-53
+    name: Agents
+    evidence_ids:
+    - ev-skills
+  languages:
+  - id: lang-en
+    language: English
+    proficiency: Native
+    evidence_ids:
+    - ev-languages
+  - id: lang-ar
+    language: Arabic
+    proficiency: Native
+    evidence_ids:
+    - ev-languages
+  work_authorizations:
+  - id: wa-eg
+    jurisdiction: EG
+    status: citizen
+    evidence_ids:
+    - ev-wa-eg-jur
+    - ev-wa-eg-status
+    - ev-wa-note
+  approved_summaries:
+  - Data, AI, and analytics professional with a BSc in Computer Science (Data Science major), a 15-month Data Science & AI scholarship, and the Databricks Certified Data Engineer Associate credential. Experience spans enterprise banking data engineering and migration, LLM / RAG application development, business and data analysis, supply-chain analytics, reporting and KPI design, machine learning, deep learning, forecasting, and end-to-end software delivery. Combines Python, SQL, PostgreSQL, Power BI, FastAPI, ML / AI, and stakeholder- facing delivery to translate business problems into reliable data products, analytical insights, and working technical systems.
+  - AI Engineer with a BSc in Computer Science (Data Science major) and a 15-month Data Science & AI scholarship, building end-to- end AI and data products across generative AI, LLM applications, RAG, agents, deep learning, forecasting, and production software. Developing OpportunityOS with Python, FastAPI, PostgreSQL, Next.js, and governed multi-agent workflows; previously deployed a reproducible probabilistic forecasting platform and built 5 deep-learning models for SAR imagery. Brings strong data-engineering discipline from enterprise banking migrations, including data quality, validation, reconciliation, and reliable delivery.
+  - Business Analyst with hands-on experience translating business needs into data, reporting, mapping, validation, and delivery requirements across banking, manufacturing, supply chain, marketing, and commercial operations. Previously served as Business Analyst Team Lead and now works in enterprise banking data engineering, coordinating clients and internal teams around source- to-target specifications, transformation rules, data validation, issue resolution, and cutover readiness. Strong in requirements gathering, stakeholder management, KPI design, Power BI, Advanced Excel, SQL, reporting, and cross-functional delivery.
+  - Data Analyst with experience turning banking, sales, inventory, production, warehouse, marketing, and multi-brand performance data into trusted reporting and decision support. Combines SQL, Python, Power BI, Advanced Excel, KPI design, data validation, and cross-functional stakeholder work with a BSc in Computer Science (Data Science major). Current banking data-engineering work adds strong data quality, reconciliation, and complex-source experience to an analytics-focused profile.
+  - Data Engineer with a BSc in Computer Science (Data Science major), a 15-month Data Science & AI scholarship, and the Databricks Certified Data Engineer Associate credential. Delivering enterprise banking data integration and migration across Africa and the GCC, with hands-on experience in ETL workflows, data pipelines, source-to-target mapping, transformation, data profiling, cleansing, validation, reconciliation, SQL, Python, and PostgreSQL. Strong at converting heterogeneous source data and business requirements into reliable, trusted target datasets.
+  - Data Scientist with a BSc in Computer Science (Data Science major), a 15-month Data Science & AI scholarship, and hands-on work across statistical modeling, machine learning, deep learning, forecasting, NLP, model calibration, and data analysis. Built and deployed a probabilistic World Cup forecasting platform and an A+ SAR deep-learning suite, while current enterprise banking work strengthens production data quality, transformation, validation, and stakeholder delivery skills. Proficient in Python, pandas, NumPy, scikit-learn, TensorFlow, PyTorch, and SQL.
+  red_lines:
+  - id: red-gambling
+    pattern: (?i)(gambling|betting|casino|sportsbook)
+    reason: Founder refuses gambling work
+  - id: red-adult
+    pattern: (?i)(adult content|pornograph|escort)
+    reason: Founder refuses adult-content work
+  - id: red-arms
+    pattern: (?i)(weapons? (?:dealer|trade|manufactur)|arms dealing|munitions)
+    reason: Founder refuses arms-trade work
+  - id: red-fraud
+    pattern: (?i)(pyramid scheme|multi-level marketing|\bMLM\b|scam)
+    reason: Founder refuses fraudulent or MLM work
+  never_claims:
+  - id: security_clearance
+    concept: security_clearance
+    reason: Holds no security clearance
+  - id: unheld_credential
+    concept: unheld_credential
+    reason: Only the certifications listed with state completed may be claimed
+  - id: fortune_500_prestige
+    concept: fortune_500_prestige
+    reason: No employer or client may be described with prestige labels not in evidence
+capability_profile:
+  id: capability-mohammed-ehab
+  evidence_ids:
+  - ev-services
+  - ev-industries
+  services:
+  - id: svc-migration
+    name: Data migration and reconciliation
+    description: Source-to-target mapping, transformation and validation rules, profiling, cleansing and reconciliation between source and target systems.
+    engagement_types:
+    - fixed_price
+    - time_and_materials
+    - retainer
+    evidence_ids:
+    - ev-services
+    - ev-ni-resp
+  - id: svc-bi
+    name: Power BI dashboards and reporting
+    description: KPI design, recurring performance reports, consolidated multi-source reporting views.
+    engagement_types:
+    - fixed_price
+    - retainer
+    - fractional
+    evidence_ids:
+    - ev-services
+  - id: svc-ml
+    name: Machine learning and AI product development
+    description: End-to-end ML and AI products including LLM, RAG and agent applications, forecasting and probabilistic models.
+    engagement_types:
+    - fixed_price
+    - time_and_materials
+    - retainer
+    evidence_ids:
+    - ev-services
+  - id: svc-web
+    name: Web development and deployment
+    description: Next.js and WordPress business and brand websites, e-commerce and brand sites, hosting, domains and analytics on Vercel and Supabase.
+    engagement_types:
+    - fixed_price
+    - retainer
+    evidence_ids:
+    - ev-services
+  - id: svc-marketing
+    name: Digital marketing analytics and reporting
+    description: Paid-social performance measurement linked to commercial outcomes, multi-brand and agency reporting.
+    engagement_types:
+    - fixed_price
+    - retainer
+    - fractional
+    evidence_ids:
+    - ev-services
+  - id: svc-tutoring
+    name: Tutoring in Python, Java, data analysis, data science and machine learning
+    description: Tutoring in Python, Java, data analysis, data science and machine learning.
+    engagement_types:
+    - time_and_materials
+    - retainer
+    evidence_ids:
+    - ev-services
+    - ev-orcas-resp
+  portfolio:
+  - id: pf-worldcup
+    title: World Cup 2026 Live Prediction Engine
+    summary: Built and publicly deployed an end-to-end AI platform that forecasts every FIFA World Cup 2026 match and simulates the full tournament with Monte Carlo, scoring users' brackets against the model.
+    outcome: Delivered the full stack, from data pipeline through to a Next.js web app deployed on Vercel and Supabase.
+    metric_verification: verified
+    url: https://presaira.com
+    evidence_ids:
+    - ev-pf-wc
+  - id: pf-sar
+    title: SAR Satellite Deep-Learning Suite
+    summary: Developed 5 deep-learning models and 2 web apps using SAR satellite imagery for marine oil-spill detection and optimal solar-installation site selection, achieving a final grade of A+.
+    outcome: 'Final Grade: A+'
+    metric_verification: verified
+    url: https://github.com/m7mdehab/oil-spill-detection
+    evidence_ids:
+    - ev-pf-sar
+  - id: pf-opportunityos
+    title: OpportunityOS
+    summary: A governed opportunity-discovery and truth-locked application system with PostgreSQL persistence, a FastAPI service and a Next.js founder interface, built with an autonomous multi-agent engineering protocol.
+    outcome: in development
+    metric_verification: unavailable
+    url: https://github.com/m7mdehab/opportunityos-docs
+    evidence_ids:
+    - ev-pf-opos
+  - id: pf-websites
+    title: Two business websites delivered end-to-end
+    summary: Delivered two business websites end-to-end, from requirements and structure to launch, including hosting, domains, and basic analytics so clients can track visits and conversions.
+    metric_verification: verified
+    evidence_ids:
+    - ev-freelance-resp
+  capacity:
+    id: cap-founder
+    evidence_ids:
+    - ev-services
+    available_from: 2026-10-02
+    currencies:
+    - USD
+    - EUR
+    - EGP
+    - SAR
+    - AED
+    - CAD
+    service_regions:
+    - EG
+    - remote worldwide
+    - AE
+    - SA
+    - QA
+    - KW
+    - BH
+    - OM
+    - CA
+    onsite_willingness: remote preferred; hybrid and onsite acceptable in Egypt; open to travel and relocation to the GCC and to Canada
+    legal_capacity: individual freelancer alongside full-time employment; no registered company, no sole-trader registration, no bid bond capacity
+  target_industries:
+  - banking
+  - fintech
+  - payments
+  - logistics
+  - manufacturing
+  - e-commerce
+  - marketing
+  - education
+  - technology
+  excluded_industries:
+  - gambling
+  - adult content
+  - arms trade
+  - fraud
+  delivery_languages:
+  - English
+  - Arabic
+  tools:
+  - id: tool-powerbi
+    name: Power BI
+    evidence_ids:
+    - ev-skills
+  - id: tool-erpnext
+    name: ERPNext
+    evidence_ids:
+    - ev-skills
+  - id: tool-postgres
+    name: PostgreSQL
+    evidence_ids:
+    - ev-skills
+  - id: tool-nextjs
+    name: Next.js
+    evidence_ids:
+    - ev-skills
+  never_claims:
+  - id: unbacked_commercial_capacity
+    concept: unbacked_commercial_capacity
+    reason: No turnover, bid-bond or company-size figures may be claimed
+identity:
+  name: Mohammed Ehab ElNomany
+  headline: Data / AI / Analytics Professional
+  email: M7mdehab999@gmail.com
+  phone: +20 1280800643
+  linkedin: https://linkedin.com/in/mohammed-ehab
+  github: https://github.com/m7mdehab
+  location_city: Cairo
+  location_country: EG
+  evidence_ids:
+  - ev-identity
