@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `ed49238` — fix(truth): accept safely quoted YAML mapping keys
+- **State generated at commit:** `371aaf4` — fix(truth): use safe YAML parser for canonical truth pack
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
