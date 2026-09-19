@@ -17,28 +17,68 @@ on:
 permissions:
   contents: read
   id-token: write
+  packages: write
 
 jobs:
   validate:
     environment: fr007-staging
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
       AZURE_MANAGED_ENVIRONMENT_ID: ${{ vars.AZURE_MANAGED_ENVIRONMENT_ID }}
       AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
       OPOS_AZURE_NAME_PREFIX: ${{ vars.OPOS_AZURE_NAME_PREFIX }}
-      OPOS_AZURE_IMAGE: ${{ vars.OPOS_AZURE_IMAGE }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
       - name: Static deployment contract validation
-        run: python scripts/validate_cloud_deployment.py --image "$OPOS_AZURE_IMAGE"
+        run: python scripts/validate_cloud_deployment.py --image "ghcr.io/${GITHUB_REPOSITORY}@sha256:$(printf '0%.0s' {1..64})"
+
       - name: Validate Bicep syntax
         if: inputs.mode == 'VALIDATE'
         run: az bicep build --file infra/azure/main.bicep --stdout > "$RUNNER_TEMP/fr007-main.bicep.json"
+
+      - name: Login to GHCR for immutable staging image publication
+        if: inputs.mode == 'DEPLOY_STAGING' && inputs.acknowledge_staging_deployment == true
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and push immutable staging image
+        id: image
+        if: inputs.mode == 'DEPLOY_STAGING' && inputs.acknowledge_staging_deployment == true
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Select immutable image
+        if: inputs.mode != 'VALIDATE'
+        shell: bash
+        env:
+          MODE: ${{ inputs.mode }}
+          BUILT_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = "DEPLOY_STAGING" ]; then
+            [ -n "$BUILT_DIGEST" ] || { echo "Container build did not return an immutable digest." >&2; exit 1; }
+            IMAGE="ghcr.io/${GITHUB_REPOSITORY}@$BUILT_DIGEST"
+          else
+            IMAGE="ghcr.io/${GITHUB_REPOSITORY}@sha256:$(printf '1%.0s' {1..64})"
+          fi
+          echo "OPOS_AZURE_IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
       - name: Azure OIDC login
         if: inputs.mode != 'VALIDATE'
         uses: azure/login@v2
@@ -47,12 +87,38 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve canonical Cloudflare staging origin
+        if: inputs.mode != 'VALIDATE'
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          RESPONSE="$(mktemp)"
+          trap 'rm -f "$RESPONSE"' EXIT
+          curl --fail --silent --show-error             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" > "$RESPONSE"
+          WORKERS_SUBDOMAIN="$(python - "$RESPONSE" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding="utf-8") as stream:
+              data=json.load(stream)
+          if data.get("success") is not True:
+              raise SystemExit(2)
+          value=(data.get("result") or {}).get("subdomain")
+          if not isinstance(value, str) or not value.strip():
+              raise SystemExit(2)
+          print(value.strip())
+          PY
+          )"
+          echo "OPPORTUNITYOS_PUBLIC_ORIGIN=https://opportunityos-web-staging.$WORKERS_SUBDOMAIN.workers.dev" >> "$GITHUB_ENV"
+
       - name: Prepare deployment parameters
         if: inputs.mode != 'VALIDATE'
         env:
           CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL }}
+          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
           OPPORTUNITYOS_FOUNDER_PASSWORD_HASH: ${{ secrets.OPPORTUNITYOS_FOUNDER_PASSWORD_HASH }}
-          OPPORTUNITYOS_PUBLIC_ORIGIN: ${{ vars.OPPORTUNITYOS_PUBLIC_ORIGIN }}
           OPPORTUNITYOS_SESSION_SECRET: ${{ secrets.OPPORTUNITYOS_SESSION_SECRET }}
           OPPORTUNITYOS_TRUTH_PACK_URI: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_URI }}
           OPPORTUNITYOS_TRUTH_PACK_HASH: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_HASH }}
@@ -60,6 +126,7 @@ jobs:
           OPPORTUNITYOS_TRUTH_PACK_API_KEY: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_API_KEY }}
         run: |
           set -euo pipefail
+          [ -n "$GHCR_READ_TOKEN" ] || { echo "GHCR_READ_TOKEN is required for durable private image pulls." >&2; exit 1; }
           PARAM_FILE="$RUNNER_TEMP/fr007-azure-parameters.json"
           export PARAM_FILE
           python - <<'PY'
@@ -68,6 +135,9 @@ jobs:
               "existingManagedEnvironmentResourceId": {"value": os.environ["AZURE_MANAGED_ENVIRONMENT_ID"]},
               "namePrefix": {"value": os.environ["OPOS_AZURE_NAME_PREFIX"]},
               "image": {"value": os.environ["OPOS_AZURE_IMAGE"]},
+              "registryServer": {"value": "ghcr.io"},
+              "registryUsername": {"value": os.environ["GITHUB_REPOSITORY_OWNER"]},
+              "registryPassword": {"value": os.environ["GHCR_READ_TOKEN"]},
               "cloudDatabaseUrl": {"value": os.environ["CLOUD_DATABASE_URL"]},
               "founderPasswordHash": {"value": os.environ["OPPORTUNITYOS_FOUNDER_PASSWORD_HASH"]},
               "publicOrigin": {"value": os.environ["OPPORTUNITYOS_PUBLIC_ORIGIN"]},
@@ -81,12 +151,15 @@ jobs:
               json.dump({"$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#", "contentVersion": "1.0.0", "parameters": payload}, stream)
           PY
           chmod 600 "$PARAM_FILE"
+
       - name: Azure what-if
         if: inputs.mode == 'WHAT_IF'
         run: az deployment group what-if --resource-group "$AZURE_RESOURCE_GROUP" --template-file infra/azure/main.bicep --parameters @"$RUNNER_TEMP/fr007-azure-parameters.json"
+
       - name: Deploy migration job only
         if: inputs.mode == 'DEPLOY_STAGING' && inputs.acknowledge_staging_deployment == true
         run: az deployment group create --resource-group "$AZURE_RESOURCE_GROUP" --template-file infra/azure/main.bicep --parameters @"$RUNNER_TEMP/fr007-azure-parameters.json" deployApplicationRoles=false
+
       - name: Run migration job and require successful completion before application rollout
         if: inputs.mode == 'DEPLOY_STAGING' && inputs.acknowledge_staging_deployment == true
         run: |
@@ -112,12 +185,24 @@ jobs:
           done
           echo "Migration execution did not reach Succeeded within 10 minutes" >&2
           exit 1
+
       - name: Deploy API worker and scheduler
         if: inputs.mode == 'DEPLOY_STAGING' && inputs.acknowledge_staging_deployment == true
         run: az deployment group create --resource-group "$AZURE_RESOURCE_GROUP" --template-file infra/azure/main.bicep --parameters @"$RUNNER_TEMP/fr007-azure-parameters.json" deployApplicationRoles=true
+
+      - name: Capture API staging origin
+        if: inputs.mode == 'DEPLOY_STAGING' && inputs.acknowledge_staging_deployment == true
+        shell: bash
+        run: |
+          set -euo pipefail
+          FQDN="$(az containerapp show --name "${OPOS_AZURE_NAME_PREFIX}-api" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.configuration.ingress.fqdn --output tsv)"
+          [ -n "$FQDN" ] || { echo "API FQDN unavailable after deployment." >&2; exit 1; }
+          echo "::notice title=FR-007 staging API origin::https://$FQDN"
+
       - name: Reject unacknowledged deployment
         if: inputs.mode == 'DEPLOY_STAGING' && inputs.acknowledge_staging_deployment != true
         run: echo "DEPLOY_STAGING requires acknowledge_staging_deployment=true" >&2; exit 2
+
       - name: Remove temporary parameters
         if: always()
         run: rm -f "$RUNNER_TEMP/fr007-azure-parameters.json" "$RUNNER_TEMP/fr007-main.bicep.json"
