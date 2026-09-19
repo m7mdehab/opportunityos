@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `01e6ed7` — test(truth): cover normalized month-end evidence
+- **Generated:** 2026-09-19T19:39:20Z
+- **State generated at commit:** `5801340` — FR-007: issue Antigravity edge closure batch
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief

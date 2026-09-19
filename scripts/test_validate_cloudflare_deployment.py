@@ -1,4 +1,4 @@
-﻿from pathlib import Path
+from pathlib import Path
 import shutil
 import tempfile
 import unittest
@@ -15,7 +15,11 @@ class CloudflareDeploymentValidatorTests(unittest.TestCase):
 
     def _copy_package(self, destination: Path) -> None:
         root = Path(__file__).parents[1]
-        shutil.copytree(root / "web", destination / "web")
+        shutil.copytree(
+            root / "web",
+            destination / "web",
+            ignore=shutil.ignore_patterns("node_modules", ".next", "playwright-report*", "test-results"),
+        )
         (destination / ".github" / "workflows").mkdir(parents=True)
         shutil.copy2(
             root / ".github" / "workflows" / "fr007-cloudflare-staging-deploy.yml",

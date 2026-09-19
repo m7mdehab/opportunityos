@@ -37,13 +37,14 @@ concurrency:
 
 jobs:
   observability:
+    environment: ${{ github.event.inputs.target_env == 'production' && 'fr007-production' || 'fr007-staging' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      OPOS_MONITOR_WEB_URL: ${{ secrets.OPOS_MONITOR_WEB_URL || secrets.FR007_WEB_URL }}
-      OPOS_MONITOR_API_URL: ${{ secrets.OPOS_MONITOR_API_URL || secrets.FR007_API_URL }}
+      OPOS_MONITOR_WEB_URL: ${{ secrets.OPOS_MONITOR_WEB_URL || vars.OPOS_STAGING_WEB_URL || secrets.FR007_WEB_URL }}
+      OPOS_MONITOR_API_URL: ${{ secrets.OPOS_MONITOR_API_URL || vars.OPPORTUNITYOS_API_ORIGIN || secrets.FR007_API_URL }}
       CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL || secrets.FR007_DATABASE_URL }}
       OPOS_BACKUP_HEARTBEAT_PATH: ${{ secrets.OPOS_BACKUP_HEARTBEAT_PATH || secrets.FR007_BACKUP_MANIFEST_PATH }}
       TARGET_ENV: ${{ github.event.inputs.target_env || 'staging' }}

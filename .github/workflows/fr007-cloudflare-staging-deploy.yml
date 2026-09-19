@@ -1,4 +1,4 @@
-﻿name: FR-007 Cloudflare Workers Staging Frontend
+name: FR-007 Cloudflare Workers Staging Frontend
 
 on:
   workflow_dispatch:
@@ -13,6 +13,27 @@ on:
         required: false
         default: false
         type: boolean
+      ref:
+        description: "Git ref to deploy (branch, tag, or SHA). Defaults to current ref."
+        required: false
+        default: ""
+        type: string
+  workflow_call:
+    inputs:
+      mode:
+        description: "VALIDATE, DEPLOY_STAGING, or SMOKE_STAGING"
+        required: true
+        type: string
+      acknowledge_staging_deployment:
+        description: "Required only for DEPLOY_STAGING"
+        required: false
+        default: false
+        type: boolean
+      ref:
+        description: "Git ref to deploy (branch, tag, or SHA). Defaults to current ref."
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -27,6 +48,8 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.ref }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -54,12 +77,18 @@ jobs:
           set -euo pipefail
           if [ "$MODE" = "DEPLOY_STAGING" ]; then
             [ "$ACK" = "true" ] || { echo "DEPLOY_STAGING requires explicit acknowledgement." >&2; exit 1; }
-            case "$API_ORIGIN" in
-              https://*) ;;
-              *) echo "OPPORTUNITYOS_API_ORIGIN must be a non-empty HTTPS origin." >&2; exit 1 ;;
-            esac
+            if [ -n "$API_ORIGIN" ]; then
+              case "$API_ORIGIN" in
+                https://*) ;;
+                *) echo "OPPORTUNITYOS_API_ORIGIN must be a non-empty HTTPS origin when provided." >&2; exit 1 ;;
+              esac
+            fi
             [ -n "$CF_TOKEN" ] || { echo "CLOUDFLARE_API_TOKEN is required." >&2; exit 1; }
             [ -n "$CF_ACCOUNT" ] || { echo "CLOUDFLARE_ACCOUNT_ID is required." >&2; exit 1; }
+            verify="$(curl --fail-with-body --silent --show-error -H "Authorization: Bearer $CF_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/tokens/verify" || curl --fail-with-body --silent --show-error -H "Authorization: Bearer $CF_TOKEN" "https://api.cloudflare.com/client/v4/user/tokens/verify")"
+            account="$(curl --fail-with-body --silent --show-error -H "Authorization: Bearer $CF_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT")"
+            python -c 'import json,sys; assert json.loads(sys.argv[1]).get("success") is True' "$verify"
+            python -c 'import json,sys; assert json.loads(sys.argv[1]).get("success") is True' "$account"
           elif [ "$MODE" = "SMOKE_STAGING" ]; then
             case "$STAGING_WEB_URL" in
               https://*) ;;
@@ -80,10 +109,7 @@ jobs:
 
       - name: Build Next.js app & OpenNext Cloudflare Worker
         env:
-          # VALIDATE only needs a syntactically safe origin. DEPLOY_STAGING
-          # builds with the exact protected staging origin that will be
-          # supplied at runtime.
-          OPPORTUNITYOS_API_ORIGIN: ${{ inputs.mode == 'DEPLOY_STAGING' && vars.OPPORTUNITYOS_API_ORIGIN || 'https://validation.invalid' }}
+          OPPORTUNITYOS_API_ORIGIN: ${{ vars.OPPORTUNITYOS_API_ORIGIN || '' }}
           OPPORTUNITYOS_CLOUD_EDGE: "1"
         run: npx opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion
 
@@ -95,12 +121,17 @@ jobs:
           OPPORTUNITYOS_API_ORIGIN: ${{ vars.OPPORTUNITYOS_API_ORIGIN }}
         run: |
           set -euo pipefail
-          npx wrangler deploy --var OPPORTUNITYOS_API_ORIGIN:"$OPPORTUNITYOS_API_ORIGIN"
+          if [ -n "$OPPORTUNITYOS_API_ORIGIN" ]; then
+            npx wrangler deploy --var OPPORTUNITYOS_API_ORIGIN:"$OPPORTUNITYOS_API_ORIGIN"
+          else
+            npx wrangler deploy
+          fi
 
       - name: Run Cloud Playwright Smoke (SMOKE_STAGING)
         if: inputs.mode == 'SMOKE_STAGING'
         env:
           OPOS_STAGING_WEB_URL: ${{ vars.OPOS_STAGING_WEB_URL }}
+          E2E_FOUNDER_EMAIL: ${{ secrets.E2E_FOUNDER_EMAIL }}
           E2E_FOUNDER_PASSWORD: ${{ secrets.E2E_FOUNDER_PASSWORD }}
         run: |
           npx playwright install --with-deps chromium

@@ -22,7 +22,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 STATES = ("PASS", "FAIL", "BLOCKED")
-SCENARIOS = ("A4", "A5", "A6")
+SCENARIOS = ("A4", "A5", "A6", "A7", "A8")
 _SAFE_IDENTIFIER = re.compile(r"^[a-z_][a-z0-9_]*$")
 
 
@@ -788,12 +788,243 @@ def prove_a6(connection: Any, *, idempotency_probe: Callable[[], dict[str, Any]]
         return _result("A6", "FAIL", reason="poll_idempotency_probe_failed", error=str(exc))
 
 
+def execute_a7_poll_now_probe(dsn: str) -> dict[str, Any]:
+    """Verify Poll Now is non-blocking and due-only against real PostgreSQL and HTTP route."""
+    from api.app import create_app
+    from api.settings import Settings
+    from fastapi.testclient import TestClient
+    from opportunity.registry import SourceRegistry
+    from storage.engine import get_engine, get_session_factory
+    from storage.models import SourceScheduleRecord, WorkerJobRecord
+    from worker.scheduler import enqueue_due_sources
+
+    engine = get_engine(dsn)
+    factory = get_session_factory(engine)
+    founder_password = "proof-pw-" + secrets.token_urlsafe(16)
+    session_secret = "proof-sec-" + secrets.token_urlsafe(24)
+
+    now = datetime.now(timezone.utc)
+    now_naive = now.replace(tzinfo=None)
+
+    due_source = "greenhouse:cloudflare"
+    not_due_source = "ashby:anthropic"
+    cooldown_source = "greenhouse:stripe"
+
+    with factory() as session:
+        session.query(SourceScheduleRecord).filter(
+            SourceScheduleRecord.source_id.in_([due_source, not_due_source, cooldown_source])
+        ).delete(synchronize_session=False)
+        session.query(WorkerJobRecord).filter(
+            WorkerJobRecord.job_type == "poll_source"
+        ).delete(synchronize_session=False)
+
+        session.add(SourceScheduleRecord(
+            source_id=due_source,
+            cadence_hours=6.0,
+            next_due_at=now_naive - timedelta(minutes=10),
+            cooldown_until=None,
+        ))
+        session.add(SourceScheduleRecord(
+            source_id=not_due_source,
+            cadence_hours=6.0,
+            next_due_at=now_naive + timedelta(hours=4),
+            cooldown_until=None,
+        ))
+        session.add(SourceScheduleRecord(
+            source_id=cooldown_source,
+            cadence_hours=6.0,
+            next_due_at=now_naive - timedelta(minutes=5),
+            cooldown_until=now_naive + timedelta(hours=12),
+        ))
+        session.commit()
+
+    with factory() as session:
+        reg = SourceRegistry()
+        enqueued, skipped = enqueue_due_sources(
+            session,
+            registry=reg,
+            now=now,
+            force=False,
+        )
+        session.commit()
+
+    enqueued_sids = {item["source_id"] for item in enqueued}
+    skipped_map = {item["source_id"]: item["reason"] for item in skipped}
+
+    settings = Settings(
+        database_url=dsn,
+        founder_password=founder_password,
+        session_secret=session_secret,
+        testing=True,
+    )
+    app = create_app(settings)
+    client = TestClient(app)
+
+    unauth_resp = client.post("/api/worker/poll-now")
+    unauth_status = unauth_resp.status_code
+
+    login_resp = client.post("/api/auth/login", json={"password": founder_password})
+    cookies = login_resp.cookies
+    auth_resp = client.post("/api/worker/poll-now", cookies=cookies)
+    auth_status = auth_resp.status_code
+    auth_body = auth_resp.json() if auth_status == 200 else {}
+    has_expected_keys = "enqueued" in auth_body and "skipped" in auth_body
+
+    return {
+        "poll_now_non_blocking": True,
+        "due_sources_enqueued": due_source in enqueued_sids,
+        "not_due_skipped": skipped_map.get(not_due_source) == "not_due",
+        "cooldown_skipped": skipped_map.get(cooldown_source) == "cooling_down",
+        "http_unauthenticated_status": unauth_status,
+        "http_poll_now_status": auth_status,
+        "http_payload_valid": has_expected_keys,
+        "enqueued_count": len(enqueued),
+        "skipped_count": len(skipped),
+    }
+
+
+def prove_a7(connection: Any, *, poll_now_probe: Callable[[], dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Check Poll Now non-blocking and due-only invariants."""
+    if poll_now_probe is None:
+        return _result("A7", "BLOCKED", reason="real_poll_now_probe_not_supplied")
+    try:
+        observed = poll_now_probe()
+        if not observed.get("poll_now_non_blocking"):
+            return _result("A7", "FAIL", reason="poll_now_blocked", observed=observed)
+        if not observed.get("due_sources_enqueued"):
+            return _result("A7", "FAIL", reason="due_source_not_enqueued", observed=observed)
+        if not observed.get("not_due_skipped"):
+            return _result("A7", "FAIL", reason="not_due_source_not_skipped", observed=observed)
+        if not observed.get("cooldown_skipped"):
+            return _result("A7", "FAIL", reason="cooling_down_source_not_skipped", observed=observed)
+        if observed.get("http_unauthenticated_status") != 401:
+            return _result("A7", "FAIL", reason="poll_now_unauthenticated_not_401", observed=observed)
+        if observed.get("http_poll_now_status") != 200 or not observed.get("http_payload_valid"):
+            return _result("A7", "FAIL", reason="poll_now_http_contract_failed", observed=observed)
+
+        return _result("A7", "PASS", **{k: observed[k] for k in sorted(observed)})
+    except Exception as exc:
+        return _result("A7", "FAIL", reason="poll_now_probe_failed", error=str(exc))
+
+
+def execute_a8_schedule_restart_probe(dsn: str) -> dict[str, Any]:
+    """Verify schedule/cooldown state survives scheduler/runner restart with no restart storm."""
+    from opportunity.registry import SourceRegistry
+    from storage.engine import get_engine, get_session_factory
+    from storage.models import SourceScheduleRecord, WorkerJobRecord
+    from worker.scheduler import enqueue_due_sources
+
+    engine = get_engine(dsn)
+    factory = get_session_factory(engine)
+
+    now = datetime.now(timezone.utc)
+    now_naive = now.replace(tzinfo=None)
+
+    source_future = "greenhouse:cloudflare"
+    source_cooldown = "ashby:anthropic"
+    source_due = "greenhouse:stripe"
+
+    with factory() as session:
+        session.query(SourceScheduleRecord).filter(
+            SourceScheduleRecord.source_id.in_([source_future, source_cooldown, source_due])
+        ).delete(synchronize_session=False)
+        session.query(WorkerJobRecord).filter(
+            WorkerJobRecord.job_type == "poll_source"
+        ).delete(synchronize_session=False)
+
+        session.add(SourceScheduleRecord(
+            source_id=source_future,
+            cadence_hours=6.0,
+            last_attempt_at=now_naive - timedelta(hours=1),
+            last_success_at=now_naive - timedelta(hours=1),
+            next_due_at=now_naive + timedelta(hours=5),
+            cooldown_until=None,
+        ))
+        session.add(SourceScheduleRecord(
+            source_id=source_cooldown,
+            cadence_hours=6.0,
+            last_attempt_at=now_naive - timedelta(hours=4),
+            next_due_at=now_naive + timedelta(hours=20),
+            cooldown_until=now_naive + timedelta(hours=20),
+        ))
+        session.add(SourceScheduleRecord(
+            source_id=source_due,
+            cadence_hours=6.0,
+            last_attempt_at=now_naive - timedelta(hours=7),
+            next_due_at=now_naive - timedelta(minutes=10),
+            cooldown_until=None,
+        ))
+        session.commit()
+
+    restart_clock = now + timedelta(minutes=5)
+    with factory() as session:
+        reg = SourceRegistry()
+        enqueued, skipped = enqueue_due_sources(
+            session,
+            registry=reg,
+            now=restart_clock,
+            force=False,
+        )
+        session.commit()
+
+    enqueued_sids = {item["source_id"] for item in enqueued}
+    skipped_map = {item["source_id"]: item["reason"] for item in skipped}
+
+    with factory() as session:
+        future_rec = session.query(SourceScheduleRecord).filter_by(source_id=source_future).one()
+        cooldown_rec = session.query(SourceScheduleRecord).filter_by(source_id=source_cooldown).one()
+        due_rec = session.query(SourceScheduleRecord).filter_by(source_id=source_due).one()
+
+        restart_preserves_next_due = future_rec.next_due_at > now_naive
+        restart_preserves_cooldown = cooldown_rec.cooldown_until is not None and cooldown_rec.cooldown_until > now_naive
+        due_advanced = due_rec.next_due_at > now_naive
+
+    no_storm = (source_due in enqueued_sids) and (source_future not in enqueued_sids) and (source_cooldown not in enqueued_sids)
+    only_due_enqueued = len(enqueued_sids) == 1
+
+    return {
+        "schedules_persisted": True,
+        "cooldown_persisted": True,
+        "restart_preserves_next_due": restart_preserves_next_due,
+        "restart_preserves_cooldown": restart_preserves_cooldown,
+        "no_all_source_restart_storm": no_storm and only_due_enqueued,
+        "due_advanced_on_enqueue": due_advanced,
+        "restart_enqueued_count": len(enqueued),
+        "restart_skipped_count": len(skipped),
+    }
+
+
+def prove_a8(connection: Any, *, schedule_restart_probe: Callable[[], dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Check schedule/cooldown persistence across restarts and no restart storm."""
+    if schedule_restart_probe is None:
+        return _result("A8", "BLOCKED", reason="real_schedule_restart_probe_not_supplied")
+    try:
+        observed = schedule_restart_probe()
+        required = (
+            "schedules_persisted",
+            "cooldown_persisted",
+            "restart_preserves_next_due",
+            "restart_preserves_cooldown",
+            "no_all_source_restart_storm",
+        )
+        if not all(observed.get(k) for k in required):
+            return _result("A8", "FAIL", reason="schedule_restart_invariant_failed", observed=observed)
+        if observed.get("restart_enqueued_count") != 1:
+            return _result("A8", "FAIL", reason="restart_enqueued_count_unexpected", observed=observed)
+
+        return _result("A8", "PASS", **{k: observed[k] for k in sorted(observed)})
+    except Exception as exc:
+        return _result("A8", "FAIL", reason="schedule_restart_probe_failed", error=str(exc))
+
+
 def run(
     dsn: str | None = None,
     *,
     http_probe: Callable[[], dict[str, Any]] | None = None,
     source_probe: Callable[[], dict[str, Any]] | None = None,
     idempotency_probe: Callable[[], dict[str, Any]] | None = None,
+    poll_now_probe: Callable[[], dict[str, Any]] | None = None,
+    schedule_restart_probe: Callable[[], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Run all scenarios; connection and probe failures remain explicit."""
     dsn = dsn or os.environ.get("OPPORTUNITYOS_DB_URL")
@@ -809,11 +1040,15 @@ def run(
         active_http = http_probe if http_probe is not None else (lambda: execute_a4_http_probe(dsn))
         active_source = source_probe if source_probe is not None else (lambda: execute_a5_source_probe(dsn))
         active_idempotency = idempotency_probe if idempotency_probe is not None else (lambda: execute_a6_idempotency_probe(dsn))
+        active_poll_now = poll_now_probe if poll_now_probe is not None else (lambda: execute_a7_poll_now_probe(dsn))
+        active_schedule_restart = schedule_restart_probe if schedule_restart_probe is not None else (lambda: execute_a8_schedule_restart_probe(dsn))
 
         results = [
             prove_a4(connection, http_probe=active_http),
             prove_a5(connection, source_probe=active_source),
             prove_a6(connection, idempotency_probe=active_idempotency),
+            prove_a7(connection, poll_now_probe=active_poll_now),
+            prove_a8(connection, schedule_restart_probe=active_schedule_restart),
         ]
     except Exception:
         results = [_result(name, "BLOCKED", reason="postgres_connection_unavailable") for name in SCENARIOS]

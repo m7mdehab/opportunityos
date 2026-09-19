@@ -3,7 +3,14 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from scripts.fr007_reliability_proof import prove_a4, prove_a5, prove_a6, run
+from scripts.fr007_reliability_proof import (
+    prove_a4,
+    prove_a5,
+    prove_a6,
+    prove_a7,
+    prove_a8,
+    run,
+)
 from storage.engine import get_engine, get_session_factory, init_db
 from storage.models import WorkerJobRecord
 from worker.queue import BackgroundWorkerQueue
@@ -174,6 +181,65 @@ class ReliabilityProofContractTests(unittest.TestCase):
                 engine.dispose()
 
 
+    def test_a7_requires_real_poll_now_probe(self):
+        self.assertEqual(prove_a7(Mock(), poll_now_probe=None)["state"], "BLOCKED")
+
+    def test_a7_rejects_missing_due_enqueued(self):
+        result = prove_a7(Mock(), poll_now_probe=lambda: {
+            "poll_now_non_blocking": True,
+            "due_sources_enqueued": False,
+            "not_due_skipped": True,
+            "cooldown_skipped": True,
+            "http_unauthenticated_status": 401,
+            "http_poll_now_status": 200,
+            "http_payload_valid": True,
+        })
+        self.assertEqual(result["state"], "FAIL")
+
+    def test_a7_passes_valid_contract(self):
+        result = prove_a7(Mock(), poll_now_probe=lambda: {
+            "poll_now_non_blocking": True,
+            "due_sources_enqueued": True,
+            "not_due_skipped": True,
+            "cooldown_skipped": True,
+            "http_unauthenticated_status": 401,
+            "http_poll_now_status": 200,
+            "http_payload_valid": True,
+            "enqueued_count": 1,
+            "skipped_count": 2,
+        })
+        self.assertEqual(result["state"], "PASS")
+
+    def test_a8_requires_real_schedule_restart_probe(self):
+        self.assertEqual(prove_a8(Mock(), schedule_restart_probe=None)["state"], "BLOCKED")
+
+    def test_a8_rejects_restart_storm(self):
+        result = prove_a8(Mock(), schedule_restart_probe=lambda: {
+            "schedules_persisted": True,
+            "cooldown_persisted": True,
+            "restart_preserves_next_due": True,
+            "restart_preserves_cooldown": True,
+            "no_all_source_restart_storm": False,
+            "due_advanced_on_enqueue": True,
+            "restart_enqueued_count": 3,
+            "restart_skipped_count": 0,
+        })
+        self.assertEqual(result["state"], "FAIL")
+
+    def test_a8_passes_valid_contract(self):
+        result = prove_a8(Mock(), schedule_restart_probe=lambda: {
+            "schedules_persisted": True,
+            "cooldown_persisted": True,
+            "restart_preserves_next_due": True,
+            "restart_preserves_cooldown": True,
+            "no_all_source_restart_storm": True,
+            "due_advanced_on_enqueue": True,
+            "restart_enqueued_count": 1,
+            "restart_skipped_count": 2,
+        })
+        self.assertEqual(result["state"], "PASS")
+
+
 @unittest.skipUnless(os.environ.get("FR007_RELIABILITY_POSTGRES"), "disposable PostgreSQL workflow only")
 class DisposablePostgresReliabilityTests(unittest.TestCase):
     def test_end_to_end_state_contract(self):
@@ -181,7 +247,7 @@ class DisposablePostgresReliabilityTests(unittest.TestCase):
         report = run(dsn)
         self.assertEqual(report["status"], "PASS", report)
         scenarios = {item["scenario"]: item for item in report["scenarios"]}
-        self.assertEqual(set(scenarios.keys()), {"A4", "A5", "A6"})
+        self.assertEqual(set(scenarios.keys()), {"A4", "A5", "A6", "A7", "A8"})
         for name, item in scenarios.items():
             self.assertEqual(item["state"], "PASS", f"Scenario {name} did not PASS: {item}")
 
@@ -228,6 +294,25 @@ class DisposablePostgresReliabilityTests(unittest.TestCase):
             ["inserted", "unchanged", "unchanged", "unchanged", "unchanged"],
         )
         self.assertEqual(a6_details["changed_poll_run_outcome"], "updated")
+
+        # Assert concrete A7 observations
+        a7_details = scenarios["A7"]["details"]
+        self.assertTrue(a7_details["poll_now_non_blocking"])
+        self.assertTrue(a7_details["due_sources_enqueued"])
+        self.assertTrue(a7_details["not_due_skipped"])
+        self.assertTrue(a7_details["cooldown_skipped"])
+        self.assertEqual(a7_details["http_unauthenticated_status"], 401)
+        self.assertEqual(a7_details["http_poll_now_status"], 200)
+        self.assertTrue(a7_details["http_payload_valid"])
+
+        # Assert concrete A8 observations
+        a8_details = scenarios["A8"]["details"]
+        self.assertTrue(a8_details["schedules_persisted"])
+        self.assertTrue(a8_details["cooldown_persisted"])
+        self.assertTrue(a8_details["restart_preserves_next_due"])
+        self.assertTrue(a8_details["restart_preserves_cooldown"])
+        self.assertTrue(a8_details["no_all_source_restart_storm"])
+        self.assertEqual(a8_details["restart_enqueued_count"], 1)
 
 
 if __name__ == "__main__":
