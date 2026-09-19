@@ -118,9 +118,9 @@ A real Supabase staging project is now provisioned and healthy:
 - safe API origin: `https://lrrcpwaapwynzdsxzwhy.supabase.co`;
 - PostgreSQL: 17;
 - plan/project creation cost: $0/month at provisioning;
-- initial public schema and project migration history are empty.
+- hosted application schema is present at Alembic revision `0009_hosted_founder_auth` with 26 public tables under RLS authority.
 
-Safe hosted-target metadata is persisted at `reports/evidence/FR-007/hosted-staging-target.json`. No database password, service-role key, storage signing secret, Founder credential or session secret is stored in Git. The canonical career Truth Pack is Founder-approved repository-managed product truth.
+Safe hosted-target metadata is persisted at `reports/evidence/FR-007/hosted-staging-target.json`. No database password, service-role key, storage signing secret, Founder credential or session secret is stored in Git. The canonical career Truth Pack is Founder-approved repository-managed product truth. The six Founder-approved fixed CV PDFs are now live in the private `founder-cv-portfolio` bucket and were independently re-downloaded and SHA-256 verified; sanitized proof is in `reports/evidence/FR-007/fixed-cv-portfolio-live-proof.json`.
 
 The failed precondition W16A attempt from the pre-W15 integration head is non-authoritative and must not be reused.
 
@@ -135,7 +135,7 @@ Task routing must follow actual tool access. Repository agents must not be assig
 1. execute real Supabase schema migration and hosted parity;
 2. prove hosted anon/authenticated/backend RLS boundaries;
 3. prove the repository-managed canonical Truth Pack loads and hash-verifies in cloud/background jobs;
-4. upload and prove private fixed-CV/generated-artifact storage retrieval with exact hash/version binding;
+4. fixed CV upload/retrieval is proven; complete generated-artifact private storage retrieval with exact opportunity/truth/template/version binding;
 5. wire Supabase Auth + Founder-only RPC/RLS browser boundary;
 6. wire Supabase Cron/pg_cron + bounded GitHub Actions Python workers;
 7. deploy the Cloudflare frontend/edge on the existing domain;
