@@ -22,10 +22,11 @@ def assert_registry_complete() -> None:
         raise AssertionError("unclassified application tables: " + ", ".join(sorted(missing)))
 
 
-def apply_postgres_deny_policies(op) -> None:
+def apply_postgres_deny_policies(op, *, excluded: set[str] | None = None) -> None:
     """Enable RLS and conditionally deny Supabase-like roles when present."""
     assert_registry_complete()
-    for table in sorted(RLS_TABLES):
+    excluded_tables = set(excluded or ())
+    for table in sorted(RLS_TABLES - excluded_tables):
         op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
         op.execute(
             "DO $$ BEGIN "
@@ -38,10 +39,11 @@ def apply_postgres_deny_policies(op) -> None:
         )
 
 
-def remove_postgres_deny_policies(op) -> None:
+def remove_postgres_deny_policies(op, *, excluded: set[str] | None = None) -> None:
     """Remove only migration 0009 policies and its RLS enablement."""
     assert_registry_complete()
-    for table in sorted(RLS_TABLES):
+    excluded_tables = set(excluded or ())
+    for table in sorted(RLS_TABLES - excluded_tables):
         op.execute(f"DROP POLICY IF EXISTS {table}_browser_deny_anon ON {table}")
         op.execute(f"DROP POLICY IF EXISTS {table}_browser_deny_authenticated ON {table}")
         op.execute(f"ALTER TABLE {table} DISABLE ROW LEVEL SECURITY")

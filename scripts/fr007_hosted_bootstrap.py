@@ -1,0 +1,92 @@
+"""Bounded, repeatable hosted staging bootstrap for FR-007.
+
+The command only creates durable source schedules for registry-approved reads,
+enqueues due work using the canonical scheduler, and drains a bounded queue
+slice. It never prints a DSN or payload/private content.
+"""
+from __future__ import annotations
+import argparse
+import os
+import time
+from datetime import datetime, timezone
+
+from opportunity.registry import SourceRegistry
+from storage.engine import get_engine, get_session_factory, get_production_db_url
+from storage.models import WorkerJobRecord
+from worker.handlers import default_handler_registry
+from worker.scheduler import enqueue_due_sources, get_or_create_source_schedule, _parse_cadence_hours
+from worker.runner import WorkerRunner
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(description="FR-007 hosted source schedule/bootstrap runner")
+    p.add_argument("--mode", choices=("bootstrap", "enqueue", "drain", "all"), default="all")
+    p.add_argument("--max-jobs", type=int, default=10)
+    p.add_argument("--time-budget-seconds", type=float, default=300.0)
+    p.add_argument("--dry-run", action="store_true", help="inspect and report without writes")
+    return p
+
+
+def _source_schedules(session, registry: SourceRegistry, *, dry_run: bool) -> int:
+    now = datetime.now(timezone.utc)
+    try:
+        cadence = _parse_cadence_hours(registry.path.read_text(encoding="utf-8"))
+    except OSError:
+        cadence = {}
+    count = 0
+    for source_id in sorted(registry._sources):
+        if not registry.is_read_allowed(source_id):
+            continue
+        count += 1
+        if not dry_run:
+            # Existing scheduler semantics are authoritative for cadence and
+            # next_due_at; do not manufacture a warm-up storm.
+            get_or_create_source_schedule(session, source_id, cadence.get(source_id, 6.0), now)
+    if not dry_run:
+        session.commit()
+    return count
+
+
+def _drain(session_factory, *, max_jobs: int, budget: float) -> int:
+    runner = WorkerRunner(session_factory, default_handler_registry(
+        truth_pack_path=os.environ.get("OPPORTUNITYOS_TRUTH_PACK_PATH") or None,
+    ), worker_id="hosted-bootstrap", poll_interval=0.1)
+    started = time.monotonic()
+    processed = 0
+    while processed < max_jobs and time.monotonic() - started < budget:
+        if not runner.run_once():
+            break  # queue-empty is a successful bounded stop condition
+        processed += 1
+    return processed
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    raw = os.environ.get("OPOS_TARGET_DB_URL") or os.environ.get("OPPORTUNITYOS_DB_URL")
+    if not raw:
+        raise SystemExit("hosted bootstrap requires OPOS_TARGET_DB_URL (secret value is never printed)")
+    os.environ["OPPORTUNITYOS_DB_URL"] = raw
+    engine = get_engine(get_production_db_url(raw))
+    factory = get_session_factory(engine)
+    registry = SourceRegistry()
+    session = factory()
+    try:
+        scheduled = 0
+        if args.mode in ("bootstrap", "all"):
+            scheduled = _source_schedules(session, registry, dry_run=args.dry_run)
+        enqueued = 0
+        if args.mode in ("enqueue", "all") and not args.dry_run:
+            items, _ = enqueue_due_sources(session, registry=registry)
+            session.commit()
+            enqueued = len(items)
+        processed = 0
+        if args.mode in ("drain", "all") and not args.dry_run:
+            processed = _drain(factory, max_jobs=max(0, args.max_jobs), budget=max(0.0, args.time_budget_seconds))
+        print(f"mode={args.mode} dry_run={args.dry_run} schedules={scheduled} enqueued={enqueued} processed={processed}")
+        return 0
+    finally:
+        session.close(); engine.dispose()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

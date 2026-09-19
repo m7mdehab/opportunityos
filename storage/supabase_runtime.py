@@ -49,22 +49,37 @@ CREATE POLICY feed_projection_authenticated_read
     USING (public.opos_is_founder());
 
 CREATE OR REPLACE FUNCTION public.{c.enqueue_function}(p_source_id text DEFAULT NULL)
-RETURNS TABLE(job_id text, job_type text, status text)
+RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
-DECLARE new_id text;
+DECLARE
+    selected public.source_schedules%ROWTYPE;
+    enqueued jsonb := '[]'::jsonb;
+    skipped jsonb := '[]'::jsonb;
+    new_id text;
 BEGIN
     IF NOT public.opos_is_founder() THEN RAISE EXCEPTION 'authorized founder required'; END IF;
-    new_id := md5(clock_timestamp()::text || random()::text);
-    INSERT INTO public.worker_jobs
-        (id, job_type, payload_json, status, run_after, retry_count,
-         max_retries, created_at, updated_at)
-    VALUES
-        (new_id, 'poll_source',
-         CASE WHEN p_source_id IS NULL THEN '{{}}'::text
-              ELSE json_build_object('source_id', p_source_id)::text END,
-         'PENDING', now(), 0, 3, now(), now());
-    RETURN QUERY SELECT new_id, 'poll_source'::text, 'PENDING'::text;
+    FOR selected IN SELECT * FROM public.source_schedules
+      WHERE p_source_id IS NULL OR source_id = p_source_id
+      ORDER BY source_id FOR UPDATE SKIP LOCKED
+    LOOP
+      IF EXISTS (SELECT 1 FROM public.worker_jobs w WHERE w.job_type='poll_source'
+                 AND w.status IN ('PENDING','RETRY','RUNNING')
+                 AND (w.payload_json::jsonb ->> 'source_id')=selected.source_id) THEN
+        skipped := skipped || jsonb_build_array(jsonb_build_object('source_id', selected.source_id, 'reason', 'already_queued'));
+      ELSIF selected.cooldown_until IS NOT NULL AND selected.cooldown_until > now() THEN
+        skipped := skipped || jsonb_build_array(jsonb_build_object('source_id', selected.source_id, 'reason', 'cooldown'));
+      ELSIF selected.next_due_at > now() THEN
+        skipped := skipped || jsonb_build_array(jsonb_build_object('source_id', selected.source_id, 'reason', 'not_due'));
+      ELSE
+        new_id := md5(clock_timestamp()::text || random()::text || selected.source_id);
+        INSERT INTO public.worker_jobs (id, job_type, payload_json, status, run_after, retry_count, max_retries, created_at, updated_at)
+        VALUES (new_id, 'poll_source', json_build_object('source_id', selected.source_id)::text, 'PENDING', now(), 0, 3, now(), now());
+        UPDATE public.source_schedules SET last_attempt_at=now(), next_due_at=now()+make_interval(hours=>selected.cadence_hours), updated_at=now() WHERE source_id=selected.source_id;
+        enqueued := enqueued || jsonb_build_array(jsonb_build_object('source_id', selected.source_id, 'job_id', new_id));
+      END IF;
+    END LOOP;
+    RETURN jsonb_build_object('enqueued', enqueued, 'skipped', skipped);
 END;
 $$;
 

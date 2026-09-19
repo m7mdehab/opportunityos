@@ -103,6 +103,10 @@ Integrated repository-side capabilities include:
 
 Repository implementation proof is ahead of hosted execution. Production A-gates remain open until real provider/runtime evidence exists.
 
+## W19 Codex hosted API branch delta (repository preparation)
+
+`work/fr007-codex-hosted-api-final` adds a same-origin Supabase edge adapter with HTTP-only access/refresh cookies, exact feed totals, Founder-safe detail/source/facet/filter/dashboard surfaces, private CV/artifact retrieval verification, migration `0011_hosted_api_surface`, durable fixed-CV selection metadata, and a bounded manual hosted bootstrap workflow. These are branch/PR facts only; no hosted provider execution or FR-007 closure is claimed.
+
 ## Current Hosted Execution State
 
 W15 repository preparation is integrated and green:
