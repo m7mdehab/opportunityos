@@ -94,6 +94,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return response
 
+    @app.middleware("http")
+    async def hosted_csrf(request: Request, call_next):
+        if resolved_settings.cloud_mode and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            if request.headers.get("X-OpportunityOS-CSRF") != "1":
+                return JSONResponse(status_code=403, content={"detail": "csrf validation failed"})
+            origin = request.headers.get("Origin")
+            if not origin or origin != resolved_settings.public_origin:
+                return JSONResponse(status_code=403, content={"detail": "origin validation failed"})
+        return await call_next(request)
+
     @app.exception_handler(RequestValidationError)
     async def login_validation_exception_handler(request: Request, exc: RequestValidationError):
         # Finding 4 (council, auth review): FastAPI's default 422 body
