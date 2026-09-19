@@ -773,11 +773,54 @@ def _yaml_mapping_entry(value: str) -> bool:
 
 
 def _split_yaml_mapping(value: str) -> tuple[str, str]:
-    match = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_-]*):(?:\s*(.*))?", value)
-    if not match:
-        raise IngestionError(f"invalid YAML mapping entry: {value}")
-    return match.group(1), (match.group(2) or "").strip()
+    """Split one safe YAML mapping entry.
 
+    The truth-pack serializer may quote string keys. Accept plain identifier
+    keys plus JSON-style double-quoted or YAML-style single-quoted string keys,
+    while still rejecting complex/non-string keys and unsupported YAML.
+    """
+    match = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_-]*):(?:\\s*(.*))?", value)
+    if match:
+        return match.group(1), (match.group(2) or "").strip()
+
+    if value.startswith('"'):
+        try:
+            key, key_end = json.JSONDecoder().raw_decode(value)
+        except json.JSONDecodeError as error:
+            raise IngestionError(f"invalid YAML mapping entry: {value}") from error
+        if not isinstance(key, str) or key_end >= len(value) or value[key_end] != ":":
+            raise IngestionError(f"invalid YAML mapping entry: {value}")
+        remainder = value[key_end + 1 :]
+        if remainder and not remainder[0].isspace():
+            raise IngestionError(f"invalid YAML mapping entry: {value}")
+        return key, remainder.strip()
+
+    if value.startswith("\'"):
+        cursor = 1
+        decoded: list[str] = []
+        while cursor < len(value):
+            if value[cursor] != "\'":
+                decoded.append(value[cursor])
+                cursor += 1
+                continue
+            if cursor + 1 < len(value) and value[cursor + 1] == "\'":
+                decoded.append("\'")
+                cursor += 2
+                continue
+            break
+        if (
+            cursor >= len(value)
+            or value[cursor] != "\'"
+            or cursor + 1 >= len(value)
+            or value[cursor + 1] != ":"
+        ):
+            raise IngestionError(f"invalid YAML mapping entry: {value}")
+        remainder = value[cursor + 2 :]
+        if remainder and not remainder[0].isspace():
+            raise IngestionError(f"invalid YAML mapping entry: {value}")
+        return "".join(decoded), remainder.strip()
+
+    raise IngestionError(f"invalid YAML mapping entry: {value}")
 
 def _yaml_scalar(value: str) -> Any:
     lowered = value.casefold()
