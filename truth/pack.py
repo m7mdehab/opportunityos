@@ -476,7 +476,11 @@ def load_truth_pack(
             raise TruthPackInvalid(f"failed reading truth pack at {file_path}: {err}", (str(err),)) from err
         if file_path.name.endswith(".yaml.gz.b64"):
             try:
-                raw_bytes = gzip.decompress(base64.b64decode(raw_bytes, validate=True))
+                # Wrapped Base64 snapshots are line-oriented text artifacts.
+                # Strip ASCII whitespace only, then keep strict Base64
+                # validation so any other byte still fails closed.
+                encoded = b"".join(raw_bytes.split())
+                raw_bytes = gzip.decompress(base64.b64decode(encoded, validate=True))
             except Exception as err:
                 raise TruthPackInvalid(
                     f"canonical truth pack snapshot could not be decoded: {file_path}",
