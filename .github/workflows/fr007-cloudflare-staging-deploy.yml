@@ -47,7 +47,7 @@ jobs:
           ACK: ${{ inputs.acknowledge_staging_deployment }}
           API_ORIGIN: ${{ vars.OPPORTUNITYOS_API_ORIGIN }}
           STAGING_WEB_URL: ${{ vars.OPOS_STAGING_WEB_URL }}
-          FOUNDER_PASSWORD: ${{ secrets.OPPORTUNITYOS_FOUNDER_PASSWORD }}
+          FOUNDER_PASSWORD: ${{ secrets.E2E_FOUNDER_PASSWORD }}
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
@@ -101,7 +101,7 @@ jobs:
         if: inputs.mode == 'SMOKE_STAGING'
         env:
           OPOS_STAGING_WEB_URL: ${{ vars.OPOS_STAGING_WEB_URL }}
-          E2E_FOUNDER_PASSWORD: ${{ secrets.OPPORTUNITYOS_FOUNDER_PASSWORD }}
+          E2E_FOUNDER_PASSWORD: ${{ secrets.E2E_FOUNDER_PASSWORD }}
         run: |
           npx playwright install --with-deps chromium
           npm run test:e2e:staging
