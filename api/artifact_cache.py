@@ -212,11 +212,29 @@ def _verify_external(row, body):
     return body
 
 
+def _validate_metadata_binding(row, opportunity_id: str, truth_pack_hash: str, template_id: str, artifact_kind: str) -> None:
+    """Reject durable rows whose binding no longer matches the request."""
+    expected = {
+        "opportunity_id": opportunity_id,
+        "truth_pack_hash": truth_pack_hash,
+        "template_id": template_id,
+        "artifact_kind": artifact_kind,
+        "generation_version": GENERATION_VERSION,
+    }
+    for field, value in expected.items():
+        if getattr(row, field, None) != value:
+            raise ArtifactStorageError(f"artifact metadata binding mismatch: {field}")
+    expected_key = cache_key(opportunity_id, truth_pack_hash, template_id, artifact_kind)
+    if getattr(row, "cache_key", None) != expected_key:
+        raise ArtifactStorageError("artifact metadata binding mismatch: cache_key")
+
+
 def get(session: Session, opportunity_id: str, truth_pack_hash: str, template_id: str, artifact_kind: str, *, storage_client=None):
     key = cache_key(opportunity_id, truth_pack_hash, template_id, artifact_kind)
     row = session.query(ArtifactCacheRecord).filter_by(cache_key=key).first()
     if row is None:
         return None
+    _validate_metadata_binding(row, opportunity_id, truth_pack_hash, template_id, artifact_kind)
     backend = _backend_for_row(row)
     if backend == "postgres_payload":
         if row.payload is None:
@@ -237,7 +255,9 @@ def _delete_external(row, client=None):
 def store(session: Session, opportunity_id: str, truth_pack_hash: str, template_id: str,
           artifact_kind: str, content_type: str, payload: bytes, *, storage_client=None) -> None:
     key = cache_key(opportunity_id, truth_pack_hash, template_id, artifact_kind)
-    if session.query(ArtifactCacheRecord).filter_by(cache_key=key).first() is not None:
+    existing = session.query(ArtifactCacheRecord).filter_by(cache_key=key).first()
+    if existing is not None:
+        _validate_metadata_binding(existing, opportunity_id, truth_pack_hash, template_id, artifact_kind)
         return
     backend = configured_backend()
     client = storage_client if storage_client is not None else (_client() if backend == "supabase_storage" else None)

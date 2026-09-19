@@ -1,0 +1,52 @@
+name: FR-007 encrypted logical backup
+
+on:
+  workflow_dispatch:
+    inputs:
+      acknowledge_backup:
+        description: "Authorize a staging logical backup"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    if: ${{ inputs.acknowledge_backup == true }}
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install repository dependencies
+        run: python -m pip install -e .
+      - name: Create and encrypt logical backup
+        env:
+          OPOS_SOURCE_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p backup-out
+          python scripts/db_migration_restore.py backup --destination backup-out/source.dump
+          python scripts/encrypted_backup.py encrypt \
+            --input backup-out/source.dump \
+            --output backup-out/backup.dump.enc \
+            --manifest backup-out/backup.encrypted.manifest.json \
+            --remove-plaintext
+          test ! -e backup-out/source.dump
+          python scripts/encrypted_backup.py verify \
+            --archive backup-out/backup.dump.enc \
+            --manifest backup-out/backup.encrypted.manifest.json
+      - name: Upload encrypted backup only
+        uses: actions/upload-artifact@v4
+        with:
+          name: fr007-encrypted-backup-${{ github.run_id }}
+          path: |
+            backup-out/backup.dump.enc
+            backup-out/backup.encrypted.manifest.json
+          if-no-files-found: error

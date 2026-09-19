@@ -46,7 +46,8 @@ REVOKE ALL ON public.{c.feed_view} FROM anon;
 DROP POLICY IF EXISTS feed_projection_authenticated_read ON public.feed_projection;
 CREATE POLICY feed_projection_authenticated_read
     ON public.feed_projection FOR SELECT TO authenticated
-    USING (auth.uid() IS NOT NULL);
+    USING (auth.uid() IS NOT NULL AND
+           auth.uid()::text = current_setting('app.founder_auth_uid', true));
 
 CREATE OR REPLACE FUNCTION public.{c.enqueue_function}(p_source_id text DEFAULT NULL)
 RETURNS TABLE(job_id text, job_type text, status text)
@@ -54,7 +55,8 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
 DECLARE new_id text;
 BEGIN
-    IF auth.uid() IS NULL THEN RAISE EXCEPTION 'authenticated founder required'; END IF;
+    IF auth.uid() IS NULL OR auth.uid()::text <> current_setting('app.founder_auth_uid', true)
+    THEN RAISE EXCEPTION 'authorized founder required'; END IF;
     new_id := md5(clock_timestamp()::text || random()::text);
     INSERT INTO public.worker_jobs
         (id, job_type, payload_json, status, run_after, retry_count,
@@ -80,6 +82,7 @@ AS $$
            (error_message IS NOT NULL)
     FROM public.worker_jobs
     WHERE id = p_job_id AND auth.uid() IS NOT NULL
+      AND auth.uid()::text = current_setting('app.founder_auth_uid', true)
 $$;
 
 REVOKE ALL ON FUNCTION public.{c.job_status_function}(text) FROM PUBLIC;

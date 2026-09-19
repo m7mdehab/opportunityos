@@ -95,6 +95,18 @@ class HostedProofTests(unittest.TestCase):
         self.assertEqual(report["stages"]["MIGRATE"], "NOT_RUN")
         self.assertNotIn("MIGRATED", json.dumps(report))
 
+    def test_target_only_precheck_does_not_require_source_secret(self):
+        checked = {"status": "PASS", "ready": True, "checks": {}}
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(proof.db, "target_config", return_value=self.target), \
+             mock.patch.object(proof.db, "config", side_effect=ValueError("source absent")), \
+             mock.patch.object(proof, "discover_alembic_head", return_value="dynamic-head"), \
+             mock.patch.object(proof.preflight, "evaluate", return_value=checked):
+            report = proof.run("PRECHECK", connection_mode="direct", output_dir=tmp)
+        self.assertIsNone(report["source_identity_fingerprint"])
+        self.assertEqual(report["stages"]["PRECHECK"], "PASS")
+        self.assertEqual(report["stages"]["MIGRATE"], "NOT_RUN")
+
     def test_dynamic_head_is_discovered(self):
         with mock.patch("alembic.script.ScriptDirectory.from_config") as directory:
             directory.return_value.get_current_head.return_value = "head-from-alembic"

@@ -50,12 +50,18 @@ def redact_dsn(value: str) -> str:
 
 def _settings():
     try:
-        source = db.config("source")
         target = db.target_config()
     except Exception as exc:
-        raise HostedProofError("source and target hosted database secrets are required") from exc
-    if not source.get("dsn") or not target.get("dsn"):
-        raise HostedProofError("source and target hosted database secrets are required")
+        raise HostedProofError("target hosted database secret is required") from exc
+    source = None
+    try:
+        source = db.config("source")
+    except Exception:
+        # Target-only PRECHECK is intentionally source-independent.  Source
+        # credentials become mandatory only for migration/parity modes.
+        pass
+    if not target.get("dsn"):
+        raise HostedProofError("target hosted database secret is required")
     return source, target
 
 
@@ -139,7 +145,9 @@ def validate_configuration(mode: str, connection_mode: str, *, acknowledge_migra
     if connection_mode not in {"direct", "pooler", "unknown"}:
         raise HostedProofError("connection mode must be declared")
     source, target = _settings()
-    if identity_fingerprint(source) == identity_fingerprint(target):
+    if mode != "PRECHECK" and not source:
+        raise HostedProofError("source hosted database secret is required for this mode")
+    if source and identity_fingerprint(source) == identity_fingerprint(target):
         raise HostedProofError("source and target database identity must differ")
     if classify_topology(target) == "local":
         raise HostedProofError("hosted mode rejects a local target")
@@ -174,9 +182,9 @@ def _report(mode: str, source: dict, target: dict):
     return {
         "format": 1,
         "mode": mode,
-        "source_identity_fingerprint": identity_fingerprint(source),
+        "source_identity_fingerprint": identity_fingerprint(source) if source else None,
         "target_identity_fingerprint": identity_fingerprint(target),
-        "source_host": source["host"],
+        "source_host": source["host"] if source else None,
         "target_host": target["host"],
         "target_topology": classify_topology(target),
         "alembic_head": None,

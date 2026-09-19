@@ -88,6 +88,26 @@ class ArtifactStorageTests(unittest.TestCase):
         self._store()
         self.assertEqual(len(self.transport.uploads), 1)
 
+    def test_metadata_binding_is_verified_before_serving_cached_body(self):
+        key = self._store()
+        row = self.session.get(ArtifactCacheRecord, key)
+        row.generation_version = "stale-generator"
+        self.session.commit()
+        with self.assertRaisesRegex(ac.ArtifactStorageError, "binding mismatch"):
+            ac.get(self.session, "opp-1", "truth-a", "classic", "cv", storage_client=self.client)
+
+    def test_metadata_binding_is_verified_before_idempotent_store(self):
+        key = self._store()
+        row = self.session.get(ArtifactCacheRecord, key)
+        row.truth_pack_hash = "wrong-truth"
+        self.session.commit()
+        with patch.dict(os.environ, self.env, clear=False):
+            with self.assertRaisesRegex(ac.ArtifactStorageError, "binding mismatch"):
+                ac.store(
+                    self.session, "opp-1", "truth-a", "classic", "cv",
+                    "application/octet-stream", b"private artifact bytes", storage_client=self.client,
+                )
+
     def test_matching_orphan_is_recovered_without_duplicate_upload(self):
         key = ac.cache_key("opp-1", "truth-a", "classic", "cv")
         object_key = f"artifacts/{key}"

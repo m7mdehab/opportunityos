@@ -1,0 +1,32 @@
+name: FR-007 durable worker drain
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/15 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fr007-worker-drain
+  cancel-in-progress: false
+
+jobs:
+  drain:
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install repository dependencies
+        run: python -m pip install -e .
+      - name: Drain a bounded durable queue slice
+        env:
+          OPPORTUNITYOS_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+        run: |
+          set -euo pipefail
+          python -m worker --once --max-jobs 1
