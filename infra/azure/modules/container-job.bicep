@@ -1,6 +1,10 @@
 param name string
 param managedEnvironmentId string
 param image string
+param registryServer string
+param registryUsername string
+@secure()
+param registryPassword string
 @secure()
 param cloudDatabaseUrl string
 
@@ -19,6 +23,14 @@ resource job 'Microsoft.App/jobs@2023-05-01' = {
       replicaTimeout: 1800
       secrets: [
         { name: 'cloud-database-url'; value: cloudDatabaseUrl }
+        { name: 'registry-password'; value: registryPassword }
+      ]
+      registries: [
+        {
+          server: registryServer
+          username: registryUsername
+          passwordSecretRef: 'registry-password'
+        }
       ]
     }
     template: {
