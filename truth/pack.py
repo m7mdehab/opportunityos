@@ -78,7 +78,7 @@ logger = logging.getLogger(__name__)
 #: only used as the default argument to `load_founder_pack`.
 DEFAULT_TRUTH_PACK_PATH = Path("private/truth_pack.yaml")
 CANONICAL_REPO_TRUTH_PACK = Path("founder/truth_pack.yaml.gz.b64")
-CANONICAL_REPO_TRUTH_PACK_RAW_SHA256 = "7c5de5ad8f7f43af505aed79d7e081b6dca0bd820edcecfe4393971fb15d9869"
+CANONICAL_REPO_TRUTH_PACK_RAW_SHA256 = "0c438bbe12cf72ca02d81e6748500c2f0987ec4b0e12cc6b57fb44eee8696529"
 
 _CAREER_LIST_FIELDS = (
     "employment", "education", "certifications", "skills", "languages",
