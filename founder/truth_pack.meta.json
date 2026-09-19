@@ -1,0 +1,27 @@
+{
+  "format_version": 1,
+  "snapshot": "founder/truth_pack.yaml.gz.b64",
+  "decoded_format": "yaml",
+  "decoded_raw_sha256": "7c5de5ad8f7f43af505aed79d7e081b6dca0bd820edcecfe4393971fb15d9869",
+  "updated_at": "2026-09-19",
+  "founder_classification": "non-sensitive product truth",
+  "sources": [
+    "Mohammed_Ehab_AI_Engineer_CV_2026.pdf",
+    "Mohammed_Ehab_Business_Analyst_CV_2026.pdf",
+    "Mohammed_Ehab_Data_Analyst_CV_2026.pdf",
+    "Mohammed_Ehab_Data_Engineer_CV_2026.pdf",
+    "Mohammed_Ehab_Data_Scientist_CV_2026.pdf",
+    "Mohammed_Ehab_Master_CV_2026.pdf",
+    "founder-stated policy carried forward from truth_pack(4).yaml"
+  ],
+  "canonical_updates": [
+    "Network International title: Data Engineer",
+    "Al Tayseer International title: Business Analyst Team Lead",
+    "Guksu title: Data Analyst & Supply Chain Analyst",
+    "DemoNow.ai Junior AI Engineer experience added",
+    "Databricks Certified Data Engineer Associate (2026) added",
+    "leadership/activity evidence added",
+    "Business Analyst target role added",
+    "role-specific approved summaries and skills reconciled across all six final CVs"
+  ]
+}
