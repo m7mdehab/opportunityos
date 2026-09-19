@@ -276,7 +276,7 @@ def probe_api_liveness(
         return CheckResult(
             name="api_liveness",
             status="NOT_CONFIGURED",
-            message="OPOS_MONITOR_API_URL is not configured",
+            message="Neither standalone nor same-origin API URL is configured",
         )
 
     valid, err = validate_monitor_url(url, "api_url")
@@ -851,9 +851,14 @@ def run_monitor(
         checks.append(probe_web_liveness(effective_web_url, client=http_client))
 
         # 2. API Probe (HTTP or FULL mode)
+        # In a zero-dollar / Supabase-native deployment, probe same-origin API on web URL if no standalone API URL is provided
         effective_api_url = api_url or os.environ.get("OPOS_MONITOR_API_URL")
         if effective_api_url:
             checks.append(probe_api_liveness(effective_api_url, client=http_client))
+        elif effective_web_url:
+            checks.append(probe_api_liveness(effective_web_url, client=http_client))
+        else:
+            checks.append(probe_api_liveness(None, client=http_client))
 
     # 3. Database & Queue Probes (FULL mode)
     if mode == "FULL":
