@@ -9,7 +9,7 @@ on:
       - .github/workflows/fr007-hosted-bootstrap.yml
       - .github/workflows/fr007-cloudflare-staging-deploy.yml
       - web/wrangler.jsonc
-      - web/app/api/[...path]/route.ts
+      - 'web/app/api/[...path]/route.ts'
       - web/lib/supabase/browser.ts
       - pyproject.toml
 
