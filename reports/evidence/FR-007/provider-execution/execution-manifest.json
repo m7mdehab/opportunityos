@@ -1,0 +1,79 @@
+{
+  "format": 1,
+  "project_ref": "lrrcpwaapwynzdsxzwhy",
+  "runtime_secrets": "injected only by the authenticated operator; never written to this bundle",
+  "steps": [
+    {
+      "evidence": "backup.sha256",
+      "expected": "backup and manifest created without DSN persistence",
+      "failure": "stop; remove incomplete local output",
+      "id": "source_export",
+      "input": "scripts/db_migration_restore.py",
+      "kind": "SOURCE_EXPORT",
+      "operation": "OPOS_SOURCE_DB_URL=... python scripts/db_migration_restore.py backup --destination <new-file>"
+    },
+    {
+      "evidence": "restore.result",
+      "expected": "fresh target restored",
+      "failure": "stop; isolate target",
+      "id": "target_import",
+      "input": "backup plus manifest",
+      "kind": "TARGET_IMPORT",
+      "operation": "OPOS_TARGET_DB_URL=... python scripts/db_migration_restore.py restore --archive <file> --manifest <file> --confirm-target-restore"
+    },
+    {
+      "evidence": "migration.after_revision",
+      "expected": "Alembic revision 0009_hosted_founder_auth",
+      "failure": "stop; do not continue to verification or storage bootstrap",
+      "id": "migration",
+      "input": "migration-manifest.json",
+      "kind": "APPLY_MIGRATION",
+      "operation": "execute migrations/01_*.sql through migrations/09_*.sql in order on an empty target, or run Alembic upgrade head after a full restore"
+    },
+    {
+      "evidence": "rls.provider_security",
+      "expected": "alembic_version RLS enabled and browser roles lack TRUNCATE/REFERENCES/TRIGGER on public tables",
+      "failure": "stop; do not expose browser access",
+      "id": "provider_security",
+      "input": "provider-security.sql",
+      "kind": "PROVIDER_SECURITY_BOOTSTRAP",
+      "operation": "execute as provider operator after schema migration"
+    },
+    {
+      "evidence": "schema.result",
+      "expected": "tables, constraints and head present",
+      "failure": "stop and preserve provider logs outside Git",
+      "id": "schema",
+      "input": "verify/schema.sql",
+      "kind": "READ_ONLY_VERIFY",
+      "operation": "execute as provider operator"
+    },
+    {
+      "evidence": "rls.result",
+      "expected": "deny policies and browser denial; owner path usable",
+      "failure": "stop; do not expose browser access",
+      "id": "rls",
+      "input": "verify/rls.sql",
+      "kind": "HOSTED_RLS_VERIFY",
+      "operation": "catalog checks plus fresh-transaction anon/authenticated probes"
+    },
+    {
+      "evidence": "parity.result",
+      "expected": "zero differences and no unsupported required concept",
+      "failure": "stop before cutover",
+      "id": "parity",
+      "input": "source and target snapshots",
+      "kind": "PARITY",
+      "operation": "snapshot each role then python scripts/db_migration_restore.py parity-live"
+    },
+    {
+      "evidence": "storage.buckets",
+      "expected": "both buckets exist with public=false",
+      "failure": "rollback with storage-rollback.sql only when empty",
+      "id": "storage_bootstrap",
+      "input": "storage.sql",
+      "kind": "STORAGE_BOOTSTRAP",
+      "operation": "execute privately as provider operator, then verify/storage.sql"
+    }
+  ]
+}

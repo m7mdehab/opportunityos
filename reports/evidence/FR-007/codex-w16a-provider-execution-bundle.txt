@@ -1,0 +1,30 @@
+FR-007 W16A Codex provider-execution bundle
+
+Base integration SHA: 8557397d200651ba6d5988ed2699180d4404fbfb
+Safe target: Supabase opportunityos-staging / lrrcpwaapwynzdsxzwhy / eu-central-1
+Hosted mutation owner: Overseer
+
+Repository package:
+- canonical Alembic SQL bundle 0001 through 0009: GENERATED and HASH-VERIFIED
+- provider SQL contains no credentials, private payloads, connection strings or psql meta-commands
+- hosted RLS catalog/probe SQL: READY
+- source export/import/parity handoff: READY through existing db_migration_restore and migration_baseline tooling
+- private Storage bucket bootstrap/rollback contract: READY
+- machine-readable execution manifest and NOT_EXECUTED evidence template: READY
+
+Hosted acceptance remains intentionally unexecuted by Codex:
+- A-9 hosted migration/parity: NOT_EXECUTED
+- A-10 hosted RLS: NOT_EXECUTED
+- A-11 hosted private state: NOT_EXECUTED
+
+The committed PostgreSQL CI test executes the generated migration SQL on a
+disposable database when OPOS_LIVE_PROOF_TEST=1. Local execution skipped that
+integration test because no PostgreSQL DSN was configured.
+
+
+Overseer residual hardening:
+- live Supabase preflight found that RLS alone does not block TRUNCATE and that
+  public.alembic_version was browser-visible under Supabase default grants.
+- provider-security.sql now enables deny RLS on alembic_version and revokes
+  TRUNCATE/REFERENCES/TRIGGER from anon/authenticated on public tables.
+- disposable PostgreSQL coverage now checks this provider-specific boundary.
