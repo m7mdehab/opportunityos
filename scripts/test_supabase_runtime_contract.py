@@ -19,7 +19,9 @@ class SupabaseRuntimeContractTests(unittest.TestCase):
         self.assertNotIn("service_role", first)
         self.assertNotIn("password", first.lower())
         self.assertNotIn("raw_payload_json", first)
-        self.assertNotIn("description", first)
+        self.assertIn("selected_cv_sha256", first)
+        self.assertIn("s.read_allowed = true", first)
+        self.assertIn("LIMIT 16", first)
     def test_browser_surface_and_queue_boundary_are_explicit(self):
         sql = render_runtime_sql()
         self.assertIn("WITH (security_invoker = true)", sql)
@@ -32,7 +34,7 @@ class SupabaseRuntimeContractTests(unittest.TestCase):
     def test_custom_identifiers_are_validated(self):
         with self.assertRaises(ValueError): render_runtime_sql(SupabaseRuntimeContract(feed_view="founder_feed;drop"))
     def test_capability_check_reads_only_and_passes(self):
-        connection = _Connection([("feed_projection",), ("worker_jobs",)])
+        connection = _Connection([("feed_projection",), ("worker_jobs",), ("source_schedules",)])
         assert_runtime_schema_capabilities(connection)
         self.assertEqual(len(connection.statements), 1)
         self.assertIn("information_schema.tables", connection.statements[0])
