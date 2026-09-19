@@ -74,7 +74,7 @@ def validate_cloudflare_package(root: Path = ROOT) -> list[str]:
             errors.append("false-green legacy error detected: cloud edge must not require external API origin")
         if "NEXT_PUBLIC_SUPABASE_URL" not in proxy_text and "SUPABASE_URL" not in proxy_text:
             errors.append("proxy route handler must support Supabase-backed request path")
-        if "handleSupabaseNativeRequest" not in proxy_text:
+        if "nativeRequest" not in proxy_text:
             errors.append("proxy route handler must provide functional Supabase-native request routing")
         if "localhost" not in proxy_text:
             errors.append("local-development API fallback contract is missing")
