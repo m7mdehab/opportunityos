@@ -224,3 +224,8 @@ Before moving to another chat:
 4. regenerate/reconcile `docs/STATE.md`;
 5. update this file with only the compact current delta/next action;
 6. do not duplicate history already preserved in reports/ADRs/briefs.
+
+
+### Founder-locked CV portfolio
+
+Employment applications do not synthesize CVs. ADR-0024 locks six final 2026 PDFs (AI Engineer, Business Analyst, Data Analyst, Data Engineer, Data Scientist, Master). Matching selects one immutable PDF, verifies its SHA-256, and attaches those exact bytes. Cover letters/application answers remain Truth-locked generated artifacts. The PDF bodies live in private Supabase Storage; the repository stores only the selection catalog and hashes.
