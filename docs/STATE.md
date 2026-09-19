@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `b5dca8d` — FR-007: validate secure same-origin Supabase edge contract
+- **State generated at commit:** `0b0245e` — FR-007: fix 0010 downgrade SQL delimiter
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
