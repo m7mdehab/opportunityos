@@ -75,9 +75,8 @@ class PrivateTruthPackCloudTests(unittest.TestCase):
             headers = {"Content-Type": "text/yaml"}
             def __enter__(self): return self
             def __exit__(self, *args): return False
-            def read(self): return self_payload
+            def read(self): return b"fixture: true"
 
-        self_payload = b"fixture: true"
         with patch("truth.pack.urlopen", return_value=Response()) as opened:
             _fetch_remote_bytes(
                 "https://project.supabase.co/storage/v1/object/authenticated/founder-truth-pack/founder.yaml",
