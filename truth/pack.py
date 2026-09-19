@@ -422,12 +422,18 @@ def load_truth_pack(
                     f"public Supabase Storage object endpoint is forbidden in cloud mode ({redacted_target})",
                     ("public object endpoint forbidden",),
                 )
-            if is_supabase and (not auth_token or not api_key):
+            modern_supabase_secret = bool(api_key and api_key.startswith("sb_secret_"))
+            if is_supabase and not api_key:
                 raise TruthPackInvalid(
-                    "Supabase Storage Truth Pack access requires both auth token and API key",
-                    ("missing Supabase private storage credentials",),
+                    "Supabase Storage Truth Pack access requires OPPORTUNITYOS_TRUTH_PACK_API_KEY",
+                    ("missing Supabase private storage API key",),
                 )
-            if not auth_token:
+            if is_supabase and not modern_supabase_secret and not auth_token:
+                raise TruthPackInvalid(
+                    "legacy Supabase Storage access requires auth token plus API key",
+                    ("missing Supabase legacy private storage auth token",),
+                )
+            if not is_supabase and not auth_token:
                 raise TruthPackInvalid(
                     "private HTTPS Truth Pack access requires OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN",
                     ("missing private Truth Pack auth token",),
