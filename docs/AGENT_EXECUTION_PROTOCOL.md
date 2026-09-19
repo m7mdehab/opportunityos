@@ -108,3 +108,53 @@ Preferred terminal vocabulary:
 - `HARD_BLOCKED` — a true Founder/external authority boundary prevents further progress.
 
 The Master/Overseer must reject a return that uses `PARTIAL` without naming an actual hard boundary and proving that all approved fallback execution surfaces were exhausted.
+
+
+## 12. Pre-dispatch readiness gate — resolve known blockers before prompting a Master
+
+A Master Agent is dispatched only after the Owner/Overseer has made the work order executable on the surfaces actually available to that agent.
+
+A known blocker discovered before dispatch is an orchestration defect if it is simply passed downstream for the Master to rediscover.
+
+Before issuing any Master prompt, the Owner/Overseer must complete a **Readiness Certificate** for that work order and resolve every known blocker according to ownership:
+
+- **Overseer-resolvable:** execute it before dispatch.
+- **Founder-only:** ask the Founder before dispatch, wait for completion, then re-check.
+- **Executor-owned:** leave it in the work order only when the executor has the capability and authority to resolve it itself.
+- **Out of scope / intentionally deferred:** remove it from the executor's end goal and state the boundary explicitly.
+
+The pre-dispatch checklist is mandatory:
+
+1. **Dependency closure** — every prerequisite branch/PR/migration/resource required by the task is actually landed or otherwise available, not merely planned.
+2. **Fresh start point** — the target branch SHA is current and explicitly named; stale branches are reset or discarded before dispatch.
+3. **External resource existence** — required projects, environments, buckets, databases, deployment targets, domains and provider-side objects already exist when the executor is expected to use them.
+4. **Provider access** — the exact execution surface that will perform provider mutations is already authenticated. Do not assign provider work to an agent that cannot authenticate to that provider.
+5. **Credential/secret path** — required secrets exist in the correct protected surface and there is a known injection path. Do not place secret values in prompts, Git, evidence, or chat.
+6. **Cost/quota/terms** — any cost confirmation, quota release, subscription requirement, terms acceptance or protected-environment approval that is already knowable is settled before dispatch.
+7. **Tool/runtime capability** — required CLI/runtime/browser/container/CI surfaces are either present for the executor or explicitly routed to another owner. Missing local tooling is acceptable only when a verified fallback is already available.
+8. **Git/CI path** — branch and PR strategy are prepared; if CI is required and the executor cannot create PRs, create the PR before dispatch.
+9. **Live endpoint readiness** — when a task requires testing a deployed service, the deployment dependency and safe endpoint are already available unless deployment itself is the executor's owned end goal.
+10. **Capability-aligned end goal** — the task's terminal state must be achievable by the assigned Master. If not, split provider execution from repository preparation before dispatch.
+11. **Known-blocker ledger** — every blocker discovered during preflight has an owner and resolution status. Dispatch is prohibited while any blocker marked PRE_DISPATCH remains unresolved.
+12. **Return-state sanity** — if the prompt's most likely terminal result is already predictably `HARD_BLOCKED` from facts known before dispatch, do not dispatch it.
+
+The Readiness Certificate should be persisted with the work order when the task is consequential or provider-dependent, for example:
+
+`reports/evidence/<brief>/orders/<ID>-READINESS.md`
+
+Minimum certificate fields:
+
+- work-order ID;
+- authoritative base SHA;
+- dependency status;
+- external resources and safe identifiers;
+- execution surfaces per provider;
+- secret-injection path by secret name only;
+- cost/quota/terms status;
+- PR/CI path;
+- unresolved blocker ledger;
+- `READY_TO_DISPATCH: YES|NO`.
+
+Only `READY_TO_DISPATCH: YES` authorizes the Master prompt.
+
+The goal is simple: **Masters should spend their context executing the end goal, not discovering environment facts the Overseer could have resolved beforehand.**
