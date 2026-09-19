@@ -1,4 +1,4 @@
-﻿name: FR-007 Cloudflare Workers Staging Frontend
+name: FR-007 Cloudflare Workers Staging Frontend
 
 on:
   workflow_dispatch:
@@ -13,6 +13,25 @@ on:
         required: false
         default: false
         type: boolean
+      ref:
+        description: "Optional git ref to deploy or smoke test (default: workflow branch)"
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      mode:
+        description: "VALIDATE, DEPLOY_STAGING, or SMOKE_STAGING"
+        required: true
+        type: string
+      acknowledge_staging_deployment:
+        description: "Required only for DEPLOY_STAGING"
+        required: false
+        default: false
+        type: boolean
+      ref:
+        description: "Optional git ref to deploy or smoke test"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -27,6 +46,8 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.ref }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -49,6 +70,7 @@ jobs:
           SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           STAGING_WEB_URL: ${{ vars.OPOS_STAGING_WEB_URL }}
+          FOUNDER_EMAIL: ${{ secrets.E2E_FOUNDER_EMAIL }}
           FOUNDER_PASSWORD: ${{ secrets.E2E_FOUNDER_PASSWORD }}
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -65,11 +87,20 @@ jobs:
             fi
             [ -n "$CF_TOKEN" ] || { echo "CLOUDFLARE_API_TOKEN is required." >&2; exit 1; }
             [ -n "$CF_ACCOUNT" ] || { echo "CLOUDFLARE_ACCOUNT_ID is required." >&2; exit 1; }
+            echo "Verifying Cloudflare API token..."
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              -H "Authorization: Bearer $CF_TOKEN" \
+              "https://api.cloudflare.com/client/v4/user/tokens/verify")
+            if [ "$HTTP_STATUS" != "200" ]; then
+              echo "Cloudflare token verification failed with status $HTTP_STATUS." >&2
+              exit 1
+            fi
           elif [ "$MODE" = "SMOKE_STAGING" ]; then
             case "$STAGING_WEB_URL" in
               https://*) ;;
               *) echo "OPOS_STAGING_WEB_URL must be a non-empty HTTPS URL." >&2; exit 1 ;;
             esac
+            [ -n "$FOUNDER_EMAIL" ] || { echo "Founder staging email is required." >&2; exit 1; }
             [ -n "$FOUNDER_PASSWORD" ] || { echo "Founder staging password is required." >&2; exit 1; }
           fi
 
@@ -100,14 +131,27 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           OPPORTUNITYOS_API_ORIGIN: ${{ vars.OPPORTUNITYOS_API_ORIGIN }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         run: |
           set -euo pipefail
-          npx wrangler deploy --var OPPORTUNITYOS_API_ORIGIN:"$OPPORTUNITYOS_API_ORIGIN"
+          VAR_ARGS=()
+          if [ -n "$OPPORTUNITYOS_API_ORIGIN" ]; then
+            VAR_ARGS+=(--var "OPPORTUNITYOS_API_ORIGIN:$OPPORTUNITYOS_API_ORIGIN")
+          fi
+          if [ -n "$NEXT_PUBLIC_SUPABASE_URL" ]; then
+            VAR_ARGS+=(--var "NEXT_PUBLIC_SUPABASE_URL:$NEXT_PUBLIC_SUPABASE_URL")
+          fi
+          if [ -n "$NEXT_PUBLIC_SUPABASE_ANON_KEY" ]; then
+            VAR_ARGS+=(--var "NEXT_PUBLIC_SUPABASE_ANON_KEY:$NEXT_PUBLIC_SUPABASE_ANON_KEY")
+          fi
+          npx wrangler deploy "${VAR_ARGS[@]}"
 
       - name: Run Cloud Playwright Smoke (SMOKE_STAGING)
         if: inputs.mode == 'SMOKE_STAGING'
         env:
           OPOS_STAGING_WEB_URL: ${{ vars.OPOS_STAGING_WEB_URL }}
+          E2E_FOUNDER_EMAIL: ${{ secrets.E2E_FOUNDER_EMAIL }}
           E2E_FOUNDER_PASSWORD: ${{ secrets.E2E_FOUNDER_PASSWORD }}
         run: |
           npx playwright install --with-deps chromium
