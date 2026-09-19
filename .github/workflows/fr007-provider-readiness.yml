@@ -1,0 +1,139 @@
+name: FR-007 Provider Readiness Probe
+
+on:
+  push:
+    branches: [setup/fr007-provider-readiness]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  provider-readiness:
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL }}
+      OPPORTUNITYOS_FOUNDER_PASSWORD_HASH: ${{ secrets.OPPORTUNITYOS_FOUNDER_PASSWORD_HASH }}
+      OPPORTUNITYOS_SESSION_SECRET: ${{ secrets.OPPORTUNITYOS_SESSION_SECRET }}
+      OPPORTUNITYOS_TRUTH_PACK_URI: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_URI }}
+      OPPORTUNITYOS_TRUTH_PACK_HASH: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_HASH }}
+      OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN }}
+      OPPORTUNITYOS_TRUTH_PACK_API_KEY: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_API_KEY }}
+      OPPORTUNITYOS_FOUNDER_PASSWORD: ${{ secrets.OPPORTUNITYOS_FOUNDER_PASSWORD }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_MANAGED_ENVIRONMENT_ID: ${{ vars.AZURE_MANAGED_ENVIRONMENT_ID }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+      OPOS_AZURE_NAME_PREFIX: ${{ vars.OPOS_AZURE_NAME_PREFIX }}
+      OPOS_AZURE_IMAGE: ${{ vars.OPOS_AZURE_IMAGE }}
+      OPPORTUNITYOS_PUBLIC_ORIGIN: ${{ vars.OPPORTUNITYOS_PUBLIC_ORIGIN }}
+      OPPORTUNITYOS_API_ORIGIN: ${{ vars.OPPORTUNITYOS_API_ORIGIN }}
+      OPOS_STAGING_WEB_URL: ${{ vars.OPOS_STAGING_WEB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Probe required secret and variable presence
+        id: presence
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          {
+            echo "## FR-007 provider readiness"
+            echo
+            echo "### Protected values"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          check_secret() {
+            local name="$1"
+            if [ -n "${!name:-}" ]; then
+              echo "- $name: PRESENT" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "- $name: MISSING" >> "$GITHUB_STEP_SUMMARY"
+              missing=1
+            fi
+          }
+
+          check_var() {
+            local name="$1"
+            if [ -n "${!name:-}" ]; then
+              echo "- $name: PRESENT" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "- $name: MISSING" >> "$GITHUB_STEP_SUMMARY"
+              missing=1
+            fi
+          }
+
+          for name in             AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID             CLOUD_DATABASE_URL OPPORTUNITYOS_FOUNDER_PASSWORD_HASH             OPPORTUNITYOS_SESSION_SECRET OPPORTUNITYOS_TRUTH_PACK_URI             OPPORTUNITYOS_TRUTH_PACK_HASH OPPORTUNITYOS_FOUNDER_PASSWORD             CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
+            check_secret "$name"
+          done
+
+          if [ -z "${OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN:-}" ] && [ -z "${OPPORTUNITYOS_TRUTH_PACK_API_KEY:-}" ]; then
+            echo "- OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN or OPPORTUNITYOS_TRUTH_PACK_API_KEY: MISSING" >> "$GITHUB_STEP_SUMMARY"
+            missing=1
+          else
+            echo "- OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN or OPPORTUNITYOS_TRUTH_PACK_API_KEY: PRESENT" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          echo >> "$GITHUB_STEP_SUMMARY"
+          echo "### Configuration variables" >> "$GITHUB_STEP_SUMMARY"
+          for name in             AZURE_RESOURCE_GROUP AZURE_MANAGED_ENVIRONMENT_ID AZURE_LOCATION             OPOS_AZURE_NAME_PREFIX OPOS_AZURE_IMAGE OPPORTUNITYOS_PUBLIC_ORIGIN             OPPORTUNITYOS_API_ORIGIN OPOS_STAGING_WEB_URL; do
+            check_var "$name"
+          done
+
+          echo "missing=$missing" >> "$GITHUB_OUTPUT"
+
+      - name: Probe runner toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo
+            echo "### Runner tools"
+            command -v az >/dev/null && echo "- Azure CLI: PRESENT" || echo "- Azure CLI: MISSING"
+            command -v node >/dev/null && echo "- Node: PRESENT" || echo "- Node: MISSING"
+            command -v npm >/dev/null && echo "- npm: PRESENT" || echo "- npm: MISSING"
+            command -v python >/dev/null && echo "- Python: PRESENT" || echo "- Python: MISSING"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Validate Azure OIDC authentication
+        if: env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != ''
+        uses: azure/login@v2
+        with:
+          auth-type: SERVICE_PRINCIPAL
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Validate Azure target visibility
+        if: env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          az account show --query '{subscription:id,tenant:tenantId}' -o none
+          if [ -n "${AZURE_RESOURCE_GROUP:-}" ]; then
+            az group show --name "$AZURE_RESOURCE_GROUP" --output none
+          fi
+          echo "- Azure OIDC/account target: AUTHENTICATED" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Validate Cloudflare token
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl --silent --show-error --fail             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             -H "Content-Type: application/json"             https://api.cloudflare.com/client/v4/user/tokens/verify)"
+          python -c 'import json,sys; d=json.load(sys.stdin); raise SystemExit(0 if d.get("success") and d.get("result",{}).get("status")=="active" else 1)' <<<"$response"
+          echo "- Cloudflare token: AUTHENTICATED" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if pre-dispatch inputs are incomplete
+        if: steps.presence.outputs.missing == '1'
+        run: |
+          echo "FR-007 provider readiness is incomplete; see the job summary for missing names." >&2
+          exit 2
