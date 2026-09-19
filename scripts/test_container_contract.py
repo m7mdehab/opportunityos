@@ -216,6 +216,50 @@ class EnvironmentAndConfigBridgeTest(unittest.TestCase):
         resolved = resolve_environment("api", env)
         self.assertEqual(resolved["OPPORTUNITYOS_DB_URL"], env["CLOUD_DATABASE_URL"])
 
+    def test_cloud_api_accepts_hash_only_and_rejects_plaintext(self) -> None:
+        env = {
+            "OPPORTUNITYOS_ENVIRONMENT": "cloud",
+            "CLOUD_DATABASE_URL": "postgresql+psycopg2://user:pass@db.cloud.invalid:5432/opportunityos",
+            "OPPORTUNITYOS_FOUNDER_PASSWORD_HASH": "scrypt$v1$16384$8$1$salt$digest",
+            "OPPORTUNITYOS_SESSION_SECRET": "valid-session-secret-32-chars",
+            "OPPORTUNITYOS_PUBLIC_ORIGIN": "https://app.cloud.invalid",
+            "OPPORTUNITYOS_TRUTH_PACK_URI": "https://project.supabase.co/storage/v1/object/authenticated/founder-truth-pack/founder.json",
+            "OPPORTUNITYOS_TRUTH_PACK_HASH": "a" * 64,
+            "OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN": "valid-bearer-token",
+            "OPPORTUNITYOS_TRUTH_PACK_API_KEY": "valid-api-key",
+        }
+        resolved = resolve_environment("api", env)
+        self.assertEqual(
+            resolved["OPPORTUNITYOS_FOUNDER_PASSWORD_HASH"],
+            env["OPPORTUNITYOS_FOUNDER_PASSWORD_HASH"],
+        )
+        self.assertNotIn("OPPORTUNITYOS_FOUNDER_PASSWORD", resolved)
+
+        with self.assertRaises(ConfigurationError):
+            resolve_environment(
+                "api",
+                dict(env, OPPORTUNITYOS_FOUNDER_PASSWORD="plaintext-must-not-enter-cloud"),
+            )
+
+    def test_cloud_roles_fail_closed_on_unwired_truth_pack(self) -> None:
+        api = {
+            "OPPORTUNITYOS_ENVIRONMENT": "cloud",
+            "CLOUD_DATABASE_URL": "postgresql+psycopg2://user:pass@db.cloud.invalid:5432/opportunityos",
+            "OPPORTUNITYOS_FOUNDER_PASSWORD_HASH": "scrypt$v1$16384$8$1$salt$digest",
+            "OPPORTUNITYOS_SESSION_SECRET": "valid-session-secret-32-chars",
+            "OPPORTUNITYOS_PUBLIC_ORIGIN": "https://app.cloud.invalid",
+        }
+        with self.assertRaisesRegex(ConfigurationError, "TRUTH_PACK_URI"):
+            resolve_environment("api", api)
+        with self.assertRaisesRegex(ConfigurationError, "TRUTH_PACK_URI"):
+            resolve_environment(
+                "worker",
+                {
+                    "OPPORTUNITYOS_ENVIRONMENT": "cloud",
+                    "CLOUD_DATABASE_URL": api["CLOUD_DATABASE_URL"],
+                },
+            )
+
 
 class HealthAndReadinessContractTest(unittest.TestCase):
     """Test that readiness/liveness probes do not scan corpus or rebuild feed."""
