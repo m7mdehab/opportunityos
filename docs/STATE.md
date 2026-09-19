@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `0f8e92d` — FR-007: launch bounded hosted bootstrap deploy and smoke
+- **State generated at commit:** `55bc6a2` — FR-007: relaunch hosted path after package repair
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
