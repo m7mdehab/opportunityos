@@ -47,7 +47,16 @@
         "id": "opportunity-artifacts",
         "public": false
       }
-    ]
+    ],
+    "cv_portfolio_bucket": {
+      "id": "founder-cv-portfolio",
+      "public": false,
+      "file_size_limit_bytes": 5242880,
+      "allowed_mime_types": [
+        "application/pdf"
+      ],
+      "status": "BUCKET_READY_OBJECTS_PENDING_UPLOAD"
+    }
   },
   "advisors": {
     "security_lints": 0,
