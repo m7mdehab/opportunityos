@@ -3,6 +3,8 @@ name: FR-007 Provider Readiness Probe
 on:
   push:
     branches: [setup/fr007-provider-readiness]
+  pull_request:
+    branches: [brief/fr-007-cloud-replatform]
   workflow_dispatch:
 
 permissions:
