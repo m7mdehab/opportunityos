@@ -321,6 +321,22 @@ def evaluate_and_store(
         )
         if projection is None:
             raise RuntimeError("evaluation persisted but feed projection was not published")
+        # Persist the exact fixed-CV identity selected by the authoritative
+        # Python selector. The private object body is fetched and hash-checked
+        # by the delivery boundary; only safe metadata is stored here.
+        if getattr(opportunity, "track", None) == "employment":
+            from matching.cv_selector import select_cv_for_opportunity
+            from storage.models import FounderCVSelectionRecord
+            selected = select_cv_for_opportunity(opportunity).selected
+            cv_row = repository.session.get(FounderCVSelectionRecord, opportunity.id)
+            if cv_row is None:
+                cv_row = FounderCVSelectionRecord(opportunity_id=opportunity.id)
+                repository.session.add(cv_row)
+            cv_row.variant = selected.variant
+            cv_row.object_path = selected.object_path
+            cv_row.sha256 = selected.sha256
+            cv_row.selected_at = _to_utc_naive(resolved_evaluated_at)
+            cv_row.truth_pack_hash = truth_pack_hash
         repository.session.commit()
     except Exception:
         repository.session.rollback()

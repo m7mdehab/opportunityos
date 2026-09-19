@@ -479,6 +479,18 @@ class ArtifactCacheRecord(Base):
     created_at = Column(DateTime, nullable=True)
 
 
+class FounderCVSelectionRecord(Base):
+    """Durable fixed-CV identity selected by the authoritative Python selector."""
+
+    __tablename__ = "founder_cv_selections"
+
+    opportunity_id = Column(String(64), ForeignKey("opportunities.id", ondelete="CASCADE"), primary_key=True)
+    variant = Column(String(64), nullable=False)
+    object_path = Column(String(256), nullable=False)
+    sha256 = Column(String(64), nullable=False)
+    selected_at = Column(DateTime, nullable=False)
+    truth_pack_hash = Column(String(64), nullable=True)
+
 class SourceScheduleRecord(Base):
     """FR-007 W11: Persisted source scheduling, cadence, next-due, and cooldown state.
 

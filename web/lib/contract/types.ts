@@ -348,7 +348,7 @@ export interface PollNowEnqueued {
 
 export interface PollNowSkipped {
   source_id: string
-  reason: "read_disabled_by_policy"
+  reason: string
 }
 
 export interface PollNowResponse {

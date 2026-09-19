@@ -18,6 +18,9 @@ down_revision: Union[str, None] = "0009_hosted_founder_auth"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+# This revision does not change the canonical Founder filter seed defaults.
+_D3_FILTER_SEED_OVERRIDES: dict[str, dict[str, object]] = {}
+
 
 # This revision is intentionally SQL-first for PostgreSQL: Supabase policies,
 # security-invoker views and RPCs have no portable SQLAlchemy equivalent.
