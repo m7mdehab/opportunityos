@@ -202,20 +202,23 @@ def plan_runtime_environment(role: str, source: Mapping[str, str]) -> BridgePlan
             blockers.append("OPPORTUNITYOS_TRUTH_PACK_URI")
         elif not truth_hash:
             blockers.append("OPPORTUNITYOS_TRUTH_PACK_HASH")
-        if _truth_is_cloud(source) and not truth_auth:
-            blockers.append("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN")
-        if _truth_is_cloud(source) and truth_is_supabase and not truth_api_key:
-            blockers.append("OPPORTUNITYOS_TRUTH_PACK_API_KEY")
+        if _truth_is_cloud(source):
+            modern_supabase_secret = bool(truth_api_key and truth_api_key.startswith("sb_secret_"))
+            if truth_is_supabase and not truth_api_key:
+                blockers.append("OPPORTUNITYOS_TRUTH_PACK_API_KEY")
+            if (not truth_is_supabase or not modern_supabase_secret) and not truth_auth:
+                blockers.append("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN")
 
     if role == "api" and _truth_is_cloud(source):
         if not truth_path or not truth_path.startswith("https://"):
             blockers.append("OPPORTUNITYOS_TRUTH_PACK_URI")
         if not truth_hash:
             blockers.append("OPPORTUNITYOS_TRUTH_PACK_HASH")
-        if not truth_auth:
-            blockers.append("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN")
+        modern_supabase_secret = bool(truth_api_key and truth_api_key.startswith("sb_secret_"))
         if truth_is_supabase and not truth_api_key:
             blockers.append("OPPORTUNITYOS_TRUTH_PACK_API_KEY")
+        if (not truth_is_supabase or not modern_supabase_secret) and not truth_auth:
+            blockers.append("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN")
 
     elif role in ("scheduler", "migrate", "readiness", "liveness"):
         # Autonomous against PostgreSQL! Zero external broker or queue blockers.
