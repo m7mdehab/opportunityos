@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `0d3abc5` — FR-007: restore 0010 RPC contract on 0011 downgrade
+- **State generated at commit:** `dcbb5ac` — FR-007: align Cloudflare deploy with account token and public Supabase config
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
