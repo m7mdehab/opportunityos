@@ -2,13 +2,6 @@ name: FR-007 Zero-Dollar Provider Readiness
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - architecture/fr007-zero-dollar-runtime
-    paths:
-      - ".github/workflows/fr007-zero-dollar-readiness.yml"
-      - "reports/evidence/FR-007/cloud-cost-quota.json"
-      - "scripts/validate_cloud_cost_quota.py"
 
 permissions:
   contents: read
