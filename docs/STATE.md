@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `5202497` — FR-007: expose canonical public Truth Pack hash at cloud edge
+- **State generated at commit:** `0f8e92d` — FR-007: launch bounded hosted bootstrap deploy and smoke
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
