@@ -1,0 +1,66 @@
+{
+  "format": 1,
+  "brief": "FR-007",
+  "environment": "staging",
+  "provider": "Supabase",
+  "project_ref": "lrrcpwaapwynzdsxzwhy",
+  "region": "eu-central-1",
+  "executed_at_utc": "2026-09-19T10:40:25Z",
+  "repository_base": "95f6ef793f2e3e3c80aa249ccdac6c99b4b360ab",
+  "migration": {
+    "status": "PASS",
+    "alembic_revision": "0009_hosted_founder_auth",
+    "public_base_tables": 26,
+    "supabase_project_migrations_applied": [
+      "01_0001_baseline_schema",
+      "02_0002_match_evaluations",
+      "03_0003_provenance_identity",
+      "04_0004_founder_control",
+      "05_0005_widen_location_region",
+      "06_0006_feed_projection",
+      "07_0007_source_schedules",
+      "08_0008_artifact_storage",
+      "09_0009_hosted_founder_auth",
+      "fr007_provider_security_hardening",
+      "fr007_private_storage_bootstrap"
+    ]
+  },
+  "rls": {
+    "status": "PASS_FOR_HOSTED_RLS_SUBPROOF",
+    "rls_enabled_public_tables": 26,
+    "browser_deny_policies": 52,
+    "dangerous_browser_grants_after_hardening": 0,
+    "founder_filter_settings_probe": {
+      "owner_visible_rows": 10,
+      "anon_visible_rows": 0,
+      "authenticated_visible_rows": 0
+    }
+  },
+  "storage": {
+    "status": "BOOTSTRAP_PASS_OBJECT_RETRIEVAL_NOT_EXECUTED",
+    "buckets": [
+      {
+        "id": "founder-truth-pack",
+        "public": false
+      },
+      {
+        "id": "opportunity-artifacts",
+        "public": false
+      }
+    ]
+  },
+  "advisors": {
+    "security_lints": 0,
+    "performance": {
+      "unused_index_findings": 63,
+      "duplicate_index_findings": 1,
+      "duplicate_index_note": "founder_sessions has a redundant token_digest index; non-blocking setup finding for repository cleanup"
+    }
+  },
+  "acceptance": {
+    "A-9": "OPEN_SOURCE_DATA_PARITY_NOT_EXECUTED",
+    "A-10": "HOSTED_RLS_SUBPROOF_PASS_FULL_CRITERION_OPEN",
+    "A-11": "OPEN_PRIVATE_OBJECT_UPLOAD_AND_RESTART_RETRIEVAL_NOT_EXECUTED"
+  },
+  "secret_policy": "No credential values, DSNs, private Founder data, object bodies, or private Truth Pack contents are recorded."
+}
