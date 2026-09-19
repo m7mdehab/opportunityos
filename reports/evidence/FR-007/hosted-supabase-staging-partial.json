@@ -1,0 +1,96 @@
+{
+  "format": 1,
+  "brief": "FR-007",
+  "evidence_type": "hosted_supabase_staging_partial_execution",
+  "project": {
+    "name": "opportunityos-staging",
+    "ref": "lrrcpwaapwynzdsxzwhy",
+    "region": "eu-central-1",
+    "api_origin": "https://lrrcpwaapwynzdsxzwhy.supabase.co",
+    "postgres_engine": "17",
+    "status": "ACTIVE_HEALTHY"
+  },
+  "schema": {
+    "status": "HOSTED_EXECUTED",
+    "alembic_revision": "0009_hosted_founder_auth",
+    "provider_migrations": [
+      "01_0001_baseline_schema",
+      "02_0002_match_evaluations",
+      "03_0003_provenance_identity",
+      "04_0004_founder_control",
+      "05_0005_widen_location_region",
+      "06_0006_feed_projection",
+      "07_0007_source_schedules",
+      "08_0008_artifact_storage",
+      "09_0009_hosted_founder_auth"
+    ],
+    "public_application_tables_present": true
+  },
+  "rls": {
+    "status": "HOSTED_EXECUTED",
+    "all_public_application_tables_rls_enabled": true,
+    "deny_policies_per_application_table": 2,
+    "roles_present": [
+      "anon",
+      "authenticated",
+      "service_role",
+      "postgres"
+    ],
+    "read_probe": {
+      "relation": "founder_filter_settings",
+      "owner_visible_rows": 10,
+      "anon_visible_rows": 0,
+      "authenticated_visible_rows": 0
+    },
+    "mutation_probe": {
+      "relation": "founder_sessions",
+      "anon_insert": "DENIED",
+      "authenticated_insert": "DENIED",
+      "owner_insert_delete": "PASS",
+      "owner_probe_residue_rows": 0
+    }
+  },
+  "storage": {
+    "status": "BOOTSTRAPPED_HOSTED",
+    "buckets": [
+      {
+        "id": "founder-truth-pack",
+        "public": false
+      },
+      {
+        "id": "opportunity-artifacts",
+        "public": false
+      }
+    ],
+    "storage_object_custom_policies": 0,
+    "object_body_upload": "NOT_EXECUTED",
+    "private_retrieval_after_restart": "NOT_EXECUTED"
+  },
+  "advisors": {
+    "security_lints": 0,
+    "performance_notes": [
+      "Unused-index findings are expected on newly provisioned/mostly empty staging data.",
+      "Supabase reported one duplicate-index warning on founder_sessions.token_digest; not a staging-readiness blocker."
+    ]
+  },
+  "acceptance": {
+    "A-9": {
+      "status": "PARTIAL",
+      "reason": "Hosted schema is current, but authoritative source data has not been imported and source/target parity has not been executed."
+    },
+    "A-10": {
+      "status": "PARTIAL",
+      "reason": "Real hosted RLS deny behavior is verified for anon/authenticated roles and owner access is verified; full criterion remains open until deployed runtime public-response/log secret checks are also executed."
+    },
+    "A-11": {
+      "status": "PARTIAL",
+      "reason": "Private hosted buckets exist, but Truth Pack and representative generated artifact bodies have not been uploaded/retrieved after runtime restart."
+    }
+  },
+  "secret_policy": "No credentials, DSNs, service-role keys, private Founder payloads, session secrets or object bodies are recorded in this evidence.",
+  "unresolved_inputs": [
+    "Authoritative source PostgreSQL data/export for A-9 migration parity.",
+    "Actual private Founder Truth Pack bytes for hosted private-object validation.",
+    "Provider-side runtime credentials/configuration for Azure/Cloudflare deployment."
+  ]
+}
