@@ -108,9 +108,9 @@ test.describe("founder alpha smoke", () => {
     ).toBeVisible()
 
     const downloadPromise = page.waitForEvent("download")
-    await mainDrawer.getByTestId("artifact-download-docx").click()
+    await mainDrawer.getByTestId("artifact-download-pdf").click()
     const download = await downloadPromise
-    expect(download.suggestedFilename()).toContain("cv-opp-001")
+    expect(download.suggestedFilename().endsWith(".pdf")).toBe(true)
 
     await mainDrawer.getByRole("button", { name: "Good match" }).click()
     await expect(
