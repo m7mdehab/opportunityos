@@ -1,0 +1,43 @@
+{
+  "acceptance": {
+    "A-10": "NOT_EXECUTED",
+    "A-11": "NOT_EXECUTED",
+    "A-9": "NOT_EXECUTED"
+  },
+  "artifacts": {
+    "retrieval_after_restart": null,
+    "status": "NOT_EXECUTED"
+  },
+  "executed_at_utc": null,
+  "format": 1,
+  "migration": {
+    "after_revision": null,
+    "artifact_hashes": {},
+    "before_revision": null
+  },
+  "parity": {
+    "differences": null,
+    "status": "NOT_EXECUTED",
+    "unsupported": null
+  },
+  "project_ref": "lrrcpwaapwynzdsxzwhy",
+  "region": "eu-central-1",
+  "repository_sha": null,
+  "rls": {
+    "anon": null,
+    "authenticated": null,
+    "owner": null,
+    "status": "NOT_EXECUTED"
+  },
+  "secret_policy": "No credentials, DSNs, private payloads, or object bodies may be recorded.",
+  "status": "NOT_EXECUTED",
+  "storage_bootstrap": {
+    "artifact_bucket": null,
+    "status": "NOT_EXECUTED",
+    "truth_pack_bucket": null
+  },
+  "truth_pack": {
+    "retrieval_after_restart": null,
+    "status": "NOT_EXECUTED"
+  }
+}
