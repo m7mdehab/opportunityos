@@ -229,8 +229,17 @@ def check_authentication(env: Mapping[str, str], role: str = "all") -> Readiness
             message=f"Server-side founder authentication not required for role '{role}'",
         )
 
+    cloud_mode = env.get("OPPORTUNITYOS_ENVIRONMENT", "").lower() in {"cloud", "prod", "production"} or env.get("MODE", "").lower() == "cloud"
+    founder_hash = env.get("OPPORTUNITYOS_FOUNDER_PASSWORD_HASH")
     founder_pw = env.get("OPPORTUNITYOS_FOUNDER_PASSWORD")
     session_sec = env.get("OPPORTUNITYOS_SESSION_SECRET")
+    if cloud_mode:
+        origin = env.get("OPPORTUNITYOS_PUBLIC_ORIGIN", "")
+        from urllib.parse import urlsplit
+        parsed = urlsplit(origin)
+        if founder_pw or not founder_hash or not session_sec or parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password or parsed.path not in ("", "/") or parsed.query or parsed.fragment:
+            return ReadinessCheckResult("Authentication (Founder)", "BLOCKED", "Hosted durable Founder authentication configuration is incomplete", ("OPPORTUNITYOS_FOUNDER_PASSWORD_HASH", "OPPORTUNITYOS_SESSION_SECRET", "OPPORTUNITYOS_PUBLIC_ORIGIN"))
+        return ReadinessCheckResult("Authentication (Founder)", "PASS", "Hosted durable Founder authentication configuration verified")
 
     from scripts.validate_cloud_config import invalid
     has_founder = bool(founder_pw and not invalid("OPPORTUNITYOS_FOUNDER_PASSWORD", founder_pw)

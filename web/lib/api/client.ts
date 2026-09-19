@@ -41,11 +41,15 @@ import type {
 } from "@/lib/contract/types"
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = (init?.method ?? "GET").toUpperCase()
   const res = await fetch(path, {
     ...init,
     credentials: "same-origin",
     headers: {
       Accept: "application/json",
+      ...(method !== "GET" && method !== "HEAD" && method !== "OPTIONS"
+        ? { "X-OpportunityOS-CSRF": "1" }
+        : {}),
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
       ...init?.headers,
     },
@@ -75,6 +79,8 @@ export const api = {
       }),
     logout: () =>
       request<AuthenticatedResponse>("/api/auth/logout", { method: "POST" }),
+    logoutAll: () =>
+      request<AuthenticatedResponse>("/api/auth/logout-all", { method: "POST" }),
     me: () => request<AuthenticatedResponse>("/api/auth/me"),
   },
 

@@ -16,9 +16,10 @@ param truthPackAuthToken string = ''
 param truthPackApiKey string = ''
 param truthPackHash string = ''
 @secure()
-param founderPassword string = ''
+param founderPasswordHash string = ''
 @secure()
 param sessionSecret string = ''
+param publicOrigin string = ''
 
 var isApi = role == 'api'
 var isWorker = role == 'worker'
@@ -37,7 +38,7 @@ resource app 'Microsoft.App/containerApps@2023-05-01' = {
         { name: 'truth-pack-auth-token'; value: truthPackAuthToken }
         { name: 'truth-pack-api-key'; value: truthPackApiKey }
       ] : [], isApi ? [
-        { name: 'founder-password'; value: founderPassword }
+        { name: 'founder-password-hash'; value: founderPasswordHash }
         { name: 'session-secret'; value: sessionSecret }
       ] : [])
     }, externalIngress ? {
@@ -57,8 +58,9 @@ resource app 'Microsoft.App/containerApps@2023-05-01' = {
             { name: 'CLOUD_DATABASE_URL'; secretRef: 'cloud-database-url' }
             { name: 'OPPORTUNITYOS_ENVIRONMENT'; value: 'cloud' }
           ], isApi ? [
-            { name: 'OPPORTUNITYOS_FOUNDER_PASSWORD'; secretRef: 'founder-password' }
+            { name: 'OPPORTUNITYOS_FOUNDER_PASSWORD_HASH'; secretRef: 'founder-password-hash' }
             { name: 'OPPORTUNITYOS_SESSION_SECRET'; secretRef: 'session-secret' }
+            { name: 'OPPORTUNITYOS_PUBLIC_ORIGIN'; value: publicOrigin }
             { name: 'OPPORTUNITYOS_TRUTH_PACK_URI'; secretRef: 'truth-pack-uri' }
             { name: 'OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN'; secretRef: 'truth-pack-auth-token' }
             { name: 'OPPORTUNITYOS_TRUTH_PACK_API_KEY'; secretRef: 'truth-pack-api-key' }

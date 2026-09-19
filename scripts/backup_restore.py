@@ -44,6 +44,9 @@ from storage.models import (
     FounderSavedViewRecord,
     ArtifactCacheRecord,
     SourceScheduleRecord,
+    FounderSessionRecord,
+    FounderAuthRateLimitRecord,
+    FounderAuthEventRecord,
 )
 from storage.feed_projection import FeedProjectionRecord
 
@@ -100,6 +103,9 @@ DUMP_SECTION_TABLE_MAP = {
     "founder_saved_views": "founder_saved_views",
     "artifact_cache": "artifact_cache",
     "source_schedules": "source_schedules",
+    "founder_sessions": "founder_sessions",
+    "founder_auth_rate_limit": "founder_auth_rate_limit",
+    "founder_auth_events": "founder_auth_events",
 }
 
 
@@ -216,6 +222,9 @@ def dump_database(db_url: str, output_file: str) -> int:
         "founder_saved_views": [],
         "artifact_cache": [],
         "source_schedules": [],
+        "founder_sessions": [],
+        "founder_auth_rate_limit": [],
+        "founder_auth_events": [],
     }
 
     # 1. Opportunities & Field Provenances
@@ -471,6 +480,31 @@ def dump_database(db_url: str, output_file: str) -> int:
             "error_message": sched.error_message,
             "created_at": sched.created_at.isoformat() if sched.created_at else None,
             "updated_at": sched.updated_at.isoformat() if sched.updated_at else None,
+        })
+
+    # 21. Hosted authentication state. Audit history is preserved. Restored
+    # sessions are immediately revoked so a disaster-recovery target cannot
+    # accept cookies minted by the source environment.
+    for auth_session in session.query(FounderSessionRecord).all():
+        data["founder_sessions"].append({
+            "id": auth_session.id, "token_digest": auth_session.token_digest,
+            "created_at": auth_session.created_at.isoformat() if auth_session.created_at else None,
+            "expires_at": auth_session.expires_at.isoformat() if auth_session.expires_at else None,
+            "revoked_at": auth_session.revoked_at.isoformat() if auth_session.revoked_at else None,
+            "last_seen_at": auth_session.last_seen_at.isoformat() if auth_session.last_seen_at else None,
+            "user_agent_hash": auth_session.user_agent_hash, "auth_version": auth_session.auth_version,
+        })
+    for limit in session.query(FounderAuthRateLimitRecord).all():
+        data["founder_auth_rate_limit"].append({
+            "id": limit.id, "window_started_at": limit.window_started_at.isoformat(),
+            "attempt_count": limit.attempt_count, "locked_until": limit.locked_until.isoformat() if limit.locked_until else None,
+            "updated_at": limit.updated_at.isoformat(),
+        })
+    for event in session.query(FounderAuthEventRecord).all():
+        data["founder_auth_events"].append({
+            "id": event.id, "event_type": event.event_type, "outcome": event.outcome,
+            "created_at": event.created_at.isoformat(), "request_id": event.request_id,
+            "session_id": event.session_id,
         })
 
     # Row-count completeness check, run in the same session/transaction the
@@ -893,6 +927,28 @@ def restore_database(dump_file: str, db_url: str) -> None:
                 sched_dict[date_field] = datetime.fromisoformat(sched_dict[date_field])
         sched = SourceScheduleRecord(**sched_dict)
         session.merge(sched)
+
+    # 21. Authentication state. Never restore live sessions; rate-limit state
+    # is intentionally reset while the immutable audit trail is preserved.
+    now = datetime.now(timezone.utc)
+    for auth_dict in data.get("founder_sessions", []):
+        for field in ("created_at", "expires_at", "revoked_at", "last_seen_at"):
+            if auth_dict.get(field):
+                auth_dict[field] = datetime.fromisoformat(auth_dict[field])
+        auth_dict["revoked_at"] = now
+        auth_dict["expires_at"] = now
+        session.merge(FounderSessionRecord(**auth_dict))
+    for event_dict in data.get("founder_auth_events", []):
+        if event_dict.get("created_at"):
+            event_dict["created_at"] = datetime.fromisoformat(event_dict["created_at"])
+        session.merge(FounderAuthEventRecord(**event_dict))
+    # A new target starts with a clean transient login budget.
+    for limit_dict in data.get("founder_auth_rate_limit", []):
+        limit_dict["window_started_at"] = now
+        limit_dict["attempt_count"] = 0
+        limit_dict["locked_until"] = None
+        limit_dict["updated_at"] = now
+        session.merge(FounderAuthRateLimitRecord(**limit_dict))
 
     session.commit()
     session.close()

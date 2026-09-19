@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch
 from urllib.error import URLError
 
+from api.security import hash_founder_password
 from scripts.check_cloud_readiness import check_truth_pack
 from scripts.cloud_runtime_bridge import plan_runtime_environment
 from truth.pack import TruthPackInvalid, _fetch_remote_bytes, load_truth_pack
@@ -102,7 +103,15 @@ class PrivateTruthPackCloudTests(unittest.TestCase):
             "OPPORTUNITYOS_TRUTH_PACK_HASH": "a" * 64,
             "OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN": "auth-secret",
         }
-        api = plan_runtime_environment("api", dict(env, OPPORTUNITYOS_FOUNDER_PASSWORD="pw", OPPORTUNITYOS_SESSION_SECRET="s" * 32))
+        api = plan_runtime_environment(
+            "api",
+            dict(
+                env,
+                OPPORTUNITYOS_FOUNDER_PASSWORD_HASH=hash_founder_password("correct horse battery staple"),
+                OPPORTUNITYOS_SESSION_SECRET="s" * 32,
+                OPPORTUNITYOS_PUBLIC_ORIGIN="https://app.example",
+            ),
+        )
         worker = plan_runtime_environment("worker", env)
         self.assertEqual(api.aliases["OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN"], "auth-secret")
         self.assertEqual(worker.aliases["OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN"], "auth-secret")

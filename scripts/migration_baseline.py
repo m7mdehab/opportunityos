@@ -21,6 +21,7 @@ TABLES = (
     "pipeline_events", "founder_notifications", "inbox_checkpoints",
     "reconciliation_records", "artifact_cache", "worker_jobs",
     "opportunity_families", "feed_projection",
+    "founder_sessions", "founder_auth_rate_limit", "founder_auth_events",
 )
 HASH = re.compile(r"^[0-9a-fA-F]{64}$")
 IDENT = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")

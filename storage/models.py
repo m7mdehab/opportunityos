@@ -269,6 +269,40 @@ class WorkerJobRecord(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
+class FounderSessionRecord(Base):
+    __tablename__ = "founder_sessions"
+
+    id = Column(String(64), primary_key=True)
+    token_digest = Column(String(64), unique=True, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    last_seen_at = Column(DateTime(timezone=True), nullable=True)
+    user_agent_hash = Column(String(64), nullable=True)
+    auth_version = Column(String(16), nullable=False, default="v1")
+
+
+class FounderAuthRateLimitRecord(Base):
+    __tablename__ = "founder_auth_rate_limit"
+
+    id = Column(String(32), primary_key=True)
+    window_started_at = Column(DateTime(timezone=True), nullable=False)
+    attempt_count = Column(Integer, nullable=False, default=0)
+    locked_until = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class FounderAuthEventRecord(Base):
+    __tablename__ = "founder_auth_events"
+
+    id = Column(String(64), primary_key=True)
+    event_type = Column(String(32), nullable=False, index=True)
+    outcome = Column(String(32), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    request_id = Column(String(64), nullable=True, index=True)
+    session_id = Column(String(64), nullable=True, index=True)
+
+
 class FounderFeedbackRecord(Base):
     __tablename__ = "founder_feedback"
 
