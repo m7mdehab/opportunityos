@@ -151,15 +151,18 @@ A small Founder identity mapping/helper may be added so RPCs and Storage policie
 
 The W15 custom durable-session implementation remains repository history/portable fallback but is not required to be the production web-session mechanism under this ADR.
 
-### 9. Truth Pack and artifacts remain private in Supabase Storage
+### 9. Canonical career truth is repository-managed; application files remain private
 
-The Founder Truth Pack is stored in the private `founder-truth-pack` bucket.
+Founder decision 2026-09-19 supersedes the earlier private-Truth-Pack assumption: the canonical career Truth Pack contains no Founder-designated sensitive information and is allowed to ship as a repository-managed, hash-bound product-truth snapshot.
 
-Heavy jobs retrieve it server-side and validate the committed SHA-256/version contract before using it.
+Heavy jobs load that canonical snapshot and verify its committed SHA-256/version contract before use. There is no requirement to upload or separately authenticate to a Supabase Truth Pack object.
 
-Generated artifact bodies are stored in the private `opportunity-artifacts` bucket with canonical metadata retained in PostgreSQL.
+Application file bodies that contain contact information or submission-specific material remain private:
 
-Browser artifact retrieval is Founder-authenticated and least-privilege.
+- the six Founder-approved fixed CV PDFs live in the private `founder-cv-portfolio` bucket and are SHA-256-bound by `founder/cv_portfolio.yaml`;
+- generated artifact bodies live in the private `opportunity-artifacts` bucket with canonical metadata retained in PostgreSQL.
+
+Browser artifact retrieval remains Founder-authenticated and least-privilege.
 
 ### 10. Backups use encrypted GitHub evidence, not a paid storage provider
 
