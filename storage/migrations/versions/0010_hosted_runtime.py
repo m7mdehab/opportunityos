@@ -330,12 +330,12 @@ def _postgres_downgrade() -> None:
         op.execute(f"DROP POLICY IF EXISTS {table}_founder_authenticated_read ON public.{table}")
         op.execute(
             f"""
-            DO $ BEGIN
+            DO $$ BEGIN
               IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
                 EXECUTE 'CREATE POLICY {table}_browser_deny_authenticated ON public.{table} '
                      || 'FOR ALL TO authenticated USING (false) WITH CHECK (false)';
               END IF;
-            END $
+            END $$
             """
         )
     op.execute("DROP FUNCTION IF EXISTS public.opos_is_founder()")
