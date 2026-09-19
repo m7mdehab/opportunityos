@@ -1,0 +1,35 @@
+name: FR-007 Bicep Template Validation
+
+on:
+  pull_request:
+    branches: [brief/fr-007-cloud-replatform]
+    paths:
+      - 'infra/azure/**'
+      - '.github/workflows/fr007-azure-staging-deploy.yml'
+      - 'scripts/validate_cloud_deployment.py'
+      - 'scripts/test_validate_cloud_deployment.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fr007-bicep-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bicep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Static deployment contract
+        run: |
+          python scripts/validate_cloud_deployment.py --image "ghcr.io/m7mdehab/opportunityos@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+          python -m unittest scripts.test_validate_cloud_deployment -v
+      - name: Compile Bicep templates
+        run: |
+          az bicep build --file infra/azure/main.bicep --stdout > /tmp/fr007-main.json
+          test -s /tmp/fr007-main.json
