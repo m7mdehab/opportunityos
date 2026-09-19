@@ -370,18 +370,19 @@ def load_truth_pack(
             or os.environ.get("OPPORTUNITYOS_TRUTH_PACK_PATH")
         )
         if not target:
-            if cloud_mode:
-                raise TruthPackMissing(
-                    "Missing required OPPORTUNITYOS_TRUTH_PACK_URI in cloud mode; "
-                    "local fallback to private/truth_pack.yaml is disabled"
-                )
-            target = DEFAULT_TRUTH_PACK_PATH
+            # Founder decision 2026-09-19: the canonical career Truth Pack is
+            # non-sensitive product truth. Hosted/runtime execution therefore
+            # uses the repository-managed, hash-bound snapshot by default,
+            # while local development keeps the historical private/ path.
+            target = CANONICAL_REPO_TRUTH_PACK if cloud_mode else DEFAULT_TRUTH_PACK_PATH
 
     if expected_hash is None:
         expected_hash = (
             os.environ.get("OPPORTUNITYOS_TRUTH_PACK_HASH")
             or os.environ.get("OPPORTUNITYOS_TRUTH_PACK_SHA256")
         )
+        if expected_hash is None and str(target).strip() == CANONICAL_REPO_TRUTH_PACK.as_posix():
+            expected_hash = CANONICAL_REPO_TRUTH_PACK_RAW_SHA256
 
     if auth_token is None:
         auth_token = os.environ.get("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN")
@@ -523,8 +524,10 @@ def load_truth_pack(
 def load_founder_pack(path: str | Path | None = None) -> LoadedPack:
     """Load, hash, and report on a founder truth pack.
 
-    Fails closed in cloud mode if no remote URI or container path is specified.
-    Never silently falls back to private/truth_pack.yaml in cloud mode.
+    Local mode defaults to private/truth_pack.yaml for backward compatibility.
+    Cloud mode defaults to the Founder-approved, repository-managed canonical
+    snapshot because the Founder explicitly classifies the career Truth Pack as
+    non-sensitive product truth. Arbitrary cloud-local paths still fail closed.
     Never logs pack contents -- only counts and section names.
     """
     return load_truth_pack(target=path)
