@@ -721,35 +721,55 @@ class TestCostQuotaValidator(unittest.TestCase):
 
     def test_unapproved_paid_resource_fails_production(self) -> None:
         quota_path = REPO_ROOT / "reports" / "evidence" / "FR-007" / "cloud-cost-quota.json"
-        self.assertTrue(quota_path.exists())
         with open(quota_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        data["services"]["azure_container_apps"]["unapproved_paid_resource"] = True
+        data["services"]["cloudflare"]["unapproved_paid_resource"] = True
         data["summary"]["unapproved_paid_resources_count"] = 1
         valid, errors = validate_cost_quota(data, mode="production")
         self.assertFalse(valid)
-        self.assertTrue(any("unapproved paid resource" in e for e in errors))
+        self.assertTrue(any("Unapproved paid resource" in e for e in errors))
 
-    def test_out_of_pocket_fails_production(self) -> None:
-        quota_path = REPO_ROOT / "reports" / "evidence" / "FR-007" / "cloud-cost-quota.json"
-        self.assertTrue(quota_path.exists())
-        with open(quota_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        data["services"]["azure_container_apps"]["net_founder_out_of_pocket_usd"] = 5.50
-        data["summary"]["total_founder_out_of_pocket_usd"] = 5.50
-        valid, errors = validate_cost_quota(data, mode="production")
-        self.assertFalse(valid)
-        self.assertTrue(any("Total out-of-pocket cost" in e for e in errors))
-
-    def test_actions_billed_minute_rounding_overflow(self) -> None:
+    def test_credit_backed_gross_charge_is_rejected(self) -> None:
         quota_path = REPO_ROOT / "reports" / "evidence" / "FR-007" / "cloud-cost-quota.json"
         with open(quota_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        # At 15-minute cadence (2,880 runs), 2880 billed min exceeds 2000 allowance
-        data["services"]["github_actions"]["projected_usage"]["monthly_runs"] = 2880
+        service = data["services"]["supabase"]
+        service["gross_provider_charge_usd"] = 5.0
+        service["student_credit_absorbed_usd"] = 5.0
+        service["covered_by_student_credit"] = True
+        data["summary"]["total_gross_provider_charge_usd"] = 5.0
+        data["summary"]["total_student_credit_applied_usd"] = 5.0
+        data["summary"]["credit_dependency"] = True
         valid, errors = validate_cost_quota(data, mode="production")
         self.assertFalse(valid)
-        self.assertTrue(any("exceeds runner allowance" in e for e in errors))
+        self.assertTrue(any("gross provider charge must be $0.00" in e for e in errors))
+        self.assertTrue(any("may not depend on student/trial credits" in e for e in errors))
+
+    def test_azure_provider_is_rejected(self) -> None:
+        quota_path = REPO_ROOT / "reports" / "evidence" / "FR-007" / "cloud-cost-quota.json"
+        with open(quota_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        data["services"]["azure"] = {
+            "provider": "Microsoft Azure",
+            "covered_by_permanent_allowance": True,
+            "covered_by_student_credit": False,
+            "gross_provider_charge_usd": 0.0,
+            "student_credit_absorbed_usd": 0.0,
+            "net_founder_out_of_pocket_usd": 0.0,
+            "unapproved_paid_resource": False,
+        }
+        valid, errors = validate_cost_quota(data, mode="production")
+        self.assertFalse(valid)
+        self.assertTrue(any("Unapproved provider" in e for e in errors))
+
+    def test_private_repo_runner_assumption_is_rejected(self) -> None:
+        quota_path = REPO_ROOT / "reports" / "evidence" / "FR-007" / "cloud-cost-quota.json"
+        with open(quota_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        data["services"]["github_actions"]["projected_usage"]["repository_visibility"] = "private"
+        valid, errors = validate_cost_quota(data, mode="production")
+        self.assertFalse(valid)
+        self.assertTrue(any("requires the repository to remain public" in e for e in errors))
 
 
 class TestReleaseEvidenceIndexer(unittest.TestCase):
