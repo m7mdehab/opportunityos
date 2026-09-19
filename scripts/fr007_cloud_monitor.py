@@ -270,9 +270,12 @@ def probe_api_liveness(
     url: str | None,
     client: Callable[..., tuple[int, Mapping[str, str], str]] | None = None,
     timeout: float = 10.0,
+    supabase_url: str | None = None,
 ) -> CheckResult:
-    """Probe API without credentials; 401 challenge on /api/auth/me proves connectivity."""
+    """Probe API without credentials; 401 challenge or Supabase health proves connectivity."""
     if not url:
+        if supabase_url:
+            return probe_supabase_health(supabase_url, client=client, timeout=timeout)
         return CheckResult(
             name="api_liveness",
             status="NOT_CONFIGURED",
@@ -312,6 +315,11 @@ def probe_api_liveness(
                 message=f"API reachable at {safe_host} (HTTP 200)",
                 metrics={"status_code": 200, "host": safe_host, "connectivity_proven": True},
             )
+        # Cloudflare edge returning 404 for legacy proxy: fallback to Supabase health
+        if status_code == 404 and supabase_url:
+            sb_res = probe_supabase_health(supabase_url, client=client, timeout=timeout)
+            if sb_res.status == "PASS":
+                return sb_res
         if status_code in (500, 502, 503, 504):
             return CheckResult(
                 name="api_liveness",
@@ -326,11 +334,58 @@ def probe_api_liveness(
             metrics={"status_code": status_code, "host": safe_host},
         )
     except Exception as exc:
+        if supabase_url:
+            try:
+                sb_res = probe_supabase_health(supabase_url, client=client, timeout=timeout)
+                if sb_res.status == "PASS":
+                    return sb_res
+            except Exception:
+                pass
         clean_err = sanitize_alert_text(str(exc))
         return CheckResult(
             name="api_liveness",
             status="FAIL",
             message=f"API probe failed to reach endpoint: {clean_err}",
+            metrics={"error": clean_err},
+        )
+
+
+def probe_supabase_health(
+    url: str,
+    client: Callable[..., tuple[int, Mapping[str, str], str]] | None = None,
+    timeout: float = 10.0,
+) -> CheckResult:
+    """Probe Supabase Auth / REST health without requiring founder credentials."""
+    valid, err = validate_monitor_url(url, "supabase_url")
+    if not valid:
+        return CheckResult(name="api_liveness", status="FAIL", message=err)
+
+    clean_url = url.rstrip("/")
+    probe_endpoint = f"{clean_url}/auth/v1/health"
+    fetcher = client or default_http_client
+    try:
+        status_code, _, body = fetcher(probe_endpoint, timeout=timeout)
+        parsed_url = urllib.parse.urlparse(probe_endpoint)
+        safe_host = parsed_url.hostname or "unknown_host"
+        if status_code in (200, 401):
+            return CheckResult(
+                name="api_liveness",
+                status="PASS",
+                message=f"Supabase-native health verified at {safe_host} (HTTP {status_code})",
+                metrics={"status_code": status_code, "host": safe_host, "supabase_native": True},
+            )
+        return CheckResult(
+            name="api_liveness",
+            status="WARN",
+            message=f"Supabase health returned non-standard status {status_code} at {safe_host}",
+            metrics={"status_code": status_code, "host": safe_host},
+        )
+    except Exception as exc:
+        clean_err = sanitize_alert_text(str(exc))
+        return CheckResult(
+            name="api_liveness",
+            status="FAIL",
+            message=f"Supabase probe failed to reach endpoint: {clean_err}",
             metrics={"error": clean_err},
         )
 
@@ -813,6 +868,7 @@ def run_monitor(
     web_url: str | None = None,
     api_url: str | None = None,
     db_url: str | None = None,
+    supabase_url: str | None = None,
     backup_heartbeat: Mapping[str, Any] | None = None,
     backup_heartbeat_path: str | None = None,
     http_client: Callable[..., tuple[int, Mapping[str, str], str]] | None = None,
@@ -851,12 +907,20 @@ def run_monitor(
         checks.append(probe_web_liveness(effective_web_url, client=http_client))
 
         # 2. API Probe (HTTP or FULL mode)
-        # In a zero-dollar / Supabase-native deployment, probe same-origin API on web URL if no standalone API URL is provided
+        # In a zero-dollar / Supabase-native deployment, probe same-origin API on web URL or Supabase health
         effective_api_url = api_url or os.environ.get("OPOS_MONITOR_API_URL")
+        effective_supabase_url = (
+            supabase_url
+            or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
+            or os.environ.get("OPOS_MONITOR_SUPABASE_URL")
+            or os.environ.get("SUPABASE_URL")
+        )
         if effective_api_url:
-            checks.append(probe_api_liveness(effective_api_url, client=http_client))
+            checks.append(probe_api_liveness(effective_api_url, client=http_client, supabase_url=effective_supabase_url))
         elif effective_web_url:
-            checks.append(probe_api_liveness(effective_web_url, client=http_client))
+            checks.append(probe_api_liveness(effective_web_url, client=http_client, supabase_url=effective_supabase_url))
+        elif effective_supabase_url:
+            checks.append(probe_supabase_health(effective_supabase_url, client=http_client))
         else:
             checks.append(probe_api_liveness(None, client=http_client))
 
@@ -960,6 +1024,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--web-url", help="Override OPOS_MONITOR_WEB_URL")
     parser.add_argument("--api-url", help="Override OPOS_MONITOR_API_URL")
     parser.add_argument("--db-url", help="Override CLOUD_DATABASE_URL")
+    parser.add_argument("--supabase-url", help="Override NEXT_PUBLIC_SUPABASE_URL")
     parser.add_argument("--backup-heartbeat-path", help="Path to backup manifest JSON")
     parser.add_argument("--output-report", help="Path to write sanitized JSON report")
     parser.add_argument("--output-incident", help="Path to write incident action JSON")
@@ -976,6 +1041,7 @@ def main(argv: list[str] | None = None) -> int:
         web_url=args.web_url,
         api_url=args.api_url,
         db_url=args.db_url,
+        supabase_url=args.supabase_url,
         backup_heartbeat_path=args.backup_heartbeat_path,
     )
 
