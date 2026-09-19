@@ -90,8 +90,10 @@ The R1 review defects were repaired in this batch:
 
 R1 verification:
 
-- Runtime/migration/provider/backup/hosted-proof/workflow suites: **56 tests,
+- Runtime/migration/provider/backup/hosted-proof/workflow suites: **61 tests,
   0 failures**.
+- Worker/scheduler regression suite: **30 tests, 0 failures**; Cloudflare
+  deployment validator: **5 tests, 0 failures**.
 - Python compile, repository integrity, guard, state generation and diff
   checks: passed.
 - Web lint/build: passed locally after installing the lockfile dependencies
