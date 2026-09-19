@@ -24,10 +24,17 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
 
     def test_worker_workflow_uses_single_bounded_mode(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-worker-drain.yml").read_text(encoding="utf-8")
-        command = next(line.strip() for line in workflow.splitlines() if line.strip().startswith("python -m worker"))
-        self.assertEqual(command, "python -m worker --once")
-        self.assertNotIn("--max-jobs", command)
-        self.assertIn("OPPORTUNITYOS_DB_URL", workflow)
+        command = next(
+            line.strip()
+            for line in workflow.splitlines()
+            if line.strip().startswith("python scripts/fr007_hosted_bootstrap.py")
+        )
+        self.assertIn("--mode drain", command)
+        self.assertIn("--max-jobs 10", command)
+        self.assertIn("--time-budget-seconds 300", command)
+        self.assertNotIn("--once", command)
+        self.assertIn("OPOS_TARGET_DB_URL", workflow)
+        self.assertIn("OPPORTUNITYOS_TRUTH_PACK_PATH", workflow)
 
     def test_encryption_dependency_is_runtime_declared(self):
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
