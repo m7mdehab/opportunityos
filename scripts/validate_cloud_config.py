@@ -57,8 +57,21 @@ def validate(role: str, environ: dict[str, str]) -> list[str]:
     if role not in REQUIRED:
         return [f"unsupported role: {role}"]
     if role == "api":
-        req = ("CLOUD_DATABASE_URL", "OPPORTUNITYOS_FOUNDER_PASSWORD", "OPPORTUNITYOS_SESSION_SECRET")
-        return [name for name in req if invalid(name, environ.get(name, ""))]
+        cloud = environ.get("OPPORTUNITYOS_ENVIRONMENT", "").lower() in {"cloud", "prod", "production"} or environ.get("MODE", "").lower() == "cloud"
+        auth_name = "OPPORTUNITYOS_FOUNDER_PASSWORD_HASH" if cloud else "OPPORTUNITYOS_FOUNDER_PASSWORD"
+        req = ("CLOUD_DATABASE_URL", auth_name, "OPPORTUNITYOS_SESSION_SECRET")
+        failures = [name for name in req if invalid(name, environ.get(name, ""))]
+        if cloud:
+            if environ.get("OPPORTUNITYOS_FOUNDER_PASSWORD"):
+                failures.append("OPPORTUNITYOS_FOUNDER_PASSWORD")
+            origin = environ.get("OPPORTUNITYOS_PUBLIC_ORIGIN", "")
+            try:
+                parsed = urlsplit(origin)
+                if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password or parsed.path not in ("", "/") or parsed.query or parsed.fragment:
+                    failures.append("OPPORTUNITYOS_PUBLIC_ORIGIN")
+            except ValueError:
+                failures.append("OPPORTUNITYOS_PUBLIC_ORIGIN")
+        return failures
 
     if role in ("worker", "scheduler"):
         req = ("CLOUD_DATABASE_URL",)
