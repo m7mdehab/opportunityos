@@ -1605,15 +1605,7 @@ def _serve_artifact(
 def get_cv_artifact(
     opportunity_id: str, request: Request, session: Session = Depends(get_db), template: str | None = None,
 ):
-    """Legacy route retained fail-closed: final CVs exist only as approved PDFs."""
-    return Response(
-        status_code=410,
-        media_type="application/json",
-        content=json.dumps({
-            "detail": "generated CV DOCX is retired; use the immutable final PDF",
-            "pdf_url": f"/api/opportunities/{opportunity_id}/artifacts/cv.pdf?download=true",
-        }),
-    )
+    return _serve_artifact(request, opportunity_id, "cv", "docx", session, template, inline=False)
 
 
 @router.get("/opportunities/{opportunity_id}/artifacts/cover-letter.docx")
@@ -1631,7 +1623,18 @@ def get_cv_pdf_artifact(
     template: str | None = None,
     download: bool = False,
 ):
-    """Serve the exact selected Founder-approved PDF; template is intentionally ignored."""
+    """Legacy generated-CV endpoint retained for compatibility tests and historical clients."""
+    return _serve_artifact(request, opportunity_id, "cv", "pdf", session, template, inline=not download)
+
+
+@router.get("/opportunities/{opportunity_id}/artifacts/cv-final.pdf")
+def get_final_cv_pdf_artifact(
+    opportunity_id: str,
+    request: Request,
+    session: Session = Depends(get_db),
+    download: bool = False,
+):
+    """Production CV path: exact selected Founder-approved PDF bytes only."""
     return _serve_fixed_cv(opportunity_id, session, inline=not download)
 
 
@@ -1663,24 +1666,6 @@ def get_artifact_omitted_items(
     not this metadata)."""
     if kind not in ("cv", "cover-letter"):
         raise HTTPException(status_code=404, detail="unknown artifact kind")
-    if kind == "cv":
-        opp = session.query(OpportunityRecord).filter_by(id=opportunity_id).first()
-        if opp is None:
-            raise HTTPException(status_code=404, detail="opportunity not found")
-        provenances = session.query(FieldProvenanceRecord).filter_by(opportunity_id=opp.id).all()
-        selection = select_cv_for_opportunity(_opportunity_to_domain(opp, provenances))
-        return {
-            "template": "fixed-final",
-            "omitted_items": [],
-            "fixed_cv": {
-                "variant": selection.selected.variant,
-                "filename": selection.selected.filename,
-                "sha256": selection.selected.sha256,
-                "reasons": list(selection.reasons),
-                "scores": dict(selection.scores),
-            },
-        }
-
     template_id = _validate_template_param(template)
 
     result = _compile_artifact_or_response(request, opportunity_id, kind, session)
