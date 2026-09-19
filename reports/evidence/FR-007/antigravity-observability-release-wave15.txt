@@ -1,0 +1,98 @@
+================================================================================
+FR-007 ANTIGRAVITY LANE — W15B.1: OBSERVABILITY/RELEASE-GATE REMEDIATION
+Date: 2026-09-19
+Host: Windows Local Dev & GitHub-Hosted Actions Runner (ubuntu-slim)
+Branch: work/fr007-antigravity-observability-release-wave15
+Base SHA: ce58a9bb779a1a69aaafa9d0ca8c7e88825a1f8f (origin/brief/fr-007-cloud-replatform)
+Status: WORKFLOW CONTRACTS, CLI REPAIR, SOAK PERSISTENCE, FAIL-CLOSED GATES,
+AUDITED ACCEPTANCE MANIFEST, AND RECOMPUTED COST ENVELOPE VERIFIED (67/67 PASS);
+NO FALSE CLAIMS OF HOSTED ACCEPTANCE OR LIVE 7-DAY SOAK CLOSURE
+================================================================================
+
+1. EXECUTIVE SUMMARY & RESOLUTION OF W15B.1 REMEDIATION
+--------------------------------------------------------------------------------
+Wave 15B.1 completes all focused remediations required by the Overseer:
+
+1. Repaired Workflow <-> CLI Contract:
+   - Canonical CLI args frozen: `--output-report`, `--output-incident`, `--backup-heartbeat-path`,
+     `--open-issues-file`, `--mode`, `--repo-root`.
+   - Workflow YAML updated to match CLI invocation exactly.
+
+2. Unified Incident Alert Action Schema:
+   - Canonical action values: "CREATE" | "UPDATE" | "RESOLVE" | "NONE".
+   - Created standalone fail-closed processor `scripts/process_incident_alert.py`.
+   - Gh CLI calls strictly check exit codes and fail the step if mutations fail.
+
+3. Durable Soak Evidence Across Actions Runs:
+   - Workflow uploads `soak-snapshot-<timestamp>` artifacts with 90-day retention.
+   - Created `scripts/fetch_soak_artifacts.py` to aggregate historical artifacts into
+     `reports/evidence/FR-007/soak/` during SOAK_SUMMARY runs.
+
+4. Fail-Closed Snapshot & Verifier Semantics:
+   - Failed monitor runs write snapshot before monitor exit; capture partial evidence.
+   - `proof_scope` enforced: only `FULL_HOSTED` snapshots count toward A-14 soak.
+   - Unconfigured subsystems (`NOT_CONFIGURED` for db, queue, web) rejected.
+   - `fr007_soak_verify.py` exits 0 strictly on `PASS`; exits 1 on `INSUFFICIENT_DATA` or `FAIL`.
+   - Workflow eliminated `|| true` on soak verifier.
+
+5. Backup Heartbeat Wiring:
+   - Monitor consumes `OPOS_BACKUP_HEARTBEAT_PATH` and CLI `--backup-heartbeat-path`.
+   - Verifies backup recency and state; enforces backup health in `SOAK_SUMMARY`.
+
+6. Honest Hosted Acceptance Manifest:
+   - Removed premature `PASS` claims from A-7, A-8, A-10, A-13, A-14, A-15, A-16, A-17.
+   - Current status: A-0 and A-3 are PASS (REPOSITORY_ONLY); A-1, A-2, A-4..A-13, A-15,
+     A-17 are REPOSITORY_VERIFIED; A-14 and A-16 are NOT_EXECUTED.
+   - Validator `scripts/validate_hosted_acceptance.py` strictly prevents unearned claims.
+
+7. Recomputed Cost & Quota Envelope:
+   - Distinguishes permanent free allowances from student credit buffer.
+   - Replaced flawed continuous ACA allowance claim: gross $14.04/mo absorbed by
+     $100 annual student credit ($0 founder out-of-pocket).
+   - Recalculated Actions billing with whole-minute granularity (1 execution = 1 billed min).
+   - Observability cadence set to 30 minutes (1,440 billed min/mo), preserving 560 min headroom.
+   - Validated by `scripts/validate_cloud_cost_quota.py` in staging and production modes.
+
+8. Comprehensive Integration Test Suite:
+   - Expanded `scripts/test_fr007_cloud_monitor.py` to 67 unit and integration tests.
+   - Validates CLI subprocess execution, fail-closed incident mutations, soak verification
+     rejection of synthetic/static scopes, and static workflow YAML safety invariants.
+
+2. VERIFICATION & GATE EXECUTION EVIDENCE
+--------------------------------------------------------------------------------
+1. Comprehensive Unit & Integration Suite:
+   $ python -m unittest scripts.test_fr007_cloud_monitor -v
+   Ran 67 tests in 1.140s -> OK
+
+2. Workflow Contract Validator:
+   $ python scripts/validate_workflow_contracts.py
+   Workflow contract validation PASSED for fr007-cloud-observability.yml.
+
+3. Hosted Acceptance Manifest Validator:
+   $ python scripts/validate_hosted_acceptance.py
+   Hosted acceptance manifest hosted-acceptance-manifest.json is VALID (18 criteria checked).
+
+4. Cost & Quota Envelope Validator:
+   $ python scripts/validate_cloud_cost_quota.py --staging
+   Cost & Quota Envelope cloud-cost-quota.json is VALID (mode: staging). Total founder out-of-pocket: $0.00.
+   $ python scripts/validate_cloud_cost_quota.py --production
+   Cost & Quota Envelope cloud-cost-quota.json is VALID (mode: production). Total founder out-of-pocket: $0.00.
+
+5. Release Evidence Indexer:
+   $ python scripts/fr007_release_evidence.py --markdown reports/evidence/FR-007/RELEASE_SUMMARY.md
+   Indexed 24 evidence artifacts, 18 acceptance criteria, and cost envelope status.
+
+6. Repository Guard & Integrity Checks:
+   $ python scripts/check_guard.py --allow-missing-patterns
+   Guard checks passed for repository and mirror boundary.
+   $ python scripts/check_repository.py
+   Repository integrity checks passed.
+
+3. HONEST STATUS DISCLOSURE & BOUNDARIES
+--------------------------------------------------------------------------------
+- Repository implementation & verification harness: COMPLETE, TESTED, and FAIL-CLOSED.
+- Live hosted execution: Pending DNS cutover and target cloud deployment.
+- 7-day soak: Must be executed against live cloud endpoints post-cutover before
+  terminal closure of FR-007.
+- Zero mutations or external account creations were performed.
+================================================================================
