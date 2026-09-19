@@ -148,16 +148,22 @@ def _machine_learning_engineer_override(title: str, body: str, skills: tuple[str
     return "data_scientist"
 
 
-def select_cv_for_opportunity(opp: Opportunity) -> CVSelection:
-    """Select one immutable CV variant for an employment opportunity.
+def select_cv_for_text(
+    title_text: str,
+    description_text: str = "",
+    responsibilities: Iterable[str] = (),
+    requirements: Iterable[str] = (),
+    skills_text: Iterable[str] = (),
+) -> CVSelection:
+    """Select from the locked portfolio using normalized posting text.
 
-    No generated text is returned. The selected filename/hash identifies the
-    exact Founder-approved PDF bytes that the delivery layer must retrieve.
+    This is the persistence-safe equivalent of select_cv_for_opportunity:
+    it lets durable feed projection rebuilds retain the authoritative selector
+    without reimplementing role-family scoring at the edge.
     """
-    if opp.track != Track.EMPLOYMENT:
-        raise ValueError("fixed CV portfolio selection is employment-only")
-
-    title, body, skills = _full_text(opp)
+    title = _norm(title_text)
+    body = _norm(" ".join((description_text, *responsibilities, *requirements)))
+    skills = tuple(_norm(s) for s in skills_text)
 
     ml_override = _machine_learning_engineer_override(title, body, skills)
     if ml_override is not None:
@@ -181,7 +187,6 @@ def select_cv_for_opportunity(opp: Opportunity) -> CVSelection:
     best_variant, best_score, best_reasons = scored[0]
     second_score = scored[1][1]
 
-    # Specialist selection requires a meaningful signal and a clear lead.
     if best_score < 8 or best_score == second_score:
         selected = _BY_VARIANT["master"]
         reasons = ("no specialist variant clearly dominates -> master",)
@@ -195,6 +200,21 @@ def select_cv_for_opportunity(opp: Opportunity) -> CVSelection:
         reasons=reasons,
     )
 
+def select_cv_for_opportunity(opp: Opportunity) -> CVSelection:
+    """Select one immutable CV variant for an employment opportunity.
+
+    No generated text is returned. The selected filename/hash identifies the
+    exact Founder-approved PDF bytes that the delivery layer must retrieve.
+    """
+    if opp.track != Track.EMPLOYMENT:
+        raise ValueError("fixed CV portfolio selection is employment-only")
+    return select_cv_for_text(
+        opp.title,
+        opp.description,
+        responsibilities=opp.responsibilities,
+        requirements=opp.requirements,
+        skills_text=opp.skills,
+    )
 
 def portfolio_hashes() -> dict[str, str]:
     """Expected SHA-256 by filename; useful for upload/runtime integrity checks."""
