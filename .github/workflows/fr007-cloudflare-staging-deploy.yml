@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   validate-or-deploy:
@@ -45,8 +46,6 @@ jobs:
         env:
           MODE: ${{ inputs.mode }}
           ACK: ${{ inputs.acknowledge_staging_deployment }}
-          API_ORIGIN: ${{ vars.OPPORTUNITYOS_API_ORIGIN }}
-          STAGING_WEB_URL: ${{ vars.OPOS_STAGING_WEB_URL }}
           FOUNDER_PASSWORD: ${{ secrets.OPPORTUNITYOS_FOUNDER_PASSWORD }}
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -54,19 +53,47 @@ jobs:
           set -euo pipefail
           if [ "$MODE" = "DEPLOY_STAGING" ]; then
             [ "$ACK" = "true" ] || { echo "DEPLOY_STAGING requires explicit acknowledgement." >&2; exit 1; }
-            case "$API_ORIGIN" in
-              https://*) ;;
-              *) echo "OPPORTUNITYOS_API_ORIGIN must be a non-empty HTTPS origin." >&2; exit 1 ;;
-            esac
             [ -n "$CF_TOKEN" ] || { echo "CLOUDFLARE_API_TOKEN is required." >&2; exit 1; }
             [ -n "$CF_ACCOUNT" ] || { echo "CLOUDFLARE_ACCOUNT_ID is required." >&2; exit 1; }
           elif [ "$MODE" = "SMOKE_STAGING" ]; then
-            case "$STAGING_WEB_URL" in
-              https://*) ;;
-              *) echo "OPOS_STAGING_WEB_URL must be a non-empty HTTPS URL." >&2; exit 1 ;;
-            esac
+            [ -n "$CF_TOKEN" ] || { echo "CLOUDFLARE_API_TOKEN is required." >&2; exit 1; }
+            [ -n "$CF_ACCOUNT" ] || { echo "CLOUDFLARE_ACCOUNT_ID is required." >&2; exit 1; }
             [ -n "$FOUNDER_PASSWORD" ] || { echo "Founder staging password is required." >&2; exit 1; }
           fi
+
+      - name: Resolve workers.dev staging URL
+        if: inputs.mode != 'VALIDATE'
+        shell: bash
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          json="$(curl --silent --show-error --fail             -H "Authorization: Bearer $CF_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/workers/subdomain")"
+          subdomain="$(python -c 'import json,sys; d=json.load(sys.stdin); print((d.get("result") or {}).get("subdomain") or "")' <<<"$json")"
+          [ -n "$subdomain" ] || { echo "Cloudflare workers.dev subdomain is not configured." >&2; exit 1; }
+          echo "OPOS_STAGING_WEB_URL=https://opportunityos-web-staging.$subdomain.workers.dev" >> "$GITHUB_ENV"
+
+      - name: Azure OIDC login for API-origin discovery
+        if: inputs.mode == 'DEPLOY_STAGING'
+        uses: azure/login@v2
+        with:
+          auth-type: SERVICE_PRINCIPAL
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve Azure staging API origin
+        if: inputs.mode == 'DEPLOY_STAGING'
+        shell: bash
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          OPOS_AZURE_NAME_PREFIX: ${{ vars.OPOS_AZURE_NAME_PREFIX }}
+        run: |
+          set -euo pipefail
+          fqdn="$(az containerapp show             --name "$OPOS_AZURE_NAME_PREFIX-api"             --resource-group "$AZURE_RESOURCE_GROUP"             --query properties.configuration.ingress.fqdn             --output tsv)"
+          [ -n "$fqdn" ] || { echo "Azure API FQDN is unavailable." >&2; exit 1; }
+          echo "OPPORTUNITYOS_API_ORIGIN=https://$fqdn" >> "$GITHUB_ENV"
 
       - name: Run static Cloudflare deployment contract validation
         working-directory: .
@@ -83,7 +110,7 @@ jobs:
           # VALIDATE only needs a syntactically safe origin. DEPLOY_STAGING
           # builds with the exact protected staging origin that will be
           # supplied at runtime.
-          OPPORTUNITYOS_API_ORIGIN: ${{ inputs.mode == 'DEPLOY_STAGING' && vars.OPPORTUNITYOS_API_ORIGIN || 'https://validation.invalid' }}
+          OPPORTUNITYOS_API_ORIGIN: ${{ inputs.mode == 'DEPLOY_STAGING' && env.OPPORTUNITYOS_API_ORIGIN || 'https://validation.invalid' }}
           OPPORTUNITYOS_CLOUD_EDGE: "1"
         run: npx opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion
 
@@ -92,7 +119,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          OPPORTUNITYOS_API_ORIGIN: ${{ vars.OPPORTUNITYOS_API_ORIGIN }}
+          OPPORTUNITYOS_API_ORIGIN: ${{ env.OPPORTUNITYOS_API_ORIGIN }}
         run: |
           set -euo pipefail
           npx wrangler deploy --var OPPORTUNITYOS_API_ORIGIN:"$OPPORTUNITYOS_API_ORIGIN"
@@ -100,7 +127,7 @@ jobs:
       - name: Run Cloud Playwright Smoke (SMOKE_STAGING)
         if: inputs.mode == 'SMOKE_STAGING'
         env:
-          OPOS_STAGING_WEB_URL: ${{ vars.OPOS_STAGING_WEB_URL }}
+          OPOS_STAGING_WEB_URL: ${{ env.OPOS_STAGING_WEB_URL }}
           E2E_FOUNDER_PASSWORD: ${{ secrets.OPPORTUNITYOS_FOUNDER_PASSWORD }}
         run: |
           npx playwright install --with-deps chromium
