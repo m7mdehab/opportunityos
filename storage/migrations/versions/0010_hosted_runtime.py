@@ -328,6 +328,7 @@ def _postgres_downgrade() -> None:
     op.execute("DROP VIEW IF EXISTS public.founder_feed")
     for table in reversed(_BROWSER_POLICY_TABLES):
         op.execute(f"DROP POLICY IF EXISTS {table}_founder_authenticated_read ON public.{table}")
+        op.execute(f"DROP POLICY IF EXISTS {table}_browser_deny_authenticated ON public.{table}")
         op.execute(
             f"""
             DO $$ BEGIN
