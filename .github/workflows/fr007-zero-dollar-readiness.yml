@@ -1,0 +1,146 @@
+name: FR-007 Zero-Dollar Provider Readiness
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - architecture/fr007-zero-dollar-runtime
+    paths:
+      - ".github/workflows/fr007-zero-dollar-readiness.yml"
+      - "reports/evidence/FR-007/cloud-cost-quota.json"
+      - "scripts/validate_cloud_cost_quota.py"
+
+permissions:
+  contents: read
+
+jobs:
+  readiness:
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_PROJECT_REF: lrrcpwaapwynzdsxzwhy
+      SUPABASE_URL: https://lrrcpwaapwynzdsxzwhy.supabase.co
+      OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+      CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL }}
+      OPPORTUNITYOS_TRUTH_PACK_URI: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_URI }}
+      OPPORTUNITYOS_TRUTH_PACK_HASH: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_HASH }}
+      OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN }}
+      OPPORTUNITYOS_TRUTH_PACK_API_KEY: ${{ secrets.OPPORTUNITYOS_TRUTH_PACK_API_KEY }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+      OPOS_SOURCE_DB_URL: ${{ secrets.OPOS_SOURCE_DB_URL }}
+      E2E_FOUNDER_EMAIL: ${{ secrets.E2E_FOUNDER_EMAIL }}
+      E2E_FOUNDER_PASSWORD: ${{ secrets.E2E_FOUNDER_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Verify hard zero-dollar envelope
+        run: python scripts/validate_cloud_cost_quota.py --production
+
+      - name: Verify repository remains on no-charge public standard-runner path
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          visibility="$(curl --fail --silent --show-error             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             "https://api.github.com/repos/$REPOSITORY" | python -c 'import json,sys; print(json.load(sys.stdin)["visibility"])')"
+          [ "$visibility" = "public" ] || {
+            echo "::error::ADR-0023 zero-dollar GitHub worker economics require the current repository to remain public."
+            exit 1
+          }
+          echo "GITHUB_PUBLIC_STANDARD_RUNNER_PATH=PASS"
+
+      - name: Check zero-dollar staging configuration presence
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          require() {
+            local name="$1"
+            if [ -z "${!name:-}" ]; then
+              echo "::error title=Missing FR-007 zero-dollar setup::${name} is not configured"
+              missing=1
+            else
+              echo "${name}=PRESENT"
+            fi
+          }
+
+          for name in             OPOS_TARGET_DB_URL CLOUD_DATABASE_URL             OPPORTUNITYOS_TRUTH_PACK_URI OPPORTUNITYOS_TRUTH_PACK_HASH             OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN OPPORTUNITYOS_TRUTH_PACK_API_KEY             CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID             BACKUP_ENCRYPTION_KEY; do
+            require "$name"
+          done
+
+          if [ -n "${OPOS_SOURCE_DB_URL:-}" ]; then
+            echo "OPOS_SOURCE_DB_URL=PRESENT"
+          else
+            echo "OPOS_SOURCE_DB_URL=REQUIRED_BEFORE_SOURCE_PARITY_ONLY"
+          fi
+          if [ -n "${E2E_FOUNDER_EMAIL:-}" ] && [ -n "${E2E_FOUNDER_PASSWORD:-}" ]; then
+            echo "FOUNDER_E2E_CREDENTIALS=PRESENT"
+          else
+            echo "FOUNDER_E2E_CREDENTIALS=REQUIRED_BEFORE_HOSTED_AUTH_SMOKE"
+          fi
+          exit "$missing"
+
+      - name: Install PostgreSQL driver
+        if: ${{ success() }}
+        run: python -m pip install psycopg2-binary
+
+      - name: Verify hosted Supabase database contract
+        if: ${{ success() }}
+        env:
+          DSN: ${{ secrets.OPOS_TARGET_DB_URL }}
+        run: |
+          python - <<'PY'
+          import os
+          import psycopg2
+          conn = psycopg2.connect(os.environ["DSN"], connect_timeout=10)
+          try:
+              with conn.cursor() as cur:
+                  cur.execute("select version_num from public.alembic_version")
+                  revision = cur.fetchone()[0]
+                  if revision != "0009_hosted_founder_auth":
+                      raise SystemExit(f"unexpected revision: {revision}")
+                  cur.execute("""
+                    select count(*) from pg_class c
+                    join pg_namespace n on n.oid=c.relnamespace
+                    where n.nspname='public' and c.relkind in ('r','p') and c.relrowsecurity
+                  """)
+                  if cur.fetchone()[0] < 26:
+                      raise SystemExit("RLS coverage below expected hosted baseline")
+          finally:
+              conn.close()
+          print("SUPABASE_DATABASE=PASS")
+          PY
+
+      - name: Verify private Truth Pack object and hash
+        if: ${{ success() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp)"
+          trap 'rm -f "$tmp"' EXIT
+          curl --fail --silent --show-error             -H "Authorization: Bearer $OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN"             -H "apikey: $OPPORTUNITYOS_TRUTH_PACK_API_KEY"             "$OPPORTUNITYOS_TRUTH_PACK_URI"             --output "$tmp"
+          actual="$(sha256sum "$tmp" | awk '{print $1}')"
+          [ "$actual" = "$OPPORTUNITYOS_TRUTH_PACK_HASH" ] || {
+            echo "::error::Private Truth Pack hash mismatch"
+            exit 1
+          }
+          echo "PRIVATE_TRUTH_PACK=PASS"
+
+      - name: Verify Cloudflare account/token
+        if: ${{ success() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          verify="$(curl --fail-with-body --silent --show-error             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             https://api.cloudflare.com/client/v4/user/tokens/verify)"
+          account="$(curl --fail-with-body --silent --show-error             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID")"
+          python -c 'import json,sys; assert json.loads(sys.argv[1]).get("success") is True' "$verify"
+          python -c 'import json,sys; assert json.loads(sys.argv[1]).get("success") is True' "$account"
+          echo "CLOUDFLARE=PASS"
