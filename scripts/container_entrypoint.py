@@ -158,6 +158,14 @@ def resolve_environment(role: str, environ: Mapping[str, str] | None = None) -> 
 
     try:
         bridge_plan = plan_runtime_environment(role, env)
+        cloud_runtime = (
+            env.get("OPPORTUNITYOS_ENVIRONMENT", "").lower() in {"production", "prod", "cloud"}
+            or env.get("MODE", "").lower() == "cloud"
+        )
+        if cloud_runtime and bridge_plan.blockers:
+            raise CompatibilityError(
+                "Unwired cloud runtime dependencies: " + ", ".join(bridge_plan.blockers)
+            )
         env.update(bridge_plan.aliases)
     except CompatibilityError as exc:
         raise ConfigurationError(f"Cloud runtime validation failed: {exc}") from exc
