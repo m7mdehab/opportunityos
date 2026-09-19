@@ -348,12 +348,6 @@ def check_truth_pack(env: Mapping[str, str], role: str = "all") -> ReadinessChec
             )
         auth = env.get("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN")
         api_key = env.get("OPPORTUNITYOS_TRUTH_PACK_API_KEY")
-        if cloud_mode and not auth:
-            return ReadinessCheckResult(
-                name="Truth Pack Storage", status="BLOCKED",
-                message="PRIVATE_REMOTE_READY requires OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN",
-                blockers=("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN",),
-            )
         if "/object/public/" in parsed.path.lower():
             return ReadinessCheckResult(
                 name="Truth Pack Storage", status="BLOCKED",
@@ -364,11 +358,18 @@ def check_truth_pack(env: Mapping[str, str], role: str = "all") -> ReadinessChec
             (parsed.hostname or "").lower().endswith("supabase.co")
             or "/storage/v1/object/" in parsed.path.lower()
         )
+        modern_supabase_secret = bool(api_key and api_key.startswith("sb_secret_"))
         if cloud_mode and is_supabase_storage and not api_key:
             return ReadinessCheckResult(
                 name="Truth Pack Storage", status="BLOCKED",
                 message="PRIVATE_REMOTE_READY requires OPPORTUNITYOS_TRUTH_PACK_API_KEY for Supabase Storage",
                 blockers=("OPPORTUNITYOS_TRUTH_PACK_API_KEY",),
+            )
+        if cloud_mode and (not is_supabase_storage or not modern_supabase_secret) and not auth:
+            return ReadinessCheckResult(
+                name="Truth Pack Storage", status="BLOCKED",
+                message="PRIVATE_REMOTE_READY requires an auth token unless Supabase uses an sb_secret_ API key",
+                blockers=("OPPORTUNITYOS_TRUTH_PACK_AUTH_TOKEN",),
             )
         return ReadinessCheckResult(
             name="Truth Pack Storage",
