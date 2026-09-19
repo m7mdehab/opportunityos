@@ -11,7 +11,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `3c61356` — truth: accept wrapped canonical base64 snapshot strictly
+- **State generated at commit:** `90eade9` — adr(fr007): align truth storage with Founder classification
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
