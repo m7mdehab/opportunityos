@@ -33,7 +33,7 @@ export default function LoginPage() {
       } else if (err instanceof ApiError && err.status === 401) {
         setError("Incorrect password.")
       } else {
-        setError("Could not reach the API. Check that the server is running.")
+        setError("Could not sign in. Check your account configuration and try again.")
       }
     } finally {
       setSubmitting(false)
@@ -46,7 +46,7 @@ export default function LoginPage() {
         <div className="space-y-1 text-center">
           <h1 className="text-xl font-semibold">OpportunityOS</h1>
           <p className="text-sm text-muted-foreground">
-            Founder alpha — sign in with your local password.
+            Founder alpha — sign in with your configured Founder account.
           </p>
         </div>
 

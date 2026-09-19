@@ -59,9 +59,9 @@ async function proxyRequest(
       return NextResponse.json(
         {
           error:
-            "Configuration Error: OPPORTUNITYOS_API_ORIGIN is required on the cloud edge.",
+            "This legacy API proxy is unavailable at the cloud edge. Use the Supabase browser runtime contract.",
         },
-        { status: 500 }
+        { status: 404 }
       );
     }
     // Local-development fallback only. Cloudflare staging sets
