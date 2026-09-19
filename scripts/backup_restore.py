@@ -47,6 +47,7 @@ from storage.models import (
     FounderSessionRecord,
     FounderAuthRateLimitRecord,
     FounderAuthEventRecord,
+    FounderCVSelectionRecord,
 )
 from storage.feed_projection import FeedProjectionRecord
 
@@ -102,6 +103,7 @@ DUMP_SECTION_TABLE_MAP = {
     "founder_facets": "founder_facets",
     "founder_saved_views": "founder_saved_views",
     "artifact_cache": "artifact_cache",
+    "founder_cv_selections": "founder_cv_selections",
     "source_schedules": "source_schedules",
     "founder_sessions": "founder_sessions",
     "founder_auth_rate_limit": "founder_auth_rate_limit",
@@ -221,6 +223,7 @@ def dump_database(db_url: str, output_file: str) -> int:
         "founder_facets": [],
         "founder_saved_views": [],
         "artifact_cache": [],
+        "founder_cv_selections": [],
         "source_schedules": [],
         "founder_sessions": [],
         "founder_auth_rate_limit": [],
@@ -466,7 +469,19 @@ def dump_database(db_url: str, output_file: str) -> int:
             "created_at": art.created_at.isoformat() if art.created_at else None,
         })
 
-    # 20. Source Schedules (W11, FR-007) -- no FK dependency.
+    # 20. Fixed Founder CV selections (ADR-0024 / FR-007). The FK
+    # points to opportunities, which were dumped in section 1.
+    for selection in session.query(FounderCVSelectionRecord).all():
+        data["founder_cv_selections"].append({
+            "opportunity_id": selection.opportunity_id,
+            "variant": selection.variant,
+            "object_path": selection.object_path,
+            "sha256": selection.sha256,
+            "selected_at": selection.selected_at.isoformat() if selection.selected_at else None,
+            "truth_pack_hash": selection.truth_pack_hash,
+        })
+
+    # 21. Source Schedules (W11, FR-007) -- no FK dependency.
     for sched in session.query(SourceScheduleRecord).all():
         data["source_schedules"].append({
             "source_id": sched.source_id,
@@ -482,7 +497,7 @@ def dump_database(db_url: str, output_file: str) -> int:
             "updated_at": sched.updated_at.isoformat() if sched.updated_at else None,
         })
 
-    # 21. Hosted authentication state. Audit history is preserved. Restored
+    # 22. Hosted authentication state. Audit history is preserved. Restored
     # sessions are immediately revoked so a disaster-recovery target cannot
     # accept cookies minted by the source environment.
     for auth_session in session.query(FounderSessionRecord).all():
@@ -913,7 +928,13 @@ def restore_database(dump_file: str, db_url: str) -> None:
         art = ArtifactCacheRecord(**art_dict)
         session.merge(art)
 
-    # 20. Source Schedules (W11, FR-007) -- no FK dependency.
+    # 20. Fixed Founder CV selections (ADR-0024 / FR-007).
+    for selection_dict in data.get("founder_cv_selections", []):
+        if selection_dict.get("selected_at"):
+            selection_dict["selected_at"] = datetime.fromisoformat(selection_dict["selected_at"])
+        session.merge(FounderCVSelectionRecord(**selection_dict))
+
+    # 21. Source Schedules (W11, FR-007) -- no FK dependency.
     for sched_dict in data.get("source_schedules", []):
         for date_field in (
             "last_attempt_at",
@@ -928,7 +949,7 @@ def restore_database(dump_file: str, db_url: str) -> None:
         sched = SourceScheduleRecord(**sched_dict)
         session.merge(sched)
 
-    # 21. Authentication state. Never restore live sessions; rate-limit state
+    # 22. Authentication state. Never restore live sessions; rate-limit state
     # is intentionally reset while the immutable audit trail is preserved.
     now = datetime.now(timezone.utc)
     for auth_dict in data.get("founder_sessions", []):
