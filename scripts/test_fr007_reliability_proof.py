@@ -355,10 +355,11 @@ class HostedReliabilityProofTests(unittest.TestCase):
         self.assertEqual(a4["state"], "BLOCKED")
 
     def test_missing_dsn_blocks_a5_through_a8(self):
-        report = run_hosted(
-            target_url="https://opportunityos-web-staging.workers.dev",
-            dsn=None,
-        )
+        with patch.dict(os.environ, {}, clear=True):
+            report = run_hosted(
+                target_url="https://opportunityos-web-staging.workers.dev",
+                dsn=None,
+            )
         for name in ("A5", "A6", "A7", "A8"):
             s = next(item for item in report["scenarios"] if item["scenario"] == name)
             self.assertEqual(s["state"], "BLOCKED", f"{name} should be BLOCKED")
