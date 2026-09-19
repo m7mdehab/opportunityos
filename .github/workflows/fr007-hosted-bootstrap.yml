@@ -36,7 +36,8 @@ jobs:
       - name: Run bounded hosted bootstrap
         env:
           OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
-          OPPORTUNITYOS_TRUTH_PACK_PATH: ${{ vars.OPPORTUNITYOS_TRUTH_PACK_PATH }}
+          OPPORTUNITYOS_ENVIRONMENT: cloud
+          OPPORTUNITYOS_TRUTH_PACK_PATH: ${{ vars.OPPORTUNITYOS_TRUTH_PACK_PATH || 'founder/truth_pack.yaml.gz.b64' }}
         run: >-
           python scripts/fr007_hosted_bootstrap.py
           --mode "${{ inputs.mode }}"
