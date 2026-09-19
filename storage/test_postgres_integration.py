@@ -719,11 +719,17 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
                     for row in conn.execute(
                         text(
                             "SELECT table_name FROM information_schema.tables "
-                            "WHERE table_schema = 'public' AND table_name != 'alembic_version'"
+                            "WHERE table_schema = 'public' "
+                            "AND table_type = 'BASE TABLE' "
+                            "AND table_name != 'alembic_version'"
                         )
                     )
                 }
-            self.assertEqual(actual_tables, set(Base.metadata.tables.keys()))
+            # founder_identity is intentionally migration-owned rather than an
+            # ORM/dump table: a restored environment must re-bind its own
+            # Supabase Founder subject instead of copying identity binding.
+            expected_tables = set(Base.metadata.tables.keys()) | {"founder_identity"}
+            self.assertEqual(actual_tables, expected_tables)
         finally:
             if os.path.exists(dump_path):
                 os.remove(dump_path)
