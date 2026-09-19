@@ -11,7 +11,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `67bd023` — ci(fr007): validate Azure Bicep on deployment changes
+- **State generated at commit:** `e0e1368` — fix(fr007): distinguish workflow triggers from action inputs
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
