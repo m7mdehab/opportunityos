@@ -77,8 +77,26 @@ class TruthGraphTests(unittest.TestCase):
             "cv",
             "experience",
         )
-        self.assertTrue(_single_record_supports_value(date(2026, 1, 1), record))
-        self.assertFalse(_single_record_supports_value(date(2026, 1, 2), record))
+        self.assertTrue(
+            _single_record_supports_value(
+                date(2026, 1, 1), record, predicate="employment.start_date"
+            )
+        )
+        self.assertTrue(
+            _single_record_supports_value(
+                date(2026, 1, 31), record, predicate="employment.end_date"
+            )
+        )
+        self.assertFalse(
+            _single_record_supports_value(
+                date(2026, 1, 2), record, predicate="employment.start_date"
+            )
+        )
+        self.assertFalse(
+            _single_record_supports_value(
+                date(2026, 1, 30), record, predicate="employment.end_date"
+            )
+        )
 
         year_only = EvidenceRecord(
             "ev-year-only",
@@ -86,7 +104,11 @@ class TruthGraphTests(unittest.TestCase):
             "cv",
             "experience",
         )
-        self.assertFalse(_single_record_supports_value(date(2026, 1, 1), year_only))
+        self.assertFalse(
+            _single_record_supports_value(
+                date(2026, 1, 1), year_only, predicate="employment.start_date"
+            )
+        )
 
     def test_reverse_provenance_indexing(self):
         graph = synthetic_graph()
