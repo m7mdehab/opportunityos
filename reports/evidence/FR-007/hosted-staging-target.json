@@ -1,0 +1,18 @@
+{
+  "brief": "FR-007",
+  "environment": "staging",
+  "provider": "Supabase",
+  "project_name": "opportunityos-staging",
+  "project_ref": "lrrcpwaapwynzdsxzwhy",
+  "organization_name": "OpportunityOS",
+  "region": "eu-central-1",
+  "project_url": "https://lrrcpwaapwynzdsxzwhy.supabase.co",
+  "database_engine": "PostgreSQL 17",
+  "provider_status": "ACTIVE_HEALTHY",
+  "created_at_utc": "2026-09-18T22:35:54.683484Z",
+  "monthly_project_cost_usd": 0,
+  "secrets_included": false,
+  "initial_public_tables": 0,
+  "initial_project_migrations": 0,
+  "note": "Safe hosted-target metadata only. No database password, service-role key, storage signing secret, session secret, Founder credential, or private Truth Pack content is recorded here."
+}
