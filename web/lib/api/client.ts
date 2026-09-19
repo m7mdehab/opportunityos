@@ -113,7 +113,7 @@ export const api = {
       request<OpportunityDetail>(`/api/opportunities/${id}`),
     artifactUrl: (id: string, kind: "cv" | "cover-letter") =>
       kind === "cv"
-        ? `/api/opportunities/${id}/artifacts/cv.pdf?download=true`
+        ? `/api/opportunities/${id}/artifacts/cv-final.pdf?download=true`
         : `/api/opportunities/${id}/artifacts/cover-letter.docx`,
     // BRIEF-FR-006 D2 — inline preview URL for the drawer's embedded PDF
     // viewer (`<embed src=...>`). No `download` param: inline is the
@@ -124,7 +124,7 @@ export const api = {
       template: ArtifactTemplateId = "classic"
     ) =>
       kind === "cv"
-        ? `/api/opportunities/${id}/artifacts/cv.pdf`
+        ? `/api/opportunities/${id}/artifacts/cv-final.pdf`
         : `/api/opportunities/${id}/artifacts/cover-letter.pdf?template=${template}`,
     omittedItems: (
       id: string,
