@@ -103,38 +103,55 @@ Integrated repository-side capabilities include:
 
 Repository implementation proof is ahead of hosted execution. Production A-gates remain open until real provider/runtime evidence exists.
 
-## Current Parallel Execution
+## Current Hosted Execution State
 
-Executor lane status:
+W15 repository preparation is integrated and green:
 
-- Antigravity: W15B.1 remediation complete on `work/fr007-antigravity-observability-release-wave15`. Workflow <-> CLI contract aligned (`--output-report`, `--output-incident`, `--backup-heartbeat-path`), alert action schema unified (`CREATE`, `UPDATE`, `RESOLVE`, `NONE`), fail-closed issue processor (`scripts/process_incident_alert.py`), durable soak evidence via Actions artifacts (90-day retention) and fetcher (`scripts/fetch_soak_artifacts.py`), fail-closed soak verifier enforcing `proof_scope == "FULL_HOSTED"`, audited hosted acceptance manifest (A-0, A-3 PASS repository-only; A-1, A-2, A-4..A-13, A-15, A-17 REPOSITORY_VERIFIED; A-14, A-16 NOT_EXECUTED), recomputed cost envelope (30-min Actions cadence = 1,440 billed min/mo, ACA student credit separated from permanent free tier), workflow contract validator, and expanded test suite (67/67 PASS) verified;
-- Codex: hosted-grade single-Founder auth/session hardening plus PostgreSQL/Supabase RLS policy authority.
+- hosted single-Founder scrypt auth, durable PostgreSQL sessions/rate-limit/audit, fail-closed CSRF/origin validation and reversible hosted RLS authority;
+- external observability, incident lifecycle, durable soak snapshots, hosted-acceptance manifest, release evidence index and cost/quota control plane.
 
-The Overseer owns PR/CI/integration, ordinary residual repair and the authoritative checklist.
+A real Supabase staging project is now provisioned and healthy:
+
+- project: `opportunityos-staging`;
+- safe project ref: `lrrcpwaapwynzdsxzwhy`;
+- region: `eu-central-1`;
+- safe API origin: `https://lrrcpwaapwynzdsxzwhy.supabase.co`;
+- PostgreSQL: 17;
+- plan/project creation cost: $0/month at provisioning;
+- initial public schema and project migration history are empty.
+
+Safe hosted-target metadata is persisted at `reports/evidence/FR-007/hosted-staging-target.json`. No database password, service-role key, storage signing secret, Founder credential, session secret or private Truth Pack content is stored in Git.
+
+The failed precondition W16A attempt from the pre-W15 integration head is non-authoritative and must not be reused.
+
+## Current Execution
+
+Next milestone: execute the real hosted Supabase data-plane/private-state path against the provisioned staging target, then proceed to Azure + Cloudflare runtime activation.
+
+Task routing must follow actual tool access. Repository agents must not be assigned provider mutations they cannot authenticate. The Overseer owns connected-provider actions available only through authenticated Supabase/GitHub tooling; Codex/Antigravity receive bounded end goals they can actually finish.
 
 ## Remaining FR-007 Sequence
 
-1. hosted-grade auth/session/RLS boundary;
-2. connect real Supabase/PostgreSQL staging;
-3. real staging migration + parity;
-4. configure/test private Truth Pack retrieval;
-5. configure/test private artifact storage retrieval;
-6. deploy Azure API/worker/scheduler/migrate;
-7. deploy Cloudflare frontend;
-8. run hosted A-4/A-5/A-6/A-7/A-8 reliability proof;
-9. cold-start/feed SLO proof;
-10. shadow polling and identity/source-occurrence parity;
-11. external monitoring + test alert;
-12. encrypted off-provider backup;
-13. fresh-environment restore drill;
-14. provider-exit execution proof;
-15. public cutover;
-16. Desktop + 390px authenticated cloud smoke;
-17. real cost/quota envelope;
-18. >=7 consecutive days with Founder production host offline;
-19. terminal A-0..A-17 evidence review;
-20. Founder validation;
-21. only then consider BRIEF-007.
+1. execute real Supabase schema migration and hosted parity;
+2. prove hosted anon/authenticated/backend RLS boundaries;
+3. configure/test private Truth Pack retrieval;
+4. configure/test private artifact storage retrieval;
+5. deploy Azure API/worker/scheduler/migrate;
+6. deploy Cloudflare frontend;
+7. run hosted A-4/A-5/A-6/A-7/A-8 reliability proof;
+8. cold-start/feed SLO proof;
+9. shadow polling and identity/source-occurrence parity;
+10. external monitoring + real test alert;
+11. encrypted off-provider backup;
+12. fresh-environment restore drill;
+13. provider-exit execution proof;
+14. public cutover;
+15. Desktop + 390px authenticated cloud smoke;
+16. real cost/quota observation;
+17. start then complete >=7 consecutive days with Founder production host offline;
+18. terminal A-0..A-17 evidence review;
+19. Founder validation;
+20. only then consider BRIEF-007.
 
 ## Founder-Only Boundaries
 

@@ -11,7 +11,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `c172749` — rebase(w15b): apply scripts/validate_workflow_contracts.py
+- **State generated at commit:** `7c349f7` — docs(roadmap): move FR-007 into real hosted staging execution
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
