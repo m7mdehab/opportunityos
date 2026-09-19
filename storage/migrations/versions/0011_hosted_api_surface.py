@@ -38,12 +38,27 @@ def _postgres_upgrade() -> None:
       IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN EXECUTE 'REVOKE ALL ON public.founder_cv_selections FROM anon'; END IF;
       IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN EXECUTE 'REVOKE ALL ON public.founder_cv_selections FROM authenticated'; END IF;
     END $$""")
-    op.execute("""DO $$ BEGIN
-      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
-        EXECUTE 'DROP POLICY IF EXISTS source_poll_runs_browser_deny_authenticated ON public.source_poll_runs';
-        EXECUTE 'CREATE POLICY source_poll_runs_founder_authenticated_read ON public.source_poll_runs FOR SELECT TO authenticated USING (public.opos_is_founder())';
+    # Security-invoker views execute with the caller's base-table
+    # privileges/RLS. Replace 0009's authenticated deny policy only for the
+    # deliberate Founder read surface, and make policy creation idempotent
+    # against 0010 (source_poll_runs already has the same founder policy).
+    for table in ("source_poll_runs", "opportunities", "match_evaluations", "founder_cv_selections"):
+        op.execute(f"""DO $ BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
+            EXECUTE 'DROP POLICY IF EXISTS {table}_browser_deny_authenticated ON public.{table}';
+            EXECUTE 'DROP POLICY IF EXISTS {table}_founder_authenticated_read ON public.{table}';
+            EXECUTE 'CREATE POLICY {table}_founder_authenticated_read ON public.{table} FOR SELECT TO authenticated USING (public.opos_is_founder())';
+          END IF;
+        END $""")
+    # founder_cv_selections is created by this revision after Supabase's
+    # schema-wide default grants were established and is explicitly revoked
+    # above, so grant only SELECT back to the authenticated role. RLS still
+    # restricts that SELECT to the bound Founder.
+    op.execute("""DO $ BEGIN
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
+        EXECUTE 'GRANT SELECT ON public.founder_cv_selections TO authenticated';
       END IF;
-    END $$""")
+    END $""")
     op.execute("""
       CREATE OR REPLACE VIEW public.founder_opportunity_detail WITH (security_invoker = true) AS
       SELECT o.id, o.title, o.organization, o.source_id, o.source_url, o.track,
@@ -193,12 +208,14 @@ def _postgres_downgrade() -> None:
     op.execute("DROP VIEW IF EXISTS public.founder_opportunity_detail")
     op.execute("DROP INDEX IF EXISTS ix_founder_cv_selections_sha256")
     op.drop_table("founder_cv_selections")
-    op.execute("""DO $$ BEGIN
-      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
-        EXECUTE 'DROP POLICY IF EXISTS source_poll_runs_founder_authenticated_read ON public.source_poll_runs';
-        EXECUTE 'CREATE POLICY source_poll_runs_browser_deny_authenticated ON public.source_poll_runs FOR ALL TO authenticated USING (false) WITH CHECK (false)';
-      END IF;
-    END $$""")
+    for table in ("source_poll_runs", "opportunities", "match_evaluations"):
+        op.execute(f"""DO $ BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
+            EXECUTE 'DROP POLICY IF EXISTS {table}_founder_authenticated_read ON public.{table}';
+            EXECUTE 'DROP POLICY IF EXISTS {table}_browser_deny_authenticated ON public.{table}';
+            EXECUTE 'CREATE POLICY {table}_browser_deny_authenticated ON public.{table} FOR ALL TO authenticated USING (false) WITH CHECK (false)';
+          END IF;
+        END $""")
     for table in ("founder_filter_settings", "founder_facets", "founder_saved_views"):
         op.execute(f"""DO $$ BEGIN
           IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
