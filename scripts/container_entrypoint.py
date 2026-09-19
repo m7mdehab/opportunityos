@@ -138,23 +138,13 @@ def resolve_environment(role: str, environ: Mapping[str, str] | None = None) -> 
                 "Invalid cloud database endpoint: loopback host rejected in production/cloud mode"
             )
 
-    # 3. Role-specific required credentials
-    if role == "api":
-        missing = []
-        for var_name in ("OPPORTUNITYOS_FOUNDER_PASSWORD", "OPPORTUNITYOS_SESSION_SECRET"):
-            val = env.get(var_name)
-            if not val:
-                missing.append(var_name)
-            else:
-                malformed = _check_malformed_value(var_name, val)
-                if malformed:
-                    raise ConfigurationError(f"Malformed configuration: {malformed}")
-        if missing:
-            raise ConfigurationError(
-                f"Missing required API credentials: {', '.join(missing)}"
-            )
-
-    # 4. Authoritative cloud runtime bridge integration
+    # 3. Authoritative role-specific credential/config validation.
+    #
+    # Do not duplicate the auth contract here. The cloud runtime accepts the
+    # W15A hash-only Founder credential and explicitly forbids plaintext
+    # OPPORTUNITYOS_FOUNDER_PASSWORD, while local/dev compatibility still
+    # accepts the plaintext credential. The bridge/validator below owns that
+    # mode-sensitive decision and redacts supplied values from diagnostics.
     try:
         from scripts.cloud_runtime_bridge import (
             CompatibilityError,
