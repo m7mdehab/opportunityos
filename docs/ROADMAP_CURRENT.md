@@ -34,51 +34,55 @@ The FR-007 integration branch now contains repository/disposable-runtime proof f
 
 These are implementation/repository proofs. They do not by themselves close hosted-production acceptance criteria.
 
-## Active Parallel Work
+## Current Hosted Staging State
 
-The next large repository-side lanes are:
+W15 repository preparation is integrated: hosted single-Founder auth/session/RLS and the observability/release/soak control plane are in the authoritative FR-007 integration branch.
 
-1. hosted-grade single-Founder authentication/session hardening plus PostgreSQL/Supabase RLS policy authority;
-2. cloud observability/release/soak control plane: uptime/error/job/source/backup heartbeats, test-alert contract, cost/quota ledger and hosted evidence orchestration.
+A real Supabase staging project now exists and is healthy:
 
-The Overseer owns independent review, ordinary remediation, CI, integration and the authoritative checklist.
+- `opportunityos-staging`;
+- project ref `lrrcpwaapwynzdsxzwhy`;
+- region `eu-central-1`;
+- PostgreSQL 17;
+- safe API origin `https://lrrcpwaapwynzdsxzwhy.supabase.co`;
+- initial public schema/migration history empty;
+- project creation cost recorded as $0/month.
+
+Provider credentials and private Founder data remain outside Git.
+
+The next execution is no longer another repository-preparation wave. It is the real hosted data-plane/private-state execution against this staging target.
+
+The Overseer owns connected-provider operations available only through authenticated Supabase/GitHub tooling. Repository executors receive end goals matched to the capabilities they actually possess.
 
 ## Remaining Execution Order
 
-### 1. Hosted-grade auth and data-access boundary
-
-- replace the localhost-only auth posture before public exposure;
-- add durable session revocation/rate-limit/audit semantics while preserving single-Founder tenancy;
-- add explicit RLS policy authority for browser-visible Supabase relations/views;
-- prove server/service-role and browser/anon boundaries separately.
-
-### 2. Real hosted data plane
+### 1. Real hosted data plane
 
 - connect the real hosted PostgreSQL/Supabase staging target;
 - execute repository preflight and migrations;
 - prove count/invariant/content-hash parity;
 - keep current production authority unchanged until staging gates pass.
 
-### 3. Private cloud state execution
+### 2. Private cloud state execution
 
 - configure a real private Truth Pack object and verify retrieval after API/worker restart;
 - configure a real private artifact bucket and verify generation/retrieval after restart;
 - prove secrets remain server-side and object bodies remain private.
 
-### 4. Hosted runtime + frontend execution
+### 3. Hosted runtime + frontend execution
 
 - deploy API, worker, scheduler and migrate roles from the same immutable OCI image;
 - deploy frontend independently behind Cloudflare;
 - prove no Founder-PC/local-filesystem dependency;
 - run hosted A-4/A-5/A-6/A-7/A-8 evidence and cold-start/feed SLO measurement.
 
-### 5. Shadow migration and source parity
+### 4. Shadow migration and source parity
 
 - run cloud polling in shadow/non-authoritative mode;
 - compare canonical identities/source occurrences to the authoritative runtime;
 - resolve discrepancies before production authority moves.
 
-### 6. Monitoring, backup and portability
+### 5. Monitoring, backup and portability
 
 - activate external uptime monitoring and application-error capture;
 - activate job/queue/source-freshness/worker-stall/backup heartbeats;
@@ -87,14 +91,14 @@ The Overseer owns independent review, ordinary remediation, CI, integration and 
 - restore into a fresh staging environment;
 - execute provider-neutral export/restore proof.
 
-### 7. Cutover and soak
+### 6. Cutover and soak
 
 - public DNS/runtime cutover only after staging evidence authorizes it;
 - authenticated desktop and 390px mobile cloud smoke;
 - document the real cost/quota envelope;
 - run at least 7 consecutive days with Founder-owned production host processes disabled/offline.
 
-### 8. Terminal acceptance
+### 7. Terminal acceptance
 
 Close A-0 through A-17 only from persisted evidence and independent verification.
 
