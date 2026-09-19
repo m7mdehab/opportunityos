@@ -1,15 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
+const FOUNDER_EMAIL = process.env.E2E_FOUNDER_EMAIL ?? "";
 const FOUNDER_PASSWORD = process.env.E2E_FOUNDER_PASSWORD ?? "";
-
-async function login(page: Page) {
-  await page.goto("/");
-  await expect(page).toHaveURL(/\/login$/);
-  await page.getByLabel("Password").fill(FOUNDER_PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: "OpportunityOS" })).toBeVisible();
-}
 
 async function pageJson<T>(
   page: Page,
@@ -52,28 +44,86 @@ async function pageBinary(page: Page, path: string) {
 
 test.describe("Cloudflare staging hosted smoke", () => {
   test("desktop/mobile same-origin founder flow", async ({ page }) => {
-    await login(page);
+    // 1. Unauthenticated root access redirects to login gate
+    await page.goto("/");
+    await expect(page).toHaveURL(/\/login$/);
 
-    // Persisted feed must already exist; this smoke does not poll in order to
-    // make the page readable.
+    // 1b. Unauthenticated API request returns 401
+    const unauthApi = await pageJson(page, "/api/opportunities");
+    expect(unauthApi.status, "Unauthenticated API request must return 401").toBe(401);
+
+    // 2. Invalid login is rejected
+    const emailField = page.getByLabel(/Email/i);
+    const hasEmail = await emailField.isVisible().catch(() => false);
+    if (hasEmail) {
+      await emailField.fill("invalid-founder@example.com");
+    }
+    const passwordField = page.getByLabel(/Password/i);
+    await passwordField.fill("completely-wrong-password-9999");
+    await page.getByRole("button", { name: /Sign in/i }).click();
+
+    await expect(page.locator('[role="alert"], #login-error, .text-destructive')).toBeVisible();
+    await expect(page).toHaveURL(/\/login$/);
+
+    // 3. Founder email/password login succeeds
+    if (hasEmail) {
+      await emailField.fill(FOUNDER_EMAIL);
+    }
+    await passwordField.fill(FOUNDER_PASSWORD);
+    await page.getByRole("button", { name: /Sign in/i }).click();
+
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole("heading", { name: "OpportunityOS" })).toBeVisible();
+
+    // 4. Session survives page reload
+    await page.reload();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole("heading", { name: "OpportunityOS" })).toBeVisible();
+
+    // 5. Feed endpoint returns exact contract
     const firstPage = await pageJson<{
       page: number;
       page_size: number;
       total: number;
+      hidden_count: number;
       items: Array<{
         id: string;
         title: string;
         organization: string;
+        source_id: string;
         source_url: string;
+        track: string;
+        decision: string | null;
+        fit_score: number | null;
+        top_reasons: string[];
+        work_mode: string;
+        remote_scope: string;
+        employment_type: string;
+        seniority_level: string;
       }>;
     }>(page, "/api/opportunities?page=1&page_size=1");
+
     expect(firstPage.ok, `feed returned ${firstPage.status}`).toBe(true);
-    expect(firstPage.body.total, "staging needs at least two rows to prove pagination").toBeGreaterThan(1);
+    expect(typeof firstPage.body.page).toBe("number");
+    expect(typeof firstPage.body.page_size).toBe("number");
+    expect(typeof firstPage.body.total).toBe("number");
+    expect(Array.isArray(firstPage.body.items)).toBe(true);
+
+    // Bootstrap prerequisite: staging corpus must have at least two feed rows
+    if (firstPage.body.total < 2) {
+      throw new Error(
+        `Staging corpus has fewer than two feed rows (total=${firstPage.body.total}); run protected bootstrap workflow before running smoke.`
+      );
+    }
+
     expect(firstPage.body.items).toHaveLength(1);
     const first = firstPage.body.items[0];
+    expect(typeof first.id).toBe("string");
+    expect(first.title.length).toBeGreaterThan(0);
+    expect(first.organization.length).toBeGreaterThan(0);
+    expect(first.source_url.length).toBeGreaterThan(0);
 
-    // Pagination proof: page 2 resolves through the same Cloudflare /api proxy
-    // and identifies a different canonical item.
+    // 6. Pagination proof: page 2 returns a different item
     const secondPage = await pageJson<{
       page: number;
       page_size: number;
@@ -84,8 +134,7 @@ test.describe("Cloudflare staging hosted smoke", () => {
     expect(secondPage.body.items).toHaveLength(1);
     expect(secondPage.body.items[0].id).not.toBe(first.id);
 
-    // Search proof uses a live title token from the feed rather than a
-    // hard-coded staging fixture.
+    // 7. Live search returns target row
     const searchTerm =
       first.title.split(/\s+/).find((part) => part.replace(/[^\p{L}\p{N}+#]/gu, "").length >= 3) ??
       first.organization;
@@ -97,19 +146,56 @@ test.describe("Cloudflare staging hosted smoke", () => {
     expect(search.body.total).toBeGreaterThan(0);
     expect(search.body.items.some((item) => item.id === first.id)).toBe(true);
 
-    const facets = await pageJson<{ facets: unknown[] }>(page, "/api/facets");
+    // 8. Facets response has the real contract shape, not arrays of bare strings
+    const facets = await pageJson<{
+      facets: Array<{
+        facet_id: string;
+        value_type?: string;
+        values: Array<{ value: string; count: number }>;
+      }>;
+    }>(page, "/api/facets");
     expect(facets.ok, `facets returned ${facets.status}`).toBe(true);
+    expect(Array.isArray(facets.body.facets)).toBe(true);
     expect(facets.body.facets.length).toBeGreaterThan(0);
+    for (const facet of facets.body.facets) {
+      expect(typeof facet.facet_id).toBe("string");
+      expect(Array.isArray(facet.values)).toBe(true);
+      for (const val of facet.values) {
+        expect(typeof val.value).toBe("string");
+        expect(typeof val.count).toBe("number");
+      }
+    }
 
-    const detail = await pageJson<{ id: string; source_url: string }>(
-      page,
-      `/api/opportunities/${encodeURIComponent(first.id)}`
-    );
+    // 9. Opportunity detail includes nested qualification/scoring arrays safe for DetailDrawer
+    const detail = await pageJson<{
+      id: string;
+      title: string;
+      source_url: string;
+      qualification: {
+        decision: string | null;
+        constraints: Array<{ constraint_name: string; outcome: string }>;
+      };
+      scoring: {
+        fit_score: number | null;
+        dimension_scores: Array<{ dimension: string; score: number }>;
+        strengths: string[];
+        gaps: string[];
+        unknowns: string[];
+      };
+    }>(page, `/api/opportunities/${encodeURIComponent(first.id)}`);
+
     expect(detail.ok, `detail returned ${detail.status}`).toBe(true);
     expect(detail.body.id).toBe(first.id);
     expect(detail.body.source_url).toBeTruthy();
+    expect(detail.body.qualification).toBeDefined();
+    expect(Array.isArray(detail.body.qualification.constraints)).toBe(true);
+    expect(detail.body.scoring).toBeDefined();
+    expect(Array.isArray(detail.body.scoring.dimension_scores)).toBe(true);
+    expect(Array.isArray(detail.body.scoring.strengths)).toBe(true);
+    expect(Array.isArray(detail.body.scoring.gaps)).toBe(true);
+    expect(Array.isArray(detail.body.scoring.unknowns)).toBe(true);
 
-    // UI detail/source-link proof.
+    // 10. UI detail drawer, source link, and PDF preview
     const firstCard = page.locator('[data-testid^="opportunity-card-"]').first();
     await expect(firstCard).toBeVisible();
     await firstCard.click();
@@ -122,55 +208,83 @@ test.describe("Cloudflare staging hosted smoke", () => {
     const pdfPreview = drawer.getByTestId("artifact-pdf-preview");
     await expect(pdfPreview).toBeVisible();
 
-    // DOCX/PDF retrieval through the browser's same-origin proxy. These
-    // assertions fail rather than silently passing when staging lacks the
-    // Truth Pack or artifact backend required by A-16.
-    const docx = await pageBinary(
+    // 11. Fixed CV preview and download from founder-cv-portfolio (ADR-0024)
+    const cvPreview = await pageBinary(
       page,
-      `/api/opportunities/${encodeURIComponent(first.id)}/artifacts/cv.docx?template=classic`
+      `/api/opportunities/${encodeURIComponent(first.id)}/artifacts/cv-final.pdf`
     );
-    expect(docx.ok, `DOCX returned ${docx.status}`).toBe(true);
-    expect(docx.contentType).toContain(
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    );
-    expect(docx.contentDisposition.toLowerCase()).toContain("attachment");
-    expect(docx.prefix.slice(0, 2)).toEqual([0x50, 0x4b]);
-    expect(docx.size).toBeGreaterThan(0);
+    expect(cvPreview.ok, `CV preview returned ${cvPreview.status}`).toBe(true);
+    expect(cvPreview.contentType).toContain("application/pdf");
+    expect(cvPreview.contentDisposition.toLowerCase()).toContain("inline");
+    expect(cvPreview.prefix).toEqual([0x25, 0x50, 0x44, 0x46]); // %PDF
+    expect(cvPreview.size).toBeGreaterThan(0);
 
-    const pdf = await pageBinary(
+    const cvDownload = await pageBinary(
       page,
-      `/api/opportunities/${encodeURIComponent(first.id)}/artifacts/cv.pdf?template=classic`
+      `/api/opportunities/${encodeURIComponent(first.id)}/artifacts/cv-final.pdf?download=true`
     );
-    expect(pdf.ok, `PDF returned ${pdf.status}`).toBe(true);
-    expect(pdf.contentType).toContain("application/pdf");
-    expect(pdf.contentDisposition.toLowerCase()).toContain("inline");
-    expect(pdf.prefix).toEqual([0x25, 0x50, 0x44, 0x46]);
-    expect(pdf.size).toBeGreaterThan(0);
+    expect(cvDownload.ok, `CV download returned ${cvDownload.status}`).toBe(true);
+    expect(cvDownload.contentType).toContain("application/pdf");
+    expect(cvDownload.contentDisposition.toLowerCase()).toContain("attachment");
+    expect(cvDownload.contentDisposition.toLowerCase()).toContain("filename=");
+    expect(cvDownload.prefix).toEqual([0x25, 0x50, 0x44, 0x46]); // %PDF
+    expect(cvDownload.size).toBeGreaterThan(0);
+
+    // 12. Generated artifact is either correctly returned (200) or legitimate 404/409/412
+    const coverLetter = await pageBinary(
+      page,
+      `/api/opportunities/${encodeURIComponent(first.id)}/artifacts/cover-letter.docx`
+    );
+    if (coverLetter.ok) {
+      expect(coverLetter.contentType).toContain(
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      );
+      expect(coverLetter.prefix.slice(0, 2)).toEqual([0x50, 0x4b]); // PK (zip)
+      expect(coverLetter.size).toBeGreaterThan(0);
+    } else {
+      expect(
+        [404, 409, 412],
+        `Generated artifact returned unexpected status ${coverLetter.status}`
+      ).toContain(coverLetter.status);
+    }
 
     await page.keyboard.press("Escape");
     await expect(drawer).not.toBeVisible();
 
-    // Poll Now must respond asynchronously and must not destroy the already
-    // visible persisted feed.
-    const poll = await pageJson<{ enqueued: unknown[]; skipped: unknown[] }>(
-      page,
-      "/api/worker/poll-now",
-      { method: "POST" }
-    );
+    // 13. Poll Now response contains arrays of {source_id,job_id} and {source_id,reason}
+    // and existing feed remains visible
+    const poll = await pageJson<{
+      enqueued: Array<{ source_id: string; job_id: string }>;
+      skipped: Array<{ source_id: string; reason: string }>;
+    }>(page, "/api/worker/poll-now", { method: "POST" });
     expect(poll.ok, `Poll Now returned ${poll.status}`).toBe(true);
     expect(Array.isArray(poll.body.enqueued)).toBe(true);
     expect(Array.isArray(poll.body.skipped)).toBe(true);
+    for (const item of poll.body.enqueued) {
+      expect(typeof item.source_id).toBe("string");
+      expect(typeof item.job_id).toBe("string");
+    }
+    for (const item of poll.body.skipped) {
+      expect(typeof item.source_id).toBe("string");
+      expect(typeof item.reason).toBe("string");
+    }
     await expect(firstCard).toBeVisible();
 
-    // Logout from inside the browser context so the session cookie exercised
-    // above is the exact one invalidated here.
+    // 14. Logout invalidates hosted session and subsequent protected request is 401
     const logout = await pageJson<{ authenticated: boolean }>(
       page,
       "/api/auth/logout",
       { method: "POST" }
     );
     expect(logout.ok, `logout returned ${logout.status}`).toBe(true);
+
     await page.goto("/");
     await expect(page).toHaveURL(/\/login$/);
+
+    const postLogoutApi = await pageJson(page, "/api/opportunities");
+    expect(
+      postLogoutApi.status,
+      "Protected API request after logout must return 401"
+    ).toBe(401);
   });
 });
