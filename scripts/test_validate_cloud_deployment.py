@@ -71,6 +71,21 @@ class CloudDeploymentValidatorTests(unittest.TestCase):
         self.assertIn("{ name: 'truth-pack-uri'; value: truthPackUri }", app)
         self.assertIn("{ name: 'OPPORTUNITYOS_TRUTH_PACK_URI'; secretRef: 'truth-pack-uri' }", app)
 
+    def test_private_ghcr_image_contract_is_durable_and_digest_pinned(self):
+        root = Path(__file__).parents[1]
+        main = (root / "infra/azure/main.bicep").read_text(encoding="utf-8")
+        app = (root / "infra/azure/modules/container-app.bicep").read_text(encoding="utf-8")
+        job = (root / "infra/azure/modules/container-job.bicep").read_text(encoding="utf-8")
+        workflow = (root / ".github/workflows/fr007-azure-staging-deploy.yml").read_text(encoding="utf-8")
+        self.assertIn("param registryPassword string", main)
+        self.assertIn("passwordSecretRef: 'registry-password'", app)
+        self.assertIn("passwordSecretRef: 'registry-password'", job)
+        self.assertIn("packages: write", workflow)
+        self.assertIn("docker/build-push-action@v6", workflow)
+        self.assertIn("GHCR_READ_TOKEN", workflow)
+        self.assertIn("steps.image.outputs.digest", workflow)
+        self.assertNotIn("OPOS_AZURE_IMAGE: ${{ vars.OPOS_AZURE_IMAGE }}", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
