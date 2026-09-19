@@ -33,6 +33,10 @@ class FeedProjectionRecord(Base):
     source_id = Column(String(128), nullable=False)
     source_url = Column(Text, nullable=False)
     posted_date = Column(String(64), nullable=True)
+    deadline = Column(String(64), nullable=True)
+    is_stale = Column(Boolean, nullable=False, default=False)
+    reverified_at = Column(DateTime(timezone=True), nullable=True)
+    description = Column(Text, nullable=False, default="")
     track = Column(String(32), nullable=False)
     opportunity_type = Column(String(32), nullable=True)
     title_family = Column(String(64), nullable=True)
@@ -49,6 +53,15 @@ class FeedProjectionRecord(Base):
     fit_score = Column(Float, nullable=True)
     priority_score = Column(Float, nullable=True)
     reasons_json = Column(Text, nullable=False, default="[]")
+    dimension_scores_json = Column(Text, nullable=False, default="[]")
+    evaluation_detail_json = Column(Text, nullable=False, default="{}")
+    policy_version = Column(String(64), nullable=True)
+
+    # ADR-0024: exact immutable CV selection is persisted by the Python
+    # matching engine so the edge never reimplements role-family scoring.
+    selected_cv_variant = Column(String(32), nullable=True)
+    selected_cv_object_path = Column(Text, nullable=True)
+    selected_cv_sha256 = Column(String(64), nullable=True)
 
     red_line_match = Column(Boolean, nullable=False, default=False)
     excluded_industry_match = Column(Boolean, nullable=False, default=False)
