@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `4bff939` — FR-007: make hosted detail and CV views RLS-reachable by Founder
+- **State generated at commit:** `ebd227b` — FR-007: install bundle generator dependencies in integration regen
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
