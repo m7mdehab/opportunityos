@@ -178,3 +178,8 @@ BRIEF-007 / Multi-Tenant Family Alpha remains blocked until the reliable cloud-h
 - execution: `docs/AGENT_EXECUTION_PROTOCOL.md`
 - Overseer loop: `docs/OVERSEER_EXECUTION_LOCK.md`
 - current state: `docs/STATE.md`
+
+
+### Founder-locked CV portfolio
+
+Employment applications do not synthesize CVs. ADR-0024 locks six final 2026 PDFs (AI Engineer, Business Analyst, Data Analyst, Data Engineer, Data Scientist, Master). Matching selects one immutable PDF, verifies its SHA-256, and attaches those exact bytes. Cover letters/application answers remain Truth-locked generated artifacts. The PDF bodies live in private Supabase Storage; the repository stores only the selection catalog and hashes.
