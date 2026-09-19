@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-19T19:58:08Z
-- **State generated at commit:** `6b2faae` — FR-007: issue W18 R1 edge remediation
+- **State generated at commit:** `cfcf8ef` — FR-007: fix A7 reliability fixture settings contract
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
