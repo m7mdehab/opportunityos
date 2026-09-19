@@ -10,7 +10,7 @@ FR-007 is therefore the active execution priority. BRIEF-007 / Multi-Tenant Fami
 
 ## Immediate Goal
 
-Complete the real hosted staging path: connect the managed PostgreSQL/Supabase target, execute migration/parity proof, establish private durable Truth Pack/artifact storage, and deploy the OCI runtime without giving production authority to the new stack until the staging gates pass.
+Complete the real zero-dollar hosted staging path: finish Supabase parity/RLS, prove the repository-managed canonical Truth Pack, load and hash-verify the six private fixed CVs/artifacts, wire Supabase-native Founder browser boundaries and durable scheduling, then deploy the Cloudflare web/edge path. FastAPI/OCI remains portability/test evidence, not production infrastructure.
 
 ## Already Integrated
 
@@ -26,7 +26,7 @@ The FR-007 integration branch now contains repository/disposable-runtime proof f
 - historical Azure deployment manifests exist but are no longer an active runtime target under ADR-0023;
 - Cloudflare Workers/OpenNext staging frontend with same-origin `/api/*` proxy and hosted Desktop + 390px smoke contract;
 - private Supabase Storage artifact backend with checksum/size verification and deterministic object identity;
-- private remote HTTPS Truth Pack runtime contract with hash binding and server-only credentials;
+- Founder-approved repository-managed canonical Truth Pack snapshot with pinned hash verification;
 - migration, parity, backup/restore and provider-exit tooling;
 - a manual-only hosted PostgreSQL/Supabase proof harness;
 - real PostgreSQL 16 W11 durability/concurrency proof: 15 tests, zero skips;
@@ -45,10 +45,10 @@ A real Supabase staging project now exists and is healthy:
 - region `eu-central-1`;
 - PostgreSQL 17;
 - safe API origin `https://lrrcpwaapwynzdsxzwhy.supabase.co`;
-- initial public schema/migration history empty;
+- hosted application schema present at Alembic revision `0009_hosted_founder_auth`, with the expected 26-table public RLS baseline;
 - project creation cost recorded as $0/month.
 
-Provider credentials and private Founder data remain outside Git.
+Provider credentials and private artifact bodies remain outside Git. The canonical career Truth Pack is Founder-approved repository-managed product truth. All six fixed CV PDFs are now present in private Supabase Storage and have passed exact remote re-download SHA-256 verification against the committed catalog.
 
 The next execution is no longer another repository-preparation wave. It is the real hosted data-plane/private-state execution against this staging target.
 
@@ -63,11 +63,12 @@ The Overseer owns connected-provider operations available only through authentic
 - prove count/invariant/content-hash parity;
 - keep current production authority unchanged until staging gates pass.
 
-### 2. Private cloud state execution
+### 2. Career truth and private application-file execution
 
-- configure a real private Truth Pack object and verify retrieval after API/worker restart;
-- configure a real private artifact bucket and verify generation/retrieval after restart;
-- prove secrets remain server-side and object bodies remain private.
+- prove the repository-managed canonical Truth Pack decodes, loads and verifies its pinned SHA-256 in cloud/background execution;
+- [complete] six Founder-approved fixed CV PDFs uploaded to private `founder-cv-portfolio` and every remote object verified against its committed SHA-256;
+- configure/verify generated artifact private storage and restart-safe retrieval;
+- prove secrets remain server-side and private file bodies remain private.
 
 ### 3. Zero-dollar hosted runtime + frontend execution
 

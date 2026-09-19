@@ -47,7 +47,22 @@
         "id": "opportunity-artifacts",
         "public": false
       }
-    ]
+    ],
+    "cv_portfolio_bucket": {
+      "id": "founder-cv-portfolio",
+      "public": false,
+      "file_size_limit_bytes": 5242880,
+      "allowed_mime_types": [
+        "application/pdf"
+      ],
+      "status": "BUCKET_READY_OBJECTS_PENDING_UPLOAD"
+    },
+    "canonical_truth_pack": {
+      "mode": "REPOSITORY_MANAGED_HASH_BOUND",
+      "path": "founder/truth_pack.yaml.gz.b64",
+      "raw_sha256": "415a98c68476a428ff83d76936c2b35e3c79576b0c0aca326b4c9cfc29429f44",
+      "supabase_object_required": false
+    }
   },
   "advisors": {
     "security_lints": 0,
@@ -60,7 +75,7 @@
   "acceptance": {
     "A-9": "OPEN_SOURCE_DATA_PARITY_NOT_EXECUTED",
     "A-10": "HOSTED_RLS_SUBPROOF_PASS_FULL_CRITERION_OPEN",
-    "A-11": "OPEN_PRIVATE_OBJECT_UPLOAD_AND_RESTART_RETRIEVAL_NOT_EXECUTED"
+    "A-11": "OPEN_FIXED_CV_AND_GENERATED_ARTIFACT_REMOTE_OBJECT_RETRIEVAL_NOT_EXECUTED"
   },
-  "secret_policy": "No credential values, DSNs, private Founder data, object bodies, or private Truth Pack contents are recorded."
+  "secret_policy": "No credential values, DSNs, private artifact bodies, Founder credentials, or session secrets are recorded. Canonical career Truth Pack content is Founder-approved repository-managed product truth."
 }

@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import math
 import re
+
+import yaml
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from pathlib import Path
@@ -667,85 +669,66 @@ def load_path(path: str | Path) -> TruthGraph:
 
 
 def _parse_yaml(text: str) -> Any:
-    """Parse the safe YAML subset used by truth packs (no tags, anchors, or block scalars)."""
+    """Parse truth-pack YAML with PyYAML SafeLoader and fail-closed guards.
+
+    PyYAML is a project dependency. We retain the historical restrictions on
+    tags, anchors/aliases, block scalars, tabs, and duplicate mapping keys, but
+    use the mature YAML parser for ordinary quoted keys and nested indentation.
+    """
     if not isinstance(text, str) or not text.strip():
         raise IngestionError("YAML document is empty")
     if "\t" in text:
         raise IngestionError("YAML indentation must use spaces")
-    lines: list[tuple[int, str]] = []
+
     for number, raw in enumerate(text.splitlines(), start=1):
         stripped = _strip_yaml_comment(raw).rstrip()
         if not stripped.strip() or stripped.lstrip() in {"---", "..."}:
             continue
         content = stripped.lstrip(" ")
         if (
-            re.search(r"(?:^|[\s:])(?:!![^\s]+|[&*][A-Za-z0-9_-]+)(?=\s|$)", content)
-            or re.search(r":\s*[|>][+-]?\s*$", content)
+            re.search(r"(?:^|[\\s:])(?:!![^\\s]+|[&*][A-Za-z0-9_-]+)(?=\\s|$)", content)
+            or re.search(r":\\s*[|>][+-]?\\s*$", content)
         ):
             raise IngestionError(f"unsupported YAML feature on line {number}")
-        lines.append((len(stripped) - len(content), content))
-    if not lines:
+
+    class _TruthPackSafeLoader(yaml.SafeLoader):
+        pass
+
+    # Keep ISO date-looking scalars as strings. The ingestion layer owns date
+    # coercion and validation, matching the previous deterministic parser.
+    for first_char, resolvers in list(_TruthPackSafeLoader.yaml_implicit_resolvers.items()):
+        _TruthPackSafeLoader.yaml_implicit_resolvers[first_char] = [
+            resolver for resolver in resolvers
+            if resolver[0] != "tag:yaml.org,2002:timestamp"
+        ]
+
+    def _construct_mapping(loader: yaml.SafeLoader, node: yaml.MappingNode, deep: bool = False) -> dict[Any, Any]:
+        loader.flatten_mapping(node)
+        result: dict[Any, Any] = {}
+        for key_node, value_node in node.value:
+            key = loader.construct_object(key_node, deep=deep)
+            if not isinstance(key, str):
+                raise IngestionError("YAML mapping keys must be strings")
+            if key in result:
+                raise IngestionError(f"duplicate YAML key: {key}")
+            result[key] = loader.construct_object(value_node, deep=deep)
+        return result
+
+    _TruthPackSafeLoader.add_constructor(
+        yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+        _construct_mapping,
+    )
+
+    try:
+        result = yaml.load(text, Loader=_TruthPackSafeLoader)
+    except IngestionError:
+        raise
+    except yaml.YAMLError as error:
+        raise IngestionError(f"invalid YAML document: {error}") from error
+
+    if result is None:
         raise IngestionError("YAML document is empty")
-
-    def parse_block(index: int, indent: int) -> tuple[Any, int]:
-        if index >= len(lines) or lines[index][0] != indent:
-            raise IngestionError("invalid YAML indentation")
-        is_list = lines[index][1].startswith("- ") or lines[index][1] == "-"
-        container: Any = [] if is_list else {}
-        while index < len(lines) and lines[index][0] == indent:
-            content = lines[index][1]
-            if is_list:
-                if not (content.startswith("- ") or content == "-"):
-                    raise IngestionError("cannot mix YAML lists and mappings at one indentation")
-                item_text = content[1:].strip()
-                index += 1
-                if not item_text:
-                    if index >= len(lines) or lines[index][0] <= indent:
-                        raise IngestionError("empty YAML list item")
-                    item, index = parse_block(index, lines[index][0])
-                elif _yaml_mapping_entry(item_text):
-                    key, raw_value = _split_yaml_mapping(item_text)
-                    item = {}
-                    if raw_value:
-                        item[key] = _yaml_scalar(raw_value)
-                    elif index < len(lines) and lines[index][0] > indent:
-                        item[key], index = parse_block(index, lines[index][0])
-                    else:
-                        item[key] = None
-                    if index < len(lines) and lines[index][0] > indent:
-                        extra_indent = lines[index][0]
-                        extra, index = parse_block(index, extra_indent)
-                        if not isinstance(extra, dict):
-                            raise IngestionError("list mapping continuation must be a mapping")
-                        duplicate = set(item) & set(extra)
-                        if duplicate:
-                            raise IngestionError(f"duplicate YAML key: {sorted(duplicate)[0]}")
-                        item.update(extra)
-                else:
-                    item = _yaml_scalar(item_text)
-                container.append(item)
-            else:
-                if content.startswith("-"):
-                    raise IngestionError("cannot mix YAML mappings and lists at one indentation")
-                key, raw_value = _split_yaml_mapping(content)
-                if key in container:
-                    raise IngestionError(f"duplicate YAML key: {key}")
-                index += 1
-                if raw_value:
-                    container[key] = _yaml_scalar(raw_value)
-                elif index < len(lines) and lines[index][0] > indent:
-                    container[key], index = parse_block(index, lines[index][0])
-                else:
-                    container[key] = None
-        if index < len(lines) and lines[index][0] > indent:
-            raise IngestionError("invalid YAML indentation")
-        return container, index
-
-    result, final_index = parse_block(0, lines[0][0])
-    if final_index != len(lines) or lines[0][0] != 0:
-        raise IngestionError("invalid YAML document indentation")
     return result
-
 
 def _strip_yaml_comment(value: str) -> str:
     quote: str | None = None
@@ -773,11 +756,54 @@ def _yaml_mapping_entry(value: str) -> bool:
 
 
 def _split_yaml_mapping(value: str) -> tuple[str, str]:
-    match = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_-]*):(?:\s*(.*))?", value)
-    if not match:
-        raise IngestionError(f"invalid YAML mapping entry: {value}")
-    return match.group(1), (match.group(2) or "").strip()
+    """Split one safe YAML mapping entry.
 
+    The truth-pack serializer may quote string keys. Accept plain identifier
+    keys plus JSON-style double-quoted or YAML-style single-quoted string keys,
+    while still rejecting complex/non-string keys and unsupported YAML.
+    """
+    match = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_-]*):(?:\\s*(.*))?", value)
+    if match:
+        return match.group(1), (match.group(2) or "").strip()
+
+    if value.startswith('"'):
+        try:
+            key, key_end = json.JSONDecoder().raw_decode(value)
+        except json.JSONDecodeError as error:
+            raise IngestionError(f"invalid YAML mapping entry: {value}") from error
+        if not isinstance(key, str) or key_end >= len(value) or value[key_end] != ":":
+            raise IngestionError(f"invalid YAML mapping entry: {value}")
+        remainder = value[key_end + 1 :]
+        if remainder and not remainder[0].isspace():
+            raise IngestionError(f"invalid YAML mapping entry: {value}")
+        return key, remainder.strip()
+
+    if value.startswith("\'"):
+        cursor = 1
+        decoded: list[str] = []
+        while cursor < len(value):
+            if value[cursor] != "\'":
+                decoded.append(value[cursor])
+                cursor += 1
+                continue
+            if cursor + 1 < len(value) and value[cursor + 1] == "\'":
+                decoded.append("\'")
+                cursor += 2
+                continue
+            break
+        if (
+            cursor >= len(value)
+            or value[cursor] != "\'"
+            or cursor + 1 >= len(value)
+            or value[cursor + 1] != ":"
+        ):
+            raise IngestionError(f"invalid YAML mapping entry: {value}")
+        remainder = value[cursor + 2 :]
+        if remainder and not remainder[0].isspace():
+            raise IngestionError(f"invalid YAML mapping entry: {value}")
+        return "".join(decoded), remainder.strip()
+
+    raise IngestionError(f"invalid YAML mapping entry: {value}")
 
 def _yaml_scalar(value: str) -> Any:
     lowered = value.casefold()

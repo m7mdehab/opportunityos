@@ -1,7 +1,8 @@
 import unittest
+from datetime import date
 
 from truth.fixtures import synthetic_career_profile, synthetic_evidence, synthetic_graph
-from truth.graph import TruthGraph
+from truth.graph import TruthGraph, _single_record_supports_value
 from truth.models import AssertionType, CareerProfile, EvidenceRecord
 
 
@@ -68,6 +69,46 @@ class TruthGraphTests(unittest.TestCase):
             graph.evidence_records["injected"] = object()
         with self.assertRaises(TypeError):
             graph.profiles["injected"] = object()
+
+    def test_month_granular_date_evidence_supports_only_first_of_month_normalization(self):
+        record = EvidenceRecord(
+            "ev-month-date",
+            "Data Engineer at Example Org, Jan 2026 to Present.",
+            "cv",
+            "experience",
+        )
+        self.assertTrue(
+            _single_record_supports_value(
+                date(2026, 1, 1), record, predicate="employment.start_date"
+            )
+        )
+        self.assertTrue(
+            _single_record_supports_value(
+                date(2026, 1, 31), record, predicate="employment.end_date"
+            )
+        )
+        self.assertFalse(
+            _single_record_supports_value(
+                date(2026, 1, 2), record, predicate="employment.start_date"
+            )
+        )
+        self.assertFalse(
+            _single_record_supports_value(
+                date(2026, 1, 30), record, predicate="employment.end_date"
+            )
+        )
+
+        year_only = EvidenceRecord(
+            "ev-year-only",
+            "Data Engineer at Example Org in 2026.",
+            "cv",
+            "experience",
+        )
+        self.assertFalse(
+            _single_record_supports_value(
+                date(2026, 1, 1), year_only, predicate="employment.start_date"
+            )
+        )
 
     def test_reverse_provenance_indexing(self):
         graph = synthetic_graph()

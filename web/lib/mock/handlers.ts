@@ -111,6 +111,9 @@ export const handlers = [
   http.get("/api/opportunities/:id/artifacts/cv.pdf", ({ request, params }) =>
     artifactPdfResponse(request, String(params.id), "cv")
   ),
+  http.get("/api/opportunities/:id/artifacts/cv-final.pdf", ({ request, params }) =>
+    artifactPdfResponse(request, String(params.id), "cv")
+  ),
   http.get(
     "/api/opportunities/:id/artifacts/cover-letter.pdf",
     ({ request, params }) =>

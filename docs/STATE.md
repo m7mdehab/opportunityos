@@ -6,12 +6,12 @@ Last shipped: BRIEF-FR-006 — 2026-09-13.
 Active work: BRIEF-FR-007.
 Phase status: in progress.
 Blocked: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha (strictly blocked until Founder Web Alpha is live and validated).
-Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supabase target, execute migration/parity proof, establish private durable Truth Pack/artifact storage, and deploy the OCI runtime without giving production authority to the new stack until the staging gates pass.
+Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/RLS, prove the repository-managed canonical Truth Pack, load and hash-verify the six private fixed CVs/artifacts, wire Supabase-native Founder browser boundaries and durable scheduling, then deploy the Cloudflare web/edge.
 
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `09103ef` — adr: identify ADR-0023 as ADR-0022 successor
+- **State generated at commit:** `01e6ed7` — test(truth): cover normalized month-end evidence
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -82,6 +82,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 - [ADR-0018 — Phone Token Metric Disambiguation in Claim Validator](adr/ADR-0018-phone-token-metric-disambiguation.md)
 - [ADR-0021 — Canonical Artifact Claim Validation Boundary](adr/ADR-0021-artifact-validator-authority.md)
 - [ADR-0023 — Zero-Dollar Founder Runtime on Supabase, Cloudflare, and GitHub](adr/ADR-0023-zero-dollar-founder-runtime.md)
+- [ADR-0024 — Founder-Locked CV Portfolio Selection](adr/ADR-0024-fixed-cv-portfolio-selection.md)
 
 ## Blocked Items
 
@@ -101,4 +102,4 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 
 ## Next Prerequisites
 
-Complete the real hosted staging path: connect the managed PostgreSQL/Supabase target, execute migration/parity proof, establish private durable Truth Pack/artifact storage, and deploy the OCI runtime without giving production authority to the new stack until the staging gates pass.
+Complete the real zero-dollar hosted staging path: finish Supabase parity/RLS, prove the repository-managed canonical Truth Pack, load and hash-verify the six private fixed CVs/artifacts, wire Supabase-native Founder browser boundaries and durable scheduling, then deploy the Cloudflare web/edge path. FastAPI/OCI remains portability/test evidence, not production infrastructure.

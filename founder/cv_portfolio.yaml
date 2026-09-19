@@ -1,0 +1,83 @@
+portfolio_version: "2026-09-19-v1"
+owner: "Mohammed Ehab ElNomany"
+status: "final_locked"
+storage:
+  provider: "supabase"
+  bucket: "founder-cv-portfolio"
+  public: false
+  object_prefix: "2026/"
+founder_policy: >-
+  These six PDFs are the authoritative employment CV portfolio. OpportunityOS must select exactly one intact PDF per
+  employment opportunity. It must not automatically rewrite, regenerate, reflow, restyle, or mutate CV wording or
+  formatting. Cover letters and application answers may still be generated from verified Truth Pack evidence.
+generation_policy:
+  employment_cv_generation_enabled: false
+  employment_cv_rewriting_enabled: false
+  employment_cv_formatting_enabled: false
+  allowed_action: "select_existing_final_pdf"
+  fallback_variant: "master"
+  manual_cv_edits_require_founder_approval: true
+variants:
+  - id: "cv-ai-engineer-2026"
+    variant: "ai_engineer"
+    filename: "Mohammed_Ehab_AI_Engineer_CV_2026.pdf"
+    object_path: "2026/Mohammed_Ehab_AI_Engineer_CV_2026.pdf"
+    sha256: "24e84bbaf4cd7aaff59bcbbedefa3db3f3b673c19b9913b3ff7a9283dab01c52"
+    pages: 2
+    status: "final_locked"
+    primary_roles: ["AI Engineer", "Generative AI Engineer", "LLM Engineer", "Applied AI Engineer", "RAG Engineer", "AI Application Engineer"]
+  - id: "cv-business-analyst-2026"
+    variant: "business_analyst"
+    filename: "Mohammed_Ehab_Business_Analyst_CV_2026.pdf"
+    object_path: "2026/Mohammed_Ehab_Business_Analyst_CV_2026.pdf"
+    sha256: "1ef4a990b081b1c07ddce26cd28cc99e6058e39d8b9c06dea58c8f0858a65301"
+    pages: 2
+    status: "final_locked"
+    primary_roles: ["Business Analyst", "Business Systems Analyst", "Technical Business Analyst", "Data Business Analyst"]
+  - id: "cv-data-analyst-2026"
+    variant: "data_analyst"
+    filename: "Mohammed_Ehab_Data_Analyst_CV_2026.pdf"
+    object_path: "2026/Mohammed_Ehab_Data_Analyst_CV_2026.pdf"
+    sha256: "9d8c99bd46fe82200b286ac7901e69f533d5d2a0f7e59393d8f98f2996bd058d"
+    pages: 2
+    status: "final_locked"
+    primary_roles: ["Data Analyst", "BI Analyst", "Business Intelligence Analyst", "Reporting Analyst", "Analytics Analyst"]
+  - id: "cv-data-engineer-2026"
+    variant: "data_engineer"
+    filename: "Mohammed_Ehab_Data_Engineer_CV_2026.pdf"
+    object_path: "2026/Mohammed_Ehab_Data_Engineer_CV_2026.pdf"
+    sha256: "9a01666790f34ed16aea8ebd7c414411f6d7ee4a8cf7fcc3ed5edd1866867516"
+    pages: 2
+    status: "final_locked"
+    primary_roles: ["Data Engineer", "Data Migration Engineer", "ETL Engineer", "Data Integration Engineer", "Analytics Engineer"]
+  - id: "cv-data-scientist-2026"
+    variant: "data_scientist"
+    filename: "Mohammed_Ehab_Data_Scientist_CV_2026.pdf"
+    object_path: "2026/Mohammed_Ehab_Data_Scientist_CV_2026.pdf"
+    sha256: "d80953e57ea61d676001618b37ae73beb225659ad1835ee779500aa2bb470398"
+    pages: 2
+    status: "final_locked"
+    primary_roles: ["Data Scientist", "Applied Scientist", "Machine Learning Scientist", "ML Engineer"]
+  - id: "cv-master-2026"
+    variant: "master"
+    filename: "Mohammed_Ehab_Master_CV_2026.pdf"
+    object_path: "2026/Mohammed_Ehab_Master_CV_2026.pdf"
+    sha256: "4b52a32e58008afd59a93ebdf9edc5b165a624a7e4f2cd13eefadf009a44b7d5"
+    pages: 2
+    status: "final_locked"
+    primary_roles: ["Cross-functional Data / AI / Analytics", "Hybrid technical-business roles", "Ambiguous specialist fit"]
+selection_policy:
+  title_match_weight: 12
+  description_keyword_weight: 2
+  listed_skill_weight: 3
+  fallback_variant: "master"
+  ml_engineer_rule: >-
+    Use AI Engineer when the role centers on production LLM/RAG/agents/AI applications; Data Scientist when it centers
+    on modeling/statistics/experimentation; Data Engineer when it centers on ML data pipelines/platforms. Never create a
+    seventh CV.
+  tie_breakers:
+    - "explicit role-title match"
+    - "required-skill overlap"
+    - "responsibility-scope overlap"
+    - "career-track fit"
+    - "master only when no specialist variant clearly dominates"

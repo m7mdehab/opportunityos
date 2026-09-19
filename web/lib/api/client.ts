@@ -112,7 +112,9 @@ export const api = {
     detail: (id: string) =>
       request<OpportunityDetail>(`/api/opportunities/${id}`),
     artifactUrl: (id: string, kind: "cv" | "cover-letter") =>
-      `/api/opportunities/${id}/artifacts/${kind === "cv" ? "cv.docx" : "cover-letter.docx"}`,
+      kind === "cv"
+        ? `/api/opportunities/${id}/artifacts/cv-final.pdf?download=true`
+        : `/api/opportunities/${id}/artifacts/cover-letter.docx`,
     // BRIEF-FR-006 D2 — inline preview URL for the drawer's embedded PDF
     // viewer (`<embed src=...>`). No `download` param: inline is the
     // default per the deliverable text.
@@ -121,9 +123,9 @@ export const api = {
       kind: "cv" | "cover-letter",
       template: ArtifactTemplateId = "classic"
     ) =>
-      `/api/opportunities/${id}/artifacts/${
-        kind === "cv" ? "cv.pdf" : "cover-letter.pdf"
-      }?template=${template}`,
+      kind === "cv"
+        ? `/api/opportunities/${id}/artifacts/cv-final.pdf`
+        : `/api/opportunities/${id}/artifacts/cover-letter.pdf?template=${template}`,
     omittedItems: (
       id: string,
       kind: "cv" | "cover-letter",
@@ -242,12 +244,15 @@ export async function downloadArtifact(
   kind: "cv" | "cover-letter",
   options?: { format?: "docx" | "pdf"; template?: ArtifactTemplateId }
 ): Promise<{ blob: Blob; filename: string }> {
-  const format = options?.format ?? "docx"
+  const requestedFormat = options?.format ?? "docx"
+  const format = kind === "cv" ? "pdf" : requestedFormat
   const template = options?.template ?? "classic"
   const url =
-    format === "docx"
-      ? `${api.opportunities.artifactUrl(id, kind)}?template=${template}`
-      : `${api.opportunities.artifactPdfUrl(id, kind, template)}&download=true`
+    kind === "cv"
+      ? api.opportunities.artifactUrl(id, kind)
+      : format === "docx"
+        ? `${api.opportunities.artifactUrl(id, kind)}?template=${template}`
+        : `${api.opportunities.artifactPdfUrl(id, kind, template)}&download=true`
   const res = await fetch(url, { credentials: "same-origin" })
 
   if (!res.ok) {

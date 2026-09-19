@@ -1,0 +1,31 @@
+{
+  "format_version": 1,
+  "snapshot": "founder/truth_pack.yaml.gz.b64",
+  "decoded_format": "yaml",
+  "decoded_raw_sha256": "415a98c68476a428ff83d76936c2b35e3c79576b0c0aca326b4c9cfc29429f44",
+  "updated_at": "2026-09-19",
+  "founder_classification": "non-sensitive product truth",
+  "sources": [
+    "Mohammed_Ehab_AI_Engineer_CV_2026.pdf",
+    "Mohammed_Ehab_Business_Analyst_CV_2026.pdf",
+    "Mohammed_Ehab_Data_Analyst_CV_2026.pdf",
+    "Mohammed_Ehab_Data_Engineer_CV_2026.pdf",
+    "Mohammed_Ehab_Data_Scientist_CV_2026.pdf",
+    "Mohammed_Ehab_Master_CV_2026.pdf",
+    "founder-stated policy carried forward from truth_pack(4).yaml"
+  ],
+  "canonical_updates": [
+    "Network International canonical title reconciled to Data Engineer",
+    "Al Tayseer International canonical title reconciled to Business Analyst Team Lead",
+    "Guksu canonical title reconciled to Data Analyst & Supply Chain Analyst",
+    "DemoNow.ai Junior AI Engineer (Jan 2024-Jul 2025) added",
+    "Databricks Certified Data Engineer Associate (2026) added",
+    "leadership/activity evidence added",
+    "Business Analyst target role added",
+    "six role-specific approved summaries added alongside Master summary",
+    "cross-CV skills reconciled into canonical career capability inventory"
+  ],
+  "validation_status": "PYTHON_YAML_ROUNDTRIP_PASS; REPOSITORY_CI_PENDING",
+  "identity_profile": "Mohammed Ehab ElNomany | Data | AI | Analytics Professional | Cairo, Egypt",
+  "fixed_cv_policy": "select one of six final PDFs; never auto-rewrite CV wording or formatting"
+}
