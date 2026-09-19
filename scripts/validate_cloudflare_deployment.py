@@ -75,6 +75,8 @@ def validate_cloudflare_package(root: Path = ROOT) -> list[str]:
             errors.append("proxy route handler must enforce parsed HTTPS upstream origin")
         if 'OPPORTUNITYOS_CLOUD_EDGE === "1"' not in proxy_text:
             errors.append("proxy route handler must distinguish cloud edge from local development")
+        if "getCloudflareContext" not in proxy_text:
+            errors.append("cloud edge must read runtime bindings through OpenNext getCloudflareContext")
         if "hostedRequest(request, path)" not in proxy_text:
             errors.append("cloud edge must route to the Supabase-native hosted runtime when legacy API origin is absent")
         if "NEXT_PUBLIC_SUPABASE_URL" not in proxy_text or (
