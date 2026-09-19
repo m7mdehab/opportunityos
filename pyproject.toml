@@ -47,5 +47,6 @@ include = [
     "core*",
     "feedback*",
     "security*",
+    "api*",
     "recon*",
 ]
