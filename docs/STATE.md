@@ -6,7 +6,7 @@ Last shipped: BRIEF-FR-006 — 2026-09-13.
 Active work: BRIEF-FR-007.
 Phase status: in progress.
 Blocked: BRIEF-007 / Phase 6: Multi-Tenant Family Alpha (strictly blocked until Founder Web Alpha is live and validated).
-Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/RLS, prove the repository-managed canonical Truth Pack, complete generated-artifact private retrieval, wire Supabase-native Founder browser boundaries and durable scheduling, then deploy the Cloudflare web/edge.
+Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/RLS, prove the repository-managed canonical Truth Pack, load and hash-verify the six private fixed CVs/artifacts, wire Supabase-native Founder browser boundaries and durable scheduling, then deploy the Cloudflare web/edge.
 
 ## Repository
 
@@ -102,4 +102,4 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Next Prerequisites
 
-Complete the real zero-dollar hosted staging path: finish Supabase parity/RLS, prove the repository-managed canonical Truth Pack, complete generated-artifact private retrieval, wire Supabase-native Founder browser boundaries and durable scheduling, then deploy the Cloudflare web/edge path. FastAPI/OCI remains portability/test evidence, not production infrastructure.
+Complete the real zero-dollar hosted staging path: finish Supabase parity/RLS, prove the repository-managed canonical Truth Pack, load and hash-verify the six private fixed CVs/artifacts, wire Supabase-native Founder browser boundaries and durable scheduling, then deploy the Cloudflare web/edge path. FastAPI/OCI remains portability/test evidence, not production infrastructure.
