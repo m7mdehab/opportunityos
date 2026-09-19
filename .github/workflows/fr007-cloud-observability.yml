@@ -1,0 +1,148 @@
+name: FR-007 Cloud Observability & Release Gates
+
+on:
+  schedule:
+    # 30-minute interval for external liveness, queue, and database observability
+    # Preserves 560 billed minutes/month of CI headroom under the 2,000 minute free allowance
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Execution mode"
+        required: true
+        type: choice
+        default: "MONITOR"
+        options:
+          - "MONITOR"
+          - "TEST_ALERT"
+          - "VALIDATE"
+          - "SOAK_SUMMARY"
+      target_env:
+        description: "Target deployment environment"
+        required: true
+        type: choice
+        default: "staging"
+        options:
+          - "staging"
+          - "production"
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  group: fr007-cloud-observability-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  observability:
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      OPOS_MONITOR_WEB_URL: ${{ secrets.OPOS_MONITOR_WEB_URL || secrets.FR007_WEB_URL }}
+      OPOS_MONITOR_API_URL: ${{ secrets.OPOS_MONITOR_API_URL || secrets.FR007_API_URL }}
+      CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL || secrets.FR007_DATABASE_URL }}
+      OPOS_BACKUP_HEARTBEAT_PATH: ${{ secrets.OPOS_BACKUP_HEARTBEAT_PATH || secrets.FR007_BACKUP_MANIFEST_PATH }}
+      TARGET_ENV: ${{ github.event.inputs.target_env || 'staging' }}
+      EXEC_MODE: ${{ github.event.inputs.mode || 'MONITOR' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install database driver (if needed)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install asyncpg psycopg2-binary || true
+
+      - name: Execute Validation Gates
+        if: ${{ env.EXEC_MODE == 'VALIDATE' }}
+        run: |
+          echo "Validating Hosted Acceptance Manifest..."
+          python scripts/validate_hosted_acceptance.py
+          echo "Validating Cost & Quota Envelope for ${TARGET_ENV}..."
+          if [ "${TARGET_ENV}" = "production" ]; then
+            python scripts/validate_cloud_cost_quota.py --production
+          else
+            python scripts/validate_cloud_cost_quota.py --staging
+          fi
+
+      - name: Execute Soak Summary & Release Index
+        if: ${{ env.EXEC_MODE == 'SOAK_SUMMARY' }}
+        run: |
+          mkdir -p .monitor_output/soak
+          echo "Fetching remote soak snapshot artifacts from workflow runs..."
+          python scripts/fetch_soak_artifacts.py --target-dir .monitor_output/soak/
+          echo "Verifying 7-day soak evidence (fail-closed gate)..."
+          python scripts/fr007_soak_verify.py --input-dir .monitor_output/soak/ --require-backup
+          echo "Building Release Evidence Index..."
+          python scripts/fr007_release_evidence.py --markdown reports/evidence/FR-007/RELEASE_SUMMARY.md
+
+      - name: Execute Cloud Health Monitor
+        if: ${{ env.EXEC_MODE == 'MONITOR' }}
+        run: |
+          mkdir -p .monitor_output/soak
+          if [ -z "${OPOS_MONITOR_WEB_URL}" ] || [ -z "${CLOUD_DATABASE_URL}" ]; then
+            echo "::error::Missing required hosted monitoring secrets (OPOS_MONITOR_WEB_URL or CLOUD_DATABASE_URL). Failing closed; will not generate unearned soak snapshots."
+            exit 1
+          fi
+
+          echo "Running cloud health monitor in FULL hosted mode..."
+          set +e
+          python scripts/fr007_cloud_monitor.py \
+            --mode FULL \
+            --web-url "${OPOS_MONITOR_WEB_URL}" \
+            --api-url "${OPOS_MONITOR_API_URL}" \
+            --db-url "${CLOUD_DATABASE_URL}" \
+            --backup-heartbeat-path "${OPOS_BACKUP_HEARTBEAT_PATH}" \
+            --output-report .monitor_output/report.json \
+            --output-incident .monitor_output/incident.json
+          MONITOR_EXIT_CODE=$?
+          set -e
+
+          echo "Generating immutable soak snapshot for interval (exit code: ${MONITOR_EXIT_CODE})..."
+          python scripts/fr007_soak_snapshot.py \
+            --report-file .monitor_output/report.json \
+            --deployment-id "${TARGET_ENV}-cloudflare-aca" \
+            --workflow-run-id "${{ github.run_id }}" \
+            --output-dir .monitor_output/soak/
+
+          echo "Processing incident alert action..."
+          if [ -f ".monitor_output/incident.json" ]; then
+            python scripts/process_incident_alert.py --incident-file .monitor_output/incident.json
+          fi
+
+          if [ "${MONITOR_EXIT_CODE}" -ne 0 ]; then
+            echo "::error::Monitor probe failed with exit code ${MONITOR_EXIT_CODE}. Failure captured in soak evidence and incident reported."
+            exit "${MONITOR_EXIT_CODE}"
+          fi
+
+      - name: Execute Synthetic Test Alert
+        if: ${{ env.EXEC_MODE == 'TEST_ALERT' }}
+        run: |
+          mkdir -p .monitor_output
+          echo "Running synthetic test alert..."
+          python scripts/fr007_cloud_monitor.py \
+            --mode TEST_ALERT \
+            --output-report .monitor_output/report.json \
+            --output-incident .monitor_output/incident.json
+
+          echo "Processing synthetic alert action against GitHub Issues..."
+          python scripts/process_incident_alert.py --incident-file .monitor_output/incident.json
+
+      - name: Upload Soak Snapshot Artifact
+        if: ${{ always() && env.EXEC_MODE == 'MONITOR' && hashFiles('.monitor_output/soak/*.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: soak-snapshot-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .monitor_output/soak/*.json
+          if-no-files-found: error
+          retention-days: 90
