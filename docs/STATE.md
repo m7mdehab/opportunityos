@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `04c7aa8` — FR-007: fix hosted runtime downgrade dependency order
+- **State generated at commit:** `0d3abc5` — FR-007: restore 0010 RPC contract on 0011 downgrade
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
