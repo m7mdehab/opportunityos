@@ -671,9 +671,14 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             # exactly the regression D5 exists to prevent, so the wipe must
             # actually destroy the schema for those assertions to be
             # load-bearing.
-            Base.metadata.drop_all(self.engine)
+            # Hosted migrations now own security-invoker views in addition to
+            # ORM tables. Dropping only Base.metadata leaves those views behind
+            # and PostgreSQL correctly refuses to drop their dependent tables.
+            # A real schema-loss drill destroys the whole public schema.
             with self.engine.begin() as conn:
-                conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
+                conn.execute(text("DROP SCHEMA public CASCADE"))
+                conn.execute(text("CREATE SCHEMA public"))
+                conn.execute(text("GRANT ALL ON SCHEMA public TO PUBLIC"))
 
             # Verify empty: no tables at all remain in the schema.
             with self.engine.connect() as conn:
