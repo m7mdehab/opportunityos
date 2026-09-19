@@ -1,6 +1,10 @@
 param name string
 param managedEnvironmentId string
 param image string
+param registryServer string
+param registryUsername string
+@secure()
+param registryPassword string
 param role string
 param externalIngress bool
 param targetPort int = 8000
@@ -33,6 +37,7 @@ resource app 'Microsoft.App/containerApps@2023-05-01' = {
     configuration: union({
       secrets: concat([
         { name: 'cloud-database-url'; value: cloudDatabaseUrl }
+        { name: 'registry-password'; value: registryPassword }
       ], (isApi || isWorker) ? [
         { name: 'truth-pack-uri'; value: truthPackUri }
         { name: 'truth-pack-auth-token'; value: truthPackAuthToken }
@@ -41,6 +46,13 @@ resource app 'Microsoft.App/containerApps@2023-05-01' = {
         { name: 'founder-password-hash'; value: founderPasswordHash }
         { name: 'session-secret'; value: sessionSecret }
       ] : [])
+      registries: [
+        {
+          server: registryServer
+          username: registryUsername
+          passwordSecretRef: 'registry-password'
+        }
+      ]
     }, externalIngress ? {
       ingress: {
         external: true
