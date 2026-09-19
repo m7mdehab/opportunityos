@@ -11,7 +11,7 @@ Next: Complete the real hosted staging path: connect the managed PostgreSQL/Supa
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `fedce70` — preflight(fr007): keep provider readiness manual until Founder setup completes
+- **State generated at commit:** `2495390` — evidence(fr007): add zero-dollar hosted readiness ledger
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
