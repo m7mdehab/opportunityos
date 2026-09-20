@@ -522,6 +522,8 @@ export class MockStore {
     decision?: string
     min_score?: number
     q?: string
+    activity?: string
+    feedback?: string
     page?: number
     page_size?: number
     /** Default `false`. `true` includes items an enabled `hide`-mode
@@ -548,6 +550,22 @@ export class MockStore {
           o.title.toLowerCase().includes(q) ||
           o.organization.toLowerCase().includes(q)
       )
+    }
+    if (filters.activity === "to_review") {
+      items = items.filter((o) => o.action_state === null)
+    } else if (filters.activity === "any_activity") {
+      items = items.filter((o) => o.action_state !== null || o.feedback_label !== null)
+    } else if (filters.activity === "applied") {
+      items = items.filter((o) => o.action_state === "submitted")
+    } else if (filters.activity === "dismissed") {
+      items = items.filter((o) => o.action_state === "dismissed")
+    } else if (filters.activity === "snoozed") {
+      items = items.filter((o) => o.action_state === "snoozed")
+    } else if (filters.activity === "has_feedback") {
+      items = items.filter((o) => o.feedback_label !== null)
+    }
+    if (filters.feedback) {
+      items = items.filter((o) => o.feedback_label === filters.feedback)
     }
 
     // Decorate every item with its current hidden_by/flagged_by before
