@@ -13,7 +13,7 @@ import { ManualSourcesPanel } from "@/components/feed/manual-sources-panel"
 import { TutoringSurface } from "@/components/feed/tutoring-surface"
 import { OverHidingWarningBanner } from "@/components/feed/over-hiding-warning"
 import { Button } from "@/components/ui/button"
-import { EyeOff, Eye, SlidersHorizontal, Search, GraduationCap } from "lucide-react"
+import { EyeOff, Eye } from "lucide-react"
 import {
   NoTruthPackState,
   InvalidTruthPackState,
@@ -326,8 +326,7 @@ export default function FeedPage() {
       {overHidingWarning && <OverHidingWarningBanner warning={overHidingWarning} />}
 
       {truth && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-4 py-2 sm:px-6">
-          <FilterBar
+        <FilterBar
             filters={filters}
             sources={sourceOverview}
             onChange={(nextFilters) => {
@@ -336,46 +335,17 @@ export default function FeedPage() {
             }}
             onOpenFounderFilters={() => setFiltersDrawerOpen(true)}
             onOpenManualSources={() => setManualSourcesOpen(true)}
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            data-testid="open-facets-panel"
-            onClick={() => setFacetsPanelOpen(true)}
-          >
-            <SlidersHorizontal aria-hidden="true" className="size-3.5" />
-            Facets
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            data-testid="open-manual-sources-panel"
-            onClick={() => setManualSourcesOpen(true)}
-          >
-            <Search aria-hidden="true" className="size-3.5" />
-            Check manually
-          </Button>
-          <Button
-            type="button"
-            variant={filters.track === "tutoring" ? "default" : "outline"}
-            size="sm"
-            data-testid="toggle-tutoring-lane"
-            disabled={!truth.loaded}
-            title={!truth.loaded ? "A validated founder profile is required for tutoring materials" : undefined}
-            onClick={() => {
+            onOpenFacets={() => setFacetsPanelOpen(true)}
+            onToggleTutoringLane={() => {
               setPage(1)
               setFilters({
                 ...filters,
                 track: filters.track === "tutoring" ? "" : "tutoring",
               })
             }}
-          >
-            <GraduationCap aria-hidden="true" className="size-3.5" />
-            Tutoring Lane
-          </Button>
-        </div>
+            tutoringActive={filters.track === "tutoring"}
+            tutoringDisabled={!truth.loaded}
+          />
       )}
 
       <main className="flex-1 px-4 py-4 sm:px-6">
@@ -419,7 +389,7 @@ export default function FeedPage() {
               {total} opportunit{total === 1 ? "y" : "ies"}
               {includeHidden && " (including hidden)"}
             </p>
-            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <ul className="grid auto-rows-fr grid-cols-1 items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {items?.map((o, idx) => (
                 <OpportunityCard
                   key={o.id}

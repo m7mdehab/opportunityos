@@ -38,13 +38,17 @@ const DECISIONS: Exclude<Decision, null>[] = [
 ]
 
 const selectClasses =
-  "h-8 rounded-lg border border-input bg-card text-foreground px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+  "h-9 rounded-lg border border-input bg-card text-foreground px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
 
 export function FilterBar({
   filters,
   onChange,
   onOpenFounderFilters,
   onOpenManualSources,
+  onOpenFacets,
+  onToggleTutoringLane,
+  tutoringActive = false,
+  tutoringDisabled = false,
   sources,
 }: {
   filters: FeedFilters
@@ -55,6 +59,10 @@ export function FilterBar({
    * every query. */
   onOpenFounderFilters: () => void
   onOpenManualSources: () => void
+  onOpenFacets?: () => void
+  onToggleTutoringLane?: () => void
+  tutoringActive?: boolean
+  tutoringDisabled?: boolean
   sources: SourceOverview[]
 }) {
   const hasActiveFilters =
@@ -133,7 +141,7 @@ export function FilterBar({
           inputMode="numeric"
           min={0}
           max={100}
-          className="h-8 w-24"
+          className="h-9 w-24"
           value={filters.minScore}
           onChange={(e) => onChange({ ...filters, minScore: e.target.value })}
         />
@@ -145,7 +153,7 @@ export function FilterBar({
           id="filter-search"
           type="search"
           placeholder="Title or organization"
-          className="h-8"
+          className="h-9"
           value={filters.q}
           onChange={(e) => onChange({ ...filters, q: e.target.value })}
         />
@@ -158,9 +166,7 @@ export function FilterBar({
           {families.map((family) => { const meta = familyMeta.get(family)!; return <option key={family} value={family}>{family} ({meta.manualOnly ? "Manual only · 0 automated" : meta.count})</option> })}
         </select>
       </div>
-      {filters.sourceFamily && selectedFamily?.manualOnly && (
-        <Button type="button" variant="outline" size="sm" onClick={onOpenManualSources}>Check manually</Button>
-      )}
+      <Button type="button" variant="outline" size="sm" onClick={onOpenManualSources} data-testid="open-manual-sources-panel">Check manually</Button>
       {filters.sourceFamily && !selectedFamily?.manualOnly && sourceIds.length > 1 && (
         <div className="flex flex-col gap-1">
           <Label htmlFor="filter-source-id">Board</Label>
@@ -192,6 +198,16 @@ export function FilterBar({
         <SlidersHorizontal aria-hidden="true" className="size-3.5" />
         Filters
       </Button>
+      {onOpenFacets && (
+        <Button type="button" variant="outline" size="sm" onClick={onOpenFacets} data-testid="open-facets-panel">
+          Facets
+        </Button>
+      )}
+      {onToggleTutoringLane && (
+        <Button type="button" variant={tutoringActive ? "secondary" : "outline"} size="sm" onClick={onToggleTutoringLane} disabled={tutoringDisabled} data-testid="toggle-tutoring-lane" aria-pressed={tutoringActive}>
+          Tutoring Lane
+        </Button>
+      )}
     </form>
   )
 }

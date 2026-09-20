@@ -1,10 +1,6 @@
 "use client"
 
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import type { DashboardResponse, SourceHealth, PollNowResponse } from "@/lib/contract/types"
 import { RefreshCw } from "lucide-react"
@@ -25,12 +21,16 @@ const STATS: Array<{ key: keyof DashboardResponse["series"][number]; label: stri
   { key: "hidden_by_filters", label: "Hidden" },
 ]
 
-function sourceDotColor(source: SourceHealth): string {
-  if (source.read_policy === "disabled") return "bg-zinc-700"
-  if (!source.last_poll) return "bg-zinc-500"
-  if (source.last_status === "ok") return "bg-emerald-500"
-  if (source.last_status === "parse_empty") return "bg-amber-500"
-  return "bg-rose-500"
+function sourceSummary(sources: SourceHealth[] | null) {
+  const summary = { healthy: 0, empty: 0, attention: 0, neverPolled: 0, disabled: 0 }
+  for (const source of sources ?? []) {
+    if (source.read_policy === "disabled") summary.disabled += 1
+    else if (!source.last_poll) summary.neverPolled += 1
+    else if (source.last_status === "ok") summary.healthy += 1
+    else if (source.last_status === "parse_empty") summary.empty += 1
+    else summary.attention += 1
+  }
+  return summary
 }
 
 export function HeaderStrip({
@@ -50,6 +50,7 @@ export function HeaderStrip({
   onOpenHiddenReasons: () => void
 }) {
   const today = dashboard?.series[0]
+  const health = sourceSummary(sources)
 
   return (
     <header className="border-b border-border bg-card px-4 py-3 sm:px-6">
@@ -96,42 +97,20 @@ export function HeaderStrip({
         </dl>
 
         <div className="flex min-w-0 max-w-full items-center gap-3">
-          <ul
-            aria-label="Source health"
-            className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-1"
-          >
-            {(sources ?? []).map((s) => (
-              <li key={s.source_id}>
-                <Tooltip>
-                  <TooltipTrigger
-                    aria-label={`${s.name}: ${
-                      s.read_policy === "disabled"
-                        ? "read disabled by policy"
-                        : s.last_poll
-                          ? `last status ${s.last_status}`
-                          : "never polled"
-                    }`}
-                    className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                  >
-                    <span
-                      aria-hidden="true"
-                      className={cn("inline-block size-2.5 rounded-full", sourceDotColor(s))}
-                    />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="font-medium">{s.name}</p>
-                    <p>
-                      {s.read_policy === "disabled"
-                        ? "Read disabled by policy"
-                        : s.last_poll
-                          ? `Last poll: ${s.last_poll} (${s.last_status}, ${s.last_record_count ?? 0} records)`
-                          : "Never polled"}
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </li>
+          <div aria-label="Source health" data-testid="source-health-summary" className="grid grid-cols-5 gap-2 text-center text-[10px] leading-tight">
+            {([
+              ["healthy", "Healthy", health.healthy],
+              ["empty", "Empty", health.empty],
+              ["attention", "Attention", health.attention],
+              ["never-polled", "Never polled", health.neverPolled],
+              ["disabled", "Disabled", health.disabled],
+            ] as const).map(([key, label, count]) => (
+              <div key={key} data-testid={`source-health-${key}`}>
+                <span className="block font-semibold tabular-nums">{count}</span>
+                <span className="text-muted-foreground">{label}</span>
+              </div>
             ))}
-          </ul>
+          </div>
 
           <div className="flex flex-col items-end gap-1">
             <Tooltip>

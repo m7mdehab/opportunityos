@@ -60,7 +60,8 @@ export const OpportunityCard = forwardRef<
   const location = locationLabel(o)
 
   return (
-    <li>
+    <li className="h-full">
+      <article className="flex h-full flex-col rounded-lg border border-border bg-card">
       <button
         ref={ref}
         type="button"
@@ -71,7 +72,7 @@ export const OpportunityCard = forwardRef<
         data-hidden={isHidden}
         data-keyboard-focused={keyboardFocused}
         className={cn(
-          "flex w-full flex-col gap-2 rounded-lg border p-4 text-left transition-colors",
+          "flex min-h-0 flex-1 w-full flex-col gap-2 p-4 text-left transition-colors",
           "hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:border-ring",
           // A row only ever appears here via the founder's own "Show
           // hidden" control (see page.tsx) — it must never blend in with
@@ -80,7 +81,7 @@ export const OpportunityCard = forwardRef<
           // border alone).
           isHidden
             ? "border-dashed border-amber-500/40 bg-amber-950/20 dark:bg-amber-950/20"
-            : "border-border bg-card",
+            : "border-transparent",
           // The keyboard cursor also gets its own ring even when the
           // browser's native focus-visible heuristic doesn't apply (e.g.
           // Playwright's programmatic `.focus()` in some browser/OS
@@ -88,9 +89,9 @@ export const OpportunityCard = forwardRef<
           keyboardFocused && "ring-2 ring-ring/60 border-ring"
         )}
       >
-        <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-foreground">
+            <h2 title={o.title} className="line-clamp-2 text-sm font-semibold leading-5 text-foreground">
               {o.title}
             </h2>
             <p className="truncate text-xs text-muted-foreground">
@@ -187,7 +188,7 @@ export const OpportunityCard = forwardRef<
           </ul>
         )}
 
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[11px] text-muted-foreground">
+        <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[11px] text-muted-foreground">
           {age && <span data-testid={`posted-age-${o.id}`}>{age}</span>}
           {o.deadline && <span>Deadline: {o.deadline}</span>}
           {domain && (
@@ -198,6 +199,20 @@ export const OpportunityCard = forwardRef<
           )}
         </div>
       </button>
+      <footer className="flex items-center justify-between gap-2 border-t border-border/70 px-4 py-2 text-[11px] text-muted-foreground">
+        <span className="truncate">{domain ?? "Original source"}</span>
+        <a
+          data-testid={`quick-apply-${o.id}`}
+          href={o.source_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Quick apply to ${o.title} at ${o.organization}`}
+          className="shrink-0 font-medium text-primary underline underline-offset-4 hover:text-primary/80"
+        >
+          Quick apply ↗
+        </a>
+      </footer>
+      </article>
     </li>
   )
 })
