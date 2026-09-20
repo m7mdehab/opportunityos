@@ -78,7 +78,7 @@ test.describe("W24 Founder UX polish", () => {
 
     const activity = page.getByTestId("filter-activity")
     const feedback = page.getByTestId("filter-feedback")
-    await expect(activity).toHaveValue("to_review")
+    await expect(activity).toHaveValue("all")
 
     const firstCard = page.locator('[data-testid^="opportunity-card-"]').first()
     await expect(firstCard).toBeVisible()
@@ -113,7 +113,7 @@ test.describe("W24 Founder UX polish", () => {
     await expect(page.getByTestId(`opportunity-card-${firstId}`)).toContainText("good match")
 
     await feedback.selectOption("")
-    await activity.selectOption("to_review")
+    await activity.selectOption("all")
 
     const secondCard = page.locator('[data-testid^="opportunity-card-"]').first()
     const secondTestId = await secondCard.getAttribute("data-testid")
@@ -126,7 +126,7 @@ test.describe("W24 Founder UX polish", () => {
     await expect(page.getByTestId(`opportunity-card-${secondId}`)).toBeVisible()
     await expect(page.getByTestId(`opportunity-card-${secondId}`)).toContainText("Dismissed")
 
-    await activity.selectOption("to_review")
+    await activity.selectOption("all")
     const thirdCard = page.locator('[data-testid^="opportunity-card-"]').first()
     const thirdTestId = await thirdCard.getAttribute("data-testid")
     expect(thirdTestId).toBeTruthy()
