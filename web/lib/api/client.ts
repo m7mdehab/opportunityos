@@ -32,6 +32,7 @@ import type {
   SavedViewsResponse,
   SavedViewUpdateRequest,
   SourcesHealthResponse,
+  SourceOverviewResponse,
   TruthStatusResponse,
   TutoringPlatform,
   TutoringPlatformsResponse,
@@ -91,6 +92,8 @@ export const api = {
       min_score?: number
       since?: string
       q?: string
+      source_family?: string
+      source_id?: string
       page?: number
       page_size?: number
       /** Default `false`. When `true`, items hidden by an enabled
@@ -202,6 +205,7 @@ export const api = {
 
   sources: {
     health: () => request<SourcesHealthResponse>("/api/sources/health"),
+    overview: () => request<SourceOverviewResponse>("/api/sources/overview"),
   },
 
   worker: {

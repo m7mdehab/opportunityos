@@ -18,9 +18,9 @@ class SupabaseExecutionBundleTests(unittest.TestCase):
             "0004_founder_control", "0005_widen_location_region", "0006_feed_projection",
             "0007_source_schedules", "0008_artifact_storage", "0009_hosted_founder_auth",
             "0010_hosted_runtime", "0011_hosted_api_surface", "0012_hosted_policy_alignment",
-            "0013_hosted_poll_now_cadence", "0014_backup_heartbeat",
+            "0013_hosted_poll_now_cadence", "0014_backup_heartbeat", "0015_hosted_founder_surface",
         ])
-        self.assertEqual(chain[-1]["revision"], "0014_backup_heartbeat")
+        self.assertEqual(chain[-1]["revision"], "0015_hosted_founder_surface")
         self.assertEqual(len({item["revision"] for item in chain}), len(chain))
 
     def test_generation_is_deterministic_and_hashes_match(self):
@@ -32,7 +32,7 @@ class SupabaseExecutionBundleTests(unittest.TestCase):
                 if path.is_file():
                     other = Path(right) / path.relative_to(left)
                     self.assertEqual(path.read_bytes(), other.read_bytes(), path.name)
-            self.assertEqual(bundle.verify_manifest(Path(left))["expected_final_revision"], "0014_backup_heartbeat")
+            self.assertEqual(bundle.verify_manifest(Path(left))["expected_final_revision"], "0015_hosted_founder_surface")
             manifest = json.loads((Path(left) / "migration-manifest.json").read_text(encoding="utf-8"))
             policy_alignment = next(item for item in manifest["migrations"] if item["revision"] == "0012_hosted_policy_alignment")
             self.assertTrue(policy_alignment["effects"]["touches_rls"])

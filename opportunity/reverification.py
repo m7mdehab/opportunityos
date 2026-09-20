@@ -16,6 +16,25 @@ from opportunity.transport import RateLimiter
 #: ``dashboard_daily`` "unique_new" count) -- is used instead. Named as an
 #: assumption in this work order's return.
 DEFAULT_STALE_AFTER_DAYS = 14
+GREENHOUSE_INACTIVE_BOARD_MARKER = (
+    "Page not found. The job board you were viewing is no longer active."
+)
+
+
+def _contains_greenhouse_inactive_board_marker(url: str, body: bytes) -> bool:
+    """Return true only for the exact Greenhouse inactive-board signal.
+
+    Whitespace and case differences are tolerated. Similar wording, generic
+    200 pages, redirects, and transport failures remain active/unknown.
+    """
+    if "greenhouse" not in url.lower():
+        return False
+    normalize = lambda value: " ".join(value.lower().split())
+    try:
+        text = body.decode("utf-8", errors="replace")
+    except Exception:
+        return False
+    return normalize(GREENHOUSE_INACTIVE_BOARD_MARKER) in normalize(text)
 
 
 def _to_utc_naive(value: datetime) -> datetime:
@@ -42,11 +61,17 @@ class StaleOpportunityReverifier:
         try:
             with urllib.request.urlopen(req, timeout=timeout_seconds) as response:
                 status_code = response.getcode()
+                body = response.read(256 * 1024) if status_code == 200 else b""
+                tombstone = _contains_greenhouse_inactive_board_marker(url, body)
                 return {
-                    "is_stale": status_code in (404, 410),
+                    "is_stale": status_code in (404, 410) or tombstone,
                     "status_code": status_code,
                     "reverified_at": datetime.now(timezone.utc).isoformat(),
-                    "reason": "URL is active and reachable" if status_code == 200 else f"HTTP {status_code}",
+                    "reason": (
+                        "Greenhouse inactive-board marker"
+                        if tombstone
+                        else "URL is active and reachable" if status_code == 200 else f"HTTP {status_code}"
+                    ),
                 }
         except urllib.error.HTTPError as e:
             return {

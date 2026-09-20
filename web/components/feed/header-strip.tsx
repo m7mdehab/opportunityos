@@ -1,13 +1,12 @@
 "use client"
 
-import { Button } from "@/components/ui/button"
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import type { DashboardResponse, SourceHealth } from "@/lib/contract/types"
+import type { DashboardResponse, SourceHealth, PollNowResponse } from "@/lib/contract/types"
 import { RefreshCw } from "lucide-react"
 
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -39,12 +38,14 @@ export function HeaderStrip({
   sources,
   onPollNow,
   polling,
+  pollResult,
   onOpenHiddenReasons,
 }: {
   dashboard: DashboardResponse | null
   sources: SourceHealth[] | null
   onPollNow: () => void
   polling: boolean
+  pollResult: PollNowResponse | null
   /** C4: the HIDDEN number links to the reason -> count audit table. */
   onOpenHiddenReasons: () => void
 }) {
@@ -56,7 +57,7 @@ export function HeaderStrip({
         <div>
           <h1 className="text-lg font-semibold">OpportunityOS</h1>
           <p className="text-xs text-muted-foreground">
-            Today&apos;s numbers{today ? ` — ${today.date}` : ""}
+            Today&apos;s numbers{today ? ` â€” ${today.date}` : ""}
           </p>
         </div>
 
@@ -77,7 +78,7 @@ export function HeaderStrip({
                     onClick={onOpenHiddenReasons}
                     className="rounded text-base font-semibold tabular-nums underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
                   >
-                    {today ? today[key] : "—"}
+                    {today ? today[key] : "â€”"}
                   </button>
                 </dd>
               </div>
@@ -87,7 +88,7 @@ export function HeaderStrip({
                   {label}
                 </dt>
                 <dd data-testid={`stat-${String(key)}`} className="text-base font-semibold tabular-nums">
-                  {today ? today[key] : "—"}
+                  {today ? today[key] : "â€”"}
                 </dd>
               </div>
             )
@@ -132,13 +133,30 @@ export function HeaderStrip({
             ))}
           </ul>
 
-          <Button onClick={onPollNow} disabled={polling} size="sm">
-            <RefreshCw
-              aria-hidden="true"
-              className={cn("size-3.5", polling && "animate-spin")}
-            />
-            {polling ? "Polling…" : "Poll now"}
-          </Button>
+          <div className="flex flex-col items-end gap-1">
+            <Tooltip>
+              <TooltipTrigger
+                type="button"
+                onClick={onPollNow}
+                disabled={polling}
+                className="inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+              >
+                <RefreshCw
+                  aria-hidden="true"
+                  className={cn("size-3.5", polling && "animate-spin")}
+                />
+                {polling ? "Polling…" : "Poll now"}
+              </TooltipTrigger>
+              <TooltipContent>Queues currently due sources; cooldown and cadence still apply. Workers process them in the background.</TooltipContent>
+            </Tooltip>
+            {pollResult && (
+              <p role="status" data-testid="poll-result" className="max-w-xs text-right text-[11px] text-muted-foreground">
+                {pollResult.enqueued.length > 0
+                  ? `Queued ${pollResult.enqueued.length} due source${pollResult.enqueued.length === 1 ? "" : "s"}. Workers are processing them in the background.`
+                  : "Nothing new to queue â€” sources are already queued, cooling down, or not due."}
+              </p>
+            )}
+          </div>
 
           <ThemeToggle />
         </div>

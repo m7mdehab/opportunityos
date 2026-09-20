@@ -129,6 +129,8 @@ export interface OpportunityListItem extends OpportunityExtractionFields {
    * this item. Always present, `[]` when empty — never `null`. Rendered as
    * chips; never implies the item was removed or re-scored. */
   flagged_by: string[]
+  source_family?: string
+  reverified_at?: string | null
 }
 
 export interface OpportunityListResponse {
@@ -339,6 +341,19 @@ export interface SourceHealth {
 
 export interface SourcesHealthResponse {
   sources: SourceHealth[]
+}
+
+export interface SourceOverview {
+  source_family: string
+  source_id: string
+  opportunity_count: number
+  last_success_at: string | null
+  last_status: string | null
+  manual_only: boolean
+}
+
+export interface SourceOverviewResponse {
+  sources: SourceOverview[]
 }
 
 export interface PollNowEnqueued {

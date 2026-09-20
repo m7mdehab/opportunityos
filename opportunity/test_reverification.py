@@ -7,6 +7,7 @@ call or ``docs/SOURCE_REGISTRY.yaml`` read happens.
 """
 import tempfile
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -185,6 +186,54 @@ class TestReverifyStaleOpportunities(unittest.TestCase):
         )
 
         self.assertEqual(acquired, ["fixture_allowed", "fixture_allowed"])
+
+
+class TestGreenhouseTombstone(unittest.TestCase):
+    class _Response:
+        def __init__(self, body: bytes, status: int = 200):
+            self.body = body
+            self.status = status
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def getcode(self):
+            return self.status
+
+        def read(self, _limit=-1):
+            return self.body
+
+    def _result(self, body: str, url: str = "https://boards.greenhouse.io/acme/jobs/1"):
+        with patch(
+            "opportunity.reverification.urllib.request.urlopen",
+            return_value=self._Response(body.encode("utf-8")),
+        ):
+            return StaleOpportunityReverifier.reverify_url(url)
+
+    def test_exact_greenhouse_marker_marks_stale(self):
+        result = self._result(
+            "<html>Page not found. The job board you were viewing is no longer active.</html>"
+        )
+        self.assertTrue(result["is_stale"])
+
+    def test_normalized_marker_marks_stale(self):
+        result = self._result("PAGE NOT FOUND.  The job board you were viewing is no longer active.")
+        self.assertTrue(result["is_stale"])
+
+    def test_near_miss_and_non_greenhouse_are_not_stale(self):
+        self.assertFalse(self._result("Page not found. This job is no longer active.")["is_stale"])
+        self.assertFalse(
+            self._result(
+                "Page not found. The job board you were viewing is no longer active.",
+                "https://jobs.example.test/jobs/1",
+            )["is_stale"]
+        )
+
+    def test_ambiguous_200_is_not_stale(self):
+        self.assertFalse(self._result("temporary error page")["is_stale"])
 
 
 if __name__ == "__main__":

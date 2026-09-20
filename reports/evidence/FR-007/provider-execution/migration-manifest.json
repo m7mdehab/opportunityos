@@ -1,6 +1,6 @@
 {
   "database_engine": "PostgreSQL 17",
-  "expected_final_revision": "0014_backup_heartbeat",
+  "expected_final_revision": "0015_hosted_founder_surface",
   "format": 1,
   "migrations": [
     {
@@ -271,6 +271,20 @@
       "order": 14,
       "revision": "0014_backup_heartbeat",
       "sha256": "d4e421c89415a31b4041f0e4096d2afb4955c7b612fe293c020cc4a3c926b8af"
+    },
+    {
+      "down_revision": "0014_backup_heartbeat",
+      "effects": {
+        "indexes": [],
+        "tables_or_columns": [],
+        "touches_auth": false,
+        "touches_rls": false,
+        "touches_storage_metadata": false
+      },
+      "filename": "migrations/15_0015_hosted_founder_surface.sql",
+      "order": 15,
+      "revision": "0015_hosted_founder_surface",
+      "sha256": "2e632505be72b23f18d95dba28ea1c45ed2cdea92d9f7e7ef1fab82489a7ac9c"
     }
   ],
   "project_ref": "lrrcpwaapwynzdsxzwhy",
@@ -279,7 +293,7 @@
   "secret_policy": "runtime injection only; no credentials or private payloads",
   "verification_files": {
     "evidence-template.json": "8e08d05ee67e468b157de73c136ef7d3faeed050e367596c549dcf222c408052",
-    "execution-manifest.json": "8b1671cf79eb68f3ad0b1cdc94fd05891efaabe3078e4fcf8abeec6a98819d06",
+    "execution-manifest.json": "eb7c3a035b673228187df9e4884f80793ab9de4bf37e50bcb624bbd09c30547a",
     "provider-security.sql": "b5c741c82fd88b4d8714047a5a7631e98b257b569f757fd92dad863d18800d07",
     "storage-rollback.sql": "2e94435c07c4a997450726b823635c545a0f6298d6bcd3af74db0034627719e4",
     "storage.sql": "ce7247edb08f4284dfb2ceb9c71404d4d197b8bdf104834d413cae77f5298ece",

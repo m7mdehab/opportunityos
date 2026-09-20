@@ -4,13 +4,15 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { SlidersHorizontal } from "lucide-react"
-import type { Track, Decision } from "@/lib/contract/types"
+import type { Track, Decision, SourceOverview } from "@/lib/contract/types"
 
 export interface FeedFilters {
   track: Track | ""
   decision: Exclude<Decision, null> | ""
   minScore: string
   q: string
+  sourceFamily: string
+  sourceId: string
 }
 
 export const EMPTY_FILTERS: FeedFilters = {
@@ -18,6 +20,8 @@ export const EMPTY_FILTERS: FeedFilters = {
   decision: "",
   minScore: "",
   q: "",
+  sourceFamily: "",
+  sourceId: "",
 }
 
 const TRACKS: Track[] = [
@@ -40,6 +44,7 @@ export function FilterBar({
   filters,
   onChange,
   onOpenFounderFilters,
+  sources,
 }: {
   filters: FeedFilters
   onChange: (next: FeedFilters) => void
@@ -48,12 +53,19 @@ export function FilterBar({
    * the drawer's filters decide what is hidden, ranked, or labelled across
    * every query. */
   onOpenFounderFilters: () => void
+  sources: SourceOverview[]
 }) {
   const hasActiveFilters =
     filters.track !== "" ||
     filters.decision !== "" ||
     filters.minScore !== "" ||
     filters.q !== ""
+    || filters.sourceFamily !== ""
+    || filters.sourceId !== ""
+
+  const families = [...new Set(sources.map((source) => source.source_family))].sort()
+  const familyMeta = new Map(families.map((family) => [family, sources.find((source) => source.source_family === family)]))
+  const sourceIds = sources.filter((source) => !filters.sourceFamily || source.source_family === filters.sourceFamily)
 
   return (
     <form
@@ -128,6 +140,23 @@ export function FilterBar({
           onChange={(e) => onChange({ ...filters, q: e.target.value })}
         />
       </div>
+
+      <div className="flex flex-col gap-1">
+        <Label htmlFor="filter-source-family">Source</Label>
+        <select id="filter-source-family" className={selectClasses} value={filters.sourceFamily} onChange={(e) => onChange({ ...filters, sourceFamily: e.target.value, sourceId: "" })}>
+          <option value="">All sources</option>
+          {families.map((family) => <option key={family} value={family}>{family}{familyMeta.get(family)?.manual_only ? " (Manual only)" : ""}</option>)}
+        </select>
+      </div>
+      {filters.sourceFamily && sourceIds.length > 1 && (
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="filter-source-id">Board</Label>
+          <select id="filter-source-id" className={selectClasses} value={filters.sourceId} onChange={(e) => onChange({ ...filters, sourceId: e.target.value })}>
+            <option value="">All {filters.sourceFamily}</option>
+            {sourceIds.map((source) => <option key={source.source_id} value={source.source_id}>{source.source_id} ({source.opportunity_count})</option>)}
+          </select>
+        </div>
+      )}
 
       {hasActiveFilters && (
         <Button

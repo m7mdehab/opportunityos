@@ -30,6 +30,8 @@ import type {
   FeedbackLabel,
   OpportunityListItem,
   SourceHealth,
+  SourceOverview,
+  PollNowResponse,
   TruthStatusResponse,
 } from "@/lib/contract/types"
 
@@ -43,6 +45,7 @@ export default function FeedPage() {
   const [truth, setTruth] = useState<TruthStatusResponse | null>(null)
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null)
   const [sources, setSources] = useState<SourceHealth[] | null>(null)
+  const [sourceOverview, setSourceOverview] = useState<SourceOverview[]>([])
 
   const [filters, setFilters] = useState<FeedFilters>(EMPTY_FILTERS)
   const [items, setItems] = useState<OpportunityListItem[] | null>(null)
@@ -53,6 +56,7 @@ export default function FeedPage() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [polling, setPolling] = useState(false)
+  const [pollResult, setPollResult] = useState<PollNowResponse | null>(null)
 
   // ---- D3 founder-controlled filters ----
   const [filtersDrawerOpen, setFiltersDrawerOpen] = useState(false)
@@ -105,6 +109,9 @@ export default function FeedPage() {
       .health()
       .then((r) => setSources(r.sources))
       .catch(() => undefined)
+    api.sources.overview()
+      .then((r) => setSourceOverview(r.sources))
+      .catch(() => setSourceOverview([]))
   }, [])
 
   const refreshTruth = useCallback(() => {
@@ -120,6 +127,8 @@ export default function FeedPage() {
         decision: filters.decision || undefined,
         min_score: filters.minScore ? Number(filters.minScore) : undefined,
         q: filters.q || undefined,
+        source_family: filters.sourceFamily || undefined,
+        source_id: filters.sourceId || undefined,
         page,
         page_size: PAGE_SIZE,
         include_hidden: includeHidden,
@@ -243,7 +252,7 @@ export default function FeedPage() {
   async function handlePollNow() {
     setPolling(true)
     try {
-      await api.worker.pollNow()
+      setPollResult(await api.worker.pollNow())
       refreshSources()
       refreshFromFirstPage()
       refreshDashboard()
@@ -284,7 +293,9 @@ export default function FeedPage() {
     filters.track !== "" ||
     filters.decision !== "" ||
     filters.minScore !== "" ||
-    filters.q !== ""
+    filters.q !== "" ||
+    filters.sourceFamily !== "" ||
+    filters.sourceId !== ""
 
   const workerIdle =
     !!sources && sources.length > 0 && sources.every((s) => s.last_poll === null)
@@ -305,6 +316,7 @@ export default function FeedPage() {
         sources={sources}
         onPollNow={handlePollNow}
         polling={polling}
+        pollResult={pollResult}
         onOpenHiddenReasons={() => setHiddenReasonsOpen(true)}
       />
 
@@ -317,6 +329,7 @@ export default function FeedPage() {
         <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-4 py-2 sm:px-6">
           <FilterBar
             filters={filters}
+            sources={sourceOverview}
             onChange={(nextFilters) => {
               setPage(1)
               setFilters(nextFilters)

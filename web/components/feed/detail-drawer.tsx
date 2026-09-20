@@ -3,12 +3,12 @@
 import { useEffect, useMemo, useState } from "react"
 import DOMPurify from "dompurify"
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet"
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
 import { ArtifactsPanel } from "@/components/feed/artifacts-panel"
 import { ConstraintOutcomeBadge } from "@/components/feed/constraint-outcome"
@@ -131,10 +131,9 @@ export function DetailDrawer({
   }
 
   return (
-    <Sheet open={opportunityId !== null} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        className="w-full overflow-y-auto sm:max-w-lg"
+    <Dialog open={opportunityId !== null} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="max-h-[92dvh] w-[min(92vw,72rem)] max-w-none overflow-y-auto p-0"
         aria-describedby={undefined}
       >
         {loading && (
@@ -146,12 +145,12 @@ export function DetailDrawer({
           </div>
         )}
         {detail && (
-          <div className="flex flex-col gap-6 p-4">
-            <SheetHeader className="p-0">
-              <SheetTitle>{detail.title}</SheetTitle>
-              <SheetDescription>
+          <div className="grid gap-6 p-5 md:grid-cols-[minmax(0,1.7fr)_minmax(18rem,0.9fr)]">
+            <DialogHeader className="p-0 md:col-span-2">
+              <DialogTitle>{detail.title}</DialogTitle>
+              <DialogDescription>
                 {detail.organization} · {detail.source_id}
-              </SheetDescription>
+              </DialogDescription>
               <div className="flex flex-wrap items-center gap-1.5 pt-1">
                 <DecisionBadge decision={detail.qualification.decision} />
                 <span className="text-xs text-muted-foreground">
@@ -163,7 +162,7 @@ export function DetailDrawer({
                   </span>
                 )}
               </div>
-            </SheetHeader>
+            </DialogHeader>
 
             <section>
               <div
@@ -469,7 +468,7 @@ export function DetailDrawer({
             )}
           </div>
         )}
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   )
 }

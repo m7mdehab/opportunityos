@@ -2,7 +2,7 @@ name: FR-007 Disposable PostgreSQL Portability Proof
 
 on:
   push:
-    branches: [work/fr007-codex-live-proof-runner, work/fr007-codex-production-migration-readiness, work/fr007-codex-migration-acceptance, work/fr007-codex-hosted-dataplane-wave16, work/fr007-codex-final-closure, work/fr007-overseer-integration]
+    branches: [work/fr007-codex-live-proof-runner, work/fr007-codex-production-migration-readiness, work/fr007-codex-migration-acceptance, work/fr007-codex-hosted-dataplane-wave16, work/fr007-codex-founder-surface-corrections, work/fr007-codex-final-closure, work/fr007-overseer-integration]
     paths:
       - '.github/workflows/fr007-portability-proof.yml'
       - 'scripts/live_portability_proof.py'

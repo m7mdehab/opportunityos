@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 // Hop-by-hop headers that should not be forwarded
@@ -52,7 +52,44 @@ async function hostedAccess(request: NextRequest, config: HostedConfig): Promise
   const session = await refreshHosted(config, refresh); if (!session?.access_token) return hostedError("authentication required", 401);
   return { token: session.access_token, refreshed: session };
 }
-function hostedFeedRow(row: Record<string, unknown>) { let reasons: string[] = []; const raw = row.reasons_json; if (typeof raw === "string") { try { const parsed = JSON.parse(raw); if (Array.isArray(parsed)) reasons = parsed.map((x) => typeof x === "string" ? x : typeof x?.text === "string" ? x.text : "").filter(Boolean); } catch {} } return { id: String(row.opportunity_id ?? row.id ?? ""), title: row.title ?? "", organization: row.organization ?? "", source_id: row.source_id ?? "", source_url: row.source_url ?? "", track: row.track, decision: row.qualification_decision ?? null, fit_score: row.fit_score ?? null, top_reasons: reasons, deadline: row.deadline ?? null, posted_date: row.posted_date ?? null, is_stale: false, action_state: null, feedback_label: null, hidden_by: [], flagged_by: [], work_mode: row.work_mode ?? "unspecified", work_mode_source: null, location_country: row.location_country ?? null, location_city: row.location_city ?? null, location_region: row.location_region ?? null, remote_scope: row.remote_scope ?? "unspecified", remote_scope_regions: [], employment_type: row.employment_type ?? "unspecified", seniority_level: row.seniority_level ?? "unspecified", compensation_min: null, compensation_max: null, compensation_currency: null, compensation_period: null, title_family: row.title_family ?? null, title_level: null, family_key: null, family_size: null }; }
+function parseJson(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try { return JSON.parse(value); } catch { return null; }
+}
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.map((item) => typeof item === "string" ? item : typeof item?.text === "string" ? item.text : "").filter(Boolean) : [];
+}
+function hostedFeedRow(row: Record<string, unknown>) {
+  const reasons = asStringArray(parseJson(row.reasons_json));
+  return {
+    id: String(row.opportunity_id ?? row.id ?? ""), title: row.title ?? "", organization: row.organization ?? "",
+    source_id: row.source_id ?? "", source_url: row.source_url ?? "", track: row.track,
+    decision: row.qualification_decision ?? null, fit_score: row.fit_score ?? null, top_reasons: reasons,
+    deadline: row.deadline ?? null, posted_date: row.posted_date ?? null, is_stale: Boolean(row.is_stale),
+    action_state: null, feedback_label: null, hidden_by: [], flagged_by: [], work_mode: row.work_mode ?? "unspecified",
+    work_mode_source: null, location_country: row.location_country ?? null, location_city: row.location_city ?? null,
+    location_region: row.location_region ?? null, remote_scope: row.remote_scope ?? "unspecified", remote_scope_regions: [],
+    employment_type: row.employment_type ?? "unspecified", seniority_level: row.seniority_level ?? "unspecified",
+    compensation_min: null, compensation_max: null, compensation_currency: null, compensation_period: null,
+    title_family: row.title_family ?? null, title_level: null, family_key: null, family_size: null,
+    source_family: row.source_family ?? String(row.source_id ?? "").split(":")[0], reverified_at: row.reverified_at ?? null,
+  };
+}
+function hostedDetail(row: Record<string, unknown>) {
+  const detail = (parseJson(row.evaluation_detail_json) ?? {}) as Record<string, unknown>;
+  const dimensions = parseJson(row.dimension_scores_json);
+  const constraints = Array.isArray(detail.hard_constraints) ? detail.hard_constraints.map((item: unknown) => {
+    const value = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
+    const passed = value.passed;
+    return { constraint_name: String(value.constraint_name ?? "constraint"), outcome: passed === true ? "PASS" : passed === false ? "FAIL" : "UNKNOWN", reason: String(value.reason ?? ""), required_field: value.required_field ?? null, founder_fact: value.founder_fact ?? null, is_hard_failure: Boolean(value.is_hard_failure), provenance_pointer: value.provenance_pointer ?? null };
+  }) : [];
+  const dimensionScores = Array.isArray(dimensions) ? dimensions.map((item: unknown) => {
+    const value = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
+    return { dimension: String(value.dimension_name ?? value.dimension ?? "unknown"), score: Number(value.raw_score ?? value.score ?? 0), weight: Number(value.weight ?? 0), weighted_score: Number(value.weighted_score ?? 0), rationale: String(value.explanation ?? value.rationale ?? "") };
+  }) : [];
+  const { evaluation_detail_json: _evaluationDetail, dimension_scores_json: _dimensionScores, reasons_json: _reasons, ...safeRow } = row;
+  return { ...safeRow, fields: [], qualification: { decision: row.qualification_decision ?? null, constraints }, scoring: { fit_score: row.fit_score ?? null, dimension_scores: dimensionScores, strengths: asStringArray(detail.strengths), gaps: asStringArray(detail.gaps), unknowns: asStringArray(detail.unknowns), uncertainty_penalty: Number(detail.uncertainty_penalty ?? 0), explanation: String(detail.explanation ?? ""), policy_version: row.policy_version ?? "", evaluated_at: row.evaluated_at ?? "", truth_pack_hash: row.truth_pack_hash ?? null }, evidence_links: [], action_history: [], feedback_history: [] };
+}
 
 type HostedFacetDefinition = {
   facet_id: string;
@@ -218,16 +255,27 @@ async function hostedFacetPayload(config: HostedConfig, token: string): Promise<
 async function hostedContract(request: NextRequest, path: string[], token: string, config: HostedConfig): Promise<NextResponse> {
   const subpath = path.join("/"); const method = request.method.toUpperCase(); const url = new URL(request.url);
   if (subpath === "opportunities" && method === "GET") {
-    const page = Math.max(1, Number(url.searchParams.get("page") ?? "1") || 1); const pageSize = Math.min(200, Math.max(1, Number(url.searchParams.get("page_size") ?? "25") || 25));
-    const q = new URL(`${config.origin}/rest/v1/founder_feed`); q.searchParams.set("select", "*"); q.searchParams.set("order", "priority_score.desc,opportunity_id.asc"); q.searchParams.set("offset", String((page - 1) * pageSize)); q.searchParams.set("limit", String(pageSize));
-    for (const [key, column, op] of [["track", "track", "eq"], ["decision", "qualification_decision", "eq"], ["min_score", "fit_score", "gte"]] as const) { const value = url.searchParams.get(key); if (value) q.searchParams.set(column, `${op}.${value}`); }
-    const text = url.searchParams.get("q"); if (text) { const safe = text.replace(/[(),]/g, " "); q.searchParams.set("or", `(title.ilike.*${safe}*,organization.ilike.*${safe}*)`); }
-    const response = await hostedFetch(config, `${q.pathname}${q.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } }); const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status });
-    const range = response.headers.get("content-range") ?? "*/0"; const total = Number(range.split("/")[1] ?? "0") || 0; return NextResponse.json({ page, page_size: pageSize, total, hidden_count: 0, items: Array.isArray(rows) ? rows.map(hostedFeedRow) : [] });
+    const page = Math.max(1, Number(url.searchParams.get("page") ?? "1") || 1);
+    const pageSize = Math.min(200, Math.max(1, Number(url.searchParams.get("page_size") ?? "25") || 25));
+    const q = new URL(`${config.origin}/rest/v1/founder_feed`);
+    q.searchParams.set("select", "*");
+    q.searchParams.set("is_stale", "eq.false");
+    q.searchParams.set("order", "priority_score.desc.nullslast,fit_score.desc.nullslast,projected_at.desc,opportunity_id.asc");
+    q.searchParams.set("offset", String((page - 1) * pageSize)); q.searchParams.set("limit", String(pageSize));
+    for (const [key, column, op] of [["track", "track", "eq"], ["decision", "qualification_decision", "eq"], ["min_score", "fit_score", "gte"], ["source_family", "source_family", "eq"], ["source_id", "source_id", "eq"]] as const) {
+      const value = url.searchParams.get(key); if (value) q.searchParams.set(column, `${op}.${value}`);
+    }
+    const text = url.searchParams.get("q");
+    if (text) { const safe = text.replace(/[(),]/g, " "); q.searchParams.set("or", `(title.ilike.*${safe}*,organization.ilike.*${safe}*)`); }
+    const response = await hostedFetch(config, `${q.pathname}${q.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } });
+    const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status });
+    const range = response.headers.get("content-range") ?? "*/0"; const total = Number(range.split("/")[1] ?? "0") || 0;
+    return NextResponse.json({ page, page_size: pageSize, total, hidden_count: 0, items: Array.isArray(rows) ? rows.map(hostedFeedRow) : [] });
   }
   if (subpath === "worker/poll-now" && method === "POST") { const response = await hostedFetch(config, "/rest/v1/rpc/enqueue_poll_now", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: await request.text() || "{}" }); const payload = await response.json().catch(() => null); if (!response.ok) return NextResponse.json(payload, { status: response.status }); const object = payload && typeof payload === "object" && !Array.isArray(payload) ? payload as Record<string, unknown> : {}; const enqueued = Array.isArray(object.enqueued) ? object.enqueued.filter((item: unknown) => item && typeof item === "object" && "source_id" in item && "job_id" in item) : []; const skipped = Array.isArray(object.skipped) ? object.skipped.filter((item: unknown) => item && typeof item === "object" && "source_id" in item && "reason" in item) : []; return NextResponse.json({ enqueued, skipped }); }
-  if (subpath === "sources/health" && method === "GET") { const response = await hostedFetch(config, "/rest/v1/founder_source_health?select=*&order=source_id.asc", { headers: { Authorization: `Bearer ${token}` } }); const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status }); return NextResponse.json({ sources: Array.isArray(rows) ? rows.map((row: Record<string, unknown>) => ({ source_id: row.source_id, name: row.source_id, category: "", read_policy: "allowed", last_poll: row.last_poll_finished_at ?? null, last_status: row.last_poll_status ?? row.last_status ?? null, last_record_count: null })) : [] }); }
-  if (subpath.startsWith("opportunities/") && path.length === 2 && method === "GET") { const id = encodeURIComponent(path[1]); const response = await hostedFetch(config, `/rest/v1/founder_opportunity_detail?id=eq.${id}&select=*`, { headers: { Authorization: `Bearer ${token}` } }); const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status }); if (!Array.isArray(rows) || !rows.length) return hostedError("opportunity not found", 404); const row = rows[0] as Record<string, unknown>; return NextResponse.json({ ...row, fields: [], qualification: { decision: row.qualification_decision ?? null, constraints: [] }, scoring: { fit_score: row.fit_score ?? null, dimension_scores: [], strengths: [], gaps: [], unknowns: [], uncertainty_penalty: 0, explanation: "", policy_version: row.policy_version ?? "", evaluated_at: row.evaluated_at ?? "", truth_pack_hash: row.truth_pack_hash ?? null }, evidence_links: [], action_history: [], feedback_history: [] }); }
+  if (subpath === "sources/health" && method === "GET") { const response = await hostedFetch(config, "/rest/v1/founder_source_health?select=*&order=source_id.asc", { headers: { Authorization: `Bearer ${token}` } }); const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status }); return NextResponse.json({ sources: Array.isArray(rows) ? rows.map((row: Record<string, unknown>) => ({ source_id: row.source_id, name: row.source_id, category: "", read_policy: "allowed", last_poll: row.last_poll_finished_at ?? null, last_status: row.last_poll_status ?? row.last_status ?? null, last_record_count: row.last_raw_ingested ?? null })) : [] }); }
+  if (subpath === "sources/overview" && method === "GET") { const response = await hostedFetch(config, "/rest/v1/founder_source_overview?select=*&order=source_family.asc,source_id.asc", { headers: { Authorization: `Bearer ${token}` } }); const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status }); return NextResponse.json({ sources: Array.isArray(rows) ? rows.map((row: Record<string, unknown>) => ({ source_family: row.source_family, source_id: row.source_id, opportunity_count: Number(row.opportunity_count ?? 0), last_success_at: row.last_success_at ?? null, last_status: row.last_status ?? null, manual_only: String(row.source_family ?? "").toLowerCase() === "reddit" })) : [] }); }
+  if (subpath.startsWith("opportunities/") && path.length === 2 && method === "GET") { const id = encodeURIComponent(path[1]); const response = await hostedFetch(config, `/rest/v1/founder_opportunity_detail?id=eq.${id}&select=*`, { headers: { Authorization: `Bearer ${token}` } }); const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status }); if (!Array.isArray(rows) || !rows.length) return hostedError("opportunity not found", 404); return NextResponse.json(hostedDetail(rows[0] as Record<string, unknown>)); }
   if (["filters", "facets", "saved-views"].includes(subpath) && method === "GET") {
     const view = subpath === "filters" ? "founder_filters" : subpath === "facets" ? "founder_facet_settings_view" : "founder_saved_view_records";
     const response = await hostedFetch(config, `/rest/v1/${view}?select=*`, { headers: { Authorization: `Bearer ${token}` } });
@@ -242,7 +290,9 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
   }
   if (subpath === "dashboard/daily" && method === "GET") {
     const days = Math.max(1, Math.min(31, Number(new URL(request.url).searchParams.get("days") ?? "7") || 7));
-    return NextResponse.json({ days, high_fit_threshold: 80, series: [] });
+    const response = await hostedFetch(config, "/rest/v1/rpc/founder_dashboard_daily", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ p_days: days, p_high_fit_threshold: 80 }) });
+    const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status });
+    return NextResponse.json({ days, high_fit_threshold: 80, series: Array.isArray(rows) ? rows.map((row: Record<string, unknown>) => ({ date: row.date, fetched: Number(row.fetched ?? 0), unique_new: Number(row.unique_new ?? 0), qualified: Number(row.qualified ?? 0), high_fit: Number(row.high_fit ?? 0), opened: Number(row.opened ?? 0), labelled: Number(row.labelled ?? 0), applied: Number(row.applied ?? 0), hidden_by_filters: Number(row.hidden_by_filters ?? 0) })) : [] });
   }
   if (subpath.startsWith("opportunities/") && path.length >= 4 && path[2] === "artifacts" && method === "GET") {
     const opportunityId = encodeURIComponent(path[1]);
