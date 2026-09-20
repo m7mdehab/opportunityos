@@ -433,7 +433,7 @@ export function DetailDrawer({
                     detail.scoring.gaps.length > 0 ||
                     detail.scoring.unknowns.length > 0) && (
                     <div className="mt-4 grid grid-cols-1 gap-4 text-xs">
-                      <div>
+                      <div data-testid="scoring-strengths">
                         <p className="font-medium text-emerald-700 dark:text-emerald-300">
                           Strengths
                         </p>
@@ -443,7 +443,7 @@ export function DetailDrawer({
                           ))}
                         </ul>
                       </div>
-                      <div>
+                      <div data-testid="scoring-gaps">
                         <p className="font-medium text-red-700 dark:text-red-300">Gaps</p>
                         <ul className="list-disc pl-4">
                           {detail.scoring.gaps.map((gap) => (
@@ -451,7 +451,7 @@ export function DetailDrawer({
                           ))}
                         </ul>
                       </div>
-                      <div>
+                      <div data-testid="scoring-unknowns">
                         <p className="font-medium text-amber-700 dark:text-amber-300">
                           Unknowns
                         </p>
