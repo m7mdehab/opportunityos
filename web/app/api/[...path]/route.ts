@@ -94,7 +94,7 @@ function hostedDetail(row: Record<string, unknown>) {
     const value = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
     return { dimension: String(value.dimension_name ?? value.dimension ?? "unknown"), score: Number(value.raw_score ?? value.score ?? 0), weight: Number(value.weight ?? 0), weighted_score: Number(value.weighted_score ?? 0), rationale: String(value.explanation ?? value.rationale ?? "") };
   }) : [];
-  const { evaluation_detail_json: _evaluationDetail, dimension_scores_json: _dimensionScores, reasons_json: _reasons, ...safeRow } = row;
+  const safeRow = Object.fromEntries(Object.entries(row).filter(([key]) => !["evaluation_detail_json", "dimension_scores_json", "reasons_json"].includes(key)));
   return { ...safeRow, fields: [], qualification: { decision: row.qualification_decision ?? null, constraints }, scoring: { fit_score: row.fit_score ?? null, dimension_scores: dimensionScores, strengths: asStringArray(detail.strengths), gaps: asStringArray(detail.gaps), unknowns: asStringArray(detail.unknowns), uncertainty_penalty: Number(detail.uncertainty_penalty ?? 0), explanation: String(detail.explanation ?? ""), policy_version: row.policy_version ?? "", evaluated_at: row.evaluated_at ?? "", truth_pack_hash: row.truth_pack_hash ?? null }, evidence_links: [], action_history: [], feedback_history: [] };
 }
 
