@@ -1,0 +1,27 @@
+name: FR-007 Codex Founder UX live proof
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - work/fr007-codex-founder-ux-v2
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/fr007-cloudflare-staging-deploy.yml
+    with:
+      mode: DEPLOY_STAGING
+      acknowledge_staging_deployment: true
+      ref: work/fr007-codex-founder-ux-v2
+    secrets: inherit
+
+  smoke:
+    needs: deploy
+    uses: ./.github/workflows/fr007-cloudflare-staging-deploy.yml
+    with:
+      mode: SMOKE_STAGING
+      ref: work/fr007-codex-founder-ux-v2
+    secrets: inherit
