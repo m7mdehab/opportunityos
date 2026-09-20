@@ -27,7 +27,7 @@ class FounderSurfaceW23ContractTests(unittest.TestCase):
         self.assertIn("FROM public.source_schedules s", source)
         self.assertIn("('reddit')", source)
         self.assertIn("f.visible IS TRUE", source)
-        self.assertIn("regexp_split_to_table", source)
+        self.assertIn("regexp_split_to_table", source)\n        self.assertIn("visibility_reason", source)
 
     def test_hosted_route_has_visible_and_hidden_feed_contract(self):
         source = (ROOT / "web/app/api/[...path]/route.ts").read_text(encoding="utf-8")

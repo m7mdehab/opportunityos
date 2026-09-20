@@ -143,7 +143,7 @@ CREATE OR REPLACE FUNCTION public.founder_dashboard_daily(
                       AND EXISTS (
                         SELECT 1
                           FROM regexp_split_to_table(
-                            regexp_replace(f.visibility_reason, '[][{}" ]', '', 'g'), ','
+                            replace(replace(replace(replace(replace(f.visibility_reason, '[', ''), ']', ''), '"', ''), '{', ''), '}', ''), ','
                           ) AS reason
                          WHERE reason <> '' AND reason NOT LIKE 'facet:%'
                       )), 0)
