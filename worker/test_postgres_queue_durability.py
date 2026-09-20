@@ -296,6 +296,82 @@ class TestPostgresQueueDurability(unittest.TestCase):
         finally:
             session2.close()
 
+    def test_stale_lease_precedence_over_pending_backlog(self) -> None:
+        """Stale RUNNING leases take priority over pending backlog in PostgreSQL."""
+        session = self.session_factory()
+        try:
+            q = BackgroundWorkerQueue(session, worker_id="setup-worker")
+            # 1. Enqueue 20 pending jobs
+            pending_ids = [self._enqueue(q, payload={"p_idx": i}) for i in range(20)]
+
+            # 2. Enqueue 1 job and expire its lease
+            stale_id = self._enqueue(q, payload={"stale": True})
+            stale_job = q.claim_next_job(lease_duration_seconds=0)
+            self.assertEqual(stale_job.id, stale_id)
+
+            # 3. New worker claims next job - must be stale_id, not any pending job
+            q_reclaimer = BackgroundWorkerQueue(session, worker_id="reclaimer-worker")
+            claimed = q_reclaimer.claim_next_job(lease_duration_seconds=60)
+            self.assertIsNotNone(claimed)
+            self.assertEqual(claimed.id, stale_id)
+            self.assertEqual("reclaimer-worker", claimed.lease_owner)
+            self.assertEqual(1, claimed.retry_count)
+        finally:
+            session.close()
+
+    def test_concurrent_stale_lease_recovery_skip_locked(self) -> None:
+        """Two concurrent workers claiming stale leases with SKIP LOCKED claim distinct jobs without colliding."""
+        session_setup = self.session_factory()
+        try:
+            q_setup = BackgroundWorkerQueue(session_setup)
+            # Create 2 jobs and expire both leases
+            id1 = self._enqueue(q_setup, payload={"stale_idx": 1})
+            id2 = self._enqueue(q_setup, payload={"stale_idx": 2})
+            j1 = q_setup.claim_next_job(lease_duration_seconds=0)
+            j2 = q_setup.claim_next_job(lease_duration_seconds=0)
+            self.assertIsNotNone(j1)
+            self.assertIsNotNone(j2)
+        finally:
+            session_setup.close()
+
+        barrier = threading.Barrier(2, timeout=10.0)
+        gate_lock = threading.Lock()
+        remaining_syncs = [2]
+
+        def sync_hook():
+            with gate_lock:
+                should_wait = remaining_syncs[0] > 0
+                if should_wait:
+                    remaining_syncs[0] -= 1
+            if should_wait:
+                barrier.wait()
+
+        worker1_claimed: list[str] = []
+        worker2_claimed: list[str] = []
+
+        def worker_drain(worker_id: str, dest: list[str]):
+            sess = self.session_factory()
+            try:
+                q = BackgroundWorkerQueue(sess, worker_id=worker_id)
+                job = q.claim_next_job(lease_duration_seconds=60, claim_hook=sync_hook)
+                if job:
+                    dest.append(job.id)
+            finally:
+                sess.close()
+
+        t1 = threading.Thread(target=worker_drain, args=("stale-worker-1", worker1_claimed))
+        t2 = threading.Thread(target=worker_drain, args=("stale-worker-2", worker2_claimed))
+
+        t1.start()
+        t2.start()
+        t1.join(timeout=15.0)
+        t2.join(timeout=15.0)
+
+        self.assertFalse(barrier.broken, "Deterministic SKIP LOCKED stale claim gate timed out")
+        all_claimed = worker1_claimed + worker2_claimed
+        self.assertEqual(len(all_claimed), len(set(all_claimed)), "No stale job claimed twice")
+        self.assertEqual(set(all_claimed), {id1, id2})
+
     def test_dead_letter_handling(self) -> None:
         """A job repeatedly dying until reaching max_retries transitions into DEAD_LETTER state."""
         session = self.session_factory()

@@ -26,7 +26,10 @@ CHECK_TO_STATE_KEY: Mapping[str, str] = {
     "web_liveness": "web_state",
     "api_liveness": "api_state",
     "database_connection": "database_state",
+    "database_connectivity": "database_state",
+    "database_and_queue": "database_state",
     "queue_state": "queue_state",
+    "queue_health": "queue_state",
     "scheduler_state": "scheduler_state",
     "source_freshness": "source_freshness_state",
     "backup_heartbeat": "backup_state",
@@ -120,6 +123,12 @@ def build_soak_snapshot(
                 subsystem_states[state_key] = (
                     c_status if c_status in STATES else "FAIL"
                 )
+
+    if (
+        subsystem_states["scheduler_state"] == "NOT_CONFIGURED"
+        and subsystem_states["source_freshness_state"] != "NOT_CONFIGURED"
+    ):
+        subsystem_states["scheduler_state"] = subsystem_states["source_freshness_state"]
 
     overall_state = report_data.get("overall_status", "NOT_CONFIGURED")
     if overall_state not in STATES:

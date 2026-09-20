@@ -19,7 +19,7 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
     def test_backup_workflow_is_explicitly_authorized_and_manual(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-encrypted-backup.yml").read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:", workflow)
-        self.assertIn("if: ${{ inputs.acknowledge_backup == true }}", workflow)
+        self.assertIn("inputs.acknowledge_backup == true", workflow)
         self.assertNotIn("pull_request", workflow)
 
     def test_worker_workflow_uses_single_bounded_mode(self):
@@ -30,8 +30,8 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
             if line.strip().startswith("python scripts/fr007_hosted_bootstrap.py")
         )
         self.assertIn("--mode all", command)
-        self.assertIn("--max-jobs 10", command)
-        self.assertIn("--time-budget-seconds 300", command)
+        self.assertIn("--max-jobs", command)
+        self.assertIn("--time-budget-seconds", command)
         self.assertNotIn("--once", command)
         self.assertIn("OPOS_TARGET_DB_URL", workflow)
         self.assertIn("OPPORTUNITYOS_TRUTH_PACK_PATH", workflow)

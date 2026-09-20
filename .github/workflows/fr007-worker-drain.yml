@@ -2,6 +2,15 @@ name: FR-007 durable worker drain
 
 on:
   workflow_dispatch:
+    inputs:
+      max_jobs:
+        description: "Maximum jobs to drain in this bounded recovery run (capped to 150)"
+        required: false
+        default: "10"
+      time_budget_seconds:
+        description: "Time budget in seconds (capped to 540)"
+        required: false
+        default: "300"
   schedule:
     - cron: "*/15 * * * *"
   push:
@@ -36,4 +45,8 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           set -euo pipefail
-          python scripts/fr007_hosted_bootstrap.py --mode all --max-jobs 10 --time-budget-seconds 300
+          RAW_MAX="${{ inputs.max_jobs || '10' }}"
+          RAW_BUDGET="${{ inputs.time_budget_seconds || '300' }}"
+          MAX_JOBS=$(( RAW_MAX > 150 ? 150 : (RAW_MAX < 1 ? 10 : RAW_MAX) ))
+          TIME_BUDGET=$(( RAW_BUDGET > 540 ? 540 : (RAW_BUDGET < 10 ? 300 : RAW_BUDGET) ))
+          python scripts/fr007_hosted_bootstrap.py --mode all --max-jobs "${MAX_JOBS}" --time-budget-seconds "${TIME_BUDGET}"

@@ -61,7 +61,26 @@ def execute_incident_action(
         ]
         res = exec_cmd(cmd)
         if res.returncode != 0:
-            print(f"Error executing 'gh issue create': {res.stderr.strip()}", file=sys.stderr)
+            err_output = res.stderr.strip() if res.stderr else ""
+            err_lower = err_output.lower()
+            if "could not add label" in err_lower or ("label" in err_lower and "not found" in err_lower):
+                print(
+                    f"Warning: GitHub rejected issue creation with labels ({err_output}). Retrying without labels...",
+                    file=sys.stderr,
+                )
+                fallback_cmd = [
+                    "gh", "issue", "create",
+                    "--title", title,
+                    "--body", body,
+                ]
+                res = exec_cmd(fallback_cmd)
+                if res.returncode != 0:
+                    print(f"Error executing unlabeled 'gh issue create': {res.stderr.strip()}", file=sys.stderr)
+                    return res.returncode or 1
+                print(f"Successfully created incident issue without labels: {res.stdout.strip()}")
+                return 0
+
+            print(f"Error executing 'gh issue create': {err_output}", file=sys.stderr)
             return res.returncode or 1
         print(f"Successfully created incident issue: {res.stdout.strip()}")
         return 0

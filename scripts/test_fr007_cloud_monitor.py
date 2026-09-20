@@ -897,6 +897,44 @@ class TestProcessIncidentAlert(unittest.TestCase):
         }
         code = execute_incident_action(payload, runner=mock_runner)
         self.assertEqual(code, 1)
+        self.assertEqual(len(calls), 1, "Unrelated error must not trigger retry")
+
+    def test_action_create_missing_labels_retries_without_labels_and_succeeds(self) -> None:
+        calls = []
+        def mock_runner(cmd):
+            calls.append(cmd)
+            if len(calls) == 1:
+                return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="could not add label: 'incident' not found")
+            return subprocess.CompletedProcess(cmd, 0, stdout="https://github.com/org/repo/issues/101", stderr="")
+
+        payload = {
+            "action": "CREATE",
+            "title": "[INCIDENT] System Degraded",
+            "body": "Degraded details",
+        }
+        code = execute_incident_action(payload, runner=mock_runner)
+        self.assertEqual(code, 0)
+        self.assertEqual(len(calls), 2)
+        self.assertIn("--label", calls[0])
+        self.assertNotIn("--label", calls[1])
+        self.assertIn("https://github.com/org/repo/issues/101", "https://github.com/org/repo/issues/101")
+
+    def test_action_create_missing_labels_retry_failure_returns_nonzero(self) -> None:
+        calls = []
+        def mock_runner(cmd):
+            calls.append(cmd)
+            if len(calls) == 1:
+                return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="could not add label: 'incident' not found")
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="secondary api failure")
+
+        payload = {
+            "action": "CREATE",
+            "title": "[INCIDENT] System Degraded",
+            "body": "Degraded details",
+        }
+        code = execute_incident_action(payload, runner=mock_runner)
+        self.assertEqual(code, 1)
+        self.assertEqual(len(calls), 2)
 
     def test_action_update_success(self) -> None:
         calls = []

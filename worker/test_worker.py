@@ -117,6 +117,70 @@ class TestBackgroundWorkerQueue(unittest.TestCase):
         # The dead-lettered poison job must never be handed back out.
         self.assertIsNone(self.queue.claim_next_job(lease_duration_seconds=1))
 
+    def test_expired_lease_claims_before_pending_backlog(self):
+        """Expired RUNNING leases must take precedence over an arbitrarily large PENDING backlog."""
+        # 1. Enqueue 50 due PENDING jobs
+        pending_ids = []
+        for i in range(50):
+            pid = self.queue.enqueue_job("PENDING_BATCH", {"index": i})
+            pending_ids.append(pid)
+
+        # 2. Enqueue 1 stale RUNNING job
+        stale_id = self.queue.enqueue_job("STALE_CRASHED", {"type": "stale"})
+        stale_record = self.session.query(WorkerJobRecord).filter_by(id=stale_id).first()
+        stale_record.status = "RUNNING"
+        stale_record.lease_owner = "crashed-worker"
+        stale_record.lease_expires_at = datetime.now(timezone.utc) - timedelta(seconds=120)
+        self.session.commit()
+
+        # 3. Next claim must reclaim the stale job, NOT any of the 50 pending jobs
+        claimed = self.queue.claim_next_job(lease_duration_seconds=30)
+        self.assertIsNotNone(claimed)
+        self.assertEqual(claimed.id, stale_id)
+        self.assertEqual(claimed.lease_owner, "w-1")
+        self.assertEqual(claimed.status, "RUNNING")
+        self.assertEqual(claimed.retry_count, 1)
+
+    def test_stale_lease_dead_letter_proceeds_to_due_pending_job_in_same_call(self):
+        """When an expired lease reaches max_retries during sweep, it is dead-lettered
+        and the same claim_next_job() call immediately proceeds to claim due pending work.
+        """
+        # 1. Stale job that will dead-letter on this reclaim
+        stale_id = self.queue.enqueue_job("POISON", {}, max_retries=3)
+        stale_record = self.session.query(WorkerJobRecord).filter_by(id=stale_id).first()
+        stale_record.status = "RUNNING"
+        stale_record.retry_count = 2  # next reclaim will hit 3 >= max_retries
+        stale_record.lease_owner = "dead-worker"
+        stale_record.lease_expires_at = datetime.now(timezone.utc) - timedelta(seconds=60)
+
+        # 2. Due ordinary job
+        fresh_id = self.queue.enqueue_job("FRESH_JOB", {"data": 123})
+        self.session.commit()
+
+        # 3. Claim: stale dead-letters, and fresh job is returned in the same call
+        claimed = self.queue.claim_next_job(lease_duration_seconds=45)
+        self.assertIsNotNone(claimed)
+        self.assertEqual(claimed.id, fresh_id)
+        self.assertEqual(claimed.status, "RUNNING")
+
+        # Verify stale job was committed as DEAD_LETTER
+        stale_db = self.session.query(WorkerJobRecord).filter_by(id=stale_id).first()
+        self.assertEqual(stale_db.status, "DEAD_LETTER")
+        self.assertEqual(stale_db.retry_count, 3)
+
+    def test_normal_fresh_job_ordering_deterministic_when_no_stale_lease(self):
+        """Without expired leases, ordinary PENDING jobs are claimed deterministically by run_after."""
+        now = datetime.now(timezone.utc)
+        j1 = self.queue.enqueue_job("JOB_1", {}, run_after=now - timedelta(seconds=30))
+        j2 = self.queue.enqueue_job("JOB_2", {}, run_after=now - timedelta(seconds=20))
+        j3 = self.queue.enqueue_job("JOB_3", {}, run_after=now - timedelta(seconds=10))
+
+        c1 = self.queue.claim_next_job()
+        c2 = self.queue.claim_next_job()
+        c3 = self.queue.claim_next_job()
+
+        self.assertEqual([c1.id, c2.id, c3.id], [j1, j2, j3])
+
 
 class TestWorkerStartupRegression(unittest.TestCase):
     def test_normal_worker_startup_reaches_handler_registry_without_name_error(self):
