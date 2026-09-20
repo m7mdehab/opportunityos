@@ -45,9 +45,9 @@ No unresolved implementation blocker. Hosted production data and Founder state a
 
 ## Final readiness
 
-READY. Final commit: `14a58aaaac54c2a3739698c95b42da48b89b687a`.
+READY. Final commit: `0dc18eb81d4ceccc98ed1b849a45408913f5f3c4`.
 
-Remote proof: `git ls-remote origin refs/heads/work/fr007-codex-founder-surface-corrections` returned `14a58aaaac54c2a3739698c95b42da48b89b687a`.
+Remote proof: `git ls-remote origin refs/heads/work/fr007-codex-founder-surface-corrections` returned `0dc18eb81d4ceccc98ed1b849a45408913f5f3c4`.
 
 - Mandatory Governance & Test Suite: run `35511453345` SUCCESS; governance job `106079250719` SUCCESS, web-build-lint-playwright job `106079250816` SUCCESS, backend job `106079250820` SUCCESS.
 - Disposable PostgreSQL portability/provider proof: run `35510091256` SUCCESS.
