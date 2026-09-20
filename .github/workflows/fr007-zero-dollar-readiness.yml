@@ -3,6 +3,15 @@ name: FR-007 Zero-Dollar Provider Readiness
 on:
   workflow_dispatch:
   workflow_call:
+  push:
+    branches:
+      - work/fr007-overseer-integration
+      - main
+    paths:
+      - .github/workflows/fr007-zero-dollar-readiness.yml
+      - reports/evidence/FR-007/cloud-cost-quota.json
+      - storage/migrations/versions/**
+      - web/tests/e2e/staging-smoke.spec.ts
 
 permissions:
   contents: read
@@ -28,8 +37,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: brief/fr-007-cloud-replatform
 
       - uses: actions/setup-python@v7
         with:
@@ -99,7 +106,7 @@ jobs:
               with conn.cursor() as cur:
                   cur.execute("select version_num from public.alembic_version")
                   revision = cur.fetchone()[0]
-                  if revision != "0009_hosted_founder_auth":
+                  if revision != "0013_hosted_poll_now_cadence":
                       raise SystemExit(f"unexpected revision: {revision}")
                   cur.execute("""
                     select count(*) from pg_class c
