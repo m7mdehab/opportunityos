@@ -29,7 +29,7 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
             for line in workflow.splitlines()
             if line.strip().startswith("python scripts/fr007_hosted_bootstrap.py")
         )
-        self.assertIn("--mode drain", command)
+        self.assertIn("--mode all", command)
         self.assertIn("--max-jobs 10", command)
         self.assertIn("--time-budget-seconds 300", command)
         self.assertNotIn("--once", command)
