@@ -73,8 +73,16 @@ jobs:
         run: |
           psql -h localhost -U opportunityos -d source_db -v ON_ERROR_STOP=1 -c 'CREATE DATABASE target_db;'
           psql -h localhost -U opportunityos -d source_db -v ON_ERROR_STOP=1 -c 'CREATE DATABASE cutover_db;'
-      - name: Unit and real PostgreSQL portability proof
-        run: python -m unittest scripts.test_migration_baseline scripts.test_db_migration_restore scripts.test_portability_integrity scripts.test_live_portability_proof scripts.test_production_migration_readiness scripts.test_migration_acceptance scripts.test_live_portability_postgres scripts.test_migration_acceptance_postgres scripts.test_fr007_supabase_execution_bundle scripts.test_fr007_supabase_execution_postgres -v
+      - name: Baseline, restore and portability unit proof
+        run: python -m unittest scripts.test_migration_baseline scripts.test_db_migration_restore scripts.test_portability_integrity -v
+      - name: Disposable PostgreSQL live portability proof
+        run: python -m unittest scripts.test_live_portability_proof scripts.test_live_portability_postgres -v
+      - name: Production migration readiness and acceptance proof
+        run: python -m unittest scripts.test_production_migration_readiness scripts.test_migration_acceptance scripts.test_migration_acceptance_postgres -v
+      - name: Supabase provider bundle static proof
+        run: python -m unittest scripts.test_fr007_supabase_execution_bundle -v
+      - name: Supabase provider bundle PostgreSQL proof
+        run: python -m unittest scripts.test_fr007_supabase_execution_postgres -v
       - name: Compile, repository integrity and guard
         run: |
           python -m py_compile scripts/live_portability_proof.py scripts/test_live_portability_proof.py scripts/test_live_portability_postgres.py scripts/migration_baseline.py scripts/db_migration_restore.py scripts/artifact_integrity.py scripts/portability_bundle.py scripts/production_db_preflight.py scripts/production_migration_cutover.py scripts/test_production_migration_readiness.py scripts/migration_acceptance.py scripts/test_migration_acceptance.py scripts/test_migration_acceptance_postgres.py scripts/fr007_supabase_execution_bundle.py scripts/test_fr007_supabase_execution_bundle.py scripts/test_fr007_supabase_execution_postgres.py
