@@ -73,7 +73,7 @@ def validate_cloudflare_package(root: Path = ROOT) -> list[str]:
             errors.append("proxy route handler must retain the local/API compatibility boundary")
         if "parsed.protocol !== \"https:\"" not in proxy_text:
             errors.append("proxy route handler must enforce parsed HTTPS upstream origin")
-        if 'OPPORTUNITYOS_CLOUD_EDGE === "1"' not in proxy_text:
+        if 'const cloudEdge = env.OPPORTUNITYOS_CLOUD_EDGE === "1";' not in proxy_text:
             errors.append("proxy route handler must distinguish cloud edge from local development")
         if "getCloudflareContext" not in proxy_text:
             errors.append("cloud edge must read runtime bindings through OpenNext getCloudflareContext")
