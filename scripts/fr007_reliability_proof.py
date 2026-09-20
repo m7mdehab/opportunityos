@@ -14,6 +14,7 @@ import re
 import secrets
 import sys
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -1185,39 +1186,192 @@ def run_hosted(
 
             from sqlalchemy import text
 
-            # A5: Source intake error isolation (read-only query)
-            has_jobs = _table_exists(connection, "worker_jobs") or _table_exists(connection, "opportunity_jobs")
-            has_sources = _table_exists(connection, "source_poll_state")
-            if has_sources or has_jobs:
-                a5 = _result("A5", "PASS", sources_isolated=True, tables_present=True)
-            else:
-                a5 = _result("A5", "BLOCKED", reason="source_tables_not_found")
-
-            # A6: Ingestion deduplication invariant (read-only query)
-            has_opps = _table_exists(connection, "opportunity_records")
-            if has_opps:
-                res = connection.execute(text("SELECT count(*), count(DISTINCT content_hash) FROM opportunity_records")).fetchone()
-                total_c, distinct_c = (res[0], res[1]) if res else (0, 0)
-                if total_c == distinct_c:
-                    a6 = _result("A6", "PASS", no_duplicate_identity=True, total_count=total_c, distinct_count=distinct_c)
+            # A5: Real hosted source-failure isolation evidence.
+            has_jobs = _table_exists(connection, "worker_jobs")
+            has_poll_runs = _table_exists(connection, "source_poll_runs")
+            if has_jobs and has_poll_runs:
+                poll_row = connection.execute(text("""
+                    SELECT
+                      count(*) FILTER (WHERE status='error') AS error_count,
+                      count(*) FILTER (WHERE status='ok') AS ok_count
+                    FROM public.source_poll_runs
+                """)).fetchone()
+                error_count = int(poll_row[0] or 0) if poll_row else 0
+                ok_count = int(poll_row[1] or 0) if poll_row else 0
+                active_jobs = int(connection.execute(text("""
+                    SELECT count(*) FROM public.worker_jobs
+                    WHERE status IN ('PENDING','RETRY','RUNNING')
+                """)).scalar_one())
+                if error_count > 0 and ok_count > 0 and a4.get("state") == "PASS":
+                    a5 = _result(
+                        "A5", "PASS",
+                        real_error_poll_runs=error_count,
+                        real_success_poll_runs=ok_count,
+                        active_or_retry_jobs=active_jobs,
+                        feed_surface_healthy=True,
+                    )
+                elif error_count == 0:
+                    a5 = _result(
+                        "A5", "BLOCKED",
+                        reason="no_real_hosted_source_failure_observed_yet",
+                        real_success_poll_runs=ok_count,
+                    )
                 else:
-                    a6 = _result("A6", "FAIL", reason="duplicate_content_hashes_detected", total_count=total_c, distinct_count=distinct_c)
+                    a5 = _result(
+                        "A5", "FAIL",
+                        reason="source_failures_observed_without_successful_unrelated_poll",
+                        real_error_poll_runs=error_count,
+                        real_success_poll_runs=ok_count,
+                    )
             else:
-                a6 = _result("A6", "BLOCKED", reason="opportunity_records_table_not_found")
+                a5 = _result(
+                    "A5", "BLOCKED",
+                    reason="hosted_source_or_job_tables_missing",
+                    worker_jobs_present=has_jobs,
+                    source_poll_runs_present=has_poll_runs,
+                )
 
-            # A7: Queue non-blocking dispatch (read-only query)
-            if has_jobs:
-                a7 = _result("A7", "PASS", queue_operational=True)
+            # A6: Canonical hosted source identity must remain duplicate-free.
+            has_opps = _table_exists(connection, "opportunities")
+            if has_opps:
+                total_c = int(connection.execute(text(
+                    "SELECT count(*) FROM public.opportunities"
+                )).scalar_one())
+                duplicate_groups = int(connection.execute(text("""
+                    SELECT count(*) FROM (
+                      SELECT source_id, source_url
+                      FROM public.opportunities
+                      GROUP BY source_id, source_url
+                      HAVING count(*) > 1
+                    ) d
+                """)).scalar_one())
+                if total_c > 0 and duplicate_groups == 0:
+                    a6 = _result(
+                        "A6", "PASS",
+                        no_duplicate_source_identity=True,
+                        opportunity_count=total_c,
+                        duplicate_source_identity_groups=0,
+                    )
+                elif total_c == 0:
+                    a6 = _result("A6", "BLOCKED", reason="hosted_corpus_empty")
+                else:
+                    a6 = _result(
+                        "A6", "FAIL",
+                        reason="duplicate_stable_source_identity_detected",
+                        opportunity_count=total_c,
+                        duplicate_source_identity_groups=duplicate_groups,
+                    )
             else:
-                a7 = _result("A7", "BLOCKED", reason="queue_table_not_found")
+                a6 = _result("A6", "BLOCKED", reason="opportunities_table_not_found")
 
-            # A8: Scheduler persistence (read-only query)
-            if has_sources:
-                res = connection.execute(text("SELECT count(*) FROM source_poll_state WHERE next_due_at IS NOT NULL")).fetchone()
-                count_due = res[0] if res else 0
-                a8 = _result("A8", "PASS", schedules_persisted=True, sources_with_schedule=count_due)
+            # A7: Exercise the real hosted Poll Now function inside a rollback-only
+            # transaction. This validates Founder authorization, due-only selection,
+            # response shape, and acknowledgement latency without leaving proof jobs.
+            has_schedules = _table_exists(connection, "source_schedules")
+            if has_jobs and has_schedules and _table_exists(connection, "founder_identity"):
+                try:
+                    connection.rollback()
+                    tx = connection.begin()
+                    founder_uid = connection.execute(text("""
+                        SELECT supabase_user_id FROM public.founder_identity
+                        WHERE id='singleton'
+                    """)).scalar_one()
+                    connection.execute(
+                        text("SELECT set_config('request.jwt.claim.sub', :uid, true)"),
+                        {"uid": str(founder_uid)},
+                    )
+                    due_before = int(connection.execute(text("""
+                        SELECT count(*) FROM public.source_schedules
+                        WHERE next_due_at <= now()
+                          AND (cooldown_until IS NULL OR cooldown_until <= now())
+                    """)).scalar_one())
+                    total_sources = int(connection.execute(text(
+                        "SELECT count(*) FROM public.source_schedules"
+                    )).scalar_one())
+                    t0 = time.perf_counter()
+                    payload = connection.execute(
+                        text("SELECT public.enqueue_poll_now(NULL)")
+                    ).scalar_one()
+                    elapsed_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+                    tx.rollback()
+                    if isinstance(payload, str):
+                        payload = json.loads(payload)
+                    enqueued = payload.get("enqueued", []) if isinstance(payload, dict) else []
+                    skipped = payload.get("skipped", []) if isinstance(payload, dict) else []
+                    valid_shape = isinstance(enqueued, list) and isinstance(skipped, list)
+                    if (
+                        valid_shape
+                        and len(enqueued) <= due_before
+                        and elapsed_ms <= 1000.0
+                        and total_sources > 0
+                    ):
+                        a7 = _result(
+                            "A7", "PASS",
+                            due_sources_before=due_before,
+                            total_sources=total_sources,
+                            would_enqueue=len(enqueued),
+                            skipped=len(skipped),
+                            acknowledgement_ms=elapsed_ms,
+                            rollback_only=True,
+                        )
+                    else:
+                        a7 = _result(
+                            "A7", "FAIL",
+                            reason="hosted_poll_now_contract_failed",
+                            due_sources_before=due_before,
+                            total_sources=total_sources,
+                            would_enqueue=len(enqueued) if valid_shape else None,
+                            acknowledgement_ms=elapsed_ms,
+                            valid_response_shape=valid_shape,
+                        )
+                except Exception as exc:
+                    try:
+                        connection.rollback()
+                    except Exception:
+                        pass
+                    a7 = _result("A7", "FAIL", reason="hosted_poll_now_probe_failed", error=str(exc))
             else:
-                a8 = _result("A8", "BLOCKED", reason="source_poll_state_not_found")
+                a7 = _result(
+                    "A7", "BLOCKED",
+                    reason="poll_now_hosted_tables_missing",
+                    worker_jobs_present=has_jobs,
+                    source_schedules_present=has_schedules,
+                )
+
+            # A8: Durable source schedule/cooldown state is fully persisted.
+            if has_schedules:
+                schedule_row = connection.execute(text("""
+                    SELECT
+                      count(*) AS total,
+                      count(*) FILTER (WHERE next_due_at IS NOT NULL) AS with_next_due,
+                      count(*) FILTER (
+                        WHERE cooldown_until IS NOT NULL AND cooldown_until > now()
+                      ) AS cooling_down,
+                      max(updated_at) AS latest_update
+                    FROM public.source_schedules
+                """)).fetchone()
+                total_sched = int(schedule_row[0] or 0) if schedule_row else 0
+                with_due = int(schedule_row[1] or 0) if schedule_row else 0
+                cooling = int(schedule_row[2] or 0) if schedule_row else 0
+                latest_update = str(schedule_row[3]) if schedule_row and schedule_row[3] is not None else None
+                if total_sched > 0 and with_due == total_sched:
+                    a8 = _result(
+                        "A8", "PASS",
+                        schedules_persisted=True,
+                        total_sources=total_sched,
+                        sources_with_next_due=with_due,
+                        cooling_down=cooling,
+                        latest_schedule_update=latest_update,
+                    )
+                else:
+                    a8 = _result(
+                        "A8", "FAIL",
+                        reason="incomplete_persisted_schedule_state",
+                        total_sources=total_sched,
+                        sources_with_next_due=with_due,
+                    )
+            else:
+                a8 = _result("A8", "BLOCKED", reason="source_schedules_table_not_found")
 
         except Exception as exc:
             a5 = _result("A5", "BLOCKED", reason="postgres_connection_unavailable", error=str(exc))
