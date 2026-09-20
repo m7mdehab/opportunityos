@@ -44,6 +44,7 @@ export function FilterBar({
   filters,
   onChange,
   onOpenFounderFilters,
+  onOpenManualSources,
   sources,
 }: {
   filters: FeedFilters
@@ -53,6 +54,7 @@ export function FilterBar({
    * the drawer's filters decide what is hidden, ranked, or labelled across
    * every query. */
   onOpenFounderFilters: () => void
+  onOpenManualSources: () => void
   sources: SourceOverview[]
 }) {
   const hasActiveFilters =
@@ -64,8 +66,16 @@ export function FilterBar({
     || filters.sourceId !== ""
 
   const families = [...new Set(sources.map((source) => source.source_family))].sort()
-  const familyMeta = new Map(families.map((family) => [family, sources.find((source) => source.source_family === family)]))
-  const sourceIds = sources.filter((source) => !filters.sourceFamily || source.source_family === filters.sourceFamily)
+  const familyMeta = new Map(families.map((family) => {
+    const rows = sources.filter((source) => source.source_family === family)
+    return [family, {
+      count: rows.reduce((total, row) => total + (row.manual_only ? 0 : row.opportunity_count), 0),
+      manualOnly: rows.some((row) => row.manual_only),
+    }]
+  }))
+  const sourceIds = sources.filter((source) => source.source_id && !source.manual_only && (!filters.sourceFamily || source.source_family === filters.sourceFamily))
+  const selectedFamily = familyMeta.get(filters.sourceFamily)
+  const allAutomatedCount = sources.reduce((total, row) => total + (row.manual_only ? 0 : row.opportunity_count), 0)
 
   return (
     <form
@@ -144,16 +154,19 @@ export function FilterBar({
       <div className="flex flex-col gap-1">
         <Label htmlFor="filter-source-family">Source</Label>
         <select id="filter-source-family" className={selectClasses} value={filters.sourceFamily} onChange={(e) => onChange({ ...filters, sourceFamily: e.target.value, sourceId: "" })}>
-          <option value="">All sources</option>
-          {families.map((family) => <option key={family} value={family}>{family}{familyMeta.get(family)?.manual_only ? " (Manual only)" : ""}</option>)}
+          <option value="">All sources ({allAutomatedCount})</option>
+          {families.map((family) => { const meta = familyMeta.get(family)!; return <option key={family} value={family}>{family} ({meta.manualOnly ? "Manual only · 0 automated" : meta.count})</option> })}
         </select>
       </div>
-      {filters.sourceFamily && sourceIds.length > 1 && (
+      {filters.sourceFamily && selectedFamily?.manualOnly && (
+        <Button type="button" variant="outline" size="sm" onClick={onOpenManualSources}>Check manually</Button>
+      )}
+      {filters.sourceFamily && !selectedFamily?.manualOnly && sourceIds.length > 1 && (
         <div className="flex flex-col gap-1">
           <Label htmlFor="filter-source-id">Board</Label>
           <select id="filter-source-id" className={selectClasses} value={filters.sourceId} onChange={(e) => onChange({ ...filters, sourceId: e.target.value })}>
             <option value="">All {filters.sourceFamily}</option>
-            {sourceIds.map((source) => <option key={source.source_id} value={source.source_id}>{source.source_id} ({source.opportunity_count})</option>)}
+            {sourceIds.map((source) => <option key={source.source_id!} value={source.source_id!}>{source.source_id} ({source.opportunity_count})</option>)}
           </select>
         </div>
       )}

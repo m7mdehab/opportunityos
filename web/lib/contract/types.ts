@@ -345,8 +345,9 @@ export interface SourcesHealthResponse {
 
 export interface SourceOverview {
   source_family: string
-  source_id: string
+  source_id: string | null
   opportunity_count: number
+  hidden_count: number
   last_success_at: string | null
   last_status: string | null
   manual_only: boolean

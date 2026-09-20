@@ -1184,6 +1184,12 @@ def make_reverify_stale_handler(
         session = _resolve_session_factory()()
         try:
             days = payload.get("stale_after_days", stale_after_days) if payload else stale_after_days
+            board_result = StaleOpportunityReverifier.reverify_greenhouse_boards(
+                session,
+                registry=registry,
+                rate_limiter=rate_limiter,
+                request_fn=reverify_fn,
+            )
             result = StaleOpportunityReverifier.reverify_stale_opportunities(
                 session,
                 registry=registry,
@@ -1191,6 +1197,7 @@ def make_reverify_stale_handler(
                 reverify_fn=reverify_fn,
                 stale_after_days=days,
             )
+            result = {**result, **board_result}
             logger.info(
                 "worker.reverify_stale_completed",
                 extra={"component": "worker.handlers", "extra_data": result},

@@ -68,6 +68,7 @@ test.describe("C3 keyboard flow (j/k/o/a/x)", () => {
     const drawer = page.getByRole("dialog")
     await expect(drawer).toBeVisible()
     await expect(drawer.getByRole("heading", { name: title })).toBeVisible()
+    await expect(drawer.getByTestId("detail-fit-score")).toContainText(/Fit\s+\d+/)
 
     await page.keyboard.press("Escape")
     await expect(drawer).not.toBeVisible()

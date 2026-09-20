@@ -145,7 +145,7 @@ export function DetailDrawer({
           </div>
         )}
         {detail && (
-          <div className="grid gap-6 p-5 md:grid-cols-[minmax(0,1.7fr)_minmax(18rem,0.9fr)]">
+          <div className="grid gap-6 p-5 md:grid-cols-[minmax(0,1.7fr)_minmax(18rem,0.9fr)] md:items-start">
             <DialogHeader className="p-0 md:col-span-2">
               <DialogTitle>{detail.title}</DialogTitle>
               <DialogDescription>
@@ -156,6 +156,14 @@ export function DetailDrawer({
                 <span className="text-xs text-muted-foreground">
                   {detail.track}
                 </span>
+                {detail.scoring.fit_score !== null && (
+                  <span data-testid="detail-fit-score" className="text-sm font-semibold tabular-nums">
+                    Fit {Math.round(detail.scoring.fit_score)}
+                  </span>
+                )}
+                <span className="text-xs text-muted-foreground">
+                  {detail.work_mode} · {detail.location_city ?? detail.location_country ?? "Location unknown"}
+                </span>
                 {detail.is_stale && (
                   <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
                     Stale — not recently reverified
@@ -164,7 +172,7 @@ export function DetailDrawer({
               </div>
             </DialogHeader>
 
-            <section>
+            <section className="md:col-start-1 md:row-start-1">
               <div
                 data-testid="opportunity-description"
                 className="text-sm [&_a]:underline [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
@@ -191,9 +199,9 @@ export function DetailDrawer({
               </a>
             </section>
 
-            <Separator />
+            <Separator className="md:hidden" />
 
-            <section aria-labelledby="qualification-heading">
+            <section className="md:col-start-2 md:row-start-1" aria-labelledby="qualification-heading">
               <h3 id="qualification-heading" className="text-sm font-semibold">
                 Qualification checklist
               </h3>
@@ -251,9 +259,9 @@ export function DetailDrawer({
               )}
             </section>
 
-            <Separator />
+            <Separator className="md:hidden" />
 
-            <section aria-labelledby="geography-heading">
+            <section className="md:col-start-2 md:row-start-2" aria-labelledby="geography-heading">
               <h3 id="geography-heading" className="text-sm font-semibold">
                 Geography reasoning
               </h3>
@@ -293,9 +301,9 @@ export function DetailDrawer({
               })()}
             </section>
 
-            <Separator />
+            <Separator className="md:hidden" />
 
-            <section aria-labelledby="scoring-heading">
+            <section className="md:col-start-2 md:row-start-3" aria-labelledby="scoring-heading">
               <h3 id="scoring-heading" className="text-sm font-semibold">
                 Dimension scores
               </h3>
@@ -378,9 +386,9 @@ export function DetailDrawer({
               )}
             </section>
 
-            <Separator />
+            <Separator className="md:hidden" />
 
-            <section aria-labelledby="provenance-heading">
+            <section className="md:col-start-1 md:row-start-2" aria-labelledby="provenance-heading">
               <h3 id="provenance-heading" className="text-sm font-semibold">
                 Field provenance
               </h3>
@@ -408,13 +416,13 @@ export function DetailDrawer({
               )}
             </section>
 
-            <Separator />
+            <Separator className="md:hidden" />
 
-            {opportunityId && <ArtifactsPanel opportunityId={opportunityId} />}
+            {opportunityId && <div className="md:col-span-2"><ArtifactsPanel opportunityId={opportunityId} /></div>}
 
-            <Separator />
+            <Separator className="md:hidden" />
 
-            <section aria-labelledby="feedback-heading">
+            <section className="md:col-start-2 md:row-start-4" aria-labelledby="feedback-heading">
               <h3 id="feedback-heading" className="text-sm font-semibold">
                 Feedback
               </h3>
@@ -427,9 +435,9 @@ export function DetailDrawer({
               </div>
             </section>
 
-            <Separator />
+            <Separator className="md:hidden" />
 
-            <section aria-labelledby="triage-heading">
+            <section className="md:col-start-2 md:row-start-5" aria-labelledby="triage-heading">
               <h3 id="triage-heading" className="text-sm font-semibold">
                 Triage
               </h3>
@@ -445,8 +453,8 @@ export function DetailDrawer({
             {(detail.action_history.length > 0 ||
               detail.feedback_history.length > 0) && (
               <>
-                <Separator />
-                <section aria-labelledby="history-heading">
+                <Separator className="md:hidden" />
+                <section className="md:col-start-1 md:row-start-4" aria-labelledby="history-heading">
                   <h3 id="history-heading" className="text-sm font-semibold">
                     History
                   </h3>

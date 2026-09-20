@@ -59,6 +59,13 @@ function parseJson(value: unknown): unknown {
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.map((item) => typeof item === "string" ? item : typeof item?.text === "string" ? item.text : "").filter(Boolean) : [];
 }
+function policyHiddenReasons(value: unknown): string[] {
+  const parsed = parseJson(value);
+  const candidates = Array.isArray(parsed) ? parsed : String(value ?? "").split(/[\s,]+/);
+  return candidates
+    .map((item) => typeof item === "string" ? item.replace(/^[\[\]"{}]+|[\[\]"{}]+$/g, "") : "")
+    .filter((item) => item && !item.startsWith("facet:"));
+}
 function hostedFeedRow(row: Record<string, unknown>) {
   const reasons = asStringArray(parseJson(row.reasons_json));
   return {
@@ -66,7 +73,7 @@ function hostedFeedRow(row: Record<string, unknown>) {
     source_id: row.source_id ?? "", source_url: row.source_url ?? "", track: row.track,
     decision: row.qualification_decision ?? null, fit_score: row.fit_score ?? null, top_reasons: reasons,
     deadline: row.deadline ?? null, posted_date: row.posted_date ?? null, is_stale: Boolean(row.is_stale),
-    action_state: null, feedback_label: null, hidden_by: [], flagged_by: [], work_mode: row.work_mode ?? "unspecified",
+    action_state: null, feedback_label: null, hidden_by: policyHiddenReasons(row.visibility_reason), flagged_by: [], work_mode: row.work_mode ?? "unspecified",
     work_mode_source: null, location_country: row.location_country ?? null, location_city: row.location_city ?? null,
     location_region: row.location_region ?? null, remote_scope: row.remote_scope ?? "unspecified", remote_scope_regions: [],
     employment_type: row.employment_type ?? "unspecified", seniority_level: row.seniority_level ?? "unspecified",
@@ -257,24 +264,36 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
   if (subpath === "opportunities" && method === "GET") {
     const page = Math.max(1, Number(url.searchParams.get("page") ?? "1") || 1);
     const pageSize = Math.min(200, Math.max(1, Number(url.searchParams.get("page_size") ?? "25") || 25));
-    const q = new URL(`${config.origin}/rest/v1/founder_feed`);
-    q.searchParams.set("select", "*");
-    q.searchParams.set("is_stale", "eq.false");
-    q.searchParams.set("order", "priority_score.desc.nullslast,fit_score.desc.nullslast,projected_at.desc,opportunity_id.asc");
+    const includeHidden = url.searchParams.get("include_hidden") === "true";
+    const buildFeedQuery = (visibility?: "visible" | "hidden") => {
+      const query = new URL(`${config.origin}/rest/v1/founder_feed`);
+      query.searchParams.set("select", "*");
+      query.searchParams.set("is_stale", "eq.false");
+      if (visibility === "visible") query.searchParams.set("visible", "eq.true");
+      if (visibility === "hidden") query.searchParams.set("visible", "eq.false");
+      query.searchParams.set("order", "priority_score.desc.nullslast,fit_score.desc.nullslast,projected_at.desc,opportunity_id.asc");
+      for (const [key, column, op] of [["track", "track", "eq"], ["decision", "qualification_decision", "eq"], ["min_score", "fit_score", "gte"], ["source_family", "source_family", "eq"], ["source_id", "source_id", "eq"]] as const) {
+        const value = url.searchParams.get(key); if (value) query.searchParams.set(column, `${op}.${value}`);
+      }
+      const text = url.searchParams.get("q");
+      if (text) { const safe = text.replace(/[(),]/g, " "); query.searchParams.set("or", `(title.ilike.*${safe}*,organization.ilike.*${safe}*)`); }
+      return query;
+    };
+    const q = buildFeedQuery(includeHidden ? undefined : "visible");
     q.searchParams.set("offset", String((page - 1) * pageSize)); q.searchParams.set("limit", String(pageSize));
-    for (const [key, column, op] of [["track", "track", "eq"], ["decision", "qualification_decision", "eq"], ["min_score", "fit_score", "gte"], ["source_family", "source_family", "eq"], ["source_id", "source_id", "eq"]] as const) {
-      const value = url.searchParams.get(key); if (value) q.searchParams.set(column, `${op}.${value}`);
-    }
-    const text = url.searchParams.get("q");
-    if (text) { const safe = text.replace(/[(),]/g, " "); q.searchParams.set("or", `(title.ilike.*${safe}*,organization.ilike.*${safe}*)`); }
     const response = await hostedFetch(config, `${q.pathname}${q.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } });
     const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status });
     const range = response.headers.get("content-range") ?? "*/0"; const total = Number(range.split("/")[1] ?? "0") || 0;
-    return NextResponse.json({ page, page_size: pageSize, total, hidden_count: 0, items: Array.isArray(rows) ? rows.map(hostedFeedRow) : [] });
+    const hiddenQuery = buildFeedQuery("hidden");
+    hiddenQuery.searchParams.set("select", "opportunity_id"); hiddenQuery.searchParams.set("limit", "1");
+    const hiddenResponse = await hostedFetch(config, `${hiddenQuery.pathname}${hiddenQuery.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } });
+    const hiddenRange = hiddenResponse.headers.get("content-range") ?? "*/0";
+    const hiddenCount = Number(hiddenRange.split("/")[1] ?? "0") || 0;
+    return NextResponse.json({ page, page_size: pageSize, total, hidden_count: hiddenCount, items: Array.isArray(rows) ? rows.map(hostedFeedRow) : [] });
   }
   if (subpath === "worker/poll-now" && method === "POST") { const response = await hostedFetch(config, "/rest/v1/rpc/enqueue_poll_now", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: await request.text() || "{}" }); const payload = await response.json().catch(() => null); if (!response.ok) return NextResponse.json(payload, { status: response.status }); const object = payload && typeof payload === "object" && !Array.isArray(payload) ? payload as Record<string, unknown> : {}; const enqueued = Array.isArray(object.enqueued) ? object.enqueued.filter((item: unknown) => item && typeof item === "object" && "source_id" in item && "job_id" in item) : []; const skipped = Array.isArray(object.skipped) ? object.skipped.filter((item: unknown) => item && typeof item === "object" && "source_id" in item && "reason" in item) : []; return NextResponse.json({ enqueued, skipped }); }
   if (subpath === "sources/health" && method === "GET") { const response = await hostedFetch(config, "/rest/v1/founder_source_health?select=*&order=source_id.asc", { headers: { Authorization: `Bearer ${token}` } }); const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status }); return NextResponse.json({ sources: Array.isArray(rows) ? rows.map((row: Record<string, unknown>) => ({ source_id: row.source_id, name: row.source_id, category: "", read_policy: "allowed", last_poll: row.last_poll_finished_at ?? null, last_status: row.last_poll_status ?? row.last_status ?? null, last_record_count: row.last_raw_ingested ?? null })) : [] }); }
-  if (subpath === "sources/overview" && method === "GET") { const response = await hostedFetch(config, "/rest/v1/founder_source_overview?select=*&order=source_family.asc,source_id.asc", { headers: { Authorization: `Bearer ${token}` } }); const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status }); return NextResponse.json({ sources: Array.isArray(rows) ? rows.map((row: Record<string, unknown>) => ({ source_family: row.source_family, source_id: row.source_id, opportunity_count: Number(row.opportunity_count ?? 0), last_success_at: row.last_success_at ?? null, last_status: row.last_status ?? null, manual_only: String(row.source_family ?? "").toLowerCase() === "reddit" })) : [] }); }
+  if (subpath === "sources/overview" && method === "GET") { const response = await hostedFetch(config, "/rest/v1/founder_source_overview?select=*&order=source_family.asc,source_id.asc", { headers: { Authorization: `Bearer ${token}` } }); const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status }); return NextResponse.json({ sources: Array.isArray(rows) ? rows.map((row: Record<string, unknown>) => ({ source_family: row.source_family, source_id: row.source_id ?? null, opportunity_count: Number(row.opportunity_count ?? 0), hidden_count: Number(row.hidden_count ?? 0), last_success_at: row.last_success_at ?? null, last_status: row.last_status ?? null, manual_only: Boolean(row.manual_only) })) : [] }); }
   if (subpath.startsWith("opportunities/") && path.length === 2 && method === "GET") { const id = encodeURIComponent(path[1]); const response = await hostedFetch(config, `/rest/v1/founder_opportunity_detail?id=eq.${id}&select=*`, { headers: { Authorization: `Bearer ${token}` } }); const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status }); if (!Array.isArray(rows) || !rows.length) return hostedError("opportunity not found", 404); return NextResponse.json(hostedDetail(rows[0] as Record<string, unknown>)); }
   if (["filters", "facets", "saved-views"].includes(subpath) && method === "GET") {
     const view = subpath === "filters" ? "founder_filters" : subpath === "facets" ? "founder_facet_settings_view" : "founder_saved_view_records";

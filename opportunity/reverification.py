@@ -1,5 +1,6 @@
 from typing import Dict, Any, Optional, Callable
 from datetime import datetime, timezone, timedelta
+from urllib.parse import urlsplit, urlunsplit
 import urllib.request
 import urllib.error
 from opportunity.models import Opportunity
@@ -35,6 +36,21 @@ def _contains_greenhouse_inactive_board_marker(url: str, body: bytes) -> bool:
     except Exception:
         return False
     return normalize(GREENHOUSE_INACTIVE_BOARD_MARKER) in normalize(text)
+
+
+def greenhouse_board_root(url: str) -> Optional[str]:
+    """Return a safe standard Greenhouse board root, or None for custom hosts."""
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return None
+    host = (parsed.hostname or "").lower()
+    if host not in {"job-boards.greenhouse.io", "boards.greenhouse.io"}:
+        return None
+    segments = [part for part in parsed.path.split("/") if part]
+    if not segments or segments[0].lower() == "jobs":
+        return None
+    return urlunsplit((parsed.scheme or "https", host, "/" + segments[0], "", ""))
 
 
 def _to_utc_naive(value: datetime) -> datetime:
@@ -87,6 +103,50 @@ class StaleOpportunityReverifier:
                 "reverified_at": datetime.now(timezone.utc).isoformat(),
                 "reason": f"Transient network failure: {e.reason}",
             }
+
+    @staticmethod
+    def reverify_greenhouse_boards(
+        session: Any,
+        *,
+        registry: Optional[SourceRegistry] = None,
+        rate_limiter: Optional[RateLimiter] = None,
+        now: Optional[datetime] = None,
+        request_fn: Optional[Callable[[str], Dict[str, Any]]] = None,
+    ) -> Dict[str, int]:
+        """Check each current standard Greenhouse board once, regardless of row age."""
+        from storage.models import OpportunityRecord
+
+        reg = registry or SourceRegistry()
+        limiter = rate_limiter or RateLimiter()
+        clock_now = now or datetime.now(timezone.utc)
+        request = request_fn or StaleOpportunityReverifier.reverify_url
+        rows = session.query(OpportunityRecord).filter(
+            OpportunityRecord.source_id.like("greenhouse:%"),
+            OpportunityRecord.is_stale.is_(False),
+        ).all()
+        by_source: Dict[str, list[Any]] = {}
+        for row in rows:
+            if reg.is_read_allowed(row.source_id):
+                by_source.setdefault(row.source_id, []).append(row)
+        checked = marked_stale = preserved = 0
+        for source_id, source_rows in by_source.items():
+            root = next((greenhouse_board_root(row.source_url) for row in source_rows if row.source_url), None)
+            if not root:
+                preserved += len(source_rows)
+                continue
+            limiter.acquire(source_id)
+            result = request(root)
+            checked += 1
+            definitive_stale = bool(result.get("is_stale")) and result.get("status_code") in (404, 410, 200)
+            if definitive_stale:
+                for row in source_rows:
+                    row.is_stale = True
+                    row.reverified_at = _to_utc_naive(clock_now)
+                marked_stale += len(source_rows)
+            else:
+                preserved += len(source_rows)
+        session.commit()
+        return {"boards_checked": checked, "marked_stale": marked_stale, "preserved": preserved}
 
     @staticmethod
     def reverify_stale_opportunities(

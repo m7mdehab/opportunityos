@@ -46,16 +46,39 @@ WHERE rn = 1;
 CREATE VIEW public.founder_source_overview
       WITH (security_invoker = true)
       AS
-      SELECT split_part(f.source_id, ':', 1) AS source_family,
-             f.source_id,
-             count(*)::integer AS opportunity_count,
-             max(s.last_success_at) AS last_success_at,
-             max(s.last_status) AS last_status,
-             max(s.next_due_at) AS next_due_at
-        FROM public.founder_feed f
-        LEFT JOIN public.source_schedules s ON s.source_id = f.source_id
-       WHERE f.is_stale IS FALSE
-       GROUP BY split_part(f.source_id, ':', 1), f.source_id;
+      WITH automated AS (
+        SELECT split_part(s.source_id, ':', 1) AS source_family,
+               s.source_id,
+               count(f.opportunity_id) FILTER (WHERE f.is_stale IS FALSE AND f.visible IS TRUE)::integer AS opportunity_count,
+               count(f.opportunity_id) FILTER (WHERE f.is_stale IS FALSE AND f.visible IS FALSE)::integer AS hidden_count,
+               max(s.last_success_at) AS last_success_at,
+               max(s.last_status) AS last_status,
+               max(s.next_due_at) AS next_due_at,
+               false AS manual_only
+          FROM public.source_schedules s
+          LEFT JOIN public.founder_feed f ON f.source_id = s.source_id
+         GROUP BY split_part(s.source_id, ':', 1), s.source_id
+      ), manual AS (
+        SELECT families.source_family,
+               NULL::varchar(128) AS source_id,
+               0::integer AS opportunity_count,
+               0::integer AS hidden_count,
+               NULL::timestamp AS last_success_at,
+               NULL::varchar(32) AS last_status,
+               NULL::timestamp AS next_due_at,
+               true AS manual_only
+          FROM (VALUES
+            ('ai_jobs_net'), ('arc_dev'), ('bayt'), ('cambly'), ('chegg'),
+            ('contra'), ('freelancer'), ('gulftalent'), ('indeed'), ('jobicy'),
+            ('justremote'), ('khamsat'), ('linkedin'), ('mostaql'), ('naukrigulf'),
+            ('otta'), ('peopleperhour'), ('preply'), ('reddit'), ('remote_co'),
+            ('superprof'), ('toptal'), ('tutor'), ('upwork'), ('wellfound'),
+            ('working_nomads'), ('wuzzuf'), ('wyzant'), ('ycombinator')
+          ) AS families(source_family)
+      )
+      SELECT * FROM automated
+      UNION ALL
+      SELECT * FROM manual;
 
 CREATE OR REPLACE FUNCTION public.founder_dashboard_daily(
         p_days integer DEFAULT 7,
@@ -110,12 +133,20 @@ CREATE OR REPLACE FUNCTION public.founder_dashboard_daily(
           COALESCE((SELECT count(*)::integer FROM outbound_actions a
                     WHERE a.created_at >= c.day AND a.created_at < c.day + 1
                       AND a.action_status = 'submitted'), 0),
-          COALESCE((SELECT count(*)::integer FROM opportunities o
-                    WHERE o.created_at >= c.day AND o.created_at < c.day + 1
-                      AND o.is_stale IS TRUE
-                      AND EXISTS (SELECT 1 FROM founder_filter_settings fs
-                                  WHERE fs.filter_id = 'stale_postings'
-                                    AND fs.enabled IS TRUE AND fs.mode = 'hide')), 0)
+          COALESCE((SELECT count(DISTINCT f.opportunity_id)::integer
+                    FROM founder_feed f
+                    WHERE f.opportunity_created_at >= c.day
+                      AND f.opportunity_created_at < c.day + 1
+                      AND f.is_stale IS FALSE
+                      AND f.visibility_reason IS NOT NULL
+                      AND f.visibility_reason <> ''
+                      AND EXISTS (
+                        SELECT 1
+                          FROM regexp_split_to_table(
+                            regexp_replace(f.visibility_reason, '[][{}" ]', '', 'g'), ','
+                          ) AS reason
+                         WHERE reason <> '' AND reason NOT LIKE 'facet:%'
+                      )), 0)
         FROM calendar c ORDER BY c.day DESC;
       END;
       $$;

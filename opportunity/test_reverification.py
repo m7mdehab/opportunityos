@@ -236,5 +236,88 @@ class TestGreenhouseTombstone(unittest.TestCase):
         self.assertFalse(self._result("temporary error page")["is_stale"])
 
 
+class TestGreenhouseBoardSweep(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        registry_path = Path(self.temp_dir.name) / "fixture_registry.yaml"
+        registry_path.write_text("""
+sources:
+  - source_id: greenhouse:acme
+    name: Acme Greenhouse
+    category: employment
+    automation:
+      read: allowed
+    policy_status: reviewed_ok
+""", encoding="utf-8")
+        self.registry = SourceRegistry(registry_path=registry_path)
+        self.engine = get_engine(f"sqlite:///{Path(self.temp_dir.name) / 'board.db'}", allow_sqlite=True)
+        init_db(self.engine)
+        self.session = get_session_factory(self.engine)()
+
+    def tearDown(self):
+        self.session.close()
+        self.engine.dispose()
+        self.temp_dir.cleanup()
+
+    def _seed(self, source_url="https://boards.greenhouse.io/acme/jobs/1"):
+        for suffix in ("1", "2"):
+            self.session.add(OpportunityRecord(
+                id=f"board-{suffix}", track="employment", title="Fixture", organization="Acme",
+                description="Fixture", source_id="greenhouse:acme", source_url=source_url,
+                content_hash=f"hash-board-{suffix}", is_stale=False,
+                created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            ))
+        self.session.commit()
+
+    def test_fresh_board_marker_marks_all_rows_once(self):
+        self._seed()
+        calls = []
+        result = StaleOpportunityReverifier.reverify_greenhouse_boards(
+            self.session, registry=self.registry, rate_limiter=RateLimiter(default_min_interval_s=0),
+            request_fn=lambda url: (calls.append(url) or {"is_stale": True, "status_code": 200}),
+        )
+        self.assertEqual(result["boards_checked"], 1)
+        self.assertEqual(result["marked_stale"], 2)
+        self.assertEqual(calls, ["https://boards.greenhouse.io/acme"])
+        self.assertTrue(all(row.is_stale for row in self.session.query(OpportunityRecord).all()))
+
+    def test_definitive_404_and_410_mark_fresh_rows(self):
+        for status in (404, 410):
+            self._seed()
+            result = StaleOpportunityReverifier.reverify_greenhouse_boards(
+                self.session, registry=self.registry, rate_limiter=RateLimiter(default_min_interval_s=0),
+                request_fn=lambda url, status=status: {"is_stale": True, "status_code": status},
+            )
+            self.assertEqual(result["marked_stale"], 2)
+            self.session.query(OpportunityRecord).delete()
+            self.session.commit()
+
+    def test_ambiguous_board_results_preserve_rows_and_custom_domains_are_not_checked(self):
+        for result_value in (
+            {"is_stale": False, "status_code": 403}, {"is_stale": False, "status_code": 429},
+            {"is_stale": False, "status_code": 500}, {"is_stale": False, "status_code": 200},
+            {"is_stale": False, "status_code": None},
+        ):
+            self._seed()
+            calls = []
+            result = StaleOpportunityReverifier.reverify_greenhouse_boards(
+                self.session, registry=self.registry, rate_limiter=RateLimiter(default_min_interval_s=0),
+                request_fn=lambda url, result_value=result_value: (calls.append(url) or result_value),
+            )
+            self.assertEqual(result["marked_stale"], 0)
+            self.assertEqual(len(calls), 1)
+            self.session.query(OpportunityRecord).delete()
+            self.session.commit()
+        self._seed("https://jobs.acme.example/custom/acme/1")
+        calls = []
+        result = StaleOpportunityReverifier.reverify_greenhouse_boards(
+            self.session, registry=self.registry, rate_limiter=RateLimiter(default_min_interval_s=0),
+            request_fn=lambda url: calls.append(url) or {"is_stale": True, "status_code": 404},
+        )
+        self.assertEqual(result["boards_checked"], 0)
+        self.assertEqual(calls, [])
+        self.assertFalse(any(row.is_stale for row in self.session.query(OpportunityRecord).all()))
+
+
 if __name__ == "__main__":
     unittest.main()

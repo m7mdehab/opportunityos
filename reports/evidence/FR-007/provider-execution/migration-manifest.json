@@ -284,7 +284,7 @@
       "filename": "migrations/15_0015_hosted_founder_surface.sql",
       "order": 15,
       "revision": "0015_hosted_founder_surface",
-      "sha256": "2e632505be72b23f18d95dba28ea1c45ed2cdea92d9f7e7ef1fab82489a7ac9c"
+      "sha256": "ec493cee8b6d7161611e619634c821a6d5366ff6b313cd729b3c582d25988d01"
     }
   ],
   "project_ref": "lrrcpwaapwynzdsxzwhy",

@@ -57,7 +57,7 @@ export function HeaderStrip({
         <div>
           <h1 className="text-lg font-semibold">OpportunityOS</h1>
           <p className="text-xs text-muted-foreground">
-            Today&apos;s numbers{today ? ` â€” ${today.date}` : ""}
+            Today&apos;s numbers{today ? ` — ${today.date}` : ""}
           </p>
         </div>
 
@@ -78,7 +78,7 @@ export function HeaderStrip({
                     onClick={onOpenHiddenReasons}
                     className="rounded text-base font-semibold tabular-nums underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
                   >
-                    {today ? today[key] : "â€”"}
+                    {today ? today[key] : "—"}
                   </button>
                 </dd>
               </div>
@@ -88,7 +88,7 @@ export function HeaderStrip({
                   {label}
                 </dt>
                 <dd data-testid={`stat-${String(key)}`} className="text-base font-semibold tabular-nums">
-                  {today ? today[key] : "â€”"}
+                  {today ? today[key] : "—"}
                 </dd>
               </div>
             )
@@ -153,7 +153,7 @@ export function HeaderStrip({
               <p role="status" data-testid="poll-result" className="max-w-xs text-right text-[11px] text-muted-foreground">
                 {pollResult.enqueued.length > 0
                   ? `Queued ${pollResult.enqueued.length} due source${pollResult.enqueued.length === 1 ? "" : "s"}. Workers are processing them in the background.`
-                  : "Nothing new to queue â€” sources are already queued, cooling down, or not due."}
+                  : "Nothing new to queue — sources are already queued, cooling down, or not due."}
               </p>
             )}
           </div>

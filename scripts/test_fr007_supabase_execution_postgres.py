@@ -83,6 +83,44 @@ class SupabaseBundlePostgresProof(unittest.TestCase):
                     """, (projection_id, 'c' * 64, truth_hash, score))
                 cur.execute("SELECT count(*), max(fit_score), max(source_family) FROM public.founder_feed WHERE opportunity_id='w23-feed-opportunity'")
                 self.assertEqual(cur.fetchone(), (1, 91.0, 'reddit'))
+                cur.execute("""
+                    INSERT INTO public.source_schedules
+                      (source_id, cadence_hours, next_due_at, created_at, updated_at)
+                    VALUES
+                      ('greenhouse:one', 24, now(), now(), now()),
+                      ('greenhouse:two', 24, now(), now(), now()),
+                      ('lever:empty', 24, now(), now(), now())
+                """)
+                cur.execute("""
+                    INSERT INTO public.opportunities
+                      (id, track, title, organization, description, source_id, source_url, content_hash)
+                    VALUES ('w23-feed-two', 'employment', 'Second role', 'Synthetic org', 'fixture only',
+                            'greenhouse:two', 'https://example.invalid/two', %s)
+                """, ('d' * 64,))
+                cur.execute("""
+                    INSERT INTO public.feed_projection
+                      (id, opportunity_id, opportunity_content_hash, truth_pack_hash,
+                       projection_version, title, organization, source_id, source_url,
+                       track, seniority_level, work_mode, remote_scope, employment_type,
+                       qualification_decision, fit_score, evaluated_at, projected_at)
+                    VALUES ('w23-feed-two-p', 'w23-feed-two', %s, %s, 'w23', 'Second role',
+                            'Synthetic org', 'greenhouse:two', 'https://example.invalid/two',
+                            'employment', 'unknown', 'remote', 'global', 'full_time',
+                            'qualified', 88, now(), now())
+                """, ('d' * 64, 'c' * 64))
+                cur.execute("""
+                    SELECT source_family, source_id, opportunity_count, manual_only
+                      FROM public.founder_source_overview
+                     WHERE source_family IN ('greenhouse', 'lever', 'reddit')
+                     ORDER BY source_family, source_id NULLS FIRST
+                """)
+                overview = cur.fetchall()
+                self.assertIn(('greenhouse', 'greenhouse:one', 0, False), overview)
+                self.assertIn(('greenhouse', 'greenhouse:two', 1, False), overview)
+                self.assertIn(('lever', 'lever:empty', 0, False), overview)
+                self.assertIn(('reddit', None, 0, True), overview)
+                cur.execute("SELECT count(*) FROM public.founder_feed WHERE visible IS TRUE AND is_stale IS FALSE")
+                self.assertEqual(cur.fetchone()[0], 2)
                 cur.execute("GRANT SELECT ON founder_sessions TO anon, authenticated")
                 cur.execute("INSERT INTO founder_sessions (id, token_digest, created_at, expires_at, auth_version) VALUES ('bundle-proof', %s, now(), now()+interval '1 hour', 'v1')", ("b" * 64,))
                 connection.commit()

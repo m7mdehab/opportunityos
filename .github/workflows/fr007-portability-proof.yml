@@ -25,6 +25,15 @@ on:
       - 'scripts/test_fr007_supabase_execution_bundle.py'
       - 'scripts/test_fr007_supabase_execution_postgres.py'
       - 'reports/evidence/FR-007/provider-execution/**'
+      - 'storage/migrations/versions/0015_hosted_founder_surface.py'
+      - 'opportunity/reverification.py'
+      - 'opportunity/test_reverification.py'
+      - 'worker/handlers.py'
+      - 'web/app/api/[...path]/route.ts'
+      - 'web/components/feed/**'
+      - 'web/lib/contract/types.ts'
+      - 'web/tests/e2e/keyboard.spec.ts'
+      - 'scripts/test_w23_founder_surface.py'
   workflow_dispatch:
 
 permissions:
