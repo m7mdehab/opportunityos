@@ -30,6 +30,7 @@ def source_head() -> tuple[str, str]:
         "--",
         ".",
         ":(exclude)docs/STATE.md",
+        ":(exclude)reports/evidence/FR-007/provider-execution/**",
     )
     if not commit:
         return "uncommitted", "repository foundation"
