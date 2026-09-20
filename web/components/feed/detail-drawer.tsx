@@ -133,7 +133,7 @@ export function DetailDrawer({
   return (
     <Dialog open={opportunityId !== null} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-h-[92dvh] w-[min(92vw,72rem)] max-w-none overflow-y-auto p-0"
+        className="max-h-[92dvh] w-[94vw] max-w-none overflow-y-auto p-0 sm:w-[90vw] sm:max-w-[90vw] lg:w-[82vw] lg:max-w-[82vw] xl:w-[78vw] xl:max-w-[96rem]"
         aria-describedby={undefined}
       >
         {loading && (
@@ -145,8 +145,8 @@ export function DetailDrawer({
           </div>
         )}
         {detail && (
-          <div className="grid gap-6 p-5 md:grid-cols-[minmax(0,1.7fr)_minmax(18rem,0.9fr)] md:items-start">
-            <DialogHeader className="p-0 md:col-span-2">
+          <div className="grid gap-6 p-5 md:grid-cols-[minmax(0,1.65fr)_minmax(22rem,0.85fr)] md:items-start">
+            <DialogHeader className="p-0 md:col-span-2 md:row-start-1">
               <DialogTitle>{detail.title}</DialogTitle>
               <DialogDescription>
                 {detail.organization} · {detail.source_id}
@@ -172,7 +172,7 @@ export function DetailDrawer({
               </div>
             </DialogHeader>
 
-            <section className="md:col-start-1 md:row-start-1">
+            <section className="md:col-start-1 md:row-start-3">
               <div
                 data-testid="opportunity-description"
                 className="text-sm [&_a]:underline [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
@@ -201,7 +201,7 @@ export function DetailDrawer({
 
             <Separator className="md:hidden" />
 
-            <section className="md:col-start-2 md:row-start-1" aria-labelledby="qualification-heading">
+            <section className="md:col-start-2 md:row-start-6" aria-labelledby="qualification-heading">
               <h3 id="qualification-heading" className="text-sm font-semibold">
                 Qualification checklist
               </h3>
@@ -418,7 +418,7 @@ export function DetailDrawer({
 
             <Separator className="md:hidden" />
 
-            {opportunityId && <div className="md:col-span-2"><ArtifactsPanel opportunityId={opportunityId} /></div>}
+            {opportunityId && <div className="md:col-start-1 md:row-start-5"><ArtifactsPanel opportunityId={opportunityId} /></div>}
 
             <Separator className="md:hidden" />
 
