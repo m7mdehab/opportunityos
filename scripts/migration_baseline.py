@@ -24,7 +24,10 @@ TABLES = (
     "founder_sessions", "founder_auth_rate_limit", "founder_auth_events",
 )
 HASH = re.compile(r"^[0-9a-fA-F]{64}$")
-# Canonical opportunity/source identities intentionally use provider-scoped\n# colon delimiters (for example: greenhouse:board:item). Keep the snapshot\n# validator strict, but aligned with the repository's real identity contract.\nIDENT = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
+# Canonical opportunity/source identities intentionally use provider-scoped
+# colon delimiters (for example: greenhouse:board:item). Keep the snapshot
+# validator strict, but aligned with the repository's real identity contract.
+IDENT = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
 CHECKS = {
     "duplicate_opportunity_ids": ("opportunities", ("id",)),
     "duplicate_source_identity": ("source_occurrences", ("source_id", "source_item_id")),
