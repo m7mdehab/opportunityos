@@ -17,9 +17,9 @@ class SupabaseExecutionBundleTests(unittest.TestCase):
             "0001_baseline_schema", "0002_match_evaluations", "0003_provenance_identity",
             "0004_founder_control", "0005_widen_location_region", "0006_feed_projection",
             "0007_source_schedules", "0008_artifact_storage", "0009_hosted_founder_auth",
-            "0010_hosted_runtime", "0011_hosted_api_surface",
+            "0010_hosted_runtime", "0011_hosted_api_surface", "0012_hosted_policy_alignment",
         ])
-        self.assertEqual(chain[-1]["revision"], "0011_hosted_api_surface")
+        self.assertEqual(chain[-1]["revision"], "0012_hosted_policy_alignment")
         self.assertEqual(len({item["revision"] for item in chain}), len(chain))
 
     def test_generation_is_deterministic_and_hashes_match(self):
@@ -31,11 +31,12 @@ class SupabaseExecutionBundleTests(unittest.TestCase):
                 if path.is_file():
                     other = Path(right) / path.relative_to(left)
                     self.assertEqual(path.read_bytes(), other.read_bytes(), path.name)
-            self.assertEqual(bundle.verify_manifest(Path(left))["expected_final_revision"], "0011_hosted_api_surface")
+            self.assertEqual(bundle.verify_manifest(Path(left))["expected_final_revision"], "0012_hosted_policy_alignment")
             manifest = json.loads((Path(left) / "migration-manifest.json").read_text(encoding="utf-8"))
             latest = manifest["migrations"][-1]
             self.assertTrue(latest["effects"]["touches_rls"])
-            self.assertIn("founder_cv_selections", latest["effects"]["tables_or_columns"])
+            api_surface = next(item for item in manifest["migrations"] if item["revision"] == "0011_hosted_api_surface")
+            self.assertIn("founder_cv_selections", api_surface["effects"]["tables_or_columns"])
 
     def test_provider_sql_has_no_shell_dsn_or_secret_content(self):
         with tempfile.TemporaryDirectory() as tmp:
