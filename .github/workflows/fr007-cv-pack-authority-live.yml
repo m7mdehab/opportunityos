@@ -1,0 +1,18 @@
+name: FR-007 CV Pack Authority live proof
+
+on:
+  push:
+    branches:
+      - work/fr007-cv-pack-authority
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/fr007-cloudflare-staging-deploy.yml
+    with:
+      mode: DEPLOY_STAGING
+      acknowledge_staging_deployment: true
+      ref: work/fr007-cv-pack-authority
+    secrets: inherit
