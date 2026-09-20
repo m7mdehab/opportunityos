@@ -32,7 +32,7 @@ jobs:
   drain:
     environment: fr007-staging
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -48,8 +48,8 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           set -euo pipefail
-          RAW_MAX="${{ inputs.max_jobs || '100' }}"
-          RAW_BUDGET="${{ inputs.time_budget_seconds || '480' }}"
+          RAW_MAX="${{ inputs.max_jobs || '10' }}"
+          RAW_BUDGET="${{ inputs.time_budget_seconds || '300' }}"
           MAX_JOBS=$(( RAW_MAX > 150 ? 150 : (RAW_MAX < 1 ? 10 : RAW_MAX) ))
           TIME_BUDGET=$(( RAW_BUDGET > 540 ? 540 : (RAW_BUDGET < 10 ? 300 : RAW_BUDGET) ))
           python scripts/fr007_hosted_bootstrap.py --mode all --max-jobs "${MAX_JOBS}" --time-budget-seconds "${TIME_BUDGET}"
