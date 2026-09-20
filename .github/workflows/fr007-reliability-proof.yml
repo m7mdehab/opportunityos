@@ -1,6 +1,13 @@
 name: FR-007 Reliability Proof Harness
 
 on:
+  push:
+    branches:
+      - work/fr007-overseer-integration
+      - main
+    paths:
+      - 'scripts/fr007_reliability_proof.py'
+      - '.github/workflows/fr007-reliability-proof.yml'
   pull_request:
     paths:
       - 'scripts/fr007_reliability_proof.py'
@@ -53,3 +60,41 @@ jobs:
           python -m py_compile scripts/fr007_reliability_proof.py scripts/test_fr007_reliability_proof.py
           python scripts/check_repository.py
           python scripts/check_guard.py --allow-missing-patterns
+
+  hosted-staging:
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      OPOS_STAGING_WEB_URL: ${{ vars.OPOS_STAGING_WEB_URL }}
+      CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL || secrets.OPOS_TARGET_DB_URL }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install hosted proof dependencies
+        run: python -m pip install -e '.[dev]'
+      - name: Execute live hosted reliability proof
+        run: |
+          set -euo pipefail
+          test -n "${OPOS_STAGING_WEB_URL}" || { echo "::error::OPOS_STAGING_WEB_URL is missing"; exit 1; }
+          test -n "${CLOUD_DATABASE_URL}" || { echo "::error::CLOUD_DATABASE_URL/OPOS_TARGET_DB_URL is missing"; exit 1; }
+          mkdir -p hosted-reliability
+          python scripts/fr007_reliability_proof.py \
+            --hosted \
+            --target-url "${OPOS_STAGING_WEB_URL}" \
+            --dsn-env CLOUD_DATABASE_URL \
+            --deployment-id "staging-cloudflare-supabase-github" \
+            --sha "${GITHUB_SHA}" \
+            --output hosted-reliability/report.json
+      - name: Upload sanitized hosted proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fr007-hosted-reliability-${{ github.run_id }}
+          path: hosted-reliability/report.json
+          if-no-files-found: error
+          retention-days: 30
+
