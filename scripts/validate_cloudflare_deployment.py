@@ -105,7 +105,17 @@ def validate_cloudflare_package(root: Path = ROOT) -> list[str]:
             if secret_key in sb_text:
                 errors.append(f"forbidden secret found in browser client: {secret_key}")
 
-    # 4. Check browser client code uses relative /api routes, never hardcoded localhost/origin
+    # 4. The Next.js localhost rewrite is local-development only; a cloud
+    # build must allow the App Router /api handler to execute on the Worker.
+    next_config = web_dir / "next.config.ts"
+    if not next_config.is_file():
+        errors.append("missing web/next.config.ts")
+    else:
+        next_text = next_config.read_text(encoding="utf-8")
+        if 'process.env.OPPORTUNITYOS_CLOUD_EDGE === "1"' not in next_text or "return []" not in next_text:
+            errors.append("Next.js config must disable the localhost API rewrite at the Cloudflare edge")
+
+    # 5. Check browser client code uses relative /api routes, never hardcoded localhost/origin
     client_ts = web_dir / "lib" / "api" / "client.ts"
     if not client_ts.is_file():
         errors.append("missing web/lib/api/client.ts")
