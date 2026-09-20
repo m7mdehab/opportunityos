@@ -382,7 +382,7 @@ def load_truth_pack(
             os.environ.get("OPPORTUNITYOS_TRUTH_PACK_HASH")
             or os.environ.get("OPPORTUNITYOS_TRUTH_PACK_SHA256")
         )
-        if expected_hash is None and str(target).strip() == CANONICAL_REPO_TRUTH_PACK.as_posix():
+        if expected_hash is None and Path(str(target).strip()).as_posix() == CANONICAL_REPO_TRUTH_PACK.as_posix():
             expected_hash = CANONICAL_REPO_TRUTH_PACK_RAW_SHA256
 
     if auth_token is None:
@@ -398,7 +398,7 @@ def load_truth_pack(
 
     # Cloud mode transport & security constraints (Items B, D, E)
     if cloud_mode:
-        repo_snapshot_target = target_str == CANONICAL_REPO_TRUTH_PACK.as_posix()
+        repo_snapshot_target = Path(target_str).as_posix() == CANONICAL_REPO_TRUTH_PACK.as_posix()
         if expected_hash is None and not repo_snapshot_target:
             raise TruthPackInvalid(
                 f"expected_hash is required in cloud mode for integrity verification ({redacted_target})",
