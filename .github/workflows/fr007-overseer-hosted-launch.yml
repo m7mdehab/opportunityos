@@ -34,7 +34,7 @@ jobs:
           python-version: "3.12"
       - name: Install repository
         run: python -m pip install -e .
-      - name: Verify durable source schedules before web deploy
+      - name: Verify durable source schedules independently of web deploy
         env:
           OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
           OPPORTUNITYOS_ENVIRONMENT: cloud
@@ -42,8 +42,11 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: python scripts/fr007_hosted_bootstrap.py --mode bootstrap
 
+  # Web deployment is intentionally independent of worker/bootstrap capacity.
+  # A saturated Supabase session-mode pool must stay visible as a failed
+  # bootstrap gate, but it must not prevent a known-good persisted feed/UI
+  # release from reaching Cloudflare.
   deploy:
-    needs: bootstrap
     uses: ./.github/workflows/fr007-cloudflare-staging-deploy.yml
     with:
       mode: DEPLOY_STAGING
