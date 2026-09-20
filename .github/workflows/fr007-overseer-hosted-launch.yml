@@ -11,8 +11,9 @@ on:
       - storage/migrations/versions/**
       - web/wrangler.jsonc
       - web/next.config.ts
-      - web/app/api/**
-      - web/lib/supabase/browser.ts
+      - web/app/**
+      - web/components/**
+      - web/lib/**
       - web/tests/e2e/staging-smoke.spec.ts
       - web/playwright.staging.config.ts
       - pyproject.toml
