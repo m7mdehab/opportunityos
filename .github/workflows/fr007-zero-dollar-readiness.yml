@@ -106,7 +106,7 @@ jobs:
               with conn.cursor() as cur:
                   cur.execute("select version_num from public.alembic_version")
                   revision = cur.fetchone()[0]
-                  if revision != "0013_hosted_poll_now_cadence":
+                  if revision != "0014_backup_heartbeat":
                       raise SystemExit(f"unexpected revision: {revision}")
                   cur.execute("""
                     select count(*) from pg_class c
