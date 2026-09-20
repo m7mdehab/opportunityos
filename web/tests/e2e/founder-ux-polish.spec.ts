@@ -38,10 +38,33 @@ test.describe("W24 Founder UX polish", () => {
   test("unified toolbar and numeric source health remain aligned and readable", async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 })
     await login(page)
-    for (const id of ["filter-track", "filter-decision", "filter-min-score", "filter-search", "filter-source-family", "open-facets-panel", "open-manual-sources-panel", "toggle-tutoring-lane"]) {
-      await expect(page.locator(`#${id}, [data-testid="${id}"]`).first()).toBeVisible()
-    }
+    const controlIds = [
+      "filter-track",
+      "filter-decision",
+      "filter-min-score",
+      "filter-search",
+      "filter-source-family",
+      "open-founder-filters",
+      "open-facets-panel",
+      "open-manual-sources-panel",
+      "toggle-tutoring-lane",
+    ]
+    const controls = controlIds.map((id) => page.locator(`#${id}, [data-testid="${id}"]`).first())
+    for (const control of controls) await expect(control).toBeVisible()
+
+    const boxes = await Promise.all(controls.map((control) => control.boundingBox()))
+    const visibleBoxes = boxes.filter((box): box is NonNullable<typeof box> => box !== null)
+    expect(visibleBoxes).toHaveLength(controlIds.length)
+    const bottoms = visibleBoxes.map((box) => box.y + box.height)
+    const centers = visibleBoxes.map((box) => box.y + box.height / 2)
+    expect(Math.max(...bottoms) - Math.min(...bottoms)).toBeLessThanOrEqual(2)
+    expect(Math.max(...centers) - Math.min(...centers)).toBeLessThanOrEqual(2)
+    expect(new Set(visibleBoxes.map((box) => Math.round(box.height))).size).toBe(1)
+
     await expect(page.getByTestId("source-health-summary")).toBeVisible()
+    for (const key of ["healthy", "empty", "attention", "never-polled", "disabled"]) {
+      await expect(page.getByTestId(`source-health-${key}`)).toContainText(/\d+/)
+    }
     await expect(page.getByTestId("source-health-healthy")).toContainText("3")
     await expect(page.getByTestId("source-health-empty")).toContainText("1")
     await expect(page.getByTestId("source-health-disabled")).toContainText("1")
