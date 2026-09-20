@@ -23,6 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--mode", choices=("bootstrap", "enqueue", "drain", "all"), default="all")
     p.add_argument("--max-jobs", type=int, default=10)
     p.add_argument("--time-budget-seconds", type=float, default=300.0)
+    p.add_argument("--worker-id", type=str, default=None, help="Explicit worker identity")
     p.add_argument("--dry-run", action="store_true", help="inspect and report without writes")
     return p
 
@@ -47,10 +48,11 @@ def _source_schedules(session, registry: SourceRegistry, *, dry_run: bool) -> in
     return count
 
 
-def _drain(session_factory, *, max_jobs: int, budget: float) -> int:
+def _drain(session_factory, *, max_jobs: int, budget: float, worker_id: str | None = None) -> int:
+    effective_worker_id = worker_id or os.environ.get("OPOS_WORKER_ID") or "hosted-bootstrap"
     runner = WorkerRunner(session_factory, default_handler_registry(
         truth_pack_path=os.environ.get("OPPORTUNITYOS_TRUTH_PACK_PATH") or None,
-    ), worker_id="hosted-bootstrap", poll_interval=0.1)
+    ), worker_id=effective_worker_id, poll_interval=0.1)
     started = time.monotonic()
     processed = 0
     while processed < max_jobs and time.monotonic() - started < budget:
@@ -81,7 +83,12 @@ def main(argv: list[str] | None = None) -> int:
             enqueued = len(items)
         processed = 0
         if args.mode in ("drain", "all") and not args.dry_run:
-            processed = _drain(factory, max_jobs=max(0, args.max_jobs), budget=max(0.0, args.time_budget_seconds))
+            processed = _drain(
+                factory,
+                max_jobs=max(0, args.max_jobs),
+                budget=max(0.0, args.time_budget_seconds),
+                worker_id=args.worker_id,
+            )
         print(f"mode={args.mode} dry_run={args.dry_run} schedules={scheduled} enqueued={enqueued} processed={processed}")
         return 0
     finally:
