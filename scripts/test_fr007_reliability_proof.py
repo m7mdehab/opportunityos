@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from unittest.mock import Mock, patch
 
 from scripts.fr007_reliability_proof import (
