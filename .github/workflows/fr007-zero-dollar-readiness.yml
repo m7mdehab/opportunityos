@@ -115,6 +115,9 @@ jobs:
                   """)
                   if cur.fetchone()[0] < 26:
                       raise SystemExit("RLS coverage below expected hosted baseline")
+                  cur.execute("select to_regclass('public.backup_heartbeats')")
+                  if cur.fetchone()[0] is None:
+                      raise SystemExit("durable backup heartbeat relation is missing")
           finally:
               conn.close()
           print("SUPABASE_DATABASE=PASS")
