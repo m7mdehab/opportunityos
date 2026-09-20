@@ -559,18 +559,19 @@ def probe_database_and_queue(
         overdue_sources_without_job = []
 
         for sched in schedules:
-            if sched.next_due and sched.next_due <= now_naive:
+            sched_next_due = getattr(sched, "next_due_at", None) or getattr(sched, "next_due", None)
+            if sched_next_due and sched_next_due <= now_naive:
                 due_sources.append(sched.source_id)
                 # Overdue threshold: cadence_hours + 1 hour grace
                 cadence_hrs = sched.cadence_hours or 6.0
                 grace_seconds = max(3600.0, cadence_hrs * 3600.0 * 0.5)
-                overdue_threshold = sched.next_due.timestamp() + grace_seconds
+                overdue_threshold = sched_next_due.timestamp() + grace_seconds
                 if now_naive.timestamp() > overdue_threshold and sched.source_id not in active_source_ids:
                     overdue_sources_without_job.append({
                         "source_id": sched.source_id,
                         "cadence_hours": cadence_hrs,
-                        "next_due": sched.next_due.isoformat(),
-                        "overdue_seconds": round(now_naive.timestamp() - sched.next_due.timestamp()),
+                        "next_due": sched_next_due.isoformat(),
+                        "overdue_seconds": round(now_naive.timestamp() - sched_next_due.timestamp()),
                     })
 
         # Latest successful poll age

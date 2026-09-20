@@ -269,6 +269,7 @@ class MockSchedule:
     ):
         self.source_id = source_id
         self.cadence_hours = cadence_hours
+        self.next_due_at = next_due
         self.next_due = next_due
 
 
@@ -445,6 +446,31 @@ class TestDatabaseAndQueueProbes(unittest.TestCase):
         )
         status_map = {r.name: r.status for r in results}
         self.assertEqual(status_map["source_freshness"], "WARN")
+
+    def test_db_source_schedule_with_only_next_due_at(self) -> None:
+        now_dt = datetime(2026, 9, 19, 12, 0, tzinfo=timezone.utc)
+        now_naive = now_dt.replace(tzinfo=None)
+
+        class RealProductionSchedule:
+            def __init__(self, source_id: str, cadence_hours: float, next_due_at: datetime | None):
+                self.source_id = source_id
+                self.cadence_hours = cadence_hours
+                self.next_due_at = next_due_at
+
+        session = MockSession(
+            schedules=[
+                RealProductionSchedule("src_prod", 6.0, now_naive + timedelta(hours=2)),
+            ]
+        )
+        results = probe_database_and_queue(
+            "dummy_url",
+            connection_factory=lambda: session,
+            clock=lambda: now_dt,
+        )
+        status_map = {r.name: r.status for r in results}
+        self.assertEqual(status_map["database_connectivity"], "PASS")
+        self.assertEqual(status_map["source_freshness"], "PASS")
+
 
 
 class TestBackupHeartbeatProbe(unittest.TestCase):
