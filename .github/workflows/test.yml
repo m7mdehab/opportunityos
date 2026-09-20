@@ -2,7 +2,7 @@ name: Mandatory Governance & Test Suite
 
 on:
   push:
-    branches: [main, work/fr007-codex-founder-surface-corrections]
+    branches: [main]
   pull_request:
 
 permissions:
