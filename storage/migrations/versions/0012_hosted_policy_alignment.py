@@ -17,6 +17,9 @@ down_revision: Union[str, None] = "0011_hosted_api_surface"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+# This drift-repair revision does not change canonical Founder filter defaults.
+_D3_FILTER_SEED_OVERRIDES: dict[str, dict[str, object]] = {}
+
 
 _FOUNDER_READ_TABLES = (
     "source_poll_runs",
