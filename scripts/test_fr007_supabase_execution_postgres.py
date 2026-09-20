@@ -49,7 +49,7 @@ class SupabaseBundlePostgresProof(unittest.TestCase):
                     cur.execute(path.read_text(encoding="utf-8"))
                 cur.execute((root / "provider-security.sql").read_text(encoding="utf-8"))
                 cur.execute("SELECT version_num FROM alembic_version")
-                self.assertEqual(cur.fetchone()[0], "0011_hosted_api_surface")
+                self.assertEqual(cur.fetchone()[0], "0014_backup_heartbeat")
                 cur.execute("SELECT relrowsecurity FROM pg_class WHERE oid=to_regclass('public.alembic_version')")
                 self.assertTrue(cur.fetchone()[0])
                 for role in ("anon", "authenticated"):
