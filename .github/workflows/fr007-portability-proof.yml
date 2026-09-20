@@ -82,7 +82,15 @@ jobs:
       - name: Supabase provider bundle static proof
         run: python -m unittest scripts.test_fr007_supabase_execution_bundle -v
       - name: Supabase provider bundle PostgreSQL proof
-        run: python -m unittest scripts.test_fr007_supabase_execution_postgres -v
+        run: python -m unittest scripts.test_fr007_supabase_execution_postgres -v 2>&1 | tee provider-postgres.log
+      - name: Upload provider PostgreSQL proof log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fr007-provider-postgres-proof-${{ github.run_id }}
+          path: provider-postgres.log
+          if-no-files-found: error
+          retention-days: 7
       - name: Compile, repository integrity and guard
         run: |
           python -m py_compile scripts/live_portability_proof.py scripts/test_live_portability_proof.py scripts/test_live_portability_postgres.py scripts/migration_baseline.py scripts/db_migration_restore.py scripts/artifact_integrity.py scripts/portability_bundle.py scripts/production_db_preflight.py scripts/production_migration_cutover.py scripts/test_production_migration_readiness.py scripts/migration_acceptance.py scripts/test_migration_acceptance.py scripts/test_migration_acceptance_postgres.py scripts/fr007_supabase_execution_bundle.py scripts/test_fr007_supabase_execution_bundle.py scripts/test_fr007_supabase_execution_postgres.py
