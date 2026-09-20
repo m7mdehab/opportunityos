@@ -94,6 +94,8 @@ export const api = {
       q?: string
       source_family?: string
       source_id?: string
+      activity?: "to_review" | "any_activity" | "applied" | "dismissed" | "snoozed" | "has_feedback"
+      feedback?: FeedbackLabel
       page?: number
       page_size?: number
       /** Default `false`. When `true`, items hidden by an enabled
