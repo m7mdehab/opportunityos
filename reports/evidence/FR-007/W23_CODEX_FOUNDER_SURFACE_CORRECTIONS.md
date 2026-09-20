@@ -3,7 +3,7 @@
 - **Status:** PASS (repository and disposable PostgreSQL proof complete; no production claim)
 - **Start SHA:** `ef3d298c764462ff4908ac7ca2e8cce14f8bb0f6`
 - **Branch:** `work/fr007-codex-founder-surface-corrections`
-- **Implementation SHA:** `65dfd3b411db4b90a723d1f56bf14714cf0babb5` (provider proof commit; follow-up evidence commit may advance this)
+- **Implementation SHA:** `3b598d9c422b8a2c17b9a4d0e57aae816248a1f8`
 - **Hosted production:** not executed in this lane; no live Supabase claim
 
 ## Acceptance matrix
