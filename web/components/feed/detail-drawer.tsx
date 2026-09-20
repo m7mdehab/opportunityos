@@ -178,7 +178,7 @@ export function DetailDrawer({
 
             <Separator className="my-5" />
 
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1.65fr)_minmax(22rem,0.85fr)] lg:items-start">
+            <div className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(24rem,1fr)] lg:items-start">
               <main className="min-w-0 space-y-6">
                 <section aria-labelledby="description-heading">
                   <h3 id="description-heading" className="sr-only">
