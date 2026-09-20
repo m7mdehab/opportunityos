@@ -181,7 +181,7 @@ export function FilterBar({
         <Button
           type="button"
           variant="ghost"
-          size="sm"
+          size="lg"
           onClick={() => onChange(EMPTY_FILTERS)}
         >
           Clear filters
@@ -191,8 +191,9 @@ export function FilterBar({
       <Button
         type="button"
         variant="outline"
-        size="sm"
+        size="lg"
         className="ml-auto"
+        data-testid="open-founder-filters"
         onClick={onOpenFounderFilters}
       >
         <SlidersHorizontal aria-hidden="true" className="size-3.5" />
