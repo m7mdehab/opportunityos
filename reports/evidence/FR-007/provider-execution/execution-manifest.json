@@ -23,12 +23,12 @@
     },
     {
       "evidence": "migration.after_revision",
-      "expected": "Alembic revision 0011_hosted_api_surface",
+      "expected": "Alembic revision 0013_hosted_poll_now_cadence",
       "failure": "stop; do not continue to verification or storage bootstrap",
       "id": "migration",
       "input": "migration-manifest.json",
       "kind": "APPLY_MIGRATION",
-      "operation": "execute migrations/01_*.sql through migrations/11_*.sql in order on an empty target, or run Alembic upgrade head after a full restore"
+      "operation": "execute migrations/01_*.sql through migrations/13_*.sql in order on an empty target, or run Alembic upgrade head after a full restore"
     },
     {
       "evidence": "rls.provider_security",

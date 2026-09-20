@@ -1,6 +1,6 @@
 {
   "database_engine": "PostgreSQL 17",
-  "expected_final_revision": "0011_hosted_api_surface",
+  "expected_final_revision": "0013_hosted_poll_now_cadence",
   "format": 1,
   "migrations": [
     {
@@ -210,7 +210,7 @@
       "filename": "migrations/10_0010_hosted_runtime.sql",
       "order": 10,
       "revision": "0010_hosted_runtime",
-      "sha256": "eb8c4e2d73fd3ba3dde4b031e0e7548c75492267f5505ae743dd060b4c64b248"
+      "sha256": "f697c4e367553eab7e730d964ce1a3991e27adab94e715e73cbce6a9e0334384"
     },
     {
       "down_revision": "0010_hosted_runtime",
@@ -226,7 +226,35 @@
       "filename": "migrations/11_0011_hosted_api_surface.sql",
       "order": 11,
       "revision": "0011_hosted_api_surface",
-      "sha256": "8725345adf513e54276bfd2a792df5a9c145ba37b454ad457ad5e4a73fca3e68"
+      "sha256": "82b2258de5788359e922f870f62aad7761eeca6a0821c9150141877a168c3d5b"
+    },
+    {
+      "down_revision": "0011_hosted_api_surface",
+      "effects": {
+        "indexes": [],
+        "tables_or_columns": [],
+        "touches_auth": true,
+        "touches_rls": true,
+        "touches_storage_metadata": false
+      },
+      "filename": "migrations/12_0012_hosted_policy_alignment.sql",
+      "order": 12,
+      "revision": "0012_hosted_policy_alignment",
+      "sha256": "23159843b2a92ab5d14a0146389a5f8403ea9e4256940d72419b84565339ea71"
+    },
+    {
+      "down_revision": "0012_hosted_policy_alignment",
+      "effects": {
+        "indexes": [],
+        "tables_or_columns": [],
+        "touches_auth": false,
+        "touches_rls": false,
+        "touches_storage_metadata": false
+      },
+      "filename": "migrations/13_0013_hosted_poll_now_cadence.sql",
+      "order": 13,
+      "revision": "0013_hosted_poll_now_cadence",
+      "sha256": "709de689fc48a55203e8ae82c3d5e164c186da3f47b3a2c9ba088bde7dca713d"
     }
   ],
   "project_ref": "lrrcpwaapwynzdsxzwhy",
@@ -235,7 +263,7 @@
   "secret_policy": "runtime injection only; no credentials or private payloads",
   "verification_files": {
     "evidence-template.json": "8e08d05ee67e468b157de73c136ef7d3faeed050e367596c549dcf222c408052",
-    "execution-manifest.json": "4a723fcbddd5d504715c3f06d92dce56ecddcadbfaf93ed93035e0aeeaf3e1a6",
+    "execution-manifest.json": "3827f2ef671e1ced227e10b7fee3298051521af40e33dd9cc6be287a5e35d90a",
     "provider-security.sql": "b5c741c82fd88b4d8714047a5a7631e98b257b569f757fd92dad863d18800d07",
     "storage-rollback.sql": "2e94435c07c4a997450726b823635c545a0f6298d6bcd3af74db0034627719e4",
     "storage.sql": "ce7247edb08f4284dfb2ceb9c71404d4d197b8bdf104834d413cae77f5298ece",

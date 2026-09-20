@@ -166,7 +166,7 @@ CREATE OR REPLACE FUNCTION public.enqueue_poll_now(p_source_id text DEFAULT NULL
           IF reason IS NOT NULL THEN skipped := skipped || jsonb_build_array(jsonb_build_object('source_id',sched.source_id,'reason',reason)); CONTINUE; END IF;
           new_id := md5(clock_timestamp()::text || random()::text || sched.source_id);
           INSERT INTO public.worker_jobs (id,job_type,payload_json,status,run_after,retry_count,max_retries,created_at,updated_at) VALUES (new_id,'poll_source',json_build_object('source_id',sched.source_id)::text,'PENDING',now(),0,3,now(),now());
-          UPDATE public.source_schedules SET last_attempt_at=now(), next_due_at=now()+make_interval(hours=>sched.cadence_hours), updated_at=now() WHERE source_id=sched.source_id;
+          UPDATE public.source_schedules SET last_attempt_at=now(), next_due_at=now()+make_interval(secs=>sched.cadence_hours * 3600.0), updated_at=now() WHERE source_id=sched.source_id;
           enqueued := enqueued || jsonb_build_array(jsonb_build_object('source_id',sched.source_id,'job_id',new_id));
         END LOOP;
         RETURN jsonb_build_object('enqueued',enqueued,'skipped',skipped);

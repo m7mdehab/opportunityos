@@ -258,7 +258,7 @@ CREATE OR REPLACE FUNCTION public.enqueue_poll_now(p_source_id text DEFAULT NULL
 
                 UPDATE public.source_schedules
                 SET last_attempt_at = now(),
-                    next_due_at = now() + make_interval(hours => sched.cadence_hours),
+                    next_due_at = now() + make_interval(secs => sched.cadence_hours * 3600.0),
                     updated_at = now()
                 WHERE source_id = sched.source_id;
 
