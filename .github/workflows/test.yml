@@ -70,7 +70,15 @@ jobs:
       - name: Run Database Migrations
         run: alembic upgrade head
       - name: Run Full Subsystem Test Suite
-        run: python -m unittest discover -v
+        run: python -m unittest discover -v 2>&1 | tee full-test.log
+      - name: Upload backend test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fr007-backend-test-log-${{ github.run_id }}
+          path: full-test.log
+          if-no-files-found: error
+          retention-days: 7
 
   web:
     name: web-build-lint-playwright
