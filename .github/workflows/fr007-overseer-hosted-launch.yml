@@ -8,6 +8,7 @@ on:
       - .github/workflows/fr007-overseer-hosted-launch.yml
       - .github/workflows/fr007-hosted-bootstrap.yml
       - .github/workflows/fr007-cloudflare-staging-deploy.yml
+      - storage/migrations/versions/**
       - web/wrangler.jsonc
       - web/next.config.ts
       - web/app/api/**
