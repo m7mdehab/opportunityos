@@ -60,7 +60,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
             "FOR UPDATE SKIP LOCKED",
             "status IN ('PENDING', 'RETRY', 'RUNNING')",
             "payload_json::jsonb ->> 'source_id'",
-            "make_interval(hours => sched.cadence_hours)",
+            "make_interval(secs => sched.cadence_hours * 3600.0)",
             "json_build_object('source_id', sched.source_id)",
         ):
             self.assertIn(required, self.source)
