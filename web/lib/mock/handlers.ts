@@ -70,6 +70,8 @@ export const handlers = [
     const decision = url.searchParams.get("decision") ?? undefined
     const minScoreRaw = url.searchParams.get("min_score")
     const q = url.searchParams.get("q") ?? undefined
+    const activity = url.searchParams.get("activity") ?? undefined
+    const feedback = url.searchParams.get("feedback") ?? undefined
     const page = Number(url.searchParams.get("page") ?? "1")
     const pageSize = Number(url.searchParams.get("page_size") ?? "25")
     const includeHidden = url.searchParams.get("include_hidden") === "true"
@@ -79,6 +81,8 @@ export const handlers = [
       decision,
       min_score: minScoreRaw ? Number(minScoreRaw) : undefined,
       q,
+      activity,
+      feedback,
       page,
       page_size: pageSize,
       include_hidden: includeHidden,
