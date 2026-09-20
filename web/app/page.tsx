@@ -302,7 +302,7 @@ export default function FeedPage() {
     filters.q !== "" ||
     filters.sourceFamily !== "" ||
     filters.sourceId !== "" ||
-    filters.activity !== "to_review" ||
+    filters.activity !== "all" ||
     filters.feedback !== ""
 
   const workerIdle =
