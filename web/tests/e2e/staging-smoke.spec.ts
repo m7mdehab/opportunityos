@@ -7,7 +7,7 @@ async function pageJson<T>(
   page: Page,
   path: string,
   init?: { method?: string; body?: unknown }
-): Promise<{ status: number; ok: boolean; body: T }> {
+): Promise<{ status: number; ok: boolean; body: T; elapsed_ms: number }> {
   return page.evaluate(
     async ({ path: p, init: i }) => {
       const method = (i?.method ?? "GET").toUpperCase();
@@ -16,6 +16,7 @@ async function pageJson<T>(
       if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
         headers.set("X-OpportunityOS-CSRF", "1");
       }
+      const started = performance.now();
       const response = await fetch(p, {
         method,
         credentials: "same-origin",
@@ -23,14 +24,16 @@ async function pageJson<T>(
         body: i?.body === undefined ? undefined : JSON.stringify(i.body),
       });
       const text = await response.text();
+      const elapsed_ms = performance.now() - started;
       return {
         status: response.status,
         ok: response.ok,
         body: text ? JSON.parse(text) : null,
+        elapsed_ms,
       };
     },
     { path, init }
-  ) as Promise<{ status: number; ok: boolean; body: T }>;
+  ) as Promise<{ status: number; ok: boolean; body: T; elapsed_ms: number }>;
 }
 
 async function pageBinary(page: Page, path: string) {
@@ -128,6 +131,29 @@ test.describe("Cloudflare staging hosted smoke", () => {
     expect(first.title.length).toBeGreaterThan(0);
     expect(first.organization.length).toBeGreaterThan(0);
     expect(first.source_url.length).toBeGreaterThan(0);
+
+    // 5b. Hosted cold/warm feed SLO and logical-equivalence proof.
+    // This smoke runs immediately after a fresh Cloudflare deployment. The
+    // first authenticated feed read is the cold-edge observation; repeated
+    // reads establish the normal-request p95 at the current hosted corpus.
+    const feedLatencies = [firstPage.elapsed_ms];
+    for (let i = 0; i < 19; i += 1) {
+      const sample = await pageJson<{ total: number; items: Array<{ id: string }> }>(
+        page,
+        "/api/opportunities?page=1&page_size=1"
+      );
+      expect(sample.ok, `SLO sample ${i + 2} returned ${sample.status}`).toBe(true);
+      expect(sample.body.total).toBe(firstPage.body.total);
+      expect(sample.body.items[0]?.id).toBe(first.id);
+      feedLatencies.push(sample.elapsed_ms);
+    }
+    const sortedLatencies = [...feedLatencies].sort((a, b) => a - b);
+    const p95Index = Math.max(0, Math.ceil(sortedLatencies.length * 0.95) - 1);
+    const p95Ms = sortedLatencies[p95Index];
+    console.log(
+      `FR007_HOSTED_FEED_SLO project=${test.info().project.name} cold_ms=${firstPage.elapsed_ms.toFixed(2)} p95_ms=${p95Ms.toFixed(2)} samples=${feedLatencies.length}`
+    );
+    expect(p95Ms, "Hosted normal feed p95 must remain <= 1500ms").toBeLessThanOrEqual(1500);
 
     // 6. Pagination proof: page 2 returns a different item
     const secondPage = await pageJson<{
