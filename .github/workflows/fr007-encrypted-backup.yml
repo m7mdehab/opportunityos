@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   backup:
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'push' || inputs.acknowledge_backup == true }}
+    if: ${{ inputs.acknowledge_backup == true }}
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 30
