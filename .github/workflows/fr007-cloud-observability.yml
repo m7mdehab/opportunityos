@@ -5,6 +5,10 @@ on:
     # 30-minute interval for external liveness, queue, and database observability.
     # Standard hosted runners on the current public repository are no-charge; cadence is reliability-driven.
     - cron: "*/30 * * * *"
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/fr007-cloud-observability.yml
   workflow_dispatch:
     inputs:
       mode:
@@ -133,7 +137,7 @@ jobs:
           fi
 
       - name: Execute Synthetic Test Alert
-        if: ${{ env.EXEC_MODE == 'TEST_ALERT' }}
+        if: ${{ env.EXEC_MODE == 'TEST_ALERT' || github.event_name == 'push' }}
         run: |
           mkdir -p .monitor_output
           echo "Running synthetic test alert..."
