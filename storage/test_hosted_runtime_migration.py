@@ -31,7 +31,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
 
         config = Config("alembic.ini")
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_current_head(), "0012_hosted_policy_alignment")
+        self.assertEqual(script.get_current_head(), "0013_hosted_poll_now_cadence")
 
     def test_durable_founder_binding_and_browser_boundary(self):
         for required in (
