@@ -31,11 +31,11 @@ class Cursor:
         elif "GROUP BY truth_pack_hash" in sql:
             self.rows = [("a" * 64, 1, 1)]
         elif "ORDER BY id LIMIT" in sql:
-            self.rows = [("opp-1", "b" * 64)]
+            self.rows = [("greenhouse:acme:123", "b" * 64)]
         elif "SELECT id, content_hash FROM public.opportunities ORDER BY id" in sql:
-            self.rows = [("opp-1", "b" * 64)]
+            self.rows = [("greenhouse:acme:123", "b" * 64)]
         elif "SELECT opportunity_id, truth_pack_hash, qualification_decision" in sql:
-            self.rows = [("opp-1", "a" * 64, "qualified")]
+            self.rows = [("greenhouse:acme:123", "a" * 64, "qualified")]
         elif "GROUP BY 1 ORDER BY 1" in sql:
             self.rows = [("qualified", 1)]
         elif "count(*)" in sql:
@@ -79,7 +79,7 @@ class MigrationBaselineTests(unittest.TestCase):
         self.assertEqual(data["tables"]["opportunities"], 1)
         self.assertIsNone(data["tables"]["artifact_cache"])
         self.assertEqual(data["evaluation_coverage"][0]["truth_pack_hash"], "a" * 64)
-        self.assertEqual(data["opportunity_sample"], [{"id": "opp-1", "content_hash": "b" * 64}])
+        self.assertEqual(data["opportunity_sample"], [{"id": "greenhouse:acme:123", "content_hash": "b" * 64}])
         self.assertEqual(db.rollbacks, 0)
         self.assertEqual(db.query.sql[-1], "ROLLBACK")
         self.assertTrue(db.query.sql[0].endswith("READ ONLY"))
