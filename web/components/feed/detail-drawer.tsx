@@ -133,7 +133,7 @@ export function DetailDrawer({
   return (
     <Dialog open={opportunityId !== null} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-h-[92dvh] w-[94vw] max-w-none overflow-y-auto p-0 sm:w-[90vw] sm:max-w-[90vw] lg:w-[82vw] lg:max-w-[82vw] xl:w-[78vw] xl:max-w-[96rem]"
+        className="max-h-[92dvh] w-[94vw] max-w-none overflow-x-hidden overflow-y-auto p-0 sm:w-[92vw] sm:max-w-[92vw] lg:w-[84vw] lg:max-w-[84vw] xl:w-[80vw] xl:max-w-[120rem]"
         aria-describedby={undefined}
       >
         {loading && (
@@ -145,24 +145,28 @@ export function DetailDrawer({
           </div>
         )}
         {detail && (
-          <div className="grid gap-6 p-5 md:grid-cols-[minmax(0,1.65fr)_minmax(22rem,0.85fr)] md:items-start">
-            <DialogHeader className="p-0 md:col-span-2 md:row-start-1">
-              <DialogTitle>{detail.title}</DialogTitle>
+          <div className="p-5 sm:p-6">
+            <DialogHeader className="pr-10">
+              <DialogTitle className="text-lg leading-tight sm:text-xl">
+                {detail.title}
+              </DialogTitle>
               <DialogDescription>
                 {detail.organization} · {detail.source_id}
               </DialogDescription>
-              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              <div className="flex flex-wrap items-center gap-2 pt-1">
                 <DecisionBadge decision={detail.qualification.decision} />
-                <span className="text-xs text-muted-foreground">
-                  {detail.track}
-                </span>
+                <span className="text-xs text-muted-foreground">{detail.track}</span>
                 {detail.scoring.fit_score !== null && (
-                  <span data-testid="detail-fit-score" className="text-sm font-semibold tabular-nums">
+                  <span
+                    data-testid="detail-fit-score"
+                    className="text-sm font-semibold tabular-nums"
+                  >
                     Fit {Math.round(detail.scoring.fit_score)}
                   </span>
                 )}
                 <span className="text-xs text-muted-foreground">
-                  {detail.work_mode} · {detail.location_city ?? detail.location_country ?? "Location unknown"}
+                  {detail.work_mode} ·{" "}
+                  {detail.location_city ?? detail.location_country ?? "Location unknown"}
                 </span>
                 {detail.is_stale && (
                   <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
@@ -172,308 +176,318 @@ export function DetailDrawer({
               </div>
             </DialogHeader>
 
-            <section className="md:col-start-1 md:row-start-3">
-              <div
-                data-testid="opportunity-description"
-                className="text-sm [&_a]:underline [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
-                // Sanitised above with DOMPurify — the one deliberate
-                // `dangerouslySetInnerHTML` in this file, and only ever fed
-                // sanitised output, never `detail.description` directly.
-                dangerouslySetInnerHTML={{ __html: sanitizedDescription }}
-              />
-              <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                <dt>Deadline</dt>
-                <dd>{detail.deadline ?? "—"}</dd>
-                <dt>Posted</dt>
-                <dd>{detail.posted_date ?? "—"}</dd>
-                <dt>Reverified</dt>
-                <dd>{detail.reverified_at ?? "—"}</dd>
-              </dl>
-              <a
-                href={detail.source_url}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="mt-2 inline-block text-xs text-primary underline underline-offset-4"
-              >
-                View original source
-              </a>
-            </section>
+            <Separator className="my-5" />
 
-            <Separator className="md:hidden" />
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1.65fr)_minmax(22rem,0.85fr)] lg:items-start">
+              <main className="min-w-0 space-y-6">
+                <section aria-labelledby="description-heading">
+                  <h3 id="description-heading" className="sr-only">
+                    Opportunity description
+                  </h3>
+                  <div
+                    data-testid="opportunity-description"
+                    className="min-w-0 break-words text-sm leading-6 [overflow-wrap:anywhere] [&_a]:underline [&_h1]:mb-2 [&_h1]:mt-4 [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:font-semibold [&_h3]:mb-2 [&_h3]:mt-4 [&_h3]:font-semibold [&_li]:mb-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-3 [&_ul]:list-disc [&_ul]:pl-5"
+                    dangerouslySetInnerHTML={{ __html: sanitizedDescription }}
+                  />
+                  <dl className="mt-4 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <dt>Deadline</dt>
+                    <dd>{detail.deadline ?? "—"}</dd>
+                    <dt>Posted</dt>
+                    <dd>{detail.posted_date ?? "—"}</dd>
+                    <dt>Reverified</dt>
+                    <dd>{detail.reverified_at ?? "—"}</dd>
+                  </dl>
+                  <a
+                    href={detail.source_url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="mt-3 inline-block text-xs text-primary underline underline-offset-4"
+                  >
+                    View original source
+                  </a>
+                </section>
 
-            <section className="md:col-start-2 md:row-start-6" aria-labelledby="qualification-heading">
-              <h3 id="qualification-heading" className="text-sm font-semibold">
-                Qualification checklist
-              </h3>
-              {detail.qualification.constraints.length === 0 ? (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Not yet evaluated against a truth pack.
-                </p>
-              ) : (
-                <>
-                  {/* "Requirements split required/nice-to-have with your
-                      match against each": `is_hard_failure` is already the
-                      exact required/soft distinction the matching engine
-                      computed — a hard failure is a required constraint,
-                      anything else is nice-to-have. No new API field
-                      needed; this only regroups `qualification.constraints`
-                      already returned by GET /api/opportunities/{id}. */}
-                  {(["required", "nice_to_have"] as const).map((bucket) => {
-                    const items = detail.qualification.constraints.filter((c) =>
-                      bucket === "required" ? c.is_hard_failure : !c.is_hard_failure
+                <Separator />
+
+                <section aria-labelledby="provenance-heading">
+                  <h3 id="provenance-heading" className="text-sm font-semibold">
+                    Field provenance
+                  </h3>
+                  {detail.fields.length === 0 ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      No field-level provenance recorded.
+                    </p>
+                  ) : (
+                    <ul className="mt-2 grid gap-2 text-xs sm:grid-cols-2">
+                      {detail.fields.map((f) => (
+                        <li
+                          key={f.field_name}
+                          className="min-w-0 rounded-md border border-border p-2"
+                        >
+                          <p className="font-medium">{f.field_name}</p>
+                          <p className="break-words text-muted-foreground">
+                            value: {f.value ?? "—"}
+                          </p>
+                          <p className="break-words text-muted-foreground">
+                            raw: {f.raw_value ?? "—"} ({f.derivation_type})
+                          </p>
+                          {f.rule_id && (
+                            <p className="break-words text-muted-foreground">
+                              rule: {f.rule_id}
+                            </p>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+
+                {opportunityId && (
+                  <>
+                    <Separator />
+                    <div>
+                      <ArtifactsPanel opportunityId={opportunityId} />
+                    </div>
+                  </>
+                )}
+
+                {(detail.action_history.length > 0 ||
+                  detail.feedback_history.length > 0) && (
+                  <>
+                    <Separator />
+                    <section aria-labelledby="history-heading">
+                      <h3 id="history-heading" className="text-sm font-semibold">
+                        History
+                      </h3>
+                      <ul className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+                        {detail.action_history.map((a) => (
+                          <li key={a.action_id}>
+                            {a.created_at} — action: {a.action_status} ({a.execution_mode})
+                          </li>
+                        ))}
+                        {detail.feedback_history.map((f) => (
+                          <li key={f.id}>
+                            {f.created_at} — feedback: {f.feedback_label}
+                            {f.notes ? ` — “${f.notes}”` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  </>
+                )}
+              </main>
+
+              <aside className="min-w-0 space-y-6">
+                <section aria-labelledby="qualification-heading">
+                  <h3 id="qualification-heading" className="text-sm font-semibold">
+                    Qualification checklist
+                  </h3>
+                  {detail.qualification.constraints.length === 0 ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Not yet evaluated against a truth pack.
+                    </p>
+                  ) : (
+                    <>
+                      {(["required", "nice_to_have"] as const).map((bucket) => {
+                        const items = detail.qualification.constraints.filter((c) =>
+                          bucket === "required" ? c.is_hard_failure : !c.is_hard_failure
+                        )
+                        if (items.length === 0) return null
+                        return (
+                          <div key={bucket} className="mt-3">
+                            <h4 className="text-xs font-semibold text-muted-foreground">
+                              {bucket === "required" ? "Required" : "Nice to have"}
+                            </h4>
+                            <ul className="mt-1 space-y-2">
+                              {items.map((constraint) => (
+                                <li
+                                  key={constraint.constraint_name}
+                                  data-testid={`requirement-${bucket}-${constraint.constraint_name}`}
+                                  className="rounded-md border border-border p-3"
+                                >
+                                  <div className="flex flex-wrap items-start justify-between gap-2">
+                                    <span className="min-w-0 flex-1 break-words text-xs font-medium">
+                                      {constraint.constraint_name.replaceAll("_", " ")}
+                                    </span>
+                                    <ConstraintOutcomeBadge outcome={constraint.outcome} />
+                                  </div>
+                                  <p className="mt-1 break-words text-xs leading-5 text-muted-foreground">
+                                    {constraint.reason}
+                                  </p>
+                                  {constraint.founder_fact && (
+                                    <p className="mt-1 break-words text-[11px] leading-4 text-muted-foreground">
+                                      Your match: {constraint.founder_fact}
+                                    </p>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )
+                      })}
+                    </>
+                  )}
+                </section>
+
+                <Separator />
+
+                <section aria-labelledby="geography-heading">
+                  <h3 id="geography-heading" className="text-sm font-semibold">
+                    Geography reasoning
+                  </h3>
+                  {(() => {
+                    const geoConstraint = detail.qualification.constraints.find((constraint) =>
+                      /geo|location|remote|relocat/i.test(constraint.constraint_name)
                     )
-                    if (items.length === 0) return null
+                    if (!geoConstraint) {
+                      return (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          No geography-specific constraint was reported by qualification
+                          for this opportunity.
+                        </p>
+                      )
+                    }
                     return (
-                      <div key={bucket} className="mt-2">
-                        <h4 className="text-xs font-semibold text-muted-foreground">
-                          {bucket === "required" ? "Required" : "Nice to have"}
-                        </h4>
-                        <ul className="mt-1 space-y-2">
-                          {items.map((c) => (
-                            <li
-                              key={c.constraint_name}
-                              data-testid={`requirement-${bucket}-${c.constraint_name}`}
-                              className="rounded-md border border-border p-2"
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="text-xs font-medium">
-                                  {c.constraint_name.replaceAll("_", " ")}
-                                </span>
-                                <ConstraintOutcomeBadge outcome={c.outcome} />
-                              </div>
-                              <p className="mt-1 text-xs text-muted-foreground">
-                                {c.reason}
-                              </p>
-                              {c.founder_fact && (
-                                <p className="mt-0.5 text-[11px] text-muted-foreground">
-                                  Your match: {c.founder_fact}
-                                </p>
-                              )}
-                            </li>
+                      <div
+                        data-testid="geography-reasoning"
+                        className="mt-2 rounded-md border border-border p-3"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <span className="min-w-0 flex-1 break-words text-xs font-medium">
+                            {geoConstraint.constraint_name.replaceAll("_", " ")}
+                          </span>
+                          <ConstraintOutcomeBadge outcome={geoConstraint.outcome} />
+                        </div>
+                        <p className="mt-1 break-words text-xs leading-5 text-muted-foreground">
+                          {geoConstraint.reason}
+                        </p>
+                        {geoConstraint.founder_fact && (
+                          <p className="mt-1 break-words text-[11px] leading-4 text-muted-foreground">
+                            Your fact: {geoConstraint.founder_fact}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })()}
+                </section>
+
+                <Separator />
+
+                <section aria-labelledby="scoring-heading">
+                  <h3 id="scoring-heading" className="text-sm font-semibold">
+                    Dimension scores
+                  </h3>
+                  {detail.scoring.dimension_scores.length === 0 ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      No scoring available yet.
+                    </p>
+                  ) : (
+                    <ul className="mt-2 space-y-3">
+                      {detail.scoring.dimension_scores.map((dimension) => (
+                        <li key={dimension.dimension}>
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <span className="font-medium">
+                              {dimension.dimension.replaceAll("_", " ")}
+                            </span>
+                            <span className="tabular-nums text-muted-foreground">
+                              {Math.round(dimension.score * 100)}% (weight{" "}
+                              {Math.round(dimension.weight * 100)}%)
+                            </span>
+                          </div>
+                          <div
+                            role="progressbar"
+                            aria-label={`${dimension.dimension} score`}
+                            aria-valuenow={Math.round(dimension.score * 100)}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted"
+                          >
+                            <div
+                              className="h-full rounded-full bg-primary"
+                              style={{ width: `${Math.round(dimension.score * 100)}%` }}
+                            />
+                          </div>
+                          <p className="mt-1 break-words text-[11px] leading-4 text-muted-foreground">
+                            {dimension.rationale}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {(detail.scoring.strengths.length > 0 ||
+                    detail.scoring.gaps.length > 0 ||
+                    detail.scoring.unknowns.length > 0) && (
+                    <div className="mt-4 grid gap-3 text-xs sm:grid-cols-3 lg:grid-cols-1 2xl:grid-cols-3">
+                      <div>
+                        <p className="font-medium text-emerald-700 dark:text-emerald-300">
+                          Strengths
+                        </p>
+                        <ul className="list-disc pl-4">
+                          {detail.scoring.strengths.map((strength) => (
+                            <li key={strength}>{strength}</li>
                           ))}
                         </ul>
                       </div>
-                    )
-                  })}
-                </>
-              )}
-            </section>
-
-            <Separator className="md:hidden" />
-
-            <section className="md:col-start-2 md:row-start-2" aria-labelledby="geography-heading">
-              <h3 id="geography-heading" className="text-sm font-semibold">
-                Geography reasoning
-              </h3>
-              {(() => {
-                const geoConstraint = detail.qualification.constraints.find((c) =>
-                  /geo|location|remote|relocat/i.test(c.constraint_name)
-                )
-                if (!geoConstraint) {
-                  return (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      No geography-specific constraint was reported by qualification
-                      for this opportunity.
-                    </p>
-                  )
-                }
-                return (
-                  <div
-                    data-testid="geography-reasoning"
-                    className="mt-1 rounded-md border border-border p-2"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-medium">
-                        {geoConstraint.constraint_name.replaceAll("_", " ")}
-                      </span>
-                      <ConstraintOutcomeBadge outcome={geoConstraint.outcome} />
+                      <div>
+                        <p className="font-medium text-red-700 dark:text-red-300">Gaps</p>
+                        <ul className="list-disc pl-4">
+                          {detail.scoring.gaps.map((gap) => (
+                            <li key={gap}>{gap}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div>
+                        <p className="font-medium text-amber-700 dark:text-amber-300">
+                          Unknowns
+                        </p>
+                        <ul className="list-disc pl-4">
+                          {detail.scoring.unknowns.map((unknown) => (
+                            <li key={unknown}>{unknown}</li>
+                          ))}
+                        </ul>
+                      </div>
                     </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {geoConstraint.reason}
+                  )}
+
+                  {detail.scoring.explanation && (
+                    <p className="mt-3 break-words text-xs leading-5 text-muted-foreground">
+                      {detail.scoring.explanation}
                     </p>
-                    {geoConstraint.founder_fact && (
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">
-                        Your fact: {geoConstraint.founder_fact}
-                      </p>
-                    )}
-                  </div>
-                )
-              })()}
-            </section>
-
-            <Separator className="md:hidden" />
-
-            <section className="md:col-start-2 md:row-start-3" aria-labelledby="scoring-heading">
-              <h3 id="scoring-heading" className="text-sm font-semibold">
-                Dimension scores
-              </h3>
-              {detail.scoring.dimension_scores.length === 0 ? (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  No scoring available yet.
-                </p>
-              ) : (
-                <ul className="mt-2 space-y-2">
-                  {detail.scoring.dimension_scores.map((d) => (
-                    <li key={d.dimension}>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-medium">
-                          {d.dimension.replaceAll("_", " ")}
-                        </span>
-                        <span className="tabular-nums text-muted-foreground">
-                          {Math.round(d.score * 100)}% (weight {Math.round(d.weight * 100)}%)
-                        </span>
-                      </div>
-                      <div
-                        role="progressbar"
-                        aria-label={`${d.dimension} score`}
-                        aria-valuenow={Math.round(d.score * 100)}
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted"
-                      >
-                        <div
-                          className="h-full rounded-full bg-primary"
-                          style={{ width: `${Math.round(d.score * 100)}%` }}
-                        />
-                      </div>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">
-                        {d.rationale}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {(detail.scoring.strengths.length > 0 ||
-                detail.scoring.gaps.length > 0 ||
-                detail.scoring.unknowns.length > 0) && (
-                <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
-                  <div>
-                    <p className="font-medium text-emerald-700 dark:text-emerald-300">
-                      Strengths
-                    </p>
-                    <ul className="list-disc pl-4">
-                      {detail.scoring.strengths.map((s) => (
-                        <li key={s}>{s}</li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div>
-                    <p className="font-medium text-red-700 dark:text-red-300">Gaps</p>
-                    <ul className="list-disc pl-4">
-                      {detail.scoring.gaps.map((g) => (
-                        <li key={g}>{g}</li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div>
-                    <p className="font-medium text-amber-700 dark:text-amber-300">
-                      Unknowns
-                    </p>
-                    <ul className="list-disc pl-4">
-                      {detail.scoring.unknowns.map((u) => (
-                        <li key={u}>{u}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              )}
-
-              {detail.scoring.explanation && (
-                <p className="mt-3 text-xs text-muted-foreground">
-                  {detail.scoring.explanation}
-                </p>
-              )}
-            </section>
-
-            <Separator className="md:hidden" />
-
-            <section className="md:col-start-1 md:row-start-2" aria-labelledby="provenance-heading">
-              <h3 id="provenance-heading" className="text-sm font-semibold">
-                Field provenance
-              </h3>
-              {detail.fields.length === 0 ? (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  No field-level provenance recorded.
-                </p>
-              ) : (
-                <ul className="mt-2 space-y-2 text-xs">
-                  {detail.fields.map((f) => (
-                    <li key={f.field_name} className="rounded-md border border-border p-2">
-                      <p className="font-medium">{f.field_name}</p>
-                      <p className="text-muted-foreground">
-                        value: {f.value ?? "—"}
-                      </p>
-                      <p className="text-muted-foreground">
-                        raw: {f.raw_value ?? "—"} ({f.derivation_type})
-                      </p>
-                      {f.rule_id && (
-                        <p className="text-muted-foreground">rule: {f.rule_id}</p>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            <Separator className="md:hidden" />
-
-            {opportunityId && <div className="md:col-start-1 md:row-start-5"><ArtifactsPanel opportunityId={opportunityId} /></div>}
-
-            <Separator className="md:hidden" />
-
-            <section className="md:col-start-2 md:row-start-4" aria-labelledby="feedback-heading">
-              <h3 id="feedback-heading" className="text-sm font-semibold">
-                Feedback
-              </h3>
-              <div className="mt-2">
-                <FeedbackButtons
-                  currentLabel={feedbackLabel}
-                  submitting={feedbackSubmitting}
-                  onSubmit={handleFeedback}
-                />
-              </div>
-            </section>
-
-            <Separator className="md:hidden" />
-
-            <section className="md:col-start-2 md:row-start-5" aria-labelledby="triage-heading">
-              <h3 id="triage-heading" className="text-sm font-semibold">
-                Triage
-              </h3>
-              <div className="mt-2">
-                <TriageActions
-                  currentState={actionState}
-                  submitting={actionSubmitting}
-                  onSubmit={handleAction}
-                />
-              </div>
-            </section>
-
-            {(detail.action_history.length > 0 ||
-              detail.feedback_history.length > 0) && (
-              <>
-                <Separator className="md:hidden" />
-                <section className="md:col-start-1 md:row-start-4" aria-labelledby="history-heading">
-                  <h3 id="history-heading" className="text-sm font-semibold">
-                    History
-                  </h3>
-                  <ul className="mt-2 space-y-1 text-[11px] text-muted-foreground">
-                    {detail.action_history.map((a) => (
-                      <li key={a.action_id}>
-                        {a.created_at} — action: {a.action_status} ({a.execution_mode})
-                      </li>
-                    ))}
-                    {detail.feedback_history.map((f) => (
-                      <li key={f.id}>
-                        {f.created_at} — feedback: {f.feedback_label}
-                        {f.notes ? ` — “${f.notes}”` : ""}
-                      </li>
-                    ))}
-                  </ul>
+                  )}
                 </section>
-              </>
-            )}
+
+                <Separator />
+
+                <section aria-labelledby="feedback-heading">
+                  <h3 id="feedback-heading" className="text-sm font-semibold">
+                    Feedback
+                  </h3>
+                  <div className="mt-2">
+                    <FeedbackButtons
+                      currentLabel={feedbackLabel}
+                      submitting={feedbackSubmitting}
+                      onSubmit={handleFeedback}
+                    />
+                  </div>
+                </section>
+
+                <Separator />
+
+                <section aria-labelledby="triage-heading">
+                  <h3 id="triage-heading" className="text-sm font-semibold">
+                    Triage
+                  </h3>
+                  <div className="mt-2">
+                    <TriageActions
+                      currentState={actionState}
+                      submitting={actionSubmitting}
+                      onSubmit={handleAction}
+                    />
+                  </div>
+                </section>
+              </aside>
+            </div>
           </div>
         )}
       </DialogContent>
