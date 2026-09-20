@@ -631,6 +631,55 @@ def probe_database_and_queue(
 # 4. Backup Heartbeat Contract
 # ============================================================================
 
+def fetch_backup_heartbeat_from_database(
+    db_url: str | None,
+    connection_factory: Callable[[], Any] | None = None,
+) -> Mapping[str, Any] | None:
+    """Read the latest sanitized encrypted-backup heartbeat from PostgreSQL."""
+    if not db_url and connection_factory is None:
+        return None
+    session = None
+    try:
+        if connection_factory is not None:
+            session = connection_factory()
+        else:
+            from storage.engine import get_engine, get_session_factory
+            engine = get_engine(db_url)
+            session = get_session_factory(engine)()
+        from sqlalchemy import text
+        exists = session.execute(
+            text("SELECT to_regclass('public.backup_heartbeats')")
+        ).scalar_one_or_none()
+        if not exists:
+            return None
+        row = session.execute(text("""
+            SELECT result, backup_completed_at, encryption, destination_class,
+                   database_snapshot_sha, artifact_run_id
+            FROM public.backup_heartbeats
+            WHERE id='latest'
+            LIMIT 1
+        """)).mappings().first()
+        if not row:
+            return None
+        completed = row.get("backup_completed_at")
+        return {
+            "result": row.get("result"),
+            "backup_completed_at": completed.isoformat() if hasattr(completed, "isoformat") else str(completed),
+            "encryption": bool(row.get("encryption")),
+            "destination_class": row.get("destination_class"),
+            "database_snapshot_sha": row.get("database_snapshot_sha"),
+            "artifact_run_id": row.get("artifact_run_id"),
+        }
+    except Exception:
+        return None
+    finally:
+        if session is not None:
+            try:
+                session.close()
+            except Exception:
+                pass
+
+
 def probe_backup_heartbeat(
     heartbeat: Mapping[str, Any] | None,
     clock: Callable[[], datetime] | None = None,
@@ -936,6 +985,11 @@ def run_monitor(
 
         # 4. Backup Heartbeat Probe (FULL mode)
         effective_heartbeat = backup_heartbeat
+        if effective_heartbeat is None:
+            effective_heartbeat = fetch_backup_heartbeat_from_database(
+                effective_db_url,
+                connection_factory=db_connection_factory,
+            )
         if effective_heartbeat is None:
             hb_path = (
                 backup_heartbeat_path
