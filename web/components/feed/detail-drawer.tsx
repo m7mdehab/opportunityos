@@ -432,7 +432,7 @@ export function DetailDrawer({
                   {(detail.scoring.strengths.length > 0 ||
                     detail.scoring.gaps.length > 0 ||
                     detail.scoring.unknowns.length > 0) && (
-                    <div className="mt-4 grid gap-3 text-xs sm:grid-cols-3 lg:grid-cols-1 2xl:grid-cols-3">
+                    <div className="mt-4 grid grid-cols-1 gap-4 text-xs">
                       <div>
                         <p className="font-medium text-emerald-700 dark:text-emerald-300">
                           Strengths
