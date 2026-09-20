@@ -44,6 +44,8 @@ test.describe("W24 Founder UX polish", () => {
       "filter-min-score",
       "filter-search",
       "filter-source-family",
+      "filter-activity",
+      "filter-feedback",
       "open-founder-filters",
       "open-facets-panel",
       "open-manual-sources-panel",
@@ -68,6 +70,81 @@ test.describe("W24 Founder UX polish", () => {
     await expect(page.getByTestId("source-health-healthy")).toContainText("3")
     await expect(page.getByTestId("source-health-empty")).toContainText("1")
     await expect(page.getByTestId("source-health-disabled")).toContainText("1")
+  })
+
+  test("Founder actions and feedback persist into retrievable activity views", async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 })
+    await login(page)
+
+    const activity = page.getByTestId("filter-activity")
+    const feedback = page.getByTestId("filter-feedback")
+    await expect(activity).toHaveValue("to_review")
+
+    const firstCard = page.locator('[data-testid^="opportunity-card-"]').first()
+    await expect(firstCard).toBeVisible()
+    const firstTestId = await firstCard.getAttribute("data-testid")
+    expect(firstTestId).toBeTruthy()
+    const firstId = firstTestId!.replace("opportunity-card-", "")
+
+    await firstCard.click()
+    const dialog = page.getByRole("dialog")
+    await dialog.getByRole("button", { name: "Good match" }).click()
+    await expect(dialog.getByRole("button", { name: "Good match" })).toHaveAttribute("aria-pressed", "true")
+
+    const strengths = dialog.getByTestId("scoring-strengths")
+    const gaps = dialog.getByTestId("scoring-gaps")
+    const unknowns = dialog.getByTestId("scoring-unknowns")
+    const scoringBoxes = await Promise.all([strengths.boundingBox(), gaps.boundingBox(), unknowns.boundingBox()])
+    expect(scoringBoxes.every(Boolean)).toBe(true)
+    expect(scoringBoxes[0]!.y).toBeLessThan(scoringBoxes[1]!.y)
+    expect(scoringBoxes[1]!.y).toBeLessThan(scoringBoxes[2]!.y)
+    expect(Math.max(...scoringBoxes.map((box) => box!.width)) - Math.min(...scoringBoxes.map((box) => box!.width))).toBeLessThanOrEqual(2)
+
+    await dialog.getByRole("button", { name: "Mark applied" }).click()
+    await expect(dialog.getByText(/Current status:/)).toContainText("Marked applied")
+    await page.keyboard.press("Escape")
+
+    await activity.selectOption("applied")
+    await expect(page.getByTestId(`opportunity-card-${firstId}`)).toBeVisible()
+    await expect(page.getByTestId(`opportunity-card-${firstId}`)).toContainText("Applied")
+
+    await feedback.selectOption("good_match")
+    await expect(page.getByTestId(`opportunity-card-${firstId}`)).toBeVisible()
+    await expect(page.getByTestId(`opportunity-card-${firstId}`)).toContainText("good match")
+
+    await feedback.selectOption("")
+    await activity.selectOption("to_review")
+
+    const secondCard = page.locator('[data-testid^="opportunity-card-"]').first()
+    const secondTestId = await secondCard.getAttribute("data-testid")
+    expect(secondTestId).toBeTruthy()
+    const secondId = secondTestId!.replace("opportunity-card-", "")
+    await secondCard.click()
+    await page.getByRole("dialog").getByRole("button", { name: "Dismiss" }).click()
+    await page.keyboard.press("Escape")
+    await activity.selectOption("dismissed")
+    await expect(page.getByTestId(`opportunity-card-${secondId}`)).toBeVisible()
+    await expect(page.getByTestId(`opportunity-card-${secondId}`)).toContainText("Dismissed")
+
+    await activity.selectOption("to_review")
+    const thirdCard = page.locator('[data-testid^="opportunity-card-"]').first()
+    const thirdTestId = await thirdCard.getAttribute("data-testid")
+    expect(thirdTestId).toBeTruthy()
+    const thirdId = thirdTestId!.replace("opportunity-card-", "")
+    await thirdCard.click()
+    const thirdDialog = page.getByRole("dialog")
+    await thirdDialog.getByRole("button", { name: "Snooze", exact: true }).click()
+    await thirdDialog.getByLabel("Snooze until").fill("2026-10-10")
+    await thirdDialog.getByRole("button", { name: "Confirm snooze" }).click()
+    await page.keyboard.press("Escape")
+    await activity.selectOption("snoozed")
+    await expect(page.getByTestId(`opportunity-card-${thirdId}`)).toBeVisible()
+    await expect(page.getByTestId(`opportunity-card-${thirdId}`)).toContainText("Snoozed")
+
+    await activity.selectOption("any_activity")
+    await expect(page.getByTestId(`opportunity-card-${firstId}`)).toBeVisible()
+    await expect(page.getByTestId(`opportunity-card-${secondId}`)).toBeVisible()
+    await expect(page.getByTestId(`opportunity-card-${thirdId}`)).toBeVisible()
   })
 
   test("390px mobile surface has no horizontal overflow", async ({ page }) => {
