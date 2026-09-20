@@ -143,8 +143,12 @@ test.describe("Cloudflare staging hosted smoke", () => {
         "/api/opportunities?page=1&page_size=1"
       );
       expect(sample.ok, `SLO sample ${i + 2} returned ${sample.status}`).toBe(true);
-      expect(sample.body.total).toBe(firstPage.body.total);
-      expect(sample.body.items[0]?.id).toBe(first.id);
+      // Live ingestion/evaluation is allowed to change the corpus between SLO
+      // samples. This hosted smoke therefore proves the feed stays healthy and
+      // contract-correct while work is landing, rather than incorrectly
+      // requiring a numerically frozen production snapshot.
+      expect(sample.body.total).toBeGreaterThan(0);
+      expect(typeof sample.body.items[0]?.id).toBe("string");
       feedLatencies.push(sample.elapsed_ms);
     }
     const sortedLatencies = [...feedLatencies].sort((a, b) => a - b);
@@ -233,6 +237,19 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await firstCard.click();
     const drawer = page.getByRole("dialog");
     await expect(drawer).toBeVisible();
+
+    // Founder detail view must use the desktop canvas rather than regress to
+    // the component library's narrow default dialog width.
+    const viewport = page.viewportSize();
+    const drawerBox = await drawer.boundingBox();
+    expect(drawerBox).not.toBeNull();
+    if (viewport && viewport.width >= 1024 && drawerBox) {
+      expect(
+        drawerBox.width / viewport.width,
+        "Desktop opportunity detail modal must use at least 65% of the viewport width"
+      ).toBeGreaterThanOrEqual(0.65);
+    }
+
     const sourceLink = drawer.getByRole("link", { name: /View original source/i });
     await expect(sourceLink).toBeVisible();
     expect(await sourceLink.getAttribute("href")).toBeTruthy();
