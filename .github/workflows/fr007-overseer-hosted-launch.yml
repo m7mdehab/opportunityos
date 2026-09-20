@@ -30,13 +30,13 @@ jobs:
           python-version: "3.12"
       - name: Install repository
         run: python -m pip install -e .
-      - name: Bootstrap schedules, enqueue due work, and drain bounded jobs
+      - name: Verify durable source schedules before web deploy
         env:
           OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
           OPPORTUNITYOS_ENVIRONMENT: cloud
           OPPORTUNITYOS_TRUTH_PACK_PATH: founder/truth_pack.yaml.gz.b64
           PYTHONPATH: ${{ github.workspace }}
-        run: python scripts/fr007_hosted_bootstrap.py --mode all --max-jobs 10 --time-budget-seconds 300
+        run: python scripts/fr007_hosted_bootstrap.py --mode bootstrap
 
   deploy:
     needs: bootstrap
