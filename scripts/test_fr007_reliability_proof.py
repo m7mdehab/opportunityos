@@ -372,13 +372,54 @@ class HostedReliabilityProofTests(unittest.TestCase):
             return 200, {}, "<html>OpportunityOS Founder Staging</html>"
 
         mock_conn = Mock()
-        mock_conn.execute.return_value.fetchone.side_effect = [
-            ("fake_md5_hash_12345",),  # fingerprint
-            (10, 10),                  # A6 count/distinct count
-            (5,),                      # A8 count
-        ]
 
-        with patch("scripts.fr007_reliability_proof._table_exists", return_value=True):
+        def fake_result(*, scalar=None, row=None):
+            result = Mock()
+            result.scalar_one.return_value = scalar
+            result.fetchone.return_value = row
+            return result
+
+        def fake_execute(statement, params=None):
+            sql = str(statement)
+            if "FILTER (WHERE status='error')" in sql:
+                return fake_result(row=(1, 2))
+            if "status IN ('PENDING','RETRY','RUNNING')" in sql:
+                return fake_result(scalar=0)
+            if "SELECT count(*) FROM public.opportunities" in sql:
+                return fake_result(scalar=10)
+            if "GROUP BY source_id, source_url" in sql:
+                return fake_result(scalar=0)
+            if "SELECT supabase_user_id FROM public.founder_identity" in sql:
+                return fake_result(scalar="founder-test-uuid")
+            if "SELECT set_config('request.jwt.claim.sub'" in sql:
+                return fake_result(scalar="founder-test-uuid")
+            if "next_due_at <= now()" in sql:
+                return fake_result(scalar=3)
+            if "SELECT count(*) FROM public.source_schedules" in sql:
+                return fake_result(scalar=10)
+            if "SELECT public.enqueue_poll_now(NULL)" in sql:
+                return fake_result(scalar={
+                    "enqueued": [
+                        {"source_id": "source-a", "job_id": "job-a"},
+                        {"source_id": "source-b", "job_id": "job-b"},
+                    ],
+                    "skipped": [{"source_id": "source-c", "reason": "not_due"}],
+                })
+            if "count(*) AS total" in sql and "FROM public.source_schedules" in sql:
+                return fake_result(row=(10, 10, 0, datetime(2026, 9, 20, tzinfo=timezone.utc)))
+            raise AssertionError(f"unexpected hosted proof SQL in fixture: {sql}")
+
+        mock_conn.execute.side_effect = fake_execute
+        mock_tx = Mock()
+        mock_conn.begin.return_value = mock_tx
+
+        with (
+            patch("scripts.fr007_reliability_proof._table_exists", return_value=True),
+            patch(
+                "scripts.fr007_reliability_proof._get_database_fingerprint",
+                return_value="fake_md5_hash_12345",
+            ),
+        ):
             report = run_hosted(
                 target_url="https://opportunityos-web-staging.workers.dev",
                 dsn="postgres" + "ql://mock-db-host/test",
