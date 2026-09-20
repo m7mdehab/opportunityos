@@ -10,10 +10,16 @@ async function pageJson<T>(
 ): Promise<{ status: number; ok: boolean; body: T }> {
   return page.evaluate(
     async ({ path: p, init: i }) => {
+      const method = (i?.method ?? "GET").toUpperCase();
+      const headers = new Headers();
+      if (i?.body !== undefined) headers.set("Content-Type", "application/json");
+      if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+        headers.set("X-OpportunityOS-CSRF", "1");
+      }
       const response = await fetch(p, {
-        method: i?.method,
+        method,
         credentials: "same-origin",
-        headers: i?.body === undefined ? undefined : { "Content-Type": "application/json" },
+        headers,
         body: i?.body === undefined ? undefined : JSON.stringify(i.body),
       });
       const text = await response.text();
