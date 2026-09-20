@@ -24,7 +24,7 @@ export const EMPTY_FILTERS: FeedFilters = {
   q: "",
   sourceFamily: "",
   sourceId: "",
-  activity: "to_review",
+  activity: "all",
   feedback: "",
 }
 
@@ -76,7 +76,7 @@ export function FilterBar({
     filters.q !== ""
     || filters.sourceFamily !== ""
     || filters.sourceId !== ""
-    || filters.activity !== "to_review"
+    || filters.activity !== "all"
     || filters.feedback !== ""
 
   const families = [...new Set(sources.map((source) => source.source_family))].sort()
