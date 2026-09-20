@@ -1,0 +1,108 @@
+name: FR-007 Founder Activity Live Rollout
+
+on:
+  push:
+    branches:
+      - work/fr007-codex-activity-tracking
+    paths:
+      - reports/evidence/FR-007/FOUNDER_ACTIVITY_ROLLOUT_READY.md
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fr007-founder-activity-live
+  cancel-in-progress: false
+
+jobs:
+  migrate-and-prove:
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      OPPORTUNITYOS_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+      OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install repository
+        run: python -m pip install -e .
+      - name: Apply canonical Alembic migration
+        run: alembic upgrade head
+      - name: Prove Founder activity RPCs transactionally
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+
+          engine = create_engine(os.environ["OPOS_TARGET_DB_URL"])
+          with engine.connect() as conn:
+              trans = conn.begin()
+              try:
+                  revision = conn.execute(text("select version_num from public.alembic_version limit 1")).scalar_one()
+                  assert revision == "0016_founder_activity", revision
+
+                  founder = conn.execute(
+                      text("select supabase_user_id from public.founder_identity where id='singleton'")
+                  ).scalar_one()
+                  assert founder
+                  conn.execute(
+                      text("select set_config('request.jwt.claim.sub', :sub, true)"),
+                      {"sub": founder},
+                  )
+                  assert conn.execute(text("select public.opos_is_founder()")).scalar_one() is True
+
+                  opportunity_id = conn.execute(
+                      text("select opportunity_id from public.founder_feed_activity order by opportunity_id limit 1")
+                  ).scalar_one()
+
+                  action = conn.execute(
+                      text("select public.founder_set_action(:id, 'dismiss', null)"),
+                      {"id": opportunity_id},
+                  ).scalar_one()
+                  assert action["action_state"] == "dismissed"
+
+                  feedback = conn.execute(
+                      text("select public.founder_add_feedback(:id, 'good_match', 'transactional rollout proof')"),
+                      {"id": opportunity_id},
+                  ).scalar_one()
+                  assert feedback["feedback_label"] == "good_match"
+
+                  state = conn.execute(
+                      text("""
+                        select action_state, feedback_label, feedback_count, has_activity
+                        from public.founder_activity_state
+                        where opportunity_id=:id
+                      """),
+                      {"id": opportunity_id},
+                  ).mappings().one()
+                  assert state["action_state"] == "dismissed"
+                  assert state["feedback_label"] == "good_match"
+                  assert state["feedback_count"] >= 1
+                  assert state["has_activity"] is True
+
+                  print("FOUNDER_ACTIVITY_TRANSACTIONAL_PROOF=PASS")
+                  print("ALEMBIC_REVISION=0016_founder_activity")
+              finally:
+                  trans.rollback()
+          engine.dispose()
+          PY
+
+  deploy:
+    needs: migrate-and-prove
+    uses: ./.github/workflows/fr007-cloudflare-staging-deploy.yml
+    with:
+      mode: DEPLOY_STAGING
+      acknowledge_staging_deployment: true
+      ref: work/fr007-codex-activity-tracking
+    secrets: inherit
+
+  smoke:
+    needs: deploy
+    uses: ./.github/workflows/fr007-cloudflare-staging-deploy.yml
+    with:
+      mode: SMOKE_STAGING
+      ref: work/fr007-codex-activity-tracking
+    secrets: inherit
