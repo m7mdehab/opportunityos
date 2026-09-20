@@ -67,7 +67,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      OPOS_STAGING_WEB_URL: ${{ vars.OPOS_STAGING_WEB_URL }}
+      OPOS_STAGING_WEB_URL: ${{ vars.OPOS_STAGING_WEB_URL || 'https://opportunityos.m7mdehab.com' }}
       CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL || secrets.OPOS_TARGET_DB_URL }}
     steps:
       - uses: actions/checkout@v7
