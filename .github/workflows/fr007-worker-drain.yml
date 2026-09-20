@@ -63,8 +63,9 @@ jobs:
         shard: [1, 2, 3, 4, 5]
     environment: fr007-staging
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
+
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:

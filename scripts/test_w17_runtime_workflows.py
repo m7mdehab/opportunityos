@@ -57,7 +57,8 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
     def test_worker_drain_timeout_headroom(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-worker-drain.yml").read_text(encoding="utf-8")
         drain_section = workflow.split("drain:", 1)[1]
-        self.assertIn("timeout-minutes: 25", drain_section)
+        self.assertIn("timeout-minutes: 35", drain_section)
+
 
     def test_worker_drain_mode_conditions(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-worker-drain.yml").read_text(encoding="utf-8")
