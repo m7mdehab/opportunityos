@@ -166,7 +166,7 @@ export function FilterBar({
           {families.map((family) => { const meta = familyMeta.get(family)!; return <option key={family} value={family}>{family} ({meta.manualOnly ? "Manual only · 0 automated" : meta.count})</option> })}
         </select>
       </div>
-      <Button type="button" variant="outline" size="sm" onClick={onOpenManualSources} data-testid="open-manual-sources-panel">Check manually</Button>
+      <Button type="button" variant="outline" size="lg" onClick={onOpenManualSources} data-testid="open-manual-sources-panel">Check manually</Button>
       {filters.sourceFamily && !selectedFamily?.manualOnly && sourceIds.length > 1 && (
         <div className="flex flex-col gap-1">
           <Label htmlFor="filter-source-id">Board</Label>
@@ -199,12 +199,12 @@ export function FilterBar({
         Filters
       </Button>
       {onOpenFacets && (
-        <Button type="button" variant="outline" size="sm" onClick={onOpenFacets} data-testid="open-facets-panel">
+        <Button type="button" variant="outline" size="lg" onClick={onOpenFacets} data-testid="open-facets-panel">
           Facets
         </Button>
       )}
       {onToggleTutoringLane && (
-        <Button type="button" variant={tutoringActive ? "secondary" : "outline"} size="sm" onClick={onToggleTutoringLane} disabled={tutoringDisabled} data-testid="toggle-tutoring-lane" aria-pressed={tutoringActive}>
+        <Button type="button" variant={tutoringActive ? "secondary" : "outline"} size="lg" onClick={onToggleTutoringLane} disabled={tutoringDisabled} data-testid="toggle-tutoring-lane" aria-pressed={tutoringActive}>
           Tutoring Lane
         </Button>
       )}
