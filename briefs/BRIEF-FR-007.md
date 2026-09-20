@@ -2,7 +2,7 @@
 
 **Version:** 1.0  
 **Date:** 2026-09-17  
-**Status:** ACTIVE ON BRIEF BRANCH; do not merge until all acceptance gates close  
+**Status:** ACTIVE; implementation/cutover changes may merge once the pre-soak hosted gate is green, but FR-007 itself must not be declared closed until all acceptance gates (including the real >=7-day soak and Founder validation) close  
 **Governing execution:** `AGENTS.md`, `docs/AUTHORITY_INDEX.md`, `docs/AGENT_EXECUTION_PROTOCOL.md`, `docs/CI_EFFICIENCY_POLICY.md`  
 **Related decisions:** `docs/adr/ADR-0022-cloud-native-runtime-and-supabase-data-plane.md` (partially superseded), `docs/adr/ADR-0023-zero-dollar-founder-runtime.md` (current runtime/cost authority)  
 **Founder decision:** rebuild the Founder Alpha runtime as a real cloud/web product and remove all production dependence on a founder-owned PC.  
@@ -255,6 +255,8 @@ Binary artifacts live in private object storage, not in ephemeral local disk.
 **W6.5 — Provider exit test.** Produce and verify a provider-neutral export of critical database state and private artifact inventory sufficient to rebuild elsewhere.
 
 ### Wave 7 — Reliability soak and Founder validation gate
+
+**Cutover/merge sequencing note:** the production-capable implementation must be allowed to land on the default branch before this time-based gate, because GitHub scheduled workflows execute from the default branch. Landing the implementation after the pre-soak hosted gate is green does **not** close FR-007 and does not weaken A-14; it starts the real acceptance window.
 
 Run the cloud production stack for at least 7 consecutive days with no production process on the Founder PC. Scheduled source acquisition/evaluation must continue, the feed must remain available, and monitoring evidence must cover the period.
 
