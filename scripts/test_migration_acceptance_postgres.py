@@ -50,10 +50,10 @@ class AcceptancePostgresDrills(unittest.TestCase):
                     ("accept_eval", "accept_opp", "b" * 64, "uncertain", 0.5, "{}", "[]", "fixture-v1"))
                 cursor.execute(
                     "INSERT INTO public.artifact_cache "
-                    "(cache_key,opportunity_id,truth_pack_hash,template_id,artifact_kind,content_type,payload) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                    "(cache_key,opportunity_id,truth_pack_hash,template_id,artifact_kind,content_type,payload,storage_backend) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
                     ("c" * 64, "accept_opp", "b" * 64, "fixture", "pdf", "application/pdf",
-                     b"synthetic acceptance artifact"))
+                     b"synthetic acceptance artifact", "postgres_payload"))
                 connection.commit()
             finally:
                 connection.close()
