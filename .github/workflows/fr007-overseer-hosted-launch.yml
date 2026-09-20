@@ -13,6 +13,8 @@ on:
       - web/next.config.ts
       - web/app/api/**
       - web/lib/supabase/browser.ts
+      - web/tests/e2e/staging-smoke.spec.ts
+      - web/playwright.staging.config.ts
       - pyproject.toml
 
 permissions:
