@@ -3,6 +3,10 @@ name: FR-007 durable worker drain
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: "Execution mode for bootstrap (all, drain, enqueue)"
+        required: false
+        default: "all"
       max_jobs:
         description: "Maximum jobs to drain in this bounded recovery run (capped to 150)"
         required: false
@@ -48,8 +52,13 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           set -euo pipefail
+          RAW_MODE="${{ inputs.mode || 'all' }}"
           RAW_MAX="${{ inputs.max_jobs || '10' }}"
           RAW_BUDGET="${{ inputs.time_budget_seconds || '300' }}"
+          MODE="all"
+          if [ "${RAW_MODE}" = "drain" ] || [ "${RAW_MODE}" = "enqueue" ] || [ "${RAW_MODE}" = "all" ]; then
+            MODE="${RAW_MODE}"
+          fi
           MAX_JOBS=$(( RAW_MAX > 150 ? 150 : (RAW_MAX < 1 ? 10 : RAW_MAX) ))
           TIME_BUDGET=$(( RAW_BUDGET > 540 ? 540 : (RAW_BUDGET < 10 ? 300 : RAW_BUDGET) ))
-          python scripts/fr007_hosted_bootstrap.py --mode all --max-jobs "${MAX_JOBS}" --time-budget-seconds "${TIME_BUDGET}"
+          python scripts/fr007_hosted_bootstrap.py --mode "${MODE}" --max-jobs "${MAX_JOBS}" --time-budget-seconds "${TIME_BUDGET}"

@@ -124,6 +124,12 @@ jobs:
           MONITOR_EXIT_CODE=$?
           set -e
 
+          if [ -f ".monitor_output/report.json" ]; then
+            echo "--- MONITOR REPORT ---"
+            cat .monitor_output/report.json
+            echo "--- END MONITOR REPORT ---"
+          fi
+
           echo "Generating immutable soak snapshot for interval (exit code: ${MONITOR_EXIT_CODE})..."
           python scripts/fr007_soak_snapshot.py \
             --report-file .monitor_output/report.json \
