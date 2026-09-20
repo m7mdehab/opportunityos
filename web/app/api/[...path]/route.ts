@@ -53,6 +53,168 @@ async function hostedAccess(request: NextRequest, config: HostedConfig): Promise
   return { token: session.access_token, refreshed: session };
 }
 function hostedFeedRow(row: Record<string, unknown>) { let reasons: string[] = []; const raw = row.reasons_json; if (typeof raw === "string") { try { const parsed = JSON.parse(raw); if (Array.isArray(parsed)) reasons = parsed.map((x) => typeof x === "string" ? x : typeof x?.text === "string" ? x.text : "").filter(Boolean); } catch {} } return { id: String(row.opportunity_id ?? row.id ?? ""), title: row.title ?? "", organization: row.organization ?? "", source_id: row.source_id ?? "", source_url: row.source_url ?? "", track: row.track, decision: row.qualification_decision ?? null, fit_score: row.fit_score ?? null, top_reasons: reasons, deadline: row.deadline ?? null, posted_date: row.posted_date ?? null, is_stale: false, action_state: null, feedback_label: null, hidden_by: [], flagged_by: [], work_mode: row.work_mode ?? "unspecified", work_mode_source: null, location_country: row.location_country ?? null, location_city: row.location_city ?? null, location_region: row.location_region ?? null, remote_scope: row.remote_scope ?? "unspecified", remote_scope_regions: [], employment_type: row.employment_type ?? "unspecified", seniority_level: row.seniority_level ?? "unspecified", compensation_min: null, compensation_max: null, compensation_currency: null, compensation_period: null, title_family: row.title_family ?? null, title_level: null, family_key: null, family_size: null }; }
+
+type HostedFacetDefinition = {
+  facet_id: string;
+  value_type: "enum" | "string" | "boolean" | "range" | "date-window";
+  description: string;
+  available?: boolean;
+  unavailable_reason?: string | null;
+};
+
+const HOSTED_FACET_DEFINITIONS: HostedFacetDefinition[] = [
+  { facet_id: "work_mode", value_type: "enum", description: "How the role is performed (remote/hybrid/onsite/unspecified)." },
+  { facet_id: "location_country", value_type: "enum", description: "Opportunity's location country (ISO-2)." },
+  { facet_id: "location_city", value_type: "string", description: "Opportunity's location city." },
+  { facet_id: "remote_scope", value_type: "enum", description: "Geographic scope a remote posting is open to." },
+  { facet_id: "employment_type", value_type: "enum", description: "Full-time / contract / etc." },
+  { facet_id: "seniority_level", value_type: "enum", description: "Inferred seniority level." },
+  { facet_id: "title_family", value_type: "enum", description: "Assigned title family." },
+  { facet_id: "track", value_type: "enum", description: "Employment vs. procurement track." },
+  { facet_id: "source_id", value_type: "enum", description: "Source adapter this opportunity came from." },
+  { facet_id: "employer", value_type: "string", description: "Hiring organization." },
+  { facet_id: "posted_within", value_type: "date-window", description: "How recently the opportunity was posted." },
+  { facet_id: "compensation_stated", value_type: "boolean", description: "Whether any compensation amount was extracted." },
+  { facet_id: "decision", value_type: "enum", description: "The latest qualification decision." },
+  { facet_id: "fit_score", value_type: "range", description: "Fit score bucketed in quartiles." },
+  {
+    facet_id: "language",
+    value_type: "enum",
+    description: "Posting language.",
+    available: false,
+    unavailable_reason: "Posting language is not persisted in the current Founder Alpha storage contract.",
+  },
+];
+
+function hostedFacetScalar(row: Record<string, unknown>, facetId: string): string {
+  const unspecified = (value: unknown) => {
+    const text = value == null ? "" : String(value).trim();
+    return text || "unspecified";
+  };
+  if (facetId === "employer") return unspecified(row.organization);
+  if (facetId === "decision") return unspecified(row.qualification_decision);
+  if (facetId === "compensation_stated") {
+    return row.compensation_min != null || row.compensation_max != null ? "yes" : "no";
+  }
+  if (facetId === "fit_score") {
+    const score = typeof row.fit_score === "number" ? row.fit_score : Number(row.fit_score);
+    if (!Number.isFinite(score)) return "unscored";
+    if (score < 25) return "0-25";
+    if (score < 50) return "25-50";
+    if (score < 75) return "50-75";
+    return "75-100";
+  }
+  if (facetId === "posted_within") {
+    const raw = row.posted_date;
+    if (!raw) return "unspecified";
+    const posted = new Date(String(raw).slice(0, 10) + "T00:00:00Z");
+    if (!Number.isFinite(posted.getTime())) return "unspecified";
+    const ageDays = (Date.now() - posted.getTime()) / 86400000;
+    if (ageDays < 1) return "last_24h";
+    if (ageDays < 7) return "last_7d";
+    if (ageDays < 30) return "last_30d";
+    if (ageDays < 90) return "last_90d";
+    return "older";
+  }
+  return unspecified(row[facetId]);
+}
+
+function hostedFacetSettings(rows: unknown[]): Map<string, { include: string[]; exclude: string[] }> {
+  const result = new Map<string, { include: string[]; exclude: string[] }>();
+  for (const raw of rows) {
+    if (!raw || typeof raw !== "object") continue;
+    const row = raw as Record<string, unknown>;
+    const facetId = typeof row.facet_id === "string" ? row.facet_id : "";
+    if (!facetId) continue;
+    let parsed: unknown = row.values_json;
+    if (typeof parsed === "string") {
+      try { parsed = JSON.parse(parsed); } catch { parsed = {}; }
+    }
+    const object = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+    const include = Array.isArray(object.include) ? object.include.map(String) : [];
+    const exclude = Array.isArray(object.exclude) ? object.exclude.map(String) : [];
+    result.set(facetId, { include, exclude });
+  }
+  return result;
+}
+
+async function hostedFacetPayload(config: HostedConfig, token: string): Promise<NextResponse> {
+  const auth = { Authorization: `Bearer ${token}` };
+  const settingsResponse = await hostedFetch(
+    config,
+    "/rest/v1/founder_facet_settings_view?select=facet_id,values_json&order=facet_id.asc",
+    { headers: auth }
+  );
+  const settingsRows = await settingsResponse.json().catch(() => []);
+  if (!settingsResponse.ok) return NextResponse.json(settingsRows, { status: settingsResponse.status });
+  const settings = hostedFacetSettings(Array.isArray(settingsRows) ? settingsRows : []);
+
+  const selected = [
+    "posted_date","work_mode","location_country","location_city","remote_scope",
+    "employment_type","seniority_level","title_family","track","source_id","organization",
+    "qualification_decision","fit_score","compensation_min","compensation_max"
+  ].join(",");
+  const rows: Record<string, unknown>[] = [];
+  const pageSize = 500;
+  for (let offset = 0; offset < 5000; offset += pageSize) {
+    const response = await hostedFetch(
+      config,
+      `/rest/v1/founder_opportunity_detail?select=${selected}&order=id.asc&offset=${offset}&limit=${pageSize}`,
+      { headers: auth }
+    );
+    const batch = await response.json().catch(() => []);
+    if (!response.ok) return NextResponse.json(batch, { status: response.status });
+    if (!Array.isArray(batch)) break;
+    for (const row of batch) if (row && typeof row === "object") rows.push(row as Record<string, unknown>);
+    if (batch.length < pageSize) break;
+  }
+
+  const facets = HOSTED_FACET_DEFINITIONS.map((definition) => {
+    if (definition.available === false) {
+      return {
+        facet_id: definition.facet_id,
+        value_type: definition.value_type,
+        description: definition.description,
+        available: false,
+        unavailable_reason: definition.unavailable_reason ?? "Unavailable",
+        values: [],
+        excluded_count: 0,
+        include: [],
+        exclude: [],
+      };
+    }
+
+    const current = settings.get(definition.facet_id) ?? { include: [], exclude: [] };
+    const counts = new Map<string, number>();
+    let excludedCount = 0;
+    for (const row of rows) {
+      const value = hostedFacetScalar(row, definition.facet_id);
+      counts.set(value, (counts.get(value) ?? 0) + 1);
+      const hidden = (current.include.length > 0 && !current.include.includes(value)) || current.exclude.includes(value);
+      if (hidden) excludedCount += 1;
+    }
+    const values = [...counts.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([value, count]) => ({
+        value,
+        count,
+        state: current.include.includes(value) ? "include" : current.exclude.includes(value) ? "exclude" : "off",
+      }));
+
+    return {
+      facet_id: definition.facet_id,
+      value_type: definition.value_type,
+      description: definition.description,
+      available: true,
+      unavailable_reason: null,
+      values,
+      excluded_count: excludedCount,
+      include: current.include,
+      exclude: current.exclude,
+    };
+  });
+  return NextResponse.json({ facets });
+}
 async function hostedContract(request: NextRequest, path: string[], token: string, config: HostedConfig): Promise<NextResponse> {
   const subpath = path.join("/"); const method = request.method.toUpperCase(); const url = new URL(request.url);
   if (subpath === "opportunities" && method === "GET") {
@@ -71,7 +233,7 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
     const response = await hostedFetch(config, `/rest/v1/${view}?select=*`, { headers: { Authorization: `Bearer ${token}` } });
     const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status });
     if (subpath === "filters") return NextResponse.json({ filters: Array.isArray(rows) ? rows.map((row: Record<string, unknown>) => ({ filter_id: row.filter_id, enabled: Boolean(row.enabled), mode: row.mode, params: typeof row.params_json === "string" ? JSON.parse(row.params_json) : {}, affected_count: 0, description: "", unavailable_reason: null })) : [] });
-    if (subpath === "facets") return NextResponse.json({ facets: Array.isArray(rows) ? rows.map((row: Record<string, unknown>) => ({ facet_id: row.facet_id, value_type: "enum", description: "", available: true, unavailable_reason: null, values: [], excluded_count: 0, include: [], exclude: [] })) : [] });
+    if (subpath === "facets") return hostedFacetPayload(config, token);
     return NextResponse.json({ views: Array.isArray(rows) ? rows.map((row: Record<string, unknown>) => ({ id: row.id, name: row.name, facets: typeof row.facets_json === "string" ? JSON.parse(row.facets_json) : {}, search_query: row.search_query ?? null, is_default: Boolean(row.is_default) })) : [] });
   }
   if (subpath === "truth/status" && method === "GET") {
