@@ -24,7 +24,7 @@ jobs:
           python-version: "3.11"
       - name: Install repository dependencies
         run: python -m pip install -e .
-      - name: Drain a bounded durable queue slice
+      - name: Enqueue due sources and drain a bounded durable queue slice
         env:
           OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
           OPPORTUNITYOS_ENVIRONMENT: cloud
@@ -32,4 +32,4 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           set -euo pipefail
-          python scripts/fr007_hosted_bootstrap.py --mode drain --max-jobs 10 --time-budget-seconds 300
+          python scripts/fr007_hosted_bootstrap.py --mode all --max-jobs 10 --time-budget-seconds 300
