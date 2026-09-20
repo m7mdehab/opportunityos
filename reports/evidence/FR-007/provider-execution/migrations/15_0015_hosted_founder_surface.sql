@@ -59,13 +59,13 @@ CREATE VIEW public.founder_source_overview
           LEFT JOIN public.founder_feed f ON f.source_id = s.source_id
          GROUP BY split_part(s.source_id, ':', 1), s.source_id
       ), manual AS (
-        SELECT families.source_family,
+        SELECT families.source_family::text AS source_family,
                NULL::varchar(128) AS source_id,
                0::integer AS opportunity_count,
                0::integer AS hidden_count,
-               NULL::timestamp AS last_success_at,
+               NULL::timestamp without time zone AS last_success_at,
                NULL::varchar(32) AS last_status,
-               NULL::timestamp AS next_due_at,
+               NULL::timestamp without time zone AS next_due_at,
                true AS manual_only
           FROM (VALUES
             ('ai_jobs_net'), ('arc_dev'), ('bayt'), ('cambly'), ('chegg'),
