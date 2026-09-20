@@ -15,6 +15,17 @@ const ACTION_STATE_LABEL: Record<string, string> = {
   snoozed: "Snoozed",
 }
 
+const FEEDBACK_LABEL: Record<string, string> = {
+  good_match: "Good match",
+  bad_match: "Bad match",
+  eligibility_wrong: "Not eligible",
+  seniority_wrong: "Seniority mismatch",
+  irrelevant_role: "Wrong track",
+  source_quality_issue: "Source issue",
+  duplicate_issue: "Duplicate",
+  review_required: "Review required",
+}
+
 /** BRIEF-FR-006 C5: the founder's original complaint was "no card said
  * whether the job was remote, hybrid, or on-site" — `work_mode` is always
  * present on `OpportunityListItem` (never `undefined`), and `"unspecified"`
@@ -155,7 +166,9 @@ export const OpportunityCard = forwardRef<
             </Badge>
           )}
           {o.feedback_label && (
-            <Badge variant="outline">{o.feedback_label.replaceAll("_", " ")}</Badge>
+            <Badge variant="outline">
+              {FEEDBACK_LABEL[o.feedback_label] ?? o.feedback_label.replaceAll("_", " ")}
+            </Badge>
           )}
         </div>
 
