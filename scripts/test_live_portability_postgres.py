@@ -52,11 +52,12 @@ class LivePostgresPortabilityTests(unittest.TestCase):
                 ("opp_fixture_1", "dismissed"))
             cursor.execute(
                 "INSERT INTO public.artifact_cache "
-                "(cache_key,opportunity_id,truth_pack_hash,template_id,artifact_kind,content_type,payload) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s),(%s,%s,%s,%s,%s,%s,%s)",
+                "(cache_key,opportunity_id,truth_pack_hash,template_id,artifact_kind,content_type,payload,storage_backend) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s),(%s,%s,%s,%s,%s,%s,%s,%s)",
                 ("c" * 64, "opp_fixture_1", "b" * 64, "fixture", "pdf", "application/pdf",
-                 b"synthetic artifact bytes", "d" * 64, "opp_fixture_1", "b" * 64,
-                 "fixture", "docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", None))
+                 b"synthetic artifact bytes", "postgres_payload", "d" * 64, "opp_fixture_1", "b" * 64,
+                 "fixture", "docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                 None, "postgres_payload"))
             connection.commit()
         finally:
             connection.close()
