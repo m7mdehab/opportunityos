@@ -48,6 +48,41 @@ jobs:
           python scripts/encrypted_backup.py verify \
             --archive backup-out/backup.dump.enc \
             --manifest backup-out/backup.encrypted.manifest.json
+      - name: Record durable backup heartbeat
+        env:
+          OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from sqlalchemy import create_engine, text
+
+          manifest = json.load(open("backup-out/backup.encrypted.manifest.json", encoding="utf-8"))
+          engine = create_engine(os.environ["OPOS_TARGET_DB_URL"], future=True)
+          with engine.begin() as conn:
+              conn.execute(text("""
+                  INSERT INTO public.backup_heartbeats
+                    (id, result, backup_completed_at, encryption, destination_class,
+                     database_snapshot_sha, artifact_run_id, updated_at)
+                  VALUES
+                    ('latest', 'SUCCESS', :completed_at, true, 'github_actions_encrypted_artifact',
+                     :sha, :run_id, :updated_at)
+                  ON CONFLICT (id) DO UPDATE SET
+                    result=EXCLUDED.result,
+                    backup_completed_at=EXCLUDED.backup_completed_at,
+                    encryption=EXCLUDED.encryption,
+                    destination_class=EXCLUDED.destination_class,
+                    database_snapshot_sha=EXCLUDED.database_snapshot_sha,
+                    artifact_run_id=EXCLUDED.artifact_run_id,
+                    updated_at=EXCLUDED.updated_at
+              """), {
+                  "completed_at": manifest.get("created_at") or datetime.now(timezone.utc).isoformat(),
+                  "sha": manifest["sha256"],
+                  "run_id": os.environ.get("GITHUB_RUN_ID"),
+                  "updated_at": datetime.now(timezone.utc).isoformat(),
+              })
+          print("BACKUP_HEARTBEAT_RECORDED=PASS")
+          PY
       - name: Upload encrypted backup only
         uses: actions/upload-artifact@v4
         with:
