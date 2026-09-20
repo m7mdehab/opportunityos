@@ -2,7 +2,7 @@ name: FR-007 Disposable PostgreSQL Portability Proof
 
 on:
   push:
-    branches: [work/fr007-codex-live-proof-runner, work/fr007-codex-production-migration-readiness, work/fr007-codex-migration-acceptance, work/fr007-codex-hosted-dataplane-wave16]
+    branches: [work/fr007-codex-live-proof-runner, work/fr007-codex-production-migration-readiness, work/fr007-codex-migration-acceptance, work/fr007-codex-hosted-dataplane-wave16, work/fr007-overseer-integration]
     paths:
       - '.github/workflows/fr007-portability-proof.yml'
       - 'scripts/live_portability_proof.py'
@@ -84,3 +84,133 @@ jobs:
           else
             python scripts/check_guard.py --allow-missing-patterns
           fi
+
+  live-supabase-exit:
+    if: ${{ github.ref == 'refs/heads/work/fr007-overseer-integration' || github.ref == 'refs/heads/main' }}
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: opportunityos
+          POSTGRES_PASSWORD: ${{ github.run_id }}
+          POSTGRES_DB: exit_target
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U opportunityos -d exit_target"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      OPOS_SOURCE_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+      OPOS_TARGET_DB_URL: postgresql+psycopg2://opportunityos:${{ github.run_id }}@localhost:5432/exit_target
+      PGPASSWORD: ${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install repository and PostgreSQL 17 client
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          sudo install -d -m 0755 /usr/share/postgresql-common/pgdg
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | gpg --dearmor \
+            | sudo tee /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg >/dev/null
+          . /etc/os-release
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client-17
+          pg_dump --version
+          pg_restore --version
+      - name: Export Supabase and restore to independent PostgreSQL
+        run: |
+          set -euo pipefail
+          mkdir -p live-exit
+          python scripts/db_migration_restore.py backup --destination live-exit/supabase.dump \
+            | tee live-exit/backup-result.json
+          python scripts/db_migration_restore.py verify-backup \
+            --archive live-exit/supabase.dump \
+            --manifest live-exit/supabase.dump.manifest.json \
+            | tee live-exit/verify-result.json
+          python scripts/db_migration_restore.py restore \
+            --archive live-exit/supabase.dump \
+            --manifest live-exit/supabase.dump.manifest.json \
+            --confirm-target-restore \
+            | tee live-exit/restore-result.json
+          python scripts/db_migration_restore.py inspect \
+            | tee live-exit/inspect-result.json
+      - name: Compare live source and restored provider-neutral target
+        shell: bash
+        run: |
+          set +e
+          python scripts/db_migration_restore.py parity-live \
+            > live-exit/parity-result.json
+          code=$?
+          set -e
+          cat live-exit/parity-result.json
+          if [ "$code" -eq 1 ] || [ "$code" -eq 2 ]; then
+            echo "::error::Live Supabase exit parity mismatched or execution failed."
+            exit "$code"
+          fi
+          if [ "$code" -eq 3 ]; then
+            echo "SUPPORTED_PARITY_MATCHED_WITH_EXPLICIT_UNSUPPORTED_CONCEPTS=PASS"
+          else
+            echo "FULL_PARITY=PASS"
+          fi
+      - name: Verify restored migration head and canonical relation counts
+        run: |
+          python - <<'PY' | tee live-exit/relation-parity.json
+          import json, os
+          import psycopg2
+
+          def inspect(dsn):
+              dsn = dsn.replace("postgresql+psycopg2://", "postgresql://", 1)
+              conn = psycopg2.connect(dsn, connect_timeout=10)
+              try:
+                  cur = conn.cursor()
+                  cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+                  cur.execute("SELECT version_num FROM public.alembic_version")
+                  revision = cur.fetchone()[0]
+                  relations = {}
+                  for name in (
+                      "opportunities","field_provenances","match_evaluations",
+                      "feed_projection","source_schedules","worker_jobs",
+                      "source_poll_runs","founder_cv_selections","backup_heartbeats"
+                  ):
+                      cur.execute("SELECT to_regclass(%s)", (f"public.{name}",))
+                      if cur.fetchone()[0] is None:
+                          relations[name] = None
+                      else:
+                          cur.execute(f"SELECT count(*) FROM public.{name}")
+                          relations[name] = int(cur.fetchone()[0])
+                  conn.rollback()
+                  return {"revision": revision, "relations": relations}
+              finally:
+                  conn.close()
+
+          source = inspect(os.environ["OPOS_SOURCE_DB_URL"])
+          target = inspect(os.environ["OPOS_TARGET_DB_URL"])
+          if source != target:
+              raise SystemExit("restored canonical relation counts/revision differ from Supabase source")
+          print(json.dumps({"status":"PASS","source":source,"target":target}, sort_keys=True))
+          PY
+      - name: Upload sanitized live provider-exit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fr007-live-provider-exit-${{ github.run_id }}
+          path: |
+            live-exit/backup-result.json
+            live-exit/verify-result.json
+            live-exit/restore-result.json
+            live-exit/inspect-result.json
+            live-exit/parity-result.json
+            live-exit/relation-parity.json
+            live-exit/supabase.dump.manifest.json
+          if-no-files-found: error
+          retention-days: 30
+
