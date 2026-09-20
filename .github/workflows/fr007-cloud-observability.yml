@@ -6,7 +6,9 @@ on:
     # Standard hosted runners on the current public repository are no-charge; cadence is reliability-driven.
     - cron: "*/30 * * * *"
   push:
-    branches: [main]
+    branches:
+      - main
+      - work/fr007-overseer-integration
     paths:
       - .github/workflows/fr007-cloud-observability.yml
   workflow_dispatch:
@@ -47,7 +49,7 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      OPOS_MONITOR_WEB_URL: ${{ secrets.OPOS_MONITOR_WEB_URL || vars.OPOS_STAGING_WEB_URL || secrets.FR007_WEB_URL }}
+      OPOS_MONITOR_WEB_URL: ${{ secrets.OPOS_MONITOR_WEB_URL || vars.OPOS_STAGING_WEB_URL || secrets.FR007_WEB_URL || 'https://opportunityos.m7mdehab.com' }}
       OPOS_MONITOR_API_URL: ${{ secrets.OPOS_MONITOR_API_URL || vars.OPPORTUNITYOS_API_ORIGIN || secrets.FR007_API_URL }}
       CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL || secrets.FR007_DATABASE_URL }}
       OPOS_BACKUP_HEARTBEAT_PATH: ${{ secrets.OPOS_BACKUP_HEARTBEAT_PATH || secrets.FR007_BACKUP_MANIFEST_PATH }}
