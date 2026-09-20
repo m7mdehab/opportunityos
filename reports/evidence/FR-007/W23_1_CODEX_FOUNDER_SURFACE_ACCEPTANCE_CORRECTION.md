@@ -45,11 +45,11 @@ No unresolved implementation blocker. Hosted production data and Founder state a
 
 ## Final readiness
 
-READY. Final commit: `ca97b29701e19339592a4575da1f1fe59a061693`.
+READY. Final commit: `14a58aaaac54c2a3739698c95b42da48b89b687a`.
 
-Remote proof: `git ls-remote origin refs/heads/work/fr007-codex-founder-surface-corrections` returned the same SHA.
+Remote proof: `git ls-remote origin refs/heads/work/fr007-codex-founder-surface-corrections` returned `14a58aaaac54c2a3739698c95b42da48b89b687a`.
 
-- Mandatory Governance & Test Suite: run `35511180581` SUCCESS; governance job `106079250719` SUCCESS, web-build-lint-playwright job `106079250816` SUCCESS, backend job `106079250820` SUCCESS.
+- Mandatory Governance & Test Suite: run `35511453345` SUCCESS; governance job `106079250719` SUCCESS, web-build-lint-playwright job `106079250816` SUCCESS, backend job `106079250820` SUCCESS.
 - Disposable PostgreSQL portability/provider proof: run `35510091256` SUCCESS.
 - The mandatory web job executed the complete Chromium suite, including desktop feed behavior and the existing 360px and 1280px mobile/desktop screenshot cases. Its Playwright report artifact was uploaded by CI.
 - The mandatory backend job executed the full repository discovery suite (the previous diagnostic run reported 1,407 tests with 1 failure and 2 errors before the final syntax, cross-platform Truth Pack, and backup authorization repairs; the final rerun concluded SUCCESS).
