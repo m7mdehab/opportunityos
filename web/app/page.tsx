@@ -129,6 +129,8 @@ export default function FeedPage() {
         q: filters.q || undefined,
         source_family: filters.sourceFamily || undefined,
         source_id: filters.sourceId || undefined,
+        activity: filters.activity === "all" ? undefined : filters.activity,
+        feedback: filters.feedback || undefined,
         page,
         page_size: PAGE_SIZE,
         include_hidden: includeHidden,
@@ -268,6 +270,9 @@ export default function FeedPage() {
         : prev
     )
     refreshDashboard()
+    // A feedback/action filter can change whether the current job belongs
+    // in this result set, so reconcile against persisted hosted state.
+    refreshFromFirstPage()
   }
 
   function handleActionSubmitted(id: string, state: ActionState) {
@@ -277,6 +282,7 @@ export default function FeedPage() {
         : prev
     )
     refreshDashboard()
+    refreshFromFirstPage()
   }
 
   const selectedItem = useMemo(
@@ -295,7 +301,9 @@ export default function FeedPage() {
     filters.minScore !== "" ||
     filters.q !== "" ||
     filters.sourceFamily !== "" ||
-    filters.sourceId !== ""
+    filters.sourceId !== "" ||
+    filters.activity !== "to_review" ||
+    filters.feedback !== ""
 
   const workerIdle =
     !!sources && sources.length > 0 && sources.every((s) => s.last_poll === null)
