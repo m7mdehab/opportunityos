@@ -21,6 +21,10 @@ const nextConfig: NextConfig = {
   // parallel run does not collide with another instance on this shared
   // host. Evaluated at `next build`/`next dev` startup, not per-request.
   async rewrites() {
+    // Cloudflare/OpenNext owns /api through the App Router route handler.
+    // The localhost rewrite is strictly a local-development compatibility path.
+    if (process.env.OPPORTUNITYOS_CLOUD_EDGE === "1") return []
+
     const apiPort = process.env.OPPORTUNITYOS_API_PORT || "8000"
     return [
       {
