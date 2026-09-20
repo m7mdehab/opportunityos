@@ -110,7 +110,7 @@ test.describe("W24 Founder UX polish", () => {
 
     await feedback.selectOption("good_match")
     await expect(page.getByTestId(`opportunity-card-${firstId}`)).toBeVisible()
-    await expect(page.getByTestId(`opportunity-card-${firstId}`)).toContainText("good match")
+    await expect(page.getByTestId(`opportunity-card-${firstId}`)).toContainText("Good match")
 
     await feedback.selectOption("")
     await activity.selectOption("all")
