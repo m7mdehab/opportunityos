@@ -1,15 +1,25 @@
-portfolio_version: "2026-09-19-v1"
+portfolio_version: "2026-09-21-final-9cv"
 owner: "Mohammed Ehab ElNomany"
 status: "final_locked"
+source_pack:
+  filename: "Mohammed_Ehab_CV_System_2026-09-21_FINAL.zip"
+  sha256: "f5475977e331c5efb70e21a6b2b702904c80ebdc8aa2f22a1dccee24a8e807a4"
+  registry_sha256: "201ee75c2675f707b2a24af728f85ed62ceeb25df6667b5ec549a6a50eff4b71"
+  personalization_sha256: "6e1005ec9fc6f0562b870769f431df1cab7ff850ae8f507e4a7521d6e21afcdd"
+  ats_audit_sha256: "92da65cf861282fa57d132583d269f1287b643b9020e9192baa2323cacd051e5"
 storage:
   provider: "supabase"
   bucket: "founder-cv-portfolio"
   public: false
   object_prefix: "2026/"
+  editable_prefix: "2026/editable/"
+  system_prefix: "2026/system/"
 founder_policy: >-
-  These six PDFs are the authoritative employment CV portfolio. OpportunityOS must select exactly one intact PDF per
-  employment opportunity. It must not automatically rewrite, regenerate, reflow, restyle, or mutate CV wording or
-  formatting. Cover letters and application answers may still be generated from verified Truth Pack evidence.
+  These nine PDFs - eight targeted role-family CVs plus the Master Comprehensive CV - are the authoritative
+  employment CV portfolio. OpportunityOS must select exactly one intact PDF per employment opportunity. It must
+  not automatically rewrite, regenerate, reflow, restyle, or mutate the approved PDF wording or formatting.
+  The paired DOCX files are canonical editable masters retained privately for a future controlled tailoring
+  workflow; they are not mutated in the current application-time path.
 generation_policy:
   employment_cv_generation_enabled: false
   employment_cv_rewriting_enabled: false
@@ -18,66 +28,189 @@ generation_policy:
   fallback_variant: "master"
   manual_cv_edits_require_founder_approval: true
 variants:
-  - id: "cv-ai-engineer-2026"
-    variant: "ai_engineer"
-    filename: "Mohammed_Ehab_AI_Engineer_CV_2026.pdf"
-    object_path: "2026/Mohammed_Ehab_AI_Engineer_CV_2026.pdf"
-    sha256: "24e84bbaf4cd7aaff59bcbbedefa3db3f3b673c19b9913b3ff7a9283dab01c52"
-    pages: 2
-    status: "final_locked"
-    primary_roles: ["AI Engineer", "Generative AI Engineer", "LLM Engineer", "Applied AI Engineer", "RAG Engineer", "AI Application Engineer"]
-  - id: "cv-business-analyst-2026"
-    variant: "business_analyst"
-    filename: "Mohammed_Ehab_Business_Analyst_CV_2026.pdf"
-    object_path: "2026/Mohammed_Ehab_Business_Analyst_CV_2026.pdf"
-    sha256: "1ef4a990b081b1c07ddce26cd28cc99e6058e39d8b9c06dea58c8f0858a65301"
-    pages: 2
-    status: "final_locked"
-    primary_roles: ["Business Analyst", "Business Systems Analyst", "Technical Business Analyst", "Data Business Analyst"]
-  - id: "cv-data-analyst-2026"
-    variant: "data_analyst"
-    filename: "Mohammed_Ehab_Data_Analyst_CV_2026.pdf"
-    object_path: "2026/Mohammed_Ehab_Data_Analyst_CV_2026.pdf"
-    sha256: "9d8c99bd46fe82200b286ac7901e69f533d5d2a0f7e59393d8f98f2996bd058d"
-    pages: 2
-    status: "final_locked"
-    primary_roles: ["Data Analyst", "BI Analyst", "Business Intelligence Analyst", "Reporting Analyst", "Analytics Analyst"]
-  - id: "cv-data-engineer-2026"
+  - id: "cv-data-engineering-integration-2026"
     variant: "data_engineer"
-    filename: "Mohammed_Ehab_Data_Engineer_CV_2026.pdf"
-    object_path: "2026/Mohammed_Ehab_Data_Engineer_CV_2026.pdf"
-    sha256: "9a01666790f34ed16aea8ebd7c414411f6d7ee4a8cf7fcc3ed5edd1866867516"
+    family: "Data Engineering & Integration"
+    filename: "Mohammed_Ehab_Data_Engineering_Integration_CV_2026.pdf"
+    object_path: "2026/Mohammed_Ehab_Data_Engineering_Integration_CV_2026.pdf"
+    sha256: "80fe24c23364efe94525147609e1c70554d2347e06d11632015fd7095789a405"
+    docx_filename: "Mohammed_Ehab_Data_Engineering_Integration_CV_2026.docx"
+    docx_object_path: "2026/editable/Mohammed_Ehab_Data_Engineering_Integration_CV_2026.docx"
+    docx_sha256: "bda6f94eb577c31cbd1a5a4162643e7832571314bbedf9c54fde4d7cbeba0bc7"
     pages: 2
     status: "final_locked"
-    primary_roles: ["Data Engineer", "Data Migration Engineer", "ETL Engineer", "Data Integration Engineer", "Analytics Engineer"]
+    primary_roles:
+      - "Data Engineer"
+      - "Data Integration Engineer"
+      - "ETL Engineer"
+      - "ETL Developer"
+      - "Data Migration Engineer"
+      - "Data Implementation Engineer"
+      - "Implementation Engineer (data-heavy)"
+      - "Data Platform Engineer (junior/mid when stack fits)"
+  - id: "cv-data-analytics-bi-2026"
+    variant: "data_analyst"
+    family: "Data Analytics & BI"
+    filename: "Mohammed_Ehab_Data_Analytics_BI_CV_2026.pdf"
+    object_path: "2026/Mohammed_Ehab_Data_Analytics_BI_CV_2026.pdf"
+    sha256: "56558cb5c618be45b0261ac9730a13f38088d50ff6869dba9a257e00cd8326a9"
+    docx_filename: "Mohammed_Ehab_Data_Analytics_BI_CV_2026.docx"
+    docx_object_path: "2026/editable/Mohammed_Ehab_Data_Analytics_BI_CV_2026.docx"
+    docx_sha256: "5c6206a5dc7a31c2872273d9de85e6a94bde1de9539fe665e728f21fd64154de"
+    pages: 2
+    status: "final_locked"
+    primary_roles:
+      - "Data Analyst"
+      - "BI Analyst"
+      - "Business Intelligence Analyst"
+      - "BI Developer"
+      - "Reporting Analyst"
+      - "Operations Analyst"
+      - "Supply Chain Analyst"
+      - "Marketing Analyst"
   - id: "cv-data-scientist-2026"
     variant: "data_scientist"
+    family: "Data Scientist"
     filename: "Mohammed_Ehab_Data_Scientist_CV_2026.pdf"
     object_path: "2026/Mohammed_Ehab_Data_Scientist_CV_2026.pdf"
-    sha256: "d80953e57ea61d676001618b37ae73beb225659ad1835ee779500aa2bb470398"
+    sha256: "d6d7119d908eb05ce30e0d6b95a2a555c03828ab1be98c94fbd9bcd0158daebd"
+    docx_filename: "Mohammed_Ehab_Data_Scientist_CV_2026.docx"
+    docx_object_path: "2026/editable/Mohammed_Ehab_Data_Scientist_CV_2026.docx"
+    docx_sha256: "0e078110df8ef5005eebcc28114db473814bdf287a47a5ef44403c0a56d99417"
     pages: 2
     status: "final_locked"
-    primary_roles: ["Data Scientist", "Applied Scientist", "Machine Learning Scientist", "ML Engineer"]
-  - id: "cv-master-2026"
+    primary_roles:
+      - "Data Scientist"
+      - "Applied Data Scientist"
+      - "Decision Scientist"
+      - "Statistical Data Scientist"
+      - "Geospatial Data Scientist"
+  - id: "cv-machine-learning-engineer-2026"
+    variant: "ml_engineer"
+    family: "Machine Learning Engineer"
+    filename: "Mohammed_Ehab_Machine_Learning_Engineer_CV_2026.pdf"
+    object_path: "2026/Mohammed_Ehab_Machine_Learning_Engineer_CV_2026.pdf"
+    sha256: "b705a4cc85ad7aca72de8f2832b250e579bdb5e92a5c0f77b87e6971471058e3"
+    docx_filename: "Mohammed_Ehab_Machine_Learning_Engineer_CV_2026.docx"
+    docx_object_path: "2026/editable/Mohammed_Ehab_Machine_Learning_Engineer_CV_2026.docx"
+    docx_sha256: "024ced5ae2088d4815385065499ed6cd579a286bd3d19c7464420ad40eb0d870"
+    pages: 2
+    status: "final_locked"
+    primary_roles:
+      - "Machine Learning Engineer"
+      - "Applied ML Engineer"
+      - "Computer Vision Engineer"
+      - "Geospatial ML Engineer"
+      - "ML Engineer"
+      - "Production ML Engineer (when infrastructure requirements fit)"
+  - id: "cv-ai-llm-engineer-2026"
+    variant: "ai_engineer"
+    family: "AI / LLM Engineer"
+    filename: "Mohammed_Ehab_AI_LLM_Engineer_CV_2026.pdf"
+    object_path: "2026/Mohammed_Ehab_AI_LLM_Engineer_CV_2026.pdf"
+    sha256: "d4de3d8a5a634000fe4f4fc880fddbdf9f049653486244b1249b86dec4de651d"
+    docx_filename: "Mohammed_Ehab_AI_LLM_Engineer_CV_2026.docx"
+    docx_object_path: "2026/editable/Mohammed_Ehab_AI_LLM_Engineer_CV_2026.docx"
+    docx_sha256: "512899411c6365198920c1d381020a4559064622909f8f2333e0442e1aca09ba"
+    pages: 2
+    status: "final_locked"
+    primary_roles:
+      - "AI Engineer"
+      - "Applied AI Engineer"
+      - "LLM Engineer"
+      - "Generative AI Engineer"
+      - "RAG Engineer"
+      - "AI Automation Engineer"
+      - "Agent Engineer"
+  - id: "cv-business-technical-analyst-2026"
+    variant: "business_analyst"
+    family: "Business & Technical Business Analyst"
+    filename: "Mohammed_Ehab_Business_Technical_Analyst_CV_2026.pdf"
+    object_path: "2026/Mohammed_Ehab_Business_Technical_Analyst_CV_2026.pdf"
+    sha256: "63142654468062da55dfe5821127ce80547915205ca52eb2a413a2bea6e42f3c"
+    docx_filename: "Mohammed_Ehab_Business_Technical_Analyst_CV_2026.docx"
+    docx_object_path: "2026/editable/Mohammed_Ehab_Business_Technical_Analyst_CV_2026.docx"
+    docx_sha256: "e73ca7b70e9bee936d8b46e779a0c927796eb0b2fc9624b3656ed521e90f325c"
+    pages: 2
+    status: "final_locked"
+    primary_roles:
+      - "Business Analyst"
+      - "Technical Business Analyst"
+      - "IT Business Analyst"
+      - "Systems Analyst"
+      - "Business Systems Analyst"
+      - "Product Analyst"
+      - "Digital Business Analyst"
+  - id: "cv-ai-technical-solutions-engineer-2026"
+    variant: "solutions_engineer"
+    family: "AI / Technical Solutions Engineer"
+    filename: "Mohammed_Ehab_AI_Technical_Solutions_Engineer_CV_2026.pdf"
+    object_path: "2026/Mohammed_Ehab_AI_Technical_Solutions_Engineer_CV_2026.pdf"
+    sha256: "41a1a54342a9c1db091ffce7c68f2755ee3c51a8ea33abfa153e73b07b1ffd87"
+    docx_filename: "Mohammed_Ehab_AI_Technical_Solutions_Engineer_CV_2026.docx"
+    docx_object_path: "2026/editable/Mohammed_Ehab_AI_Technical_Solutions_Engineer_CV_2026.docx"
+    docx_sha256: "30c99eb0afc2031eb54290524802bd8e61fa4b5ef5dd851a016e21bc9d86b31f"
+    pages: 2
+    status: "final_locked"
+    primary_roles:
+      - "AI Solutions Engineer"
+      - "Solutions Engineer"
+      - "Technical Solutions Engineer"
+      - "Solutions Consultant"
+      - "Technical Consultant"
+      - "AI/Data Consultant"
+      - "Implementation Consultant"
+  - id: "cv-full-stack-product-engineer-2026"
+    variant: "fullstack_product"
+    family: "Full-Stack / Product Engineer"
+    filename: "Mohammed_Ehab_Full_Stack_Product_Engineer_CV_2026.pdf"
+    object_path: "2026/Mohammed_Ehab_Full_Stack_Product_Engineer_CV_2026.pdf"
+    sha256: "5b01d3bfb83bc90a67902f668499d42fa33146928bc6a1f05b29c760999ebf60"
+    docx_filename: "Mohammed_Ehab_Full_Stack_Product_Engineer_CV_2026.docx"
+    docx_object_path: "2026/editable/Mohammed_Ehab_Full_Stack_Product_Engineer_CV_2026.docx"
+    docx_sha256: "bdcaa105260383706097bc77651f88d034589b3a82ee675984c3c075eaa01f27"
+    pages: 2
+    status: "final_locked"
+    primary_roles:
+      - "Full-Stack Engineer"
+      - "Product Engineer"
+      - "Python/React Engineer"
+      - "Software Engineer (product/full-stack)"
+      - "Technical Product Engineer"
+  - id: "cv-master-comprehensive-2026"
     variant: "master"
-    filename: "Mohammed_Ehab_Master_CV_2026.pdf"
-    object_path: "2026/Mohammed_Ehab_Master_CV_2026.pdf"
-    sha256: "4b52a32e58008afd59a93ebdf9edc5b165a624a7e4f2cd13eefadf009a44b7d5"
-    pages: 2
+    family: "Master Comprehensive"
+    filename: "Mohammed_Ehab_Master_Comprehensive_CV_2026.pdf"
+    object_path: "2026/Mohammed_Ehab_Master_Comprehensive_CV_2026.pdf"
+    sha256: "f20ceec79d450f66d241640f36fbcbac74ee2d365da7e29e4d11883c352e5407"
+    docx_filename: "Mohammed_Ehab_Master_Comprehensive_CV_2026.docx"
+    docx_object_path: "2026/editable/Mohammed_Ehab_Master_Comprehensive_CV_2026.docx"
+    docx_sha256: "ef1d1ad7acf6c5489cec97821eb506f338a84f2fb1cbecc4b82183223594d1a8"
+    pages: 3
     status: "final_locked"
-    primary_roles: ["Cross-functional Data / AI / Analytics", "Hybrid technical-business roles", "Ambiguous specialist fit"]
+    primary_roles:
+      - "General recruiter/networking CV"
+      - "Website canonical CV"
+      - "Cross-functional opportunities"
+      - "OpportunityOS source CV"
 selection_policy:
+  source: "Supporting_Documents/OpportunityOS_CV_Registry.json"
   title_match_weight: 12
   description_keyword_weight: 2
   listed_skill_weight: 3
   fallback_variant: "master"
-  ml_engineer_rule: >-
-    Use AI Engineer when the role centers on production LLM/RAG/agents/AI applications; Data Scientist when it centers
-    on modeling/statistics/experimentation; Data Engineer when it centers on ML data pipelines/platforms. Never create a
-    seventh CV.
+  specialist_families:
+    - "data_engineer"
+    - "data_analyst"
+    - "data_scientist"
+    - "ml_engineer"
+    - "ai_engineer"
+    - "business_analyst"
+    - "solutions_engineer"
+    - "fullstack_product"
   tie_breakers:
-    - "explicit role-title match"
-    - "required-skill overlap"
-    - "responsibility-scope overlap"
+    - "explicit canonical role-title match"
+    - "dominant responsibility overlap"
+    - "required-skill/evidence overlap"
     - "career-track fit"
     - "master only when no specialist variant clearly dominates"

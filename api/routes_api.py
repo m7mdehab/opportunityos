@@ -1433,7 +1433,7 @@ def _serve_fixed_cv(
     """Select and serve one Founder-approved immutable PDF.
 
     This path never invokes the employment CV compiler or binary exporter.
-    The retrieved bytes must match the SHA-256 locked in the six-CV portfolio.
+    The retrieved bytes must match the SHA-256 locked in the nine-CV portfolio.
     """
     opp = session.query(OpportunityRecord).filter_by(id=opportunity_id).first()
     if opp is None:

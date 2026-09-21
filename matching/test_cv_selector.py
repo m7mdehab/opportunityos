@@ -1,5 +1,8 @@
-"""Regression tests for Founder-locked CV portfolio selection."""
+"""Regression tests for Founder-locked nine-CV portfolio selection."""
 import unittest
+from pathlib import Path
+
+import yaml
 
 from matching.cv_selector import portfolio_hashes, select_cv_for_opportunity
 from opportunity.models import Opportunity, Track
@@ -22,51 +25,93 @@ def opp(title: str, description: str = "", skills: tuple[str, ...] = ()) -> Oppo
 class FixedCVSelectorTests(unittest.TestCase):
     def test_data_engineer(self) -> None:
         selected = select_cv_for_opportunity(
-            opp("Data Engineer", "Build ETL data pipelines and data integration on Databricks.", ("SQL", "Databricks"))
+            opp(
+                "Data Integration Engineer",
+                "Build ETL data pipelines, source-to-target mappings and reconciliation on Databricks.",
+                ("SQL", "Databricks"),
+            )
         )
         self.assertEqual(selected.selected.variant, "data_engineer")
-
-    def test_data_scientist(self) -> None:
-        selected = select_cv_for_opportunity(
-            opp("Data Scientist", "Own forecasting, statistical modeling, experimentation and model calibration.", ("Python", "scikit-learn"))
-        )
-        self.assertEqual(selected.selected.variant, "data_scientist")
 
     def test_data_analyst(self) -> None:
         selected = select_cv_for_opportunity(
-            opp("Data Analyst", "Build Power BI dashboards, KPI reporting and Excel analysis.", ("Power BI", "SQL"))
+            opp(
+                "BI Developer",
+                "Build Power BI dashboards, KPI reporting and Excel analysis.",
+                ("Power BI", "SQL"),
+            )
         )
         self.assertEqual(selected.selected.variant, "data_analyst")
 
-    def test_business_analyst(self) -> None:
+    def test_data_scientist(self) -> None:
         selected = select_cv_for_opportunity(
-            opp("Business Analyst", "Gather business requirements, coordinate stakeholders and support UAT.", ("Requirements Gathering",))
-        )
-        self.assertEqual(selected.selected.variant, "business_analyst")
-
-    def test_ai_engineer(self) -> None:
-        selected = select_cv_for_opportunity(
-            opp("Generative AI Engineer", "Build LLM RAG agents with tool calling and FastAPI.", ("LLM", "RAG"))
-        )
-        self.assertEqual(selected.selected.variant, "ai_engineer")
-
-    def test_ml_engineer_llm_goes_ai(self) -> None:
-        selected = select_cv_for_opportunity(
-            opp("Machine Learning Engineer", "Production LLM and RAG agents, embeddings and tool calling.", ("Generative AI",))
-        )
-        self.assertEqual(selected.selected.variant, "ai_engineer")
-
-    def test_ml_engineer_modeling_goes_data_scientist(self) -> None:
-        selected = select_cv_for_opportunity(
-            opp("Machine Learning Engineer", "Predictive modeling, experimentation, statistics, calibration.", ("scikit-learn",))
+            opp(
+                "Decision Scientist",
+                "Own forecasting, statistical modeling, experimentation and model calibration.",
+                ("Python", "scikit-learn"),
+            )
         )
         self.assertEqual(selected.selected.variant, "data_scientist")
 
-    def test_ml_engineer_platform_goes_data_engineer(self) -> None:
+    def test_machine_learning_engineer_is_dedicated_variant(self) -> None:
         selected = select_cv_for_opportunity(
-            opp("Machine Learning Engineer", "Own training pipelines, feature store, Databricks and orchestration.", ("Databricks",))
+            opp(
+                "Machine Learning Engineer",
+                "Train and serve deep-learning computer-vision models with ONNX, MLflow and FastAPI.",
+                ("PyTorch", "Docker"),
+            )
         )
-        self.assertEqual(selected.selected.variant, "data_engineer")
+        self.assertEqual(selected.selected.variant, "ml_engineer")
+
+    def test_ai_engineer(self) -> None:
+        selected = select_cv_for_opportunity(
+            opp(
+                "Generative AI Engineer",
+                "Build LLM RAG agents with embeddings, tool calling and FastAPI.",
+                ("LLM", "RAG"),
+            )
+        )
+        self.assertEqual(selected.selected.variant, "ai_engineer")
+
+    def test_business_analyst(self) -> None:
+        selected = select_cv_for_opportunity(
+            opp(
+                "Technical Business Analyst",
+                "Gather business requirements, coordinate stakeholders and translate requirements into delivery specifications.",
+                ("Requirements Gathering",),
+            )
+        )
+        self.assertEqual(selected.selected.variant, "business_analyst")
+
+    def test_solutions_engineer(self) -> None:
+        selected = select_cv_for_opportunity(
+            opp(
+                "AI Solutions Engineer",
+                "Lead technical discovery, solution design, API integration and implementation planning.",
+                ("FastAPI", "PostgreSQL"),
+            )
+        )
+        self.assertEqual(selected.selected.variant, "solutions_engineer")
+
+    def test_fullstack_product_engineer(self) -> None:
+        selected = select_cv_for_opportunity(
+            opp(
+                "Product Engineer",
+                "Build a React and TypeScript frontend with a FastAPI backend, PostgreSQL and Docker.",
+                ("React", "TypeScript", "FastAPI"),
+            )
+        )
+        self.assertEqual(selected.selected.variant, "fullstack_product")
+
+    def test_generic_software_engineer_uses_product_cv_when_stack_is_clear(self) -> None:
+        selected = select_cv_for_opportunity(
+            opp(
+                "Software Engineer",
+                "Own Next.js React TypeScript frontend, REST APIs, PostgreSQL and Docker deployment.",
+                ("Next.js", "React", "TypeScript"),
+            )
+        )
+        self.assertEqual(selected.selected.variant, "fullstack_product")
 
     def test_ambiguous_hybrid_uses_master(self) -> None:
         selected = select_cv_for_opportunity(
@@ -74,12 +119,40 @@ class FixedCVSelectorTests(unittest.TestCase):
         )
         self.assertEqual(selected.selected.variant, "master")
 
-    def test_portfolio_has_exactly_six_locked_hashes(self) -> None:
+    def test_portfolio_has_exactly_nine_locked_hashes(self) -> None:
         hashes = portfolio_hashes()
-        self.assertEqual(len(hashes), 6)
+        self.assertEqual(len(hashes), 9)
         self.assertEqual(
-            hashes["Mohammed_Ehab_Master_CV_2026.pdf"],
-            "4b52a32e58008afd59a93ebdf9edc5b165a624a7e4f2cd13eefadf009a44b7d5",
+            hashes["Mohammed_Ehab_Master_Comprehensive_CV_2026.pdf"],
+            "f20ceec79d450f66d241640f36fbcbac74ee2d365da7e29e4d11883c352e5407",
+        )
+        self.assertEqual(
+            hashes["Mohammed_Ehab_Machine_Learning_Engineer_CV_2026.pdf"],
+            "b705a4cc85ad7aca72de8f2832b250e579bdb5e92a5c0f77b87e6971471058e3",
+        )
+
+    def test_committed_catalog_matches_runtime_portfolio_exactly(self) -> None:
+        catalog = yaml.safe_load(Path("founder/cv_portfolio.yaml").read_text(encoding="utf-8"))
+        rows = catalog["variants"]
+        self.assertEqual(catalog["portfolio_version"], "2026-09-21-final-9cv")
+        self.assertEqual(len(rows), 9)
+
+        runtime = {
+            item.variant: (item.filename, item.object_path, item.sha256)
+            for item in __import__("matching.cv_selector", fromlist=["PORTFOLIO"]).PORTFOLIO
+        }
+        committed = {
+            row["variant"]: (row["filename"], row["object_path"], row["sha256"])
+            for row in rows
+        }
+        self.assertEqual(committed, runtime)
+        self.assertEqual(
+            {row["pages"] for row in rows if row["variant"] != "master"},
+            {2},
+        )
+        self.assertEqual(
+            next(row["pages"] for row in rows if row["variant"] == "master"),
+            3,
         )
 
     def test_non_employment_rejected(self) -> None:

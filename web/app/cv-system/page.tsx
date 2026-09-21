@@ -10,6 +10,7 @@ type ImportResult = {
   production_pdfs_replaced: number
   editable_docx_stored: number
   system_files_stored: number
+  selection_rows_migrated: number
   assets: Array<{ filename: string; object_path: string; sha256: string; size: number }>
   archive: { object_path: string; sha256: string; size: number }
 }
@@ -62,7 +63,7 @@ export default function CvSystemPage() {
       <section className="mt-8 rounded-lg border border-border p-5">
         <h2 className="font-semibold">Import a final pack</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          This replaces the six production CV PDFs at their stable website paths, stores the six editable DOCX masters for future LLM-assisted tailoring, and stores ATS_AUDIT, OpportunityOS_CV_Registry, README_CV_SYSTEM, and the exact source ZIP privately.
+          This imports the eight targeted role-family CVs plus the Master Comprehensive CV, stores all nine production PDFs and all nine editable DOCX masters privately, and preserves the complete supporting-document set and exact source ZIP as the canonical CV system.
         </p>
         <p className="mt-2 text-sm font-medium">
           The ZIP is fully validated and checksummed before production PDF selection hashes are changed.
@@ -94,10 +95,11 @@ export default function CvSystemPage() {
           <div className="mt-5 rounded-md border border-emerald-700/40 bg-emerald-950/10 p-4 text-sm" data-testid="cv-pack-import-success">
             <p className="font-semibold">Pack {result.pack_id} imported and verified.</p>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
-              <li>{result.production_pdfs_replaced} production PDFs replaced.</li>
+              <li>{result.production_pdfs_replaced} production PDFs imported and locked.</li>
               <li>{result.editable_docx_stored} editable DOCX masters stored.</li>
-              <li>{result.system_files_stored} system/package files stored.</li>
-              <li>Website selection checksums updated after byte-for-byte storage verification.</li>
+              <li>{result.system_files_stored} supporting/package files stored.</li>
+              <li>{result.selection_rows_migrated} legacy selection rows migrated to the new canonical object paths.</li>
+              <li>Every required asset was checksum-verified against the Founder-approved final before and after storage.</li>
             </ul>
           </div>
         )}
