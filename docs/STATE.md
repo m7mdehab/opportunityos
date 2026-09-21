@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `9895c1d` — CV system: record final nine-CV independent review
+- **State generated at commit:** `d14bb55` — ops: remove completed one-time CV import workflow
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
