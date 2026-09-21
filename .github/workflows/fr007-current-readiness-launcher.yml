@@ -1,0 +1,22 @@
+name: FR-007 Current Readiness Launcher
+
+on:
+  workflow_dispatch:
+    inputs:
+      truth_pack_hash:
+        description: "Authoritative truth-pack hash (leave blank to discover it)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  final-closure:
+    uses: ./.github/workflows/fr007-final-runtime-closure.yml
+    with:
+      truth_pack_hash: ${{ inputs.truth_pack_hash }}
+    secrets: inherit
