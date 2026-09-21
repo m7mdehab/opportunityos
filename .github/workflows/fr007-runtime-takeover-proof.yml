@@ -9,6 +9,7 @@ on:
       - worker/**
       - scripts/fr007_hosted_bootstrap.py
       - scripts/fr007_cloud_monitor.py
+      - scripts/fr007_reliability_proof.py
       - scripts/fr007_soak_snapshot.py
       - scripts/process_incident_alert.py
       - scripts/test_fr007_cloud_monitor.py
@@ -184,7 +185,11 @@ jobs:
                       row = conn.execute(text("""
                           select
                             count(*)::int as total,
-                            count(*) filter (where state = 'idle in transaction')::int as idle_tx
+                            count(*) filter (
+                              where state = 'idle in transaction'
+                                and xact_start is not null
+                                and now() - xact_start > interval '30 seconds'
+                            )::int as idle_tx
                           from pg_stat_activity
                           where application_name = 'opportunityos-fr007-worker'
                       """)).mappings().one()
@@ -305,16 +310,16 @@ jobs:
           <!-- fr007-runtime-takeover-proof -->
           ## W22.3 runtime takeover proof — run ${{ github.run_id }}
 
-          - deterministic: `${DETERMINISTIC}`
-          - enqueue: `${ENQUEUE}`
-          - five-shard drain: `${DRAIN}`
-          - connection observer: `${OBSERVE}`
-          - max tagged worker connections: `${MAX_CONN:-unknown}`
-          - max idle-in-transaction tagged workers: `${MAX_IDLE_TX:-unknown}`
-          - max unattributed postgres connections: `${MAX_UNATTRIBUTED:-unknown}`
-          - observer connection failures: `${PROBE_FAILURES:-unknown}`
-          - connection proof pass: `${PROOF_PASS:-false}`
-          - post-run queue snapshot: `${QUEUE_SNAPSHOT}`
+          - deterministic: ${DETERMINISTIC}
+          - enqueue: ${ENQUEUE}
+          - five-shard drain: ${DRAIN}
+          - connection observer: ${OBSERVE}
+          - max tagged worker connections: ${MAX_CONN:-unknown}
+          - max persistent (>30s) idle-in-transaction tagged workers: ${MAX_IDLE_TX:-unknown}
+          - max unattributed postgres connections: ${MAX_UNATTRIBUTED:-unknown}
+          - observer connection failures: ${PROBE_FAILURES:-unknown}
+          - connection proof pass: ${PROOF_PASS:-false}
+          - post-run queue snapshot: ${QUEUE_SNAPSHOT}
 
           This is runtime proof evidence only; it does not self-declare FR-007 closed.
           EOF
