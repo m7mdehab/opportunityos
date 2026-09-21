@@ -26,6 +26,7 @@ from worker.runner import WorkerRunner
 HOSTED_WORKER_POOL_SIZE = 2
 HOSTED_WORKER_MAX_OVERFLOW = 0
 HOSTED_WORKER_POOL_TIMEOUT_SECONDS = 30.0
+HOSTED_WORKER_APPLICATION_NAME = "opportunityos-fr007-worker"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -97,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
         max_overflow=HOSTED_WORKER_MAX_OVERFLOW,
         pool_timeout=HOSTED_WORKER_POOL_TIMEOUT_SECONDS,
         pool_pre_ping=True,
+        application_name=HOSTED_WORKER_APPLICATION_NAME,
     )
     factory = get_session_factory(engine)
     registry = SourceRegistry()
