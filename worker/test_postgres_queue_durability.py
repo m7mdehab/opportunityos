@@ -301,15 +301,25 @@ class TestPostgresQueueDurability(unittest.TestCase):
         session = self.session_factory()
         try:
             q = BackgroundWorkerQueue(session, worker_id="setup-worker")
-            # 1. Enqueue 20 pending jobs
-            pending_ids = [self._enqueue(q, payload={"p_idx": i}) for i in range(20)]
 
-            # 2. Enqueue 1 job and expire its lease
+            # Create and claim the future-stale job before adding the backlog.
+            # If pending jobs were inserted first, the normal FIFO claim used
+            # to create the stale fixture would correctly select one of those
+            # pending rows instead, making the test setup invalid.
             stale_id = self._enqueue(q, payload={"stale": True})
-            stale_job = q.claim_next_job(lease_duration_seconds=0)
+            stale_job = q.claim_next_job(lease_duration_seconds=60)
+            self.assertIsNotNone(stale_job)
             self.assertEqual(stale_job.id, stale_id)
+            stale_job.lease_expires_at = _to_naive_utc(
+                datetime.now(timezone.utc) - timedelta(seconds=5)
+            )
+            session.commit()
 
-            # 3. New worker claims next job - must be stale_id, not any pending job
+            # Add a large fresh backlog only after the stale RUNNING row exists.
+            pending_ids = [self._enqueue(q, payload={"p_idx": i}) for i in range(20)]
+            self.assertEqual(len(pending_ids), 20)
+
+            # New worker must reclaim stale_id before any fresh pending row.
             q_reclaimer = BackgroundWorkerQueue(session, worker_id="reclaimer-worker")
             claimed = q_reclaimer.claim_next_job(lease_duration_seconds=60)
             self.assertIsNotNone(claimed)
@@ -324,13 +334,28 @@ class TestPostgresQueueDurability(unittest.TestCase):
         session_setup = self.session_factory()
         try:
             q_setup = BackgroundWorkerQueue(session_setup)
-            # Create 2 jobs and expire both leases
+            # Claim both jobs under still-valid leases first, then expire the
+            # two rows together. Expiring the first claim immediately would
+            # cause stale-first semantics to reclaim it on the second setup
+            # claim, which would not create two distinct stale fixtures.
             id1 = self._enqueue(q_setup, payload={"stale_idx": 1})
             id2 = self._enqueue(q_setup, payload={"stale_idx": 2})
-            j1 = q_setup.claim_next_job(lease_duration_seconds=0)
-            j2 = q_setup.claim_next_job(lease_duration_seconds=0)
+            j1 = q_setup.claim_next_job(lease_duration_seconds=60)
+            j2 = q_setup.claim_next_job(lease_duration_seconds=60)
             self.assertIsNotNone(j1)
             self.assertIsNotNone(j2)
+            self.assertEqual({j1.id, j2.id}, {id1, id2})
+
+            expired_at = _to_naive_utc(datetime.now(timezone.utc) - timedelta(seconds=5))
+            (
+                session_setup.query(WorkerJobRecord)
+                .filter(WorkerJobRecord.id.in_([id1, id2]))
+                .update(
+                    {"lease_expires_at": expired_at},
+                    synchronize_session=False,
+                )
+            )
+            session_setup.commit()
         finally:
             session_setup.close()
 
