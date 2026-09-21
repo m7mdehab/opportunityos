@@ -115,7 +115,7 @@ def _apply_correction() -> None:
     op.execute("""
       CREATE OR REPLACE FUNCTION public.founder_set_action(p_opportunity_id text, p_type text, p_until date DEFAULT NULL)
       RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=public AS $$
-      DECLARE now_ts timestamp without time zone := now() AT TIME ZONE 'UTC'; next_state text; event_id text; action_id text := NULL; opp public.opportunities%ROWTYPE; eval public.match_evaluations%ROWTYPE; existing_id text;
+      DECLARE now_ts timestamp without time zone := clock_timestamp() AT TIME ZONE 'UTC'; next_state text; event_id text; action_id text := NULL; opp public.opportunities%ROWTYPE; eval public.match_evaluations%ROWTYPE; existing_id text;
       BEGIN
         IF NOT public.opos_is_founder() THEN RAISE EXCEPTION 'authorized founder required'; END IF;
         SELECT * INTO opp FROM public.opportunities WHERE id=p_opportunity_id;
@@ -150,7 +150,7 @@ def _apply_correction() -> None:
     op.execute("""
       CREATE OR REPLACE FUNCTION public.founder_add_feedback(p_opportunity_id text, p_label text, p_note text DEFAULT NULL)
       RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=public AS $$
-      DECLARE now_ts timestamp without time zone := now() AT TIME ZONE 'UTC'; new_id text; prior public.founder_feedback%ROWTYPE; norm_note text:=nullif(btrim(coalesce(p_note,'')),'');
+      DECLARE now_ts timestamp without time zone := clock_timestamp() AT TIME ZONE 'UTC'; new_id text; prior public.founder_feedback%ROWTYPE; norm_note text:=nullif(btrim(coalesce(p_note,'')),'');
       BEGIN
         IF NOT public.opos_is_founder() THEN RAISE EXCEPTION 'authorized founder required'; END IF;
         IF NOT EXISTS(SELECT 1 FROM public.opportunities WHERE id=p_opportunity_id) THEN RAISE EXCEPTION 'opportunity not found'; END IF;
