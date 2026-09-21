@@ -32,9 +32,15 @@ def upgrade() -> None:
         "opportunity_cold_archive",
         ["content_hash"],
     )
+    from storage.rls_policy import apply_postgres_deny_policy_for_table
+    if op.get_bind().dialect.name == "postgresql":
+        apply_postgres_deny_policy_for_table(op, "opportunity_cold_archive")
 
 
 def downgrade() -> None:
+    op.execute("DROP POLICY IF EXISTS opportunity_cold_archive_browser_deny_anon ON opportunity_cold_archive")
+    op.execute("DROP POLICY IF EXISTS opportunity_cold_archive_browser_deny_authenticated ON opportunity_cold_archive")
+    op.execute("ALTER TABLE opportunity_cold_archive DISABLE ROW LEVEL SECURITY")
     op.drop_index("ix_opportunity_cold_archive_content_hash", table_name="opportunity_cold_archive")
     op.drop_table("opportunity_cold_archive")
 

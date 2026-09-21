@@ -39,6 +39,22 @@ def apply_postgres_deny_policies(op, *, excluded: set[str] | None = None) -> Non
         )
 
 
+def apply_postgres_deny_policy_for_table(op, table: str) -> None:
+    """Apply the standard browser deny policy to a table created later."""
+    op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
+    op.execute(
+        "DO $$ BEGIN "
+        "IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN "
+        f"EXECUTE 'DROP POLICY IF EXISTS {table}_browser_deny_anon ON {table}'; "
+        f"EXECUTE 'CREATE POLICY {table}_browser_deny_anon ON {table} FOR ALL TO anon USING (false) WITH CHECK (false)'; "
+        "END IF; "
+        "IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN "
+        f"EXECUTE 'DROP POLICY IF EXISTS {table}_browser_deny_authenticated ON {table}'; "
+        f"EXECUTE 'CREATE POLICY {table}_browser_deny_authenticated ON {table} FOR ALL TO authenticated USING (false) WITH CHECK (false)'; "
+        "END IF; END $$"
+    )
+
+
 def remove_postgres_deny_policies(op, *, excluded: set[str] | None = None) -> None:
     """Remove only migration 0009 policies and its RLS enablement."""
     assert_registry_complete()

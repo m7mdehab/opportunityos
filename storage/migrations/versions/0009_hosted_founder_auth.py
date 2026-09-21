@@ -50,13 +50,13 @@ def upgrade() -> None:
     op.create_index("ix_founder_auth_events_session_id", "founder_auth_events", ["session_id"])
     from storage.rls_policy import apply_postgres_deny_policies
     if op.get_bind().dialect.name == "postgresql":
-        apply_postgres_deny_policies(op, excluded={"founder_cv_selections"})
+        apply_postgres_deny_policies(op, excluded={"founder_cv_selections", "opportunity_cold_archive"})
 
 
 def downgrade() -> None:
     if op.get_bind().dialect.name == "postgresql":
         from storage.rls_policy import remove_postgres_deny_policies
-        remove_postgres_deny_policies(op, excluded={"founder_cv_selections"})
+        remove_postgres_deny_policies(op, excluded={"founder_cv_selections", "opportunity_cold_archive"})
     op.drop_table("founder_auth_events")
     op.drop_table("founder_auth_rate_limit")
     op.drop_table("founder_sessions")
