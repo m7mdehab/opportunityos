@@ -8,7 +8,7 @@
 
 - Branch: `work/fr007-codex-runtime-takeover`
 - Starting integration SHA: `157d3c79dbda21c1583fbfc3ba8d363d64055d32`
-- Final commit: recorded after the final State-only commit
+- Final commit: `32e06f49ece4a6c9f717f45459af4985271a3224`
 - Remote: `origin/work/fr007-codex-runtime-takeover`
 - No merge performed.
 
@@ -96,3 +96,4 @@ Because step 1 is unavailable from this lane, the final queue acceptance, FULL m
 ## External blocker
 
 The sole terminal blocker is hosted database write capability/endpoint authority. The Overseer or provider owner must restore a writable primary connection for `OPOS_TARGET_DB_URL`, then execute the recovery and final monitor steps above. No repository implementation blocker remains for the W22.5 corrections.
+
