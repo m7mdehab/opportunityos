@@ -3,7 +3,6 @@ name: FR-007 Runtime Takeover Proof
 on:
   push:
     branches:
-      - work/fr007-codex-runtime-takeover
     paths:
       - storage/engine.py
       - worker/**
