@@ -3,7 +3,7 @@ name: FR-007 Runtime Takeover Proof
 on:
   push:
     branches:
-      # W22.5 recovery-only push is intentionally excluded while drain runs.
+      - work/fr007-codex-runtime-takeover
     paths:
       - storage/engine.py
       - worker/**
