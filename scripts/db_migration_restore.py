@@ -104,10 +104,12 @@ def require_tool(name):
 def run_command(argv, env):
     # stdout/stderr are never forwarded: pg_dump/pg_restore/alembic may echo
     # connection settings, object names, or private row content on failure.
-    result = subprocess.run(argv, cwd=ROOT, env=env, stdout=subprocess.DEVNULL,
+    result = subprocess.run(argv, cwd=ROOT, env=env, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, check=False, shell=False)
     if result.returncode:
-        raw = result.stderr.decode("utf-8", "replace") if isinstance(result.stderr, bytes) else ""
+        raw_out = result.stdout.decode("utf-8", "replace") if isinstance(result.stdout, bytes) else ""
+        raw_err = result.stderr.decode("utf-8", "replace") if isinstance(result.stderr, bytes) else ""
+        raw = raw_out + "\n" + raw_err
         # Preserve a short, non-sensitive provider error class for CI diagnosis
         # while redacting connection strings, credentials, local paths, and
         # arbitrary SQL payloads.  The old generic error made migration-chain
