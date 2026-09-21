@@ -44,6 +44,7 @@ from storage.engine import get_engine, get_session_factory
 from storage.feed_projection import FeedProjectionRecord, projection_identity
 from storage.models import (
     Base,
+    FieldProvenanceRecord,
     FounderFacetRecord,
     FounderFilterSettingRecord,
     MatchEvaluationRecord,
@@ -118,6 +119,59 @@ class TestPostgresQueueDurability(unittest.TestCase):
     def setUp(self) -> None:
         if os.environ.get("CI") and _get_pg_db_url() is None:
             self.fail("CI environment requires real PostgreSQL database for worker durability suite")
+
+    def test_same_identity_persistence_race_converges_at_commit_boundary(self) -> None:
+        """Two PostgreSQL writers for one absent identity serialize safely.
+
+        This is intentionally a real-session test: the prefetch may race, but
+        the per-identity transaction advisory lock and fresh read must prevent
+        primary-key and provenance uniqueness failures.
+        """
+        from opportunity.persistence import persist_batch
+        from opportunity.pipeline import IngestionBatch
+        from opportunity.test_persistence import _make_opportunity
+        from storage.repository import StorageRepository
+
+        opp = _make_opportunity(opp_id=f"race:identity-{uuid.uuid4().hex}")
+        batch = IngestionBatch(
+            batch_id="race-batch",
+            run_id="race-run",
+            ingested_at="2026-08-01",
+            opportunities=(opp,), clusters=(), health_reports=(),
+            total_raw_ingested=1, total_unique_opportunities=1,
+            exact_duplicates_removed=0, cross_source_duplicates_clustered=0,
+            ambiguous_duplicates_count=0, track_counts=(), eligibility_counts=(),
+        )
+        barrier = threading.Barrier(2)
+        errors: list[BaseException] = []
+
+        def writer() -> None:
+            session = self.session_factory()
+            try:
+                barrier.wait(timeout=10)
+                persist_batch(batch, StorageRepository(session))
+            except BaseException as exc:  # assertion below reports exact class
+                errors.append(exc)
+            finally:
+                session.close()
+
+        threads = [threading.Thread(target=writer) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=30)
+        self.assertFalse(any(thread.is_alive() for thread in threads), "writer race did not converge")
+        self.assertEqual(errors, [], f"same-identity race raised: {errors!r}")
+
+        check = self.session_factory()
+        try:
+            self.assertEqual(check.query(OpportunityRecord).filter_by(id=opp.id).count(), 1)
+            self.assertEqual(check.query(FieldProvenanceRecord).filter_by(opportunity_id=opp.id).count(), 2)
+        finally:
+            check.query(FieldProvenanceRecord).filter_by(opportunity_id=opp.id).delete(synchronize_session=False)
+            check.query(OpportunityRecord).filter_by(id=opp.id).delete(synchronize_session=False)
+            check.commit()
+            check.close()
         self.test_job_ids: list[str] = []
         self._apps_to_dispose = []
         session = self.session_factory()
