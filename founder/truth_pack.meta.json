@@ -2,30 +2,39 @@
   "format_version": 1,
   "snapshot": "founder/truth_pack.yaml.gz.b64",
   "decoded_format": "yaml",
-  "decoded_raw_sha256": "415a98c68476a428ff83d76936c2b35e3c79576b0c0aca326b4c9cfc29429f44",
-  "updated_at": "2026-09-19",
+  "decoded_raw_sha256": "e3b0d1c23888bc5340bcc7409f035971d842ceabaca9f4dc639430f49c5923d0",
+  "updated_at": "2026-09-21",
   "founder_classification": "non-sensitive product truth",
   "sources": [
-    "Mohammed_Ehab_AI_Engineer_CV_2026.pdf",
-    "Mohammed_Ehab_Business_Analyst_CV_2026.pdf",
-    "Mohammed_Ehab_Data_Analyst_CV_2026.pdf",
-    "Mohammed_Ehab_Data_Engineer_CV_2026.pdf",
-    "Mohammed_Ehab_Data_Scientist_CV_2026.pdf",
-    "Mohammed_Ehab_Master_CV_2026.pdf",
-    "founder-stated policy carried forward from truth_pack(4).yaml"
+    "Mohammed_Ehab_CV_System_2026-09-21_FINAL.zip",
+    "Supporting_Documents/truth_pack.yaml",
+    "Supporting_Documents/MOHAMMED_EHAB_MASTER_PERSONALIZATION.md",
+    "Supporting_Documents/OpportunityOS_CV_Registry.json",
+    "Supporting_Documents/ATS_AUDIT.md"
   ],
   "canonical_updates": [
-    "Network International canonical title reconciled to Data Engineer",
-    "Al Tayseer International canonical title reconciled to Business Analyst Team Lead",
-    "Guksu canonical title reconciled to Data Analyst & Supply Chain Analyst",
-    "DemoNow.ai Junior AI Engineer (Jan 2024-Jul 2025) added",
-    "Databricks Certified Data Engineer Associate (2026) added",
-    "leadership/activity evidence added",
-    "Business Analyst target role added",
-    "six role-specific approved summaries added alongside Master summary",
-    "cross-CV skills reconciled into canonical career capability inventory"
+    "Canonical CV system expanded to nine CVs: eight targeted role families plus Master Comprehensive",
+    "Network International title remains Data Engineer",
+    "Al Tayseer title remains Business Analyst Team Lead",
+    "Guksu title remains Data Analyst & Supply Chain Analyst",
+    "DemoNow.ai Junior AI Engineer retained",
+    "Databricks Certified Data Engineer Associate retained",
+    "remote-work availability signal retained alongside Cairo location",
+    "Presaira and OpportunityOS are mandatory first and second projects in every targeted CV",
+    "Skills and technologies are maintained as separate evidence types",
+    "m7mdehab.com added to canonical professional contact identity",
+    "role routing aligned to the nine-CV registry",
+    "unsupported or stale tooling claims remain excluded"
   ],
-  "validation_status": "PYTHON_YAML_ROUNDTRIP_PASS; REPOSITORY_CI_PENDING",
-  "identity_profile": "Mohammed Ehab ElNomany | Data | AI | Analytics Professional | Cairo, Egypt",
-  "fixed_cv_policy": "select one of six final PDFs; never auto-rewrite CV wording or formatting"
+  "validation_status": "CANONICAL_9CV_PACK_AUDITED; PRIVATE_STORAGE_PROMOTION_PASS; REPOSITORY_CI_PENDING",
+  "identity_profile": "Mohammed Ehab ElNomany | Data | AI | Analytics | Software & Product Engineering | Cairo, Egypt | Open to Remote Work",
+  "fixed_cv_policy": "select exactly one of nine final PDFs; never auto-rewrite CV wording or formatting",
+  "storage_verification": {
+    "provider": "supabase",
+    "bucket": "founder-cv-portfolio",
+    "import_run_id": "35642831771",
+    "verified_at": "2026-09-21T19:11:53Z",
+    "source_zip_sha256": "f5475977e331c5efb70e21a6b2b702904c80ebdc8aa2f22a1dccee24a8e807a4",
+    "uploaded_objects": 31
+  }
 }
