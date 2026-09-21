@@ -55,6 +55,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
+from sqlalchemy.exc import IntegrityError
+
 from opportunity.clustering import family_key as compute_opportunity_family_key
 from opportunity.models import CompensationInterval, FieldProvenance, Opportunity
 from opportunity.pipeline import IngestionBatch
@@ -261,7 +263,21 @@ def persist_batch(batch: IngestionBatch, repository: StorageRepository) -> Persi
         if existing_hash is None:
             opp_data = _build_opp_data(opp, is_stale=False)
             provenances = _build_provenances(opp)
-            repository.save_opportunity(opp_data, provenances)
+            try:
+                repository.save_opportunity(opp_data, provenances)
+            except IntegrityError:
+                # A repository implementation may commit internally.  Keep
+                # the identity lock aligned with that boundary, but retain a
+                # narrow idempotent safety net for a backend that races the
+                # lock or uses a different transaction wrapper: if another
+                # writer won with the same content, classify this attempt as
+                # unchanged; unrelated integrity failures still propagate.
+                repository.session.rollback()
+                winner = repository.get_opportunity(opp.id)
+                if winner is None or winner.content_hash != opp.content_hash:
+                    raise
+                unchanged.append(opp.id)
+                continue
             inserted.append(opp.id)
             continue
 
