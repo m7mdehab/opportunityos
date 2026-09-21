@@ -288,8 +288,19 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
     };
     const q = buildFeedQuery(includeHidden ? undefined : "visible");
     q.searchParams.set("offset", String((page - 1) * pageSize)); q.searchParams.set("limit", String(pageSize));
-    const response = await hostedFetch(config, `${q.pathname}${q.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } });
-    const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status });
+    let response = await hostedFetch(config, `${q.pathname}${q.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } });
+    let rows = await response.json().catch(() => []);
+    // A freshly replaced PostgREST view can lag schema-cache refresh. Keep the
+    // canonical feed readable while activity projection metadata catches up;
+    // activity-scoped requests remain fail-closed until their view is healthy.
+    if (!response.ok && !url.searchParams.has("activity") && !url.searchParams.has("feedback")) {
+      const fallback = new URL(`${config.origin}/rest/v1/founder_feed`);
+      for (const [key, value] of q.searchParams.entries()) if (!["select"].includes(key)) fallback.searchParams.set(key, value);
+      fallback.searchParams.set("select", "*");
+      response = await hostedFetch(config, `${fallback.pathname}${fallback.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } });
+      rows = await response.json().catch(() => []);
+    }
+    if (!response.ok) return NextResponse.json(rows, { status: response.status });
     const range = response.headers.get("content-range") ?? "*/0"; const total = Number(range.split("/")[1] ?? "0") || 0;
     const hiddenQuery = buildFeedQuery("hidden");
     hiddenQuery.searchParams.set("select", "opportunity_id"); hiddenQuery.searchParams.set("limit", "1");
