@@ -67,8 +67,7 @@ def _apply_correction() -> None:
     _grant_table("founder_activity_events")
 
     op.execute("""
-      CREATE OR REPLACE VIEW public.founder_activity_state
-      WITH (security_invoker = true) AS
+      CREATE OR REPLACE VIEW public.founder_activity_state AS
       WITH latest_event AS (
         SELECT DISTINCT ON (e.opportunity_id)
           e.opportunity_id, e.action_type, e.resulting_state, e.snoozed_until, e.created_at
@@ -100,6 +99,7 @@ def _apply_correction() -> None:
       LEFT JOIN latest_feedback lf ON lf.opportunity_id=o.id
       LEFT JOIN feedback_counts fc ON fc.opportunity_id=o.id
       LEFT JOIN legacy_applied la ON la.opportunity_id=o.id
+      WHERE public.opos_is_founder()
     """)
     op.execute("""
       CREATE OR REPLACE VIEW public.founder_feed_activity
