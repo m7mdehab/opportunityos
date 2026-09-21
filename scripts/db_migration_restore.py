@@ -121,7 +121,11 @@ def run_command(argv, env):
         details = raw.lower().encode("utf-8", "replace")
         if b'schema "public" already exists' in details:
             raise HarnessError("database command failed: existing public schema")
-        summary = safe_lines[-1][:240] if safe_lines else "provider command returned nonzero"
+        if safe_lines:
+            candidates = [line for line in safe_lines if ("Error" in line or "error" in line or "Exception" in line or "failed" in line)]
+            summary = " | ".join((candidates[-3:] or safe_lines[-3:]))[:600]
+        else:
+            summary = "provider command returned nonzero"
         raise HarnessError(f"database command failed: {summary}")
 
 
@@ -503,3 +507,5 @@ def main(argv=None):
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
