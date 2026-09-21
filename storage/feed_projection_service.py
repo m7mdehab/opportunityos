@@ -251,6 +251,45 @@ def build_projection_record(
 
 
 def upsert_projection(session: Session, record: FeedProjectionRecord) -> bool:
+    """Publish one projection without a read-then-insert race on PostgreSQL.
+
+    Multiple bounded ``evaluate_new`` workers can legitimately reach the same
+    opportunity/profile pair at once.  ``Session.merge`` first checks the
+    identity map and then emits an INSERT, so concurrent workers could still
+    collide on the projection primary key after the evaluation race had been
+    made idempotent.  PostgreSQL's atomic upsert keeps publication aligned
+    with the database commit boundary and makes the loser an ordinary update.
+    Other dialects retain the small-test-suite merge path.
+    """
+    if session.bind is not None and session.bind.dialect.name == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        existing = session.get(FeedProjectionRecord, record.id)
+        values = {
+            column.name: getattr(record, column.name)
+            for column in FeedProjectionRecord.__table__.columns
+        }
+        stmt = pg_insert(FeedProjectionRecord.__table__).values(**values)
+        update_values = {
+            column.name: getattr(stmt.excluded, column.name)
+            for column in FeedProjectionRecord.__table__.columns
+            if column.name != "id"
+        }
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[FeedProjectionRecord.__table__.c.id],
+            set_=update_values,
+        )
+        session.execute(stmt)
+        session.execute(
+            text(
+                "UPDATE feed_projection "
+                "SET search_tsv = to_tsvector('simple', search_text) "
+                "WHERE id = :projection_id"
+            ),
+            {"projection_id": record.id},
+        )
+        return existing is None
+
     existing = session.get(FeedProjectionRecord, record.id)
     inserted = existing is None
     managed = session.merge(record)
