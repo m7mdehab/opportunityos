@@ -90,7 +90,7 @@ def _apply_correction() -> None:
           WHEN le.action_type IN ('snooze','clear') THEN NULL
           ELSE NULL
         END::varchar AS action_state,
-        CASE WHEN le.action_type='snooze' AND le.snoozed_until > CURRENT_DATE THEN le.snoozed_until ELSE NULL END AS snoozed_until,
+        CASE WHEN le.action_type='snooze' AND le.snoozed_until > CURRENT_DATE THEN le.snoozed_until::timestamp ELSE NULL::timestamp END AS snoozed_until,
         le.created_at AS action_updated_at,
         lf.feedback_label, coalesce(fc.feedback_count,0)::integer AS feedback_count,
         lf.feedback_updated_at,
