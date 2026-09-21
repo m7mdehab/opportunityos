@@ -86,3 +86,6 @@ jobs:
           MAX_JOBS=$(( RAW_MAX > 150 ? 150 : (RAW_MAX < 1 ? 30 : RAW_MAX) ))
           TIME_BUDGET=$(( RAW_BUDGET > 540 ? 540 : (RAW_BUDGET < 10 ? 480 : RAW_BUDGET) ))
           python scripts/fr007_hosted_bootstrap.py --mode drain --max-jobs "${MAX_JOBS}" --time-budget-seconds "${TIME_BUDGET}" --worker-id "${OPOS_WORKER_ID}"
+
+# W22.5 bounded recovery wave trigger.
+
