@@ -57,10 +57,20 @@ def revisions() -> list[dict[str, str | None]]:
 
 
 def _effects(revision: str) -> dict[str, Any]:
-    candidates = [ROOT / "storage" / "migrations" / "versions" / f"{revision}.py"]
+    # Revision identifiers and filenames are not required to match (the W25
+    # live correction is revision ``0018_activity_live_fix`` in a file whose
+    # rollout name is ``0018_founder_activity_correction_live.py``).  Resolve
+    # the canonical Alembic script by its declared revision instead of
+    # manufacturing a filename from the identifier.
+    candidates = []
+    for candidate in (ROOT / "storage" / "migrations" / "versions").glob("*.py"):
+        source = candidate.read_text(encoding="utf-8")
+        if re.search(rf"revision\s*:\s*str\s*=\s*['\"]{re.escape(revision)}['\"]", source):
+            candidates.append((candidate, source))
     if len(candidates) != 1:
         raise BundleError(f"migration source missing for {revision}")
-    tree = ast.parse(candidates[0].read_text(encoding="utf-8"))
+    candidate, source = candidates[0]
+    tree = ast.parse(source)
     tables: set[str] = set()
     indexes: set[str] = set()
     for node in ast.walk(tree):
@@ -73,7 +83,6 @@ def _effects(revision: str) -> dict[str, Any]:
             tables.add(value)
         if node.func.attr in {"create_index", "drop_index"}:
             indexes.add(value)
-    source = candidates[0].read_text(encoding="utf-8")
     return {
         "tables_or_columns": sorted(tables),
         "indexes": sorted(indexes),

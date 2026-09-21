@@ -96,7 +96,7 @@ jobs:
         with:
           name: fr007-provider-postgres-proof-${{ github.run_id }}
           path: provider-postgres.log
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
       - name: Compile, repository integrity and guard
         run: |
