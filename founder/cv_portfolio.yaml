@@ -14,6 +14,13 @@ storage:
   object_prefix: "2026/"
   editable_prefix: "2026/editable/"
   system_prefix: "2026/system/"
+  verified_at: "2026-09-21T19:11:53Z"
+  import_run_id: "35642831771"
+  canonical_zip_sha256: "f5475977e331c5efb70e21a6b2b702904c80ebdc8aa2f22a1dccee24a8e807a4"
+  canonical_objects_uploaded: 31
+  legacy_object_policy: >-
+    Older unreferenced CV objects may remain as historical storage artifacts. Runtime selection and
+    delivery must use only the canonical nine paths and SHA-256 values declared in this file.
 founder_policy: >-
   These nine PDFs - eight targeted role-family CVs plus the Master Comprehensive CV - are the authoritative
   employment CV portfolio. OpportunityOS must select exactly one intact PDF per employment opportunity. It must
