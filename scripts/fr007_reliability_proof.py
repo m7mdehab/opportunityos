@@ -389,8 +389,19 @@ def execute_a5_source_probe(dsn: str) -> dict[str, Any]:
                 return TransportResponse(status_code=200, body=good_payload, latency_ms=10)
             return TransportResponse(status_code=404, body="", latency_ms=0)
 
-    # 3. Clean up prior runs for these two sources
+    # 3. Clean up prior scenario fixtures before exercising A5.
+    #
+    # A4 intentionally creates an expired RUNNING proof job to prove that the
+    # persisted read surface survives a stuck worker. The production queue now
+    # correctly prioritizes expired RUNNING leases over fresh backlog, so
+    # leaving that A4 fixture in place would make A5's first WorkerRunner call
+    # reclaim the previous scenario's synthetic job instead of the two A5
+    # source jobs. Remove only the named A4 proof fixtures; do not clear or
+    # reorder arbitrary queue state.
     with factory() as session:
+        session.query(WorkerJobRecord).filter(
+            WorkerJobRecord.id.in_(["proof-job-failed-1", "proof-job-stuck-1"])
+        ).delete(synchronize_session=False)
         session.query(SourcePollRunRecord).filter(
             SourcePollRunRecord.source_id.in_(["greenhouse:datadog", "greenhouse:cloudflare"])
         ).delete(synchronize_session=False)
