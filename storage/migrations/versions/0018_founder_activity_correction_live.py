@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Sequence, Union
 from alembic import op
 
-revision: str = "0018_founder_activity_correction_live"
+revision: str = "0018_activity_live_fix"
 down_revision: Union[str, None] = "0017_founder_activity_correction"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

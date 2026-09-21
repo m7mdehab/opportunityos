@@ -32,7 +32,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
 
         config = Config("alembic.ini")
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_current_head(), "0018_founder_activity_correction_live")
+        self.assertEqual(script.get_current_head(), "0018_activity_live_fix")
 
     def test_activity_correction_matches_live_0016_contract(self):
         source = ACTIVITY_CORRECTION.read_text(encoding="utf-8")
