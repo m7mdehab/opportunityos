@@ -1,5 +1,8 @@
 """Regression tests for Founder-locked nine-CV portfolio selection."""
 import unittest
+from pathlib import Path
+
+import yaml
 
 from matching.cv_selector import portfolio_hashes, select_cv_for_opportunity
 from opportunity.models import Opportunity, Track
@@ -126,6 +129,30 @@ class FixedCVSelectorTests(unittest.TestCase):
         self.assertEqual(
             hashes["Mohammed_Ehab_Machine_Learning_Engineer_CV_2026.pdf"],
             "b705a4cc85ad7aca72de8f2832b250e579bdb5e92a5c0f77b87e6971471058e3",
+        )
+
+    def test_committed_catalog_matches_runtime_portfolio_exactly(self) -> None:
+        catalog = yaml.safe_load(Path("founder/cv_portfolio.yaml").read_text(encoding="utf-8"))
+        rows = catalog["variants"]
+        self.assertEqual(catalog["portfolio_version"], "2026-09-21-final-9cv")
+        self.assertEqual(len(rows), 9)
+
+        runtime = {
+            item.variant: (item.filename, item.object_path, item.sha256)
+            for item in __import__("matching.cv_selector", fromlist=["PORTFOLIO"]).PORTFOLIO
+        }
+        committed = {
+            row["variant"]: (row["filename"], row["object_path"], row["sha256"])
+            for row in rows
+        }
+        self.assertEqual(committed, runtime)
+        self.assertEqual(
+            {row["pages"] for row in rows if row["variant"] != "master"},
+            {2},
+        )
+        self.assertEqual(
+            next(row["pages"] for row in rows if row["variant"] == "master"),
+            3,
         )
 
     def test_non_employment_rejected(self) -> None:
