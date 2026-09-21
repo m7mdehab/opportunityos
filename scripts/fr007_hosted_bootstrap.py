@@ -100,7 +100,10 @@ def main(argv: list[str] | None = None) -> int:
         pool_pre_ping=True,
         application_name=HOSTED_WORKER_APPLICATION_NAME,
     )
-    factory = get_session_factory(engine)
+    # The runner dispatches from a committed claim and then waits on remote
+    # source I/O. Disable post-commit expiration for this worker-only factory
+    # so dispatch does not create an idle foreground transaction.
+    factory = get_session_factory(engine, expire_on_commit=False)
     registry = SourceRegistry()
 
     scheduled = 0

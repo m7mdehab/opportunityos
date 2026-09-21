@@ -36,7 +36,7 @@ from email.utils import parsedate_to_datetime
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Mapping, MutableMapping, Optional
 
-from sqlalchemy import or_
+from sqlalchemy import or_, text
 
 from core.logging import get_logger, redact_data
 from matching.evaluate_persist import evaluate_and_store
@@ -86,6 +86,20 @@ SessionFactory = Callable[[], Any]
 #: ``truth.pack.load_founder_pack``'s own signature. Used by ``evaluate_new``
 #: so tests can inject a pack without touching ``private/truth_pack.yaml``.
 PackLoader = Callable[[Any], LoadedPack]
+
+
+def _acquire_source_persistence_lock(session: Any, source_id: str) -> None:
+    """Serialize only the DB phase for one source on PostgreSQL.
+
+    Remote acquisition happens before this function is called, so the advisory
+    transaction lock never spans network I/O. SQLite/unit-test sessions retain
+    their existing behavior; PostgreSQL workers serialize same-source writes
+    while unrelated sources continue concurrently.
+    """
+    bind = getattr(session, "bind", None)
+    if bind is None or getattr(getattr(bind, "dialect", None), "name", None) != "postgresql":
+        return
+    session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:source_id)::bigint)"), {"source_id": source_id})
 
 
 def noop(payload: dict) -> None:
@@ -561,6 +575,10 @@ def make_poll_source_handler(
 
         session = _resolve_session_factory()()
         try:
+            # The source has already been fetched and normalized. Serialize
+            # only this database phase so overlapping copies of one source
+            # cannot race lookup-then-insert identity checks.
+            _acquire_source_persistence_lock(session, source_id)
             repository = StorageRepository(session)
             result = persist_batch(batch, repository)
 

@@ -111,5 +111,12 @@ def init_db(engine):
     Base.metadata.create_all(engine)
 
 
-def get_session_factory(engine):
-    return sessionmaker(bind=engine, autoflush=False, autocommit=False)
+def get_session_factory(engine, *, expire_on_commit: bool = True):
+    """Return a session factory with explicit expiration semantics.
+
+    Application callers retain SQLAlchemy's historical expiration behavior. The
+    long-running worker runtime passes ``expire_on_commit=False`` so the
+    committed claim can be read without an implicit refresh transaction before
+    network-bound handler work begins.
+    """
+    return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=expire_on_commit)

@@ -109,7 +109,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     engine = get_engine(db_url)
-    session_factory = get_session_factory(engine)
+    # Worker claims are committed before handlers perform network I/O. Keep
+    # claimed ORM fields usable without an implicit post-commit refresh SELECT
+    # reopening a foreground transaction during the slow handler.
+    session_factory = get_session_factory(engine, expire_on_commit=False)
     worker_id = args.worker_id or f"worker-{uuid.uuid4().hex[:8]}"
 
     if args.poll_now:
