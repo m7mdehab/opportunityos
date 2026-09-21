@@ -1,0 +1,186 @@
+name: FR-007 final runtime closure
+
+on:
+  workflow_dispatch:
+    inputs:
+      truth_pack_hash:
+        description: "Authoritative truth-pack hash (leave blank to discover it)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: fr007-final-runtime-closure
+  cancel-in-progress: false
+
+jobs:
+  deterministic-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: opportunityos
+          POSTGRES_PASSWORD: ${{ github.run_id }}
+          POSTGRES_DB: opportunityos_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      OPPORTUNITYOS_DB_URL: postgresql+psycopg2://opportunityos:${{ github.run_id }}@localhost:5432/opportunityos_test
+      OPOS_TARGET_DB_URL: postgresql+psycopg2://opportunityos:${{ github.run_id }}@localhost:5432/opportunityos_test
+      PGPASSWORD: ${{ github.run_id }}
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: python -m pip install -e ".[dev]"
+      - name: Fresh migration and one-head proof
+        run: |
+          alembic upgrade head
+          test "$(alembic heads | grep -c ' (head)')" = 1
+      - name: Capacity/archive PostgreSQL proof
+        run: |
+          python -m unittest \
+            storage.test_cold_archive \
+            scripts.test_db_capacity_guard \
+            scripts.test_db_capacity_maintenance \
+            storage.test_hosted_runtime_migration \
+            worker.test_postgres_queue_durability \
+            -v
+      - name: Runtime/storage/matching regressions
+        run: |
+          python -m unittest opportunity.test_persistence matching.test_evaluate_persist worker.test_worker worker.test_runner storage.test_feed_projection_service storage.test_feed_query -q
+      - run: python scripts/check_repository.py
+      - run: python scripts/check_guard.py --allow-missing-patterns
+
+  live-preflight:
+    needs: deterministic-postgres
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: python -m pip install -e .
+      - name: Sanitized live read-only preflight
+        env:
+          OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+        run: python scripts/fr007_capacity_closure.py preflight --truth-pack-hash "${{ inputs.truth_pack_hash }}" | tee w227-preflight.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fr007-w227-preflight-${{ github.run_id }}
+          path: w227-preflight.json
+
+  maintenance:
+    needs: live-preflight
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: python -m pip install -e .
+      - name: Same-session migration, compaction and physical reclaim
+        env:
+          OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+        run: python scripts/fr007_capacity_closure.py live-maintenance --truth-pack-hash "${{ inputs.truth_pack_hash }}" | tee w227-maintenance.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fr007-w227-maintenance-${{ github.run_id }}
+          path: w227-maintenance.json
+
+  fresh-write:
+    needs: maintenance
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: python -m pip install -e .
+      - name: Fresh normal application connection write proof
+        env:
+          OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+        run: python scripts/fr007_capacity_closure.py fresh-write | tee w227-fresh-write.json
+
+  bounded-recovery:
+    needs: fresh-write
+    strategy:
+      fail-fast: false
+      matrix: {shard: [1, 2, 3, 4, 5]}
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: python -m pip install -e .
+      - name: Natural stale-first bounded recovery
+        env:
+          OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+          OPPORTUNITYOS_ENVIRONMENT: cloud
+          OPPORTUNITYOS_TRUTH_PACK_PATH: founder/truth_pack.yaml.gz.b64
+          OPOS_WORKER_ID: "w227-recovery-${{ github.run_id }}-${{ matrix.shard }}"
+        run: python scripts/fr007_hosted_bootstrap.py --mode drain --max-jobs 30 --time-budget-seconds 480 --worker-id "$OPOS_WORKER_ID"
+
+  final-proof:
+    needs: bounded-recovery
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: python -m pip install -e .
+      - name: Queue/capacity/error acceptance snapshot
+        env:
+          OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+        run: |
+          python scripts/fr007_capacity_closure.py preflight
+          python - <<'PY'
+          import os, sys
+          from sqlalchemy import create_engine, text
+          e=create_engine(os.environ['OPOS_TARGET_DB_URL'], pool_size=1, max_overflow=0)
+          with e.connect() as c:
+              size=int(c.execute(text("select pg_database_size(current_database())")).scalar_one())
+              row=c.execute(text("""select count(*) filter (where status='RUNNING' and lease_expires_at<now()) expired,
+                coalesce(extract(epoch from (now()-min(coalesce(run_after,created_at)) filter (where status in ('PENDING','RETRY') and coalesce(run_after,created_at)<=now()))),0)::bigint oldest from worker_jobs""")).mappings().one()
+          e.dispose()
+          if size > 400*1024*1024 or int(row['expired']) != 0 or int(row['oldest']) >= 900:
+              raise SystemExit(f"final queue/capacity acceptance failed: size={size} row={dict(row)}")
+          PY
+
+  full-monitor:
+    needs: final-proof
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: python -m pip install -e .
+      - name: FULL monitor and normal incident resolution
+        env:
+          CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: https://lrrcpwaapwynzdsxzwhy.supabase.co
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/fr007_cloud_monitor.py --mode FULL --db-url "$CLOUD_DATABASE_URL" --supabase-url "$NEXT_PUBLIC_SUPABASE_URL" --output-report w227-monitor.json --output-incident w227-incident.json
+          python scripts/process_incident_alert.py --incident-file w227-incident.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fr007-w227-monitor-${{ github.run_id }}
+          path: w227-*.json

@@ -985,6 +985,12 @@ def make_evaluate_new_handler(
             )
 
             for record in pending_records:
+                if record.description == "[archived]":
+                    # Truth-pack changes may make a cold terminal row
+                    # eligible again.  Verify and hydrate its lossless archive
+                    # before reconstructing/scoring; never evaluate marker
+                    # text or silently skip a corrupt archive.
+                    record = repository.hydrate_cold_opportunity(record.id)
                 opportunity = _reconstruct_opportunity(session, record)
                 evaluate_and_store(
                     opportunity,

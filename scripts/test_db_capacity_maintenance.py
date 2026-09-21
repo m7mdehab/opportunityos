@@ -15,6 +15,7 @@ class CapacityMaintenanceTests(unittest.TestCase):
         self.connection.execute(text("CREATE TABLE opportunities (id TEXT PRIMARY KEY, content_hash TEXT, description TEXT, raw_payload_json TEXT, search_tsv TEXT)"))
         self.connection.execute(text("CREATE TABLE field_provenances (id INTEGER PRIMARY KEY, opportunity_id TEXT, field_name TEXT, raw_value TEXT, normalized_value TEXT, derivation_type TEXT, raw_pointer TEXT, record_checksum TEXT, rule_id TEXT)"))
         self.connection.execute(text("CREATE TABLE opportunity_cold_archive (opportunity_id TEXT PRIMARY KEY, content_hash TEXT, payload_zlib BLOB, payload_sha256 TEXT, original_size_bytes INTEGER, archive_version TEXT, archived_at TEXT)"))
+        self.connection.execute(text("CREATE TABLE feed_projection (opportunity_id TEXT, visible BOOLEAN, visibility_reason TEXT, search_text TEXT, search_tsv TEXT)"))
         self.connection.execute(
             text("INSERT INTO opportunities VALUES (:id,:hash,:description,:payload,NULL)"),
             {"id": "o1", "hash": "h1", "description": "source description", "payload": '{"x":1}'},

@@ -110,6 +110,15 @@ def archive_payload(connection, row: dict[str, Any], *, now: datetime) -> dict[s
         """), {"opportunity_id": row["id"]},
     )
     connection.execute(text("DELETE FROM field_provenances WHERE opportunity_id = :opportunity_id"), {"opportunity_id": row["id"]})
+    connection.execute(
+        text("""
+            UPDATE feed_projection
+            SET visible = FALSE, visibility_reason = 'cold_ineligible',
+                search_text = '', search_tsv = NULL
+            WHERE opportunity_id = :opportunity_id
+        """),
+        {"opportunity_id": row["id"]},
+    )
     return {"opportunity_id": row["id"], "compressed_bytes": len(compressed), "sha256": digest}
 
 

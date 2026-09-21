@@ -32,7 +32,14 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
 
         config = Config("alembic.ini")
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_current_head(), "0019_activity_view_access")
+        self.assertEqual(script.get_current_head(), "0020_capacity_archive")
+
+    def test_capacity_revision_is_linear_after_activity_view_access(self):
+        capacity = Path(__file__).parent / "migrations" / "versions" / "0020_capacity_archive.py"
+        source = capacity.read_text(encoding="utf-8")
+        self.assertIn('revision: str = "0020_capacity_archive"', source)
+        self.assertIn('down_revision: Union[str, None] = "0019_activity_view_access"', source)
+        self.assertIn('"opportunity_cold_archive"', source)
 
     def test_activity_correction_matches_live_0016_contract(self):
         source = ACTIVITY_CORRECTION.read_text(encoding="utf-8")

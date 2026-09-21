@@ -1,5 +1,7 @@
 import hashlib
 import json
+import hashlib
+import zlib
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -143,6 +145,18 @@ class StorageRepository:
 
     # Opportunity Operations
     def save_opportunity(self, opp_data: Dict[str, Any], provenances: List[Dict[str, Any]]) -> OpportunityRecord:
+        # A changed source version invalidates any cold archive for the same
+        # identity before the new authoritative hot row is committed.  A
+        # same-hash archive remains valid and cheap.  Migration 0020 creates
+        # this table before hosted workers can reach this path.
+        if _is_postgres(self.session):
+            self.session.execute(
+                text(
+                    "DELETE FROM opportunity_cold_archive "
+                    "WHERE opportunity_id = :id AND content_hash <> :content_hash"
+                ),
+                {"id": opp_data["id"], "content_hash": opp_data["content_hash"]},
+            )
         record = OpportunityRecord(
             id=opp_data["id"],
             track=opp_data["track"],
@@ -230,6 +244,51 @@ class StorageRepository:
         self.session.commit()
 
         return record
+
+    def hydrate_cold_opportunity(self, opportunity_id: str) -> OpportunityRecord:
+        """Verify and hydrate one archived source row before matching.
+
+        Hydration is bounded to the requested opportunity and fails closed on
+        missing, stale, or corrupt archive bytes.  It never treats the hot
+        ``[archived]`` marker as source truth.
+        """
+        record = self.get_opportunity(opportunity_id)
+        if record is None:
+            raise ValueError(f"opportunity not found: {opportunity_id}")
+        row = self.session.execute(
+            text(
+                "SELECT content_hash, payload_zlib, payload_sha256 "
+                "FROM opportunity_cold_archive WHERE opportunity_id = :id"
+            ),
+            {"id": opportunity_id},
+        ).mappings().first()
+        if row is None:
+            raise RuntimeError("cold archive missing for archived opportunity")
+        compressed = bytes(row["payload_zlib"])
+        if hashlib.sha256(compressed).hexdigest() != row["payload_sha256"]:
+            raise RuntimeError("cold archive checksum verification failed")
+        if row["content_hash"] != record.content_hash:
+            raise RuntimeError("cold archive content hash is stale")
+        try:
+            payload = json.loads(zlib.decompress(compressed).decode("utf-8"))
+        except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            raise RuntimeError("cold archive payload is corrupt") from exc
+        if payload.get("opportunity_id") != opportunity_id or payload.get("content_hash") != record.content_hash:
+            raise RuntimeError("cold archive identity verification failed")
+        record.description = payload.get("description") or ""
+        record.raw_payload_json = payload.get("raw_payload_json")
+        self.session.query(FieldProvenanceRecord).filter_by(opportunity_id=opportunity_id).delete(synchronize_session=False)
+        for provenance in payload.get("provenance") or []:
+            self.session.add(FieldProvenanceRecord(opportunity_id=opportunity_id, **{
+                key: provenance.get(key) for key in (
+                    "field_name", "raw_value", "normalized_value", "derivation_type",
+                    "raw_pointer", "record_checksum", "rule_id",
+                )
+            }))
+        self.session.flush()
+        _refresh_search_tsv(self.session, opportunity_id)
+        self.session.commit()
+        return self.get_opportunity(opportunity_id)
 
     def get_opportunity(self, opportunity_id: str) -> Optional[OpportunityRecord]:
         return self.session.query(OpportunityRecord).filter_by(id=opportunity_id).first()

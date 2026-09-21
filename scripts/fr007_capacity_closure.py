@@ -1,0 +1,136 @@
+"""Hosted W22.7 capacity/migration closure entrypoint.
+
+All output is sanitized.  Live write mode is explicit and uses one direct
+session so the Supabase temporary read-write override applies to migration,
+compaction and physical reclaim on the same connection.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from pathlib import Path
+
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import create_engine, text
+
+from scripts.db_capacity_guard import inspect_connection
+from scripts.db_capacity_maintenance import apply_maintenance, build_plan
+
+
+def snapshot(connection, truth_pack_hash: str | None = None) -> dict:
+    revision = connection.execute(text("SELECT version_num FROM alembic_version LIMIT 1")).scalar()
+    size = inspect_connection(connection)
+    relations = connection.execute(text("""
+        SELECT relname AS relation, pg_total_relation_size(c.oid)::bigint AS bytes
+        FROM pg_class c WHERE c.relnamespace = 'public'::regnamespace
+          AND c.relkind IN ('r','m') ORDER BY bytes DESC, relname
+    """)).mappings().all()
+    current_hash = truth_pack_hash or connection.execute(text("""
+        SELECT truth_pack_hash FROM match_evaluations
+        GROUP BY truth_pack_hash ORDER BY count(*) DESC, truth_pack_hash LIMIT 1
+    """)).scalar()
+    queue = connection.execute(text("""
+        SELECT count(*) FILTER (WHERE status IN ('PENDING','RETRY') AND coalesce(run_after,created_at) <= now()) AS due_runnable,
+               count(*) FILTER (WHERE status='RUNNING') AS running,
+               count(*) FILTER (WHERE status='RUNNING' AND lease_expires_at < now()) AS expired,
+               count(*) FILTER (WHERE status='DEAD_LETTER') AS dead_letter
+        FROM worker_jobs
+    """)).mappings().one()
+    return {
+        "revision": str(revision) if revision is not None else None,
+        "database_size_bytes": size.database_size_bytes,
+        "capacity_status": size.status,
+        "read_only": size.read_only,
+        "in_recovery": size.in_recovery,
+        "truth_pack_hash": current_hash,
+        "relations": [dict(row) for row in relations[:12]],
+        "queue": dict(queue),
+    }
+
+
+def run_migration_on_connection(connection) -> None:
+    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    # Alembic's env.py receives the already-open connection; this URL is only
+    # a sanitized dialect hint and is never printed or used to connect.
+    config.set_main_option(
+        "sqlalchemy.url",
+        connection.engine.url.render_as_string(hide_password=True),
+    )
+    config.attributes["connection"] = connection
+    command.upgrade(config, "head")
+
+
+def live_maintenance(dsn: str, truth_pack_hash: str | None) -> dict:
+    engine = create_engine(dsn, isolation_level="AUTOCOMMIT", pool_pre_ping=True)
+    try:
+        with engine.connect() as connection:
+            before = snapshot(connection, truth_pack_hash)
+            # Supabase's documented temporary quota maintenance override.
+            connection.execute(text("SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE"))
+            run_migration_on_connection(connection)
+            selected_hash = truth_pack_hash or before["truth_pack_hash"]
+            if not selected_hash:
+                raise RuntimeError("current truth-pack hash unavailable")
+            with connection.begin():
+                plan = build_plan(connection, truth_pack_hash=selected_hash)
+                result = apply_maintenance(connection, truth_pack_hash=selected_hash, confirm=True)
+            # Physical reclaim must run outside a transaction.  These are the
+            # measured heavy relations, never arbitrary product tables.
+            for relation in ("feed_projection", "field_provenances", "opportunities", "match_evaluations"):
+                connection.execute(text(f"VACUUM (FULL, ANALYZE) public.{relation}"))
+            after = snapshot(connection, selected_hash)
+            if after["database_size_bytes"] > 400 * 1024 * 1024:
+                raise RuntimeError("capacity maintenance completed below logical target")
+            return {"before": before, "plan": plan.as_dict(), "maintenance": result, "after": after}
+    finally:
+        engine.dispose()
+
+
+def fresh_write_proof(dsn: str) -> dict:
+    engine = create_engine(dsn, pool_pre_ping=True)
+    try:
+        with engine.connect() as connection:
+            state = inspect_connection(connection)
+            if state.read_only or state.in_recovery or state.database_size_bytes > 400 * 1024 * 1024:
+                raise RuntimeError("fresh application connection is not writable/within capacity")
+            transaction = connection.begin()
+            try:
+                connection.execute(text("CREATE TEMP TABLE opos_w227_write_probe (ok integer) ON COMMIT DROP"))
+                connection.execute(text("INSERT INTO opos_w227_write_probe VALUES (1)"))
+                transaction.rollback()
+            except Exception:
+                transaction.rollback()
+                raise
+            return {"status": "PASS", **state.as_dict()}
+    finally:
+        engine.dispose()
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("mode", choices=("preflight", "live-maintenance", "fresh-write"))
+    parser.add_argument("--dsn-env", default="OPOS_TARGET_DB_URL")
+    parser.add_argument("--truth-pack-hash")
+    args = parser.parse_args()
+    dsn = os.environ.get(args.dsn_env)
+    if not dsn:
+        parser.error(f"missing required environment variable {args.dsn_env}")
+    engine = create_engine(dsn, pool_pre_ping=True)
+    try:
+        if args.mode == "preflight":
+            with engine.connect() as connection:
+                result = snapshot(connection, args.truth_pack_hash)
+        elif args.mode == "fresh-write":
+            result = fresh_write_proof(dsn)
+        else:
+            result = live_maintenance(dsn, args.truth_pack_hash)
+    finally:
+        engine.dispose()
+    print(json.dumps(result, sort_keys=True, default=str))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
