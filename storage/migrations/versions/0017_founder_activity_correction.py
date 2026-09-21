@@ -66,6 +66,11 @@ def _apply_correction() -> None:
     op.execute("CREATE INDEX IF NOT EXISTS founder_activity_events_opportunity_created_idx ON public.founder_activity_events(opportunity_id, created_at DESC, id DESC)")
     _grant_table("founder_activity_events")
 
+    # Drop dependent views before replacing the 0016 view shape. PostgreSQL
+    # rejects CREATE OR REPLACE when columns are added or reordered.
+    op.execute("DROP VIEW IF EXISTS public.founder_feed_activity")
+    op.execute("DROP VIEW IF EXISTS public.founder_activity_state")
+
     op.execute("""
       CREATE OR REPLACE VIEW public.founder_activity_state AS
       WITH latest_event AS (
@@ -182,3 +187,4 @@ def downgrade() -> None:
     op.execute("DROP VIEW IF EXISTS public.founder_feed_activity")
     op.execute("DROP VIEW IF EXISTS public.founder_activity_state")
     op.execute("DROP TABLE IF EXISTS public.founder_activity_events")
+
