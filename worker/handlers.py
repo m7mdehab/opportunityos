@@ -106,6 +106,8 @@ def _acquire_source_persistence_lock(session: Any, source_id: str) -> None:
     # Kept as a compatibility shim for callers/tests from W22.4.  The actual
     # correctness lock now lives at the opportunity write boundary because
     # StorageRepository.save_opportunity commits internally.
+    # Keep this shim explicit so older callers cannot reintroduce a source-wide
+    # transaction lock around repository methods that commit internally.
     return None
 
 
