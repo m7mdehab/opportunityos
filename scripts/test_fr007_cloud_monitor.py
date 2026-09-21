@@ -269,6 +269,7 @@ class MockSchedule:
     ):
         self.source_id = source_id
         self.cadence_hours = cadence_hours
+        self.next_due_at = next_due
         self.next_due = next_due
 
 
@@ -445,6 +446,31 @@ class TestDatabaseAndQueueProbes(unittest.TestCase):
         )
         status_map = {r.name: r.status for r in results}
         self.assertEqual(status_map["source_freshness"], "WARN")
+
+    def test_db_source_schedule_with_only_next_due_at(self) -> None:
+        now_dt = datetime(2026, 9, 19, 12, 0, tzinfo=timezone.utc)
+        now_naive = now_dt.replace(tzinfo=None)
+
+        class RealProductionSchedule:
+            def __init__(self, source_id: str, cadence_hours: float, next_due_at: datetime | None):
+                self.source_id = source_id
+                self.cadence_hours = cadence_hours
+                self.next_due_at = next_due_at
+
+        session = MockSession(
+            schedules=[
+                RealProductionSchedule("src_prod", 6.0, now_naive + timedelta(hours=2)),
+            ]
+        )
+        results = probe_database_and_queue(
+            "dummy_url",
+            connection_factory=lambda: session,
+            clock=lambda: now_dt,
+        )
+        status_map = {r.name: r.status for r in results}
+        self.assertEqual(status_map["database_connectivity"], "PASS")
+        self.assertEqual(status_map["source_freshness"], "PASS")
+
 
 
 class TestBackupHeartbeatProbe(unittest.TestCase):
@@ -897,6 +923,44 @@ class TestProcessIncidentAlert(unittest.TestCase):
         }
         code = execute_incident_action(payload, runner=mock_runner)
         self.assertEqual(code, 1)
+        self.assertEqual(len(calls), 1, "Unrelated error must not trigger retry")
+
+    def test_action_create_missing_labels_retries_without_labels_and_succeeds(self) -> None:
+        calls = []
+        def mock_runner(cmd):
+            calls.append(cmd)
+            if len(calls) == 1:
+                return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="could not add label: 'incident' not found")
+            return subprocess.CompletedProcess(cmd, 0, stdout="https://github.com/org/repo/issues/101", stderr="")
+
+        payload = {
+            "action": "CREATE",
+            "title": "[INCIDENT] System Degraded",
+            "body": "Degraded details",
+        }
+        code = execute_incident_action(payload, runner=mock_runner)
+        self.assertEqual(code, 0)
+        self.assertEqual(len(calls), 2)
+        self.assertIn("--label", calls[0])
+        self.assertNotIn("--label", calls[1])
+        self.assertIn("https://github.com/org/repo/issues/101", "https://github.com/org/repo/issues/101")
+
+    def test_action_create_missing_labels_retry_failure_returns_nonzero(self) -> None:
+        calls = []
+        def mock_runner(cmd):
+            calls.append(cmd)
+            if len(calls) == 1:
+                return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="could not add label: 'incident' not found")
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="secondary api failure")
+
+        payload = {
+            "action": "CREATE",
+            "title": "[INCIDENT] System Degraded",
+            "body": "Degraded details",
+        }
+        code = execute_incident_action(payload, runner=mock_runner)
+        self.assertEqual(code, 1)
+        self.assertEqual(len(calls), 2)
 
     def test_action_update_success(self) -> None:
         calls = []
