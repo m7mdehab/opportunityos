@@ -14,6 +14,7 @@ on:
       - scripts/test_fr007_cloud_monitor.py
       - scripts/test_fr007_connection_pressure.py
       - scripts/test_w17_runtime_workflows.py
+      - .github/workflows/fr007-worker-drain.yml
       - .github/workflows/fr007-runtime-takeover-proof.yml
 
 permissions:
