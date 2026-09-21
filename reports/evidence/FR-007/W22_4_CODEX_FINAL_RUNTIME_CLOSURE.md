@@ -53,3 +53,7 @@ BLOCKED: deterministic corrections are implemented and green, but protected host
 
 This report intentionally does not claim runtime closure or FR-007 closure.
 
+
+## Latest hosted result
+
+Run 35620088135 (SHA 030c206) completed deterministic and enqueue successfully but the connection observer failed after its 6m53s sampling window; the five-shard drain matrix remained non-terminal at capture time. Run 35619944610 had two shards exceed the 35-minute limit. No final live acceptance metrics can be claimed from either run.
