@@ -41,6 +41,13 @@ def _grant_function(signature: str) -> None:
     END $$""")
 
 
+def _grant_view(name: str) -> None:
+    op.execute(f"REVOKE ALL ON public.{name} FROM PUBLIC")
+    op.execute(f"""DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON public.{name} FROM anon'; END IF;
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'GRANT SELECT ON public.{name} TO authenticated'; END IF;
+    END $$""")
+
 def upgrade() -> None:
     op.execute("""
       CREATE TABLE IF NOT EXISTS public.founder_activity_events (
@@ -52,14 +59,10 @@ def upgrade() -> None:
         created_at timestamp without time zone NOT NULL DEFAULT (now() AT TIME ZONE 'UTC')
       )
     """)
+    _apply_correction()
 
 
-def _grant_view(name: str) -> None:
-    op.execute(f"REVOKE ALL ON public.{name} FROM PUBLIC")
-    op.execute(f"""DO $$ BEGIN
-      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON public.{name} FROM anon'; END IF;
-      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'GRANT SELECT ON public.{name} TO authenticated'; END IF;
-    END $$""")
+def _apply_correction() -> None:
     op.execute("CREATE INDEX IF NOT EXISTS founder_activity_events_opportunity_created_idx ON public.founder_activity_events(opportunity_id, created_at DESC, id DESC)")
     _grant_table("founder_activity_events")
 
