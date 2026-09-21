@@ -74,16 +74,20 @@ class BackgroundWorkerQueue:
     ) -> Optional[WorkerJobRecord]:
         """Atomically claim the next runnable job, or return None if none is available.
 
-        First looks for PENDING/RETRY jobs whose run_after has elapsed. If none is
-        found, sweeps for RUNNING jobs whose lease has expired -- i.e. jobs whose
+        First sweeps for RUNNING jobs whose lease has expired -- i.e. jobs whose
         worker crashed or was killed without ever calling complete_job/fail_job.
+        Recovering expired leases before ordinary PENDING/RETRY selection ensures
+        stale work is never starved behind an arbitrarily large fresh backlog.
         A reclaimed stale-leased job has its retry_count incremented and is
         dead-lettered on threshold exactly as fail_job would (see fail_job for the
         shared increment-then-threshold policy): a job whose process reliably dies
         is thereby bounded by max_retries instead of being retried forever
         (council C10-2). A job that is dead-lettered by this sweep is never
         returned to a caller; this method keeps looking for another claimable job
-        instead.
+        instead (whether another stale lease or ordinary due work).
+
+        If no stale-leased job is eligible, looks for PENDING/RETRY jobs whose
+        run_after has elapsed, ordered by run_after ascending.
 
         ``claim_hook``, if provided, is invoked after the selected row has been
         mutated in-session but before the transaction is committed. It exists
@@ -96,6 +100,46 @@ class BackgroundWorkerQueue:
             bind = self.session.get_bind()
             is_postgres = bind.dialect.name == "postgresql" if bind else False
 
+            # 1. Sweep for stale leases first (expired RUNNING jobs).
+            stale_query = (
+                self.session.query(WorkerJobRecord)
+                .filter(
+                    WorkerJobRecord.status == "RUNNING",
+                    WorkerJobRecord.lease_expires_at < now,
+                )
+                .order_by(WorkerJobRecord.lease_expires_at.asc())
+            )
+            if is_postgres:
+                stale_query = stale_query.with_for_update(skip_locked=True)
+            stale_job = stale_query.first()
+
+            if stale_job:
+                # Mirror fail_job's increment-then-threshold policy exactly, so a job
+                # whose worker process died without calling complete_job/fail_job is
+                # still counted against max_retries instead of reclaimed forever.
+                stale_job.retry_count += 1
+                if stale_job.retry_count >= stale_job.max_retries:
+                    stale_job.status = "DEAD_LETTER"
+                    stale_job.lease_owner = None
+                    stale_job.lease_expires_at = None
+                    stale_job.error_message = (
+                        "Lease expired without completion (worker presumed dead); "
+                        f"retry_count {stale_job.retry_count} reached max_retries {stale_job.max_retries}"
+                    )
+                    self._invoke_claim_hook(claim_hook)
+                    self.session.commit()
+                    # A dead-lettered job must not be handed to a worker; keep looking
+                    # (may claim another stale lease or ordinary due work in this same call).
+                    continue
+
+                stale_job.status = "RUNNING"
+                stale_job.lease_owner = self.worker_id
+                stale_job.lease_expires_at = now + timedelta(seconds=lease_duration_seconds)
+                self._invoke_claim_hook(claim_hook)
+                self.session.commit()
+                return stale_job
+
+            # 2. No stale leases; claim ordinary PENDING/RETRY work whose run_after has elapsed.
             query = (
                 self.session.query(WorkerJobRecord)
                 .filter(
@@ -118,41 +162,7 @@ class BackgroundWorkerQueue:
                 self.session.commit()
                 return job
 
-            # No immediately runnable job; sweep for stale leases (crashed worker).
-            stale_query = self.session.query(WorkerJobRecord).filter(
-                WorkerJobRecord.status == "RUNNING",
-                WorkerJobRecord.lease_expires_at < now,
-            )
-            if is_postgres:
-                stale_query = stale_query.with_for_update(skip_locked=True)
-            stale_job = stale_query.first()
-
-            if not stale_job:
-                return None
-
-            # Mirror fail_job's increment-then-threshold policy exactly, so a job
-            # whose worker process died without calling complete_job/fail_job is
-            # still counted against max_retries instead of reclaimed forever.
-            stale_job.retry_count += 1
-            if stale_job.retry_count >= stale_job.max_retries:
-                stale_job.status = "DEAD_LETTER"
-                stale_job.lease_owner = None
-                stale_job.lease_expires_at = None
-                stale_job.error_message = (
-                    "Lease expired without completion (worker presumed dead); "
-                    f"retry_count {stale_job.retry_count} reached max_retries {stale_job.max_retries}"
-                )
-                self._invoke_claim_hook(claim_hook)
-                self.session.commit()
-                # A dead-lettered job must not be handed to a worker; keep looking.
-                continue
-
-            stale_job.status = "RUNNING"
-            stale_job.lease_owner = self.worker_id
-            stale_job.lease_expires_at = now + timedelta(seconds=lease_duration_seconds)
-            self._invoke_claim_hook(claim_hook)
-            self.session.commit()
-            return stale_job
+            return None
 
     def complete_job(self, job_id: str) -> bool:
         """Guarded UPDATE: marks the job COMPLETED only if this worker still holds
