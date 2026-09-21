@@ -15,7 +15,7 @@ from worker.handlers import make_poll_source_handler
 class TestHostedWorkerPool(unittest.TestCase):
     def test_explicit_postgres_pool_is_small_and_finite(self) -> None:
         engine = get_engine(
-            "postgresql+psycopg2://user:password@localhost/example",
+            "postgresql+psycopg2://localhost/example",
             pool_size=2,
             max_overflow=0,
             pool_timeout=30.0,
@@ -32,17 +32,17 @@ class TestHostedWorkerPool(unittest.TestCase):
     def test_invalid_pool_controls_fail_closed(self) -> None:
         with self.assertRaises(ValueError):
             get_engine(
-                "postgresql+psycopg2://user:password@localhost/example",
+                "postgresql+psycopg2://localhost/example",
                 pool_size=0,
             )
         with self.assertRaises(ValueError):
             get_engine(
-                "postgresql+psycopg2://user:password@localhost/example",
+                "postgresql+psycopg2://localhost/example",
                 max_overflow=-1,
             )
         with self.assertRaises(ValueError):
             get_engine(
-                "postgresql+psycopg2://user:password@localhost/example",
+                "postgresql+psycopg2://localhost/example",
                 pool_timeout=0,
             )
 
@@ -96,7 +96,7 @@ class TestHostedBootstrapConnectionReuse(unittest.TestCase):
             self.assertTrue(state["closed"], "bootstrap/enqueue session must close before drain starts")
             return 0
 
-        db_url = "postgresql+psycopg2://user:password@db.example.test/opportunityos"
+        db_url = "postgresql+psycopg2://db.example.test/opportunityos"
 
         with (
             patch.dict(os.environ, {"OPOS_TARGET_DB_URL": db_url}, clear=False),
