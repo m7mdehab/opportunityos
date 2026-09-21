@@ -26,7 +26,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 STATES = ("PASS", "WARN", "FAIL", "BLOCKED", "NOT_CONFIGURED")
-MODES = ("STATIC", "HTTP", "FULL", "TEST_ALERT")
+MODES = ("STATIC", "HTTP", "FULL", "TEST_ALERT")  # runtime takeover proof trigger path
 
 INCIDENT_MARKER = "<!-- opos-monitor-incident-key: fr007-cloud-runtime -->"
 INCIDENT_TITLE = "[FR-007 Monitor] Cloud runtime incident"
