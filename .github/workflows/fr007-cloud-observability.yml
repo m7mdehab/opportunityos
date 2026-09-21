@@ -9,6 +9,7 @@ on:
     branches:
       - main
       - work/fr007-overseer-integration
+      - work/fr007-antigravity-final-closure
     paths:
       - .github/workflows/fr007-cloud-observability.yml
   workflow_dispatch:
@@ -65,10 +66,12 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install database driver (if needed)
+      - name: Install dependencies and database driver
         run: |
           python -m pip install --upgrade pip
+          python -m pip install -e .
           python -m pip install asyncpg psycopg2-binary || true
+
 
       - name: Execute Validation Gates
         if: ${{ env.EXEC_MODE == 'VALIDATE' }}
@@ -120,6 +123,12 @@ jobs:
           python scripts/fr007_cloud_monitor.py "${MONITOR_ARGS[@]}"
           MONITOR_EXIT_CODE=$?
           set -e
+
+          if [ -f ".monitor_output/report.json" ]; then
+            echo "--- MONITOR REPORT ---"
+            cat .monitor_output/report.json
+            echo "--- END MONITOR REPORT ---"
+          fi
 
           echo "Generating immutable soak snapshot for interval (exit code: ${MONITOR_EXIT_CODE})..."
           python scripts/fr007_soak_snapshot.py \
