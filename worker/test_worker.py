@@ -181,6 +181,34 @@ class TestBackgroundWorkerQueue(unittest.TestCase):
 
         self.assertEqual([c1.id, c2.id, c3.id], [j1, j2, j3])
 
+    def test_evaluate_new_coalesces_to_one_successor(self):
+        running = self.queue.enqueue_job("evaluate_new", {})
+        running_record = self.session.query(WorkerJobRecord).filter_by(id=running).first()
+        running_record.status = "RUNNING"
+        running_record.lease_owner = "w-running"
+        running_record.lease_expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+        self.session.commit()
+
+        first = self.queue.enqueue_evaluate_new_coalesced()
+        second = self.queue.enqueue_evaluate_new_coalesced()
+        self.assertIsNotNone(first)
+        self.assertIsNone(second)
+        pending = (
+            self.session.query(WorkerJobRecord)
+            .filter(
+                WorkerJobRecord.job_type == "evaluate_new",
+                WorkerJobRecord.status == "PENDING",
+            )
+            .all()
+        )
+        self.assertEqual([row.id for row in pending], [first])
+
+    def test_evaluate_new_without_running_job_is_idempotent(self):
+        first = self.queue.enqueue_evaluate_new_coalesced()
+        second = self.queue.enqueue_evaluate_new_coalesced()
+        self.assertIsNotNone(first)
+        self.assertIsNone(second)
+
 
 class TestWorkerStartupRegression(unittest.TestCase):
     def test_normal_worker_startup_reaches_handler_registry_without_name_error(self):

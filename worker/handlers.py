@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from time import perf_counter
 from email.utils import parsedate_to_datetime
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Mapping, MutableMapping, Optional
@@ -87,19 +88,25 @@ SessionFactory = Callable[[], Any]
 #: so tests can inject a pack without touching ``private/truth_pack.yaml``.
 PackLoader = Callable[[Any], LoadedPack]
 
+# Sized from the disposable PostgreSQL worker envelope: one evaluator handles
+# at most this many rows, then coalesces one successor when work remains.
+EVALUATE_NEW_BATCH_SIZE = 100
+
 
 def _acquire_source_persistence_lock(session: Any, source_id: str) -> None:
-    """Serialize only the DB phase for one source on PostgreSQL.
+    """Compatibility no-op retained for W22.4 callers.
 
-    Remote acquisition happens before this function is called, so the advisory
-    transaction lock never spans network I/O. SQLite/unit-test sessions retain
-    their existing behavior; PostgreSQL workers serialize same-source writes
-    while unrelated sources continue concurrently.
+    Source-wide locking is intentionally not used because repository writes
+    commit internally. Identity races are serialized by
+    ``StorageRepository.lock_opportunity_identity`` at each commit boundary.
     """
     bind = getattr(session, "bind", None)
     if bind is None or getattr(getattr(bind, "dialect", None), "name", None) != "postgresql":
         return
-    session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:source_id)::bigint)"), {"source_id": source_id})
+    # Kept as a compatibility shim for callers/tests from W22.4.  The actual
+    # correctness lock now lives at the opportunity write boundary because
+    # StorageRepository.save_opportunity commits internally.
+    return None
 
 
 def noop(payload: dict) -> None:
@@ -514,6 +521,7 @@ def make_poll_source_handler(
             "worker.poll_source_fetching",
             extra={"component": "worker.handlers", "extra_data": {"source_id": source_id}},
         )
+        acquisition_started = perf_counter()
         try:
             pipeline = OpportunityPipeline(adapters=adapters, registry=reg, transport=fetch_transport)
             pipeline.acquisition.rate_limiter = process_rate_limiter
@@ -546,6 +554,7 @@ def make_poll_source_handler(
                 )
             else:
                 batch = pipeline.execute_discovery(source_ids=[source_id])
+            acquisition_duration = perf_counter() - acquisition_started
         except Exception as exc:
             _write_poll_run_record(
                 _resolve_session_factory,
@@ -575,18 +584,17 @@ def make_poll_source_handler(
 
         session = _resolve_session_factory()()
         try:
-            # The source has already been fetched and normalized. Serialize
-            # only this database phase so overlapping copies of one source
-            # cannot race lookup-then-insert identity checks.
-            _acquire_source_persistence_lock(session, source_id)
+            persistence_started = perf_counter()
             repository = StorageRepository(session)
             result = persist_batch(batch, repository)
+            persistence_duration = perf_counter() - persistence_started
 
             # Inline, full-fidelity evaluation of THIS batch's own in-memory
             # Opportunity objects (real responsibilities/requirements) --
             # see this function's docstring for why this must not be the
             # lossy _reconstruct_opportunity path evaluate_new uses.
             evaluated_inline_count = 0
+            inline_started = perf_counter()
             try:
                 pack = pack_loader_fn(truth_pack_path)
             except (TruthPackMissing, TruthPackInvalid) as exc:
@@ -601,7 +609,15 @@ def make_poll_source_handler(
 
             if pack is not None:
                 inline_evaluated_at = datetime.now(timezone.utc)
+                persisted_ids = set(result.persisted_ids)
+                # Unchanged rows are deliberately never evaluated inline.  A
+                # row without the current evaluation remains eligible for the
+                # bounded evaluate_new safety net below; doing it here would
+                # turn a large re-poll into thousands of serialized commits.
+                inline_ids = persisted_ids
                 for opp in batch.opportunities:
+                    if opp.id not in inline_ids:
+                        continue
                     evaluate_and_store(
                         opp,
                         pack.graph,
@@ -611,6 +627,7 @@ def make_poll_source_handler(
                         scorer=scorer,
                     )
                     evaluated_inline_count += 1
+            inline_duration = perf_counter() - inline_started
 
             # evaluate_new remains the backfill/safety net -- it will only
             # find work here if the inline pass above was skipped (no valid
@@ -619,7 +636,7 @@ def make_poll_source_handler(
             # the current truth-pack hash, so evaluate_new is a fast no-op
             # for them.
             queue = BackgroundWorkerQueue(session)
-            queue.enqueue_job("evaluate_new", {}, commit=False)
+            queue.enqueue_evaluate_new_coalesced(commit=False)
 
             finished_at = datetime.now(timezone.utc)
             poll_run = SourcePollRunRecord(
@@ -656,7 +673,10 @@ def make_poll_source_handler(
                 finished_at=finished_at,
                 cooldown_seconds=cd_secs,
             )
+            finalization_started = perf_counter()
             session.commit()
+            finalization_duration = perf_counter() - finalization_started
+            total_duration = (datetime.now(timezone.utc) - started_at).total_seconds()
             logger.info(
                 "worker.poll_source_persisted",
                 extra={
@@ -667,6 +687,13 @@ def make_poll_source_handler(
                         "unchanged": result.unchanged_count,
                         "updated": result.updated_count,
                         "evaluated_inline": evaluated_inline_count,
+                        "stage_seconds": {
+                            "persistence": round(persistence_duration, 3),
+                            "inline_evaluation": round(inline_duration, 3),
+                            "acquisition_parse": round(acquisition_duration, 3),
+                            "poll_finalization": round(finalization_duration, 3),
+                            "total": round(total_duration, 3),
+                        },
                     },
                 },
             )
@@ -950,6 +977,8 @@ def make_evaluate_new_handler(
             pending_records = (
                 session.query(OpportunityRecord)
                 .filter(or_(~evaluated_for_pack, ~projected_for_pack))
+                .order_by(OpportunityRecord.id.asc())
+                .limit(EVALUATE_NEW_BATCH_SIZE)
                 .all()
             )
 
@@ -963,6 +992,19 @@ def make_evaluate_new_handler(
                     evaluated_at=datetime.now(timezone.utc),
                     scorer=scorer,
                 )
+
+            # A bounded job may leave eligible rows.  Coalescing preserves a
+            # single RUNNING evaluator plus one successor, so a poll committing
+            # work while this job is running cannot strand that work or create a
+            # global enqueue storm.
+            remaining = (
+                session.query(OpportunityRecord.id)
+                .filter(or_(~evaluated_for_pack, ~projected_for_pack))
+                .limit(1)
+                .first()
+            )
+            if remaining is not None:
+                BackgroundWorkerQueue(session).enqueue_evaluate_new_coalesced(commit=False)
 
             logger.info(
                 "worker.evaluate_new_completed",

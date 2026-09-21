@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional, Callable
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from storage.models import WorkerJobRecord
 
 
@@ -46,6 +47,41 @@ class BackgroundWorkerQueue:
             self.session.commit()
         else:
             self.session.flush()
+        return job_id
+
+    def enqueue_evaluate_new_coalesced(self, *, commit: bool = True) -> Optional[str]:
+        """Ensure the global evaluation safety-net has at most one running job
+        and one pending/retry successor.
+
+        The check and insert are one short transaction.  PostgreSQL serializes
+        concurrent poll completions with a transaction advisory lock; SQLite
+        and test doubles retain the same status semantics without pretending
+        to offer PostgreSQL locking.
+        """
+        bind = self.session.get_bind()
+        is_postgres = bool(bind is not None and bind.dialect.name == "postgresql")
+        if is_postgres:
+            self.session.execute(text("SELECT pg_advisory_xact_lock(hashtext('evaluate_new_coalesce')::bigint)"))
+        running = (
+            self.session.query(WorkerJobRecord.id)
+            .filter(WorkerJobRecord.job_type == "evaluate_new", WorkerJobRecord.status == "RUNNING")
+            .first()
+        )
+        pending = (
+            self.session.query(WorkerJobRecord.id)
+            .filter(
+                WorkerJobRecord.job_type == "evaluate_new",
+                WorkerJobRecord.status.in_(["PENDING", "RETRY"]),
+            )
+            .first()
+        )
+        if running is not None and pending is not None:
+            return None
+        if running is None and pending is not None:
+            return None
+        job_id = self.enqueue_job("evaluate_new", {}, commit=False)
+        if commit:
+            self.session.commit()
         return job_id
 
     def _invoke_claim_hook(self, claim_hook: Optional[Callable[[], None]]) -> None:

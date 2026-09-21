@@ -234,17 +234,38 @@ def persist_batch(batch: IngestionBatch, repository: StorageRepository) -> Persi
     unchanged: list[str] = []
     updated: list[str] = []
 
-    for opp in batch.opportunities:
-        existing = repository.get_opportunity(opp.id)
+    if hasattr(repository, "get_opportunity_identity_state"):
+        identity_state = repository.get_opportunity_identity_state([opp.id for opp in batch.opportunities])
+    else:  # small test doubles from downstream integrations
+        identity_state = {}
+        for opp in batch.opportunities:
+            existing = repository.get_opportunity(opp.id)
+            if existing is not None:
+                identity_state[opp.id] = existing.content_hash
 
-        if existing is None:
+    for opp in batch.opportunities:
+        existing_hash = identity_state.get(opp.id)
+
+        if opp.id not in identity_state:
+            # The prefetch is an optimization, not the concurrency authority.
+            # Re-read under an identity advisory lock immediately before every
+            # write so a concurrent poll cannot race the primary key.
+            if hasattr(repository, "lock_opportunity_identity"):
+                repository.lock_opportunity_identity(opp.id)
+            existing = repository.get_opportunity(opp.id)
+            if existing is not None:
+                existing_hash = existing.content_hash
+            else:
+                existing_hash = None
+
+        if existing_hash is None:
             opp_data = _build_opp_data(opp, is_stale=False)
             provenances = _build_provenances(opp)
             repository.save_opportunity(opp_data, provenances)
             inserted.append(opp.id)
             continue
 
-        if existing.content_hash == opp.content_hash:
+        if existing_hash == opp.content_hash:
             # Identical re-poll: idempotent skip, no write at all (so
             # reverified_at is not disturbed either).
             unchanged.append(opp.id)
@@ -252,6 +273,12 @@ def persist_batch(batch: IngestionBatch, repository: StorageRepository) -> Persi
 
         # Same identity, changed content: write the new content and mark
         # re-verified rather than inserting a duplicate row.
+        if hasattr(repository, "lock_opportunity_identity"):
+            repository.lock_opportunity_identity(opp.id)
+        existing = repository.get_opportunity(opp.id)
+        if existing is not None and existing.content_hash == opp.content_hash:
+            unchanged.append(opp.id)
+            continue
         opp_data = _build_opp_data(opp, is_stale=False)
         provenances = _build_provenances(opp)
         repository.save_opportunity(opp_data, provenances)

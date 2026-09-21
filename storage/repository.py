@@ -234,6 +234,70 @@ class StorageRepository:
     def get_opportunity(self, opportunity_id: str) -> Optional[OpportunityRecord]:
         return self.session.query(OpportunityRecord).filter_by(id=opportunity_id).first()
 
+    def get_opportunity_identity_state(self, opportunity_ids: List[str], *, chunk_size: int = 500) -> Dict[str, str]:
+        """Return only persisted identity/content-hash state for a bounded id set.
+
+        Ingestion uses this deliberately narrow projection to classify a batch
+        without loading descriptions, payloads, or ORM relationships.  Chunking
+        keeps PostgreSQL bind counts bounded for large source feeds.
+        """
+        result: Dict[str, str] = {}
+        ids = list(dict.fromkeys(opportunity_ids))
+        for start in range(0, len(ids), chunk_size):
+            rows = (
+                self.session.query(OpportunityRecord.id, OpportunityRecord.content_hash)
+                .filter(OpportunityRecord.id.in_(ids[start:start + chunk_size]))
+                .all()
+            )
+            result.update({row[0]: row[1] for row in rows})
+        return result
+
+    def lock_opportunity_identity(self, opportunity_id: str) -> None:
+        """Serialize one identity's write decision through its commit boundary.
+
+        ``save_opportunity`` commits internally, so a source-wide transaction
+        advisory lock cannot span that method.  This lock is intentionally
+        acquired immediately before a fresh read and write for one candidate;
+        the repository commit releases it at exactly the boundary it protects.
+        """
+        if _is_postgres(self.session):
+            self.session.execute(
+                text("SELECT pg_advisory_xact_lock(hashtext(:opportunity_id)::bigint)"),
+                {"opportunity_id": opportunity_id},
+            )
+
+    def get_evaluation_projection_ids(
+        self, opportunity_ids: List[str], truth_pack_hash: str, *, chunk_size: int = 500
+    ) -> tuple[set[str], set[str]]:
+        """Bulk-read current-pack evaluation/projection identities only."""
+        from storage.models import MatchEvaluationRecord
+        from storage.feed_projection import FeedProjectionRecord
+
+        evaluated: set[str] = set()
+        projected: set[str] = set()
+        ids = list(dict.fromkeys(opportunity_ids))
+        for start in range(0, len(ids), chunk_size):
+            chunk = ids[start:start + chunk_size]
+            evaluated.update(
+                row[0]
+                for row in self.session.query(MatchEvaluationRecord.opportunity_id)
+                .filter(
+                    MatchEvaluationRecord.opportunity_id.in_(chunk),
+                    MatchEvaluationRecord.truth_pack_hash == truth_pack_hash,
+                )
+                .all()
+            )
+            projected.update(
+                row[0]
+                for row in self.session.query(FeedProjectionRecord.opportunity_id)
+                .filter(
+                    FeedProjectionRecord.opportunity_id.in_(chunk),
+                    FeedProjectionRecord.truth_pack_hash == truth_pack_hash,
+                )
+                .all()
+            )
+        return evaluated, projected
+
     # Founder Feedback Operations with Deduplication & ID alignment
     def record_feedback(
         self,
