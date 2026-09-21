@@ -7,6 +7,13 @@ on:
         description: "Authoritative truth-pack hash (leave blank to discover it)"
         required: false
         default: ""
+  workflow_call:
+    inputs:
+      truth_pack_hash:
+        description: "Authoritative truth-pack hash (leave blank to discover it)"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
