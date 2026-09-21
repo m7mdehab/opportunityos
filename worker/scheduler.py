@@ -257,6 +257,15 @@ def enqueue_due_sources(
     curr_now_naive = _to_naive_utc(curr_now) or datetime.now(timezone.utc).replace(tzinfo=None)
     default_interval = interval_hours if interval_hours is not None else get_poll_interval_hours()
 
+    bind = session.get_bind()
+    if bind is not None and bind.dialect.name == "postgresql":
+        from scripts.db_capacity_guard import assert_heavy_work_allowed
+
+        # Capacity/read-only checks happen before schedule locks or queue rows
+        # are touched.  A blocked provider therefore cannot create another
+        # wave of doomed jobs.
+        assert_heavy_work_allowed(session.connection())
+
     try:
         content = reg.path.read_text(encoding="utf-8")
         cadence_map = _parse_cadence_hours(content)

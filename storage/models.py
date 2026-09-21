@@ -92,6 +92,25 @@ class OpportunityRecord(Base):
     )
 
 
+class OpportunityColdArchiveRecord(Base):
+    """Lossless compressed payload for cold opportunities.
+
+    This table is intentionally independent of the hot row's lifecycle: the
+    maintenance path never deletes the opportunity identity row or founder
+    history.  ``payload_sha256`` covers the compressed bytes.
+    """
+
+    __tablename__ = "opportunity_cold_archive"
+
+    opportunity_id = Column(String(64), primary_key=True)
+    content_hash = Column(String(64), nullable=False, index=True)
+    payload_zlib = Column(LargeBinary, nullable=False)
+    payload_sha256 = Column(String(64), nullable=False)
+    original_size_bytes = Column(Integer, nullable=False)
+    archive_version = Column(String(16), nullable=False)
+    archived_at = Column(DateTime(timezone=True), nullable=False)
+
+
 class FieldProvenanceRecord(Base):
     __tablename__ = "field_provenances"
 

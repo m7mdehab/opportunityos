@@ -61,6 +61,12 @@ class BackgroundWorkerQueue:
         bind = self.session.get_bind()
         is_postgres = bool(bind is not None and bind.dialect.name == "postgresql")
         if is_postgres:
+            from scripts.db_capacity_guard import assert_heavy_work_allowed
+
+            # Fail closed before taking the coalescing lock or creating a job.
+            # This keeps provider quota/read-only failures observable and
+            # prevents another multi-shard wave from starting unusable work.
+            assert_heavy_work_allowed(self.session.connection())
             self.session.execute(text("SELECT pg_advisory_xact_lock(hashtext('evaluate_new_coalesce')::bigint)"))
         running = (
             self.session.query(WorkerJobRecord.id)

@@ -7,6 +7,7 @@ from sqlalchemy import func, literal_column
 from sqlalchemy.orm import Query, Session
 
 from storage.feed_projection import FeedProjectionRecord
+from storage.models import OpportunityRecord
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,17 @@ def build_feed_query(session: Session, spec: FeedQuerySpec) -> Query:
     query = session.query(FeedProjectionRecord).filter(
         FeedProjectionRecord.truth_pack_hash == spec.truth_pack_hash
     )
+    # W22.6 keeps one authoritative searchable representation per opportunity.
+    # PostgreSQL uses the opportunity GIN vector; SQLite tests retain the
+    # projection-only query contract because SQLite has no TSVECTOR operator.
+    postgres_search = (
+        session.bind is not None and session.bind.dialect.name == "postgresql"
+    )
+    if postgres_search:
+        query = query.join(
+            OpportunityRecord,
+            OpportunityRecord.id == FeedProjectionRecord.opportunity_id,
+        )
 
     if not spec.include_hidden:
         query = query.filter(FeedProjectionRecord.visible.is_(True))
@@ -89,7 +101,12 @@ def build_feed_query(session: Session, spec: FeedQuerySpec) -> Query:
         query = query.filter(FeedProjectionRecord.source_id == spec.source_id)
     if spec.q and spec.q.strip():
         tsquery = func.websearch_to_tsquery(literal_column("'simple'"), spec.q.strip())
-        query = query.filter(FeedProjectionRecord.search_tsv.op("@@")(tsquery))
+        search_column = (
+            OpportunityRecord.search_tsv
+            if postgres_search
+            else FeedProjectionRecord.search_tsv
+        )
+        query = query.filter(search_column.op("@@")(tsquery))
 
     return query
 

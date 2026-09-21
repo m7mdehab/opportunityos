@@ -243,7 +243,12 @@ def build_projection_record(
         excluded_industry_match=industry_match,
         visible=not hidden_by,
         visibility_reason=json.dumps(hidden_by, separators=(",", ":")) if hidden_by else None,
-        search_text=_search_text(opportunity),
+        # Search is sourced from the single authoritative opportunity corpus.
+        # Keeping a second full-text copy in every profile projection was the
+        # dominant Free Plan storage amplifier.  The projection remains a
+        # lean read model; PostgreSQL feed queries join opportunities for
+        # search when the compact representation is active.
+        search_text="",
         search_tsv=None,
         evaluated_at=evaluated_at,
         projected_at=now,
