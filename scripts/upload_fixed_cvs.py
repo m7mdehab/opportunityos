@@ -1,4 +1,4 @@
-"""Upload the six Founder-approved fixed CV PDFs to private Supabase Storage.
+"""Upload the nine Founder-approved fixed CV PDFs to private Supabase Storage.
 
 Usage:
   python scripts/upload_fixed_cvs.py --dir "C:/path/to/cvs"
@@ -73,8 +73,8 @@ def upload_one(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Upload and verify the six locked OpportunityOS CVs")
-    parser.add_argument("--dir", required=True, help="Directory containing the six final PDF filenames")
+    parser = argparse.ArgumentParser(description="Upload and verify the nine locked OpportunityOS CVs")
+    parser.add_argument("--dir", required=True, help="Directory containing the nine final PDF filenames")
     parser.add_argument("--bucket", default=os.getenv("STORAGE_CV_BUCKET", "founder-cv-portfolio"))
     args = parser.parse_args(argv)
 
