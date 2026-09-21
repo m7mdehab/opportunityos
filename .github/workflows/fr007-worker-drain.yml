@@ -21,7 +21,8 @@ on:
   push:
     branches:
       - main
-      - work/fr007-overseer-integration`r`n      - work/fr007-codex-runtime-takeover
+      - work/fr007-overseer-integration
+      - work/fr007-codex-runtime-takeover
     paths:
       - .github/workflows/fr007-worker-drain.yml
 
