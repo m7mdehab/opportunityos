@@ -104,10 +104,12 @@ def require_tool(name):
 def run_command(argv, env):
     # stdout/stderr are never forwarded: pg_dump/pg_restore/alembic may echo
     # connection settings, object names, or private row content on failure.
-    result = subprocess.run(argv, cwd=ROOT, env=env, stdout=subprocess.PIPE,
+    capture_stdout = len(argv) >= 3 and argv[1:3] == ["-m", "alembic"]
+    result = subprocess.run(argv, cwd=ROOT, env=env,
+                            stdout=subprocess.PIPE if capture_stdout else subprocess.DEVNULL,
                             stderr=subprocess.PIPE, check=False, shell=False)
     if result.returncode:
-        raw_out = result.stdout.decode("utf-8", "replace") if isinstance(result.stdout, bytes) else ""
+        raw_out = result.stdout.decode("utf-8", "replace") if capture_stdout and isinstance(result.stdout, bytes) else ""
         raw_err = result.stderr.decode("utf-8", "replace") if isinstance(result.stderr, bytes) else ""
         raw = raw_out + "\n" + raw_err
         # Preserve a short, non-sensitive provider error class for CI diagnosis
