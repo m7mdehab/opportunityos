@@ -1141,3 +1141,6 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+# W22.5 final hosted proof trigger: keep monitor implementation unchanged.
+
