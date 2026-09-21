@@ -116,6 +116,7 @@ class TestHostedBootstrapConnectionReuse(unittest.TestCase):
             max_overflow=bootstrap.HOSTED_WORKER_MAX_OVERFLOW,
             pool_timeout=bootstrap.HOSTED_WORKER_POOL_TIMEOUT_SECONDS,
             pool_pre_ping=True,
+            application_name=bootstrap.HOSTED_WORKER_APPLICATION_NAME,
         )
         drain_mock.assert_called_once()
         fake_engine.dispose.assert_called_once()
