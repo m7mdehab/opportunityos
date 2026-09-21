@@ -30,13 +30,16 @@ def get_engine(
     max_overflow: int | None = None,
     pool_timeout: float | None = None,
     pool_pre_ping: bool = False,
+    application_name: str | None = None,
 ):
     """Create a SQLAlchemy engine.
 
     Pool controls are optional so existing application callers keep SQLAlchemy's
     historical defaults. Hosted worker processes can explicitly provide a small,
     finite PostgreSQL pool to avoid retaining more Supavisor session-mode
-    connections than the worker can actually use concurrently.
+    connections than the worker can actually use concurrently. An optional
+    PostgreSQL application_name makes live pool attribution observable without
+    exposing credentials or payload data.
 
     If db_url is None:
       - Uses OPPORTUNITYOS_DB_URL if present.
@@ -61,6 +64,8 @@ def get_engine(
     connect_args = {}
     if db_url.startswith("sqlite"):
         connect_args["check_same_thread"] = False
+    elif application_name:
+        connect_args["application_name"] = application_name
 
     engine_kwargs = {
         "echo": echo,
