@@ -1,4 +1,5 @@
 name: FR-007 durable worker drain
+# Runtime takeover recovery waves are intentionally bounded and observable.
 
 on:
   workflow_dispatch:
