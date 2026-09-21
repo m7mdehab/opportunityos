@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `206b6d1` — Add zero-dollar database capacity correction
+- **State generated at commit:** `808a982` — Record W22.7 runtime closure evidence
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
