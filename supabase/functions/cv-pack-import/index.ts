@@ -29,9 +29,9 @@ const ASSETS: Asset[] = [
   { filename: "Mohammed_Ehab_Data_Scientist_CV_2026.docx", targetPath: "2026/editable/Mohammed_Ehab_Data_Scientist_CV_2026.docx", contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
   { filename: "Mohammed_Ehab_Master_CV_2026.docx", targetPath: "2026/editable/Mohammed_Ehab_Master_CV_2026.docx", contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
 
-  { filename: "ATS_AUDIT.md", targetPath: "2026/system/ATS_AUDIT.md", contentType: "text/markdown; charset=utf-8" },
+  { filename: "ATS_AUDIT.md", targetPath: "2026/system/ATS_AUDIT.md", contentType: "text/markdown" },
   { filename: "OpportunityOS_CV_Registry.json", targetPath: "2026/system/OpportunityOS_CV_Registry.json", contentType: "application/json" },
-  { filename: "README_CV_SYSTEM.md", targetPath: "2026/system/README_CV_SYSTEM.md", contentType: "text/markdown; charset=utf-8" },
+  { filename: "README_CV_SYSTEM.md", targetPath: "2026/system/README_CV_SYSTEM.md", contentType: "text/markdown" },
 ];
 
 function json(body: unknown, status = 200): Response {
