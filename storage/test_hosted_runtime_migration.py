@@ -15,6 +15,7 @@ from alembic.script import ScriptDirectory
 
 
 MIGRATION = Path(__file__).parent / "migrations" / "versions" / "0010_hosted_runtime.py"
+ACTIVITY_CORRECTION = Path(__file__).parent / "migrations" / "versions" / "0017_founder_activity_correction.py"
 
 
 class HostedRuntimeMigrationContractTests(unittest.TestCase):
@@ -31,7 +32,15 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
 
         config = Config("alembic.ini")
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_current_head(), "0015_hosted_founder_surface")
+        self.assertEqual(script.get_current_head(), "0017_founder_activity_correction")
+
+    def test_activity_correction_matches_live_0016_contract(self):
+        source = ACTIVITY_CORRECTION.read_text(encoding="utf-8")
+        self.assertIn('revision: str = "0017_founder_activity_correction"', source)
+        self.assertIn('down_revision: Union[str, None] = "0016_founder_activity"', source)
+        for required in ("founder_activity_events", "founder_set_action", "founder_add_feedback", "founder_activity_detail", "has_activity", "CURRENT_DATE", "SECURITY DEFINER", "p_type='clear'", "action_type IN ('mark_applied','dismiss','snooze','clear')"):
+            self.assertIn(required, source)
+        self.assertNotIn("THEN CASE WHEN a.applied_at IS NOT NULL THEN 'submitted'", source)
 
     def test_durable_founder_binding_and_browser_boundary(self):
         for required in (

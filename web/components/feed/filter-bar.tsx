@@ -13,6 +13,8 @@ export interface FeedFilters {
   q: string
   sourceFamily: string
   sourceId: string
+  activity: string
+  feedback: string
 }
 
 export const EMPTY_FILTERS: FeedFilters = {
@@ -22,6 +24,8 @@ export const EMPTY_FILTERS: FeedFilters = {
   q: "",
   sourceFamily: "",
   sourceId: "",
+  activity: "to_review",
+  feedback: "",
 }
 
 const TRACKS: Track[] = [
@@ -72,6 +76,8 @@ export function FilterBar({
     filters.q !== ""
     || filters.sourceFamily !== ""
     || filters.sourceId !== ""
+    || filters.activity !== "to_review"
+    || filters.feedback !== ""
 
   const families = [...new Set(sources.map((source) => source.source_family))].sort()
   const familyMeta = new Map(families.map((family) => {
@@ -164,6 +170,18 @@ export function FilterBar({
         <select id="filter-source-family" className={selectClasses} value={filters.sourceFamily} onChange={(e) => onChange({ ...filters, sourceFamily: e.target.value, sourceId: "" })}>
           <option value="">All sources ({allAutomatedCount})</option>
           {families.map((family) => { const meta = familyMeta.get(family)!; return <option key={family} value={family}>{family} ({meta.manualOnly ? "Manual only · 0 automated" : meta.count})</option> })}
+        </select>
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor="filter-activity">Activity</Label>
+        <select id="filter-activity" data-testid="filter-activity" className={selectClasses} value={filters.activity} onChange={(e) => onChange({ ...filters, activity: e.target.value })}>
+          <option value="to_review">To review</option><option value="any">Any activity</option><option value="applied">Applied</option><option value="snoozed">Snoozed</option><option value="dismissed">Dismissed</option><option value="has_feedback">Has feedback</option>
+        </select>
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label htmlFor="filter-feedback">Feedback</Label>
+        <select id="filter-feedback" data-testid="filter-feedback" className={selectClasses} value={filters.feedback} onChange={(e) => onChange({ ...filters, feedback: e.target.value })}>
+          <option value="">All feedback states</option><option value="good_match">Good match</option><option value="bad_match">Bad match</option><option value="eligibility_wrong">Not eligible</option><option value="irrelevant_role">Wrong track</option><option value="duplicate_issue">Duplicate</option>
         </select>
       </div>
       <Button type="button" variant="outline" size="lg" onClick={onOpenManualSources} data-testid="open-manual-sources-panel">Check manually</Button>

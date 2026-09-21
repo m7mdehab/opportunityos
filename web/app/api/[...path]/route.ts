@@ -73,7 +73,7 @@ function hostedFeedRow(row: Record<string, unknown>) {
     source_id: row.source_id ?? "", source_url: row.source_url ?? "", track: row.track,
     decision: row.qualification_decision ?? null, fit_score: row.fit_score ?? null, top_reasons: reasons,
     deadline: row.deadline ?? null, posted_date: row.posted_date ?? null, is_stale: Boolean(row.is_stale),
-    action_state: null, feedback_label: null, hidden_by: policyHiddenReasons(row.visibility_reason), flagged_by: [], work_mode: row.work_mode ?? "unspecified",
+    action_state: row.action_state ?? null, feedback_label: row.feedback_label ?? null, hidden_by: policyHiddenReasons(row.visibility_reason), flagged_by: [], work_mode: row.work_mode ?? "unspecified",
     work_mode_source: null, location_country: row.location_country ?? null, location_city: row.location_city ?? null,
     location_region: row.location_region ?? null, remote_scope: row.remote_scope ?? "unspecified", remote_scope_regions: [],
     employment_type: row.employment_type ?? "unspecified", seniority_level: row.seniority_level ?? "unspecified",
@@ -82,7 +82,7 @@ function hostedFeedRow(row: Record<string, unknown>) {
     source_family: row.source_family ?? String(row.source_id ?? "").split(":")[0], reverified_at: row.reverified_at ?? null,
   };
 }
-function hostedDetail(row: Record<string, unknown>) {
+function hostedDetail(row: Record<string, unknown>, activity?: Record<string, unknown>) {
   const detail = (parseJson(row.evaluation_detail_json) ?? {}) as Record<string, unknown>;
   const dimensions = parseJson(row.dimension_scores_json);
   const constraints = Array.isArray(detail.hard_constraints) ? detail.hard_constraints.map((item: unknown) => {
@@ -95,7 +95,7 @@ function hostedDetail(row: Record<string, unknown>) {
     return { dimension: String(value.dimension_name ?? value.dimension ?? "unknown"), score: Number(value.raw_score ?? value.score ?? 0), weight: Number(value.weight ?? 0), weighted_score: Number(value.weighted_score ?? 0), rationale: String(value.explanation ?? value.rationale ?? "") };
   }) : [];
   const safeRow = Object.fromEntries(Object.entries(row).filter(([key]) => !["evaluation_detail_json", "dimension_scores_json", "reasons_json"].includes(key)));
-  return { ...safeRow, fields: [], qualification: { decision: row.qualification_decision ?? null, constraints }, scoring: { fit_score: row.fit_score ?? null, dimension_scores: dimensionScores, strengths: asStringArray(detail.strengths), gaps: asStringArray(detail.gaps), unknowns: asStringArray(detail.unknowns), uncertainty_penalty: Number(detail.uncertainty_penalty ?? 0), explanation: String(detail.explanation ?? ""), policy_version: row.policy_version ?? "", evaluated_at: row.evaluated_at ?? "", truth_pack_hash: row.truth_pack_hash ?? null }, evidence_links: [], action_history: [], feedback_history: [] };
+  return { ...safeRow, fields: [], qualification: { decision: row.qualification_decision ?? null, constraints }, scoring: { fit_score: row.fit_score ?? null, dimension_scores: dimensionScores, strengths: asStringArray(detail.strengths), gaps: asStringArray(detail.gaps), unknowns: asStringArray(detail.unknowns), uncertainty_penalty: Number(detail.uncertainty_penalty ?? 0), explanation: String(detail.explanation ?? ""), policy_version: row.policy_version ?? "", evaluated_at: row.evaluated_at ?? "", truth_pack_hash: row.truth_pack_hash ?? null }, evidence_links: [], action_history: Array.isArray(activity?.action_history) ? activity.action_history : [], feedback_history: Array.isArray(activity?.feedback_history) ? activity.feedback_history : [] };
 }
 
 type HostedFacetDefinition = {
@@ -266,7 +266,7 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
     const pageSize = Math.min(200, Math.max(1, Number(url.searchParams.get("page_size") ?? "25") || 25));
     const includeHidden = url.searchParams.get("include_hidden") === "true";
     const buildFeedQuery = (visibility?: "visible" | "hidden") => {
-      const query = new URL(`${config.origin}/rest/v1/founder_feed`);
+      const query = new URL(`${config.origin}/rest/v1/founder_feed_activity`);
       query.searchParams.set("select", "*");
       query.searchParams.set("is_stale", "eq.false");
       if (visibility === "visible") query.searchParams.set("visible", "eq.true");
@@ -275,6 +275,13 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
       for (const [key, column, op] of [["track", "track", "eq"], ["decision", "qualification_decision", "eq"], ["min_score", "fit_score", "gte"], ["source_family", "source_family", "eq"], ["source_id", "source_id", "eq"]] as const) {
         const value = url.searchParams.get(key); if (value) query.searchParams.set(column, `${op}.${value}`);
       }
+      const activity = url.searchParams.get("activity");
+      if (activity === "to_review") query.searchParams.set("action_state", "is.null");
+      else if (["applied", "snoozed", "dismissed"].includes(activity ?? "")) query.searchParams.set("action_state", `eq.${activity === "applied" ? "submitted" : activity}`);
+      else if (activity === "has_feedback") query.searchParams.set("feedback_label", "not.is.null");
+      else if (activity === "any") query.searchParams.set("has_activity", "eq.true");
+      const feedback = url.searchParams.get("feedback");
+      if (feedback && feedback !== "") query.searchParams.set("feedback_label", feedback === "any" ? "not.is.null" : `eq.${feedback}`);
       const text = url.searchParams.get("q");
       if (text) { const safe = text.replace(/[(),]/g, " "); query.searchParams.set("or", `(title.ilike.*${safe}*,organization.ilike.*${safe}*)`); }
       return query;
@@ -291,10 +298,22 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
     const hiddenCount = Number(hiddenRange.split("/")[1] ?? "0") || 0;
     return NextResponse.json({ page, page_size: pageSize, total, hidden_count: hiddenCount, items: Array.isArray(rows) ? rows.map(hostedFeedRow) : [] });
   }
+  if (subpath.startsWith("opportunities/") && path.length === 3 && path[2] === "actions" && method === "POST") {
+    const id = decodeURIComponent(path[1]); const body = await request.json().catch(() => null) as { type?: unknown; until?: unknown } | null;
+    if (!body || typeof body.type !== "string") return hostedError("action type is required", 400);
+    const response = await hostedFetch(config, "/rest/v1/rpc/founder_set_action", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ p_opportunity_id: id, p_type: body.type, p_until: typeof body.until === "string" ? body.until : null }) });
+    const payload = await response.json().catch(() => null); if (!response.ok) return hostedError(typeof payload === "object" && payload && "message" in payload ? String((payload as Record<string, unknown>).message) : "action failed", response.status === 400 ? 422 : response.status); return NextResponse.json(payload);
+  }
+  if (subpath.startsWith("opportunities/") && path.length === 3 && path[2] === "feedback" && method === "POST") {
+    const id = decodeURIComponent(path[1]); const body = await request.json().catch(() => null) as { label?: unknown; note?: unknown } | null;
+    if (!body || typeof body.label !== "string") return hostedError("feedback label is required", 400);
+    const response = await hostedFetch(config, "/rest/v1/rpc/founder_add_feedback", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ p_opportunity_id: id, p_label: body.label, p_note: typeof body.note === "string" ? body.note : null }) });
+    const payload = await response.json().catch(() => null); if (!response.ok) return hostedError("feedback failed", response.status); return NextResponse.json(payload);
+  }
   if (subpath === "worker/poll-now" && method === "POST") { const response = await hostedFetch(config, "/rest/v1/rpc/enqueue_poll_now", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: await request.text() || "{}" }); const payload = await response.json().catch(() => null); if (!response.ok) return NextResponse.json(payload, { status: response.status }); const object = payload && typeof payload === "object" && !Array.isArray(payload) ? payload as Record<string, unknown> : {}; const enqueued = Array.isArray(object.enqueued) ? object.enqueued.filter((item: unknown) => item && typeof item === "object" && "source_id" in item && "job_id" in item) : []; const skipped = Array.isArray(object.skipped) ? object.skipped.filter((item: unknown) => item && typeof item === "object" && "source_id" in item && "reason" in item) : []; return NextResponse.json({ enqueued, skipped }); }
   if (subpath === "sources/health" && method === "GET") { const response = await hostedFetch(config, "/rest/v1/founder_source_health?select=*&order=source_id.asc", { headers: { Authorization: `Bearer ${token}` } }); const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status }); return NextResponse.json({ sources: Array.isArray(rows) ? rows.map((row: Record<string, unknown>) => ({ source_id: row.source_id, name: row.source_id, category: "", read_policy: "allowed", last_poll: row.last_poll_finished_at ?? null, last_status: row.last_poll_status ?? row.last_status ?? null, last_record_count: row.last_raw_ingested ?? null })) : [] }); }
   if (subpath === "sources/overview" && method === "GET") { const response = await hostedFetch(config, "/rest/v1/founder_source_overview?select=*&order=source_family.asc,source_id.asc", { headers: { Authorization: `Bearer ${token}` } }); const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status }); return NextResponse.json({ sources: Array.isArray(rows) ? rows.map((row: Record<string, unknown>) => ({ source_family: row.source_family, source_id: row.source_id ?? null, opportunity_count: Number(row.opportunity_count ?? 0), hidden_count: Number(row.hidden_count ?? 0), last_success_at: row.last_success_at ?? null, last_status: row.last_status ?? null, manual_only: Boolean(row.manual_only) })) : [] }); }
-  if (subpath.startsWith("opportunities/") && path.length === 2 && method === "GET") { const id = encodeURIComponent(path[1]); const response = await hostedFetch(config, `/rest/v1/founder_opportunity_detail?id=eq.${id}&select=*`, { headers: { Authorization: `Bearer ${token}` } }); const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status }); if (!Array.isArray(rows) || !rows.length) return hostedError("opportunity not found", 404); return NextResponse.json(hostedDetail(rows[0] as Record<string, unknown>)); }
+  if (subpath.startsWith("opportunities/") && path.length === 2 && method === "GET") { const id = encodeURIComponent(path[1]); const response = await hostedFetch(config, `/rest/v1/founder_opportunity_detail?id=eq.${id}&select=*`, { headers: { Authorization: `Bearer ${token}` } }); const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status }); if (!Array.isArray(rows) || !rows.length) return hostedError("opportunity not found", 404); const activityResponse = await hostedFetch(config, "/rest/v1/rpc/founder_activity_detail", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ p_opportunity_id: path[1] }) }); const activityPayload = await activityResponse.json().catch(() => ({})); return NextResponse.json(hostedDetail(rows[0] as Record<string, unknown>, activityPayload as Record<string, unknown>)); }
   if (["filters", "facets", "saved-views"].includes(subpath) && method === "GET") {
     const view = subpath === "filters" ? "founder_filters" : subpath === "facets" ? "founder_facet_settings_view" : "founder_saved_view_records";
     const response = await hostedFetch(config, `/rest/v1/${view}?select=*`, { headers: { Authorization: `Bearer ${token}` } });

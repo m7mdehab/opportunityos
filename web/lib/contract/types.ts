@@ -237,11 +237,13 @@ export interface Scoring {
 
 export interface ActionHistoryEntry {
   action_id: string
+  action_type?: string
   action_status: string
-  execution_mode: string
+  execution_mode?: string
+  until?: string | null
   created_at: string
-  updated_at: string
-  notes: string | null
+  updated_at?: string
+  notes?: string | null
 }
 
 export interface FeedbackHistoryEntry {
@@ -297,7 +299,7 @@ export interface FeedbackResponse {
   created_at: string
 }
 
-export type ActionType = "mark_applied" | "dismiss" | "snooze"
+export type ActionType = "mark_applied" | "dismiss" | "snooze" | "clear"
 
 export interface ActionResponse {
   opportunity_id: string

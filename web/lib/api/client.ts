@@ -94,6 +94,8 @@ export const api = {
       q?: string
       source_family?: string
       source_id?: string
+      activity?: string
+      feedback?: string
       page?: number
       page_size?: number
       /** Default `false`. When `true`, items hidden by an enabled

@@ -20,7 +20,7 @@ const FEEDBACK_LABELS: FeedbackLabel[] = [
   "review_required",
 ]
 
-const ACTION_TYPES: ActionType[] = ["mark_applied", "dismiss", "snooze"]
+const ACTION_TYPES: ActionType[] = ["mark_applied", "dismiss", "snooze", "clear"]
 
 function store() {
   return getStore(resolveScenario())
@@ -66,6 +66,13 @@ export const handlers = [
   http.get("/api/opportunities", ({ request }) => {
     if (!requireAuth(request)) return unauthorized()
     const url = new URL(request.url)
+    const persisted = request.headers.get("cookie")?.match(/(?:^|;\s*)mock_action=([^;]+)/)?.[1]
+    if (persisted) {
+      const [id, state] = decodeURIComponent(persisted).split(":")
+      if (id && (state === "dismissed" || state === "snoozed" || state === "submitted")) {
+        store().submitAction(id, state === "submitted" ? "mark_applied" : state as ActionType, null)
+      }
+    }
     const track = url.searchParams.get("track") ?? undefined
     const decision = url.searchParams.get("decision") ?? undefined
     const minScoreRaw = url.searchParams.get("min_score")
@@ -73,6 +80,8 @@ export const handlers = [
     const page = Number(url.searchParams.get("page") ?? "1")
     const pageSize = Number(url.searchParams.get("page_size") ?? "25")
     const includeHidden = url.searchParams.get("include_hidden") === "true"
+    const activity = url.searchParams.get("activity") ?? undefined
+    const feedback = url.searchParams.get("feedback") ?? undefined
 
     const result = store().listOpportunities({
       track,
@@ -82,6 +91,8 @@ export const handlers = [
       page,
       page_size: pageSize,
       include_hidden: includeHidden,
+      activity,
+      feedback,
     })
     return HttpResponse.json(result)
   }),
@@ -156,7 +167,7 @@ export const handlers = [
         { status: 404 }
       )
     }
-    return HttpResponse.json({ opportunity_id: id, ...entry })
+    return HttpResponse.json({ opportunity_id: id, ...entry }, { headers: { "Set-Cookie": `mock_feedback=${encodeURIComponent(`${id}:${body.label}`)}; Path=/` } })
   }),
 
   http.post("/api/opportunities/:id/actions", async ({ request, params }) => {
@@ -186,7 +197,7 @@ export const handlers = [
         { status: 404 }
       )
     }
-    return HttpResponse.json(result)
+    return HttpResponse.json(result, { headers: { "Set-Cookie": `mock_action=${encodeURIComponent(`${id}:${result.action_state}`)}; Path=/` } })
   }),
 
   // ---- filters (D3) ----
@@ -324,6 +335,20 @@ export const handlers = [
   http.get("/api/sources/health", ({ request }) => {
     if (!requireAuth(request)) return unauthorized()
     return HttpResponse.json(store().sourcesHealth())
+  }),
+
+  http.get("/api/sources/overview", ({ request }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const sources = store().sourcesHealth().sources.map((source) => ({
+      source_family: source.category,
+      source_id: source.source_id,
+      opportunity_count: 0,
+      hidden_count: 0,
+      last_success_at: source.last_poll,
+      last_status: source.last_status,
+      manual_only: source.read_policy !== "allowed",
+    }))
+    return HttpResponse.json({ sources })
   }),
 
   http.post("/api/worker/poll-now", ({ request }) => {

@@ -1,0 +1,88 @@
+name: FR-007 Founder Activity Correction Live Rollout
+
+on:
+  push:
+    branches:
+      - work/fr007-codex-founder-activity-correction
+    paths:
+      - storage/migrations/versions/0016_founder_activity.py
+      - storage/migrations/versions/0017_founder_activity_correction.py
+      - web/app/**
+      - web/components/**
+      - web/lib/**
+      - web/tests/e2e/founder-activity.spec.ts
+      - .github/workflows/fr007-codex-founder-activity-correction-live.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fr007-founder-activity-correction-live
+  cancel-in-progress: false
+
+jobs:
+  migrate-and-prove:
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      OPPORTUNITYOS_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+      OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install repository
+        run: python -m pip install -e .
+      - name: Apply 0017 correction
+        run: alembic upgrade head
+      - name: Prove live Founder activity correction transactionally
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+          engine = create_engine(os.environ["OPOS_TARGET_DB_URL"])
+          with engine.connect() as conn:
+              tx = conn.begin()
+              try:
+                  rev = conn.execute(text("select version_num from public.alembic_version limit 1")).scalar_one()
+                  assert rev == "0017_founder_activity_correction", rev
+                  founder = conn.execute(text("select supabase_user_id from public.founder_identity where id='singleton'")).scalar_one()
+                  conn.execute(text("select set_config('request.jwt.claim.sub', :sub, true)"), {"sub": founder})
+                  assert conn.execute(text("select public.opos_is_founder()")).scalar_one() is True
+                  opp = conn.execute(text("select opportunity_id from public.founder_feed_activity order by opportunity_id limit 1")).scalar_one()
+                  conn.execute(text("select public.founder_set_action(:id, 'mark_applied', null)"), {"id": opp})
+                  conn.execute(text("select public.founder_set_action(:id, 'dismiss', null)"), {"id": opp})
+                  conn.execute(text("select public.founder_set_action(:id, 'snooze', current_date + 2)"), {"id": opp})
+                  state = conn.execute(text("select action_state from public.founder_activity_state where opportunity_id=:id"), {"id": opp}).scalar_one()
+                  assert state == 'snoozed', state
+                  conn.execute(text("select public.founder_set_action(:id, 'clear', null)"), {"id": opp})
+                  assert conn.execute(text("select action_state from public.founder_activity_state where opportunity_id=:id"), {"id": opp}).scalar_one() is None
+                  events = conn.execute(text("select count(*) from public.founder_activity_events where opportunity_id=:id"), {"id": opp}).scalar_one()
+                  assert events >= 4, events
+                  actions = conn.execute(text("select count(*) from public.outbound_actions where opportunity_id=:id and candidate_id='founder' and adapter_name='founder_attested' and action_status='submitted'"), {"id": opp}).scalar_one()
+                  assert actions == 1, actions
+                  print('FOUNDER_ACTIVITY_CORRECTION_PROOF=PASS')
+                  print('ALEMBIC_REVISION=' + rev)
+              finally:
+                  tx.rollback()
+          engine.dispose()
+          PY
+
+  deploy:
+    needs: migrate-and-prove
+    uses: ./.github/workflows/fr007-cloudflare-staging-deploy.yml
+    with:
+      mode: DEPLOY_STAGING
+      acknowledge_staging_deployment: true
+      ref: work/fr007-codex-founder-activity-correction
+    secrets: inherit
+
+  smoke:
+    needs: deploy
+    uses: ./.github/workflows/fr007-cloudflare-staging-deploy.yml
+    with:
+      mode: SMOKE_STAGING
+      ref: work/fr007-codex-founder-activity-correction
+    secrets: inherit

@@ -276,7 +276,7 @@ export function DetailDrawer({
                       <ul className="mt-2 space-y-1 text-[11px] text-muted-foreground">
                         {detail.action_history.map((a) => (
                           <li key={a.action_id}>
-                            {a.created_at} — action: {a.action_status} ({a.execution_mode})
+                            {a.created_at} — action: {a.action_type ?? a.action_status}{a.until ? ` until ${a.until}` : ""}
                           </li>
                         ))}
                         {detail.feedback_history.map((f) => (
@@ -432,7 +432,7 @@ export function DetailDrawer({
                   {(detail.scoring.strengths.length > 0 ||
                     detail.scoring.gaps.length > 0 ||
                     detail.scoring.unknowns.length > 0) && (
-                    <div className="mt-4 grid gap-3 text-xs sm:grid-cols-3 lg:grid-cols-1 2xl:grid-cols-3">
+                    <div className="mt-4 grid max-w-[78ch] grid-cols-1 gap-5 text-xs">
                       <div>
                         <p className="font-medium text-emerald-700 dark:text-emerald-300">
                           Strengths

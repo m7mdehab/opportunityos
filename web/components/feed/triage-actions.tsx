@@ -49,6 +49,11 @@ export function TriageActions({
         >
           Dismiss
         </Button>
+        {currentState && (
+          <Button type="button" size="sm" variant="ghost" disabled={submitting} onClick={() => onSubmit("clear", null)}>
+            Clear / undo
+          </Button>
+        )}
         {!showSnooze ? (
           <Button
             type="button"

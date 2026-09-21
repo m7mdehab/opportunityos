@@ -129,6 +129,8 @@ export default function FeedPage() {
         q: filters.q || undefined,
         source_family: filters.sourceFamily || undefined,
         source_id: filters.sourceId || undefined,
+        activity: filters.activity || undefined,
+        feedback: filters.feedback || undefined,
         page,
         page_size: PAGE_SIZE,
         include_hidden: includeHidden,
@@ -296,6 +298,8 @@ export default function FeedPage() {
     filters.q !== "" ||
     filters.sourceFamily !== "" ||
     filters.sourceId !== ""
+    || filters.activity !== "to_review"
+    || filters.feedback !== ""
 
   const workerIdle =
     !!sources && sources.length > 0 && sources.every((s) => s.last_poll === null)

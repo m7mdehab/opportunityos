@@ -527,6 +527,8 @@ export class MockStore {
     /** Default `false`. `true` includes items an enabled `hide`-mode
      * filter matched, with `hidden_by` populated on them. */
     include_hidden?: boolean
+    activity?: string
+    feedback?: string
   }): OpportunityListResponse {
     let items = [...this.opportunities.values()]
 
@@ -548,6 +550,12 @@ export class MockStore {
           o.title.toLowerCase().includes(q) ||
           o.organization.toLowerCase().includes(q)
       )
+    }
+    if (filters.activity && filters.activity !== "any") {
+      items = items.filter((o) => filters.activity === "has_feedback" ? o.feedback_label !== null : filters.activity === "any" ? (o.action_history.length > 0 || o.feedback_history.length > 0) : filters.activity === "to_review" ? o.action_state === null : filters.activity === "applied" ? o.action_state === "submitted" : o.action_state === filters.activity)
+    }
+    if (filters.feedback) {
+      items = items.filter((o) => o.feedback_label === filters.feedback)
     }
 
     // Decorate every item with its current hidden_by/flagged_by before
@@ -660,6 +668,17 @@ export class MockStore {
   submitAction(id: string, type: ActionType, until: string | null) {
     const o = this.opportunities.get(id)
     if (!o) return null
+
+    if (type === "clear") {
+      o.action_state = null
+      return {
+        opportunity_id: id,
+        action_state: null,
+        action_id: null,
+        until: null,
+        created_at: new Date().toISOString(),
+      }
+    }
 
     if (type === "mark_applied") {
       o.action_state = "submitted"
