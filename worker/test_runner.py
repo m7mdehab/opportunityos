@@ -213,6 +213,35 @@ class TestWorkerRunner(unittest.TestCase):
         self.assertEqual(job.status, "COMPLETED")
         self.assertEqual(job.retry_count, 0)
 
+    def test_worker_runtime_factory_does_not_open_transaction_before_slow_handler(self):
+        """A committed claim must be dispatchable without an implicit refresh SELECT."""
+        runtime_factory = get_session_factory(self.engine, expire_on_commit=False)
+        setup = runtime_factory()
+        try:
+            queue = BackgroundWorkerQueue(setup, worker_id="runtime-setup")
+            job_id = queue.enqueue_job("slow", {})
+        finally:
+            setup.close()
+
+        sessions = []
+        observed = []
+
+        def factory():
+            session = runtime_factory()
+            sessions.append(session)
+            return session
+
+        def slow_handler(payload):
+            observed.append(sessions[0].in_transaction())
+            time.sleep(0.05)
+
+        runner = WorkerRunner(factory, {"slow": slow_handler}, worker_id="w-no-refresh")
+        self.assertTrue(runner.run_once())
+        self.assertEqual(observed, [False])
+        self.assertEqual(self._job_status(job_id).status, "COMPLETED")
+        for session in sessions:
+            session.close()
+
     def test_stolen_lease_refuses_to_write_outcome(self):
         """If another worker's stale-lease sweep has already taken over a job, this
         runner must refuse to write complete/fail for it rather than clobber the new
