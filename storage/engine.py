@@ -1,5 +1,5 @@
 import os
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, Session
 from storage.models import Base
 
@@ -87,7 +87,24 @@ def get_engine(
                 raise ValueError("pool_timeout must be > 0")
             engine_kwargs["pool_timeout"] = pool_timeout
 
-    return create_engine(db_url, **engine_kwargs)
+    engine = create_engine(db_url, **engine_kwargs)
+
+    if application_name and not db_url.startswith("sqlite"):
+        # Supavisor can replace startup-packet application_name with its own
+        # backend label. Set the PostgreSQL GUC after checkout so live
+        # pg_stat_activity attribution remains observable through the pooler.
+        @event.listens_for(engine, "connect")
+        def _set_application_name(dbapi_connection, _connection_record) -> None:
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute(
+                    "SELECT set_config('application_name', %s, false)",
+                    (application_name,),
+                )
+            finally:
+                cursor.close()
+
+    return engine
 
 
 def init_db(engine):
