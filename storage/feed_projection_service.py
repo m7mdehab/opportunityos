@@ -288,6 +288,11 @@ def upsert_projection(session: Session, record: FeedProjectionRecord) -> bool:
             ),
             {"projection_id": record.id},
         )
+        if existing is not None:
+            # The hosted worker factory keeps ``expire_on_commit=False`` so
+            # lease reads remain explicit.  Expire a pre-existing identity
+            # here so a later read in this session observes the atomic update.
+            session.expire(existing)
         return existing is None
 
     existing = session.get(FeedProjectionRecord, record.id)
