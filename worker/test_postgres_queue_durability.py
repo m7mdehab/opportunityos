@@ -119,6 +119,21 @@ class TestPostgresQueueDurability(unittest.TestCase):
     def setUp(self) -> None:
         if os.environ.get("CI") and _get_pg_db_url() is None:
             self.fail("CI environment requires real PostgreSQL database for worker durability suite")
+        self.test_job_ids: list[str] = []
+        self._apps_to_dispose = []
+        session = self.session_factory()
+        try:
+            session.query(WorkerJobRecord).delete(synchronize_session=False)
+            session.query(SourceScheduleRecord).delete(synchronize_session=False)
+            session.query(SourcePollRunRecord).delete(synchronize_session=False)
+            session.query(FeedProjectionRecord).delete(synchronize_session=False)
+            session.query(MatchEvaluationRecord).delete(synchronize_session=False)
+            session.query(OpportunityRecord).delete(synchronize_session=False)
+            session.commit()
+        except Exception:
+            session.rollback()
+        finally:
+            session.close()
 
     def test_same_identity_persistence_race_converges_at_commit_boundary(self) -> None:
         """Two PostgreSQL writers for one absent identity serialize safely.
@@ -172,22 +187,6 @@ class TestPostgresQueueDurability(unittest.TestCase):
             check.query(OpportunityRecord).filter_by(id=opp.id).delete(synchronize_session=False)
             check.commit()
             check.close()
-        self.test_job_ids: list[str] = []
-        self._apps_to_dispose = []
-        session = self.session_factory()
-        try:
-            session.query(WorkerJobRecord).delete(synchronize_session=False)
-            session.query(SourceScheduleRecord).delete(synchronize_session=False)
-            session.query(SourcePollRunRecord).delete(synchronize_session=False)
-            session.query(FeedProjectionRecord).delete(synchronize_session=False)
-            session.query(MatchEvaluationRecord).delete(synchronize_session=False)
-            session.query(OpportunityRecord).delete(synchronize_session=False)
-            session.commit()
-        except Exception:
-            session.rollback()
-        finally:
-            session.close()
-
     def tearDown(self) -> None:
         for app in self._apps_to_dispose:
             try:
