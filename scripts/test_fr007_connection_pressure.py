@@ -20,6 +20,7 @@ class TestHostedWorkerPool(unittest.TestCase):
             max_overflow=0,
             pool_timeout=30.0,
             pool_pre_ping=True,
+            application_name=bootstrap.HOSTED_WORKER_APPLICATION_NAME,
         )
         try:
             self.assertEqual(engine.pool.size(), 2)
