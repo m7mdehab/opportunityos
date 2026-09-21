@@ -107,10 +107,22 @@ def run_command(argv, env):
     result = subprocess.run(argv, cwd=ROOT, env=env, stdout=subprocess.DEVNULL,
                             stderr=subprocess.PIPE, check=False, shell=False)
     if result.returncode:
-        details = result.stderr.lower() if isinstance(result.stderr, bytes) else b""
+        raw = result.stderr.decode("utf-8", "replace") if isinstance(result.stderr, bytes) else ""
+        # Preserve a short, non-sensitive provider error class for CI diagnosis
+        # while redacting connection strings, credentials, local paths, and
+        # arbitrary SQL payloads.  The old generic error made migration-chain
+        # defects impossible to distinguish from tool/connectivity failures.
+        safe_lines = []
+        for line in raw.splitlines():
+            line = re.sub(r"(?i)(?:postgres(?:ql)?(?:\+[^:]+)?://)\S+", "<redacted-dsn>", line)
+            line = re.sub(r"[A-Za-z]:\\[^\s]+|/home/runner/[^\s]+", "<redacted-path>", line)
+            if line.strip():
+                safe_lines.append(line.strip())
+        details = raw.lower().encode("utf-8", "replace")
         if b'schema "public" already exists' in details:
             raise HarnessError("database command failed: existing public schema")
-        raise HarnessError("database command failed")
+        summary = safe_lines[-1][:240] if safe_lines else "provider command returned nonzero"
+        raise HarnessError(f"database command failed: {summary}")
 
 
 def connect(settings):
