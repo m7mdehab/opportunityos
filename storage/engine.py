@@ -21,9 +21,23 @@ def get_production_db_url(db_url: str | None = None) -> str:
     return resolved_url
 
 
-def get_engine(db_url: str | None = None, echo: bool = False, allow_sqlite: bool = False):
-    """Create SQLAlchemy engine.
-    
+def get_engine(
+    db_url: str | None = None,
+    echo: bool = False,
+    allow_sqlite: bool = False,
+    *,
+    pool_size: int | None = None,
+    max_overflow: int | None = None,
+    pool_timeout: float | None = None,
+    pool_pre_ping: bool = False,
+):
+    """Create a SQLAlchemy engine.
+
+    Pool controls are optional so existing application callers keep SQLAlchemy's
+    historical defaults. Hosted worker processes can explicitly provide a small,
+    finite PostgreSQL pool to avoid retaining more Supavisor session-mode
+    connections than the worker can actually use concurrently.
+
     If db_url is None:
       - Uses OPPORTUNITYOS_DB_URL if present.
       - If OPPORTUNITYOS_DB_URL is absent:
@@ -47,7 +61,28 @@ def get_engine(db_url: str | None = None, echo: bool = False, allow_sqlite: bool
     connect_args = {}
     if db_url.startswith("sqlite"):
         connect_args["check_same_thread"] = False
-    return create_engine(db_url, echo=echo, connect_args=connect_args)
+
+    engine_kwargs = {
+        "echo": echo,
+        "connect_args": connect_args,
+        "pool_pre_ping": pool_pre_ping,
+    }
+
+    if not db_url.startswith("sqlite"):
+        if pool_size is not None:
+            if pool_size < 1:
+                raise ValueError("pool_size must be >= 1")
+            engine_kwargs["pool_size"] = pool_size
+        if max_overflow is not None:
+            if max_overflow < 0:
+                raise ValueError("max_overflow must be >= 0")
+            engine_kwargs["max_overflow"] = max_overflow
+        if pool_timeout is not None:
+            if pool_timeout <= 0:
+                raise ValueError("pool_timeout must be > 0")
+            engine_kwargs["pool_timeout"] = pool_timeout
+
+    return create_engine(db_url, **engine_kwargs)
 
 
 def init_db(engine):
