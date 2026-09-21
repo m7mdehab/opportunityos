@@ -123,7 +123,7 @@ def run_command(argv, env):
             raise HarnessError("database command failed: existing public schema")
         if safe_lines:
             candidates = [line for line in safe_lines if ("Error" in line or "error" in line or "Exception" in line or "failed" in line)]
-            summary = " | ".join((candidates[-3:] or safe_lines[-3:]))[:600]
+            summary = " | ".join((candidates[-5:] or safe_lines[-10:]))[:1000]
         else:
             summary = "provider command returned nonzero"
         raise HarnessError(f"database command failed: {summary}")
