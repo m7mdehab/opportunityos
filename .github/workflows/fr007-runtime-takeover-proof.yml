@@ -1,9 +1,7 @@
 name: FR-007 Runtime Takeover Proof
 
 on:
-  push:
-    branches:
-    paths:
+  push:`r`n    branches:`r`n      - main`r`n      - work/fr007-overseer-integration`r`n    paths:
       - storage/engine.py
       - worker/**
       - scripts/fr007_hosted_bootstrap.py
@@ -336,3 +334,4 @@ jobs:
           test "${DRAIN}" = "success"
           test "${OBSERVE}" = "success"
           test "${PROOF_PASS}" = "true"
+
