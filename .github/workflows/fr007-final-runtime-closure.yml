@@ -156,9 +156,73 @@ jobs:
           OPOS_WORKER_ID: "w227-recovery-${{ github.run_id }}-${{ matrix.shard }}"
         run: python scripts/fr007_hosted_bootstrap.py --mode drain --max-jobs 30 --time-budget-seconds 480 --worker-id "$OPOS_WORKER_ID"
 
-  final-proof:
+  recovery-snapshot:
     needs: bounded-recovery
-    if: ${{ inputs.mode == 'acceptance' && needs.bounded-recovery.result == 'success' }}
+    if: ${{ always() && needs.bounded-recovery.result == 'success' && (inputs.mode == 'full' || inputs.mode == 'recovery' || inputs.mode == 'acceptance') }}
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: python -m pip install -e .
+      - name: Sanitized queue and capacity snapshot
+        env:
+          OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+        run: python scripts/fr007_capacity_closure.py preflight --truth-pack-hash "${{ inputs.truth_pack_hash }}" | tee w227-recovery-${{ github.run_id }}.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fr007-w227-recovery-${{ github.run_id }}
+          path: w227-recovery-${{ github.run_id }}.json
+
+  connection-observer:
+    needs: live-preflight
+    if: ${{ inputs.mode == 'acceptance' && needs.live-preflight.result == 'success' }}
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: python -m pip install -e .
+      - name: Observe protected five-shard connection pressure
+        env:
+          OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+        run: |
+          python - <<'PY'
+          import os, time
+          from sqlalchemy import create_engine, text
+          engine = create_engine(os.environ["OPOS_TARGET_DB_URL"], pool_size=1, max_overflow=0, pool_pre_ping=True, connect_args={"application_name": "opportunityos-fr007-proof"})
+          max_worker = max_idle = max_unattributed = failures = 0
+          for _ in range(72):
+              try:
+                  with engine.connect() as conn:
+                      row = conn.execute(text("""
+                        select count(*)::int total,
+                          count(*) filter (where state='idle in transaction' and xact_start is not null and now()-xact_start > interval '30 seconds')::int idle_tx
+                        from pg_stat_activity where application_name='opportunityos-fr007-worker'
+                      """)).mappings().one()
+                      unattributed = conn.execute(text("""select count(*)::int from pg_stat_activity where usename='postgres' and coalesce(application_name,'')='' and client_addr is not null""")).scalar_one()
+                      max_worker = max(max_worker, int(row['total']))
+                      max_idle = max(max_idle, int(row['idle_tx']))
+                      max_unattributed = max(max_unattributed, int(unattributed))
+              except Exception as exc:
+                  failures += 1
+                  print(f"PROBE_FAILURE={type(exc).__name__}: {str(exc)[:160]}")
+              time.sleep(5)
+          engine.dispose()
+          print(f"MAX_WORKER_CONNECTIONS={max_worker}")
+          print(f"MAX_IDLE_IN_TRANSACTION={max_idle}")
+          print(f"MAX_UNATTRIBUTED_POSTGRES={max_unattributed}")
+          print(f"PROBE_FAILURES={failures}")
+          if failures or not (1 <= max_worker <= 10) or max_idle != 0 or max_unattributed != 0:
+              raise SystemExit("connection-pressure acceptance failed")
+
+  final-proof:
+    needs: [bounded-recovery, connection-observer]
+    if: ${{ inputs.mode == 'acceptance' && needs.bounded-recovery.result == 'success' && needs.connection-observer.result == 'success' }}
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 12
