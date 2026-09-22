@@ -49,7 +49,6 @@ def _candidate_sql() -> str:
           AND NOT EXISTS (SELECT 1 FROM founder_opportunity_views v WHERE v.opportunity_id = o.id)
           AND NOT EXISTS (SELECT 1 FROM outbound_actions a WHERE a.opportunity_id = o.id)
           AND NOT EXISTS (SELECT 1 FROM opportunity_cold_archive c WHERE c.opportunity_id = o.id)
-        ORDER BY o.id
     """
 
 
@@ -126,48 +125,41 @@ def apply_maintenance(connection, *, truth_pack_hash: str, confirm: bool) -> dic
     if not confirm:
         raise ValueError("maintenance requires explicit --confirm-maintenance")
     now = datetime.now(timezone.utc)
-    rows = [dict(row) for row in connection.execute(text(_candidate_sql()), {"truth_pack_hash": truth_pack_hash}).mappings().all()]
-    # Build the archive in bounded bulk reads.  The previous per-row path did
-    # one provenance query and several writes for every opportunity, which is
-    # untenable for a hosted cold-state compaction of tens of thousands of
-    # rows.  Payloads are still compressed and checksummed independently.
-    provenance_rows = connection.execute(
-        text("""
+    archived: list[dict[str, Any]] = []
+    while True:
+        rows = [dict(row) for row in connection.execute(
+            text(_candidate_sql() + " LIMIT 500"), {"truth_pack_hash": truth_pack_hash}
+        ).mappings().all()]
+        if not rows:
+            break
+        ids = [row["id"] for row in rows]
+        provenance_rows = connection.execute(text("""
             SELECT opportunity_id, field_name, raw_value, normalized_value,
                    derivation_type, raw_pointer, record_checksum, rule_id
-            FROM field_provenances
-            WHERE opportunity_id = ANY(:opportunity_ids)
+            FROM field_provenances WHERE opportunity_id = ANY(:opportunity_ids)
             ORDER BY opportunity_id, id
-        """),
-        {"opportunity_ids": [row["id"] for row in rows]},
-    ).mappings().all() if rows else []
-    print(f"maintenance_candidates_loaded count={len(rows)} provenance_rows={len(provenance_rows)}", flush=True)
-    provenance_by_id: dict[str, list[dict[str, Any]]] = {}
-    for item in provenance_rows:
-        item = dict(item)
-        provenance_by_id.setdefault(item.pop("opportunity_id"), []).append(item)
-    archive_rows: list[dict[str, Any]] = []
-    archived: list[dict[str, Any]] = []
-    for row in rows:
-        payload = {
-            "opportunity_id": row["id"],
-            "content_hash": row["content_hash"],
-            "description": row["description"],
-            "raw_payload_json": row["raw_payload_json"],
-            "provenance": provenance_by_id.get(row["id"], []),
-        }
-        raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
-        compressed = zlib.compress(raw, level=9)
-        digest = hashlib.sha256(compressed).hexdigest()
-        archive_rows.append({
-            "opportunity_id": row["id"], "content_hash": row["content_hash"],
-            "payload_zlib": compressed, "payload_sha256": digest,
-            "original_size_bytes": len(raw), "archive_version": ARCHIVE_VERSION,
-            "archived_at": now,
-        })
-        archived.append({"opportunity_id": row["id"], "compressed_bytes": len(compressed), "sha256": digest})
-    print(f"maintenance_payloads_built count={len(archive_rows)}", flush=True)
-    if archive_rows:
+        """), {"opportunity_ids": ids}).mappings().all()
+        provenance_by_id: dict[str, list[dict[str, Any]]] = {}
+        for item in provenance_rows:
+            item = dict(item)
+            provenance_by_id.setdefault(item.pop("opportunity_id"), []).append(item)
+        archive_rows: list[dict[str, Any]] = []
+        for row in rows:
+            payload = {
+                "opportunity_id": row["id"], "content_hash": row["content_hash"],
+                "description": row["description"], "raw_payload_json": row["raw_payload_json"],
+                "provenance": provenance_by_id.get(row["id"], []),
+            }
+            raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
+            compressed = zlib.compress(raw, level=9)
+            digest = hashlib.sha256(compressed).hexdigest()
+            archive_rows.append({
+                "opportunity_id": row["id"], "content_hash": row["content_hash"],
+                "payload_zlib": compressed, "payload_sha256": digest,
+                "original_size_bytes": len(raw), "archive_version": ARCHIVE_VERSION,
+                "archived_at": now,
+            })
+            archived.append({"opportunity_id": row["id"], "compressed_bytes": len(compressed), "sha256": digest})
         insert_stmt = text("""
             INSERT INTO opportunity_cold_archive
                 (opportunity_id, content_hash, payload_zlib, payload_sha256,
@@ -176,24 +168,20 @@ def apply_maintenance(connection, *, truth_pack_hash: str, confirm: bool) -> dic
                     :original_size_bytes, :archive_version, :archived_at)
             ON CONFLICT (opportunity_id) DO NOTHING
         """)
-        for offset in range(0, len(archive_rows), 500):
-            connection.execute(insert_stmt, archive_rows[offset:offset + 500])
-        print("maintenance_archive_rows_inserted", flush=True)
-        ids = [row["id"] for row in rows]
+        connection.execute(insert_stmt, archive_rows)
         connection.execute(text("""
             UPDATE opportunities
             SET description = '[archived]', raw_payload_json = NULL, search_tsv = NULL
             WHERE id = ANY(:opportunity_ids)
         """), {"opportunity_ids": ids})
         connection.execute(text("DELETE FROM field_provenances WHERE opportunity_id = ANY(:opportunity_ids)"), {"opportunity_ids": ids})
-        print("maintenance_provenance_deleted", flush=True)
         connection.execute(text("""
             UPDATE feed_projection
             SET visible = FALSE, visibility_reason = 'cold_ineligible',
                 search_text = '', search_tsv = NULL
             WHERE opportunity_id = ANY(:opportunity_ids)
         """), {"opportunity_ids": ids})
-        print("maintenance_hot_rows_compacted", flush=True)
+        print(f"maintenance_batch_complete count={len(rows)} total={len(archived)}", flush=True)
     # Synthetic active projections are a derived fallback profile.  Remove only
     # rows with no founder state; the current authoritative profile remains.
     active_result = connection.execute(text("""
