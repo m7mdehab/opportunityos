@@ -10,6 +10,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 from alembic import command
@@ -26,6 +27,32 @@ if str(REPOSITORY_ROOT) not in sys.path:
 
 from scripts.db_capacity_guard import inspect_connection
 from scripts.db_capacity_maintenance import apply_maintenance, build_plan
+
+
+def _dsn_candidates(primary: str) -> list[str]:
+    candidates = [primary]
+    fallback = os.environ.get("OPOS_DIRECT_DB_URL")
+    if fallback and fallback != primary:
+        candidates.append(fallback)
+    return candidates
+
+
+def connect_engine(dsn: str):
+    """Use bounded provider recovery and the existing direct endpoint fallback."""
+    last_error = None
+    for candidate in _dsn_candidates(dsn):
+        for attempt in range(6):
+            engine = create_engine(candidate, pool_pre_ping=True, connect_args={"connect_timeout": 15})
+            try:
+                with engine.connect() as connection:
+                    connection.execute(text("SELECT 1"))
+                return engine
+            except Exception as exc:
+                last_error = exc
+                engine.dispose()
+                if attempt < 5:
+                    time.sleep(min(15, 2 + attempt * 2))
+    raise last_error
 
 
 def snapshot(connection, truth_pack_hash: str | None = None) -> dict:
@@ -78,7 +105,7 @@ def run_migration_on_connection(connection) -> None:
 
 
 def live_maintenance(dsn: str, truth_pack_hash: str | None) -> dict:
-    engine = create_engine(dsn, isolation_level="AUTOCOMMIT", pool_pre_ping=True)
+    engine = connect_engine(dsn).execution_options(isolation_level="AUTOCOMMIT")
     try:
         with engine.connect() as connection:
             before = snapshot(connection, truth_pack_hash)
@@ -136,7 +163,7 @@ def live_maintenance(dsn: str, truth_pack_hash: str | None) -> dict:
 
 
 def fresh_write_proof(dsn: str) -> dict:
-    engine = create_engine(dsn, pool_pre_ping=True)
+    engine = connect_engine(dsn)
     try:
         with engine.connect() as connection:
             state = inspect_connection(connection)
@@ -164,7 +191,7 @@ def main() -> int:
     dsn = os.environ.get(args.dsn_env)
     if not dsn:
         parser.error(f"missing required environment variable {args.dsn_env}")
-    engine = create_engine(dsn, pool_pre_ping=True)
+    engine = connect_engine(dsn)
     try:
         if args.mode == "preflight":
             with engine.connect() as connection:
