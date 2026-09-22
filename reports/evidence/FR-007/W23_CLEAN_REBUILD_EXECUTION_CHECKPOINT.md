@@ -1,8 +1,8 @@
 # FR-007 W23 clean rebuild execution checkpoint
 
 - branch: `work/fr007-clean-rebuild-storage-v2`
-- current_phase: PHASE_F_CANONICAL_CV_STORAGE_AND_HOSTED_GATES
-- current_sha_now: `03b22cd87042d33c2845c88ea5f5bb6753c6d611`
+- current_phase: PHASE_G_HOSTED_FIXUPS_AND_DB_CREDENTIAL_CUTOVER
+- current_sha_now: `c2283faf85b531c64a0cceedc8e1bfd68feabbf1`
 - current_sha_before_agent_changes: `bcaa447d9e3cf0f93bdac88e595493025579d854`
 - new_supabase_project_ref: `sunjfepvdzfknglrjwhm`
 - new_supabase_project_name: `opportunityos-staging`
@@ -74,7 +74,14 @@
   - after Founder enabled Chrome local-file access, a fresh Supabase dashboard tab uploaded the exact 9 canonical PDF and 9 DOCX payloads plus manifest, ZIP, and all 11 supporting documents to their exact manifest keys. Live `storage.objects` reports 31 payload objects totaling `2,163,348` bytes, matching the canonical manifest byte count; checksum verification workflow remains pending.
   - Supabase's private bucket MIME restriction rejected Markdown, ZIP, and YAML once. The private bucket remains non-public, 10 MiB per-object-limited, and MIME-restricted; the allowlist was narrowly extended for `text/markdown`, `application/x-zip-compressed`, and `text/yaml`; exact files then uploaded successfully. One zero-byte `.emptyFolderPlaceholder` remains at `2026/editable/system/.emptyFolderPlaceholder`, outside the manifest; no payload is misplaced and it is not a blocker. The other folder marker disappeared when its folder received real content.
   - hosted Storage hash verification, PostgreSQL 16/17 CI (already green: `35794902508`), and the repaired OCI Container Runtime Smoke workflow are still required before representative-source execution.
-- exact_next_action: run full tracked tests and `git diff --check`; commit and push the checkpoint, uploader, tests, and PostgreSQL durability fixture repair; require green OCI Container Runtime Smoke. Dispatch `verify-cv-storage` and require all 31 hashes to match. Separately complete the protected DB URL secret cutover and require sanitized `credential-probe` PASS before any source/worker run. Then capture the empty-schema footprint and run one small registered source only; do not enqueue the full registry before measured extrapolation is <=200 MiB.
+- superseded_next_action_2026_09_23: publish the CV upload helper and first OCI fixture repair, then await OCI/Storage verification and credential cutover.
+- execution_update_2026_09_23_hosted_followup_diagnosis:
+  - commit `c2283faf85b531c64a0cceedc8e1bfd68feabbf1` was pushed to the authoritative feature branch. Push started OCI run `35798849588` (#301) and Storage V2 PostgreSQL run `35798849523` (#3); the new tests and uploader passed local checks before push.
+  - OCI run `35798849588` exposed two additional real-PostgreSQL fixture defects: `eval-proj-1` and `eval-idemp-1` omitted non-null `MatchEvaluationRecord.content_hash`, despite corresponding opportunity content hashes being present. Both fixtures now carry the matching exact content hash; model-contract coverage now asserts content identity is non-null.
+  - CV verifier run `35799091819` failed before any Storage read because `fr007-staging` stores `SUPABASE_URL` as an environment variable, while the workflow read `secrets.SUPABASE_URL` (empty). No CV object was changed. Workflow now prefers `vars.SUPABASE_URL` with a secret fallback, and a regression test pins this environment/secret split. `STORAGE_SERVICE_KEY` remains a protected secret.
+  - local rerun after these fixes: CV upload/workflow tests `6 passed`; worker durability module `2 model-contract tests passed, 18 PostgreSQL tests skipped locally` (the 18 are exercised by OCI); `git diff --check` passes.
+  - object inventory remains 31 manifest objects / `2,163,348` bytes plus one harmless zero-byte placeholder; hosted SHA-256 verification remains pending. PostgreSQL run `35798849523` completed green on PostgreSQL 16 and 17 (migration/complete subsystem regression). This does not replace the separate OCI Container Runtime Smoke job, which directly executes `worker.test_postgres_queue_durability`.
+- exact_next_action: commit and push the content-hash fixtures, URL-scope workflow fix, regression test, and checkpoint. Require OCI Container Runtime Smoke and PostgreSQL 16/17 acceptance green on that commit; redispatch `verify-cv-storage` and require 31 exact hashes. Keep source/worker execution gated until the new-project DB URL secrets are corrected and the sanitized credential probe passes. Then perform the representative-source baseline/gate before any incremental source bootstrap.
 - no_merge: true
 - no_paid_infrastructure: true
 - seven_day_soak_claimed: false

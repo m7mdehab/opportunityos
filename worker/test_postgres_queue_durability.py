@@ -83,7 +83,7 @@ def _to_naive_utc(dt: datetime) -> datetime:
     return dt
 
 
-class TestFeedProjectionStorageV2Contract(unittest.TestCase):
+class TestStorageV2PersistenceModelContract(unittest.TestCase):
     def test_schema_is_single_current_lean_read_model(self) -> None:
         column_names = set(FeedProjectionRecord.__table__.columns.keys())
         self.assertTrue({"description", "search_text", "search_tsv"}.isdisjoint(column_names))
@@ -95,6 +95,9 @@ class TestFeedProjectionStorageV2Contract(unittest.TestCase):
             and tuple(column.name for column in constraint.columns) == ("opportunity_id",)
         ]
         self.assertEqual(len(unique_opportunity_constraints), 1)
+
+    def test_current_evaluation_requires_content_identity(self) -> None:
+        self.assertFalse(MatchEvaluationRecord.__table__.columns["content_hash"].nullable)
 
 
 @unittest.skipIf(
@@ -1021,6 +1024,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 id="eval-proj-1",
                 opportunity_id="opp-proj-1",
                 truth_pack_hash=self.truth_pack_hash,
+                content_hash="hash-opp-proj-1",
                 qualification_decision="qualified",
                 fit_score=60.0,
                 dimension_scores_json="[]",
@@ -1127,6 +1131,7 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 id="eval-idemp-1",
                 opportunity_id="opp-idemp-1",
                 truth_pack_hash=self.truth_pack_hash,
+                content_hash="hash-opp-idemp-1",
                 qualification_decision="qualified",
                 fit_score=95.0,
                 dimension_scores_json="[]",

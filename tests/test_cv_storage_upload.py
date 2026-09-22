@@ -127,6 +127,12 @@ class TestCvStorageUpload(unittest.TestCase):
         self.assertNotIn("do-not-log-this", str(context.exception))
         self.assertIn("rejected [redacted]", str(context.exception))
 
+    def test_hosted_verifier_reads_public_url_from_environment_variables(self) -> None:
+        workflow_path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "fr007-storage-v2-postgres.yml"
+        workflow = workflow_path.read_text(encoding="utf-8")
+        self.assertIn("SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}", workflow)
+        self.assertIn("STORAGE_SERVICE_KEY: ${{ secrets.STORAGE_SERVICE_KEY }}", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
