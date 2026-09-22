@@ -105,7 +105,11 @@ def live_maintenance(dsn: str, truth_pack_hash: str | None) -> dict:
             # NULL vectors after archival.
             connection.execute(text("DROP INDEX IF EXISTS ix_feed_projection_search_tsv"))
             connection.execute(text("DROP INDEX IF EXISTS ix_opportunities_search_tsv"))
-            connection.execute(text("UPDATE feed_projection SET search_text = '', search_tsv = NULL"))
+            # feed_projection is fully derived and rebuilt by the durable
+            # worker/evaluation path.  Truncating it is the only bounded,
+            # zero-copy way to recover a database that cannot stage even an
+            # UPDATE tuple at the provider quota.
+            connection.execute(text("TRUNCATE TABLE feed_projection"))
             connection.execute(text("UPDATE opportunities SET search_tsv = NULL WHERE search_tsv IS NOT NULL"))
             connection.commit()
             connection.execute(text("SET lock_timeout = '5min'"))
