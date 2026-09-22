@@ -6,10 +6,10 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "postgres-ci or a read-only probe of protected DB credentials against the new session pooler"
+        description: "postgres-ci, credential-probe, or verify-cv-storage"
         required: true
         type: choice
-        options: [postgres-ci, credential-probe]
+        options: [postgres-ci, credential-probe, verify-cv-storage]
         default: postgres-ci
   workflow_call:
     inputs:
@@ -108,6 +108,7 @@ jobs:
 
           target = "aws-0-eu-central-1.pooler.supabase.com"
           username = "postgres.sunjfepvdzfknglrjwhm"
+          failures = []
           for name in ("OPOS_TARGET_DB_URL", "CLOUD_DATABASE_URL"):
               raw = os.environ.get(name, "").strip()
               if not raw:
@@ -136,10 +137,32 @@ jobs:
                       engine.dispose()
               except SystemExit:
                   raise
-              except Exception:
+              except Exception as exc:
+                  original = getattr(exc, "orig", exc)
+                  sqlstate = getattr(original, "pgcode", None)
+                  category = "authentication-rejected" if sqlstate == "28P01" else type(original).__name__
+                  failures.append(f"{name}:{category}" + (f"/SQLSTATE-{sqlstate}" if sqlstate else ""))
                   continue
           raise SystemExit(
               "credential probe failed for both protected DB URL secrets against the new session pooler; "
-              "no credential data emitted"
+              + ", ".join(failures)
+              + "; no credential data emitted"
           )
           PY
+
+  private-cv-storage-verification:
+    if: ${{ inputs.mode == 'verify-cv-storage' }}
+    name: Verify canonical private CV portfolio hashes
+    runs-on: ubuntu-latest
+    environment: fr007-staging
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download and hash-check private portfolio objects
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          STORAGE_SERVICE_KEY: ${{ secrets.STORAGE_SERVICE_KEY }}
+        run: python scripts/verify_cv_storage_objects.py

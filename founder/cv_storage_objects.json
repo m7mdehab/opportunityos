@@ -1,0 +1,227 @@
+{
+  "format_version": 1,
+  "bucket": "founder-cv-portfolio",
+  "project_ref": "sunjfepvdzfknglrjwhm",
+  "private": true,
+  "object_count": 31,
+  "total_bytes": 2163348,
+  "objects": [
+    {
+      "object_key": "2026/Mohammed_Ehab_Data_Engineering_Integration_CV_2026.pdf",
+      "source": "CVs/Mohammed_Ehab_Data_Engineering_Integration_CV_2026.pdf",
+      "kind": "canonical-pdf",
+      "bytes": 81635,
+      "sha256": "80fe24c23364efe94525147609e1c70554d2347e06d11632015fd7095789a405"
+    },
+    {
+      "object_key": "2026/editable/Mohammed_Ehab_Data_Engineering_Integration_CV_2026.docx",
+      "source": "CVs/Mohammed_Ehab_Data_Engineering_Integration_CV_2026.docx",
+      "kind": "canonical-editable-docx",
+      "bytes": 41364,
+      "sha256": "bda6f94eb577c31cbd1a5a4162643e7832571314bbedf9c54fde4d7cbeba0bc7"
+    },
+    {
+      "object_key": "2026/Mohammed_Ehab_Data_Analytics_BI_CV_2026.pdf",
+      "source": "CVs/Mohammed_Ehab_Data_Analytics_BI_CV_2026.pdf",
+      "kind": "canonical-pdf",
+      "bytes": 81369,
+      "sha256": "56558cb5c618be45b0261ac9730a13f38088d50ff6869dba9a257e00cd8326a9"
+    },
+    {
+      "object_key": "2026/editable/Mohammed_Ehab_Data_Analytics_BI_CV_2026.docx",
+      "source": "CVs/Mohammed_Ehab_Data_Analytics_BI_CV_2026.docx",
+      "kind": "canonical-editable-docx",
+      "bytes": 41350,
+      "sha256": "5c6206a5dc7a31c2872273d9de85e6a94bde1de9539fe665e728f21fd64154de"
+    },
+    {
+      "object_key": "2026/Mohammed_Ehab_Data_Scientist_CV_2026.pdf",
+      "source": "CVs/Mohammed_Ehab_Data_Scientist_CV_2026.pdf",
+      "kind": "canonical-pdf",
+      "bytes": 85105,
+      "sha256": "d6d7119d908eb05ce30e0d6b95a2a555c03828ab1be98c94fbd9bcd0158daebd"
+    },
+    {
+      "object_key": "2026/editable/Mohammed_Ehab_Data_Scientist_CV_2026.docx",
+      "source": "CVs/Mohammed_Ehab_Data_Scientist_CV_2026.docx",
+      "kind": "canonical-editable-docx",
+      "bytes": 41637,
+      "sha256": "0e078110df8ef5005eebcc28114db473814bdf287a47a5ef44403c0a56d99417"
+    },
+    {
+      "object_key": "2026/Mohammed_Ehab_Machine_Learning_Engineer_CV_2026.pdf",
+      "source": "CVs/Mohammed_Ehab_Machine_Learning_Engineer_CV_2026.pdf",
+      "kind": "canonical-pdf",
+      "bytes": 85036,
+      "sha256": "b705a4cc85ad7aca72de8f2832b250e579bdb5e92a5c0f77b87e6971471058e3"
+    },
+    {
+      "object_key": "2026/editable/Mohammed_Ehab_Machine_Learning_Engineer_CV_2026.docx",
+      "source": "CVs/Mohammed_Ehab_Machine_Learning_Engineer_CV_2026.docx",
+      "kind": "canonical-editable-docx",
+      "bytes": 41677,
+      "sha256": "024ced5ae2088d4815385065499ed6cd579a286bd3d19c7464420ad40eb0d870"
+    },
+    {
+      "object_key": "2026/Mohammed_Ehab_AI_LLM_Engineer_CV_2026.pdf",
+      "source": "CVs/Mohammed_Ehab_AI_LLM_Engineer_CV_2026.pdf",
+      "kind": "canonical-pdf",
+      "bytes": 81913,
+      "sha256": "d4de3d8a5a634000fe4f4fc880fddbdf9f049653486244b1249b86dec4de651d"
+    },
+    {
+      "object_key": "2026/editable/Mohammed_Ehab_AI_LLM_Engineer_CV_2026.docx",
+      "source": "CVs/Mohammed_Ehab_AI_LLM_Engineer_CV_2026.docx",
+      "kind": "canonical-editable-docx",
+      "bytes": 41325,
+      "sha256": "512899411c6365198920c1d381020a4559064622909f8f2333e0442e1aca09ba"
+    },
+    {
+      "object_key": "2026/Mohammed_Ehab_Business_Technical_Analyst_CV_2026.pdf",
+      "source": "CVs/Mohammed_Ehab_Business_Technical_Analyst_CV_2026.pdf",
+      "kind": "canonical-pdf",
+      "bytes": 82925,
+      "sha256": "63142654468062da55dfe5821127ce80547915205ca52eb2a413a2bea6e42f3c"
+    },
+    {
+      "object_key": "2026/editable/Mohammed_Ehab_Business_Technical_Analyst_CV_2026.docx",
+      "source": "CVs/Mohammed_Ehab_Business_Technical_Analyst_CV_2026.docx",
+      "kind": "canonical-editable-docx",
+      "bytes": 41462,
+      "sha256": "e73ca7b70e9bee936d8b46e779a0c927796eb0b2fc9624b3656ed521e90f325c"
+    },
+    {
+      "object_key": "2026/Mohammed_Ehab_AI_Technical_Solutions_Engineer_CV_2026.pdf",
+      "source": "CVs/Mohammed_Ehab_AI_Technical_Solutions_Engineer_CV_2026.pdf",
+      "kind": "canonical-pdf",
+      "bytes": 82622,
+      "sha256": "41a1a54342a9c1db091ffce7c68f2755ee3c51a8ea33abfa153e73b07b1ffd87"
+    },
+    {
+      "object_key": "2026/editable/Mohammed_Ehab_AI_Technical_Solutions_Engineer_CV_2026.docx",
+      "source": "CVs/Mohammed_Ehab_AI_Technical_Solutions_Engineer_CV_2026.docx",
+      "kind": "canonical-editable-docx",
+      "bytes": 41404,
+      "sha256": "30c99eb0afc2031eb54290524802bd8e61fa4b5ef5dd851a016e21bc9d86b31f"
+    },
+    {
+      "object_key": "2026/Mohammed_Ehab_Full_Stack_Product_Engineer_CV_2026.pdf",
+      "source": "CVs/Mohammed_Ehab_Full_Stack_Product_Engineer_CV_2026.pdf",
+      "kind": "canonical-pdf",
+      "bytes": 84839,
+      "sha256": "5b01d3bfb83bc90a67902f668499d42fa33146928bc6a1f05b29c760999ebf60"
+    },
+    {
+      "object_key": "2026/editable/Mohammed_Ehab_Full_Stack_Product_Engineer_CV_2026.docx",
+      "source": "CVs/Mohammed_Ehab_Full_Stack_Product_Engineer_CV_2026.docx",
+      "kind": "canonical-editable-docx",
+      "bytes": 41550,
+      "sha256": "bdcaa105260383706097bc77651f88d034589b3a82ee675984c3c075eaa01f27"
+    },
+    {
+      "object_key": "2026/Mohammed_Ehab_Master_Comprehensive_CV_2026.pdf",
+      "source": "CVs/Mohammed_Ehab_Master_Comprehensive_CV_2026.pdf",
+      "kind": "canonical-pdf",
+      "bytes": 97489,
+      "sha256": "f20ceec79d450f66d241640f36fbcbac74ee2d365da7e29e4d11883c352e5407"
+    },
+    {
+      "object_key": "2026/editable/Mohammed_Ehab_Master_Comprehensive_CV_2026.docx",
+      "source": "CVs/Mohammed_Ehab_Master_Comprehensive_CV_2026.docx",
+      "kind": "canonical-editable-docx",
+      "bytes": 43117,
+      "sha256": "ef1d1ad7acf6c5489cec97821eb506f338a84f2fb1cbecc4b82183223594d1a8"
+    },
+    {
+      "object_key": "2026/system/MANIFEST.md",
+      "source": "MANIFEST.md",
+      "kind": "portfolio-manifest",
+      "bytes": 891,
+      "sha256": "4719430bc24ce6a06e8cdc7f9e15fddc8d312a4367653f90631595e3d05155eb"
+    },
+    {
+      "object_key": "2026/system/Supporting_Documents/ATS_AUDIT.md",
+      "source": "Supporting_Documents/ATS_AUDIT.md",
+      "kind": "supporting-document",
+      "bytes": 2778,
+      "sha256": "92da65cf861282fa57d132583d269f1287b643b9020e9192baa2323cacd051e5"
+    },
+    {
+      "object_key": "2026/system/Supporting_Documents/CV_CONTENT_RULES.md",
+      "source": "Supporting_Documents/CV_CONTENT_RULES.md",
+      "kind": "supporting-document",
+      "bytes": 2061,
+      "sha256": "f17ae00b38b29bd05c089a04fbda8fb7d78bb00982068e77ce9ba8c7812c6368"
+    },
+    {
+      "object_key": "2026/system/Supporting_Documents/EDUCATION_CERTIFICATION_SKILLS_MAP.md",
+      "source": "Supporting_Documents/EDUCATION_CERTIFICATION_SKILLS_MAP.md",
+      "kind": "supporting-document",
+      "bytes": 1895,
+      "sha256": "21485d76575233339a2316f752c0f3bc5bcb72a7c62b1e8f9d1dae3c46df379f"
+    },
+    {
+      "object_key": "2026/system/Supporting_Documents/EXPERIENCE_EVIDENCE_MATRIX.md",
+      "source": "Supporting_Documents/EXPERIENCE_EVIDENCE_MATRIX.md",
+      "kind": "supporting-document",
+      "bytes": 2406,
+      "sha256": "2e3a7aa7e3732c0705620772e34a4608073af5fd83901bee7e3449a9fa323f9f"
+    },
+    {
+      "object_key": "2026/system/Supporting_Documents/MASTER_SKILLS_AND_TECH_STACK.md",
+      "source": "Supporting_Documents/MASTER_SKILLS_AND_TECH_STACK.md",
+      "kind": "supporting-document",
+      "bytes": 3676,
+      "sha256": "5f2db58cf9c48b7802955d04916f73cac56518893fe0c5d60812517c0bb8be0c"
+    },
+    {
+      "object_key": "2026/system/Supporting_Documents/MOHAMMED_EHAB_MASTER_PERSONALIZATION.md",
+      "source": "Supporting_Documents/MOHAMMED_EHAB_MASTER_PERSONALIZATION.md",
+      "kind": "supporting-document",
+      "bytes": 26076,
+      "sha256": "6e1005ec9fc6f0562b870769f431df1cab7ff850ae8f507e4a7521d6e21afcdd"
+    },
+    {
+      "object_key": "2026/system/Supporting_Documents/OpportunityOS_CV_Registry.json",
+      "source": "Supporting_Documents/OpportunityOS_CV_Registry.json",
+      "kind": "supporting-document",
+      "bytes": 13276,
+      "sha256": "201ee75c2675f707b2a24af728f85ed62ceeb25df6667b5ec549a6a50eff4b71"
+    },
+    {
+      "object_key": "2026/system/Supporting_Documents/PROJECT_TECH_STACK_EVIDENCE.md",
+      "source": "Supporting_Documents/PROJECT_TECH_STACK_EVIDENCE.md",
+      "kind": "supporting-document",
+      "bytes": 5137,
+      "sha256": "85cdeed30cb70d2c29ab7e8eba3c8184a7849cd183d27025cf68ed4cbbbbe5d6"
+    },
+    {
+      "object_key": "2026/system/Supporting_Documents/README_CV_SYSTEM.md",
+      "source": "Supporting_Documents/README_CV_SYSTEM.md",
+      "kind": "supporting-document",
+      "bytes": 961,
+      "sha256": "140e811a9e84cfce616ab997e2308194718d72bf23a40c416361e2c768f1aedd"
+    },
+    {
+      "object_key": "2026/system/Supporting_Documents/ROLE_CV_MAPPING.md",
+      "source": "Supporting_Documents/ROLE_CV_MAPPING.md",
+      "kind": "supporting-document",
+      "bytes": 1859,
+      "sha256": "8f6dea7eff52806cabc1159ac29bc9ed1872e2d85da465c4c19cc71d6a265b83"
+    },
+    {
+      "object_key": "2026/system/Supporting_Documents/truth_pack.yaml",
+      "source": "Supporting_Documents/truth_pack.yaml",
+      "kind": "supporting-document",
+      "bytes": 11838,
+      "sha256": "e3b0d1c23888bc5340bcc7409f035971d842ceabaca9f4dc639430f49c5923d0"
+    },
+    {
+      "object_key": "2026/system/Mohammed_Ehab_CV_System_2026-09-21_FINAL.zip",
+      "source": "Mohammed_Ehab_CV_System_2026-09-21_FINAL.zip",
+      "kind": "canonical-source-package",
+      "bytes": 952675,
+      "sha256": "f5475977e331c5efb70e21a6b2b702904c80ebdc8aa2f22a1dccee24a8e807a4"
+    }
+  ]
+}

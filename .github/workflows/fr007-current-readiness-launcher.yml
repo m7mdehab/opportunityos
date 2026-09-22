@@ -8,7 +8,7 @@ on:
         required: false
         default: ""
       mode:
-        description: "Closure mode, Storage V2 CI (storage-v2-ci), or new DB credential probe (db-credential-probe)"
+        description: "Closure mode, Storage V2 CI, DB credential probe, or private CV storage verification"
         required: false
         default: "full"
 
@@ -20,13 +20,13 @@ permissions:
 
 jobs:
   storage-v2-proof:
-    if: ${{ inputs.mode == 'storage-v2-ci' || inputs.mode == 'db-credential-probe' }}
+    if: ${{ inputs.mode == 'storage-v2-ci' || inputs.mode == 'db-credential-probe' || inputs.mode == 'verify-cv-storage' }}
     uses: ./.github/workflows/fr007-storage-v2-postgres.yml
     with:
-      mode: ${{ inputs.mode == 'db-credential-probe' && 'credential-probe' || 'postgres-ci' }}
+      mode: ${{ inputs.mode == 'db-credential-probe' && 'credential-probe' || inputs.mode == 'verify-cv-storage' && 'verify-cv-storage' || 'postgres-ci' }}
     secrets: inherit
   final-closure:
-    if: ${{ inputs.mode != 'storage-v2-ci' && inputs.mode != 'db-credential-probe' }}
+    if: ${{ inputs.mode != 'storage-v2-ci' && inputs.mode != 'db-credential-probe' && inputs.mode != 'verify-cv-storage' }}
     uses: ./.github/workflows/fr007-final-runtime-closure.yml
     with:
       truth_pack_hash: ${{ inputs.truth_pack_hash }}

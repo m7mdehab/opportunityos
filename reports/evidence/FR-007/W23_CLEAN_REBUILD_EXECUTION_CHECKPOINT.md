@@ -1,7 +1,7 @@
 # FR-007 W23 clean rebuild execution checkpoint
 
 - branch: `work/fr007-clean-rebuild-storage-v2`
-- current_phase: PHASE_D_POSTGRESQL_CI_AND_HOSTED_CREDENTIAL_PROBE
+- current_phase: PHASE_E_LIVE_MIGRATION_AND_TIERED_BOOTSTRAP
 - current_sha_before_agent_changes: `bcaa447d9e3cf0f93bdac88e595493025579d854`
 - new_supabase_project_ref: `sunjfepvdzfknglrjwhm`
 - new_supabase_project_name: `opportunityos-staging`
@@ -49,7 +49,14 @@
   - browser CV upload attempt was blocked before upload because Chrome extension file-URL access is disabled. Required user action was provided exactly: enable “Allow access to file URLs” for the ChatGPT browser extension in `chrome://extensions`. No file upload was confirmed; retry after setting changes.
   - GitHub `fr007-staging` safe URL/project/bucket/publishable variables and Storage service key target the new project. `OPOS_TARGET_DB_URL` and `CLOUD_DATABASE_URL` are still dated Sep 19 and cannot be read in GitHub; database password is not viewable in Supabase UI. Do not reset it autonomously. Next test whether existing protected credentials are reusable against the new session pooler; if not, obtain Founder-entered password/secret replacement without displaying it.
   - current changes are staged except the pre-existing untracked `work/` user directory, which remains untouched and unstaged.
-- exact_next_action: inspect staged diff and `git diff --cached --check`; commit/push implementation to `work/fr007-clean-rebuild-storage-v2`; launch `storage-v2-ci` through the default-registered launcher using that feature branch; debug until both PostgreSQL 16 and 17 jobs pass. In parallel, retry exact 31-object private CV package upload after Chrome file access is enabled, then run the hosted credential probe and proceed to the Supabase migration/source bootstrap.
+- execution_update_2026_09_23_storage_and_ci:
+  - PostgreSQL GitHub Actions run `35793863496` passed PostgreSQL 16 and 17: fresh migration to 0022, upgrade from 0019 to 0022, schema verifier, full PostgreSQL-backed subsystem tests, and artifacts.
+  - Supabase management preflight confirms the new project remains writable primary (`pg_is_in_recovery=false`, `default_transaction_read_only=off`), has no migrations, and currently measures `10,849,427` bytes (~10.35 MiB).
+  - The protected DB-secret credential probe run `35793973204` failed on both existing DB URL secrets. They are still dated Sep 19 and do not authenticate to the new project. Workflow is being strengthened to report only sanitized SQLSTATE/error class; no URL/password output.
+  - exact canonical package found and SHA-256 checked; generated `founder/cv_storage_objects.json` describes 31 exact objects (9 PDF, 9 DOCX, 11 supporting docs, top-level manifest, exact ZIP), total `2,163,348` bytes. Canonical CV/ZIP checksums match. A hosted private-object hash verifier and `verify-cv-storage` dispatch mode are added; no binary enters Git.
+  - Chrome filechooser rejects local paths until the user enables the instructed extension setting; zero portfolio file bytes have been uploaded. Folder layout is being prepared. A zero-byte empty folder placeholder from the initial navigation mistake remains; no delete was submitted after the dashboard warned it cannot be undone.
+  - GitHub safe Supabase URLs/project/buckets/publishable key and `STORAGE_SERVICE_KEY` target the new project. `OPOS_TARGET_DB_URL` and `CLOUD_DATABASE_URL` still need a new password; no autonomous password reset was performed.
+- exact_next_action: finish staging the manifest/verifier/sanitized-probe changes, run `git diff --cached --check` and targeted tests, commit/push, and confirm the new PostgreSQL 16/17 workflow run. Apply the exact Alembic-generated fresh migration chain to the empty Supabase database through the authorized management migration executor if direct GitHub DB credentials remain unavailable. In parallel, retry the 31 private CV object upload after the user enables Chrome file URL access and dispatch the hash-verification mode; obtain the new DB password only through Founder-controlled reset/secret entry, then resume hosted source bootstrap and runtime acceptance.
 - no_merge: true
 - no_paid_infrastructure: true
 - seven_day_soak_claimed: false
