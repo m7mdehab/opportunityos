@@ -83,6 +83,20 @@ def _to_naive_utc(dt: datetime) -> datetime:
     return dt
 
 
+class TestFeedProjectionStorageV2Contract(unittest.TestCase):
+    def test_schema_is_single_current_lean_read_model(self) -> None:
+        column_names = set(FeedProjectionRecord.__table__.columns.keys())
+        self.assertTrue({"description", "search_text", "search_tsv"}.isdisjoint(column_names))
+
+        unique_opportunity_constraints = [
+            constraint
+            for constraint in FeedProjectionRecord.__table__.constraints
+            if constraint.__class__.__name__ == "UniqueConstraint"
+            and tuple(column.name for column in constraint.columns) == ("opportunity_id",)
+        ]
+        self.assertEqual(len(unique_opportunity_constraints), 1)
+
+
 @unittest.skipIf(
     _should_skip(),
     "Real PostgreSQL database URL required for postgres queue durability tests (skipped outside CI when DB not configured)",
@@ -901,7 +915,6 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 employment_type="full_time",
                 fit_score=90.0,
                 visible=True,
-                search_text="staff platform engineer acme systems",
                 evaluated_at=now,
                 projected_at=now,
             )
@@ -1032,7 +1045,6 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 employment_type="full_time",
                 fit_score=60.0,
                 visible=True,
-                search_text="lead backend architect beta labs",
                 evaluated_at=now,
                 projected_at=now,
             )
@@ -1139,7 +1151,6 @@ class TestPostgresQueueDurability(unittest.TestCase):
                 employment_type="full_time",
                 fit_score=95.0,
                 visible=True,
-                search_text="data platform engineer gamma corp",
                 evaluated_at=now,
                 projected_at=now,
             )
