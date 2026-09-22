@@ -92,7 +92,9 @@ jobs:
       - name: Sanitized live read-only preflight
         env:
           OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
-        run: python scripts/fr007_capacity_closure.py preflight --truth-pack-hash "${{ inputs.truth_pack_hash }}" | tee w227-preflight.json
+        run: |
+          set -o pipefail
+          python scripts/fr007_capacity_closure.py preflight --truth-pack-hash "${{ inputs.truth_pack_hash }}" | tee w227-preflight.json
       - uses: actions/upload-artifact@v4
         with:
           name: fr007-w227-preflight-${{ github.run_id }}
@@ -112,7 +114,9 @@ jobs:
       - name: Same-session migration, compaction and physical reclaim
         env:
           OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
-        run: python scripts/fr007_capacity_closure.py live-maintenance --truth-pack-hash "${{ inputs.truth_pack_hash }}" | tee w227-maintenance.json
+        run: |
+          set -o pipefail
+          python scripts/fr007_capacity_closure.py live-maintenance --truth-pack-hash "${{ inputs.truth_pack_hash }}" | tee w227-maintenance.json
       - uses: actions/upload-artifact@v4
         with:
           name: fr007-w227-maintenance-${{ github.run_id }}
@@ -132,7 +136,9 @@ jobs:
       - name: Fresh normal application connection write proof
         env:
           OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
-        run: python scripts/fr007_capacity_closure.py fresh-write | tee w227-fresh-write.json
+        run: |
+          set -o pipefail
+          python scripts/fr007_capacity_closure.py fresh-write | tee w227-fresh-write.json
 
   bounded-recovery:
     needs: [live-preflight, maintenance, fresh-write]
@@ -170,7 +176,9 @@ jobs:
       - name: Sanitized queue and capacity snapshot
         env:
           OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
-        run: python scripts/fr007_capacity_closure.py preflight --truth-pack-hash "${{ inputs.truth_pack_hash }}" | tee w227-recovery-${{ github.run_id }}.json
+        run: |
+          set -o pipefail
+          python scripts/fr007_capacity_closure.py preflight --truth-pack-hash "${{ inputs.truth_pack_hash }}" | tee w227-recovery-${{ github.run_id }}.json
       - uses: actions/upload-artifact@v4
         with:
           name: fr007-w227-recovery-${{ github.run_id }}

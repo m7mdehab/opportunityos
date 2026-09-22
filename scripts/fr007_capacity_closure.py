@@ -9,12 +9,20 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
+
+# When invoked as ``python scripts/fr007_capacity_closure.py`` Python places
+# only ``scripts/`` on sys.path.  Keep repository-owned ``scripts.*`` imports
+# resolvable in hosted runners just as they are from ``python -m``.
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from scripts.db_capacity_guard import inspect_connection
 from scripts.db_capacity_maintenance import apply_maintenance, build_plan

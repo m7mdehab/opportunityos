@@ -59,6 +59,14 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
         drain_section = workflow.split("drain:", 1)[1]
         self.assertIn("timeout-minutes: 35", drain_section)
 
+    def test_final_closure_fails_closed_on_piped_failures_and_direct_script_imports(self):
+        workflow = (ROOT / ".github" / "workflows" / "fr007-final-runtime-closure.yml").read_text(encoding="utf-8")
+        self.assertGreaterEqual(workflow.count("set -o pipefail"), 4)
+        bootstrap = (ROOT / "scripts" / "fr007_hosted_bootstrap.py").read_text(encoding="utf-8")
+        closure = (ROOT / "scripts" / "fr007_capacity_closure.py").read_text(encoding="utf-8")
+        self.assertIn("REPOSITORY_ROOT = Path(__file__).resolve().parents[1]", bootstrap)
+        self.assertIn("REPOSITORY_ROOT = Path(__file__).resolve().parents[1]", closure)
+
 
     def test_worker_drain_mode_conditions(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-worker-drain.yml").read_text(encoding="utf-8")
