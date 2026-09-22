@@ -8,8 +8,18 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 import time
 from datetime import datetime, timezone
+from pathlib import Path
+
+# Direct script execution puts ``scripts/`` ahead of the repository root on
+# sys.path.  Worker queue handlers intentionally import the repository-owned
+# capacity guard as ``scripts.*``; make that namespace available in hosted
+# runners as well as editable installs.
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from opportunity.registry import SourceRegistry
 from storage.engine import get_engine, get_session_factory, get_production_db_url

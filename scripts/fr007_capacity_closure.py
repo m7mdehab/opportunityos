@@ -13,6 +13,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 
 from scripts.db_capacity_guard import inspect_connection
@@ -60,6 +61,12 @@ def run_migration_on_connection(connection) -> None:
     )
     config.attributes["connection"] = connection
     command.upgrade(config, "head")
+    expected_head = ScriptDirectory.from_config(config).get_current_head()
+    actual_head = connection.execute(text("SELECT version_num FROM alembic_version LIMIT 1")).scalar()
+    if actual_head != expected_head:
+        raise RuntimeError(
+            f"migration did not reach repository head: expected={expected_head!r} actual={actual_head!r}"
+        )
 
 
 def live_maintenance(dsn: str, truth_pack_hash: str | None) -> dict:
