@@ -100,7 +100,13 @@ def live_maintenance(dsn: str, truth_pack_hash: str | None) -> dict:
             # lossless cold payloads.  On a near-quota database PostgreSQL
             # cannot stage a second copy of the GIN/index pages needed by the
             # archive insert unless this derived state is compacted first.
+            # Drop only rebuildable GIN indexes first; a full database cannot
+            # stage their update tuples.  They are recreated over the compact
+            # NULL vectors after archival.
+            connection.execute(text("DROP INDEX IF EXISTS ix_feed_projection_search_tsv"))
+            connection.execute(text("DROP INDEX IF EXISTS ix_opportunities_search_tsv"))
             connection.execute(text("UPDATE feed_projection SET search_text = '', search_tsv = NULL"))
+            connection.execute(text("UPDATE opportunities SET search_tsv = NULL WHERE search_tsv IS NOT NULL"))
             connection.commit()
             connection.execute(text("SET lock_timeout = '5min'"))
             print("vacuum_full_start relation=feed_projection_prearchive", flush=True)
@@ -115,6 +121,8 @@ def live_maintenance(dsn: str, truth_pack_hash: str | None) -> dict:
                 print(f"vacuum_full_start relation={relation}", flush=True)
                 connection.execute(text(f"VACUUM (FULL, ANALYZE) public.{relation}"))
                 print(f"vacuum_full_done relation={relation}", flush=True)
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_opportunities_search_tsv ON opportunities USING gin (search_tsv)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_feed_projection_search_tsv ON feed_projection USING gin (search_tsv)"))
             after = snapshot(connection, selected_hash)
             if after["database_size_bytes"] > 400 * 1024 * 1024:
                 raise RuntimeError("capacity maintenance completed below logical target")
