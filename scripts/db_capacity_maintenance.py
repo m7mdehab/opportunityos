@@ -141,6 +141,7 @@ def apply_maintenance(connection, *, truth_pack_hash: str, confirm: bool) -> dic
         """),
         {"opportunity_ids": [row["id"] for row in rows]},
     ).mappings().all() if rows else []
+    print(f"maintenance_candidates_loaded count={len(rows)} provenance_rows={len(provenance_rows)}", flush=True)
     provenance_by_id: dict[str, list[dict[str, Any]]] = {}
     for item in provenance_rows:
         item = dict(item)
@@ -165,15 +166,19 @@ def apply_maintenance(connection, *, truth_pack_hash: str, confirm: bool) -> dic
             "archived_at": now,
         })
         archived.append({"opportunity_id": row["id"], "compressed_bytes": len(compressed), "sha256": digest})
+    print(f"maintenance_payloads_built count={len(archive_rows)}", flush=True)
     if archive_rows:
-        connection.execute(text("""
+        insert_stmt = text("""
             INSERT INTO opportunity_cold_archive
                 (opportunity_id, content_hash, payload_zlib, payload_sha256,
                  original_size_bytes, archive_version, archived_at)
             VALUES (:opportunity_id, :content_hash, :payload_zlib, :payload_sha256,
                     :original_size_bytes, :archive_version, :archived_at)
             ON CONFLICT (opportunity_id) DO NOTHING
-        """), archive_rows)
+        """)
+        for offset in range(0, len(archive_rows), 500):
+            connection.execute(insert_stmt, archive_rows[offset:offset + 500])
+        print("maintenance_archive_rows_inserted", flush=True)
         ids = [row["id"] for row in rows]
         connection.execute(text("""
             UPDATE opportunities
@@ -181,12 +186,14 @@ def apply_maintenance(connection, *, truth_pack_hash: str, confirm: bool) -> dic
             WHERE id = ANY(:opportunity_ids)
         """), {"opportunity_ids": ids})
         connection.execute(text("DELETE FROM field_provenances WHERE opportunity_id = ANY(:opportunity_ids)"), {"opportunity_ids": ids})
+        print("maintenance_provenance_deleted", flush=True)
         connection.execute(text("""
             UPDATE feed_projection
             SET visible = FALSE, visibility_reason = 'cold_ineligible',
                 search_text = '', search_tsv = NULL
             WHERE opportunity_id = ANY(:opportunity_ids)
         """), {"opportunity_ids": ids})
+        print("maintenance_hot_rows_compacted", flush=True)
     # Synthetic active projections are a derived fallback profile.  Remove only
     # rows with no founder state; the current authoritative profile remains.
     active_result = connection.execute(text("""
