@@ -15,9 +15,12 @@ from typing import Any
 
 from sqlalchemy import create_engine, text
 
-WARN_BYTES = 350 * 1024 * 1024
-BLOCK_BYTES = 425 * 1024 * 1024
-TARGET_BYTES = 400 * 1024 * 1024
+PREFERRED_BYTES = 150 * 1024 * 1024
+TARGET_BYTES = 200 * 1024 * 1024
+WARN_BYTES = 250 * 1024 * 1024
+STRONG_WARN_BYTES = 300 * 1024 * 1024
+BLOCK_BYTES = 350 * 1024 * 1024
+HARD_STOP_BYTES = 400 * 1024 * 1024
 
 
 class CapacityBlocked(RuntimeError):
@@ -38,8 +41,11 @@ class CapacitySnapshot:
             "in_recovery": self.in_recovery,
             "status": self.status,
             "target_bytes": TARGET_BYTES,
+            "preferred_bytes": PREFERRED_BYTES,
             "warning_bytes": WARN_BYTES,
+            "strong_warning_bytes": STRONG_WARN_BYTES,
             "block_bytes": BLOCK_BYTES,
+            "hard_stop_bytes": HARD_STOP_BYTES,
         }
 
 
@@ -49,9 +55,13 @@ def inspect_connection(connection) -> CapacitySnapshot:
     in_recovery = bool(connection.execute(text("SELECT pg_is_in_recovery()")).scalar_one())
     if read_only or in_recovery:
         status = "READ_ONLY"
-    elif size > BLOCK_BYTES:
+    elif size >= HARD_STOP_BYTES:
+        status = "HARD_STOP_CAPACITY"
+    elif size >= BLOCK_BYTES:
         status = "BLOCKED_CAPACITY"
-    elif size > WARN_BYTES:
+    elif size >= STRONG_WARN_BYTES:
+        status = "STRONG_WARN_CAPACITY"
+    elif size >= WARN_BYTES:
         status = "WARN_CAPACITY"
     else:
         status = "OK"
@@ -62,7 +72,7 @@ def assert_heavy_work_allowed(connection) -> CapacitySnapshot:
     snapshot = inspect_connection(connection)
     if snapshot.read_only or snapshot.in_recovery:
         raise CapacityBlocked("database is read-only; heavy work is blocked")
-    if snapshot.database_size_bytes > BLOCK_BYTES:
+    if snapshot.database_size_bytes >= BLOCK_BYTES:
         raise CapacityBlocked("database exceeds the heavy-work capacity guard")
     return snapshot
 

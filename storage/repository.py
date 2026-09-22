@@ -23,23 +23,18 @@ from storage.models import (
     FounderSavedViewRecord,
     OpportunityFamilyRecord,
 )
+from storage.cold_storage import get as get_cold_object, unpack as unpack_cold_object
 
 
-# BRIEF-FR-006 C2: `search_tsv` document definition, shared verbatim between
+# Storage V2: `search_tsv` is one compact searchable representation, shared verbatim between
 # the per-row population below (`_refresh_search_tsv`, called at the end of
 # every `save_opportunity`) and the idempotent batch backfill
 # (`backfill_search_tsv`). Both are the *same* UPDATE body -- one scoped to a
 # single `id`, the other to every row (or every row still missing a value) --
 # so a row written by either path can never end up indexed against a
-# different document shape than a row written by the other. Source columns:
-# title, organization ("employer"), description, and location (no single
-# "location" column exists on `opportunities` -- `location_country`,
-# `location_city`, `location_region` are concatenated instead). `requirements`
-# is included via a correlated subquery over `field_provenances` for any row
-# where `field_name = 'requirements'` -- no current adapter populates that
-# field (BRIEF-FR-006 C2 assumption, named in the work order return), so this
-# is presently a no-op, but a row written by a future adapter that does
-# populate it becomes searchable on it with no further change here.
+# different document shape than a row written by the other. Full descriptions
+# and provenance stay in the private cold archive; hot search is limited to
+# title, organization, normalized location, track and title-family keywords.
 # `concat_ws`/`string_agg` both silently skip NULL inputs, so a row missing
 # any of these fields still gets a valid (possibly shorter) document rather
 # than a NULL search_tsv.
@@ -51,15 +46,12 @@ SET search_tsv = to_tsvector(
         ' ',
         o.title,
         o.organization,
-        o.description,
         o.location_country,
         o.location_city,
         o.location_region,
-        (
-            SELECT string_agg(fp.normalized_value, ' ')
-            FROM field_provenances fp
-            WHERE fp.opportunity_id = o.id AND fp.field_name = 'requirements'
-        )
+        o.track,
+        o.title_family,
+        o.family_key
     )
 )
 """
@@ -287,25 +279,31 @@ class StorageRepository:
             raise ValueError(f"opportunity not found: {opportunity_id}")
         row = self.session.execute(
             text(
-                "SELECT content_hash, payload_zlib, payload_sha256 "
+                "SELECT content_hash, payload_zlib, payload_sha256, storage_backend, object_key "
                 "FROM opportunity_cold_archive WHERE opportunity_id = :id"
             ),
             {"id": opportunity_id},
         ).mappings().first()
         if row is None:
             raise RuntimeError("cold archive missing for archived opportunity")
-        compressed = bytes(row["payload_zlib"])
-        if hashlib.sha256(compressed).hexdigest() != row["payload_sha256"]:
-            raise RuntimeError("cold archive checksum verification failed")
+        if row["storage_backend"] == "supabase_storage":
+            if not row["object_key"]:
+                raise RuntimeError("cold archive object metadata is missing")
+            compressed = get_cold_object(row["object_key"], row["payload_sha256"])
+        else:
+            if row["payload_zlib"] is None:
+                raise RuntimeError("cold archive payload is unavailable")
+            compressed = bytes(row["payload_zlib"])
+            if hashlib.sha256(compressed).hexdigest() != row["payload_sha256"]:
+                raise RuntimeError("cold archive checksum verification failed")
         if row["content_hash"] != record.content_hash:
             raise RuntimeError("cold archive content hash is stale")
-        try:
-            payload = json.loads(zlib.decompress(compressed).decode("utf-8"))
-        except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
-            raise RuntimeError("cold archive payload is corrupt") from exc
-        if payload.get("opportunity_id") != opportunity_id or payload.get("content_hash") != record.content_hash:
-            raise RuntimeError("cold archive identity verification failed")
-        return payload
+        return unpack_cold_object(
+            compressed,
+            row["payload_sha256"],
+            opportunity_id=opportunity_id,
+            content_hash=record.content_hash,
+        )
 
     def get_opportunity(self, opportunity_id: str) -> Optional[OpportunityRecord]:
         return self.session.query(OpportunityRecord).filter_by(id=opportunity_id).first()

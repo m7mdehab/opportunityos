@@ -285,14 +285,6 @@ def upsert_projection(session: Session, record: FeedProjectionRecord) -> bool:
             set_=update_values,
         )
         session.execute(stmt)
-        session.execute(
-            text(
-                "UPDATE feed_projection "
-                "SET search_tsv = to_tsvector('simple', search_text) "
-                "WHERE id = :projection_id"
-            ),
-            {"projection_id": record.id},
-        )
         if existing is not None:
             # The hosted worker factory keeps ``expire_on_commit=False`` so
             # lease reads remain explicit.  Expire a pre-existing identity
@@ -305,15 +297,6 @@ def upsert_projection(session: Session, record: FeedProjectionRecord) -> bool:
     managed = session.merge(record)
     session.flush()
 
-    if session.bind is not None and session.bind.dialect.name == "postgresql":
-        session.execute(
-            text(
-                "UPDATE feed_projection "
-                "SET search_tsv = to_tsvector('simple', search_text) "
-                "WHERE id = :projection_id"
-            ),
-            {"projection_id": managed.id},
-        )
     return inserted
 
 

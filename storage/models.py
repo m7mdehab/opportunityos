@@ -69,6 +69,9 @@ class OpportunityRecord(Base):
     # ``tsvector`` type on PostgreSQL, where migration 0004_founder_control's
     # GIN index (ix_opportunities_search_tsv) actually lives.
     search_tsv = Column(Text().with_variant(TSVECTOR(), "postgresql"), nullable=True)
+    archive_object_key = Column(String(255), nullable=True)
+    archive_sha256 = Column(String(64), nullable=True)
+    archive_state = Column(String(16), nullable=True)
 
     provenances = relationship("FieldProvenanceRecord", back_populates="opportunity", cascade="all, delete-orphan")
     feedback = relationship("FounderFeedbackRecord", back_populates="opportunity", cascade="all, delete-orphan")
@@ -104,7 +107,10 @@ class OpportunityColdArchiveRecord(Base):
 
     opportunity_id = Column(String(64), primary_key=True)
     content_hash = Column(String(64), nullable=False, index=True)
-    payload_zlib = Column(LargeBinary, nullable=False)
+    payload_zlib = Column(LargeBinary, nullable=True)
+    storage_backend = Column(String(32), nullable=False, default="postgres_payload")
+    object_key = Column(String(255), nullable=True, index=True)
+    compressed_size_bytes = Column(Integer, nullable=True)
     payload_sha256 = Column(String(64), nullable=False)
     original_size_bytes = Column(Integer, nullable=False)
     archive_version = Column(String(16), nullable=False)

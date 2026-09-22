@@ -17,8 +17,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import create_engine, text
+from storage.cold_storage import ARCHIVE_VERSION, hosted_storage_configured, pack, put
 
-ARCHIVE_VERSION = "v1"
 
 
 @dataclass(frozen=True)
@@ -144,37 +144,58 @@ def apply_maintenance(connection, *, truth_pack_hash: str, confirm: bool) -> dic
             item = dict(item)
             provenance_by_id.setdefault(item.pop("opportunity_id"), []).append(item)
         archive_rows: list[dict[str, Any]] = []
+        external = hosted_storage_configured()
         for row in rows:
             payload = {
                 "opportunity_id": row["id"], "content_hash": row["content_hash"],
                 "description": row["description"], "raw_payload_json": row["raw_payload_json"],
                 "provenance": provenance_by_id.get(row["id"], []),
             }
-            raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
-            compressed = zlib.compress(raw, level=9)
-            digest = hashlib.sha256(compressed).hexdigest()
+            compressed, digest, original_size = pack(payload)
+            object_key = None
+            if external:
+                object_key, digest, compressed_size = put(compressed, row["content_hash"])
+            else:
+                compressed_size = len(compressed)
             archive_rows.append({
                 "opportunity_id": row["id"], "content_hash": row["content_hash"],
-                "payload_zlib": compressed, "payload_sha256": digest,
-                "original_size_bytes": len(raw), "archive_version": ARCHIVE_VERSION,
+                "payload_zlib": None if external else compressed, "storage_backend": "supabase_storage" if external else "postgres_payload",
+                "object_key": object_key, "compressed_size_bytes": compressed_size,
+                "payload_sha256": digest,
+                "original_size_bytes": original_size, "archive_version": ARCHIVE_VERSION,
                 "archived_at": now,
             })
-            archived.append({"opportunity_id": row["id"], "compressed_bytes": len(compressed), "sha256": digest})
+            archived.append({"opportunity_id": row["id"], "compressed_bytes": compressed_size, "sha256": digest, "storage_backend": "supabase_storage" if external else "postgres_payload"})
         insert_stmt = text("""
             INSERT INTO opportunity_cold_archive
                 (opportunity_id, content_hash, payload_zlib, payload_sha256,
-                 original_size_bytes, archive_version, archived_at)
+                 original_size_bytes, archive_version, archived_at, storage_backend,
+                 object_key, compressed_size_bytes)
             VALUES (:opportunity_id, :content_hash, :payload_zlib, :payload_sha256,
-                    :original_size_bytes, :archive_version, :archived_at)
+                    :original_size_bytes, :archive_version, :archived_at, :storage_backend,
+                    :object_key, :compressed_size_bytes)
             ON CONFLICT (opportunity_id) DO NOTHING
         """)
         connection.execute(insert_stmt, archive_rows)
         connection.execute(text("""
             UPDATE opportunities
             SET description = '[archived]', raw_payload_json = NULL, search_tsv = NULL
+                , archive_state = 'COLD', archive_object_key = c.object_key,
+                  archive_sha256 = c.payload_sha256
+            FROM opportunity_cold_archive c
             WHERE id = ANY(:opportunity_ids)
+              AND c.opportunity_id = opportunities.id
         """), {"opportunity_ids": ids})
         connection.execute(text("DELETE FROM field_provenances WHERE opportunity_id = ANY(:opportunity_ids)"), {"opportunity_ids": ids})
+        # Keep only compact current state for terminal cold rows.  The full
+        # evaluation detail is already losslessly present in the archive.
+        connection.execute(text("""
+            UPDATE match_evaluations
+            SET dimension_scores_json = '{}', reasons_json = '[]',
+                evaluation_detail_json = NULL
+            WHERE opportunity_id = ANY(:opportunity_ids)
+              AND truth_pack_hash = :truth_pack_hash
+        """), {"opportunity_ids": ids, "truth_pack_hash": truth_pack_hash})
         connection.execute(text("""
             UPDATE feed_projection
             SET visible = FALSE, visibility_reason = 'cold_ineligible',

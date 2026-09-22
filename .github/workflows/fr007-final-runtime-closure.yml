@@ -63,10 +63,17 @@ jobs:
         run: |
           alembic upgrade head
           test "$(alembic heads | grep -c ' (head)')" = 1
+      - name: Production migration-state upgrade proof
+        run: |
+          alembic downgrade 0019_activity_view_access
+          test "$(alembic current | grep -c '0019_activity_view_access')" = 1
+          alembic upgrade head
+          test "$(alembic current | grep -c '0021_storage_v2')" = 1
       - name: Capacity/archive PostgreSQL proof
         run: |
           python -m unittest \
             storage.test_cold_archive \
+            storage.test_storage_v2 \
             scripts.test_db_capacity_guard \
             scripts.test_db_capacity_maintenance \
             storage.test_hosted_runtime_migration \
@@ -92,6 +99,9 @@ jobs:
       - name: Sanitized live read-only preflight
         env:
           OPOS_TARGET_DB_URL: ${{ secrets.CLOUD_DATABASE_URL || secrets.OPOS_TARGET_DB_URL }}
+          SUPABASE_STORAGE_URL: ${{ secrets.SUPABASE_URL || 'https://lrrcpwaapwynzdsxzwhy.supabase.co' }}
+          STORAGE_SERVICE_KEY: ${{ secrets.STORAGE_SERVICE_KEY }}
+          STORAGE_PRIVATE_BUCKET: ${{ secrets.STORAGE_PRIVATE_BUCKET || 'opportunity-archives' }}
         run: |
           set -o pipefail
           python scripts/fr007_capacity_closure.py preflight --truth-pack-hash "${{ inputs.truth_pack_hash }}" | tee w227-preflight.json
@@ -114,6 +124,9 @@ jobs:
       - name: Same-session migration, compaction and physical reclaim
         env:
           OPOS_TARGET_DB_URL: ${{ secrets.CLOUD_DATABASE_URL || secrets.OPOS_TARGET_DB_URL }}
+          SUPABASE_STORAGE_URL: ${{ secrets.SUPABASE_URL || 'https://lrrcpwaapwynzdsxzwhy.supabase.co' }}
+          STORAGE_SERVICE_KEY: ${{ secrets.STORAGE_SERVICE_KEY }}
+          STORAGE_PRIVATE_BUCKET: ${{ secrets.STORAGE_PRIVATE_BUCKET || 'opportunity-archives' }}
         run: |
           set -o pipefail
           python scripts/fr007_capacity_closure.py live-maintenance --truth-pack-hash "${{ inputs.truth_pack_hash }}" | tee w227-maintenance.json
@@ -136,6 +149,9 @@ jobs:
       - name: Fresh normal application connection write proof
         env:
           OPOS_TARGET_DB_URL: ${{ secrets.CLOUD_DATABASE_URL || secrets.OPOS_TARGET_DB_URL }}
+          SUPABASE_STORAGE_URL: ${{ secrets.SUPABASE_URL || 'https://lrrcpwaapwynzdsxzwhy.supabase.co' }}
+          STORAGE_SERVICE_KEY: ${{ secrets.STORAGE_SERVICE_KEY }}
+          STORAGE_PRIVATE_BUCKET: ${{ secrets.STORAGE_PRIVATE_BUCKET || 'opportunity-archives' }}
         run: |
           set -o pipefail
           python scripts/fr007_capacity_closure.py fresh-write | tee w227-fresh-write.json
@@ -260,7 +276,7 @@ jobs:
               row=c.execute(text("""select count(*) filter (where status='RUNNING' and lease_expires_at<now()) expired,
                 coalesce(extract(epoch from (now()-min(coalesce(run_after,created_at)) filter (where status in ('PENDING','RETRY') and coalesce(run_after,created_at)<=now()))),0)::bigint oldest from worker_jobs""")).mappings().one()
           e.dispose()
-          if size > 400*1024*1024 or int(row['expired']) != 0 or int(row['oldest']) >= 900:
+          if size > 200*1024*1024 or int(row['expired']) != 0 or int(row['oldest']) >= 900:
               raise SystemExit(f"final queue/capacity acceptance failed: size={size} row={dict(row)}")
           PY
 

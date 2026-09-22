@@ -128,8 +128,8 @@ def live_maintenance(dsn: str, truth_pack_hash: str | None) -> dict:
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_opportunities_search_tsv ON opportunities USING gin (search_tsv)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_feed_projection_search_tsv ON feed_projection USING gin (search_tsv)"))
             after = snapshot(connection, selected_hash)
-            if after["database_size_bytes"] > 400 * 1024 * 1024:
-                raise RuntimeError("capacity maintenance completed below logical target")
+            if after["database_size_bytes"] > 200 * 1024 * 1024:
+                raise RuntimeError("capacity maintenance did not reach the Storage V2 engineering budget")
             return {"before": before, "plan": plan.as_dict(), "maintenance": result, "after": after}
     finally:
         engine.dispose()
@@ -140,7 +140,7 @@ def fresh_write_proof(dsn: str) -> dict:
     try:
         with engine.connect() as connection:
             state = inspect_connection(connection)
-            if state.read_only or state.in_recovery or state.database_size_bytes > 400 * 1024 * 1024:
+            if state.read_only or state.in_recovery or state.database_size_bytes > 200 * 1024 * 1024:
                 raise RuntimeError("fresh application connection is not writable/within capacity")
             transaction = connection.begin()
             try:
