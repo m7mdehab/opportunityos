@@ -46,8 +46,9 @@ class FounderSurfaceW23ContractTests(unittest.TestCase):
         source = (ROOT / "web/components/feed/detail-drawer.tsx").read_text(encoding="utf-8")
         self.assertIn('from "@/components/ui/dialog"', source)
         self.assertIn("max-h-[92dvh]", source)
-        self.assertIn("md:col-start-1 md:row-start-1", source)
-        self.assertIn("md:col-start-2 md:row-start-1", source)
+        self.assertIn("lg:grid-cols-[minmax(0,2fr)_minmax(24rem,1fr)]", source)
+        self.assertIn('<main className="min-w-0 space-y-6">', source)
+        self.assertIn('<aside className="min-w-0 space-y-6">', source)
         self.assertIn('data-testid="detail-fit-score"', source)
         self.assertNotIn("SheetContent", source)
 

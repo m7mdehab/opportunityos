@@ -41,10 +41,10 @@ W15 repository preparation is integrated: hosted single-Founder auth/session/RLS
 A real Supabase staging project now exists and is healthy:
 
 - `opportunityos-staging`;
-- project ref `lrrcpwaapwynzdsxzwhy`;
+- project ref `sunjfepvdzfknglrjwhm`;
 - region `eu-central-1`;
 - PostgreSQL 17;
-- safe API origin `https://lrrcpwaapwynzdsxzwhy.supabase.co`;
+- safe API origin `https://sunjfepvdzfknglrjwhm.supabase.co`;
 - hosted application schema present at Alembic revision `0009_hosted_founder_auth`, with the expected 26-table public RLS baseline;
 - project creation cost recorded as $0/month.
 

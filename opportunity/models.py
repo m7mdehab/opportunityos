@@ -7,6 +7,7 @@ identifiers, and source-health diagnostics.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -255,13 +256,40 @@ def compute_canonical_content_hash(
     title: str,
     location_raw: str,
     description: str,
+    *,
+    record_checksum: str = "",
+    responsibilities: tuple[str, ...] = (),
+    requirements: tuple[str, ...] = (),
+    skills: tuple[str, ...] = (),
 ) -> str:
     norm_org = organization.strip().casefold()
     norm_title = re.sub(r"\s+", " ", title.strip().casefold())
     norm_loc = re.sub(r"\s+", " ", location_raw.strip().casefold())
     norm_desc = re.sub(r"\s+", " ", description.strip().casefold())
-    payload = f"{norm_org}|{norm_title}|{norm_loc}|{norm_desc}".encode("utf-8")
+    if not (record_checksum or responsibilities or requirements or skills):
+        payload = f"{norm_org}|{norm_title}|{norm_loc}|{norm_desc}".encode("utf-8")
+        return hashlib.sha256(payload).hexdigest()
+    payload = json.dumps(
+        {
+            "organization": norm_org,
+            "title": norm_title,
+            "location": norm_loc,
+            "description": norm_desc,
+            "record_checksum": record_checksum,
+            "responsibilities": list(responsibilities),
+            "requirements": list(requirements),
+            "skills": list(skills),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def serialize_source_record(value: Any) -> str:
+    """Serialize the exact adapter-level source record for cold recovery."""
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
 
 
 def compute_dedup_key(
@@ -338,6 +366,9 @@ class Opportunity:
     content_hash: str = ""
     dedup_key: str = ""
     extra_attributes: tuple[tuple[str, str], ...] = ()
+    # Original source record is carried only in worker memory and cold object
+    # archives; ordinary hot PostgreSQL rows never store this full payload.
+    raw_source_record_json: str | None = None
 
     def __post_init__(self) -> None:
         if not self.id or not self.id.strip():
@@ -364,7 +395,14 @@ class Opportunity:
         # Ensure content_hash is populated deterministically
         if not self.content_hash:
             computed_hash = compute_canonical_content_hash(
-                self.organization, self.title, self.location_raw, self.description
+                self.organization,
+                self.title,
+                self.location_raw,
+                self.description,
+                record_checksum=self.record_checksum,
+                responsibilities=self.responsibilities,
+                requirements=self.requirements,
+                skills=self.skills,
             )
             object.__setattr__(self, "content_hash", computed_hash)
 

@@ -37,25 +37,30 @@ from email.utils import parsedate_to_datetime
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Mapping, MutableMapping, Optional
 
-from sqlalchemy import or_, text
+from sqlalchemy import and_, or_, text
 
 from core.logging import get_logger, redact_data
 from matching.evaluate_persist import evaluate_and_store
 from matching.scorer import OpportunityScorer
+from matching.models import QualificationDecision
 from opportunity.clustering import compute_family_key
 from opportunity.models import (
     Compensation,
     CompensationInterval,
+    DerivationType,
     EmploymentType,
+    FieldProvenance,
     GeographicEligibility,
     Opportunity,
+    ProcurementMetadata,
     RemoteScope,
     SeniorityLevel,
+    SourceProvenance,
     SourceHealthStatus,
     Track,
     WorkMode,
 )
-from opportunity.persistence import persist_batch
+from opportunity.persistence import persist_evaluated_batch
 from opportunity.pipeline import OpportunityPipeline
 from opportunity.registry import SourceRegistry
 from opportunity.transport import AcquisitionService, BaseTransport, HttpTransport, RateLimiter
@@ -422,6 +427,7 @@ def make_poll_source_handler(
     truth_pack_path: Optional[Any] = None,
     pack_loader: Optional[PackLoader] = None,
     scorer: Optional[OpportunityScorer] = None,
+    cold_storage_client: Any = None,
     rate_limiter: Optional[RateLimiter] = None,
 ) -> Callable[[dict], None]:
     """Build a ``poll_source`` handler bound to the given (injectable) dependencies.
@@ -584,52 +590,37 @@ def make_poll_source_handler(
             None,
         )
 
+        try:
+            pack = pack_loader_fn(truth_pack_path)
+        except (TruthPackMissing, TruthPackInvalid) as exc:
+            _write_poll_run_record(
+                _resolve_session_factory,
+                source_id=source_id,
+                job_id=job_id,
+                started_at=started_at,
+                status="error",
+                error_message=f"tiered_ingestion_requires_valid_truth_pack:{type(exc).__name__}",
+            )
+            raise RuntimeError(
+                "refusing source persistence until a valid truth pack is available"
+            ) from exc
+
         session = _resolve_session_factory()()
         try:
             persistence_started = perf_counter()
-            repository = StorageRepository(session)
-            result = persist_batch(batch, repository)
+            repository = StorageRepository(session, cold_storage_client=cold_storage_client)
+            result = persist_evaluated_batch(
+                batch,
+                repository,
+                truth_graph=pack.graph,
+                truth_pack_hash=pack.truth_pack_hash,
+                scorer=scorer,
+                evaluated_at=datetime.now(timezone.utc),
+            )
             persistence_duration = perf_counter() - persistence_started
 
-            # Inline, full-fidelity evaluation of THIS batch's own in-memory
-            # Opportunity objects (real responsibilities/requirements) --
-            # see this function's docstring for why this must not be the
-            # lossy _reconstruct_opportunity path evaluate_new uses.
-            evaluated_inline_count = 0
-            inline_started = perf_counter()
-            try:
-                pack = pack_loader_fn(truth_pack_path)
-            except (TruthPackMissing, TruthPackInvalid) as exc:
-                pack = None
-                logger.warning(
-                    "worker.poll_source_evaluate_skipped_no_pack",
-                    extra={
-                        "component": "worker.handlers",
-                        "extra_data": {"source_id": source_id, "reason": type(exc).__name__},
-                    },
-                )
-
-            if pack is not None:
-                inline_evaluated_at = datetime.now(timezone.utc)
-                persisted_ids = set(result.persisted_ids)
-                # Unchanged rows are deliberately never evaluated inline.  A
-                # row without the current evaluation remains eligible for the
-                # bounded evaluate_new safety net below; doing it here would
-                # turn a large re-poll into thousands of serialized commits.
-                inline_ids = persisted_ids
-                for opp in batch.opportunities:
-                    if opp.id not in inline_ids:
-                        continue
-                    evaluate_and_store(
-                        opp,
-                        pack.graph,
-                        repository,
-                        truth_pack_hash=pack.truth_pack_hash,
-                        evaluated_at=inline_evaluated_at,
-                        scorer=scorer,
-                    )
-                    evaluated_inline_count += 1
-            inline_duration = perf_counter() - inline_started
+            evaluated_inline_count = len(result.persisted_ids)
+            inline_duration = 0.0
 
             # evaluate_new remains the backfill/safety net -- it will only
             # find work here if the inline pass above was skipped (no valid
@@ -802,6 +793,50 @@ def _reconstruct_opportunity(
     "gap"/"unknown"-flagged dimensions for a reconstructed opportunity, never
     a crash or a fabricated pass.
     """
+    if archive_payload is not None and isinstance(
+        archive_payload.get("normalized_opportunity"), Mapping
+    ):
+        normalized = dict(archive_payload["normalized_opportunity"])
+        for field_name, enum_type in (
+            ("track", Track),
+            ("seniority", SeniorityLevel),
+            ("employment_type", EmploymentType),
+            ("work_mode", WorkMode),
+            ("remote_scope", RemoteScope),
+        ):
+            value = normalized.get(field_name)
+            if value is not None and not isinstance(value, enum_type):
+                normalized[field_name] = enum_type(value)
+        for field_name in (
+            "responsibilities", "requirements", "skills", "remote_scope_regions",
+        ):
+            normalized[field_name] = tuple(normalized.get(field_name) or ())
+        normalized["extra_attributes"] = tuple(
+            tuple(item) for item in (normalized.get("extra_attributes") or ())
+        )
+        if isinstance(normalized.get("geographic_eligibility"), Mapping):
+            geo = dict(normalized["geographic_eligibility"])
+            geo["extracted_places"] = tuple(geo.get("extracted_places") or ())
+            geo["restrictions"] = tuple(geo.get("restrictions") or ())
+            normalized["geographic_eligibility"] = GeographicEligibility(**geo)
+        if isinstance(normalized.get("compensation"), Mapping):
+            compensation = dict(normalized["compensation"])
+            interval = compensation.get("interval")
+            if interval is not None and not isinstance(interval, CompensationInterval):
+                compensation["interval"] = CompensationInterval(interval)
+            normalized["compensation"] = Compensation(**compensation)
+        if isinstance(normalized.get("procurement_metadata"), Mapping):
+            procurement = dict(normalized["procurement_metadata"])
+            for field_name in ("cpv_codes", "unspsc_codes", "languages"):
+                procurement[field_name] = tuple(procurement.get(field_name) or ())
+            normalized["procurement_metadata"] = ProcurementMetadata(**procurement)
+        if isinstance(normalized.get("raw_provenance"), Mapping):
+            normalized["raw_provenance"] = SourceProvenance(**normalized["raw_provenance"])
+        normalized["field_provenances"] = tuple(
+            FieldProvenance(**item) for item in (normalized.get("field_provenances") or ())
+        )
+        return Opportunity(**normalized)
+
     if archive_payload is None:
         prov = _first_field_provenance_map(session, record.id)
     else:
@@ -811,14 +846,17 @@ def _reconstruct_opportunity(
             if item.get("field_name") and item.get("normalized_value") is not None
         }
 
+    archived_opportunity = (archive_payload or {}).get("opportunity") or {}
     source = record.source_id
     raw_payload_json = (
-        archive_payload.get("raw_payload_json")
+        archived_opportunity.get("raw_payload_json")
         if archive_payload is not None
         else record.raw_payload_json
     )
     description = (
-        archive_payload.get("description") or ""
+        archive_payload.get("canonical_description")
+        or archived_opportunity.get("description")
+        or ""
         if archive_payload is not None
         else record.description
     )
@@ -830,7 +868,11 @@ def _reconstruct_opportunity(
             pass
 
     skills_raw = prov.get("skills", "")
-    skills = tuple(s.strip() for s in skills_raw.split(",") if s.strip())
+    skills = tuple(archived_opportunity.get("skills") or ()) or tuple(
+        s.strip() for s in skills_raw.split(",") if s.strip()
+    )
+    responsibilities = tuple(archived_opportunity.get("responsibilities") or ())
+    requirements = tuple(archived_opportunity.get("requirements") or ())
 
     geo = None
     geo_status = prov.get("geographic_eligibility")
@@ -898,8 +940,8 @@ def _reconstruct_opportunity(
         organization=record.organization,
         title=record.title,
         description=description,
-        responsibilities=(),
-        requirements=(),
+        responsibilities=responsibilities,
+        requirements=requirements,
         skills=skills,
         seniority=_enum_or_default(SeniorityLevel, prov.get("seniority"), SeniorityLevel.UNSPECIFIED),
         employment_type=_enum_or_default(EmploymentType, prov.get("employment_type"), EmploymentType.UNSPECIFIED),
@@ -916,6 +958,9 @@ def _reconstruct_opportunity(
         posted_date=record.posted_date,
         closing_date=record.deadline,
         content_hash=record.content_hash,
+        record_checksum=archived_opportunity.get("record_checksum", ""),
+        raw_source_record_json=(archive_payload or {}).get("original_source_payload"),
+        extra_attributes=tuple(tuple(item) for item in (archived_opportunity.get("extra_attributes") or ())),
     )
 
 
@@ -925,6 +970,7 @@ def make_evaluate_new_handler(
     truth_pack_path: Optional[Any] = None,
     pack_loader: Optional[PackLoader] = None,
     scorer: Optional[OpportunityScorer] = None,
+    cold_storage_client: Any = None,
 ) -> Callable[[dict], None]:
     """Build an ``evaluate_new`` handler bound to the given (injectable) dependencies.
 
@@ -977,7 +1023,7 @@ def make_evaluate_new_handler(
 
         session = _resolve_session_factory()()
         try:
-            repository = StorageRepository(session)
+            repository = StorageRepository(session, cold_storage_client=cold_storage_client)
 
             # A committed evaluation without its projection is unfinished
             # publication. Retry it after a projection failure instead of
@@ -987,6 +1033,7 @@ def make_evaluate_new_handler(
                 .filter(
                     MatchEvaluationRecord.opportunity_id == OpportunityRecord.id,
                     MatchEvaluationRecord.truth_pack_hash == truth_pack_hash,
+                    MatchEvaluationRecord.content_hash == OpportunityRecord.content_hash,
                 )
                 .exists()
             )
@@ -998,9 +1045,13 @@ def make_evaluate_new_handler(
                 )
                 .exists()
             )
+            needs_projection = and_(
+                OpportunityRecord.lifecycle_tier != "cold",
+                ~projected_for_pack,
+            )
             pending_records = (
                 session.query(OpportunityRecord)
-                .filter(or_(~evaluated_for_pack, ~projected_for_pack))
+                .filter(or_(~evaluated_for_pack, needs_projection))
                 .order_by(OpportunityRecord.id.asc())
                 .limit(EVALUATE_NEW_BATCH_SIZE)
                 .all()
@@ -1008,17 +1059,48 @@ def make_evaluate_new_handler(
 
             for record in pending_records:
                 archive_payload = None
-                if record.description == "[archived]":
-                    # Truth-pack changes may make a cold terminal row
-                    # eligible again. Verify and read its lossless archive in
-                    # memory only. The hot row and its compact archive marker
-                    # remain untouched after scoring.
+                if record.lifecycle_tier == "cold":
+                    # Verify and reconstruct cold source truth in memory only.
                     archive_payload = repository.load_cold_opportunity_payload(
                         record.id, record=record
                     )
                 opportunity = _reconstruct_opportunity(
                     session, record, archive_payload=archive_payload
                 )
+                evaluation = (scorer or OpportunityScorer()).evaluate(
+                    opportunity,
+                    truth_graph,
+                    evaluated_at=datetime.now(timezone.utc).isoformat(),
+                )
+                lifecycle_tier = getattr(record, "lifecycle_tier", "hot")
+                if archive_payload is not None:
+                    hard_failure = any(
+                        item.is_hard_failure and item.passed is False
+                        for item in evaluation.hard_constraints
+                    )
+                    protected = repository.is_founder_protected(record.id)
+                    remains_cold = (
+                        evaluation.qualification_decision is QualificationDecision.INELIGIBLE
+                        and hard_failure
+                        and not protected
+                    )
+                    if remains_cold:
+                        lifecycle_tier = "cold"
+                    else:
+                        lifecycle_tier = "protected" if protected else "hot"
+                        restored = dict(archive_payload.get("opportunity") or {})
+                        if not restored or restored.get("content_hash") != record.content_hash:
+                            raise RuntimeError("verified cold archive lacks complete current source fields")
+                        restored["lifecycle_tier"] = lifecycle_tier
+                        restored.pop("cold_archive", None)
+                        if isinstance(restored.get("reverified_at"), str):
+                            restored["reverified_at"] = datetime.fromisoformat(
+                                restored["reverified_at"]
+                            )
+                        repository.save_opportunity(
+                            restored,
+                            list(archive_payload.get("provenance") or []),
+                        )
                 evaluate_and_store(
                     opportunity,
                     truth_graph,
@@ -1026,6 +1108,8 @@ def make_evaluate_new_handler(
                     truth_pack_hash=truth_pack_hash,
                     evaluated_at=datetime.now(timezone.utc),
                     scorer=scorer,
+                    evaluation_result=evaluation,
+                    lifecycle_tier=lifecycle_tier,
                 )
 
             # A bounded job may leave eligible rows.  Coalescing preserves a
@@ -1034,7 +1118,7 @@ def make_evaluate_new_handler(
             # global enqueue storm.
             remaining = (
                 session.query(OpportunityRecord.id)
-                .filter(or_(~evaluated_for_pack, ~projected_for_pack))
+                .filter(or_(~evaluated_for_pack, needs_projection))
                 .limit(1)
                 .first()
             )

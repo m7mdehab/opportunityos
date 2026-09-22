@@ -11,6 +11,7 @@ from opportunity.models import (
     ParseResult,
     SourceProvenance,
     Track,
+    serialize_source_record,
 )
 
 
@@ -64,3 +65,8 @@ class BaseAdapter(abc.ABC):
             payload_checksum=checksum,
             feed_checksum=feed_checksum or checksum,
         )
+
+    @staticmethod
+    def serialize_source_record(value: Any) -> str:
+        """Keep the exact source record recoverable outside PostgreSQL."""
+        return serialize_source_record(value)

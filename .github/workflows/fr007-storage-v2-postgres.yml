@@ -1,0 +1,145 @@
+name: FR-007 Storage V2 PostgreSQL acceptance
+
+on:
+  push:
+    branches: [work/fr007-clean-rebuild-storage-v2]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "postgres-ci or a read-only probe of protected DB credentials against the new session pooler"
+        required: true
+        type: choice
+        options: [postgres-ci, credential-probe]
+        default: postgres-ci
+  workflow_call:
+    inputs:
+      mode:
+        required: false
+        type: string
+        default: postgres-ci
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-contract:
+    if: ${{ inputs.mode == 'postgres-ci' || inputs.mode == '' }}
+    name: PostgreSQL ${{ matrix.postgres }} migration and regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: [16, 17]
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}-alpine
+        env:
+          POSTGRES_USER: opportunityos
+          POSTGRES_PASSWORD: ${{ github.run_id }}
+          POSTGRES_DB: opportunityos_fresh
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGPASSWORD: ${{ github.run_id }}
+      OPPORTUNITYOS_RUN_SEARCH_PERF: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install repository and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: Migrate a fresh database to the single head
+        env:
+          OPPORTUNITYOS_DB_URL: postgresql+psycopg2://opportunityos:${{ github.run_id }}@localhost:5432/opportunityos_fresh
+        run: |
+          alembic upgrade head
+          python scripts/verify_storage_v2_schema.py
+      - name: Upgrade from the deployed production migration state
+        env:
+          OPPORTUNITYOS_DB_URL: postgresql+psycopg2://opportunityos:${{ github.run_id }}@localhost:5432/opportunityos_upgrade
+        run: |
+          createdb -h localhost -U opportunityos opportunityos_upgrade
+          alembic upgrade 0019_activity_view_access
+          alembic upgrade head
+          python scripts/verify_storage_v2_schema.py
+      - name: Run complete PostgreSQL-backed subsystem tests
+        env:
+          OPPORTUNITYOS_DB_URL: postgresql+psycopg2://opportunityos:${{ github.run_id }}@localhost:5432/opportunityos_fresh
+        run: python -m pytest -q 2>&1 | tee storage-v2-postgres-test.log
+      - name: Upload PostgreSQL test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fr007-storage-v2-postgres-${{ matrix.postgres }}-${{ github.run_id }}
+          path: storage-v2-postgres-test.log
+          if-no-files-found: error
+          retention-days: 14
+
+  new-project-credential-probe:
+    if: ${{ inputs.mode == 'credential-probe' }}
+    name: Read-only new-project session-pooler credential probe
+    runs-on: ubuntu-latest
+    environment: fr007-staging
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install 'SQLAlchemy>=2,<3' 'psycopg2-binary>=2.9,<3'
+      - name: Test protected DB credentials without emitting credential material
+        env:
+          OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+          CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL }}
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+          from sqlalchemy.engine import make_url
+
+          target = "aws-0-eu-central-1.pooler.supabase.com"
+          username = "postgres.sunjfepvdzfknglrjwhm"
+          for name in ("OPOS_TARGET_DB_URL", "CLOUD_DATABASE_URL"):
+              raw = os.environ.get(name, "").strip()
+              if not raw:
+                  continue
+              try:
+                  candidate = make_url(raw).set(
+                      drivername="postgresql+psycopg2",
+                      username=username,
+                      host=target,
+                      port=5432,
+                      database="postgres",
+                      query={"sslmode": "require", "connect_timeout": "8"},
+                  )
+                  engine = create_engine(candidate, pool_pre_ping=True, pool_size=1, max_overflow=0)
+                  try:
+                      with engine.connect() as connection:
+                          result = connection.execute(text(
+                              "SELECT current_database(), current_user, pg_is_in_recovery(), "
+                              "current_setting('default_transaction_read_only')"
+                          )).one()
+                      if result[0] != "postgres" or result[1] != username or result[2] or result[3] != "off":
+                          continue
+                      print(f"PASS {name}: new project session pooler accepts a writable primary session")
+                      raise SystemExit(0)
+                  finally:
+                      engine.dispose()
+              except SystemExit:
+                  raise
+              except Exception:
+                  continue
+          raise SystemExit(
+              "credential probe failed for both protected DB URL secrets against the new session pooler; "
+              "no credential data emitted"
+          )
+          PY

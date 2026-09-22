@@ -32,7 +32,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
 
         config = Config("alembic.ini")
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_current_head(), "0021_storage_v2")
+        self.assertEqual(script.get_current_head(), "0022_storage_v2_direct_tiering")
 
     def test_capacity_revision_is_linear_after_activity_view_access(self):
         capacity = Path(__file__).parent / "migrations" / "versions" / "0020_capacity_archive.py"

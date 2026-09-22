@@ -105,6 +105,7 @@ class TestOpportunityModels(unittest.TestCase):
             "source_url",
             "source_id",
             "raw_provenance",
+            "raw_source_record_json",
             "record_checksum",
             "raw_record_pointer",
             "field_provenances",

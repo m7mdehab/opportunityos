@@ -85,6 +85,7 @@ class FeedRegressionContractTest(unittest.TestCase):
             id=f"eval-{opp_id}-{truth_hash}",
             opportunity_id=opp_id,
             truth_pack_hash=truth_hash,
+            content_hash=(opp_id[-1] * 64)[:64],
             qualification_decision=decision,
             fit_score=fit_score,
             dimension_scores_json="[]",
@@ -240,14 +241,15 @@ class FeedRegressionContractTest(unittest.TestCase):
                     compile_kwargs={"literal_binds": True},
                 )
             )
-            self.assertIn("feed_projection.search_tsv @@ websearch_to_tsquery", sql)
+            self.assertIn("opportunities.search_tsv @@ websearch_to_tsquery", sql)
             self.assertIn("data engineer", sql)
             self.assertIn("-junior", sql)
 
             # Validate GIN index is explicitly declared on table
+            from storage.models import OpportunityRecord
             gin_indexes = [
-                idx for idx in FeedProjectionRecord.__table__.indexes
-                if idx.name == "ix_feed_projection_search_tsv"
+                idx for idx in OpportunityRecord.__table__.indexes
+                if idx.name == "ix_opportunities_search_tsv"
             ]
             self.assertEqual(len(gin_indexes), 1)
             self.assertEqual(gin_indexes[0].dialect_options.get("postgresql", {}).get("using"), "gin")

@@ -243,13 +243,6 @@ def build_projection_record(
         excluded_industry_match=industry_match,
         visible=not hidden_by,
         visibility_reason=json.dumps(hidden_by, separators=(",", ":")) if hidden_by else None,
-        # Search is sourced from the single authoritative opportunity corpus.
-        # Keeping a second full-text copy in every profile projection was the
-        # dominant Free Plan storage amplifier.  The projection remains a
-        # lean read model; PostgreSQL feed queries join opportunities for
-        # search when the compact representation is active.
-        search_text="",
-        search_tsv=None,
         evaluated_at=evaluated_at,
         projected_at=now,
     )
@@ -329,6 +322,7 @@ def rebuild_feed_projection(
                     MatchEvaluationRecord.truth_pack_hash == truth_pack_hash,
                 ),
             )
+            .filter(OpportunityRecord.lifecycle_tier != "cold")
             .order_by(OpportunityRecord.id.asc())
         )
         if cursor is not None:
@@ -431,8 +425,18 @@ def refresh_opportunity_projection(
     Returns the updated FeedProjectionRecord, or None if the opportunity does not
     exist (or lacks an evaluation when allow_unevaluated is False).
     """
+    if not truth_pack_hash or truth_pack_hash == "active":
+        raise ValueError("an authoritative truth_pack_hash is required")
+
     opp = session.get(OpportunityRecord, opportunity_id)
     if opp is None:
+        return None
+
+    if opp.lifecycle_tier == "cold":
+        session.query(FeedProjectionRecord).filter_by(opportunity_id=opportunity_id).delete(
+            synchronize_session=False
+        )
+        session.flush()
         return None
 
     evaluation = (

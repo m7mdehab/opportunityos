@@ -68,6 +68,7 @@ class FeedProjectionMaterializationTest(unittest.TestCase):
             id=f"eval-{opportunity_id}-{truth_hash}",
             opportunity_id=opportunity_id,
             truth_pack_hash=truth_hash,
+            content_hash=(opportunity_id[-1] * 64)[:64],
             qualification_decision=decision,
             fit_score=fit,
             dimension_scores_json="[]",
@@ -270,32 +271,25 @@ class FeedProjectionMaterializationTest(unittest.TestCase):
         finally:
             session.close()
 
-    def test_settings_refresh_preserves_other_truth_hashes_and_synthetic_projection(self) -> None:
+    def test_settings_refresh_updates_only_one_authoritative_projection(self) -> None:
         session = self.Session()
         try:
             session.add(self._opportunity("opp-scoped"))
             session.flush()
-            session.add_all([
-                self._evaluation("opp-scoped", truth_hash="truth-a", fit=82.0),
-                self._evaluation("opp-scoped", truth_hash="truth-b", fit=82.0),
-            ])
+            session.add(self._evaluation("opp-scoped", truth_hash="truth-a", fit=82.0))
             session.commit()
-            for truth_hash in ("truth-a", "truth-b", "active"):
+            refresh_opportunity_projection(
+                session, opportunity_id="opp-scoped", truth_pack_hash="truth-a",
+                allow_unevaluated=True,
+            )
+            session.commit()
+
+            self.assertEqual(session.query(FeedProjectionRecord).count(), 1)
+            with self.assertRaises(ValueError):
                 refresh_opportunity_projection(
-                    session, opportunity_id="opp-scoped", truth_pack_hash=truth_hash,
+                    session, opportunity_id="opp-scoped", truth_pack_hash="active",
                     allow_unevaluated=True,
                 )
-            session.commit()
-
-            def stored_row(truth_hash):
-                row = session.query(FeedProjectionRecord).filter_by(
-                    opportunity_id="opp-scoped", truth_pack_hash=truth_hash
-                ).one()
-                return {column.name: getattr(row, column.name)
-                        for column in FeedProjectionRecord.__table__.columns}
-
-            before_b = stored_row("truth-b")
-            before_active = stored_row("active")
             session.add(FounderFilterSettingRecord(
                 filter_id="min_fit_score", enabled=True, mode="hide",
                 params_json='{"min_score": 90}',
@@ -308,9 +302,12 @@ class FeedProjectionMaterializationTest(unittest.TestCase):
             )
             session.commit()
             self.assertEqual(refreshed, 1)
-            self.assertFalse(stored_row("truth-a")["visible"])
-            self.assertEqual(stored_row("truth-b"), before_b)
-            self.assertEqual(stored_row("active"), before_active)
+            row = session.query(FeedProjectionRecord).filter_by(
+                opportunity_id="opp-scoped"
+            ).one()
+            self.assertEqual(row.truth_pack_hash, "truth-a")
+            self.assertFalse(row.visible)
+            self.assertEqual(session.query(FeedProjectionRecord).count(), 1)
             with self.assertRaises(ValueError):
                 refresh_existing_feed_projections(
                     session, truth_graph=None, truth_pack_hash="active"

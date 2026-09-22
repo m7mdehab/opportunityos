@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import TSVECTOR
 
 from storage.models import Base
 
@@ -55,18 +54,11 @@ class FeedProjectionRecord(Base):
     visible = Column(Boolean, nullable=False, default=True)
     visibility_reason = Column(Text, nullable=True)
 
-    search_text = Column(Text, nullable=False, default="")
-    search_tsv = Column(Text().with_variant(TSVECTOR(), "postgresql"), nullable=True)
-
     evaluated_at = Column(DateTime(timezone=True), nullable=False)
     projected_at = Column(DateTime(timezone=True), nullable=False)
 
     __table_args__ = (
-        UniqueConstraint(
-            "opportunity_id",
-            "truth_pack_hash",
-            name="uq_feed_projection_opportunity_truth_pack",
-        ),
+        UniqueConstraint("opportunity_id", name="uq_feed_projection_current_opportunity"),
         Index(
             "ix_feed_projection_truth_visible_rank",
             "truth_pack_hash",
@@ -88,15 +80,15 @@ class FeedProjectionRecord(Base):
         Index("ix_feed_projection_title_family", "title_family"),
         Index("ix_feed_projection_work_mode", "work_mode"),
         Index("ix_feed_projection_location_country", "location_country"),
-        Index(
-            "ix_feed_projection_search_tsv",
-            "search_tsv",
-            postgresql_using="gin",
-        ),
     )
 
 
-def projection_identity(opportunity_id: str, truth_pack_hash: str) -> str:
-    """Stable, inspectable identity for the current per-profile projection row."""
+def projection_identity(opportunity_id: str, truth_pack_hash: str | None = None) -> str:
+    """One stable current projection identity per opportunity.
 
-    return f"{opportunity_id}:{truth_pack_hash}"
+    The truth-pack hash remains mutable metadata on the row; it is not part of
+    identity and can therefore never create a parallel historical feed.
+    """
+
+    del truth_pack_hash
+    return opportunity_id

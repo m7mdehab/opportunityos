@@ -14,10 +14,12 @@ from opportunity.registry import SourceRegistry
 from opportunity.transport import BaseTransport, MockTransport, RateLimiter, TransportResponse
 from storage.engine import get_engine, get_session_factory, init_db
 from storage.models import OpportunityRecord, SourcePollRunRecord, WorkerJobRecord
-from truth.pack import TruthPackMissing
+from matching.test_qualification import create_test_graph
+from truth.pack import LoadedPack, PackValidationReport
 from worker.handlers import HACKER_NEWS_SOURCE_ID, _retry_after_seconds, make_poll_source_handler
 from worker.queue import BackgroundWorkerQueue
 from worker.runner import UNKNOWN_JOB_TYPE_MARKER, WorkerRunner
+from opportunity.test_storage_v2_ingestion import MemoryPrivateStorage
 
 
 class TestWorkerRunner(unittest.TestCase):
@@ -358,7 +360,11 @@ class TestPollSourceHandler(unittest.TestCase):
             pass
 
     def _no_pack(self, _path):
-        raise TruthPackMissing("no truth pack in this offline test")
+        return LoadedPack(
+            graph=create_test_graph(),
+            truth_pack_hash="test-valid-pack",
+            report=PackValidationReport(valid=True, section_counts=(), findings=()),
+        )
 
     def test_poll_source_refuses_read_disabled_source_without_fetching(self):
         registry = SourceRegistry()
@@ -414,6 +420,7 @@ class TestPollSourceHandler(unittest.TestCase):
             refusal_sink=refusals.append,
             session_factory=self.session_factory,
             pack_loader=self._no_pack,
+            cold_storage_client=MemoryPrivateStorage(),
         )
 
         handler({"source_id": "himalayas"})
@@ -446,7 +453,11 @@ class TestHackerNewsGovernedWiring(unittest.TestCase):
             pass
 
     def _no_pack(self, _path):
-        raise TruthPackMissing("no truth pack in this offline test")
+        return LoadedPack(
+            graph=create_test_graph(),
+            truth_pack_hash="test-valid-pack",
+            report=PackValidationReport(valid=True, section_counts=(), findings=()),
+        )
 
     def _mock_transport(self):
         base = "https://hacker-news.firebaseio.com/v0"
@@ -507,6 +518,7 @@ class TestHackerNewsGovernedWiring(unittest.TestCase):
             transport=RecordingTransport(self._mock_transport()),
             session_factory=self.session_factory,
             pack_loader=self._no_pack,
+            cold_storage_client=MemoryPrivateStorage(),
         )
 
         handler({"source_id": HACKER_NEWS_SOURCE_ID})
@@ -558,7 +570,11 @@ class TestSharedRateLimiterPerATSHost(unittest.TestCase):
             pass
 
     def _no_pack(self, _path):
-        raise TruthPackMissing("no truth pack in this offline test")
+        return LoadedPack(
+            graph=create_test_graph(),
+            truth_pack_hash="test-valid-pack",
+            report=PackValidationReport(valid=True, section_counts=(), findings=()),
+        )
 
     def test_pacing_shared_across_boards_on_same_host_and_across_jobs(self):
         # Two real, committed, read-allowed Greenhouse boards -- same ATS host
@@ -584,6 +600,7 @@ class TestSharedRateLimiterPerATSHost(unittest.TestCase):
             session_factory=self.session_factory,
             pack_loader=self._no_pack,
             rate_limiter=limiter,
+            cold_storage_client=MemoryPrivateStorage(),
         )
 
         # Job 1 polls board_a; job 2 (a SEPARATE handler() call, simulating a

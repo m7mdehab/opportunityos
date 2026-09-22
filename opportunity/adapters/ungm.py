@@ -174,6 +174,7 @@ class UNGMAdapter(BaseAdapter):
                         raw_provenance=provenance,
                         record_checksum=record_checksum,
                         raw_record_pointer=item_pointer,
+                        raw_source_record_json=self.serialize_source_record(item),
                         field_provenances=tuple(prov_list),
                         canonical_outbound_url=url,
                     )
@@ -252,6 +253,7 @@ class UNGMAdapter(BaseAdapter):
                 raw_provenance=provenance,
                 record_checksum=record_checksum,
                 raw_record_pointer=item_pointer,
+                raw_source_record_json=self.serialize_source_record(inner),
                 field_provenances=tuple(prov_list),
                 canonical_outbound_url=url,
             )

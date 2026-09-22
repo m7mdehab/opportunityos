@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from storage.cold_storage import pack
 from storage.models import Base, OpportunityColdArchiveRecord, OpportunityRecord
 from storage.repository import StorageRepository
 from worker.handlers import _reconstruct_opportunity
@@ -22,17 +23,36 @@ class ColdArchiveHydrationTests(unittest.TestCase):
         self.session.add(
             OpportunityRecord(
                 id="cold-1", track="employment", title="Cold", organization="Org",
-                description="[archived]", source_id="src", source_url="https://example.invalid/cold",
+                description=None, source_id="src", source_url="https://example.invalid/cold",
                 content_hash="h1", work_mode="remote", remote_scope="worldwide",
-                employment_type="full_time", seniority_level="mid",
+                employment_type="full_time", seniority_level="mid", lifecycle_tier="cold",
             )
         )
-        payload = {"opportunity_id": "cold-1", "content_hash": "h1", "description": "authoritative text", "raw_payload_json": '{"source":true}', "provenance": []}
-        compressed = zlib.compress(json.dumps(payload, separators=(",", ":")).encode())
+        payload = {
+            "schema_version": 2,
+            "opportunity_id": "cold-1",
+            "source_id": "src",
+            "content_hash": "h1",
+            "source_url": "https://example.invalid/cold",
+            "original_source_payload": '{"source":true}',
+            "canonical_description": "authoritative text",
+            "provenance": [],
+            "opportunity": {
+                "id": "cold-1", "track": "employment", "title": "Cold",
+                "organization": "Org", "description": "authoritative text",
+                "source_id": "src", "source_url": "https://example.invalid/cold",
+                "content_hash": "h1", "raw_payload_json": '{"source":true}',
+                "work_mode": "remote", "remote_scope": "worldwide",
+                "employment_type": "full_time", "seniority_level": "mid",
+                "record_checksum": "",
+            },
+        }
+        compressed, digest, raw_size = pack(payload)
         self.session.add(OpportunityColdArchiveRecord(
             opportunity_id="cold-1", content_hash="h1", payload_zlib=compressed,
-            payload_sha256=hashlib.sha256(compressed).hexdigest(), original_size_bytes=len(compressed),
-            archive_version="v1", archived_at=datetime.now(timezone.utc),
+            storage_backend="postgres_fallback", payload_sha256=digest,
+            original_size_bytes=raw_size, compressed_size_bytes=len(compressed),
+            archive_version="v2", archived_at=datetime.now(timezone.utc),
         ))
         self.session.commit()
 
@@ -40,17 +60,16 @@ class ColdArchiveHydrationTests(unittest.TestCase):
         self.session.close()
         self.engine.dispose()
 
-    def test_hydrates_only_after_checksum_and_identity_verification(self):
-        record = StorageRepository(self.session).hydrate_cold_opportunity("cold-1")
-        self.assertEqual(record.description, "authoritative text")
-        self.assertEqual(record.raw_payload_json, '{"source":true}')
+    def test_persistent_hydration_is_prohibited(self):
+        with self.assertRaisesRegex(RuntimeError, "persistent cold rehydration is prohibited"):
+            StorageRepository(self.session).hydrate_cold_opportunity("cold-1")
 
     def test_corrupt_archive_fails_closed(self):
         row = self.session.get(OpportunityColdArchiveRecord, "cold-1")
         row.payload_zlib = b"corrupt"
         self.session.commit()
         with self.assertRaisesRegex(RuntimeError, "checksum"):
-            StorageRepository(self.session).hydrate_cold_opportunity("cold-1")
+            StorageRepository(self.session).load_cold_opportunity_payload("cold-1")
 
     def test_read_only_archive_hydration_keeps_hot_row_cold(self):
         repository = StorageRepository(self.session)
@@ -65,7 +84,8 @@ class ColdArchiveHydrationTests(unittest.TestCase):
         self.assertEqual(reconstructed.description, "authoritative text")
         self.session.expire_all()
         persisted = self.session.get(OpportunityRecord, "cold-1")
-        self.assertEqual(persisted.description, "[archived]")
+        self.assertIsNone(persisted.description)
+        self.assertEqual(persisted.lifecycle_tier, "cold")
         self.assertIsNone(persisted.raw_payload_json)
         self.assertEqual(
             self.session.query(OpportunityColdArchiveRecord).filter_by(opportunity_id="cold-1").count(),

@@ -1,8 +1,8 @@
 # FR-007 W23 clean rebuild execution checkpoint
 
 - branch: `work/fr007-clean-rebuild-storage-v2`
-- current_phase: OVERSEER_BOOTSTRAP_COMPLETE
-- current_sha_before_agent_changes: `2009a6dad41e1c406c89714fe48fc4374fc508ae`
+- current_phase: PHASE_D_POSTGRESQL_CI_AND_HOSTED_CREDENTIAL_PROBE
+- current_sha_before_agent_changes: `bcaa447d9e3cf0f93bdac88e595493025579d854`
 - new_supabase_project_ref: `sunjfepvdzfknglrjwhm`
 - new_supabase_project_name: `opportunityos-staging`
 - organization_id: `oxytmzezepplpnawavnh`
@@ -22,7 +22,34 @@
 - historical_failed_db_size: `~1503 MiB`
 - organization_egress_observation_before rebuild: `3.87 / 5 GB`
 - authoritative_sprint_brief: `reports/evidence/FR-007/W23_CLEAN_REBUILD_STORAGE_V2_END_TO_END_SPRINT.md`
-- exact_next_action: rotate `fr007-staging` GitHub environment secrets/configuration to the NEW project, purge active old-project references, reconcile canonical nine-CV lane, then execute W23 Phase A onward.
+- execution_update_2026_09_22:
+  - fetched and reset the authoritative branch to `bcaa447d9e3cf0f93bdac88e595493025579d854`; working branch is `work/fr007-clean-rebuild-storage-v2`.
+  - confirmed the new project is ACTIVE_HEALTHY via Supabase management tools; direct connection host and generated session-pooler host/user are visible in the dashboard. The dashboard correctly does not reveal the database password; no connection password is available in the repository or current process environment.
+  - GitHub passkey challenge completed by Founder. New Supabase server-only secret key is saved as `fr007-staging` `STORAGE_SERVICE_KEY`; non-secret Supabase URL/project/bucket and web publishable-key variables were also updated to `sunjfepvdzfknglrjwhm`. Database URL secrets `OPOS_TARGET_DB_URL` and `CLOUD_DATABASE_URL` still need the new project's database password.
+  - canonical lane `work/fr007-cv-canonical-final-2026-09-21` fetched at `227c724f738922b77c1dc150d5e6c48a8476769a`. Founder supplied `C:\Users\M7mdEhab\Desktop\Projects\OpportunityOS\Mohammed_Ehab_CV_System_FINAL`; it contains the exact nine PDFs, editable DOCX files, manifest, registry, truth/support documents. All nine PDF SHA-256 values match the canonical repository catalog; expected package, registry, personalization and ATS hashes match canonical evidence. No CV binaries are to be added to Git.
+  - untracked `work/` directory is pre-existing user data and is preserved.
+  - no migrations applied, no source bootstrap run, no database state changed.
+- execution_update_2026_09_23:
+  - canonical nine-CV lane selectively integrated through commits `833b791`, `53d7380`, `a7e6288`, `6ca9c6b`, `21fb921`, `9f0367f`, `dcb4945`, `d4f29d9`, `3ee2c9b`, `a845b8d`, `94a669c`, `4e1221f`; no CV binaries added to Git. All exact package PDF checksums matched canonical catalog.
+  - began Storage V2 implementation: migration `0022_storage_v2_direct_tiering`; direct in-memory evaluate/classify before persistence; cold archive metadata and orphan ledger; one projection and one current evaluation per opportunity; compact opportunity-only search vector; no cold provenance/evaluation detail in relational state; verified in-memory archive loader and memory-only cold truth-pack re-evaluation/promotion paths.
+  - poll handler now loads a valid truth pack before persistence and invokes direct-tier persistence; cold evaluation does not require or create a feed projection. Changed content checksum includes exact normalized requirements/skills/source-record checksum; source adapters including Ashby carry exact adapter payloads.
+  - updated lifecycle/projection/evaluation/cold-archive tests to assert Storage V2 contract; focused suite `python -m pytest storage/test_storage_v2.py storage/test_cold_archive.py storage/test_feed_projection.py matching/test_evaluate_persist.py -q`: 18 passed.
+  - added end-to-end SQLite storage-tier tests for direct cold writes, exact normalized archive truth, content-change object reclamation, new truth-pack re-evaluation, eligible promotion without placeholder use, and Founder-history protection; current focused run: 21 passed.
+  - added PostgreSQL 16/17 GitHub workflow and disposable-schema verifier for fresh head and 0019-to-head migration paths; not yet pushed/executed.
+  - full tracked-package pytest run (explicit paths to avoid pre-existing untracked `work/` user data): 1,379 passed, 187 skipped, 33 failed. Failures collected for repair: offline SQL generation cannot inspect Alembic MockConnection; legacy synthetic/multi-pack feed test contracts; worker tests still using no-pack/write-first assumptions; new source payload model field not in material-field exclusion test; W23 migration contract expectations.
+  - code remains uncommitted and migration has not been run against PostgreSQL or Supabase; no source bootstrap or CV uploads yet. Database URL secrets still require the database password; do not reset it autonomously.
+- execution_update_2026_09_23_continued:
+  - confirmed remote branch head remains `bcaa447d9e3cf0f93bdac88e595493025579d854`; local implementation head before this execution remains `4e1221f02d51bf4b7eed43ec3ebffb0c4d793c73`.
+  - repaired the prior failures and reran the full tracked test suite: `1414 passed, 187 skipped, 2004 subtests passed`; focused Storage V2/connection/bundle coverage: `69 passed`; deleted-project-ref guard and bundle tests: `8 passed`.
+  - PostgreSQL-dialect offline Alembic rendering passes through `0022_storage_v2_direct_tiering`; SQLite offline rendering is not the target and fails on PostgreSQL-only constraints. Disposable PostgreSQL 16/17 CI has not run yet.
+  - PostgreSQL workflow now supports both a `postgres-ci` mode and a non-mutating `credential-probe` mode against the new project's dashboard-derived Session Pooler host; the default-registered Current Readiness Launcher routes both modes to the feature-branch reusable workflow.
+  - removed the deleted project ref from every tracked active runtime/workflow/config/document file outside `reports/evidence/`; left historical evidence unchanged and added a regression test.
+  - searched Desktop, Downloads, Projects, and local Codex workspace locations; found the exact canonical package ZIP at `C:\Users\M7mdEhab\Desktop\Mohammed_Ehab_CV_System_2026-09-21_FINAL.zip`, size `952675` bytes, SHA-256 `f5475977e331c5efb70e21a6b2b702904c80ebdc8aa2f22a1dccee24a8e807a4` (matches manifest). Exact portfolio binaries/docs remain outside Git.
+  - new Supabase project is ACTIVE_HEALTHY, ~10 MB baseline, no migrations; private buckets are present. No database or ingestion writes have occurred.
+  - browser CV upload attempt was blocked before upload because Chrome extension file-URL access is disabled. Required user action was provided exactly: enable “Allow access to file URLs” for the ChatGPT browser extension in `chrome://extensions`. No file upload was confirmed; retry after setting changes.
+  - GitHub `fr007-staging` safe URL/project/bucket/publishable variables and Storage service key target the new project. `OPOS_TARGET_DB_URL` and `CLOUD_DATABASE_URL` are still dated Sep 19 and cannot be read in GitHub; database password is not viewable in Supabase UI. Do not reset it autonomously. Next test whether existing protected credentials are reusable against the new session pooler; if not, obtain Founder-entered password/secret replacement without displaying it.
+  - current changes are staged except the pre-existing untracked `work/` user directory, which remains untouched and unstaged.
+- exact_next_action: inspect staged diff and `git diff --cached --check`; commit/push implementation to `work/fr007-clean-rebuild-storage-v2`; launch `storage-v2-ci` through the default-registered launcher using that feature branch; debug until both PostgreSQL 16 and 17 jobs pass. In parallel, retry exact 31-object private CV package upload after Chrome file access is enabled, then run the hosted credential probe and proceed to the Supabase migration/source bootstrap.
 - no_merge: true
 - no_paid_infrastructure: true
 - seven_day_soak_claimed: false

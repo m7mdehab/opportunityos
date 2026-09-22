@@ -155,12 +155,13 @@ class TestPollSourceTransactionBoundary(unittest.TestCase):
             registry=FakeRegistry(),
             transport=MagicMock(),
             session_factory=session_factory,
+            pack_loader=lambda _path: SimpleNamespace(graph=None, truth_pack_hash="test-pack"),
         )
 
         with (
             patch("worker.handlers.OpportunityPipeline", return_value=fake_pipeline),
             patch("worker.handlers.StorageRepository"),
-            patch("worker.handlers.persist_batch", side_effect=RuntimeError("stop after session opens")),
+            patch("worker.handlers.persist_evaluated_batch", side_effect=RuntimeError("stop after session opens")),
             patch("worker.handlers._write_poll_run_record"),
         ):
             with self.assertRaisesRegex(RuntimeError, "stop after session opens"):

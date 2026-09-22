@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from sqlalchemy import (
     Column,
+    CheckConstraint,
     String,
     Text,
     Integer,
@@ -28,7 +29,9 @@ class OpportunityRecord(Base):
     track = Column(String(32), nullable=False, index=True)
     title = Column(String(255), nullable=False)
     organization = Column(String(255), nullable=False, index=True)
-    description = Column(Text, nullable=False)
+    # Cold terminal rejects retain no source body in PostgreSQL; their
+    # lossless content lives in the verified private object archive.
+    description = Column(Text, nullable=True)
     source_id = Column(String(128), nullable=False, index=True)
     source_url = Column(Text, nullable=False)
     content_hash = Column(String(64), nullable=False, index=True)
@@ -72,6 +75,7 @@ class OpportunityRecord(Base):
     archive_object_key = Column(String(255), nullable=True)
     archive_sha256 = Column(String(64), nullable=True)
     archive_state = Column(String(16), nullable=True)
+    lifecycle_tier = Column(String(16), nullable=False, default="hot", index=True)
 
     provenances = relationship("FieldProvenanceRecord", back_populates="opportunity", cascade="all, delete-orphan")
     feedback = relationship("FounderFeedbackRecord", back_populates="opportunity", cascade="all, delete-orphan")
@@ -92,6 +96,10 @@ class OpportunityRecord(Base):
             "search_tsv",
             postgresql_using="gin",
         ),
+        CheckConstraint(
+            "lifecycle_tier IN ('hot', 'cold', 'protected')",
+            name="ck_opportunities_lifecycle_tier",
+        ),
     )
 
 
@@ -108,13 +116,24 @@ class OpportunityColdArchiveRecord(Base):
     opportunity_id = Column(String(64), primary_key=True)
     content_hash = Column(String(64), nullable=False, index=True)
     payload_zlib = Column(LargeBinary, nullable=True)
-    storage_backend = Column(String(32), nullable=False, default="postgres_payload")
+    storage_backend = Column(String(32), nullable=False, default="supabase_storage")
     object_key = Column(String(255), nullable=True, index=True)
     compressed_size_bytes = Column(Integer, nullable=True)
     payload_sha256 = Column(String(64), nullable=False)
     original_size_bytes = Column(Integer, nullable=False)
     archive_version = Column(String(16), nullable=False)
     archived_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class OpportunityArchiveOrphanRecord(Base):
+    """Small retry ledger for stale content-addressed objects awaiting removal."""
+
+    __tablename__ = "opportunity_archive_orphans"
+
+    object_key = Column(String(255), primary_key=True)
+    payload_sha256 = Column(String(64), nullable=False)
+    compressed_size_bytes = Column(Integer, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
 
 class FieldProvenanceRecord(Base):
@@ -348,13 +367,15 @@ class MatchEvaluationRecord(Base):
     id = Column(String(64), primary_key=True)
     opportunity_id = Column(String(64), ForeignKey("opportunities.id", ondelete="CASCADE"), nullable=False, index=True)
     truth_pack_hash = Column(String(64), nullable=False, index=True)
+    content_hash = Column(String(64), nullable=False)
     qualification_decision = Column(String(32), nullable=False)
     #: 0.0-100.0 (NOT 0.0-1.0). See matching.models.MatchEvaluation.overall_fit_score,
     #: which this column stores verbatim -- any threshold compared against this
     #: column (e.g. a "high_fit" cutoff) must be on the same 0-100 scale.
     fit_score = Column(Float, nullable=False)
-    dimension_scores_json = Column(Text, nullable=False)
+    dimension_scores_json = Column(Text, nullable=True)
     reasons_json = Column(Text, nullable=False)
+    hard_failure_code = Column(String(64), nullable=True)
     #: JSON: {"hard_constraints": [{"constraint_name", "passed" (true|false|null,
     #: null=UNKNOWN, never coerced to false), "reason", "required_field",
     #: "founder_fact", "is_hard_failure", "provenance_pointer"}], "strengths": [str],
@@ -367,8 +388,21 @@ class MatchEvaluationRecord(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     __table_args__ = (
-        UniqueConstraint("opportunity_id", "truth_pack_hash", name="uq_match_evaluations_opportunity_truth_pack"),
+        UniqueConstraint("opportunity_id", name="uq_match_evaluations_current_opportunity"),
     )
+
+
+class FounderActivityEventRecord(Base):
+    """Append-only Founder interaction ledger created by migration 0017."""
+
+    __tablename__ = "founder_activity_events"
+
+    id = Column(String(64), primary_key=True)
+    opportunity_id = Column(String(64), ForeignKey("opportunities.id", ondelete="CASCADE"), nullable=False)
+    action_type = Column(String(32), nullable=False)
+    resulting_state = Column(String(32), nullable=True)
+    snoozed_until = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
 
 class SourcePollRunRecord(Base):

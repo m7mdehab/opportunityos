@@ -14,9 +14,9 @@ from storage.models import OpportunityRecord
 class FeedQuerySpec:
     """Database-native founder feed query contract.
 
-    The request path is intentionally constrained to persisted projection
-    columns.  It must never reach back into OpportunityRecord descriptions or
-    rebuild matching/filter contexts across the corpus.
+    Card/filter/order state comes from the lean projection. Text search joins
+    only the single compact OpportunityRecord search vector; it never reads or
+    tokenizes full descriptions at request time.
     """
 
     truth_pack_hash: str
@@ -66,10 +66,7 @@ def build_feed_query(session: Session, spec: FeedQuerySpec) -> Query:
     # W22.6 keeps one authoritative searchable representation per opportunity.
     # PostgreSQL uses the opportunity GIN vector; SQLite tests retain the
     # projection-only query contract because SQLite has no TSVECTOR operator.
-    postgres_search = (
-        session.bind is not None and session.bind.dialect.name == "postgresql"
-    )
-    if postgres_search:
+    if spec.q and spec.q.strip():
         query = query.join(
             OpportunityRecord,
             OpportunityRecord.id == FeedProjectionRecord.opportunity_id,
@@ -101,12 +98,7 @@ def build_feed_query(session: Session, spec: FeedQuerySpec) -> Query:
         query = query.filter(FeedProjectionRecord.source_id == spec.source_id)
     if spec.q and spec.q.strip():
         tsquery = func.websearch_to_tsquery(literal_column("'simple'"), spec.q.strip())
-        search_column = (
-            OpportunityRecord.search_tsv
-            if postgres_search
-            else FeedProjectionRecord.search_tsv
-        )
-        query = query.filter(search_column.op("@@")(tsquery))
+        query = query.filter(OpportunityRecord.search_tsv.op("@@")(tsquery))
 
     return query
 

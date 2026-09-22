@@ -182,7 +182,7 @@ class EvaluateAndStoreTest(unittest.TestCase):
             opportunity_id=opp.id, truth_pack_hash="truth-worker-retry"
         ).count(), 1)
 
-    def test_different_hash_creates_second_row_and_leaves_first_intact(self) -> None:
+    def test_truth_pack_change_updates_the_single_current_row(self) -> None:
         opp = create_test_opportunity(opp_id="opp-multi-hash-1")
         first = self._evaluate_and_store(
             opp, self.truth_graph, self.repository, truth_pack_hash="hash-1"
@@ -191,19 +191,20 @@ class EvaluateAndStoreTest(unittest.TestCase):
             opp, self.truth_graph, self.repository, truth_pack_hash="hash-2"
         )
 
-        self.assertNotEqual(first.id, second.id)
+        self.assertEqual(first.id, second.id)
         rows = self.session.query(MatchEvaluationRecord).filter_by(
             opportunity_id="opp-multi-hash-1"
         ).all()
-        self.assertEqual(len(rows), 2)
+        self.assertEqual(len(rows), 1)
 
-        refetched_first = (
+        current = (
             self.session.query(MatchEvaluationRecord)
-            .filter_by(opportunity_id="opp-multi-hash-1", truth_pack_hash="hash-1")
+            .filter_by(opportunity_id="opp-multi-hash-1")
             .first()
         )
-        self.assertIsNotNone(refetched_first)
-        self.assertEqual(refetched_first.id, first.id)
+        self.assertIsNotNone(current)
+        self.assertEqual(current.id, first.id)
+        self.assertEqual(current.truth_pack_hash, "hash-2")
 
     def test_uncertain_decision_round_trips_as_literal_string_uncertain(self) -> None:
         """A geo status of 'unclear' drives QualificationEngine to UNCERTAIN

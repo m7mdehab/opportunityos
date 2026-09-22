@@ -175,7 +175,7 @@ def _upsert_match_evaluation(
     truth_pack_hash: str,
     values: dict[str, Any],
 ) -> MatchEvaluationRecord:
-    """Race-safe upsert on ``(opportunity_id, truth_pack_hash)``.
+    """Race-safe upsert on the current evaluation row for an opportunity.
 
     The plain SELECT-then-write this replaced had a race: two concurrent
     ``evaluate_and_store`` calls for the same opportunity+hash (e.g. two
@@ -203,26 +203,28 @@ def _upsert_match_evaluation(
         insert_values = {"id": record_id, "opportunity_id": opportunity_id, "truth_pack_hash": truth_pack_hash, **values}
         stmt = pg_insert(table).values(**insert_values)
         update_cols = {key: stmt.excluded[key] for key in values}
+        update_cols["truth_pack_hash"] = stmt.excluded["truth_pack_hash"]
         stmt = stmt.on_conflict_do_update(
-            constraint="uq_match_evaluations_opportunity_truth_pack",
+            constraint="uq_match_evaluations_current_opportunity",
             set_=update_cols,
         )
         session.execute(stmt)
         session.commit()
         return (
             session.query(MatchEvaluationRecord)
-            .filter_by(opportunity_id=opportunity_id, truth_pack_hash=truth_pack_hash)
+            .filter_by(opportunity_id=opportunity_id)
             .one()
         )
 
     existing = (
         session.query(MatchEvaluationRecord)
-        .filter_by(opportunity_id=opportunity_id, truth_pack_hash=truth_pack_hash)
+        .filter_by(opportunity_id=opportunity_id)
         .first()
     )
     if existing is not None:
         for key, value in values.items():
             setattr(existing, key, value)
+        existing.truth_pack_hash = truth_pack_hash
         session.commit()
         return existing
 
@@ -234,13 +236,14 @@ def _upsert_match_evaluation(
         session.rollback()
         existing = (
             session.query(MatchEvaluationRecord)
-            .filter_by(opportunity_id=opportunity_id, truth_pack_hash=truth_pack_hash)
+            .filter_by(opportunity_id=opportunity_id)
             .first()
         )
         if existing is None:
             raise
         for key, value in values.items():
             setattr(existing, key, value)
+        existing.truth_pack_hash = truth_pack_hash
         session.commit()
         return existing
     return record
@@ -254,6 +257,8 @@ def evaluate_and_store(
     truth_pack_hash: str,
     evaluated_at: Optional[datetime] = None,
     scorer: Optional[OpportunityScorer] = None,
+    evaluation_result: Optional[MatchEvaluation] = None,
+    lifecycle_tier: Optional[str] = None,
 ) -> MatchEvaluationRecord:
     """Evaluate ``opportunity`` against ``truth_graph`` and upsert its row.
 
@@ -273,28 +278,56 @@ def evaluate_and_store(
 
     resolved_evaluated_at = evaluated_at if evaluated_at is not None else datetime.now(timezone.utc)
 
-    engine_scorer = scorer if scorer is not None else OpportunityScorer()
-    evaluation = engine_scorer.evaluate(
-        opportunity, truth_graph, evaluated_at=resolved_evaluated_at.isoformat()
-    )
+    if evaluation_result is None:
+        engine_scorer = scorer if scorer is not None else OpportunityScorer()
+        evaluation = engine_scorer.evaluate(
+            opportunity, truth_graph, evaluated_at=resolved_evaluated_at.isoformat()
+        )
+    else:
+        evaluation = evaluation_result
+        if evaluation.opportunity_id != opportunity.id:
+            raise ValueError("precomputed evaluation identity does not match opportunity")
+    if lifecycle_tier is None:
+        current_record = repository.get_opportunity(opportunity.id)
+        lifecycle_tier = getattr(current_record, "lifecycle_tier", "hot")
+    if lifecycle_tier not in {"hot", "cold", "protected"}:
+        raise ValueError("invalid evaluation lifecycle tier")
 
     # Stored verbatim: "qualified" | "ineligible" | "uncertain". No branch here
     # (or anywhere else in this module) rewrites "uncertain" to any other value.
     decision_value = evaluation.qualification_decision.value
 
-    dimension_scores_json = _dimension_scores_to_json(evaluation)
-    reasons_json = json.dumps(_build_reasons(evaluation), sort_keys=True)
-    evaluation_detail_json = _evaluation_detail_json(evaluation)
+    hard_failures = sorted(
+        constraint.constraint_name
+        for constraint in evaluation.hard_constraints
+        if constraint.is_hard_failure and constraint.passed is False
+    )
+    hard_failure_code = hard_failures[0][:64] if hard_failures else None
+    if lifecycle_tier == "cold":
+        if decision_value != "ineligible" or not hard_failure_code:
+            raise ValueError("only terminal hard-ineligible evaluations may remain cold")
+        dimension_scores_json = None
+        reasons_json = json.dumps(
+            [{"kind": "hard_failure", "dimension": hard_failure_code, "text": hard_failure_code}],
+            separators=(",", ":"),
+        )
+        evaluation_detail_json = None
+    else:
+        dimension_scores_json = _dimension_scores_to_json(evaluation)
+        reasons_json = json.dumps(_build_reasons(evaluation), sort_keys=True)
+        evaluation_detail_json = _evaluation_detail_json(evaluation)
 
     record_id = hashlib.sha256(
-        f"{opportunity.id}:{truth_pack_hash}".encode("utf-8")
+        opportunity.id.encode("utf-8")
     ).hexdigest()[:32]
 
     values = {
+        "content_hash": opportunity.content_hash,
         "qualification_decision": decision_value,
         "fit_score": evaluation.overall_fit_score,
         "dimension_scores_json": dimension_scores_json,
         "reasons_json": reasons_json,
+        "hard_failure_code": hard_failure_code,
         "evaluation_detail_json": evaluation_detail_json,
         "policy_version": evaluation.policy_version,
         # Converted to naive UTC right before it reaches the DB column -- see
@@ -319,12 +352,12 @@ def evaluate_and_store(
             truth_graph=truth_graph,
             projected_at=resolved_evaluated_at,
         )
-        if projection is None:
+        if projection is None and lifecycle_tier != "cold":
             raise RuntimeError("evaluation persisted but feed projection was not published")
         # Persist the exact fixed-CV identity selected by the authoritative
         # Python selector. The private object body is fetched and hash-checked
         # by the delivery boundary; only safe metadata is stored here.
-        if getattr(opportunity, "track", None) == "employment":
+        if lifecycle_tier != "cold" and getattr(opportunity, "track", None) == "employment":
             from matching.cv_selector import select_cv_for_opportunity
             from storage.models import FounderCVSelectionRecord
             selected = select_cv_for_opportunity(opportunity).selected

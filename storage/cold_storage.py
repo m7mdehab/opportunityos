@@ -12,6 +12,8 @@ import hashlib
 import json
 import os
 import zlib
+from datetime import date, datetime
+from enum import Enum
 from typing import Any, Mapping
 
 from api.artifact_cache import ArtifactStorageError, SupabaseStorageClient
@@ -19,14 +21,33 @@ from api.artifact_cache import ArtifactStorageError, SupabaseStorageClient
 ARCHIVE_VERSION = "v2"
 
 
-def archive_key(content_hash: str) -> str:
+def _json_default(value: Any) -> str:
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, Enum):
+        return str(value.value)
+    raise TypeError(f"unsupported cold archive JSON value: {type(value).__name__}")
+
+
+def archive_key(content_hash: str, opportunity_id: str | None = None) -> str:
     if len(content_hash) != 64 or any(c not in "0123456789abcdefABCDEF" for c in content_hash):
         raise ValueError("invalid content hash")
-    return f"cold-opportunities/{content_hash.lower()}.json.zlib"
+    normalized_hash = content_hash.lower()
+    if opportunity_id is None:
+        return f"cold-opportunities/{normalized_hash}.json.zlib"
+    # The canonical content hash intentionally excludes source identity so
+    # cross-source duplicates can still be grouped. Include a short identity
+    # digest in the object path to prevent two distinct source records with
+    # identical normalized content from colliding in Storage.
+    identity_digest = hashlib.sha256(opportunity_id.encode("utf-8")).hexdigest()[:16]
+    return f"cold-opportunities/{normalized_hash}/{identity_digest}.json.zlib"
 
 
 def pack(payload: Mapping[str, Any]) -> tuple[bytes, str, int]:
-    raw = json.dumps(dict(payload), ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    raw = json.dumps(
+        dict(payload), ensure_ascii=False, separators=(",", ":"), sort_keys=True,
+        default=_json_default,
+    ).encode("utf-8")
     compressed = zlib.compress(raw, level=9)
     return compressed, hashlib.sha256(compressed).hexdigest(), len(raw)
 
@@ -61,8 +82,14 @@ def client_from_env() -> SupabaseStorageClient:
     return SupabaseStorageClient(base_url=base, service_key=key, bucket=bucket)
 
 
-def put(compressed: bytes, content_hash: str, *, client: SupabaseStorageClient | None = None) -> tuple[str, str, int]:
-    key = archive_key(content_hash)
+def put(
+    compressed: bytes,
+    content_hash: str,
+    *,
+    opportunity_id: str | None = None,
+    client: SupabaseStorageClient | None = None,
+) -> tuple[str, str, int]:
+    key = archive_key(content_hash, opportunity_id)
     storage = client or client_from_env()
     storage.upload(key, compressed)
     return key, hashlib.sha256(compressed).hexdigest(), len(compressed)
@@ -74,3 +101,7 @@ def get(object_key: str, expected_sha256: str, *, client: SupabaseStorageClient 
     if hashlib.sha256(body).hexdigest() != expected_sha256:
         raise RuntimeError("cold archive checksum verification failed")
     return body
+
+
+def delete(object_key: str, *, client: SupabaseStorageClient | None = None) -> None:
+    (client or client_from_env()).delete(object_key)

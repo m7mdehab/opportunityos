@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from storage.feed_projection import FeedProjectionRecord, projection_identity
 from storage.feed_query import FeedQuerySpec, build_feed_query, feed_page
-from storage.models import Base
+from storage.models import Base, OpportunityRecord
 
 
 class FeedQueryContractTest(unittest.TestCase):
@@ -35,6 +35,17 @@ class FeedQueryContractTest(unittest.TestCase):
             source_id: str = "example",
             posted_date: str = "2026-09-17",
         ) -> None:
+            self.session.add(OpportunityRecord(
+                id=opportunity_id,
+                track=track,
+                title=f"Role {opportunity_id}",
+                organization="Example",
+                description="",
+                source_id=source_id,
+                source_url=f"https://example.invalid/{opportunity_id}",
+                content_hash=(opportunity_id[-1] * 64)[:64],
+                search_tsv="role example",
+            ))
             self.session.add(
                 FeedProjectionRecord(
                     id=projection_identity(opportunity_id, truth_hash),
@@ -66,8 +77,6 @@ class FeedQueryContractTest(unittest.TestCase):
                     excluded_industry_match=False,
                     visible=visible,
                     visibility_reason=None if visible else "red_line",
-                    search_text=f"Role {opportunity_id} Example",
-                    search_tsv=None,
                     evaluated_at=now,
                     projected_at=now,
                 )
@@ -126,7 +135,7 @@ class FeedQueryContractTest(unittest.TestCase):
                 compile_kwargs={"literal_binds": True},
             )
         )
-        self.assertIn("feed_projection.search_tsv @@ websearch_to_tsquery", sql)
+        self.assertIn("opportunities.search_tsv @@ websearch_to_tsquery", sql)
         self.assertIn("data engineer", sql)
         self.assertNotIn("opportunities.description", sql)
 

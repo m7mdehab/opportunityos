@@ -2,8 +2,10 @@
   "format_version": 1,
   "snapshot": "founder/truth_pack.yaml.gz.b64",
   "decoded_format": "yaml",
-  "decoded_raw_sha256": "e3b0d1c23888bc5340bcc7409f035971d842ceabaca9f4dc639430f49c5923d0",
-  "updated_at": "2026-09-21",
+  "decoded_raw_sha256": "669902fbfaa492abf8d5cd527e7a4fcece5dc1c0caf9f09cd9c1fed85d28556a",
+  "opportunityos_graph_sha256": "7197db54282148ce81e1f405ea0fe7558c4b33b15bab7b4822ee67b2ecc3cb5c",
+  "canonical_cv_source_truth_sha256": "e3b0d1c23888bc5340bcc7409f035971d842ceabaca9f4dc639430f49c5923d0",
+  "updated_at": "2026-09-23",
   "founder_classification": "non-sensitive product truth",
   "sources": [
     "Mohammed_Ehab_CV_System_2026-09-21_FINAL.zip",
@@ -26,15 +28,17 @@
     "role routing aligned to the nine-CV registry",
     "unsupported or stale tooling claims remain excluded"
   ],
-  "validation_status": "CANONICAL_9CV_PACK_AUDITED; PRIVATE_STORAGE_PROMOTION_PASS; REPOSITORY_CI_PENDING",
+  "validation_status": "CANONICAL_9CV_RUNTIME_GRAPH_RECONCILED; REPOSITORY_CI_PENDING; NEW_PROJECT_CV_UPLOAD_PENDING",
   "identity_profile": "Mohammed Ehab ElNomany | Data | AI | Analytics | Software & Product Engineering | Cairo, Egypt | Open to Remote Work",
   "fixed_cv_policy": "select exactly one of nine final PDFs; never auto-rewrite CV wording or formatting",
   "storage_verification": {
     "provider": "supabase",
     "bucket": "founder-cv-portfolio",
-    "import_run_id": "35642831771",
-    "verified_at": "2026-09-21T19:11:53Z",
-    "source_zip_sha256": "f5475977e331c5efb70e21a6b2b702904c80ebdc8aa2f22a1dccee24a8e807a4",
-    "uploaded_objects": 31
+    "project_ref": "sunjfepvdzfknglrjwhm",
+    "region": "eu-central-1",
+    "plan": "free",
+    "private": true,
+    "status": "PENDING_UPLOAD",
+    "expected_objects": 31
   }
 }

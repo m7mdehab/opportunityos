@@ -13,6 +13,8 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import yaml
+
 from truth.pack import (
     CANONICAL_REPO_TRUTH_PACK,
     DEFAULT_TRUTH_PACK_PATH,
@@ -540,6 +542,17 @@ class LoadTruthPackRemoteAndIntegrityTest(unittest.TestCase):
         self.assertIsInstance(loaded, LoadedPack)
         self.assertTrue(loaded.report.valid)
         self.assertEqual(64, len(loaded.truth_pack_hash))
+        career = loaded.graph.profiles["career-mohammed-ehab"]
+        capability = loaded.graph.profiles["capability-mohammed-ehab"]
+        self.assertEqual((10, 3, 6), (len(career.employment), len(career.education), len(career.certifications)))
+        self.assertEqual(67, len(career.skills))
+        self.assertEqual(7, len(capability.portfolio))
+        self.assertEqual(82, len(capability.tools))
+        self.assertTrue(all(item.id.startswith("skill-") for item in career.skills))
+        self.assertTrue(all(item.id.startswith("tool-") for item in capability.tools))
+        cv_manifest = yaml.safe_load((REPO_ROOT / "founder" / "cv_portfolio.yaml").read_text(encoding="utf-8"))
+        self.assertEqual(9, len(cv_manifest["variants"]))
+        self.assertIn("9cv", cv_manifest["portfolio_version"])
 
     def test_load_truth_pack_s3_deferred_notice(self):
         with self.assertRaises(TruthPackInvalid) as ctx:

@@ -1,6 +1,8 @@
 """Repository-owned browser-deny RLS authority for Founder Alpha."""
 from __future__ import annotations
 
+from sqlalchemy import inspect
+
 from storage.models import Base
 from storage.feed_projection import FeedProjectionRecord  # registers the shared Base table
 
@@ -8,6 +10,12 @@ from storage.feed_projection import FeedProjectionRecord  # registers the shared
 # derived from the ORM metadata so a new table cannot silently escape review.
 EXCLUDED = {"alembic_version"}
 RLS_TABLES = frozenset(name for name in Base.metadata.tables if name not in EXCLUDED)
+_TABLES_CREATED_AFTER_0009 = frozenset({
+    "founder_activity_events",
+    "founder_cv_selections",
+    "opportunity_archive_orphans",
+    "opportunity_cold_archive",
+})
 
 
 def registry_coverage() -> tuple[set[str], set[str]]:
@@ -23,10 +31,25 @@ def assert_registry_complete() -> None:
 
 
 def apply_postgres_deny_policies(op, *, excluded: set[str] | None = None) -> None:
-    """Enable RLS and conditionally deny Supabase-like roles when present."""
+    """Enable RLS on relations existing at this migration point.
+
+    The registry describes the final ORM schema, while migrations create some
+    registered tables later in the chain. Skip only not-yet-created tables;
+    their creating migration must apply the same deny policy explicitly.
+    """
     assert_registry_complete()
     excluded_tables = set(excluded or ())
+    connection = op.get_bind()
+    if op.get_context().as_sql:
+        # This helper is called at revision 0009. Offline SQL generation has
+        # no reflectable connection, so model the relation set at that exact
+        # migration point and exclude tables created later in the chain.
+        existing_tables = set(RLS_TABLES - _TABLES_CREATED_AFTER_0009)
+    else:
+        existing_tables = set(inspect(connection).get_table_names())
     for table in sorted(RLS_TABLES - excluded_tables):
+        if table not in existing_tables:
+            continue
         op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
         op.execute(
             "DO $$ BEGIN "

@@ -19,15 +19,9 @@ class FeedProjectionContractTest(unittest.TestCase):
     def tearDown(self) -> None:
         self.engine.dispose()
 
-    def test_projection_identity_is_stable_and_profile_scoped(self) -> None:
-        self.assertEqual(
-            projection_identity("opp-1", "truth-a"),
-            "opp-1:truth-a",
-        )
-        self.assertNotEqual(
-            projection_identity("opp-1", "truth-a"),
-            projection_identity("opp-1", "truth-b"),
-        )
+    def test_projection_identity_is_one_mutable_row_per_opportunity(self) -> None:
+        self.assertEqual(projection_identity("opp-1", "truth-a"), "opp-1")
+        self.assertEqual(projection_identity("opp-1", "truth-a"), projection_identity("opp-1", "truth-b"))
 
     def test_projection_contract_exposes_query_path_indexes(self) -> None:
         index_names = {index.name for index in FeedProjectionRecord.__table__.indexes}
@@ -36,13 +30,15 @@ class FeedProjectionContractTest(unittest.TestCase):
                 "ix_feed_projection_truth_visible_rank",
                 "ix_feed_projection_truth_decision_score",
                 "ix_feed_projection_truth_posted",
-                "ix_feed_projection_search_tsv",
                 "ix_feed_projection_source_id",
                 "ix_feed_projection_title_family",
                 "ix_feed_projection_work_mode",
                 "ix_feed_projection_location_country",
             }.issubset(index_names)
         )
+        self.assertNotIn("ix_feed_projection_search_tsv", index_names)
+        self.assertFalse(hasattr(FeedProjectionRecord, "search_text"))
+        self.assertFalse(hasattr(FeedProjectionRecord, "search_tsv"))
 
     def test_cold_process_correctness_is_persisted_not_cache_backed(self) -> None:
         session = self.Session()
@@ -91,8 +87,6 @@ class FeedProjectionContractTest(unittest.TestCase):
                     excluded_industry_match=False,
                     visible=True,
                     visibility_reason=None,
-                    search_text="Data Engineer Example Cairo remote",
-                    search_tsv=None,
                     evaluated_at=now,
                     projected_at=now,
                 )

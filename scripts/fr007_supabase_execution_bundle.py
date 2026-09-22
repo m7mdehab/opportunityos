@@ -22,6 +22,7 @@ from alembic.script import ScriptDirectory
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / "reports" / "evidence" / "FR-007" / "provider-execution"
+TARGET_PROJECT_REF = "sunjfepvdzfknglrjwhm"
 # Alembic's offline PostgreSQL dialect needs a URL, but it must not appear as
 # a literal connection string in repository scans or generated artifacts.
 OFFLINE_URL = "post" + "gresql://" + "offline.invalid/opportunityos"
@@ -269,7 +270,7 @@ COMMIT;
 
 EXECUTION_MANIFEST = {
     "format": 1,
-    "project_ref": "lrrcpwaapwynzdsxzwhy",
+    "project_ref": TARGET_PROJECT_REF,
     "steps": [
         {"id": "source_export", "kind": "SOURCE_EXPORT", "input": "scripts/db_migration_restore.py",
          "operation": "OPOS_SOURCE_DB_URL=... python scripts/db_migration_restore.py backup --destination <new-file>",
@@ -306,7 +307,7 @@ EXECUTION_MANIFEST = {
 }
 
 EVIDENCE_TEMPLATE = {
-    "format": 1, "status": "NOT_EXECUTED", "project_ref": "lrrcpwaapwynzdsxzwhy",
+    "format": 1, "status": "NOT_EXECUTED", "project_ref": TARGET_PROJECT_REF,
     "region": "eu-central-1", "repository_sha": None, "executed_at_utc": None,
     "migration": {"before_revision": None, "after_revision": None, "artifact_hashes": {}},
     "parity": {"status": "NOT_EXECUTED", "differences": None, "unsupported": None},
@@ -354,7 +355,7 @@ def generate(output: Path = DEFAULT_OUTPUT) -> dict[str, Any]:
         "evidence-template.json": json.dumps(EVIDENCE_TEMPLATE, sort_keys=True, indent=2) + "\n",
     }
     hashes = {name: _write(output / name, text) for name, text in files.items()}
-    manifest = {"format": 1, "provider": "supabase", "project_ref": "lrrcpwaapwynzdsxzwhy",
+    manifest = {"format": 1, "provider": "supabase", "project_ref": TARGET_PROJECT_REF,
                 "region": "eu-central-1", "database_engine": "PostgreSQL 17",
                 "expected_final_revision": chain[-1]["revision"], "migrations": migrations,
                 "verification_files": hashes,

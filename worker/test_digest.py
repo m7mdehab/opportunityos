@@ -58,6 +58,7 @@ class TestGenerateDigest(unittest.TestCase):
                     id=f"eval-{opp_id}",
                     opportunity_id=opp_id,
                     truth_pack_hash="hash-fixture",
+                    content_hash=f"hash-{opp_id}",
                     qualification_decision=decision,
                     fit_score=fit_score,
                     dimension_scores_json="[]",

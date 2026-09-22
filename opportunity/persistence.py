@@ -61,6 +61,9 @@ from opportunity.clustering import family_key as compute_opportunity_family_key
 from opportunity.models import CompensationInterval, FieldProvenance, Opportunity
 from opportunity.pipeline import IngestionBatch
 from storage.repository import StorageRepository
+from matching.models import QualificationDecision
+from matching.scorer import OpportunityScorer
+from truth.graph import TruthGraph
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,6 +168,7 @@ def _build_opp_data(opp: Opportunity, *, is_stale: bool) -> Dict[str, Any]:
         "posted_date": opp.posted_date,
         "deadline": opp.closing_date,
         "is_stale": is_stale,
+        "reverified_at": None,
         "raw_payload_json": raw_payload_json,
         "work_mode": opp.work_mode.value,
         "work_mode_source": opp.work_mode_source,
@@ -185,6 +189,15 @@ def _build_opp_data(opp: Opportunity, *, is_stale: bool) -> Dict[str, Any]:
         # opportunity.clustering.cluster_members / storage.repository's
         # families methods), not performed per-opportunity here.
         "family_key": compute_opportunity_family_key(opp),
+        # Full original adapter record and normalized matcher inputs stay in
+        # memory until the evaluator decides whether they belong in the cold
+        # private object tier. They are not written as hot relational columns.
+        "raw_source_record_json": opp.raw_source_record_json,
+        "record_checksum": opp.record_checksum,
+        "responsibilities": list(opp.responsibilities),
+        "requirements": list(opp.requirements),
+        "skills": list(opp.skills),
+        "extra_attributes": list(opp.extra_attributes),
     }
 
 
@@ -309,6 +322,147 @@ def persist_batch(batch: IngestionBatch, repository: StorageRepository) -> Persi
             record.reverified_at = datetime.now(timezone.utc)
             repository.session.commit()
         updated.append(opp.id)
+
+    return PersistResult(
+        inserted_ids=tuple(inserted),
+        unchanged_ids=tuple(unchanged),
+        updated_ids=tuple(updated),
+    )
+
+
+def persist_evaluated_batch(
+    batch: IngestionBatch,
+    repository: StorageRepository,
+    *,
+    truth_graph: TruthGraph,
+    truth_pack_hash: str,
+    scorer: OpportunityScorer | None = None,
+    evaluated_at: datetime | None = None,
+) -> PersistResult:
+    """Evaluate in worker memory, then persist each opportunity directly to its tier."""
+    if not truth_pack_hash:
+        raise ValueError("truth_pack_hash is required before tiered ingestion")
+    now = evaluated_at or datetime.now(timezone.utc)
+    engine_scorer = scorer or OpportunityScorer()
+
+    # Complete normalization and matching before the first write. This avoids
+    # transient heavyweight PostgreSQL rows and their corresponding WAL/index
+    # amplification for cold rejects.
+    evaluations = {
+        opportunity.id: engine_scorer.evaluate(
+            opportunity, truth_graph, evaluated_at=now.isoformat()
+        )
+        for opportunity in batch.opportunities
+    }
+    identity_state = repository.get_opportunity_identity_state(
+        [opportunity.id for opportunity in batch.opportunities]
+    )
+    protected_ids = repository.get_founder_protected_ids(
+        [opportunity.id for opportunity in batch.opportunities]
+    )
+    repository.session.commit()
+
+    inserted: list[str] = []
+    unchanged: list[str] = []
+    updated: list[str] = []
+
+    for opportunity in batch.opportunities:
+        evaluation = evaluations[opportunity.id]
+        initial_hash = identity_state.get(opportunity.id)
+        if initial_hash == opportunity.content_hash:
+            unchanged.append(opportunity.id)
+            continue
+
+        has_hard_failure = any(
+            item.is_hard_failure and item.passed is False
+            for item in evaluation.hard_constraints
+        )
+        is_protected = opportunity.id in protected_ids
+        tier = (
+            "protected"
+            if is_protected
+            else "cold"
+            if evaluation.qualification_decision is QualificationDecision.INELIGIBLE and has_hard_failure
+            else "hot"
+        )
+        opp_data = _build_opp_data(opportunity, is_stale=False)
+        opp_data["lifecycle_tier"] = tier
+        if initial_hash is not None:
+            opp_data["reverified_at"] = now.astimezone(timezone.utc).replace(tzinfo=None)
+        provenances = _build_provenances(opportunity)
+        archive_metadata = None
+        if tier == "cold":
+            archive_metadata = repository.prepare_cold_archive(
+                opp_data, provenances, normalized_opportunity=opportunity
+            )
+            opp_data["cold_archive"] = archive_metadata
+
+        repository.lock_opportunity_identity(opportunity.id)
+        current_hash = repository.get_opportunity_identity_state([opportunity.id]).get(opportunity.id)
+        if current_hash == opportunity.content_hash:
+            repository.session.commit()
+            unchanged.append(opportunity.id)
+            continue
+        if current_hash != initial_hash:
+            # Another poll won since the bounded pre-read. Do not overwrite a
+            # potentially newer source version with this raced snapshot.
+            if archive_metadata is not None:
+                repository.queue_archive_orphan(archive_metadata)
+                repository.session.commit()
+                repository.cleanup_archive_orphans()
+            else:
+                repository.session.rollback()
+            unchanged.append(opportunity.id)
+            continue
+
+        protected_now = repository.is_founder_protected(opportunity.id)
+        if protected_now:
+            tier = "protected"
+            opp_data["lifecycle_tier"] = tier
+            if archive_metadata is not None:
+                opp_data.pop("cold_archive", None)
+                repository.queue_archive_orphan(archive_metadata)
+        try:
+            repository.save_opportunity(opp_data, provenances)
+        except IntegrityError:
+            repository.session.rollback()
+            winner_hash = repository.get_opportunity_identity_state([opportunity.id]).get(opportunity.id)
+            if winner_hash == opportunity.content_hash:
+                if archive_metadata is not None:
+                    repository.queue_archive_orphan(archive_metadata)
+                    repository.session.commit()
+                    repository.cleanup_archive_orphans()
+                unchanged.append(opportunity.id)
+                continue
+            raise
+        except Exception:
+            repository.session.rollback()
+            if archive_metadata is not None:
+                try:
+                    repository.queue_archive_orphan(archive_metadata)
+                    repository.session.commit()
+                    repository.cleanup_archive_orphans()
+                except Exception:
+                    repository.session.rollback()
+            raise
+
+        # Persist precisely the result computed above; there is no second pass
+        # over a PostgreSQL source body and no placeholder can enter matching.
+        from matching.evaluate_persist import evaluate_and_store
+
+        evaluate_and_store(
+            opportunity,
+            truth_graph,
+            repository,
+            truth_pack_hash=truth_pack_hash,
+            evaluated_at=now,
+            evaluation_result=evaluation,
+            lifecycle_tier=tier,
+        )
+        if initial_hash is None:
+            inserted.append(opportunity.id)
+        else:
+            updated.append(opportunity.id)
 
     return PersistResult(
         inserted_ids=tuple(inserted),

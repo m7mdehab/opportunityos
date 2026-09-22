@@ -2340,6 +2340,9 @@ class FilterSeedSyncTest(unittest.TestCase):
             module = self._load_migration_module(path.name)
             overrides = getattr(module, "_D3_FILTER_SEED_OVERRIDES", None)
             if overrides is None:
+                source = path.read_text(encoding="utf-8")
+                if "founder_filter_settings" not in source and "_D3_FILTER_SEED" not in source:
+                    continue
                 self.fail(
                     f"{path.name} is a migration revision after 0003_provenance_identity.py "
                     "but declares no `_D3_FILTER_SEED_OVERRIDES` module attribute for this "

@@ -9,6 +9,7 @@ from opportunity.models import (
     SourceProvenance,
     compute_canonical_content_hash,
     compute_dedup_key,
+    serialize_source_record,
 )
 
 class AshbyAdapter:
@@ -20,7 +21,11 @@ class AshbyAdapter:
         location_name = str(job_dict.get("locationName", "")).strip()
         source_url = str(job_dict.get("jobUrl", "") or f"https://jobs.ashbyhq.com/{organization}/{job_id}")
 
-        content_hash = compute_canonical_content_hash(organization, title, location_name, desc)
+        raw_source_record_json = serialize_source_record(job_dict)
+        record_checksum = hashlib.sha256(raw_source_record_json.encode("utf-8")).hexdigest()
+        content_hash = compute_canonical_content_hash(
+            organization, title, location_name, desc, record_checksum=record_checksum
+        )
         dedup_key = compute_dedup_key(organization, title, location_name)
         opp_id = f"ashby:{organization}:{job_id}"
 
@@ -74,6 +79,8 @@ class AshbyAdapter:
             location_raw=location_name,
             raw_provenance=raw_prov,
             field_provenances=tuple(provenances),
+            record_checksum=record_checksum,
+            raw_source_record_json=raw_source_record_json,
             canonical_outbound_url=source_url,
             content_hash=content_hash,
             dedup_key=dedup_key,

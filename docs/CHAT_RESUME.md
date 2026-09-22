@@ -117,9 +117,9 @@ W15 repository preparation is integrated and green:
 A real Supabase staging project is now provisioned and healthy:
 
 - project: `opportunityos-staging`;
-- safe project ref: `lrrcpwaapwynzdsxzwhy`;
+- safe project ref: `sunjfepvdzfknglrjwhm`;
 - region: `eu-central-1`;
-- safe API origin: `https://lrrcpwaapwynzdsxzwhy.supabase.co`;
+- safe API origin: `https://sunjfepvdzfknglrjwhm.supabase.co`;
 - PostgreSQL: 17;
 - plan/project creation cost: $0/month at provisioning;
 - hosted application schema is present at Alembic revision `0009_hosted_founder_auth` with 26 public tables under RLS authority.

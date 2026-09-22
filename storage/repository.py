@@ -1,14 +1,16 @@
 import hashlib
 import json
-import hashlib
 import zlib
 import logging
+from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from sqlalchemy import text
+from sqlalchemy import select, text, union
 from sqlalchemy.orm import Session
 from storage.models import (
     OpportunityRecord,
+    OpportunityColdArchiveRecord,
+    OpportunityArchiveOrphanRecord,
     FieldProvenanceRecord,
     OutboundActionRecordModel,
     IdempotencyReservationRecord,
@@ -22,8 +24,19 @@ from storage.models import (
     FounderFacetRecord,
     FounderSavedViewRecord,
     OpportunityFamilyRecord,
+    FounderActivityEventRecord,
+    FounderOpportunityViewRecord,
+    FounderTriageStateRecord,
+    MatchEvaluationRecord,
+    FounderCVSelectionRecord,
 )
-from storage.cold_storage import get as get_cold_object, unpack as unpack_cold_object
+from storage.cold_storage import (
+    delete as delete_cold_object,
+    get as get_cold_object,
+    pack as pack_cold_object,
+    put as put_cold_object,
+    unpack as unpack_cold_object,
+)
 
 
 # Storage V2: `search_tsv` is one compact searchable representation, shared verbatim between
@@ -132,29 +145,170 @@ def _refresh_search_tsv(session: Session, opportunity_id: str) -> None:
 class StorageRepository:
     """Production Repository interface for OpportunityOS PostgreSQL relational persistence."""
 
-    def __init__(self, session: Session):
+    def __init__(self, session: Session, *, cold_storage_client=None):
         self.session = session
+        self.cold_storage_client = cold_storage_client
+
+    def prepare_cold_archive(
+        self,
+        opp_data: Dict[str, Any],
+        provenances: List[Dict[str, Any]],
+        *,
+        normalized_opportunity=None,
+    ) -> Dict[str, Any]:
+        """Upload a lossless compressed source version before opening a write transaction."""
+        raw_source = opp_data.get("raw_source_record_json")
+        if not raw_source:
+            raise ValueError("cold-tier source record is missing; refusing lossy archive")
+        archived_fields = {
+            key: value
+            for key, value in opp_data.items()
+            if key not in {"lifecycle_tier", "cold_archive"}
+        }
+        payload = {
+            "schema_version": 2,
+            "opportunity_id": opp_data["id"],
+            "source_id": opp_data["source_id"],
+            "content_hash": opp_data["content_hash"],
+            "source_url": opp_data["source_url"],
+            "original_source_payload": raw_source,
+            "canonical_description": opp_data.get("description") or "",
+            "provenance": list(provenances),
+            "opportunity": archived_fields,
+            "normalized_opportunity": (
+                asdict(normalized_opportunity)
+                if normalized_opportunity is not None and is_dataclass(normalized_opportunity)
+                else None
+            ),
+        }
+        compressed, digest, original_size = pack_cold_object(payload)
+        object_key, digest, compressed_size = put_cold_object(
+            compressed,
+            opp_data["content_hash"],
+            opportunity_id=opp_data["id"],
+            client=self.cold_storage_client,
+        )
+        return {
+            "storage_backend": "supabase_storage",
+            "object_key": object_key,
+            "payload_sha256": digest,
+            "compressed_size_bytes": compressed_size,
+            "original_size_bytes": original_size,
+            "archive_version": "v2",
+            "archived_at": datetime.now(timezone.utc),
+        }
+
+    def _queue_archive_orphan(self, archive: OpportunityColdArchiveRecord | None) -> None:
+        if archive is None or archive.storage_backend != "supabase_storage" or not archive.object_key:
+            return
+        self.queue_archive_orphan({
+            "object_key": archive.object_key,
+            "payload_sha256": archive.payload_sha256,
+            "compressed_size_bytes": archive.compressed_size_bytes or 0,
+        })
+
+    def queue_archive_orphan(self, archive_metadata: Dict[str, Any]) -> None:
+        object_key = archive_metadata.get("object_key")
+        if not object_key:
+            return
+        existing = self.session.get(OpportunityArchiveOrphanRecord, object_key)
+        if existing is None:
+            self.session.add(
+                OpportunityArchiveOrphanRecord(
+                    object_key=object_key,
+                    payload_sha256=archive_metadata.get("payload_sha256") or "",
+                    compressed_size_bytes=archive_metadata.get("compressed_size_bytes") or 0,
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
+
+    def cleanup_archive_orphans(self, *, limit: int = 20) -> int:
+        """Retry bounded stale-object deletes; failed deletes remain observable/retryable."""
+        if limit < 1:
+            raise ValueError("limit must be >= 1")
+        rows = (
+            self.session.query(OpportunityArchiveOrphanRecord)
+            .order_by(OpportunityArchiveOrphanRecord.created_at.asc())
+            .limit(limit)
+            .all()
+        )
+        removed = 0
+        for orphan in rows:
+            referenced = (
+                self.session.query(OpportunityColdArchiveRecord.opportunity_id)
+                .filter_by(object_key=orphan.object_key)
+                .first()
+            )
+            if referenced:
+                self.session.delete(orphan)
+                self.session.commit()
+                continue
+            try:
+                delete_cold_object(orphan.object_key, client=self.cold_storage_client)
+            except Exception as exc:
+                self.session.rollback()
+                logger.warning("cold_archive_orphan_delete_failed", extra={"object_key": orphan.object_key, "reason": type(exc).__name__})
+                continue
+            self.session.delete(orphan)
+            self.session.commit()
+            removed += 1
+        return removed
+
+    def is_founder_protected(self, opportunity_id: str) -> bool:
+        """Return true for any persisted Founder, application, or outbound history."""
+        return bool(self.get_founder_protected_ids([opportunity_id]))
+
+    def get_founder_protected_ids(self, opportunity_ids: List[str], *, chunk_size: int = 500) -> set[str]:
+        """Find protected IDs with narrow UNION queries instead of loading opportunity bodies."""
+        protected: set[str] = set()
+        models = (
+            FounderFeedbackRecord,
+            FounderTriageStateRecord,
+            FounderOpportunityViewRecord,
+            FounderActivityEventRecord,
+            OutboundActionRecordModel,
+            IdempotencyReservationRecord,
+            PipelineEventRecord,
+            ReconciliationRecordModel,
+            NotificationRecord,
+            FounderCVSelectionRecord,
+        )
+        ids = list(dict.fromkeys(opportunity_ids))
+        for start in range(0, len(ids), chunk_size):
+            chunk = ids[start:start + chunk_size]
+            if not chunk:
+                continue
+            statements = [
+                select(model.opportunity_id).where(model.opportunity_id.in_(chunk))
+                for model in models
+            ]
+            protected.update(row[0] for row in self.session.execute(union(*statements)).all())
+        return protected
 
     # Opportunity Operations
     def save_opportunity(self, opp_data: Dict[str, Any], provenances: List[Dict[str, Any]]) -> OpportunityRecord:
-        # A changed source version invalidates any cold archive for the same
-        # identity before the new authoritative hot row is committed.  A
-        # same-hash archive remains valid and cheap.  Migration 0020 creates
-        # this table before hosted workers can reach this path.
-        if _is_postgres(self.session):
-            self.session.execute(
-                text(
-                    "DELETE FROM opportunity_cold_archive "
-                    "WHERE opportunity_id = :id AND content_hash <> :content_hash"
-                ),
-                {"id": opp_data["id"], "content_hash": opp_data["content_hash"]},
-            )
+        tier = opp_data.get("lifecycle_tier", "hot")
+        if tier not in {"hot", "cold", "protected"}:
+            raise ValueError(f"invalid lifecycle tier: {tier}")
+        archive_metadata = opp_data.get("cold_archive")
+        if tier == "cold" and (
+            not archive_metadata
+            or archive_metadata.get("storage_backend") != "supabase_storage"
+            or not archive_metadata.get("object_key")
+            or not archive_metadata.get("payload_sha256")
+        ):
+            raise ValueError("cold opportunity must have a verified private archive pointer")
+        previous_archive = self.session.get(OpportunityColdArchiveRecord, opp_data["id"])
+        if previous_archive is not None and (
+            tier != "cold" or previous_archive.object_key != archive_metadata.get("object_key")
+        ):
+            self._queue_archive_orphan(previous_archive)
         record = OpportunityRecord(
             id=opp_data["id"],
             track=opp_data["track"],
             title=opp_data["title"],
             organization=opp_data["organization"],
-            description=opp_data["description"],
+            description=None if tier == "cold" else opp_data["description"],
             source_id=opp_data["source_id"],
             source_url=opp_data["source_url"],
             content_hash=opp_data["content_hash"],
@@ -164,7 +318,8 @@ class StorageRepository:
             posted_date=opp_data.get("posted_date"),
             deadline=opp_data.get("deadline"),
             is_stale=opp_data.get("is_stale", False),
-            raw_payload_json=opp_data.get("raw_payload_json"),
+            reverified_at=opp_data.get("reverified_at"),
+            raw_payload_json=None if tier == "cold" else opp_data.get("raw_payload_json"),
             work_mode=opp_data.get("work_mode", "unspecified"),
             work_mode_source=opp_data.get("work_mode_source"),
             location_country=opp_data.get("location_country"),
@@ -182,8 +337,12 @@ class StorageRepository:
             title_level=opp_data.get("title_level"),
             family_key=opp_data.get("family_key"),
             search_tsv=opp_data.get("search_tsv"),
+            lifecycle_tier=tier,
+            archive_object_key=archive_metadata.get("object_key") if tier == "cold" else None,
+            archive_sha256=archive_metadata.get("payload_sha256") if tier == "cold" else None,
+            archive_state="verified" if tier == "cold" else None,
         )
-        for prov in provenances:
+        for prov in (() if tier == "cold" else provenances):
             prov_rec = FieldProvenanceRecord(
                 field_name=prov["field_name"],
                 raw_value=prov.get("raw_value"),
@@ -216,6 +375,22 @@ class StorageRepository:
         ).delete(synchronize_session=False)
 
         self.session.merge(record)
+        if tier == "cold":
+            archive = OpportunityColdArchiveRecord(
+                opportunity_id=opp_data["id"],
+                content_hash=opp_data["content_hash"],
+                payload_zlib=None,
+                storage_backend="supabase_storage",
+                object_key=archive_metadata["object_key"],
+                compressed_size_bytes=archive_metadata["compressed_size_bytes"],
+                payload_sha256=archive_metadata["payload_sha256"],
+                original_size_bytes=archive_metadata["original_size_bytes"],
+                archive_version=archive_metadata["archive_version"],
+                archived_at=archive_metadata["archived_at"],
+            )
+            self.session.merge(archive)
+        elif previous_archive is not None:
+            self.session.delete(previous_archive)
         self.session.commit()
 
         # BRIEF-FR-006 C2: keep search_tsv current for every write path that
@@ -223,45 +398,15 @@ class StorageRepository:
         # is application-side rather than a trigger/generated column.
         _refresh_search_tsv(self.session, opp_data["id"])
 
-        # Ingestion owns the initial persisted read model. Until an evaluation
-        # is written, its decision and score remain NULL, never qualified.
-        from storage.feed_projection_service import refresh_opportunity_projection
-
-        refresh_opportunity_projection(
-            self.session,
-            opportunity_id=opp_data["id"],
-            truth_pack_hash="active",
-            allow_unevaluated=True,
-        )
-        self.session.commit()
-
+        # The only read model is published after a current-pack evaluation.
+        self.cleanup_archive_orphans()
         return record
 
     def hydrate_cold_opportunity(self, opportunity_id: str) -> OpportunityRecord:
-        """Verify and hydrate one archived source row before matching.
-
-        Hydration is bounded to the requested opportunity and fails closed on
-        missing, stale, or corrupt archive bytes.  It never treats the hot
-        ``[archived]`` marker as source truth.
-        """
-        record = self.get_opportunity(opportunity_id)
-        if record is None:
-            raise ValueError(f"opportunity not found: {opportunity_id}")
-        payload = self.load_cold_opportunity_payload(opportunity_id, record=record)
-        record.description = payload.get("description") or ""
-        record.raw_payload_json = payload.get("raw_payload_json")
-        self.session.query(FieldProvenanceRecord).filter_by(opportunity_id=opportunity_id).delete(synchronize_session=False)
-        for provenance in payload.get("provenance") or []:
-            self.session.add(FieldProvenanceRecord(opportunity_id=opportunity_id, **{
-                key: provenance.get(key) for key in (
-                    "field_name", "raw_value", "normalized_value", "derivation_type",
-                    "raw_pointer", "record_checksum", "rule_id",
-                )
-            }))
-        self.session.flush()
-        _refresh_search_tsv(self.session, opportunity_id)
-        self.session.commit()
-        return self.get_opportunity(opportunity_id)
+        """Reject legacy persistent rehydration; callers must reconstruct in memory."""
+        raise RuntimeError(
+            "persistent cold rehydration is prohibited; use load_cold_opportunity_payload and rebuild in memory"
+        )
 
     def load_cold_opportunity_payload(
         self, opportunity_id: str, *, record: Optional[OpportunityRecord] = None
@@ -270,7 +415,7 @@ class StorageRepository:
 
         Matching must be able to score a cold row without expanding its
         ``[archived]`` marker back into ``opportunities``.  This method is the
-        read-only counterpart to :meth:`hydrate_cold_opportunity`: it verifies
+        non-mutating counterpart to legacy hydration: it verifies
         bytes, identity and the current content hash, then returns the
         decompressed payload in memory.  Callers must not persist its fields.
         """
@@ -279,25 +424,29 @@ class StorageRepository:
             raise ValueError(f"opportunity not found: {opportunity_id}")
         row = self.session.execute(
             text(
-                "SELECT content_hash, payload_zlib, payload_sha256, storage_backend, object_key "
+                "SELECT content_hash, payload_zlib, payload_sha256, storage_backend, object_key, compressed_size_bytes "
                 "FROM opportunity_cold_archive WHERE opportunity_id = :id"
             ),
             {"id": opportunity_id},
         ).mappings().first()
         if row is None:
             raise RuntimeError("cold archive missing for archived opportunity")
+        if row["content_hash"] != record.content_hash:
+            raise RuntimeError("cold archive content hash is stale")
         if row["storage_backend"] == "supabase_storage":
             if not row["object_key"]:
                 raise RuntimeError("cold archive object metadata is missing")
-            compressed = get_cold_object(row["object_key"], row["payload_sha256"])
+            compressed = get_cold_object(
+                row["object_key"], row["payload_sha256"], client=self.cold_storage_client
+            )
+            if row["compressed_size_bytes"] is not None and len(compressed) != row["compressed_size_bytes"]:
+                raise RuntimeError("cold archive compressed size verification failed")
         else:
             if row["payload_zlib"] is None:
                 raise RuntimeError("cold archive payload is unavailable")
             compressed = bytes(row["payload_zlib"])
             if hashlib.sha256(compressed).hexdigest() != row["payload_sha256"]:
                 raise RuntimeError("cold archive checksum verification failed")
-        if row["content_hash"] != record.content_hash:
-            raise RuntimeError("cold archive content hash is stale")
         return unpack_cold_object(
             compressed,
             row["payload_sha256"],
