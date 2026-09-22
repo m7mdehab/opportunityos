@@ -85,11 +85,16 @@ def live_maintenance(dsn: str, truth_pack_hash: str | None) -> dict:
             # Supabase's documented temporary quota maintenance override.
             connection.execute(text("SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE"))
             run_migration_on_connection(connection)
+            # Alembic and the preflight statements may leave SQLAlchemy's
+            # autobegin marker active even with AUTOCOMMIT isolation.  End it
+            # explicitly before opening the bounded maintenance transaction.
+            connection.commit()
             selected_hash = truth_pack_hash or before["truth_pack_hash"]
             if not selected_hash:
                 raise RuntimeError("current truth-pack hash unavailable")
+            plan = build_plan(connection, truth_pack_hash=selected_hash)
+            connection.commit()
             with connection.begin():
-                plan = build_plan(connection, truth_pack_hash=selected_hash)
                 result = apply_maintenance(connection, truth_pack_hash=selected_hash, confirm=True)
             # Physical reclaim must run outside a transaction.  These are the
             # measured heavy relations, never arbitrary product tables.
