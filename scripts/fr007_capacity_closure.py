@@ -89,17 +89,22 @@ def live_maintenance(dsn: str, truth_pack_hash: str | None) -> dict:
             # autobegin marker active even with AUTOCOMMIT isolation.  End it
             # explicitly before opening the bounded maintenance transaction.
             connection.commit()
+            print("migration_head_verified", flush=True)
             selected_hash = truth_pack_hash or before["truth_pack_hash"]
             if not selected_hash:
                 raise RuntimeError("current truth-pack hash unavailable")
             plan = build_plan(connection, truth_pack_hash=selected_hash)
             connection.commit()
+            print(f"maintenance_plan_ready eligible={plan.eligible_count} active_projection={plan.active_projection_count}", flush=True)
             with connection.begin():
                 result = apply_maintenance(connection, truth_pack_hash=selected_hash, confirm=True)
             # Physical reclaim must run outside a transaction.  These are the
             # measured heavy relations, never arbitrary product tables.
+            connection.execute(text("SET lock_timeout = '5min'"))
             for relation in ("feed_projection", "field_provenances", "opportunities", "match_evaluations"):
+                print(f"vacuum_full_start relation={relation}", flush=True)
                 connection.execute(text(f"VACUUM (FULL, ANALYZE) public.{relation}"))
+                print(f"vacuum_full_done relation={relation}", flush=True)
             after = snapshot(connection, selected_hash)
             if after["database_size_bytes"] > 400 * 1024 * 1024:
                 raise RuntimeError("capacity maintenance completed below logical target")
