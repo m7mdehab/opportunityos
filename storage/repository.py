@@ -255,6 +255,36 @@ class StorageRepository:
         record = self.get_opportunity(opportunity_id)
         if record is None:
             raise ValueError(f"opportunity not found: {opportunity_id}")
+        payload = self.load_cold_opportunity_payload(opportunity_id, record=record)
+        record.description = payload.get("description") or ""
+        record.raw_payload_json = payload.get("raw_payload_json")
+        self.session.query(FieldProvenanceRecord).filter_by(opportunity_id=opportunity_id).delete(synchronize_session=False)
+        for provenance in payload.get("provenance") or []:
+            self.session.add(FieldProvenanceRecord(opportunity_id=opportunity_id, **{
+                key: provenance.get(key) for key in (
+                    "field_name", "raw_value", "normalized_value", "derivation_type",
+                    "raw_pointer", "record_checksum", "rule_id",
+                )
+            }))
+        self.session.flush()
+        _refresh_search_tsv(self.session, opportunity_id)
+        self.session.commit()
+        return self.get_opportunity(opportunity_id)
+
+    def load_cold_opportunity_payload(
+        self, opportunity_id: str, *, record: Optional[OpportunityRecord] = None
+    ) -> Dict[str, Any]:
+        """Return verified archived source truth without changing hot state.
+
+        Matching must be able to score a cold row without expanding its
+        ``[archived]`` marker back into ``opportunities``.  This method is the
+        read-only counterpart to :meth:`hydrate_cold_opportunity`: it verifies
+        bytes, identity and the current content hash, then returns the
+        decompressed payload in memory.  Callers must not persist its fields.
+        """
+        record = record or self.get_opportunity(opportunity_id)
+        if record is None:
+            raise ValueError(f"opportunity not found: {opportunity_id}")
         row = self.session.execute(
             text(
                 "SELECT content_hash, payload_zlib, payload_sha256 "
@@ -275,20 +305,7 @@ class StorageRepository:
             raise RuntimeError("cold archive payload is corrupt") from exc
         if payload.get("opportunity_id") != opportunity_id or payload.get("content_hash") != record.content_hash:
             raise RuntimeError("cold archive identity verification failed")
-        record.description = payload.get("description") or ""
-        record.raw_payload_json = payload.get("raw_payload_json")
-        self.session.query(FieldProvenanceRecord).filter_by(opportunity_id=opportunity_id).delete(synchronize_session=False)
-        for provenance in payload.get("provenance") or []:
-            self.session.add(FieldProvenanceRecord(opportunity_id=opportunity_id, **{
-                key: provenance.get(key) for key in (
-                    "field_name", "raw_value", "normalized_value", "derivation_type",
-                    "raw_pointer", "record_checksum", "rule_id",
-                )
-            }))
-        self.session.flush()
-        _refresh_search_tsv(self.session, opportunity_id)
-        self.session.commit()
-        return self.get_opportunity(opportunity_id)
+        return payload
 
     def get_opportunity(self, opportunity_id: str) -> Optional[OpportunityRecord]:
         return self.session.query(OpportunityRecord).filter_by(id=opportunity_id).first()

@@ -746,7 +746,12 @@ def _enum_or_default(enum_cls: Any, value: Optional[str], default: Any) -> Any:
         return default
 
 
-def _reconstruct_opportunity(session: Any, record: OpportunityRecord) -> Opportunity:
+def _reconstruct_opportunity(
+    session: Any,
+    record: OpportunityRecord,
+    *,
+    archive_payload: Optional[Mapping[str, Any]] = None,
+) -> Opportunity:
     """Best-effort reconstruction of an ``Opportunity`` from a persisted row.
 
     ``title``, ``description``, and ``organization`` are stored with full
@@ -797,12 +802,29 @@ def _reconstruct_opportunity(session: Any, record: OpportunityRecord) -> Opportu
     "gap"/"unknown"-flagged dimensions for a reconstructed opportunity, never
     a crash or a fabricated pass.
     """
-    prov = _first_field_provenance_map(session, record.id)
+    if archive_payload is None:
+        prov = _first_field_provenance_map(session, record.id)
+    else:
+        prov = {
+            item.get("field_name"): item.get("normalized_value")
+            for item in archive_payload.get("provenance") or []
+            if item.get("field_name") and item.get("normalized_value") is not None
+        }
 
     source = record.source_id
-    if record.raw_payload_json:
+    raw_payload_json = (
+        archive_payload.get("raw_payload_json")
+        if archive_payload is not None
+        else record.raw_payload_json
+    )
+    description = (
+        archive_payload.get("description") or ""
+        if archive_payload is not None
+        else record.description
+    )
+    if raw_payload_json:
         try:
-            raw_provenance = json.loads(record.raw_payload_json)
+            raw_provenance = json.loads(raw_payload_json)
             source = raw_provenance.get("source_id") or source
         except (TypeError, ValueError):
             pass
@@ -875,7 +897,7 @@ def _reconstruct_opportunity(session: Any, record: OpportunityRecord) -> Opportu
         source_id=record.source_id,
         organization=record.organization,
         title=record.title,
-        description=record.description,
+        description=description,
         responsibilities=(),
         requirements=(),
         skills=skills,
@@ -985,13 +1007,18 @@ def make_evaluate_new_handler(
             )
 
             for record in pending_records:
+                archive_payload = None
                 if record.description == "[archived]":
                     # Truth-pack changes may make a cold terminal row
-                    # eligible again.  Verify and hydrate its lossless archive
-                    # before reconstructing/scoring; never evaluate marker
-                    # text or silently skip a corrupt archive.
-                    record = repository.hydrate_cold_opportunity(record.id)
-                opportunity = _reconstruct_opportunity(session, record)
+                    # eligible again. Verify and read its lossless archive in
+                    # memory only. The hot row and its compact archive marker
+                    # remain untouched after scoring.
+                    archive_payload = repository.load_cold_opportunity_payload(
+                        record.id, record=record
+                    )
+                opportunity = _reconstruct_opportunity(
+                    session, record, archive_payload=archive_payload
+                )
                 evaluate_and_store(
                     opportunity,
                     truth_graph,

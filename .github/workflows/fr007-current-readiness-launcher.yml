@@ -7,6 +7,10 @@ on:
         description: "Authoritative truth-pack hash (leave blank to discover it)"
         required: false
         default: ""
+      mode:
+        description: "Closure mode: full, recovery, or acceptance"
+        required: false
+        default: "full"
 
 permissions:
   contents: read
@@ -19,4 +23,5 @@ jobs:
     uses: ./.github/workflows/fr007-final-runtime-closure.yml
     with:
       truth_pack_hash: ${{ inputs.truth_pack_hash }}
+      mode: ${{ inputs.mode }}
     secrets: inherit

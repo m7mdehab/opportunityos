@@ -11,6 +11,7 @@ from sqlalchemy.orm import sessionmaker
 
 from storage.models import Base, OpportunityColdArchiveRecord, OpportunityRecord
 from storage.repository import StorageRepository
+from worker.handlers import _reconstruct_opportunity
 
 
 class ColdArchiveHydrationTests(unittest.TestCase):
@@ -50,6 +51,26 @@ class ColdArchiveHydrationTests(unittest.TestCase):
         self.session.commit()
         with self.assertRaisesRegex(RuntimeError, "checksum"):
             StorageRepository(self.session).hydrate_cold_opportunity("cold-1")
+
+    def test_read_only_archive_hydration_keeps_hot_row_cold(self):
+        repository = StorageRepository(self.session)
+        record = self.session.get(OpportunityRecord, "cold-1")
+        payload = repository.load_cold_opportunity_payload("cold-1", record=record)
+
+        # Matching receives authoritative source truth in memory, while the
+        # compact identity row remains the durable representation.
+        reconstructed = _reconstruct_opportunity(
+            self.session, record, archive_payload=payload
+        )
+        self.assertEqual(reconstructed.description, "authoritative text")
+        self.session.expire_all()
+        persisted = self.session.get(OpportunityRecord, "cold-1")
+        self.assertEqual(persisted.description, "[archived]")
+        self.assertIsNone(persisted.raw_payload_json)
+        self.assertEqual(
+            self.session.query(OpportunityColdArchiveRecord).filter_by(opportunity_id="cold-1").count(),
+            1,
+        )
 
 
 if __name__ == "__main__":

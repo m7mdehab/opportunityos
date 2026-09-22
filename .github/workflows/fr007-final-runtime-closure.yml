@@ -7,6 +7,11 @@ on:
         description: "Authoritative truth-pack hash (leave blank to discover it)"
         required: false
         default: ""
+      mode:
+        description: "Closure mode: full, recovery, or acceptance"
+        required: false
+        type: string
+        default: "full"
   workflow_call:
     inputs:
       truth_pack_hash:
@@ -26,6 +31,7 @@ concurrency:
 
 jobs:
   deterministic-postgres:
+    if: ${{ inputs.mode == 'full' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
@@ -69,6 +75,7 @@ jobs:
 
   live-preflight:
     needs: deterministic-postgres
+    if: ${{ always() && (inputs.mode == 'full' || inputs.mode == 'recovery' || inputs.mode == 'acceptance') && (inputs.mode == 'recovery' || inputs.mode == 'acceptance' || needs.deterministic-postgres.result == 'success') }}
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -88,6 +95,7 @@ jobs:
 
   maintenance:
     needs: live-preflight
+    if: ${{ inputs.mode == 'full' }}
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -107,6 +115,7 @@ jobs:
 
   fresh-write:
     needs: maintenance
+    if: ${{ inputs.mode == 'full' }}
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -121,7 +130,8 @@ jobs:
         run: python scripts/fr007_capacity_closure.py fresh-write | tee w227-fresh-write.json
 
   bounded-recovery:
-    needs: fresh-write
+    needs: [live-preflight, maintenance, fresh-write]
+    if: ${{ always() && (inputs.mode == 'full' || inputs.mode == 'recovery' || inputs.mode == 'acceptance') && (inputs.mode == 'recovery' || inputs.mode == 'acceptance' || needs.maintenance.result == 'success') && (inputs.mode == 'recovery' || inputs.mode == 'acceptance' || needs.fresh-write.result == 'success') && needs.live-preflight.result == 'success' }}
     strategy:
       fail-fast: false
       matrix: {shard: [1, 2, 3, 4, 5]}
@@ -143,6 +153,7 @@ jobs:
 
   final-proof:
     needs: bounded-recovery
+    if: ${{ inputs.mode == 'acceptance' && needs.bounded-recovery.result == 'success' }}
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -171,6 +182,7 @@ jobs:
 
   full-monitor:
     needs: final-proof
+    if: ${{ inputs.mode == 'acceptance' && needs.final-proof.result == 'success' }}
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 15
