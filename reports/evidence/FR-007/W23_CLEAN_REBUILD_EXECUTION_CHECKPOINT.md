@@ -1,0 +1,28 @@
+# FR-007 W23 clean rebuild execution checkpoint
+
+- branch: `work/fr007-clean-rebuild-storage-v2`
+- current_phase: OVERSEER_BOOTSTRAP_COMPLETE
+- current_sha_before_agent_changes: `2009a6dad41e1c406c89714fe48fc4374fc508ae`
+- new_supabase_project_ref: `sunjfepvdzfknglrjwhm`
+- new_supabase_project_name: `opportunityos-staging`
+- organization_id: `oxytmzezepplpnawavnh`
+- plan: `free`
+- region: `eu-central-1`
+- api_url: `https://sunjfepvdzfknglrjwhm.supabase.co`
+- direct_db_host: `db.sunjfepvdzfknglrjwhm.supabase.co`
+- project_creation_cost: `$0/month`
+- fresh_db_size: `10 MB`
+- fresh_db_read_only: `off`
+- fresh_db_recovery_mode: `false`
+- public_schema_migrations: `none yet`
+- storage_buckets:
+  - `opportunity-artifacts`: private, 10 MiB/object
+  - `founder-cv-portfolio`: private, 10 MiB/object
+- historical_deleted_project_ref: `lrrcpwaapwynzdsxzwhy`
+- historical_failed_db_size: `~1503 MiB`
+- organization_egress_observation_before rebuild: `3.87 / 5 GB`
+- authoritative_sprint_brief: `reports/evidence/FR-007/W23_CLEAN_REBUILD_STORAGE_V2_END_TO_END_SPRINT.md`
+- exact_next_action: rotate `fr007-staging` GitHub environment secrets/configuration to the NEW project, purge active old-project references, reconcile canonical nine-CV lane, then execute W23 Phase A onward.
+- no_merge: true
+- no_paid_infrastructure: true
+- seven_day_soak_claimed: false
