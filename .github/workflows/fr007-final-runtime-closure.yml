@@ -217,8 +217,15 @@ jobs:
           print(f"MAX_IDLE_IN_TRANSACTION={max_idle}")
           print(f"MAX_UNATTRIBUTED_POSTGRES={max_unattributed}")
           print(f"PROBE_FAILURES={failures}")
+          import json
+          with open("w227-observer.json", "w", encoding="utf-8") as fh:
+              json.dump({"max_worker_connections": max_worker, "max_idle_in_transaction": max_idle, "max_unattributed_postgres": max_unattributed, "probe_failures": failures}, fh, sort_keys=True)
           if failures or not (1 <= max_worker <= 10) or max_idle != 0 or max_unattributed != 0:
               raise SystemExit("connection-pressure acceptance failed")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fr007-w227-observer-${{ github.run_id }}
+          path: w227-observer.json
 
   final-proof:
     needs: [bounded-recovery, connection-observer]
