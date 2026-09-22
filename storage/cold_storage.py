@@ -52,7 +52,10 @@ def client_from_env() -> SupabaseStorageClient:
     env = os.environ
     base = env.get("SUPABASE_STORAGE_URL") or env.get("SUPABASE_URL")
     key = env.get("SUPABASE_SERVICE_ROLE_KEY") or env.get("STORAGE_SERVICE_KEY")
-    bucket = env.get("STORAGE_PRIVATE_BUCKET") or env.get("OPPORTUNITYOS_ARTIFACT_BUCKET") or "opportunity-archives"
+    # Reuse the already-provisioned private artifact bucket by default.  A
+    # fresh bucket would add an avoidable operational dependency during
+    # emergency recovery; callers may still override it explicitly.
+    bucket = env.get("STORAGE_PRIVATE_BUCKET") or env.get("OPPORTUNITYOS_ARTIFACT_BUCKET") or "opportunity-artifacts"
     if not base or not key:
         raise ArtifactStorageError("private cold storage configuration is incomplete")
     return SupabaseStorageClient(base_url=base, service_key=key, bucket=bucket)
