@@ -96,6 +96,16 @@ def live_maintenance(dsn: str, truth_pack_hash: str | None) -> dict:
             plan = build_plan(connection, truth_pack_hash=selected_hash)
             connection.commit()
             print(f"maintenance_plan_ready eligible={plan.eligible_count} active_projection={plan.active_projection_count}", flush=True)
+            # Reclaim the largest derived projection footprint before writing
+            # lossless cold payloads.  On a near-quota database PostgreSQL
+            # cannot stage a second copy of the GIN/index pages needed by the
+            # archive insert unless this derived state is compacted first.
+            connection.execute(text("UPDATE feed_projection SET search_text = '', search_tsv = NULL"))
+            connection.commit()
+            connection.execute(text("SET lock_timeout = '5min'"))
+            print("vacuum_full_start relation=feed_projection_prearchive", flush=True)
+            connection.execute(text("VACUUM (FULL, ANALYZE) public.feed_projection"))
+            print("vacuum_full_done relation=feed_projection_prearchive", flush=True)
             with connection.begin():
                 result = apply_maintenance(connection, truth_pack_hash=selected_hash, confirm=True)
             # Physical reclaim must run outside a transaction.  These are the
