@@ -300,26 +300,30 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await page.keyboard.press("Escape");
     await expect(drawer).not.toBeVisible();
 
-    // 13. Poll Now response contains arrays of {source_id,job_id} and {source_id,reason}
-    // and existing feed remains visible
-    const poll = await pageJson<{
-      enqueued: Array<{ source_id: string; job_id: string }>;
-      skipped: Array<{ source_id: string; reason: string }>;
-    }>(page, "/api/worker/poll-now", { method: "POST" });
-    expect(poll.ok, `Poll Now returned ${poll.status}`).toBe(true);
-    expect(Array.isArray(poll.body.enqueued)).toBe(true);
-    expect(Array.isArray(poll.body.skipped)).toBe(true);
-    for (const item of poll.body.enqueued) {
-      expect(typeof item.source_id).toBe("string");
-      expect(typeof item.job_id).toBe("string");
-    }
-    for (const item of poll.body.skipped) {
-      expect(typeof item.source_id).toBe("string");
-      expect(typeof item.reason).toBe("string");
-    }
+    // 13. Founder activity round-trip uses the normal UI/RPC path. Undo restores
+    // the actionable state while retaining both immutable audit events.
+    await firstCard.click();
+    const activityDrawer = page.getByRole("dialog");
+    await activityDrawer.getByRole("button", { name: "Dismiss" }).click();
+    await expect(activityDrawer.getByText("Current status: Dismissed")).toBeVisible();
+    await activityDrawer.getByRole("button", { name: "Clear / undo" }).click();
+    await expect(activityDrawer.getByText("Current status: Dismissed")).toHaveCount(0);
+    const activityDetail = await pageJson<{
+      action_history: Array<{ action_type: string }>;
+    }>(page, `/api/opportunities/${encodeURIComponent(first.id)}`);
+    expect(activityDetail.ok, `activity detail returned ${activityDetail.status}`).toBe(true);
+    expect(activityDetail.body.action_history.some((event) => event.action_type === "dismiss")).toBe(true);
+    expect(activityDetail.body.action_history.some((event) => event.action_type === "clear")).toBe(true);
+    await page.keyboard.press("Escape");
     await expect(firstCard).toBeVisible();
 
-    // 14. Logout invalidates hosted session and subsequent protected request is 401
+    // 14. Read source health only; do not enqueue fresh polls after queue convergence.
+    const sources = await pageJson<{ sources: Array<{ source_id: string }> }>(page, "/api/sources/health");
+    expect(sources.ok, `source health returned ${sources.status}`).toBe(true);
+    expect(Array.isArray(sources.body.sources)).toBe(true);
+    expect(sources.body.sources.length).toBeGreaterThan(0);
+
+    // 15. Logout invalidates hosted session and subsequent protected request is 401
     const logout = await pageJson<{ authenticated: boolean }>(
       page,
       "/api/auth/logout",

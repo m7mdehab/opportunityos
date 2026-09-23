@@ -666,4 +666,8 @@
 - checkpoint refresh itself was pushed as `be95f472b191f166b3f046e2820e383a5b46af55`; run `35916759119` remains pinned to `581df5e`.
 - current_sha_now: `be95f472b191f166b3f046e2820e383a5b46af55`
 - current_remote_sha: `be95f472b191f166b3f046e2820e383a5b46af55`
-- exact_next_action: wait for run `35916759119` to expose a meaningful source-batch boundary, then checkpoint measured progress and immediately queue the next non-overlapping slice only after this run reaches a safe terminal/boundary state.
+- execution_update_2026_09_23_staging_smoke_hardened:
+  - while source bootstrap `35916759119` / job `107370111069` runs on immutable SHA `581df5e`, updated only the staging Playwright smoke: it now verifies the Founder UI dismiss -> clear/undo activity cycle and preserves/asserts both audit events; replaced its post-acceptance `Poll Now` mutation with a read-only source-health check so final queue convergence remains valid. It still verifies authenticated feed/search/detail and selected private CV retrieval.
+  - `git diff --check` passes. Local `web/node_modules` is absent, so the dedicated hosted Cloudflare staging workflow will be the authoritative lint/build/Playwright validation; this web-test-only change does not affect accepted PostgreSQL/Storage V2 CI or the running source worker.
+- current_sha_now: `37c696860424d87e59c9cd475d4df589a23aeb2a`; bootstrap remains pinned to `581df5ed927f0e84d0294c0d3f2d83da25f78714`.
+- exact_next_action: commit/push the narrow smoke/checkpoint update with push-CI skipped; let bootstrap run `35916759119` continue untouched, monitor at source-batch boundaries, and run dedicated `SMOKE_STAGING` only after source ingestion/queue acceptance order permits it.
