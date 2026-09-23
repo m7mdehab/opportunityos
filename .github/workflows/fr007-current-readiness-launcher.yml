@@ -8,11 +8,11 @@ on:
         required: false
         default: ""
       mode:
-        description: "Closure, Storage V2 CI, DB probe, CV verification, one-source gate, or bounded source bootstrap"
+        description: "Closure, Storage V2 CI, DB probe, CV verification, bounded source bootstrap, or normal queue recovery"
         required: false
         default: "full"
         type: choice
-        options: [full, acceptance, storage-v2-ci, db-credential-probe, verify-cv-storage, representative-source, incremental-source-bootstrap]
+        options: [full, acceptance, storage-v2-ci, db-credential-probe, verify-cv-storage, representative-source, incremental-source-bootstrap, queue-recovery]
       source_id:
         description: "The one approved read-only representative source"
         required: false
@@ -63,8 +63,16 @@ jobs:
       source_offset: ${{ inputs.source_offset }}
       max_sources: ${{ inputs.max_sources }}
     secrets: inherit
+  queue-recovery:
+    if: ${{ inputs.mode == 'queue-recovery' }}
+    uses: ./.github/workflows/fr007-worker-drain.yml
+    with:
+      mode: drain
+      max_jobs: "5"
+      time_budget_seconds: "480"
+    secrets: inherit
   final-closure:
-    if: ${{ inputs.mode != 'storage-v2-ci' && inputs.mode != 'db-credential-probe' && inputs.mode != 'verify-cv-storage' && inputs.mode != 'representative-source' && inputs.mode != 'incremental-source-bootstrap' }}
+    if: ${{ inputs.mode != 'storage-v2-ci' && inputs.mode != 'db-credential-probe' && inputs.mode != 'verify-cv-storage' && inputs.mode != 'representative-source' && inputs.mode != 'incremental-source-bootstrap' && inputs.mode != 'queue-recovery' }}
     uses: ./.github/workflows/fr007-final-runtime-closure.yml
     with:
       truth_pack_hash: ${{ inputs.truth_pack_hash }}

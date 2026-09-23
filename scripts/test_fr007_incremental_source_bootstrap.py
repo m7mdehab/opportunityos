@@ -132,6 +132,19 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
         self.assertIn("source_offset: ${{ inputs.source_offset }}", launcher)
         self.assertIn("max_sources: ${{ inputs.max_sources }}", launcher)
 
+    def test_launcher_exposes_only_bounded_normal_queue_recovery(self):
+        launcher = (ROOT / ".github/workflows/fr007-current-readiness-launcher.yml").read_text(encoding="utf-8")
+        worker = (ROOT / ".github/workflows/fr007-worker-drain.yml").read_text(encoding="utf-8")
+
+        self.assertIn("queue-recovery", launcher)
+        self.assertIn("uses: ./.github/workflows/fr007-worker-drain.yml", launcher)
+        self.assertIn("mode: drain", launcher)
+        self.assertIn('max_jobs: "5"', launcher)
+        self.assertIn("workflow_call:", worker)
+        self.assertIn("github.event_name == 'workflow_call' && inputs.mode == 'drain'", worker)
+        self.assertIn("github.event_name == 'workflow_call' && (inputs.mode == 'all' || inputs.mode == 'enqueue')", worker)
+        self.assertIn("inputs.mode != 'queue-recovery'", launcher)
+
     def test_incremental_runner_measures_before_and_after_each_source(self):
         ids = [f"source-{idx:03}" for idx in range(343)]
         registry = SimpleNamespace(_sources=set(ids), is_read_allowed=lambda _source_id: True)

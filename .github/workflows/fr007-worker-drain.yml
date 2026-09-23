@@ -16,6 +16,23 @@ on:
         description: "Time budget in seconds per shard (capped to 540)"
         required: false
         default: "480"
+  workflow_call:
+    inputs:
+      mode:
+        description: "Execution mode for a reusable normal worker drain"
+        required: false
+        type: string
+        default: "drain"
+      max_jobs:
+        description: "Maximum jobs to drain per shard in this bounded recovery run (capped to 150)"
+        required: false
+        type: string
+        default: "30"
+      time_budget_seconds:
+        description: "Time budget in seconds per shard (capped to 540)"
+        required: false
+        type: string
+        default: "480"
   schedule:
     - cron: "*/15 * * * *"
   push:
@@ -35,7 +52,10 @@ concurrency:
 
 jobs:
   enqueue:
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.mode == 'all' || inputs.mode == 'enqueue' || inputs.mode == '' }}
+    if: >-
+      ${{ (github.event_name == 'workflow_dispatch' && (inputs.mode == 'all' || inputs.mode == 'enqueue' || inputs.mode == '')) ||
+          (github.event_name == 'workflow_call' && (inputs.mode == 'all' || inputs.mode == 'enqueue')) ||
+          github.event_name == 'schedule' || github.event_name == 'push' }}
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -59,7 +79,12 @@ jobs:
 
   drain:
     needs: [enqueue]
-    if: ${{ always() && (github.event_name != 'workflow_dispatch' || inputs.mode == 'all' || inputs.mode == 'drain') && (needs.enqueue.result == 'success' || inputs.mode == 'drain') }}
+    if: >-
+      ${{ always() &&
+          ((github.event_name == 'workflow_dispatch' && inputs.mode == 'drain') ||
+           (github.event_name == 'workflow_call' && inputs.mode == 'drain') ||
+           ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && (inputs.mode == 'all' || inputs.mode == '') && needs.enqueue.result == 'success') ||
+           ((github.event_name == 'schedule' || github.event_name == 'push') && needs.enqueue.result == 'success')) }}
     strategy:
       fail-fast: false
       matrix:

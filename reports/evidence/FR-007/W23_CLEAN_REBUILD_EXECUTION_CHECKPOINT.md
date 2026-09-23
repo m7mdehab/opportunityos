@@ -1,5 +1,26 @@
 # FR-007 W23 clean rebuild execution checkpoint
 
+- current_phase: PHASE_V_BOOTSTRAP_RETRY_RECOVERY_WORKFLOW_READY
+- current_sha_now: `6e478bc42358858c67e82b1046c026c50bf58db1` (queue-recovery workflow wiring/test local)
+- current_remote_sha: `6e478bc42358858c67e82b1046c026c50bf58db1`
+- latest_checkpoint_refresh_2026_09_23_bootstrap_source_retry:
+  - fetched origin and confirmed authoritative branch head `6e478bc42358858c67e82b1046c026c50bf58db1`.
+  - incremental bootstrap run `35841773313` failed closed at `greenhouse:accenturefederalservices` after four read-allowed sources succeeded. Its source-scoped archive verification passed for 182 new objects /1,589,835 compressed bytes. Safe error inspection found one poll error (length 43; no HTTP, network, timeout, TLS, truth-pack, or database class matched) and one normal RETRY job; no raw error or logs were retained. The artifact's fatal guard was `queue_not_converged_at_source_boundary`, not a capacity/direct-tier/archive failure.
+  - latest aggregate-only live snapshot: replacement project healthy at `0023_alembic_access`; 16,223,379 physical bytes; 346 opportunities (10 HOT/336 COLD), 10 projections, 346 evaluations, 120 provenance rows, 336 verified cold archives /2,501,026 compressed bytes; opportunity-artifacts 336 objects /2,501,026 bytes. Four successful source identities; one RETRY, 0 expired leases, 0 dead letters. Forecast `208,618,249` bytes /198.9 MiB remains below the 200 MiB hard ceiling. No Founder-protected opportunity rows.
+  - added a branch-reusable normal worker drain path to the readiness launcher (`queue-recovery` mode) so a due retry can be processed by ordinary worker semantics before resuming bootstrap; no worker queue rows were edited. Added a static wiring regression. Focused suite `scripts.test_fr007_incremental_source_bootstrap`: 9 passed; workflow YAML parses and `git diff --check` passes. Changes are local/uncommitted; hosted PG16/17 push verification is still required.
+  - no user-presence blocker. No schema change, manual worker mutation, source truth loss, or paid infrastructure.
+  - exact_next_action: commit/push the narrow workflow/test/checkpoint changes; verify the push-triggered PG16/17 suite. Then use the readiness launcher's `queue-recovery` mode to let the normal worker retry complete; confirm queue convergence and retry outcome, then rerun bounded segment offset 0/count 125 so successful sources are skipped and the registry slice resumes.
+
+- current_phase: PHASE_V_FULL_BOOTSTRAP_SEGMENT_0_RUNNING
+- current_sha_now: `6e478bc42358858c67e82b1046c026c50bf58db1`
+- current_remote_sha: `6e478bc42358858c67e82b1046c026c50bf58db1`
+- latest_checkpoint_refresh_2026_09_23_segment_0_started:
+  - PG16/PG17 acceptance run `35841234170` passed on current SHA; each pytest footer is `1646 passed, 22 skipped, 698 warnings, 2012 subtests passed`. Migration, source-gate and bounded Founder-backup checks also passed. Latest CV hash proof remains `35799588764`; latest worker durability OCI proof remains `35815553250` on SHA `2485903...` (no worker/Docker path has changed since).
+  - selected the feature branch in the registered readiness launcher and ran mode `incremental-source-bootstrap`, `source_offset=0`, `max_sources=125`. Run `35841773313` is executing the bounded workflow as of 2026-09-23 12:16 Africa/Cairo. Other launcher jobs (final closure, representative gate, credential recheck) are skipped as intended; only `incremental-source-bootstrap / Bounded incremental sources 0+` is running.
+  - live aggregate at last check: healthy replacement PostgreSQL 17, head `0023_alembic_access`, 15,125,651 physical bytes; 164 opportunities (10 HOT/154 COLD), 154 archives /911,191 compressed bytes; four distinct sources have successful polls (including the prior Himalayas and two zero-result sources); no pending/retry/dead-letter/expired jobs; one normal worker job was running within the source gate. The live storage forecast remains below 200 MiB. Counts may increase while the job continues; the final per-source report will be reviewed before offset 125.
+  - no manual worker-row changes or new schema migration occurred. No user-presence blocker.
+  - exact_next_action: wait for run `35841773313`; inspect its sanitized artifact and complete job result; diagnose any source/archive/invariant failure before starting offset 125.
+
 - current_phase: PHASE_V_INCREMENTAL_BOOTSTRAP_DISPATCH_REPAIR
 - current_sha_now: `b8e9bc58745c2336643b737a1e9b38787a636425` (dispatch repair is local/uncommitted)
 - current_remote_sha: `b8e9bc58745c2336643b737a1e9b38787a636425`
