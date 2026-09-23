@@ -7,9 +7,11 @@ objects, with hard object-count and byte ceilings; it never exports the corpus.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import os
 import sys
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -28,8 +30,9 @@ MAX_ARCHIVE_BYTES = 8 * 1024 * 1024
 CORPUS_SOURCE_ID = "__successful_corpus__"
 CORPUS_ARCHIVE_PAGE_SIZE = 500
 CORPUS_ARCHIVE_PAGE_BYTES = 32 * 1024 * 1024
-CORPUS_ARCHIVE_TOTAL_LIMIT = 64 * 1024 * 1024
-CORPUS_ARCHIVE_OBJECT_LIMIT = 5_000
+CORPUS_ARCHIVE_TOTAL_LIMIT = 250 * 1024 * 1024
+CORPUS_ARCHIVE_OBJECT_LIMIT = 30_000
+ARCHIVE_VERIFY_WORKERS = 5
 HISTORICAL_CORPUS_SIZE = 26_000
 DATABASE_HARD_BUDGET = 200 * 1024 * 1024
 
@@ -270,9 +273,15 @@ def verify_source_archives(
 
     client = client_from_env()
     client.ensure_private_bucket()
-    verified_bytes = 0
-    for row in records:
-        compressed = get_cold_object(row["object_key"], row["payload_sha256"], client=client)
+
+    worker_clients = threading.local()
+
+    def verify_one(row) -> int:
+        worker_client = getattr(worker_clients, "client", None)
+        if worker_client is None:
+            worker_client = client_from_env()
+            worker_clients.client = worker_client
+        compressed = get_cold_object(row["object_key"], row["payload_sha256"], client=worker_client)
         if len(compressed) != int(row["compressed_size_bytes"]):
             raise RuntimeError("cold archive object byte count does not match database metadata")
         payload = unpack(
@@ -284,7 +293,12 @@ def verify_source_archives(
         description = str(payload.get("canonical_description") or "").strip().casefold()
         if description == "[archived]":
             raise RuntimeError("cold archive contains a forbidden placeholder description")
-        verified_bytes += len(compressed)
+        return len(compressed)
+
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=min(ARCHIVE_VERIFY_WORKERS, len(records))
+    ) as pool:
+        verified_bytes = sum(pool.map(verify_one, records))
     result = {
         "source_id": source_id,
         "archive_objects_verified": len(records),

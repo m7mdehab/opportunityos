@@ -225,10 +225,13 @@ class WorkerRunner:
         session = self.session_factory()
         try:
             queue = BackgroundWorkerQueue(session, worker_id=self.worker_id)
-            job = queue.claim_next_job(
-                lease_duration_seconds=self.lease_seconds,
-                allowed_job_types=self.allowed_job_types,
-            )
+            if self.allowed_job_types is None:
+                job = queue.claim_next_job(lease_duration_seconds=self.lease_seconds)
+            else:
+                job = queue.claim_next_job(
+                    lease_duration_seconds=self.lease_seconds,
+                    allowed_job_types=self.allowed_job_types,
+                )
             if job is None:
                 logger.info(
                     "worker.idle_poll",

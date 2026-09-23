@@ -76,7 +76,6 @@ class TestHostedBootstrapConnectionReuse(unittest.TestCase):
             fake_handlers,
             worker_id="proof-worker-1",
             poll_interval=0.1,
-            allowed_job_types=None,
         )
 
     def test_source_shards_restrict_claims_to_poll_jobs(self) -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -206,6 +207,49 @@ class RepresentativeSourceEconomicsTests(unittest.TestCase):
         self.assertTrue(proof["has_more"])
         self.assertEqual(get_object.call_count, 500)
 
+    def test_archive_object_checksum_verification_uses_at_most_five_concurrent_downloads(self):
+        rows = [
+            {
+                "opportunity_id": f"op-{idx}",
+                "content_hash": f"content-{idx}",
+                "object_key": f"cold/{idx}.gz",
+                "payload_sha256": f"sha-{idx}",
+                "compressed_size_bytes": 1,
+                "storage_backend": "supabase_storage",
+            }
+            for idx in range(5)
+        ]
+        result = MagicMock()
+        result.mappings.return_value.all.return_value = rows
+        connection = MagicMock()
+        connection.execute.return_value = result
+        barrier = threading.Barrier(5, timeout=5.0)
+        lock = threading.Lock()
+        concurrent = {"active": 0, "peak": 0}
+
+        def download(*_args, **_kwargs):
+            with lock:
+                concurrent["active"] += 1
+                concurrent["peak"] = max(concurrent["peak"], concurrent["active"])
+            barrier.wait()
+            with lock:
+                concurrent["active"] -= 1
+            return b"x"
+
+        with patch.object(source_gate, "client_from_env", return_value=MagicMock()), patch.object(
+            source_gate, "get_cold_object", side_effect=download
+        ), patch.object(source_gate, "unpack", return_value={"canonical_description": "real"}):
+            proof = source_gate.verify_source_archives(
+                connection,
+                source_id="himalayas",
+                max_objects=5,
+                max_archive_bytes=1024,
+            )
+
+        self.assertEqual(proof["archive_objects_verified"], 5)
+        self.assertEqual(proof["compressed_bytes_downloaded"], 5)
+        self.assertEqual(concurrent["peak"], 5)
+
     def test_successful_corpus_archives_are_verified_in_bounded_pages(self):
         first = {
             "archive_objects_verified": 500,
@@ -234,6 +278,41 @@ class RepresentativeSourceEconomicsTests(unittest.TestCase):
 
     def test_successful_corpus_archive_verifier_stops_on_aggregate_object_limit(self):
         connection = _archive_inventory_connection(source_gate.CORPUS_ARCHIVE_OBJECT_LIMIT + 1, 1)
+        with patch.object(source_gate, "verify_source_archives") as verify:
+            with self.assertRaisesRegex(RuntimeError, "total object or egress bound"):
+                source_gate.verify_successful_corpus_archives(connection)
+        verify.assert_not_called()
+
+    def test_successful_corpus_archive_verifier_covers_26k_scale_with_one_bounded_pass(self):
+        expected_objects = 26_000
+        expected_bytes = 64 * 1024 * 1024 + 1
+        connection = _archive_inventory_connection(expected_objects, expected_bytes)
+        pages = [
+            {
+                "archive_objects_verified": 500,
+                "compressed_bytes_downloaded": 1_290_555,
+                "last_verified_opportunity_id": f"cursor-{index}",
+            }
+            for index in range(51)
+        ]
+        pages.append({
+            "archive_objects_verified": 500,
+            "compressed_bytes_downloaded": 1_290_560,
+            "last_verified_opportunity_id": "cursor-final",
+        })
+        pages.append({"archive_objects_verified": 0, "compressed_bytes_downloaded": 0})
+        with patch.object(source_gate, "verify_source_archives", side_effect=pages) as verify:
+            proof = source_gate.verify_successful_corpus_archives(connection)
+
+        self.assertEqual(proof["archive_objects_verified"], expected_objects)
+        self.assertEqual(proof["compressed_bytes_downloaded"], expected_bytes)
+        self.assertEqual(proof["pages_verified"], 52)
+        self.assertEqual(verify.call_count, 53)
+        self.assertGreater(source_gate.CORPUS_ARCHIVE_TOTAL_LIMIT, expected_bytes)
+        self.assertGreaterEqual(source_gate.CORPUS_ARCHIVE_OBJECT_LIMIT, 26_000)
+
+    def test_successful_corpus_archive_verifier_stops_before_egress_cap(self):
+        connection = _archive_inventory_connection(1, source_gate.CORPUS_ARCHIVE_TOTAL_LIMIT + 1)
         with patch.object(source_gate, "verify_source_archives") as verify:
             with self.assertRaisesRegex(RuntimeError, "total object or egress bound"):
                 source_gate.verify_successful_corpus_archives(connection)

@@ -248,19 +248,11 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
             incremental, "_take_snapshot", side_effect=[before, after]
         ), patch.object(
             incremental,
-            "_verify_increment_archives",
-            return_value={
-                "source_id": ids[0],
-                "archive_objects_verified": 2,
-                "compressed_bytes_downloaded": 1024,
-                "sha256_identity_verified": True,
-                "download_scope": "source-scoped-cold-archives-only",
-            },
-        ), patch.object(
-            incremental,
             "_runnable_job_type_counts",
             return_value={},
         ), patch.object(
+            incremental, "_verify_increment_archives"
+        ) as verify_archives, patch.object(
             incremental, "_run_parallel_source_batch", return_value=[{"return_code": 0}]
         ) as batch_runner, contextlib.redirect_stdout(
             io.StringIO()
@@ -275,7 +267,12 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
         self.assertEqual(report["sources"][0]["source_id"], ids[0])
         self.assertEqual(report["sources"][0]["before"]["database_bytes"], before["database_bytes"])
         self.assertEqual(report["sources"][0]["after"]["successful_source_coverage"], 2)
-        self.assertTrue(report["sources"][0]["archive_verification"]["sha256_identity_verified"])
+        self.assertEqual(
+            report["sources"][0]["archive_verification"]["status"],
+            "deferred_to_final_corpus_verification",
+        )
+        self.assertFalse(report["sources"][0]["archive_verification"]["sha256_identity_verified"])
+        verify_archives.assert_not_called()
         batch_runner.assert_called_once_with([ids[0]], batch_tag="0-0")
         self.assertNotIn("captured internal payload marker", stdout.getvalue())
 
@@ -306,19 +303,9 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
             incremental, "_take_snapshot", side_effect=[before, after]
         ), patch.object(
             incremental,
-            "_verify_increment_archives",
-            return_value={
-                "source_id": ids[0],
-                "archive_objects_verified": 2,
-                "compressed_bytes_downloaded": 1024,
-                "sha256_identity_verified": True,
-                "download_scope": "source-scoped-cold-archives-only",
-            },
-        ), patch.object(
-            incremental,
             "_runnable_job_type_counts",
             side_effect=queue_states,
-        ), patch.object(
+        ), patch.object(incremental, "_verify_increment_archives"), patch.object(
             incremental, "_run_parallel_source_batch", return_value=[{"return_code": 0}]
         ), patch.object(incremental, "hosted_bootstrap_main", side_effect=runner) as hosted, contextlib.redirect_stdout(
             io.StringIO()
@@ -351,19 +338,9 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
             incremental, "_take_snapshot", side_effect=[before, after]
         ), patch.object(
             incremental,
-            "_verify_increment_archives",
-            return_value={
-                "source_id": ids[0],
-                "archive_objects_verified": 2,
-                "compressed_bytes_downloaded": 1024,
-                "sha256_identity_verified": True,
-                "download_scope": "source-scoped-cold-archives-only",
-            },
-        ), patch.object(
-            incremental,
             "_runnable_job_type_counts",
             return_value={("poll_source", "PENDING"): 1},
-        ), patch.object(
+        ), patch.object(incremental, "_verify_increment_archives"), patch.object(
             incremental, "_run_parallel_source_batch", return_value=[{"return_code": 0}]
         ), patch.object(incremental, "hosted_bootstrap_main") as hosted, contextlib.redirect_stdout(
             io.StringIO()

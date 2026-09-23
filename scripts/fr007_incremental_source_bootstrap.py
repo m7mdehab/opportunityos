@@ -402,23 +402,21 @@ def run_incremental_bootstrap(*, source_offset: int, max_sources: int, output: P
             after_projection = projected_final_database_bytes(after, model)
             after_failures = invariant_failures(after, after_projection)
             source_result = _safe_source_result(after)
-            archive_verification: dict[str, Any] | None = None
-            archive_error: str | None = None
-            try:
-                archive_verification = _verify_increment_archives(
-                    source_id,
-                    before_by_source[source_id]["counts"].get("source_latest_archive_at"),
-                )
-            except Exception as exc:
-                archive_error = type(exc).__name__
+            # Content downloads are deliberately deferred to one bounded,
+            # successful-corpus verification after all source slices finish.
+            # Re-downloading each batch here would consume the egress budget
+            # before the single comprehensive checksum pass.
+            archive_verification = {
+                "status": "deferred_to_final_corpus_verification",
+                "sha256_identity_verified": False,
+                "download_scope": "none_during_incremental_bootstrap",
+            }
             source_ok = source_result["status"] == "ok" and runner_error is None
             failures = after_failures[:]
             if runner_error is not None:
                 failures.append("worker_runner_" + runner_error)
             if followup_error is not None:
                 failures.append(followup_error)
-            if archive_error is not None:
-                failures.append("cold_archive_verification_" + archive_error)
             if not source_ok:
                 source_failures.append(source_id)
             item = {

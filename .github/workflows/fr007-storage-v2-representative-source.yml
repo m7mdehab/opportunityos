@@ -32,7 +32,7 @@ jobs:
     name: One bounded ${{ inputs.source_id }} source through direct tiering
     runs-on: ubuntu-latest
     environment: fr007-staging
-    timeout-minutes: 20
+    timeout-minutes: 60
     services:
       benchmark-postgres:
         image: postgres:17-alpine

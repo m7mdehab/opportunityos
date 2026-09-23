@@ -146,13 +146,13 @@ def _drain(
         session_factory=session_factory,
         truth_pack_path=os.environ.get("OPPORTUNITYOS_TRUTH_PACK_PATH") or None,
     )
-    runner = WorkerRunner(
-        session_factory,
-        handlers,
-        worker_id=effective_worker_id,
-        poll_interval=0.1,
-        allowed_job_types={"poll_source"} if poll_source_only else None,
-    )
+    runner_kwargs = {
+        "worker_id": effective_worker_id,
+        "poll_interval": 0.1,
+    }
+    if poll_source_only:
+        runner_kwargs["allowed_job_types"] = {"poll_source"}
+    runner = WorkerRunner(session_factory, handlers, **runner_kwargs)
     started = time.monotonic()
     processed = 0
     while processed < max_jobs and time.monotonic() - started < budget:
@@ -290,13 +290,14 @@ def main(argv: list[str] | None = None) -> int:
                 session.close()
 
         if args.mode in ("drain", "all") and not args.dry_run:
-            processed = _drain(
-                factory,
-                max_jobs=max(0, args.max_jobs),
-                budget=max(0.0, args.time_budget_seconds),
-                worker_id=args.worker_id,
-                poll_source_only=args.poll_source_only,
-            )
+            drain_kwargs = {
+                "max_jobs": max(0, args.max_jobs),
+                "budget": max(0.0, args.time_budget_seconds),
+                "worker_id": args.worker_id,
+            }
+            if args.poll_source_only:
+                drain_kwargs["poll_source_only"] = True
+            processed = _drain(factory, **drain_kwargs)
 
         print(
             f"mode={args.mode} dry_run={args.dry_run} "
