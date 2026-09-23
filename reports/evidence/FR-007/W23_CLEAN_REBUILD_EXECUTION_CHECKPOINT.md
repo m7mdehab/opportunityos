@@ -811,3 +811,12 @@
 - current_sha_now: `a9af20fdd1580a0e43d74d472dce60f9382342b5`
 - current_remote_sha: `a9af20fdd1580a0e43d74d472dce60f9382342b5`
 - exact_next_action: keep `35929446064` undisturbed and continue only to natural source-batch boundaries. Final archive checksum remains deferred until all three registry ranges finish.
+
+- execution_update_2026_09_23_2322Z_slice_125_twentyfive_plus_sources_green:
+  - run `35929446064` continues. The next five-source group all finished with latest status `ok`: `greenhouse:later`, `greenhouse:leagueinc`, `greenhouse:legendcareers`, `greenhouse:legion`, `greenhouse:liveperson` (live poll history ordered by start time). Long `legendcareers` poll completed once; normal queue then emptied.
+  - aggregate snapshot at `2026-09-23T23:21:29Z`: DB `91,737,235` bytes; 11,512 opportunities; HOT/feed 1,418; COLD 10,094; cold archives 10,094 /`78,446,679` compressed bytes; 151 latest-success identities; 0 latest failures. Queue pending/retry/running/expired/dead-letter all 0.
+  - offset-125 slice has now progressed through 26 additional successful source identities from the initial 126 coverage, without replay or corpus reads.
+- current_phase: `PHASE_V_BOOTSTRAP_SLICE_125_CONTINUING_AFTER_TWENTYFIVE_ADDITIONAL_SOURCE_SUCCESSES`
+- current_sha_now: `43326fd62e4fac28f0fa1531f4765a654cb38db2`
+- current_remote_sha: `43326fd62e4fac28f0fa1531f4765a654cb38db2`
+- exact_next_action: continue run `35929446064` at its next natural batch boundary. Preserve the 5-shard cap, check capacity and latest-source status there, and defer corpus-wide integrity verification until all source ranges are complete.
