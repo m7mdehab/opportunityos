@@ -777,3 +777,11 @@
 - current_sha_now: `1b7ee7cf47738a2960d527008d718967f4d5d931`
 - current_remote_sha: `1b7ee7cf47738a2960d527008d718967f4d5d931`
 - exact_next_action: checkpoint/push this terminal boundary, then dispatch the same registered launcher in `incremental-source-bootstrap` mode at offset `125` with max `125`. Let its existing normal five-shard batches process new/unfinished source identities; do not rerun successful sources. Check the third/final offset range after its terminal result, then one final archive verification and move directly to queue/runtime/monitor/Founder acceptance.
+
+- execution_update_2026_09_23_2239Z_slice_125_dispatched:
+  - checkpoint commit `e80aed3a30d6c2e4f4992caccd550aade9519aed` is pushed. Registered launcher run `35929446064` / job `107412282316` is now `in_progress`, branch `work/fr007-clean-rebuild-storage-v2`, immutable head `e80aed3a30d6c2e4f4992caccd550aade9519aed`, mode `incremental-source-bootstrap`, source offset 125, max 125. The only active job is the bootstrap worker; all other mode-specific jobs were skipped.
+  - pre-start aggregate snapshot at `2026-09-23T22:38:44Z`: writable primary DB `84,839,571` bytes; 10,401 opportunities, HOT/feed 1,299, COLD 9,102, 9,102 archives /`72,491,554` compressed bytes, 126 latest-successful source identities, 0 latest failures; queue all 0. No corpus reads or full verification.
+- current_phase: `PHASE_V_BOOTSTRAP_SLICE_125_ACTIVE`
+- current_sha_now: `e80aed3a30d6c2e4f4992caccd550aade9519aed`
+- current_remote_sha: `e80aed3a30d6c2e4f4992caccd550aade9519aed`
+- exact_next_action: leave run `35929446064` untouched and inspect only at natural bounded batch/completion boundaries. On terminal result, examine its sanitized source outcomes and latest live status, then dispatch only the remaining final registry offset range if any. Preserve <=200 MiB projection, five-shard/ten-connection cap, and one final whole-corpus archive verification.
