@@ -729,3 +729,13 @@
 - current_sha_now: `47899b1118381de49eec8e870e05a2de70651f5e`
 - current_remote_sha: `47899b1118381de49eec8e870e05a2de70651f5e`
 - exact_next_action: continue observing bootstrap run `35916759119` at its natural bounded batch boundaries. Do not dispatch overlapping bootstrap/queue work. If the bounded job reaches its six-hour limit, resume only non-successful source identities from the current live DB state; once bootstrap is complete, run the single final archive/object verification and proceed directly through queue convergence and runtime closure.
+
+- execution_update_2026_09_23_2152Z_flexport_verified_boundary:
+  - the unchanged bootstrap run `35916759119` completed `greenhouse:flexport` naturally and once: 199 raw /199 unique /199 inserted; latest poll status `ok`, retry count 0. Its normal evaluation follow-up completed, and the run remains active in its bounded five-source bootstrap step.
+  - aggregate-only SQL at `2026-09-23T21:52:08Z`: PostgreSQL `76,991,635` bytes; 9,179 opportunities (1,180 HOT /7,999 COLD /0 protected); 1,180 feed rows; 0 synthetic `active` rows; 9,179 current evaluations; 7,999 private archives /`63,696,113` compressed bytes. Queue pending/retry/running/expired/dead-letter all 0. Latest source identities: 106 successful.
+  - current direct-tier checks remain clean: cold descriptions 0, cold raw payloads 0, cold provenance 0, cold verbose evaluation 0. Private opportunity bucket is 7,999 objects /`63,696,113` bytes; canonical CV bucket remains 32 objects /`2,163,348` bytes. Largest live relations: opportunities 19,480,576; storage.objects 17,907,712; match_evaluations 9,650,176; field_provenances 6,979,584; opportunity_cold_archive 6,217,728; feed_projection 2,785,280 bytes.
+  - no source was replayed, no queue row edited, and no whole-corpus object verification or extra CI was run. No source failure or capacity stop is present; measured database remains safely below 200 MiB.
+- current_phase: `PHASE_V_BOOTSTRAP_RUN_35916759119_CONTINUING_AFTER_FLEXPORT_SUCCESS_106_SOURCE_IDENTITIES`
+- current_sha_now: `b68b54ce1e81654d069880d9b320c167331075be` (checkpoint-only commit after the measured live snapshot)
+- current_remote_sha: `b68b54ce1e81654d069880d9b320c167331075be`
+- exact_next_action: continue the same hosted run at its natural batch boundaries. Wait for the runner's per-source/invariant checks to finish, then allow only its selected unsuccessful sources to proceed. Do not overlap the bootstrap with queue recovery or another source slice; after full intended source coverage, perform exactly one comprehensive archive/object verification before terminal queue and runtime acceptance.
