@@ -49,6 +49,11 @@ class RepresentativeSourceEconomicsTests(unittest.TestCase):
         launcher = (root / ".github/workflows/fr007-current-readiness-launcher.yml").read_text(encoding="utf-8")
         workflow = (root / ".github/workflows/fr007-storage-v2-representative-source.yml").read_text(encoding="utf-8")
         postgres_workflow = (root / ".github/workflows/fr007-storage-v2-postgres.yml").read_text(encoding="utf-8")
+        regression_step = postgres_workflow.split("- name: Run complete PostgreSQL-backed subsystem tests", 1)[1].split(
+            "- name: Upload PostgreSQL test log", 1
+        )[0]
+        self.assertIn("set -euo pipefail", regression_step)
+        self.assertIn("python -m pytest -q 2>&1 | tee storage-v2-postgres-test.log", regression_step)
         self.assertIn("representative-credential-gate:", launcher)
         self.assertIn("mode: credential-probe", launcher)
         self.assertIn("needs: [representative-credential-gate]", launcher)

@@ -24,6 +24,9 @@ class HostedAuthPostgresAcceptance(unittest.TestCase):
         with cls.engine.begin() as conn:
             conn.exec_driver_sql("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon NOLOGIN; END IF; END $$")
             conn.exec_driver_sql("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF; END $$")
+        config = Config("alembic.ini")
+        config.set_main_option("sqlalchemy.url", cls.db_url.replace("%", "%%"))
+        command.upgrade(config, "head")
 
     @classmethod
     def tearDownClass(cls):

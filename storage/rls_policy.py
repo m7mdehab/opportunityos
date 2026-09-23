@@ -79,10 +79,22 @@ def apply_postgres_deny_policy_for_table(op, table: str) -> None:
 
 
 def remove_postgres_deny_policies(op, *, excluded: set[str] | None = None) -> None:
-    """Remove only migration 0009 policies and its RLS enablement."""
+    """Remove migration 0009 policies only from relations present at downgrade time.
+
+    The shared ORM registry also contains tables created by later revisions.
+    When 0009 is downgraded from a newer schema, some such relations may
+    already have been dropped by their own downgrade; guarding each operation
+    keeps historical downgrade paths safe without weakening the live schema.
+    """
     assert_registry_complete()
     excluded_tables = set(excluded or ())
     for table in sorted(RLS_TABLES - excluded_tables):
-        op.execute(f"DROP POLICY IF EXISTS {table}_browser_deny_anon ON {table}")
-        op.execute(f"DROP POLICY IF EXISTS {table}_browser_deny_authenticated ON {table}")
-        op.execute(f"ALTER TABLE {table} DISABLE ROW LEVEL SECURITY")
+        op.execute(
+            f"""DO $$ BEGIN
+              IF to_regclass('public.{table}') IS NOT NULL THEN
+                EXECUTE 'DROP POLICY IF EXISTS {table}_browser_deny_anon ON public.{table}';
+                EXECUTE 'DROP POLICY IF EXISTS {table}_browser_deny_authenticated ON public.{table}';
+                EXECUTE 'ALTER TABLE public.{table} DISABLE ROW LEVEL SECURITY';
+              END IF;
+            END $$"""
+        )

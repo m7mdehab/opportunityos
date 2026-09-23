@@ -549,10 +549,16 @@ class ApiTestCase(unittest.TestCase):
         if truth_pack_hash is None:
             pack = getattr(getattr(self, "app", None).state, "loaded_truth_pack", None) if hasattr(self, "app") else None
             truth_pack_hash = pack.truth_pack_hash if pack is not None else "hash-fixture"
+        content_hash = self.session.query(OpportunityRecord.content_hash).filter_by(id=opp_id).scalar()
+        self.assertIsNotNone(
+            content_hash,
+            f"evaluation fixtures require an existing opportunity content hash: {opp_id}",
+        )
         record = MatchEvaluationRecord(
             id=f"eval-{uuid.uuid4().hex[:12]}",
             opportunity_id=opp_id,
             truth_pack_hash=truth_pack_hash,
+            content_hash=content_hash,
             qualification_decision=decision,
             fit_score=fit_score if fit_score is not None else 0.0,
             dimension_scores_json=json.dumps(dimension_scores),

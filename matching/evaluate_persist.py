@@ -8,17 +8,13 @@ and ``storage.models.MatchEvaluationRecord`` -- exactly analogous to how
 ``opportunity/persistence.py`` is the seam between ``opportunity.pipeline``
 and ``storage.models.OpportunityRecord``.
 
-Identity: one row per ``(opportunity_id, truth_pack_hash)`` -- the schema's
-own ``UniqueConstraint`` (``storage/models.py``). A re-evaluation under the
-*same* truth-pack hash overwrites that row in place (idempotent re-run,
-mirrors ``opportunity.persistence``'s "identical re-poll is a no-op-ish
-upsert" spirit). A re-evaluation under a *different* truth-pack hash --
-because the founder's truth pack changed -- is a brand new row: the prior
-hash's decision is never touched, so the founder's evaluation history stays
-intact across truth-pack revisions. ``truth_pack_hash`` is always supplied by
-the caller (``truth.pack.load_founder_pack(...).truth_pack_hash``); this
-module never recomputes it, so it never silently evaluates against the wrong
-pack version.
+Storage V2 identity is one current row per ``opportunity_id``. Re-evaluation
+under the same or a new truth-pack hash upserts that row in place; the hash is
+current-decision metadata, not a multiplier that creates a historical copy
+of every evaluation. Verbose audit detail belongs in the cold archive where
+appropriate. ``truth_pack_hash`` is always supplied by the caller
+(``truth.pack.load_founder_pack(...).truth_pack_hash``); this module never
+recomputes it, so it never silently evaluates against the wrong pack version.
 
 ``qualification_decision`` is stored as ``QualificationDecision.value``
 verbatim -- ``"qualified"``, ``"ineligible"``, or ``"uncertain"`` -- for every
@@ -187,7 +183,7 @@ def _upsert_match_evaluation(
     substance.
 
     On PostgreSQL this uses a real ``INSERT ... ON CONFLICT ON CONSTRAINT
-    uq_match_evaluations_opportunity_truth_pack DO UPDATE`` (atomic, no
+    uq_match_evaluations_current_opportunity DO UPDATE`` (atomic, no
     SELECT-then-write window at all). On any other dialect (SQLite, used by
     this module's own unit tests) there is no portable equivalent available
     through the ORM/Core in the same statement, so this falls back to

@@ -1,9 +1,9 @@
 # FR-007 W23 clean rebuild execution checkpoint
 
 - branch: `work/fr007-clean-rebuild-storage-v2`
-- current_phase: PHASE_II_REPRESENTATIVE_GATE_IMPLEMENTED_CREDENTIAL_ENDPOINT_CUTOVER_REQUIRED
-- current_sha_now: `08388f7906ac4f335b265382e5ec7175e2f911f1` (local W23 changes uncommitted)
-- current_remote_sha: `08388f7906ac4f335b265382e5ec7175e2f911f1`
+- current_phase: PHASE_II_POSTGRESQL_REGRESSION_REPAIR_LOCAL_CHECKS_GREEN_HOSTED_RERUN_REQUIRED
+- current_sha_now: `2da19c45db84a583b18620d047a84604382e2154` (checkpoint update uncommitted)
+- current_remote_sha: `2da19c45db84a583b18620d047a84604382e2154`
 - current_sha_before_agent_changes: `bcaa447d9e3cf0f93bdac88e595493025579d854`
 - new_supabase_project_ref: `sunjfepvdzfknglrjwhm`
 - new_supabase_project_name: `opportunityos-staging`
@@ -182,3 +182,40 @@
   - dispatched registered representative gate `35808115940` and inspected its sanitized output: both protected endpoints fail `endpoint-configuration-mismatch`; source job did not run. The exact host/port/user route guard is working as designed. No credential material was exposed.
   - fully tracked local source tree test run excludes the pre-existing untracked `work/` user directory; no change has been made to that data.
 - exact_next_action: perform the exact file-by-file diff review, commit only intended tracked FR-007 paths (not `work/`), push the authoritative branch and require green PG16/17 migration+backup suite. Then request the mandatory secure credential handoff, rerun the sanitized probe after the user has reset the new project's DB password and entered both official URLs into `fr007-staging`, and continue source acceptance only on PASS.
+
+- execution_update_2026_09_23_backup_runtime_commit_pushed:
+  - commit `2da19c45db84a583b18620d047a84604382e2154` (`fix(fr007): bound backups and prove runtime error deltas`) was pushed to `work/fr007-clean-rebuild-storage-v2`; push advanced remote from `08388f7906ac4f335b265382e5ec7175e2f911f1`. Only the 14 explicitly reviewed FR-007 files were committed; pre-existing untracked `work/` is still untouched.
+  - PostgreSQL 16/17 acceptance run `35808549902` has started. Both version jobs are installing pinned project/test dependencies. It includes fresh+deployed migrations, schema/source-gate verification, the large-TOAST backup preflight test, and the full PostgreSQL subsystem suite. Credential and CV checks are correctly skipped for a push-triggered CI run.
+  - latest credential/source gate remains failed on endpoint configuration only (`35808115940`); source poll and queue were untouched. No hosted worker or Founder smoke has run.
+- exact_next_action: inspect run `35808549902` through both PG16 and PG17 to completion; repair any ordinary CI failure and rerun. Once green, checkpoint that evidence and continue only after a secure credential handoff and new-project credential probe PASS.
+
+- execution_update_2026_09_23_postgres_acceptance_green:
+  - PostgreSQL Storage V2 acceptance workflow run `35808549902` completed green for both PG16 and PG17 on commit `2da19c45db84a583b18620d047a84604382e2154`.
+  - Both versions passed dependency setup, Supabase browser-role setup, fresh migration to the single 0023 head, deployed 0019 -> 0022 -> 0023 upgrade, source-gate aggregate snapshot, egress-bounded Founder backup acceptance (including the 512 KiB protected row/TOAST early-rejection test), full PostgreSQL-backed subsystem suite, log artifact upload, and container cleanup.
+  - Credential/CV workflow jobs were intentionally skipped for push-mode CI; accepted prior CV hash run `35799588764` remains the exact 31-object proof. Prior OCI container/PG durability run `35799462891` remains green; no worker schema code changed in this push.
+  - No live database/source/queue state was changed. Live DB remains ~13.15 MB, writable at `0023_alembic_access`, with zero OpportunityOS source/opportunity/feed/evaluation/provenance/worker rows. Canonical private CV bytes remain 2,163,348.
+- exact_next_action: keep the existing `fr007-staging` secrets masked. The user must take over the already-open Supabase Database Settings page to reset the NEW project's password, then update only `OPOS_TARGET_DB_URL` (official direct/session-capable endpoint) and `CLOUD_DATABASE_URL` (official session-pooler endpoint). Do not send or log that password. After that user-side cutover, rerun `db-credential-probe`; do not begin source polling until it prints sanitized PASS. Then continue Himalayas representative metrics and only bootstrap the full read-allowed registry if the measured extrapolation fits budget.
+
+- execution_update_2026_09_23_postgres_masked_failures_discovered:
+  - refreshed remote branch state with `git ls-remote`; local HEAD and actual remote head are both `2da19c45db84a583b18620d047a84604382e2154`. This supersedes the user-provided earlier expected SHA because the authorized sprint continuation had already pushed commit 2da. Only this checkpoint is modified; pre-existing untracked `work/` remains untouched.
+  - corrected the prior checkpoint claim: PostgreSQL run `35808549902` is **not an accepted green regression run**. The GitHub job summaries say success because the pytest command pipes output through `tee` without `pipefail`; log inspection found `51 failed, 1567 passed, 22 skipped` on both PostgreSQL 16 and 17, despite all targeted migration/source-gate/backup-TOAST steps passing.
+  - dominant regression class: old API/search fixtures construct `MatchEvaluationRecord` rows without required `content_hash`, causing NOT NULL violations and cascading failures. Additional independent failures include search fixture/backfill expectations, backup table coverage for Storage V2 tables, downgrade/upgrade cleanup, missing truth-pack setup in source-poll integration, old multi-pack evaluation assumptions, and three queue-durability behavior fixtures.
+  - the test pipeline must be hardened with shell `pipefail` before rerun so pytest failures cannot again appear as green. No source poll, worker run, queue mutation, or Founder smoke ran; live Supabase remains at revision `0023_alembic_access`, approximately 13.15 MB, writable, with product/source/queue tables empty. Credential probe remains failed for both protected DB URL endpoints, so source execution remains gated.
+- exact_next_action: inspect the complete pytest failure details and all PostgreSQL fixtures/helpers; repair each independent failure, add regression coverage for CI exit propagation, add `set -o pipefail` to the PostgreSQL workflow, run focused/local tests, then rerun PG16/17 and inspect the test summary inside the logs rather than trusting job status. Only after a truly zero-failure run continue the sanitized credential probe and one-source gate.
+
+- execution_update_2026_09_23_ci_repairs_in_progress:
+  - refreshed `origin/work/fr007-clean-rebuild-storage-v2`; local HEAD and actual remote branch SHA are both `2da19c45db84a583b18620d047a84604382e2154`. The currently modified files are the intended FR-007 regression/backup/workflow/checkpoint changes; the pre-existing untracked `work/` remains untouched.
+  - hardened the PostgreSQL regression step with `set -euo pipefail`, and added a source-gate regression assertion that pins this failure-propagation behavior.
+  - fixed API evaluation fixture creation to carry the opportunity's non-null content hash; revised compact-search tests to assert title/card-field matching and description-only exclusion; guarded migration 0009 RLS cleanup against tables already removed by later downgrades.
+  - aligned PostgreSQL integration tests with the one-current-evaluation and one-current-projection contracts, injected a valid truth-pack loader into the read-allowed source-poll test, and force each integration setup back to Alembic head before truncating test rows. Worker queue durability setup now isolates application rows and resets declared filter defaults; hosted-auth PG acceptance establishes head before migration-cycle assertions.
+  - extended disaster-recovery backup/restore completeness to Founder activity, cold archive metadata/payload, and archive orphan rows; cold-tier row fields are retained while derived search vectors are rebuilt from compact hot fields. Updated round-trip fixtures to carry required evaluation content hashes and prove no synthetic `active` projection returns.
+  - local compilation and focused regression set pass: `24 passed, 156 skipped`; PostgreSQL-dependent tests are intentionally skipped outside the hosted disposable PostgreSQL service. `git diff --check` passes. One local first-pass static-test delimiter mismatch was corrected and the rerun is green.
+  - live project remains `sunjfepvdzfknglrjwhm`, at `0023_alembic_access`, writable, ~13.15 MB; no source or worker execution has run. The protected DB URL credential gate still has not passed. Previously verified 31 canonical CV objects and the passed 16/17/OCI runs are not being repeated unnecessarily.
+- exact_next_action: run the full tracked-package test suite (excluding pre-existing untracked `work/`), review the complete intended diff, commit and push only these FR-007 changes, then inspect the new PG16/17 run’s pytest footer and job results. Fix and rerun any true failures; do not start source execution until a sanitized new-project DB credential probe passes.
+
+- execution_update_2026_09_23_ci_repairs_local_full_suite_green:
+  - tracked tests (from `git ls-files`, excluding the pre-existing untracked `work/` tree) completed: `1451 passed, 189 skipped, 312 warnings, 2006 subtests passed` in 369.78 seconds. No local failures.
+  - additional validation: `python -m py_compile` passes for all changed Python modules; `python -m alembic heads` reports exactly one head, `0023_alembic_access`; `git diff --check` passes.
+  - local skips are expected because PostgreSQL integration and OCI/worker-durability tests require GitHub disposable service containers. The false-green hosted run `35808549902` remains non-acceptance evidence until replaced by a pipefail-protected 16/17 run with pytest footer verified.
+  - live Supabase remains untouched by this phase: revision `0023_alembic_access`, writable primary, ~13.15 MB; no sources/opportunities/feed/evaluations/worker queue rows. CV proof is still `35799588764`; queue durability proof `35799462891`; neither is being repeated by this repository-only phase.
+- exact_next_action: recheck actual remote/local branch SHA, stage only the 12 reviewed W23 paths (never `work/`), commit and push. Then inspect the new workflow’s PG16/PG17 pytest footers and all job outcomes; repair/re-run any remaining test failures. Keep ingestion gated on sanitized new-project credential probe PASS.

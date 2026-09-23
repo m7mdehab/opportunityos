@@ -35,6 +35,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from sqlalchemy import text
 from fastapi.testclient import TestClient
 
 from api.app import create_app
@@ -138,17 +139,29 @@ class TestPostgresQueueDurability(unittest.TestCase):
             self.fail("CI environment requires real PostgreSQL database for worker durability suite")
         self.test_job_ids: list[str] = []
         self._apps_to_dispose = []
+        with self.engine.begin() as conn:
+            for table in reversed(Base.metadata.sorted_tables):
+                if table.name == "founder_filter_settings":
+                    continue
+                conn.execute(text(f'TRUNCATE TABLE "{table.name}" CASCADE'))
+
+        # A preceding maintenance test may update this configuration table.
+        # Restore its declared defaults, while leaving each test's application
+        # rows isolated from every other test.
+        from api.filters import FILTER_DEFINITIONS, to_naive_utc
         session = self.session_factory()
         try:
-            session.query(WorkerJobRecord).delete(synchronize_session=False)
-            session.query(SourceScheduleRecord).delete(synchronize_session=False)
-            session.query(SourcePollRunRecord).delete(synchronize_session=False)
-            session.query(FeedProjectionRecord).delete(synchronize_session=False)
-            session.query(MatchEvaluationRecord).delete(synchronize_session=False)
-            session.query(OpportunityRecord).delete(synchronize_session=False)
+            session.query(FounderFilterSettingRecord).delete(synchronize_session=False)
+            now = to_naive_utc(datetime.now(timezone.utc))
+            for definition in FILTER_DEFINITIONS:
+                session.add(FounderFilterSettingRecord(
+                    filter_id=definition.filter_id,
+                    enabled=definition.default_enabled,
+                    mode=definition.default_mode,
+                    params_json=json.dumps(dict(definition.default_params)),
+                    updated_at=now,
+                ))
             session.commit()
-        except Exception:
-            session.rollback()
         finally:
             session.close()
 

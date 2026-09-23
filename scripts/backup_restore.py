@@ -48,6 +48,9 @@ from storage.models import (
     FounderAuthRateLimitRecord,
     FounderAuthEventRecord,
     FounderCVSelectionRecord,
+    FounderActivityEventRecord,
+    OpportunityColdArchiveRecord,
+    OpportunityArchiveOrphanRecord,
 )
 from storage.feed_projection import FeedProjectionRecord
 
@@ -95,6 +98,9 @@ DUMP_SECTION_TABLE_MAP = {
     "founder_feedback": "founder_feedback",
     "match_evaluations": "match_evaluations",
     "feed_projection": "feed_projection",
+    "founder_activity_events": "founder_activity_events",
+    "opportunity_cold_archive": "opportunity_cold_archive",
+    "opportunity_archive_orphans": "opportunity_archive_orphans",
     "source_poll_runs": "source_poll_runs",
     "founder_opportunity_views": "founder_opportunity_views",
     "founder_triage_states": "founder_triage_states",
@@ -215,6 +221,9 @@ def dump_database(db_url: str, output_file: str) -> int:
         "founder_feedback": [],
         "match_evaluations": [],
         "feed_projection": [],
+        "founder_activity_events": [],
+        "opportunity_cold_archive": [],
+        "opportunity_archive_orphans": [],
         "source_poll_runs": [],
         "founder_opportunity_views": [],
         "founder_triage_states": [],
@@ -248,7 +257,12 @@ def dump_database(db_url: str, output_file: str) -> int:
             "compensation_max": opp.compensation_max, "compensation_currency": opp.compensation_currency,
             "compensation_period": opp.compensation_period, "title_family": opp.title_family,
             "title_level": opp.title_level, "family_key": opp.family_key,
-            "search_tsv": opp.search_tsv,
+            # Search vectors are derived from compact card fields and rebuilt
+            # on restore; they are not an independent source of truth.
+            "archive_object_key": opp.archive_object_key,
+            "archive_sha256": opp.archive_sha256,
+            "archive_state": opp.archive_state,
+            "lifecycle_tier": opp.lifecycle_tier,
         })
         for prov in opp.provenances:
             data["field_provenances"].append({
@@ -370,26 +384,58 @@ def dump_database(db_url: str, output_file: str) -> int:
     for me in session.query(MatchEvaluationRecord).all():
         data["match_evaluations"].append({
             "id": me.id, "opportunity_id": me.opportunity_id, "truth_pack_hash": me.truth_pack_hash,
+            "content_hash": me.content_hash,
             "qualification_decision": me.qualification_decision, "fit_score": me.fit_score,
             "dimension_scores_json": me.dimension_scores_json, "reasons_json": me.reasons_json,
+            "hard_failure_code": me.hard_failure_code,
             "evaluation_detail_json": me.evaluation_detail_json,
             "policy_version": me.policy_version,
             "evaluated_at": me.evaluated_at.isoformat() if me.evaluated_at else None,
             "created_at": me.created_at.isoformat() if me.created_at else None,
         })
 
-    # Persisted feed read model is part of the backup, including visibility
-    # and ranking. PostgreSQL's tsvector is regenerated from search_text.
+    # The single lean current feed read model is part of the backup, including
+    # visibility and ranking. Full descriptions/search vectors are not copied.
     for projection in session.query(FeedProjectionRecord).all():
         row = {}
         for column in FeedProjectionRecord.__table__.columns:
             value = getattr(projection, column.name)
-            if column.name == "search_tsv":
-                value = None
-            elif isinstance(value, datetime):
+            if isinstance(value, datetime):
                 value = value.isoformat()
             row[column.name] = value
         data["feed_projection"].append(row)
+
+    for archive in session.query(OpportunityColdArchiveRecord).all():
+        data["opportunity_cold_archive"].append({
+            "opportunity_id": archive.opportunity_id,
+            "content_hash": archive.content_hash,
+            "payload_zlib": base64.b64encode(archive.payload_zlib).decode("ascii") if archive.payload_zlib is not None else None,
+            "storage_backend": archive.storage_backend,
+            "object_key": archive.object_key,
+            "compressed_size_bytes": archive.compressed_size_bytes,
+            "payload_sha256": archive.payload_sha256,
+            "original_size_bytes": archive.original_size_bytes,
+            "archive_version": archive.archive_version,
+            "archived_at": archive.archived_at.isoformat() if archive.archived_at else None,
+        })
+
+    for orphan in session.query(OpportunityArchiveOrphanRecord).all():
+        data["opportunity_archive_orphans"].append({
+            "object_key": orphan.object_key,
+            "payload_sha256": orphan.payload_sha256,
+            "compressed_size_bytes": orphan.compressed_size_bytes,
+            "created_at": orphan.created_at.isoformat() if orphan.created_at else None,
+        })
+
+    for activity in session.query(FounderActivityEventRecord).all():
+        data["founder_activity_events"].append({
+            "id": activity.id,
+            "opportunity_id": activity.opportunity_id,
+            "action_type": activity.action_type,
+            "resulting_state": activity.resulting_state,
+            "snoozed_until": activity.snoozed_until.isoformat() if activity.snoozed_until else None,
+            "created_at": activity.created_at.isoformat() if activity.created_at else None,
+        })
 
     # 12. Source Poll Runs (no FK dependency)
     for spr in session.query(SourcePollRunRecord).all():
@@ -845,12 +891,6 @@ def restore_database(dump_file: str, db_url: str) -> None:
         session.merge(FeedProjectionRecord(**projection_dict))
 
     session.flush()
-    if session.bind is not None and session.bind.dialect.name == "postgresql":
-        from sqlalchemy import text
-
-        session.execute(text(
-            "UPDATE feed_projection SET search_tsv = to_tsvector('simple', search_text)"
-        ))
 
     # 12. Source Poll Runs -- no FK dependency.
     for spr_dict in data.get("source_poll_runs", []):
@@ -963,6 +1003,24 @@ def restore_database(dump_file: str, db_url: str) -> None:
         if event_dict.get("created_at"):
             event_dict["created_at"] = datetime.fromisoformat(event_dict["created_at"])
         session.merge(FounderAuthEventRecord(**event_dict))
+
+    for activity_dict in data.get("founder_activity_events", []):
+        for field in ("snoozed_until", "created_at"):
+            if activity_dict.get(field):
+                activity_dict[field] = datetime.fromisoformat(activity_dict[field])
+        session.merge(FounderActivityEventRecord(**activity_dict))
+
+    for archive_dict in data.get("opportunity_cold_archive", []):
+        if archive_dict.get("archived_at"):
+            archive_dict["archived_at"] = datetime.fromisoformat(archive_dict["archived_at"])
+        if archive_dict.get("payload_zlib") is not None:
+            archive_dict["payload_zlib"] = base64.b64decode(archive_dict["payload_zlib"])
+        session.merge(OpportunityColdArchiveRecord(**archive_dict))
+
+    for orphan_dict in data.get("opportunity_archive_orphans", []):
+        if orphan_dict.get("created_at"):
+            orphan_dict["created_at"] = datetime.fromisoformat(orphan_dict["created_at"])
+        session.merge(OpportunityArchiveOrphanRecord(**orphan_dict))
     # A new target starts with a clean transient login budget.
     for limit_dict in data.get("founder_auth_rate_limit", []):
         limit_dict["window_started_at"] = now
@@ -970,6 +1028,13 @@ def restore_database(dump_file: str, db_url: str) -> None:
         limit_dict["locked_until"] = None
         limit_dict["updated_at"] = now
         session.merge(FounderAuthRateLimitRecord(**limit_dict))
+
+    # Rebuild the compact searchable vector from restored hot card fields;
+    # do not copy a duplicate/stale vector from the JSON backup.
+    if session.bind is not None and session.bind.dialect.name == "postgresql":
+        from storage.repository import backfill_search_tsv
+
+        backfill_search_tsv(session, only_missing=True)
 
     session.commit()
     session.close()

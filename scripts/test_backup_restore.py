@@ -33,7 +33,7 @@ from alembic import command as alembic_command
 
 from storage.engine import get_engine, get_session_factory
 from storage.repository import StorageRepository
-from storage.feed_projection import FeedProjectionRecord
+from storage.feed_projection import FeedProjectionRecord, projection_identity
 from storage.models import (
     Base,
     OpportunityRecord,
@@ -48,6 +48,9 @@ from storage.models import (
     FounderSavedViewRecord,
     ArtifactCacheRecord,
     SourceScheduleRecord,
+    FounderActivityEventRecord,
+    OpportunityColdArchiveRecord,
+    OpportunityArchiveOrphanRecord,
 )
 import scripts.backup_restore as backup_restore
 from scripts.backup_restore import (
@@ -262,6 +265,7 @@ class TestBackupRestorePostgres(unittest.TestCase):
             "title_family": "engineering",
             "title_level": "principal",
             "family_key": "family-backup-1",
+            "lifecycle_tier": "protected",
         }, [{"field_name": "title", "derivation_type": "EXACT_EXTRACTION", "record_checksum": "hash999"}])
 
         repo.record_feedback("OPP-BACKUP-1", "good_match", None, "Perfect role fit")
@@ -289,6 +293,7 @@ class TestBackupRestorePostgres(unittest.TestCase):
             id="me-backup-1",
             opportunity_id="OPP-BACKUP-1",
             truth_pack_hash="truth-pack-hash-backup-1",
+            content_hash="hash999",
             qualification_decision="uncertain",
             fit_score=63.25,
             dimension_scores_json='[{"dimension_name": "skills", "raw_score": 0.6}]',
@@ -296,6 +301,73 @@ class TestBackupRestorePostgres(unittest.TestCase):
             evaluation_detail_json=detail_json,
             policy_version="1.0.0",
             evaluated_at=match_eval_evaluated_at,
+        ))
+        projection_at = datetime(2026, 9, 2, 10, 31, 0)
+        session.add(FeedProjectionRecord(
+            id=projection_identity("OPP-BACKUP-1"),
+            opportunity_id="OPP-BACKUP-1",
+            opportunity_content_hash="hash999",
+            truth_pack_hash="truth-pack-hash-backup-1",
+            projection_version="storage-v2",
+            title="Principal Distributed Systems Engineer",
+            organization="Alexandria Cloud Labs",
+            source_id="greenhouse:alexandria",
+            source_url="https://boards.greenhouse.io/alexandria/1",
+            track="employment",
+            seniority_level="principal",
+            work_mode="remote",
+            remote_scope="global",
+            employment_type="full_time",
+            qualification_decision="uncertain",
+            fit_score=63.25,
+            visible=True,
+            evaluated_at=projection_at,
+            projected_at=projection_at,
+        ))
+        activity_created_at = datetime(2026, 9, 2, 10, 32, 0)
+        session.add(FounderActivityEventRecord(
+            id="activity-backup-1",
+            opportunity_id="OPP-BACKUP-1",
+            action_type="viewed",
+            resulting_state="viewed",
+            created_at=activity_created_at,
+        ))
+        cold_opp = OpportunityRecord(
+            id="OPP-COLD-BACKUP-1",
+            track="employment",
+            title="Cold Archived Role",
+            organization="Archived Systems",
+            description=None,
+            source_id="himalayas",
+            source_url="https://himalayas.app/jobs/cold-archive-1",
+            content_hash="e" * 64,
+            raw_payload_json=None,
+            lifecycle_tier="cold",
+            archive_object_key="cold-opportunities/test/cold-backup.json.zlib",
+            archive_sha256="c" * 64,
+            archive_state="verified",
+        )
+        session.add(cold_opp)
+        session.flush()
+        archive_created_at = datetime(2026, 9, 2, 10, 33, 0)
+        session.add(OpportunityColdArchiveRecord(
+            opportunity_id="OPP-COLD-BACKUP-1",
+            content_hash=cold_opp.content_hash,
+            payload_zlib=None,
+            storage_backend="supabase_storage",
+            object_key=cold_opp.archive_object_key,
+            compressed_size_bytes=456,
+            payload_sha256=cold_opp.archive_sha256,
+            original_size_bytes=2048,
+            archive_version="v2",
+            archived_at=archive_created_at,
+        ))
+        orphan_created_at = datetime(2026, 9, 2, 10, 34, 0)
+        session.add(OpportunityArchiveOrphanRecord(
+            object_key="cold-opportunities/orphan.json.zlib",
+            payload_sha256="d" * 64,
+            compressed_size_bytes=123,
+            created_at=orphan_created_at,
         ))
         session.add(SourcePollRunRecord(
             id="spr-backup-1",
@@ -444,6 +516,8 @@ class TestBackupRestorePostgres(unittest.TestCase):
         self.assertEqual(opp.title_family, "engineering")
         self.assertEqual(opp.title_level, "principal")
         self.assertEqual(opp.family_key, "family-backup-1")
+        self.assertEqual(opp.lifecycle_tier, "protected")
+        self.assertIsNotNone(opp.search_tsv, "compact search vector is rebuilt from restored card fields")
 
         fb = dst_session.query(FounderFeedbackRecord).filter_by(opportunity_id="OPP-BACKUP-1").first()
         self.assertIsNotNone(fb)
@@ -462,13 +536,40 @@ class TestBackupRestorePostgres(unittest.TestCase):
         self.assertEqual(me.evaluated_at, match_eval_evaluated_at)
 
         projection = dst_session.query(FeedProjectionRecord).filter_by(
-            opportunity_id="OPP-BACKUP-1", truth_pack_hash="active"
+            opportunity_id="OPP-BACKUP-1"
         ).one()
-        self.assertIsNone(projection.qualification_decision)
-        self.assertIsNone(projection.fit_score)
+        self.assertEqual(projection.truth_pack_hash, "truth-pack-hash-backup-1")
+        self.assertEqual(projection.qualification_decision, "uncertain")
+        self.assertEqual(projection.fit_score, 63.25)
         self.assertEqual(projection.title, opp.title)
         self.assertEqual(projection.opportunity_content_hash, opp.content_hash)
-        self.assertIsNotNone(projection.search_tsv)
+        self.assertEqual(
+            dst_session.query(FeedProjectionRecord).filter_by(truth_pack_hash="active").count(),
+            0,
+            "backup/restore must not recreate the synthetic active projection corpus",
+        )
+
+        activity = dst_session.query(FounderActivityEventRecord).filter_by(id="activity-backup-1").one()
+        self.assertEqual(activity.opportunity_id, "OPP-BACKUP-1")
+        self.assertEqual(activity.action_type, "viewed")
+        self.assertEqual(activity.created_at, activity_created_at)
+
+        restored_cold = dst_session.query(OpportunityRecord).filter_by(id="OPP-COLD-BACKUP-1").one()
+        self.assertIsNone(restored_cold.description)
+        self.assertIsNone(restored_cold.raw_payload_json)
+        self.assertEqual(restored_cold.lifecycle_tier, "cold")
+        cold_archive = dst_session.query(OpportunityColdArchiveRecord).filter_by(
+            opportunity_id="OPP-COLD-BACKUP-1"
+        ).one()
+        self.assertEqual(cold_archive.object_key, "cold-opportunities/test/cold-backup.json.zlib")
+        self.assertEqual(cold_archive.payload_sha256, "c" * 64)
+        self.assertEqual(cold_archive.compressed_size_bytes, 456)
+        self.assertEqual(cold_archive.archived_at, archive_created_at)
+        orphan = dst_session.query(OpportunityArchiveOrphanRecord).filter_by(
+            object_key="cold-opportunities/orphan.json.zlib"
+        ).one()
+        self.assertEqual(orphan.payload_sha256, "d" * 64)
+        self.assertEqual(orphan.created_at, orphan_created_at)
 
         spr = dst_session.query(SourcePollRunRecord).filter_by(id="spr-backup-1").first()
         self.assertIsNotNone(spr, "source_poll_runs row must survive restore")
@@ -558,7 +659,7 @@ class TestBackupRestorePostgres(unittest.TestCase):
         me_count_after_second_restore = dst_session.query(MatchEvaluationRecord).filter_by(id="me-backup-1").count()
         self.assertEqual(me_count_after_second_restore, 1, "a second restore must not duplicate match_evaluations rows")
         self.assertEqual(dst_session.query(FeedProjectionRecord).filter_by(
-            opportunity_id="OPP-BACKUP-1", truth_pack_hash="active"
+            opportunity_id="OPP-BACKUP-1"
         ).count(), 1)
 
         dst_session.close()

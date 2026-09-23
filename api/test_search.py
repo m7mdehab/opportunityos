@@ -9,18 +9,8 @@ from __future__ import annotations
 
 import unittest
 
-from opportunity.adapters import (
-    GreenhouseAdapter,
-    HimalayasAdapter,
-    LeverAdapter,
-    RemoteOKAdapter,
-    RemotiveAdapter,
-    WeWorkRemotelyAdapter,
-)
-from opportunity.fixtures import load_corpus
-from opportunity.persistence import _build_opp_data, _build_provenances
 from storage.models import MatchEvaluationRecord, OpportunityRecord
-from storage.repository import StorageRepository, backfill_search_tsv
+from storage.repository import backfill_search_tsv
 
 from api.search import is_query_unparseable, rank_key, search_opportunity_ids
 from api.test_api import ApiTestCase, _install_truth_graph
@@ -106,109 +96,59 @@ class SearchAdversarialTest(ApiTestCase):
 
 
 # ---------------------------------------------------------------------------
-# C2.2: `pytorch -"customer engineer"` over the REAL fixture corpus
-# (`opportunity/fixtures/corpus/`, work order A1C, 540 payloads across 15
-# sources -- loaded via `opportunity.fixtures.load_corpus`).
+# Storage V2 compact-search contract: card fields are indexed, archived source
+# descriptions are not duplicated into PostgreSQL's searchable corpus.
 # ---------------------------------------------------------------------------
-
-_SINGLETON_ADAPTER_FACTORIES = {
-    "himalayas": HimalayasAdapter,
-    "remotive": RemotiveAdapter,
-    "remote_ok": RemoteOKAdapter,
-    "we_work_remotely": WeWorkRemotelyAdapter,
-}
-
-
-def _adapter_for_source_id(source_id: str):
-    """Map a `CorpusFixture.source_id` (e.g. `"greenhouse:cloudflare"`,
-    `"himalayas"`) back to the same adapter class that would have produced
-    it live -- each fixture's `raw_body` is, per `opportunity/fixtures/
-    __init__.py`'s own docstring, "wrapped in the minimal feed envelope its
-    adapter's `parse_payload` expects", so re-parsing with the matching
-    adapter is exactly how a real poll would have processed it."""
-    if source_id in _SINGLETON_ADAPTER_FACTORIES:
-        return _SINGLETON_ADAPTER_FACTORIES[source_id]()
-    prefix, _, company = source_id.partition(":")
-    if prefix == "greenhouse":
-        return GreenhouseAdapter(company)
-    if prefix == "lever":
-        return LeverAdapter(company)
-    raise ValueError(f"no adapter mapping for corpus source_id {source_id!r}")
 
 
 class PytorchCorpusSearchTest(ApiTestCase):
-    """C2.2, over the real corpus. Deliberately self-invalidating history:
-    an earlier revision of this test ran against synthetic rows (the corpus
-    was absent on this worktree's base at the time) and asserted, loudly,
-    that it must be rewritten the moment the real corpus landed -- which is
-    exactly what happened and exactly what this revision does."""
+    """Storage V2 search indexes compact card fields, not source bodies."""
 
     def setUp(self):
         super().setUp()
         self.app = self.make_app()
         self.client = self.logged_in_client(self.app)
 
-    def _persist_real_corpus(self) -> int:
-        fixtures = load_corpus()
-        self.assertGreaterEqual(
-            len(fixtures), 500,
-            "expected the real ~540-payload corpus (opportunity/fixtures/corpus/), "
-            "not a partial or absent one",
+    def test_compact_search_uses_card_fields_and_not_archived_description(self):
+        self.seed_opportunity(
+            "opp-compact-pytorch",
+            title="PyTorch Platform Engineer",
+            organization="Cedar Systems",
+            description="This full source body is deliberately not part of compact search.",
         )
-        repository = StorageRepository(self.session)
-        persisted = 0
-        for fixture in fixtures:
-            adapter = _adapter_for_source_id(fixture.source_id)
-            result = adapter.parse_payload(fixture.raw_body)
-            for opp in result.opportunities:
-                opp_data = _build_opp_data(opp, is_stale=False)
-                repository.save_opportunity(opp_data, _build_provenances(opp))
-                persisted += 1
-        return persisted
+        self.seed_opportunity(
+            "opp-description-only",
+            title="Platform Engineer",
+            organization="Juniper Labs",
+            description="quasarneedle appears only in the archived source description.",
+        )
+        self.seed_opportunity(
+            "opp-customer-engineer",
+            title="Customer Engineer",
+            organization="Cloudflare",
+            description="Support customer deployments.",
+        )
 
-    def test_pytorch_excludes_customer_engineer(self):
-        persisted = self._persist_real_corpus()
-        print(f"C2.2: persisted {persisted} real corpus opportunities (of {len(load_corpus())} raw fixtures)")
-
-        response = self.client.get("/api/opportunities", params={"q": 'pytorch -"customer engineer"'})
+        response = self.client.get("/api/opportunities", params={"q": "pytorch"})
         self.assertEqual(response.status_code, 200, response.text)
-        items = response.json()["items"]
-        print(f"C2.2: result count = {len(items)}")
+        self.assertEqual(
+            {item["id"] for item in response.json()["items"]},
+            {"opp-compact-pytorch"},
+        )
 
-        if not items:
-            # A fact about a corpus drawn from fifteen job boards, not a
-            # search defect -- proven independently by the positive control
-            # below, not by loosening this query or seeding a synthetic row
-            # alongside the real ones.
-            print("C2.2: zero rows in the real corpus mention 'pytorch' -- reporting count 0.")
+        body_only = self.client.get("/api/opportunities", params={"q": "quasarneedle"})
+        self.assertEqual(body_only.status_code, 200, body_only.text)
+        self.assertNotIn(
+            "opp-description-only",
+            {item["id"] for item in body_only.json()["items"]},
+            "full descriptions stay in the archive and are not duplicated in the hot search vector",
+        )
 
-        for item in items:
-            full = self.session.query(OpportunityRecord).filter_by(id=item["id"]).one()
-            haystack = f"{full.title} {full.organization} {full.description}".lower()
-            contains_pytorch = "pytorch" in haystack
-            print(
-                f"C2.2: inspected id={item['id']!r} title={full.title!r} "
-                f"contains_pytorch={contains_pytorch}"
-            )
-            self.assertTrue(contains_pytorch)
-            self.assertNotEqual(full.title.strip().lower(), "customer engineer")
-
-        self._assert_positive_control()
-
-    def _assert_positive_control(self):
-        """Independent proof the search machinery works against this real
-        corpus, regardless of whether it happens to contain "pytorch": a
-        query for a phrase the corpus is known to contain ("customer
-        engineer" -- per the coordinator, 7 of the 40 Cloudflare Greenhouse
-        postings) returns rows, and negating that exact phrase excludes
-        every one of those same rows from a broader query that would
-        otherwise include them."""
         with_ce = self.client.get("/api/opportunities", params={"q": '"customer engineer"'})
         self.assertEqual(with_ce.status_code, 200, with_ce.text)
         ce_items = with_ce.json()["items"]
         ce_ids = {item["id"] for item in ce_items}
-        self.assertGreater(len(ce_ids), 0, 'positive control: corpus must contain "customer engineer" matches')
-        print(f'C2.2 positive control: "customer engineer" alone -> {len(ce_ids)} row(s): {sorted(ce_ids)}')
+        self.assertEqual(ce_ids, {"opp-customer-engineer"})
 
         negated = self.client.get("/api/opportunities", params={"q": 'engineer -"customer engineer"'})
         self.assertEqual(negated.status_code, 200, negated.text)
@@ -217,10 +157,7 @@ class PytorchCorpusSearchTest(ApiTestCase):
             negated_ids & ce_ids,
             "negated phrase must exclude every row the un-negated phrase matched",
         )
-        print(
-            f"C2.2 positive control: 'engineer -\"customer engineer\"' excludes all "
-            f"{len(ce_ids)} 'customer engineer' row(s) -- {len(negated_ids)} other rows remain"
-        )
+        self.assertNotIn("opp-customer-engineer", negated_ids)
 
 
 # ---------------------------------------------------------------------------
@@ -336,9 +273,9 @@ class BackfillVisibilityTest(ApiTestCase):
         record = OpportunityRecord(
             id="opp-backfill-me",
             track="employment",
-            title="Quant Researcher",
+            title="PyTorch Quant Researcher",
             organization="Backfill Co",
-            description="Requires deep pytorch experience for signal research.",
+            description="Signal research requirements remain in the source archive.",
             source_id="himalayas",
             source_url="https://himalayas.app/jobs/opp-backfill-me",
             content_hash="hash-opp-backfill-me",
