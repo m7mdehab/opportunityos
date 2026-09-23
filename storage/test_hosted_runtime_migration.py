@@ -32,7 +32,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
 
         config = Config("alembic.ini")
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_current_head(), "0022_storage_v2_direct_tiering")
+        self.assertEqual(script.get_current_head(), "0023_alembic_version_access_hardening")
 
     def test_capacity_revision_is_linear_after_activity_view_access(self):
         capacity = Path(__file__).parent / "migrations" / "versions" / "0020_capacity_archive.py"
@@ -48,6 +48,20 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         self.assertIn('down_revision: Union[str, None] = "0020_capacity_archive"', source)
         for required in ("archive_object_key", "archive_sha256", "storage_backend", "object_key", "DROP INDEX IF EXISTS ix_feed_projection_search_tsv"):
             self.assertIn(required, source)
+
+    def test_alembic_version_is_browser_denied_without_forcing_owner_rls(self):
+        migration = Path(__file__).parent / "migrations" / "versions" / "0023_alembic_version_access_hardening.py"
+        source = migration.read_text(encoding="utf-8")
+        self.assertIn('revision: str = "0023_alembic_version_access_hardening"', source)
+        self.assertIn('down_revision: Union[str, None] = "0022_storage_v2_direct_tiering"', source)
+        self.assertIn("REVOKE ALL PRIVILEGES ON TABLE public.alembic_version FROM PUBLIC", source)
+        self.assertIn("FROM anon", source)
+        self.assertIn("FROM authenticated", source)
+        self.assertIn("ALTER TABLE public.alembic_version ENABLE ROW LEVEL SECURITY", source)
+        self.assertNotIn("FORCE ROW LEVEL SECURITY", source)
+        self.assertNotIn("CREATE POLICY", source.upper())
+        self.assertIn("def downgrade()", source)
+        self.assertIn("Keep it in force on downgrade", source)
 
     def test_activity_correction_matches_live_0016_contract(self):
         source = ACTIVITY_CORRECTION.read_text(encoding="utf-8")

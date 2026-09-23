@@ -191,34 +191,19 @@ SELECT bucket_id, count(*) AS object_count
 
 PROVIDER_SECURITY_SQL = """-- Supabase-specific browser-role hardening.
 -- RLS does not govern TRUNCATE, so remove non-row browser privileges that
--- Supabase grants on public tables by default. Also protect alembic_version,
--- which is outside ORM metadata but is exposed from the public schema.
+-- Supabase grants on public tables by default. The Alembic control table is
+-- protected by revoking browser grants and enabling deny-by-default RLS.
 BEGIN;
+REVOKE ALL PRIVILEGES ON TABLE public.alembic_version FROM PUBLIC;
 ALTER TABLE public.alembic_version ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon')
-     AND NOT EXISTS (
-       SELECT 1 FROM pg_policies
-        WHERE schemaname='public' AND tablename='alembic_version'
-          AND policyname='alembic_version_browser_deny_anon'
-     )
-  THEN
-    EXECUTE 'CREATE POLICY alembic_version_browser_deny_anon ON public.alembic_version FOR ALL TO anon USING (false) WITH CHECK (false)';
-  END IF;
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated')
-     AND NOT EXISTS (
-       SELECT 1 FROM pg_policies
-        WHERE schemaname='public' AND tablename='alembic_version'
-          AND policyname='alembic_version_browser_deny_authenticated'
-     )
-  THEN
-    EXECUTE 'CREATE POLICY alembic_version_browser_deny_authenticated ON public.alembic_version FOR ALL TO authenticated USING (false) WITH CHECK (false)';
-  END IF;
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
-    REVOKE TRUNCATE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA public FROM anon;
+    EXECUTE 'REVOKE ALL PRIVILEGES ON TABLE public.alembic_version FROM anon';
+    EXECUTE 'REVOKE TRUNCATE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA public FROM anon';
   END IF;
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
-    REVOKE TRUNCATE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA public FROM authenticated;
+    EXECUTE 'REVOKE ALL PRIVILEGES ON TABLE public.alembic_version FROM authenticated';
+    EXECUTE 'REVOKE TRUNCATE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA public FROM authenticated';
   END IF;
 END $$;
 COMMIT;

@@ -57,6 +57,18 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
+      - name: Create Supabase browser roles in disposable PostgreSQL
+        run: |
+          psql -h localhost -U opportunityos -d opportunityos_fresh <<'SQL'
+          DO $$ BEGIN
+            CREATE ROLE anon NOLOGIN;
+          EXCEPTION WHEN duplicate_object THEN NULL;
+          END $$;
+          DO $$ BEGIN
+            CREATE ROLE authenticated NOLOGIN;
+          EXCEPTION WHEN duplicate_object THEN NULL;
+          END $$;
+          SQL
       - name: Migrate a fresh database to the single head
         env:
           OPPORTUNITYOS_DB_URL: postgresql+psycopg2://opportunityos:${{ github.run_id }}@localhost:5432/opportunityos_fresh
@@ -69,6 +81,7 @@ jobs:
         run: |
           createdb -h localhost -U opportunityos opportunityos_upgrade
           alembic upgrade 0019_activity_view_access
+          alembic upgrade 0022_storage_v2_direct_tiering
           alembic upgrade head
           python scripts/verify_storage_v2_schema.py
       - name: Run complete PostgreSQL-backed subsystem tests
