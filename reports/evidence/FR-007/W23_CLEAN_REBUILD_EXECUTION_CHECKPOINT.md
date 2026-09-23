@@ -648,3 +648,13 @@
 - current_sha_now: `951d97e7630441e4d631a894934fba79909b1198`
 - current_remote_sha: `951d97e7630441e4d631a894934fba79909b1198`
 - exact_next_action: let the leased retry of `greenhouse:devtechnology` and its normal `evaluate_new` follow-up finish through workflow `35916027912`; then confirm empty runnable queue and resumed source success/latest status.
+
+- execution_update_2026_09_23_2029Z_queue_recovery_complete:
+  - fetched the authoritative branch. Fresh remote head was `951d97e7630441e4d631a894934fba79909b1198`; local has one checkpoint-only child commit `3b73042b5ce9e03884f3e5f7f19b4ebde0624f05` that had not reached the remote despite the preceding checkpoint statement. No code divergence; this update will preserve the recovered state and advance the remote fast-forward.
+  - normal five-shard queue recovery `35916027912` completed successfully on all five shards; final launcher conclusion is success. Read-only aggregate SQL at `2026-09-23T20:29Z` confirms zero pending/retry/running jobs (159 completed), zero expired leases, no due runnable age, and no dead letters. The bounded `greenhouse:devtechnology` Storage POST retry recovered naturally; latest source poll state now shows 81/81 recorded source identities `ok`.
+  - current live footprint: PostgreSQL `63,491,219` bytes; 7,163 opportunities (934 HOT /6,229 COLD), 934 feed rows, zero synthetic `active` projections, 7,163 current evaluations, 6,229 cold archives / `50,236,805` compressed bytes. Relation/index aggregate checks remain inside the previously accepted dynamic 26k forecast ceiling. Largest relations are opportunities 15,392,768 bytes, match evaluations 7,602,176, field provenance 5,562,368, cold archive 4,882,432, feed projection 2,211,840; queue 139,264. Top index remains HOT-only provenance identity at 2,056,192 bytes. No full Storage corpus download was done.
+  - replacement project `sunjfepvdzfknglrjwhm` remains ACTIVE_HEALTHY; no credentials were inspected, printed, copied, or managed. Required DB password rotation remains an immediate Founder post-completion action, not a W23 prerequisite.
+- current_phase: `PHASE_V_QUEUE_RECOVERED_81_SOURCE_IDENTITIES_READY_TO_RESUME`
+- current_sha_now: `3b73042b5ce9e03884f3e5f7f19b4ebde0624f05`
+- current_remote_sha: `951d97e7630441e4d631a894934fba79909b1198` (checkpoint-only fast-forward pending)
+- exact_next_action: push the checkpoint fast-forward, then immediately redispatch offset 0/max125 on the accepted bounded-shard bootstrap. It must skip all 81 latest-success source identities and poll only remaining unsuccessful identities; do not overlap bootstrap slices.
