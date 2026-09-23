@@ -16,6 +16,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import func
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
@@ -23,6 +25,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
 from opportunity.registry import SourceRegistry
 from scripts.fr007_hosted_bootstrap import main as hosted_bootstrap_main
 from scripts.fr007_storage_v2_source_gate import _connect, snapshot, verify_source_archives
+from storage.models import WorkerJobRecord
 
 MODEL_PATH = REPOSITORY_ROOT / "reports/evidence/FR-007/W23_STORAGE_V2_CAPACITY_MODEL.json"
 MAX_SOURCES_PER_RUN = 125
@@ -31,6 +34,7 @@ WORKER_TIME_BUDGET_SECONDS = 480
 DATABASE_HARD_BUDGET = 200 * 1024 * 1024
 MAX_INCREMENT_ARCHIVE_OBJECTS = 500
 MAX_INCREMENT_ARCHIVE_BYTES = 32 * 1024 * 1024
+MAX_SOURCE_FOLLOWUP_JOBS = 1
 
 
 def projected_final_database_bytes(current: dict[str, Any], model: dict[str, Any]) -> int:
@@ -125,6 +129,53 @@ def _verify_increment_archives(source_id: str, since) -> dict[str, Any]:
     finally:
         session.close()
         engine.dispose()
+
+
+def _runnable_job_type_counts() -> dict[tuple[str, str], int]:
+    """Return aggregate runnable job types without reading job payloads."""
+    engine, session = _connect()
+    try:
+        rows = (
+            session.query(
+                WorkerJobRecord.job_type,
+                WorkerJobRecord.status,
+                func.count(WorkerJobRecord.id),
+            )
+            .filter(WorkerJobRecord.status.in_(("PENDING", "RETRY", "RUNNING")))
+            .group_by(WorkerJobRecord.job_type, WorkerJobRecord.status)
+            .all()
+        )
+        return {(str(job_type), str(status)): int(count) for job_type, status, count in rows}
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def _drain_source_followup() -> tuple[int, str | None]:
+    """Drain only the single evaluate_new job produced by this source poll.
+
+    A slow source can consume the worker's full 480-second loop budget inside
+    its poll handler. The handler still completes under normal worker lease and
+    retry semantics, then leaves its coalesced evaluation backfill pending.
+    Give that one known follow-up its own bounded normal worker invocation;
+    refuse to drain any other job type or an unbounded queue.
+    """
+    runnable = _runnable_job_type_counts()
+    if not runnable:
+        return 0, None
+    if runnable != {("evaluate_new", "PENDING"): 1}:
+        return 0, "unexpected_source_followup_queue"
+
+    followup_result = hosted_bootstrap_main([
+        "--mode", "drain",
+        "--max-jobs", str(MAX_SOURCE_FOLLOWUP_JOBS),
+        "--time-budget-seconds", str(WORKER_TIME_BUDGET_SECONDS),
+    ])
+    if followup_result != 0:
+        return 1, "nonzero_source_followup_exit"
+    if _runnable_job_type_counts():
+        return 1, "source_followup_queue_not_converged"
+    return 1, None
 
 
 def _latest_status(state: dict[str, Any]) -> str | None:
@@ -236,6 +287,8 @@ def run_incremental_bootstrap(*, source_offset: int, max_sources: int, output: P
             print(json.dumps({"source_id": source_id, "status": "already_successful", "coverage": before["successful_source_coverage"]}))
             continue
         runner_error: str | None = None
+        followup_jobs = 0
+        followup_error: str | None = None
         try:
             # One source per normal scheduler/worker cycle guarantees a fresh
             # physical and relational measurement before the next source.
@@ -248,6 +301,9 @@ def run_incremental_bootstrap(*, source_offset: int, max_sources: int, output: P
                 ])
             if result != 0:
                 runner_error = "nonzero_runner_exit"
+            else:
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    followup_jobs, followup_error = _drain_source_followup()
         except Exception as exc:
             runner_error = type(exc).__name__
 
@@ -268,6 +324,8 @@ def run_incremental_bootstrap(*, source_offset: int, max_sources: int, output: P
         failures = after_failures[:]
         if runner_error is not None:
             failures.append("worker_runner_" + runner_error)
+        if followup_error is not None:
+            failures.append(followup_error)
         if archive_error is not None:
             failures.append("cold_archive_verification_" + archive_error)
         if not source_ok:
@@ -276,6 +334,8 @@ def run_incremental_bootstrap(*, source_offset: int, max_sources: int, output: P
             "source_id": source_id,
             "status": "ok" if source_ok else "source_failure",
             "runner_error_class": runner_error,
+            "followup_worker_jobs": followup_jobs,
+            "followup_error_class": followup_error,
             "poll": source_result,
             "archive_verification": archive_verification,
             "before": _compact_metrics(before, before_projection),

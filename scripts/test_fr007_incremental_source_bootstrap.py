@@ -80,7 +80,7 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
     def test_projection_reserves_growth_and_decreases_as_corpus_converges(self):
         baseline = projected_final_database_bytes(_state(), MODEL)
         progressed = projected_final_database_bytes(
-            _state(database_bytes=35_000_000, opportunities=3000, coverage=40),
+            _state(database_bytes=100_000_000, opportunities=25_000, coverage=330),
             MODEL,
         )
 
@@ -174,6 +174,10 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
                 "sha256_identity_verified": True,
                 "download_scope": "source-scoped-cold-archives-only",
             },
+        ), patch.object(
+            incremental,
+            "_runnable_job_type_counts",
+            return_value={},
         ), patch.object(incremental, "hosted_bootstrap_main", side_effect=runner) as hosted, contextlib.redirect_stdout(
             io.StringIO()
         ) as stdout:
@@ -191,10 +195,110 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
         self.assertEqual(hosted.call_count, 1)
         self.assertNotIn("captured internal payload marker", stdout.getvalue())
 
+    def test_incremental_runner_normally_drains_one_slow_source_evaluation_followup(self):
+        ids = [f"source-{idx:03}" for idx in range(343)]
+        registry = SimpleNamespace(_sources=set(ids), is_read_allowed=lambda _source_id: True)
+        before = _state()
+        after = _state(coverage=2)
+        after["latest_source_poll"] = {
+            "status": "ok", "raw_ingested": 12, "unique_opportunities": 8,
+            "inserted": 8, "unchanged": 0, "updated": 0,
+        }
+        queue_states = [
+            {("evaluate_new", "PENDING"): 1},
+            {},
+        ]
+
+        def runner(args):
+            if args[0:3] == ["--mode", "all", "--source-ids"]:
+                return 0
+            self.assertEqual(
+                args,
+                ["--mode", "drain", "--max-jobs", "1", "--time-budget-seconds", "480"],
+            )
+            return 0
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            incremental, "SourceRegistry", return_value=registry
+        ), patch.object(
+            incremental, "_take_snapshot", side_effect=[before, after]
+        ), patch.object(
+            incremental,
+            "_verify_increment_archives",
+            return_value={
+                "source_id": ids[0],
+                "archive_objects_verified": 2,
+                "compressed_bytes_downloaded": 1024,
+                "sha256_identity_verified": True,
+                "download_scope": "source-scoped-cold-archives-only",
+            },
+        ), patch.object(
+            incremental,
+            "_runnable_job_type_counts",
+            side_effect=queue_states,
+        ), patch.object(incremental, "hosted_bootstrap_main", side_effect=runner) as hosted, contextlib.redirect_stdout(
+            io.StringIO()
+        ):
+            report = incremental.run_incremental_bootstrap(
+                source_offset=0,
+                max_sources=1,
+                output=Path(tmp) / "incremental.json",
+            )
+
+        self.assertEqual(report["status"], "PASS")
+        self.assertEqual(hosted.call_count, 2)
+        self.assertEqual(report["sources"][0]["followup_worker_jobs"], 1)
+        self.assertIsNone(report["sources"][0]["followup_error_class"])
+        self.assertEqual(report["sources"][0]["after"]["queue"]["pending"], 0)
+
+    def test_incremental_runner_refuses_unrelated_source_boundary_jobs(self):
+        ids = [f"source-{idx:03}" for idx in range(343)]
+        registry = SimpleNamespace(_sources=set(ids), is_read_allowed=lambda _source_id: True)
+        before = _state()
+        after = _state(coverage=2)
+        after["latest_source_poll"] = {
+            "status": "ok", "raw_ingested": 12, "unique_opportunities": 8,
+            "inserted": 8, "unchanged": 0, "updated": 0,
+        }
+
+        def runner(_args):
+            return 0
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            incremental, "SourceRegistry", return_value=registry
+        ), patch.object(
+            incremental, "_take_snapshot", side_effect=[before, after]
+        ), patch.object(
+            incremental,
+            "_verify_increment_archives",
+            return_value={
+                "source_id": ids[0],
+                "archive_objects_verified": 2,
+                "compressed_bytes_downloaded": 1024,
+                "sha256_identity_verified": True,
+                "download_scope": "source-scoped-cold-archives-only",
+            },
+        ), patch.object(
+            incremental,
+            "_runnable_job_type_counts",
+            return_value={("poll_source", "PENDING"): 1},
+        ), patch.object(incremental, "hosted_bootstrap_main", side_effect=runner) as hosted, contextlib.redirect_stdout(
+            io.StringIO()
+        ):
+            report = incremental.run_incremental_bootstrap(
+                source_offset=0,
+                max_sources=1,
+                output=Path(tmp) / "incremental.json",
+            )
+
+        self.assertEqual(report["status"], "CAPACITY_OR_INVARIANT_STOP")
+        self.assertIn("unexpected_source_followup_queue", report["fatal_failures"])
+        self.assertEqual(hosted.call_count, 1)
+
     def test_incremental_runner_pauses_before_write_if_projected_budget_fails(self):
         ids = [f"source-{idx:03}" for idx in range(343)]
         registry = SimpleNamespace(_sources=set(ids), is_read_allowed=lambda _source_id: True)
-        before = _state(database_bytes=20_000_000)
+        before = _state(database_bytes=DATABASE_HARD_BUDGET + 1)
 
         with tempfile.TemporaryDirectory() as tmp, patch.object(incremental, "SourceRegistry", return_value=registry), patch.object(
             incremental, "_take_snapshot", return_value=before
