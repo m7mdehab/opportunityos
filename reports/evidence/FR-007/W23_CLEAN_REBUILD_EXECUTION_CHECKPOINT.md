@@ -717,3 +717,15 @@
 - current_sha_now: `11c2cb714023aec298b1442b2b7a0eb4fe885a2f` (checkpoint update pending)
 - current_remote_sha: `11c2cb714023aec298b1442b2b7a0eb4fe885a2f`
 - exact_next_action: continue the active bounded run, inspect only its next natural batch boundary, and do not overlap any other source or queue workflow. If it reaches the six-hour cap, resume the same offset from latest-success state; after full coverage, perform final checksum/object verification and immediately enter runtime closure.
+
+- execution_update_2026_09_23_2140Z_live_resume_refresh:
+  - fetched `origin/work/fr007-clean-rebuild-storage-v2`; local HEAD and authoritative remote are both `47899b1118381de49eec8e870e05a2de70651f5e`. The pre-existing untracked `work/` directory is untouched. Prior checkpoint was stale at 96 successful source identities.
+  - bootstrap run `35916759119`, job `107370111069`, remains `in_progress` on immutable launch SHA `581df5ed927f0e84d0294c0d3f2d83da25f78714`; its bounded five-source bootstrap step is still active. A live job-log API request returned GitHub `BlobNotFound` while the step is active; the workflow and DB aggregates remain the execution evidence, and the run was not disturbed.
+  - aggregate-only SQL at `2026-09-23T21:40:31Z`: PostgreSQL `75,607,187` bytes; 8,955 opportunities (1,163 HOT /7,792 COLD /0 protected); 1,163 feed rows; 0 synthetic active projections; 8,953 current evaluations; 7,792 cold archives /`62,206,360` compressed bytes. Latest source state: 104 successful identities, 0 latest failures. Cold description/raw payload/provenance/verbose-evaluation rows all 0; max feed and evaluation rows per opportunity both 1.
+  - both private buckets together contain 7,824 objects /`64,369,708` bytes: opportunity archives 7,792 /`62,206,360` bytes and canonical CV package 32 /`2,163,348` bytes (31 manifest objects plus one existing zero-byte marker). Physical DB remains below the accepted 200 MiB limit and the accepted 26k forecast.
+  - queue snapshot is in-flight, not convergence: 2 running jobs, 1 pending normal follow-up, 0 retry, 0 expired, 0 dead-letter; oldest due age 78 seconds. Leave the active run untouched until its own boundary/terminal artifact.
+  - credentials remain uninspected and unmanaged; required replacement-project DB password rotation remains a Founder post-completion security action. No new CI, whole-corpus object verification, manual queue edits, paid service, or successful-source replay occurred.
+- current_phase: `PHASE_V_BOOTSTRAP_RUN_35916759119_ACTIVE_AFTER_104_SUCCESSFUL_SOURCE_IDENTITIES`
+- current_sha_now: `47899b1118381de49eec8e870e05a2de70651f5e`
+- current_remote_sha: `47899b1118381de49eec8e870e05a2de70651f5e`
+- exact_next_action: continue observing bootstrap run `35916759119` at its natural bounded batch boundaries. Do not dispatch overlapping bootstrap/queue work. If the bounded job reaches its six-hour limit, resume only non-successful source identities from the current live DB state; once bootstrap is complete, run the single final archive/object verification and proceed directly through queue convergence and runtime closure.
