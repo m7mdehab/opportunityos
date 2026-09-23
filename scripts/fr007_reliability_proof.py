@@ -439,7 +439,11 @@ def execute_a5_source_probe(dsn: str) -> dict[str, Any]:
     processed_2 = runner.run_once()
 
     # 6. Check scheduler tick
-    scheduler = PollScheduler(factory, registry=registry)
+    scheduler = PollScheduler(
+        factory,
+        registry=registry,
+        initialize_missing_schedules=False,
+    )
     scheduler_enqueued = scheduler.run_once()
 
     # 7. Observe and derive all values from PostgreSQL

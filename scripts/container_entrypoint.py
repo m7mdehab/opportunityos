@@ -239,7 +239,7 @@ def run_scheduler(
 ) -> int:
     """Run dedicated PollScheduler loop with graceful SIGTERM/SIGINT handling."""
     from storage.engine import get_engine, get_production_db_url, get_session_factory
-    from worker.scheduler import PollScheduler
+    from worker.scheduler import PollScheduler, implicit_source_schedule_creation_enabled
 
     event = stop_event if stop_event is not None else threading.Event()
 
@@ -260,7 +260,12 @@ def run_scheduler(
     else:
         factory = session_factory
 
-    scheduler = PollScheduler(factory, stop_event=event, tick_interval_seconds=tick_seconds)
+    scheduler = PollScheduler(
+        factory,
+        stop_event=event,
+        tick_interval_seconds=tick_seconds,
+        initialize_missing_schedules=implicit_source_schedule_creation_enabled(),
+    )
     scheduler.run_forever()
     return 0
 

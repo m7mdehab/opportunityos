@@ -13,7 +13,9 @@ from worker.scheduler import (
     DEFAULT_POLL_INTERVAL_HOURS,
     ENV_POLL_INTERVAL_HOURS,
     PollScheduler,
+    enqueue_due_sources,
     get_poll_interval_hours,
+    implicit_source_schedule_creation_enabled,
 )
 
 # Minimal fixture registry: one read-allowed source, one read-disabled source.
@@ -102,6 +104,73 @@ class TestReadPolicyBoundary(TestPollSchedulerBase):
         source_ids = {json.loads(j.payload_json)["source_id"] for j in jobs}
         self.assertIn("fixture_allowed", source_ids)
         self.assertNotIn("fixture_disabled", source_ids)
+
+
+class TestBoundedHostedEnqueue(TestPollSchedulerBase):
+    def test_existing_schedules_only_does_not_seed_registry_sources(self):
+        session = self.session_factory()
+        try:
+            enqueued, skipped = enqueue_due_sources(
+                session,
+                registry=self.registry,
+                now=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                create_missing_schedules=False,
+            )
+            self.assertEqual(enqueued, [])
+            self.assertEqual(
+                session.query(SourceScheduleRecord).count(),
+                0,
+                "routine hosted enqueue must not materialize schedules for every registry source",
+            )
+            self.assertEqual(
+                session.query(WorkerJobRecord).filter_by(job_type="poll_source").count(),
+                0,
+            )
+            self.assertIn(
+                {"source_id": "fixture_disabled", "reason": "read_disabled_by_policy"},
+                skipped,
+            )
+        finally:
+            session.close()
+
+    def test_explicit_source_filter_does_not_create_a_missing_schedule(self):
+        session = self.session_factory()
+        try:
+            enqueued, _ = enqueue_due_sources(
+                session,
+                registry=self.registry,
+                source_ids=["fixture_allowed"],
+                now=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                create_missing_schedules=False,
+            )
+            self.assertEqual(enqueued, [])
+            self.assertEqual(session.query(SourceScheduleRecord).count(), 0)
+            self.assertEqual(session.query(WorkerJobRecord).count(), 0)
+        finally:
+            session.close()
+
+    def test_hosted_poll_scheduler_does_not_implicitly_seed_registry(self):
+        scheduler = PollScheduler(
+            self.session_factory,
+            registry=self.registry,
+            initialize_missing_schedules=False,
+        )
+        self.assertEqual(scheduler.run_once(), [])
+        session = self.session_factory()
+        try:
+            self.assertEqual(session.query(SourceScheduleRecord).count(), 0)
+            self.assertEqual(
+                session.query(WorkerJobRecord).filter_by(job_type="poll_source").count(),
+                0,
+            )
+        finally:
+            session.close()
+
+    def test_hosted_environment_disables_implicit_schedule_initialization(self):
+        self.assertTrue(implicit_source_schedule_creation_enabled("local"))
+        for environment in ("cloud", "prod", "production"):
+            with self.subTest(environment=environment):
+                self.assertFalse(implicit_source_schedule_creation_enabled(environment))
 
 
 class TestOneJobPerSourcePerTick(TestPollSchedulerBase):

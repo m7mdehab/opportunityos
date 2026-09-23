@@ -99,6 +99,21 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
         # Drain runs on all / drain, skipped on enqueue
         self.assertIn("inputs.mode == 'drain'", drain_section)
 
+    def test_clean_rebuild_bootstrap_requires_explicit_bounded_source_selection(self):
+        bootstrap = (ROOT / "scripts" / "fr007_hosted_bootstrap.py").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github" / "workflows" / "fr007-hosted-bootstrap.yml").read_text(encoding="utf-8")
+        self.assertIn("--source-ids", bootstrap)
+        self.assertIn("source bootstrap batches are limited to five sources", bootstrap)
+        self.assertIn('enqueue_kwargs["create_missing_schedules"] = False', bootstrap)
+        self.assertIn("source_ids:", workflow)
+        self.assertIn("never seed the whole registry", workflow)
+        scheduler = (ROOT / "worker" / "scheduler.py").read_text(encoding="utf-8")
+        worker_main = (ROOT / "worker" / "__main__.py").read_text(encoding="utf-8")
+        container_entrypoint = (ROOT / "scripts" / "container_entrypoint.py").read_text(encoding="utf-8")
+        self.assertIn("implicit_source_schedule_creation_enabled", scheduler)
+        self.assertIn("implicit_source_schedule_creation_enabled()", worker_main)
+        self.assertIn("implicit_source_schedule_creation_enabled()", container_entrypoint)
+
     def test_hosted_bootstrap_worker_id_contract(self):
         import os
         from unittest.mock import patch, MagicMock

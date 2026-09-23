@@ -20,7 +20,7 @@ import os
 import re
 import threading
 from datetime import datetime, timedelta, timezone
-from typing import Callable, Mapping, Optional
+from typing import Callable, Mapping, Optional, Sequence
 
 from sqlalchemy import or_
 
@@ -67,6 +67,14 @@ def get_poll_interval_hours(env: Optional[Mapping[str, str]] = None) -> float:
         )
         return DEFAULT_POLL_INTERVAL_HOURS
     return value
+
+
+def implicit_source_schedule_creation_enabled(environment: Optional[str] = None) -> bool:
+    """Keep registry-wide first-run seeding out of hosted environments."""
+    current = environment
+    if current is None:
+        current = os.environ.get("OPPORTUNITYOS_ENVIRONMENT", "")
+    return current.strip().lower() not in {"cloud", "prod", "production"}
 
 
 def _default_clock() -> datetime:
@@ -243,8 +251,10 @@ def enqueue_due_sources(
     registry: Optional[SourceRegistry] = None,
     now: Optional[datetime] = None,
     source_id: Optional[str] = None,
+    source_ids: Optional[Sequence[str]] = None,
     interval_hours: Optional[float] = None,
     force: bool = False,
+    create_missing_schedules: bool = True,
 ) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
     """Enqueue due/eligible poll_source jobs.
 
@@ -253,6 +263,8 @@ def enqueue_due_sources(
       skipped: [{"source_id": str, "reason": str}, ...]
     """
     reg = registry or SourceRegistry()
+    if source_id is not None and source_ids is not None:
+        raise ValueError("source_id and source_ids are mutually exclusive")
     curr_now = now or datetime.now(timezone.utc)
     curr_now_naive = _to_naive_utc(curr_now) or datetime.now(timezone.utc).replace(tzinfo=None)
     default_interval = interval_hours if interval_hours is not None else get_poll_interval_hours()
@@ -319,18 +331,32 @@ def enqueue_due_sources(
         enqueued.append({"source_id": source_id, "job_id": job_id})
         return enqueued, skipped
 
-    # Generic request: evaluate all sources in registry
-    read_allowed = [s for s in reg._sources if reg.is_read_allowed(s)]
-    read_disabled = [s for s in reg._sources if not reg.is_read_allowed(s)]
-    for s in read_disabled:
-        skipped.append({"source_id": s, "reason": "read_disabled_by_policy"})
+    # Generic or explicitly bounded request. Hosted bootstrap passes
+    # create_missing_schedules=False so a routine cron tick on a clean database
+    # cannot seed the full source registry in one operation.
+    if source_ids is None:
+        read_allowed = [s for s in reg._sources if reg.is_read_allowed(s)]
+        read_disabled = [s for s in reg._sources if not reg.is_read_allowed(s)]
+        for s in read_disabled:
+            skipped.append({"source_id": s, "reason": "read_disabled_by_policy"})
+    else:
+        read_allowed = []
+        for sid in dict.fromkeys(source_ids):
+            if sid not in reg._sources:
+                skipped.append({"source_id": sid, "reason": "unregistered_source"})
+            elif not reg.is_read_allowed(sid):
+                skipped.append({"source_id": sid, "reason": "read_disabled_by_policy"})
+            else:
+                read_allowed.append(sid)
 
     if not read_allowed:
         return enqueued, skipped
 
-    # Ensure schedules exist for all read_allowed sources
-    for s in read_allowed:
-        get_or_create_source_schedule(session, s, _cadence_for(s), curr_now)
+    # Continuous/local schedulers can retain ensure-schedule behavior. Hosted
+    # bootstrap only opts into new schedules after explicit bounded selection.
+    if create_missing_schedules:
+        for s in read_allowed:
+            get_or_create_source_schedule(session, s, _cadence_for(s), curr_now)
 
     # In PostgreSQL, lock schedule rows with FOR UPDATE SKIP LOCKED. The
     # queue insert and next_due_at advancement remain in the same transaction,
@@ -388,6 +414,7 @@ class PollScheduler:
         clock: Clock = _default_clock,
         tick_interval_seconds: float = 30.0,
         stop_event: Optional[threading.Event] = None,
+        initialize_missing_schedules: bool = True,
     ) -> None:
         self.session_factory = session_factory
         self.registry = registry or SourceRegistry()
@@ -397,6 +424,7 @@ class PollScheduler:
         self.clock = clock
         self.tick_interval_seconds = tick_interval_seconds
         self.stop_event = stop_event or threading.Event()
+        self.initialize_missing_schedules = initialize_missing_schedules
         self._last_enqueued_at: dict[str, datetime] = {}
         self._cadence_hours: dict[str, float] = self._load_cadence_hours()
         self._blocked_this_session: set[str] = set()
@@ -465,6 +493,7 @@ class PollScheduler:
                 registry=self.registry,
                 now=now,
                 interval_hours=self.interval_hours,
+                create_missing_schedules=self.initialize_missing_schedules,
             )
             for item in enqueued_items:
                 self._last_enqueued_at[item["source_id"]] = now

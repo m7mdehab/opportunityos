@@ -64,6 +64,13 @@ from scripts.backup_restore import (
 TARGET_DB_NAME = "opportunityos_restore_test"
 
 
+def _normalized_utc(value):
+    """Normalize SQLite's naive DateTime round-trip and PostgreSQL timestamptz."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def _replace_db_name(url: str, db_name: str) -> str:
     parts = urlsplit(url)
     return urlunsplit((parts.scheme, parts.netloc, "/" + db_name, parts.query, parts.fragment))
@@ -361,7 +368,7 @@ class TestBackupRestorePostgres(unittest.TestCase):
         )
         session.add(cold_opp)
         session.flush()
-        archive_created_at = datetime(2026, 9, 2, 10, 33, 0)
+        archive_created_at = datetime(2026, 9, 2, 10, 33, 0, tzinfo=timezone.utc)
         session.add(OpportunityColdArchiveRecord(
             opportunity_id="OPP-COLD-BACKUP-1",
             content_hash=cold_opp.content_hash,
@@ -374,7 +381,7 @@ class TestBackupRestorePostgres(unittest.TestCase):
             archive_version="v2",
             archived_at=archive_created_at,
         ))
-        orphan_created_at = datetime(2026, 9, 2, 10, 34, 0)
+        orphan_created_at = datetime(2026, 9, 2, 10, 34, 0, tzinfo=timezone.utc)
         session.add(OpportunityArchiveOrphanRecord(
             object_key="cold-opportunities/orphan.json.zlib",
             payload_sha256="d" * 64,
@@ -585,12 +592,12 @@ class TestBackupRestorePostgres(unittest.TestCase):
         self.assertEqual(cold_archive.object_key, "cold-opportunities/test/cold-backup.json.zlib")
         self.assertEqual(cold_archive.payload_sha256, "c" * 64)
         self.assertEqual(cold_archive.compressed_size_bytes, 456)
-        self.assertEqual(cold_archive.archived_at, archive_created_at)
+        self.assertEqual(_normalized_utc(cold_archive.archived_at), archive_created_at)
         orphan = dst_session.query(OpportunityArchiveOrphanRecord).filter_by(
             object_key="cold-opportunities/orphan.json.zlib"
         ).one()
         self.assertEqual(orphan.payload_sha256, "d" * 64)
-        self.assertEqual(orphan.created_at, orphan_created_at)
+        self.assertEqual(_normalized_utc(orphan.created_at), orphan_created_at)
 
         spr = dst_session.query(SourcePollRunRecord).filter_by(id="spr-backup-1").first()
         self.assertIsNotNone(spr, "source_poll_runs row must survive restore")

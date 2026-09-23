@@ -31,7 +31,7 @@ from storage.engine import ProductionDatabaseConfigurationError, get_engine, get
 from worker.digest import generate_digest
 from worker.handlers import default_handler_registry
 from worker.runner import WorkerRunner
-from worker.scheduler import PollScheduler
+from worker.scheduler import PollScheduler, implicit_source_schedule_creation_enabled
 
 logger = get_logger("opportunityos.worker.main")
 
@@ -116,7 +116,10 @@ def main(argv: list[str] | None = None) -> int:
     worker_id = args.worker_id or f"worker-{uuid.uuid4().hex[:8]}"
 
     if args.poll_now:
-        scheduler = PollScheduler(session_factory)
+        scheduler = PollScheduler(
+            session_factory,
+            initialize_missing_schedules=implicit_source_schedule_creation_enabled(),
+        )
         enqueued = scheduler.run_once()
         logger.info(
             "worker.poll_now_completed",
@@ -156,6 +159,7 @@ def main(argv: list[str] | None = None) -> int:
             session_factory,
             stop_event=stop_event,
             tick_interval_seconds=args.scheduler_tick_seconds,
+            initialize_missing_schedules=implicit_source_schedule_creation_enabled(),
         )
         scheduler_thread = threading.Thread(
             target=scheduler.run_forever, name="poll-scheduler", daemon=True

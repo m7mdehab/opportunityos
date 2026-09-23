@@ -12,6 +12,10 @@ on:
         description: "Bounded jobs per invocation"
         required: true
         default: "10"
+      source_ids:
+        description: "Optional explicit comma-separated source batch (maximum five IDs); never seed the whole registry"
+        required: false
+        default: ""
       dry_run:
         description: "Inspect without writes"
         required: true
@@ -38,9 +42,18 @@ jobs:
           OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
           OPPORTUNITYOS_ENVIRONMENT: cloud
           OPPORTUNITYOS_TRUTH_PACK_PATH: ${{ vars.OPPORTUNITYOS_TRUTH_PACK_PATH || 'founder/truth_pack.yaml.gz.b64' }}
+          OPOS_BOOTSTRAP_MODE: ${{ inputs.mode }}
+          OPOS_BOOTSTRAP_MAX_JOBS: ${{ inputs.max_jobs }}
+          OPOS_BOOTSTRAP_SOURCE_IDS: ${{ inputs.source_ids }}
+          OPOS_BOOTSTRAP_DRY_RUN: ${{ inputs.dry_run }}
           PYTHONPATH: ${{ github.workspace }}
-        run: >-
-          python scripts/fr007_hosted_bootstrap.py
-          --mode "${{ inputs.mode }}"
-          --max-jobs "${{ inputs.max_jobs }}"
-          ${{ inputs.dry_run == true && '--dry-run' || '' }}
+        run: |
+          set -euo pipefail
+          args=(--mode "${OPOS_BOOTSTRAP_MODE}" --max-jobs "${OPOS_BOOTSTRAP_MAX_JOBS}")
+          if [[ -n "${OPOS_BOOTSTRAP_SOURCE_IDS}" ]]; then
+            args+=(--source-ids "${OPOS_BOOTSTRAP_SOURCE_IDS}")
+          fi
+          if [[ "${OPOS_BOOTSTRAP_DRY_RUN}" == "true" ]]; then
+            args+=(--dry-run)
+          fi
+          python scripts/fr007_hosted_bootstrap.py "${args[@]}"
