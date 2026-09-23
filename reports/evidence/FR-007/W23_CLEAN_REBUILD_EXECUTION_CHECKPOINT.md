@@ -699,3 +699,12 @@
 - current_sha_now: `c3edcf12e883411a86fb8e72c3a10fba5a900153` (checkpoint update pending)
 - current_remote_sha: `c3edcf12e883411a86fb8e72c3a10fba5a900153`
 - exact_next_action: let the existing `greenhouse:elastic` poll finish under normal worker lease semantics. At the natural source/batch boundary, inspect its source result and queue state; keep successful sources skipped and continue the same bounded run. Do not dispatch another bootstrap or queue recovery while this source is active.
+
+- execution_update_2026_09_23_2116Z_elastic_source_natural_success:
+  - `greenhouse:elastic` completed naturally in bootstrap run `35916759119`; latest source status is `ok`, 369 opportunities for that source. The normal `evaluate_new` follow-up also completed. At snapshot `2026-09-23T21:16:01Z`, queue had 92 completed polls +79 completed evaluations, with no pending/retry/running/expired/dead-letter jobs; run `35916759119` remains active in the bounded bootstrap step and was not restarted.
+  - physical DB `70,347,923` bytes; 8,143 total opportunities (1,063 HOT /7,080 COLD /0 protected), 1,063 feed rows, 7,080 cold archives /`57,011,874` compressed bytes. Latest successful source identities: 91, no latest failures. The source's measured growth remains within the existing dynamic budget guard; no corpus-wide object verification was run.
+  - current branch before this checkpoint is `69e9af78886f92ce5482cb0792fac4d90d163f38`. Credential remains untouched. Keep current 5×2 worker/session cap.
+- current_phase: `PHASE_V_BOOTSTRAP_RUN_35916759119_CONTINUING_AFTER_ELASTIC_SUCCESS`
+- current_sha_now: `69e9af78886f92ce5482cb0792fac4d90d163f38` (checkpoint update pending)
+- current_remote_sha: `69e9af78886f92ce5482cb0792fac4d90d163f38`
+- exact_next_action: continue monitoring run `35916759119`; let its own measured source loop start only the next unsuccessful identities. At terminal, consume its sanitized artifact, classify source failures, and resume only unsuccessful sources. Then perform the one final archive/object verification and proceed immediately to queue/acceptance/monitor/smoke/report/State closure.
