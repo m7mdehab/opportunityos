@@ -37,7 +37,8 @@ def snapshot(connection, *, source_id: str) -> dict[str, Any]:
     db_bytes = int(_scalar(connection, "SELECT pg_database_size(current_database())"))
     revision = _scalar(connection, "SELECT version_num FROM public.alembic_version LIMIT 1")
     relation_rows = connection.execute(text("""
-        SELECT c.relname AS relation,
+        SELECT n.nspname AS schema_name,
+               c.relname AS relation,
                pg_total_relation_size(c.oid)::bigint AS total_bytes,
                pg_relation_size(c.oid)::bigint AS heap_bytes,
                pg_indexes_size(c.oid)::bigint AS index_bytes,
@@ -45,19 +46,21 @@ def snapshot(connection, *, source_id: str) -> dict[str, Any]:
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
         LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid
-        WHERE n.nspname = 'public' AND c.relkind IN ('r', 'm')
+        WHERE n.nspname IN ('public', 'storage') AND c.relkind IN ('r', 'm')
         ORDER BY pg_total_relation_size(c.oid) DESC, c.relname
         LIMIT 20
     """)).mappings().all()
     index_rows = connection.execute(text("""
-        SELECT idx.relname AS index_name,
+        SELECT n.nspname AS index_schema,
+               idx.relname AS index_name,
+               n.nspname AS table_schema,
                tbl.relname AS table_name,
                pg_relation_size(idx.oid)::bigint AS bytes
         FROM pg_index i
         JOIN pg_class idx ON idx.oid = i.indexrelid
         JOIN pg_class tbl ON tbl.oid = i.indrelid
         JOIN pg_namespace n ON n.oid = tbl.relnamespace
-        WHERE n.nspname = 'public'
+        WHERE n.nspname IN ('public', 'storage')
         ORDER BY pg_relation_size(idx.oid) DESC, idx.relname
         LIMIT 20
     """)).mappings().all()
@@ -99,7 +102,9 @@ def snapshot(connection, *, source_id: str) -> dict[str, Any]:
           (SELECT count(*) FROM public.founder_feedback) AS founder_feedback_rows,
           (SELECT count(*) FROM public.founder_triage_states) AS founder_triage_rows,
           (SELECT count(*) FROM public.founder_opportunity_views) AS founder_view_rows,
-          (SELECT count(*) FROM public.source_poll_runs WHERE source_id=:source_id) AS source_poll_run_count
+          (SELECT count(*) FROM public.source_poll_runs WHERE source_id=:source_id) AS source_poll_run_count,
+          (SELECT count(*) FROM public.source_schedules) AS source_schedules,
+          (SELECT count(*) FROM public.worker_jobs) AS worker_jobs_total
     """), {"source_id": source_id}).mappings().one()
     source_poll = connection.execute(text("""
         SELECT status, raw_ingested, unique_opportunities, inserted, unchanged, updated,
@@ -109,6 +114,36 @@ def snapshot(connection, *, source_id: str) -> dict[str, Any]:
         ORDER BY started_at DESC
         LIMIT 1
     """), {"source_id": source_id}).mappings().first()
+    source_poll_statuses = connection.execute(text("""
+        SELECT status, count(*)::bigint AS count
+        FROM public.source_poll_runs
+        GROUP BY status
+        ORDER BY status
+    """)).mappings().all()
+    source_coverage = int(_scalar(connection, """
+        SELECT count(*) FROM (
+          SELECT DISTINCT ON (source_id) source_id, status
+          FROM public.source_poll_runs
+          ORDER BY source_id, started_at DESC
+        ) latest
+        WHERE status='ok'
+    """))
+    dead_letter_error_classes = connection.execute(text("""
+        SELECT CASE
+                 WHEN error_message ~* 'EMAXCONNSESSION' THEN 'EMAXCONNSESSION'
+                 WHEN error_message ~* 'UniqueViolation' THEN 'UniqueViolation'
+                 WHEN error_message ~* 'ReadOnlySqlTransaction' THEN 'ReadOnlySqlTransaction'
+                 WHEN error_message ~* 'OperationalError' THEN 'OperationalError'
+                 WHEN error_message ~* 'Timeout|timed out' THEN 'Timeout'
+                 WHEN error_message IS NULL OR btrim(error_message)='' THEN 'NoErrorText'
+                 ELSE 'Other'
+               END AS error_class,
+               count(*)::bigint AS count
+        FROM public.worker_jobs
+        WHERE status='DEAD_LETTER'
+        GROUP BY 1
+        ORDER BY 1
+    """)).mappings().all()
     queue = connection.execute(text("""
         SELECT count(*) FILTER (WHERE status='PENDING') AS pending,
                count(*) FILTER (WHERE status='RETRY') AS retry,
@@ -135,16 +170,27 @@ def snapshot(connection, *, source_id: str) -> dict[str, Any]:
         FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
         WHERE n.nspname='public' AND c.relkind IN ('r','m')
     """))
+    application_relation_bytes = int(_scalar(connection, """
+        SELECT COALESCE(sum(pg_total_relation_size(c.oid)),0)::bigint
+        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname IN ('public','storage') AND c.relkind IN ('r','m')
+    """))
 
     return {
         "source_id": source_id,
         "database_revision": str(revision) if revision is not None else None,
         "database_bytes": db_bytes,
         "public_relation_total_bytes": relation_bytes,
+        "application_relation_total_bytes": application_relation_bytes,
         "top_relations": [dict(item) for item in relation_rows],
         "top_indexes": [dict(item) for item in index_rows],
         "counts": dict(row),
         "latest_source_poll": dict(source_poll) if source_poll is not None else None,
+        "source_poll_status_counts": {item["status"]: int(item["count"]) for item in source_poll_statuses},
+        "successful_source_coverage": source_coverage,
+        "dead_letter_error_class_counts": {
+            item["error_class"]: int(item["count"]) for item in dead_letter_error_classes
+        },
         "queue": dict(queue),
         "storage_buckets": {item["bucket_id"]: {
             "object_count": int(item["object_count"]),

@@ -1,0 +1,60 @@
+name: FR-007 incremental full source bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_offset:
+        description: "Start offset in the sorted read-allowed source registry"
+        required: true
+        default: "0"
+        type: string
+      max_sources:
+        description: "Maximum sources in this bounded run (1-125); each source is independently measured"
+        required: true
+        default: "125"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fr007-incremental-source-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    name: Bounded incremental sources ${{ inputs.source_offset }}+
+    runs-on: ubuntu-latest
+    environment: fr007-staging
+    timeout-minutes: 360
+    env:
+      OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+      CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL }}
+      SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
+      STORAGE_SERVICE_KEY: ${{ secrets.STORAGE_SERVICE_KEY }}
+      OPPORTUNITYOS_ENVIRONMENT: cloud
+      OPPORTUNITYOS_TRUTH_PACK_PATH: ${{ vars.OPPORTUNITYOS_TRUTH_PACK_PATH || 'founder/truth_pack.yaml.gz.b64' }}
+      PYTHONPATH: ${{ github.workspace }}
+      SOURCE_OFFSET: ${{ inputs.source_offset }}
+      MAX_SOURCES: ${{ inputs.max_sources }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install repository
+        run: python -m pip install -e .
+      - name: Bootstrap sources one at a time with capacity and invariant snapshots
+        run: >-
+          python scripts/fr007_incremental_source_bootstrap.py
+          --source-offset "$SOURCE_OFFSET"
+          --max-sources "$MAX_SOURCES"
+          --output w23-incremental-source-bootstrap.json
+      - name: Preserve sanitized per-source evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fr007-incremental-source-bootstrap-${{ github.run_id }}
+          path: w23-incremental-source-bootstrap.json
+          if-no-files-found: ignore
+          retention-days: 30

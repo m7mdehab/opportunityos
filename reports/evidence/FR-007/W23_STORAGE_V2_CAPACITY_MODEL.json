@@ -1,0 +1,52 @@
+{
+  "schema": "fr007-storage-v2-capacity-model-v1",
+  "representative_workflow_run_id": 35835117460,
+  "representative_commit": "7bc731320297d862ec1615a4ebe8b8d7465add1a",
+  "source_id": "himalayas",
+  "source_sample_opportunities": 20,
+  "live_database_bytes_at_benchmark": 14101651,
+  "benchmark_database_bytes_empty_schema": 9901747,
+  "benchmark_database_bytes_after_population": 202637839,
+  "benchmark_growth_bytes": 192736092,
+  "target_opportunities": 26000,
+  "target_read_allowed_sources": 343,
+  "hard_database_budget_bytes": 209715200,
+  "projected_database_bytes_at_gate": 206837743,
+  "projected_database_mib_at_gate": 197.26,
+  "projected_cold_archive_storage_bytes": 98176650,
+  "source_overhead_relation_bytes": {
+    "public.worker_jobs": 319488,
+    "public.source_poll_runs": 262144,
+    "public.source_schedules": 139264,
+    "total": 720896
+  },
+  "population": {
+    "opportunities": 26000,
+    "hot": 4550,
+    "cold": 21450,
+    "protected": 0,
+    "feed_projections": 4550,
+    "evaluations": 26000,
+    "provenance": 59150,
+    "archives": 21450,
+    "storage_objects": 21450,
+    "source_polls": 343,
+    "source_schedules": 343,
+    "worker_jobs": 686
+  },
+  "largest_relations_bytes": {
+    "public.opportunities": 62029824,
+    "storage.objects": 44670976,
+    "public.field_provenances": 31039488,
+    "public.match_evaluations": 25829376,
+    "public.opportunity_cold_archive": 17260544,
+    "public.feed_projection": 11501568
+  },
+  "measurement_contract": {
+    "benchmark_engine": "isolated PostgreSQL 17 disposable service",
+    "live_database_writes": 0,
+    "physical_database_measurement": "pg_database_size",
+    "projection": "live DB bytes plus measured 26k population growth",
+    "safety_reserve_fraction_for_incremental_projection": 0.01
+  }
+}

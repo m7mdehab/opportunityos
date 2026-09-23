@@ -17,10 +17,12 @@ from sqlalchemy import create_engine, text
 
 PREFERRED_BYTES = 150 * 1024 * 1024
 TARGET_BYTES = 200 * 1024 * 1024
-WARN_BYTES = 250 * 1024 * 1024
-STRONG_WARN_BYTES = 300 * 1024 * 1024
-BLOCK_BYTES = 350 * 1024 * 1024
-HARD_STOP_BYTES = 400 * 1024 * 1024
+WARN_BYTES = 175 * 1024 * 1024
+STRONG_WARN_BYTES = 190 * 1024 * 1024
+# W23 accepts the measured 150-200 MiB review band, but no new heavy work may
+# start at or above the 200 MiB physical ceiling.
+BLOCK_BYTES = TARGET_BYTES
+HARD_STOP_BYTES = TARGET_BYTES
 
 
 class CapacityBlocked(RuntimeError):
@@ -72,8 +74,8 @@ def assert_heavy_work_allowed(connection) -> CapacitySnapshot:
     snapshot = inspect_connection(connection)
     if snapshot.read_only or snapshot.in_recovery:
         raise CapacityBlocked("database is read-only; heavy work is blocked")
-    if snapshot.database_size_bytes >= BLOCK_BYTES:
-        raise CapacityBlocked("database exceeds the heavy-work capacity guard")
+    if snapshot.database_size_bytes >= TARGET_BYTES:
+        raise CapacityBlocked("database reached the W23 physical capacity ceiling")
     return snapshot
 
 
