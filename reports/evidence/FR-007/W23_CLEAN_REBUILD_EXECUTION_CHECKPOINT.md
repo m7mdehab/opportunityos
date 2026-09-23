@@ -708,3 +708,12 @@
 - current_sha_now: `69e9af78886f92ce5482cb0792fac4d90d163f38` (checkpoint update pending)
 - current_remote_sha: `69e9af78886f92ce5482cb0792fac4d90d163f38`
 - exact_next_action: continue monitoring run `35916759119`; let its own measured source loop start only the next unsuccessful identities. At terminal, consume its sanitized artifact, classify source failures, and resume only unsuccessful sources. Then perform the one final archive/object verification and proceed immediately to queue/acceptance/monitor/smoke/report/State closure.
+
+- execution_update_2026_09_23_2127Z_source_batch_96_success:
+  - run `35916759119` completed the next disjoint source batch without failure; latest per-source state is 96 `ok`, no latest failed/refused source. The long `greenhouse:epicgames` poll completed once (150 source opportunities are currently relationally present), followed by the regular evaluator. Queue is naturally empty at this snapshot: 97 completed polls +80 completed evaluations, no pending/retry/running/expired/dead-letter work. The bootstrap workflow remains active and continues to the next slice of its selected registry IDs.
+  - snapshot `2026-09-23T21:27:01Z`: PostgreSQL `72,543,379` bytes; 8,459 opportunities (1,125 HOT /7,334 COLD /0 protected), 1,125 feed rows, 7,334 cold archives /`59,182,646` compressed bytes. All prior Storage V2 row invariants remain enforced by the runner; comprehensive archive SHA verification is still deferred to the final boundary.
+  - no source was re-polled, no queue row was manually edited, no credential was inspected, and no extra full-corpus read was performed. Current safe worker cap remains five shards × two DB connections.
+- current_phase: `PHASE_V_BOOTSTRAP_RUN_35916759119_CONTINUING_AFTER_96_SOURCE_SUCCESSES`
+- current_sha_now: `11c2cb714023aec298b1442b2b7a0eb4fe885a2f` (checkpoint update pending)
+- current_remote_sha: `11c2cb714023aec298b1442b2b7a0eb4fe885a2f`
+- exact_next_action: continue the active bounded run, inspect only its next natural batch boundary, and do not overlap any other source or queue workflow. If it reaches the six-hour cap, resume the same offset from latest-success state; after full coverage, perform final checksum/object verification and immediately enter runtime closure.
