@@ -758,3 +758,12 @@
 - current_sha_now: `0fdaa02552ae8383f788533d664e59102ec556f2`
 - current_remote_sha: `0fdaa02552ae8383f788533d664e59102ec556f2`
 - exact_next_action: continue the existing run's bounded selection, waiting for each normal five-source batch to finish and its queue/invariant check before moving on. Keep to the tested five-shard cap and skip all latest-success identities. Resume only unfinished sources if this run reaches its ceiling; do the sole corpus archive checksum pass after all source ranges finish.
+
+- execution_update_2026_09_23_2224Z_gremlin_to_gusto_batch_green:
+  - the next five-source group completed through the same run `35916759119` and its normal evaluator; queue is empty and the runner continues. Latest source polls all PASS: Gremlin 3/3, GoFundMe 27/27, Gomotive 160/160, Grafana Labs 146/146, and Gusto 90/90 raw/unique/inserted. Latest successful source identity count is 121, with 0 latest failures.
+  - aggregate-only snapshot at `2026-09-23T22:23:57Z`: PostgreSQL `83,733,651` bytes; 10,236 opportunities (1,296 HOT /8,940 COLD /0 protected), 1,296 feed rows, 10,236 current evaluations, 8,940 cold archive objects /`71,347,400` compressed bytes. Queue pending/retry/running/expired/dead-letter all 0. Private buckets: opportunity archives 8,940 /`71,347,400` bytes; CV package 32 /`2,163,348` bytes.
+  - invariant snapshot at `2026-09-23T22:24:21Z`: no synthetic active projections; maximum one projection and one evaluation per opportunity; cold description/raw payload/provenance/verbose-evaluation counts all zero. Largest relations: opportunities `21,594,112`, storage.objects `19,898,368`, match_evaluations `10,592,256`, field_provenances `7,659,520`, cold archive `6,995,968`, feed_projection `2,949,120` bytes. Largest indexes: object bucket/name/version unique `2,899,968`; provenance identity `2,834,432`; all measured indexes remain compact.
+- current_phase: `PHASE_V_BOOTSTRAP_RUN_35916759119_AFTER_GREMLIN_GOFUNDME_GOMOTIVE_GRAFANA_GUSTO_BATCH_121_LATEST_OK`
+- current_sha_now: `e59b3bd4cff4877433eb3dbe43f549d2f0bdd24a`
+- current_remote_sha: `e59b3bd4cff4877433eb3dbe43f549d2f0bdd24a`
+- exact_next_action: continue run `35916759119` only. Wait for the next selected five-source batch and its source-scoped archive/capacity checks; keep the 5-shard/10-connection ceiling and never replay a latest-success source. Full corpus hash verification remains reserved for the final bootstrap boundary.
