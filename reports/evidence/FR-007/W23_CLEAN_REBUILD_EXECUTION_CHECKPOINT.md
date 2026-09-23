@@ -739,3 +739,13 @@
 - current_sha_now: `b68b54ce1e81654d069880d9b320c167331075be` (checkpoint-only commit after the measured live snapshot)
 - current_remote_sha: `b68b54ce1e81654d069880d9b320c167331075be`
 - exact_next_action: continue the same hosted run at its natural batch boundaries. Wait for the runner's per-source/invariant checks to finish, then allow only its selected unsuccessful sources to proceed. Do not overlap the bootstrap with queue recovery or another source slice; after full intended source coverage, perform exactly one comprehensive archive/object verification before terminal queue and runtime acceptance.
+
+- execution_update_2026_09_23_2158Z_four_source_batch_green:
+  - bootstrap `35916759119` remains active on immutable SHA `581df5ed927f0e84d0294c0d3f2d83da25f78714`; the prior four-poll batch completed and its normal evaluator drained. No run restart or successful-source replay.
+  - the four latest source polls all PASS: `greenhouse:galaxydigitalservices` 41/41 unique/inserted; `greenhouse:gardacp` 15/15; `greenhouse:garnerhealth` 79/79; `greenhouse:gcmgrosvenor` 15/15. Total in this measured batch: 150 raw/unique/inserted; all status `ok`.
+  - aggregate-only live snapshot at `2026-09-23T21:58:11Z`: physical DB `78,564,499` bytes; 9,337 opportunities (1,227 HOT /8,110 COLD /0 protected); 1,227 feed rows; 9,337 evaluations; 8,110 cold archive objects /`64,408,811` compressed bytes. Latest source identities: 111 successful /0 failed. Queue pending/retry/running/expired/dead-letter all 0. Buckets: opportunity archives 8,110 /`64,408,811` bytes; CV package 32 /`2,163,348` bytes.
+  - largest relations are opportunities `19,955,712`, storage.objects `18,038,784`, match_evaluations `9,928,704`, field_provenances `7,315,456`, cold archive `6,324,224`, and feed_projection `2,867,200` bytes. Largest indexes: `uq_field_provenances_identity` 2,686,976; `objects_bucket_id_name_version_key` 2,588,672; object-name and archive indexes remain below 2 MiB. Direct-tier and single-current-read-model checks remain green; no full-corpus object verification yet.
+- current_phase: `PHASE_V_BOOTSTRAP_RUN_35916759119_AFTER_FOUR_SOURCE_BATCH_111_LATEST_OK`
+- current_sha_now: `a2189076fb9aeaa1923f3d2400e5e77fc05e6095`
+- current_remote_sha: `a2189076fb9aeaa1923f3d2400e5e77fc05e6095`
+- exact_next_action: let run `35916759119` finish its present boundary verification and continue only its unfinished selected sources. Do not start a second bootstrap/queue workflow. Maintain the accepted <=200 MiB projection guard and defer the one corpus-wide archive checksum pass until all intended source slices are complete.
