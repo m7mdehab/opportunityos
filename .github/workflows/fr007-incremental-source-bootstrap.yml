@@ -13,6 +13,16 @@ on:
         required: true
         default: "125"
         type: string
+  workflow_call:
+    inputs:
+      source_offset:
+        description: "Start offset in the sorted read-allowed source registry"
+        required: true
+        type: string
+      max_sources:
+        description: "Maximum sources in this bounded run (1-125)"
+        required: true
+        type: string
 
 permissions:
   contents: read

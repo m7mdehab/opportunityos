@@ -8,17 +8,27 @@ on:
         required: false
         default: ""
       mode:
-        description: "Closure, Storage V2 CI, DB probe, CV verification, or one-source Storage V2 gate"
+        description: "Closure, Storage V2 CI, DB probe, CV verification, one-source gate, or bounded source bootstrap"
         required: false
         default: "full"
         type: choice
-        options: [full, acceptance, storage-v2-ci, db-credential-probe, verify-cv-storage, representative-source]
+        options: [full, acceptance, storage-v2-ci, db-credential-probe, verify-cv-storage, representative-source, incremental-source-bootstrap]
       source_id:
         description: "The one approved read-only representative source"
         required: false
         default: "himalayas"
         type: choice
         options: [himalayas]
+      source_offset:
+        description: "Start offset in the sorted read-allowed source registry"
+        required: false
+        default: "0"
+        type: string
+      max_sources:
+        description: "Maximum read-allowed sources in this bounded run (1-125)"
+        required: false
+        default: "125"
+        type: string
 
 permissions:
   contents: read
@@ -46,8 +56,15 @@ jobs:
     with:
       source_id: ${{ inputs.source_id }}
     secrets: inherit
+  incremental-source-bootstrap:
+    if: ${{ inputs.mode == 'incremental-source-bootstrap' }}
+    uses: ./.github/workflows/fr007-incremental-source-bootstrap.yml
+    with:
+      source_offset: ${{ inputs.source_offset }}
+      max_sources: ${{ inputs.max_sources }}
+    secrets: inherit
   final-closure:
-    if: ${{ inputs.mode != 'storage-v2-ci' && inputs.mode != 'db-credential-probe' && inputs.mode != 'verify-cv-storage' && inputs.mode != 'representative-source' }}
+    if: ${{ inputs.mode != 'storage-v2-ci' && inputs.mode != 'db-credential-probe' && inputs.mode != 'verify-cv-storage' && inputs.mode != 'representative-source' && inputs.mode != 'incremental-source-bootstrap' }}
     uses: ./.github/workflows/fr007-final-runtime-closure.yml
     with:
       truth_pack_hash: ${{ inputs.truth_pack_hash }}

@@ -115,15 +115,22 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
 
     def test_workflow_is_manual_bounded_and_preserves_each_run_artifact(self):
         workflow = (ROOT / ".github/workflows/fr007-incremental-source-bootstrap.yml").read_text(encoding="utf-8")
+        launcher = (ROOT / ".github/workflows/fr007-current-readiness-launcher.yml").read_text(encoding="utf-8")
         script = (ROOT / "scripts/fr007_incremental_source_bootstrap.py").read_text(encoding="utf-8")
 
         self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("workflow_call:", workflow)
         self.assertIn("timeout-minutes: 360", workflow)
         self.assertIn("if: always()", workflow)
         self.assertIn("retention-days: 30", workflow)
         self.assertIn("--source-ids", script)
         self.assertIn("--time-budget-seconds", script)
         self.assertIn("source per normal scheduler/worker cycle", script)
+        self.assertIn("incremental-source-bootstrap", launcher)
+        self.assertIn("uses: ./.github/workflows/fr007-incremental-source-bootstrap.yml", launcher)
+        self.assertIn("inputs.mode != 'incremental-source-bootstrap'", launcher)
+        self.assertIn("source_offset: ${{ inputs.source_offset }}", launcher)
+        self.assertIn("max_sources: ${{ inputs.max_sources }}", launcher)
 
     def test_incremental_runner_measures_before_and_after_each_source(self):
         ids = [f"source-{idx:03}" for idx in range(343)]

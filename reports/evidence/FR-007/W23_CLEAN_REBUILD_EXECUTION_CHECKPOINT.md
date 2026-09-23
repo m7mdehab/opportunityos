@@ -1,5 +1,16 @@
 # FR-007 W23 clean rebuild execution checkpoint
 
+- current_phase: PHASE_V_INCREMENTAL_BOOTSTRAP_DISPATCH_REPAIR
+- current_sha_now: `b8e9bc58745c2336643b737a1e9b38787a636425` (dispatch repair is local/uncommitted)
+- current_remote_sha: `b8e9bc58745c2336643b737a1e9b38787a636425`
+- latest_checkpoint_refresh_2026_09_23_incremental_dispatch:
+  - fetched `origin` and confirmed the authoritative feature branch was `2af7555f9760d56af8fc083064a21d8d1b7a98b6`; credential cutover remains independently proven by sanitized probe `35834984797` and representative Himalayas economics by `35835117460`.
+  - committed/pushed cold-archive source-scoped verification refinement as `b8e9bc58745c2336643b737a1e9b38787a636425` (`fix(fr007): verify incremental cold archives`). PG16/PG17 workflow `35840524334` completed green; both full test logs show `1646 passed, 22 skipped, 698 warnings, 2012 subtests passed`; fresh/deployed migration, storage source-gate and bounded Founder backup steps passed. Credential/CV steps were skipped by push trigger. No OCI run was automatically scheduled for this scripts-only path change; latest successful OCI run remains `35815553250` at `2485903...` and has not run on the current SHA.
+  - found that GitHub Actions does not register the dedicated incremental workflow from the feature branch because it is absent from default branch `main`. The registered FR-007 readiness launcher already exposes branch-specific inputs when selecting the feature branch. Added an incremental-source-bootstrap mode with bounded offset/count inputs to that launcher and added `workflow_call` support to the bounded workflow, so the run uses the feature-branch implementation without merging. Regression checks now pin the reusable-workflow wiring. Focused tests pass `17 passed`; both workflow YAML files parse; Python compilation and `git diff --check` pass. These dispatcher changes are not committed.
+  - latest independently measured live state remains replacement project `sunjfepvdzfknglrjwhm`, healthy/writable at `0023_alembic_access`, 14,101,651 bytes; 40 opportunities (7 HOT/33 COLD), 7 feed, 40 evaluations, 90 provenance, 33 verified cold archives/151,049 compressed bytes; no queued/expired/dead-letter work. Projection to 26,000 is 206,837,743 bytes (197.26 MiB), within the reviewed hard limit of 200 MiB.
+  - no full bootstrap, final runtime, FULL monitor, backup, or Founder live smoke has occurred. No user-presence blocker.
+  - exact_next_action: commit/push the branch-specific dispatch repair, require current PG16/PG17 acceptance green, then select `work/fr007-clean-rebuild-storage-v2` in the registered readiness launcher and start `incremental-source-bootstrap` offset 0/count 125. Record each segment and stop/fix on any invariant, archive, source, or capacity error before advancing.
+
 - current_phase: PHASE_V_INCREMENTAL_BOOTSTRAP_ARCHIVE_VERIFICATION_READY
 - current_sha_now: `2af7555f9760d56af8fc083064a21d8d1b7a98b6` (scoped archive-verification refinement uncommitted)
 - current_remote_sha: `2af7555f9760d56af8fc083064a21d8d1b7a98b6`
