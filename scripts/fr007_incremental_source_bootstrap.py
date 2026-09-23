@@ -119,13 +119,37 @@ def _take_snapshot(source_id: str) -> dict[str, Any]:
 def _verify_increment_archives(source_id: str, since) -> dict[str, Any]:
     engine, session = _connect()
     try:
-        return verify_source_archives(
-            session.connection(),
-            source_id=source_id,
-            since=since,
-            max_objects=MAX_INCREMENT_ARCHIVE_OBJECTS,
-            max_archive_bytes=MAX_INCREMENT_ARCHIVE_BYTES,
-        )
+        cursor: str | None = None
+        verified_objects = 0
+        verified_bytes = 0
+        pages = 0
+        while True:
+            page = verify_source_archives(
+                session.connection(),
+                source_id=source_id,
+                since=since,
+                max_objects=MAX_INCREMENT_ARCHIVE_OBJECTS,
+                max_archive_bytes=MAX_INCREMENT_ARCHIVE_BYTES,
+                after_opportunity_id=cursor,
+                include_cursor=True,
+            )
+            pages += 1
+            verified_objects += int(page["archive_objects_verified"])
+            verified_bytes += int(page["compressed_bytes_downloaded"])
+            if not page.get("has_more"):
+                break
+            next_cursor = page.get("last_verified_opportunity_id")
+            if not next_cursor or next_cursor == cursor:
+                raise RuntimeError("incremental archive verifier cursor did not advance")
+            cursor = str(next_cursor)
+        return {
+            "source_id": source_id,
+            "archive_objects_verified": verified_objects,
+            "compressed_bytes_downloaded": verified_bytes,
+            "sha256_identity_verified": True,
+            "download_scope": "source-scoped-cold-archives-only",
+            "page_count": pages,
+        }
     finally:
         session.close()
         engine.dispose()

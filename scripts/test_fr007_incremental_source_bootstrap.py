@@ -104,6 +104,60 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
         self.assertIn("duplicate_current_projection", failures)
         self.assertIn("queue_not_converged_at_source_boundary", failures)
 
+    def test_increment_archive_verifier_pages_sources_above_single_page_bound(self):
+        engine = SimpleNamespace(dispose=lambda: None)
+        session = SimpleNamespace(connection=lambda: "connection", close=lambda: None)
+        pages = [
+            {
+                "source_id": "greenhouse:aloyoga",
+                "archive_objects_verified": 500,
+                "compressed_bytes_downloaded": 4_000_000,
+                "sha256_identity_verified": True,
+                "download_scope": "source-scoped-cold-archives-only",
+                "last_verified_opportunity_id": "opportunity-500",
+                "has_more": True,
+            },
+            {
+                "source_id": "greenhouse:aloyoga",
+                "archive_objects_verified": 152,
+                "compressed_bytes_downloaded": 1_200_000,
+                "sha256_identity_verified": True,
+                "download_scope": "source-scoped-cold-archives-only",
+                "last_verified_opportunity_id": "opportunity-652",
+                "has_more": False,
+            },
+        ]
+
+        with patch.object(incremental, "_connect", return_value=(engine, session)), patch.object(
+            incremental, "verify_source_archives", side_effect=pages
+        ) as verify:
+            result = incremental._verify_increment_archives("greenhouse:aloyoga", "archive-start")
+
+        self.assertEqual(result["archive_objects_verified"], 652)
+        self.assertEqual(result["compressed_bytes_downloaded"], 5_200_000)
+        self.assertEqual(result["page_count"], 2)
+        self.assertTrue(result["sha256_identity_verified"])
+        self.assertIsNone(verify.call_args_list[0].kwargs["after_opportunity_id"])
+        self.assertTrue(verify.call_args_list[0].kwargs["include_cursor"])
+        self.assertEqual(verify.call_args_list[1].kwargs["after_opportunity_id"], "opportunity-500")
+
+    def test_increment_archive_verifier_fails_closed_if_page_cursor_does_not_advance(self):
+        engine = SimpleNamespace(dispose=lambda: None)
+        session = SimpleNamespace(connection=lambda: "connection", close=lambda: None)
+        page = {
+            "archive_objects_verified": 500,
+            "compressed_bytes_downloaded": 4_000_000,
+            "sha256_identity_verified": True,
+            "last_verified_opportunity_id": "opportunity-500",
+            "has_more": True,
+        }
+
+        with patch.object(incremental, "_connect", return_value=(engine, session)), patch.object(
+            incremental, "verify_source_archives", side_effect=[page, page]
+        ):
+            with self.assertRaisesRegex(RuntimeError, "cursor did not advance"):
+                incremental._verify_increment_archives("greenhouse:aloyoga", "archive-start")
+
     def test_registry_slice_is_stable_bounded_and_rejects_unbounded_inputs(self):
         ids = [f"source-{idx}" for idx in range(343)]
 
