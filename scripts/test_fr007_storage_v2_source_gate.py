@@ -71,6 +71,9 @@ class RepresentativeSourceEconomicsTests(unittest.TestCase):
         self.assertNotIn("state[1] != expected_username", probe)
         self.assertIn("CREATE TEMP TABLE opos_fr007_credential_probe", probe)
         self.assertIn("both protected DB URL secrets must pass", probe)
+        self.assertIn("classify_database_exception", probe)
+        self.assertIn("route={route}", probe)
+        self.assertNotIn("str(exc)", probe)
 
     def test_small_direct_tier_sample_passes_and_extrapolates(self):
         before = _snapshot(12 * 1024 * 1024, 2 * 1024 * 1024)

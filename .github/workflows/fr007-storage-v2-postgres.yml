@@ -131,6 +131,7 @@ jobs:
           import os
           from sqlalchemy import create_engine, text
           from sqlalchemy.engine import make_url
+          from scripts.fr007_db_credential_diagnostics import classify_database_exception
 
           pooler_host = "aws-0-eu-central-1.pooler.supabase.com"
           direct_host = "db.sunjfepvdzfknglrjwhm.supabase.co"
@@ -141,12 +142,18 @@ jobs:
           control_route = None
           for name in required_names:
               phase = "parse-url"
+              route = "unverified"
               raw = os.environ.get(name, "").strip()
               if not raw:
                   failures.append(f"{name}:missing")
                   continue
               try:
                   parsed = make_url(raw)
+                  route = (
+                      "session_pooler" if parsed.host == pooler_host
+                      else "direct" if parsed.host == direct_host
+                      else "unrecognized"
+                  )
                   phase = "endpoint-validation"
                   expected_route = "session_pooler" if name == "CLOUD_DATABASE_URL" else None
                   expected_username = pooler_username if name == "CLOUD_DATABASE_URL" else None
@@ -166,7 +173,7 @@ jobs:
                   else:
                       valid_endpoint = False
                   if not valid_endpoint:
-                      failures.append(f"{name}:endpoint-configuration-mismatch")
+                      failures.append(f"{name}:route={route}:endpoint-configuration-mismatch")
                       continue
                   query = dict(parsed.query)
                   query.update({"sslmode": "require", "connect_timeout": "8"})
@@ -211,12 +218,13 @@ jobs:
                   finally:
                       engine.dispose()
               except Exception as exc:
-                  original = getattr(exc, "orig", exc)
-                  sqlstate = getattr(original, "pgcode", None)
-                  category = "authentication-rejected" if sqlstate == "28P01" else type(original).__name__
+                  category, sqlstate = classify_database_exception(exc)
                   if phase == "parse-url" and category == "ArgumentError":
                       category = "invalid-uri-format"
-                  failures.append(f"{name}:{phase}:{category}" + (f"/SQLSTATE-{sqlstate}" if sqlstate else ""))
+                  failures.append(
+                      f"{name}:route={route}:{phase}:{category}"
+                      + (f"/SQLSTATE-{sqlstate}" if sqlstate else "")
+                  )
                   continue
           if tuple(successful) == required_names and not failures:
               print(f"PASS: direct/control route={control_route}; session-pooler runtime route=verified; both preserve writable, session-persistent PostgreSQL semantics")

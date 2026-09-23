@@ -1,9 +1,17 @@
 # FR-007 W23 clean rebuild execution checkpoint
 
-- current_phase: PHASE_III_OPOS_TARGET_SECRET_HANDOFF_REQUIRED
-- current_sha_now: `f98d1c92dcd26179efc96df3ebc8a22888f0c3ef`
-- current_remote_sha: `f98d1c92dcd26179efc96df3ebc8a22888f0c3ef`
-- latest_checkpoint_refresh_2026_09_23_0831_local:
+- current_phase: PHASE_III_CREDENTIAL_ENDPOINT_DIAGNOSTICS
+- current_sha_now: `758197040e2c279afb649a739da7e872d4236336` (diagnostic repair is in the working tree)
+- current_remote_sha: `758197040e2c279afb649a739da7e872d4236336`
+- latest_checkpoint_refresh_2026_09_23_0937_agent:
+  - fetched the authoritative branch and confirmed actual remote/local SHA `758197040e2c279afb649a739da7e872d4236336`; the checkpoint body before this refresh was stale. The pre-existing untracked `work/` directory remains untouched.
+  - immediately reran the sanitized credential probe on the authoritative SHA. Run `35827261972` reached the credential check; both endpoints passed parse and exact endpoint validation, then failed at `primary-session-check` with sanitized `OperationalError` for `OPOS_TARGET_DB_URL` and `CLOUD_DATABASE_URL`. The prior probe did not emit SQLSTATE, DNS, SSL, authentication, or network subcategory. No credential material was emitted; the source gate, CV verification, and full closure were skipped. No source, product, worker, or queue writes occurred.
+  - independently checked Supabase project metadata and aggregate-only SQL: `sunjfepvdzfknglrjwhm` is `ACTIVE_HEALTHY`, PostgreSQL 17.6, `0023_alembic_access`, writable primary, `13,151,379` database bytes, and 0 opportunities/feed projections/evaluations/worker jobs/source polls.
+  - read only the GitHub Environment secret names and update timestamps: both DB URL secrets were updated Sep 23 at 07:58 local. Secret values were not accessed.
+  - added a sanitized DB exception classifier that maps only allowlisted DNS/connectivity/SSL/auth/database categories, plus route labels (`direct` or `session_pooler`) and regression tests. Focused tests: `10 passed`; Python compilation and `git diff --check` pass. These diagnostic edits are local and not yet committed; no live project changes occurred.
+  - user-presence blocker: none confirmed. Exact next action: commit/push the diagnostic and regression changes with this checkpoint update, require current PostgreSQL CI to pass, then rerun the sanitized probe. Do not start source ingestion until both credential routes pass.
+
+- historical_checkpoint_refresh_2026_09_23_0831_local:
   - fetched the authoritative feature branch and verified local HEAD, FETCH_HEAD, and remote `work/fr007-clean-rebuild-storage-v2` all equal `f98d1c92dcd26179efc96df3ebc8a22888f0c3ef`; the pre-existing untracked `work/` directory remains untouched.
   - PostgreSQL 16/17 acceptance run `35822329305` completed green on both versions. Each hosted full suite reports `1628 passed, 22 skipped, 2009 subtests passed`; fresh migration, deployed-state upgrade, source-gate accounting, backup/TOAST acceptance, and cleanup all passed.
   - sanitized credential probe `35822569274` was dispatched on the feature branch. `CLOUD_DATABASE_URL` passed its official session-pooler route, writable-primary, and session-persistence checks. `OPOS_TARGET_DB_URL` failed before connectivity at `parse-url` with sanitized category `invalid-uri-format` (SQLAlchemy `ArgumentError`); no URI/password/exception text was emitted. Source, CV, representative, and closure jobs were skipped; the probe made no product/source/queue/worker writes.
