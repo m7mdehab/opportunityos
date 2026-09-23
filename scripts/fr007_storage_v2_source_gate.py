@@ -203,8 +203,9 @@ def compare_snapshots(
     before: dict[str, Any],
     after: dict[str, Any],
     archive_proof: dict[str, Any],
+    capacity_benchmark: dict[str, Any],
 ) -> dict[str, Any]:
-    """Apply the representative-source gate and estimate the 26k-row footprint."""
+    """Apply direct-tier checks and the physical 26k-row benchmark gate."""
     if before.get("source_id") != after.get("source_id") or before.get("source_id") != archive_proof.get("source_id"):
         raise ValueError("representative-source evidence scopes do not match")
     source_id = before["source_id"]
@@ -227,7 +228,11 @@ def compare_snapshots(
         int(after["public_relation_total_bytes"]) - int(before["public_relation_total_bytes"]),
     )
     bytes_per_unique = db_growth / unique
-    projected_bytes = int(before["database_bytes"] + bytes_per_unique * HISTORICAL_CORPUS_SIZE)
+    naive_linear_projection = int(before["database_bytes"] + bytes_per_unique * HISTORICAL_CORPUS_SIZE)
+    benchmark_population = int(capacity_benchmark.get("population_opportunities") or 0)
+    benchmark_increment = int(capacity_benchmark.get("benchmark_growth_bytes") or 0)
+    projected_bytes = int(after["database_bytes"]) + benchmark_increment
+    benchmark_checks = capacity_benchmark.get("checks") or {}
     checks = {
         "no_synthetic_active_feed": int(a["synthetic_active_feed_rows"]) == 0,
         "at_most_one_current_projection": int(a["max_projections_per_opportunity"]) <= 1,
@@ -243,7 +248,22 @@ def compare_snapshots(
         "archive_checksum_and_identity_verified": archive_proof.get("sha256_identity_verified") is True,
         "archive_download_source_scoped": archive_proof.get("download_scope") == "source-scoped-cold-archives-only",
         "physical_database_within_hard_budget": int(after["database_bytes"]) <= DATABASE_HARD_BUDGET,
-        "projected_database_within_preferred_budget": projected_bytes <= 150 * 1024 * 1024,
+        "physical_26k_benchmark_passed": (
+            capacity_benchmark.get("status") == "PASS"
+            and benchmark_population == HISTORICAL_CORPUS_SIZE
+            and capacity_benchmark.get("source_id") == source_id
+            and int(capacity_benchmark.get("sample_unique_opportunities") or 0) == unique
+            and int(capacity_benchmark.get("benchmark_growth_bytes") or 0) > 0
+            and int(capacity_benchmark.get("database_bytes_after_population") or 0)
+                > int(capacity_benchmark.get("benchmark_database_bytes_empty_schema") or 0)
+            and bool(benchmark_checks)
+            and all(value is True for value in benchmark_checks.values())
+        ),
+        "projected_database_within_hard_budget": projected_bytes <= DATABASE_HARD_BUDGET,
+        "benchmark_schema_matches_live_head": (
+            capacity_benchmark.get("database_revision") == after.get("database_revision")
+            and capacity_benchmark.get("database_revision") == "0023_alembic_access"
+        ),
     }
     if int(archive_proof.get("archive_objects_verified") or 0) < archive_objects:
         checks["all_new_cold_archives_verified"] = False
@@ -254,6 +274,8 @@ def compare_snapshots(
         "status": "PASS" if all(checks.values()) else "STOP_FOR_ARCHITECTURE_REVIEW",
         "before_database_bytes": int(before["database_bytes"]),
         "after_database_bytes": int(after["database_bytes"]),
+        "before_public_relation_bytes": int(before["public_relation_total_bytes"]),
+        "after_public_relation_bytes": int(after["public_relation_total_bytes"]),
         "database_growth_bytes": db_growth,
         "raw_opportunities_received": raw,
         "unique_opportunities": unique,
@@ -265,12 +287,30 @@ def compare_snapshots(
         "current_evaluations_after": int(a["source_evaluation_rows"]),
         "cold_archive_objects_created": archive_objects,
         "compressed_archive_bytes_created": archive_bytes,
+        "source_cold_archive_objects_after": int(a["source_cold_archive_rows"]),
+        "source_cold_archive_bytes_after": int(a["source_compressed_archive_bytes"]),
         "average_compressed_bytes_per_unique_received": round(archive_bytes / unique, 2),
         "average_compressed_bytes_per_cold_archived": round(archive_bytes / archive_objects, 2) if archive_objects else 0,
         "archive_bytes_downloaded_for_verification": int(archive_proof.get("compressed_bytes_downloaded") or 0),
         "extrapolation_corpus_opportunities": HISTORICAL_CORPUS_SIZE,
+        "naive_small_sample_linear_projection_bytes": naive_linear_projection,
+        "capacity_benchmark_growth_bytes": benchmark_increment,
+        "capacity_benchmark_database_bytes_after_population": capacity_benchmark.get("database_bytes_after_population"),
+        "capacity_benchmark_application_relation_bytes": capacity_benchmark.get("benchmark_application_relation_bytes"),
+        "projected_cold_archive_storage_bytes": capacity_benchmark.get("projected_cold_archive_storage_bytes"),
+        "projected_database_preferred_budget_pass": projected_bytes <= 150 * 1024 * 1024,
         "projected_database_bytes": projected_bytes,
         "projected_database_mib": round(projected_bytes / (1024 * 1024), 2),
+        "capacity_benchmark_top_relations": capacity_benchmark.get("top_relations", []),
+        "capacity_benchmark_top_indexes": capacity_benchmark.get("top_indexes", []),
+        "capacity_benchmark_checks": benchmark_checks,
+        "capacity_window_review": (
+            "preferred<=150MiB"
+            if projected_bytes <= 150 * 1024 * 1024
+            else "inspected measured relation/index profile; hard ceiling<=200MiB"
+            if projected_bytes <= DATABASE_HARD_BUDGET
+            else "stop before full bootstrap"
+        ),
         "checks": checks,
         "full_registry_enqueue_performed": False,
         "corpus_wide_storage_download_performed": False,
@@ -301,14 +341,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--before", type=Path)
     parser.add_argument("--after", type=Path)
     parser.add_argument("--archive-proof", type=Path)
+    parser.add_argument("--capacity-benchmark", type=Path)
     args = parser.parse_args(argv)
     if args.mode == "compare":
-        if not all((args.before, args.after, args.archive_proof)):
-            parser.error("compare requires --before, --after, and --archive-proof")
+        if not all((args.before, args.after, args.archive_proof, args.capacity_benchmark)):
+            parser.error("compare requires --before, --after, --archive-proof, and --capacity-benchmark")
         result = compare_snapshots(
             json.loads(args.before.read_text(encoding="utf-8")),
             json.loads(args.after.read_text(encoding="utf-8")),
             json.loads(args.archive_proof.read_text(encoding="utf-8")),
+            json.loads(args.capacity_benchmark.read_text(encoding="utf-8")),
         )
         encoded = json.dumps(result, sort_keys=True, default=str)
         if args.output:

@@ -243,6 +243,8 @@ def main(argv: list[str] | None = None) -> int:
                     enqueue_kwargs = {"registry": registry}
                     if args.source_id is not None:
                         enqueue_kwargs["source_id"] = args.source_id
+                        enqueue_kwargs["force"] = True
+                        enqueue_kwargs["create_missing_schedules"] = False
                     elif selected_source_ids is not None:
                         enqueue_kwargs["source_ids"] = selected_source_ids
                         enqueue_kwargs["force"] = True

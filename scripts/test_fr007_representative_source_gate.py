@@ -124,7 +124,15 @@ class RepresentativeSourceScopeTests(unittest.TestCase):
             ])
 
         self.assertEqual(rc, 0)
-        self.assertEqual(enqueue.call_args.kwargs, {"registry": registry, "source_id": "himalayas"})
+        self.assertEqual(
+            enqueue.call_args.kwargs,
+            {
+                "registry": registry,
+                "source_id": "himalayas",
+                "force": True,
+                "create_missing_schedules": False,
+            },
+        )
         drain.assert_called_once_with(
             factory,
             max_jobs=2,

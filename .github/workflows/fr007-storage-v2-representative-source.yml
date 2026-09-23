@@ -28,6 +28,20 @@ jobs:
     runs-on: ubuntu-latest
     environment: fr007-staging
     timeout-minutes: 20
+    services:
+      benchmark-postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: opportunityos
+          POSTGRES_PASSWORD: ${{ github.run_id }}
+          POSTGRES_DB: opportunityos_benchmark
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     env:
       OPOS_TARGET_DB_URL: ${{ secrets.CLOUD_DATABASE_URL }}
       CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL }}
@@ -37,6 +51,8 @@ jobs:
       OPPORTUNITYOS_TRUTH_PACK_PATH: ${{ vars.OPPORTUNITYOS_TRUTH_PACK_PATH || 'founder/truth_pack.yaml.gz.b64' }}
       PYTHONPATH: ${{ github.workspace }}
       SOURCE_ID: ${{ inputs.source_id }}
+      PGPASSWORD: ${{ github.run_id }}
+      FR007_BENCHMARK_DB_URL: postgresql+psycopg2://opportunityos:${{ github.run_id }}@localhost:5432/opportunityos_benchmark
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -44,6 +60,22 @@ jobs:
           python-version: "3.12"
       - name: Install repository
         run: python -m pip install -e .
+      - name: Prepare isolated PostgreSQL 17 capacity benchmark
+        env:
+          OPPORTUNITYOS_DB_URL: ${{ env.FR007_BENCHMARK_DB_URL }}
+        run: |
+          psql -h localhost -U opportunityos -d opportunityos_benchmark <<'SQL'
+          DO $$ BEGIN
+            CREATE ROLE anon NOLOGIN;
+          EXCEPTION WHEN duplicate_object THEN NULL;
+          END $$;
+          DO $$ BEGIN
+            CREATE ROLE authenticated NOLOGIN;
+          EXCEPTION WHEN duplicate_object THEN NULL;
+          END $$;
+          SQL
+          alembic upgrade head
+          python scripts/verify_storage_v2_schema.py
       - name: Capture bounded before snapshot
         run: >-
           python scripts/fr007_storage_v2_source_gate.py snapshot
@@ -60,12 +92,17 @@ jobs:
         run: >-
           python scripts/fr007_storage_v2_source_gate.py verify-archives
           --source-id "$SOURCE_ID" --output w23-source-archive-proof.json
+      - name: Measure a disposable 26k-row PostgreSQL 17 corpus from live aggregates
+        run: >-
+          python scripts/fr007_storage_v2_capacity_benchmark.py
+          --source-id "$SOURCE_ID" --output w23-source-capacity-benchmark.json
       - name: Enforce direct-tier and 26k-opportunity capacity gate
         run: >-
           python scripts/fr007_storage_v2_source_gate.py compare
           --source-id "$SOURCE_ID"
           --before w23-source-before.json --after w23-source-after.json
           --archive-proof w23-source-archive-proof.json
+          --capacity-benchmark w23-source-capacity-benchmark.json
           --output w23-source-gate-report.json
       - name: Preserve sanitized representative-source evidence
         if: always()
