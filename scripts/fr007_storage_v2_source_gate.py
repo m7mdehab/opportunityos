@@ -25,6 +25,11 @@ from storage.engine import get_engine, get_production_db_url, get_session_factor
 
 MAX_ARCHIVE_OBJECTS = 50
 MAX_ARCHIVE_BYTES = 8 * 1024 * 1024
+CORPUS_SOURCE_ID = "__successful_corpus__"
+CORPUS_ARCHIVE_PAGE_SIZE = 500
+CORPUS_ARCHIVE_PAGE_BYTES = 32 * 1024 * 1024
+CORPUS_ARCHIVE_TOTAL_LIMIT = 64 * 1024 * 1024
+CORPUS_ARCHIVE_OBJECT_LIMIT = 5_000
 HISTORICAL_CORPUS_SIZE = 26_000
 DATABASE_HARD_BUDGET = 200 * 1024 * 1024
 
@@ -211,23 +216,32 @@ def verify_source_archives(
     since: datetime | None = None,
     max_objects: int = MAX_ARCHIVE_OBJECTS,
     max_archive_bytes: int = MAX_ARCHIVE_BYTES,
+    after_opportunity_id: str | None = None,
+    include_cursor: bool = False,
 ) -> dict[str, Any]:
     """Download and checksum this source's current or newly written cold archives."""
     if max_objects <= 0 or max_archive_bytes <= 0:
         raise ValueError("archive verification bounds must be positive")
-    records = connection.execute(text("""
+    source_filter = (
+        "o.source_id IN (SELECT DISTINCT source_id FROM public.source_poll_runs WHERE status='ok')"
+        if source_id == CORPUS_SOURCE_ID
+        else "o.source_id=:source_id"
+    )
+    records = connection.execute(text(f"""
         SELECT o.id AS opportunity_id, o.content_hash,
                a.object_key, a.payload_sha256, a.compressed_size_bytes,
                a.storage_backend
         FROM public.opportunities o
         JOIN public.opportunity_cold_archive a ON a.opportunity_id=o.id
-        WHERE o.source_id=:source_id AND o.lifecycle_tier='cold'
+        WHERE {source_filter} AND o.lifecycle_tier='cold'
+          AND (:after_opportunity_id IS NULL OR o.id > :after_opportunity_id)
           AND (CAST(:since AS timestamptz) IS NULL OR a.archived_at > CAST(:since AS timestamptz))
         ORDER BY o.id
         LIMIT :max_objects_plus_one
     """), {
-        "source_id": source_id,
+        **({} if source_id == CORPUS_SOURCE_ID else {"source_id": source_id}),
         "since": since,
+        "after_opportunity_id": after_opportunity_id,
         "max_objects_plus_one": max_objects + 1,
     }).mappings().all()
     if len(records) > max_objects:
@@ -239,13 +253,16 @@ def verify_source_archives(
         raise RuntimeError("cold source row is not backed by a private Storage object")
 
     if not records:
-        return {
+        result = {
             "source_id": source_id,
             "archive_objects_verified": 0,
             "compressed_bytes_downloaded": 0,
             "sha256_identity_verified": True,
-            "download_scope": "source-scoped-cold-archives-only",
+            "download_scope": "successful-corpus-cold-archives-only" if source_id == CORPUS_SOURCE_ID else "source-scoped-cold-archives-only",
         }
+        if include_cursor:
+            result["last_verified_opportunity_id"] = after_opportunity_id
+        return result
 
     client = client_from_env()
     client.ensure_private_bucket()
@@ -264,12 +281,74 @@ def verify_source_archives(
         if description == "[archived]":
             raise RuntimeError("cold archive contains a forbidden placeholder description")
         verified_bytes += len(compressed)
-    return {
+    result = {
         "source_id": source_id,
         "archive_objects_verified": len(records),
         "compressed_bytes_downloaded": verified_bytes,
         "sha256_identity_verified": True,
-        "download_scope": "source-scoped-cold-archives-only",
+        "download_scope": "successful-corpus-cold-archives-only" if source_id == CORPUS_SOURCE_ID else "source-scoped-cold-archives-only",
+    }
+    if include_cursor:
+        result["last_verified_opportunity_id"] = str(records[-1]["opportunity_id"])
+    return result
+
+
+def verify_successful_corpus_archives(connection) -> dict[str, Any]:
+    """Verify current cold objects in bounded pages for already successful sources."""
+    expected = connection.execute(text("""
+        SELECT count(*) AS archive_objects,
+               COALESCE(sum(a.compressed_size_bytes),0)::bigint AS compressed_bytes
+        FROM public.opportunities o
+        JOIN public.opportunity_cold_archive a ON a.opportunity_id=o.id
+        WHERE o.lifecycle_tier='cold'
+          AND o.source_id IN (SELECT DISTINCT source_id FROM public.source_poll_runs WHERE status='ok')
+    """)).mappings().one()
+    expected_objects = int(expected["archive_objects"])
+    expected_bytes = int(expected["compressed_bytes"])
+    if expected_objects > CORPUS_ARCHIVE_OBJECT_LIMIT or expected_bytes > CORPUS_ARCHIVE_TOTAL_LIMIT:
+        raise RuntimeError("successful corpus archive proof exceeds its total object or egress bound")
+    cursor: str | None = None
+    pages = 0
+    objects = 0
+    compressed_bytes = 0
+    while True:
+        page = verify_source_archives(
+            connection,
+            source_id=CORPUS_SOURCE_ID,
+            max_objects=CORPUS_ARCHIVE_PAGE_SIZE,
+            max_archive_bytes=CORPUS_ARCHIVE_PAGE_BYTES,
+            after_opportunity_id=cursor,
+            include_cursor=True,
+        )
+        page_objects = int(page["archive_objects_verified"])
+        page_bytes = int(page["compressed_bytes_downloaded"])
+        if page_objects == 0:
+            break
+        pages += 1
+        objects += page_objects
+        compressed_bytes += page_bytes
+        if objects > CORPUS_ARCHIVE_OBJECT_LIMIT or compressed_bytes > CORPUS_ARCHIVE_TOTAL_LIMIT:
+            raise RuntimeError("successful corpus archive proof exceeded its total object or egress bound")
+        next_cursor = page.get("last_verified_opportunity_id")
+        if not next_cursor or next_cursor == cursor:
+            raise RuntimeError("successful corpus archive verifier cursor did not advance")
+        cursor = str(next_cursor)
+        if page_objects < CORPUS_ARCHIVE_PAGE_SIZE:
+            break
+    if objects != expected_objects or compressed_bytes != expected_bytes:
+        raise RuntimeError("successful corpus archive proof does not match current cold archive metadata")
+    return {
+        "source_id": CORPUS_SOURCE_ID,
+        "archive_objects_verified": objects,
+        "compressed_bytes_downloaded": compressed_bytes,
+        "current_cold_archive_objects": expected_objects,
+        "current_cold_archive_compressed_bytes": expected_bytes,
+        "sha256_identity_verified": True,
+        "download_scope": "successful-corpus-cold-archives-only",
+        "page_size": CORPUS_ARCHIVE_PAGE_SIZE,
+        "pages_verified": pages,
+        "total_object_limit": CORPUS_ARCHIVE_OBJECT_LIMIT,
+        "total_compressed_byte_limit": CORPUS_ARCHIVE_TOTAL_LIMIT,
     }
 
 
@@ -410,7 +489,7 @@ def _connect():
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=("snapshot", "verify-archives", "compare"))
-    parser.add_argument("--source-id", required=True)
+    parser.add_argument("--source-id", required=True, help=f"one source id or {CORPUS_SOURCE_ID} for bounded successful-corpus archive verification")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--before", type=Path)
     parser.add_argument("--after", type=Path)
@@ -441,7 +520,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.mode == "snapshot":
             result = snapshot(session.connection(), source_id=args.source_id)
         else:
-            result = verify_source_archives(session.connection(), source_id=args.source_id)
+            result = (
+                verify_successful_corpus_archives(session.connection())
+                if args.source_id == CORPUS_SOURCE_ID
+                else verify_source_archives(session.connection(), source_id=args.source_id)
+            )
     except Exception as exc:
         raise SystemExit(f"source-gate operation failed ({type(exc).__name__}); sensitive values suppressed") from None
     finally:

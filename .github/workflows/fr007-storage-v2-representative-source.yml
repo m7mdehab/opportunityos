@@ -4,9 +4,14 @@ on:
   workflow_call:
     inputs:
       source_id:
-        description: "One registry-approved, read-allowed source"
+        description: "One registry-approved, read-allowed source or the successful-corpus sentinel for capacity reforecast"
         required: true
         type: string
+      benchmark_only:
+        description: "Measure current successful-source corpus and verify its existing cold archives without polling"
+        required: false
+        default: false
+        type: boolean
     secrets:
       CLOUD_DATABASE_URL:
         required: true
@@ -46,6 +51,7 @@ jobs:
       OPOS_TARGET_DB_URL: ${{ secrets.CLOUD_DATABASE_URL }}
       CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL }}
       SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
+      SUPABASE_STORAGE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL || 'https://sunjfepvdzfknglrjwhm.supabase.co' }}
       STORAGE_SERVICE_KEY: ${{ secrets.STORAGE_SERVICE_KEY }}
       OPPORTUNITYOS_ENVIRONMENT: cloud
       OPPORTUNITYOS_TRUTH_PACK_PATH: ${{ vars.OPPORTUNITYOS_TRUTH_PACK_PATH || 'founder/truth_pack.yaml.gz.b64' }}
@@ -77,26 +83,37 @@ jobs:
           alembic upgrade head
           python scripts/verify_storage_v2_schema.py
       - name: Capture bounded before snapshot
+        if: ${{ !inputs.benchmark_only }}
         run: >-
           python scripts/fr007_storage_v2_source_gate.py snapshot
           --source-id "$SOURCE_ID" --output w23-source-before.json
       - name: Enqueue and drain only the one approved source
+        if: ${{ !inputs.benchmark_only }}
         run: >-
           python scripts/fr007_hosted_bootstrap.py --mode all
           --source-id "$SOURCE_ID" --max-jobs 2 --time-budget-seconds 480
       - name: Capture bounded after snapshot
+        if: ${{ !inputs.benchmark_only }}
         run: >-
           python scripts/fr007_storage_v2_source_gate.py snapshot
           --source-id "$SOURCE_ID" --output w23-source-after.json
       - name: Verify only this source's private cold archives
+        if: ${{ !inputs.benchmark_only }}
         run: >-
           python scripts/fr007_storage_v2_source_gate.py verify-archives
           --source-id "$SOURCE_ID" --output w23-source-archive-proof.json
+      - name: Verify all current cold archives from successful sources in bounded pages
+        if: ${{ inputs.benchmark_only }}
+        run: >-
+          python scripts/fr007_storage_v2_source_gate.py verify-archives
+          --source-id "$SOURCE_ID" --output w23-corpus-archive-proof.json
       - name: Measure a disposable 26k-row PostgreSQL 17 corpus from live aggregates
         run: >-
           python scripts/fr007_storage_v2_capacity_benchmark.py
           --source-id "$SOURCE_ID" --output w23-source-capacity-benchmark.json
+          --model-output w23-capacity-model.json
       - name: Enforce direct-tier and 26k-opportunity capacity gate
+        if: ${{ !inputs.benchmark_only }}
         run: >-
           python scripts/fr007_storage_v2_source_gate.py compare
           --source-id "$SOURCE_ID"
@@ -109,6 +126,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: fr007-storage-v2-representative-${{ github.run_id }}
-          path: w23-source-*.json
+          path: |
+            w23-source-*.json
+            w23-corpus-archive-proof.json
+            w23-capacity-model.json
+            w23-source-capacity-benchmark.json
           if-no-files-found: ignore
           retention-days: 30

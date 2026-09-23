@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import sys
 import uuid
@@ -40,6 +41,7 @@ from storage.models import (
 POPULATION = 26_000
 DATABASE_HARD_BUDGET = 200 * 1024 * 1024
 EXPECTED_HEAD = "0023_alembic_access"
+SUCCESSFUL_CORPUS_SOURCE_ID = "__successful_corpus__"
 INSERT_BATCH_SIZE = 1000
 _benchmark_metadata = MetaData()
 STORAGE_OBJECTS = Table(
@@ -109,34 +111,96 @@ def _insert_rows(connection, table, rows: Iterable[dict[str, Any]]) -> int:
     return count
 
 
+def _source_scope(source_id: str, alias: str | None = None) -> str:
+    column = f"{alias}.source_id" if alias else "source_id"
+    if source_id == SUCCESSFUL_CORPUS_SOURCE_ID:
+        return f"{column} IN (SELECT DISTINCT source_id FROM public.source_poll_runs WHERE status='ok')"
+    return f"{column}=:source_id"
+
+
+def _source_params(source_id: str) -> dict[str, str]:
+    return {} if source_id == SUCCESSFUL_CORPUS_SOURCE_ID else {"source_id": source_id}
+
+
+def _remaining_capacity_projection(
+    *, live_database_bytes: int, benchmark_growth_bytes: int,
+    source_growth_bytes: int, current_opportunities: int,
+    current_sources: int, target_opportunities: int, target_sources: int,
+) -> dict[str, int]:
+    if (
+        min(live_database_bytes, benchmark_growth_bytes, source_growth_bytes,
+            current_opportunities, current_sources) < 0
+        or target_opportunities <= 0 or target_sources <= 0
+        or source_growth_bytes >= benchmark_growth_bytes
+    ):
+        raise ValueError("capacity projection has invalid measured population bounds")
+    remaining_sources = max(0, target_sources - current_sources)
+    remaining_opportunities = max(
+        0,
+        target_opportunities - current_opportunities,
+        math.ceil(target_opportunities * remaining_sources / target_sources),
+    )
+    non_source_growth = benchmark_growth_bytes - source_growth_bytes
+    reserve = 1.01
+    remaining_bytes = math.ceil(
+        non_source_growth * min(1.0, remaining_opportunities / target_opportunities) * reserve
+    ) + math.ceil(source_growth_bytes * remaining_sources / target_sources * reserve)
+    return {
+        "remaining_sources": remaining_sources,
+        "remaining_opportunities": remaining_opportunities,
+        "remaining_projected_bytes": remaining_bytes,
+        "projected_final_database_bytes": live_database_bytes + remaining_bytes,
+    }
+
+
 def _shape(connection, source_id: str) -> dict[str, Any]:
-    state = connection.execute(text("""
+    corpus_scope = source_id == SUCCESSFUL_CORPUS_SOURCE_ID
+    source_filter = _source_scope(source_id)
+    successful_source_count_sql = (
+        "(SELECT count(DISTINCT source_id) FROM public.source_poll_runs WHERE status='ok')"
+        if corpus_scope else
+        "(SELECT count(DISTINCT source_id) FROM public.source_poll_runs WHERE source_id=:source_id AND status='ok')"
+    )
+    poll_status_sql = (
+        "'ok'" if corpus_scope else
+        "(SELECT status FROM public.source_poll_runs WHERE source_id=:source_id ORDER BY started_at DESC LIMIT 1)"
+    )
+    poll_unique_sql = (
+        f"(SELECT count(*) FROM public.opportunities WHERE {source_filter})" if corpus_scope else
+        "(SELECT unique_opportunities FROM public.source_poll_runs WHERE source_id=:source_id ORDER BY started_at DESC LIMIT 1)"
+    )
+    params = _source_params(source_id)
+    state = connection.execute(text(f"""
         SELECT current_database() AS database_name,
                current_user AS database_role,
                current_setting('transaction_read_only') AS transaction_read_only,
                pg_is_in_recovery() AS in_recovery,
                (SELECT version_num FROM public.alembic_version LIMIT 1) AS revision,
-               (SELECT count(*) FROM public.opportunities WHERE source_id=:source_id) AS opportunities,
-               (SELECT count(*) FROM public.opportunities WHERE source_id=:source_id AND lifecycle_tier='hot') AS hot,
-               (SELECT count(*) FROM public.opportunities WHERE source_id=:source_id AND lifecycle_tier='cold') AS cold,
-               (SELECT count(*) FROM public.opportunities WHERE source_id=:source_id AND lifecycle_tier='protected') AS protected,
-               (SELECT status FROM public.source_poll_runs WHERE source_id=:source_id ORDER BY started_at DESC LIMIT 1) AS poll_status,
-               (SELECT unique_opportunities FROM public.source_poll_runs WHERE source_id=:source_id ORDER BY started_at DESC LIMIT 1) AS poll_unique
-    """), {"source_id": source_id}).mappings().one()
+               (SELECT count(*) FROM public.opportunities WHERE {source_filter}) AS opportunities,
+               (SELECT count(*) FROM public.opportunities WHERE {source_filter} AND lifecycle_tier='hot') AS hot,
+               (SELECT count(*) FROM public.opportunities WHERE {source_filter} AND lifecycle_tier='cold') AS cold,
+               (SELECT count(*) FROM public.opportunities WHERE {source_filter} AND lifecycle_tier='protected') AS protected,
+               {successful_source_count_sql} AS successful_source_count,
+               {poll_status_sql} AS poll_status,
+               {poll_unique_sql} AS poll_unique
+    """), params).mappings().one()
+    source_count = int(state["successful_source_count"] or 0)
+    minimum_sample_opportunities = 100 if corpus_scope else 20
     if (
         state["database_role"] != "postgres"
         or state["transaction_read_only"] != "off"
         or state["in_recovery"]
         or state["revision"] != EXPECTED_HEAD
         or state["poll_status"] != "ok"
-        or int(state["poll_unique"] or 0) < 20
-        or int(state["opportunities"] or 0) < 20
+        or source_count < (3 if corpus_scope else 1)
+        or int(state["poll_unique"] or 0) < minimum_sample_opportunities
+        or int(state["opportunities"] or 0) < minimum_sample_opportunities
         or int(state["hot"] or 0) < 1
         or int(state["cold"] or 0) < 1
     ):
-        raise RuntimeError("live representative sample or schema does not satisfy the benchmark preconditions")
+        raise RuntimeError("live sample corpus or schema does not satisfy the benchmark preconditions")
 
-    opp = connection.execute(text("""
+    opp = connection.execute(text(f"""
         SELECT
           count(*) FILTER (WHERE lifecycle_tier='hot') AS hot,
           count(*) FILTER (WHERE lifecycle_tier='cold') AS cold,
@@ -155,9 +219,9 @@ def _shape(connection, source_id: str) -> dict[str, Any]:
           round(avg(length(location_city)) FILTER (WHERE lifecycle_tier='cold'))::int AS cold_city,
           round(avg(length(location_region)) FILTER (WHERE lifecycle_tier='cold'))::int AS cold_region,
           round(avg(length(remote_scope_regions)) FILTER (WHERE lifecycle_tier='cold'))::int AS cold_remote_regions
-        FROM public.opportunities WHERE source_id=:source_id
-    """), {"source_id": source_id}).mappings().one()
-    evaluation = connection.execute(text("""
+        FROM public.opportunities WHERE {source_filter}
+    """), params).mappings().one()
+    evaluation = connection.execute(text(f"""
         SELECT
           round(avg(length(e.reasons_json)) FILTER (WHERE o.lifecycle_tier IN ('hot','protected')))::int AS hot_reasons,
           round(avg(length(e.dimension_scores_json)) FILTER (WHERE o.lifecycle_tier IN ('hot','protected')))::int AS hot_dimensions,
@@ -165,9 +229,9 @@ def _shape(connection, source_id: str) -> dict[str, Any]:
           round(avg(length(e.reasons_json)) FILTER (WHERE o.lifecycle_tier='cold'))::int AS cold_reasons
         FROM public.match_evaluations e
         JOIN public.opportunities o ON o.id=e.opportunity_id
-        WHERE o.source_id=:source_id
-    """), {"source_id": source_id}).mappings().one()
-    provenance = connection.execute(text("""
+        WHERE {_source_scope(source_id, 'o')}
+    """), params).mappings().one()
+    provenance = connection.execute(text(f"""
         SELECT count(*) AS rows,
                round(avg(length(p.raw_value)))::int AS raw_value,
                round(avg(length(p.normalized_value)))::int AS normalized_value,
@@ -175,17 +239,17 @@ def _shape(connection, source_id: str) -> dict[str, Any]:
                round(avg(length(p.rule_id)))::int AS rule_id
         FROM public.field_provenances p
         JOIN public.opportunities o ON o.id=p.opportunity_id
-        WHERE o.source_id=:source_id AND o.lifecycle_tier IN ('hot','protected')
-    """), {"source_id": source_id}).mappings().one()
-    archive = connection.execute(text("""
+        WHERE {_source_scope(source_id, 'o')} AND o.lifecycle_tier IN ('hot','protected')
+    """), params).mappings().one()
+    archive = connection.execute(text(f"""
         SELECT count(*) AS rows,
                round(avg(compressed_size_bytes))::int AS compressed_bytes,
                round(avg(original_size_bytes))::int AS original_bytes,
                round(avg(length(object_key)))::int AS object_key_length
         FROM public.opportunity_cold_archive a
         JOIN public.opportunities o ON o.id=a.opportunity_id
-        WHERE o.source_id=:source_id AND o.lifecycle_tier='cold'
-    """), {"source_id": source_id}).mappings().one()
+        WHERE {_source_scope(source_id, 'o')} AND o.lifecycle_tier='cold'
+    """), params).mappings().one()
     storage_objects = connection.execute(text("""
         SELECT count(*) AS rows,
                round(avg(pg_column_size(o)))::int AS tuple_bytes,
@@ -196,15 +260,21 @@ def _shape(connection, source_id: str) -> dict[str, Any]:
         FROM storage.objects o
         WHERE bucket_id='opportunity-artifacts' AND archived_at IS NULL
     """)).mappings().one()
-    poll = connection.execute(text("""
+    poll_filter = (
+        "source_id IN (SELECT DISTINCT source_id FROM public.source_poll_runs WHERE status='ok') AND status='ok'"
+        if corpus_scope else "source_id=:source_id"
+    )
+    poll = connection.execute(text(f"""
         SELECT round(avg(raw_ingested))::int AS raw_ingested,
                round(avg(unique_opportunities))::int AS unique_opportunities
-        FROM public.source_poll_runs WHERE source_id=:source_id
-    """), {"source_id": source_id}).mappings().one()
+        FROM public.source_poll_runs WHERE {poll_filter}
+    """), params).mappings().one()
     return {
         "live_database_revision": state["revision"],
         "sample_opportunities": int(state["opportunities"]),
         "sample_unique_opportunities": int(state["poll_unique"]),
+        "sample_source_count": source_count,
+        "sample_scope": "successful-source-corpus" if corpus_scope else "single-source",
         "sample_hot": int(state["hot"]),
         "sample_cold": int(state["cold"]),
         "sample_protected": int(state["protected"]),
@@ -353,6 +423,23 @@ def _relation_profile(connection) -> tuple[list[dict[str, Any]], list[dict[str, 
         WHERE n.nspname IN ('public','storage') AND c.relkind IN ('r','m')
     """)).scalar_one())
     return [dict(row) for row in relations], [dict(row) for row in indexes], public_bytes
+
+
+def _source_overhead_profile(connection) -> dict[str, int]:
+    rows = connection.execute(text("""
+        SELECT c.relname AS relation,
+               pg_total_relation_size(c.oid)::bigint AS total_bytes
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname='public'
+          AND c.relname IN ('worker_jobs','source_poll_runs','source_schedules')
+          AND c.relkind='r'
+    """)).mappings().all()
+    profile = {f"public.{row['relation']}": int(row['total_bytes']) for row in rows}
+    for relation in ("public.worker_jobs", "public.source_poll_runs", "public.source_schedules"):
+        profile.setdefault(relation, 0)
+    profile["total"] = sum(profile.values())
+    return profile
 
 
 def _benchmark_rows(connection, shape: dict[str, Any], source_ids: list[str]) -> dict[str, int]:
@@ -682,10 +769,24 @@ def run_benchmark(source_id: str) -> dict[str, Any]:
         with benchmark_engine.connect() as benchmark_connection:
             populated = _table_snapshot(benchmark_connection)
             top_relations, top_indexes, public_relation_bytes = _relation_profile(benchmark_connection)
+            source_overhead = _source_overhead_profile(benchmark_connection)
         growth = max(0, int(populated["database_bytes"]) - int(empty["database_bytes"]))
         with live_engine.connect() as live_connection:
             live_database_bytes = int(live_connection.execute(text("SELECT pg_database_size(current_database())")).scalar_one())
-        projected = live_database_bytes + growth
+        if source_id == SUCCESSFUL_CORPUS_SOURCE_ID:
+            remaining_projection = _remaining_capacity_projection(
+                live_database_bytes=live_database_bytes,
+                benchmark_growth_bytes=growth,
+                source_growth_bytes=source_overhead["total"],
+                current_opportunities=int(shape["sample_opportunities"]),
+                current_sources=int(shape["sample_source_count"]),
+                target_opportunities=POPULATION,
+                target_sources=len(source_ids),
+            )
+            projected = remaining_projection["projected_final_database_bytes"]
+        else:
+            remaining_projection = None
+            projected = live_database_bytes + growth
         checks = {
             "live_and_benchmark_schema_at_expected_head": (
                 shape["live_database_revision"] == EXPECTED_HEAD and populated["revision"] == EXPECTED_HEAD
@@ -719,6 +820,59 @@ def run_benchmark(source_id: str) -> dict[str, Any]:
             "all_physical_measurements_are_post_population": int(populated["database_bytes"]) > int(empty["database_bytes"]),
             "projected_database_within_hard_budget": projected <= DATABASE_HARD_BUDGET,
         }
+        largest_relations = {
+            f"{row['schema_name']}.{row['relation']}": int(row["total_bytes"])
+            for row in top_relations
+        }
+        capacity_model = {
+            "schema": "fr007-storage-v2-capacity-model-v2",
+            "representative_workflow_run_id": (
+                int(os.environ["GITHUB_RUN_ID"]) if source_id != SUCCESSFUL_CORPUS_SOURCE_ID and os.environ.get("GITHUB_RUN_ID") else None
+            ),
+            "capacity_benchmark_workflow_run_id": (
+                int(os.environ["GITHUB_RUN_ID"]) if os.environ.get("GITHUB_RUN_ID") else None
+            ),
+            "source_id": source_id,
+            "source_sample_opportunities": shape["sample_opportunities"],
+            "source_sample_successful_identities": shape["sample_source_count"],
+            "live_database_bytes_at_benchmark": live_database_bytes,
+            "benchmark_database_bytes_empty_schema": empty["database_bytes"],
+            "benchmark_database_bytes_after_population": populated["database_bytes"],
+            "benchmark_growth_bytes": growth,
+            "target_opportunities": POPULATION,
+            "target_read_allowed_sources": len(source_ids),
+            "hard_database_budget_bytes": DATABASE_HARD_BUDGET,
+            "projected_final_database_bytes": projected,
+            "projected_final_database_mib": round(projected / (1024 * 1024), 2),
+            "projected_database_bytes_at_gate": projected,
+            "projected_database_mib_at_gate": round(projected / (1024 * 1024), 2),
+            "projected_cold_archive_storage_bytes": inserted["projected_cold_archive_storage_bytes"],
+            "source_overhead_relation_bytes": source_overhead,
+            "population": {
+                "opportunities": POPULATION,
+                "hot": inserted["hot_opportunities"],
+                "cold": inserted["cold_opportunities"],
+                "protected": inserted["protected_opportunities"],
+                "feed_projections": inserted["feed_inserted"],
+                "evaluations": inserted["evaluations_inserted"],
+                "provenance": inserted["provenance_inserted"],
+                "archives": inserted["archives_inserted"],
+                "storage_objects": inserted["storage_objects_inserted"],
+                "source_polls": inserted["source_polls_inserted"],
+                "source_schedules": inserted["source_schedules_inserted"],
+                "worker_jobs": inserted["worker_jobs_inserted"],
+            },
+            "largest_relations_bytes": largest_relations,
+            "measurement_contract": {
+                "benchmark_engine": "isolated PostgreSQL 17 disposable service",
+                "live_database_writes": 0,
+                "live_payload_text_read": False,
+                "physical_database_measurement": "pg_database_size",
+                "projection": "current live physical bytes plus physically measured remaining population growth",
+                "safety_reserve_fraction_for_incremental_projection": 0.01,
+                "remaining_projection": remaining_projection,
+            },
+        }
         return {
             "status": "PASS" if all(checks.values()) else "STOP_FOR_ARCHITECTURE_REVIEW",
             "source_id": source_id,
@@ -726,6 +880,8 @@ def run_benchmark(source_id: str) -> dict[str, Any]:
             "population_opportunities": POPULATION,
             "sample_unique_opportunities": shape["sample_unique_opportunities"],
             "sample_opportunities": shape["sample_opportunities"],
+            "sample_source_count": shape["sample_source_count"],
+            "sample_scope": shape["sample_scope"],
             "sample_tier_counts": {
                 "hot": shape["sample_hot"], "cold": shape["sample_cold"], "protected": shape["sample_protected"]
             },
@@ -739,6 +895,8 @@ def run_benchmark(source_id: str) -> dict[str, Any]:
             "benchmark_growth_bytes": growth,
             "projected_database_bytes": projected,
             "projected_database_mib": round(projected / (1024 * 1024), 2),
+            "remaining_capacity_projection": remaining_projection,
+            "source_overhead_relation_bytes": source_overhead,
             "projected_cold_archive_storage_bytes": inserted["projected_cold_archive_storage_bytes"],
             "benchmark_application_relation_bytes": public_relation_bytes,
             "benchmark_product_counts": populated["product_counts"],
@@ -754,6 +912,7 @@ def run_benchmark(source_id: str) -> dict[str, Any]:
                 "poll_shape": shape["poll_shape"],
             },
             "inserted": inserted,
+            "capacity_model": capacity_model,
             "checks": checks,
             "synthetic_data_location": "disposable-postgresql-only",
             "live_database_writes": 0,
@@ -768,6 +927,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-id", required=True)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--model-output", type=Path)
     args = parser.parse_args(argv)
     try:
         report = run_benchmark(args.source_id)
@@ -776,6 +936,11 @@ def main(argv: list[str] | None = None) -> int:
     encoded = json.dumps(report, sort_keys=True, default=str)
     if args.output:
         args.output.write_text(encoded + "\n", encoding="utf-8")
+    if args.model_output:
+        args.model_output.write_text(
+            json.dumps(report["capacity_model"], sort_keys=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
     print(encoded)
     if report["status"] != "PASS":
         raise SystemExit("physical 26k capacity benchmark or hard-budget gate did not pass")

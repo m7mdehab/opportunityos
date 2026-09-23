@@ -66,6 +66,19 @@ def _capacity_benchmark(*, growth: int = 1024 * 1024, projected: int | None = No
             "projected_database_within_hard_budget": True,
         },
     }
+
+
+def _archive_inventory_connection(objects: int, compressed_bytes: int):
+    result = MagicMock()
+    result.mappings.return_value.one.return_value = {
+        "archive_objects": objects,
+        "compressed_bytes": compressed_bytes,
+    }
+    connection = MagicMock()
+    connection.execute.return_value = result
+    return connection
+
+
 class RepresentativeSourceEconomicsTests(unittest.TestCase):
     def test_incremental_archive_verification_is_source_scoped_and_bounded(self):
         since = datetime(2026, 9, 23, 8, 0, tzinfo=timezone.utc)
@@ -104,6 +117,7 @@ class RepresentativeSourceEconomicsTests(unittest.TestCase):
         self.assertEqual(proof["archive_objects_verified"], 1)
         self.assertEqual(proof["compressed_bytes_downloaded"], 4)
         self.assertTrue(proof["sha256_identity_verified"])
+        self.assertNotIn("last_verified_opportunity_id", proof)
         get_object.assert_called_once_with("cold/one.gz", "payload-sha", client=client)
         unpack.assert_called_once_with(
             b"data", "payload-sha", opportunity_id="opportunity-id", content_hash="content-hash"
@@ -131,10 +145,67 @@ class RepresentativeSourceEconomicsTests(unittest.TestCase):
                 source_gate.verify_source_archives(connection, source_id="himalayas", max_objects=1)
         client_from_env.assert_not_called()
 
+    def test_successful_corpus_archive_query_uses_successful_sources_and_stable_cursor(self):
+        result = MagicMock()
+        result.mappings.return_value.all.return_value = []
+        connection = MagicMock()
+        connection.execute.return_value = result
+
+        proof = source_gate.verify_source_archives(
+            connection,
+            source_id=source_gate.CORPUS_SOURCE_ID,
+            max_objects=500,
+            max_archive_bytes=32 * 1024 * 1024,
+            after_opportunity_id="opaque-cursor",
+            include_cursor=True,
+        )
+
+        statement, params = connection.execute.call_args.args
+        self.assertIn("o.source_id IN (SELECT DISTINCT source_id", str(statement))
+        self.assertIn("o.id > :after_opportunity_id", str(statement))
+        self.assertNotIn("source_id", params)
+        self.assertEqual(params["after_opportunity_id"], "opaque-cursor")
+        self.assertEqual(proof["download_scope"], "successful-corpus-cold-archives-only")
+        self.assertEqual(proof["last_verified_opportunity_id"], "opaque-cursor")
+
+    def test_successful_corpus_archives_are_verified_in_bounded_pages(self):
+        first = {
+            "archive_objects_verified": 500,
+            "compressed_bytes_downloaded": 2_000_000,
+            "last_verified_opportunity_id": "opportunity-0500",
+        }
+        second = {
+            "archive_objects_verified": 313,
+            "compressed_bytes_downloaded": 1_252_000,
+            "last_verified_opportunity_id": "opportunity-0813",
+        }
+        connection = _archive_inventory_connection(813, 3_252_000)
+        with patch.object(source_gate, "verify_source_archives", side_effect=[first, second]) as verify:
+            proof = source_gate.verify_successful_corpus_archives(connection)
+
+        self.assertEqual(proof["archive_objects_verified"], 813)
+        self.assertEqual(proof["compressed_bytes_downloaded"], 3_252_000)
+        self.assertEqual(proof["pages_verified"], 2)
+        self.assertEqual(proof["current_cold_archive_objects"], 813)
+        self.assertEqual(proof["current_cold_archive_compressed_bytes"], 3_252_000)
+        calls = [call.kwargs for call in verify.call_args_list]
+        self.assertEqual(calls[0]["max_objects"], 500)
+        self.assertEqual(calls[0]["max_archive_bytes"], 32 * 1024 * 1024)
+        self.assertIsNone(calls[0]["after_opportunity_id"])
+        self.assertEqual(calls[1]["after_opportunity_id"], "opportunity-0500")
+
+    def test_successful_corpus_archive_verifier_stops_on_aggregate_object_limit(self):
+        connection = _archive_inventory_connection(source_gate.CORPUS_ARCHIVE_OBJECT_LIMIT + 1, 1)
+        with patch.object(source_gate, "verify_source_archives") as verify:
+            with self.assertRaisesRegex(RuntimeError, "total object or egress bound"):
+                source_gate.verify_successful_corpus_archives(connection)
+        verify.assert_not_called()
+
     def test_registered_launcher_runs_a_fresh_credential_gate_before_source_work(self):
         root = Path(__file__).resolve().parents[1]
         launcher = (root / ".github/workflows/fr007-current-readiness-launcher.yml").read_text(encoding="utf-8")
         workflow = (root / ".github/workflows/fr007-storage-v2-representative-source.yml").read_text(encoding="utf-8")
+        source_gate_script = (root / "scripts/fr007_storage_v2_source_gate.py").read_text(encoding="utf-8")
         postgres_workflow = (root / ".github/workflows/fr007-storage-v2-postgres.yml").read_text(encoding="utf-8")
         regression_step = postgres_workflow.split("- name: Run complete PostgreSQL-backed subsystem tests", 1)[1].split(
             "- name: Upload PostgreSQL test log", 1
@@ -148,6 +219,12 @@ class RepresentativeSourceEconomicsTests(unittest.TestCase):
         self.assertIn("OPOS_TARGET_DB_URL: ${{ secrets.CLOUD_DATABASE_URL }}", workflow)
         self.assertIn("image: postgres:17-alpine", workflow)
         self.assertIn("fr007_storage_v2_capacity_benchmark.py", workflow)
+        self.assertIn("benchmark_only:", workflow)
+        self.assertIn("verify_successful_corpus_archives", source_gate_script)
+        self.assertIn("capacity-reforecast", launcher)
+        self.assertIn("source_id: __successful_corpus__", launcher)
+        self.assertIn("benchmark_only: true", launcher)
+        self.assertIn("--model-output w23-capacity-model.json", workflow)
         self.assertIn("--capacity-benchmark w23-source-capacity-benchmark.json", workflow)
         probe = postgres_workflow.split("new-project-credential-probe:", 1)[1].split("private-cv-storage-verification:", 1)[0]
         self.assertIn('required_names = ("OPOS_TARGET_DB_URL", "CLOUD_DATABASE_URL")', probe)

@@ -8,11 +8,11 @@ on:
         required: false
         default: ""
       mode:
-        description: "Closure, Storage V2 CI, DB probe, CV verification, bounded source bootstrap, or normal queue recovery"
+        description: "Closure, Storage V2 CI, DB probe, CV verification, bounded bootstrap, capacity reforecast, or normal queue recovery"
         required: false
         default: "full"
         type: choice
-        options: [full, acceptance, storage-v2-ci, db-credential-probe, verify-cv-storage, representative-source, incremental-source-bootstrap, queue-recovery]
+        options: [full, acceptance, storage-v2-ci, db-credential-probe, verify-cv-storage, representative-source, capacity-reforecast, incremental-source-bootstrap, queue-recovery]
       source_id:
         description: "The one approved read-only representative source"
         required: false
@@ -56,6 +56,13 @@ jobs:
     with:
       source_id: ${{ inputs.source_id }}
     secrets: inherit
+  capacity-reforecast:
+    if: ${{ inputs.mode == 'capacity-reforecast' }}
+    uses: ./.github/workflows/fr007-storage-v2-representative-source.yml
+    with:
+      source_id: __successful_corpus__
+      benchmark_only: true
+    secrets: inherit
   incremental-source-bootstrap:
     if: ${{ inputs.mode == 'incremental-source-bootstrap' }}
     uses: ./.github/workflows/fr007-incremental-source-bootstrap.yml
@@ -72,7 +79,7 @@ jobs:
       time_budget_seconds: "480"
     secrets: inherit
   final-closure:
-    if: ${{ inputs.mode != 'storage-v2-ci' && inputs.mode != 'db-credential-probe' && inputs.mode != 'verify-cv-storage' && inputs.mode != 'representative-source' && inputs.mode != 'incremental-source-bootstrap' && inputs.mode != 'queue-recovery' }}
+    if: ${{ inputs.mode != 'storage-v2-ci' && inputs.mode != 'db-credential-probe' && inputs.mode != 'verify-cv-storage' && inputs.mode != 'representative-source' && inputs.mode != 'capacity-reforecast' && inputs.mode != 'incremental-source-bootstrap' && inputs.mode != 'queue-recovery' }}
     uses: ./.github/workflows/fr007-final-runtime-closure.yml
     with:
       truth_pack_hash: ${{ inputs.truth_pack_hash }}
