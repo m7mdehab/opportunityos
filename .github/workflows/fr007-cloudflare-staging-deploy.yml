@@ -68,7 +68,7 @@ jobs:
           ACK: ${{ inputs.acknowledge_staging_deployment }}
           API_ORIGIN: ${{ vars.OPPORTUNITYOS_API_ORIGIN }}
           SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || 'https://sunjfepvdzfknglrjwhm.supabase.co' }}
-          SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_qsLzVh90UlsRwHTOveSUMQ_5kP6JWPH' }}
+          SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable__WU8LxWKBLfFaEdCIwB6Ng_RSlAJb31' }}
           STAGING_WEB_URL: ${{ vars.OPOS_STAGING_WEB_URL || 'https://opportunityos.m7mdehab.com' }}
           FOUNDER_EMAIL: ${{ secrets.E2E_FOUNDER_EMAIL }}
           FOUNDER_PASSWORD: ${{ secrets.E2E_FOUNDER_PASSWORD }}
@@ -132,7 +132,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           OPPORTUNITYOS_API_ORIGIN: ${{ vars.OPPORTUNITYOS_API_ORIGIN }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || 'https://sunjfepvdzfknglrjwhm.supabase.co' }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_qsLzVh90UlsRwHTOveSUMQ_5kP6JWPH' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable__WU8LxWKBLfFaEdCIwB6Ng_RSlAJb31' }}
         run: |
           set -euo pipefail
           VAR_ARGS=()

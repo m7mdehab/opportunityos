@@ -89,10 +89,7 @@ jobs:
   staging-smoke:
     if: ${{ inputs.mode == 'staging-smoke' }}
     needs: [staging-deploy]
-    uses: ./.github/workflows/fr007-cloudflare-staging-deploy.yml
-    with:
-      mode: SMOKE_STAGING
-      ref: ${{ github.ref_name }}
+    uses: ./.github/workflows/fr007-founder-staging-ready.yml
     secrets: inherit
   final-closure:
     if: ${{ inputs.mode != 'storage-v2-ci' && inputs.mode != 'db-credential-probe' && inputs.mode != 'verify-cv-storage' && inputs.mode != 'representative-source' && inputs.mode != 'capacity-reforecast' && inputs.mode != 'incremental-source-bootstrap' && inputs.mode != 'queue-recovery' && inputs.mode != 'staging-deploy' && inputs.mode != 'staging-smoke' }}

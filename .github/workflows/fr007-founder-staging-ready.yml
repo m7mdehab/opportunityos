@@ -1,0 +1,56 @@
+name: FR-007 Provision Founder and Read-Only Staging Smoke
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  founder-auth-and-readonly-smoke:
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install protected database client
+        run: python -m pip install 'psycopg2-binary>=2.9,<3'
+
+      - name: Test idempotent Founder provisioning and fail-closed binding
+        run: python -m unittest scripts.test_provision_staging_founder -v
+
+      - name: Ensure the single Founder Auth user and singleton identity binding
+        env:
+          SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || 'https://sunjfepvdzfknglrjwhm.supabase.co' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.STORAGE_SERVICE_KEY }}
+          FOUNDER_EMAIL: ${{ secrets.E2E_FOUNDER_EMAIL }}
+          FOUNDER_PASSWORD: ${{ secrets.E2E_FOUNDER_PASSWORD }}
+          CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL }}
+        run: python scripts/provision_staging_founder.py
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Install Chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Read-only Founder login and feed smoke
+        working-directory: web
+        env:
+          OPOS_STAGING_WEB_URL: ${{ vars.OPOS_STAGING_WEB_URL || 'https://opportunityos.m7mdehab.com' }}
+          E2E_FOUNDER_EMAIL: ${{ secrets.E2E_FOUNDER_EMAIL }}
+          E2E_FOUNDER_PASSWORD: ${{ secrets.E2E_FOUNDER_PASSWORD }}
+        run: npx playwright test --config=playwright.staging.readonly.config.ts
