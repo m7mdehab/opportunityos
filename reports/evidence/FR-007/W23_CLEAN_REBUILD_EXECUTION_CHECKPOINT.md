@@ -767,3 +767,13 @@
 - current_sha_now: `e59b3bd4cff4877433eb3dbe43f549d2f0bdd24a`
 - current_remote_sha: `e59b3bd4cff4877433eb3dbe43f549d2f0bdd24a`
 - exact_next_action: continue run `35916759119` only. Wait for the next selected five-source batch and its source-scoped archive/capacity checks; keep the 5-shard/10-connection ceiling and never replay a latest-success source. Full corpus hash verification remains reserved for the final bootstrap boundary.
+
+- execution_update_2026_09_23_2236Z_bounded_slice_0_terminal:
+  - fetched `origin/work/fr007-clean-rebuild-storage-v2`; HEAD and remote are both `1b7ee7cf47738a2960d527008d718967f4d5d931`. Existing untracked `work/` is preserved and unstaged.
+  - launcher run `35916759119` / job `107370111069` is terminal `success` on its original immutable SHA. Sanitized terminal summary: offset 0, 125 selected, 125 attempted-or-skipped, 0 failures, `PASS`, latest-success coverage 126. All source records in the selected slice completed or were skipped from already-successful live status; no source replay after success.
+  - final source event was `greenhouse:homechef` 33/33; maximum per-event historical 26k-corpus DB forecast during this slice was `185,677,505` bytes (<200 MiB). Final aggregate-only live snapshot at `2026-09-23T22:36:19Z`: DB `84,839,571` bytes; 10,401 opportunities; HOT/feed 1,299; COLD 9,102; 10,401 evaluations; 9,102 cold archives /`72,491,554` compressed bytes; 126 latest successful source identities /0 latest failures. No synthetic `active` projection; queue pending/retry/running/expired/dead-letter all 0. Slice artifact `10779839705`, SHA-256 `6dab93702b1739cd71f7d9ffe345d48fe4933c7389660aa1324c0aec84b271c5`.
+  - no whole-corpus archive verification has run. No credential was exposed or managed; required password rotation remains the Founder's post-completion action.
+- current_phase: `PHASE_V_BOOTSTRAP_SLICE_0_TERMINAL_GREEN_READY_FOR_NEXT_DISJOINT_RANGE`
+- current_sha_now: `1b7ee7cf47738a2960d527008d718967f4d5d931`
+- current_remote_sha: `1b7ee7cf47738a2960d527008d718967f4d5d931`
+- exact_next_action: checkpoint/push this terminal boundary, then dispatch the same registered launcher in `incremental-source-bootstrap` mode at offset `125` with max `125`. Let its existing normal five-shard batches process new/unfinished source identities; do not rerun successful sources. Check the third/final offset range after its terminal result, then one final archive verification and move directly to queue/runtime/monitor/Founder acceptance.
