@@ -8,11 +8,11 @@ on:
         required: false
         default: ""
       mode:
-        description: "Closure, Storage V2 CI, DB probe, CV verification, bounded bootstrap, capacity reforecast, or normal queue recovery"
+        description: "Closure, Storage V2 CI, hosted staging, DB probe, CV verification, bounded bootstrap, capacity reforecast, or normal queue recovery"
         required: false
         default: "full"
         type: choice
-        options: [full, acceptance, storage-v2-ci, db-credential-probe, verify-cv-storage, representative-source, capacity-reforecast, incremental-source-bootstrap, queue-recovery]
+        options: [full, acceptance, storage-v2-ci, db-credential-probe, verify-cv-storage, representative-source, capacity-reforecast, incremental-source-bootstrap, queue-recovery, staging-deploy, staging-smoke]
       source_id:
         description: "The one approved read-only representative source"
         required: false
@@ -78,8 +78,24 @@ jobs:
       max_jobs: "5"
       time_budget_seconds: "480"
     secrets: inherit
+  staging-deploy:
+    if: ${{ inputs.mode == 'staging-deploy' || inputs.mode == 'staging-smoke' }}
+    uses: ./.github/workflows/fr007-cloudflare-staging-deploy.yml
+    with:
+      mode: DEPLOY_STAGING
+      acknowledge_staging_deployment: true
+      ref: ${{ github.ref_name }}
+    secrets: inherit
+  staging-smoke:
+    if: ${{ inputs.mode == 'staging-smoke' }}
+    needs: [staging-deploy]
+    uses: ./.github/workflows/fr007-cloudflare-staging-deploy.yml
+    with:
+      mode: SMOKE_STAGING
+      ref: ${{ github.ref_name }}
+    secrets: inherit
   final-closure:
-    if: ${{ inputs.mode != 'storage-v2-ci' && inputs.mode != 'db-credential-probe' && inputs.mode != 'verify-cv-storage' && inputs.mode != 'representative-source' && inputs.mode != 'capacity-reforecast' && inputs.mode != 'incremental-source-bootstrap' && inputs.mode != 'queue-recovery' }}
+    if: ${{ inputs.mode != 'storage-v2-ci' && inputs.mode != 'db-credential-probe' && inputs.mode != 'verify-cv-storage' && inputs.mode != 'representative-source' && inputs.mode != 'capacity-reforecast' && inputs.mode != 'incremental-source-bootstrap' && inputs.mode != 'queue-recovery' && inputs.mode != 'staging-deploy' && inputs.mode != 'staging-smoke' }}
     uses: ./.github/workflows/fr007-final-runtime-closure.yml
     with:
       truth_pack_hash: ${{ inputs.truth_pack_hash }}

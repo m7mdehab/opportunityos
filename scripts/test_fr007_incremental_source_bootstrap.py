@@ -234,6 +234,18 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
         self.assertIn("STORAGE_SERVICE_KEY: ${{ secrets.STORAGE_SERVICE_KEY }}", worker)
         self.assertIn("inputs.mode != 'queue-recovery'", launcher)
 
+    def test_registered_launcher_routes_current_branch_staging_deploy_then_smoke(self):
+        launcher = (ROOT / ".github/workflows/fr007-current-readiness-launcher.yml").read_text(encoding="utf-8")
+
+        self.assertIn("options: [full, acceptance, storage-v2-ci, db-credential-probe, verify-cv-storage, representative-source, capacity-reforecast, incremental-source-bootstrap, queue-recovery, staging-deploy, staging-smoke]", launcher)
+        self.assertIn("staging-deploy:\n    if: ${{ inputs.mode == 'staging-deploy' || inputs.mode == 'staging-smoke' }}", launcher)
+        self.assertIn("mode: DEPLOY_STAGING", launcher)
+        self.assertIn("acknowledge_staging_deployment: true", launcher)
+        self.assertIn("ref: ${{ github.ref_name }}", launcher)
+        self.assertIn("staging-smoke:\n    if: ${{ inputs.mode == 'staging-smoke' }}\n    needs: [staging-deploy]", launcher)
+        self.assertIn("mode: SMOKE_STAGING", launcher)
+        self.assertIn("inputs.mode != 'staging-smoke'", launcher)
+
     def test_incremental_runner_measures_before_and_after_each_source(self):
         ids = [f"source-{idx:03}" for idx in range(343)]
         registry = SimpleNamespace(_sources=set(ids), is_read_allowed=lambda _source_id: True)
