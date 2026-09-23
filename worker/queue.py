@@ -113,6 +113,7 @@ class BackgroundWorkerQueue:
         lease_duration_seconds: int = 60,
         *,
         claim_hook: Optional[Callable[[], None]] = None,
+        allowed_job_types: Optional[set[str]] = None,
     ) -> Optional[WorkerJobRecord]:
         """Atomically claim the next runnable job, or return None if none is available.
 
@@ -141,6 +142,8 @@ class BackgroundWorkerQueue:
             now = datetime.now(timezone.utc)
             bind = self.session.get_bind()
             is_postgres = bind.dialect.name == "postgresql" if bind else False
+            if allowed_job_types is not None and not allowed_job_types:
+                raise ValueError("allowed_job_types must be non-empty when provided")
 
             # 1. Sweep for stale leases first (expired RUNNING jobs).
             stale_query = (
@@ -151,6 +154,8 @@ class BackgroundWorkerQueue:
                 )
                 .order_by(WorkerJobRecord.lease_expires_at.asc())
             )
+            if allowed_job_types is not None:
+                stale_query = stale_query.filter(WorkerJobRecord.job_type.in_(allowed_job_types))
             if is_postgres:
                 stale_query = stale_query.with_for_update(skip_locked=True)
             stale_job = stale_query.first()
@@ -190,6 +195,8 @@ class BackgroundWorkerQueue:
                 )
                 .order_by(WorkerJobRecord.run_after.asc())
             )
+            if allowed_job_types is not None:
+                query = query.filter(WorkerJobRecord.job_type.in_(allowed_job_types))
 
             if is_postgres:
                 query = query.with_for_update(skip_locked=True)

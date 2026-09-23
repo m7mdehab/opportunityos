@@ -69,6 +69,27 @@ class TestQueueDurability(unittest.TestCase):
             session1.close()
             session2.close()
 
+    def test_claim_filter_leaves_non_source_work_for_the_normal_queue(self):
+        session = self.session_factory()
+        try:
+            queue = BackgroundWorkerQueue(session, worker_id="source-only-worker")
+            poll_id = queue.enqueue_job("poll_source", {"source_id": "fixture-a"})
+            eval_id = queue.enqueue_job("evaluate_new", {})
+
+            claimed = queue.claim_next_job(allowed_job_types={"poll_source"})
+            self.assertIsNotNone(claimed)
+            self.assertEqual(claimed.id, poll_id)
+            self.assertEqual(claimed.job_type, "poll_source")
+            self.assertIsNone(queue.claim_next_job(allowed_job_types={"poll_source"}))
+
+            session.expire_all()
+            untouched = session.query(WorkerJobRecord).filter_by(id=eval_id).one()
+            self.assertEqual(untouched.status, "PENDING")
+            with self.assertRaisesRegex(ValueError, "must be non-empty"):
+                queue.claim_next_job(allowed_job_types=set())
+        finally:
+            session.close()
+
     def test_crash_recovery_stale_lease_reclaim(self):
         """When a worker crashes or drops dead, its expired lease is reclaimed by another worker."""
         session1 = self.session_factory()

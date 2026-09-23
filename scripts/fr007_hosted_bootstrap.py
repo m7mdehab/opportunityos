@@ -47,6 +47,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--time-budget-seconds", type=float, default=300.0)
     p.add_argument("--worker-id", type=str, default=None, help="Explicit worker identity")
     p.add_argument(
+        "--poll-source-only",
+        action="store_true",
+        help="Drain only poll_source jobs; used by disjoint bounded source-bootstrap shards",
+    )
+    p.add_argument(
         "--source-id",
         type=str,
         default=None,
@@ -123,7 +128,14 @@ def _assert_no_runnable_jobs(session) -> None:
         )
 
 
-def _drain(session_factory, *, max_jobs: int, budget: float, worker_id: str | None = None) -> int:
+def _drain(
+    session_factory,
+    *,
+    max_jobs: int,
+    budget: float,
+    worker_id: str | None = None,
+    poll_source_only: bool = False,
+) -> int:
     effective_worker_id = worker_id or os.environ.get("OPOS_WORKER_ID") or "hosted-bootstrap"
 
     # Critical connection-pressure invariant: the runner and every default
@@ -139,6 +151,7 @@ def _drain(session_factory, *, max_jobs: int, budget: float, worker_id: str | No
         handlers,
         worker_id=effective_worker_id,
         poll_interval=0.1,
+        allowed_job_types={"poll_source"} if poll_source_only else None,
     )
     started = time.monotonic()
     processed = 0
@@ -151,6 +164,8 @@ def _drain(session_factory, *, max_jobs: int, budget: float, worker_id: str | No
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.poll_source_only and args.mode != "drain":
+        raise SystemExit("--poll-source-only is permitted only with --mode drain")
     selected_source_ids = None
     if args.source_ids is not None:
         selected_source_ids = [part.strip() for part in args.source_ids.split(",") if part.strip()]
@@ -280,6 +295,7 @@ def main(argv: list[str] | None = None) -> int:
                 max_jobs=max(0, args.max_jobs),
                 budget=max(0.0, args.time_budget_seconds),
                 worker_id=args.worker_id,
+                poll_source_only=args.poll_source_only,
             )
 
         print(

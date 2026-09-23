@@ -54,7 +54,7 @@ jobs:
           python-version: "3.12"
       - name: Install repository
         run: python -m pip install -e .
-      - name: Bootstrap sources one at a time with capacity and invariant snapshots
+      - name: Bootstrap disjoint five-source batches with normal capped worker shards
         run: >-
           python scripts/fr007_incremental_source_bootstrap.py
           --source-offset "$SOURCE_OFFSET"

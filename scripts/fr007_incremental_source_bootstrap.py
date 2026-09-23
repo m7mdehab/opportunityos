@@ -9,9 +9,12 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import concurrent.futures
 import io
 import json
 import math
+import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -23,18 +26,18 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from opportunity.registry import SourceRegistry
-from scripts.fr007_hosted_bootstrap import main as hosted_bootstrap_main
+from scripts.fr007_hosted_bootstrap import HOSTED_WORKER_POOL_SIZE, main as hosted_bootstrap_main
 from scripts.fr007_storage_v2_source_gate import _connect, snapshot, verify_source_archives
 from storage.models import WorkerJobRecord
 
 MODEL_PATH = REPOSITORY_ROOT / "reports/evidence/FR-007/W23_STORAGE_V2_CAPACITY_MODEL.json"
 MAX_SOURCES_PER_RUN = 125
-WORKER_MAX_JOBS = 2
 WORKER_TIME_BUDGET_SECONDS = 480
 DATABASE_HARD_BUDGET = 200 * 1024 * 1024
 MAX_INCREMENT_ARCHIVE_OBJECTS = 500
 MAX_INCREMENT_ARCHIVE_BYTES = 32 * 1024 * 1024
 MAX_SOURCE_FOLLOWUP_JOBS = 1
+MAX_PARALLEL_SOURCE_WORKERS = 5
 
 
 def projected_final_database_bytes(current: dict[str, Any], model: dict[str, Any]) -> int:
@@ -202,6 +205,55 @@ def _drain_source_followup() -> tuple[int, str | None]:
     return 1, None
 
 
+def _run_parallel_source_batch(source_ids: list[str], *, batch_tag: str) -> list[dict[str, Any]]:
+    """Schedule a small disjoint source batch, then drain it with normal workers.
+
+    Each worker is a separate hosted-bootstrap process with the established
+    two-connection pool ceiling. Five processes therefore retain at most ten
+    tagged worker connections, matching the accepted W22.5 envelope. The
+    scheduler creates the distinct source jobs once; normal queue claims
+    arbitrate them with PostgreSQL row locks/SKIP LOCKED.
+    """
+    if not 1 <= len(source_ids) <= MAX_PARALLEL_SOURCE_WORKERS:
+        raise ValueError("parallel source batch must contain between one and five sources")
+    if len(set(source_ids)) != len(source_ids):
+        raise ValueError("parallel source batch contains duplicate IDs")
+
+    selected = ",".join(source_ids)
+    for mode in ("bootstrap", "enqueue"):
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            result = hosted_bootstrap_main(["--mode", mode, "--source-ids", selected])
+        if result != 0:
+            raise RuntimeError(f"source_batch_{mode}_exit_{result}")
+
+    command = [
+        sys.executable,
+        str(REPOSITORY_ROOT / "scripts/fr007_hosted_bootstrap.py"),
+        "--mode", "drain",
+        "--max-jobs", "1",
+        "--time-budget-seconds", str(WORKER_TIME_BUDGET_SECONDS),
+        "--poll-source-only",
+    ]
+
+    def drain(shard: int) -> dict[str, Any]:
+        worker_id = f"fr007-bootstrap-{batch_tag}-{shard}"
+        try:
+            completed = subprocess.run(
+                [*command, "--worker-id", worker_id],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=os.environ.copy(),
+            )
+        except Exception as exc:
+            return {"worker_id": worker_id, "error_class": type(exc).__name__}
+        return {"worker_id": worker_id, "return_code": int(completed.returncode)}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(source_ids)) as pool:
+        futures = [pool.submit(drain, shard) for shard in range(len(source_ids))]
+        return [future.result() for future in futures]
+
+
 def _latest_status(state: dict[str, Any]) -> str | None:
     poll = state.get("latest_source_poll") or {}
     status = poll.get("status")
@@ -270,6 +322,8 @@ def run_incremental_bootstrap(*, source_offset: int, max_sources: int, output: P
         "status": "RUNNING",
         "source_offset": source_offset,
         "max_sources": max_sources,
+        "parallel_worker_limit": MAX_PARALLEL_SOURCE_WORKERS,
+        "parallel_worker_max_connections": MAX_PARALLEL_SOURCE_WORKERS * HOSTED_WORKER_POOL_SIZE,
         "registry_source_count": len(read_allowed_ids),
         "selected_source_ids": selected,
         "already_successful_sources_skipped": [],
@@ -288,108 +342,124 @@ def run_incremental_bootstrap(*, source_offset: int, max_sources: int, output: P
     fatal_failures: list[str] = []
     source_failures: list[str] = []
 
-    for source_id in selected:
-        before = _take_snapshot(source_id)
-        before_status = _latest_status(before)
-        before_projection = projected_final_database_bytes(before, model)
-        before_failures = invariant_failures(before, before_projection)
-        if before_failures:
-            fatal_failures.extend(before_failures)
-            report["status"] = "CAPACITY_OR_INVARIANT_STOP"
-            report["fatal_failures"] = sorted(set(fatal_failures))
-            _write_report(output, report)
+    for batch_index, start in enumerate(range(0, len(selected), MAX_PARALLEL_SOURCE_WORKERS)):
+        batch_ids = selected[start : start + MAX_PARALLEL_SOURCE_WORKERS]
+        before_by_source: dict[str, dict[str, Any]] = {}
+        before_projection_by_source: dict[str, int] = {}
+        to_run: list[str] = []
+        for source_id in batch_ids:
+            before = _take_snapshot(source_id)
+            before_projection = projected_final_database_bytes(before, model)
+            before_failures = invariant_failures(before, before_projection)
+            if before_failures:
+                fatal_failures.extend(before_failures)
+                report["status"] = "CAPACITY_OR_INVARIANT_STOP"
+                report["fatal_failures"] = sorted(set(fatal_failures))
+                _write_report(output, report)
+                break
+            if _latest_status(before) == "ok":
+                report["already_successful_sources_skipped"].append(source_id)
+                report["sources"].append({
+                    "source_id": source_id,
+                    "status": "already_successful",
+                    "before": _compact_metrics(before, before_projection),
+                    "after": _compact_metrics(before, before_projection),
+                })
+                print(json.dumps({
+                    "source_id": source_id,
+                    "status": "already_successful",
+                    "coverage": before["successful_source_coverage"],
+                }))
+                continue
+            before_by_source[source_id] = before
+            before_projection_by_source[source_id] = before_projection
+            to_run.append(source_id)
+        if report["status"] != "RUNNING":
             break
-        if before_status == "ok":
-            report["already_successful_sources_skipped"].append(source_id)
-            report["sources"].append({
-                "source_id": source_id,
-                "status": "already_successful",
-                "before": _compact_metrics(before, before_projection),
-                "after": _compact_metrics(before, before_projection),
-            })
+        if not to_run:
             _write_report(output, report)
-            print(json.dumps({"source_id": source_id, "status": "already_successful", "coverage": before["successful_source_coverage"]}))
             continue
+
         runner_error: str | None = None
         followup_jobs = 0
         followup_error: str | None = None
         try:
-            # One source per normal scheduler/worker cycle guarantees a fresh
-            # physical and relational measurement before the next source.
-            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                result = hosted_bootstrap_main([
-                    "--mode", "all",
-                    "--source-ids", source_id,
-                    "--max-jobs", str(WORKER_MAX_JOBS),
-                    "--time-budget-seconds", str(WORKER_TIME_BUDGET_SECONDS),
-                ])
-            if result != 0:
-                runner_error = "nonzero_runner_exit"
+            shard_results = _run_parallel_source_batch(
+                to_run,
+                batch_tag=f"{source_offset}-{batch_index}",
+            )
+            if any(result.get("return_code") != 0 or result.get("error_class") for result in shard_results):
+                runner_error = "parallel_worker_shard_failure"
             else:
                 with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                     followup_jobs, followup_error = _drain_source_followup()
         except Exception as exc:
             runner_error = type(exc).__name__
 
-        after = _take_snapshot(source_id)
-        after_projection = projected_final_database_bytes(after, model)
-        after_failures = invariant_failures(after, after_projection)
-        source_result = _safe_source_result(after)
-        archive_verification: dict[str, Any] | None = None
-        archive_error: str | None = None
-        try:
-            archive_verification = _verify_increment_archives(
-                source_id,
-                before["counts"].get("source_latest_archive_at"),
-            )
-        except Exception as exc:
-            archive_error = type(exc).__name__
-        source_ok = source_result["status"] == "ok" and runner_error is None
-        failures = after_failures[:]
-        if runner_error is not None:
-            failures.append("worker_runner_" + runner_error)
-        if followup_error is not None:
-            failures.append(followup_error)
-        if archive_error is not None:
-            failures.append("cold_archive_verification_" + archive_error)
-        if not source_ok:
-            source_failures.append(source_id)
-        item = {
-            "source_id": source_id,
-            "status": "ok" if source_ok else "source_failure",
-            "runner_error_class": runner_error,
-            "followup_worker_jobs": followup_jobs,
-            "followup_error_class": followup_error,
-            "poll": source_result,
-            "archive_verification": archive_verification,
-            "before": _compact_metrics(before, before_projection),
-            "after": _compact_metrics(after, after_projection),
-            "direct_tier_or_capacity_failures": sorted(set(failures)),
-        }
-        report["sources"].append(item)
-        report["failure_count"] = len(source_failures)
-        report["last_completed_source"] = source_id
-        report["latest_metrics"] = _compact_metrics(after, after_projection)
-        if failures:
-            fatal_failures.extend(failures)
+        batch_after: dict[str, tuple[dict[str, Any], int, dict[str, Any]]] = {}
+        for source_id in to_run:
+            after = _take_snapshot(source_id)
+            after_projection = projected_final_database_bytes(after, model)
+            after_failures = invariant_failures(after, after_projection)
+            source_result = _safe_source_result(after)
+            archive_verification: dict[str, Any] | None = None
+            archive_error: str | None = None
+            try:
+                archive_verification = _verify_increment_archives(
+                    source_id,
+                    before_by_source[source_id]["counts"].get("source_latest_archive_at"),
+                )
+            except Exception as exc:
+                archive_error = type(exc).__name__
+            source_ok = source_result["status"] == "ok" and runner_error is None
+            failures = after_failures[:]
+            if runner_error is not None:
+                failures.append("worker_runner_" + runner_error)
+            if followup_error is not None:
+                failures.append(followup_error)
+            if archive_error is not None:
+                failures.append("cold_archive_verification_" + archive_error)
+            if not source_ok:
+                source_failures.append(source_id)
+            item = {
+                "source_id": source_id,
+                "status": "ok" if source_ok else "source_failure",
+                "runner_error_class": runner_error,
+                "followup_worker_jobs": followup_jobs,
+                "followup_error_class": followup_error,
+                "poll": source_result,
+                "archive_verification": archive_verification,
+                "before": _compact_metrics(before_by_source[source_id], before_projection_by_source[source_id]),
+                "after": _compact_metrics(after, after_projection),
+                "direct_tier_or_capacity_failures": sorted(set(failures)),
+            }
+            report["sources"].append(item)
+            report["failure_count"] = len(source_failures)
+            report["last_completed_source"] = source_id
+            report["latest_metrics"] = item["after"]
+            batch_after[source_id] = (source_result, after_projection, item)
+            if failures:
+                fatal_failures.extend(failures)
+
+        _write_report(output, report)
+        for source_id, (source_result, after_projection, item) in batch_after.items():
+            print(json.dumps({
+                "source_id": source_id,
+                "status": item["status"],
+                "poll": source_result,
+                "database_bytes": item["after"]["database_bytes"],
+                "projected_final_database_bytes": after_projection,
+                "opportunities": item["after"]["opportunities"],
+                "hot": item["after"]["hot"],
+                "cold": item["after"]["cold"],
+                "successful_source_coverage": item["after"]["successful_source_coverage"],
+                "queue": item["after"]["queue"],
+            }, sort_keys=True))
+        if fatal_failures:
             report["status"] = "CAPACITY_OR_INVARIANT_STOP"
             report["fatal_failures"] = sorted(set(fatal_failures))
             _write_report(output, report)
-            print(json.dumps({"source_id": source_id, "status": report["status"], "failures": report["fatal_failures"], "metrics": item["after"]}))
             break
-        _write_report(output, report)
-        print(json.dumps({
-            "source_id": source_id,
-            "status": item["status"],
-            "poll": source_result,
-            "database_bytes": item["after"]["database_bytes"],
-            "projected_final_database_bytes": after_projection,
-            "opportunities": item["after"]["opportunities"],
-            "hot": item["after"]["hot"],
-            "cold": item["after"]["cold"],
-            "successful_source_coverage": item["after"]["successful_source_coverage"],
-            "queue": item["after"]["queue"],
-        }, sort_keys=True))
 
     if report["status"] == "RUNNING":
         if source_failures:

@@ -76,6 +76,31 @@ class TestHostedBootstrapConnectionReuse(unittest.TestCase):
             fake_handlers,
             worker_id="proof-worker-1",
             poll_interval=0.1,
+            allowed_job_types=None,
+        )
+
+    def test_source_shards_restrict_claims_to_poll_jobs(self) -> None:
+        fake_factory = object()
+        runner = MagicMock()
+        runner.run_once.return_value = False
+
+        with patch.object(bootstrap, "default_handler_registry", return_value={}), patch.object(
+            bootstrap, "WorkerRunner", return_value=runner
+        ) as runner_cls:
+            bootstrap._drain(
+                fake_factory,
+                max_jobs=1,
+                budget=10.0,
+                worker_id="source-shard-1",
+                poll_source_only=True,
+            )
+
+        runner_cls.assert_called_once_with(
+            fake_factory,
+            {},
+            worker_id="source-shard-1",
+            poll_interval=0.1,
+            allowed_job_types={"poll_source"},
         )
 
     def test_all_mode_closes_enqueue_session_before_drain_and_uses_bounded_pool(self) -> None:

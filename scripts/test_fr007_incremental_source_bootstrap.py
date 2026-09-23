@@ -4,6 +4,7 @@ import json
 import contextlib
 import io
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -179,12 +180,44 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
         self.assertIn("retention-days: 30", workflow)
         self.assertIn("--source-ids", script)
         self.assertIn("--time-budget-seconds", script)
-        self.assertIn("source per normal scheduler/worker cycle", script)
+        self.assertIn("MAX_PARALLEL_SOURCE_WORKERS = 5", script)
+        self.assertIn("--poll-source-only", script)
         self.assertIn("incremental-source-bootstrap", launcher)
         self.assertIn("uses: ./.github/workflows/fr007-incremental-source-bootstrap.yml", launcher)
         self.assertIn("inputs.mode != 'incremental-source-bootstrap'", launcher)
         self.assertIn("source_offset: ${{ inputs.source_offset }}", launcher)
         self.assertIn("max_sources: ${{ inputs.max_sources }}", launcher)
+
+    def test_parallel_source_batch_uses_at_most_five_normal_poll_only_workers(self):
+        source_ids = [f"source-{idx}" for idx in range(5)]
+        start_gate = threading.Barrier(5, timeout=5.0)
+
+        def concurrent_worker(*_args, **_kwargs):
+            start_gate.wait()
+            return SimpleNamespace(returncode=0)
+
+        with patch.object(incremental, "hosted_bootstrap_main", return_value=0) as bootstrap, patch.object(
+            incremental.subprocess, "run", side_effect=concurrent_worker
+        ) as workers:
+            results = incremental._run_parallel_source_batch(source_ids, batch_tag="0-0")
+
+        self.assertEqual(results, [{"worker_id": f"fr007-bootstrap-0-0-{idx}", "return_code": 0} for idx in range(5)])
+        self.assertEqual([call.args[0][1] for call in bootstrap.call_args_list], ["bootstrap", "enqueue"])
+        self.assertEqual(bootstrap.call_args_list[0].args[0], ["--mode", "bootstrap", "--source-ids", ",".join(source_ids)])
+        self.assertEqual(bootstrap.call_args_list[1].args[0], ["--mode", "enqueue", "--source-ids", ",".join(source_ids)])
+        self.assertEqual(workers.call_count, 5)
+        self.assertEqual(
+            incremental.MAX_PARALLEL_SOURCE_WORKERS * incremental.HOSTED_WORKER_POOL_SIZE,
+            10,
+        )
+        for call in workers.call_args_list:
+            command = call.args[0]
+            self.assertIn("--poll-source-only", command)
+            self.assertEqual(command[command.index("--max-jobs") + 1], "1")
+            self.assertEqual(call.kwargs["stdout"], incremental.subprocess.DEVNULL)
+            self.assertEqual(call.kwargs["stderr"], incremental.subprocess.DEVNULL)
+        with self.assertRaisesRegex(ValueError, "between one and five"):
+            incremental._run_parallel_source_batch(source_ids + ["source-5"], batch_tag="0-1")
 
     def test_launcher_exposes_only_bounded_normal_queue_recovery(self):
         launcher = (ROOT / ".github/workflows/fr007-current-readiness-launcher.yml").read_text(encoding="utf-8")
@@ -211,11 +244,6 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
             "inserted": 8, "unchanged": 0, "updated": 0,
         }
 
-        def runner(args):
-            self.assertEqual(args[0:3], ["--mode", "all", "--source-ids"])
-            print("captured internal payload marker")
-            return 0
-
         with tempfile.TemporaryDirectory() as tmp, patch.object(incremental, "SourceRegistry", return_value=registry), patch.object(
             incremental, "_take_snapshot", side_effect=[before, after]
         ), patch.object(
@@ -232,7 +260,9 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
             incremental,
             "_runnable_job_type_counts",
             return_value={},
-        ), patch.object(incremental, "hosted_bootstrap_main", side_effect=runner) as hosted, contextlib.redirect_stdout(
+        ), patch.object(
+            incremental, "_run_parallel_source_batch", return_value=[{"return_code": 0}]
+        ) as batch_runner, contextlib.redirect_stdout(
             io.StringIO()
         ) as stdout:
             report = incremental.run_incremental_bootstrap(
@@ -246,7 +276,7 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
         self.assertEqual(report["sources"][0]["before"]["database_bytes"], before["database_bytes"])
         self.assertEqual(report["sources"][0]["after"]["successful_source_coverage"], 2)
         self.assertTrue(report["sources"][0]["archive_verification"]["sha256_identity_verified"])
-        self.assertEqual(hosted.call_count, 1)
+        batch_runner.assert_called_once_with([ids[0]], batch_tag="0-0")
         self.assertNotIn("captured internal payload marker", stdout.getvalue())
 
     def test_incremental_runner_normally_drains_one_slow_source_evaluation_followup(self):
@@ -264,8 +294,6 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
         ]
 
         def runner(args):
-            if args[0:3] == ["--mode", "all", "--source-ids"]:
-                return 0
             self.assertEqual(
                 args,
                 ["--mode", "drain", "--max-jobs", "1", "--time-budget-seconds", "480"],
@@ -290,6 +318,8 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
             incremental,
             "_runnable_job_type_counts",
             side_effect=queue_states,
+        ), patch.object(
+            incremental, "_run_parallel_source_batch", return_value=[{"return_code": 0}]
         ), patch.object(incremental, "hosted_bootstrap_main", side_effect=runner) as hosted, contextlib.redirect_stdout(
             io.StringIO()
         ):
@@ -300,7 +330,7 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
             )
 
         self.assertEqual(report["status"], "PASS")
-        self.assertEqual(hosted.call_count, 2)
+        self.assertEqual(hosted.call_count, 1)
         self.assertEqual(report["sources"][0]["followup_worker_jobs"], 1)
         self.assertIsNone(report["sources"][0]["followup_error_class"])
         self.assertEqual(report["sources"][0]["after"]["queue"]["pending"], 0)
@@ -314,9 +344,6 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
             "status": "ok", "raw_ingested": 12, "unique_opportunities": 8,
             "inserted": 8, "unchanged": 0, "updated": 0,
         }
-
-        def runner(_args):
-            return 0
 
         with tempfile.TemporaryDirectory() as tmp, patch.object(
             incremental, "SourceRegistry", return_value=registry
@@ -336,7 +363,9 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
             incremental,
             "_runnable_job_type_counts",
             return_value={("poll_source", "PENDING"): 1},
-        ), patch.object(incremental, "hosted_bootstrap_main", side_effect=runner) as hosted, contextlib.redirect_stdout(
+        ), patch.object(
+            incremental, "_run_parallel_source_batch", return_value=[{"return_code": 0}]
+        ), patch.object(incremental, "hosted_bootstrap_main") as hosted, contextlib.redirect_stdout(
             io.StringIO()
         ):
             report = incremental.run_incremental_bootstrap(
@@ -347,7 +376,7 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "CAPACITY_OR_INVARIANT_STOP")
         self.assertIn("unexpected_source_followup_queue", report["fatal_failures"])
-        self.assertEqual(hosted.call_count, 1)
+        hosted.assert_not_called()
 
     def test_incremental_runner_pauses_before_write_if_projected_budget_fails(self):
         ids = [f"source-{idx:03}" for idx in range(343)]
@@ -356,7 +385,7 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp, patch.object(incremental, "SourceRegistry", return_value=registry), patch.object(
             incremental, "_take_snapshot", return_value=before
-        ), patch.object(incremental, "hosted_bootstrap_main") as hosted:
+        ), patch.object(incremental, "_run_parallel_source_batch") as batch_runner:
             report = incremental.run_incremental_bootstrap(
                 source_offset=0,
                 max_sources=1,
@@ -365,7 +394,7 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "CAPACITY_OR_INVARIANT_STOP")
         self.assertIn("projected_database_budget", report["fatal_failures"])
-        hosted.assert_not_called()
+        batch_runner.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -88,6 +88,7 @@ class WorkerRunner:
         lease_seconds: int = 60,
         poll_interval: float = 1.0,
         stop_event: Optional[threading.Event] = None,
+        allowed_job_types: Optional[set[str]] = None,
     ) -> None:
         self.session_factory = session_factory
         self.handlers = dict(handlers)
@@ -95,6 +96,9 @@ class WorkerRunner:
         self.lease_seconds = lease_seconds
         self.poll_interval = poll_interval
         self.stop_event = stop_event or threading.Event()
+        if allowed_job_types is not None and not allowed_job_types:
+            raise ValueError("allowed_job_types must be non-empty when provided")
+        self.allowed_job_types = set(allowed_job_types) if allowed_job_types is not None else None
 
     # -- lease ownership fencing -------------------------------------------------
 
@@ -221,7 +225,10 @@ class WorkerRunner:
         session = self.session_factory()
         try:
             queue = BackgroundWorkerQueue(session, worker_id=self.worker_id)
-            job = queue.claim_next_job(lease_duration_seconds=self.lease_seconds)
+            job = queue.claim_next_job(
+                lease_duration_seconds=self.lease_seconds,
+                allowed_job_types=self.allowed_job_types,
+            )
             if job is None:
                 logger.info(
                     "worker.idle_poll",

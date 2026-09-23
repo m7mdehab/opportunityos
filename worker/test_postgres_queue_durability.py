@@ -352,6 +352,61 @@ class TestPostgresQueueDurability(unittest.TestCase):
         self.assertEqual(set(all_claimed), set(job_ids), "All 6 jobs were claimed across the two workers")
         self.assertTrue(len(worker1_claimed) > 0 and len(worker2_claimed) > 0, "Both workers claimed jobs concurrently")
 
+    def test_five_source_shards_claim_distinct_poll_jobs_without_stealing_followup(self) -> None:
+        """A bounded five-source wave uses normal SKIP LOCKED claims and leaves evaluate_new queued."""
+        setup = self.session_factory()
+        try:
+            queue = BackgroundWorkerQueue(setup)
+            poll_ids = {
+                queue.enqueue_job("poll_source", {"source_id": f"fixture-{index}"})
+                for index in range(5)
+            }
+            eval_id = queue.enqueue_job("evaluate_new", {})
+        finally:
+            setup.close()
+
+        barrier = threading.Barrier(5, timeout=10.0)
+        claimed: list[tuple[str, str]] = []
+        result_lock = threading.Lock()
+        errors: list[str] = []
+
+        def claim(shard: int) -> None:
+            session = self.session_factory()
+            try:
+                queue = BackgroundWorkerQueue(session, worker_id=f"bootstrap-shard-{shard}")
+                job = queue.claim_next_job(
+                    lease_duration_seconds=60,
+                    claim_hook=lambda: barrier.wait(),
+                    allowed_job_types={"poll_source"},
+                )
+                if job is None:
+                    errors.append(f"shard-{shard}-claimed-none")
+                else:
+                    with result_lock:
+                        claimed.append((job.id, job.job_type))
+            except Exception as exc:
+                errors.append(type(exc).__name__)
+            finally:
+                session.close()
+
+        threads = [threading.Thread(target=claim, args=(index,)) for index in range(5)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=15.0)
+
+        self.assertFalse(any(thread.is_alive() for thread in threads), "All five source shards must finish claiming")
+        self.assertEqual(errors, [])
+        self.assertEqual({job_id for job_id, _ in claimed}, poll_ids)
+        self.assertEqual({job_type for _, job_type in claimed}, {"poll_source"})
+
+        verify = self.session_factory()
+        try:
+            followup = verify.query(WorkerJobRecord).filter_by(id=eval_id).one()
+            self.assertEqual(followup.status, "PENDING")
+        finally:
+            verify.close()
+
     def test_lease_expiration_and_recovery(self) -> None:
         """When a worker process crashes, its expired lease is safely reclaimed with retry_count increment."""
         session1 = self.session_factory()
