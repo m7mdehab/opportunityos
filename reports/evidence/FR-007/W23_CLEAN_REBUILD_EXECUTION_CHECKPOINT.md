@@ -1,9 +1,17 @@
 # FR-007 W23 clean rebuild execution checkpoint
 
-- current_phase: PHASE_III_CREDENTIAL_PROBE_DIAGNOSIS
-- current_sha_now: `2485903df91750ddea0fbd843e353c6dbcd5b719`
-- current_remote_sha: `2485903df91750ddea0fbd843e353c6dbcd5b719`
-- latest_checkpoint_refresh_2026_09_23_0820_local:
+- current_phase: PHASE_III_OPOS_TARGET_SECRET_HANDOFF_REQUIRED
+- current_sha_now: `f98d1c92dcd26179efc96df3ebc8a22888f0c3ef`
+- current_remote_sha: `f98d1c92dcd26179efc96df3ebc8a22888f0c3ef`
+- latest_checkpoint_refresh_2026_09_23_0831_local:
+  - fetched the authoritative feature branch and verified local HEAD, FETCH_HEAD, and remote `work/fr007-clean-rebuild-storage-v2` all equal `f98d1c92dcd26179efc96df3ebc8a22888f0c3ef`; the pre-existing untracked `work/` directory remains untouched.
+  - PostgreSQL 16/17 acceptance run `35822329305` completed green on both versions. Each hosted full suite reports `1628 passed, 22 skipped, 2009 subtests passed`; fresh migration, deployed-state upgrade, source-gate accounting, backup/TOAST acceptance, and cleanup all passed.
+  - sanitized credential probe `35822569274` was dispatched on the feature branch. `CLOUD_DATABASE_URL` passed its official session-pooler route, writable-primary, and session-persistence checks. `OPOS_TARGET_DB_URL` failed before connectivity at `parse-url` with sanitized category `invalid-uri-format` (SQLAlchemy `ArgumentError`); no URI/password/exception text was emitted. Source, CV, representative, and closure jobs were skipped; the probe made no product/source/queue/worker writes.
+  - re-audited non-interactive control paths: Supabase CLI is absent; GitHub CLI exists but `gh auth status --hostname github.com` reports unauthenticated; available Supabase MCP tools do not include password reset, and available GitHub tools do not include Environment secret writes. Authenticated browser tabs exist, but Computer Use credential policy requires Founder handoff before entering/submitting database credentials; no password reset or secret edit was performed.
+  - last verified replacement DB state remains the empty 0023 baseline (~13.15 MB, writable primary); no representative source has run. Previous exact canonical CV proof `35799588764` remains valid and is not repeated.
+  - exact_next_action: Founder securely corrects `fr007-staging` `OPOS_TARGET_DB_URL` to an official replacement-project connection URI. The verified `CLOUD_DATABASE_URL` route is the session pooler at `aws-0-eu-central-1.pooler.supabase.com:5432`, login `postgres.sunjfepvdzfknglrjwhm`, database `postgres`, SSL required; using the same official session-pooler route for both URLs is acceptable and avoids direct IPv6 reachability. Do not share the password in chat. If resetting is needed, reset only project `sunjfepvdzfknglrjwhm`, then replace both URLs. After secure entry, dispatch `db-credential-probe` and continue immediately only on sanitized PASS; keep all source work gated until then.
+
+- historical_checkpoint_refresh_2026_09_23_0820_local:
   - refreshed branch head remains `2485903df91750ddea0fbd843e353c6dbcd5b719`; the durable checkpoint is modified locally and the pre-existing untracked `work/` directory remains untouched.
   - GitHub environment `fr007-staging` now visibly reports both `CLOUD_DATABASE_URL` and `OPOS_TARGET_DB_URL` updated Sep 23 at 07:58 local. No secret values were read or changed in this pass.
   - dispatched the sanitized credential-probe mode on the authoritative feature branch. Run `35822002778` failed in the probe before any source, queue, migration, or worker mutation; the representative source and final closure jobs were skipped.
