@@ -1,5 +1,16 @@
 # FR-007 W23 clean rebuild execution checkpoint
 
+- current_phase: PHASE_V_FIX_NORMAL_WORKER_COLD_STORAGE_ENV
+- current_sha_now: `1f8ed225914262f4dafacb76062a77d82e607cdd` (worker-drain storage env/test/checkpoint local)
+- current_remote_sha: `1f8ed225914262f4dafacb76062a77d82e607cdd`
+- latest_checkpoint_refresh_2026_09_23_worker_retry_diagnosis:
+  - workflow-only PostgreSQL 16/17 regression run `35845569280` passed; each suite footer is `1647 passed, 22 skipped, 698 warnings, 2012 subtests passed`.
+  - queue-recovery run `35846005612` correctly called the normal five-shard worker drain; four workers found no due work, one retried `greenhouse:accenturefederalservices`. The source still failed, and safe database categorization identified `private cold storage configuration is incomplete`. The worker drain workflow supplied DB/truth-pack settings but omitted the private Supabase storage URL and service key, so that recovery attempt could not archive cold source data. It left one due `RETRY` at retry_count 2/3; no dead letter or expired lease, and no source opportunity/archive was written by that failed retry.
+  - live aggregate remains healthy at revision `0023_alembic_access`, 16,223,379 database bytes, 346 opportunities, 336 cold archives /2,501,026 compressed bytes, 10 projections, 346 evaluations, 120 provenance; queue currently has the one retry and 0 expired leases/dead letters. Physical/projected capacity remains under 200 MiB.
+  - corrected `.github/workflows/fr007-worker-drain.yml` locally to pass `SUPABASE_STORAGE_URL` for the replacement project and protected `STORAGE_SERVICE_KEY` into the normal worker process. Added regression assertions for both required environment entries. Focused suite passes `9 tests`; both affected workflow YAML files parse and `git diff --check` passes. No key or environment value was printed.
+  - no manual worker-row edits, schema migrations, paid infrastructure, or user-presence blocker.
+  - exact_next_action: commit/push only worker workflow, regression test, and checkpoint; dispatch `queue-recovery` from the authoritative branch immediately so the last scheduled worker retry uses complete private cold-storage configuration. Confirm successful current source poll + archive verification, then resume incremental bootstrap offset 0/count 125.
+
 - current_phase: PHASE_V_BOOTSTRAP_RETRY_RECOVERY_WORKFLOW_READY
 - current_sha_now: `6e478bc42358858c67e82b1046c026c50bf58db1` (queue-recovery workflow wiring/test local)
 - current_remote_sha: `6e478bc42358858c67e82b1046c026c50bf58db1`

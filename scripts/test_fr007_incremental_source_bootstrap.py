@@ -143,6 +143,8 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
         self.assertIn("workflow_call:", worker)
         self.assertIn("github.event_name == 'workflow_call' && inputs.mode == 'drain'", worker)
         self.assertIn("github.event_name == 'workflow_call' && (inputs.mode == 'all' || inputs.mode == 'enqueue')", worker)
+        self.assertIn("SUPABASE_STORAGE_URL:", worker)
+        self.assertIn("STORAGE_SERVICE_KEY: ${{ secrets.STORAGE_SERVICE_KEY }}", worker)
         self.assertIn("inputs.mode != 'queue-recovery'", launcher)
 
     def test_incremental_runner_measures_before_and_after_each_source(self):
