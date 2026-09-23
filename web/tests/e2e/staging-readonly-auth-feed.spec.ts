@@ -30,9 +30,12 @@ test("Founder can authenticate and read the current feed without mutations", asy
   expect(feed.status, "authenticated feed request must succeed").toBe(200);
   expect(typeof feed.body.total).toBe("number");
   expect(Array.isArray(feed.body.items)).toBe(true);
-  if (feed.body.total > 0) {
-    expect(feed.body.items[0]).toMatchObject({ id: expect.any(String), title: expect.any(String) });
-  }
+  const visibleCards = await page.locator('[data-testid^="opportunity-card-"]').count();
+  console.log(`FOUNDER_READONLY_FEED_OBSERVED total=${feed.body.total} api_rows=${feed.body.items.length} cards=${visibleCards}`);
+  expect(feed.body.items.length, "feed API must return at least one current opportunity").toBeGreaterThan(0);
+  expect(feed.body.items[0]).toMatchObject({ id: expect.any(String), title: expect.any(String) });
+  expect(visibleCards, "authenticated Founder page must render the current feed").toBeGreaterThan(0);
+  expect(feed.body.total, "feed's reported result count must include its returned item").toBeGreaterThan(0);
   expect(unexpectedWrites, "smoke must not invoke Founder actions or source/queue operations").toEqual([]);
-  console.log(`FOUNDER_READONLY_AUTH_FEED=PASS total=${feed.body.total}`);
+  console.log(`FOUNDER_READONLY_AUTH_FEED=PASS total=${feed.body.total} api_rows=${feed.body.items.length} cards=${visibleCards}`);
 });
