@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
+from scripts import fr007_storage_v2_source_gate as source_gate
 from scripts.fr007_storage_v2_source_gate import compare_snapshots
 
 
@@ -64,6 +67,70 @@ def _capacity_benchmark(*, growth: int = 1024 * 1024, projected: int | None = No
         },
     }
 class RepresentativeSourceEconomicsTests(unittest.TestCase):
+    def test_incremental_archive_verification_is_source_scoped_and_bounded(self):
+        since = datetime(2026, 9, 23, 8, 0, tzinfo=timezone.utc)
+        record = {
+            "opportunity_id": "opportunity-id",
+            "content_hash": "content-hash",
+            "object_key": "cold/one.gz",
+            "payload_sha256": "payload-sha",
+            "compressed_size_bytes": 4,
+            "storage_backend": "supabase_storage",
+        }
+        result = MagicMock()
+        result.mappings.return_value.all.return_value = [record]
+        connection = MagicMock()
+        connection.execute.return_value = result
+        client = MagicMock()
+
+        with (
+            patch.object(source_gate, "client_from_env", return_value=client),
+            patch.object(source_gate, "get_cold_object", return_value=b"data") as get_object,
+            patch.object(source_gate, "unpack", return_value={"canonical_description": "real text"}) as unpack,
+        ):
+            proof = source_gate.verify_source_archives(
+                connection,
+                source_id="himalayas",
+                since=since,
+                max_objects=10,
+                max_archive_bytes=1024,
+            )
+
+        statement, params = connection.execute.call_args.args
+        self.assertIn("a.archived_at > CAST", str(statement))
+        self.assertEqual(params["source_id"], "himalayas")
+        self.assertEqual(params["since"], since)
+        self.assertEqual(params["max_objects_plus_one"], 11)
+        self.assertEqual(proof["archive_objects_verified"], 1)
+        self.assertEqual(proof["compressed_bytes_downloaded"], 4)
+        self.assertTrue(proof["sha256_identity_verified"])
+        get_object.assert_called_once_with("cold/one.gz", "payload-sha", client=client)
+        unpack.assert_called_once_with(
+            b"data", "payload-sha", opportunity_id="opportunity-id", content_hash="content-hash"
+        )
+        client.ensure_private_bucket.assert_called_once()
+
+    def test_incremental_archive_verification_fails_closed_at_object_limit(self):
+        rows = [
+            {
+                "opportunity_id": f"op-{idx}",
+                "content_hash": f"content-{idx}",
+                "object_key": f"cold/{idx}.gz",
+                "payload_sha256": f"sha-{idx}",
+                "compressed_size_bytes": 1,
+                "storage_backend": "supabase_storage",
+            }
+            for idx in range(2)
+        ]
+        result = MagicMock()
+        result.mappings.return_value.all.return_value = rows
+        connection = MagicMock()
+        connection.execute.return_value = result
+        with patch.object(source_gate, "client_from_env") as client_from_env:
+            with self.assertRaisesRegex(RuntimeError, "bounded verifier limit"):
+                source_gate.verify_source_archives(connection, source_id="himalayas", max_objects=1)
+        client_from_env.assert_not_called()
+
     def test_registered_launcher_runs_a_fresh_credential_gate_before_source_work(self):
         root = Path(__file__).resolve().parents[1]
         launcher = (root / ".github/workflows/fr007-current-readiness-launcher.yml").read_text(encoding="utf-8")

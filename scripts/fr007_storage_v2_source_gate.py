@@ -10,6 +10,7 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -103,6 +104,9 @@ def snapshot(connection, *, source_id: str) -> dict[str, Any]:
           (SELECT count(*) FROM public.founder_triage_states) AS founder_triage_rows,
           (SELECT count(*) FROM public.founder_opportunity_views) AS founder_view_rows,
           (SELECT count(*) FROM public.source_poll_runs WHERE source_id=:source_id) AS source_poll_run_count,
+          (SELECT max(a.archived_at) FROM public.opportunity_cold_archive a
+            JOIN public.opportunities o ON o.id=a.opportunity_id
+            WHERE o.source_id=:source_id AND o.lifecycle_tier='cold') AS source_latest_archive_at,
           (SELECT count(*) FROM public.source_schedules) AS source_schedules,
           (SELECT count(*) FROM public.worker_jobs) AS worker_jobs_total
     """), {"source_id": source_id}).mappings().one()
@@ -178,6 +182,7 @@ def snapshot(connection, *, source_id: str) -> dict[str, Any]:
 
     return {
         "source_id": source_id,
+        "snapshot_at": _scalar(connection, "SELECT clock_timestamp()"),
         "database_revision": str(revision) if revision is not None else None,
         "database_bytes": db_bytes,
         "public_relation_total_bytes": relation_bytes,
@@ -199,8 +204,17 @@ def snapshot(connection, *, source_id: str) -> dict[str, Any]:
     }
 
 
-def verify_source_archives(connection, *, source_id: str) -> dict[str, Any]:
-    """Download and checksum only this source's current cold archive objects."""
+def verify_source_archives(
+    connection,
+    *,
+    source_id: str,
+    since: datetime | None = None,
+    max_objects: int = MAX_ARCHIVE_OBJECTS,
+    max_archive_bytes: int = MAX_ARCHIVE_BYTES,
+) -> dict[str, Any]:
+    """Download and checksum this source's current or newly written cold archives."""
+    if max_objects <= 0 or max_archive_bytes <= 0:
+        raise ValueError("archive verification bounds must be positive")
     records = connection.execute(text("""
         SELECT o.id AS opportunity_id, o.content_hash,
                a.object_key, a.payload_sha256, a.compressed_size_bytes,
@@ -208,16 +222,30 @@ def verify_source_archives(connection, *, source_id: str) -> dict[str, Any]:
         FROM public.opportunities o
         JOIN public.opportunity_cold_archive a ON a.opportunity_id=o.id
         WHERE o.source_id=:source_id AND o.lifecycle_tier='cold'
+          AND (CAST(:since AS timestamptz) IS NULL OR a.archived_at > CAST(:since AS timestamptz))
         ORDER BY o.id
         LIMIT :max_objects_plus_one
-    """), {"source_id": source_id, "max_objects_plus_one": MAX_ARCHIVE_OBJECTS + 1}).mappings().all()
-    if len(records) > MAX_ARCHIVE_OBJECTS:
+    """), {
+        "source_id": source_id,
+        "since": since,
+        "max_objects_plus_one": max_objects + 1,
+    }).mappings().all()
+    if len(records) > max_objects:
         raise RuntimeError("representative archive count exceeds the bounded verifier limit")
     advertised_bytes = sum(int(row["compressed_size_bytes"] or 0) for row in records)
-    if advertised_bytes > MAX_ARCHIVE_BYTES:
+    if advertised_bytes > max_archive_bytes:
         raise RuntimeError("representative archive bytes exceed the bounded verifier limit")
     if any(row["storage_backend"] != "supabase_storage" or not row["object_key"] for row in records):
         raise RuntimeError("cold source row is not backed by a private Storage object")
+
+    if not records:
+        return {
+            "source_id": source_id,
+            "archive_objects_verified": 0,
+            "compressed_bytes_downloaded": 0,
+            "sha256_identity_verified": True,
+            "download_scope": "source-scoped-cold-archives-only",
+        }
 
     client = client_from_env()
     client.ensure_private_bucket()

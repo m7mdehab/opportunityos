@@ -22,13 +22,15 @@ if str(REPOSITORY_ROOT) not in sys.path:
 
 from opportunity.registry import SourceRegistry
 from scripts.fr007_hosted_bootstrap import main as hosted_bootstrap_main
-from scripts.fr007_storage_v2_source_gate import _connect, snapshot
+from scripts.fr007_storage_v2_source_gate import _connect, snapshot, verify_source_archives
 
 MODEL_PATH = REPOSITORY_ROOT / "reports/evidence/FR-007/W23_STORAGE_V2_CAPACITY_MODEL.json"
 MAX_SOURCES_PER_RUN = 125
 WORKER_MAX_JOBS = 2
 WORKER_TIME_BUDGET_SECONDS = 480
 DATABASE_HARD_BUDGET = 200 * 1024 * 1024
+MAX_INCREMENT_ARCHIVE_OBJECTS = 500
+MAX_INCREMENT_ARCHIVE_BYTES = 32 * 1024 * 1024
 
 
 def projected_final_database_bytes(current: dict[str, Any], model: dict[str, Any]) -> int:
@@ -105,6 +107,21 @@ def _take_snapshot(source_id: str) -> dict[str, Any]:
     engine, session = _connect()
     try:
         return snapshot(session.connection(), source_id=source_id)
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def _verify_increment_archives(source_id: str, since) -> dict[str, Any]:
+    engine, session = _connect()
+    try:
+        return verify_source_archives(
+            session.connection(),
+            source_id=source_id,
+            since=since,
+            max_objects=MAX_INCREMENT_ARCHIVE_OBJECTS,
+            max_archive_bytes=MAX_INCREMENT_ARCHIVE_BYTES,
+        )
     finally:
         session.close()
         engine.dispose()
@@ -238,10 +255,21 @@ def run_incremental_bootstrap(*, source_offset: int, max_sources: int, output: P
         after_projection = projected_final_database_bytes(after, model)
         after_failures = invariant_failures(after, after_projection)
         source_result = _safe_source_result(after)
+        archive_verification: dict[str, Any] | None = None
+        archive_error: str | None = None
+        try:
+            archive_verification = _verify_increment_archives(
+                source_id,
+                before["counts"].get("source_latest_archive_at"),
+            )
+        except Exception as exc:
+            archive_error = type(exc).__name__
         source_ok = source_result["status"] == "ok" and runner_error is None
         failures = after_failures[:]
         if runner_error is not None:
             failures.append("worker_runner_" + runner_error)
+        if archive_error is not None:
+            failures.append("cold_archive_verification_" + archive_error)
         if not source_ok:
             source_failures.append(source_id)
         item = {
@@ -249,6 +277,7 @@ def run_incremental_bootstrap(*, source_offset: int, max_sources: int, output: P
             "status": "ok" if source_ok else "source_failure",
             "runner_error_class": runner_error,
             "poll": source_result,
+            "archive_verification": archive_verification,
             "before": _compact_metrics(before, before_projection),
             "after": _compact_metrics(after, after_projection),
             "direct_tier_or_capacity_failures": sorted(set(failures)),

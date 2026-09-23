@@ -142,6 +142,16 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp, patch.object(incremental, "SourceRegistry", return_value=registry), patch.object(
             incremental, "_take_snapshot", side_effect=[before, after]
+        ), patch.object(
+            incremental,
+            "_verify_increment_archives",
+            return_value={
+                "source_id": ids[0],
+                "archive_objects_verified": 2,
+                "compressed_bytes_downloaded": 1024,
+                "sha256_identity_verified": True,
+                "download_scope": "source-scoped-cold-archives-only",
+            },
         ), patch.object(incremental, "hosted_bootstrap_main", side_effect=runner) as hosted, contextlib.redirect_stdout(
             io.StringIO()
         ) as stdout:
@@ -155,6 +165,7 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
         self.assertEqual(report["sources"][0]["source_id"], ids[0])
         self.assertEqual(report["sources"][0]["before"]["database_bytes"], before["database_bytes"])
         self.assertEqual(report["sources"][0]["after"]["successful_source_coverage"], 2)
+        self.assertTrue(report["sources"][0]["archive_verification"]["sha256_identity_verified"])
         self.assertEqual(hosted.call_count, 1)
         self.assertNotIn("captured internal payload marker", stdout.getvalue())
 
