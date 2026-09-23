@@ -794,3 +794,12 @@
 - current_sha_now: `850f932f2aa70f62f298d3279883eb0722c7edd2`
 - current_remote_sha: `850f932f2aa70f62f298d3279883eb0722c7edd2`
 - exact_next_action: continue run `35929446064` without overlap. Inspect the next natural five-source queue batch boundary, keep the five-shard limit, and stop/diagnose only if the live physical or projected database crosses the already accepted 200 MiB guard or an explicit source failure occurs.
+
+- execution_update_2026_09_23_2300Z_slice_125_fifteen_sources_green:
+  - run `35929446064` is continuing on the bounded bootstrap step. The next five identities have all ended `ok`: `greenhouse:inspiremedicalsystemsinc`, `greenhouse:internrecruiting`, `greenhouse:intradiem`, `greenhouse:intrinsicrobotics`, `greenhouse:ivalua`.
+  - at `2026-09-23T22:59:53Z`: DB `88,951,955` bytes; 11,020 opportunities; HOT/feed 1,385; COLD 9,635; 9,635 cold archives /`75,503,123` compressed bytes; 141 latest-success identities; 0 latest failures. Natural queue boundary was empty (pending/retry/running/expired/dead-letter all 0).
+  - since offset-125 run start, 15 new source identities are recorded, all `ok`; queue remains normally driven by the active bootstrap run. No whole-corpus reads/verification or successful-source replay.
+- current_phase: `PHASE_V_BOOTSTRAP_SLICE_125_CONTINUING_AFTER_FIFTEEN_SOURCE_SUCCESSES`
+- current_sha_now: `226bef7170064047d3bdc29fe1b50946fb675ec3`
+- current_remote_sha: `226bef7170064047d3bdc29fe1b50946fb675ec3`
+- exact_next_action: preserve run `35929446064` and continue at the next five-source boundary; handle any eventual source-specific failure once under existing policy and continue the remaining identities without replaying successful sources.
