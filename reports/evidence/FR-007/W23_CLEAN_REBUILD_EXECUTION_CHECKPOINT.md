@@ -663,6 +663,7 @@
   - immediately dispatched resumable bootstrap run `35916759119` from the authoritative branch at that SHA, mode `incremental-source-bootstrap`, offset `0`, max `125`. The authenticated `fr007-staging` environment job `107370111069` passed setup/dependency installation and is executing `Bootstrap disjoint five-source batches with normal capped worker shards`. No source outcome or queue mutation is inferred until its sanitized batch boundary evidence lands.
   - unchanged pass gates remain: five independent worker processes × max two connections (<=10), SQL `SKIP LOCKED`, source-ID-scoped enqueue, no successful identity replay, aggregate capacity forecast <=200 MiB, one final corpus archive checksum pass. Do not restart the bootstrap or run corpus verifier mid-run.
 - current_phase: `PHASE_V_BOOTSTRAP_RUN_35916759119_ACTIVE_OFFSET_0_MAX125`
-- current_sha_now: `581df5ed927f0e84d0294c0d3f2d83da25f78714`
-- current_remote_sha: `581df5ed927f0e84d0294c0d3f2d83da25f78714`
+- checkpoint refresh itself was pushed as `be95f472b191f166b3f046e2820e383a5b46af55`; run `35916759119` remains pinned to `581df5e`.
+- current_sha_now: `be95f472b191f166b3f046e2820e383a5b46af55`
+- current_remote_sha: `be95f472b191f166b3f046e2820e383a5b46af55`
 - exact_next_action: wait for run `35916759119` to expose a meaningful source-batch boundary, then checkpoint measured progress and immediately queue the next non-overlapping slice only after this run reaches a safe terminal/boundary state.
