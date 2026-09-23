@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from scripts import encrypted_backup as eb
 
@@ -53,6 +54,20 @@ class TestEncryptedBackup(unittest.TestCase):
             "format", "encryption", "encrypted_size_bytes", "plaintext_size_bytes",
             "sha256", "created_at", "expected_restore_type",
         })
+
+    def test_backup_class_is_explicit_and_controls_restore_target_type(self):
+        founder = eb.encrypt_backup(self.source, self.encrypted, environ=self.env, backup_class="founder_state")
+        self.assertEqual(founder["backup_class"], "founder_state")
+        self.assertEqual(founder["expected_restore_type"], "existing_migrated_schema")
+        self.encrypted.unlink()
+        integrity = eb.encrypt_backup(self.source, self.encrypted, environ=self.env, backup_class="integrity")
+        self.assertEqual(integrity["backup_class"], "integrity")
+        self.assertEqual(integrity["expected_restore_type"], "fresh_public_schema")
+
+    def test_backup_size_cap_fails_closed(self):
+        with patch.object(eb, "MAX_BACKUP_BYTES", 1):
+            with self.assertRaisesRegex(eb.EncryptedBackupError, "exceeds configured size cap"):
+                eb.encrypt_backup(self.source, self.encrypted, environ=self.env)
 
 
 if __name__ == "__main__":

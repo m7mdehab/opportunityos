@@ -95,8 +95,10 @@ class HarnessTests(unittest.TestCase):
             Path(argv[argv.index("--file") + 1]).write_bytes(b"PGDMP")
 
         with tempfile.TemporaryDirectory() as temp, \
+             patch.object(db, "connect", return_value=Mock(cursor=Mock())) as connection, \
              patch.object(db, "require_tool", return_value="pg_dump"), \
              patch.object(db, "run_command", side_effect=fake_run):
+            connection.return_value.cursor.return_value.fetchone.return_value = (1234,)
             destination = Path(temp) / "backup.dump"
             db.backup(db.config("source", self.env), destination)
             argv, env = commands[0]
@@ -109,6 +111,16 @@ class HarnessTests(unittest.TestCase):
             self.assertEqual(env["PGPASSWORD"], "source_secret")
             with self.assertRaises(db.HarnessError):
                 db.backup(db.config("source", self.env), destination)
+
+    def test_full_integrity_backup_stops_before_dump_when_database_exceeds_cap(self):
+        connection = Mock()
+        connection.cursor.return_value.fetchone.return_value = (db.MAX_INTEGRITY_BACKUP_DATABASE_BYTES + 1,)
+        with patch.object(db, "connect", return_value=connection), \
+             patch.object(db, "require_tool") as require_tool:
+            with tempfile.TemporaryDirectory() as temp:
+                with self.assertRaisesRegex(db.HarnessError, "200 MiB database-size safety cap"):
+                    db.backup(db.config("source", self.env), Path(temp) / "backup.dump")
+            require_tool.assert_not_called()
 
     def test_restore_requires_flag_and_empty_target(self):
         with tempfile.TemporaryDirectory() as temp:

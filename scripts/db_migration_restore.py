@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = "OPOS_SOURCE_DB_URL"
 TARGET = "OPOS_TARGET_DB_URL"
 BASELINE = ROOT / "scripts" / "migration_baseline.py"
+MAX_INTEGRITY_BACKUP_DATABASE_BYTES = 200 * 1024 * 1024
 
 
 class HarnessError(Exception):
@@ -182,6 +183,19 @@ def backup(settings, destination):
     path = Path(destination).expanduser().resolve()
     if path.exists() or not path.parent.is_dir():
         raise HarnessError("backup destination must be a new file in an existing directory")
+    connection = connect(settings)
+    try:
+        cursor = connection.cursor()
+        try:
+            cursor.execute("SET TRANSACTION READ ONLY")
+            cursor.execute("SELECT pg_database_size(current_database())")
+            database_bytes = int(cursor.fetchone()[0])
+        finally:
+            cursor.close()
+    finally:
+        connection.close()
+    if database_bytes > MAX_INTEGRITY_BACKUP_DATABASE_BYTES:
+        raise HarnessError("integrity backup stopped at the 200 MiB database-size safety cap")
     tool = require_tool("pg_dump")
     argv = [tool, "--format=custom", "--schema=public", "--no-owner", "--no-privileges",
             "--file", str(path), "--dbname", settings["database"]]
@@ -203,13 +217,16 @@ def file_sha256(path):
     return digest.hexdigest()
 
 
-def backup_manifest(archive, revision, *, version, commit, created_at=None):
+def backup_manifest(archive, revision, *, version, commit, created_at=None, backup_class="integrity"):
     path = Path(archive)
     if not path.is_file() or not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise HarnessError("backup or application revision unavailable")
     if not re.fullmatch(r"pg_dump \(PostgreSQL\) [0-9][A-Za-z0-9.()+ -]{0,120}", version):
         raise HarnessError("invalid backup tool version")
+    if backup_class != "integrity":
+        raise HarnessError("logical pg_dump is reserved for the integrity backup class")
     return {"format": 1, "created_at": created_at or datetime.now(timezone.utc).isoformat(),
+            "backup_class": backup_class,
             "archive_format": "pg_dump_custom", "expected_restore_type": "fresh_public_schema",
             "schema": "public", "alembic_revision": revision,
             "pg_dump_version": version, "application_commit": commit,
@@ -237,6 +254,7 @@ def verify_backup(archive, manifest_path):
     if (not isinstance(manifest, dict) or manifest.get("format") != 1
             or manifest.get("archive_format") != "pg_dump_custom"
             or manifest.get("expected_restore_type") != "fresh_public_schema"
+            or manifest.get("backup_class", "integrity") != "integrity"
             or manifest.get("schema") != "public"
             or not isinstance(manifest.get("compressed_size_bytes"), int)
             or not isinstance(manifest.get("sha256"), str)
@@ -405,6 +423,7 @@ def main(argv=None):
     sub.add_parser("migrate")
     export = sub.add_parser("backup")
     export.add_argument("--destination", required=True)
+    export.add_argument("--backup-class", choices=("integrity",), default="integrity")
     check = sub.add_parser("verify-backup")
     check.add_argument("--archive", required=True)
     check.add_argument("--manifest", required=True)
@@ -443,12 +462,13 @@ def main(argv=None):
             commit = application_commit()
             backup(settings, args.destination)
             try:
-                manifest = backup_manifest(args.destination, source_revision, version=version, commit=commit)
+                manifest = backup_manifest(args.destination, source_revision, version=version, commit=commit,
+                                           backup_class=args.backup_class)
                 write_backup_manifest(args.destination, manifest)
             except Exception:
                 Path(args.destination).unlink(missing_ok=True)
                 raise
-            result = {"backup": "created", "manifest": "created"}
+            result = {"backup": "created", "backup_class": args.backup_class, "manifest": "created"}
         elif args.operation == "verify-backup":
             verify_backup(args.archive, args.manifest)
             result = {"backup_integrity": "pass"}

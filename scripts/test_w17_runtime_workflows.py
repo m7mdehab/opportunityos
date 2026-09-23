@@ -11,16 +11,38 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
         self.assertIn("python -m pip install -e .", workflow)
         self.assertIn("BACKUP_ENCRYPTION_KEY", workflow)
         self.assertIn("--remove-plaintext", workflow)
-        upload = workflow.split("Upload encrypted backup only", 1)[1]
-        self.assertIn("backup-out/backup.dump.enc", upload)
-        self.assertIn("backup-out/backup.encrypted.manifest.json", upload)
-        self.assertNotIn("backup-out/source.dump\n", upload)
+        founder_upload = workflow.split("Upload short-lived encrypted Founder-state backup", 1)[1].split(
+            "Upload monthly encrypted integrity backup", 1
+        )[0]
+        integrity_upload = workflow.split("Upload monthly encrypted integrity backup", 1)[1]
+        self.assertIn("backup-out/backup.founder_state.enc", founder_upload)
+        self.assertIn("backup-out/backup.founder_state.manifest.json", founder_upload)
+        self.assertNotIn("source.dump", founder_upload)
+        self.assertIn("backup-out/backup.integrity.enc", integrity_upload)
+        self.assertIn("backup-out/backup.integrity.manifest.json", integrity_upload)
+        self.assertIn("backup-out/source.dump.manifest.json", integrity_upload)
+        self.assertNotIn("backup-out/source.dump\n", integrity_upload)
 
     def test_backup_workflow_is_explicitly_authorized_and_manual(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-encrypted-backup.yml").read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:", workflow)
         self.assertIn("inputs.acknowledge_backup == true", workflow)
         self.assertNotIn("pull_request", workflow)
+        self.assertNotIn("\n  push:", workflow)
+
+    def test_backup_workflow_separates_daily_founder_state_from_monthly_integrity(self):
+        workflow = (ROOT / ".github" / "workflows" / "fr007-encrypted-backup.yml").read_text(encoding="utf-8")
+        self.assertIn('cron: "17 2 * * *"', workflow)
+        self.assertIn('cron: "47 2 1 * *"', workflow)
+        self.assertIn("backup_class:", workflow)
+        self.assertIn("founder_state", workflow)
+        self.assertIn("integrity", workflow)
+        self.assertIn("scripts/founder_state_backup.py export", workflow)
+        self.assertIn("--backup-class integrity", workflow)
+        self.assertIn("retention-days: 7", workflow)
+        self.assertIn("retention-days: 30", workflow)
+        self.assertIn("source.dump.manifest.json", workflow)
+        self.assertIn("secrets.CLOUD_DATABASE_URL || secrets.OPOS_TARGET_DB_URL", workflow)
 
     def test_worker_drain_five_shard_matrix_and_structure(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-worker-drain.yml").read_text(encoding="utf-8")

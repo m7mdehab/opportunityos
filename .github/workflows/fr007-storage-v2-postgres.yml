@@ -90,6 +90,11 @@ jobs:
         run: >-
           python scripts/fr007_storage_v2_source_gate.py snapshot
           --source-id himalayas --output storage-v2-empty-source-snapshot.json
+      - name: Prove egress-bounded Founder backup on migrated PostgreSQL
+        env:
+          OPPORTUNITYOS_DB_URL: postgresql+psycopg2://opportunityos:${{ github.run_id }}@localhost:5432/opportunityos_fresh
+          FR007_POSTGRES_BACKUP_TEST: "1"
+        run: python -m pytest scripts/test_founder_state_backup.py -q
       - name: Run complete PostgreSQL-backed subsystem tests
         env:
           OPPORTUNITYOS_DB_URL: postgresql+psycopg2://opportunityos:${{ github.run_id }}@localhost:5432/opportunityos_fresh

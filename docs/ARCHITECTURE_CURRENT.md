@@ -138,7 +138,7 @@ The frontend is independently deployable on the existing Cloudflare account/doma
 
 Repository tooling supports migration baseline, logical backup/restore, parity and provider-exit checks.
 
-FR-007 still requires real encrypted off-provider backup, fresh-environment restore and provider-exit execution evidence. The zero-dollar design uses encrypted, size-capped GitHub Actions artifacts for the independent logical backup copy; paid Supabase backup/PITR and paid storage are excluded.
+FR-007 uses two encrypted GitHub Actions backup classes: a daily, 8 MiB-capped Founder-state snapshot that reads only allowlisted interaction/configuration tables plus referenced/protected opportunity rows, and a monthly broad integrity dump that refuses to start above the 200 MiB database budget. Daily artifacts retain for 7 days and monthly artifacts for 30 days, bounding these backup classes to at most 256 MiB of retained artifact data before encryption overhead (leaving 244 MiB of GitHub Free's 500 MiB allowance for other artifacts and Packages usage, which share that allowance per [GitHub Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions)). Monthly Supabase egress is capped at about 440 MiB for these two backup paths combined, before small encryption/manifest overhead. Restore manifests identify the backup class; Founder-state restore requires an explicitly confirmed already-migrated target, while the full integrity dump remains a fresh-schema restore. Paid Supabase backup/PITR and paid storage are excluded.
 
 ## Reliability Invariants
 

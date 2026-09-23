@@ -1,37 +1,41 @@
-name: FR-007 encrypted logical backup
+name: FR-007 egress-bounded encrypted backups
 
 on:
   schedule:
     - cron: "17 2 * * *"
-  push:
-    branches:
-      - main
-      - work/fr007-overseer-integration
-    paths:
-      - .github/workflows/fr007-encrypted-backup.yml
+    - cron: "47 2 1 * *"
   workflow_dispatch:
     inputs:
       acknowledge_backup:
-        description: "Authorize a staging logical backup"
+        description: "Authorize a staging encrypted backup"
         required: true
         type: boolean
         default: false
+      backup_class:
+        description: "Frequent Founder state or monthly broad integrity snapshot"
+        required: true
+        type: choice
+        default: founder_state
+        options: [founder_state, integrity]
 
 permissions:
   contents: read
 
 jobs:
   backup:
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'push' || inputs.acknowledge_backup == true }}
+    if: ${{ github.event_name == 'schedule' || inputs.acknowledge_backup == true }}
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      BACKUP_CLASS: ${{ github.event.schedule == '47 2 1 * *' && 'integrity' || inputs.backup_class || 'founder_state' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install PostgreSQL 17 client
+      - name: Install PostgreSQL 17 client for monthly integrity backup
+        if: env.BACKUP_CLASS == 'integrity'
         shell: bash
         run: |
           set -euo pipefail
@@ -47,34 +51,47 @@ jobs:
           pg_dump --version
       - name: Install repository dependencies
         run: python -m pip install -e .
-      - name: Create and encrypt logical backup
+      - name: Export, encrypt and verify bounded backup class
         env:
-          OPOS_SOURCE_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+          OPOS_SOURCE_DB_URL: ${{ secrets.CLOUD_DATABASE_URL || secrets.OPOS_TARGET_DB_URL }}
           BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+        shell: bash
         run: |
           set -euo pipefail
           mkdir -p backup-out
-          python scripts/db_migration_restore.py backup --destination backup-out/source.dump
+          if [[ "$BACKUP_CLASS" == "founder_state" ]]; then
+            python scripts/founder_state_backup.py export --output backup-out/founder-state.json.gz
+            input=backup-out/founder-state.json.gz
+          elif [[ "$BACKUP_CLASS" == "integrity" ]]; then
+            python scripts/db_migration_restore.py backup --backup-class integrity --destination backup-out/source.dump
+            input=backup-out/source.dump
+          else
+            echo "unsupported backup class" >&2
+            exit 2
+          fi
           python scripts/encrypted_backup.py encrypt \
-            --input backup-out/source.dump \
-            --output backup-out/backup.dump.enc \
-            --manifest backup-out/backup.encrypted.manifest.json \
+            --input "$input" \
+            --output "backup-out/backup.${BACKUP_CLASS}.enc" \
+            --manifest "backup-out/backup.${BACKUP_CLASS}.manifest.json" \
+            --backup-class "$BACKUP_CLASS" \
             --remove-plaintext
-          test ! -e backup-out/source.dump
+          test ! -e "$input"
           python scripts/encrypted_backup.py verify \
-            --archive backup-out/backup.dump.enc \
-            --manifest backup-out/backup.encrypted.manifest.json
+            --archive "backup-out/backup.${BACKUP_CLASS}.enc" \
+            --manifest "backup-out/backup.${BACKUP_CLASS}.manifest.json"
       - name: Record durable backup heartbeat
         env:
-          OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+          OPOS_TARGET_DB_URL: ${{ secrets.CLOUD_DATABASE_URL || secrets.OPOS_TARGET_DB_URL }}
         run: |
           python - <<'PY'
           import json, os
           from datetime import datetime, timezone
           from sqlalchemy import create_engine, text
 
-          manifest = json.load(open("backup-out/backup.encrypted.manifest.json", encoding="utf-8"))
-          engine = create_engine(os.environ["OPOS_TARGET_DB_URL"], future=True)
+          backup_class = os.environ["BACKUP_CLASS"]
+          manifest_path = f"backup-out/backup.{backup_class}.manifest.json"
+          manifest = json.load(open(manifest_path, encoding="utf-8"))
+          engine = create_engine(os.environ["OPOS_TARGET_DB_URL"], future=True, pool_size=1, max_overflow=0)
           with engine.begin() as conn:
               conn.execute(text("""
                   INSERT INTO public.backup_heartbeats
@@ -97,13 +114,27 @@ jobs:
                   "run_id": os.environ.get("GITHUB_RUN_ID"),
                   "updated_at": datetime.now(timezone.utc).isoformat(),
               })
-          print("BACKUP_HEARTBEAT_RECORDED=PASS")
+          engine.dispose()
+          print(f"BACKUP_HEARTBEAT_RECORDED=PASS CLASS={backup_class}")
           PY
-      - name: Upload encrypted backup only
+      - name: Upload short-lived encrypted Founder-state backup
+        if: env.BACKUP_CLASS == 'founder_state'
         uses: actions/upload-artifact@v4
         with:
-          name: fr007-encrypted-backup-${{ github.run_id }}
+          name: fr007-founder-state-backup-${{ github.run_id }}
           path: |
-            backup-out/backup.dump.enc
-            backup-out/backup.encrypted.manifest.json
+            backup-out/backup.founder_state.enc
+            backup-out/backup.founder_state.manifest.json
+          retention-days: 7
+          if-no-files-found: error
+      - name: Upload monthly encrypted integrity backup and restore manifest
+        if: env.BACKUP_CLASS == 'integrity'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fr007-integrity-backup-${{ github.run_id }}
+          path: |
+            backup-out/backup.integrity.enc
+            backup-out/backup.integrity.manifest.json
+            backup-out/source.dump.manifest.json
+          retention-days: 30
           if-no-files-found: error

@@ -30,7 +30,7 @@ import tempfile
 MAGIC = b"OPOSBK01"
 NONCE_BYTES = 12
 KEY_ENV = "BACKUP_ENCRYPTION_KEY"
-MAX_BACKUP_BYTES = 500 * 1024 * 1024
+MAX_BACKUP_BYTES = 200 * 1024 * 1024
 
 
 class EncryptedBackupError(Exception):
@@ -80,7 +80,7 @@ def _validate_paths(source, destination):
     return source_path, destination_path
 
 
-def encrypt_backup(source, destination, *, environ=None, remove_plaintext=False) -> dict:
+def encrypt_backup(source, destination, *, environ=None, remove_plaintext=False, backup_class=None) -> dict:
     """Encrypt a dump and return a sanitized integrity manifest.
 
     The destination is written atomically and never overwrites an existing
@@ -88,6 +88,8 @@ def encrypt_backup(source, destination, *, environ=None, remove_plaintext=False)
     file before deleting the source; production workflows should set it.
     """
     source_path, destination_path = _validate_paths(source, destination)
+    if backup_class not in (None, "founder_state", "integrity"):
+        raise EncryptedBackupError("backup class is unsupported")
     AESGCM = _aesgcm()
     key = encryption_key(environ)
     nonce = secrets.token_bytes(NONCE_BYTES)
@@ -115,15 +117,18 @@ def encrypt_backup(source, destination, *, environ=None, remove_plaintext=False)
         except OSError as exc:
             destination_path.unlink(missing_ok=True)
             raise EncryptedBackupError("plaintext backup could not be removed") from exc
-    return {
+    manifest = {
         "format": 1,
         "encryption": "AES-256-GCM",
         "encrypted_size_bytes": destination_path.stat().st_size,
         "plaintext_size_bytes": plaintext_size,
         "sha256": sha256_file(destination_path),
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "expected_restore_type": "fresh_public_schema",
+        "expected_restore_type": "existing_migrated_schema" if backup_class == "founder_state" else "fresh_public_schema",
     }
+    if backup_class is not None:
+        manifest["backup_class"] = backup_class
+    return manifest
 
 
 def _read_encrypted(path):
@@ -185,13 +190,15 @@ def main(argv=None):
     enc.add_argument("--output", required=True)
     enc.add_argument("--manifest", required=True)
     enc.add_argument("--remove-plaintext", action="store_true")
+    enc.add_argument("--backup-class", choices=("founder_state", "integrity"))
     verify = sub.add_parser("verify")
     verify.add_argument("--archive", required=True)
     verify.add_argument("--manifest", required=True)
     args = parser.parse_args(argv)
     try:
         if args.operation == "encrypt":
-            manifest = encrypt_backup(args.input, args.output, remove_plaintext=args.remove_plaintext)
+            manifest = encrypt_backup(args.input, args.output, remove_plaintext=args.remove_plaintext,
+                                      backup_class=args.backup_class)
             manifest_path = Path(args.manifest).expanduser().resolve()
             if manifest_path.exists() or not manifest_path.parent.is_dir():
                 raise EncryptedBackupError("backup manifest destination must be new and writable")

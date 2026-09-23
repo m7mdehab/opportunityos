@@ -68,7 +68,7 @@ jobs:
           alembic downgrade 0019_activity_view_access
           test "$(alembic current | grep -c '0019_activity_view_access')" = 1
           alembic upgrade head
-          test "$(alembic current | grep -c '0021_storage_v2')" = 1
+          test "$(alembic current | grep -c '0023_alembic_access')" = 1
       - name: Capacity/archive PostgreSQL proof
         run: |
           python -m unittest \
@@ -179,7 +179,17 @@ jobs:
           OPPORTUNITYOS_ENVIRONMENT: cloud
           OPPORTUNITYOS_TRUTH_PACK_PATH: founder/truth_pack.yaml.gz.b64
           OPOS_WORKER_ID: "w227-recovery-${{ github.run_id }}-${{ matrix.shard }}"
-        run: python scripts/fr007_hosted_bootstrap.py --mode drain --max-jobs 30 --time-budget-seconds 480 --worker-id "$OPOS_WORKER_ID"
+        run: >-
+          python scripts/fr007_worker_error_delta.py --max-jobs 30
+          --time-budget-seconds 480 --worker-id "$OPOS_WORKER_ID"
+          --shard "${{ matrix.shard }}"
+          --output "w227-error-delta-${{ matrix.shard }}.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fr007-w227-error-delta-${{ github.run_id }}-${{ matrix.shard }}
+          path: w227-error-delta-${{ matrix.shard }}.json
+          if-no-files-found: ignore
 
   recovery-snapshot:
     needs: bounded-recovery
@@ -237,7 +247,7 @@ jobs:
                       max_unattributed = max(max_unattributed, int(unattributed))
               except Exception as exc:
                   failures += 1
-                  print(f"PROBE_FAILURE={type(exc).__name__}: {str(exc)[:160]}")
+                  print(f"PROBE_FAILURE={type(exc).__name__}")
               time.sleep(5)
           engine.dispose()
           print(f"MAX_WORKER_CONNECTIONS={max_worker}")
@@ -265,6 +275,25 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
       - run: python -m pip install -e .
+      - name: Collect exactly five sanitized shard error deltas
+        uses: actions/download-artifact@v4
+        with:
+          pattern: fr007-w227-error-delta-${{ github.run_id }}-*
+          path: w227-error-deltas
+          merge-multiple: true
+      - name: Aggregate PostgreSQL error delta from proof start
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: >-
+          python scripts/fr007_worker_error_delta.py
+          --aggregate-dir w227-error-deltas
+          --output w227-error-delta-summary.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fr007-w227-error-delta-summary-${{ github.run_id }}
+          path: w227-error-delta-summary.json
+          if-no-files-found: ignore
       - name: Queue/capacity/error acceptance snapshot
         env:
           OPOS_TARGET_DB_URL: ${{ secrets.CLOUD_DATABASE_URL || secrets.OPOS_TARGET_DB_URL }}
