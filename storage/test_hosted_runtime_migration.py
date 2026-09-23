@@ -32,7 +32,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
 
         config = Config("alembic.ini")
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_current_head(), "0023_alembic_version_access_hardening")
+        self.assertEqual(script.get_current_head(), "0023_alembic_access")
 
     def test_capacity_revision_is_linear_after_activity_view_access(self):
         capacity = Path(__file__).parent / "migrations" / "versions" / "0020_capacity_archive.py"
@@ -52,7 +52,8 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
     def test_alembic_version_is_browser_denied_without_forcing_owner_rls(self):
         migration = Path(__file__).parent / "migrations" / "versions" / "0023_alembic_version_access_hardening.py"
         source = migration.read_text(encoding="utf-8")
-        self.assertIn('revision: str = "0023_alembic_version_access_hardening"', source)
+        self.assertIn('revision: str = "0023_alembic_access"', source)
+        self.assertLessEqual(len("0023_alembic_access"), 32)
         self.assertIn('down_revision: Union[str, None] = "0022_storage_v2_direct_tiering"', source)
         self.assertIn("REVOKE ALL PRIVILEGES ON TABLE public.alembic_version FROM PUBLIC", source)
         self.assertIn("FROM anon", source)

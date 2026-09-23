@@ -1,9 +1,9 @@
 # FR-007 W23 clean rebuild execution checkpoint
 
 - branch: `work/fr007-clean-rebuild-storage-v2`
-- current_phase: PHASE_I_0023_IMPLEMENTED_LOCAL_PROOF_PENDING_HOSTED_CI_AND_LIVE_APPLY
-- current_sha_now: `409975ac0628d95ee697ba538801ba4aed88f3d4`
-- current_remote_sha: `5327f27c6ea62cdb491e393f40ec5d20e397fc30`
+- current_phase: PHASE_I_0023_REVISION_ID_CORRECTED_HOSTED_RERUN_PENDING
+- current_sha_now: `9d3005f1a14d3a706286e2a37a30b4f69d830309`
+- current_remote_sha: `9d3005f1a14d3a706286e2a37a30b4f69d830309`
 - current_sha_before_agent_changes: `bcaa447d9e3cf0f93bdac88e595493025579d854`
 - new_supabase_project_ref: `sunjfepvdzfknglrjwhm`
 - new_supabase_project_name: `opportunityos-staging`
@@ -115,6 +115,16 @@
   - hosted PG16/17 workflow and live 0023 application remain pending; no source or worker write has occurred. Last sanitized credential probe `35800272636` failed against both protected DB URL values. Source execution remains correctly gated pending a passing credential probe.
   - security design follows Supabase's documented separation of grants (object access) and RLS (row filtering); official guide: https://supabase.com/docs/guides/api/securing-your-api. No project-wide privilege changes were added to the Alembic migration.
 - exact_next_action: commit/push migration+tests+checkpoint, require PostgreSQL 16 and 17 workflow success, then apply 0023 once to the live Supabase project and query grants/RLS/owner update. Continue credential rotation through the authorized browser paths without exposing the DB password; no representative source until the sanitized credential probe passes.
+- execution_update_2026_09_23_pg16_revision_length_diagnosis:
+  - PostgreSQL workflow run `35801550700` was started by commit `9d3005f1a14d3a706286e2a37a30b4f69d830309`. PostgreSQL 16 failed on fresh-upgrade when Alembic advanced `alembic_version.version_num`; exact SQLSTATE indicates the new revision ID was too long for the existing `varchar(32)`. The migration operations themselves began successfully and the failure happened at Alembic's version-row update. PostgreSQL 17 was still in progress at last observation and is expected to exercise the same boundary; no live Supabase action was run.
+  - corrected the revision identifier to `0023_alembic_access` while retaining the descriptive migration filename `0023_alembic_version_access_hardening.py`; updated verifier, revision assertions, and bundle tests. Added an explicit 32-character maximum assertion so future migrations fail locally before provider CI.
+- exact_next_action: rerun focused tests and full offline render, push this revision-ID correction, then inspect both PG16 and PG17 fresh/0022-upgrade results. Fix any subsequent ordinary failure in the same inspect/diagnose/strengthen/rerun loop. Only after both green, apply 0023 once to live.
+- execution_update_2026_09_23_revision_length_fix:
+  - both PG16 and PG17 jobs in run `35801550700` failed at fresh migration on the same explicit `varchar(32)` Alembic version-row limit. This confirmed a revision identifier length issue, not a provider-specific PG version issue.
+  - the descriptive migration filename remains `0023_alembic_version_access_hardening.py`, while the actual Alembic revision ID is now `0023_alembic_access` (20 characters). Verifier, runtime migration contract, and provider execution bundle now use this exact ID; regression contract enforces the <=32 limit.
+  - corrected local rerun: focused tests `16 passed`; Alembic reports one head `0023_alembic_access`; full PostgreSQL offline migration rendering, compileall, and `git diff --check` pass. Current correction is uncommitted on top of remote `9d3005f1a14d3a706286e2a37a30b4f69d830309`; pre-existing untracked `work/` is preserved.
+  - live DB remains unchanged at revision 0022. No source/worker execution has run; credential probe `35800272636` remains failed until protected DB URLs are rotated.
+- exact_next_action: commit and push the revision-ID correction plus checkpoint, inspect PG16/17 run to completion, require green fresh and 0022->0023 paths plus verifier and subsystem tests; fix and rerun any ordinary failure. Once green, apply 0023 once to live. Continue password/secret handoff in parallel but do not run source until the sanitized DB credential probe passes.
 - no_merge: true
 - no_paid_infrastructure: true
 - seven_day_soak_claimed: false
