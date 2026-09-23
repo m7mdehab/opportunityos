@@ -114,6 +114,29 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             for table in reversed(Base.metadata.sorted_tables):
                 conn.execute(text(f'TRUNCATE TABLE "{table.name}" CASCADE;'))
 
+    def _downgrade_to_legacy_revision(self, alembic_cfg, target_revision: str) -> None:
+        """Bridge the irreversible Storage V2 index removal for legacy tests.
+
+        Migration 0021 removed the projection's duplicate GIN index. Its
+        deployed downgrade cannot be edited to recreate it, while the older
+        0006 downgrade expects that index to exist. At the 0021 boundary,
+        0022's downgrade has restored the legacy columns, so recreate only
+        that disposable-test index before exercising earlier migration
+        history. Production tables/migrations are not modified by this test
+        compatibility fixture.
+        """
+        command.downgrade(alembic_cfg, "0021_storage_v2")
+        with self.engine.begin() as conn:
+            index_exists = conn.execute(
+                text("SELECT to_regclass('public.ix_feed_projection_search_tsv')")
+            ).scalar()
+            if index_exists is None:
+                conn.execute(text(
+                    "CREATE INDEX ix_feed_projection_search_tsv "
+                    "ON public.feed_projection USING GIN (search_tsv)"
+                ))
+        command.downgrade(alembic_cfg, target_revision)
+
     def test_case_a_and_b_alembic_upgrade_downgrade_smoke(self):
         """Case A & B: empty DB -> Alembic head -> downgrade smoke -> upgrade to head."""
         alembic_cfg = Config("alembic.ini")
@@ -143,7 +166,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
 
         # Downgrade to 0001_baseline_schema: the four 0002 tables, and every
         # index/constraint belonging to them, must be gone.
-        command.downgrade(alembic_cfg, "0001_baseline_schema")
+        self._downgrade_to_legacy_revision(alembic_cfg, "0001_baseline_schema")
 
         with self.engine.connect() as conn:
             res = conn.execute(
@@ -197,7 +220,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
 
         # Seed a scratch DB through 0003 only -- its own upgrade() inserts the
         # `label_only` row for target_roles -- before 0004 ever runs.
-        command.downgrade(alembic_cfg, "base")
+        self._downgrade_to_legacy_revision(alembic_cfg, "base")
         command.upgrade(alembic_cfg, "0003_provenance_identity")
         row = target_roles_row()
         self.assertIsNotNone(row, "0003 must seed a target_roles row")
@@ -211,7 +234,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         # A1S.2: downgrade across the 0004 data migration -> label_only.
         # The current head is 0005, whose schema-only downgrade must not
         # reverse 0004's target_roles seed override by itself.
-        command.downgrade(alembic_cfg, "0003_provenance_identity")
+        self._downgrade_to_legacy_revision(alembic_cfg, "0003_provenance_identity")
         row = target_roles_row()
         self.assertEqual(tuple(row), ("target_roles", "label_only"))
 
@@ -251,7 +274,7 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
         alembic_cfg = Config("alembic.ini")
         alembic_cfg.set_main_option("sqlalchemy.url", self.db_url)
 
-        command.downgrade(alembic_cfg, "base")
+        self._downgrade_to_legacy_revision(alembic_cfg, "base")
         command.upgrade(alembic_cfg, "0003_provenance_identity")
 
         with self.engine.begin() as conn:

@@ -238,7 +238,7 @@ class NoReJudgementTest(ApiTestCase):
     def test_search_never_mutates_decision_or_fit_score(self):
         self.seed_opportunity("opp-x", title="Pytorch Engineer", description="pytorch")
         self.seed_evaluation("opp-x", decision="qualified", fit_score=77.25)
-        self.seed_opportunity("opp-y", title="Machine Learning Lead", description="pytorch pytorch pytorch")
+        self.seed_opportunity("opp-y", title="Pytorch Machine Learning Lead", description="a compact card-field match")
         self.seed_evaluation("opp-y", decision="uncertain", fit_score=12.5)
 
         before = {

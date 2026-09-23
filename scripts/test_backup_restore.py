@@ -51,6 +51,7 @@ from storage.models import (
     FounderActivityEventRecord,
     OpportunityColdArchiveRecord,
     OpportunityArchiveOrphanRecord,
+    BackupHeartbeatRecord,
 )
 import scripts.backup_restore as backup_restore
 from scripts.backup_restore import (
@@ -328,9 +329,20 @@ class TestBackupRestorePostgres(unittest.TestCase):
         session.add(FounderActivityEventRecord(
             id="activity-backup-1",
             opportunity_id="OPP-BACKUP-1",
-            action_type="viewed",
-            resulting_state="viewed",
+            action_type="mark_applied",
+            resulting_state="submitted",
             created_at=activity_created_at,
+        ))
+        heartbeat_time = datetime(2026, 9, 2, 10, 35, 0, tzinfo=timezone.utc)
+        session.add(BackupHeartbeatRecord(
+            id="heartbeat-backup-1",
+            result="success",
+            backup_completed_at=heartbeat_time,
+            encryption=True,
+            destination_class="github_actions_artifact",
+            database_snapshot_sha="f" * 64,
+            artifact_run_id="run-35800000000",
+            updated_at=heartbeat_time,
         ))
         cold_opp = OpportunityRecord(
             id="OPP-COLD-BACKUP-1",
@@ -551,8 +563,17 @@ class TestBackupRestorePostgres(unittest.TestCase):
 
         activity = dst_session.query(FounderActivityEventRecord).filter_by(id="activity-backup-1").one()
         self.assertEqual(activity.opportunity_id, "OPP-BACKUP-1")
-        self.assertEqual(activity.action_type, "viewed")
+        self.assertEqual(activity.action_type, "mark_applied")
+        self.assertEqual(activity.resulting_state, "submitted")
         self.assertEqual(activity.created_at, activity_created_at)
+
+        heartbeat = dst_session.query(BackupHeartbeatRecord).filter_by(
+            id="heartbeat-backup-1"
+        ).one()
+        self.assertEqual(heartbeat.result, "success")
+        self.assertEqual(heartbeat.backup_completed_at, heartbeat_time)
+        self.assertTrue(heartbeat.encryption)
+        self.assertEqual(heartbeat.database_snapshot_sha, "f" * 64)
 
         restored_cold = dst_session.query(OpportunityRecord).filter_by(id="OPP-COLD-BACKUP-1").one()
         self.assertIsNone(restored_cold.description)

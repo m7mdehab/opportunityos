@@ -575,3 +575,18 @@ class SourceScheduleRecord(Base):
         onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+
+
+class BackupHeartbeatRecord(Base):
+    """Migration-owned sanitized backup proof retained across disaster recovery."""
+
+    __tablename__ = "backup_heartbeats"
+
+    id = Column(String(64), primary_key=True)
+    result = Column(String(32), nullable=False)
+    backup_completed_at = Column(DateTime(timezone=True), nullable=False)
+    encryption = Column(Boolean, nullable=False)
+    destination_class = Column(String(64), nullable=False)
+    database_snapshot_sha = Column(String(64), nullable=False)
+    artifact_run_id = Column(String(64), nullable=True)
+    updated_at = Column(DateTime(timezone=True), nullable=False)

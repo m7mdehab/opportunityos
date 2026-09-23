@@ -51,6 +51,7 @@ from storage.models import (
     FounderActivityEventRecord,
     OpportunityColdArchiveRecord,
     OpportunityArchiveOrphanRecord,
+    BackupHeartbeatRecord,
 )
 from storage.feed_projection import FeedProjectionRecord
 
@@ -114,6 +115,7 @@ DUMP_SECTION_TABLE_MAP = {
     "founder_sessions": "founder_sessions",
     "founder_auth_rate_limit": "founder_auth_rate_limit",
     "founder_auth_events": "founder_auth_events",
+    "backup_heartbeats": "backup_heartbeats",
 }
 
 
@@ -237,6 +239,7 @@ def dump_database(db_url: str, output_file: str) -> int:
         "founder_sessions": [],
         "founder_auth_rate_limit": [],
         "founder_auth_events": [],
+        "backup_heartbeats": [],
     }
 
     # 1. Opportunities & Field Provenances
@@ -566,6 +569,18 @@ def dump_database(db_url: str, output_file: str) -> int:
             "id": event.id, "event_type": event.event_type, "outcome": event.outcome,
             "created_at": event.created_at.isoformat(), "request_id": event.request_id,
             "session_id": event.session_id,
+        })
+
+    for heartbeat in session.query(BackupHeartbeatRecord).all():
+        data["backup_heartbeats"].append({
+            "id": heartbeat.id,
+            "result": heartbeat.result,
+            "backup_completed_at": heartbeat.backup_completed_at.isoformat(),
+            "encryption": heartbeat.encryption,
+            "destination_class": heartbeat.destination_class,
+            "database_snapshot_sha": heartbeat.database_snapshot_sha,
+            "artifact_run_id": heartbeat.artifact_run_id,
+            "updated_at": heartbeat.updated_at.isoformat(),
         })
 
     # Row-count completeness check, run in the same session/transaction the
@@ -1003,6 +1018,12 @@ def restore_database(dump_file: str, db_url: str) -> None:
         if event_dict.get("created_at"):
             event_dict["created_at"] = datetime.fromisoformat(event_dict["created_at"])
         session.merge(FounderAuthEventRecord(**event_dict))
+
+    for heartbeat_dict in data.get("backup_heartbeats", []):
+        for field in ("backup_completed_at", "updated_at"):
+            if heartbeat_dict.get(field):
+                heartbeat_dict[field] = datetime.fromisoformat(heartbeat_dict[field])
+        session.merge(BackupHeartbeatRecord(**heartbeat_dict))
 
     for activity_dict in data.get("founder_activity_events", []):
         for field in ("snoozed_until", "created_at"):

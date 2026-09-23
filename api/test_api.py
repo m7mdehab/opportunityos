@@ -830,33 +830,43 @@ class OpportunityRoutesTest(ApiTestCase):
         self.assertTrue(all(sql.startswith(("SELECT", "SHOW")) for sql in statements), statements)
         self.assertEqual(self.session.execute(text("SELECT count(*) FROM feed_projection")).scalar(), 0)
 
-    def test_filter_write_refreshes_only_loaded_truth_pack_projection(self):
+    def test_filter_write_refreshes_only_current_truth_pack_projection(self):
         from storage.feed_projection import FeedProjectionRecord
 
         _install_truth_graph(self.app, TruthGraph())
         self.seed_opportunity("opp-two-packs")
         self.seed_evaluation("opp-two-packs", decision="qualified", fit_score=40.0)
-        self.seed_evaluation(
-            "opp-two-packs", decision="qualified", fit_score=40.0,
-            truth_pack_hash="historical-pack-hash",
-        )
 
-        def stored_projection(truth_hash):
+        def current_projection():
             self.session.expire_all()
             row = self.session.query(FeedProjectionRecord).filter_by(
-                opportunity_id="opp-two-packs", truth_pack_hash=truth_hash
+                opportunity_id="opp-two-packs"
             ).one()
             return {column.name: getattr(row, column.name)
                     for column in FeedProjectionRecord.__table__.columns}
 
-        before_historical = stored_projection("historical-pack-hash")
+        self.assertEqual(
+            self.session.query(FeedProjectionRecord).filter_by(
+                opportunity_id="opp-two-packs"
+            ).count(),
+            1,
+        )
+        before_current = current_projection()
+        self.assertEqual(before_current["truth_pack_hash"], "test-truth-pack-hash")
         response = self.client.put("/api/filters/min_fit_score", json={
             "enabled": True, "mode": "hide", "params": {"min_score": 50}
         })
         self.assertEqual(response.status_code, 200, response.text)
         self.drain_maintenance_jobs()
-        self.assertFalse(stored_projection("test-truth-pack-hash")["visible"])
-        self.assertEqual(stored_projection("historical-pack-hash"), before_historical)
+        after_current = current_projection()
+        self.assertFalse(after_current["visible"])
+        self.assertEqual(after_current["truth_pack_hash"], "test-truth-pack-hash")
+        self.assertEqual(
+            self.session.query(FeedProjectionRecord).filter_by(
+                opportunity_id="opp-two-packs"
+            ).count(),
+            1,
+        )
 
     def test_persisted_projection_http_filters_and_bounded_hydration(self):
         for opp_id, decision, score in (

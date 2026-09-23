@@ -1,9 +1,9 @@
 # FR-007 W23 clean rebuild execution checkpoint
 
 - branch: `work/fr007-clean-rebuild-storage-v2`
-- current_phase: PHASE_II_POSTGRESQL_REGRESSION_REPAIR_LOCAL_CHECKS_GREEN_HOSTED_RERUN_REQUIRED
-- current_sha_now: `2da19c45db84a583b18620d047a84604382e2154` (checkpoint update uncommitted)
-- current_remote_sha: `2da19c45db84a583b18620d047a84604382e2154`
+- current_phase: PHASE_II_POSTGRESQL_FIXES_LOCAL_GREEN_AWAITING_HOSTED_PG16_PG17
+- current_sha_now: `d9e2233b083f392a281c28b2a0cab53379601549` (checkpoint update uncommitted)
+- current_remote_sha: `d9e2233b083f392a281c28b2a0cab53379601549`
 - current_sha_before_agent_changes: `bcaa447d9e3cf0f93bdac88e595493025579d854`
 - new_supabase_project_ref: `sunjfepvdzfknglrjwhm`
 - new_supabase_project_name: `opportunityos-staging`
@@ -219,3 +219,25 @@
   - local skips are expected because PostgreSQL integration and OCI/worker-durability tests require GitHub disposable service containers. The false-green hosted run `35808549902` remains non-acceptance evidence until replaced by a pipefail-protected 16/17 run with pytest footer verified.
   - live Supabase remains untouched by this phase: revision `0023_alembic_access`, writable primary, ~13.15 MB; no sources/opportunities/feed/evaluations/worker queue rows. CV proof is still `35799588764`; queue durability proof `35799462891`; neither is being repeated by this repository-only phase.
 - exact_next_action: recheck actual remote/local branch SHA, stage only the 12 reviewed W23 paths (never `work/`), commit and push. Then inspect the new workflow’s PG16/PG17 pytest footers and all job outcomes; repair/re-run any remaining test failures. Keep ingestion gated on sanitized new-project credential probe PASS.
+
+- execution_update_2026_09_23_pg_regression_repair_pushed:
+  - exact reviewed repair commit `d9e2233b083f392a281c28b2a0cab53379601549` is pushed to the authoritative branch; pre-existing untracked `work/` was not staged.
+  - hosted PostgreSQL 16/17 Storage V2 acceptance run `35811688270` is in progress. Fresh head migration, upgrade from deployed migration state, and bounded source-gate snapshot pass on both versions. Both jobs are executing the full PostgreSQL-backed subsystem suite under `set -euo pipefail`; the prior false-green run is not treated as acceptance.
+  - OCI Container Runtime Smoke run `35811688275` completed green on the same commit, including the PostgreSQL queue durability suite. All OCI build/smoke and queue durability steps completed successfully.
+  - run `35811688270` was dispatched by push, so the protected DB credential probe and CV verification steps are skipped; the separate credential probe remains gated, and no source/worker work has run.
+- exact_next_action: inspect run `35811688270` to completion. Require both versions’ subsystem test steps and artifacts green, then inspect the saved pytest footers for zero failures. Repair any remaining ordinary failure and rerun. Only after CI truly passes proceed to the sanitized credential probe; do not poll sources before its PASS.
+
+- execution_update_2026_09_23_pg_regression_failure_diagnosis:
+  - refreshed the authoritative branch from origin; local HEAD, FETCH_HEAD, and remote ref all equal `d9e2233b083f392a281c28b2a0cab53379601549`. Only the checkpoint is modified; pre-existing untracked `work/` remains untouched.
+  - PostgreSQL 16/17 run `35811688270` completed with failure on both versions despite successful migrations, the `0019 -> 0022 -> 0023` upgrade path, source-gate accounting, and Founder backup byte-preflight tests. The hardened `set -euo pipefail` correctly exposed real pytest failures; do not count this run as green.
+  - actual test summary on each version: `9 failed, 1609 passed, 22 skipped, 2006 subtests passed`. Failures: API multi-pack evaluation fixture inserts a second row against the one-current-evaluation constraint; two API/search assertions still expect older card/search behavior; backup round-trip omits `backup_heartbeats` and seeds invalid Founder activity action `viewed`; three integration cases encounter downgrade `DROP INDEX ix_feed_projection_search_tsv` after Storage V2 has removed it; API projection test expects 2 rows but gets 0. PG16/17 failure classes match.
+  - live Supabase remains untouched: 0023 writable primary, ~13.15 MB, no source or worker writes. Protected DB credentials still have not passed the sanitized probe; no source/worker execution is permitted before that probe.
+- exact_next_action: inspect each of the nine failures in its local test and production downgrade/backup behavior; fix fixtures/assertions to the current single-projection/single-evaluation compact-search contract, make downgrade cleanup idempotent for absent derived indexes without changing immutable migration behavior, add the missing heartbeat backup coverage and a valid Founder activity fixture; run focused tests and repeat PG16/17 with pytest footer verification. Preserve source execution gate.
+
+- execution_update_2026_09_23_pg_regression_fixes_local_green:
+  - repaired all diagnosed failure classes without editing migrations already applied to live: compact search now builds `websearch_to_tsquery('english', ...)` to match the stored English-configured compact vector; the obsolete multi-pack API test now asserts exactly one current projection; the search non-mutation fixture matches on compact title fields rather than archived description text.
+  - made legacy migration integration tests bridge only inside the disposable PostgreSQL test DB: downgrade head to the 0021 boundary, restore the legacy-only GIN index needed by immutable migration 0006's downgrade, then exercise older migration targets. No migration source was rewritten.
+  - added the migration-owned `backup_heartbeats` relation to ORM metadata and JSON backup/restore, including UTC timestamp serialization; expanded the PG restore test to round-trip it. Replaced an invalid `action_type='viewed'` event with the valid Founder `mark_applied` / `submitted` transition.
+  - complete tracked Python test suite rerun: `1451 passed, 189 skipped, 312 warnings, 2006 subtests passed` in `387.38s`. Focused test rerun: `4 passed, 4 skipped` (the skips require hosted PostgreSQL). All changed modules compile, diff checks pass, and migration graph remains one Alembic head (`0023_alembic_access`).
+  - source/worker execution remains gated on a fresh sanitized DB credential probe PASS. The last failed probe remains `35808115940`; no source/queue/worker mutation occurred. Live DB last verified at 0023, writable, ~13.15 MB; canonical CV verification and OCI proof remain green from `35799588764` and `35799462891`.
+- exact_next_action: commit/push the focused regression repairs and checkpoint, then dispatch/inspect the pipefail-protected PostgreSQL 16/17 workflow and verify pytest reports zero failures. In parallel, the only allowable credential cutover method under computer-use safety is for Founder to enter the new project's reset password and official URLs directly in protected Supabase/GitHub UI; never handle or expose the password. After probe PASS continue one-source gate.

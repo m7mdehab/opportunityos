@@ -97,7 +97,10 @@ def build_feed_query(session: Session, spec: FeedQuerySpec) -> Query:
     if spec.source_id:
         query = query.filter(FeedProjectionRecord.source_id == spec.source_id)
     if spec.q and spec.q.strip():
-        tsquery = func.websearch_to_tsquery(literal_column("'simple'"), spec.q.strip())
+        # Keep text-search configuration identical to the stored vector. Using
+        # `simple` here against an `english` vector made inflected role terms
+        # (e.g. engineer -> engin) silently disappear from PostgreSQL results.
+        tsquery = func.websearch_to_tsquery(literal_column("'english'"), spec.q.strip())
         query = query.filter(OpportunityRecord.search_tsv.op("@@")(tsquery))
 
     return query
