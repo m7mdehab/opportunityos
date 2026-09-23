@@ -785,3 +785,12 @@
 - current_sha_now: `e80aed3a30d6c2e4f4992caccd550aade9519aed`
 - current_remote_sha: `e80aed3a30d6c2e4f4992caccd550aade9519aed`
 - exact_next_action: leave run `35929446064` untouched and inspect only at natural bounded batch/completion boundaries. On terminal result, examine its sanitized source outcomes and latest live status, then dispatch only the remaining final registry offset range if any. Preserve <=200 MiB projection, five-shard/ten-connection cap, and one final whole-corpus archive verification.
+
+- execution_update_2026_09_23_2257Z_slice_125_first_ten_sources_green:
+  - run `35929446064` / job `107412282316` remains active on its bootstrap step. The first ten scheduled identities in the offset-125 run have naturally completed with latest status `ok`: `greenhouse:honehealth`, `horacemannservicecorporation`, `hudl`, `humeai`, `hyannisportresearch`, `icapitalnetwork`, `imc`, `impinjexternal`, `inflectionai`, `insomniac`. This includes the long `icapitalnetwork` and `imc` polls, each completed once; no replay.
+  - aggregate snapshot at `2026-09-23T22:56:31Z`: DB `88,124,563` bytes; 10,903 opportunities; HOT/feed 1,358; COLD 9,545; 9,545 archives /`74,894,937` compressed bytes; latest-success identities 136; latest failures 0; pending/retry/running/expired/dead-letter all 0 at this natural queue boundary.
+  - the run is continuing beyond this boundary. The first ten outcomes are recorded directly from the live poll history; no full-corpus DB/object reads or archive verification occurred.
+- current_phase: `PHASE_V_BOOTSTRAP_SLICE_125_CONTINUING_AFTER_TEN_SOURCE_SUCCESSES`
+- current_sha_now: `850f932f2aa70f62f298d3279883eb0722c7edd2`
+- current_remote_sha: `850f932f2aa70f62f298d3279883eb0722c7edd2`
+- exact_next_action: continue run `35929446064` without overlap. Inspect the next natural five-source queue batch boundary, keep the five-shard limit, and stop/diagnose only if the live physical or projected database crosses the already accepted 200 MiB guard or an explicit source failure occurs.
