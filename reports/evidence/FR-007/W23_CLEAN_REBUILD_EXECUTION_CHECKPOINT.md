@@ -657,4 +657,12 @@
 - current_phase: `PHASE_V_QUEUE_RECOVERED_81_SOURCE_IDENTITIES_READY_TO_RESUME`
 - current_sha_now: `3b73042b5ce9e03884f3e5f7f19b4ebde0624f05`
 - current_remote_sha: `951d97e7630441e4d631a894934fba79909b1198` (checkpoint-only fast-forward pending)
-- exact_next_action: push the checkpoint fast-forward, then immediately redispatch offset 0/max125 on the accepted bounded-shard bootstrap. It must skip all 81 latest-success source identities and poll only remaining unsuccessful identities; do not overlap bootstrap slices.
+- exact_next_action: inspect bootstrap run `35916759119` / job `107370111069` at bounded batch boundaries; its bounded five-source step must skip all 81 latest-success identities and poll only remaining unsuccessful identities. Do not overlap bootstrap slices.
+- execution_update_2026_09_23_2035Z_bootstrap_resumed:
+  - checkpoint fast-forward was pushed and confirmed at remote SHA `581df5ed927f0e84d0294c0d3f2d83da25f78714` (docs-only `[skip ci]`).
+  - immediately dispatched resumable bootstrap run `35916759119` from the authoritative branch at that SHA, mode `incremental-source-bootstrap`, offset `0`, max `125`. The authenticated `fr007-staging` environment job `107370111069` passed setup/dependency installation and is executing `Bootstrap disjoint five-source batches with normal capped worker shards`. No source outcome or queue mutation is inferred until its sanitized batch boundary evidence lands.
+  - unchanged pass gates remain: five independent worker processes × max two connections (<=10), SQL `SKIP LOCKED`, source-ID-scoped enqueue, no successful identity replay, aggregate capacity forecast <=200 MiB, one final corpus archive checksum pass. Do not restart the bootstrap or run corpus verifier mid-run.
+- current_phase: `PHASE_V_BOOTSTRAP_RUN_35916759119_ACTIVE_OFFSET_0_MAX125`
+- current_sha_now: `581df5ed927f0e84d0294c0d3f2d83da25f78714`
+- current_remote_sha: `581df5ed927f0e84d0294c0d3f2d83da25f78714`
+- exact_next_action: wait for run `35916759119` to expose a meaningful source-batch boundary, then checkpoint measured progress and immediately queue the next non-overlapping slice only after this run reaches a safe terminal/boundary state.
