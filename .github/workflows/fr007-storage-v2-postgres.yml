@@ -140,12 +140,14 @@ jobs:
           failures = []
           control_route = None
           for name in required_names:
+              phase = "parse-url"
               raw = os.environ.get(name, "").strip()
               if not raw:
                   failures.append(f"{name}:missing")
                   continue
               try:
                   parsed = make_url(raw)
+                  phase = "endpoint-validation"
                   expected_route = "session_pooler" if name == "CLOUD_DATABASE_URL" else None
                   expected_username = pooler_username if name == "CLOUD_DATABASE_URL" else None
                   if name == "CLOUD_DATABASE_URL":
@@ -172,16 +174,21 @@ jobs:
                       drivername="postgresql+psycopg2",
                       query=query,
                   )
+                  phase = "engine-configuration"
                   engine = create_engine(candidate, pool_pre_ping=True, pool_size=1, max_overflow=0)
                   try:
+                      phase = "primary-session-check"
                       with engine.connect() as connection:
                           state = connection.execute(text(
                               "SELECT current_database(), current_user, pg_is_in_recovery(), "
                               "current_setting('default_transaction_read_only')"
                           )).one()
-                          if state[0] != "postgres" or state[1] != expected_username or state[2] or state[3] != "off":
+                          # PgBouncer authenticates with postgres.<project-ref> but PostgreSQL
+                          # exposes the effective database role as postgres.
+                          if state[0] != "postgres" or state[1] != "postgres" or state[2] or state[3] != "off":
                               failures.append(f"{name}:primary-session-state-mismatch")
                               continue
+                          phase = "session-persistence-check"
                           backend_before = connection.execute(text("SELECT pg_backend_pid()")).scalar_one()
                           connection.execute(text(
                               "CREATE TEMP TABLE opos_fr007_credential_probe (value integer NOT NULL) "
@@ -207,7 +214,9 @@ jobs:
                   original = getattr(exc, "orig", exc)
                   sqlstate = getattr(original, "pgcode", None)
                   category = "authentication-rejected" if sqlstate == "28P01" else type(original).__name__
-                  failures.append(f"{name}:{category}" + (f"/SQLSTATE-{sqlstate}" if sqlstate else ""))
+                  if phase == "parse-url" and category == "ArgumentError":
+                      category = "invalid-uri-format"
+                  failures.append(f"{name}:{phase}:{category}" + (f"/SQLSTATE-{sqlstate}" if sqlstate else ""))
                   continue
           if tuple(successful) == required_names and not failures:
               print(f"PASS: direct/control route={control_route}; session-pooler runtime route=verified; both preserve writable, session-persistent PostgreSQL semantics")

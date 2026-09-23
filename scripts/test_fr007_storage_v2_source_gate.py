@@ -64,6 +64,11 @@ class RepresentativeSourceEconomicsTests(unittest.TestCase):
         self.assertIn('direct_host = "db.sunjfepvdzfknglrjwhm.supabase.co"', probe)
         self.assertIn('pooler_host = "aws-0-eu-central-1.pooler.supabase.com"', probe)
         self.assertIn("endpoint-configuration-mismatch", probe)
+        self.assertIn('phase = "parse-url"', probe)
+        self.assertIn('category = "invalid-uri-format"', probe)
+        self.assertIn('state[1] != "postgres"', probe)
+        self.assertIn("effective database role as postgres", probe)
+        self.assertNotIn("state[1] != expected_username", probe)
         self.assertIn("CREATE TEMP TABLE opos_fr007_credential_probe", probe)
         self.assertIn("both protected DB URL secrets must pass", probe)
 
