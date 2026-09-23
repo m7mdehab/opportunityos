@@ -1,0 +1,13 @@
+{
+  "archive_objects_verified": 813,
+  "compressed_bytes_downloaded": 6554104,
+  "current_cold_archive_compressed_bytes": 6554104,
+  "current_cold_archive_objects": 813,
+  "download_scope": "successful-corpus-cold-archives-only",
+  "page_size": 500,
+  "pages_verified": 2,
+  "sha256_identity_verified": true,
+  "source_id": "__successful_corpus__",
+  "total_compressed_byte_limit": 67108864,
+  "total_object_limit": 5000
+}

@@ -1,52 +1,596 @@
 {
-  "schema": "fr007-storage-v2-capacity-model-v1",
-  "representative_workflow_run_id": 35835117460,
-  "representative_commit": "7bc731320297d862ec1615a4ebe8b8d7465add1a",
-  "source_id": "himalayas",
-  "source_sample_opportunities": 20,
-  "live_database_bytes_at_benchmark": 14101651,
+  "benchmark_database_bytes_after_population": 167712435,
   "benchmark_database_bytes_empty_schema": 9901747,
-  "benchmark_database_bytes_after_population": 202637839,
-  "benchmark_growth_bytes": 192736092,
-  "target_opportunities": 26000,
-  "target_read_allowed_sources": 343,
+  "benchmark_growth_bytes": 157810688,
+  "capacity_benchmark_workflow_run_id": 35853985963,
+  "capacity_reforecast": {
+    "benchmark_database_bytes_after_population": 167712435,
+    "benchmark_database_bytes_empty_schema": 9901747,
+    "benchmark_population_growth_bytes": 157810688,
+    "checks": {
+      "all_physical_measurements_are_post_population": true,
+      "benchmark_cold_rows_have_no_relational_bodies_or_provenance": true,
+      "benchmark_has_complete_archive_metadata_and_single_current_rows": true,
+      "bounded_current_feed_population": true,
+      "exact_physical_benchmark_population": true,
+      "live_and_benchmark_schema_at_expected_head": true,
+      "one_compact_archive_per_cold_opportunity": true,
+      "one_current_evaluation_per_opportunity": true,
+      "projected_database_within_hard_budget": true,
+      "registry_scale_is_represented": true,
+      "storage_metadata_row_per_cold_archive": true,
+      "storage_metadata_shape_matches_live_tier": true
+    },
+    "current_corpus_archive_verification": {
+      "archive_objects_verified": 813,
+      "compressed_bytes_downloaded": 6554104,
+      "current_cold_archive_compressed_bytes": 6554104,
+      "current_cold_archive_objects": 813,
+      "download_scope": "successful-corpus-cold-archives-only",
+      "page_size": 500,
+      "pages_verified": 2,
+      "sha256_identity_verified": true,
+      "source_id": "__successful_corpus__",
+      "total_compressed_byte_limit": 67108864,
+      "total_object_limit": 5000
+    },
+    "current_opportunities": 826,
+    "current_successful_source_identities": 5,
+    "current_tier_counts": {
+      "cold": 813,
+      "hot": 13,
+      "protected": 0
+    },
+    "database_revision": "0023_alembic_access",
+    "hard_budget_bytes": 209715200,
+    "live_database_bytes": 18738323,
+    "live_database_writes": 0,
+    "live_payload_text_read": false,
+    "projected_cold_archive_storage_bytes": 206314642,
+    "projected_database_bytes_at_26000": 175803721,
+    "projected_database_mib_at_26000": 167.66,
+    "projected_product_counts": {
+      "archives": 25591,
+      "cold": 25591,
+      "evaluations": 26000,
+      "feed": 409,
+      "hot": 409,
+      "jobs": 686,
+      "opportunities": 26000,
+      "protected": 0,
+      "provenance": 4908,
+      "schedules": 343,
+      "source_polls": 343,
+      "storage_objects": 25591
+    },
+    "projected_tier_checks": {
+      "archive_identity_mismatches": 0,
+      "cold_bodies": 0,
+      "cold_provenance": 0,
+      "cold_verbose_evaluations": 0,
+      "invalid_archives": 0,
+      "max_cold_reason_bytes": 94,
+      "max_evaluations_per_opportunity": 1,
+      "max_projections_per_opportunity": 1,
+      "storage_object_key_length": 110,
+      "storage_object_metadata_bytes": 252,
+      "storage_object_path_segments": 3,
+      "storage_object_tuple_bytes": 648,
+      "storage_object_version_length": 36,
+      "storage_objects": 25591
+    },
+    "projected_tier_counts": {
+      "cold": 25591,
+      "hot": 409,
+      "protected": 0
+    },
+    "source_overhead_relation_bytes": {
+      "public.source_poll_runs": 262144,
+      "public.source_schedules": 139264,
+      "public.worker_jobs": 319488,
+      "total": 720896
+    },
+    "source_scope": "successful-source-corpus",
+    "status": "PASS",
+    "target_population": 26000,
+    "target_read_allowed_sources": 343,
+    "top_indexes": [
+      {
+        "bytes": 7471104,
+        "index_name": "objects_bucket_id_name_version_key",
+        "table_name": "objects"
+      },
+      {
+        "bytes": 5726208,
+        "index_name": "ix_opportunities_search_tsv",
+        "table_name": "opportunities"
+      },
+      {
+        "bytes": 5693440,
+        "index_name": "idx_objects_bucket_id_name",
+        "table_name": "objects"
+      },
+      {
+        "bytes": 5693440,
+        "index_name": "idx_objects_bucket_id_name_lower",
+        "table_name": "objects"
+      },
+      {
+        "bytes": 5693440,
+        "index_name": "idx_objects_current_version",
+        "table_name": "objects"
+      },
+      {
+        "bytes": 5693440,
+        "index_name": "idx_objects_null_version",
+        "table_name": "objects"
+      },
+      {
+        "bytes": 5046272,
+        "index_name": "opportunities_pkey",
+        "table_name": "opportunities"
+      },
+      {
+        "bytes": 4825088,
+        "index_name": "ix_opportunity_cold_archive_object_key",
+        "table_name": "opportunity_cold_archive"
+      },
+      {
+        "bytes": 4825088,
+        "index_name": "name_prefix_search",
+        "table_name": "objects"
+      },
+      {
+        "bytes": 3817472,
+        "index_name": "ix_opportunities_content_hash",
+        "table_name": "opportunities"
+      },
+      {
+        "bytes": 3137536,
+        "index_name": "ix_opportunity_cold_archive_content_hash",
+        "table_name": "opportunity_cold_archive"
+      },
+      {
+        "bytes": 2539520,
+        "index_name": "ix_match_evaluations_opportunity_id",
+        "table_name": "match_evaluations"
+      },
+      {
+        "bytes": 2539520,
+        "index_name": "match_evaluations_pkey",
+        "table_name": "match_evaluations"
+      },
+      {
+        "bytes": 2539520,
+        "index_name": "uq_match_evaluations_current_opportunity",
+        "table_name": "match_evaluations"
+      },
+      {
+        "bytes": 2490368,
+        "index_name": "opportunity_cold_archive_pkey",
+        "table_name": "opportunity_cold_archive"
+      },
+      {
+        "bytes": 1908736,
+        "index_name": "ix_opportunities_organization",
+        "table_name": "opportunities"
+      },
+      {
+        "bytes": 876544,
+        "index_name": "uq_field_provenances_identity",
+        "table_name": "field_provenances"
+      },
+      {
+        "bytes": 819200,
+        "index_name": "objects_pkey",
+        "table_name": "objects"
+      },
+      {
+        "bytes": 491520,
+        "index_name": "ix_opportunities_source_id",
+        "table_name": "opportunities"
+      },
+      {
+        "bytes": 376832,
+        "index_name": "ix_opportunities_family_key",
+        "table_name": "opportunities"
+      },
+      {
+        "bytes": 376832,
+        "index_name": "ix_opportunities_location_country",
+        "table_name": "opportunities"
+      },
+      {
+        "bytes": 376832,
+        "index_name": "ix_opportunities_title_family",
+        "table_name": "opportunities"
+      },
+      {
+        "bytes": 376832,
+        "index_name": "ix_opportunities_track",
+        "table_name": "opportunities"
+      },
+      {
+        "bytes": 376832,
+        "index_name": "ix_opportunities_work_mode",
+        "table_name": "opportunities"
+      },
+      {
+        "bytes": 352256,
+        "index_name": "ix_opportunities_lifecycle_tier",
+        "table_name": "opportunities"
+      }
+    ],
+    "top_relations": [
+      {
+        "estimated_live_rows": 26000,
+        "heap_bytes": 39452672,
+        "index_bytes": 19251200,
+        "relation": "opportunities",
+        "schema_name": "public",
+        "total_bytes": 58744832
+      },
+      {
+        "estimated_live_rows": 25591,
+        "heap_bytes": 17473536,
+        "index_bytes": 35897344,
+        "relation": "objects",
+        "schema_name": "storage",
+        "total_bytes": 53403648
+      },
+      {
+        "estimated_live_rows": 26000,
+        "heap_bytes": 12926976,
+        "index_bytes": 8003584,
+        "relation": "match_evaluations",
+        "schema_name": "public",
+        "total_bytes": 20963328
+      },
+      {
+        "estimated_live_rows": 25591,
+        "heap_bytes": 9986048,
+        "index_bytes": 10452992,
+        "relation": "opportunity_cold_archive",
+        "schema_name": "public",
+        "total_bytes": 20471808
+      },
+      {
+        "estimated_live_rows": 4908,
+        "heap_bytes": 1490944,
+        "index_bytes": 1097728,
+        "relation": "field_provenances",
+        "schema_name": "public",
+        "total_bytes": 2621440
+      },
+      {
+        "estimated_live_rows": 409,
+        "heap_bytes": 671744,
+        "index_bytes": 335872,
+        "relation": "feed_projection",
+        "schema_name": "public",
+        "total_bytes": 1040384
+      },
+      {
+        "estimated_live_rows": 686,
+        "heap_bytes": 131072,
+        "index_bytes": 155648,
+        "relation": "worker_jobs",
+        "schema_name": "public",
+        "total_bytes": 319488
+      },
+      {
+        "estimated_live_rows": 343,
+        "heap_bytes": 81920,
+        "index_bytes": 147456,
+        "relation": "source_poll_runs",
+        "schema_name": "public",
+        "total_bytes": 262144
+      },
+      {
+        "estimated_live_rows": 343,
+        "heap_bytes": 40960,
+        "index_bytes": 65536,
+        "relation": "source_schedules",
+        "schema_name": "public",
+        "total_bytes": 139264
+      },
+      {
+        "estimated_live_rows": 0,
+        "heap_bytes": 0,
+        "index_bytes": 49152,
+        "relation": "founder_notifications",
+        "schema_name": "public",
+        "total_bytes": 57344
+      },
+      {
+        "estimated_live_rows": 0,
+        "heap_bytes": 0,
+        "index_bytes": 49152,
+        "relation": "outbound_actions",
+        "schema_name": "public",
+        "total_bytes": 57344
+      },
+      {
+        "estimated_live_rows": 0,
+        "heap_bytes": 0,
+        "index_bytes": 49152,
+        "relation": "pipeline_events",
+        "schema_name": "public",
+        "total_bytes": 57344
+      },
+      {
+        "estimated_live_rows": 0,
+        "heap_bytes": 0,
+        "index_bytes": 40960,
+        "relation": "reconciliation_records",
+        "schema_name": "public",
+        "total_bytes": 49152
+      },
+      {
+        "estimated_live_rows": 0,
+        "heap_bytes": 0,
+        "index_bytes": 40960,
+        "relation": "founder_auth_events",
+        "schema_name": "public",
+        "total_bytes": 40960
+      },
+      {
+        "estimated_live_rows": 0,
+        "heap_bytes": 0,
+        "index_bytes": 32768,
+        "relation": "founder_feedback",
+        "schema_name": "public",
+        "total_bytes": 40960
+      },
+      {
+        "estimated_live_rows": 0,
+        "heap_bytes": 0,
+        "index_bytes": 40960,
+        "relation": "founder_sessions",
+        "schema_name": "public",
+        "total_bytes": 40960
+      },
+      {
+        "estimated_live_rows": 0,
+        "heap_bytes": 0,
+        "index_bytes": 32768,
+        "relation": "inbound_evidence",
+        "schema_name": "public",
+        "total_bytes": 40960
+      },
+      {
+        "estimated_live_rows": 10,
+        "heap_bytes": 8192,
+        "index_bytes": 16384,
+        "relation": "founder_filter_settings",
+        "schema_name": "public",
+        "total_bytes": 32768
+      },
+      {
+        "estimated_live_rows": 0,
+        "heap_bytes": 0,
+        "index_bytes": 24576,
+        "relation": "idempotency_reservations",
+        "schema_name": "public",
+        "total_bytes": 32768
+      },
+      {
+        "estimated_live_rows": 1,
+        "heap_bytes": 8192,
+        "index_bytes": 16384,
+        "relation": "alembic_version",
+        "schema_name": "public",
+        "total_bytes": 24576
+      },
+      {
+        "estimated_live_rows": 0,
+        "heap_bytes": 0,
+        "index_bytes": 16384,
+        "relation": "founder_activity_events",
+        "schema_name": "public",
+        "total_bytes": 24576
+      },
+      {
+        "estimated_live_rows": 0,
+        "heap_bytes": 0,
+        "index_bytes": 16384,
+        "relation": "founder_cv_selections",
+        "schema_name": "public",
+        "total_bytes": 24576
+      },
+      {
+        "estimated_live_rows": 0,
+        "heap_bytes": 0,
+        "index_bytes": 24576,
+        "relation": "founder_identity",
+        "schema_name": "public",
+        "total_bytes": 24576
+      },
+      {
+        "estimated_live_rows": 0,
+        "heap_bytes": 0,
+        "index_bytes": 24576,
+        "relation": "founder_opportunity_views",
+        "schema_name": "public",
+        "total_bytes": 24576
+      },
+      {
+        "estimated_live_rows": 0,
+        "heap_bytes": 0,
+        "index_bytes": 16384,
+        "relation": "founder_saved_views",
+        "schema_name": "public",
+        "total_bytes": 24576
+      }
+    ],
+    "workflow_run_id": 35853985963
+  },
+  "credential_cutover_probe": {
+    "cloud_database_url_route": "session_pooler",
+    "opos_target_db_url_route": "session_pooler",
+    "replacement_project": "sunjfepvdzfknglrjwhm",
+    "status": "PASS",
+    "workflow_run_id": 35855286896,
+    "writable_primary_and_session_persistence": "PASS"
+  },
+  "current_live_baseline": {
+    "cold_archives": {
+      "compressed_bytes": 6554104,
+      "objects": 813
+    },
+    "database_bytes": 18738323,
+    "database_revision": "0023_alembic_access",
+    "evaluations": 826,
+    "feed_projection": 13,
+    "opportunities": {
+      "cold": 813,
+      "hot": 13,
+      "protected": 0,
+      "total": 826
+    },
+    "provenance": 150,
+    "queue": {
+      "dead_letters": 0,
+      "expired_leases": 0,
+      "oldest_due_age_seconds": null,
+      "pending": 0,
+      "retry": 0,
+      "running": 0
+    },
+    "snapshot_basis": "aggregate-only SQL after credential probe and capacity reforecast",
+    "source_poll_runs_by_status": {
+      "error": 2,
+      "ok": 6
+    },
+    "storage_buckets": [
+      {
+        "bytes": 6554104,
+        "name": "opportunity-artifacts",
+        "objects": 813,
+        "public": false
+      },
+      {
+        "bytes": 2163348,
+        "name": "founder-cv-portfolio",
+        "objects": 32,
+        "public": false
+      }
+    ],
+    "storage_v2_invariants": {
+      "cold_provenance": 0,
+      "cold_relational_bodies": 0,
+      "cold_verbose_evaluations": 0,
+      "max_cold_reason_bytes": 94,
+      "max_evaluations_per_opportunity": 1,
+      "max_projections_per_opportunity": 1,
+      "synthetic_active_projection_count": 0
+    },
+    "successful_source_identities": 5
+  },
   "hard_database_budget_bytes": 209715200,
-  "projected_database_bytes_at_gate": 206837743,
-  "projected_database_mib_at_gate": 197.26,
-  "projected_cold_archive_storage_bytes": 98176650,
-  "source_overhead_relation_bytes": {
-    "public.worker_jobs": 319488,
+  "largest_relations_bytes": {
+    "public.alembic_version": 24576,
+    "public.feed_projection": 1040384,
+    "public.field_provenances": 2621440,
+    "public.founder_activity_events": 24576,
+    "public.founder_auth_events": 40960,
+    "public.founder_cv_selections": 24576,
+    "public.founder_feedback": 40960,
+    "public.founder_filter_settings": 32768,
+    "public.founder_identity": 24576,
+    "public.founder_notifications": 57344,
+    "public.founder_opportunity_views": 24576,
+    "public.founder_saved_views": 24576,
+    "public.founder_sessions": 40960,
+    "public.idempotency_reservations": 32768,
+    "public.inbound_evidence": 40960,
+    "public.match_evaluations": 20963328,
+    "public.opportunities": 58744832,
+    "public.opportunity_cold_archive": 20471808,
+    "public.outbound_actions": 57344,
+    "public.pipeline_events": 57344,
+    "public.reconciliation_records": 49152,
     "public.source_poll_runs": 262144,
     "public.source_schedules": 139264,
-    "total": 720896
+    "public.worker_jobs": 319488,
+    "storage.objects": 53403648
   },
-  "population": {
-    "opportunities": 26000,
-    "hot": 4550,
-    "cold": 21450,
-    "protected": 0,
-    "feed_projections": 4550,
-    "evaluations": 26000,
-    "provenance": 59150,
-    "archives": 21450,
-    "storage_objects": 21450,
-    "source_polls": 343,
-    "source_schedules": 343,
-    "worker_jobs": 686
-  },
-  "largest_relations_bytes": {
-    "public.opportunities": 62029824,
-    "storage.objects": 44670976,
-    "public.field_provenances": 31039488,
-    "public.match_evaluations": 25829376,
-    "public.opportunity_cold_archive": 17260544,
-    "public.feed_projection": 11501568
-  },
+  "live_database_bytes_at_benchmark": 18738323,
   "measurement_contract": {
     "benchmark_engine": "isolated PostgreSQL 17 disposable service",
     "live_database_writes": 0,
+    "live_payload_text_read": false,
     "physical_database_measurement": "pg_database_size",
-    "projection": "live DB bytes plus measured 26k population growth",
+    "projection": "current live physical bytes plus physically measured remaining population growth",
+    "remaining_projection": {
+      "projected_final_database_bytes": 175803721,
+      "remaining_opportunities": 25621,
+      "remaining_projected_bytes": 157065398,
+      "remaining_sources": 338
+    },
     "safety_reserve_fraction_for_incremental_projection": 0.01
-  }
+  },
+  "population": {
+    "archives": 25591,
+    "cold": 25591,
+    "evaluations": 26000,
+    "feed_projections": 409,
+    "hot": 409,
+    "opportunities": 26000,
+    "protected": 0,
+    "provenance": 4908,
+    "source_polls": 343,
+    "source_schedules": 343,
+    "storage_objects": 25591,
+    "worker_jobs": 686
+  },
+  "projected_cold_archive_storage_bytes": 206314642,
+  "projected_database_bytes_at_gate": 175803721,
+  "projected_database_mib_at_gate": 167.66,
+  "projected_final_database_bytes": 175803721,
+  "projected_final_database_mib": 167.66,
+  "representative_source_gate": {
+    "after_database_bytes": 14101651,
+    "after_public_relation_bytes": 1933312,
+    "all_new_cold_archives_verified": true,
+    "archive_verification": {
+      "archive_objects_verified": 33,
+      "compressed_bytes_downloaded": 151049,
+      "download_scope": "source-scoped-cold-archives-only",
+      "sha256_identity_verified": true,
+      "source_id": "himalayas"
+    },
+    "average_compressed_bytes_per_cold_archived": 4675.12,
+    "before_database_bytes": 13798547,
+    "before_public_relation_bytes": 1703936,
+    "cold_opportunities_after": 33,
+    "commit": "7bc731320297d862ec1615a4ebe8b8d7465add1a",
+    "current_evaluations_after": 40,
+    "database_growth_bytes": 303104,
+    "direct_tier_invariants_passed": true,
+    "feed_visible_opportunities_after": 7,
+    "hot_opportunities_after": 7,
+    "protected_opportunities_after": 0,
+    "raw_opportunities_received": 20,
+    "source_cold_archive_bytes_after": 151049,
+    "source_cold_archive_objects_after": 33,
+    "source_id": "himalayas",
+    "source_opportunities_after": 40,
+    "status": "PASS",
+    "unique_opportunities": 20,
+    "workflow_run_id": 35835117460
+  },
+  "representative_workflow_run_id": null,
+  "schema": "fr007-storage-v2-capacity-model-v2",
+  "source_id": "__successful_corpus__",
+  "source_overhead_relation_bytes": {
+    "public.source_poll_runs": 262144,
+    "public.source_schedules": 139264,
+    "public.worker_jobs": 319488,
+    "total": 720896
+  },
+  "source_sample_opportunities": 826,
+  "source_sample_successful_identities": 5,
+  "target_opportunities": 26000,
+  "target_read_allowed_sources": 343
 }
