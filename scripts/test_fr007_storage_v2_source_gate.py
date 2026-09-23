@@ -167,6 +167,44 @@ class RepresentativeSourceEconomicsTests(unittest.TestCase):
         self.assertEqual(params["after_opportunity_id"], "opaque-cursor")
         self.assertEqual(proof["download_scope"], "successful-corpus-cold-archives-only")
         self.assertEqual(proof["last_verified_opportunity_id"], "opaque-cursor")
+        self.assertFalse(proof["has_more"])
+
+    def test_successful_corpus_archive_page_accepts_the_one_row_pagination_sentinel(self):
+        rows = [
+            {
+                "opportunity_id": f"op-{idx:04d}",
+                "content_hash": f"content-{idx}",
+                "object_key": f"cold/{idx}.gz",
+                "payload_sha256": f"sha-{idx}",
+                "compressed_size_bytes": 1,
+                "storage_backend": "supabase_storage",
+            }
+            for idx in range(501)
+        ]
+        result = MagicMock()
+        result.mappings.return_value.all.return_value = rows
+        connection = MagicMock()
+        connection.execute.return_value = result
+        client = MagicMock()
+
+        with (
+            patch.object(source_gate, "client_from_env", return_value=client),
+            patch.object(source_gate, "get_cold_object", return_value=b"x") as get_object,
+            patch.object(source_gate, "unpack", return_value={"canonical_description": "real text"}),
+        ):
+            proof = source_gate.verify_source_archives(
+                connection,
+                source_id=source_gate.CORPUS_SOURCE_ID,
+                max_objects=500,
+                max_archive_bytes=32 * 1024 * 1024,
+                include_cursor=True,
+            )
+
+        self.assertEqual(proof["archive_objects_verified"], 500)
+        self.assertEqual(proof["compressed_bytes_downloaded"], 500)
+        self.assertEqual(proof["last_verified_opportunity_id"], "op-0499")
+        self.assertTrue(proof["has_more"])
+        self.assertEqual(get_object.call_count, 500)
 
     def test_successful_corpus_archives_are_verified_in_bounded_pages(self):
         first = {

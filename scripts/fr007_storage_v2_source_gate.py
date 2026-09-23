@@ -244,8 +244,11 @@ def verify_source_archives(
         "after_opportunity_id": after_opportunity_id,
         "max_objects_plus_one": max_objects + 1,
     }).mappings().all()
-    if len(records) > max_objects:
+    has_more = len(records) > max_objects
+    if has_more and not include_cursor:
         raise RuntimeError("representative archive count exceeds the bounded verifier limit")
+    if has_more:
+        records = records[:max_objects]
     advertised_bytes = sum(int(row["compressed_size_bytes"] or 0) for row in records)
     if advertised_bytes > max_archive_bytes:
         raise RuntimeError("representative archive bytes exceed the bounded verifier limit")
@@ -262,6 +265,7 @@ def verify_source_archives(
         }
         if include_cursor:
             result["last_verified_opportunity_id"] = after_opportunity_id
+            result["has_more"] = False
         return result
 
     client = client_from_env()
@@ -290,6 +294,7 @@ def verify_source_archives(
     }
     if include_cursor:
         result["last_verified_opportunity_id"] = str(records[-1]["opportunity_id"])
+        result["has_more"] = has_more
     return result
 
 

@@ -1,3 +1,11 @@
+- latest_checkpoint_refresh_2026_09_23_capacity_reforecast_pagination_repair:
+  - pushed code SHA 645caac81af0b88e3c9889f7d5b092841971331d; hosted PostgreSQL 16/17 workflow run 35852196425 passed both fresh/deployed migration, Storage V2 source-gate/backup, and complete PostgreSQL-backed regression jobs.
+  - read-only capacity-reforecast run 35852639041 correctly skipped ingestion and attempted full current cold-archive verification, then failed at the verifier before any live write. Sanitized failure class: RuntimeError.
+  - diagnosed page-boundary bug: the keyset verifier fetched 501 rows to detect the continuation sentinel, then applied the single-source overflow rejection instead of verifying the first 500 and advancing. Independent aggregate-only live SQL confirms all 813 current successful-source cold archives / 6,554,104 bytes map to private Storage objects; 0 invalid backends/keys, identity mismatches, missing Storage metadata, size metadata mismatches, or invalid object sizes.
+  - code now permits the sentinel only in cursor/paginated mode, truncates verification to the requested 500-row page, reports has_more, and keeps single-source non-paginated overflow fail-closed. Added a 501-row regression proving only the first 500 are verified and the stable cursor advances. No live DB/object changes occurred.
+  - repair regression results: focused suite 25 passed (1.63s); full tracked + added regression suite 1487 passed, 189 skipped, 312 warnings, 2012 subtests passed (284.90s). Python compilation, both workflow YAML parses, and git diff --check pass.
+  - next exact action: commit/push the bounded pagination fix and regression; require PG16/17 green; rerun capacity-reforecast until all 813 archive checksums/identities/bytes and the physical projected 26k budget are proven.
+
 - latest_checkpoint_refresh_2026_09_23_capacity_reforecast_code_review:
   - authoritative remote/local branch remains work/fr007-clean-rebuild-storage-v2 at 5d63f277f8976ea8cbd0c85374a22afc98054d4a; credentials were already sanitized-probed PASS on this exact head.
   - added an isolated, read-only current-successful-corpus PG17 capacity reforecast and bounded paginated checksum/identity/byte verification for existing cold archives. Live DB access is read-only; benchmark population remains in disposable PostgreSQL. Bootstrap remains hard-gated above 200 MiB.
