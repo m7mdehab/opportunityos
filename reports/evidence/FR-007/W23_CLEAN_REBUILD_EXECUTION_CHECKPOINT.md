@@ -749,3 +749,12 @@
 - current_sha_now: `a2189076fb9aeaa1923f3d2400e5e77fc05e6095`
 - current_remote_sha: `a2189076fb9aeaa1923f3d2400e5e77fc05e6095`
 - exact_next_action: let run `35916759119` finish its present boundary verification and continue only its unfinished selected sources. Do not start a second bootstrap/queue workflow. Maintain the accepted <=200 MiB projection guard and defer the one corpus-wide archive checksum pass until all intended source slices are complete.
+
+- execution_update_2026_09_23_2212Z_five_source_batch_green:
+  - bootstrap `35916759119` remains active; the next five-source batch and its normal evaluator have now completed with an empty queue. All five latest source polls are `ok`: Geneva Trading 16/16; Geotab 91/91; GitLab 205/205; Glean 127/127; GoDaddy 34/34. Total batch: 473 raw /473 unique /473 inserted.
+  - aggregate-only SQL at `2026-09-23T22:12:15Z`: physical DB `80,891,027` bytes; 9,810 opportunities (1,246 HOT /8,564 COLD /0 protected); feed 1,246; evaluations 9,810; cold archives 8,564 /`68,523,589` compressed bytes. Latest successful identities 116, latest failures 0. Queue pending/retry/running/expired/dead-letter all 0.
+  - private buckets: opportunity archives 8,564 /`68,523,589` bytes; canonical CV package 32 /`2,163,348` bytes. Top relations: opportunities `20,750,336`, storage.objects `18,743,296`, match_evaluations `10,305,536`, field_provenances `7,454,720`, cold archive `6,692,864`, feed_projection `2,875,392` bytes. Top index: HOT provenance identity `2,736,128`; Storage object indexes remain <2.8 MiB each. No direct-tier invariant failure or source error; no whole-corpus object verification has been performed.
+- current_phase: `PHASE_V_BOOTSTRAP_RUN_35916759119_AFTER_GENEVA_GEOTAB_GITLAB_GLEAN_GODADDY_BATCH_116_LATEST_OK`
+- current_sha_now: `0fdaa02552ae8383f788533d664e59102ec556f2`
+- current_remote_sha: `0fdaa02552ae8383f788533d664e59102ec556f2`
+- exact_next_action: continue the existing run's bounded selection, waiting for each normal five-source batch to finish and its queue/invariant check before moving on. Keep to the tested five-shard cap and skip all latest-success identities. Resume only unfinished sources if this run reaches its ceiling; do the sole corpus archive checksum pass after all source ranges finish.
