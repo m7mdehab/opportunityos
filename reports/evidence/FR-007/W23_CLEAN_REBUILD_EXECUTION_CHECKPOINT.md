@@ -597,3 +597,23 @@
 - current_sha_now: `f5c6be282dc54e79279390c1ceb0518892977a99` (repair uncommitted)
 - current_remote_sha: `f5c6be282dc54e79279390c1ceb0518892977a99`
 - exact_next_action: push the narrowly scoped enqueue argument fix after focused checks, require affected hosted regressions, then redispatch the resumable bootstrap immediately.
+
+- execution_update_2026_09_23_enqueue_fix_pushed_bootstrap_resumed:
+  - fix commit `b31772b21b10ddfbc53cbe5442c6986a8f25a0fc` was pushed to the authoritative branch. It includes only the CLI validation fix, focused regression, and this checkpoint; no untracked `work/` content was staged.
+  - resumed source bootstrap is GitHub launcher run `35909394228`, branch/head `b31772b`, source offset 0/max125, job `107345117499`. The launcher visibly confirms the job is executing in the protected `fr007-staging` environment with the replacement project URL; connection secrets remain masked. At latest inspection the bounded five-source batch step was active; no failure was reported. The earlier `35907601889` attempt is terminal failed before any new poll, with all 73 previous successes skipped.
+  - push-triggered PostgreSQL 16/17 acceptance run `35909261257` started on `b31772b` and was in progress at checkpoint refresh. Existing fast-shard/OCI acceptance on its unchanged worker implementation remains `35905513208` / `35905513143`; the repair is limited to hosted bootstrap CLI scope.
+  - focused tests passed (25), compileall passed, and diff check passed before push. No schema, secrets, worker rows, source-success state, or object data were modified by the repair.
+- current_phase: `PHASE_V_INCREMENTAL_BOOTSTRAP_RESUMED_ON_B31772B`
+- current_sha_now: `b31772b21b10ddfbc53cbe5442c6986a8f25a0fc`
+- current_remote_sha: `b31772b21b10ddfbc53cbe5442c6986a8f25a0fc`
+- exact_next_action: monitor run `35909394228` at batch boundaries, require its initial capacity/archive/queue preflight to pass before accepting any new source poll, and inspect PostgreSQL run `35909261257` for a green regression footer. Continue bounded slices without replaying latest-successful identities; after the source list completes, run the single final full-corpus integrity/capacity verifier and immediately continue terminal acceptance.
+
+- execution_update_2026_09_23_credential_safety_handoff:
+  - while performing a read-only live-state inspection, the authenticated Supabase dashboard connection dialog surfaced the replacement project's full database URI in its accessibility output. No URI/password was copied into a repository file, terminal output, committed evidence, or report. Treat the DB password as compromised and rotate it before dispatching further hosted work.
+  - attempted non-interactive authorized credential-management paths without emitting values: Supabase CLI is unavailable; `SUPABASE_ACCESS_TOKEN`, `GH_TOKEN`, and `GITHUB_TOKEN` are absent; GitHub CLI is not authenticated. No alternative local API session is available. Password changes through the authenticated browser require user presence/hand-off, so I did not perform or bypass that step.
+  - hosted bootstrap run `35909394228` / job `107345117499` remains in progress on `b31772b`, offset 0/max125. It was left untouched because its current worker/batch state could not be conclusively established from the silent, buffered live log; do not cancel mid-poll. Its artifact will preserve sanitized resumable state. PostgreSQL acceptance `35909261257` was still running (one of two matrix jobs completed) at this check.
+  - external action required to resume: in Supabase, rotate the DB password for replacement project `sunjfepvdzfknglrjwhm` only; in GitHub environment `fr007-staging`, replace `OPOS_TARGET_DB_URL` (verified direct or session-capable URI) and `CLOUD_DATABASE_URL` (official session-pooler URI); keep password material out of chat. Then reply that the cutover is complete so I can run the sanitized probe and resume only unsuccessful source work. Do not change any other project.
+- current_phase: `PHASE_V_BLOCKED_FOR_USER_PRESENCE_DATABASE_CREDENTIAL_ROTATION`
+- current_sha_now: `b31772b21b10ddfbc53cbe5442c6986a8f25a0fc` (checkpoint update pending)
+- current_remote_sha: `b31772b21b10ddfbc53cbe5442c6986a8f25a0fc`
+- exact_next_action: wait for the Founder to rotate the replacement-project password and update the two protected `fr007-staging` database secrets. Then run the sanitized credential probe, inspect/resume bootstrap `35909394228` from persisted source success state, and continue W23 acceptance.
