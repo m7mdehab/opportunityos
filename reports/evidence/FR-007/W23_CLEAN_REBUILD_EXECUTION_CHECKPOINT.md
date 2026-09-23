@@ -690,3 +690,12 @@
 - current_sha_now: `07ff9cdefe15bbe47e7617a5a6955971260d83a1`
 - current_remote_sha: `07ff9cdefe15bbe47e7617a5a6955971260d83a1`
 - exact_next_action: continue the active run until terminal status, inspect its sanitized artifact, and continue only unfinished source identities. The registered launcher now exposes staging deploy/smoke modes; defer deployment and UI mutations until after source bootstrap, queue convergence, and exact runtime acceptance.
+
+- execution_update_2026_09_23_2103Z_slow_source_heartbeat:
+  - run `35916759119` / job `107370111069` remains in progress; latest read-only queue inspection identifies the sole running source job as `greenhouse:elastic`, created `20:51:48Z`, with a fresh lease heartbeat (`updated_at 21:03:30Z`, lease through `21:04:30Z`). Source data is arriving while the normal poll remains leased; do not cancel or repeat it. No source failure is recorded.
+  - aggregate snapshot at `21:03:14Z`: PostgreSQL `69,192,851` bytes; 7,946 opportunities (1,030 HOT /6,916 COLD), 6,916 private archives /`55,341,674` compressed bytes. Queue shows one running poll and one pending normal evaluation follow-up; no expired lease/dead-letter was observed. Latest successful source identity count remains 90 pending completion of `greenhouse:elastic`.
+  - password material remains untouched. The staging launcher bridge commit is `07ff9cdefe15bbe47e7617a5a6955971260d83a1`; focused tests/validator passed, and bridge is available for the later staging rollout.
+- current_phase: `PHASE_V_BOOTSTRAP_RUN_35916759119_WAITING_FOR_LEASED_GREENHOUSE_ELASTIC_POLL`
+- current_sha_now: `c3edcf12e883411a86fb8e72c3a10fba5a900153` (checkpoint update pending)
+- current_remote_sha: `c3edcf12e883411a86fb8e72c3a10fba5a900153`
+- exact_next_action: let the existing `greenhouse:elastic` poll finish under normal worker lease semantics. At the natural source/batch boundary, inspect its source result and queue state; keep successful sources skipped and continue the same bounded run. Do not dispatch another bootstrap or queue recovery while this source is active.
