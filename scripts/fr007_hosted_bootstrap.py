@@ -23,6 +23,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
 
 from opportunity.registry import SourceRegistry
 from storage.engine import get_engine, get_session_factory, get_production_db_url
+from storage.models import WorkerJobRecord
 from worker.handlers import default_handler_registry
 from worker.scheduler import enqueue_due_sources, get_or_create_source_schedule, _parse_cadence_hours
 from worker.runner import WorkerRunner
@@ -45,28 +46,61 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-jobs", type=int, default=10)
     p.add_argument("--time-budget-seconds", type=float, default=300.0)
     p.add_argument("--worker-id", type=str, default=None, help="Explicit worker identity")
+    p.add_argument(
+        "--source-id",
+        type=str,
+        default=None,
+        help="Restrict schedule/enqueue to one registered, read-allowed source; requires bounded all mode",
+    )
     p.add_argument("--dry-run", action="store_true", help="inspect and report without writes")
     return p
 
 
-def _source_schedules(session, registry: SourceRegistry, *, dry_run: bool) -> int:
+def _source_schedules(
+    session,
+    registry: SourceRegistry,
+    *,
+    dry_run: bool,
+    source_id: str | None = None,
+) -> int:
     now = datetime.now(timezone.utc)
     try:
         cadence = _parse_cadence_hours(registry.path.read_text(encoding="utf-8"))
     except OSError:
         cadence = {}
     count = 0
-    for source_id in sorted(registry._sources):
+    if source_id is not None:
+        if source_id not in registry._sources:
+            raise ValueError(f"unregistered representative source: {source_id}")
         if not registry.is_read_allowed(source_id):
-            continue
+            raise ValueError(f"representative source is not read-allowed: {source_id}")
+        source_ids = [source_id]
+    else:
+        source_ids = [sid for sid in sorted(registry._sources) if registry.is_read_allowed(sid)]
+
+    for sid in source_ids:
         count += 1
         if not dry_run:
             # Existing scheduler semantics are authoritative for cadence and
             # next_due_at; do not manufacture a warm-up storm.
-            get_or_create_source_schedule(session, source_id, cadence.get(source_id, 6.0), now)
+            get_or_create_source_schedule(session, sid, cadence.get(sid, 6.0), now)
     if not dry_run:
         session.commit()
     return count
+
+
+def _assert_no_runnable_jobs(session) -> None:
+    """Fail closed rather than letting a representative gate drain unrelated work."""
+    count = (
+        session.query(WorkerJobRecord)
+        .filter(WorkerJobRecord.status.in_(("PENDING", "RETRY", "RUNNING")))
+        .count()
+    )
+    if count:
+        raise RuntimeError(
+            "representative-source gate requires an empty runnable worker queue; "
+            f"found {count} existing runnable job(s)"
+        )
 
 
 def _drain(session_factory, *, max_jobs: int, budget: float, worker_id: str | None = None) -> int:
@@ -97,6 +131,22 @@ def _drain(session_factory, *, max_jobs: int, budget: float, worker_id: str | No
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.source_id is not None:
+        if args.mode != "all":
+            raise SystemExit("--source-id is permitted only with --mode all")
+        if args.max_jobs < 0 or args.max_jobs > 2:
+            raise SystemExit("representative-source execution is limited to at most 2 jobs")
+        if not args.dry_run and args.max_jobs == 0:
+            raise SystemExit("representative-source execution must allow at least the source poll job")
+        if args.time_budget_seconds <= 0 or args.time_budget_seconds > 480:
+            raise SystemExit("representative-source execution is limited to 480 seconds")
+    registry = SourceRegistry()
+    if args.source_id is not None:
+        if args.source_id not in registry._sources:
+            raise SystemExit(f"unregistered representative source: {args.source_id}")
+        if not registry.is_read_allowed(args.source_id):
+            raise SystemExit(f"representative source is not read-allowed: {args.source_id}")
+
     raw = os.environ.get("OPOS_TARGET_DB_URL") or os.environ.get("OPPORTUNITYOS_DB_URL")
     if not raw:
         raise SystemExit("hosted bootstrap requires OPOS_TARGET_DB_URL (secret value is never printed)")
@@ -114,8 +164,6 @@ def main(argv: list[str] | None = None) -> int:
     # source I/O. Disable post-commit expiration for this worker-only factory
     # so dispatch does not create an idle foreground transaction.
     factory = get_session_factory(engine, expire_on_commit=False)
-    registry = SourceRegistry()
-
     scheduled = 0
     enqueued = 0
     processed = 0
@@ -127,10 +175,26 @@ def main(argv: list[str] | None = None) -> int:
         if args.mode in ("bootstrap", "enqueue", "all"):
             session = factory()
             try:
+                if args.source_id is not None and not args.dry_run:
+                    _assert_no_runnable_jobs(session)
                 if args.mode in ("bootstrap", "all"):
-                    scheduled = _source_schedules(session, registry, dry_run=args.dry_run)
+                    scheduled = _source_schedules(
+                        session,
+                        registry,
+                        dry_run=args.dry_run,
+                        source_id=args.source_id,
+                    )
                 if args.mode in ("enqueue", "all") and not args.dry_run:
-                    items, _ = enqueue_due_sources(session, registry=registry)
+                    enqueue_kwargs = {"registry": registry}
+                    if args.source_id is not None:
+                        enqueue_kwargs["source_id"] = args.source_id
+                    items, _ = enqueue_due_sources(session, **enqueue_kwargs)
+                    if args.source_id is not None and (
+                        len(items) != 1 or items[0].get("source_id") != args.source_id
+                    ):
+                        raise RuntimeError(
+                            "representative-source scheduler did not enqueue exactly the requested source"
+                        )
                     session.commit()
                     enqueued = len(items)
             except Exception:

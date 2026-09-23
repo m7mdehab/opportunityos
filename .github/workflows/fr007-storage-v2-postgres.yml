@@ -84,6 +84,12 @@ jobs:
           alembic upgrade 0022_storage_v2_direct_tiering
           alembic upgrade head
           python scripts/verify_storage_v2_schema.py
+      - name: Exercise bounded Storage V2 source-gate measurements against PostgreSQL
+        env:
+          OPOS_TARGET_DB_URL: postgresql+psycopg2://opportunityos:${{ github.run_id }}@localhost:5432/opportunityos_fresh
+        run: >-
+          python scripts/fr007_storage_v2_source_gate.py snapshot
+          --source-id himalayas --output storage-v2-empty-source-snapshot.json
       - name: Run complete PostgreSQL-backed subsystem tests
         env:
           OPPORTUNITYOS_DB_URL: postgresql+psycopg2://opportunityos:${{ github.run_id }}@localhost:5432/opportunityos_fresh
@@ -119,48 +125,91 @@ jobs:
           from sqlalchemy import create_engine, text
           from sqlalchemy.engine import make_url
 
-          target = "aws-0-eu-central-1.pooler.supabase.com"
-          username = "postgres.sunjfepvdzfknglrjwhm"
+          pooler_host = "aws-0-eu-central-1.pooler.supabase.com"
+          direct_host = "db.sunjfepvdzfknglrjwhm.supabase.co"
+          pooler_username = "postgres.sunjfepvdzfknglrjwhm"
+          required_names = ("OPOS_TARGET_DB_URL", "CLOUD_DATABASE_URL")
+          successful = []
           failures = []
-          for name in ("OPOS_TARGET_DB_URL", "CLOUD_DATABASE_URL"):
+          control_route = None
+          for name in required_names:
               raw = os.environ.get(name, "").strip()
               if not raw:
+                  failures.append(f"{name}:missing")
                   continue
               try:
-                  candidate = make_url(raw).set(
+                  parsed = make_url(raw)
+                  expected_route = "session_pooler" if name == "CLOUD_DATABASE_URL" else None
+                  expected_username = pooler_username if name == "CLOUD_DATABASE_URL" else None
+                  if name == "CLOUD_DATABASE_URL":
+                      valid_endpoint = (
+                          parsed.host == pooler_host and parsed.port == 5432
+                          and parsed.username == pooler_username and parsed.database == "postgres"
+                      )
+                  elif parsed.host == direct_host:
+                      expected_route = "direct"
+                      expected_username = "postgres"
+                      valid_endpoint = parsed.port == 5432 and parsed.username == expected_username and parsed.database == "postgres"
+                  elif parsed.host == pooler_host:
+                      expected_route = "session_pooler"
+                      expected_username = pooler_username
+                      valid_endpoint = parsed.port == 5432 and parsed.username == expected_username and parsed.database == "postgres"
+                  else:
+                      valid_endpoint = False
+                  if not valid_endpoint:
+                      failures.append(f"{name}:endpoint-configuration-mismatch")
+                      continue
+                  query = dict(parsed.query)
+                  query.update({"sslmode": "require", "connect_timeout": "8"})
+                  candidate = parsed.set(
                       drivername="postgresql+psycopg2",
-                      username=username,
-                      host=target,
-                      port=5432,
-                      database="postgres",
-                      query={"sslmode": "require", "connect_timeout": "8"},
+                      query=query,
                   )
                   engine = create_engine(candidate, pool_pre_ping=True, pool_size=1, max_overflow=0)
                   try:
                       with engine.connect() as connection:
-                          result = connection.execute(text(
+                          state = connection.execute(text(
                               "SELECT current_database(), current_user, pg_is_in_recovery(), "
                               "current_setting('default_transaction_read_only')"
                           )).one()
-                      if result[0] != "postgres" or result[1] != username or result[2] or result[3] != "off":
-                          continue
-                      print(f"PASS {name}: new project session pooler accepts a writable primary session")
-                      raise SystemExit(0)
+                          if state[0] != "postgres" or state[1] != expected_username or state[2] or state[3] != "off":
+                              failures.append(f"{name}:primary-session-state-mismatch")
+                              continue
+                          backend_before = connection.execute(text("SELECT pg_backend_pid()")).scalar_one()
+                          connection.execute(text(
+                              "CREATE TEMP TABLE opos_fr007_credential_probe (value integer NOT NULL) "
+                              "ON COMMIT PRESERVE ROWS"
+                          ))
+                          connection.execute(text("INSERT INTO opos_fr007_credential_probe VALUES (1)"))
+                          connection.commit()
+                          semantics = connection.execute(text(
+                              "SELECT pg_backend_pid(), count(*), min(value), max(value) "
+                              "FROM opos_fr007_credential_probe"
+                          )).one()
+                          if semantics[0] != backend_before or tuple(semantics[1:]) != (1, 1, 1):
+                              failures.append(f"{name}:session-semantics-mismatch")
+                              continue
+                          connection.execute(text("DROP TABLE opos_fr007_credential_probe"))
+                          connection.commit()
+                          successful.append(name)
+                          if name == "OPOS_TARGET_DB_URL":
+                              control_route = expected_route
                   finally:
                       engine.dispose()
-              except SystemExit:
-                  raise
               except Exception as exc:
                   original = getattr(exc, "orig", exc)
                   sqlstate = getattr(original, "pgcode", None)
                   category = "authentication-rejected" if sqlstate == "28P01" else type(original).__name__
                   failures.append(f"{name}:{category}" + (f"/SQLSTATE-{sqlstate}" if sqlstate else ""))
                   continue
-          raise SystemExit(
-              "credential probe failed for both protected DB URL secrets against the new session pooler; "
-              + ", ".join(failures)
-              + "; no credential data emitted"
-          )
+          if tuple(successful) == required_names and not failures:
+              print(f"PASS: direct/control route={control_route}; session-pooler runtime route=verified; both preserve writable, session-persistent PostgreSQL semantics")
+          else:
+              raise SystemExit(
+                  "credential probe failed: both protected DB URL secrets must pass the replacement session-pooler and session-semantics checks; "
+                  + ", ".join(failures)
+                  + "; no credential data emitted"
+              )
           PY
 
   private-cv-storage-verification:

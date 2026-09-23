@@ -142,6 +142,13 @@ class StorageV2DirectTierTests(unittest.TestCase):
         self.assertIsNone(evaluation.dimension_scores_json)
         self.assertIsNone(evaluation.evaluation_detail_json)
         self.assertEqual(evaluation.hard_failure_code, "geographic_eligibility")
+        cold_reasons = json.loads(evaluation.reasons_json)
+        self.assertEqual(cold_reasons, [{
+            "kind": "hard_failure",
+            "dimension": "geographic_eligibility",
+            "text": "geographic_eligibility",
+        }])
+        self.assertLessEqual(len(evaluation.reasons_json.encode("utf-8")), 512)
         self.assertEqual(self.session.query(OpportunityColdArchiveRecord).count(), 1)
         self.assertEqual(self.session.query(FeedProjectionRecord).count(), 0)
 
@@ -158,6 +165,33 @@ class StorageV2DirectTierTests(unittest.TestCase):
         self.assertTrue(payload["provenance"])
         self.assertEqual(payload["normalized_opportunity"]["geographic_eligibility"]["status"], "excluded")
         self.assertEqual(payload["normalized_opportunity"]["responsibilities"], list(opportunity.responsibilities))
+
+    def test_archived_placeholder_is_rejected_before_scoring_or_any_persistence(self):
+        opportunity = _cold_opportunity(" [ARCHIVED] ")
+
+        class RecordingScorer:
+            calls = 0
+
+            def evaluate(inner_self, *args, **kwargs):
+                inner_self.calls += 1
+                raise AssertionError("placeholder must be rejected before matching")
+
+        scorer = RecordingScorer()
+        repository = StorageRepository(self.session, cold_storage_client=self.private_storage)
+        with self.assertRaisesRegex(ValueError, "refusing to score archived placeholder"):
+            persist_evaluated_batch(
+                _batch(opportunity),
+                repository,
+                truth_graph=self.graph,
+                truth_pack_hash="truth-a",
+                scorer=scorer,
+            )
+
+        self.assertEqual(scorer.calls, 0)
+        self.assertEqual(self.session.query(OpportunityRecord).count(), 0)
+        self.assertEqual(self.session.query(MatchEvaluationRecord).count(), 0)
+        self.assertEqual(self.session.query(OpportunityColdArchiveRecord).count(), 0)
+        self.assertEqual(self.private_storage.objects, {})
 
     def test_changed_content_replaces_archive_and_reclaims_old_object(self):
         first, _ = self._ingest_cold()

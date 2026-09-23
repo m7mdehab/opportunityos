@@ -1,0 +1,77 @@
+name: FR-007 Storage V2 representative source gate
+
+on:
+  workflow_call:
+    inputs:
+      source_id:
+        description: "One registry-approved, read-allowed source"
+        required: true
+        type: string
+    secrets:
+      CLOUD_DATABASE_URL:
+        required: true
+      STORAGE_SERVICE_KEY:
+        required: true
+      SUPABASE_URL:
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fr007-storage-v2-representative-source
+  cancel-in-progress: false
+
+jobs:
+  representative-source:
+    name: One bounded ${{ inputs.source_id }} source through direct tiering
+    runs-on: ubuntu-latest
+    environment: fr007-staging
+    timeout-minutes: 20
+    env:
+      OPOS_TARGET_DB_URL: ${{ secrets.CLOUD_DATABASE_URL }}
+      CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL }}
+      SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
+      STORAGE_SERVICE_KEY: ${{ secrets.STORAGE_SERVICE_KEY }}
+      OPPORTUNITYOS_ENVIRONMENT: cloud
+      OPPORTUNITYOS_TRUTH_PACK_PATH: ${{ vars.OPPORTUNITYOS_TRUTH_PACK_PATH || 'founder/truth_pack.yaml.gz.b64' }}
+      PYTHONPATH: ${{ github.workspace }}
+      SOURCE_ID: ${{ inputs.source_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install repository
+        run: python -m pip install -e .
+      - name: Capture bounded before snapshot
+        run: >-
+          python scripts/fr007_storage_v2_source_gate.py snapshot
+          --source-id "$SOURCE_ID" --output w23-source-before.json
+      - name: Enqueue and drain only the one approved source
+        run: >-
+          python scripts/fr007_hosted_bootstrap.py --mode all
+          --source-id "$SOURCE_ID" --max-jobs 2 --time-budget-seconds 480
+      - name: Capture bounded after snapshot
+        run: >-
+          python scripts/fr007_storage_v2_source_gate.py snapshot
+          --source-id "$SOURCE_ID" --output w23-source-after.json
+      - name: Verify only this source's private cold archives
+        run: >-
+          python scripts/fr007_storage_v2_source_gate.py verify-archives
+          --source-id "$SOURCE_ID" --output w23-source-archive-proof.json
+      - name: Enforce direct-tier and 26k-opportunity capacity gate
+        run: >-
+          python scripts/fr007_storage_v2_source_gate.py compare
+          --source-id "$SOURCE_ID"
+          --before w23-source-before.json --after w23-source-after.json
+          --archive-proof w23-source-archive-proof.json
+          --output w23-source-gate-report.json
+      - name: Preserve sanitized representative-source evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fr007-storage-v2-representative-${{ github.run_id }}
+          path: w23-source-*.json
+          if-no-files-found: ignore
+          retention-days: 30

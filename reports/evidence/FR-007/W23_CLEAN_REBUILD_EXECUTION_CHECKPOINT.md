@@ -1,9 +1,9 @@
 # FR-007 W23 clean rebuild execution checkpoint
 
 - branch: `work/fr007-clean-rebuild-storage-v2`
-- current_phase: PHASE_I_0023_REVISION_ID_CORRECTED_HOSTED_RERUN_PENDING
-- current_sha_now: `9d3005f1a14d3a706286e2a37a30b4f69d830309`
-- current_remote_sha: `9d3005f1a14d3a706286e2a37a30b4f69d830309`
+- current_phase: PHASE_II_REPRESENTATIVE_GATE_IMPLEMENTED_AWAITING_CREDENTIAL_PROBE
+- current_sha_now: `937b3df31103a16f4113f227c30ac570cf713d8d`
+- current_remote_sha: `937b3df31103a16f4113f227c30ac570cf713d8d`
 - current_sha_before_agent_changes: `bcaa447d9e3cf0f93bdac88e595493025579d854`
 - new_supabase_project_ref: `sunjfepvdzfknglrjwhm`
 - new_supabase_project_name: `opportunityos-staging`
@@ -128,3 +128,23 @@
 - no_merge: true
 - no_paid_infrastructure: true
 - seven_day_soak_claimed: false
+
+- execution_update_2026_09_23_0023_live_and_hosted_green:
+  - refreshed `origin/work/fr007-clean-rebuild-storage-v2`; remote and local HEAD are both `937b3df31103a16f4113f227c30ac570cf713d8d`. Existing untracked `work/` is user data and remains untouched.
+  - PostgreSQL 16/17 Storage V2 plus 0023 acceptance run `35801766385` is fully green. It proved fresh migration, deployed 0022 -> 0023 upgrade, the single Alembic head, owner/Alembic version-row update, and denied browser-role access on both supported PostgreSQL versions.
+  - live 0023 migration was applied once to `sunjfepvdzfknglrjwhm`; SQL verification confirms revision `0023_alembic_access`, RLS enabled without FORCE, zero browser-role table privileges/policies, and owner update capability. DB remains `13,151,379` bytes, writable primary; no product rows or source requests have been added.
+  - previously green runs remain valid: PostgreSQL Storage V2 `35799462883`, OCI PostgreSQL queue durability `35799462891`, canonical 31-object CV checksum verification `35799588764`. The CV bucket has `2,163,348` payload bytes plus one zero-byte non-manifest marker.
+  - current changelog scan found no new relevant breaking change for the direct PostgreSQL/session-pooler or private Storage path; previously established no active consumer for the management logs endpoint change remains true.
+  - new-project DB credential probe `35800272636` remains failed against both stale protected DB URLs. A secure password-reset/secret-entry handoff was requested without exposing credentials; awaiting completion. **No source poll, worker run, queue write, or Founder smoke is allowed until a fresh sanitized credential probe passes.**
+  - next safe work remains targeted-source safety/test improvements and measurement tooling while the credential handoff is pending. Then rerun the probe, capture minimal before metrics, and execute only the Himalayas representative gate (not the full source registry).
+- execution_update_2026_09_23_representative_gate_implementation:
+  - implemented an explicit `--source-id` mode in the hosted bootstrap. It requires exactly one registered read-allowed source, `--mode all`, no more than two jobs / 480 seconds, verifies the runnable queue is empty first, schedules only the selected source, passes that ID to the scheduler's single-source branch, and fails unless exactly that source poll is enqueued. The default full-registry semantics are unchanged.
+  - added a fail-closed ingestion guard that rejects an exact `[archived]` placeholder before scoring, identity reads, archive upload, or relational writes. Regression coverage confirms the scorer is not invoked and no rows/object are created.
+  - added bounded representative telemetry: database bytes, top 20 relations and indexes, key product/source/Founder/queue aggregates, source-specific poll counts, archive/object bytes, synthetic `active` projections, duplicate maxima, and cold relational-body/provenance/verbose-evaluation/reason-size checks. The verifier downloads only current cold archives for the requested source and imposes a 50-object / 8-MiB ceiling before any download; every fetched object is checksum, byte-count, and identity verified, and the bucket must prove private.
+  - the compare gate requires a successful nonempty sample, direct-tier invariants, source-scoped archive verification, no synthetic active feed, one projection/evaluation maximum, no cold body/provenance/detail duplication, <=512-byte cold reason JSON, and a conservative max(database-growth, public-relation-growth) linear extrapolation to 26,000 opportunities. It stops at >150 MiB projected (preferred-budget review threshold) and always hard-fails above 200 MiB.
+  - added the registered launcher route `representative-source`; it first calls the sanitized credential gate and only then the one-source reusable workflow. Workflow captures before/after JSON evidence, executes Himalayas only, verifies scoped archives, evaluates economics, and uploads sanitized metrics. It binds hosted worker DB use to the session-pooler secret.
+  - strengthened `db-credential-probe`: both protected URL secrets are checked at their actual configured endpoint. `CLOUD_DATABASE_URL` must be the official session pooler on :5432; `OPOS_TARGET_DB_URL` must be the official direct endpoint or that same session pooler if direct is unreachable. Each must prove writable-primary settings and retain the same backend plus a temp-table row across a commit; no password or URL is emitted. A direct-endpoint connectivity failure is not silently normalized away; switch the control URL to session pooler and rerun.
+  - PostgreSQL 16/17 acceptance now executes the read-only snapshot tool against the disposable migrated database (with provider `storage.objects` optional only on vanilla CI PostgreSQL). Latest local full tracked-package run before the final compact-reason assertion: `1436 passed, 187 skipped, 2006 subtests passed`; final targeted rerun after the reason cap: `21 passed, 2 subtests passed`; compileall, workflow YAML parse, single Alembic head, and `git diff --check` pass.
+  - fresh read-only live query confirms revision `0023_alembic_access`, writable primary, database `13,151,379` bytes; opportunity/feed/evaluation/worker-job counts are 0 and `opportunity-artifacts` is 0 objects / 0 bytes. No source poll or application/worker mutation has run.
+  - all new code/workflow/checkpoint edits are uncommitted on top of remote `937b3df31103a16f4113f227c30ac570cf713d8d`; no tracked changes exist outside this W23 work, and pre-existing untracked `work/` remains untouched.
+- exact_next_action: review the diff, commit/push the tested representative-gate and strengthened-probe implementation, and require PostgreSQL 16/17 plus OCI queue durability workflows green. In parallel, wait for secure completion of the replacement-project password reset and GitHub secret cutover; run the sanitized probe for both secrets and do not dispatch representative source until it passes. Then run only the Himalayas before/source/after gate and use its measured projection before any incremental bootstrap.

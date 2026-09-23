@@ -342,6 +342,16 @@ def persist_evaluated_batch(
     """Evaluate in worker memory, then persist each opportunity directly to its tier."""
     if not truth_pack_hash:
         raise ValueError("truth_pack_hash is required before tiered ingestion")
+    placeholder_ids = [
+        opportunity.id
+        for opportunity in batch.opportunities
+        if (opportunity.description or "").strip().casefold() == "[archived]"
+    ]
+    if placeholder_ids:
+        raise ValueError(
+            "refusing to score archived placeholder descriptions for opportunity(s): "
+            + ",".join(placeholder_ids)
+        )
     now = evaluated_at or datetime.now(timezone.utc)
     engine_scorer = scorer or OpportunityScorer()
 

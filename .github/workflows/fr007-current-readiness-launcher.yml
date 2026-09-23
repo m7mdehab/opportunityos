@@ -8,9 +8,17 @@ on:
         required: false
         default: ""
       mode:
-        description: "Closure mode, Storage V2 CI, DB credential probe, or private CV storage verification"
+        description: "Closure, Storage V2 CI, DB probe, CV verification, or one-source Storage V2 gate"
         required: false
         default: "full"
+        type: choice
+        options: [full, acceptance, storage-v2-ci, db-credential-probe, verify-cv-storage, representative-source]
+      source_id:
+        description: "The one approved read-only representative source"
+        required: false
+        default: "himalayas"
+        type: choice
+        options: [himalayas]
 
 permissions:
   contents: read
@@ -25,8 +33,21 @@ jobs:
     with:
       mode: ${{ inputs.mode == 'db-credential-probe' && 'credential-probe' || inputs.mode == 'verify-cv-storage' && 'verify-cv-storage' || 'postgres-ci' }}
     secrets: inherit
+  representative-credential-gate:
+    if: ${{ inputs.mode == 'representative-source' }}
+    uses: ./.github/workflows/fr007-storage-v2-postgres.yml
+    with:
+      mode: credential-probe
+    secrets: inherit
+  representative-source-gate:
+    if: ${{ inputs.mode == 'representative-source' }}
+    needs: [representative-credential-gate]
+    uses: ./.github/workflows/fr007-storage-v2-representative-source.yml
+    with:
+      source_id: ${{ inputs.source_id }}
+    secrets: inherit
   final-closure:
-    if: ${{ inputs.mode != 'storage-v2-ci' && inputs.mode != 'db-credential-probe' && inputs.mode != 'verify-cv-storage' }}
+    if: ${{ inputs.mode != 'storage-v2-ci' && inputs.mode != 'db-credential-probe' && inputs.mode != 'verify-cv-storage' && inputs.mode != 'representative-source' }}
     uses: ./.github/workflows/fr007-final-runtime-closure.yml
     with:
       truth_pack_hash: ${{ inputs.truth_pack_hash }}
