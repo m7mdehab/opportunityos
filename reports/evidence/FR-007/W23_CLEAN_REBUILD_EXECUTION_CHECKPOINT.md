@@ -803,3 +803,11 @@
 - current_sha_now: `226bef7170064047d3bdc29fe1b50946fb675ec3`
 - current_remote_sha: `226bef7170064047d3bdc29fe1b50946fb675ec3`
 - exact_next_action: preserve run `35929446064` and continue at the next five-source boundary; handle any eventual source-specific failure once under existing policy and continue the remaining identities without replaying successful sources.
+
+- execution_update_2026_09_23_2316Z_slice_125_twenty_sources_green:
+  - run `35929446064` continues normally. The third five-source group is latest `ok` for `greenhouse:janestreet`, `greenhouse:klaviyocampus`, `greenhouse:khanacademy`, `greenhouse:kodiak`, and `greenhouse:labelbox`; no poll was replayed.
+  - aggregate snapshot at `2026-09-23T23:15:38Z`: DB `90,500,243` bytes; 11,357 opportunities; HOT/feed 1,401; COLD 9,956; cold archive objects 9,956 /`77,092,773` compressed bytes; 146 latest-success identities; 0 latest failures. Queue was empty (pending/retry/running/expired/dead-letter all zero).
+- current_phase: `PHASE_V_BOOTSTRAP_SLICE_125_CONTINUING_AFTER_TWENTY_SOURCE_SUCCESSES`
+- current_sha_now: `a9af20fdd1580a0e43d74d472dce60f9382342b5`
+- current_remote_sha: `a9af20fdd1580a0e43d74d472dce60f9382342b5`
+- exact_next_action: keep `35929446064` undisturbed and continue only to natural source-batch boundaries. Final archive checksum remains deferred until all three registry ranges finish.
