@@ -178,6 +178,45 @@ class RepresentativeSourceScopeTests(unittest.TestCase):
         )
         fake_engine.dispose.assert_called_once()
 
+    def test_enqueue_mode_source_batch_enqueues_only_the_explicit_batch(self):
+        fake_engine = MagicMock()
+        fake_session = MagicMock()
+        fake_session.query.return_value.filter.return_value.count.return_value = 0
+        factory = lambda: fake_session
+        registry = SimpleNamespace(
+            _sources={"himalayas", "other-source", "unselected-source"},
+            path=Path("registry-does-not-exist.yaml"),
+            is_read_allowed=lambda _source_id: True,
+        )
+        ids = ["himalayas", "other-source"]
+        selected = [{"source_id": sid, "job_id": f"job-{idx}"} for idx, sid in enumerate(ids)]
+        with (
+            patch.dict(os.environ, {"OPOS_TARGET_DB_URL": "postgresql://not-a-real-secret/db"}, clear=False),
+            patch.object(bootstrap, "SourceRegistry", return_value=registry),
+            patch.object(bootstrap, "get_engine", return_value=fake_engine),
+            patch.object(bootstrap, "get_session_factory", return_value=factory),
+            patch.object(bootstrap, "_source_schedules", return_value=0) as schedule,
+            patch.object(bootstrap, "enqueue_due_sources", return_value=(selected, [])) as enqueue,
+        ):
+            rc = bootstrap.main([
+                "--mode", "enqueue", "--source-ids", ",".join(ids),
+            ])
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(schedule.call_count, 1)
+        self.assertTrue(schedule.call_args.kwargs["dry_run"])
+        self.assertEqual(
+            enqueue.call_args.kwargs,
+            {
+                "registry": registry,
+                "source_ids": ids,
+                "force": True,
+                "create_missing_schedules": False,
+            },
+        )
+        fake_session.commit.assert_called_once()
+        fake_engine.dispose.assert_called_once()
+
     def test_generic_enqueue_never_creates_unseeded_registry_schedules(self):
         fake_engine = MagicMock()
         fake_session = MagicMock()

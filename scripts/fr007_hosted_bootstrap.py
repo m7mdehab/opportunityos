@@ -177,8 +177,8 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit("--source-ids contains duplicate source IDs")
         if args.source_id is not None:
             raise SystemExit("--source-id and --source-ids cannot be combined")
-        if args.mode not in ("bootstrap", "all"):
-            raise SystemExit("--source-ids is permitted only with --mode bootstrap or all")
+        if args.mode not in ("bootstrap", "enqueue", "all"):
+            raise SystemExit("--source-ids is permitted only with --mode bootstrap, enqueue, or all")
         if args.mode == "all" and (
             args.max_jobs < len(selected_source_ids)
             or args.max_jobs > 2 * len(selected_source_ids)
