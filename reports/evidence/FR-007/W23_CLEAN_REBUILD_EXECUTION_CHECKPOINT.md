@@ -1513,9 +1513,9 @@
 
 ## Current terminal checkpoint (authoritative; supersedes earlier next-action entries)
 
-- observed_at: 2026-09-25 after terminal run `36067068955` and final aggregate query.
+- observed_at: 2026-09-25 after terminal run `36067068955`, final aggregate query, and evidence commit `2dc22fac4160d15d3038cf725bc284174c12abd8`.
 - branch: `work/fr007-clean-rebuild-storage-v2`.
-- code_sha: `f6f78addbf108f54bf436809b26c751e41640be4`.
+- code_sha: `f6f78addbf108f54bf436809b26c751e41640be4`; latest evidence commit `2dc22fac4160d15d3038cf725bc284174c12abd8`.
 - bootstrap: offsets 125/125 (`35993735392`) and 250/93 (`36014460330`) PASS; 343 read-allowed identities, 27,525 opportunities; no active bootstrap.
 - one-time whole-corpus archive/capacity proof: `36048920767` PASS; do not repeat.
 - final database: writable primary, revision `0025_current_feed_fast_path`, 188,656,787 bytes /179.92 MiB; HOT 2,765, COLD 24,760, protected-tier 0; 2,765 feed rows; 27,525 evaluations; zero synthetic-active rows; 24,760 cold objects /179,555,835 compressed bytes.
@@ -1523,6 +1523,7 @@
 - queue: pending/retry/running/expired/dead-letter all zero; no oldest due runnable.
 - final runtime/monitor: `36067068955` PASS, exactly five shards at 30 jobs /480 sec; max worker connections 0 (<=10), idle-in-transaction 0, unattributed connections 0, observer failures 0; error deltas EMAXCONNSESSION/UniqueViolation/ReadOnlySqlTransaction all 0. FULL monitor passed; issue #137 resolved by ordinary `RESOLVE`, non-synthetic.
 - final Founder smoke: `36062166122` PASS. PG16/17 `36062643183`, OCI queue durability `35799462891`, CV 31-object SHA verification `35799588764` PASS.
-- final report exists at `reports/evidence/FR-007/W23_CLEAN_REBUILD_STORAGE_V2_REPORT.md`; it records no paid infra, no merge, no manual worker-row edits, no source-truth loss, and no seven-day soak claim.
+- final report exists at `reports/evidence/FR-007/W23_CLEAN_REBUILD_STORAGE_V2_REPORT.md`; report and checkpoint were committed/pushed as `2dc22fac4160d15d3038cf725bc284174c12abd8`. The report records no paid infra, no merge, no manual worker-row edits, no source-truth loss, and no seven-day soak claim.
 - required post-completion Founder action: rotate replacement DB password and update protected environment URLs. Do not touch credentials as part of this agent completion.
-- next action: run final evidence checks; commit and push only the report and this checkpoint. Then run `STATE_PRESERVE_TIMESTAMP=1 python scripts/generate_state.py`; inspect that only `docs/STATE.md` is newly changed; commit only `docs/STATE.md` as the final commit; push and verify `git ls-remote`. No subsequent commit.
+- current remote SHA: `2dc22fac4160d15d3038cf725bc284174c12abd8` (verified after evidence push).
+- next action: push this checkpoint-only advancement, then run `STATE_PRESERVE_TIMESTAMP=1 python scripts/generate_state.py`; inspect that only `docs/STATE.md` is newly changed; commit only `docs/STATE.md` as the final commit; push and verify `git ls-remote`. No subsequent commit.
