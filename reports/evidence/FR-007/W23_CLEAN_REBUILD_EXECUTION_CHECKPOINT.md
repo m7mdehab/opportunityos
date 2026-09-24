@@ -1491,8 +1491,38 @@
   - Acceptance run `36066082920` executed all five shards successfully and the post-recovery snapshot passed. Observer ran its full sampling interval, then failed only because `MAX_WORKER_CONNECTIONS=0` violated an extra code minimum of 1. Other observer metrics were `MAX_IDLE_IN_TRANSACTION=0`, `MAX_UNATTRIBUTED_POSTGRES=0`, `PROBE_FAILURES=0`. The current due/runnable queue was empty, so zero concurrent worker sessions is valid; no artificial job was inserted.
   - Removed the unrequested minimum. Observer now enforces exactly the contract ceiling (`max_worker <= 10`) plus zero persistent idle transactions, zero unattributed connections, and zero observer failures. Added regression contract coverage. Focused test suite 9/9 passes; YAML parse and diff checks pass.
   - Run 99 terminal aggregate: DB 188,656,787 bytes; 27,525 opportunities (2,765 HOT /24,760 COLD /0 protected); 24,760 archive objects /179,555,835 compressed bytes; queue PENDING/RETRY/RUNNING/DEAD_LETTER/expired all zero, oldest due null. No source state or data changed.
-  - exact_next_action: commit/push this narrow observer threshold correction and checkpoint; dispatch acceptance once more. Require observer pass, exact five-shard final proof, FULL monitor, and ordinary #137 RESOLVE before final reporting.
+- exact_next_action: commit/push this narrow observer threshold correction and checkpoint; dispatch acceptance once more. Require observer pass, exact five-shard final proof, FULL monitor, and ordinary #137 RESOLVE before final reporting.
+
+- execution_update_2026_09_25_acceptance_run_100_dispatched:
+  - Observer threshold correction committed/pushed as `f6f78addbf108f54bf436809b26c751e41640be4`; remote ref matches.
+- exact_next_action: dispatch acceptance from the registered launcher on this head; wait through the 6-minute observer; then require final-proof and FULL monitor completion.
+
+- execution_update_2026_09_25_terminal_acceptance_and_reporting:
+  - Refetched and verified the authoritative branch remains at `f6f78addbf108f54bf436809b26c751e41640be4`. The only unrelated workspace state remains the user's modified `web/public/mockServiceWorker.js` and untracked `work/`; neither is staged or changed.
+  - Final acceptance run `36067068955` completed successfully. Exactly five `bounded-recovery` shards passed at the workflow's standard 30 jobs /480 seconds within its existing 35-minute envelope. The naturally empty queue meant the observer correctly measured maximum worker connections 0, persistent idle transactions 0, unattributed PostgreSQL connections 0, and probe failures 0 (connection ceiling <=10). Final proof reports PASS; new-error deltas from proof start: EMAXCONNSESSION 0, UniqueViolation 0, ReadOnlySqlTransaction 0.
+  - The same run's FULL monitor passed and the incident processor emitted `RESOLVE (synthetic=False)`, successfully resolving and closing Issue #137. Final queue/capacity snapshot: DB 188,656,787 bytes /179.92 MiB, expired 0, due runnable 0, dead-letter 0; no pending/retry/running work. One final aggregate-only Supabase catalog/state query confirmed writable primary, revision `0025_current_feed_fast_path`, 27,525 opportunities (2,765 HOT /24,760 COLD /0 protected-tier), 2,765 feed rows, 27,525 evaluations, zero synthetic active projections, 24,760 archive rows /179,555,835 compressed bytes, 9 Founder activity events across 4 opportunities, 3 triage rows, and zero feedback/views/outbound rows. The same query captured final top-20 heap/index/total relation sizes and actual top-20 live index sizes for the report. Bootstrap, corpus verification, migration, CV, and staging-smoke evidence remain as recorded above; no successful work was restarted.
+  - Completed `W23_CLEAN_REBUILD_STORAGE_V2_REPORT.md` with final architecture, migrations, recovery/deployment path, live footprint and relation/index profile, bootstrap/storage economics, CV/data-integrity checks, staging Founder smoke, five-shard metrics, FULL monitor and normal #137 RESOLVE evidence. Password rotation is recorded as a required Founder post-completion security action; it is not a completion blocker and no credential was touched. Seven-day soak is explicitly not claimed.
+  - current_phase: `PHASE_V_REPORT_RECORDED_PRE_FINAL_EVIDENCE_COMMIT`
+  - current_sha_now: `f6f78addbf108f54bf436809b26c751e41640be4` plus this terminal checkpoint/report (uncommitted evidence only).
+  - current_remote_sha: `f6f78addbf108f54bf436809b26c751e41640be4` (verified by `git ls-remote`).
+  - exact_next_action: validate the new report and checkpoint with diff/evidence sanity checks; commit and push only those two W23 evidence files. Then run `STATE_PRESERVE_TIMESTAMP=1 python scripts/generate_state.py`, verify only `docs/STATE.md` is newly changed, commit ONLY `docs/STATE.md` as the final commit, push, and confirm the remote SHA. Do not create any later commit.
 
 - execution_update_2026_09_25_acceptance_run_99_dispatched:
   - Committed/pushed the implicit-success guard fix as `f65f83468c92ee7d3e67f1ac5d04f402e861ee86`; authoritative remote ref matches. Focused workflow suite and YAML/diff checks passed before commit.
   - exact_next_action: dispatch registered launcher with branch `work/fr007-clean-rebuild-storage-v2`, mode `acceptance`; inspect only the completed run's job result and one aggregate DB/storage/queue snapshot.
+
+## Current terminal checkpoint (authoritative; supersedes earlier next-action entries)
+
+- observed_at: 2026-09-25 after terminal run `36067068955` and final aggregate query.
+- branch: `work/fr007-clean-rebuild-storage-v2`.
+- code_sha: `f6f78addbf108f54bf436809b26c751e41640be4`.
+- bootstrap: offsets 125/125 (`35993735392`) and 250/93 (`36014460330`) PASS; 343 read-allowed identities, 27,525 opportunities; no active bootstrap.
+- one-time whole-corpus archive/capacity proof: `36048920767` PASS; do not repeat.
+- final database: writable primary, revision `0025_current_feed_fast_path`, 188,656,787 bytes /179.92 MiB; HOT 2,765, COLD 24,760, protected-tier 0; 2,765 feed rows; 27,525 evaluations; zero synthetic-active rows; 24,760 cold objects /179,555,835 compressed bytes.
+- post-smoke Founder state: 9 activity events across 4 opportunities; 3 triage rows; feedback/views/outbound 0. No activity rows were edited manually.
+- queue: pending/retry/running/expired/dead-letter all zero; no oldest due runnable.
+- final runtime/monitor: `36067068955` PASS, exactly five shards at 30 jobs /480 sec; max worker connections 0 (<=10), idle-in-transaction 0, unattributed connections 0, observer failures 0; error deltas EMAXCONNSESSION/UniqueViolation/ReadOnlySqlTransaction all 0. FULL monitor passed; issue #137 resolved by ordinary `RESOLVE`, non-synthetic.
+- final Founder smoke: `36062166122` PASS. PG16/17 `36062643183`, OCI queue durability `35799462891`, CV 31-object SHA verification `35799588764` PASS.
+- final report exists at `reports/evidence/FR-007/W23_CLEAN_REBUILD_STORAGE_V2_REPORT.md`; it records no paid infra, no merge, no manual worker-row edits, no source-truth loss, and no seven-day soak claim.
+- required post-completion Founder action: rotate replacement DB password and update protected environment URLs. Do not touch credentials as part of this agent completion.
+- next action: run final evidence checks; commit and push only the report and this checkpoint. Then run `STATE_PRESERVE_TIMESTAMP=1 python scripts/generate_state.py`; inspect that only `docs/STATE.md` is newly changed; commit only `docs/STATE.md` as the final commit; push and verify `git ls-remote`. No subsequent commit.
