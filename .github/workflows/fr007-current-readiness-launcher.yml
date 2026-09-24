@@ -97,6 +97,7 @@ jobs:
     with:
       truth_pack_hash: ${{ inputs.truth_pack_hash }}
       mode: acceptance
+      acceptance_required: true
     secrets: inherit
   final-closure-other:
     if: ${{ inputs.mode == 'full' || inputs.mode == 'recovery' }}

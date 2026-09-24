@@ -12,6 +12,11 @@ on:
         required: false
         type: string
         default: "full"
+      acceptance_required:
+        description: "Require protected runtime acceptance after bounded recovery"
+        required: false
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       truth_pack_hash:
@@ -24,6 +29,11 @@ on:
         required: false
         type: string
         default: "full"
+      acceptance_required:
+        description: "Require protected runtime acceptance after bounded recovery"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -87,7 +97,7 @@ jobs:
 
   live-preflight:
     needs: deterministic-postgres
-    if: ${{ always() && (inputs.mode == 'full' || inputs.mode == 'recovery' || inputs.mode == 'acceptance') && (inputs.mode == 'recovery' || inputs.mode == 'acceptance' || needs.deterministic-postgres.result == 'success') }}
+    if: ${{ always() && (inputs.mode == 'full' || inputs.mode == 'recovery' || inputs.mode == 'acceptance' || inputs.acceptance_required) && (inputs.mode == 'recovery' || inputs.mode == 'acceptance' || inputs.acceptance_required || needs.deterministic-postgres.result == 'success') }}
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -162,7 +172,7 @@ jobs:
 
   bounded-recovery:
     needs: [live-preflight, maintenance, fresh-write]
-    if: ${{ always() && (inputs.mode == 'full' || inputs.mode == 'recovery' || inputs.mode == 'acceptance') && (inputs.mode == 'recovery' || inputs.mode == 'acceptance' || needs.maintenance.result == 'success') && (inputs.mode == 'recovery' || inputs.mode == 'acceptance' || needs.fresh-write.result == 'success') && needs.live-preflight.result == 'success' }}
+    if: ${{ always() && (inputs.mode == 'full' || inputs.mode == 'recovery' || inputs.mode == 'acceptance' || inputs.acceptance_required) && (inputs.mode == 'recovery' || inputs.mode == 'acceptance' || inputs.acceptance_required || needs.maintenance.result == 'success') && (inputs.mode == 'recovery' || inputs.mode == 'acceptance' || inputs.acceptance_required || needs.fresh-write.result == 'success') && needs.live-preflight.result == 'success' }}
     strategy:
       fail-fast: false
       matrix: {shard: [1, 2, 3, 4, 5]}
@@ -194,7 +204,7 @@ jobs:
 
   recovery-snapshot:
     needs: bounded-recovery
-    if: ${{ always() && needs.bounded-recovery.result == 'success' && (inputs.mode == 'full' || inputs.mode == 'recovery' || inputs.mode == 'acceptance') }}
+    if: ${{ always() && needs.bounded-recovery.result == 'success' && (inputs.mode == 'full' || inputs.mode == 'recovery' || inputs.mode == 'acceptance' || inputs.acceptance_required) }}
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -216,7 +226,7 @@ jobs:
 
   connection-observer:
     needs: live-preflight
-    if: ${{ inputs.mode == 'acceptance' && needs.live-preflight.result == 'success' }}
+    if: ${{ (inputs.acceptance_required || inputs.mode == 'acceptance') && needs.live-preflight.result == 'success' }}
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -267,7 +277,7 @@ jobs:
 
   final-proof:
     needs: [bounded-recovery, connection-observer]
-    if: ${{ inputs.mode == 'acceptance' && needs.bounded-recovery.result == 'success' && needs.connection-observer.result == 'success' }}
+    if: ${{ (inputs.acceptance_required || inputs.mode == 'acceptance') && needs.bounded-recovery.result == 'success' && needs.connection-observer.result == 'success' }}
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -315,7 +325,7 @@ jobs:
 
   full-monitor:
     needs: final-proof
-    if: ${{ inputs.mode == 'acceptance' && needs.final-proof.result == 'success' }}
+    if: ${{ (inputs.acceptance_required || inputs.mode == 'acceptance') && needs.final-proof.result == 'success' }}
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 15

@@ -172,10 +172,12 @@ class WorkerErrorDeltaTests(unittest.TestCase):
         other = launcher.split("final-closure-other:", 1)[1]
         self.assertIn("if: ${{ inputs.mode == 'acceptance' }}", acceptance)
         self.assertIn("mode: acceptance", acceptance)
+        self.assertIn("acceptance_required: true", acceptance)
         self.assertIn("if: ${{ inputs.mode == 'full' || inputs.mode == 'recovery' }}", other)
         self.assertNotIn("final-closure:\n", launcher)
         closure = (root / ".github" / "workflows" / "fr007-final-runtime-closure.yml").read_text(encoding="utf-8")
         self.assertIn('echo "CLOSURE_MODE=${{ inputs.mode }}"', closure)
+        self.assertIn("acceptance_required || inputs.mode == 'acceptance'", closure)
 
 
 if __name__ == "__main__":
