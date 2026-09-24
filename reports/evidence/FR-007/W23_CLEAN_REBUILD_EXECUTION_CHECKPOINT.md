@@ -1126,3 +1126,154 @@
 - current_sha_now: `4ca98ffdac8197ffe6d6949cf8a7940fb2b6bb42` plus uncommitted recovery/preflight implementation, targeted tests, workflow serialization, and this checkpoint update.
 - current_remote_sha: `4ca98ffdac8197ffe6d6949cf8a7940fb2b6bb42`.
 - exact_next_action: rerun targeted tests and `git diff --check`; commit/push the narrow queue-resumption repair and terminal run-#76 checkpoint; redispatch offset `125`/max `125`. Allow the single expired SpaceX poll to finish once inside the 360-minute job. Observe aggregate run/DB/storage/queue only at the 30-minute boundary or terminal result. On offset-125 PASS, dispatch offset `250`/max `93` immediately; keep corpus archive verification deferred to final bootstrap completion.
+
+- execution_update_2026_09_24_1134Z_offset_125_run_77_dispatched:
+  - repair commit `9a7379eacf129ed72a86d967f7bde0ccbfcec350` is pushed and confirmed at `origin/work/fr007-clean-rebuild-storage-v2`. It includes the bounded expired-poll recovery guard, five-worker/connection serialization, regression tests, and terminal run-#76 checkpoint. Targeted tests: 17 passed; compile and diff checks passed.
+  - dispatched launcher run `35993735392` / #77 from `9a7379e`. Inputs: `incremental-source-bootstrap`, offset `125`, max `125`; source concurrency remains capped at five. At dispatch, GitHub showed the run queued; no source progress or DB snapshot was queried after dispatch. The source slice is considered active for commit policy purposes.
+  - refreshed the existing 30-minute heartbeat monitor for run #77. No source logs, corpus archive downloads, secrets, or worker-row edits were used; no code or migration CI was repeated.
+- current_phase: `PHASE_V_OFFSET_125_BOOTSTRAP_RUN_35993735392_ACTIVE_OR_QUEUED`
+- current_sha_now: `9a7379eacf129ed72a86d967f7bde0ccbfcec350` plus this uncommitted run-#77 checkpoint note.
+- current_remote_sha: `9a7379eacf129ed72a86d967f7bde0ccbfcec350`.
+- exact_next_action: do not inspect the source slice before its first 30-minute boundary after dispatch (`2026-09-24T12:03Z`) or a terminal run event. At that boundary collect only aggregate workflow state and one aggregate DB/storage/queue snapshot. Do not commit while run #77 is active. On offset-125 PASS dispatch offset `250`/max `93` immediately. Defer comprehensive archive/object checksum verification until final bootstrap completion.
+
+- execution_update_2026_09_24_1210Z_offset_125_boundary_snapshot:
+  - At the allowed 30-minute boundary, GitHub Actions run `35993735392` / #77 remains `in_progress` on SHA `9a7379eacf129ed72a86d967f7bde0ccbfcec350`; the bounded offset-125/max-125 bootstrap job is running in `fr007-staging`. Local `gh` is unauthenticated, so status was read from the existing authenticated GitHub browser session; no logs/source progress were opened.
+  - One aggregate SQL snapshot at `2026-09-24T12:09:52Z`: physical DB `136,301,715` bytes; 19,290 opportunities (1,886 HOT /17,404 COLD /0 protected); 1,886 feed rows; 19,288 evaluations; queue 338 total rows, 0 pending/retry, 0 expired, 0 dead-letter, no due work. Top relations: opportunities 36,806,656 bytes (17,997,824 heap /8,896,512 indexes), match evaluations 18,358,272, cold archive metadata 13,369,344, field provenance 11,141,120, feed projection 4,259,840. Private Storage: artifacts 17,404 objects /`130,449,072` bytes; CV bucket 32 /`2,163,348` bytes. Synthetic `active` feed count is 0.
+  - The aggregate's initial `cold_body_free` helper also required `search_tsv IS NULL`, which incorrectly labeled compact searchable vectors as body duplication. A single narrow aggregate diagnostic confirmed for 17,412 then-current COLD rows: descriptions 0, raw payloads 0, provenance-bearing rows 0, verbose current evaluations 0, feed rows 0, archive metadata 17,412 and missing archive metadata 0. Compact `search_tsv` is intentionally populated from title/organization/location/track/title-family/family-key only (`storage/repository.py`); it contains no source description. The 8-row difference from the first snapshot reflects normal worker progress between the two read-only queries. This is not a capacity/integrity failure.
+  - DB remains below the 200 MiB hard cap. No corpus download, secret handling, worker-row edit, source log/progress scan, or commit/push occurred. The earlier Cloudflare staging/Founder-auth deployment and smoke remain accepted and unchanged.
+- current_phase: `PHASE_V_OFFSET_125_BOOTSTRAP_RUN_35993735392_ACTIVE_BOUNDARY_12_03Z`
+- current_sha_now: `9a7379eacf129ed72a86d967f7bde0ccbfcec350` plus local checkpoint-only boundary note.
+- current_remote_sha: `9a7379eacf129ed72a86d967f7bde0ccbfcec350`.
+- exact_next_action: leave run `35993735392` undisturbed; next permitted inspection is at `2026-09-24T12:33Z` or a terminal event. At that time read only workflow status and one aggregate DB/storage/queue snapshot. Do not commit/push while the slice is active. On offset-125 PASS, dispatch offset `250`/max `93` immediately, retain concurrency <=5, and defer comprehensive archive/object verification until all source ranges finish.
+
+- execution_update_2026_09_24_1238Z_offset_125_second_boundary:
+  - At the second 30-minute boundary, GitHub Actions run `35993735392` / #77 remains `in_progress` on `9a7379eacf129ed72a86d967f7bde0ccbfcec350`; the bounded incremental-source-bootstrap job is still active. No source/job logs or per-source progress were opened.
+  - One aggregate snapshot at `2026-09-24T12:37:27Z`: physical DB `138,562,707` bytes; 19,713 opportunities (1,886 HOT /17,827 COLD /0 protected); 1,886 feed rows; 19,711 evaluations. Top relations: opportunities `37,306,368` bytes, match evaluations `18,620,416`, cold archive metadata `13,565,952`, field provenance `11,141,120`, feed projection `4,259,840`. Storage: artifacts 17,827 objects /`133,172,975` bytes; CV 32 /`2,163,348` bytes. Synthetic `active` projections 0. Queue has 338 rows, 0 due, 0 expired leases, 0 dead-letter; oldest due is null.
+  - Physical DB remains below 200 MiB. Simple corpus scaling from 19,713 opportunities to 26,000 projects to approximately `182.7 MB` /`174.2 MiB`; this remains within the hard cap. This is only a directional forecast; final actual size and full corpus acceptance are still pending.
+  - No source/corpus downloads, secrets, manual worker edits, merges, or additional commits/pushes. Checkpoint update remains local while the slice runs.
+- current_phase: `PHASE_V_OFFSET_125_BOOTSTRAP_RUN_35993735392_ACTIVE_BOUNDARY_12_33Z`
+- current_sha_now: `9a7379eacf129ed72a86d967f7bde0ccbfcec350` plus local checkpoint-only boundary note.
+- current_remote_sha: `9a7379eacf129ed72a86d967f7bde0ccbfcec350`.
+- exact_next_action: leave run `35993735392` undisturbed; next permitted inspection is at `2026-09-24T13:03Z` or a terminal event. Collect only run status and one aggregate DB/storage/queue snapshot. Do not commit/push while the slice is active. On offset-125 PASS, dispatch offset `250`/max `93` immediately; keep concurrency <=5 and defer comprehensive archive/object verification until all source ranges finish.
+
+- execution_update_2026_09_24_1308Z_offset_125_third_boundary:
+  - At the third 30-minute boundary, run `35993735392` / #77 on `9a7379eacf129ed72a86d967f7bde0ccbfcec350` remains in progress; the bootstrap job has run approximately 1h29m. No logs or source-specific status were inspected.
+  - One aggregate snapshot at `2026-09-24T13:07:32Z`: DB `140,954,771` bytes; 20,126 opportunities (1,886 HOT /18,240 COLD /0 protected); 1,886 feed rows; 20,126 evaluations. Top relations: opportunities `37,863,424` bytes, match evaluations `18,857,984`, cold archive metadata `13,877,248`, field provenance `11,141,120`, feed projection `4,259,840`. Storage: artifacts 18,240 /`135,801,634` bytes; CV 32 /`2,163,348` bytes. Synthetic `active` feed 0. Queue 339 rows, due 0, expired 0, dead-letter 0, no oldest due work.
+  - Forecast scaled to 26,000 opportunities: ~`182.1 MB` /`173.7 MiB`, below the 200 MiB hard cap. This forecast does not replace final measured footprint.
+  - No corpus downloads, source logs, secrets, manual queue edits, checkpoint commit, or push.
+- current_phase: `PHASE_V_OFFSET_125_BOOTSTRAP_RUN_35993735392_ACTIVE_BOUNDARY_13_03Z`
+- current_sha_now: `9a7379eacf129ed72a86d967f7bde0ccbfcec350` plus local checkpoint-only boundary note.
+- current_remote_sha: `9a7379eacf129ed72a86d967f7bde0ccbfcec350`.
+- exact_next_action: leave run `35993735392` undisturbed; next permitted inspection is at `2026-09-24T13:33Z` or a terminal event. Collect only run status and one aggregate DB/storage/queue snapshot. Do not commit/push while the slice is active. On offset-125 PASS, dispatch offset `250`/max `93` immediately; keep concurrency <=5 and defer comprehensive archive/object verification until both source ranges finish.
+
+- execution_update_2026_09_24_1338Z_offset_125_fourth_boundary:
+  - At the fourth boundary, run `35993735392` / #77 remains in progress on `9a7379eacf129ed72a86d967f7bde0ccbfcec350`; bootstrap job elapsed ~1h59m. No job/source logs or per-source state were inspected.
+  - One aggregate snapshot at `2026-09-24T13:37:31Z`: DB `146,656,403` bytes; 20,995 opportunities (1,961 HOT /19,034 COLD /0 protected); 1,961 feed rows; 20,995 evaluations. Largest relations: opportunities `39,305,216` bytes, match evaluations `19,742,720`, cold archive metadata `14,532,608`, field provenance `11,616,256`, feed projection `4,456,448`. Storage artifacts 19,035 /`141,299,449` bytes (one object may be in-flight relative to 19,034 committed cold rows); CV bucket 32 /`2,163,348` bytes. Synthetic `active` projection count 0. Queue 351 rows, 1 due at `13:23:00Z` (~14m age at capture), 0 expired, 0 dead-letter. No manual recovery action was taken during bootstrap.
+  - Linear forecast to 26,000 opportunities: approximately `181.6 MB` /`173.2 MiB`, below hard 200 MiB. DB growth remains consistent with corpus growth; final footprint remains to be measured.
+  - No corpus downloads, credential handling, manual queue edits, checkpoint commit/push, merge, or paid resource use.
+- current_phase: `PHASE_V_OFFSET_125_BOOTSTRAP_RUN_35993735392_ACTIVE_BOUNDARY_13_33Z`
+- current_sha_now: `9a7379eacf129ed72a86d967f7bde0ccbfcec350` plus local checkpoint-only boundary note.
+- current_remote_sha: `9a7379eacf129ed72a86d967f7bde0ccbfcec350`.
+- exact_next_action: leave run `35993735392` undisturbed; next permitted inspection is at `2026-09-24T14:03Z` or a terminal event. At that boundary collect only run status and one aggregate DB/storage/queue snapshot. Do not commit/push while active. On offset-125 PASS dispatch offset `250`/max `93` immediately; keep source concurrency <=5 and defer comprehensive archive/object verification until both source ranges finish.
+
+- execution_update_2026_09_24_1408Z_offset_125_fifth_boundary:
+  - At the fifth 30-minute boundary, GitHub run `35993735392` / #77 remains in progress on commit `9a7379eacf129ed72a86d967f7bde0ccbfcec350`; bounded source-bootstrap job elapsed ~2h29m. No logs or per-source progress inspected.
+  - One aggregate snapshot at `2026-09-24T14:07:29Z`: DB `151,719,059` bytes; 21,974 opportunities (2,025 HOT /19,949 COLD /0 protected); 2,025 feed rows; 21,974 evaluations. Largest relations: opportunities `40,837,120` bytes, match evaluations `20,709,376`, cold archive metadata `15,286,272`, field provenance `12,009,472`, feed projection `4,587,520`. Artifacts 19,950 /`150,228,356` bytes (one in-flight object relative to committed cold rows); CV 32 /`2,163,348` bytes. Synthetic active projections 0. Queue 369 rows; one due at `14:00:49Z` (~6m40s age at capture), 0 expired, 0 dead-letter.
+  - Current linear projection to 26,000 opportunities is approximately `179.5 MB` /`171.1 MiB`, below the 200 MiB hard threshold. Size remains within budget.
+  - No source logs, corpus download, secrets, manual queue edit, checkpoint commit, or push.
+- current_phase: `PHASE_V_OFFSET_125_BOOTSTRAP_RUN_35993735392_ACTIVE_BOUNDARY_14_03Z`
+- current_sha_now: `9a7379eacf129ed72a86d967f7bde0ccbfcec350` plus local checkpoint-only boundary note.
+- current_remote_sha: `9a7379eacf129ed72a86d967f7bde0ccbfcec350`.
+- exact_next_action: leave run `35993735392` undisturbed; next permitted inspection is at `2026-09-24T14:33Z` or a terminal event. Collect only run status and one aggregate DB/storage/queue snapshot. Do not commit while active. On offset-125 PASS dispatch offset `250`/max `93` immediately; maintain <=5 parallel sources and defer full archive/object verification until both source ranges finish.
+
+- execution_update_2026_09_24_1440Z_offset_125_pass_offset_250_dispatched:
+  - GitHub Actions run `35993735392` / #77 completed successfully after `2h 41m 4s` on branch `work/fr007-clean-rebuild-storage-v2`, SHA `9a7379eacf129ed72a86d967f7bde0ccbfcec350`. The bounded offset-125/max-125 source-bootstrap job itself is green. The only annotations shown are runner/action deprecation notices, not job failures.
+  - Immediately dispatched the remaining bounded range through the registered launcher: run `36014460330` / #78, same branch/SHA, mode `incremental-source-bootstrap`, offset `250`, max `93`; source concurrency remains <=5. The workflow showed queued after dispatch. No extra DB query or source inspection was inserted between slice success and dispatch.
+  - No checkpoint commit/push was made; these terminal/launch facts are local only for now. No sources were manually repolled, no queue rows edited, no secrets touched, and no archive corpus download performed.
+- current_phase: `PHASE_V_OFFSET_250_BOOTSTRAP_RUN_36014460330_QUEUED_OR_STARTING`
+- current_sha_now: `9a7379eacf129ed72a86d967f7bde0ccbfcec350` plus local checkpoint-only run-#77 terminal and run-#78 dispatch notes.
+- current_remote_sha: `9a7379eacf129ed72a86d967f7bde0ccbfcec350`.
+- exact_next_action: leave run `36014460330` undisturbed; its first permitted status/aggregate boundary is `2026-09-24T15:10Z` (30 minutes after dispatch) or a terminal event. At inspection capture run status plus one aggregate DB/storage/queue snapshot only. Do not commit/push while active. On terminal outcome proceed directly to the final bootstrap boundary tasks (one whole-corpus archive verification, final capacity/invariant snapshot); continue to queue/runtime/monitor/issues/Founder smoke and final evidence.
+
+- execution_update_2026_09_24_1515Z_offset_250_first_boundary:
+  - At its first 30-minute boundary, run `36014460330` / #78 remains `in_progress` on SHA `9a7379eacf129ed72a86d967f7bde0ccbfcec350`; the `Bounded incremental sources 250+` job is active. No per-source logs or progress scans were opened.
+  - One aggregate snapshot at `2026-09-24T15:14:33Z`: DB `159,059,091` bytes; 23,000 opportunities (2,124 HOT /20,876 COLD /0 protected); 2,124 feed rows; 23,000 evaluations. Largest relations: opportunities `42,786,816` bytes, match evaluations `21,684,224`, cold archive metadata `16,048,128`, field provenance `12,591,104`, feed projection `4,800,512`. Artifacts 20,876 /`155,935,908` bytes; CV 32 /`2,163,348` bytes. Synthetic active projection 0. Queue 387 rows, one due at `15:07:58Z` (~6m35s age), 0 expired, 0 dead-letter.
+  - Projected physical DB at 26,000 opportunities remains around `180 MB` /`172 MiB`, below the 200 MiB cap. Final actual size and invariants remain pending.
+  - No corpus downloads, credentials, worker-row edits, checkpoint commit/push, merge, or paid infrastructure.
+- current_phase: `PHASE_V_OFFSET_250_BOOTSTRAP_RUN_36014460330_ACTIVE_BOUNDARY_15_10Z`
+- current_sha_now: `9a7379eacf129ed72a86d967f7bde0ccbfcec350` plus local checkpoint-only boundary note.
+- current_remote_sha: `9a7379eacf129ed72a86d967f7bde0ccbfcec350`.
+- exact_next_action: leave run `36014460330` undisturbed; next permitted inspection is `2026-09-24T15:40Z` or a terminal event. Read only run status plus one aggregate DB/storage/queue snapshot. Do not commit while active. Once the bounded offset-250 slice passes, immediately proceed to the single final whole-corpus archive/object verification and remaining acceptance steps.
+
+- execution_update_2026_09_24_1545Z_offset_250_second_boundary:
+  - At the next 30-minute boundary, run `36014460330` / #78 remains in progress on `9a7379eacf129ed72a86d967f7bde0ccbfcec350`; the `Bounded incremental sources 250+` job elapsed ~59m50s. No source logs or per-source progress scans were opened.
+  - One aggregate snapshot at `2026-09-24T15:44:37Z`: DB `164,949,139` bytes; 23,822 opportunities (2,287 HOT /21,535 COLD /0 protected); 2,287 feed rows; 23,821 evaluations. Largest relations: opportunities `44,417,024` bytes, match evaluations `22,396,928`, cold archive metadata `16,515,072`, field provenance `13,647,872`, feed projection `5,152,768`. Storage artifacts 21,535 /`160,161,589` bytes; CV bucket 32 /`2,163,348` bytes. Synthetic active projection 0. Queue 392 rows, one due at `15:27:27Z` (~17m10s age), 0 expired and 0 dead-letter.
+  - Linear DB projection to 26,000 opportunities is ~`179.9 MB` /`171.5 MiB`, below the hard 200 MiB cap. Final physical size must still be measured.
+  - No corpus download, credentials, worker-state edits, commit/push, merge, or paid resource use.
+- current_phase: `PHASE_V_OFFSET_250_BOOTSTRAP_RUN_36014460330_ACTIVE_BOUNDARY_15_40Z`
+- current_sha_now: `9a7379eacf129ed72a86d967f7bde0ccbfcec350` plus local checkpoint-only boundary note.
+- current_remote_sha: `9a7379eacf129ed72a86d967f7bde0ccbfcec350`.
+- exact_next_action: leave run `36014460330` undisturbed; next permitted inspection is `2026-09-24T16:10Z` or a terminal event. Read only workflow status plus one aggregate DB/storage/queue snapshot. Do not commit while active; when it passes, perform the one final corpus archive/object verification then proceed through queue convergence, five-shard proof, FULL monitor/#137, Founder read-only smoke, report, and State-only final commit.
+
+- execution_update_2026_09_24_1615Z_offset_250_third_boundary:
+  - At its second scheduled observation boundary, run `36014460330` / #78 remains in progress on SHA `9a7379eacf129ed72a86d967f7bde0ccbfcec350`; the bootstrap job elapsed ~1h30m. No source or job logs were inspected.
+  - One aggregate snapshot at `2026-09-24T16:14:36Z`: DB `168,217,747` bytes; 24,541 opportunities (2,325 HOT /22,216 COLD /0 protected); 2,324 feed rows; 24,540 evaluations. Largest relations: opportunities `45,432,832` bytes, match evaluations `23,044,096`, cold archive metadata `17,096,704`, field provenance `13,877,248`, feed projection `5,218,304`. Artifacts 22,216 /`164,211,840` bytes; CV 32 /`2,163,348` bytes. Synthetic active feed 0. Queue 422 rows; one due at `16:14:04Z` (fresh at snapshot), 0 expired, 0 dead-letter.
+  - Scaled 26k forecast ~`177.5 MB` /`169.3 MiB`, below 200 MiB. No nonlinear growth signal.
+  - No full-corpus reads, secrets, worker-row edits, checkpoint commit/push, merge, or paid resources.
+- current_phase: `PHASE_V_OFFSET_250_BOOTSTRAP_RUN_36014460330_ACTIVE_BOUNDARY_16_10Z`
+- current_sha_now: `9a7379eacf129ed72a86d967f7bde0ccbfcec350` plus local checkpoint-only boundary note.
+- current_remote_sha: `9a7379eacf129ed72a86d967f7bde0ccbfcec350`.
+- exact_next_action: leave run `36014460330` undisturbed; next permitted check at `2026-09-24T16:40Z` or terminal event. Collect status plus one aggregate DB/storage/queue snapshot. Do not commit while active. On terminal PASS, move directly to one final whole-corpus archive/object verification and then queue/runtime/FULL monitor/incident/Founder smoke/report/State-only final commit.
+
+- execution_update_2026_09_24_1645Z_offset_250_fourth_boundary:
+  - At the fourth observation boundary, run `36014460330` / #78 is still in progress on `9a7379eacf129ed72a86d967f7bde0ccbfcec350`; the bounded offset-250 job elapsed ~1h59m50s. No job/source logs opened.
+  - One aggregate snapshot at `2026-09-24T16:44:36Z`: DB `173,755,539` bytes; 25,346 opportunities (2,448 HOT /22,898 COLD /0 protected); 2,448 feed rows; 25,346 evaluations. Top relations: opportunities `46,899,200` bytes, match evaluations `23,928,832`, cold archive metadata `17,711,104`, field provenance `14,680,064`, feed projection `5,496,832`. Artifacts 22,899 /`168,414,306` bytes; CV 32 /`2,163,348` bytes. Synthetic `active` feed 0. Queue 446 rows; one due at `16:37:00Z` (~7m35s old), 0 expired, 0 dead-letter.
+  - At the known ~26k historical corpus, the live linear projection is ~`178.2 MB` /`170.0 MiB`, within the 200 MiB hard cap. Keep monitoring capacity at the final boundary; no threshold changed.
+  - No archive corpus download, credentials, worker edits, checkpoint commit/push, merge, or paid-resource use.
+- current_phase: `PHASE_V_OFFSET_250_BOOTSTRAP_RUN_36014460330_ACTIVE_BOUNDARY_16_40Z`
+- execution_update_2026_09_24_1715Z_offset_250_fifth_boundary:
+  - At this boundary, run `36014460330` / #78 remains in progress on SHA `9a7379eacf129ed72a86d967f7bde0ccbfcec350`; job elapsed ~2h30m. No source/job logs were opened.
+  - One aggregate snapshot at `2026-09-24T17:14:42Z`: DB `177,974,419` bytes; 26,014 opportunities (2,532 HOT /23,482 COLD /0 protected); 2,532 feed rows; 26,013 evaluations. Top relations: opportunities `47,546,368` bytes, match evaluations `24,739,840`, cold archive metadata `17,932,288`, field provenance `15,278,080`, feed projection `5,701,632`. Storage: artifacts 23,482 /`172,246,531` bytes; CV 32 /`2,163,348` bytes. Synthetic active projections 0. Queue 458 rows; one due at `17:03:24Z` (~11m18s old), 0 expired, 0 dead-letter.
+  - Actual DB remains below 200 MiB; size projection at known 26k corpus ~`177.9 MB` /`169.6 MiB`. Acceptance threshold remains unchanged.
+  - No corpus downloads, secrets, worker edits, checkpoint commit/push, merge, or paid service use.
+- current_phase: `PHASE_V_OFFSET_250_BOOTSTRAP_RUN_36014460330_ACTIVE_BOUNDARY_17_10Z`
+- execution_update_2026_09_24_1745Z_offset_250_sixth_boundary:
+  - At this boundary, run `36014460330` / #78 remains `in_progress` on `9a7379eacf129ed72a86d967f7bde0ccbfcec350`; bounded offset-250 job elapsed ~2h59m48s. No per-source state or logs inspected.
+  - One aggregate snapshot at `2026-09-24T17:44:35Z`: DB `181,496,979` bytes; 26,635 opportunities (2,553 HOT /24,082 COLD /0 protected); 2,553 feed rows; 26,635 evaluations. Largest relations: opportunities `48,283,648` bytes, match evaluations `25,239,552`, cold archive metadata `18,407,424`, field provenance `15,400,960`, feed projection `5,742,592`. Storage artifacts 24,084 /`175,884,155` bytes (two objects ahead of committed cold identities at capture); CV 32 /`2,163,348` bytes. Synthetic active feed 0. Queue 470 rows; one due at `17:42:54Z` (~1m40s age), no expired leases or dead letters.
+  - Physical DB is below the 200 MiB (209,715,200-byte) hard limit. At current corpus (26,635), measured size is 173.1 MiB; no threshold was weakened. Keep checking actual growth until bootstrap completes.
+  - No corpus verification/download, secrets, worker edits, checkpoint commit/push, merge, or paid resources.
+- current_phase: `PHASE_V_OFFSET_250_BOOTSTRAP_RUN_36014460330_ACTIVE_BOUNDARY_17_40Z`
+- execution_update_2026_09_24_1815Z_offset_250_seventh_boundary:
+  - Run `36014460330` / #78 remains in progress on SHA `9a7379eacf129ed72a86d967f7bde0ccbfcec350`; job elapsed ~3h29m41s. No per-source logs or progress scans were opened.
+  - One aggregate snapshot at `2026-09-24T18:14:29Z`: DB `188,542,099` bytes; 27,519 opportunities (2,760 HOT /24,759 COLD /0 protected); 2,760 feed rows; 27,519 evaluations. Largest relations: opportunities `50,421,760` bytes, match evaluations `26,525,696`, cold archive metadata `18,989,056`, field provenance `16,842,752`, feed projection `6,144,000`. Artifacts 24,759 /`179,546,388` bytes; CV 32 /`2,163,348` bytes. Synthetic active projection 0. Queue 480 rows, one due at `18:09:41Z` (about 4m48s old at capture), 0 expired, 0 dead-letter.
+  - DB is `179.8 MiB` against the strict `200 MiB` cap (`209,715,200` bytes), approximately 21.2 MB of remaining physical headroom. The active workflow retains its per-source capacity guard; no threshold or source parallelism was changed.
+  - No corpus downloads, secrets, worker edits, checkpoint commit/push, merge, or paid services.
+- current_phase: `PHASE_V_OFFSET_250_BOOTSTRAP_RUN_36014460330_ACTIVE_BOUNDARY_18_10Z`
+- current_sha_now: `9a7379eacf129ed72a86d967f7bde0ccbfcec350` plus local checkpoint-only boundary note.
+- current_remote_sha: `9a7379eacf129ed72a86d967f7bde0ccbfcec350`.
+- exact_next_action: leave run `36014460330` undisturbed; next allowed status/aggregate check is `2026-09-24T18:40Z` or terminal event. Collect status plus one aggregate DB/storage/queue snapshot only. Keep <=5 concurrency and do not commit while active. If the guarded bootstrap completes, immediately do final archive/object verification and remaining queue/runtime/FULL monitor/#137/Founder smoke/report/State-only closure.
+- current_sha_now: `9a7379eacf129ed72a86d967f7bde0ccbfcec350` plus local checkpoint-only boundary note.
+- current_remote_sha: `9a7379eacf129ed72a86d967f7bde0ccbfcec350`.
+- exact_next_action: leave run `36014460330` undisturbed; next permitted aggregate-only check is `2026-09-24T18:10Z` or terminal event. Do not commit while active. When terminal PASS, run the single final comprehensive archive/object integrity verification, then converge queue and perform five-shard, FULL monitor, normal #137 resolve, Founder smoke, report, and final State-only commit.
+- current_sha_now: `9a7379eacf129ed72a86d967f7bde0ccbfcec350` plus local checkpoint-only boundary note.
+- current_remote_sha: `9a7379eacf129ed72a86d967f7bde0ccbfcec350`.
+- exact_next_action: leave run `36014460330` undisturbed; next permitted inspection is `2026-09-24T17:40Z` or terminal event. Read only run status plus one aggregate DB/storage/queue snapshot; do not commit while active. On terminal PASS, perform the one complete archive/object checksum verification and proceed to queue convergence, exact five-shard proof, FULL monitor/normal #137 RESOLVE, Founder smoke, final report, and final State-only commit.
+- current_sha_now: `9a7379eacf129ed72a86d967f7bde0ccbfcec350` plus local checkpoint-only boundary note.
+- current_remote_sha: `9a7379eacf129ed72a86d967f7bde0ccbfcec350`.
+- exact_next_action: leave run `36014460330` undisturbed; next permitted inspection is `2026-09-24T17:10Z` or terminal event. Read only run status plus one aggregate DB/storage/queue snapshot. Do not commit while active. On terminal PASS perform comprehensive archive/object verification once, then queue convergence, exact 5-shard acceptance, FULL monitor/normal #137 RESOLVE, Founder read-only smoke, final report, and docs/STATE-only final commit.
+- execution_update_2026_09_24_1815Z_offset_250_terminal_pass:
+  - At the allowed boundary, GitHub Actions run `36014460330` / #78 completed successfully on `work/fr007-clean-rebuild-storage-v2`, commit `9a7379eacf129ed72a86d967f7bde0ccbfcec350`; bounded offset-250/max-93 bootstrap job duration was `3h35m06s`. The run and bootstrap job are green; GitHub showed one Node.js action deprecation warning and one Ubuntu runner-image notice.
+  - No logs or per-source progress were opened, and no post-terminal aggregate query was taken before recording the pass. The immediately preceding aggregate (18:14:29Z) measured DB `188,542,099` bytes, 27,519 opportunities, 24,759 COLD, 2,760 HOT, and 24,759 committed cold rows; object metadata was ahead by two at capture while the job was active.
+  - Source-bootstrap phases are complete. Proceed with the single comprehensive final archive/object integrity verification and fresh final aggregate capacity snapshot; then converge queue naturally and execute exact five-shard proof, FULL monitor/normal #137 RESOLVE, Founder read-only smoke, report, and final docs/STATE-only commit.
+  - No checkpoint commit/push occurred during either source slice; terminal acceptance is not yet claimed.
+- current_phase: `PHASE_V_BOOTSTRAP_COMPLETE_AWAITING_FINAL_CORPUS_VERIFICATION`
+- current_sha_now: `9a7379eacf129ed72a86d967f7bde0ccbfcec350` plus this local checkpoint history.
+- current_remote_sha: `9a7379eacf129ed72a86d967f7bde0ccbfcec350`.
+- exact_next_action: inspect the accepted bootstrap artifact/evidence and execute the approved one-time whole-corpus cold archive/object checksum, count, and orphan verification; take one final physical DB/relation/index/queue snapshot. If invariants/capacity pass, proceed through queue convergence and final runtime acceptance.
+- execution_update_2026_09_24_2150Z_corpus_verification_dispatched:
+  - Dispatched the existing registered launcher in `capacity-reforecast` mode after bootstrap completion: GitHub run `36043699120` / #79 on branch `work/fr007-clean-rebuild-storage-v2`, SHA `9a7379eacf129ed72a86d967f7bde0ccbfcec350`. The mode runs no source poll; it performs the existing bounded successful-corpus cold-archive checksum proof (5 concurrent downloads, 500-object pages, 30,000-object/250-MiB total caps) and isolated PostgreSQL 17 physical capacity reforecast.
+  - Run #79 was queued at dispatch. It is the one final whole-corpus download/checksum pass; no second corpus download will be performed. No source logs, credential data, or worker-state edits were used.
+- current_phase: `PHASE_V_FINAL_ARCHIVE_AND_CAPACITY_PROOF_RUN_36043699120_ACTIVE`
+- current_sha_now: `9a7379eacf129ed72a86d967f7bde0ccbfcec350` plus local checkpoint history.
+- current_remote_sha: `9a7379eacf129ed72a86d967f7bde0ccbfcec350`.
+- exact_next_action: wait for run `36043699120` terminal result, inspect its sanitized proof artifact, then take the single comprehensive live aggregate (physical DB, relation/index sizes, counts, object totals, queue). If green and within budget, move directly to natural queue convergence and W22.5 final runtime proof.
