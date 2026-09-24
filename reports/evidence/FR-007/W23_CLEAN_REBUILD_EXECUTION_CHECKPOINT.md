@@ -1419,3 +1419,11 @@
 - current_sha_now: `af16d35996438fdcc2cc02eb409eefccc8d09998` plus a narrow browser URL pathname normalization assertion and this checkpoint update.
 - current_remote_sha: `af16d35996438fdcc2cc02eb409eefccc8d09998` (verified before this correction).
 - exact_next_action: validate changed Playwright test and checkpoint, commit/push only these two files, and dispatch only staging-smoke. If green, immediately run acceptance mode; if a later assertion fails, repair only that assertion/path and repeat staging-smoke.
+
+- execution_update_2026_09_25_0015Z_smoke_request_abort_tolerance:
+  - Staging run #92 `36059683413` on `7bd6ca0` passed deploy, migration, Founder provisioning/binding, JWT/feed, and standalone read-only login/feed. The expanded test failed at its initial authenticated feed request (`pageJson`, line 95) because the explicit 10-second `AbortSignal` expired; it did not reach detail, CV, or activity actions. No source/queue action ran and no Founder action mutation occurred.
+  - Kept the independent 180-second Playwright test ceiling and strict hosted p95 <=1500 ms assertion. Increased only the per-request abort to 25 seconds so one cold/transient response can be measured rather than preemptively failing; sustained latency remains caught by the unchanged p95 gate. Local focused validation, commit, and staging-only rerun pending.
+- current_phase: `PHASE_V_RETRY_STAGING_SMOKE_AFTER_SINGLE_REQUEST_TIMEOUT`
+- current_sha_now: `7bd6ca0d298894cfcf4340048662256f4bae0eb7` plus the 25-second bounded request abort and checkpoint update.
+- current_remote_sha: `7bd6ca0d298894cfcf4340048662256f4bae0eb7` (verified before this correction).
+- exact_next_action: run focused lint/type/diff checks, commit/push only the request-bound adjustment and checkpoint, dispatch staging-smoke only, then proceed to acceptance mode immediately on a full Founder smoke pass.
