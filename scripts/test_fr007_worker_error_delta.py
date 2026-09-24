@@ -165,6 +165,18 @@ class WorkerErrorDeltaTests(unittest.TestCase):
         self.assertIn("0025_current_feed_fast_path", workflow)
         self.assertIn('print(f"PROBE_FAILURE={type(exc).__name__}")', workflow)
 
+    def test_launcher_pins_acceptance_mode_into_the_reusable_final_closure(self):
+        root = Path(__file__).resolve().parents[1]
+        launcher = (root / ".github" / "workflows" / "fr007-current-readiness-launcher.yml").read_text(encoding="utf-8")
+        acceptance = launcher.split("final-closure-acceptance:", 1)[1].split("final-closure-other:", 1)[0]
+        other = launcher.split("final-closure-other:", 1)[1]
+        self.assertIn("if: ${{ inputs.mode == 'acceptance' }}", acceptance)
+        self.assertIn("mode: acceptance", acceptance)
+        self.assertIn("if: ${{ inputs.mode == 'full' || inputs.mode == 'recovery' }}", other)
+        self.assertNotIn("final-closure:\n", launcher)
+        closure = (root / ".github" / "workflows" / "fr007-final-runtime-closure.yml").read_text(encoding="utf-8")
+        self.assertIn('echo "CLOSURE_MODE=${{ inputs.mode }}"', closure)
+
 
 if __name__ == "__main__":
     unittest.main()
