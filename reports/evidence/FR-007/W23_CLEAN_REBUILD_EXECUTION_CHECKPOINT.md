@@ -984,3 +984,13 @@
 - current_sha_now: `4eeb3cf65eb7c214e9e7a65caee0339c0d8b5760` plus this local checkpoint-only update.
 - current_remote_sha: `4eeb3cf65eb7c214e9e7a65caee0339c0d8b5760`.
 - exact_next_action: wait for queue-recovery run `35957906592` shard 1 to finish; after terminal success, take one aggregate queue snapshot. If naturally converged, resume offset `125`/max `125` on the pushed head. If shard fails, inspect its sanitized run result and use bounded ordinary retries rather than editing queue rows.
+
+- execution_update_2026_09_24_0830Z_recovery_followup_still_due:
+  - fetched the authoritative branch; remote HEAD is `0727c7f71e2a6b18ed5ad3700649574089f3d2ba`. The local `origin/...` tracking ref was stale, so `git ls-remote` was used to verify the actual remote. Existing user changes `web/public/mockServiceWorker.js` and untracked `work/` remain untouched.
+  - run `35957906592` finished successfully across all five normal queue shards. One read-only aggregate after it showed only one due `evaluate_new` PENDING row (no retries, running leases, expired leases, or dead letters); oldest due was under the 900-second target. This is the ordinary evaluator follow-up, so no worker row was edited.
+  - normal five-shard `queue-recovery` run `35960208467` is dispatched on the current authoritative branch to drain the follow-up. Initial run jobs show four queue shards in progress and the fifth queued; source bootstrap and all other launcher modes are skipped. No bootstrap is active, and offset 250 remains unsubmitted.
+  - accepted W23 evidence remains unchanged: one earlier offset-125 attempt failed only at Rocket Lab's private artifact bucket verification after retaining its successful source identities; the ordinary queue retry later marked it successful. Resume offset 125 so latest-success identities are skipped. No corpus-wide archive verification has been run.
+- current_phase: `PHASE_V_NORMAL_EVALUATION_FOLLOWUP_RECOVERY_35960208467_ACTIVE`
+- current_sha_now: `0727c7f71e2a6b18ed5ad3700649574089f3d2ba` plus this checkpoint-only update.
+- current_remote_sha: `0727c7f71e2a6b18ed5ad3700649574089f3d2ba` before the checkpoint-only commit.
+- exact_next_action: wait for run `35960208467` to terminate, then take one aggregate queue snapshot. If queue is naturally converged, dispatch `incremental-source-bootstrap` offset `125`/max `125` immediately. Keep source parallelism at five, inspect bootstrap only at 30-minute aggregate boundaries or terminal state, and do not commit a checkpoint while that source slice is active. Upon offset-125 PASS, dispatch offset `250`/max `93` immediately.
