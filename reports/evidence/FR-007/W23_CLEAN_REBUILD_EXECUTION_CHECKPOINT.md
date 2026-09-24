@@ -975,3 +975,12 @@
 - current_sha_now: `509b976cc96ef814e1f9a24e43ad28883f6224ac` plus this local terminal-boundary checkpoint update.
 - current_remote_sha: `509b976cc96ef814e1f9a24e43ad28883f6224ac` before the checkpoint-only commit.
 - exact_next_action: commit/push only the terminal checkpoint update, then dispatch ordinary `queue-recovery` and require its normal workers to clear the Rocket Lab retry and evaluator follow-up. After natural convergence, resume `incremental-source-bootstrap` at offset `125`/max `125` (successful identities are skipped); continue to keep source concurrency <=5 and dispatch offset `250`/max `93` immediately once offset125 passes.
+
+- execution_update_2026_09_24_0512Z_queue_recovery_35957906592_active:
+  - checkpoint + focused Storage-client regression commit `4eeb3cf65eb7c214e9e7a65caee0339c0d8b5760` is pushed to the authoritative branch; the small artifact-storage suite (20 tests) and normal worker retry/dead-letter test passed.
+  - normal queue-recovery run `35957906592` is dispatched from that head. Four of the five usual recovery shards have completed successfully; shard 1 remains in the bounded `Drain bounded durable queue slice on shard` step. No manual worker state edits occurred. All non-recovery launcher modes were skipped.
+  - no bootstrap is active yet. Do not resume offset 125 until this normal recovery run terminates and a natural queue boundary confirms the poll/evaluator work is converged. Keep the committed source slice successes; skip them on resume. The offset-250/max-93 run is still unsubmitted.
+- current_phase: `PHASE_V_QUEUE_RECOVERY_35957906592_SHARD1_ACTIVE`
+- current_sha_now: `4eeb3cf65eb7c214e9e7a65caee0339c0d8b5760` plus this local checkpoint-only update.
+- current_remote_sha: `4eeb3cf65eb7c214e9e7a65caee0339c0d8b5760`.
+- exact_next_action: wait for queue-recovery run `35957906592` shard 1 to finish; after terminal success, take one aggregate queue snapshot. If naturally converged, resume offset `125`/max `125` on the pushed head. If shard fails, inspect its sanitized run result and use bounded ordinary retries rather than editing queue rows.
