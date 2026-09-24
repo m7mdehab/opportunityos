@@ -66,7 +66,7 @@ def _state(*, database_bytes: int = 14_101_651, opportunities: int = 40, coverag
             "expired_leases": 0,
             "oldest_due_age_seconds": None,
         },
-        "database_revision": "0023_alembic_access",
+        "database_revision": "0024_founder_jwt_claims",
     }
 
 
@@ -236,6 +236,7 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
 
     def test_registered_launcher_routes_current_branch_staging_deploy_then_smoke(self):
         launcher = (ROOT / ".github/workflows/fr007-current-readiness-launcher.yml").read_text(encoding="utf-8")
+        staging = (ROOT / ".github/workflows/fr007-founder-staging-ready.yml").read_text(encoding="utf-8")
 
         self.assertIn("options: [full, acceptance, storage-v2-ci, db-credential-probe, verify-cv-storage, representative-source, capacity-reforecast, incremental-source-bootstrap, queue-recovery, staging-deploy, staging-smoke]", launcher)
         self.assertIn("staging-deploy:\n    if: ${{ inputs.mode == 'staging-deploy' || inputs.mode == 'staging-smoke' }}", launcher)
@@ -243,8 +244,14 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
         self.assertIn("acknowledge_staging_deployment: true", launcher)
         self.assertIn("ref: ${{ github.ref_name }}", launcher)
         self.assertIn("staging-smoke:\n    if: ${{ inputs.mode == 'staging-smoke' }}\n    needs: [staging-deploy]", launcher)
-        self.assertIn("mode: SMOKE_STAGING", launcher)
+        self.assertIn("uses: ./.github/workflows/fr007-founder-staging-ready.yml", launcher)
+        self.assertNotIn("mode: SMOKE_STAGING", launcher)
         self.assertIn("inputs.mode != 'staging-smoke'", launcher)
+        self.assertIn("alembic upgrade head", staging)
+        self.assertIn("scripts/verify_founder_claim_compat.py", staging)
+        self.assertLess(staging.index("scripts/verify_founder_claim_compat.py"), staging.index("npx playwright test"))
+        self.assertNotIn("poll-now", staging)
+        self.assertNotIn("worker_jobs", staging)
 
     def test_incremental_runner_measures_before_and_after_each_source(self):
         ids = [f"source-{idx:03}" for idx in range(343)]

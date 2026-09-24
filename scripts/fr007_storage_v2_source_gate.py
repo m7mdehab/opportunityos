@@ -434,7 +434,7 @@ def compare_snapshots(
         "projected_database_within_hard_budget": projected_bytes <= DATABASE_HARD_BUDGET,
         "benchmark_schema_matches_live_head": (
             capacity_benchmark.get("database_revision") == after.get("database_revision")
-            and capacity_benchmark.get("database_revision") == "0023_alembic_access"
+            and capacity_benchmark.get("database_revision") == "0024_founder_jwt_claims"
         ),
     }
     if int(archive_proof.get("archive_objects_verified") or 0) < archive_objects:

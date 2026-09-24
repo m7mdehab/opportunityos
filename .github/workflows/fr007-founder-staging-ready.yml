@@ -24,8 +24,17 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - name: Install protected database client
-        run: python -m pip install 'psycopg2-binary>=2.9,<3'
+      - name: Install repository database tooling
+        run: python -m pip install -e .
+
+      - name: Apply the current migration head without touching worker state
+        env:
+          OPPORTUNITYOS_DB_URL: ${{ secrets.CLOUD_DATABASE_URL }}
+          CI: "true"
+        run: |
+          alembic upgrade head
+          test "$(alembic heads | grep -c ' (head)')" = 1
+          test "$(alembic current | grep -c '0024_founder_jwt_claims')" = 1
 
       - name: Test idempotent Founder provisioning and fail-closed binding
         run: python -m unittest scripts.test_provision_staging_founder -v
@@ -38,6 +47,12 @@ jobs:
           FOUNDER_PASSWORD: ${{ secrets.E2E_FOUNDER_PASSWORD }}
           CLOUD_DATABASE_URL: ${{ secrets.CLOUD_DATABASE_URL }}
         run: python scripts/provision_staging_founder.py
+
+      - name: Verify live Founder JWT claims and read-only feed access
+        env:
+          OPPORTUNITYOS_DB_URL: ${{ secrets.CLOUD_DATABASE_URL }}
+          CI: "true"
+        run: python scripts/verify_founder_claim_compat.py
 
       - name: Install web dependencies
         working-directory: web

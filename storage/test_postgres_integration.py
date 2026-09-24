@@ -114,6 +114,52 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
             for table in reversed(Base.metadata.sorted_tables):
                 conn.execute(text(f'TRUNCATE TABLE "{table.name}" CASCADE;'))
 
+    def test_founder_guard_accepts_postgrest_json_claims_and_legacy_subject_guc(self):
+        founder_uid = str(uuid.uuid4())
+        with self.engine.connect() as connection:
+            transaction = connection.begin()
+            try:
+                connection.execute(
+                    text("""
+                        INSERT INTO public.founder_identity (id, supabase_user_id)
+                        VALUES ('singleton', :uid)
+                        ON CONFLICT (id) DO UPDATE
+                        SET supabase_user_id = EXCLUDED.supabase_user_id
+                    """),
+                    {"uid": founder_uid},
+                )
+                connection.execute(
+                    text("SELECT set_config('request.jwt.claim.sub', '', true)")
+                )
+                connection.execute(
+                    text("SELECT set_config('request.jwt.claims', :claims, true)"),
+                    {"claims": json.dumps({"sub": founder_uid, "role": "authenticated"})},
+                )
+                self.assertTrue(
+                    connection.execute(text("SELECT public.opos_is_founder()")).scalar_one(),
+                    "current PostgREST JSON claims must bind the authenticated Founder",
+                )
+
+                connection.execute(
+                    text("SELECT set_config('request.jwt.claims', :claims, true)"),
+                    {"claims": json.dumps({"sub": str(uuid.uuid4()), "role": "authenticated"})},
+                )
+                self.assertFalse(
+                    connection.execute(text("SELECT public.opos_is_founder()")).scalar_one(),
+                    "a different JWT subject must fail closed",
+                )
+
+                connection.execute(
+                    text("SELECT set_config('request.jwt.claim.sub', :uid, true)"),
+                    {"uid": founder_uid},
+                )
+                self.assertTrue(
+                    connection.execute(text("SELECT public.opos_is_founder()")).scalar_one(),
+                    "legacy PostgREST subject setting must remain supported",
+                )
+            finally:
+                transaction.rollback()
+
     def _downgrade_to_legacy_revision(self, alembic_cfg, target_revision: str) -> None:
         """Bridge the irreversible Storage V2 index removal for legacy tests.
 

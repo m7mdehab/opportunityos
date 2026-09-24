@@ -23,7 +23,7 @@ class StorageV2CapacityBenchmarkTests(unittest.TestCase):
             "database_role": "postgres",
             "transaction_read_only": "off",
             "in_recovery": False,
-            "revision": "0023_alembic_access",
+            "revision": "0024_founder_jwt_claims",
             "opportunities": 826,
             "hot": 13,
             "cold": 813,

@@ -18,7 +18,7 @@ def main() -> None:
 
     config = Config("alembic.ini")
     heads = ScriptDirectory.from_config(config).get_heads()
-    expected_head = "0023_alembic_access"
+    expected_head = "0024_founder_jwt_claims"
     if len(heads) != 1 or heads[0] != expected_head:
         raise AssertionError(f"expected one Storage V2 Alembic head, got {heads!r}")
 

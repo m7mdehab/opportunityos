@@ -32,7 +32,19 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
 
         config = Config("alembic.ini")
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_current_head(), "0023_alembic_access")
+        self.assertEqual(script.get_current_head(), "0024_founder_jwt_claims")
+
+    def test_founder_claim_compatibility_migration_accepts_postgrest_json_claims(self):
+        migration = Path(__file__).parent / "migrations" / "versions" / "0024_founder_jwt_claim_compat.py"
+        source = migration.read_text(encoding="utf-8")
+        self.assertIn('revision: str = "0024_founder_jwt_claims"', source)
+        self.assertIn('down_revision: Union[str, None] = "0023_alembic_access"', source)
+        self.assertIn("request.jwt.claim.sub", source)
+        self.assertIn("request.jwt.claims", source)
+        self.assertIn("->> 'sub'", source)
+        self.assertIn("SECURITY DEFINER", source)
+        self.assertIn("founder.supabase_user_id = COALESCE", source)
+        self.assertIn("def downgrade()", source)
 
     def test_capacity_revision_is_linear_after_activity_view_access(self):
         capacity = Path(__file__).parent / "migrations" / "versions" / "0020_capacity_archive.py"
