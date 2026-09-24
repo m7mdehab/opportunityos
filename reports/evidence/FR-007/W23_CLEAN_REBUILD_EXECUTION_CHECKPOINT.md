@@ -1041,3 +1041,12 @@
 - current_sha_now: `78ab5f8555d8ab6b3d0bd6cd9385eacc8ad9db39` plus this local post-failure checkpoint update.
 - current_remote_sha: `78ab5f8555d8ab6b3d0bd6cd9385eacc8ad9db39`.
 - exact_next_action: let all five ordinary queue-recovery shards complete. Then take one aggregate queue snapshot; if naturally converged, resume `incremental-source-bootstrap` offset `125`/max `125` from the latest branch head. Keep concurrency <=5, defer checks to the 30-minute aggregate boundary, and on offset-125 PASS immediately dispatch offset `250`/max `93`.
+
+- execution_update_2026_09_24_0730Z_queue_recovery_35970064945_green_offset_125_retry_ready:
+  - run `35970064945` completed successfully on all five normal drain shards; all other launcher jobs were skipped. `greenhouse:singlestore` and its evaluation follow-up recovered naturally under ordinary worker semantics. No worker row was edited manually.
+  - one aggregate-only post-recovery snapshot: DB `120,589,459` bytes; 16,202 opportunities (`1,766` HOT /`14,436` COLD /0 protected); 1,766 feed rows; 16,202 evaluations; 14,436 archives /`112,293,292` compressed bytes; 216 latest-success source identities /0 latest non-OK. Queue pending/retry/running/expired/dead-letter all 0, oldest due null. Archive object counts/bytes match metadata. Synthetic `active`=0; maximum one current projection/evaluation; zero cold descriptions/provenance/verbose evaluation rows. CV bucket 32 objects /`2,163,348` bytes.
+  - no corpus-wide archive verification; this remains deferred to final bootstrap. The quiet bootstrap-boundary automation is paused until a new source range is dispatched.
+- current_phase: `PHASE_V_QUEUE_CONVERGED_OFFSET_125_RESUME_READY_AFTER_SINGLESTORE_RETRY`
+- current_sha_now: `fcf5fd65ac21f2b47363a9c4037af7ee6b1d75e4` plus this local completed-boundary checkpoint update.
+- current_remote_sha: `fcf5fd65ac21f2b47363a9c4037af7ee6b1d75e4`.
+- exact_next_action: commit/push this completed recovery boundary, then resume offset `125`/max `125` on the latest head; successful identities are skipped. Keep parallelism at five and inspect only after a 30-minute aggregate interval or terminal completion/failure. Offset-125 PASS must be followed immediately by offset `250`/max `93`.
