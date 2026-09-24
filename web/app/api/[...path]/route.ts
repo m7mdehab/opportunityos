@@ -288,7 +288,16 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
     };
     const q = buildFeedQuery(includeHidden ? undefined : "visible");
     q.searchParams.set("offset", String((page - 1) * pageSize)); q.searchParams.set("limit", String(pageSize));
-    let response = await hostedFetch(config, `${q.pathname}${q.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } });
+    const hiddenQuery = buildFeedQuery("hidden");
+    hiddenQuery.searchParams.set("select", "opportunity_id"); hiddenQuery.searchParams.set("limit", "1");
+    // The visible page/count and hidden count are independent PostgREST reads.
+    // Start both together so the public feed pays one upstream round trip, not
+    // two serial round trips, while preserving the exact count contract.
+    const [visibleResponse, hiddenResponse] = await Promise.all([
+      hostedFetch(config, `${q.pathname}${q.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } }),
+      hostedFetch(config, `${hiddenQuery.pathname}${hiddenQuery.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } }),
+    ]);
+    let response = visibleResponse;
     let rows = await response.json().catch(() => []);
     // A freshly replaced PostgREST view can lag schema-cache refresh. Keep the
     // canonical feed readable while activity projection metadata catches up;
@@ -302,9 +311,6 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
     }
     if (!response.ok) return NextResponse.json(rows, { status: response.status });
     const range = response.headers.get("content-range") ?? "*/0"; const total = Number(range.split("/")[1] ?? "0") || 0;
-    const hiddenQuery = buildFeedQuery("hidden");
-    hiddenQuery.searchParams.set("select", "opportunity_id"); hiddenQuery.searchParams.set("limit", "1");
-    const hiddenResponse = await hostedFetch(config, `${hiddenQuery.pathname}${hiddenQuery.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } });
     const hiddenRange = hiddenResponse.headers.get("content-range") ?? "*/0";
     const hiddenCount = Number(hiddenRange.split("/")[1] ?? "0") || 0;
     return NextResponse.json({ page, page_size: pageSize, total, hidden_count: hiddenCount, items: Array.isArray(rows) ? rows.map(hostedFeedRow) : [] });
