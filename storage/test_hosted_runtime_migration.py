@@ -32,7 +32,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
 
         config = Config("alembic.ini")
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_current_head(), "0024_founder_jwt_claims")
+        self.assertEqual(script.get_current_head(), "0025_current_feed_fast_path")
 
     def test_founder_claim_compatibility_migration_accepts_postgrest_json_claims(self):
         migration = Path(__file__).parent / "migrations" / "versions" / "0024_founder_jwt_claim_compat.py"
@@ -45,6 +45,19 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         self.assertIn("SECURITY DEFINER", source)
         self.assertIn("founder.supabase_user_id = COALESCE", source)
         self.assertIn("def downgrade()", source)
+
+    def test_current_feed_fast_path_uses_unique_storage_v2_projection(self):
+        migration = Path(__file__).parent / "migrations" / "versions" / "0025_current_feed_projection_fast_path.py"
+        source = migration.read_text(encoding="utf-8")
+        self.assertIn('revision: str = "0025_current_feed_fast_path"', source)
+        self.assertIn('down_revision: Union[str, None] = "0024_founder_jwt_claims"', source)
+        self.assertIn("security_invoker = true", source)
+        self.assertIn("JOIN public.opportunities o ON o.id = fp.opportunity_id", source)
+        self.assertIn("one current feed_projection row per opportunity", source)
+        self.assertNotIn("row_number() OVER", source.split("def downgrade()", 1)[0])
+        self.assertIn("row_number() OVER", source.split("def downgrade()", 1)[1])
+        config = Config("alembic.ini")
+        self.assertEqual(ScriptDirectory.from_config(config).get_current_head(), "0025_current_feed_fast_path")
 
     def test_capacity_revision_is_linear_after_activity_view_access(self):
         capacity = Path(__file__).parent / "migrations" / "versions" / "0020_capacity_archive.py"
