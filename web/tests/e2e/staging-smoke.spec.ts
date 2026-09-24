@@ -6,7 +6,7 @@ const FOUNDER_PASSWORD = process.env.E2E_FOUNDER_PASSWORD ?? "";
 async function pageJson<T>(
   page: Page,
   path: string,
-  init?: { method?: string; body?: unknown }
+  init?: { method?: string; body?: unknown; cache?: RequestCache }
 ): Promise<{ status: number; ok: boolean; body: T; elapsed_ms: number }> {
   return page.evaluate(
     async ({ path: p, init: i }) => {
@@ -19,6 +19,7 @@ async function pageJson<T>(
       const started = performance.now();
       const response = await fetch(p, {
         method,
+        cache: i?.cache,
         credentials: "same-origin",
         headers,
         body: i?.body === undefined ? undefined : JSON.stringify(i.body),
@@ -331,10 +332,17 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await expect(activityDrawer.getByRole("button", { name: "Clear / undo" })).toHaveCount(0);
     const activityDetail = await pageJson<{
       action_history: Array<{ action_type: string }>;
-    }>(page, `/api/opportunities/${encodeURIComponent(first.id)}`);
+    }>(
+      page,
+      `/api/opportunities/${encodeURIComponent(first.id)}?activity_proof=${Date.now()}`,
+      { cache: "no-store" }
+    );
     expect(activityDetail.ok, `activity detail returned ${activityDetail.status}`).toBe(true);
     expect(activityDetail.body.action_history.some((event) => event.action_type === "dismiss")).toBe(true);
-    expect(activityDetail.body.action_history.some((event) => event.action_type === "clear")).toBe(true);
+    expect(
+      activityDetail.body.action_history.some((event) => event.action_type === "clear"),
+      `activity history should retain the clear audit event; observed ${activityDetail.body.action_history.map((event) => event.action_type).join(",")}`
+    ).toBe(true);
     await page.keyboard.press("Escape");
     await expect(firstCard).toBeVisible();
 

@@ -1389,3 +1389,13 @@
   - current_sha_now: `cfa58d18c29df9e516876c69e97b5488805793b3` plus focused staging-smoke timeout changes.
   - current_remote_sha: `cfa58d18c29df9e516876c69e97b5488805793b3`.
   - exact_next_action: commit/push only `web/playwright.staging.full-smoke.config.ts`, `web/tests/e2e/staging-smoke.spec.ts`, and this checkpoint. Then dispatch only `staging-smoke` and require complete detail/search/activity/CV smoke before exact five-shard acceptance.
+
+- execution_update_2026_09_24_2042Z_founder_activity_history_verification_repair:
+  - Launcher #88 `36056078395` on `bcd132a` passed deployment, migration, Founder provisioning/binding, JWT/read-only data access, baseline login/feed test, and all 20 normal feed samples (`p95=1266.20 ms`; observed cold request `1607.10 ms`). The expanded test proceeded through detail/search, private CV preview/download, and dismiss/clear UI transitions; it failed only on the final clear audit assertion. The request returned 200 and the UI removed the undo control.
+  - Diagnosis: canonical migration `0017_founder_activity_correction` explicitly records both `dismiss` and `clear` in `founder_activity_events`; `founder_activity_detail` returns those ordered events. The proof read reused the same detail URL queried earlier in the test, so a cached GET could return a pre-clear event snapshot. The clear event expectation was valid, but the proof lacked explicit cache busting.
+  - Narrow correction: the final post-transition detail read now uses a unique `activity_proof` query parameter and Fetch `cache: no-store`; failure diagnostics report only action-type names. No product API, DB state, or queue logic changed. Focused ESLint, TypeScript, and `git diff --check` pass.
+  - The smoke did execute its intentional Founder dismiss-then-clear transition and preserved immutable activity history; do not manually edit/reset activity state. Source-health read and logout remained after the failing assertion and will run on the successful rerun. No Poll Now or source work ran.
+  - current_phase: `PHASE_V_ACTIVITY_HISTORY_CACHE_BUST_REPAIR`
+  - current_sha_now: `bcd132a42f9dc1a331208b691879030a09bd845b` plus focused activity-proof cache-bust/test and checkpoint.
+  - current_remote_sha: `bcd132a42f9dc1a331208b691879030a09bd845b`.
+  - exact_next_action: commit/push only the activity-proof test and checkpoint; rerun launcher `staging-smoke` on that head. On full pass, dispatch `acceptance` mode and proceed through exact five-shard observer, FULL monitor/#137 RESOLVE, final aggregate/report, then State-only final commit.
