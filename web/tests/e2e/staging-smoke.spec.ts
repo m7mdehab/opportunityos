@@ -234,7 +234,9 @@ test.describe("Cloudflare staging hosted smoke", () => {
     expect(Array.isArray(detail.body.scoring.unknowns)).toBe(true);
 
     // 10. UI detail drawer, source link, and PDF preview
-    const firstCard = page.locator('[data-testid^="opportunity-card-"]').first();
+    // Keep the browser-interacted card bound to the exact opportunity used by
+    // the API assertions above; DOM order can differ from the feed response.
+    const firstCard = page.getByTestId(`opportunity-card-${first.id}`);
     await expect(firstCard).toBeVisible();
     await firstCard.click();
     const drawer = page.getByRole("dialog");
