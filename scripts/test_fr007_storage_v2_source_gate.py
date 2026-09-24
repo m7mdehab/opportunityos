@@ -81,6 +81,37 @@ def _archive_inventory_connection(objects: int, compressed_bytes: int):
 
 
 class RepresentativeSourceEconomicsTests(unittest.TestCase):
+    def test_archive_storage_timeout_is_retried_with_bounded_backoff(self):
+        attempts = {"count": 0}
+
+        def flaky_get(*_args, **_kwargs):
+            attempts["count"] += 1
+            if attempts["count"] == 1:
+                try:
+                    raise TimeoutError("transient")
+                except TimeoutError as cause:
+                    raise source_gate.ArtifactStorageError("private artifact get failed") from cause
+            return b"verified"
+
+        with patch.object(source_gate, "get_cold_object", side_effect=flaky_get), patch.object(
+            source_gate.time, "sleep"
+        ) as sleep:
+            body = source_gate._get_cold_object_with_retry("opaque-key", "opaque-sha", client=object())
+
+        self.assertEqual(body, b"verified")
+        self.assertEqual(attempts["count"], 2)
+        sleep.assert_called_once_with(0.5)
+
+    def test_archive_storage_not_found_is_fail_closed_without_retry(self):
+        from urllib.error import HTTPError
+
+        error = source_gate.ArtifactStorageError("private artifact get failed")
+        error.__cause__ = HTTPError("https://redacted.invalid", 404, "not found", {}, None)
+        with patch.object(source_gate, "get_cold_object", side_effect=error) as get_object:
+            with self.assertRaisesRegex(RuntimeError, "object_not_found"):
+                source_gate._get_cold_object_with_retry("opaque-key", "opaque-sha", client=object())
+        get_object.assert_called_once()
+
     def test_incremental_archive_verification_is_source_scoped_and_bounded(self):
         since = datetime(2026, 9, 23, 8, 0, tzinfo=timezone.utc)
         record = {

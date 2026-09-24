@@ -10,8 +10,11 @@ import argparse
 import concurrent.futures
 import json
 import os
+import socket
 import sys
 import threading
+import time
+from urllib.error import HTTPError, URLError
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -22,6 +25,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
+from api.artifact_cache import ArtifactStorageError
 from storage.cold_storage import client_from_env, get as get_cold_object, unpack
 from storage.engine import get_engine, get_production_db_url, get_session_factory
 
@@ -35,6 +39,48 @@ CORPUS_ARCHIVE_OBJECT_LIMIT = 30_000
 ARCHIVE_VERIFY_WORKERS = 5
 HISTORICAL_CORPUS_SIZE = 26_000
 DATABASE_HARD_BUDGET = 200 * 1024 * 1024
+ARCHIVE_STORAGE_RETRIES = 2
+
+
+def _safe_storage_failure_category(exc: BaseException) -> str:
+    """Return a bounded diagnostic category without exposing URLs or credentials."""
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, HTTPError):
+            if current.code == 404:
+                return "object_not_found"
+            if current.code in (401, 403):
+                return "authorization_denied"
+            if current.code == 429:
+                return "rate_limited"
+            if current.code >= 500:
+                return "provider_error"
+            return "http_rejected"
+        if isinstance(current, (TimeoutError, socket.timeout)):
+            return "timeout"
+        if isinstance(current, URLError):
+            reason = current.reason
+            if isinstance(reason, (TimeoutError, socket.timeout)):
+                return "timeout"
+            return "transport_error"
+        current = current.__cause__ or current.__context__
+    return "storage_request_failed"
+
+
+def _get_cold_object_with_retry(object_key: str, payload_sha256: str, *, client) -> bytes:
+    """Retry transient Storage transport failures without masking integrity errors."""
+    for attempt in range(ARCHIVE_STORAGE_RETRIES + 1):
+        try:
+            return get_cold_object(object_key, payload_sha256, client=client)
+        except ArtifactStorageError as exc:
+            category = _safe_storage_failure_category(exc)
+            retryable = category in {"timeout", "rate_limited", "provider_error", "transport_error"}
+            if not retryable or attempt >= ARCHIVE_STORAGE_RETRIES:
+                raise RuntimeError(f"cold archive Storage retrieval failed ({category})") from None
+            time.sleep(0.5 * (2 ** attempt))
+    raise AssertionError("unreachable archive retrieval retry state")
 
 
 def _scalar(connection, sql: str, params: dict[str, Any] | None = None) -> Any:
@@ -281,7 +327,9 @@ def verify_source_archives(
         if worker_client is None:
             worker_client = client_from_env()
             worker_clients.client = worker_client
-        compressed = get_cold_object(row["object_key"], row["payload_sha256"], client=worker_client)
+        compressed = _get_cold_object_with_retry(
+            row["object_key"], row["payload_sha256"], client=worker_client
+        )
         if len(compressed) != int(row["compressed_size_bytes"]):
             raise RuntimeError("cold archive object byte count does not match database metadata")
         payload = unpack(
