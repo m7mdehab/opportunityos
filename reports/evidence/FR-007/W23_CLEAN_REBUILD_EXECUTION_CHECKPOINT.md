@@ -886,3 +886,23 @@
 - current_sha_now: `92031d1638739370827144f5fac23e923e2cb814` plus this checkpoint-only update.
 - current_remote_sha: `92031d1638739370827144f5fac23e923e2cb814`.
 - exact_next_action: commit/push only this checkpoint update because run `35941449268` is terminal-failed; then dispatch the same offset `125`/max `125` source slice. At its terminal PASS, immediately dispatch offset `250`/max `93`. During either active slice, no checkpoint commits and no aggregate checks more often than every 30 minutes unless a real invariant/capacity failure occurs.
+
+- execution_update_2026_09_24_0147Z_offset_125_resumed:
+  - fetched `origin/work/fr007-clean-rebuild-storage-v2`; local HEAD and remote branch both equal `44cf265d25147729fd07bef1c5c193fb3f6b19c8`. Preserved unrelated local `web/public/mockServiceWorker.js` line-ending change and untracked `work/`.
+  - inspected the latest launcher state: previous offset-125 attempt `35941449268` is terminal failed with zero source attempts; normal five-shard queue recovery `35944193532` is green. No active bootstrap existed before this dispatch.
+  - resumed the bounded source slice as launcher run `35944607526` on the authoritative branch/SHA, mode `incremental-source-bootstrap`, offset `125`, max `125`. The run graph confirms only the bounded bootstrap job is active; it uses disjoint five-source batches and no more than five source workers. Staging/Founder login and read-only feed proof remain green from `35939269557`.
+  - no per-source checks, corpus downloads, object-wide verification, or queue action from the UI were run. No checkpoint commit/push during the active slice. The next bootstrap inspection is due no earlier than 30 minutes after dispatch and will use aggregate-only state; if this slice reaches terminal PASS, dispatch offset `250`/max `93` immediately before detailed verification.
+- current_phase: `PHASE_V_BOOTSTRAP_SLICE_125_ACTIVE_RUN_35944607526`
+- current_sha_now: `44cf265d25147729fd07bef1c5c193fb3f6b19c8`
+- current_remote_sha: `44cf265d25147729fd07bef1c5c193fb3f6b19c8`
+- exact_next_action: leave run `35944607526` undisturbed; do not inspect bootstrap/DB progress until the 30-minute boundary or a terminal event. At that boundary use one aggregate snapshot only, preserve concurrency <=5, and avoid checkpoint commits until the slice completes or fails.
+
+- execution_update_2026_09_24_0228Z_offset_125_terminal_storage_retry:
+  - run `35944607526` reached terminal failure before the 30-minute inspection. Its sanitized evidence reports `attempted_or_skipped=40` of 125, one source-level failure, 165 latest-success source identities (up from 156), and no detailed corpus verification. Nine new identities completed successfully; those remain latest-success and will be skipped on resume.
+  - the sole failed identity is `greenhouse:mozilla`: `source_poll_runs` records `status=error`, sanitized class `private_artifact_storage_post_failed`, and zero raw/unique/inserted/updated records for that poll. This matches the previously observed private Storage POST failure for `greenhouse:devtechnology`, which recovered on an ordinary queue retry; it is a Storage operation error, not a credential disclosure or source-truth corruption finding.
+  - final aggregate snapshot: physical DB `98,544,787` bytes; 12,455 opportunities (1,503 HOT /10,952 COLD); 1,503 feed rows; 12,455 evaluations; 10,952 cold archive rows; zero synthetic active projections; forecast `181,578,756` bytes for the 26k corpus. No expired leases or dead letters. The only due jobs are one `poll_source:RETRY` for `greenhouse:mozilla` (retry 1/3) and its one `evaluate_new:PENDING` follow-up.
+  - no manual worker-row edits, source replay, corpus download, whole-corpus archive verification, or UI-triggered source operation. The source slice is terminal, so this checkpoint boundary may be committed. Resume recovery only through normal queue workers; after the queue is naturally converged, resume offset 125 so successes are skipped. Keep concurrency <=5 and retain offset 250/max93 as the following range.
+- current_phase: `PHASE_V_OFFSET_125_TERMINAL_SOURCE_STORAGE_RETRY_QUEUED_FOR_NORMAL_RECOVERY`
+- current_sha_now: `44cf265d25147729fd07bef1c5c193fb3f6b19c8` plus this terminal checkpoint update.
+- current_remote_sha: `44cf265d25147729fd07bef1c5c193fb3f6b19c8`.
+- exact_next_action: commit/push this terminal-boundary checkpoint, run launcher mode `queue-recovery` through normal five-shard workers, then verify queue convergence at the terminal boundary. Resume offset 125/max125 on the same source-skip path; dispatch offset 250/max93 immediately after offset-125 PASS. Defer comprehensive archive checks to the final bootstrap boundary.
