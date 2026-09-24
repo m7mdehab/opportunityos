@@ -30,6 +30,10 @@ test("Founder can authenticate and read the current feed without mutations", asy
   expect(feed.status, "authenticated feed request must succeed").toBe(200);
   expect(typeof feed.body.total).toBe("number");
   expect(Array.isArray(feed.body.items)).toBe(true);
+  const renderedCard = page.locator('[data-testid^="opportunity-card-"]').first();
+  if (feed.body.items.length > 0) {
+    await expect(renderedCard, "feed page should render after its authenticated data request completes").toBeVisible({ timeout: 15_000 });
+  }
   const visibleCards = await page.locator('[data-testid^="opportunity-card-"]').count();
   console.log(`FOUNDER_READONLY_FEED_OBSERVED total=${feed.body.total} api_rows=${feed.body.items.length} cards=${visibleCards}`);
   expect(feed.body.items.length, "feed API must return at least one current opportunity").toBeGreaterThan(0);
