@@ -22,6 +22,7 @@ async function pageJson<T>(
         credentials: "same-origin",
         headers,
         body: i?.body === undefined ? undefined : JSON.stringify(i.body),
+        signal: AbortSignal.timeout(10_000),
       });
       const text = await response.text();
       const elapsed_ms = performance.now() - started;

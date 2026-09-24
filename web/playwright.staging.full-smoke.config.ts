@@ -14,6 +14,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
+  timeout: 180_000,
   reporter: "list",
   use: {
     baseURL: stagingWebUrl.replace(/\/+$/, ""),
