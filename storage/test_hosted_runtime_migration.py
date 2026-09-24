@@ -55,7 +55,11 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         self.assertIn("JOIN public.opportunities o ON o.id = fp.opportunity_id", source)
         self.assertIn("one current feed_projection row per opportunity", source)
         self.assertNotIn("row_number() OVER", source.split("def downgrade()", 1)[0])
-        self.assertIn("row_number() OVER", source.split("def downgrade()", 1)[1])
+        downgrade = source.split("def downgrade()", 1)[1]
+        self.assertIn("row_number() OVER", downgrade)
+        self.assertIn("CREATE OR REPLACE VIEW public.founder_feed", downgrade)
+        self.assertNotIn("DROP VIEW", downgrade)
+        self.assertNotIn("founder_feed_activity", downgrade)
         config = Config("alembic.ini")
         self.assertEqual(ScriptDirectory.from_config(config).get_current_head(), "0025_current_feed_fast_path")
 

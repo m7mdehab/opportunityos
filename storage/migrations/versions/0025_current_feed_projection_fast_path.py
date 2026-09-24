@@ -38,10 +38,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("DROP VIEW IF EXISTS public.founder_feed_activity")
-    op.execute("DROP VIEW IF EXISTS public.founder_feed")
     op.execute("""
-      CREATE VIEW public.founder_feed
+      CREATE OR REPLACE VIEW public.founder_feed
       WITH (security_invoker = true) AS
       WITH ranked AS (
         SELECT fp.id, fp.opportunity_id, fp.opportunity_content_hash,
@@ -75,15 +73,3 @@ def downgrade() -> None:
         opportunity_created_at, source_family
       FROM ranked WHERE rn = 1
     """)
-    # Recreate the dependent activity projection exactly as before.
-    op.execute("""
-      CREATE VIEW public.founder_feed_activity
-      WITH (security_invoker = true) AS
-      SELECT f.*, a.action_state, a.snoozed_until, a.action_updated_at,
-        a.feedback_label, a.feedback_count, a.feedback_updated_at,
-        a.has_activity
-      FROM public.founder_feed f
-      LEFT JOIN public.founder_activity_state a
-        ON a.opportunity_id = f.opportunity_id
-    """)
-    op.execute("GRANT SELECT ON public.founder_feed_activity TO authenticated")
