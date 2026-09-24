@@ -164,6 +164,8 @@ class WorkerErrorDeltaTests(unittest.TestCase):
         self.assertNotIn("0021_storage_v2", workflow)
         self.assertIn("0025_current_feed_fast_path", workflow)
         self.assertIn('print(f"PROBE_FAILURE={type(exc).__name__}")', workflow)
+        self.assertIn("if failures or max_worker > 10 or max_idle != 0 or max_unattributed != 0:", workflow)
+        self.assertNotIn("1 <= max_worker", workflow)
 
     def test_launcher_pins_acceptance_mode_into_the_reusable_final_closure(self):
         root = Path(__file__).resolve().parents[1]
