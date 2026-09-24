@@ -234,10 +234,14 @@ test.describe("Cloudflare staging hosted smoke", () => {
     expect(Array.isArray(detail.body.scoring.unknowns)).toBe(true);
 
     // 10. UI detail drawer, source link, and PDF preview
-    // Keep the browser-interacted card bound to the exact opportunity used by
-    // the API assertions above; DOM order can differ from the feed response.
-    const firstCard = page.getByTestId(`opportunity-card-${first.id}`);
+    // The API detail/search assertions use page_size=1 above, while the UI
+    // renders its own default page. Bind browser-only checks to the actual
+    // rendered card instead of assuming both orderings identify the same row.
+    const firstCard = page.locator('[data-testid^="opportunity-card-"]').first();
     await expect(firstCard).toBeVisible();
+    const firstCardTestId = await firstCard.getAttribute("data-testid");
+    expect(firstCardTestId).toMatch(/^opportunity-card-.+/);
+    const interactiveOpportunityId = firstCardTestId!.slice("opportunity-card-".length);
     await firstCard.click();
     const drawer = page.getByRole("dialog");
     await expect(drawer).toBeVisible();
@@ -264,7 +268,7 @@ test.describe("Cloudflare staging hosted smoke", () => {
     // 11. Fixed CV preview and download from founder-cv-portfolio (ADR-0024)
     const cvPreview = await pageBinary(
       page,
-      `/api/opportunities/${encodeURIComponent(first.id)}/artifacts/cv-final.pdf`
+      `/api/opportunities/${encodeURIComponent(interactiveOpportunityId)}/artifacts/cv-final.pdf`
     );
     expect(cvPreview.ok, `CV preview returned ${cvPreview.status}`).toBe(true);
     expect(cvPreview.contentType).toContain("application/pdf");
@@ -274,7 +278,7 @@ test.describe("Cloudflare staging hosted smoke", () => {
 
     const cvDownload = await pageBinary(
       page,
-      `/api/opportunities/${encodeURIComponent(first.id)}/artifacts/cv-final.pdf?download=true`
+      `/api/opportunities/${encodeURIComponent(interactiveOpportunityId)}/artifacts/cv-final.pdf?download=true`
     );
     expect(cvDownload.ok, `CV download returned ${cvDownload.status}`).toBe(true);
     expect(cvDownload.contentType).toContain("application/pdf");
@@ -286,7 +290,7 @@ test.describe("Cloudflare staging hosted smoke", () => {
     // 12. Generated artifact is either correctly returned (200) or legitimate 404/409/412
     const coverLetter = await pageBinary(
       page,
-      `/api/opportunities/${encodeURIComponent(first.id)}/artifacts/cover-letter.docx`
+      `/api/opportunities/${encodeURIComponent(interactiveOpportunityId)}/artifacts/cover-letter.docx`
     );
     if (coverLetter.ok) {
       expect(coverLetter.contentType).toContain(
@@ -316,6 +320,9 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await activityDrawer.getByRole("button", { name: "Dismiss" }).click();
     const dismissResponse = await dismissResponsePromise;
     expect(dismissResponse.status()).toBe(200);
+    expect(dismissResponse.url()).toContain(
+      `/api/opportunities/${encodeURIComponent(interactiveOpportunityId)}/actions`
+    );
     // The UI only exposes Clear / undo after its client has parsed the
     // successful response and applied the returned dismissed state. Avoid
     // consuming the response body a second time in Playwright.
@@ -329,6 +336,9 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await activityDrawer.getByRole("button", { name: "Clear / undo" }).click();
     const clearResponse = await clearResponsePromise;
     expect(clearResponse.status()).toBe(200);
+    expect(clearResponse.url()).toContain(
+      `/api/opportunities/${encodeURIComponent(interactiveOpportunityId)}/actions`
+    );
     // Absence of the undo action after the successful request proves that
     // the UI applied the cleared state; immutable history is checked below.
     await expect(activityDrawer.getByRole("button", { name: "Clear / undo" })).toHaveCount(0);
@@ -336,7 +346,7 @@ test.describe("Cloudflare staging hosted smoke", () => {
       action_history: Array<{ action_type: string }>;
     }>(
       page,
-      `/api/opportunities/${encodeURIComponent(first.id)}?activity_proof=${Date.now()}`,
+      `/api/opportunities/${encodeURIComponent(interactiveOpportunityId)}?activity_proof=${Date.now()}`,
       { cache: "no-store" }
     );
     expect(activityDetail.ok, `activity detail returned ${activityDetail.status}`).toBe(true);
