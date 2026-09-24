@@ -34,8 +34,9 @@ class SupabaseExecutionBundleTests(unittest.TestCase):
             "0022_storage_v2_direct_tiering",
             "0023_alembic_access",
             "0024_founder_jwt_claims",
+            "0025_current_feed_fast_path",
         ])
-        self.assertEqual(chain[-1]["revision"], "0024_founder_jwt_claims")
+        self.assertEqual(chain[-1]["revision"], "0025_current_feed_fast_path")
         self.assertEqual(len({item["revision"] for item in chain}), len(chain))
 
     def test_generation_is_deterministic_and_hashes_match(self):
@@ -47,7 +48,7 @@ class SupabaseExecutionBundleTests(unittest.TestCase):
                 if path.is_file():
                     other = Path(right) / path.relative_to(left)
                     self.assertEqual(path.read_bytes(), other.read_bytes(), path.name)
-            self.assertEqual(bundle.verify_manifest(Path(left))["expected_final_revision"], "0024_founder_jwt_claims")
+            self.assertEqual(bundle.verify_manifest(Path(left))["expected_final_revision"], "0025_current_feed_fast_path")
             manifest = json.loads((Path(left) / "migration-manifest.json").read_text(encoding="utf-8"))
             policy_alignment = next(item for item in manifest["migrations"] if item["revision"] == "0012_hosted_policy_alignment")
             self.assertTrue(policy_alignment["effects"]["touches_rls"])

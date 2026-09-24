@@ -32,7 +32,7 @@ def _test_engine():
     Table("alembic_version", metadata, Column("version_num", String(32), primary_key=True))
     metadata.create_all(engine)
     with engine.begin() as conn:
-        conn.execute(insert(metadata.tables["alembic_version"]), {"version_num": "0024_founder_jwt_claims"})
+        conn.execute(insert(metadata.tables["alembic_version"]), {"version_num": "0025_current_feed_fast_path"})
     return engine
 
 
@@ -60,7 +60,7 @@ class FounderStateBackupTests(unittest.TestCase):
             metrics = backup.export_snapshot(source, archive)
             payload = backup.load_snapshot(archive)
             self.assertEqual(metrics["backup_class"], "founder_state")
-            self.assertEqual(payload["source_revision"], "0024_founder_jwt_claims")
+            self.assertEqual(payload["source_revision"], "0025_current_feed_fast_path")
             self.assertEqual([row["id"] for row in payload["table_rows"]["opportunities"]], ["founder-protected"])
             self.assertEqual(metrics["source_json_bytes"] <= backup.MAX_SNAPSHOT_BYTES, True)
 
@@ -124,7 +124,7 @@ class FounderStateBackupTests(unittest.TestCase):
                 self.assertEqual(metrics["backup_class"], "founder_state")
                 self.assertLessEqual(metrics["source_json_bytes"], backup.MAX_SNAPSHOT_BYTES)
                 self.assertEqual(backup.load_snapshot(Path(temp) / "founder-state.json.gz")["source_revision"],
-                                 "0024_founder_jwt_claims")
+                                 "0025_current_feed_fast_path")
         finally:
             engine.dispose()
 

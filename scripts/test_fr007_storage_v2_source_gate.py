@@ -36,7 +36,7 @@ def _snapshot(database_bytes: int, relation_bytes: int, **overrides):
     counts.update(overrides)
     return {
         "source_id": "himalayas",
-        "database_revision": "0024_founder_jwt_claims",
+        "database_revision": "0025_current_feed_fast_path",
         "database_bytes": database_bytes,
         "public_relation_total_bytes": relation_bytes,
         "counts": counts,
@@ -52,7 +52,7 @@ def _capacity_benchmark(*, growth: int = 1024 * 1024, projected: int | None = No
     return {
         "status": "PASS",
         "source_id": "himalayas",
-        "database_revision": "0024_founder_jwt_claims",
+        "database_revision": "0025_current_feed_fast_path",
         "population_opportunities": 26_000,
         "sample_unique_opportunities": 20,
         "benchmark_database_bytes_empty_schema": 12 * 1024 * 1024,

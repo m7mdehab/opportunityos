@@ -18,7 +18,7 @@ def main() -> None:
 
     config = Config("alembic.ini")
     heads = ScriptDirectory.from_config(config).get_heads()
-    expected_head = "0024_founder_jwt_claims"
+    expected_head = "0025_current_feed_fast_path"
     if len(heads) != 1 or heads[0] != expected_head:
         raise AssertionError(f"expected one Storage V2 Alembic head, got {heads!r}")
 
@@ -75,6 +75,15 @@ def main() -> None:
 
         with engine.connect() as connection:
             revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            feed_view = connection.execute(text(
+                "SELECT pg_get_viewdef(c.oid, true), c.reloptions "
+                "FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
+                "WHERE n.nspname='public' AND c.relname='founder_feed' AND c.relkind='v'"
+            )).one()
+            if "row_number" in str(feed_view[0]).lower():
+                raise AssertionError("founder_feed must use the one-current-projection fast path")
+            if "security_invoker=true" not in {str(option).replace(" ", "") for option in (feed_view[1] or [])}:
+                raise AssertionError("founder_feed must retain security_invoker behavior")
             rls = connection.execute(text(
                 "SELECT c.relname, c.relrowsecurity FROM pg_class c "
                 "JOIN pg_namespace n ON n.oid=c.relnamespace "
@@ -170,6 +179,7 @@ def main() -> None:
             "required_tables": sorted(required),
             "feed_projection_rows_after_migration": projection_rows,
             "synthetic_active_rows": active_rows,
+            "founder_feed_fast_path": "direct_current_projection",
             "rls_enabled": sorted(name for name, enabled in rls if enabled),
         }, sort_keys=True))
     finally:

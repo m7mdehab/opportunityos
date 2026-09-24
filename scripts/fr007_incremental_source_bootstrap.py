@@ -78,7 +78,7 @@ def invariant_failures(state: dict[str, Any], projected_bytes: int) -> list[str]
     counts = state["counts"]
     queue = state["queue"]
     failures: list[str] = []
-    if state["database_revision"] != "0024_founder_jwt_claims":
+    if state["database_revision"] != "0025_current_feed_fast_path":
         failures.append("schema_revision")
     if int(state["database_bytes"]) > DATABASE_HARD_BUDGET:
         failures.append("physical_database_budget")
