@@ -1004,3 +1004,13 @@
 - current_sha_now: `c1d6bed9daf1c7e6cf73953328d5253e8e2d2179` plus this checkpoint-only terminal update.
 - current_remote_sha: `c1d6bed9daf1c7e6cf73953328d5253e8e2d2179` before this checkpoint commit.
 - exact_next_action: commit/push only this terminal checkpoint update. Dispatch normal `queue-recovery` and let worker semantics retry `greenhouse:scoutmotors` and its evaluator follow-up; take one aggregate post-recovery snapshot. Then resume offset `125`/max `125` (latest-success sources skip), keeping concurrency <=5 and 30-minute aggregate-only checks. Once offset 125 passes, immediately dispatch offset `250`/max `93`.
+
+- execution_update_2026_09_24_0646Z_queue_recovery_green_offset_125_resume_ready:
+  - fetched the authoritative branch; remote and local HEAD are `da00c197a26af2c13c0114cc32b69702201e92b0`. Existing user changes in `web/public/mockServiceWorker.js` and untracked `work/` remain untouched.
+  - normal queue-recovery run `35966288704` completed successfully on all five ordinary drain shards; all non-queue modes were skipped. No worker row was edited manually. The previous `greenhouse:scoutmotors` upload retry succeeded through the ordinary queue path.
+  - one aggregate-only SQL snapshot after recovery: DB `118,443,155` bytes; 15,980 opportunities (1,696 HOT /14,284 COLD /0 protected); 1,696 feed rows; 15,980 evaluations; 14,284 archives /`111,371,582` compressed bytes; 211 latest-success sources /0 latest non-OK. Queue pending/retry/running/expired/dead-letter all 0 and oldest due null. Direct-tier checks: zero synthetic `active` projections, max one current projection/evaluation per opportunity, zero cold descriptions/provenance/verbose evaluations. Archive object count/bytes match metadata. CV bucket remains 32 objects /`2,163,348` bytes.
+  - no whole-corpus archive verification was run; it remains deferred until all registry ranges finish. No source UI action, secret access, or paid infrastructure change occurred.
+- current_phase: `PHASE_V_QUEUE_CONVERGED_OFFSET_125_RESUME_READY_AFTER_SCOUTMOTORS_RETRY`
+- current_sha_now: `da00c197a26af2c13c0114cc32b69702201e92b0` plus this completed-boundary checkpoint update.
+- current_remote_sha: `da00c197a26af2c13c0114cc32b69702201e92b0`.
+- exact_next_action: commit/push this completed-boundary checkpoint update, then dispatch the bounded incremental source bootstrap at offset `125`/max `125`. Keep source parallelism at five, do not inspect run/database progress for 30 minutes unless the workflow becomes terminal, and do not commit another checkpoint while that slice is active. If offset 125 passes, dispatch offset `250`/max `93` immediately.
