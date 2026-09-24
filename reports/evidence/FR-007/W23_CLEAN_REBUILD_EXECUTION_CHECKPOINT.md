@@ -906,3 +906,13 @@
 - current_sha_now: `44cf265d25147729fd07bef1c5c193fb3f6b19c8` plus this terminal checkpoint update.
 - current_remote_sha: `44cf265d25147729fd07bef1c5c193fb3f6b19c8`.
 - exact_next_action: commit/push this terminal-boundary checkpoint, run launcher mode `queue-recovery` through normal five-shard workers, then verify queue convergence at the terminal boundary. Resume offset 125/max125 on the same source-skip path; dispatch offset 250/max93 immediately after offset-125 PASS. Defer comprehensive archive checks to the final bootstrap boundary.
+
+- execution_update_2026_09_24_0537Z_queue_recovery_dispatched:
+  - refreshed the actual remote ref with `git ls-remote`; authoritative branch head is `79ba33c697a48e84a909752361224bd91b194038`. The earlier `origin/...` tracking ref was stale at `43326fd`; it is not evidence of remote rollback. Existing user changes `web/public/mockServiceWorker.js` and untracked `work/` remain untouched.
+  - the failed offset-125 bootstrap `35944607526` is terminal; its nine successful identities remain recorded and will be skipped. No bootstrap job is active. Normal queue recovery `35947939021` is now dispatched from the registered launcher on branch `work/fr007-clean-rebuild-storage-v2`, mode `queue-recovery`, at launch SHA `79ba33c697a48e84a909752361224bd91b194038`.
+  - initial job snapshot: exactly the five ordinary queue drain shards are selected; shards 1-4 completed successfully and shard 5 was still processing. All source-bootstrap, staging, CI, CV, and final-closure mode jobs were skipped. No worker state was manually edited.
+  - next: let run `35947939021` finish normally, then take one aggregate queue/capacity snapshot to confirm natural retry/evaluation convergence. Resume offset 125/max125 on the source-skip path. Do not inspect source progress more often than 30 minutes; do not commit checkpoint changes while that resumed source slice is active. At offset-125 terminal PASS, immediately dispatch offset 250/max93; comprehensive object/invariant verification remains deferred to final bootstrap completion.
+- current_phase: `PHASE_V_NORMAL_QUEUE_RECOVERY_RUN_35947939021_ACTIVE`
+- current_sha_now: `79ba33c697a48e84a909752361224bd91b194038` (immutable launcher SHA; checkpoint update pending)
+- current_remote_sha: `79ba33c697a48e84a909752361224bd91b194038`
+- exact_next_action: wait for all five shards of run `35947939021` to finish, confirm its conclusion and natural queue state, then dispatch offset 125/max125. Keep source concurrency <=5 and preserve the 30-minute aggregate-only cadence.
