@@ -69,3 +69,11 @@ jobs:
           E2E_FOUNDER_EMAIL: ${{ secrets.E2E_FOUNDER_EMAIL }}
           E2E_FOUNDER_PASSWORD: ${{ secrets.E2E_FOUNDER_PASSWORD }}
         run: npx playwright test --config=playwright.staging.readonly.config.ts
+
+      - name: Founder detail, search, activity undo, and private CV smoke (no source trigger)
+        working-directory: web
+        env:
+          OPOS_STAGING_WEB_URL: ${{ vars.OPOS_STAGING_WEB_URL || 'https://opportunityos.m7mdehab.com' }}
+          E2E_FOUNDER_EMAIL: ${{ secrets.E2E_FOUNDER_EMAIL }}
+          E2E_FOUNDER_PASSWORD: ${{ secrets.E2E_FOUNDER_PASSWORD }}
+        run: npx playwright test --config=playwright.staging.full-smoke.config.ts
