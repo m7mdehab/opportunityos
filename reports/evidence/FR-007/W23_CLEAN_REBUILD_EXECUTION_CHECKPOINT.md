@@ -1411,3 +1411,11 @@
 - current_sha_now: `276dd5920e03fa78b3844b6f7efb51a7a21fea25` plus focused UI/API identity separation in `web/tests/e2e/staging-smoke.spec.ts` and checkpoint update.
 - current_remote_sha: `276dd5920e03fa78b3844b6f7efb51a7a21fea25` (verified by `git ls-remote`).
 - exact_next_action: run focused Playwright lint/type/diff and fixture-safe test discovery; commit/push only the corrected staging-test identity semantics plus checkpoint; dispatch only `staging-smoke` and confirm the full Founder flow including detail, search, CV preview/download, dismiss/clear immutable history, source-health read and logout. Then immediately dispatch launcher `acceptance` (not `full`) for queue convergence, exact five shards, FULL monitor and normal issue #137 RESOLVE; finish report and docs/STATE-only final commit.
+
+- execution_update_2026_09_25_0010Z_staging_url_assertion_encoding_repair:
+  - Staging run #91 `36059012849` on `af16d35` deployed successfully; current migration check, Founder provision/bind, JWT/feed access, read-only login/feed all passed. Feed normal-request `p95=1174.50 ms` passed the 1500 ms SLO (the observed cold request was 2151.00 ms, reported separately). The expanded flow reached the dismiss action and received HTTP 200, then failed only because the browser normalized the raw `:` separators in a source-qualified opportunity ID while the assertion expected `%3A` from `encodeURIComponent`.
+  - Fixed the proof to compare a decoded `URL.pathname` against the exact rendered-card opportunity ID for both dismiss and clear. Identity binding and activity-history checks remain strict; no product API, live Founder row, source/queue state, credentials, schema, or archive was changed. Narrow lint/type/diff checks and staging-smoke-only rerun pending.
+- current_phase: `PHASE_V_RETRY_STAGING_SMOKE_AFTER_URL_NORMALIZATION_FIX`
+- current_sha_now: `af16d35996438fdcc2cc02eb409eefccc8d09998` plus a narrow browser URL pathname normalization assertion and this checkpoint update.
+- current_remote_sha: `af16d35996438fdcc2cc02eb409eefccc8d09998` (verified before this correction).
+- exact_next_action: validate changed Playwright test and checkpoint, commit/push only these two files, and dispatch only staging-smoke. If green, immediately run acceptance mode; if a later assertion fails, repair only that assertion/path and repeat staging-smoke.

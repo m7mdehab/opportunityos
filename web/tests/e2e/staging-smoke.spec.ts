@@ -320,8 +320,8 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await activityDrawer.getByRole("button", { name: "Dismiss" }).click();
     const dismissResponse = await dismissResponsePromise;
     expect(dismissResponse.status()).toBe(200);
-    expect(dismissResponse.url()).toContain(
-      `/api/opportunities/${encodeURIComponent(interactiveOpportunityId)}/actions`
+    expect(decodeURIComponent(new URL(dismissResponse.url()).pathname)).toContain(
+      `/api/opportunities/${interactiveOpportunityId}/actions`
     );
     // The UI only exposes Clear / undo after its client has parsed the
     // successful response and applied the returned dismissed state. Avoid
@@ -336,8 +336,8 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await activityDrawer.getByRole("button", { name: "Clear / undo" }).click();
     const clearResponse = await clearResponsePromise;
     expect(clearResponse.status()).toBe(200);
-    expect(clearResponse.url()).toContain(
-      `/api/opportunities/${encodeURIComponent(interactiveOpportunityId)}/actions`
+    expect(decodeURIComponent(new URL(clearResponse.url()).pathname)).toContain(
+      `/api/opportunities/${interactiveOpportunityId}/actions`
     );
     // Absence of the undo action after the successful request proves that
     // the UI applied the cleared state; immutable history is checked below.
