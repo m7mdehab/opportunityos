@@ -304,10 +304,27 @@ test.describe("Cloudflare staging hosted smoke", () => {
     // the actionable state while retaining both immutable audit events.
     await firstCard.click();
     const activityDrawer = page.getByRole("dialog");
+    const dismissResponsePromise = page.waitForResponse((response) =>
+      response.url().includes("/api/opportunities/") &&
+      response.url().endsWith("/actions") &&
+      response.request().method() === "POST"
+    );
     await activityDrawer.getByRole("button", { name: "Dismiss" }).click();
-    await expect(activityDrawer.getByText("Current status: Dismissed")).toBeVisible();
+    const dismissResponse = await dismissResponsePromise;
+    expect(dismissResponse.status()).toBe(200);
+    expect((await dismissResponse.json()).action_state).toBe("dismissed");
+    await expect(activityDrawer.getByRole("button", { name: "Clear / undo" })).toBeVisible();
+
+    const clearResponsePromise = page.waitForResponse((response) =>
+      response.url().includes("/api/opportunities/") &&
+      response.url().endsWith("/actions") &&
+      response.request().method() === "POST"
+    );
     await activityDrawer.getByRole("button", { name: "Clear / undo" }).click();
-    await expect(activityDrawer.getByText("Current status: Dismissed")).toHaveCount(0);
+    const clearResponse = await clearResponsePromise;
+    expect(clearResponse.status()).toBe(200);
+    expect((await clearResponse.json()).action_state).toBeNull();
+    await expect(activityDrawer.getByRole("button", { name: "Clear / undo" })).toHaveCount(0);
     const activityDetail = await pageJson<{
       action_history: Array<{ action_type: string }>;
     }>(page, `/api/opportunities/${encodeURIComponent(first.id)}`);
