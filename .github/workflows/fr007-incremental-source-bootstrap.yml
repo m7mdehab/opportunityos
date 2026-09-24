@@ -28,7 +28,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: fr007-incremental-source-bootstrap
+  # Serialize with the ordinary scheduled/manual queue drain so a long stale
+  # poll recovery cannot overlap the five-shard connection envelope.
+  group: fr007-worker-drain
   cancel-in-progress: false
 
 jobs:

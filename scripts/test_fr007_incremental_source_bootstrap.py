@@ -176,6 +176,7 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
         self.assertIn("workflow_dispatch:", workflow)
         self.assertIn("workflow_call:", workflow)
         self.assertIn("timeout-minutes: 360", workflow)
+        self.assertIn("group: fr007-worker-drain", workflow)
         self.assertIn("if: always()", workflow)
         self.assertIn("retention-days: 30", workflow)
         self.assertIn("--source-ids", script)
@@ -264,7 +265,7 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
         }
 
         with tempfile.TemporaryDirectory() as tmp, patch.object(incremental, "SourceRegistry", return_value=registry), patch.object(
-            incremental, "_take_snapshot", side_effect=[before, after]
+            incremental, "_take_snapshot", side_effect=[before, before, after]
         ), patch.object(
             incremental,
             "_runnable_job_type_counts",
@@ -305,6 +306,7 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
             "inserted": 8, "unchanged": 0, "updated": 0,
         }
         queue_states = [
+            {},
             {("evaluate_new", "PENDING"): 1},
             {},
         ]
@@ -319,7 +321,7 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, patch.object(
             incremental, "SourceRegistry", return_value=registry
         ), patch.object(
-            incremental, "_take_snapshot", side_effect=[before, after]
+            incremental, "_take_snapshot", side_effect=[before, before, after]
         ), patch.object(
             incremental,
             "_runnable_job_type_counts",
@@ -354,11 +356,11 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, patch.object(
             incremental, "SourceRegistry", return_value=registry
         ), patch.object(
-            incremental, "_take_snapshot", side_effect=[before, after]
+            incremental, "_take_snapshot", side_effect=[before, before, after]
         ), patch.object(
             incremental,
             "_runnable_job_type_counts",
-            return_value={("poll_source", "PENDING"): 1},
+            side_effect=[{}, {("poll_source", "PENDING"): 1}],
         ), patch.object(incremental, "_verify_increment_archives"), patch.object(
             incremental, "_run_parallel_source_batch", return_value=[{"return_code": 0}]
         ), patch.object(incremental, "hosted_bootstrap_main") as hosted, contextlib.redirect_stdout(
@@ -372,6 +374,81 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "CAPACITY_OR_INVARIANT_STOP")
         self.assertIn("unexpected_source_followup_queue", report["fatal_failures"])
+        hosted.assert_not_called()
+
+    def test_incremental_runner_recovers_only_one_expired_poll_with_normal_worker(self):
+        ids = [f"source-{idx:03}" for idx in range(343)]
+        registry = SimpleNamespace(_sources=set(ids), is_read_allowed=lambda _source_id: True)
+        recovered = _state(coverage=1)
+        recovered["latest_source_poll"] = {"status": "ok"}
+        before = _state(coverage=1)
+        after = _state(coverage=2)
+        after["latest_source_poll"] = {
+            "status": "ok", "raw_ingested": 12, "unique_opportunities": 8,
+            "inserted": 8, "unchanged": 0, "updated": 0,
+        }
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            incremental, "SourceRegistry", return_value=registry
+        ), patch.object(
+            incremental,
+            "_runnable_job_type_counts",
+            side_effect=[
+                {("poll_source", "RUNNING"): 1},  # recovery gate
+                {},  # source evaluation follow-up gate
+                {},  # recovery convergence gate
+                {},  # completed source follow-up gate
+            ],
+        ), patch.object(
+            incremental,
+            "_expired_running_job_type_counts",
+            return_value={"poll_source": 1},
+        ), patch.object(
+            incremental,
+            "_expired_poll_source_ids",
+            return_value=["source-recovered"],
+        ), patch.object(
+            incremental,
+            "_take_snapshot",
+            side_effect=[before, recovered, before, after],
+        ), patch.object(
+            incremental, "hosted_bootstrap_main", return_value=0
+        ) as hosted, patch.object(
+            incremental, "_run_parallel_source_batch", return_value=[{"return_code": 0}]
+        ) as batch_runner, contextlib.redirect_stdout(io.StringIO()):
+            report = incremental.run_incremental_bootstrap(
+                source_offset=0,
+                max_sources=1,
+                output=Path(tmp) / "incremental.json",
+            )
+
+        self.assertEqual(report["status"], "PASS")
+        self.assertEqual(
+            report["preexisting_expired_poll_recovery"],
+            {"attempted": True, "source_ids": ["source-recovered"], "worker_jobs": 1, "error": None},
+        )
+        hosted.assert_called_once_with([
+            "--mode", "drain",
+            "--max-jobs", "1",
+            "--time-budget-seconds", "480",
+            "--worker-id", "fr007-bootstrap-expired-poll-recovery",
+        ])
+        batch_runner.assert_called_once_with([ids[0]], batch_tag="0-0")
+
+    def test_expired_poll_recovery_refuses_any_ambiguous_queue_shape(self):
+        with patch.object(
+            incremental,
+            "_runnable_job_type_counts",
+            return_value={("poll_source", "RUNNING"): 1, ("evaluate_new", "PENDING"): 1},
+        ), patch.object(
+            incremental, "_expired_running_job_type_counts", return_value={"poll_source": 1}
+        ), patch.object(
+            incremental, "_expired_poll_source_ids", return_value=["source-recovered"]
+        ), patch.object(incremental, "hosted_bootstrap_main") as hosted:
+            result = incremental._recover_single_expired_poll_source()
+
+        self.assertEqual(result["error"], "preexisting_queue_not_single_expired_poll_source")
+        self.assertFalse(result["attempted"])
         hosted.assert_not_called()
 
     def test_incremental_runner_pauses_before_write_if_projected_budget_fails(self):

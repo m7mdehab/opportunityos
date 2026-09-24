@@ -178,6 +178,122 @@ def _runnable_job_type_counts() -> dict[tuple[str, str], int]:
         engine.dispose()
 
 
+def _expired_running_job_type_counts() -> dict[str, int]:
+    """Return only aggregate job types for leases the normal worker may reclaim."""
+    engine, session = _connect()
+    try:
+        rows = (
+            session.query(WorkerJobRecord.job_type, func.count(WorkerJobRecord.id))
+            .filter(
+                WorkerJobRecord.status == "RUNNING",
+                WorkerJobRecord.lease_expires_at < func.now(),
+            )
+            .group_by(WorkerJobRecord.job_type)
+            .all()
+        )
+        return {str(job_type): int(count) for job_type, count in rows}
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def _expired_poll_source_ids() -> list[str]:
+    """Read the single source identity needed to verify stale-poll recovery."""
+    engine, session = _connect()
+    try:
+        rows = (
+            session.query(WorkerJobRecord.payload_json)
+            .filter(
+                WorkerJobRecord.job_type == "poll_source",
+                WorkerJobRecord.status == "RUNNING",
+                WorkerJobRecord.lease_expires_at < func.now(),
+            )
+            .all()
+        )
+        source_ids: list[str] = []
+        for (payload_json,) in rows:
+            payload = json.loads(payload_json)
+            source_id = payload.get("source_id") if isinstance(payload, dict) else None
+            if not isinstance(source_id, str) or not source_id:
+                return []
+            source_ids.append(source_id)
+        return source_ids
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def _recover_single_expired_poll_source() -> dict[str, Any]:
+    """Let one already-expired source poll finish under the bootstrap's long envelope.
+
+    This does not mutate queue rows. The ordinary worker claims the stale lease,
+    applies its normal retry policy, and runs with the same bounded DB pool. Any
+    other queue shape remains a hard stop so unrelated work cannot be drained.
+    """
+    runnable = _runnable_job_type_counts()
+    if not runnable:
+        return {"attempted": False, "source_ids": [], "worker_jobs": 0, "error": None}
+
+    expired_types = _expired_running_job_type_counts()
+    source_ids = _expired_poll_source_ids()
+    if (
+        runnable != {("poll_source", "RUNNING"): 1}
+        or expired_types != {"poll_source": 1}
+        or len(source_ids) != 1
+    ):
+        return {
+            "attempted": False,
+            "source_ids": source_ids,
+            "worker_jobs": 0,
+            "error": "preexisting_queue_not_single_expired_poll_source",
+        }
+
+    result = hosted_bootstrap_main([
+        "--mode", "drain",
+        "--max-jobs", "1",
+        "--time-budget-seconds", str(WORKER_TIME_BUDGET_SECONDS),
+        "--worker-id", "fr007-bootstrap-expired-poll-recovery",
+    ])
+    if result != 0:
+        return {
+            "attempted": True,
+            "source_ids": source_ids,
+            "worker_jobs": 1,
+            "error": "expired_poll_recovery_worker_exit",
+        }
+
+    followup_jobs, followup_error = _drain_source_followup()
+    if followup_error:
+        return {
+            "attempted": True,
+            "source_ids": source_ids,
+            "worker_jobs": 1 + followup_jobs,
+            "error": followup_error,
+        }
+    if _runnable_job_type_counts():
+        return {
+            "attempted": True,
+            "source_ids": source_ids,
+            "worker_jobs": 1 + followup_jobs,
+            "error": "expired_poll_recovery_queue_not_converged",
+        }
+
+    recovered = _take_snapshot(source_ids[0])
+    if _latest_status(recovered) != "ok":
+        return {
+            "attempted": True,
+            "source_ids": source_ids,
+            "worker_jobs": 1 + followup_jobs,
+            "error": "expired_poll_source_not_successful",
+        }
+    return {
+        "attempted": True,
+        "source_ids": source_ids,
+        "worker_jobs": 1 + followup_jobs,
+        "error": None,
+    }
+
+
 def _drain_source_followup() -> tuple[int, str | None]:
     """Drain only the single evaluate_new job produced by this source poll.
 
@@ -341,6 +457,28 @@ def run_incremental_bootstrap(*, source_offset: int, max_sources: int, output: P
     _write_report(output, report)
     fatal_failures: list[str] = []
     source_failures: list[str] = []
+
+    preflight = _take_snapshot(selected[0])
+    preflight_projection = projected_final_database_bytes(preflight, model)
+    report["preflight_metrics"] = _compact_metrics(preflight, preflight_projection)
+    preflight_failures = [
+        failure for failure in invariant_failures(preflight, preflight_projection)
+        if failure not in {"queue_not_converged_at_source_boundary", "oldest_due_age"}
+    ]
+    if preflight_failures:
+        report["status"] = "CAPACITY_OR_INVARIANT_STOP"
+        report["fatal_failures"] = sorted(set(preflight_failures))
+        _write_report(output, report)
+        return report
+
+    stale_poll_recovery = _recover_single_expired_poll_source()
+    report["preexisting_expired_poll_recovery"] = stale_poll_recovery
+    if stale_poll_recovery["error"]:
+        report["status"] = "QUEUE_RECOVERY_REQUIRED"
+        report["fatal_failures"] = [stale_poll_recovery["error"]]
+        _write_report(output, report)
+        return report
+    _write_report(output, report)
 
     for batch_index, start in enumerate(range(0, len(selected), MAX_PARALLEL_SOURCE_WORKERS)):
         batch_ids = selected[start : start + MAX_PARALLEL_SOURCE_WORKERS]
