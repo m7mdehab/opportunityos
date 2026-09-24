@@ -178,6 +178,14 @@ class WorkerErrorDeltaTests(unittest.TestCase):
         closure = (root / ".github" / "workflows" / "fr007-final-runtime-closure.yml").read_text(encoding="utf-8")
         self.assertIn('echo "CLOSURE_MODE=${{ inputs.mode }}"', closure)
         self.assertIn("acceptance_required || inputs.mode == 'acceptance'", closure)
+        for job_name, next_job in (
+            ("connection-observer:", "final-proof:"),
+            ("final-proof:", "full-monitor:"),
+        ):
+            section = closure.split(job_name, 1)[1].split(f"\n  {next_job}", 1)[0]
+            self.assertIn("if: ${{ always()", section)
+        monitor = closure.split("full-monitor:", 1)[1]
+        self.assertIn("if: ${{ always()", monitor)
 
 
 if __name__ == "__main__":

@@ -226,7 +226,7 @@ jobs:
 
   connection-observer:
     needs: live-preflight
-    if: ${{ (inputs.acceptance_required || inputs.mode == 'acceptance') && needs.live-preflight.result == 'success' }}
+    if: ${{ always() && (inputs.acceptance_required || inputs.mode == 'acceptance') && needs.live-preflight.result == 'success' }}
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -277,7 +277,7 @@ jobs:
 
   final-proof:
     needs: [bounded-recovery, connection-observer]
-    if: ${{ (inputs.acceptance_required || inputs.mode == 'acceptance') && needs.bounded-recovery.result == 'success' && needs.connection-observer.result == 'success' }}
+    if: ${{ always() && (inputs.acceptance_required || inputs.mode == 'acceptance') && needs.bounded-recovery.result == 'success' && needs.connection-observer.result == 'success' }}
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -325,7 +325,7 @@ jobs:
 
   full-monitor:
     needs: final-proof
-    if: ${{ (inputs.acceptance_required || inputs.mode == 'acceptance') && needs.final-proof.result == 'success' }}
+    if: ${{ always() && (inputs.acceptance_required || inputs.mode == 'acceptance') && needs.final-proof.result == 'success' }}
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 15
