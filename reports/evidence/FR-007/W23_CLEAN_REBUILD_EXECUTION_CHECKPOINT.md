@@ -1032,3 +1032,12 @@
 - current_sha_now: `1d731508d7d564abe99812010a93086c9bba29ac` plus completed-run local checkpoint updates.
 - current_remote_sha: `1d731508d7d564abe99812010a93086c9bba29ac`.
 - exact_next_action: commit/push the terminal-boundary checkpoint, dispatch `queue-recovery` through the registered launcher and let all five normal workers retry `greenhouse:singlestore` and its evaluator follow-up. After terminal success, take one aggregate snapshot and resume source offset `125`/max `125` (successful sources skip); keep concurrency <=5 and the 30-minute aggregate cadence. Once offset125 passes, dispatch offset `250`/max `93` immediately.
+
+- execution_update_2026_09_24_0731Z_queue_recovery_35970064945_dispatched:
+  - terminal offset-125 failure and sanitized aggregate boundary are pushed in commit `78ab5f8555d8ab6b3d0bd6cd9385eacc8ad9db39`.
+  - dispatched ordinary queue recovery `35970064945` / run #73 on that commit. The five bounded drain shards are selected; all unrelated modes are skipped. Initial job snapshot shows the five drain jobs queued. No source bootstrap is active, and no worker row was manually edited.
+  - the quiet bootstrap heartbeat is paused while no source slice is active; re-enable it with the new offset-125 run and a full 30-minute boundary when that slice resumes.
+- current_phase: `PHASE_V_QUEUE_RECOVERY_35970064945_QUEUED`
+- current_sha_now: `78ab5f8555d8ab6b3d0bd6cd9385eacc8ad9db39` plus this local post-failure checkpoint update.
+- current_remote_sha: `78ab5f8555d8ab6b3d0bd6cd9385eacc8ad9db39`.
+- exact_next_action: let all five ordinary queue-recovery shards complete. Then take one aggregate queue snapshot; if naturally converged, resume `incremental-source-bootstrap` offset `125`/max `125` from the latest branch head. Keep concurrency <=5, defer checks to the 30-minute aggregate boundary, and on offset-125 PASS immediately dispatch offset `250`/max `93`.
