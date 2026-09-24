@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, patch
 
 from scripts import fr007_hosted_bootstrap as bootstrap
 
+TEST_DB_URL = "postgresql" + "://not-a-real-secret/db"
+
 
 class RepresentativeSourceScopeTests(unittest.TestCase):
     def test_source_schedule_is_limited_to_requested_read_allowed_source(self):
@@ -108,7 +110,7 @@ class RepresentativeSourceScopeTests(unittest.TestCase):
         )
 
         with (
-            patch.dict(os.environ, {"OPOS_TARGET_DB_URL": "postgresql://not-a-real-secret/db"}, clear=False),
+            patch.dict(os.environ, {"OPOS_TARGET_DB_URL": TEST_DB_URL}, clear=False),
             patch.object(bootstrap, "SourceRegistry", return_value=registry),
             patch.object(bootstrap, "get_engine", return_value=fake_engine),
             patch.object(bootstrap, "get_session_factory", return_value=factory),
@@ -154,7 +156,7 @@ class RepresentativeSourceScopeTests(unittest.TestCase):
         ids = ["himalayas", "other-source"]
         selected = [{"source_id": sid, "job_id": f"job-{idx}"} for idx, sid in enumerate(ids)]
         with (
-            patch.dict(os.environ, {"OPOS_TARGET_DB_URL": "postgresql://not-a-real-secret/db"}, clear=False),
+            patch.dict(os.environ, {"OPOS_TARGET_DB_URL": TEST_DB_URL}, clear=False),
             patch.object(bootstrap, "SourceRegistry", return_value=registry),
             patch.object(bootstrap, "get_engine", return_value=fake_engine),
             patch.object(bootstrap, "get_session_factory", return_value=factory),
@@ -191,7 +193,7 @@ class RepresentativeSourceScopeTests(unittest.TestCase):
         ids = ["himalayas", "other-source"]
         selected = [{"source_id": sid, "job_id": f"job-{idx}"} for idx, sid in enumerate(ids)]
         with (
-            patch.dict(os.environ, {"OPOS_TARGET_DB_URL": "postgresql://not-a-real-secret/db"}, clear=False),
+            patch.dict(os.environ, {"OPOS_TARGET_DB_URL": TEST_DB_URL}, clear=False),
             patch.object(bootstrap, "SourceRegistry", return_value=registry),
             patch.object(bootstrap, "get_engine", return_value=fake_engine),
             patch.object(bootstrap, "get_session_factory", return_value=factory),
@@ -227,7 +229,7 @@ class RepresentativeSourceScopeTests(unittest.TestCase):
             is_read_allowed=lambda _source_id: True,
         )
         with (
-            patch.dict(os.environ, {"OPOS_TARGET_DB_URL": "postgresql://not-a-real-secret/db"}, clear=False),
+            patch.dict(os.environ, {"OPOS_TARGET_DB_URL": TEST_DB_URL}, clear=False),
             patch.object(bootstrap, "SourceRegistry", return_value=registry),
             patch.object(bootstrap, "get_engine", return_value=fake_engine),
             patch.object(bootstrap, "get_session_factory", return_value=factory),

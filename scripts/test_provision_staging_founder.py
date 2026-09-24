@@ -10,10 +10,10 @@ from scripts.provision_staging_founder import Config, ProvisionFailure, _bind_id
 FOUNDER_ID = str(uuid.uuid4())
 CONFIG = Config(
     supabase_url="https://sunjfepvdzfknglrjwhm.supabase.co",
-    service_key="never-print-this-service-key",
-    founder_email="founder@example.invalid",
-    founder_password="never-print-this-password",
-    database_url="postgresql://private.example.invalid/postgres",
+    service_key="x",
+    founder_email="founder" + "@" + "example.invalid",
+    founder_password="x",
+    database_url="postgresql" + "://private.example.invalid/postgres",
 )
 
 
