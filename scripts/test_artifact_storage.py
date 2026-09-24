@@ -21,9 +21,12 @@ class FakeTransport:
         self.uploads = []
         self.deletes = []
         self.fail_upload = False
+        self.fail_bucket_info = False
         self.bucket_public = False
 
     def bucket_info(self):
+        if self.fail_bucket_info:
+            raise RuntimeError("transport response included service-role-secret")
         return {"id": "private-artifacts", "public": self.bucket_public}
 
     def post(self, key, body):
@@ -188,6 +191,28 @@ class ArtifactStorageTests(unittest.TestCase):
                     b"private artifact bytes",
                     storage_client=self.client,
                 )
+        self.assertEqual(self.transport.uploads, [])
+        self.assertEqual(self.session.query(ArtifactCacheRecord).count(), 0)
+
+    def test_bucket_verification_transport_failure_fails_closed_without_leaking_details(self):
+        self.transport.fail_bucket_info = True
+        with patch.dict(os.environ, self.env, clear=False):
+            with self.assertRaisesRegex(
+                ac.ArtifactStorageError,
+                "private artifact bucket verification failed",
+            ) as caught:
+                ac.store(
+                    self.session,
+                    "opp-1",
+                    "truth-a",
+                    "classic",
+                    "cv",
+                    "application/octet-stream",
+                    b"private artifact bytes",
+                    storage_client=self.client,
+                )
+        self.assertNotIn(self.env["SUPABASE_SERVICE_ROLE_KEY"], str(caught.exception))
+        self.assertNotIn("transport response", str(caught.exception))
         self.assertEqual(self.transport.uploads, [])
         self.assertEqual(self.session.query(ArtifactCacheRecord).count(), 0)
 
