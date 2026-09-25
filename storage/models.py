@@ -386,6 +386,103 @@ class FounderTriageStateRecord(Base):
     snoozed_until = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, nullable=False)
+    saved_at = Column(DateTime, nullable=True, index=True)
+    applied_at = Column(DateTime, nullable=True, index=True)
+    closed_at = Column(DateTime, nullable=True, index=True)
+
+    __table_args__ = (
+        Index("ix_founder_triage_states_state_updated_at", "state", updated_at.desc()),
+    )
+
+
+class FounderActivityEventRecord(Base):
+    """Append-only, idempotent history of Founder tracker actions."""
+
+    __tablename__ = "founder_activity_events"
+
+    id = Column(String(64), primary_key=True)
+    opportunity_id = Column(
+        String(64), ForeignKey("opportunities.id", ondelete="RESTRICT"), nullable=False,
+    )
+    action_type = Column(String(48), nullable=False)
+    from_state = Column(String(32), nullable=True)
+    to_state = Column(String(32), nullable=True)
+    event_at = Column(DateTime, nullable=False)
+    metadata_json = Column(Text, nullable=False, default="{}", server_default="{}")
+    idempotency_key = Column(String(128), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_founder_activity_events_idempotency_key"),
+        Index("ix_founder_activity_events_opportunity_event_at", "opportunity_id", event_at.desc()),
+    )
+
+
+class FounderTrackerNoteRecord(Base):
+    """Private notes that remain independent of the current tracker state."""
+
+    __tablename__ = "founder_tracker_notes"
+
+    id = Column(String(64), primary_key=True)
+    opportunity_id = Column(
+        String(64), ForeignKey("opportunities.id", ondelete="RESTRICT"), nullable=False,
+    )
+    note_text = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, nullable=False)
+    archived_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("ix_founder_tracker_notes_opportunity_created_at", "opportunity_id", created_at.desc()),
+    )
+
+
+class FounderFollowUpRecord(Base):
+    """A single due/completed follow-up; no outbound action is implied."""
+
+    __tablename__ = "founder_follow_ups"
+
+    id = Column(String(64), primary_key=True)
+    opportunity_id = Column(
+        String(64), ForeignKey("opportunities.id", ondelete="RESTRICT"), nullable=False,
+    )
+    due_at = Column(DateTime, nullable=False)
+    completed_at = Column(DateTime, nullable=True)
+    note_text = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        Index(
+            "ix_founder_follow_ups_opportunity_due_completed",
+            "opportunity_id", due_at, "completed_at",
+        ),
+    )
+
+
+class FounderInterviewRecord(Base):
+    """One interview event; multiple rounds are allowed for a tracked job."""
+
+    __tablename__ = "founder_interviews"
+
+    id = Column(String(64), primary_key=True)
+    opportunity_id = Column(
+        String(64), ForeignKey("opportunities.id", ondelete="RESTRICT"), nullable=False,
+    )
+    scheduled_at = Column(DateTime, nullable=True)
+    round_label = Column(String(64), nullable=True)
+    interview_type = Column(String(32), nullable=True)
+    interview_format = Column(String(24), nullable=True)
+    interviewer_name = Column(String(128), nullable=True)
+    preparation_notes = Column(Text, nullable=True)
+    post_interview_notes = Column(Text, nullable=True)
+    outcome = Column(String(32), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        Index("ix_founder_interviews_opportunity_scheduled_at", "opportunity_id", scheduled_at),
+    )
 
 
 class FounderFilterSettingRecord(Base):
@@ -477,6 +574,88 @@ class ArtifactCacheRecord(Base):
     size_bytes = Column(Integer, nullable=True)
     generation_version = Column(String(64), nullable=True)
     created_at = Column(DateTime, nullable=True)
+
+
+class FounderTrackerDocumentRecord(Base):
+    """A private tracker link to an existing Founder document identity."""
+
+    __tablename__ = "founder_tracker_documents"
+
+    id = Column(String(64), primary_key=True)
+    opportunity_id = Column(
+        String(64), ForeignKey("opportunities.id", ondelete="RESTRICT"), nullable=False,
+    )
+    document_kind = Column(String(32), nullable=False)
+    document_id = Column(String(128), nullable=False)
+    content_sha256 = Column(String(64), nullable=True)
+    linked_at = Column(DateTime, nullable=False)
+    unlinked_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "opportunity_id", "document_kind", "document_id",
+            name="uq_founder_tracker_documents_opportunity_kind_document",
+        ),
+        Index("ix_founder_tracker_documents_opportunity_kind", "opportunity_id", "document_kind"),
+    )
+
+
+class FounderApplicationDetailRecord(Base):
+    """Application-only metadata; canonical current state remains in triage."""
+
+    __tablename__ = "founder_application_details"
+
+    opportunity_id = Column(
+        String(64), ForeignKey("opportunities.id", ondelete="RESTRICT"), primary_key=True,
+    )
+    application_method = Column(String(32), nullable=True)
+    application_reference = Column(String(256), nullable=True)
+    selected_cv_document_id = Column(String(128), nullable=True)
+    selected_cover_letter_document_id = Column(String(128), nullable=True)
+    updated_at = Column(DateTime, nullable=False)
+
+
+class FounderTrackerSnapshotRecord(Base):
+    """Small immutable job/score metadata linked to a cold artifact-cache object."""
+
+    __tablename__ = "founder_tracker_snapshots"
+
+    id = Column(String(64), primary_key=True)
+    opportunity_id = Column(
+        String(64), ForeignKey("opportunities.id", ondelete="RESTRICT"), nullable=False,
+    )
+    content_hash = Column(String(64), nullable=False)
+    artifact_cache_key = Column(
+        String(128), ForeignKey("artifact_cache.cache_key", ondelete="RESTRICT"), nullable=False,
+    )
+    title = Column(String(255), nullable=False)
+    organization = Column(String(255), nullable=False)
+    track = Column(String(32), nullable=False)
+    source_id = Column(String(128), nullable=False)
+    source_url = Column(Text, nullable=False)
+    posted_date = Column(String(64), nullable=True)
+    work_mode = Column(String(16), nullable=False)
+    location_country = Column(String(2), nullable=True)
+    location_city = Column(String(128), nullable=True)
+    location_region = Column(Text, nullable=True)
+    remote_scope = Column(String(24), nullable=True)
+    qualification_decision = Column(String(32), nullable=True)
+    fit_score = Column(Float, nullable=True)
+    preference_score = Column(Float, nullable=True)
+    confidence_score = Column(Float, nullable=True)
+    priority_score = Column(Float, nullable=True)
+    truth_pack_hash = Column(String(64), nullable=True)
+    selected_cv_document_id = Column(String(128), nullable=True)
+    captured_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "opportunity_id", "content_hash",
+            name="uq_founder_tracker_snapshots_opportunity_content_hash",
+        ),
+        Index("ix_founder_tracker_snapshots_opportunity_captured_at", "opportunity_id", captured_at.desc()),
+        Index("ix_founder_tracker_snapshots_content_hash", "content_hash"),
+    )
 
 
 class FounderCVSelectionRecord(Base):
