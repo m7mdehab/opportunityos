@@ -3,9 +3,9 @@ import { test, expect, type Page } from "@playwright/test"
 /**
  * C3 required behaviour #4 — j/k move the keyboard cursor (and real DOM
  * focus with it), o opens the drawer for the focused card, a marks it
- * applied, x dismisses it. Every assertion here is the *state change* the
+ * applied, x rejects it. Every assertion here is the *state change* the
  * shortcut causes (focus moved to a different card's real DOM node, the
- * drawer opened with that card's own title, the action badge appeared, a
+ * drawer opened with that card's own title, the To Review card disappeared, a
  * live network request fired) — never just "nothing threw". Shortcuts are
  * also proven inert while a text input has focus.
  */
@@ -73,7 +73,7 @@ test.describe("C3 keyboard flow (j/k/o/a/x)", () => {
     await expect(drawer).not.toBeVisible()
   })
 
-  test("a marks the focused card applied; moving on, x dismisses the next one", async ({
+  test("a marks the focused card applied; moving on, x rejects the next one", async ({
     page,
   }) => {
     await login(page)
@@ -91,24 +91,22 @@ test.describe("C3 keyboard flow (j/k/o/a/x)", () => {
     expect(applyResponse.status(), await applyResponse.text()).toBe(200)
     const applyBody = (await applyResponse.json()) as { action_state: string }
     expect(applyBody.action_state).toBe("submitted")
-    const appliedCard = page.locator(`[data-testid="${beforeId}"]`)
-    await expect(appliedCard.getByText("Applied", { exact: true })).toBeVisible()
+    await expect(page.locator(`[data-testid="${beforeId}"]`)).toHaveCount(0)
 
     await page.keyboard.press("j")
     const nextId = await focusedCard(page).getAttribute("data-testid")
     expect(nextId).not.toBe(beforeId)
 
-    const [dismissResponse] = await Promise.all([
+    const [rejectResponse] = await Promise.all([
       page.waitForResponse(
         (res) => res.request().method() === "POST" && res.url().includes("/actions")
       ),
       page.keyboard.press("x"),
     ])
-    expect(dismissResponse.status(), await dismissResponse.text()).toBe(200)
-    const dismissBody = (await dismissResponse.json()) as { action_state: string }
-    expect(dismissBody.action_state).toBe("dismissed")
-    const dismissedCard = page.locator(`[data-testid="${nextId}"]`)
-    await expect(dismissedCard.getByText("Dismissed", { exact: true })).toBeVisible()
+    expect(rejectResponse.status(), await rejectResponse.text()).toBe(200)
+    const rejectBody = (await rejectResponse.json()) as { action_state: string }
+    expect(rejectBody.action_state).toBe("rejected_by_founder")
+    await expect(page.locator(`[data-testid="${nextId}"]`)).toHaveCount(0)
   })
 
   test("shortcuts do not fire while a text input has focus", async ({ page }) => {

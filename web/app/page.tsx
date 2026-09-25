@@ -6,6 +6,7 @@ import { HeaderStrip } from "@/components/feed/header-strip"
 import { FilterBar, type FeedFilters } from "@/components/feed/filter-bar"
 import { FeedQueryChips, FeedQueryDrawer } from "@/components/feed/feed-query-drawer"
 import { OpportunityCard } from "@/components/feed/opportunity-card"
+import { TrackerView } from "@/components/feed/tracker-view"
 import { DetailDrawer } from "@/components/feed/detail-drawer"
 import { FiltersDrawer } from "@/components/feed/filters-drawer"
 import { FacetsPanel } from "@/components/feed/facets-panel"
@@ -63,6 +64,9 @@ export default function FeedPage() {
   const [listError, setListError] = useState<string | null>(null)
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedActionState, setSelectedActionState] = useState<ActionState>(null)
+  const [activeWorkspace, setActiveWorkspace] = useState<"jobs" | "tracker">("jobs")
+  const [trackerRefreshKey, setTrackerRefreshKey] = useState(0)
   const [polling, setPolling] = useState(false)
 
   // ---- D3 founder-controlled filters ----
@@ -300,14 +304,14 @@ export default function FeedPage() {
       } else if (e.key === "a") {
         if (current) {
           api.opportunities
-            .submitAction(current.id, "mark_applied", null)
-            .then((res) => handleActionSubmitted(current.id, res.action_state))
+            .submitAction(current.id, "mark_applied", null, crypto.randomUUID())
+            .then((res) => handleActionSubmitted(current.id, res.tracker_state ?? res.action_state))
         }
       } else if (e.key === "x") {
         if (current) {
           api.opportunities
-            .submitAction(current.id, "dismiss", null)
-            .then((res) => handleActionSubmitted(current.id, res.action_state))
+            .submitAction(current.id, "reject", null, crypto.randomUUID())
+            .then((res) => handleActionSubmitted(current.id, res.tracker_state ?? res.action_state))
         }
       }
     }
@@ -338,12 +342,13 @@ export default function FeedPage() {
   }
 
   function handleActionSubmitted(id: string, state: ActionState) {
-    setItems((prev) =>
-      prev
-        ? prev.map((o) => (o.id === id ? { ...o, action_state: state } : o))
-        : prev
-    )
+    const wasInToReview = items?.some((item) => item.id === id) ?? false
+    setSelectedActionState(state)
+    setItems((prev) => prev?.filter((o) => o.id !== id) ?? prev)
+    if (wasInToReview) setTotal((previous) => Math.max(0, previous - 1))
+    setTrackerRefreshKey((previous) => previous + 1)
     refreshDashboard()
+    refreshFromFirstPage()
   }
 
   const selectedItem = useMemo(
@@ -380,12 +385,35 @@ export default function FeedPage() {
         onOpenHiddenReasons={() => setHiddenReasonsOpen(true)}
       />
 
+      <div role="group" aria-label="Opportunity workspace" className="flex flex-wrap gap-2 border-b border-border bg-background px-4 py-2 sm:px-6">
+        <Button
+          type="button"
+          size="sm"
+          variant={activeWorkspace === "jobs" ? "default" : "outline"}
+          aria-pressed={activeWorkspace === "jobs"}
+          data-testid="workspace-jobs"
+          onClick={() => setActiveWorkspace("jobs")}
+        >
+          Jobs / To Review
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={activeWorkspace === "tracker" ? "default" : "outline"}
+          aria-pressed={activeWorkspace === "tracker"}
+          data-testid="workspace-tracker"
+          onClick={() => setActiveWorkspace("tracker")}
+        >
+          Tracker
+        </Button>
+      </div>
+
       {/* Master's addition #1: the >10% over-hiding warning must be
           visible, not just a tested pure function. See
           lib/format/over-hiding.ts for what this is derived from. */}
-      {overHidingWarning && <OverHidingWarningBanner warning={overHidingWarning} />}
+      {activeWorkspace === "jobs" && overHidingWarning && <OverHidingWarningBanner warning={overHidingWarning} />}
 
-      {truth && (
+      {truth && activeWorkspace === "jobs" && (
         <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-4 py-2 sm:px-6">
           <FilterBar
             filters={filters}
@@ -440,14 +468,23 @@ export default function FeedPage() {
         </div>
       )}
 
-      <FeedQueryChips value={query} onChange={handleQueryChange} />
-      {feedMetadataError && (
+      {activeWorkspace === "jobs" && <FeedQueryChips value={query} onChange={handleQueryChange} />}
+      {activeWorkspace === "jobs" && feedMetadataError && (
         <p role="status" className="border-b border-amber-600/30 bg-amber-50 px-4 py-2 text-xs text-amber-950 dark:bg-amber-950/20 dark:text-amber-100 sm:px-6">
           Advanced feed filtering is unsupported by this API adapter: {feedMetadataError} Track, decision, fit minimum, and search remain available.
         </p>
       )}
 
       <main className="flex-1 px-4 py-4 sm:px-6">
+        {activeWorkspace === "tracker" ? (
+          <TrackerView
+            refreshKey={trackerRefreshKey}
+            onOpen={(item) => {
+              setSelectedActionState(item.tracker_state ?? item.action_state)
+              setSelectedId(item.id)
+            }}
+          />
+        ) : <>
         {truth && !truth.loaded && (
           truth.validator.error_count > 0 ? (
             <InvalidTruthPackState findings={truth.validator.findings} />
@@ -500,6 +537,7 @@ export default function FeedPage() {
                   keyboardFocused={idx === focusedIndex}
                   onOpen={() => {
                     setFocusedIndex(idx)
+                    setSelectedActionState(o.action_state)
                     setSelectedId(o.id)
                   }}
                 />
@@ -565,6 +603,7 @@ export default function FeedPage() {
             </Button>
           </div>
         )}
+        </>}
       </main>
 
       <FiltersDrawer
@@ -610,10 +649,13 @@ export default function FeedPage() {
 
       <DetailDrawer
         opportunityId={selectedId}
-        initialActionState={selectedItem?.action_state ?? null}
+        initialActionState={selectedItem?.action_state ?? selectedActionState}
         initialFeedbackLabel={selectedItem?.feedback_label ?? null}
         onOpenChange={(open) => {
-          if (!open) setSelectedId(null)
+          if (!open) {
+            setSelectedId(null)
+            setSelectedActionState(null)
+          }
         }}
         onOpened={refreshDashboard}
         onFeedbackSubmitted={handleFeedbackSubmitted}

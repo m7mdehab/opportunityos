@@ -5,7 +5,7 @@
  * no idea this file exists.
  */
 import { http, HttpResponse } from "msw"
-import type { ActionType, FeedbackLabel, FeedQueryState } from "@/lib/contract/types"
+import type { ActionType, FeedbackLabel, FeedQueryState, TrackerBucket } from "@/lib/contract/types"
 import { getStore } from "@/lib/mock/store"
 import { resolveScenario } from "@/lib/mock/scenario"
 
@@ -20,7 +20,7 @@ const FEEDBACK_LABELS: FeedbackLabel[] = [
   "review_required",
 ]
 
-const ACTION_TYPES: ActionType[] = ["mark_applied", "dismiss", "snooze"]
+const ACTION_TYPES: ActionType[] = ["save", "mark_applied", "reject", "dismiss", "snooze"]
 
 function store() {
   return getStore(resolveScenario())
@@ -66,6 +66,20 @@ export const handlers = [
   http.get("/api/feed/filter-metadata", ({ request }) => {
     if (!requireAuth(request)) return unauthorized()
     return HttpResponse.json(store().feedFilterMetadata())
+  }),
+
+  http.get("/api/tracker", ({ request }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const url = new URL(request.url)
+    const bucket = url.searchParams.get("bucket") ?? "all"
+    if (!["saved", "applied", "rejected", "all"].includes(bucket)) {
+      return HttpResponse.json({ detail: "unknown tracker bucket" }, { status: 422 })
+    }
+    return HttpResponse.json(store().listTracker(
+      bucket as TrackerBucket,
+      Number(url.searchParams.get("page") ?? "1"),
+      Number(url.searchParams.get("page_size") ?? "25")
+    ))
   }),
 
   http.get("/api/opportunities", ({ request }) => {

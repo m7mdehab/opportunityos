@@ -16,6 +16,7 @@ import { DecisionBadge } from "@/components/feed/decision-badge"
 import { FeedbackButtons } from "@/components/feed/feedback-buttons"
 import { TriageActions } from "@/components/feed/triage-actions"
 import { api } from "@/lib/api/client"
+import { ApiError } from "@/lib/contract/types"
 import type {
   ActionState,
   ActionType,
@@ -45,6 +46,7 @@ export function DetailDrawer({
   const [error, setError] = useState<string | null>(null)
 
   const [actionState, setActionState] = useState<ActionState>(initialActionState)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [feedbackLabel, setFeedbackLabel] = useState<FeedbackLabel | null>(
     initialFeedbackLabel
   )
@@ -72,6 +74,7 @@ export function DetailDrawer({
   if (resetFor !== opportunityId) {
     setResetFor(opportunityId)
     setActionState(initialActionState)
+    setActionError(null)
     setFeedbackLabel(initialFeedbackLabel)
     setDetail(null)
     setError(null)
@@ -120,11 +123,27 @@ export function DetailDrawer({
 
   async function handleAction(type: ActionType, until: string | null) {
     if (!opportunityId) return
+    setActionError(null)
     setActionSubmitting(true)
     try {
-      const res = await api.opportunities.submitAction(opportunityId, type, until)
-      setActionState(res.action_state)
-      onActionSubmitted(opportunityId, res.action_state)
+      const res = await api.opportunities.submitAction(
+        opportunityId,
+        type,
+        until,
+        crypto.randomUUID()
+      )
+      const state = res.tracker_state ?? res.action_state
+      setActionState(state)
+      onActionSubmitted(opportunityId, state)
+    } catch (actionFailure) {
+      const detail = actionFailure instanceof ApiError &&
+        actionFailure.body && typeof actionFailure.body === "object" &&
+        "detail" in actionFailure.body && typeof actionFailure.body.detail === "string"
+        ? actionFailure.body.detail
+        : actionFailure instanceof Error
+          ? actionFailure.message
+          : "Could not update this tracker state."
+      setActionError(detail)
     } finally {
       setActionSubmitting(false)
     }
@@ -441,6 +460,11 @@ export function DetailDrawer({
                   onSubmit={handleAction}
                 />
               </div>
+              {actionError && (
+                <p role="alert" data-testid="tracker-action-error" className="mt-2 text-sm text-destructive">
+                  {actionError}
+                </p>
+              )}
             </section>
 
             {(detail.action_history.length > 0 ||

@@ -34,6 +34,8 @@ import type {
   SavedViewUpdateRequest,
   SourcesHealthResponse,
   TruthStatusResponse,
+  TrackerBucket,
+  TrackerListResponse,
   TutoringPlatform,
   TutoringPlatformsResponse,
   TutoringProfileMaterialResponse,
@@ -174,11 +176,21 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ label, note }),
       }),
-    submitAction: (id: string, type: ActionType, until: string | null) =>
+    submitAction: (id: string, type: ActionType, until: string | null, idempotencyKey?: string) =>
       request<ActionResponse>(`/api/opportunities/${id}/actions`, {
         method: "POST",
-        body: JSON.stringify({ type, until }),
+        body: JSON.stringify({ type, until, idempotency_key: idempotencyKey }),
       }),
+  },
+
+  tracker: {
+    list: (params: { bucket: TrackerBucket; page?: number; page_size?: number }) => {
+      const search = new URLSearchParams()
+      search.set("bucket", params.bucket)
+      if (params.page) search.set("page", String(params.page))
+      if (params.page_size) search.set("page_size", String(params.page_size))
+      return request<TrackerListResponse>(`/api/tracker?${search.toString()}`)
+    },
   },
 
   feedFilterMetadata: {

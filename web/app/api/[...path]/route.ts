@@ -232,6 +232,12 @@ async function hostedFacetPayload(config: HostedConfig, token: string): Promise<
 }
 async function hostedContract(request: NextRequest, path: string[], token: string, config: HostedConfig): Promise<NextResponse> {
   const subpath = path.join("/"); const method = request.method.toUpperCase(); const url = new URL(request.url);
+  if ((subpath === "tracker" && method === "GET") || (path.length === 3 && path[0] === "opportunities" && path[2] === "actions" && method === "POST")) {
+    return hostedError(
+      "Tracker lists and actions are not supported by the hosted adapter until state and activity events can be written atomically.",
+      501,
+    );
+  }
   if (subpath === "feed/filter-metadata" && method === "GET") {
     return hostedError("Advanced feed metadata and query filtering are unsupported by the hosted adapter. Track, decision, fit minimum, and search remain available.", 501);
   }

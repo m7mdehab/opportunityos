@@ -57,7 +57,28 @@ export type Decision = "qualified" | "ineligible" | "uncertain" | null
 
 export type ConstraintOutcome = "PASS" | "FAIL" | "UNKNOWN"
 
-export type ActionState = "submitted" | "dismissed" | "snoozed" | null
+export type TrackerState =
+  | "to_review"
+  | "saved"
+  | "applied"
+  | "recruiter_screen"
+  | "assessment"
+  | "interviewing"
+  | "final_interview"
+  | "offer"
+  | "accepted"
+  | "rejected_by_founder"
+  | "rejected_by_employer"
+  | "withdrawn"
+  | "no_response"
+  | "position_closed"
+  | "archived"
+  | "dismissed"
+  | "snoozed"
+
+export type TrackerBucket = "saved" | "applied" | "rejected" | "all"
+
+export type ActionState = TrackerState | "submitted" | null
 
 export type FeedbackLabel =
   | "good_match"
@@ -129,6 +150,8 @@ export interface OpportunityListItem extends OpportunityExtractionFields {
    * this item. Always present, `[]` when empty — never `null`. Rendered as
    * chips; never implies the item was removed or re-scored. */
   flagged_by: string[]
+  /** Present on tracker lists; current feed entries omit this field. */
+  tracker_state?: TrackerState | null
 }
 
 export interface OpportunityListResponse {
@@ -374,14 +397,23 @@ export interface FeedbackResponse {
   created_at: string
 }
 
-export type ActionType = "mark_applied" | "dismiss" | "snooze"
+export type ActionType = "save" | "mark_applied" | "reject" | "dismiss" | "snooze"
 
 export interface ActionResponse {
   opportunity_id: string
   action_state: ActionState
+  tracker_state?: TrackerState | null
   action_id: string | null
   until: string | null
   created_at: string
+}
+
+export interface TrackerListResponse {
+  bucket: TrackerBucket
+  page: number
+  page_size: number
+  total: number
+  items: OpportunityListItem[]
 }
 
 export interface DashboardDay {

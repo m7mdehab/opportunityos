@@ -11,6 +11,20 @@ import type { OpportunityListItem } from "@/lib/contract/types"
 
 const ACTION_STATE_LABEL: Record<string, string> = {
   submitted: "Applied",
+  saved: "Saved",
+  applied: "Applied",
+  rejected_by_founder: "Rejected",
+  rejected_by_employer: "Rejected by employer",
+  recruiter_screen: "Recruiter screen",
+  assessment: "Assessment",
+  interviewing: "Interviewing",
+  final_interview: "Final interview",
+  offer: "Offer",
+  accepted: "Accepted",
+  withdrawn: "Withdrawn",
+  no_response: "No response",
+  position_closed: "Position closed",
+  archived: "Archived",
   dismissed: "Dismissed",
   snoozed: "Snoozed",
 }

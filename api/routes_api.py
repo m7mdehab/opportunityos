@@ -90,6 +90,11 @@ from .saved_views import (
     list_saved_views,
     update_saved_view,
 )
+from .tracker_service import (
+    TrackerTransitionError,
+    list_tracker_items,
+    transition_tracker_state,
+)
 from .search import is_query_unparseable, rank_key, search_opportunity_ids
 from .serialization import (
     serialize_constraint,
@@ -441,7 +446,12 @@ def _batch_action_states(session: Session, opportunity_ids: list[str]) -> dict[s
                 results[triage.opportunity_id] = "snoozed"
                 needs_submitted.discard(triage.opportunity_id)
         else:
-            results[triage.opportunity_id] = triage.state
+            # Keep the original feed-card action label for callers that still
+            # consume submitted semantics; the tracker endpoint exposes the
+            # canonical `applied` state separately.
+            results[triage.opportunity_id] = (
+                "submitted" if triage.state == "applied" else triage.state
+            )
             needs_submitted.discard(triage.opportunity_id)
 
     if needs_submitted:
@@ -1250,6 +1260,32 @@ def list_opportunities(
     }
 
 
+@router.get("/tracker")
+def list_tracker(
+    request: Request,
+    bucket: Literal["saved", "applied", "rejected", "all"] = "all",
+    page: int = 1,
+    page_size: int = 25,
+    session: Session = Depends(get_db),
+):
+    loaded_pack = getattr(request.app.state, "loaded_truth_pack", None)
+    truth_pack_hash = loaded_pack.truth_pack_hash if loaded_pack is not None else None
+    if not truth_pack_hash:
+        latest = (
+            session.query(FeedProjectionRecord.truth_pack_hash)
+            .order_by(FeedProjectionRecord.projected_at.desc())
+            .first()
+        )
+        truth_pack_hash = latest[0] if latest else None
+    return list_tracker_items(
+        session,
+        bucket,
+        truth_pack_hash=truth_pack_hash,
+        page=page,
+        page_size=page_size,
+    )
+
+
 def _posted_date_sort_key(value: str | None) -> tuple[int, Any]:
     """Sort helper: later dates sort first (ascending key), missing/unparseable
     dates sort last."""
@@ -1824,6 +1860,7 @@ def submit_feedback(
 class ActionRequest(BaseModel):
     type: str
     until: str | None = None
+    idempotency_key: str | None = None
 
 
 @router.post("/opportunities/{opportunity_id}/actions")
@@ -1838,71 +1875,83 @@ def submit_action(
         raise HTTPException(status_code=404, detail="opportunity not found")
 
     now = datetime.now(timezone.utc)
+    if payload.type not in {"save", "mark_applied", "reject", "dismiss", "snooze"}:
+        response.status_code = 422
+        return {"detail": f"unknown action type: {payload.type!r}"}
 
-    if payload.type == "dismiss":
-        _upsert_triage_state(session, opportunity_id, "dismissed", None, now)
-        return {
-            "opportunity_id": opportunity_id,
-            "action_state": "dismissed",
-            "action_id": None,
-            "until": None,
-            "created_at": now.isoformat(),
-        }
-
+    until_date = None
     if payload.type == "snooze":
         until_date = _parse_future_date(payload.until, now)
         if until_date is None:
             response.status_code = 422
             return {"detail": "snooze requires a future 'until' date"}
-        _upsert_triage_state(session, opportunity_id, "snoozed", until_date, now)
-        return {
-            "opportunity_id": opportunity_id,
-            "action_state": "snoozed",
-            "action_id": None,
-            "until": until_date.date().isoformat(),
-            "created_at": now.isoformat(),
-        }
 
-    if payload.type == "mark_applied":
-        evaluation = _latest_evaluation(session, opportunity_id)
-        action_id = f"action-{uuid.uuid4().hex[:16]}"
-        record = OutboundActionRecordModel(
-            id=action_id,
-            opportunity_id=opportunity_id,
-            opportunity_content_hash=opp.content_hash,
-            workspace="default",
-            candidate_id="founder",
-            track=opp.track,
-            source=opp.source_id,
-            adapter_name="founder_attested",
-            adapter_version="1.0",
-            execution_mode=ExecutionMode.DRY_RUN.value,
-            qualification_decision=(evaluation.qualification_decision if evaluation else "uncertain"),
-            match_score_snapshot=(evaluation.fit_score if evaluation else 0.0),
-            artifact_ids_json="[]",
-            artifact_hashes_json="[]",
-            manifest_hash=hashlib.sha256(f"founder-attested:{opportunity_id}:{now.isoformat()}".encode()).hexdigest(),
-            action_status=ActionStatus.SUBMITTED.value,
-            # Unique per row, but no `idempotency_reservations` row is reserved
-            # or consumed for a founder-attested manual action -- see the
-            # `FeedbackAndActionTest` case that asserts the reservation table
-            # row count is unchanged by this endpoint.
-            idempotency_key=f"founder-attested:{opportunity_id}:{uuid.uuid4().hex}",
-            created_at=now,
-            updated_at=now,
+    try:
+        transition = transition_tracker_state(
+            session,
+            opportunity_id,
+            payload.type,
+            now,
+            snoozed_until=until_date,
+            request_key=payload.idempotency_key,
         )
-        session.add(record)
-        session.commit()
-        return {
-            "opportunity_id": opportunity_id,
-            "action_state": "submitted",
-            "action_id": action_id,
-            "until": None,
-            "created_at": now.isoformat(),
-        }
+    except TrackerTransitionError as exc:
+        session.rollback()
+        if str(exc) == "opportunity not found":
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    response.status_code = 422
-    return {"detail": f"unknown action type: {payload.type!r}"}
+    action_id = None
+    if payload.type == "mark_applied":
+        existing_attestation = (
+            session.query(OutboundActionRecordModel)
+            .filter_by(
+                opportunity_id=opportunity_id,
+                adapter_name="founder_attested",
+                action_status=ActionStatus.SUBMITTED.value,
+            )
+            .order_by(OutboundActionRecordModel.created_at.desc())
+            .first()
+        )
+        if existing_attestation is not None:
+            action_id = existing_attestation.id
+        elif transition.changed:
+            evaluation = _latest_evaluation(session, opportunity_id)
+            action_id = f"action-{uuid.uuid4().hex[:16]}"
+            session.add(OutboundActionRecordModel(
+                id=action_id,
+                opportunity_id=opportunity_id,
+                opportunity_content_hash=opp.content_hash,
+                workspace="default",
+                candidate_id="founder",
+                track=opp.track,
+                source=opp.source_id,
+                adapter_name="founder_attested",
+                adapter_version="1.0",
+                execution_mode=ExecutionMode.DRY_RUN.value,
+                qualification_decision=(evaluation.qualification_decision if evaluation else "uncertain"),
+                match_score_snapshot=(evaluation.fit_score if evaluation else 0.0),
+                artifact_ids_json="[]",
+                artifact_hashes_json="[]",
+                manifest_hash=hashlib.sha256(f"founder-attested:{opportunity_id}:{now.isoformat()}".encode()).hexdigest(),
+                action_status=ActionStatus.SUBMITTED.value,
+                # Founder attestation does not reserve an automated-submit key.
+                idempotency_key=f"founder-attested:{opportunity_id}:{uuid.uuid4().hex}",
+                created_at=now,
+                updated_at=now,
+            ))
+
+    session.commit()
+    return {
+        "opportunity_id": opportunity_id,
+        # Keep the old response value for existing callers while returning the
+        # canonical tracker state for the new Founder workflow.
+        "action_state": "submitted" if payload.type == "mark_applied" else transition.state,
+        "tracker_state": transition.state,
+        "action_id": action_id,
+        "until": until_date.date().isoformat() if until_date else None,
+        "created_at": now.isoformat(),
+    }
 
 
 def _parse_future_date(until: str | None, now: datetime) -> datetime | None:
@@ -1916,25 +1965,6 @@ def _parse_future_date(until: str | None, now: datetime) -> datetime | None:
     if parsed_dt <= now:
         return None
     return parsed_dt
-
-
-def _upsert_triage_state(session: Session, opportunity_id: str, state: str, snoozed_until: datetime | None, now: datetime) -> None:
-    existing = session.query(FounderTriageStateRecord).filter_by(opportunity_id=opportunity_id).first()
-    if existing is None:
-        session.add(
-            FounderTriageStateRecord(
-                opportunity_id=opportunity_id,
-                state=state,
-                snoozed_until=snoozed_until,
-                created_at=now,
-                updated_at=now,
-            )
-        )
-    else:
-        existing.state = state
-        existing.snoozed_until = snoozed_until
-        existing.updated_at = now
-    session.commit()
 
 
 # --------------------------------------------------------------------------

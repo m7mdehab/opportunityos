@@ -1,0 +1,3 @@
+Feature tree git diff --check: PASS.
+Initial staged check identified an extra blank line at EOF in the captured lint output. Removed the extra blank line.
+Staged git diff --check: PASS.
