@@ -1,0 +1,35 @@
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+  from starlette.testclient import TestClient as TestClient  # noqa
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+C:\Users\M7mdEhab\AppData\Local\Programs\Python\Python312\Lib\site-packages\alembic\config.py:572: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces/commas for version_locations.  Consider adding path_separator=os to Alembic config.
+  util.warn_deprecated(
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+test_case_m_backup_wipe_restore_postgres_cycle (storage.test_postgres_integration.PostgresProductionIntegrationTest.test_case_m_backup_wipe_restore_postgres_cycle)
+Case M: Full backup -> wipe database -> restore -> verify all models. ... INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001_baseline_schema, 0001_baseline_schema
+INFO  [alembic.runtime.migration] Running upgrade 0001_baseline_schema -> 0002_match_evaluations, 0002_match_evaluations
+INFO  [alembic.runtime.migration] Running upgrade 0002_match_evaluations -> 0003_provenance_identity, 0003_provenance_identity
+INFO  [alembic.runtime.migration] Running upgrade 0003_provenance_identity -> 0004_founder_control, 0004_founder_control
+INFO  [alembic.runtime.migration] Running upgrade 0004_founder_control -> 0005_widen_location_region, 0005_widen_location_region
+INFO  [alembic.runtime.migration] Running upgrade 0005_widen_location_region -> 0006_feed_projection, 0006_feed_projection
+INFO  [alembic.runtime.migration] Running upgrade 0006_feed_projection -> 0007_source_schedules, 0007_source_schedules
+INFO  [alembic.runtime.migration] Running upgrade 0007_source_schedules -> 0008_artifact_storage, 0008_artifact_storage: durable external artifact metadata.
+INFO  [alembic.runtime.migration] Running upgrade 0008_artifact_storage -> 0009_hosted_founder_auth, Durable single-Founder authentication state.
+INFO  [alembic.runtime.migration] Running upgrade 0009_hosted_founder_auth -> 0010_hosted_runtime, 0010_hosted_runtime
+INFO  [alembic.runtime.migration] Running upgrade 0010_hosted_runtime -> 0011_hosted_api_surface, 0011_hosted_api_surface
+INFO  [alembic.runtime.migration] Running upgrade 0011_hosted_api_surface -> 0012_hosted_policy_alignment, 0012_hosted_policy_alignment
+INFO  [alembic.runtime.migration] Running upgrade 0012_hosted_policy_alignment -> 0013_hosted_poll_now_cadence, 0013_hosted_poll_now_cadence
+INFO  [alembic.runtime.migration] Running upgrade 0013_hosted_poll_now_cadence -> 0014_backup_heartbeat, 0014_backup_heartbeat
+ok
+test_stale_lease_precedence_over_pending_backlog (worker.test_postgres_queue_durability.TestPostgresQueueDurability.test_stale_lease_precedence_over_pending_backlog)
+Stale RUNNING leases take priority over pending backlog in PostgreSQL. ... ok
+test_7_scheduler_worker_crash_recovery (worker.test_postgres_queue_durability.TestPostgresQueueDurability.test_7_scheduler_worker_crash_recovery)
+TEST 7: Scheduler/worker crash recovery: Worker crashes holding lease; ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 4.668s
+
+OK

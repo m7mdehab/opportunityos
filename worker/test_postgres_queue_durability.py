@@ -301,13 +301,20 @@ class TestPostgresQueueDurability(unittest.TestCase):
         session = self.session_factory()
         try:
             q = BackgroundWorkerQueue(session, worker_id="setup-worker")
-            # 1. Enqueue 20 pending jobs
-            pending_ids = [self._enqueue(q, payload={"p_idx": i}) for i in range(20)]
-
-            # 2. Enqueue 1 job and expire its lease
+            # 1. Claim a job before adding pending work, then persist an
+            # explicitly expired lease so this is a real stale RUNNING job.
             stale_id = self._enqueue(q, payload={"stale": True})
             stale_job = q.claim_next_job(lease_duration_seconds=0)
             self.assertEqual(stale_job.id, stale_id)
+            stale_job.lease_expires_at = _to_naive_utc(datetime.now(timezone.utc) - timedelta(minutes=1))
+            session.commit()
+
+            persisted_stale = session.query(WorkerJobRecord).filter_by(id=stale_id).one()
+            self.assertEqual(persisted_stale.status, "RUNNING")
+            self.assertLess(persisted_stale.lease_expires_at, _to_naive_utc(datetime.now(timezone.utc)))
+
+            # 2. Add a pending backlog only after the stale lease is established.
+            pending_ids = [self._enqueue(q, payload={"p_idx": i}) for i in range(20)]
 
             # 3. New worker claims next job - must be stale_id, not any pending job
             q_reclaimer = BackgroundWorkerQueue(session, worker_id="reclaimer-worker")
@@ -744,10 +751,21 @@ class TestPostgresQueueDurability(unittest.TestCase):
             session.add(sched)
             session.commit()
 
-            # Worker 1 claims with immediate expiration (0s lease)
+            # Worker 1 claims the job, simulating a crash while holding its lease.
             claimed1 = q.claim_next_job(lease_duration_seconds=0)
             self.assertIsNotNone(claimed1)
             self.assertEqual(claimed1.id, job_id)
+            # Store a clearly expired timestamp and verify the persisted row
+            # before constructing the recovery worker. This avoids depending
+            # on the timing of a zero-second lease boundary.
+            expired_at = _to_naive_utc(now - timedelta(seconds=1))
+            claimed1.lease_expires_at = expired_at
+            session.commit()
+            persisted_claim = session.query(WorkerJobRecord).filter_by(id=job_id).one()
+            self.assertEqual(persisted_claim.status, "RUNNING")
+            self.assertEqual(persisted_claim.lease_owner, "crashed-worker")
+            self.assertEqual(persisted_claim.lease_expires_at, expired_at)
+            self.assertLess(persisted_claim.lease_expires_at, _to_naive_utc(datetime.now(timezone.utc)))
         finally:
             session.close()
 

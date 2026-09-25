@@ -725,10 +725,11 @@ class PostgresProductionIntegrationTest(unittest.TestCase):
                         )
                     )
                 }
-            # founder_identity is intentionally migration-owned rather than an
-            # ORM/dump table: a restored environment must re-bind its own
-            # Supabase Founder subject instead of copying identity binding.
-            expected_tables = set(Base.metadata.tables.keys()) | {"founder_identity"}
+            # These tables are intentionally migration-owned rather than ORM/
+            # dump tables. A restored environment must re-bind its own
+            # Supabase Founder subject, while backup_heartbeats is recreated
+            # by the migrations.
+            expected_tables = set(Base.metadata.tables.keys()) | {"founder_identity", "backup_heartbeats"}
             self.assertEqual(actual_tables, expected_tables)
         finally:
             if os.path.exists(dump_path):
