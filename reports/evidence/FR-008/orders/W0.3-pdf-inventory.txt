@@ -1,0 +1,1 @@
+{"candidate_pdf_count": 9, "locked_catalog_variant_count": 6, "locked_hash_matches": 0, "page_count_distribution": {"2": 8, "3": 1}, "readable_pdf_count": 9, "unmatched_candidate_count": 9, "unreadable_pdf_count": 0}
