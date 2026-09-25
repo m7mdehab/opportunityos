@@ -1,0 +1,65 @@
+W7.4 integration validation — commit 202b3bc
+
+> web@0.1.0 lint
+> eslint . --max-warnings=0
+
+ESLINT_EXIT=0
+Generating route types...
+✓ Types generated successfully
+TYPEGEN_EXIT=0
+TSC_EXIT=0
+[WebServer] (node:8040) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:22768) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:22768) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:21816) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:33680) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:25396) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:17848) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:37428) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:4328) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:6252) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:16872) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:33520) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:26344) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 21 tests using 1 worker
+
+(node:19812) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  1 [chromium] › tests\e2e\axe.spec.ts:8:7 › accessibility › /login is axe-clean (2.6s)
+  ok  2 [chromium] › tests\e2e\axe.spec.ts:17:7 › accessibility › / (the feed) is axe-clean (4.8s)
+  ok  3 [chromium] › tests\e2e\fr008-feed-controls.spec.ts:15:7 › FR-008 feed controls › facets, score/date/sort, URL restore, chips, and saved-query round trip (9.2s)
+  ok  4 [chromium] › tests\e2e\fr008-responsive-accessibility.spec.ts:76:7 › FR-008 A-27 responsive, accessible journey at desktop (25.1s)
+  ok  5 [chromium] › tests\e2e\fr008-responsive-accessibility.spec.ts:76:7 › FR-008 A-27 responsive, accessible journey at 390px mobile (24.0s)
+  ok  6 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:65:7 › FR-008 basic triage tracker › To Review cards provide Save, Mark Applied, and Reject with a latest-action Undo (3.7s)
+  ok  7 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:125:7 › FR-008 basic triage tracker › detail-drawer triage offers Undo and applied audit history survives reload (9.1s)
+  ok  8 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:173:7 › FR-008 basic triage tracker › a newer tracker action makes the earlier Undo stale (2.3s)
+  ok  9 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:202:7 › FR-008 basic triage tracker › save, explicit apply, reject, bucket placement, and source-link truthfulness (9.5s)
+  ok 10 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:256:7 › FR-008 basic triage tracker › a failed tracker-state storage write leaves the job in To Review (2.1s)
+  ok 11 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:290:7 › FR-008 basic triage tracker › active snoozes stay out of To Review and expired snoozes resurface (2.9s)
+  ok 12 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:322:7 › FR-008 basic triage tracker › application pipeline moves forward, records one event per stage, and closes jobs (9.7s)
+  ok 13 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:363:7 › FR-008 basic triage tracker › private application notes create, edit, archive, and persist without duplicate events (7.5s)
+  ok 14 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:431:7 › FR-008 basic triage tracker › follow-ups create, reschedule, complete, reopen, and persist with private metadata (9.0s)
+  ok 15 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:532:7 › FR-008 basic triage tracker › interviews create, edit, complete, persist, and stay private in the upcoming summary (8.5s)
+  ok 16 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:615:7 › FR-008 basic triage tracker › application document links replace cleanly, persist, and record ID-only events (6.2s)
+  ok 17 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:703:7 › FR-008 basic triage tracker › activity timeline is private, newest-first, refreshes after tracker edits, and persists (8.8s)
+  ok 18 [chromium] › tests\e2e\keyboard.spec.ts:29:7 › C3 keyboard flow (j/k/o/a/x) › j/k move the cursor and move real DOM focus with it (1.4s)
+  ok 19 [chromium] › tests\e2e\keyboard.spec.ts:59:7 › C3 keyboard flow (j/k/o/a/x) › o opens the drawer for the focused card (2.1s)
+  ok 20 [chromium] › tests\e2e\keyboard.spec.ts:76:7 › C3 keyboard flow (j/k/o/a/x) › a marks the focused card applied; moving on, x rejects the next one (2.4s)
+  ok 21 [chromium] › tests\e2e\keyboard.spec.ts:112:7 › C3 keyboard flow (j/k/o/a/x) › shortcuts do not fire while a text input has focus (2.4s)
+
+  21 passed (3.7m)
+PLAYWRIGHT_EXIT=0

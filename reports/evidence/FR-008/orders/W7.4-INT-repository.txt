@@ -1,0 +1,3 @@
+python scripts/check_repository.py (C:\Users\M7mdEhab\projects\oos-wt\fr008-incremental-delivery)
+Repository integrity checks passed.
+EXIT_CODE=0

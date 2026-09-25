@@ -1,0 +1,2 @@
+git diff --check 50bb30e..HEAD (C:\Users\M7mdEhab\projects\oos-wt\fr008-w74-mobile-accessibility)
+EXIT_CODE=0
