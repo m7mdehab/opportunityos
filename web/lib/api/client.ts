@@ -11,6 +11,7 @@ import { ApiError } from "@/lib/contract/types"
 import type {
   ActionResponse,
   ActionType,
+  ApplicationStage,
   ArtifactTemplateId,
   AuthenticatedResponse,
   DashboardResponse,
@@ -176,10 +177,16 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ label, note }),
       }),
-    submitAction: (id: string, type: ActionType, until: string | null, idempotencyKey?: string) =>
+    submitAction: (
+      id: string,
+      type: ActionType,
+      until: string | null,
+      idempotencyKey?: string,
+      stage?: ApplicationStage
+    ) =>
       request<ActionResponse>(`/api/opportunities/${id}/actions`, {
         method: "POST",
-        body: JSON.stringify({ type, until, idempotency_key: idempotencyKey }),
+        body: JSON.stringify({ type, until, idempotency_key: idempotencyKey, stage }),
       }),
   },
 

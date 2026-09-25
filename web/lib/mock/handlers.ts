@@ -5,7 +5,7 @@
  * no idea this file exists.
  */
 import { http, HttpResponse } from "msw"
-import type { ActionType, FeedbackLabel, FeedQueryState, TrackerBucket } from "@/lib/contract/types"
+import type { ActionType, ApplicationStage, FeedbackLabel, FeedQueryState, TrackerBucket } from "@/lib/contract/types"
 import { getStore } from "@/lib/mock/store"
 import { resolveScenario } from "@/lib/mock/scenario"
 
@@ -20,7 +20,7 @@ const FEEDBACK_LABELS: FeedbackLabel[] = [
   "review_required",
 ]
 
-const ACTION_TYPES: ActionType[] = ["save", "mark_applied", "reject", "dismiss", "snooze"]
+const ACTION_TYPES: ActionType[] = ["save", "mark_applied", "reject", "dismiss", "snooze", "set_stage"]
 
 function store() {
   return getStore(resolveScenario())
@@ -207,6 +207,7 @@ export const handlers = [
     const body = (await request.json().catch(() => ({}))) as {
       type?: string
       until?: string | null
+      stage?: string | null
     }
     if (!body.type || !ACTION_TYPES.includes(body.type as ActionType)) {
       return HttpResponse.json({ detail: "unknown action type" }, { status: 422 })
@@ -217,15 +218,28 @@ export const handlers = [
         { status: 422 }
       )
     }
-    const result = store().submitAction(
+    const applicationStages: ApplicationStage[] = [
+      "applied", "recruiter_screen", "assessment", "interviewing",
+      "final_interview", "offer", "accepted", "rejected_by_employer",
+      "withdrawn", "no_response",
+    ]
+    if (body.type === "set_stage" && (!body.stage || !applicationStages.includes(body.stage as ApplicationStage))) {
+      return HttpResponse.json({ detail: "set_stage requires a valid application stage" }, { status: 422 })
+    }
+    if (body.type !== "set_stage" && body.stage) {
+      return HttpResponse.json({ detail: "stage is only valid for set_stage" }, { status: 422 })
+    }
+    const mockStore = store()
+    const result = mockStore.submitAction(
       id,
       body.type as ActionType,
-      body.until ?? null
+      body.until ?? null,
+      body.stage
     )
     if (!result) {
       return HttpResponse.json(
-        { detail: "opportunity not found" },
-        { status: 404 }
+        { detail: body.type === "set_stage" ? "invalid application stage transition" : "opportunity not found" },
+        { status: body.type === "set_stage" && mockStore.opportunities.has(id) ? 409 : 404 }
       )
     }
     return HttpResponse.json(result)

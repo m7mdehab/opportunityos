@@ -20,6 +20,7 @@ import { ApiError } from "@/lib/contract/types"
 import type {
   ActionState,
   ActionType,
+  ApplicationStage,
   FeedbackLabel,
   OpportunityDetail,
 } from "@/lib/contract/types"
@@ -121,7 +122,11 @@ export function DetailDrawer({
     }
   }
 
-  async function handleAction(type: ActionType, until: string | null) {
+  async function handleAction(
+    type: ActionType,
+    until: string | null,
+    stage?: ApplicationStage
+  ) {
     if (!opportunityId) return
     setActionError(null)
     setActionSubmitting(true)
@@ -130,7 +135,8 @@ export function DetailDrawer({
         opportunityId,
         type,
         until,
-        crypto.randomUUID()
+        crypto.randomUUID(),
+        stage
       )
       const state = res.tracker_state ?? res.action_state
       setActionState(state)

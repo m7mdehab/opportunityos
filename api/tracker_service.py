@@ -24,8 +24,26 @@ from storage.models import (
     OpportunityRecord,
 )
 
-TrackerAction = Literal["save", "mark_applied", "reject", "dismiss", "snooze"]
+TrackerAction = Literal["save", "mark_applied", "reject", "dismiss", "snooze", "set_stage"]
 TrackerBucket = Literal["saved", "applied", "rejected", "all"]
+
+APPLICATION_STAGES = (
+    "applied",
+    "recruiter_screen",
+    "assessment",
+    "interviewing",
+    "final_interview",
+    "offer",
+    "accepted",
+)
+ACTIVE_APPLICATION_STAGES = APPLICATION_STAGES[:-1]
+APPLICATION_STAGE_ORDER = {state: index for index, state in enumerate(APPLICATION_STAGES)}
+APPLICATION_TERMINAL_OUTCOMES = frozenset({
+    "rejected_by_employer",
+    "withdrawn",
+    "no_response",
+})
+APPLICATION_STAGE_TARGETS = frozenset((*APPLICATION_STAGES, *APPLICATION_TERMINAL_OUTCOMES))
 
 BUCKET_STATES: dict[str, tuple[str, ...]] = {
     "saved": ("saved",),
@@ -73,7 +91,14 @@ def _event_key(opportunity_id: str, request_key: str | None) -> str | None:
     return f"tracker:{digest}"
 
 
-def _allowed(previous: str, target: str) -> bool:
+def _allowed(previous: str, target: str, *, application_stage: bool = False) -> bool:
+    if application_stage:
+        if target in APPLICATION_STAGE_ORDER:
+            previous_order = APPLICATION_STAGE_ORDER.get(previous)
+            return previous_order is not None and APPLICATION_STAGE_ORDER[target] > previous_order
+        if target in APPLICATION_TERMINAL_OUTCOMES:
+            return previous in ACTIVE_APPLICATION_STAGES
+        return False
     if target == "saved":
         return previous in {"to_review", "saved", "snoozed"}
     if target == "applied":
@@ -97,18 +122,26 @@ def transition_tracker_state(
     *,
     snoozed_until: datetime | None = None,
     request_key: str | None = None,
+    target_stage: str | None = None,
 ) -> TransitionResult:
     """Write a current state and exactly one event for each real transition.
 
     The caller owns the transaction so the current state, event, and any
     related founder-attested action commit together.
     """
-    if action not in ACTION_TARGET:
+    if action not in {*ACTION_TARGET, "set_stage"}:
         raise TrackerTransitionError("unknown tracker action")
+    if action == "set_stage":
+        if target_stage not in APPLICATION_STAGE_TARGETS:
+            raise TrackerTransitionError("invalid application stage")
+        target = target_stage
+    else:
+        if target_stage is not None:
+            raise TrackerTransitionError("stage is only valid for set_stage")
+        target = ACTION_TARGET[action]
     if session.query(OpportunityRecord.id).filter_by(id=opportunity_id).first() is None:
         raise TrackerTransitionError("opportunity not found")
 
-    target = ACTION_TARGET[action]
     idempotency_key = _event_key(opportunity_id, request_key)
     if idempotency_key:
         previous_event = (
@@ -119,9 +152,10 @@ def transition_tracker_state(
         if previous_event is not None:
             if previous_event.opportunity_id != opportunity_id or previous_event.to_state != target:
                 raise TrackerTransitionError("idempotency key was already used for another action")
+            current_triage = session.get(FounderTriageStateRecord, opportunity_id)
             return TransitionResult(
                 opportunity_id=opportunity_id,
-                state=previous_event.to_state or target,
+                state=current_triage.state if current_triage is not None else (previous_event.to_state or target),
                 previous_state=previous_event.from_state or "to_review",
                 changed=False,
                 event_id=previous_event.id,
@@ -134,7 +168,7 @@ def transition_tracker_state(
             triage.snoozed_until = snoozed_until
             triage.updated_at = now
         return TransitionResult(opportunity_id, target, previous_state, False, None)
-    if not _allowed(previous_state, target):
+    if not _allowed(previous_state, target, application_stage=action == "set_stage"):
         raise TrackerTransitionError(f"cannot transition from {previous_state} to {target}")
 
     if triage is None:
@@ -157,13 +191,16 @@ def transition_tracker_state(
     elif target == "applied":
         triage.applied_at = now
         triage.closed_at = None
-    elif target in {"rejected_by_founder", "dismissed"}:
+    elif target in {
+        "rejected_by_founder", "dismissed", "accepted",
+        *APPLICATION_TERMINAL_OUTCOMES,
+    }:
         triage.closed_at = now
 
     event = FounderActivityEventRecord(
         id=f"tracker-event-{uuid.uuid4().hex}",
         opportunity_id=opportunity_id,
-        action_type=target,
+        action_type="application_stage_updated" if action == "set_stage" else target,
         from_state=previous_state,
         to_state=target,
         event_at=now,

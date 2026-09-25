@@ -1,0 +1,3 @@
+Feature working-tree git diff --check: PASS.
+Feature working-tree git diff --check: PASS.
+Staged feature git diff --check: PASS.

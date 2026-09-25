@@ -34,6 +34,34 @@ async function actOnFirstJob(page: Page, label: string, expectedState: string) {
   return opportunityId
 }
 
+async function updateApplicationStage(page: Page, stage: string) {
+  const drawer = page.getByRole("dialog")
+  await drawer.getByLabel("Application stage").selectOption(stage)
+  const [response] = await Promise.all([
+    page.waitForResponse((res) => res.request().method() === "POST" && res.url().includes("/actions")),
+    drawer.getByRole("button", { name: "Update stage", exact: true }).click(),
+  ])
+  expect(response.status(), await response.text()).toBe(200)
+  const body = (await response.json()) as { tracker_state: string }
+  expect(body.tracker_state).toBe(stage)
+}
+
+async function trackerEvents(page: Page, opportunityId: string) {
+  return page.evaluate((id) => {
+    const key = Object.keys(window.localStorage).find((value) =>
+      value.startsWith("opportunityos.mock.tracker-events.")
+    )
+    if (!key) return []
+    const events = JSON.parse(window.localStorage.getItem(key) ?? "[]") as Array<{
+      opportunity_id: string
+      action_type: string
+      from_state: string
+      to_state: string
+    }>
+    return events.filter((event) => event.opportunity_id === id)
+  }, opportunityId)
+}
+
 test.describe("FR-008 basic triage tracker", () => {
   test("save, explicit apply, reject, bucket placement, and source-link truthfulness", async ({ page }) => {
     await login(page)
@@ -86,5 +114,46 @@ test.describe("FR-008 basic triage tracker", () => {
     await expect(page.getByTestId(`opportunity-card-${savedId}`)).toBeVisible()
     await expect(page.getByTestId(`opportunity-card-${appliedId}`)).toBeVisible()
     await expect(page.getByTestId(`opportunity-card-${rejectedId}`)).toBeVisible()
+  })
+
+  test("application pipeline moves forward, records one event per stage, and closes jobs", async ({ page }) => {
+    await login(page)
+
+    const acceptedId = await actOnFirstJob(page, "Mark applied", "applied")
+    await page.getByTestId("workspace-tracker").click()
+    await page.getByTestId("tracker-bucket-applied").click()
+    await page.getByTestId(`opportunity-card-${acceptedId}`).click()
+
+    await updateApplicationStage(page, "assessment")
+    const afterAssessment = await trackerEvents(page, acceptedId)
+    expect(afterAssessment).toHaveLength(2)
+    expect(afterAssessment[1]).toMatchObject({
+      action_type: "application_stage_updated",
+      from_state: "applied",
+      to_state: "assessment",
+    })
+
+    await updateApplicationStage(page, "assessment")
+    expect(await trackerEvents(page, acceptedId)).toHaveLength(2)
+
+    await updateApplicationStage(page, "offer")
+    await updateApplicationStage(page, "accepted")
+    await expect(page.getByTestId(`opportunity-card-${acceptedId}`).getByText("Accepted", { exact: true })).toBeVisible()
+    await expect(page.getByRole("dialog").getByRole("button", { name: "Update stage" })).toHaveCount(0)
+    expect(await trackerEvents(page, acceptedId)).toHaveLength(4)
+    await page.keyboard.press("Escape")
+
+    await page.getByTestId("workspace-jobs").click()
+    const rejectedId = await actOnFirstJob(page, "Mark applied", "applied")
+    await page.getByTestId("workspace-tracker").click()
+    await page.getByTestId("tracker-bucket-applied").click()
+    await page.getByTestId(`opportunity-card-${rejectedId}`).click()
+    await updateApplicationStage(page, "rejected_by_employer")
+    await page.keyboard.press("Escape")
+    await page.getByTestId("tracker-bucket-rejected").click()
+    const rejectedCard = page.getByTestId(`opportunity-card-${rejectedId}`)
+    await expect(rejectedCard.getByText("Rejected by employer", { exact: true })).toBeVisible()
+    await rejectedCard.click()
+    await expect(page.getByRole("dialog").getByRole("button", { name: "Update stage" })).toHaveCount(0)
   })
 })

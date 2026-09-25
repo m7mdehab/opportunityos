@@ -1861,6 +1861,11 @@ class ActionRequest(BaseModel):
     type: str
     until: str | None = None
     idempotency_key: str | None = None
+    stage: Literal[
+        "applied", "recruiter_screen", "assessment", "interviewing",
+        "final_interview", "offer", "accepted", "rejected_by_employer",
+        "withdrawn", "no_response",
+    ] | None = None
 
 
 @router.post("/opportunities/{opportunity_id}/actions")
@@ -1875,9 +1880,15 @@ def submit_action(
         raise HTTPException(status_code=404, detail="opportunity not found")
 
     now = datetime.now(timezone.utc)
-    if payload.type not in {"save", "mark_applied", "reject", "dismiss", "snooze"}:
+    if payload.type not in {"save", "mark_applied", "reject", "dismiss", "snooze", "set_stage"}:
         response.status_code = 422
         return {"detail": f"unknown action type: {payload.type!r}"}
+    if payload.type == "set_stage" and payload.stage is None:
+        response.status_code = 422
+        return {"detail": "set_stage requires an application stage"}
+    if payload.type != "set_stage" and payload.stage is not None:
+        response.status_code = 422
+        return {"detail": "stage is only valid for set_stage"}
 
     until_date = None
     if payload.type == "snooze":
@@ -1894,6 +1905,7 @@ def submit_action(
             now,
             snoozed_until=until_date,
             request_key=payload.idempotency_key,
+            target_stage=payload.stage,
         )
     except TrackerTransitionError as exc:
         session.rollback()

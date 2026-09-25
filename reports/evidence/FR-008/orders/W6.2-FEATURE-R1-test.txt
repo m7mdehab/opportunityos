@@ -1,0 +1,109 @@
+EEE.E.EEEE
+======================================================================
+ERROR: test_application_stages_move_forward_with_append_only_events (api.test_tracker_service.TrackerServiceTest.test_application_stages_move_forward_with_append_only_events)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w62-application-pipeline\api\test_tracker_service.py", line 232, in test_application_stages_move_forward_with_append_only_events
+    applied = transition_tracker_state(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w62-application-pipeline\api\tracker_service.py", line 170, in transition_tracker_state
+    raise TrackerTransitionError(f"cannot transition from {previous_state} to {target}")
+api.tracker_service.TrackerTransitionError: cannot transition from to_review to applied
+
+======================================================================
+ERROR: test_employer_terminal_outcomes_are_listed_as_rejected (api.test_tracker_service.TrackerServiceTest.test_employer_terminal_outcomes_are_listed_as_rejected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w62-application-pipeline\api\test_tracker_service.py", line 307, in test_employer_terminal_outcomes_are_listed_as_rejected
+    transition_tracker_state(
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w62-application-pipeline\api\tracker_service.py", line 170, in transition_tracker_state
+    raise TrackerTransitionError(f"cannot transition from {previous_state} to {target}")
+api.tracker_service.TrackerTransitionError: cannot transition from to_review to applied
+
+======================================================================
+ERROR: test_explicit_applied_route_keeps_legacy_response_and_does_not_reserve_submit_key (api.test_tracker_service.TrackerServiceTest.test_explicit_applied_route_keeps_legacy_response_and_does_not_reserve_submit_key)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w62-application-pipeline\api\routes_api.py", line 1901, in submit_action
+    transition = transition_tracker_state(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w62-application-pipeline\api\tracker_service.py", line 170, in transition_tracker_state
+    raise TrackerTransitionError(f"cannot transition from {previous_state} to {target}")
+api.tracker_service.TrackerTransitionError: cannot transition from to_review to applied
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w62-application-pipeline\api\test_tracker_service.py", line 385, in test_explicit_applied_route_keeps_legacy_response_and_does_not_reserve_submit_key
+    first = submit_action(
+            ^^^^^^^^^^^^^^
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w62-application-pipeline\api\routes_api.py", line 1914, in submit_action
+    raise HTTPException(status_code=409, detail=str(exc)) from exc
+fastapi.exceptions.HTTPException: 409: cannot transition from to_review to applied
+
+======================================================================
+ERROR: test_pipeline_rejects_backwards_and_post_terminal_transitions (api.test_tracker_service.TrackerServiceTest.test_pipeline_rejects_backwards_and_post_terminal_transitions)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w62-application-pipeline\api\test_tracker_service.py", line 347, in test_pipeline_rejects_backwards_and_post_terminal_transitions
+    transition_tracker_state(session, "synthetic-5", "mark_applied", now)
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w62-application-pipeline\api\tracker_service.py", line 170, in transition_tracker_state
+    raise TrackerTransitionError(f"cannot transition from {previous_state} to {target}")
+api.tracker_service.TrackerTransitionError: cannot transition from to_review to applied
+
+======================================================================
+ERROR: test_repeat_action_is_a_noop_and_reject_after_apply_is_invalid (api.test_tracker_service.TrackerServiceTest.test_repeat_action_is_a_noop_and_reject_after_apply_is_invalid)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w62-application-pipeline\api\test_tracker_service.py", line 114, in test_repeat_action_is_a_noop_and_reject_after_apply_is_invalid
+    transition_tracker_state(
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w62-application-pipeline\api\tracker_service.py", line 170, in transition_tracker_state
+    raise TrackerTransitionError(f"cannot transition from {previous_state} to {target}")
+api.tracker_service.TrackerTransitionError: cannot transition from saved to applied
+
+======================================================================
+ERROR: test_save_then_explicit_apply_keeps_one_event_per_transition (api.test_tracker_service.TrackerServiceTest.test_save_then_explicit_apply_keeps_one_event_per_transition)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w62-application-pipeline\api\test_tracker_service.py", line 63, in test_save_then_explicit_apply_keeps_one_event_per_transition
+    applied = transition_tracker_state(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w62-application-pipeline\api\tracker_service.py", line 170, in transition_tracker_state
+    raise TrackerTransitionError(f"cannot transition from {previous_state} to {target}")
+api.tracker_service.TrackerTransitionError: cannot transition from saved to applied
+
+======================================================================
+ERROR: test_stage_route_accepts_explicit_stage_without_new_outbound_action (api.test_tracker_service.TrackerServiceTest.test_stage_route_accepts_explicit_stage_without_new_outbound_action)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w62-application-pipeline\api\routes_api.py", line 1901, in submit_action
+    transition = transition_tracker_state(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w62-application-pipeline\api\tracker_service.py", line 170, in transition_tracker_state
+    raise TrackerTransitionError(f"cannot transition from {previous_state} to {target}")
+api.tracker_service.TrackerTransitionError: cannot transition from to_review to applied
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w62-application-pipeline\api\test_tracker_service.py", line 419, in test_stage_route_accepts_explicit_stage_without_new_outbound_action
+    applied = submit_action(
+              ^^^^^^^^^^^^^^
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w62-application-pipeline\api\routes_api.py", line 1914, in submit_action
+    raise HTTPException(status_code=409, detail=str(exc)) from exc
+fastapi.exceptions.HTTPException: 409: cannot transition from to_review to applied
+
+======================================================================
+ERROR: test_tracker_buckets_are_paginated_by_state_and_exclude_to_review (api.test_tracker_service.TrackerServiceTest.test_tracker_buckets_are_paginated_by_state_and_exclude_to_review)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w62-application-pipeline\api\test_tracker_service.py", line 182, in test_tracker_buckets_are_paginated_by_state_and_exclude_to_review
+    transition_tracker_state(
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w62-application-pipeline\api\tracker_service.py", line 170, in transition_tracker_state
+    raise TrackerTransitionError(f"cannot transition from {previous_state} to {target}")
+api.tracker_service.TrackerTransitionError: cannot transition from to_review to applied
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.570s
+
+FAILED (errors=8)

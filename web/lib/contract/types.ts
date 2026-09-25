@@ -76,6 +76,18 @@ export type TrackerState =
   | "dismissed"
   | "snoozed"
 
+export type ApplicationStage =
+  | "applied"
+  | "recruiter_screen"
+  | "assessment"
+  | "interviewing"
+  | "final_interview"
+  | "offer"
+  | "accepted"
+  | "rejected_by_employer"
+  | "withdrawn"
+  | "no_response"
+
 export type TrackerBucket = "saved" | "applied" | "rejected" | "all"
 
 export type ActionState = TrackerState | "submitted" | null
@@ -397,7 +409,7 @@ export interface FeedbackResponse {
   created_at: string
 }
 
-export type ActionType = "save" | "mark_applied" | "reject" | "dismiss" | "snooze"
+export type ActionType = "save" | "mark_applied" | "reject" | "dismiss" | "snooze" | "set_stage"
 
 export interface ActionResponse {
   opportunity_id: string
