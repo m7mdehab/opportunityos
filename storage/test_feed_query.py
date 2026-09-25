@@ -29,12 +29,13 @@ class FeedQueryContractTest(unittest.TestCase):
             opportunity_id: str,
             *,
             truth_hash: str = "truth-a",
-            decision: str = "QUALIFIED",
+            decision: str | None = "QUALIFIED",
             fit: float | None = 80.0,
             priority: float | None = None,
             visible: bool = True,
             track: str = "employment",
             work_mode: str = "remote",
+            remote_scope: str = "worldwide",
             country: str | None = "EG",
             family: str | None = "data_engineering",
             target_tier: str | None = "primary",
@@ -68,7 +69,7 @@ class FeedQueryContractTest(unittest.TestCase):
                     location_country=country,
                     location_city="Cairo" if country == "EG" else None,
                     location_region=None,
-                    remote_scope="worldwide",
+                    remote_scope=remote_scope,
                     remote_scope_regions=None,
                     employment_type=employment_type,
                     qualification_decision=decision,
@@ -316,6 +317,46 @@ class FeedQueryContractTest(unittest.TestCase):
             include_hidden=True,
         ))
         self.assertEqual([row.opportunity_id for row in unspecified.rows], ["opp-5"])
+
+    def test_unknown_filters_match_blank_and_literal_unknown_values(self) -> None:
+        self.add_projection(
+            "opp-5", decision=None, track="", work_mode="", remote_scope="",
+            country="unknown", family=None, target_tier="unknown", source_id="",
+            employment_type="", seniority_level="",
+        )
+        self.add_projection(
+            "opp-6", decision=" UNKNOWN ", track="unknown", work_mode="unspecified",
+            remote_scope="unknown", country=None, family="other", target_tier=None,
+            source_id="unknown", employment_type="unknown", seniority_level="unknown",
+        )
+        self.add_projection("opp-7", work_mode="unknown")
+        self.session.commit()
+
+        result = feed_page(self.session, FeedQuerySpec(
+            truth_pack_hash="truth-a",
+            track="unknown",
+            decision="unknown",
+            work_modes=("unknown",),
+            remote_scopes=("unknown",),
+            employment_types=("unknown",),
+            seniority_levels=("unknown",),
+            location_countries=("unknown",),
+            target_tiers=("unknown",),
+            title_families=("unknown",),
+            source_ids=("unknown",),
+            include_hidden=True,
+        ))
+        self.assertEqual(
+            {row.opportunity_id for row in result.rows},
+            {"opp-5", "opp-6"},
+        )
+        work_mode_unknown = feed_page(self.session, FeedQuerySpec(
+            truth_pack_hash="truth-a", work_modes=("unknown",), include_hidden=True
+        ))
+        self.assertEqual(
+            {row.opportunity_id for row in work_mode_unknown.rows},
+            {"opp-5", "opp-6", "opp-7"},
+        )
 
     def test_independent_score_ranges_and_posting_dates_filter_before_count_and_page(self) -> None:
         self.add_projection(

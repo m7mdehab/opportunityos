@@ -83,6 +83,7 @@ from .filters import (
     unavailable_reason,
     validate_filter_params,
 )
+from .feed_filter_metadata import feed_filter_metadata as build_feed_filter_metadata
 from .saved_views import (
     create_saved_view,
     delete_saved_view,
@@ -804,6 +805,29 @@ def _family_sizes(session: Session, family_keys: list[str | None]) -> dict[str, 
         .all()
     )
     return {family_key: member_count for family_key, member_count in rows if member_count is not None}
+
+
+@router.get("/feed/filter-metadata")
+def feed_filter_metadata_route(request: Request, session: Session = Depends(get_db)):
+    """Expose count-only availability metadata for projection-backed feed filters."""
+    loaded_pack = getattr(request.app.state, "loaded_truth_pack", None)
+    truth_pack_hash = loaded_pack.truth_pack_hash if loaded_pack is not None else None
+    if not truth_pack_hash:
+        latest_row = (
+            session.query(FeedProjectionRecord.truth_pack_hash)
+            .order_by(FeedProjectionRecord.projected_at.desc())
+            .first()
+        )
+        if latest_row:
+            truth_pack_hash = latest_row[0]
+        else:
+            latest_eval = (
+                session.query(MatchEvaluationRecord.truth_pack_hash)
+                .order_by(MatchEvaluationRecord.evaluated_at.desc())
+                .first()
+            )
+            truth_pack_hash = latest_eval[0] if latest_eval else "active"
+    return build_feed_filter_metadata(session, truth_pack_hash)
 
 
 @router.get("/facets")

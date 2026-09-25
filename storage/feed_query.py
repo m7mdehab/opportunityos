@@ -104,6 +104,7 @@ def _apply_multi_select(
     case_insensitive: bool = True,
     unknown_aliases: tuple[str, ...] = (),
     unknown_maps_to_unspecified: bool = True,
+    unknown_matches_empty: bool = False,
 ) -> Query:
     values = list(dict.fromkeys(value.casefold() for value in _values(selected_values)))
     unknown_selected = UNKNOWN_FILTER_VALUE in values
@@ -121,12 +122,21 @@ def _apply_multi_select(
             values.append("unspecified")
     elif unknown_selected and nullable_unknown is None:
         values.append(UNKNOWN_FILTER_VALUE)
+    if (
+        unknown_selected
+        and unknown_matches_empty
+        and unknown_maps_to_unspecified
+        and UNKNOWN_FILTER_VALUE not in values
+    ):
+        values.append(UNKNOWN_FILTER_VALUE)
     if values:
         clauses.append(
-            func.lower(column).in_(values) if case_insensitive else column.in_(values)
+            func.lower(func.trim(column)).in_(values) if case_insensitive else column.in_(values)
         )
     if unknown_selected and nullable_unknown is not None:
         clauses.append(nullable_unknown)
+    if unknown_selected and unknown_matches_empty:
+        clauses.append(or_(column.is_(None), func.trim(column) == ""))
 
     if clauses:
         query = query.filter(or_(*clauses))
@@ -162,11 +172,26 @@ def build_feed_query(session: Session, spec: FeedQuerySpec) -> Query:
     if not spec.include_hidden:
         query = query.filter(FeedProjectionRecord.visible.is_(True))
     if spec.track:
-        query = query.filter(FeedProjectionRecord.track == spec.track)
+        if spec.track.strip().casefold() == UNKNOWN_FILTER_VALUE:
+            query = query.filter(or_(
+                FeedProjectionRecord.track.is_(None),
+                func.trim(FeedProjectionRecord.track) == "",
+                func.lower(func.trim(FeedProjectionRecord.track)) == UNKNOWN_FILTER_VALUE,
+            ))
+        else:
+            query = query.filter(func.trim(FeedProjectionRecord.track) == spec.track.strip())
     if spec.decision:
-        query = query.filter(
-            func.lower(FeedProjectionRecord.qualification_decision) == spec.decision.casefold()
-        )
+        if spec.decision.strip().casefold() == UNKNOWN_FILTER_VALUE:
+            query = query.filter(or_(
+                FeedProjectionRecord.qualification_decision.is_(None),
+                func.trim(FeedProjectionRecord.qualification_decision) == "",
+                func.lower(func.trim(FeedProjectionRecord.qualification_decision)) == UNKNOWN_FILTER_VALUE,
+            ))
+        else:
+            query = query.filter(
+                func.lower(func.trim(FeedProjectionRecord.qualification_decision))
+                == spec.decision.strip().casefold()
+            )
     elif not spec.decision or spec.decision.casefold() != "ineligible":
         # Only a proven ineligible decision is excluded. A missing or review-
         # required decision remains available for review.
@@ -201,6 +226,7 @@ def build_feed_query(session: Session, spec: FeedQuerySpec) -> Query:
     query = _apply_multi_select(
         query, FeedProjectionRecord.work_mode, work_modes,
         case_insensitive=True,
+        unknown_matches_empty=True,
     )
     countries = spec.location_countries or ((spec.location_country,) if spec.location_country else ())
     query = _apply_multi_select(
@@ -208,6 +234,7 @@ def build_feed_query(session: Session, spec: FeedQuerySpec) -> Query:
         nullable_unknown=or_(
             FeedProjectionRecord.location_country.is_(None),
             func.trim(FeedProjectionRecord.location_country) == "",
+            func.lower(func.trim(FeedProjectionRecord.location_country)) == UNKNOWN_FILTER_VALUE,
         ),
         case_insensitive=True,
     )
@@ -217,20 +244,27 @@ def build_feed_query(session: Session, spec: FeedQuerySpec) -> Query:
     ):
         query = _apply_multi_select(
             query, column, values,
-            nullable_unknown=or_(column.is_(None), func.trim(column) == ""),
+            nullable_unknown=or_(
+                column.is_(None),
+                func.trim(column) == "",
+                func.lower(func.trim(column)) == UNKNOWN_FILTER_VALUE,
+            ),
             case_insensitive=True,
         )
     query = _apply_multi_select(
         query, FeedProjectionRecord.remote_scope, spec.remote_scopes,
         case_insensitive=True,
+        unknown_matches_empty=True,
     )
     query = _apply_multi_select(
         query, FeedProjectionRecord.employment_type, spec.employment_types,
         case_insensitive=True,
+        unknown_matches_empty=True,
     )
     query = _apply_multi_select(
         query, FeedProjectionRecord.seniority_level, spec.seniority_levels,
         case_insensitive=True,
+        unknown_matches_empty=True,
     )
     families = spec.title_families or ((spec.title_family,) if spec.title_family else ())
     query = _apply_multi_select(
@@ -247,6 +281,7 @@ def build_feed_query(session: Session, spec: FeedQuerySpec) -> Query:
         query, FeedProjectionRecord.source_id, sources,
         case_insensitive=True,
         unknown_maps_to_unspecified=False,
+        unknown_matches_empty=True,
     )
     if spec.q and spec.q.strip():
         tsquery = func.websearch_to_tsquery(literal_column("'simple'"), spec.q.strip())
