@@ -1,0 +1,2 @@
+Pre-stage tracked diff check is recorded in the pushed W6.1 evidence; staged W6.2 order check follows.
+Staged order-lock git diff --check: PASS.

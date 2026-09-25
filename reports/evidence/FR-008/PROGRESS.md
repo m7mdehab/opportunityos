@@ -20,7 +20,7 @@ These percentages measure the complete FR-008 scope, including the gold-set cali
 
 **Remaining:** The 150+ real-job Founder gold set and its acceptance metrics are still required before corpus reevaluation/backfill or weight calibration. Actual W3.5 metric generation and independent false-positive/false-negative review remain pending that set. W4.3 worker execution remains gated. W6.2–W8 tracker and Founder workflow implementation remains, including applied pipeline stages, restore, application metadata, notes, follow-ups, contacts, interviews, timeline UI, advanced tracker filters/sorts, and full snapshot retention. Performance/security and full staging E2E proof, final gold-set review, PostgreSQL runtime/RLS/query-plan and HTTP acceptance when a safe local target is available, and terminal acceptance also remain.
 
-**Next:** Lock W6.2's application pipeline transitions work order before editing source. Do not run real corpus reevaluation/backfill until the reviewed-gold and safe-local-target gates are satisfied. No weight calibration until the Founder-reviewed set is available.
+**Next:** Implement the locked W6.2 application pipeline transitions work order. Do not run real corpus reevaluation/backfill until the reviewed-gold and safe-local-target gates are satisfied. No weight calibration until the Founder-reviewed set is available.
 
 ## Evidence
 
