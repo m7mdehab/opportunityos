@@ -12,6 +12,7 @@ import type {
   ActionResponse,
   ActionType,
   ApplicationStage,
+  RestoreTrackerResponse,
   ArtifactTemplateId,
   AuthenticatedResponse,
   DashboardResponse,
@@ -201,6 +202,11 @@ export const api = {
       request<ActionResponse>(`/api/opportunities/${id}/actions`, {
         method: "POST",
         body: JSON.stringify({ type, until, idempotency_key: idempotencyKey, stage }),
+      }),
+    restoreAction: (id: string, eventId: string, idempotencyKey: string) =>
+      request<RestoreTrackerResponse>(`/api/opportunities/${id}/restore`, {
+        method: "POST",
+        body: JSON.stringify({ event_id: eventId, idempotency_key: idempotencyKey }),
       }),
   },
 

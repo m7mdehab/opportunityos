@@ -7,7 +7,7 @@ async function login(page: Page) {
   await expect(page).toHaveURL(/\/login$/)
   await page.getByLabel("Password").fill(FOUNDER_PASSWORD)
   await page.getByRole("button", { name: "Sign in" }).click()
-  await expect(page).toHaveURL(/\/$/)
+  await expect(page).toHaveURL(/\/(?:\?.*)?$/)
   await expect(page.getByTestId("workspace-jobs")).toBeVisible()
   await expect(page.locator('[data-testid^="opportunity-card-"]').first()).toBeVisible()
 }
@@ -62,6 +62,143 @@ async function trackerEvents(page: Page, opportunityId: string) {
 }
 
 test.describe("FR-008 basic triage tracker", () => {
+  test("To Review cards provide Save, Mark Applied, and Reject with a latest-action Undo", async ({ page }) => {
+    await login(page)
+    const observed = [] as Array<{ action: string; restored: string }>
+
+    for (const action of ["save", "apply", "reject"] as const) {
+      const card = page.locator('[data-testid^="opportunity-card-"]').first()
+      const cardTestId = await card.getAttribute("data-testid")
+      if (!cardTestId) throw new Error("first job card has no stable test id")
+      const opportunityId = cardTestId.replace("opportunity-card-", "")
+      const [actionResponse] = await Promise.all([
+        page.waitForResponse((response) => response.request().method() === "POST" && response.url().includes("/actions")),
+        page.getByTestId(`quick-${action === "apply" ? "apply" : action}-${opportunityId}`).click(),
+      ])
+      expect(actionResponse.status(), await actionResponse.text()).toBe(200)
+      const body = (await actionResponse.json()) as { tracker_state: string; undo_event_id: string }
+      expect(body.undo_event_id).toMatch(/^mock-activity-\d{8}$/)
+      const notice = page.getByTestId("tracker-undo-notice")
+      await expect(notice).toBeVisible()
+      expect(await notice.innerText()).not.toContain(body.undo_event_id)
+      await expect(page.getByTestId(`opportunity-card-${opportunityId}`)).toHaveCount(0)
+
+      const restoreRequestPromise = page.waitForRequest((request) => request.method() === "POST" && request.url().includes("/restore"))
+      const [restoreResponse, restoreRequest] = await Promise.all([
+        page.waitForResponse((response) => response.request().method() === "POST" && response.url().includes("/restore")),
+        restoreRequestPromise,
+        page.getByTestId("undo-tracker-action").click(),
+      ])
+      expect(restoreResponse.status(), await restoreResponse.text()).toBe(200)
+      const restored = (await restoreResponse.json()) as { tracker_state: string }
+      expect(restored.tracker_state).toBe("to_review")
+      await expect(page.getByTestId(`opportunity-card-${opportunityId}`)).toBeVisible()
+      await expect(page.getByTestId("tracker-undo-notice")).toHaveCount(0)
+      if (action === "save") {
+        const retry = await page.evaluate(async ({ id, payload }) => {
+          const response = await fetch(`/api/opportunities/${id}/restore`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+          return { status: response.status, body: await response.json() }
+        }, { id: opportunityId, payload: restoreRequest.postDataJSON() })
+        expect(retry.status).toBe(200)
+        expect((await trackerEvents(page, opportunityId)).filter((event) => event.action_type === "tracker_restored")).toHaveLength(1)
+      }
+      observed.push({ action, restored: restored.tracker_state })
+    }
+
+    expect(observed).toEqual([
+      { action: "save", restored: "to_review" },
+      { action: "apply", restored: "to_review" },
+      { action: "reject", restored: "to_review" },
+    ])
+    const firstCard = page.locator('[data-testid^="opportunity-card-"]').first()
+    const opportunityId = (await firstCard.getAttribute("data-testid"))?.replace("opportunity-card-", "")
+    if (!opportunityId) throw new Error("restored job card has no stable test id")
+    await firstCard.click()
+    await expect(page.getByTestId("tracker-activity-timeline")).toContainText("Undo applied")
+    expect((await trackerEvents(page, opportunityId)).some((event) => event.action_type === "tracker_restored")).toBe(true)
+  })
+
+  test("detail-drawer triage offers Undo and applied audit history survives reload", async ({ page }) => {
+    await login(page)
+    const labels = ["Save for later", "Mark applied", "Reject"]
+    let opportunityId = ""
+
+    for (const label of labels) {
+      const card = page.locator('[data-testid^="opportunity-card-"]').first()
+      const cardTestId = await card.getAttribute("data-testid")
+      if (!cardTestId) throw new Error("first job card has no stable test id")
+      opportunityId = cardTestId.replace("opportunity-card-", "")
+      await card.click()
+      const drawer = page.getByRole("dialog")
+      const [actionResponse] = await Promise.all([
+        page.waitForResponse((response) => response.request().method() === "POST" && response.url().includes("/actions")),
+        drawer.getByRole("button", { name: label, exact: true }).click(),
+      ])
+      expect(actionResponse.status(), await actionResponse.text()).toBe(200)
+      const actionBody = (await actionResponse.json()) as { undo_event_id: string }
+      expect(actionBody.undo_event_id).toMatch(/^mock-activity-\d{8}$/)
+      await expect(page.getByTestId(`opportunity-card-${opportunityId}`)).toHaveCount(0)
+      await expect(page.getByTestId("tracker-undo-notice")).toBeVisible()
+
+      const [restoreResponse] = await Promise.all([
+        page.waitForResponse((response) => response.request().method() === "POST" && response.url().includes("/restore")),
+        page.getByTestId("undo-tracker-action").click(),
+      ])
+      expect(restoreResponse.status(), await restoreResponse.text()).toBe(200)
+      expect(((await restoreResponse.json()) as { tracker_state: string }).tracker_state).toBe("to_review")
+      await expect(page.getByTestId("tracker-undo-notice")).toHaveCount(0)
+      await page.keyboard.press("Escape")
+      await expect(drawer).not.toBeVisible()
+      await expect(page.getByTestId(`opportunity-card-${opportunityId}`)).toBeVisible()
+    }
+
+    expect((await trackerEvents(page, opportunityId)).filter((event) => event.action_type === "tracker_restored")).toHaveLength(3)
+    await page.reload()
+    await expect(page.getByTestId(`opportunity-card-${opportunityId}`)).toBeVisible()
+    await page.getByTestId("workspace-tracker").click()
+    await page.getByTestId("tracker-bucket-applied").click()
+    await expect(page.getByTestId(`opportunity-card-${opportunityId}`)).toHaveCount(0)
+    await page.getByTestId("workspace-jobs").click()
+    await page.getByTestId(`opportunity-card-${opportunityId}`).click()
+    await expect(page.getByRole("dialog")).toContainText("action: undone")
+    const events = await trackerEvents(page, opportunityId)
+    expect(events).toHaveLength(6)
+    expect(events.filter((event) => event.action_type === "tracker_restored")).toHaveLength(3)
+  })
+
+  test("a newer tracker action makes the earlier Undo stale", async ({ page }) => {
+    await login(page)
+    const card = page.locator('[data-testid^="opportunity-card-"]').first()
+    const cardTestId = await card.getAttribute("data-testid")
+    if (!cardTestId) throw new Error("first job card has no stable test id")
+    const opportunityId = cardTestId.replace("opportunity-card-", "")
+    await page.getByTestId(`quick-save-${opportunityId}`).click()
+    await expect(page.getByTestId("tracker-undo-notice")).toBeVisible()
+
+    const newerActionStatus = await page.evaluate(async (id) => {
+      const response = await fetch(`/api/opportunities/${id}/actions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "reject", idempotency_key: "newer-triage" }),
+      })
+      return response.status
+    }, opportunityId)
+    expect(newerActionStatus).toBe(200)
+
+    const [restoreResponse] = await Promise.all([
+      page.waitForResponse((response) => response.request().method() === "POST" && response.url().includes("/restore")),
+      page.getByTestId("undo-tracker-action").click(),
+    ])
+    expect(restoreResponse.status()).toBe(409)
+    await expect(page.getByTestId("tracker-undo-error")).toContainText("no longer undoable")
+    await expect(page.getByTestId("tracker-undo-notice")).toHaveCount(0)
+    expect((await trackerEvents(page, opportunityId)).some((event) => event.action_type === "tracker_restored")).toBe(false)
+  })
+
   test("save, explicit apply, reject, bucket placement, and source-link truthfulness", async ({ page }) => {
     await login(page)
 

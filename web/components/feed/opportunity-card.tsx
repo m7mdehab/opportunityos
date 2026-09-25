@@ -2,6 +2,7 @@
 
 import { forwardRef } from "react"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { DecisionBadge } from "@/components/feed/decision-badge"
 import { filterTitle } from "@/components/feed/filter-labels"
 import { AlertTriangle, EyeOff, Tag, Globe } from "lucide-react"
@@ -61,20 +62,34 @@ export const OpportunityCard = forwardRef<
   {
     opportunity: OpportunityListItem
     onOpen: () => void
+    onTriageAction?: (action: "save" | "mark_applied" | "reject") => void
+    triagePending?: boolean
+    triageError?: string | null
     /** Keyboard-navigation cursor (`j`/`k` in `page.tsx`), independent of
      * whether the drawer is open. Purely a visual/focus-management concern
      * — never sent to the API. */
     keyboardFocused?: boolean
   }
->(function OpportunityCard({ opportunity, onOpen, keyboardFocused = false }, ref) {
+>(function OpportunityCard({
+  opportunity,
+  onOpen,
+  onTriageAction,
+  triagePending = false,
+  triageError = null,
+  keyboardFocused = false,
+}, ref) {
   const o = opportunity
   const isHidden = o.hidden_by.length > 0
   const domain = employerDomain(o.source_url)
   const age = postedAge(o.posted_date)
   const location = locationLabel(o)
+  const canTriage =
+    o.track === "employment" &&
+    (o.action_state === null || o.action_state === "to_review") &&
+    onTriageAction !== undefined
 
   return (
-    <li>
+    <li className="flex flex-col gap-2">
       <button
         ref={ref}
         type="button"
@@ -212,6 +227,42 @@ export const OpportunityCard = forwardRef<
           )}
         </div>
       </button>
+      {canTriage && (
+        <div role="group" className="flex flex-wrap items-center gap-2 px-1" aria-label={`Quick triage for ${o.title}`}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            data-testid={`quick-save-${o.id}`}
+            disabled={triagePending}
+            onClick={() => onTriageAction("save")}
+          >
+            Save
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            data-testid={`quick-apply-${o.id}`}
+            disabled={triagePending}
+            onClick={() => onTriageAction("mark_applied")}
+          >
+            Mark Applied
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="destructive"
+            data-testid={`quick-reject-${o.id}`}
+            disabled={triagePending}
+            onClick={() => onTriageAction("reject")}
+          >
+            Reject
+          </Button>
+          {triagePending && <span role="status" className="text-xs text-muted-foreground">Updating…</span>}
+          {triageError && <span role="alert" className="text-xs text-destructive">{triageError}</span>}
+        </div>
+      )}
     </li>
   )
 })

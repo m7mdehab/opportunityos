@@ -216,6 +216,15 @@ class FeedQueryContractTest(unittest.TestCase):
         self.assertTrue({"opp-6", "opp-7", "opp-9"}.issubset(tracked_ids))
         self.assertIn("opp-8", tracked_ids)
 
+        attestation = self.session.query(OutboundActionRecordModel).filter_by(id="action-opp-9").one()
+        attestation.action_status = "undone"
+        self.session.commit()
+        after_undo = feed_page(
+            self.session,
+            FeedQuerySpec(truth_pack_hash="truth-a", include_hidden=True, as_of=as_of),
+        )
+        self.assertIn("opp-9", {row.opportunity_id for row in after_undo.rows})
+
     def test_default_inbox_excludes_every_saved_pipeline_and_closed_tracker_state(self) -> None:
         as_of = datetime(2026, 9, 25, 12, 0, 0)
         states = [

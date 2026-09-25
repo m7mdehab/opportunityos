@@ -85,6 +85,7 @@ interface MockTrackerEvent {
   to_state: string
   event_at: string
   metadata_json?: string
+  idempotency_key?: string
 }
 
 interface MockTrackerNoteIdempotency {
@@ -412,6 +413,7 @@ export class MockStore {
     }
 
     this.restoreTrackerState()
+    this.restoreTrackerAttestationsFromEvents()
     this.restoreTrackerNotes()
     this.restoreTrackerFollowUps()
     this.restoreTrackerInterviews()
@@ -502,6 +504,38 @@ export class MockStore {
       }
     } catch {
       // In-memory mock behavior remains usable if browser storage is blocked.
+    }
+  }
+
+  private restoreTrackerAttestationsFromEvents() {
+    const undoneEvents = new Map<string, string>()
+    for (const event of this.trackerEvents) {
+      if (event.action_type !== "tracker_restored") continue
+      let metadata: Record<string, unknown> = {}
+      try { metadata = JSON.parse(event.metadata_json ?? "{}") as Record<string, unknown> } catch { /* malformed mock event */ }
+      if (typeof metadata.restored_event_id === "string") {
+        undoneEvents.set(metadata.restored_event_id, event.event_at)
+      }
+    }
+
+    for (const [index, event] of this.trackerEvents.entries()) {
+      if (event.action_type !== "applied") continue
+      const opportunity = this.opportunities.get(event.opportunity_id)
+      if (!opportunity) continue
+      let metadata: Record<string, unknown> = {}
+      try { metadata = JSON.parse(event.metadata_json ?? "{}") as Record<string, unknown> } catch { /* malformed mock event */ }
+      if (typeof metadata.attestation_action_id !== "string") continue
+      const actionId = metadata.attestation_action_id
+      if (opportunity.action_history.some((entry) => entry.action_id === actionId)) continue
+      const undoAt = undoneEvents.get(`mock-activity-${String(index).padStart(8, "0")}`)
+      opportunity.action_history.push({
+        action_id: actionId,
+        action_status: undoAt ? "undone" : "submitted",
+        execution_mode: "dry_run",
+        created_at: event.event_at,
+        updated_at: undoAt ?? event.event_at,
+        notes: "Founder-attested: applied outside the platform.",
+      })
     }
   }
 
@@ -1422,8 +1456,9 @@ export class MockStore {
     fromState: string,
     toState: string,
     actionType: string,
-    snoozedUntil: string | null = null
-  ): boolean {
+    snoozedUntil: string | null = null,
+    metadata: Record<string, unknown> = {}
+  ): string | null | false {
     const previousActionState = opportunity.action_state
     const previousSnoozedUntil = this.trackerSnoozeUntil.get(opportunity.id)
     opportunity.action_state = nextActionState
@@ -1444,9 +1479,21 @@ export class MockStore {
     }
 
     if (fromState !== toState) {
-      this.recordTrackerTransition(opportunity.id, fromState, toState, actionType)
+      const eventId = this.recordTrackerTransition(opportunity.id, fromState, toState, actionType, {
+        previous_action_state: previousActionState,
+        previous_snoozed_until: previousSnoozedUntil ?? null,
+        ...metadata,
+      })
+      if (!eventId) {
+        opportunity.action_state = previousActionState
+        if (previousSnoozedUntil) this.trackerSnoozeUntil.set(opportunity.id, previousSnoozedUntil)
+        else this.trackerSnoozeUntil.delete(opportunity.id)
+        this.persistTrackerState()
+        return false
+      }
+      return eventId
     }
-    return true
+    return null
   }
 
   private isSnoozeActive(opportunityId: string, now = Date.now()): boolean {
@@ -1459,22 +1506,28 @@ export class MockStore {
     opportunityId: string,
     fromState: string,
     toState: string,
-    actionType: string
-  ) {
+    actionType: string,
+    metadata: Record<string, unknown> = {}
+  ): string | null {
     const event = {
       opportunity_id: opportunityId,
       action_type: actionType,
       from_state: fromState,
       to_state: toState,
       event_at: new Date().toISOString(),
+      ...(typeof metadata.idempotency_key === "string" ? { idempotency_key: metadata.idempotency_key } : {}),
+      ...(Object.keys(metadata).length > 0 ? { metadata_json: JSON.stringify(metadata) } : {}),
     }
     this.trackerEvents.push(event)
-    if (typeof window === "undefined") return
+    const eventId = `mock-activity-${String(this.trackerEvents.length - 1).padStart(8, "0")}`
+    if (typeof window === "undefined") return eventId
     try {
       window.localStorage.setItem(this.trackerEventsStorageKey(), JSON.stringify(this.trackerEvents))
     } catch {
-      // Synthetic event persistence must not fail the mock action.
+      this.trackerEvents.pop()
+      return null
     }
+    return eventId
   }
 
   getTrackerEvents(opportunityId: string) {
@@ -2132,7 +2185,7 @@ export class MockStore {
       const canClose = terminalStages.includes(stage) && previousIndex >= 0
       if (!canMoveForward && !canClose) return null
 
-      if (!this.persistTrackerTransition(o, stage, previousState, stage, "application_stage_updated")) {
+      if (this.persistTrackerTransition(o, stage, previousState, stage, "application_stage_updated") === false) {
         return "persistence_failed"
       }
       return {
@@ -2158,11 +2211,21 @@ export class MockStore {
         }
       }
       if (!["to_review", "saved", "snoozed", "dismissed"].includes(previousState)) return null
-      if (!this.persistTrackerTransition(o, "submitted", previousState, "applied", "applied")) {
+      const actionId = `act-${id}-${o.action_history.length + 1}`
+      const undoEventId = this.persistTrackerTransition(
+        o,
+        "submitted",
+        previousState,
+        "applied",
+        "applied",
+        null,
+        { attestation_action_id: actionId },
+      )
+      if (undoEventId === false) {
         return "persistence_failed"
       }
       const entry = {
-        action_id: `act-${id}-${o.action_history.length + 1}`,
+        action_id: actionId,
         action_status: "submitted",
         execution_mode: "dry_run",
         created_at: new Date().toISOString(),
@@ -2176,6 +2239,7 @@ export class MockStore {
         action_state: o.action_state,
         tracker_state: "applied",
         action_id: entry.action_id,
+        undo_event_id: undoEventId,
         until: null,
         created_at: entry.created_at,
       }
@@ -2193,7 +2257,8 @@ export class MockStore {
         }
       }
       if (previousState !== "to_review" && previousState !== "snoozed") return null
-      if (!this.persistTrackerTransition(o, "saved", previousState, "saved", "saved")) {
+      const undoEventId = this.persistTrackerTransition(o, "saved", previousState, "saved", "saved")
+      if (undoEventId === false) {
         return "persistence_failed"
       }
       return {
@@ -2201,6 +2266,7 @@ export class MockStore {
         action_state: o.action_state,
         tracker_state: "saved" as const,
         action_id: null,
+        undo_event_id: undoEventId,
         until: null,
         created_at: new Date().toISOString(),
       }
@@ -2218,7 +2284,8 @@ export class MockStore {
         }
       }
       if (!["to_review", "saved", "snoozed", "dismissed"].includes(previousState)) return null
-      if (!this.persistTrackerTransition(o, "rejected_by_founder", previousState, "rejected_by_founder", "rejected_by_founder")) {
+      const undoEventId = this.persistTrackerTransition(o, "rejected_by_founder", previousState, "rejected_by_founder", "rejected_by_founder")
+      if (undoEventId === false) {
         return "persistence_failed"
       }
       return {
@@ -2226,6 +2293,7 @@ export class MockStore {
         action_state: o.action_state,
         tracker_state: "rejected_by_founder" as const,
         action_id: null,
+        undo_event_id: undoEventId,
         until: null,
         created_at: new Date().toISOString(),
       }
@@ -2240,7 +2308,7 @@ export class MockStore {
         until: null,
         created_at: new Date().toISOString(),
       }
-      if (!this.persistTrackerTransition(o, "dismissed", previousState, "dismissed", "dismissed")) {
+      if (this.persistTrackerTransition(o, "dismissed", previousState, "dismissed", "dismissed") === false) {
         return "persistence_failed"
       }
       return {
@@ -2255,7 +2323,7 @@ export class MockStore {
 
     // snooze
     if (previousState === "snoozed") {
-      if (!this.persistTrackerTransition(o, "snoozed", previousState, "snoozed", "snoozed", until)) {
+      if (this.persistTrackerTransition(o, "snoozed", previousState, "snoozed", "snoozed", until) === false) {
         return "persistence_failed"
       }
       return {
@@ -2268,8 +2336,8 @@ export class MockStore {
       }
     }
     if (previousState !== "to_review" && previousState !== "dismissed") return null
-    if (!this.persistTrackerTransition(o, "snoozed", previousState, "snoozed", "snoozed", until)) {
-      return "persistence_failed"
+    if (this.persistTrackerTransition(o, "snoozed", previousState, "snoozed", "snoozed", until) === false) {
+        return "persistence_failed"
     }
     return {
       opportunity_id: id,
@@ -2278,6 +2346,85 @@ export class MockStore {
       action_id: null,
       until,
       created_at: new Date().toISOString(),
+    }
+  }
+
+  restoreAction(id: string, eventId: string, idempotencyKey: string) {
+    const opportunity = this.opportunities.get(id)
+    if (!opportunity) return "not_found" as const
+    if (!idempotencyKey || idempotencyKey.length > 128) return "conflict" as const
+
+    const priorRestore = this.trackerEvents.find((event) => event.idempotency_key === idempotencyKey)
+    if (priorRestore) {
+      let metadata: Record<string, unknown> = {}
+      try { metadata = JSON.parse(priorRestore.metadata_json ?? "{}") as Record<string, unknown> } catch { /* malformed mock event */ }
+      if (priorRestore.opportunity_id !== id || priorRestore.action_type !== "tracker_restored" || metadata.restored_event_id !== eventId) {
+        return "conflict" as const
+      }
+      return {
+        opportunity_id: id,
+        tracker_state: priorRestore.to_state as TrackerState,
+        action_state: priorRestore.to_state === "to_review" ? null : priorRestore.to_state as ActionState,
+        created_at: priorRestore.event_at,
+      }
+    }
+
+    const eventIndex = /^mock-activity-(\d{8})$/.exec(eventId)?.[1]
+    if (eventIndex === undefined) return "not_found" as const
+    const originalIndex = Number(eventIndex)
+    const original = this.trackerEvents[originalIndex]
+    if (!original || original.opportunity_id !== id) return "not_found" as const
+    if (!["saved", "applied", "rejected_by_founder"].includes(original.action_type)) return "conflict" as const
+
+    let latestIndex = -1
+    for (let index = 0; index < this.trackerEvents.length; index += 1) {
+      if (this.trackerEvents[index].opportunity_id !== id) continue
+      if (latestIndex < 0 ||
+        this.trackerEvents[index].event_at > this.trackerEvents[latestIndex].event_at ||
+        (this.trackerEvents[index].event_at === this.trackerEvents[latestIndex].event_at && index > latestIndex)) {
+        latestIndex = index
+      }
+    }
+    if (latestIndex !== originalIndex) return "conflict" as const
+
+    const currentState = opportunity.action_state === "submitted"
+      ? "applied"
+      : opportunity.action_state ?? "to_review"
+    if (original.to_state !== currentState) return "conflict" as const
+
+    let metadata: Record<string, unknown> = {}
+    try { metadata = JSON.parse(original.metadata_json ?? "{}") as Record<string, unknown> } catch { /* old mock event */ }
+    const savedActionState = metadata.previous_action_state
+    const restoredActionState = savedActionState === null || typeof savedActionState === "string"
+      ? savedActionState as ActionState
+      : original.from_state === "to_review" ? null : original.from_state as ActionState
+    const previousSnoozedUntil = typeof metadata.previous_snoozed_until === "string"
+      ? metadata.previous_snoozed_until
+      : null
+    const restoreEventId = this.persistTrackerTransition(
+      opportunity,
+      restoredActionState,
+      currentState,
+      original.from_state,
+      "tracker_restored",
+      original.from_state === "snoozed" ? previousSnoozedUntil : null,
+      { restored_event_id: eventId, idempotency_key: idempotencyKey },
+    )
+    if (restoreEventId === false) return "persistence_failed" as const
+
+    if (original.action_type === "applied") {
+      const attestation = [...opportunity.action_history].reverse().find((entry) => entry.action_status === "submitted")
+      if (attestation) {
+        attestation.action_status = "undone"
+        attestation.updated_at = new Date().toISOString()
+        this.today().applied = Math.max(0, this.today().applied - 1)
+      }
+    }
+    return {
+      opportunity_id: id,
+      tracker_state: original.from_state as TrackerState,
+      action_state: restoredActionState,
+      created_at: this.trackerEvents[this.trackerEvents.length - 1]?.event_at ?? new Date().toISOString(),
     }
   }
 

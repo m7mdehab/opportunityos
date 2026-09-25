@@ -571,6 +571,28 @@ export const handlers = [
     return HttpResponse.json(result)
   }),
 
+  http.post("/api/opportunities/:id/restore", async ({ request, params }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const id = String(params.id)
+    const body = (await request.json().catch(() => ({}))) as {
+      event_id?: string
+      idempotency_key?: string
+    }
+    if (!body.event_id || !body.idempotency_key) {
+      return HttpResponse.json({ detail: "event_id and idempotency_key are required" }, { status: 422 })
+    }
+    if (body.idempotency_key.length > 128) {
+      return HttpResponse.json({ detail: "idempotency key is too long" }, { status: 422 })
+    }
+    const result = store().restoreAction(id, body.event_id, body.idempotency_key)
+    if (result === "persistence_failed") {
+      return HttpResponse.json({ detail: "Could not persist tracker state. The job remains unchanged." }, { status: 503 })
+    }
+    if (result === "not_found") return HttpResponse.json({ detail: "tracker event not found" }, { status: 404 })
+    if (result === "conflict") return HttpResponse.json({ detail: "tracker action is no longer undoable" }, { status: 409 })
+    return HttpResponse.json(result)
+  }),
+
   // ---- filters (D3) ----
   http.get("/api/filters", ({ request }) => {
     if (!requireAuth(request)) return unauthorized()

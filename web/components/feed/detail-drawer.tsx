@@ -10,6 +10,7 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet"
 import { Separator } from "@/components/ui/separator"
+import { Button } from "@/components/ui/button"
 import { ArtifactsPanel } from "@/components/feed/artifacts-panel"
 import { ConstraintOutcomeBadge } from "@/components/feed/constraint-outcome"
 import { DecisionBadge } from "@/components/feed/decision-badge"
@@ -25,6 +26,7 @@ import { ApiError } from "@/lib/contract/types"
 import { notifyTrackerActivityChanged } from "@/lib/tracker-activity"
 import type {
   ActionState,
+  ActionResponse,
   ActionType,
   ApplicationStage,
   FeedbackLabel,
@@ -75,6 +77,10 @@ export function DetailDrawer({
   onOpened,
   onFeedbackSubmitted,
   onActionSubmitted,
+  undoNotice,
+  undoSubmitting,
+  undoError,
+  onUndo,
 }: {
   opportunityId: string | null
   initialActionState: ActionState
@@ -82,7 +88,11 @@ export function DetailDrawer({
   onOpenChange: (open: boolean) => void
   onOpened: () => void
   onFeedbackSubmitted: (id: string, label: FeedbackLabel) => void
-  onActionSubmitted: (id: string, state: ActionState) => void
+  onActionSubmitted: (id: string, state: ActionState, response: ActionResponse) => void
+  undoNotice: { opportunityId: string; eventId: string; label: string } | null
+  undoSubmitting: boolean
+  undoError: string | null
+  onUndo: () => void
 }) {
   const [detail, setDetail] = useState<OpportunityDetail | null>(null)
   const [loading, setLoading] = useState(false)
@@ -109,18 +119,23 @@ export function DetailDrawer({
     [detail]
   )
 
-  // Reset local state when the drawer switches to a different opportunity
-  // (or closes). This is the "adjusting state when a prop changes" pattern
-  // from the React docs — computed during render, not in an effect — so it
-  // never causes a cascading re-render.
-  const [resetFor, setResetFor] = useState<string | null>(opportunityId)
-  if (resetFor !== opportunityId) {
-    setResetFor(opportunityId)
+  // Reset all drawer data when the selected opportunity changes. Sync the
+  // tracker state separately so Undo can update triage controls without
+  // throwing away the already-loaded opportunity detail.
+  const [resetForOpportunityId, setResetForOpportunityId] = useState(opportunityId)
+  const [resetForActionState, setResetForActionState] = useState(initialActionState)
+  if (resetForOpportunityId !== opportunityId) {
+    setResetForOpportunityId(opportunityId)
+    setResetForActionState(initialActionState)
     setActionState(initialActionState)
     setActionError(null)
     setFeedbackLabel(initialFeedbackLabel)
     setDetail(null)
     setError(null)
+  } else if (resetForActionState !== initialActionState) {
+    setResetForActionState(initialActionState)
+    setActionState(initialActionState)
+    setActionError(null)
   }
 
   useEffect(() => {
@@ -182,7 +197,7 @@ export function DetailDrawer({
       )
       const state = res.tracker_state ?? res.action_state
       setActionState(state)
-      onActionSubmitted(opportunityId, state)
+      onActionSubmitted(opportunityId, state, res)
       notifyTrackerActivityChanged()
     } catch (actionFailure) {
       const detail = actionFailure instanceof ApiError &&
@@ -514,6 +529,15 @@ export function DetailDrawer({
                   {actionError}
                 </p>
               )}
+              {undoNotice && (
+                <div role="status" data-testid="tracker-undo-notice" className="mt-3 flex items-center gap-3 rounded-lg border bg-card px-3 py-2 text-sm">
+                  <span>{undoNotice.label}.</span>
+                  <Button type="button" size="sm" variant="outline" data-testid="undo-tracker-action" disabled={undoSubmitting} onClick={onUndo}>
+                    {undoSubmitting ? "Undoing…" : "Undo"}
+                  </Button>
+                </div>
+              )}
+              {undoError && <p role="alert" data-testid="tracker-undo-error" className="mt-2 text-sm text-destructive">{undoError}</p>}
             </section>
 
             {opportunityId && actionState &&

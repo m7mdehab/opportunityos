@@ -29,6 +29,7 @@ class ActionStatus(str, Enum):
     AWAITING_REVIEW = "awaiting_review"
     SUBMITTING = "submitting"
     SUBMITTED = "submitted"
+    UNDONE = "undone"
     CONFIRMED = "confirmed"
     FAILED = "failed"
     UNKNOWN_OUTCOME = "unknown_outcome"

@@ -11,6 +11,7 @@ from typing import Literal
 
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session, load_only
+from outbound.models import ActionStatus
 
 from api.serialization import (
     top_reasons_from_list,
@@ -21,6 +22,7 @@ from storage.feed_projection import FeedProjectionRecord
 from storage.models import (
     FounderActivityEventRecord,
     FounderTriageStateRecord,
+    OutboundActionRecordModel,
     OpportunityRecord,
 )
 
@@ -78,6 +80,14 @@ class TransitionResult:
     opportunity_id: str
     state: str
     previous_state: str
+    changed: bool
+    event_id: str | None
+
+
+@dataclass(frozen=True)
+class RestoreResult:
+    opportunity_id: str
+    state: str
     changed: bool
     event_id: str | None
 
@@ -171,6 +181,13 @@ def transition_tracker_state(
     if not _allowed(previous_state, target, application_stage=action == "set_stage"):
         raise TrackerTransitionError(f"cannot transition from {previous_state} to {target}")
 
+    previous_snapshot = {
+        "snoozed_until": triage.snoozed_until.isoformat() if triage and triage.snoozed_until else None,
+        "saved_at": triage.saved_at.isoformat() if triage and triage.saved_at else None,
+        "applied_at": triage.applied_at.isoformat() if triage and triage.applied_at else None,
+        "closed_at": triage.closed_at.isoformat() if triage and triage.closed_at else None,
+    }
+
     if triage is None:
         triage = FounderTriageStateRecord(
             opportunity_id=opportunity_id,
@@ -204,13 +221,141 @@ def transition_tracker_state(
         from_state=previous_state,
         to_state=target,
         event_at=now,
-        metadata_json=json.dumps({"source": "founder_action"}, separators=(",", ":")),
+        metadata_json=json.dumps(
+            {
+                "source": "founder_action",
+                "previous_tracker_fields": previous_snapshot,
+            },
+            separators=(",", ":"),
+        ),
         idempotency_key=idempotency_key,
         created_at=now,
     )
     session.add(event)
     session.flush()
     return TransitionResult(opportunity_id, target, previous_state, True, event.id)
+
+
+def restore_tracker_transition(
+    session: Session,
+    opportunity_id: str,
+    event_id: str,
+    now: datetime,
+    *,
+    request_key: str,
+) -> RestoreResult:
+    """Restore one latest save/apply/reject transition and append its audit event."""
+    if not event_id or len(event_id) > 64:
+        raise TrackerTransitionError("invalid event id")
+    idempotency_key = _event_key(opportunity_id, request_key)
+    if idempotency_key is None:
+        raise TrackerTransitionError("idempotency key is required")
+
+    previous_restore = (
+        session.query(FounderActivityEventRecord)
+        .filter_by(idempotency_key=idempotency_key)
+        .first()
+    )
+    if previous_restore is not None:
+        try:
+            metadata = json.loads(previous_restore.metadata_json or "{}")
+        except (TypeError, json.JSONDecodeError):
+            metadata = {}
+        if (
+            previous_restore.opportunity_id != opportunity_id
+            or previous_restore.action_type != "tracker_restored"
+            or metadata.get("restored_event_id") != event_id
+        ):
+            raise TrackerTransitionError("idempotency key was already used for another action")
+        return RestoreResult(
+            opportunity_id=opportunity_id,
+            state=previous_restore.to_state or "to_review",
+            changed=False,
+            event_id=previous_restore.id,
+        )
+
+    original = session.get(FounderActivityEventRecord, event_id)
+    if original is None or original.opportunity_id != opportunity_id:
+        raise TrackerTransitionError("tracker event not found")
+    if original.action_type not in {"saved", "applied", "rejected_by_founder"}:
+        raise TrackerTransitionError("this tracker action cannot be undone")
+    if not original.from_state or not original.to_state:
+        raise TrackerTransitionError("tracker event has no restorable state")
+
+    latest = (
+        session.query(FounderActivityEventRecord)
+        .filter_by(opportunity_id=opportunity_id)
+        .order_by(
+            FounderActivityEventRecord.event_at.desc(),
+            FounderActivityEventRecord.created_at.desc(),
+            FounderActivityEventRecord.id.desc(),
+        )
+        .first()
+    )
+    if latest is None or latest.id != original.id:
+        raise TrackerTransitionError("tracker action is no longer the latest activity")
+
+    triage = session.get(FounderTriageStateRecord, opportunity_id)
+    if triage is None or triage.state != original.to_state:
+        raise TrackerTransitionError("current tracker state no longer matches this action")
+
+    try:
+        metadata = json.loads(original.metadata_json or "{}")
+    except (TypeError, json.JSONDecodeError):
+        metadata = {}
+    snapshot = metadata.get("previous_tracker_fields")
+    if not isinstance(snapshot, dict):
+        snapshot = {}
+
+    def snapshot_datetime(name: str) -> datetime | None:
+        value = snapshot.get(name)
+        if not isinstance(value, str) or not value:
+            return None
+        try:
+            parsed = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+        return parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
+
+    triage.state = original.from_state
+    triage.snoozed_until = snapshot_datetime("snoozed_until") if original.from_state == "snoozed" else None
+    triage.saved_at = snapshot_datetime("saved_at")
+    triage.applied_at = snapshot_datetime("applied_at")
+    triage.closed_at = snapshot_datetime("closed_at")
+    triage.updated_at = now
+
+    if original.action_type == "applied":
+        attestation = (
+            session.query(OutboundActionRecordModel)
+            .filter_by(
+                opportunity_id=opportunity_id,
+                adapter_name="founder_attested",
+                action_status=ActionStatus.SUBMITTED.value,
+            )
+            .order_by(OutboundActionRecordModel.created_at.desc())
+            .first()
+        )
+        if attestation is not None:
+            attestation.action_status = ActionStatus.UNDONE.value
+            attestation.updated_at = now
+
+    restore_event = FounderActivityEventRecord(
+        id=f"tracker-event-{uuid.uuid4().hex}",
+        opportunity_id=opportunity_id,
+        action_type="tracker_restored",
+        from_state=original.to_state,
+        to_state=original.from_state,
+        event_at=now,
+        metadata_json=json.dumps(
+            {"source": "founder_undo", "restored_event_id": original.id},
+            separators=(",", ":"),
+        ),
+        idempotency_key=idempotency_key,
+        created_at=now,
+    )
+    session.add(restore_event)
+    session.flush()
+    return RestoreResult(opportunity_id, original.from_state, True, restore_event.id)
 
 
 def list_tracker_items(

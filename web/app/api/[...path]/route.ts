@@ -232,7 +232,11 @@ async function hostedFacetPayload(config: HostedConfig, token: string): Promise<
 }
 async function hostedContract(request: NextRequest, path: string[], token: string, config: HostedConfig): Promise<NextResponse> {
   const subpath = path.join("/"); const method = request.method.toUpperCase(); const url = new URL(request.url);
-  if ((subpath === "tracker" && method === "GET") || (path.length === 3 && path[0] === "opportunities" && path[2] === "actions" && method === "POST")) {
+  if (
+    (subpath === "tracker" && method === "GET") ||
+    (path.length === 3 && path[0] === "opportunities" && path[2] === "actions" && method === "POST") ||
+    (path.length === 3 && path[0] === "opportunities" && path[2] === "restore" && method === "POST")
+  ) {
     return hostedError(
       "Tracker lists and actions are not supported by the hosted adapter until state and activity events can be written atomically.",
       501,
@@ -339,6 +343,12 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
 
 async function hostedRequest(request: NextRequest, path: string[]): Promise<NextResponse> {
   const method = request.method.toUpperCase();
+  if (path.length === 3 && path[0] === "opportunities" && (path[2] === "actions" || path[2] === "restore") && method === "POST") {
+    return hostedError(
+      "Tracker actions and Undo are not supported by the hosted adapter until state, attestation, and activity events can be updated atomically.",
+      501,
+    );
+  }
   const trackerNotesRoute =
     (path.length === 3 && path[0] === "opportunities" && path[2] === "tracker-notes" && (method === "GET" || method === "POST")) ||
     (path.length === 4 && path[0] === "opportunities" && path[2] === "tracker-notes" && method === "PATCH");

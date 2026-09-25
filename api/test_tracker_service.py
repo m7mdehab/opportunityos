@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from fastapi import Response
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -14,6 +15,8 @@ from api.tracker_service import (
     transition_tracker_state,
 )
 from api.routes_api import ActionRequest, submit_action
+from api.routes_api import RestoreTrackerRequest, restore_action
+from outbound.models import ActionStatus
 from storage.models import (
     Base,
     FounderActivityEventRecord,
@@ -497,6 +500,159 @@ class TrackerServiceTest(unittest.TestCase):
                     opportunity_id="synthetic-1", adapter_name="founder_attested",
                 ).count(),
                 before,
+            )
+        finally:
+            session.close()
+
+    def test_apply_undo_restores_to_review_and_keeps_attestation_as_undone(self) -> None:
+        session = self.Session()
+        try:
+            applied = submit_action(
+                "synthetic-5",
+                ActionRequest(type="mark_applied", idempotency_key="undo-apply"),
+                Response(),
+                session,
+            )
+            self.assertTrue(applied["undo_event_id"])
+
+            restored = restore_action(
+                "synthetic-5",
+                RestoreTrackerRequest(
+                    event_id=applied["undo_event_id"],
+                    idempotency_key="restore-apply-once",
+                ),
+                session,
+            )
+            self.assertEqual(restored["tracker_state"], "to_review")
+            self.assertEqual(session.get(FounderTriageStateRecord, "synthetic-5").state, "to_review")
+            attestation = session.query(OutboundActionRecordModel).filter_by(
+                opportunity_id="synthetic-5", adapter_name="founder_attested",
+            ).one()
+            self.assertEqual(attestation.action_status, ActionStatus.UNDONE.value)
+            self.assertEqual(
+                session.query(FounderActivityEventRecord)
+                .filter_by(opportunity_id="synthetic-5")
+                .count(),
+                2,
+            )
+
+            retried = restore_action(
+                "synthetic-5",
+                RestoreTrackerRequest(
+                    event_id=applied["undo_event_id"],
+                    idempotency_key="restore-apply-once",
+                ),
+                session,
+            )
+            self.assertEqual(retried["tracker_state"], "to_review")
+            self.assertEqual(
+                session.query(FounderActivityEventRecord)
+                .filter_by(opportunity_id="synthetic-5")
+                .count(),
+                2,
+            )
+        finally:
+            session.close()
+
+    def test_undo_from_saved_restores_the_previous_snooze_and_expiry(self) -> None:
+        now = datetime(2026, 9, 25, 9, tzinfo=timezone.utc)
+        snoozed_until = now + timedelta(days=2)
+        session = self.Session()
+        try:
+            transition_tracker_state(
+                session, "synthetic-4", "snooze", now, snoozed_until=snoozed_until,
+            )
+            session.commit()
+            saved = submit_action(
+                "synthetic-4",
+                ActionRequest(type="save", idempotency_key="save-from-snooze"),
+                Response(),
+                session,
+            )
+            restored = restore_action(
+                "synthetic-4",
+                RestoreTrackerRequest(
+                    event_id=saved["undo_event_id"],
+                    idempotency_key="restore-saved-once",
+                ),
+                session,
+            )
+            state = session.get(FounderTriageStateRecord, "synthetic-4")
+            self.assertEqual(restored["tracker_state"], "snoozed")
+            self.assertEqual(state.state, "snoozed")
+            self.assertEqual(state.snoozed_until.replace(tzinfo=timezone.utc), snoozed_until)
+        finally:
+            session.close()
+
+    def test_stale_undo_is_conflict_and_does_not_write_a_restore_event(self) -> None:
+        session = self.Session()
+        try:
+            saved = submit_action(
+                "synthetic-3",
+                ActionRequest(type="save", idempotency_key="stale-save"),
+                Response(),
+                session,
+            )
+            transition_tracker_state(
+                session,
+                "synthetic-3",
+                "reject",
+                datetime.now(timezone.utc) + timedelta(minutes=1),
+            )
+            session.commit()
+
+            with self.assertRaises(HTTPException) as raised:
+                restore_action(
+                    "synthetic-3",
+                    RestoreTrackerRequest(
+                        event_id=saved["undo_event_id"],
+                        idempotency_key="stale-restore",
+                    ),
+                    session,
+                )
+            self.assertEqual(raised.exception.status_code, 409)
+            self.assertEqual(session.get(FounderTriageStateRecord, "synthetic-3").state, "rejected_by_founder")
+            self.assertEqual(
+                session.query(FounderActivityEventRecord)
+                .filter_by(opportunity_id="synthetic-3", action_type="tracker_restored")
+                .count(),
+                0,
+            )
+        finally:
+            session.close()
+
+    def test_restore_commit_failure_rolls_back_tracker_event_and_attestation(self) -> None:
+        session = self.Session()
+        try:
+            applied = submit_action(
+                "synthetic-2",
+                ActionRequest(type="mark_applied", idempotency_key="failed-undo-apply"),
+                Response(),
+                session,
+            )
+            with patch.object(session, "commit", side_effect=RuntimeError("synthetic restore commit failure")):
+                with self.assertRaisesRegex(RuntimeError, "synthetic restore commit failure"):
+                    restore_action(
+                        "synthetic-2",
+                        RestoreTrackerRequest(
+                            event_id=applied["undo_event_id"],
+                            idempotency_key="failed-restore",
+                        ),
+                        session,
+                    )
+            session.rollback()
+            self.assertEqual(session.get(FounderTriageStateRecord, "synthetic-2").state, "applied")
+            self.assertEqual(
+                session.query(OutboundActionRecordModel)
+                .filter_by(opportunity_id="synthetic-2", action_status=ActionStatus.SUBMITTED.value)
+                .count(),
+                1,
+            )
+            self.assertEqual(
+                session.query(FounderActivityEventRecord)
+                .filter_by(opportunity_id="synthetic-2", action_type="tracker_restored")
+                .count(),
+                0,
             )
         finally:
             session.close()

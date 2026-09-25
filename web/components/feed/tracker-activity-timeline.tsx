@@ -36,6 +36,7 @@ function activityLabel(activity: TrackerActivityEvent) {
     case "saved": return "Saved job"
     case "unsaved": return "Removed from Saved"
     case "restored": return "Restored job"
+    case "tracker_restored": return "Undo applied"
     case "applied": return "Marked as applied"
     case "rejected_by_founder": return "Rejected job"
     case "rejected_by_employer": return "Rejected by employer"

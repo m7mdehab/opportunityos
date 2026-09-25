@@ -25,7 +25,8 @@ import {
 } from "@/components/feed/empty-states"
 import { api } from "@/lib/api/client"
 import { ApiError } from "@/lib/contract/types"
-import type { FeedFilterMetadataResponse, FeedQueryState } from "@/lib/contract/types"
+import type { ActionResponse, FeedFilterMetadataResponse, FeedQueryState } from "@/lib/contract/types"
+import { notifyTrackerActivityChanged } from "@/lib/tracker-activity"
 import {
   EMPTY_FEED_QUERY,
   hasActiveFeedQuery,
@@ -44,6 +45,9 @@ import type {
 
 type AuthPhase = "checking" | "authenticated" | "redirecting"
 const PAGE_SIZE = 50
+const UNDO_PROMPT_MS = 10_000
+
+type UndoNotice = { opportunityId: string; eventId: string; label: string }
 
 export default function FeedPage() {
   const router = useRouter()
@@ -68,6 +72,11 @@ export default function FeedPage() {
   const [activeWorkspace, setActiveWorkspace] = useState<"jobs" | "tracker">("jobs")
   const [trackerRefreshKey, setTrackerRefreshKey] = useState(0)
   const [polling, setPolling] = useState(false)
+  const [undoNotice, setUndoNotice] = useState<UndoNotice | null>(null)
+  const [undoError, setUndoError] = useState<string | null>(null)
+  const [undoSubmitting, setUndoSubmitting] = useState(false)
+  const [triagePendingId, setTriagePendingId] = useState<string | null>(null)
+  const [triageError, setTriageError] = useState<{ id: string; message: string } | null>(null)
 
   // ---- D3 founder-controlled filters ----
   const [filtersDrawerOpen, setFiltersDrawerOpen] = useState(false)
@@ -261,6 +270,14 @@ export default function FeedPage() {
     setFocusedIndex((i) => Math.min(i, Math.max(items.length - 1, 0)))
   }, [items])
 
+  useEffect(() => {
+    if (!undoNotice) return
+    const timer = window.setTimeout(() => {
+      setUndoNotice((current) => current?.eventId === undoNotice.eventId ? null : current)
+    }, UNDO_PROMPT_MS)
+    return () => window.clearTimeout(timer)
+  }, [undoNotice])
+
   // Actual DOM focus follows the cursor ("focus is visible and managed" —
   // required behaviour #4), not a CSS-only highlight left somewhere the
   // browser's own focus isn't.
@@ -283,11 +300,13 @@ export default function FeedPage() {
       if (anyPanelOpen) return
       const target = e.target as HTMLElement | null
       const tag = target?.tagName
+      const focusedCard = target?.closest('[data-testid^="opportunity-card-"]')
       if (
         tag === "INPUT" ||
         tag === "TEXTAREA" ||
         tag === "SELECT" ||
-        target?.isContentEditable
+        target?.isContentEditable ||
+        (target?.closest("button, a, [role='button'], [role='link']") && !focusedCard)
       ) {
         return
       }
@@ -305,13 +324,13 @@ export default function FeedPage() {
         if (current) {
           api.opportunities
             .submitAction(current.id, "mark_applied", null, crypto.randomUUID())
-            .then((res) => handleActionSubmitted(current.id, res.tracker_state ?? res.action_state))
+            .then((res) => handleActionSubmitted(current.id, res.tracker_state ?? res.action_state, res))
         }
       } else if (e.key === "x") {
         if (current) {
           api.opportunities
             .submitAction(current.id, "reject", null, crypto.randomUUID())
-            .then((res) => handleActionSubmitted(current.id, res.tracker_state ?? res.action_state))
+            .then((res) => handleActionSubmitted(current.id, res.tracker_state ?? res.action_state, res))
         }
       }
     }
@@ -341,14 +360,64 @@ export default function FeedPage() {
     refreshDashboard()
   }
 
-  function handleActionSubmitted(id: string, state: ActionState) {
+  function handleActionSubmitted(id: string, state: ActionState, response?: ActionResponse) {
     const wasInToReview = items?.some((item) => item.id === id) ?? false
     setSelectedActionState(state)
+    const eventId = response?.undo_event_id
+    const label = state === "saved" ? "Saved" : state === "applied" || state === "submitted" ? "Marked applied" : state === "rejected_by_founder" ? "Rejected" : "Updated"
+    setUndoNotice(eventId ? { opportunityId: id, eventId, label } : null)
+    setUndoError(null)
     setItems((prev) => prev?.filter((o) => o.id !== id) ?? prev)
     if (wasInToReview) setTotal((previous) => Math.max(0, previous - 1))
     setTrackerRefreshKey((previous) => previous + 1)
     refreshDashboard()
     refreshFromFirstPage()
+  }
+
+  async function handleCardTriage(id: string, type: "save" | "mark_applied" | "reject") {
+    setTriagePendingId(id)
+    setTriageError(null)
+    setUndoNotice(null)
+    setUndoError(null)
+    try {
+      const response = await api.opportunities.submitAction(id, type, null, crypto.randomUUID())
+      handleActionSubmitted(id, response.tracker_state ?? response.action_state, response)
+      notifyTrackerActivityChanged()
+    } catch (failure) {
+      const detail = failure instanceof ApiError && failure.body && typeof failure.body === "object" && "detail" in failure.body && typeof failure.body.detail === "string"
+        ? failure.body.detail
+        : failure instanceof Error ? failure.message : "Could not update this tracker state."
+      setTriageError({ id, message: detail })
+    } finally {
+      setTriagePendingId(null)
+    }
+  }
+
+  async function handleUndo() {
+    if (!undoNotice || undoSubmitting) return
+    setUndoSubmitting(true)
+    setUndoError(null)
+    try {
+      const response = await api.opportunities.restoreAction(
+        undoNotice.opportunityId,
+        undoNotice.eventId,
+        crypto.randomUUID()
+      )
+      if (undoNotice.opportunityId === selectedId) setSelectedActionState(response.action_state)
+      setUndoNotice(null)
+      setTrackerRefreshKey((previous) => previous + 1)
+      refreshDashboard()
+      refreshFromFirstPage()
+      notifyTrackerActivityChanged()
+    } catch (failure) {
+      const detail = failure instanceof ApiError && failure.body && typeof failure.body === "object" && "detail" in failure.body && typeof failure.body.detail === "string"
+        ? failure.body.detail
+        : failure instanceof Error ? failure.message : "Could not undo this tracker action."
+      setUndoError(detail)
+      if (failure instanceof ApiError && failure.status === 409) setUndoNotice(null)
+    } finally {
+      setUndoSubmitting(false)
+    }
   }
 
   const selectedItem = useMemo(
@@ -476,6 +545,15 @@ export default function FeedPage() {
       )}
 
       <main className="flex-1 px-4 py-4 sm:px-6">
+        {undoNotice && !selectedId && (
+          <div role="status" data-testid="tracker-undo-notice" className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border bg-card px-4 py-3 text-sm">
+            <span>{undoNotice.label}.</span>
+            <Button type="button" size="sm" variant="outline" data-testid="undo-tracker-action" disabled={undoSubmitting} onClick={() => void handleUndo()}>
+              {undoSubmitting ? "Undoing…" : "Undo"}
+            </Button>
+          </div>
+        )}
+        {undoError && !selectedId && <p role="alert" data-testid="tracker-undo-error" className="mb-4 text-sm text-destructive">{undoError}</p>}
         {activeWorkspace === "tracker" ? (
           <TrackerView
             refreshKey={trackerRefreshKey}
@@ -535,6 +613,9 @@ export default function FeedPage() {
                   }}
                   opportunity={o}
                   keyboardFocused={idx === focusedIndex}
+                  onTriageAction={(type) => void handleCardTriage(o.id, type)}
+                  triagePending={triagePendingId === o.id}
+                  triageError={triageError?.id === o.id ? triageError.message : null}
                   onOpen={() => {
                     setFocusedIndex(idx)
                     setSelectedActionState(o.action_state)
@@ -660,6 +741,10 @@ export default function FeedPage() {
         onOpened={refreshDashboard}
         onFeedbackSubmitted={handleFeedbackSubmitted}
         onActionSubmitted={handleActionSubmitted}
+        undoNotice={undoNotice}
+        undoSubmitting={undoSubmitting}
+        undoError={undoError}
+        onUndo={() => void handleUndo()}
       />
     </div>
   )

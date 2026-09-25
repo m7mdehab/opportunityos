@@ -419,7 +419,15 @@ export interface ActionResponse {
   action_state: ActionState
   tracker_state?: TrackerState | null
   action_id: string | null
+  undo_event_id?: string | null
   until: string | null
+  created_at: string
+}
+
+export interface RestoreTrackerResponse {
+  opportunity_id: string
+  tracker_state: TrackerState
+  action_state: ActionState
   created_at: string
 }
 

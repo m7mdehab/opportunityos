@@ -93,6 +93,7 @@ from .saved_views import (
 from .tracker_service import (
     TrackerTransitionError,
     list_tracker_items,
+    restore_tracker_transition,
     transition_tracker_state,
 )
 from .tracker_notes_service import (
@@ -2336,6 +2337,11 @@ class ActionRequest(BaseModel):
     ] | None = None
 
 
+class RestoreTrackerRequest(BaseModel):
+    event_id: str
+    idempotency_key: str
+
+
 @router.post("/opportunities/{opportunity_id}/actions")
 def submit_action(
     opportunity_id: str,
@@ -2429,7 +2435,47 @@ def submit_action(
         "action_state": "submitted" if payload.type == "mark_applied" else transition.state,
         "tracker_state": transition.state,
         "action_id": action_id,
+        "undo_event_id": (
+            transition.event_id
+            if payload.type in {"save", "mark_applied", "reject"}
+            else None
+        ),
         "until": until_date.date().isoformat() if until_date else None,
+        "created_at": now.isoformat(),
+    }
+
+
+@router.post("/opportunities/{opportunity_id}/restore")
+def restore_action(
+    opportunity_id: str,
+    payload: RestoreTrackerRequest,
+    session: Session = Depends(get_db),
+):
+    if not payload.event_id.strip():
+        raise HTTPException(status_code=422, detail="event_id is required")
+    if not payload.idempotency_key.strip():
+        raise HTTPException(status_code=422, detail="idempotency key is required")
+    if len(payload.idempotency_key) > 128:
+        raise HTTPException(status_code=422, detail="idempotency key is too long")
+    now = datetime.now(timezone.utc)
+    try:
+        result = restore_tracker_transition(
+            session,
+            opportunity_id,
+            payload.event_id,
+            now,
+            request_key=payload.idempotency_key,
+        )
+        session.commit()
+    except TrackerTransitionError as exc:
+        session.rollback()
+        if str(exc) == "tracker event not found":
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "opportunity_id": opportunity_id,
+        "tracker_state": result.state,
+        "action_state": result.state,
         "created_at": now.isoformat(),
     }
 
