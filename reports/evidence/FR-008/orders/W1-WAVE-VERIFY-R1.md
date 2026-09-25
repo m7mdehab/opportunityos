@@ -43,4 +43,4 @@ Use a new isolated evidence-runner worktree from the authoritative integrated ba
 
 ## Authoritative integrated base
 
-`af4ef84` on `work/fr008-incremental-delivery`.
+`4043be6` on `work/fr008-incremental-delivery`.
