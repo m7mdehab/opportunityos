@@ -332,17 +332,44 @@ class TestPostgresQueueDurability(unittest.TestCase):
         session_setup = self.session_factory()
         try:
             q_setup = BackgroundWorkerQueue(session_setup)
-            # Create 2 jobs and expire both leases
+            # Claim both jobs with a nonzero lease before explicitly expiring them.
+            # A zero-second lease is a wall-clock boundary and can remain active
+            # when PostgreSQL evaluates the next claim in the same instant.
             id1 = self._enqueue(q_setup, payload={"stale_idx": 1})
             id2 = self._enqueue(q_setup, payload={"stale_idx": 2})
-            j1 = q_setup.claim_next_job(lease_duration_seconds=0)
-            j2 = q_setup.claim_next_job(lease_duration_seconds=0)
+            j1 = q_setup.claim_next_job(lease_duration_seconds=60)
+            j2 = q_setup.claim_next_job(lease_duration_seconds=60)
             self.assertIsNotNone(j1)
             self.assertIsNotNone(j2)
+            self.assertEqual({id1, id2}, {j1.id, j2.id})
         finally:
             session_setup.close()
 
-        barrier = threading.Barrier(2, timeout=10.0)
+        for job_id in (id1, id2):
+            expired_session = self.session_factory()
+            try:
+                row = expired_session.query(WorkerJobRecord).filter(WorkerJobRecord.id == job_id).one()
+                self.assertEqual("RUNNING", row.status)
+                self.assertIsNotNone(row.lease_expires_at)
+                row.lease_expires_at = func.now() - text("INTERVAL '10 seconds'")
+                expired_session.commit()
+            finally:
+                expired_session.close()
+
+            verification_session = self.session_factory()
+            try:
+                row = verification_session.query(WorkerJobRecord).filter(WorkerJobRecord.id == job_id).one()
+                self.assertIsNotNone(row.lease_expires_at)
+                self.assertIsNotNone(
+                    verification_session.query(WorkerJobRecord.id)
+                    .filter(WorkerJobRecord.id == job_id, WorkerJobRecord.lease_expires_at < func.now())
+                    .one_or_none(),
+                    "persisted lease must be expired according to PostgreSQL",
+                )
+            finally:
+                verification_session.close()
+
+        barrier = threading.Barrier(2, timeout=30.0)
         gate_lock = threading.Lock()
         remaining_syncs = [2]
 
@@ -372,9 +399,11 @@ class TestPostgresQueueDurability(unittest.TestCase):
 
         t1.start()
         t2.start()
-        t1.join(timeout=15.0)
-        t2.join(timeout=15.0)
+        t1.join(timeout=35.0)
+        t2.join(timeout=35.0)
 
+        self.assertFalse(t1.is_alive(), "first worker did not finish its concurrent claim")
+        self.assertFalse(t2.is_alive(), "second worker did not finish its concurrent claim")
         self.assertFalse(barrier.broken, "Deterministic SKIP LOCKED stale claim gate timed out")
         all_claimed = worker1_claimed + worker2_claimed
         self.assertEqual(len(all_claimed), len(set(all_claimed)), "No stale job claimed twice")
@@ -474,8 +503,40 @@ class TestPostgresQueueDurability(unittest.TestCase):
             q1 = BackgroundWorkerQueue(session1, worker_id="stale-worker-1")
             job_id = self._enqueue(q1, max_retries=3)
 
-            c1 = q1.claim_next_job(lease_duration_seconds=0)
+            c1 = q1.claim_next_job(lease_duration_seconds=60)
             self.assertIsNotNone(c1)
+
+            expired_session = self.session_factory()
+            try:
+                row = expired_session.query(WorkerJobRecord).filter(WorkerJobRecord.id == job_id).one()
+                self.assertEqual("RUNNING", row.status)
+                self.assertEqual("stale-worker-1", row.lease_owner)
+                self.assertIsNotNone(row.lease_expires_at)
+                row.lease_expires_at = func.now() - text("INTERVAL '10 seconds'")
+                expired_session.commit()
+            finally:
+                expired_session.close()
+
+            verification_session = self.session_factory()
+            try:
+                expired_row = (
+                    verification_session.query(WorkerJobRecord)
+                    .filter(WorkerJobRecord.id == job_id)
+                    .one()
+                )
+                self.assertEqual("RUNNING", expired_row.status)
+                self.assertEqual("stale-worker-1", expired_row.lease_owner)
+                self.assertIsNotNone(
+                    verification_session.query(WorkerJobRecord.id)
+                    .filter(
+                        WorkerJobRecord.id == job_id,
+                        WorkerJobRecord.lease_expires_at < func.now(),
+                    )
+                    .one_or_none(),
+                    "persisted stale-worker lease must be expired according to PostgreSQL",
+                )
+            finally:
+                verification_session.close()
 
             q2 = BackgroundWorkerQueue(session2, worker_id="active-worker-2")
             c2 = q2.claim_next_job(lease_duration_seconds=60)
