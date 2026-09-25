@@ -1,0 +1,4 @@
+reports/evidence/FR-008/W3.1-CAPABILITY-DIMENSIONS-REPORT.md:3: trailing whitespace.
++**State:** Implemented and reviewable; weights remain uncalibrated.  
+reports/evidence/FR-008/W3.1-CAPABILITY-DIMENSIONS-REPORT.md:4: trailing whitespace.
++**Founder-testable:** 0%; no application surface was deployed.  
