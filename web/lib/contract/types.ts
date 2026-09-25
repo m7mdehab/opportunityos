@@ -336,17 +336,29 @@ export interface DimensionScore {
   rationale: string
 }
 
+export interface ConfidenceFactor {
+  name: string
+  /** 0-100 scale, as returned by the evaluation detail API. */
+  score: number
+  explanation: string
+}
+
 export interface Scoring {
   /** 0-100 scale, unlike DimensionScore.score. */
   fit_score: number | null
+  /** 0-100 scale; null when the evaluation has no preference result. */
+  preference_score: number | null
+  /** 0-100 scale; null when the evaluation has no confidence result. */
+  confidence_score: number | null
+  confidence_factors: ConfidenceFactor[]
   dimension_scores: DimensionScore[]
   strengths: string[]
   gaps: string[]
   unknowns: string[]
   uncertainty_penalty: number
   explanation: string
-  policy_version: string
-  evaluated_at: string
+  policy_version: string | null
+  evaluated_at: string | null
   truth_pack_hash: string | null
 }
 

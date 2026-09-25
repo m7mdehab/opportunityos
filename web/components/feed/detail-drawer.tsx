@@ -69,6 +69,23 @@ const INTERVIEW_TRACKED_STATES = new Set([
   "accepted",
 ])
 
+function formatScore(score: number | null | undefined): string {
+  return typeof score === "number" && Number.isFinite(score)
+    ? Math.round(score).toString() + " / 100"
+    : "Not available"
+}
+
+function eligibilityExplanation(decision: OpportunityDetail["qualification"]["decision"]): string {
+  if (decision === "qualified") return "No mandatory contradiction was found for this evaluation."
+  if (decision === "ineligible") return "At least one mandatory requirement was found incompatible."
+  if (decision === "uncertain") return "Some eligibility evidence is unresolved; this is not a failed requirement."
+  return "No eligibility assessment is available for this opportunity yet."
+}
+
+function confidenceFactorLabel(name: string): string {
+  return name.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
 export function DetailDrawer({
   opportunityId,
   initialActionState,
@@ -277,6 +294,67 @@ export function DetailDrawer({
 
             <Separator />
 
+            <section aria-labelledby="match-overview-heading" data-testid="match-overview">
+              <h3 id="match-overview-heading" className="text-sm font-semibold">
+                Match overview
+              </h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Eligibility, Capability Fit, Preference, and Confidence answer separate questions. Recommended order is a way to sort jobs, not the explanation for this evaluation.
+              </p>
+              <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+                <div data-testid="eligibility-explanation" className="rounded-md border border-border p-2">
+                  <dt className="text-xs font-medium">Eligibility</dt>
+                  <dd className="mt-1"><DecisionBadge decision={detail.qualification.decision} /></dd>
+                  <dd className="mt-1 text-[11px] text-muted-foreground">
+                    {eligibilityExplanation(detail.qualification.decision)}
+                  </dd>
+                </div>
+                <div data-testid="capability-fit-summary" className="rounded-md border border-border p-2">
+                  <dt className="text-xs font-medium">Capability Fit</dt>
+                  <dd className="mt-1 text-lg font-semibold tabular-nums">{formatScore(detail.scoring.fit_score)}</dd>
+                  <dd className="text-[11px] text-muted-foreground">
+                    How verified skills, role history, experience, seniority, and education align with the work.
+                  </dd>
+                </div>
+                <div data-testid="preference-score-summary" className="rounded-md border border-border p-2">
+                  <dt className="text-xs font-medium">Preference</dt>
+                  <dd className="mt-1 text-lg font-semibold tabular-nums">{formatScore(detail.scoring.preference_score)}</dd>
+                  <dd className="text-[11px] text-muted-foreground">
+                    How the job fits stated preferences. It does not change eligibility or Capability Fit; no per-preference breakdown is provided here.
+                  </dd>
+                </div>
+                <div data-testid="confidence-score-summary" className="rounded-md border border-border p-2">
+                  <dt className="text-xs font-medium">Confidence</dt>
+                  <dd className="mt-1 text-lg font-semibold tabular-nums">{formatScore(detail.scoring.confidence_score)}</dd>
+                  <dd className="text-[11px] text-muted-foreground">
+                    How complete and reliable the evidence is behind these assessments.
+                  </dd>
+                </div>
+              </dl>
+              {detail.scoring.confidence_factors?.length ? (
+                <div className="mt-3" data-testid="confidence-factors">
+                  <h4 className="text-xs font-semibold">Confidence evidence</h4>
+                  <ul className="mt-1 space-y-2">
+                    {detail.scoring.confidence_factors.map((factor) => (
+                      <li key={factor.name} className="rounded-md border border-border p-2">
+                        <div className="flex items-center justify-between gap-2 text-xs">
+                          <span className="font-medium">{confidenceFactorLabel(factor.name)}</span>
+                          <span className="tabular-nums text-muted-foreground">{formatScore(factor.score)}</span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-muted-foreground">{factor.explanation}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-muted-foreground" data-testid="confidence-factors-unavailable">
+                  No confidence factor breakdown was recorded for this evaluation.
+                </p>
+              )}
+            </section>
+
+            <Separator />
+
             <section aria-labelledby="qualification-heading">
               <h3 id="qualification-heading" className="text-sm font-semibold">
                 Qualification checklist
@@ -381,8 +459,11 @@ export function DetailDrawer({
 
             <section aria-labelledby="scoring-heading">
               <h3 id="scoring-heading" className="text-sm font-semibold">
-                Dimension scores
+                Capability Fit dimensions
               </h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                These component scores explain Capability Fit. Displayed weights are provisional until calibrated against Founder-reviewed examples.
+              </p>
               {detail.scoring.dimension_scores.length === 0 ? (
                 <p className="mt-1 text-xs text-muted-foreground">
                   No scoring available yet.

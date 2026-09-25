@@ -10,6 +10,7 @@ import type {
   ApplicationStage,
   DashboardDay,
   DashboardResponse,
+  ConfidenceFactor,
   Facet,
   FacetsResponse,
   FacetValueState,
@@ -125,6 +126,18 @@ const MOCK_CV_CANDIDATES: TrackerDocumentCandidate[] = [
 
 const HIGH_FIT_THRESHOLD = 70
 
+// Fixed, clearly synthetic detail values let the mock demonstrate the
+// evaluation-detail contract without reading or deriving private user data.
+const MOCK_PREFERENCE_SCORE = 76
+const MOCK_CONFIDENCE_FACTORS: ConfidenceFactor[] = [
+  { name: "description_completeness", score: 84, explanation: "Synthetic mock factor: the fixture includes a job description." },
+  { name: "location_remote_scope_clarity", score: 80, explanation: "Synthetic mock factor: location detail is represented by this fixture." },
+  { name: "experience_requirement_clarity", score: 78, explanation: "Synthetic mock factor: experience detail is represented by this fixture." },
+  { name: "skill_extraction_reliability", score: 82, explanation: "Synthetic mock factor: structured requirements are represented by this fixture." },
+  { name: "compensation_completeness", score: 75, explanation: "Synthetic mock factor: compensation evidence is represented by this fixture." },
+  { name: "source_freshness_and_strength", score: 88, explanation: "Synthetic mock factor: source recency is represented by this fixture." },
+  { name: "founder_evidence_completeness", score: 87, explanation: "Synthetic mock factor: evaluation evidence is represented by this fixture." },
+]
 const FEED_FACETS: FeedFacetId[] = [
   "track", "decision", "work_mode", "location_country", "location_city",
   "remote_scope", "employment_type", "seniority_level", "target_tier",
@@ -2105,14 +2118,19 @@ export class MockStore {
       qualification: { decision: o.decision, constraints: o.constraints },
       scoring: {
         fit_score: o.fit_score,
+        preference_score: o.evaluated_at ? MOCK_PREFERENCE_SCORE : null,
+        confidence_score: o.evaluated_at
+          ? MOCK_CONFIDENCE_FACTORS.reduce((total, factor) => total + factor.score, 0) / MOCK_CONFIDENCE_FACTORS.length
+          : null,
+        confidence_factors: o.evaluated_at ? MOCK_CONFIDENCE_FACTORS : [],
         dimension_scores: o.dimension_scores,
-        strengths: o.strengths,
-        gaps: o.gaps,
-        unknowns: o.unknowns,
+        strengths: o.evaluated_at ? o.strengths : [],
+        gaps: o.evaluated_at ? o.gaps : [],
+        unknowns: o.evaluated_at ? o.unknowns : [],
         uncertainty_penalty: o.uncertainty_penalty,
-        explanation: o.explanation,
-        policy_version: o.policy_version,
-        evaluated_at: o.evaluated_at ?? "",
+        explanation: o.evaluated_at ? o.explanation : "",
+        policy_version: o.evaluated_at ? o.policy_version : null,
+        evaluated_at: o.evaluated_at,
         truth_pack_hash: o.truth_pack_hash,
       },
       evidence_links: o.evidence_links,
