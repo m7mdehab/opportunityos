@@ -46,7 +46,11 @@ class CommitmentStatus(str, Enum):
 
 @dataclass(frozen=True, slots=True)
 class HardConstraintResult:
-    """Evaluation result for an individual mandatory requirement."""
+    """Evidence-backed evaluation result for an opportunity constraint.
+
+    ``None`` for ``requirement_mandatory`` means available evidence does not
+    establish whether the requirement is definitely mandatory.
+    """
     constraint_name: str
     passed: bool | None  # True: passed, False: failed, None: unknown/uncertain
     reason: str
@@ -54,10 +58,73 @@ class HardConstraintResult:
     founder_fact: str
     is_hard_failure: bool = False
     provenance_pointer: str = ""
+    # FR-008 evidence contract. The legacy names above remain part of the
+    # persisted/API shape; these explicit fields make the decision auditable.
+    constraint_type: str = ""
+    job_evidence_text: str = ""
+    job_evidence_field: str = ""
+    source_pointer: str = ""
+    founder_side_evidence: str = ""
+    decision: bool | None = None
+    confidence: float | None = None
+    requirement_mandatory: bool | None = None
+    explanation: str = ""
 
     def __post_init__(self) -> None:
         if not self.constraint_name:
             raise ValueError("constraint_name cannot be empty")
+        if not self.required_field:
+            raise ValueError("required_field cannot be empty")
+        if self.passed is not None and not isinstance(self.passed, bool):
+            raise ValueError("passed must be True, False, or None")
+        if self.requirement_mandatory is not None and not isinstance(self.requirement_mandatory, bool):
+            raise ValueError("requirement_mandatory must be True, False, or None")
+
+        aliases = (
+            ("constraint_type", self.constraint_type, self.constraint_name),
+            ("source_pointer", self.source_pointer, self.provenance_pointer),
+            ("founder_side_evidence", self.founder_side_evidence, self.founder_fact),
+            ("explanation", self.explanation, self.reason),
+        )
+        for name, canonical, legacy in aliases:
+            if canonical and legacy and canonical != legacy:
+                raise ValueError(f"{name} conflicts with its compatibility field")
+        object.__setattr__(self, "constraint_type", self.constraint_type or self.constraint_name)
+        object.__setattr__(self, "source_pointer", self.source_pointer or self.provenance_pointer)
+        object.__setattr__(self, "provenance_pointer", self.provenance_pointer or self.source_pointer)
+        object.__setattr__(self, "founder_side_evidence", self.founder_side_evidence or self.founder_fact)
+        object.__setattr__(self, "explanation", self.explanation or self.reason)
+        object.__setattr__(self, "job_evidence_field", self.job_evidence_field or self.required_field)
+        if not self.source_pointer.strip():
+            raise ValueError("a hard-constraint result requires a valid job-side source pointer")
+        if not self.founder_side_evidence.strip():
+            raise ValueError("founder-side evidence cannot be empty")
+        if not (self.job_evidence_text.strip() or self.job_evidence_field.strip()):
+            raise ValueError("job-side evidence text or a structured field is required")
+
+        if self.decision is not None and self.decision is not self.passed:
+            raise ValueError("decision must match the compatibility field passed")
+        object.__setattr__(self, "decision", self.passed)
+
+        confidence = self.confidence
+        if confidence is None:
+            # A known pass/fail is supported by resolved evidence; UNKNOWN is
+            # intentionally assigned lower confidence without changing its
+            # tri-state meaning.
+            confidence = 0.9 if self.passed is not None else 0.35
+        confidence = float(confidence)
+        object.__setattr__(self, "confidence", confidence)
+        if not 0.0 <= confidence <= 1.0:
+            raise ValueError(f"confidence must be in [0.0, 1.0], got {confidence}")
+
+        if self.is_hard_failure:
+            if self.passed is not False:
+                raise ValueError("a hard failure must have decision=False")
+            pointer = self.source_pointer.strip()
+            if not pointer or pointer.startswith("."):
+                raise ValueError("a hard failure requires a valid job-side source pointer")
+            if not (self.job_evidence_text.strip() or self.job_evidence_field.strip()):
+                raise ValueError("a hard failure requires job-side evidence text or a structured field")
 
 
 @dataclass(frozen=True, slots=True)

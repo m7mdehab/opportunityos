@@ -155,6 +155,15 @@ def _evaluation_detail_json(evaluation: MatchEvaluation) -> str:
                 "founder_fact": hc.founder_fact,
                 "is_hard_failure": hc.is_hard_failure,
                 "provenance_pointer": hc.provenance_pointer,
+                "constraint_type": hc.constraint_type,
+                "job_evidence_text": hc.job_evidence_text,
+                "job_evidence_field": hc.job_evidence_field,
+                "source_pointer": hc.source_pointer,
+                "founder_side_evidence": hc.founder_side_evidence,
+                "decision": hc.decision,
+                "confidence": hc.confidence,
+                "requirement_mandatory": hc.requirement_mandatory,
+                "explanation": hc.explanation,
             }
             for hc in evaluation.hard_constraints
         ],

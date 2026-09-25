@@ -305,6 +305,68 @@ class TestQualificationEngine(unittest.TestCase):
         failed = [c for c in constraints if c.constraint_name == "work_authorization"]
         self.assertTrue(len(failed) > 0)
         self.assertTrue(failed[0].is_hard_failure)
+        self.assertEqual(failed[0].job_evidence_text, "Must have valid work authorization in Germany")
+        self.assertEqual(failed[0].job_evidence_field, "description")
+        self.assertEqual(failed[0].source_pointer, "feed:jobs[0].description")
+        self.assertIs(failed[0].requirement_mandatory, True)
+        self.assertEqual(failed[0].decision, False)
+        self.assertEqual(failed[0].explanation, failed[0].reason)
+
+    def test_all_qualification_results_have_the_evidence_contract(self) -> None:
+        opp = create_test_opportunity(
+            description="Must have valid work authorization in Germany without sponsorship.",
+            remote_scope=RemoteScope.WORLDWIDE,
+        )
+        _, constraints = self.engine.evaluate(opp, self.truth_graph)
+        self.assertTrue(constraints)
+        for result in constraints:
+            with self.subTest(constraint=result.constraint_name):
+                self.assertEqual(result.constraint_type, result.constraint_name)
+                self.assertTrue(result.job_evidence_text or result.job_evidence_field)
+                self.assertTrue(result.source_pointer)
+                self.assertTrue(result.founder_side_evidence)
+                self.assertIn(result.decision, (True, False, None))
+                self.assertGreaterEqual(result.confidence, 0.0)
+                self.assertLessEqual(result.confidence, 1.0)
+                self.assertIn(result.requirement_mandatory, (True, False, None))
+                self.assertTrue(result.explanation)
+
+    def test_hard_failure_uses_stable_normalized_pointer_when_raw_pointer_absent(self) -> None:
+        from dataclasses import replace
+
+        opp = replace(
+            create_test_opportunity(
+                description="Must have valid work authorization in Germany without sponsorship.",
+            ),
+            raw_record_pointer="",
+        )
+        _, constraints = self.engine.evaluate(opp, self.truth_graph)
+        failed = next(c for c in constraints if c.constraint_name == "work_authorization")
+        self.assertTrue(failed.is_hard_failure)
+        self.assertEqual(failed.source_pointer, f"opportunity:{opp.id}#/description")
+
+    def test_field_level_job_provenance_is_preferred(self) -> None:
+        from dataclasses import replace
+        from opportunity.models import FieldProvenance
+
+        base = create_test_opportunity(
+            description="Must have valid work authorization in Germany without sponsorship.",
+        )
+        opp = replace(
+            base,
+            field_provenances=(FieldProvenance(
+                field_name="description",
+                raw_value=base.description,
+                normalized_value=base.description,
+                derivation_type="raw_extraction",
+                raw_pointer="fixture:job.content",
+                record_checksum="fixture-checksum",
+                rule_id="fixture-description",
+            ),),
+        )
+        _, constraints = self.engine.evaluate(opp, self.truth_graph)
+        failed = next(c for c in constraints if c.constraint_name == "work_authorization")
+        self.assertEqual(failed.source_pointer, "fixture:job.content")
 
     def test_uncertain_on_missing_opportunity_metadata(self) -> None:
         opp = create_test_opportunity(geo_status="unclear")

@@ -276,11 +276,26 @@ class EvaluateAndStoreTest(unittest.TestCase):
         geo_entry = geo_entries[0]
         self.assertEqual(
             set(geo_entry.keys()),
-            {"constraint_name", "passed", "reason", "required_field", "founder_fact", "is_hard_failure", "provenance_pointer"},
+            {
+                "constraint_name", "passed", "reason", "required_field", "founder_fact",
+                "is_hard_failure", "provenance_pointer", "constraint_type",
+                "job_evidence_text", "job_evidence_field", "source_pointer",
+                "founder_side_evidence", "decision", "confidence",
+                "requirement_mandatory", "explanation",
+            },
         )
         # passed must be the literal JSON null (Python None), never False.
         self.assertIsNone(geo_entry["passed"])
         self.assertNotEqual(geo_entry["passed"], False)
+        self.assertEqual(geo_entry["constraint_type"], geo_entry["constraint_name"])
+        self.assertEqual(geo_entry["decision"], geo_entry["passed"])
+        self.assertEqual(geo_entry["job_evidence_field"], geo_entry["required_field"])
+        self.assertEqual(geo_entry["source_pointer"], geo_entry["provenance_pointer"])
+        self.assertEqual(geo_entry["founder_side_evidence"], geo_entry["founder_fact"])
+        self.assertEqual(geo_entry["explanation"], geo_entry["reason"])
+        self.assertGreaterEqual(geo_entry["confidence"], 0.0)
+        self.assertLessEqual(geo_entry["confidence"], 1.0)
+        self.assertIn(geo_entry["requirement_mandatory"], (True, False, None))
 
         for hc in detail["hard_constraints"]:
             self.assertIn(hc["passed"], (True, False, None))
