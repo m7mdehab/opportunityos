@@ -483,7 +483,7 @@ def _graph_with_target_role(target_role_value: str) -> TruthGraph:
 
 
 class TestCareerTrajectoryPredicateIsolation(unittest.TestCase):
-    """A typed work-mode preference is not a career target-role assertion."""
+    """Only verified career.target_role assertions may match posting titles."""
 
     def test_remote_track_does_not_match_remote_title_as_career_target_role(self) -> None:
         graph = TruthGraph()
@@ -515,6 +515,55 @@ class TestCareerTrajectoryPredicateIsolation(unittest.TestCase):
         self.assertEqual(trajectory.strengths, ())
         self.assertEqual(trajectory.evidence_refs, ())
         self.assertNotIn("a-remote-track", trajectory.evidence_refs)
+
+    def test_career_goal_does_not_match_as_a_target_role(self) -> None:
+        graph = TruthGraph()
+        graph.add_evidence(EvidenceRecord(
+            id="ev-career-goal",
+            content="Career goal: Data Engineer.",
+            source="manual",
+            locator="career.goal",
+        ))
+        graph.add_assertion(AtomicAssertion(
+            id="a-career-goal",
+            subject_id="founder",
+            predicate=predicates.CAREER_GOAL,
+            value="Data Engineer",
+            evidence_ids=("ev-career-goal",),
+            verification_status=VerificationStatus.VERIFIED,
+        ))
+
+        evaluation = OpportunityScorer().evaluate(
+            create_test_opportunity(title="Data Engineer"),
+            graph,
+        )
+        trajectory = next(
+            ds for ds in evaluation.dimension_scores if ds.dimension_name == "career_trajectory"
+        )
+
+        self.assertEqual(trajectory.raw_score, 0.50)
+        self.assertEqual(trajectory.weighted_score, 0.025)
+        self.assertEqual(trajectory.strengths, ())
+        self.assertEqual(trajectory.evidence_refs, ())
+        self.assertNotIn("a-career-goal", trajectory.evidence_refs)
+
+    def test_verified_target_role_matches_title_and_supplies_evidence(self) -> None:
+        graph = _graph_with_target_role("Data Engineer")
+        evaluation = OpportunityScorer().evaluate(
+            create_test_opportunity(title="Data Engineer"),
+            graph,
+        )
+        trajectory = next(
+            ds for ds in evaluation.dimension_scores if ds.dimension_name == "career_trajectory"
+        )
+
+        self.assertEqual(trajectory.raw_score, 0.95)
+        self.assertEqual(trajectory.weighted_score, 0.0475)
+        self.assertEqual(
+            trajectory.strengths,
+            ("Opportunity title matches target role: Data Engineer",),
+        )
+        self.assertEqual(trajectory.evidence_refs, ("a-target-role",))
 
 
 class TestTitleFamilyFitDimensionIntegration(unittest.TestCase):
