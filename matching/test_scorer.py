@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import unittest
+from dataclasses import replace
 from datetime import date
 
 from opportunity.models import (
@@ -554,6 +555,13 @@ def _add_verified_assertion(
     ))
 
 
+def _opportunity_with_requirements(requirements: tuple[str, ...], **kwargs):
+    return replace(
+        create_test_opportunity(**kwargs),
+        requirements=requirements,
+    )
+
+
 class TestCareerTrajectoryPredicateIsolation(unittest.TestCase):
     """Only verified career.target_role assertions may match posting titles."""
 
@@ -795,7 +803,7 @@ class TestFR008CapabilityDimensions(unittest.TestCase):
             subject_id="credential-pmp",
             evidence_text="The PMP certification is completed.",
         )
-        opportunity = create_test_opportunity(requirements=("PMP certification required",))
+        opportunity = _opportunity_with_requirements(("PMP certification required",))
         evaluation = OpportunityScorer().evaluate(opportunity, graph)
         dimension = self._dimension(evaluation, "education_certification_fit")
         self.assertEqual(dimension.raw_score, 1.0)
@@ -812,8 +820,8 @@ class TestFR008CapabilityDimensions(unittest.TestCase):
             value="Master of Science in Computer Science",
             subject_id="education-1",
         )
-        opportunity = create_test_opportunity(
-            requirements=("Bachelor's degree in Computer Science required",),
+        opportunity = _opportunity_with_requirements(
+            ("Bachelor's degree in Computer Science required",),
         )
         evaluation = OpportunityScorer().evaluate(opportunity, graph)
         dimension = self._dimension(evaluation, "education_certification_fit")
@@ -822,7 +830,7 @@ class TestFR008CapabilityDimensions(unittest.TestCase):
 
     def test_missing_credential_evidence_stays_unknown_not_gap(self) -> None:
         evaluation = OpportunityScorer().evaluate(
-            create_test_opportunity(requirements=("PMP certification required",)),
+            _opportunity_with_requirements(("PMP certification required",)),
             TruthGraph(),
         )
         dimension = self._dimension(evaluation, "education_certification_fit")
@@ -860,7 +868,7 @@ class TestFR008CapabilityDimensions(unittest.TestCase):
             subject_id="credential-pmp",
         )
         evaluation = OpportunityScorer().evaluate(
-            create_test_opportunity(requirements=("PMP certification required",)),
+            _opportunity_with_requirements(("PMP certification required",)),
             graph,
         )
         dimension = self._dimension(evaluation, "education_certification_fit")
