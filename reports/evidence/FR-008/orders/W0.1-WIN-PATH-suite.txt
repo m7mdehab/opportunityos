@@ -1,0 +1,31 @@
+test_default_path_constant_is_private_truth_pack (truth.test_pack.LoadFounderPackDefaultPathTest.test_default_path_constant_is_private_truth_pack) ... ok
+test_hash_changes_when_content_changes (truth.test_pack.LoadFounderPackHashTest.test_hash_changes_when_content_changes) ... ok
+test_hash_stable_across_key_ordering (truth.test_pack.LoadFounderPackHashTest.test_hash_stable_across_key_ordering) ... ok
+test_hash_stable_across_two_loads_of_same_file (truth.test_pack.LoadFounderPackHashTest.test_hash_stable_across_two_loads_of_same_file) ... ok
+test_invalid_pack_raises_truth_pack_invalid_with_findings (truth.test_pack.LoadFounderPackInvalidTest.test_invalid_pack_raises_truth_pack_invalid_with_findings) ... ok
+test_missing_file_raises_truth_pack_missing (truth.test_pack.LoadFounderPackMissingTest.test_missing_file_raises_truth_pack_missing) ... ok
+test_report_and_loaded_pack_shape (truth.test_pack.LoadFounderPackReportTest.test_report_and_loaded_pack_shape) ... ok
+test_load_founder_pack_uses_repository_snapshot_in_cloud_mode_without_uri (truth.test_pack.LoadTruthPackRemoteAndIntegrityTest.test_load_founder_pack_uses_repository_snapshot_in_cloud_mode_without_uri) ... ok
+test_load_truth_pack_cloud_mode_rejects_data_uri_by_default (truth.test_pack.LoadTruthPackRemoteAndIntegrityTest.test_load_truth_pack_cloud_mode_rejects_data_uri_by_default) ... ok
+test_load_truth_pack_cloud_mode_rejects_local_path (truth.test_pack.LoadTruthPackRemoteAndIntegrityTest.test_load_truth_pack_cloud_mode_rejects_local_path) ... ok
+test_load_truth_pack_cloud_mode_rejects_plain_http (truth.test_pack.LoadTruthPackRemoteAndIntegrityTest.test_load_truth_pack_cloud_mode_rejects_plain_http) ... ok
+test_load_truth_pack_cloud_mode_requires_expected_hash (truth.test_pack.LoadTruthPackRemoteAndIntegrityTest.test_load_truth_pack_cloud_mode_requires_expected_hash) ... ok
+test_load_truth_pack_data_uri_plain_and_base64 (truth.test_pack.LoadTruthPackRemoteAndIntegrityTest.test_load_truth_pack_data_uri_plain_and_base64) ... ok
+test_load_truth_pack_from_http_success (truth.test_pack.LoadTruthPackRemoteAndIntegrityTest.test_load_truth_pack_from_http_success) ... ok
+test_load_truth_pack_http_403_raises_truth_pack_invalid (truth.test_pack.LoadTruthPackRemoteAndIntegrityTest.test_load_truth_pack_http_403_raises_truth_pack_invalid) ... ok
+test_load_truth_pack_http_404_raises_truth_pack_missing (truth.test_pack.LoadTruthPackRemoteAndIntegrityTest.test_load_truth_pack_http_404_raises_truth_pack_missing) ... ok
+test_load_truth_pack_http_auth_token_header (truth.test_pack.LoadTruthPackRemoteAndIntegrityTest.test_load_truth_pack_http_auth_token_header) ... ok
+test_load_truth_pack_integrity_hash_verification (truth.test_pack.LoadTruthPackRemoteAndIntegrityTest.test_load_truth_pack_integrity_hash_verification) ... ok
+test_load_truth_pack_redacts_credentials_and_query_in_errors (truth.test_pack.LoadTruthPackRemoteAndIntegrityTest.test_load_truth_pack_redacts_credentials_and_query_in_errors) ... ok
+test_load_truth_pack_s3_deferred_notice (truth.test_pack.LoadTruthPackRemoteAndIntegrityTest.test_load_truth_pack_s3_deferred_notice) ... ok
+test_broken_copy_exits_one_with_findings (truth.test_pack.TruthCheckScriptTest.test_broken_copy_exits_one_with_findings) ... ok
+test_output_contains_no_template_field_values (truth.test_pack.TruthCheckScriptTest.test_output_contains_no_template_field_values) ... ok
+test_template_copy_exits_zero (truth.test_pack.TruthCheckScriptTest.test_template_copy_exits_zero) ... ok
+test_shipped_template_claim_rejections_are_reasoned_and_block_export (truth.test_pack.TruthPackTemplateArtifactGenerationKnownLimitationTest.test_shipped_template_claim_rejections_are_reasoned_and_block_export) ... ok
+test_template_covers_every_documented_section (truth.test_pack.TruthPackTemplateTest.test_template_covers_every_documented_section) ... ok
+test_template_loads_with_zero_validator_errors (truth.test_pack.TruthPackTemplateTest.test_template_loads_with_zero_validator_errors) ... ok
+
+----------------------------------------------------------------------
+Ran 26 tests in 4.884s
+
+OK

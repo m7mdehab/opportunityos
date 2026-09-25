@@ -471,7 +471,7 @@ class LoadTruthPackRemoteAndIntegrityTest(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             path = _write(Path(tmp), "pack.yaml", self.yaml_content)
             with self.assertRaises(TruthPackInvalid) as ctx:
-                load_truth_pack(path, allow_local_path=False)
+                load_truth_pack(path, expected_hash=self.raw_hash, cloud_mode=True)
             self.assertIn("local filesystem paths not allowed", str(ctx.exception))
 
     def test_load_truth_pack_redacts_credentials_and_query_in_errors(self):
@@ -537,9 +537,14 @@ class LoadTruthPackRemoteAndIntegrityTest(unittest.TestCase):
         }
         with mock.patch.dict(os.environ, env, clear=True):
             loaded = load_founder_pack()
-        self.assertIsInstance(loaded, LoadedPack)
-        self.assertTrue(loaded.report.valid)
-        self.assertEqual(64, len(loaded.truth_pack_hash))
+            self.assertIsInstance(loaded, LoadedPack)
+            self.assertTrue(loaded.report.valid)
+            self.assertEqual(64, len(loaded.truth_pack_hash))
+            # Prove the canonical default still receives its pinned raw-byte hash:
+            # an incorrect pin must fail before returning a graph.
+            with mock.patch("truth.pack.CANONICAL_REPO_TRUTH_PACK_RAW_SHA256", "0" * 64):
+                with self.assertRaises(TruthPackVerificationError):
+                    load_founder_pack()
 
     def test_load_truth_pack_s3_deferred_notice(self):
         with self.assertRaises(TruthPackInvalid) as ctx:

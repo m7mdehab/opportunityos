@@ -269,6 +269,20 @@ def _is_cloud_mode(env: Mapping[str, str] | None = None) -> bool:
     )
 
 
+def _is_canonical_repo_snapshot_target(target: str | Path) -> bool:
+    """Recognize only the repository snapshot across Windows/POSIX separators.
+
+    ``Path.__str__`` uses backslashes on Windows while the canonical constant
+    is deliberately compared in POSIX form. On Windows, normalize separator
+    spelling only: dot segments, absolute paths, and other aliases remain
+    ineligible. On POSIX, a backslash is a filename character and stays one.
+    """
+    target_text = str(target).strip()
+    if os.name == "nt":
+        target_text = target_text.replace("\\", "/")
+    return target_text == CANONICAL_REPO_TRUTH_PACK.as_posix()
+
+
 def _fetch_remote_bytes(
     url: str,
     auth_token: str | None = None,
@@ -382,7 +396,7 @@ def load_truth_pack(
             os.environ.get("OPPORTUNITYOS_TRUTH_PACK_HASH")
             or os.environ.get("OPPORTUNITYOS_TRUTH_PACK_SHA256")
         )
-        if expected_hash is None and str(target).strip() == CANONICAL_REPO_TRUTH_PACK.as_posix():
+        if expected_hash is None and _is_canonical_repo_snapshot_target(target):
             expected_hash = CANONICAL_REPO_TRUTH_PACK_RAW_SHA256
 
     if auth_token is None:
@@ -398,7 +412,7 @@ def load_truth_pack(
 
     # Cloud mode transport & security constraints (Items B, D, E)
     if cloud_mode:
-        repo_snapshot_target = target_str == CANONICAL_REPO_TRUTH_PACK.as_posix()
+        repo_snapshot_target = _is_canonical_repo_snapshot_target(target_str)
         if expected_hash is None and not repo_snapshot_target:
             raise TruthPackInvalid(
                 f"expected_hash is required in cloud mode for integrity verification ({redacted_target})",
@@ -460,7 +474,7 @@ def load_truth_pack(
         # non-sensitive product truth and is allowed to ship with the
         # repository. Cloud mode may read exactly this repository-managed
         # snapshot; arbitrary local-path fallback remains forbidden.
-        repo_snapshot = file_path.as_posix() == CANONICAL_REPO_TRUTH_PACK.as_posix()
+        repo_snapshot = _is_canonical_repo_snapshot_target(file_path)
         if cloud_mode and repo_snapshot:
             local_allowed = True
         if not local_allowed:

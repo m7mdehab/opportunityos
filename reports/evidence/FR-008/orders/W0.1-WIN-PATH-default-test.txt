@@ -1,0 +1,6 @@
+test_load_founder_pack_uses_repository_snapshot_in_cloud_mode_without_uri (truth.test_pack.LoadTruthPackRemoteAndIntegrityTest.test_load_founder_pack_uses_repository_snapshot_in_cloud_mode_without_uri) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 0.615s
+
+OK
