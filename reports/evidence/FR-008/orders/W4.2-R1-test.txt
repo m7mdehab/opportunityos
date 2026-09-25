@@ -1,0 +1,97 @@
+......FEE.....EE.
+======================================================================
+ERROR: test_projection_keeps_ambiguous_and_missing_target_tiers_unknown (storage.test_feed_projection_service.FeedProjectionMaterializationTest.test_projection_keeps_ambiguous_and_missing_target_tiers_unknown)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\storage\test_feed_projection_service.py", line 313, in test_projection_keeps_ambiguous_and_missing_target_tiers_unknown
+    self._target_graph((("Data Engineer", "primary"), ("Senior Data Engineer", "adjacent"))),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\storage\test_feed_projection_service.py", line 113, in _target_graph
+    graph.add_career_profile(CareerProfile(
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\truth\graph.py", line 698, in add_career_profile
+    self._add_profile(profile)
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\truth\graph.py", line 767, in _add_profile
+    self._validate_profile_field_provenance(profile, links)
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\truth\graph.py", line 786, in _validate_profile_field_provenance
+    self._validate_entity_manifest(profile, links, manifest=manifest)
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\truth\graph.py", line 808, in _validate_entity_manifest
+    self._validate_entity_manifest(child, links, manifest=manifest)
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\truth\graph.py", line 825, in _validate_entity_manifest
+    raise ValueError(f"field {spec.predicate} '{field_val}' is not supported by evidence: {', '.join(entity_ev_ids)}")
+ValueError: field career.target_role_tier 'primary' is not supported by evidence: synthetic-target-0
+
+======================================================================
+ERROR: test_projection_persists_normalized_title_and_explicit_target_tier (storage.test_feed_projection_service.FeedProjectionMaterializationTest.test_projection_persists_normalized_title_and_explicit_target_tier)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\storage\test_feed_projection_service.py", line 294, in test_projection_persists_normalized_title_and_explicit_target_tier
+    truth_graph=self._target_graph((("Data Engineer", "primary"),)),
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\storage\test_feed_projection_service.py", line 113, in _target_graph
+    graph.add_career_profile(CareerProfile(
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\truth\graph.py", line 698, in add_career_profile
+    self._add_profile(profile)
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\truth\graph.py", line 767, in _add_profile
+    self._validate_profile_field_provenance(profile, links)
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\truth\graph.py", line 786, in _validate_profile_field_provenance
+    self._validate_entity_manifest(profile, links, manifest=manifest)
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\truth\graph.py", line 808, in _validate_entity_manifest
+    self._validate_entity_manifest(child, links, manifest=manifest)
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\truth\graph.py", line 825, in _validate_entity_manifest
+    raise ValueError(f"field {spec.predicate} '{field_val}' is not supported by evidence: {', '.join(entity_ev_ids)}")
+ValueError: field career.target_role_tier 'primary' is not supported by evidence: synthetic-target-0
+
+======================================================================
+ERROR: test_target_tier_distinguishes_outside_targets_from_unknown_family (storage.test_feed_projection_service.FeedProjectionMaterializationTest.test_target_tier_distinguishes_outside_targets_from_unknown_family)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\storage\test_feed_projection_service.py", line 321, in test_target_tier_distinguishes_outside_targets_from_unknown_family
+    graph = self._target_graph((("Data Engineer", "primary"),))
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\storage\test_feed_projection_service.py", line 113, in _target_graph
+    graph.add_career_profile(CareerProfile(
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\truth\graph.py", line 698, in add_career_profile
+    self._add_profile(profile)
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\truth\graph.py", line 767, in _add_profile
+    self._validate_profile_field_provenance(profile, links)
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\truth\graph.py", line 786, in _validate_profile_field_provenance
+    self._validate_entity_manifest(profile, links, manifest=manifest)
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\truth\graph.py", line 808, in _validate_entity_manifest
+    self._validate_entity_manifest(child, links, manifest=manifest)
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\truth\graph.py", line 825, in _validate_entity_manifest
+    raise ValueError(f"field {spec.predicate} '{field_val}' is not supported by evidence: {', '.join(entity_ev_ids)}")
+ValueError: field career.target_role_tier 'primary' is not supported by evidence: synthetic-target-0
+
+======================================================================
+ERROR: test_unevaluated_projection_populates_title_fields_without_inventing_scores (storage.test_feed_projection_service.FeedProjectionMaterializationTest.test_unevaluated_projection_populates_title_fields_without_inventing_scores)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\storage\test_feed_projection_service.py", line 375, in test_unevaluated_projection_populates_title_fields_without_inventing_scores
+    truth_graph=self._target_graph((("Data Engineer", "adjacent"),)),
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\storage\test_feed_projection_service.py", line 113, in _target_graph
+    graph.add_career_profile(CareerProfile(
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\truth\graph.py", line 698, in add_career_profile
+    self._add_profile(profile)
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\truth\graph.py", line 767, in _add_profile
+    self._validate_profile_field_provenance(profile, links)
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\truth\graph.py", line 786, in _validate_profile_field_provenance
+    self._validate_entity_manifest(profile, links, manifest=manifest)
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\truth\graph.py", line 808, in _validate_entity_manifest
+    self._validate_entity_manifest(child, links, manifest=manifest)
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\truth\graph.py", line 825, in _validate_entity_manifest
+    raise ValueError(f"field {spec.predicate} '{field_val}' is not supported by evidence: {', '.join(entity_ev_ids)}")
+ValueError: field career.target_role_tier 'adjacent' is not supported by evidence: synthetic-target-0
+
+======================================================================
+FAIL: test_invalid_score_components_remain_null_and_do_not_enter_priority (storage.test_feed_projection_service.FeedProjectionMaterializationTest.test_invalid_score_components_remain_null_and_do_not_enter_priority)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w42-projection-fields\storage\test_feed_projection_service.py", line 361, in test_invalid_score_components_remain_null_and_do_not_enter_priority
+    self.assertEqual(record.priority_score, expected)
+AssertionError: 29605187132.0 != 29605189152.0
+
+----------------------------------------------------------------------
+Ran 17 tests in 8.842s
+
+FAILED (failures=1, errors=4)

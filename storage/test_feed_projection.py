@@ -39,10 +39,26 @@ class FeedProjectionContractTest(unittest.TestCase):
                 "ix_feed_projection_search_tsv",
                 "ix_feed_projection_source_id",
                 "ix_feed_projection_title_family",
+                "ix_feed_projection_truth_title_family",
+                "ix_feed_projection_truth_title_level",
+                "ix_feed_projection_truth_target_tier",
+                "ix_feed_projection_truth_preference",
+                "ix_feed_projection_truth_confidence",
                 "ix_feed_projection_work_mode",
                 "ix_feed_projection_location_country",
             }.issubset(index_names)
         )
+
+    def test_projection_contract_keeps_new_fields_nullable_for_legacy_rows(self) -> None:
+        expected_nullable_fields = {
+            "title_level",
+            "target_tier",
+            "preference_score",
+            "confidence_score",
+        }
+        columns = {column.name: column for column in FeedProjectionRecord.__table__.columns}
+        self.assertTrue(expected_nullable_fields.issubset(columns))
+        self.assertTrue(all(columns[name].nullable for name in expected_nullable_fields))
 
     def test_cold_process_correctness_is_persisted_not_cache_backed(self) -> None:
         session = self.Session()
@@ -75,6 +91,8 @@ class FeedProjectionContractTest(unittest.TestCase):
                     track="employment",
                     opportunity_type="employment",
                     title_family="data_engineering",
+                    title_level="mid",
+                    target_tier="primary",
                     seniority_level="mid",
                     work_mode="remote",
                     location_country="EG",
@@ -85,6 +103,8 @@ class FeedProjectionContractTest(unittest.TestCase):
                     employment_type="full_time",
                     qualification_decision="QUALIFIED",
                     fit_score=82.0,
+                    preference_score=74.0,
+                    confidence_score=88.0,
                     priority_score=82.0,
                     reasons_json="[]",
                     red_line_match=False,
@@ -108,6 +128,10 @@ class FeedProjectionContractTest(unittest.TestCase):
             self.assertEqual(reloaded.opportunity_id, "opp-1")
             self.assertEqual(reloaded.qualification_decision, "QUALIFIED")
             self.assertEqual(reloaded.fit_score, 82.0)
+            self.assertEqual(reloaded.title_level, "mid")
+            self.assertEqual(reloaded.target_tier, "primary")
+            self.assertEqual(reloaded.preference_score, 74.0)
+            self.assertEqual(reloaded.confidence_score, 88.0)
         finally:
             session.close()
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -30,8 +31,11 @@ from storage.models import (
     MatchEvaluationRecord,
     OpportunityRecord,
 )
+from matching.title_family import normalize_title
+from truth import predicates
+from truth.models import Polarity, VerificationStatus
 
-PROJECTION_VERSION = "v1"
+PROJECTION_VERSION = "v2"
 _COMPENSATION_FIELDS = (
     "compensation.min_amount",
     "compensation.max_amount",
@@ -173,12 +177,81 @@ def _specific_filter_match(filter_id: str, ctx: OpportunityFilterContext) -> boo
         return False
 
 
+def _score_0_to_100(value: Any) -> float | None:
+    """Return only finite numeric evaluation scores in the declared 0–100 scale."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        score = float(value)
+    except OverflowError:
+        return None
+    if not math.isfinite(score) or not 0.0 <= score <= 100.0:
+        return None
+    return score
+
+
+def _target_tier_for_family(title_family: str, truth_graph: Any) -> str | None:
+    """Resolve a normalized family against explicit, verified Founder targets.
+
+    A known family with no target-role family match is outside-target only when
+    the graph actually contains verified target roles. Missing or conflicting
+    tier evidence stays unknown instead of borrowing a tier from another role.
+    """
+    if truth_graph is None or title_family == "other":
+        return None
+
+    assertions = tuple(getattr(truth_graph, "assertions", {}).values())
+    role_assertions = tuple(
+        assertion
+        for assertion in assertions
+        if assertion.predicate == predicates.CAREER_TARGET_ROLE
+        and assertion.verification_status == VerificationStatus.VERIFIED
+        and assertion.polarity == Polarity.POSITIVE
+    )
+    if not role_assertions:
+        return None
+
+    matching_roles = tuple(
+        assertion
+        for assertion in role_assertions
+        if normalize_title(str(assertion.value))[0] == title_family
+    )
+    if not matching_roles:
+        return "outside_targets"
+
+    tiers_by_subject: dict[str, set[str]] = {}
+    for assertion in assertions:
+        if (
+            assertion.predicate == predicates.CAREER_TARGET_ROLE_TIER
+            and assertion.verification_status == VerificationStatus.VERIFIED
+            and assertion.polarity == Polarity.POSITIVE
+        ):
+            tiers_by_subject.setdefault(assertion.subject_id, set()).add(
+                str(getattr(assertion.value, "value", assertion.value))
+            )
+
+    matched_tiers: set[str] = set()
+    for role in matching_roles:
+        role_tiers = tiers_by_subject.get(role.subject_id, set())
+        if len(role_tiers) != 1:
+            return None
+        role_tier = next(iter(role_tiers))
+        if role_tier not in {"primary", "adjacent", "stretch"}:
+            return None
+        matched_tiers.add(role_tier)
+
+    if len(matched_tiers) != 1:
+        return None
+    return next(iter(matched_tiers))
+
+
 def build_projection_record(
     opportunity: OpportunityRecord,
     context: OpportunityFilterContext | None,
     evaluation: MatchEvaluationRecord | None,
     *,
     truth_pack_hash: str,
+    truth_graph: Any = None,
     filter_settings: dict[str, FilterSettingsRow],
     facet_settings: dict[str, FacetSettingsRow],
     projected_at: datetime | None = None,
@@ -194,12 +267,24 @@ def build_projection_record(
         reasons_json = evaluation.reasons_json
         evaluated_at = evaluation.evaluated_at
         evaluation_detail = unpack_evaluation_detail(evaluation.evaluation_detail_json)
+        preference_score = _score_0_to_100(evaluation_detail.get("preference_score"))
+        confidence_score = _score_0_to_100(evaluation_detail.get("confidence_score"))
     else:
         fit_score = None
         qualification_decision = None
         reasons_json = "[]"
         evaluated_at = now
         evaluation_detail = {}
+        preference_score = None
+        confidence_score = None
+
+    title_family, title_level, _title_rule = normalize_title(opportunity.title)
+    target_tier = _target_tier_for_family(
+        title_family,
+        truth_graph if truth_graph is not None else (
+            context.truth_graph if context is not None else None
+        ),
+    )
 
     hidden_by: list[str] = []
     rank_penalty = 0
@@ -228,8 +313,8 @@ def build_projection_record(
         priority_score = recommended_priority_score(
             decision=qualification_decision,
             fit_score=fit_score,
-            preference_score=evaluation_detail.get("preference_score"),
-            confidence_score=evaluation_detail.get("confidence_score"),
+            preference_score=preference_score,
+            confidence_score=confidence_score,
             freshness_score=freshness,
             source_confidence=source_confidence_score(evaluation_detail),
             rank_penalty=rank_penalty,
@@ -248,7 +333,9 @@ def build_projection_record(
         posted_date=opportunity.posted_date,
         track=opportunity.track,
         opportunity_type=_opportunity_type(opportunity),
-        title_family=opportunity.title_family,
+        title_family=title_family,
+        title_level=title_level,
+        target_tier=target_tier,
         seniority_level=opportunity.seniority_level,
         work_mode=opportunity.work_mode,
         location_country=opportunity.location_country,
@@ -259,6 +346,8 @@ def build_projection_record(
         employment_type=opportunity.employment_type,
         qualification_decision=qualification_decision,
         fit_score=fit_score,
+        preference_score=preference_score,
+        confidence_score=confidence_score,
         priority_score=priority_score,
         reasons_json=reasons_json,
         red_line_match=red_line,
@@ -342,6 +431,7 @@ def rebuild_feed_projection(
                 context,
                 evaluation,
                 truth_pack_hash=truth_pack_hash,
+                truth_graph=truth_graph,
                 filter_settings=filters,
                 facet_settings=facets,
                 projected_at=projected_at,
@@ -458,6 +548,7 @@ def refresh_opportunity_projection(
         context,
         eval_record,
         truth_pack_hash=truth_pack_hash,
+        truth_graph=truth_graph,
         filter_settings=filters,
         facet_settings=facets,
         projected_at=projected_at,

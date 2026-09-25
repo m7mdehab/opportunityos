@@ -12,6 +12,8 @@ from sqlalchemy.orm import sessionmaker
 from api.filters import FilterSettingsRow
 from storage.feed_projection import FeedProjectionRecord
 from storage.feed_projection_service import (
+    _score_0_to_100,
+    _target_tier_for_family,
     rebuild_feed_projection,
     refresh_existing_feed_projections,
     refresh_opportunity_projection,
@@ -19,6 +21,7 @@ from storage.feed_projection_service import (
 from storage.feed_query import FeedQuerySpec, feed_page
 from storage.ranking import recommended_priority_score
 from storage.models import Base, FounderFilterSettingRecord, MatchEvaluationRecord, OpportunityRecord
+from matching.title_family import normalize_title
 
 
 class FeedProjectionMaterializationTest(unittest.TestCase):
@@ -87,6 +90,33 @@ class FeedProjectionMaterializationTest(unittest.TestCase):
             policy_version="test-v1",
             evaluated_at=now,
         )
+
+    def _target_graph(self, targets: tuple[tuple[str, str | None], ...]):
+        from truth.graph import TruthGraph
+        from truth.models import CareerProfile, EvidenceRecord, TargetRoleRecord, TargetRoleTier
+
+        graph = TruthGraph()
+        role_records = []
+        for index, (title, tier) in enumerate(targets):
+            evidence_id = f"synthetic-target-{index}"
+            evidence_tier = f"{tier} " if tier is not None else ""
+            graph.add_evidence(EvidenceRecord(
+                id=evidence_id,
+                content=f"Synthetic reviewed {evidence_tier}target role: {title}",
+                source="synthetic-test",
+                locator=f"test.target_roles.{index}",
+            ))
+            role_records.append(TargetRoleRecord(
+                id=f"synthetic-role-{index}",
+                title=title,
+                evidence_ids=(evidence_id,),
+                tier=TargetRoleTier(tier) if tier is not None else None,
+            ))
+        graph.add_career_profile(CareerProfile(
+            id="synthetic-career-profile",
+            target_roles=tuple(role_records),
+        ))
+        return graph
 
     def test_rebuild_is_truth_scoped_and_idempotent(self) -> None:
         session = self.Session()
@@ -237,6 +267,133 @@ class FeedProjectionMaterializationTest(unittest.TestCase):
             )
             self.assertEqual(record.fit_score, 82.25)
             self.assertEqual(record.priority_score, expected)
+            self.assertEqual(record.preference_score, 77.5)
+            self.assertEqual(record.confidence_score, 84.25)
+            self.assertEqual(record.projection_version, "v2")
+            self.assertEqual(record.title_family, "data_engineering")
+            self.assertEqual(record.title_level, "unspecified")
+        finally:
+            session.close()
+
+    def test_projection_persists_normalized_title_and_explicit_target_tier(self) -> None:
+        session = self.Session()
+        try:
+            opportunity = self._opportunity("opp-tier", title="Senior Data Engineer")
+            # Deliberately stale source-side family must not win over the title normalizer.
+            opportunity.title_family = "software_engineering"
+            session.add(opportunity)
+            session.flush()
+            session.add(self._evaluation("opp-tier", detail={
+                "preference_score": 73,
+                "confidence_score": 86.5,
+            }))
+            session.commit()
+
+            record = refresh_opportunity_projection(
+                session,
+                opportunity_id="opp-tier",
+                truth_pack_hash="truth-a",
+                truth_graph=self._target_graph((("Data Engineer", "primary"),)),
+            )
+            session.commit()
+
+            self.assertEqual(record.title_family, "data_engineering")
+            self.assertEqual(record.title_level, "senior")
+            self.assertEqual(record.target_tier, "primary")
+            self.assertEqual(record.preference_score, 73.0)
+            self.assertEqual(record.confidence_score, 86.5)
+        finally:
+            session.close()
+
+    def test_projection_keeps_ambiguous_and_missing_target_tiers_unknown(self) -> None:
+        family = normalize_title("Data Engineer")[0]
+        self.assertIsNone(_target_tier_for_family(
+            family, self._target_graph((("Data Engineer", None),))
+        ))
+        self.assertIsNone(_target_tier_for_family(
+            family,
+            self._target_graph((("Data Engineer", "primary"), ("Senior Data Engineer", "adjacent"))),
+        ))
+        self.assertIsNone(_target_tier_for_family(
+            family,
+            self._target_graph((("Data Engineer", "primary"), ("Senior Data Engineer", None))),
+        ))
+
+    def test_target_tier_distinguishes_outside_targets_from_unknown_family(self) -> None:
+        graph = self._target_graph((("Data Engineer", "primary"),))
+        self.assertEqual(
+            _target_tier_for_family(normalize_title("Product Manager")[0], graph),
+            "outside_targets",
+        )
+        self.assertIsNone(_target_tier_for_family("other", graph))
+        self.assertIsNone(_target_tier_for_family(
+            normalize_title("Product Manager")[0], self._target_graph(())
+        ))
+
+    def test_invalid_score_components_remain_null_and_do_not_enter_priority(self) -> None:
+        session = self.Session()
+        try:
+            session.add(self._opportunity("opp-invalid-score"))
+            session.flush()
+            session.add(self._evaluation("opp-invalid-score", detail={
+                "preference_score": 101,
+                "confidence_score": float("nan"),
+                "confidence_factors": [{"name": "source_freshness_and_strength", "score": 68.0}],
+            }))
+            session.commit()
+
+            record = refresh_opportunity_projection(
+                session,
+                opportunity_id="opp-invalid-score",
+                truth_pack_hash="truth-a",
+                projected_at=datetime(2026, 9, 25, 12, 0, 0, tzinfo=timezone.utc),
+            )
+            session.commit()
+
+            expected = recommended_priority_score(
+                decision="qualified",
+                fit_score=82.0,
+                preference_score=None,
+                confidence_score=None,
+                freshness_score=80.0,
+                source_confidence=68.0,
+                rank_penalty=0,
+            )
+            self.assertIsNone(record.preference_score)
+            self.assertIsNone(record.confidence_score)
+            self.assertEqual(record.priority_score, expected)
+        finally:
+            session.close()
+
+    def test_projection_score_parser_rejects_non_numeric_and_out_of_range_values(self) -> None:
+        self.assertEqual(_score_0_to_100(0), 0.0)
+        self.assertEqual(_score_0_to_100(100), 100.0)
+        for invalid in (True, "82", -0.1, 100.1, float("nan"), float("inf"), 10**10000):
+            with self.subTest(invalid=invalid):
+                self.assertIsNone(_score_0_to_100(invalid))
+
+    def test_unevaluated_projection_populates_title_fields_without_inventing_scores(self) -> None:
+        session = self.Session()
+        try:
+            session.add(self._opportunity("opp-no-eval", title="Senior Data Engineer"))
+            session.commit()
+
+            record = refresh_opportunity_projection(
+                session,
+                opportunity_id="opp-no-eval",
+                truth_pack_hash="truth-a",
+                truth_graph=self._target_graph((("Data Engineer", "adjacent"),)),
+                allow_unevaluated=True,
+            )
+            session.commit()
+
+            self.assertEqual(record.title_family, "data_engineering")
+            self.assertEqual(record.title_level, "senior")
+            self.assertEqual(record.target_tier, "adjacent")
+            self.assertIsNone(record.fit_score)
+            self.assertIsNone(record.preference_score)
+            self.assertIsNone(record.confidence_score)
+            self.assertIsNone(record.priority_score)
         finally:
             session.close()
 

@@ -36,6 +36,8 @@ class FeedProjectionRecord(Base):
     track = Column(String(32), nullable=False)
     opportunity_type = Column(String(32), nullable=True)
     title_family = Column(String(64), nullable=True)
+    title_level = Column(String(24), nullable=True)
+    target_tier = Column(String(24), nullable=True)
     seniority_level = Column(String(24), nullable=False)
     work_mode = Column(String(16), nullable=False)
     location_country = Column(String(2), nullable=True)
@@ -47,6 +49,8 @@ class FeedProjectionRecord(Base):
 
     qualification_decision = Column(String(32), nullable=True)
     fit_score = Column(Float, nullable=True)
+    preference_score = Column(Float, nullable=True)
+    confidence_score = Column(Float, nullable=True)
     priority_score = Column(Float, nullable=True)
     reasons_json = Column(Text, nullable=False, default="[]")
 
@@ -86,6 +90,31 @@ class FeedProjectionRecord(Base):
         ),
         Index("ix_feed_projection_source_id", "source_id"),
         Index("ix_feed_projection_title_family", "title_family"),
+        Index(
+            "ix_feed_projection_truth_title_family",
+            "truth_pack_hash",
+            "title_family",
+        ),
+        Index(
+            "ix_feed_projection_truth_title_level",
+            "truth_pack_hash",
+            "title_level",
+        ),
+        Index(
+            "ix_feed_projection_truth_target_tier",
+            "truth_pack_hash",
+            "target_tier",
+        ),
+        Index(
+            "ix_feed_projection_truth_preference",
+            "truth_pack_hash",
+            "preference_score",
+        ),
+        Index(
+            "ix_feed_projection_truth_confidence",
+            "truth_pack_hash",
+            "confidence_score",
+        ),
         Index("ix_feed_projection_work_mode", "work_mode"),
         Index("ix_feed_projection_location_country", "location_country"),
         Index(
