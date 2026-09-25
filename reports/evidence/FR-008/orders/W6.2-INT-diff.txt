@@ -1,0 +1,4 @@
+git diff --check 6d06589..HEAD: PASS.
+Committed W6.2 integration range git diff --check: PASS.
+Progress/report working-tree git diff --check: PASS.
+Staged integration report/evidence git diff --check: PASS.
