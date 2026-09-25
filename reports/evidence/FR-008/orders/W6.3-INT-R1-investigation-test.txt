@@ -1,0 +1,8 @@
+Initial concurrent integration verification and remediation
+
+- `npx next typegen`, `npx tsc --noEmit`, `python -m unittest api.test_tracker_notes_service api.test_tracker_service`, `python scripts/check_repository.py`, and `git diff --check 16d91e9..HEAD` exited 0.
+- Playwright failed before tests started: `Error: Timed out waiting 180000ms from config.webServer.` The webServer runs `npx next build && npx next start -p 3100`; the saved transcript is `W6.3-INT-R1-test.txt`.
+- ESLint had not finished after more than three minutes while the production build and other checks were running concurrently. No lint error was emitted. The run was interrupted and `npm run lint` was rerun by itself; it exited 0 in about 15 seconds (`W6.3-INT-R2-lint-test.txt`).
+- Playwright was rerun by itself; the production server started and all 7 tracker and keyboard Chromium tests passed (`W6.3-INT-R2-test.txt`).
+
+The sequential rerun isolated the issue to competing verification processes during the first cold build; no application source change was needed.
