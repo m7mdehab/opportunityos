@@ -428,6 +428,28 @@ export interface TrackerListResponse {
   items: OpportunityListItem[]
 }
 
+export interface TrackerNote {
+  id: string
+  opportunity_id: string
+  note_text: string
+  created_at: string
+  updated_at: string
+  archived_at: string | null
+}
+
+export interface TrackerNoteListResponse {
+  opportunity_id: string
+  page: number
+  page_size: number
+  total: number
+  items: TrackerNote[]
+}
+
+export interface TrackerNoteMutationResponse {
+  note: TrackerNote
+  changed: boolean
+}
+
 export interface DashboardDay {
   date: string
   fetched: number

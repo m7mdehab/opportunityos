@@ -15,6 +15,7 @@ import { ConstraintOutcomeBadge } from "@/components/feed/constraint-outcome"
 import { DecisionBadge } from "@/components/feed/decision-badge"
 import { FeedbackButtons } from "@/components/feed/feedback-buttons"
 import { TriageActions } from "@/components/feed/triage-actions"
+import { TrackerNotes } from "@/components/feed/tracker-notes"
 import { api } from "@/lib/api/client"
 import { ApiError } from "@/lib/contract/types"
 import type {
@@ -24,6 +25,20 @@ import type {
   FeedbackLabel,
   OpportunityDetail,
 } from "@/lib/contract/types"
+
+const APPLICATION_TRACKED_STATES = new Set([
+  "submitted",
+  "applied",
+  "recruiter_screen",
+  "assessment",
+  "interviewing",
+  "final_interview",
+  "offer",
+  "accepted",
+  "rejected_by_employer",
+  "withdrawn",
+  "no_response",
+])
 
 export function DetailDrawer({
   opportunityId,
@@ -472,6 +487,14 @@ export function DetailDrawer({
                 </p>
               )}
             </section>
+
+            {opportunityId && actionState &&
+              APPLICATION_TRACKED_STATES.has(actionState) && (
+                <>
+                  <Separator />
+                  <TrackerNotes key={opportunityId} opportunityId={opportunityId} />
+                </>
+              )}
 
             {(detail.action_history.length > 0 ||
               detail.feedback_history.length > 0) && (

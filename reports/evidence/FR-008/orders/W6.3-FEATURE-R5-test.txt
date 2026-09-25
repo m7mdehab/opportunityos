@@ -1,0 +1,80 @@
+
+> web@0.1.0 test:e2e
+> playwright test tests/e2e/fr008-tracker-triage.spec.ts tests/e2e/keyboard.spec.ts
+
+[WebServer] (node:30756) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:33872) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:33872) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:11508) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:14828) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:5336) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:16148) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:9832) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:17800) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:27740) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:29496) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:33912) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:35872) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 7 tests using 1 worker
+
+(node:30116) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:67:7 › FR-008 basic triage tracker › save, explicit apply, reject, bucket placement, and source-link truthfulness (18.0s)
+  ok 2 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:120:7 › FR-008 basic triage tracker › application pipeline moves forward, records one event per stage, and closes jobs (9.4s)
+  x  3 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:161:7 › FR-008 basic triage tracker › private application notes create, edit, archive, and persist without duplicate events (7.6s)
+(node:15380) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 4 [chromium] › tests\e2e\keyboard.spec.ts:29:7 › C3 keyboard flow (j/k/o/a/x) › j/k move the cursor and move real DOM focus with it (2.8s)
+  ok 5 [chromium] › tests\e2e\keyboard.spec.ts:59:7 › C3 keyboard flow (j/k/o/a/x) › o opens the drawer for the focused card (2.8s)
+  ok 6 [chromium] › tests\e2e\keyboard.spec.ts:76:7 › C3 keyboard flow (j/k/o/a/x) › a marks the focused card applied; moving on, x rejects the next one (2.3s)
+  ok 7 [chromium] › tests\e2e\keyboard.spec.ts:112:7 › C3 keyboard flow (j/k/o/a/x) › shortcuts do not fire while a text input has focus (2.5s)
+
+
+  1) [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:161:7 › FR-008 basic triage tracker › private application notes create, edit, archive, and persist without duplicate events
+
+    Error: expect(received).toHaveLength(expected)
+
+    Expected length: 3
+    Received length: 2
+    Received array:  [{"action_type": "applied", "event_at": "2026-09-25T13:49:57.821Z", "from_state": "to_review", "opportunity_id": "opp-001", "to_state": "applied"}, {"action_type": "tracker_note_created", "event_at": "2026-09-25T13:49:59.745Z", "from_state": "applied", "metadata_json": "{\"note_id\":\"mock-note-adce3538-864a-442d-8bf2-3ba47a22587b\"}", "opportunity_id": "opp-001", "to_state": "applied"}]
+
+      199 |     await restoredNotes.getByRole("button", { name: "Save note" }).click()
+      200 |     await expect(restoredNotes).toContainText("Send recruiter a concise follow-up")
+    > 201 |     expect(await trackerEvents(page, opportunityId)).toHaveLength(3)
+          |                                                      ^
+      202 |
+      203 |     await restoredNotes.getByRole("button", { name: "Archive note" }).click()
+      204 |     await expect(restoredNotes).toContainText("No notes yet.")
+        at C:\Users\M7mdEhab\projects\oos-wt\fr008-w63-tracker-notes\web\tests\e2e\fr008-tracker-triage.spec.ts:201:54
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\fr008-tracker-triage-FR-00-eafb7-st-without-duplicate-events-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\fr008-tracker-triage-FR-00-eafb7-st-without-duplicate-events-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\fr008-tracker-triage-FR-00-eafb7-st-without-duplicate-events-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\fr008-tracker-triage-FR-00-eafb7-st-without-duplicate-events-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:161:7 › FR-008 basic triage tracker › private application notes create, edit, archive, and persist without duplicate events
+  6 passed (1.4m)

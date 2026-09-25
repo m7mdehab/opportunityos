@@ -1,0 +1,13 @@
+Initial transcript capture attempt (command was run from the feature worktree root but used a parent-relative reports path):
+
+python -m unittest api.test_tracker_notes_service api.test_tracker_service 2>&1 | Tee-Object -FilePath ..\reports\evidence\FR-008\orders\W6.3-FEATURE-python-final-test.txt; exit $LASTEXITCODE
+
+PowerShell output:
+
+out-file:
+Line |
+   2 |  python -m unittest api.test_tracker_notes_service api.test_tracker_se …
+     |  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     | Could not find a part of the path 'C:\Users\M7mdEhab\projects\oos-wt\reports\evidence\FR-008\orders\W6.3-FEATURE-python-final-test.txt'.
+
+Remediation: reran from the feature worktree root with the feature-local path `reports\evidence\FR-008\orders\W6.3-FEATURE-python-final-test.txt`; all 16 service tests passed. The path-capture failure did not alter source or test results.

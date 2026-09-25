@@ -238,6 +238,15 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
       501,
     );
   }
+  if (
+    (path.length === 3 && path[0] === "opportunities" && path[2] === "tracker-notes" && (method === "GET" || method === "POST")) ||
+    (path.length === 4 && path[0] === "opportunities" && path[2] === "tracker-notes" && method === "PATCH")
+  ) {
+    return hostedError(
+      "Private tracker notes are not supported by the hosted adapter until note changes and append-only activity events can be persisted atomically.",
+      501,
+    );
+  }
   if (subpath === "feed/filter-metadata" && method === "GET") {
     return hostedError("Advanced feed metadata and query filtering are unsupported by the hosted adapter. Track, decision, fit minimum, and search remain available.", 501);
   }
@@ -319,8 +328,18 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
 }
 
 async function hostedRequest(request: NextRequest, path: string[]): Promise<NextResponse> {
+  const method = request.method.toUpperCase();
+  const trackerNotesRoute =
+    (path.length === 3 && path[0] === "opportunities" && path[2] === "tracker-notes" && (method === "GET" || method === "POST")) ||
+    (path.length === 4 && path[0] === "opportunities" && path[2] === "tracker-notes" && method === "PATCH");
+  if (trackerNotesRoute) {
+    return hostedError(
+      "Private tracker notes are not supported by the hosted adapter until note changes and append-only activity events can be persisted atomically.",
+      501,
+    );
+  }
   const config = hostedConfig(); if (!config) return hostedError("hosted Supabase configuration is unavailable", 503);
-  const method = request.method.toUpperCase(); if (method !== "GET" && method !== "HEAD" && request.headers.get("x-opportunityos-csrf") !== "1") return hostedError("CSRF validation failed", 403);
+  if (method !== "GET" && method !== "HEAD" && request.headers.get("x-opportunityos-csrf") !== "1") return hostedError("CSRF validation failed", 403);
   const subpath = path.join("/");
   if (subpath === "auth/login" && method === "POST") { const payload = await request.json().catch(() => null) as { email?: unknown; password?: unknown } | null; if (!payload || typeof payload.email !== "string" || typeof payload.password !== "string") return hostedError("email and password are required", 400); const auth = await hostedFetch(config, "/auth/v1/token?grant_type=password", { method: "POST", body: JSON.stringify({ email: payload.email, password: payload.password }) }); if (!auth.ok) return hostedError("authentication failed", 401); const response = NextResponse.json({ authenticated: true }); setSessionCookies(response, await auth.json() as HostedSession); return response; }
   if (subpath === "auth/logout" && method === "POST") { const token = request.cookies.get(ACCESS_COOKIE)?.value; if (token) await hostedFetch(config, "/auth/v1/logout", { method: "POST", headers: { Authorization: `Bearer ${token}` } }).catch(() => undefined); const response = NextResponse.json({ authenticated: false }); clearSessionCookies(response); return response; }

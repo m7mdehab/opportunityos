@@ -37,6 +37,8 @@ import type {
   TruthStatusResponse,
   TrackerBucket,
   TrackerListResponse,
+  TrackerNoteListResponse,
+  TrackerNoteMutationResponse,
   TutoringPlatform,
   TutoringPlatformsResponse,
   TutoringProfileMaterialResponse,
@@ -197,6 +199,37 @@ export const api = {
       if (params.page) search.set("page", String(params.page))
       if (params.page_size) search.set("page_size", String(params.page_size))
       return request<TrackerListResponse>(`/api/tracker?${search.toString()}`)
+    },
+    notes: {
+      list: (opportunityId: string, params: { page?: number; page_size?: number } = {}) => {
+        const search = new URLSearchParams()
+        search.set("page", String(params.page ?? 1))
+        search.set("page_size", String(params.page_size ?? 50))
+        return request<TrackerNoteListResponse>(
+          `/api/opportunities/${opportunityId}/tracker-notes?${search.toString()}`
+        )
+      },
+      create: (opportunityId: string, noteText: string, idempotencyKey: string) =>
+        request<TrackerNoteMutationResponse>(
+          `/api/opportunities/${opportunityId}/tracker-notes`,
+          {
+            method: "POST",
+            body: JSON.stringify({ note_text: noteText, idempotency_key: idempotencyKey }),
+          }
+        ),
+      update: (
+        opportunityId: string,
+        noteId: string,
+        body: { note_text: string } | { archived: true },
+        idempotencyKey: string
+      ) =>
+        request<TrackerNoteMutationResponse>(
+          `/api/opportunities/${opportunityId}/tracker-notes/${noteId}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ ...body, idempotency_key: idempotencyKey }),
+          }
+        ),
     },
   },
 

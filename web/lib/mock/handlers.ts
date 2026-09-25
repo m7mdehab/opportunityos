@@ -140,6 +140,76 @@ export const handlers = [
     return HttpResponse.json(detail)
   }),
 
+  http.get("/api/opportunities/:id/tracker-notes", ({ request, params }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const url = new URL(request.url)
+    const page = Number(url.searchParams.get("page") ?? "1")
+    const pageSize = Number(url.searchParams.get("page_size") ?? "50")
+    if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1) {
+      return HttpResponse.json({ detail: "page and page_size must be positive integers" }, { status: 422 })
+    }
+    const result = store().listTrackerNotes(String(params.id), page, pageSize)
+    if (result === "not_found") {
+      return HttpResponse.json({ detail: "opportunity not found" }, { status: 404 })
+    }
+    if (result === "not_tracked") {
+      return HttpResponse.json({ detail: "opportunity is not an application-tracked item" }, { status: 409 })
+    }
+    return HttpResponse.json(result)
+  }),
+
+  http.post("/api/opportunities/:id/tracker-notes", async ({ request, params }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const body = (await request.json().catch(() => ({}))) as {
+      note_text?: unknown
+      idempotency_key?: unknown
+    }
+    const noteText = typeof body.note_text === "string" ? body.note_text.trim() : ""
+    if (!noteText || noteText.length > 4000) {
+      return HttpResponse.json({ detail: "note_text must contain 1 to 4000 characters" }, { status: 422 })
+    }
+    if (typeof body.idempotency_key !== "string" || !body.idempotency_key.trim() || body.idempotency_key.length > 128) {
+      return HttpResponse.json({ detail: "idempotency_key is required and must be at most 128 characters" }, { status: 422 })
+    }
+    const result = store().createTrackerNote(String(params.id), noteText, body.idempotency_key)
+    if (result === "not_found") return HttpResponse.json({ detail: "opportunity not found" }, { status: 404 })
+    if (result === "not_tracked") return HttpResponse.json({ detail: "opportunity is not an application-tracked item" }, { status: 409 })
+    if (result === "idempotency_conflict") return HttpResponse.json({ detail: "idempotency_key was already used for another note operation" }, { status: 409 })
+    return HttpResponse.json(result)
+  }),
+
+  http.patch("/api/opportunities/:id/tracker-notes/:noteId", async ({ request, params }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const body = (await request.json().catch(() => ({}))) as {
+      note_text?: unknown
+      archived?: unknown
+      idempotency_key?: unknown
+    }
+    const hasText = body.note_text !== undefined
+    const archiving = body.archived === true
+    if (body.archived === false || hasText === archiving) {
+      return HttpResponse.json({ detail: "provide note_text or archived=true" }, { status: 422 })
+    }
+    const noteText = typeof body.note_text === "string" ? body.note_text.trim() : ""
+    if (hasText && (!noteText || noteText.length > 4000)) {
+      return HttpResponse.json({ detail: "note_text must contain 1 to 4000 characters" }, { status: 422 })
+    }
+    if (typeof body.idempotency_key !== "string" || !body.idempotency_key.trim() || body.idempotency_key.length > 128) {
+      return HttpResponse.json({ detail: "idempotency_key is required and must be at most 128 characters" }, { status: 422 })
+    }
+    const result = store().updateTrackerNote(
+      String(params.id),
+      String(params.noteId),
+      body.idempotency_key,
+      archiving ? { archived: true } : { note_text: noteText },
+    )
+    if (result === "not_found") return HttpResponse.json({ detail: "note or opportunity not found" }, { status: 404 })
+    if (result === "not_tracked") return HttpResponse.json({ detail: "opportunity is not an application-tracked item" }, { status: 409 })
+    if (result === "idempotency_conflict") return HttpResponse.json({ detail: "idempotency_key was already used for another note operation" }, { status: 409 })
+    if (result === "archived") return HttpResponse.json({ detail: "archived notes cannot be edited" }, { status: 409 })
+    return HttpResponse.json(result)
+  }),
+
   // ---- artifacts ----
   http.get("/api/opportunities/:id/artifacts/cv.docx", ({ request, params }) =>
     artifactResponse(request, String(params.id), "cv")

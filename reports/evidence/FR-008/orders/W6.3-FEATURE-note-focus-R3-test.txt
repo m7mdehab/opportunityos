@@ -1,0 +1,71 @@
+
+> web@0.1.0 test:e2e
+> playwright test tests/e2e/fr008-tracker-triage.spec.ts -g private application notes create
+
+[WebServer] (node:24104) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:30760) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:30760) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:28712) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:16844) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:7008) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:24984) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:39732) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:11784) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:31960) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:38492) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:5628) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:27652) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 1 test using 1 worker
+
+(node:39620) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  1 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:161:7 › FR-008 basic triage tracker › private application notes create, edit, archive, and persist without duplicate events (9.0s)
+
+
+  1) [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:161:7 › FR-008 basic triage tracker › private application notes create, edit, archive, and persist without duplicate events
+
+    Error: expect(received).toHaveLength(expected)
+
+    Expected length: 3
+    Received length: 2
+    Received array:  [{"action_type": "applied", "event_at": "2026-09-25T13:46:21.429Z", "from_state": "to_review", "opportunity_id": "opp-001", "to_state": "applied"}, {"action_type": "tracker_note_created", "event_at": "2026-09-25T13:46:23.551Z", "from_state": "applied", "metadata_json": "{\"note_id\":\"mock-note-5e48047f-f401-41ee-a886-b36d2e5d74cf\"}", "opportunity_id": "opp-001", "to_state": "applied"}]
+
+      199 |     await restoredNotes.getByRole("button", { name: "Save note" }).click()
+      200 |     await expect(restoredNotes).toContainText("Send recruiter a concise follow-up")
+    > 201 |     expect(await trackerEvents(page, opportunityId)).toHaveLength(3)
+          |                                                      ^
+      202 |
+      203 |     await restoredNotes.getByRole("button", { name: "Archive note" }).click()
+      204 |     await expect(restoredNotes).toContainText("No notes yet.")
+        at C:\Users\M7mdEhab\projects\oos-wt\fr008-w63-tracker-notes\web\tests\e2e\fr008-tracker-triage.spec.ts:201:54
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\fr008-tracker-triage-FR-00-eafb7-st-without-duplicate-events-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\fr008-tracker-triage-FR-00-eafb7-st-without-duplicate-events-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\fr008-tracker-triage-FR-00-eafb7-st-without-duplicate-events-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\fr008-tracker-triage-FR-00-eafb7-st-without-duplicate-events-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:161:7 › FR-008 basic triage tracker › private application notes create, edit, archive, and persist without duplicate events

@@ -48,15 +48,14 @@ async function updateApplicationStage(page: Page, stage: string) {
 
 async function trackerEvents(page: Page, opportunityId: string) {
   return page.evaluate((id) => {
-    const key = Object.keys(window.localStorage).find((value) =>
-      value.startsWith("opportunityos.mock.tracker-events.")
-    )
-    if (!key) return []
+    const scenario = new URLSearchParams(window.location.search).get("mock_scenario") ?? "default"
+    const key = `opportunityos.mock.tracker-events.${scenario}`
     const events = JSON.parse(window.localStorage.getItem(key) ?? "[]") as Array<{
       opportunity_id: string
       action_type: string
       from_state: string
       to_state: string
+      metadata_json?: string
     }>
     return events.filter((event) => event.opportunity_id === id)
   }, opportunityId)
@@ -155,5 +154,73 @@ test.describe("FR-008 basic triage tracker", () => {
     await expect(rejectedCard.getByText("Rejected by employer", { exact: true })).toBeVisible()
     await rejectedCard.click()
     await expect(page.getByRole("dialog").getByRole("button", { name: "Update stage" })).toHaveCount(0)
+  })
+
+  test("private application notes create, edit, archive, and persist without duplicate events", async ({ page }) => {
+    await login(page)
+    const opportunityId = await actOnFirstJob(page, "Mark applied", "applied")
+    await page.getByTestId("workspace-tracker").click()
+    await page.getByTestId("tracker-bucket-applied").click()
+    await page.getByTestId(`opportunity-card-${opportunityId}`).click()
+
+    const drawer = page.getByRole("dialog")
+    const notes = drawer.getByTestId("tracker-notes")
+    await expect(notes).toBeVisible()
+    await notes.getByLabel("New tracker note").fill("Prepare a focused recruiter follow-up")
+    await notes.getByRole("button", { name: "Add note" }).click()
+    const note = notes.locator('[data-testid^="tracker-note-"]').first()
+    await expect(note).toContainText("Prepare a focused recruiter follow-up")
+
+    const afterCreate = await trackerEvents(page, opportunityId)
+    expect(afterCreate).toHaveLength(2)
+    expect(afterCreate[1].action_type).toBe("tracker_note_created")
+    expect(JSON.parse(afterCreate[1].metadata_json ?? "{}")).toHaveProperty("note_id")
+    expect(afterCreate[1].metadata_json).not.toContain("Prepare a focused recruiter follow-up")
+
+    await page.reload()
+    await expect(page.getByTestId("workspace-jobs")).toBeVisible()
+    await page.getByTestId("workspace-tracker").click()
+    await page.getByTestId("tracker-bucket-applied").click()
+    await page.getByTestId(`opportunity-card-${opportunityId}`).click()
+    const restoredNotes = page.getByRole("dialog").getByTestId("tracker-notes")
+    const restoredNote = restoredNotes.locator('[data-testid^="tracker-note-"]').first()
+    await expect(restoredNote).toContainText("Prepare a focused recruiter follow-up")
+
+    await restoredNote.getByRole("button", { name: "Edit note" }).click()
+    await restoredNotes.getByLabel("Edit note").fill("Prepare a focused recruiter follow-up")
+    await restoredNotes.getByRole("button", { name: "Save note" }).click()
+    expect(await trackerEvents(page, opportunityId)).toHaveLength(2)
+
+    const currentNote = restoredNotes.locator('[data-testid^="tracker-note-"]').first()
+    await currentNote.getByRole("button", { name: "Edit note" }).click()
+    await restoredNotes.getByLabel("Edit note").fill("Send recruiter a concise follow-up")
+    const [updateResponse] = await Promise.all([
+      page.waitForResponse((response) => response.request().method() === "PATCH" && response.url().includes("tracker-notes")),
+      restoredNotes.getByRole("button", { name: "Save note" }).click(),
+    ])
+    expect(updateResponse.status()).toBe(200)
+    await expect(restoredNotes).toContainText("Send recruiter a concise follow-up")
+    expect(await trackerEvents(page, opportunityId)).toHaveLength(3)
+
+    await restoredNotes.getByRole("button", { name: "Archive note" }).click()
+    await expect(restoredNotes).toContainText("No notes yet.")
+    expect(await trackerEvents(page, opportunityId)).toHaveLength(4)
+    const noteEvents = await trackerEvents(page, opportunityId)
+    expect(noteEvents.slice(1).map((event) => event.action_type)).toEqual([
+      "tracker_note_created", "tracker_note_updated", "tracker_note_archived",
+    ])
+    for (const event of noteEvents.slice(1)) {
+      expect(JSON.parse(event.metadata_json ?? "{}")).toHaveProperty("note_id")
+      expect(event.metadata_json).not.toContain("recruiter")
+    }
+
+    await page.reload()
+    await expect(page.getByTestId("workspace-jobs")).toBeVisible()
+    await page.getByTestId("workspace-tracker").click()
+    await page.getByTestId("tracker-bucket-applied").click()
+    await page.getByTestId(`opportunity-card-${opportunityId}`).click()
+    const archivedNotes = page.getByRole("dialog").getByTestId("tracker-notes")
+    await expect(archivedNotes).toContainText("No notes yet.")
+    expect(await trackerEvents(page, opportunityId)).toHaveLength(4)
   })
 })

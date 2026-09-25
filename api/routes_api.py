@@ -95,6 +95,12 @@ from .tracker_service import (
     list_tracker_items,
     transition_tracker_state,
 )
+from .tracker_notes_service import (
+    TrackerNoteError,
+    create_tracker_note,
+    list_tracker_notes,
+    update_tracker_note,
+)
 from .search import is_query_unparseable, rank_key, search_opportunity_ids
 from .serialization import (
     serialize_constraint,
@@ -1284,6 +1290,97 @@ def list_tracker(
         page=page,
         page_size=page_size,
     )
+
+
+def _tracker_note_error(exc: TrackerNoteError) -> HTTPException:
+    message = str(exc)
+    if message in {"opportunity not found", "note not found"}:
+        return HTTPException(status_code=404, detail=message)
+    if (
+        message.startswith("note_text")
+        or message.startswith("idempotency_key is")
+        or message.startswith("provide note_text")
+    ):
+        return HTTPException(status_code=422, detail=message)
+    return HTTPException(status_code=409, detail=message)
+
+
+@router.get("/opportunities/{opportunity_id}/tracker-notes")
+def get_tracker_notes(
+    opportunity_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1),
+    session: Session = Depends(get_db),
+):
+    try:
+        return list_tracker_notes(
+            session,
+            opportunity_id,
+            page=page,
+            page_size=page_size,
+        )
+    except TrackerNoteError as exc:
+        raise _tracker_note_error(exc) from exc
+
+
+class TrackerNoteCreateRequest(BaseModel):
+    note_text: str
+    idempotency_key: str
+
+
+class TrackerNoteUpdateRequest(BaseModel):
+    note_text: str | None = None
+    archived: bool | None = None
+    idempotency_key: str
+
+
+@router.post("/opportunities/{opportunity_id}/tracker-notes")
+def post_tracker_note(
+    opportunity_id: str,
+    payload: TrackerNoteCreateRequest,
+    session: Session = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    try:
+        result = create_tracker_note(
+            session,
+            opportunity_id,
+            payload.note_text,
+            now,
+            request_key=payload.idempotency_key,
+        )
+        session.commit()
+    except TrackerNoteError as exc:
+        session.rollback()
+        raise _tracker_note_error(exc) from exc
+    return {"note": result.note, "changed": result.changed}
+
+
+@router.patch("/opportunities/{opportunity_id}/tracker-notes/{note_id}")
+def patch_tracker_note(
+    opportunity_id: str,
+    note_id: str,
+    payload: TrackerNoteUpdateRequest,
+    session: Session = Depends(get_db),
+):
+    if payload.archived is False:
+        raise HTTPException(status_code=422, detail="archived can only be set to true")
+    now = datetime.now(timezone.utc)
+    try:
+        result = update_tracker_note(
+            session,
+            opportunity_id,
+            note_id,
+            now,
+            request_key=payload.idempotency_key,
+            note_text=payload.note_text,
+            archive=payload.archived is True,
+        )
+        session.commit()
+    except TrackerNoteError as exc:
+        session.rollback()
+        raise _tracker_note_error(exc) from exc
+    return {"note": result.note, "changed": result.changed}
 
 
 def _posted_date_sort_key(value: str | None) -> tuple[int, Any]:
