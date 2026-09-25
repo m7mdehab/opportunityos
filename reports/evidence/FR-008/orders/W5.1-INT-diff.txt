@@ -1,0 +1,3 @@
+git diff --check 09e23f8..HEAD
+exit_code=0
+stdout: empty
