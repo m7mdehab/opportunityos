@@ -7,6 +7,7 @@ from opportunity.models import Track
 from matching.models import (
     ArtifactSection,
     ArtifactType,
+    ConfidenceFactor,
     CommitmentStatus,
     ForwardCommitment,
     GeneratedClaim,
@@ -99,6 +100,18 @@ class TestMatchingModels(unittest.TestCase):
                 weighted_score=0.75,
                 explanation="test",
             )
+
+    def test_confidence_factor_is_named_and_bounded(self) -> None:
+        factor = ConfidenceFactor(
+            name="description_completeness",
+            score=72.5,
+            explanation="Synthetic description length falls in the middle heuristic band.",
+        )
+        self.assertEqual(factor.score, 72.5)
+        with self.assertRaisesRegex(ValueError, "name"):
+            ConfidenceFactor(name=" ", score=50.0, explanation="synthetic")
+        with self.assertRaisesRegex(ValueError, "score"):
+            ConfidenceFactor(name="invalid", score=100.1, explanation="synthetic")
 
     def test_requirement_mapping_priority_is_typed_and_compatible(self) -> None:
         legacy = RequirementMapping(

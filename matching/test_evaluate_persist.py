@@ -16,6 +16,7 @@ from unittest.mock import patch
 
 from matching.evaluate_persist import evaluate_and_store
 from matching.models import QualificationDecision
+from matching.scorer import OpportunityScorer
 from matching.test_qualification import create_test_graph, create_test_opportunity
 from storage.engine import get_engine, get_session_factory, init_db
 from storage.feed_projection import FeedProjectionRecord
@@ -268,7 +269,10 @@ class EvaluateAndStoreTest(unittest.TestCase):
         detail = json.loads(record.evaluation_detail_json)
         self.assertEqual(
             set(detail.keys()),
-            {"hard_constraints", "strengths", "gaps", "unknowns", "uncertainty_penalty", "preference_score", "explanation"},
+            {
+                "hard_constraints", "strengths", "gaps", "unknowns", "uncertainty_penalty",
+                "preference_score", "confidence_score", "confidence_factors", "explanation",
+            },
         )
         self.assertIsInstance(detail["hard_constraints"], list)
         self.assertGreater(len(detail["hard_constraints"]), 0)
@@ -307,7 +311,39 @@ class EvaluateAndStoreTest(unittest.TestCase):
         self.assertIsInstance(detail["unknowns"], list)
         self.assertIsInstance(detail["uncertainty_penalty"], float)
         self.assertIsNone(detail["preference_score"])
+        self.assertGreaterEqual(detail["confidence_score"], 0.0)
+        self.assertLessEqual(detail["confidence_score"], 100.0)
+        self.assertEqual(len(detail["confidence_factors"]), 7)
+        self.assertEqual(
+            {factor["name"] for factor in detail["confidence_factors"]},
+            {
+                "description_completeness", "location_remote_scope_clarity",
+                "experience_requirement_clarity", "required_skill_extraction_reliability",
+                "compensation_completeness", "source_freshness_and_strength",
+                "founder_evidence_completeness",
+            },
+        )
         self.assertIsInstance(detail["explanation"], str)
+
+    def test_confidence_score_and_factors_are_persisted(self) -> None:
+        opportunity = create_test_opportunity(opp_id="opp-confidence-persist")
+        record = self._evaluate_and_store(
+            opportunity,
+            self.truth_graph,
+            self.repository,
+            truth_pack_hash="hash-confidence-persist",
+        )
+        detail = json.loads(record.evaluation_detail_json)
+        evaluation = OpportunityScorer().evaluate(
+            opportunity,
+            self.truth_graph,
+            evaluated_at=record.evaluated_at.date().isoformat(),
+        )
+        self.assertEqual(detail["confidence_score"], evaluation.confidence_score)
+        self.assertEqual(detail["confidence_factors"], [
+            {"name": factor.name, "score": factor.score, "explanation": factor.explanation}
+            for factor in evaluation.confidence_factors
+        ])
 
     def test_preference_score_is_persisted_from_synthetic_evaluation(self) -> None:
         graph = create_test_graph()

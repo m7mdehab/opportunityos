@@ -11,6 +11,7 @@ from opportunity.models import (
     EmploymentType,
     Opportunity,
     RemoteScope,
+    SeniorityLevel,
     WorkMode,
     Track,
 )
@@ -413,6 +414,7 @@ class TestPreferenceScoreIsolation(unittest.TestCase):
         self.assertEqual(preferred.preference_score, 100.0)
         self.assertEqual(preferred.overall_fit_score, baseline.overall_fit_score)
         self.assertEqual(preferred.qualification_decision, baseline.qualification_decision)
+        self.assertEqual(preferred.confidence_score, baseline.confidence_score)
         self.assertEqual(
             next(d for d in preferred.dimension_scores if d.dimension_name == "preference_work_mode").weight,
             0.0,
@@ -503,6 +505,129 @@ class TestPreferenceScoreIsolation(unittest.TestCase):
         ):
             dimension = next(d for d in evaluation.dimension_scores if d.dimension_name == name)
             self.assertEqual(dimension.raw_score, 1.0)
+
+class TestConfidenceScore(unittest.TestCase):
+    def _score(self, opp=None, graph=None, evaluated_at="2026-09-25", policy=None):
+        return OpportunityScorer(policy=policy).evaluate(
+            opp if opp is not None else create_test_opportunity(),
+            graph if graph is not None else create_test_graph(),
+            evaluated_at=evaluated_at,
+        )
+
+    @staticmethod
+    def _factor(evaluation, name):
+        return next(factor for factor in evaluation.confidence_factors if factor.name == name)
+
+    def test_seven_named_factors_are_bounded_deterministic_and_equally_averaged(self) -> None:
+        opportunity = create_test_opportunity()
+        first = self._score(opportunity)
+        second = self._score(opportunity)
+        expected_names = {
+            "description_completeness", "location_remote_scope_clarity",
+            "experience_requirement_clarity", "required_skill_extraction_reliability",
+            "compensation_completeness", "source_freshness_and_strength",
+            "founder_evidence_completeness",
+        }
+        self.assertEqual({factor.name for factor in first.confidence_factors}, expected_names)
+        self.assertEqual(first.confidence_factors, second.confidence_factors)
+        self.assertEqual(first.confidence_score, second.confidence_score)
+        self.assertEqual(first.confidence_score, round(sum(f.score for f in first.confidence_factors) / 7, 2))
+        self.assertGreaterEqual(first.confidence_score, 0.0)
+        self.assertLessEqual(first.confidence_score, 100.0)
+        self.assertIn("not gold-set calibrated", first.explanation)
+
+    def test_description_location_experience_and_skill_factors_track_evidence_quality(self) -> None:
+        baseline = create_test_opportunity()
+        short = replace(baseline, description="Short posting.")
+        complete_description = replace(baseline, description="D" * 1200)
+        self.assertLess(
+            self._factor(self._score(short), "description_completeness").score,
+            self._factor(self._score(complete_description), "description_completeness").score,
+        )
+
+        remote_unspecified = replace(baseline, remote_scope=RemoteScope.UNSPECIFIED)
+        remote_worldwide = replace(baseline, remote_scope=RemoteScope.WORLDWIDE)
+        self.assertLess(
+            self._factor(self._score(remote_unspecified), "location_remote_scope_clarity").score,
+            self._factor(self._score(remote_worldwide), "location_remote_scope_clarity").score,
+        )
+
+        clear_experience = replace(baseline, requirements=("5+ years of experience",))
+        vague_experience = replace(
+            baseline,
+            title="Engineer",
+            seniority=SeniorityLevel.UNSPECIFIED,
+            requirements=("Several years of experience",),
+        )
+        self.assertGreater(
+            self._factor(self._score(clear_experience), "experience_requirement_clarity").score,
+            self._factor(self._score(vague_experience), "experience_requirement_clarity").score,
+        )
+
+        structured_skills = replace(baseline, skills=("Python",))
+        unextractable_skills = replace(
+            baseline,
+            skills=(),
+            requirements=(),
+            description="Collaborate on product work.",
+        )
+        self.assertGreater(
+            self._factor(self._score(structured_skills), "required_skill_extraction_reliability").score,
+            self._factor(self._score(unextractable_skills), "required_skill_extraction_reliability").score,
+        )
+
+    def test_compensation_source_and_founder_evidence_factors_reflect_completeness(self) -> None:
+        baseline = create_test_opportunity()
+        complete_compensation = replace(
+            baseline,
+            compensation=Compensation(
+                min_amount=100000,
+                currency="USD",
+                interval=CompensationInterval.YEARLY,
+            ),
+        )
+        self.assertGreater(
+            self._factor(self._score(complete_compensation), "compensation_completeness").score,
+            self._factor(self._score(baseline), "compensation_completeness").score,
+        )
+
+        fresh_provenance = replace(baseline.raw_provenance, fetched_at="2026-09-24T00:00:00Z")
+        stale_provenance = replace(baseline.raw_provenance, fetched_at="2025-01-01T00:00:00Z")
+        fresh = replace(baseline, raw_provenance=fresh_provenance)
+        stale = replace(baseline, raw_provenance=stale_provenance)
+        self.assertGreater(
+            self._factor(self._score(fresh), "source_freshness_and_strength").score,
+            self._factor(self._score(stale), "source_freshness_and_strength").score,
+        )
+
+        no_founder_evidence = self._score(baseline, graph=TruthGraph())
+        reviewed_evidence = self._score(baseline, graph=create_test_graph())
+        self.assertLess(
+            self._factor(no_founder_evidence, "founder_evidence_completeness").score,
+            self._factor(reviewed_evidence, "founder_evidence_completeness").score,
+        )
+        self.assertNotEqual(no_founder_evidence.qualification_decision, QualificationDecision.INELIGIBLE)
+
+    def test_missing_evidence_does_not_reduce_fit_via_uncertainty_penalty(self) -> None:
+        opportunity = create_test_opportunity()
+        sparse_graph = TruthGraph()
+        no_penalty = self._score(
+            opportunity,
+            graph=sparse_graph,
+            policy=ScoringPolicy(uncertainty_penalty_weight=0.0),
+        )
+        configured_penalty = self._score(
+            opportunity,
+            graph=sparse_graph,
+            policy=ScoringPolicy(uncertainty_penalty_weight=0.95),
+        )
+        self.assertEqual(no_penalty.qualification_decision, configured_penalty.qualification_decision)
+        self.assertEqual(no_penalty.overall_fit_score, configured_penalty.overall_fit_score)
+        self.assertGreater(no_penalty.uncertainty_penalty, 0.0)
+        complete_evidence = self._score(opportunity, graph=create_test_graph())
+        self.assertLess(no_penalty.confidence_score, complete_evidence.confidence_score)
+        self.assertTrue(all(not result.is_hard_failure for result in no_penalty.hard_constraints))
+
 
 def _skill_assertion(graph: TruthGraph, *, skill_id: str, name: str, proficiency: str | None, evidence_count: int) -> None:
     """Add one skill.name (+ optional skill.proficiency) assertion under its

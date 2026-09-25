@@ -157,6 +157,20 @@ class MatchDimensionScore:
 
 
 @dataclass(frozen=True, slots=True)
+class ConfidenceFactor:
+    """One inspectable evidence-quality input to the interim confidence score."""
+    name: str
+    score: float  # Heuristic 0.0 - 100.0; not gold-set calibrated.
+    explanation: str
+
+    def __post_init__(self) -> None:
+        if not self.name.strip():
+            raise ValueError("confidence factor name cannot be empty")
+        if not (0.0 <= self.score <= 100.0):
+            raise ValueError(f"confidence factor score must be in [0.0, 100.0], got {self.score}")
+
+
+@dataclass(frozen=True, slots=True)
 class MatchEvaluation:
     """Comprehensive, explainable opportunity match evaluation."""
     opportunity_id: str
@@ -176,6 +190,10 @@ class MatchEvaluation:
     # Preference fit is a separate, nullable ranking signal. None means no
     # stated preference had comparable Founder-side and job-side evidence.
     preference_score: float | None = None
+    # Evidence confidence is an independent, heuristic signal. It does not
+    # lower capability fit or convert unknown information into a negative.
+    confidence_score: float | None = None
+    confidence_factors: tuple[ConfidenceFactor, ...] = ()
 
     @property
     def is_qualified(self) -> bool:

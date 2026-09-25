@@ -17,8 +17,10 @@ from opportunity.models import (
     EmploymentType,
     Opportunity,
     RemotePolicy,
+    RemoteScope,
     SeniorityLevel,
     Track,
+    WorkMode,
 )
 from opportunity.normalization import COUNTRY_ALIASES, extract_skills_from_text
 from truth import predicates
@@ -28,6 +30,7 @@ from truth.models import CertificationState, Polarity, VerificationStatus
 from . import seniority
 from . import skills as skill_matching
 from .models import (
+    ConfidenceFactor,
     HardConstraintResult,
     MatchDimensionScore,
     MatchEvaluation,
@@ -40,6 +43,12 @@ from .qualification import QualificationEngine
 from .title_family import normalize_title
 
 _CURRENCY_THRESHOLD_RE = re.compile(r"^\s*([\d,]+(?:\.\d+)?)\s*([A-Za-z]{3})\s*$")
+_YEARS_EXPERIENCE_RE = re.compile(r"\b\d+(?:\s*(?:-|to)\s*\d+)?\s*\+?\s*years?\b", re.IGNORECASE)
+_AMBIGUOUS_EXPERIENCE_RE = re.compile(
+    r"\b(?:several|significant|extensive|substantial|considerable)\s+years?\b|"
+    r"\byears?\s+of\s+experience\b|\bexperienced\s+(?:professional|candidate|engineer|developer)\b",
+    re.IGNORECASE,
+)
 _DEGREE_CUE_RE = re.compile(
     r"\b(?:degree|bachelor(?:'s|s)?|master(?:'s|s)?|mba|ph\.?d\.?|doctorate|doctoral|associate\s+degree)\b",
     re.IGNORECASE,
@@ -169,6 +178,197 @@ def _normalize_geography_value(value: Any) -> str:
 def _normalize_track_preference(value: Any) -> str:
     normalized = _normalize_preference_value(value)
     return "independent" if normalized in {"independent", "procurement"} else normalized
+
+
+def _confidence_factors(
+    opp: Opportunity,
+    dimension_scores: list[MatchDimensionScore],
+    evaluated_at: str,
+) -> tuple[ConfidenceFactor, ...]:
+    """Return the seven brief-defined evidence-quality factors.
+
+    These intentionally simple thresholds are an inspectable interim heuristic,
+    equally averaged until reviewed Founder gold labels support calibration.
+    """
+    factors: list[ConfidenceFactor] = []
+
+    description_length = len((opp.description or "").strip())
+    if description_length >= 1200:
+        description_score = 100.0
+    elif description_length >= 600:
+        description_score = 85.0
+    elif description_length >= 250:
+        description_score = 70.0
+    elif description_length >= 80:
+        description_score = 50.0
+    else:
+        description_score = 25.0
+    factors.append(ConfidenceFactor(
+        name="description_completeness",
+        score=description_score,
+        explanation=f"Description has {description_length} characters; interim completeness bands are <80, 80–249, 250–599, 600–1199, and 1200+.",
+    ))
+
+    work_mode = getattr(opp.work_mode, "value", str(opp.work_mode))
+    remote_scope = getattr(opp.remote_scope, "value", str(opp.remote_scope))
+    has_location = bool(opp.location_country or opp.location_region or opp.location_city or opp.location_raw.strip())
+    location_text = (opp.location_raw or "").casefold()
+    if work_mode == WorkMode.REMOTE.value:
+        if remote_scope == RemoteScope.WORLDWIDE.value:
+            location_score, location_basis = 100.0, "worldwide remote scope is structured"
+        elif remote_scope == RemoteScope.REGION_RESTRICTED.value and opp.remote_scope_regions:
+            location_score, location_basis = 90.0, "region-restricted remote scope and regions are structured"
+        elif remote_scope == RemoteScope.REGION_RESTRICTED.value:
+            location_score, location_basis = 70.0, "remote scope is region-restricted but its regions are unstated"
+        elif any(cue in location_text for cue in ("worldwide", "global", "anywhere")):
+            location_score, location_basis = 80.0, "location text states worldwide availability but the remote-scope field is unspecified"
+        else:
+            location_score, location_basis = 50.0, "remote work is stated but its eligible scope is unspecified"
+    elif work_mode == WorkMode.HYBRID.value:
+        location_score, location_basis = (90.0, "hybrid mode and location are stated") if has_location else (40.0, "hybrid mode is stated but location is absent")
+    elif work_mode == WorkMode.ONSITE.value:
+        location_score, location_basis = (90.0, "on-site mode and location are stated") if has_location else (35.0, "on-site mode is stated but location is absent")
+    else:
+        location_score, location_basis = (55.0, "location is stated but work mode is unspecified") if has_location else (25.0, "work mode and location are unspecified")
+    factors.append(ConfidenceFactor(
+        name="location_remote_scope_clarity",
+        score=location_score,
+        explanation=location_basis,
+    ))
+
+    experience_text = " ".join((opp.title, opp.description, *opp.requirements)).casefold()
+    if _YEARS_EXPERIENCE_RE.search(experience_text):
+        experience_score, experience_basis = 95.0, "a numeric years-of-experience threshold is present"
+    elif _AMBIGUOUS_EXPERIENCE_RE.search(experience_text):
+        experience_score, experience_basis = 40.0, "experience is described with an unquantified phrase"
+    elif opp.seniority != SeniorityLevel.UNSPECIFIED or normalize_title(opp.title)[1] in seniority.THRESHOLDS_BY_LEVEL:
+        experience_score, experience_basis = 75.0, "a seniority level is stated but no numeric years threshold is available"
+    else:
+        experience_score, experience_basis = 50.0, "no explicit years threshold or comparable seniority level is stated"
+    factors.append(ConfidenceFactor(
+        name="experience_requirement_clarity",
+        score=experience_score,
+        explanation=experience_basis,
+    ))
+
+    extracted_skills = extract_skills_from_text(
+        " ".join((opp.description or "", *opp.requirements))
+    )
+    if opp.skills:
+        skill_score, skill_basis = 95.0, f"{len(opp.skills)} structured required skill(s) are available"
+    elif opp.requirements and extracted_skills:
+        skill_score, skill_basis = 70.0, f"no structured skill list; {len(extracted_skills)} skill(s) were extracted from requirements/description"
+    elif extracted_skills:
+        skill_score, skill_basis = 55.0, f"no structured skill list; {len(extracted_skills)} skill(s) were extracted from description text"
+    else:
+        skill_score, skill_basis = 25.0, "no structured or reliably extracted required skills are available"
+    factors.append(ConfidenceFactor(
+        name="required_skill_extraction_reliability",
+        score=skill_score,
+        explanation=skill_basis,
+    ))
+
+    compensation = opp.compensation
+    if (
+        compensation is not None
+        and compensation.min_amount is not None
+        and bool(compensation.currency)
+        and compensation.interval != CompensationInterval.UNSPECIFIED
+    ):
+        compensation_score, compensation_basis = 100.0, "amount, currency, and interval are all stated"
+    elif compensation is not None and any((
+        compensation.min_amount is not None,
+        compensation.max_amount is not None,
+        bool(compensation.currency),
+        compensation.interval != CompensationInterval.UNSPECIFIED,
+    )):
+        compensation_score, compensation_basis = 50.0, "compensation is partially stated; amount, currency, or interval is missing"
+    else:
+        compensation_score, compensation_basis = 25.0, "compensation is not stated"
+    factors.append(ConfidenceFactor(
+        name="compensation_completeness",
+        score=compensation_score,
+        explanation=compensation_basis,
+    ))
+
+    provenance = opp.raw_provenance
+    if provenance is None:
+        freshness_score, strength_score = 20.0, 20.0
+        freshness_basis = "source fetch timestamp is unavailable"
+        strength_basis = "source provenance is unavailable"
+    else:
+        try:
+            evaluation_date = date.fromisoformat(str(evaluated_at)[:10])
+            fetched_date = date.fromisoformat(provenance.fetched_at[:10])
+            age_days = max(0, (evaluation_date - fetched_date).days)
+            if age_days <= 7:
+                freshness_score = 100.0
+            elif age_days <= 30:
+                freshness_score = 80.0
+            elif age_days <= 90:
+                freshness_score = 55.0
+            elif age_days <= 180:
+                freshness_score = 35.0
+            else:
+                freshness_score = 15.0
+            freshness_basis = f"source was fetched {age_days} day(s) before evaluation; interim freshness bands are 7/30/90/180 days"
+        except (TypeError, ValueError):
+            freshness_score = 40.0
+            freshness_basis = "source fetch or evaluation date could not be parsed"
+        source_fields = (
+            bool(provenance.source_id),
+            bool(provenance.source_url or opp.source_url),
+            bool(provenance.feed_url),
+            bool(provenance.raw_pointer or opp.raw_record_pointer),
+            bool(provenance.payload_checksum or provenance.feed_checksum or opp.record_checksum),
+        )
+        present_source_fields = sum(source_fields)
+        strength_score = 20.0 + (present_source_fields * 16.0)
+        strength_basis = f"{present_source_fields}/5 source identity, URL, feed, raw-pointer, and checksum provenance signals are present"
+    factors.append(ConfidenceFactor(
+        name="source_freshness_and_strength",
+        score=round((freshness_score + strength_score) / 2.0, 2),
+        explanation=f"Freshness: {freshness_basis}; strength: {strength_basis}.",
+    ))
+
+    capability_dimensions = (
+        {"service_capabilities", "scope_complexity", "portfolio_evidence"}
+        if opp.track == Track.PROCUREMENT
+        else {
+            "core_skills", "experience_fit", "seniority_fit", "responsibility_scope",
+            "domain_fit", "title_family_fit", "education_certification_fit",
+        }
+    )
+    relevant_dimensions = [
+        dimension for dimension in dimension_scores
+        if dimension.dimension_name in capability_dimensions
+    ]
+    if not relevant_dimensions:
+        founder_evidence_score = 50.0
+        founder_evidence_basis = "no relevant capability dimensions were produced"
+    else:
+        completeness_scores = []
+        for dimension in relevant_dimensions:
+            if dimension.unknowns and not dimension.evidence_refs:
+                completeness_scores.append(35.0)
+            elif dimension.unknowns:
+                completeness_scores.append(65.0)
+            elif dimension.evidence_refs:
+                completeness_scores.append(95.0)
+            else:
+                completeness_scores.append(55.0)
+        founder_evidence_score = round(sum(completeness_scores) / len(completeness_scores), 2)
+        incomplete_count = sum(score < 95.0 for score in completeness_scores)
+        founder_evidence_basis = (
+            f"{incomplete_count}/{len(relevant_dimensions)} relevant capability dimension(s) have incomplete or unreferenced Founder evidence"
+        )
+    factors.append(ConfidenceFactor(
+        name="founder_evidence_completeness",
+        score=founder_evidence_score,
+        explanation=founder_evidence_basis,
+    ))
+
+    return tuple(factors)
 
 
 def _verified_positive_assertions(truth_graph: TruthGraph, predicate_names: set[str]) -> tuple[Any, ...]:
@@ -549,10 +749,9 @@ class OpportunityScorer:
             sum(ds.weighted_score for ds in active_capability) / capability_weight
             if capability_weight > 0.0 else 0.5
         )
-        overall_score = max(
-            0.0,
-            min(100.0, (capability_fit - (uncertainty * self.policy.uncertainty_penalty_weight)) * 100.0),
-        )
+        # Unknown evidence is reported separately through uncertainty and the
+        # confidence factors. It is not an assumed capability shortfall.
+        overall_score = max(0.0, min(100.0, capability_fit * 100.0))
 
         preference_components = [
             ds for ds in dim_scores
@@ -574,6 +773,10 @@ class OpportunityScorer:
             round(sum(ds.raw_score for ds in preference_components) / len(preference_components) * 100.0, 2)
             if preference_components else None
         )
+        confidence_factors = _confidence_factors(opp, dim_scores, evaluated_at)
+        confidence_score = round(
+            sum(factor.score for factor in confidence_factors) / len(confidence_factors), 2,
+        ) if confidence_factors else 0.0
 
         # If hard failure occurred and auto-rejection is enabled, cap score
         if qual_decision == QualificationDecision.INELIGIBLE:
@@ -598,6 +801,7 @@ class OpportunityScorer:
             f"Qualification: {qual_decision.value.upper()}.",
             f"Overall Fit Score: {round(overall_score, 1)}/100.",
             f"Preference Score: {round(preference_score, 1)}/100." if preference_score is not None else "Preference Score: no comparable stated preferences.",
+            f"Confidence Score: {confidence_score}/100 (interim heuristic; not gold-set calibrated).",
             f"Strengths: {len(strengths)} identified.",
             f"Gaps: {len(gaps)} identified.",
             f"Unknowns: {len(unknowns)} identified.",
@@ -623,6 +827,8 @@ class OpportunityScorer:
             evaluated_at=evaluated_at,
             score_breakdown=breakdown,
             preference_score=preference_score,
+            confidence_score=confidence_score,
+            confidence_factors=confidence_factors,
         )
 
     def _score_asserted_compensation_preference(
@@ -930,6 +1136,10 @@ class OpportunityScorer:
         founder_title_levels = [
             (a, level) for a, level in founder_title_levels if level in _seniority_rank
         ]
+        founder_title_level_label = (
+            max(founder_title_levels, key=lambda item: _seniority_rank[item[1]])[1]
+            if founder_title_levels else "unknown"
+        )
         if required_seniority_level is None:
             seniority_fit_score = 0.5
             seniority_fit_strengths = ()
@@ -986,7 +1196,7 @@ class OpportunityScorer:
             weighted_score=seniority_fit_score * w_seniority,
             explanation=(
                 f"Posting seniority level: {required_seniority_level or 'unspecified'}; "
-                f"verified founder title level: {highest_level if founder_title_levels else 'unknown'}."
+                f"verified founder title level: {founder_title_level_label}."
             ),
             strengths=seniority_fit_strengths,
             gaps=seniority_fit_gaps,

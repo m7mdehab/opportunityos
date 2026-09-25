@@ -26,6 +26,7 @@ five JSON-bearing columns this module reads:
                             "requirement_mandatory", "explanation"}, ...],
      "strengths": [str, ...], "gaps": [str, ...], "unknowns": [str, ...],
      "uncertainty_penalty": float, "preference_score": float|null,
+     "confidence_score": float|null, "confidence_factors": [{"name", "score", "explanation"}, ...],
      "explanation": str}
     Nullable because rows persisted before this column existed have no
     detail payload -- see `unpack_evaluation_detail`.
@@ -86,6 +87,8 @@ _EVALUATION_DETAIL_DEFAULT: dict[str, Any] = {
     "unknowns": [],
     "uncertainty_penalty": 0.0,
     "preference_score": None,
+    "confidence_score": None,
+    "confidence_factors": [],
     "explanation": "",
 }
 

@@ -1,0 +1,26 @@
+
+B2.6 corpus ordering: Senior Customer Engineer = 48.11, Senior Data Engineer (best data-engineering match) = 89.0
+{"timestamp": "2026-09-25T06:57:54.178938+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.evaluate_new_completed", "component": "worker.handlers", "data": {"truth_pack_hash": "truth-worker-retry", "evaluated_count": 1}}
+............E..............................................
+======================================================================
+ERROR: test_description_location_experience_and_skill_factors_track_evidence_quality (matching.test_scorer.TestConfidenceScore.test_description_location_experience_and_skill_factors_track_evidence_quality)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w33-confidence-score\matching\test_scorer.py", line 564, in test_description_location_experience_and_skill_factors_track_evidence_quality
+    self._factor(self._score(vague_experience), "experience_requirement_clarity").score,
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w33-confidence-score\matching\test_scorer.py", line 511, in _score
+    return OpportunityScorer(policy=policy).evaluate(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w33-confidence-score\matching\scorer.py", line 723, in evaluate
+    dim_scores, uncertainty = self._score_employment(opp, truth_graph, evaluated_at)
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w33-confidence-score\matching\scorer.py", line 1195, in _score_employment
+    f"verified founder title level: {highest_level if founder_title_levels else 'unknown'}."
+                                     ^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'highest_level' where it is not associated with a value
+
+----------------------------------------------------------------------
+Ran 59 tests in 7.204s
+
+FAILED (errors=1)

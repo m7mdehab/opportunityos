@@ -2202,11 +2202,11 @@ class SourcesAndWorkerTest(ApiTestCase):
 
 
 # ---------------------------------------------------------------------------
-# W3.2 portable preference-score API contract
+# W3.2/W3.3 portable score API contract
 # ---------------------------------------------------------------------------
 
 
-class PreferenceScoreDetailPortableTest(unittest.TestCase):
+class ConfidenceScoreDetailPortableTest(unittest.TestCase):
     """Exercise detail-payload assembly without a database connection."""
 
     def _build_detail(self, evaluation_detail):
@@ -2278,13 +2278,39 @@ class PreferenceScoreDetailPortableTest(unittest.TestCase):
             "unknowns": [],
             "uncertainty_penalty": 0.0,
             "preference_score": 67.5,
+            "confidence_score": 81.25,
+            "confidence_factors": [
+                {"name": "description_completeness", "score": 85.0, "explanation": "synthetic factor"},
+            ],
             "explanation": "synthetic",
         })
 
-        self.assertEqual(self._build_detail(detail_json)["scoring"]["preference_score"], 67.5)
+        scoring = self._build_detail(detail_json)["scoring"]
+        self.assertEqual(scoring["preference_score"], 67.5)
+        self.assertEqual(scoring["confidence_score"], 81.25)
+        self.assertEqual(scoring["confidence_factors"], [
+            {"name": "description_completeness", "score": 85.0, "explanation": "synthetic factor"},
+        ])
 
     def test_legacy_null_detail_exposes_null_preference_score(self):
-        self.assertIsNone(self._build_detail(None)["scoring"]["preference_score"])
+        scoring = self._build_detail(None)["scoring"]
+        self.assertIsNone(scoring["preference_score"])
+        self.assertIsNone(scoring["confidence_score"])
+        self.assertEqual(scoring["confidence_factors"], [])
+
+    def test_legacy_detail_without_confidence_fields_uses_null_defaults(self):
+        legacy_detail = json.dumps({
+            "hard_constraints": [],
+            "strengths": [],
+            "gaps": [],
+            "unknowns": [],
+            "uncertainty_penalty": 0.0,
+            "preference_score": None,
+            "explanation": "legacy evaluation detail",
+        })
+        scoring = self._build_detail(legacy_detail)["scoring"]
+        self.assertIsNone(scoring["confidence_score"])
+        self.assertEqual(scoring["confidence_factors"], [])
 
 
 # ---------------------------------------------------------------------------
