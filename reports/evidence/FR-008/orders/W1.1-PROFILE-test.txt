@@ -1,0 +1,6 @@
+test_hash_verified_profile_populates_employment_scoring (matching.test_fr008_profile_contract.TestCanonicalProfileScoringContract.test_hash_verified_profile_populates_employment_scoring) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 1.120s
+
+OK
