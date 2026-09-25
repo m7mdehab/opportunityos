@@ -1,0 +1,7 @@
+{"timestamp": "2026-09-25T04:59:37.931117+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.evaluate_new_completed", "component": "worker.handlers", "data": {"truth_pack_hash": "truth-worker-retry", "evaluated_count": 1}}
+.....................................
+----------------------------------------------------------------------
+Ran 37 tests in 7.045s
+
+OK
+EXIT_CODE=0

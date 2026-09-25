@@ -62,3 +62,9 @@ The failure was `test_lease_expiration_and_recovery`, which attempted to reclaim
 ## W1-WAVE-VERIFY-R8 result
 
 R8 ran once from exact source base `0a0de55` against a fresh local disposable database (`opportunityos_fr008_wave8`). Guard, repository integrity, target preflight, Alembic migration, and diff check all passed. The full suite passed: 1,596 tests, 22 skips, no failures or errors. The unedited outputs are preserved in `W1-WAVE-R8-{guard,repository,backend,diff-check}.txt`; the backend transcript records each command exit code. This restores a green integrated Wave 1 checkpoint after the bounded R5–R7 test-only remediations.
+
+## W2.2 initial acceptance and remediation
+
+The first W2.2 focused acceptance ran 36 tests and failed in two places; its complete raw output is preserved unchanged in `orders/W2.2-test.txt`. The confidence-bound model test omitted the newly required synthetic source pointer, so model validation stopped before reaching the intended confidence assertion. The work-authorization evidence assertion also exposed that the regex's full match included the word `without` from the following sponsorship clause. The remediation supplied a synthetic pointer to the model test and changed the regex terminator to a lookahead, leaving qualification decisions unchanged while keeping the evidence quotation within the mandatory authorization phrase.
+
+W2.2-R2 ran from source base `1a7678e1c1c3f5c9be7ae88ec381d55c2ff8202c`. All 37 focused model, qualification, persistence, and API serialization tests passed. Repository integrity and `git diff --check` passed. Raw outputs are preserved in `orders/W2.2-R2-{test,repository,diff-check}.txt`; the original red output remains beside the green remediation evidence.
