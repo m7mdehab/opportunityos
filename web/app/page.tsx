@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { HeaderStrip } from "@/components/feed/header-strip"
-import { FilterBar, EMPTY_FILTERS, type FeedFilters } from "@/components/feed/filter-bar"
+import { FilterBar, type FeedFilters } from "@/components/feed/filter-bar"
+import { FeedQueryChips, FeedQueryDrawer } from "@/components/feed/feed-query-drawer"
 import { OpportunityCard } from "@/components/feed/opportunity-card"
 import { DetailDrawer } from "@/components/feed/detail-drawer"
 import { FiltersDrawer } from "@/components/feed/filters-drawer"
@@ -23,6 +24,13 @@ import {
 } from "@/components/feed/empty-states"
 import { api } from "@/lib/api/client"
 import { ApiError } from "@/lib/contract/types"
+import type { FeedFilterMetadataResponse, FeedQueryState } from "@/lib/contract/types"
+import {
+  EMPTY_FEED_QUERY,
+  hasActiveFeedQuery,
+  parseFeedQueryParams,
+  updateFeedUrlParams,
+} from "@/lib/feed-query-state"
 import { computeOverHidingWarning } from "@/lib/format/over-hiding"
 import type {
   ActionState,
@@ -44,7 +52,10 @@ export default function FeedPage() {
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null)
   const [sources, setSources] = useState<SourceHealth[] | null>(null)
 
-  const [filters, setFilters] = useState<FeedFilters>(EMPTY_FILTERS)
+  const [query, setQuery] = useState<FeedQueryState>(EMPTY_FEED_QUERY)
+  const [queryReady, setQueryReady] = useState(false)
+  const [feedMetadata, setFeedMetadata] = useState<FeedFilterMetadataResponse | null>(null)
+  const [feedMetadataError, setFeedMetadataError] = useState<string | null>(null)
   const [items, setItems] = useState<OpportunityListItem[] | null>(null)
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -60,10 +71,10 @@ export default function FeedPage() {
   // "Show N hidden" — a deliberate, visible, switchable control per the
   // founder's stated requirement (see d3-contract.md §6): nothing that a
   // `hide`-mode filter removes stays removed without a way back to it.
-  const [includeHidden, setIncludeHidden] = useState(false)
 
   // ---- C1 facets panel / C4 hidden-reasons / E23 manual sources ----
   const [facetsPanelOpen, setFacetsPanelOpen] = useState(false)
+  const [feedQueryDrawerOpen, setFeedQueryDrawerOpen] = useState(false)
   const [hiddenReasonsOpen, setHiddenReasonsOpen] = useState(false)
   const [manualSourcesOpen, setManualSourcesOpen] = useState(false)
 
@@ -72,6 +83,7 @@ export default function FeedPage() {
   const cardRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
   const anyPanelOpen =
     filtersDrawerOpen ||
+    feedQueryDrawerOpen ||
     facetsPanelOpen ||
     hiddenReasonsOpen ||
     manualSourcesOpen ||
@@ -96,6 +108,55 @@ export default function FeedPage() {
     }
   }, [router])
 
+  // Hydrate the shareable feed query before the first list request, and
+  // restore it when the browser moves backward or forward in history.
+  useEffect(() => {
+    const restore = () => {
+      const parsed = parseFeedQueryParams(new URLSearchParams(window.location.search))
+      setQuery(parsed.filters)
+      setPage(parsed.page)
+      setQueryReady(true)
+    }
+    restore()
+    window.addEventListener("popstate", restore)
+    return () => window.removeEventListener("popstate", restore)
+  }, [])
+
+  useEffect(() => {
+    if (authPhase !== "authenticated") return
+    api.feedFilterMetadata.get().then(setFeedMetadata).catch((error: unknown) => {
+      setFeedMetadata(null)
+      const detail = error instanceof ApiError && error.body && typeof error.body === "object" && "detail" in error.body && typeof error.body.detail === "string"
+        ? error.body.detail
+        : error instanceof Error ? error.message : "Advanced feed metadata is unavailable from this API adapter."
+      setFeedMetadataError(detail)
+    })
+  }, [authPhase])
+
+  useEffect(() => {
+    if (!queryReady) return
+    const timer = window.setTimeout(() => {
+      const current = new URLSearchParams(window.location.search)
+      const next = updateFeedUrlParams(current, query, page, PAGE_SIZE)
+      if (next.toString() === current.toString()) return
+      const search = next.toString()
+      window.history.pushState({ feedQuery: true }, "", `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`)
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [page, query, queryReady])
+
+  const filters: FeedFilters = {
+    track: query.track as FeedFilters["track"],
+    decision: query.decision as FeedFilters["decision"],
+    minScore: query.scoreRanges.fit_score.min,
+    q: query.q,
+  }
+
+  const handleQueryChange = useCallback((next: FeedQueryState) => {
+    setPage(1)
+    setQuery(next)
+  }, [])
+
   const refreshDashboard = useCallback(() => {
     api.dashboard.daily(7).then(setDashboard).catch(() => undefined)
   }, [])
@@ -116,13 +177,25 @@ export default function FeedPage() {
     setListError(null)
     api.opportunities
       .list({
-        track: filters.track || undefined,
-        decision: filters.decision || undefined,
-        min_score: filters.minScore ? Number(filters.minScore) : undefined,
-        q: filters.q || undefined,
+        track: query.track || undefined,
+        decision: query.decision || undefined,
+        min_score: query.scoreRanges.fit_score.min ? Number(query.scoreRanges.fit_score.min) : undefined,
+        min_fit_score: query.scoreRanges.fit_score.min ? Number(query.scoreRanges.fit_score.min) : undefined,
+        max_fit_score: query.scoreRanges.fit_score.max ? Number(query.scoreRanges.fit_score.max) : undefined,
+        min_preference_score: query.scoreRanges.preference_score.min ? Number(query.scoreRanges.preference_score.min) : undefined,
+        max_preference_score: query.scoreRanges.preference_score.max ? Number(query.scoreRanges.preference_score.max) : undefined,
+        min_confidence_score: query.scoreRanges.confidence_score.min ? Number(query.scoreRanges.confidence_score.min) : undefined,
+        max_confidence_score: query.scoreRanges.confidence_score.max ? Number(query.scoreRanges.confidence_score.max) : undefined,
+        min_priority_score: query.scoreRanges.priority_score.min ? Number(query.scoreRanges.priority_score.min) : undefined,
+        max_priority_score: query.scoreRanges.priority_score.max ? Number(query.scoreRanges.priority_score.max) : undefined,
+        posted_from: query.postedFrom || undefined,
+        posted_to: query.postedTo || undefined,
+        ...query.multi,
+        sort_by: query.sortBy,
+        q: query.q || undefined,
         page,
         page_size: PAGE_SIZE,
-        include_hidden: includeHidden,
+        include_hidden: query.includeHidden,
       })
       .then((res) => {
         setItems(res.items)
@@ -134,10 +207,13 @@ export default function FeedPage() {
           router.replace("/login")
           return
         }
-        setListError("Could not load opportunities.")
+        const detail = err instanceof ApiError && err.body && typeof err.body === "object" && "detail" in err.body && typeof err.body.detail === "string"
+          ? err.body.detail
+          : "Could not load opportunities."
+        setListError(detail)
       })
       .finally(() => setListLoading(false))
-  }, [filters, includeHidden, page, router])
+  }, [query, page, router])
 
   const refreshFromFirstPage = useCallback(() => {
     if (page === 1) refreshList()
@@ -151,15 +227,15 @@ export default function FeedPage() {
   }, [authPhase, refreshTruth, refreshSources])
 
   useEffect(() => {
-    if (authPhase !== "authenticated") return
+    if (authPhase !== "authenticated" || !queryReady) return
     // Standard data-fetching effect (React docs: "Fetching data" under
     // "You Might Not Need an Effect"): setting the loading flag synchronously
     // before the async call is the documented pattern, not an accidental
-    // cascade — refetches are driven by `filters` changing, which is an
+    // cascade — refetches are driven by the feed query changing, which is an
     // external input this effect is meant to synchronize against.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refreshList()
-  }, [authPhase, refreshList])
+  }, [authPhase, queryReady, refreshList])
 
   // On a production-sized corpus both endpoints perform exact founder-policy
   // matching. Let the founder-visible feed finish first instead of making the
@@ -280,11 +356,7 @@ export default function FeedPage() {
     [dashboard]
   )
 
-  const hasActiveFilters =
-    filters.track !== "" ||
-    filters.decision !== "" ||
-    filters.minScore !== "" ||
-    filters.q !== ""
+  const hasActiveFilters = hasActiveFeedQuery(query)
 
   const workerIdle =
     !!sources && sources.length > 0 && sources.every((s) => s.last_poll === null)
@@ -317,11 +389,19 @@ export default function FeedPage() {
         <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-4 py-2 sm:px-6">
           <FilterBar
             filters={filters}
-            onChange={(nextFilters) => {
-              setPage(1)
-              setFilters(nextFilters)
-            }}
+            onChange={(nextFilters) => handleQueryChange({
+              ...query,
+              track: nextFilters.track,
+              decision: nextFilters.decision,
+              q: nextFilters.q,
+              scoreRanges: { ...query.scoreRanges, fit_score: { ...query.scoreRanges.fit_score, min: nextFilters.minScore } },
+            })}
             onOpenFounderFilters={() => setFiltersDrawerOpen(true)}
+            sortBy={query.sortBy}
+            onSortChange={(sortBy) => handleQueryChange({ ...query, sortBy })}
+            onOpenAdvanced={() => setFeedQueryDrawerOpen(true)}
+            advancedDisabled={!feedMetadata}
+            metadata={feedMetadata}
           />
           <Button
             type="button"
@@ -345,23 +425,26 @@ export default function FeedPage() {
           </Button>
           <Button
             type="button"
-            variant={filters.track === "tutoring" ? "default" : "outline"}
+            variant={query.track === "tutoring" ? "default" : "outline"}
             size="sm"
             data-testid="toggle-tutoring-lane"
             disabled={!truth.loaded}
             title={!truth.loaded ? "A validated founder profile is required for tutoring materials" : undefined}
             onClick={() => {
-              setPage(1)
-              setFilters({
-                ...filters,
-                track: filters.track === "tutoring" ? "" : "tutoring",
-              })
+              handleQueryChange({ ...query, track: query.track === "tutoring" ? "" : "tutoring" })
             }}
           >
             <GraduationCap aria-hidden="true" className="size-3.5" />
             Tutoring Lane
           </Button>
         </div>
+      )}
+
+      <FeedQueryChips value={query} onChange={handleQueryChange} />
+      {feedMetadataError && (
+        <p role="status" className="border-b border-amber-600/30 bg-amber-50 px-4 py-2 text-xs text-amber-950 dark:bg-amber-950/20 dark:text-amber-100 sm:px-6">
+          Advanced feed filtering is unsupported by this API adapter: {feedMetadataError} Track, decision, fit minimum, and search remain available.
+        </p>
       )}
 
       <main className="flex-1 px-4 py-4 sm:px-6">
@@ -375,7 +458,7 @@ export default function FeedPage() {
 
         {!truth ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : filters.track === "tutoring" ? (
+        ) : query.track === "tutoring" ? (
           <TutoringSurface />
         ) : listLoading && !items ? (
           <p className="text-sm text-muted-foreground">Loading opportunities…</p>
@@ -388,7 +471,7 @@ export default function FeedPage() {
             <NoFilterMatchesState
               onClear={() => {
                 setPage(1)
-                setFilters(EMPTY_FILTERS)
+                handleQueryChange(EMPTY_FEED_QUERY)
               }}
             />
           ) : workerIdle ? (
@@ -403,7 +486,7 @@ export default function FeedPage() {
               className="mb-3 text-xs text-muted-foreground"
             >
               {total} opportunit{total === 1 ? "y" : "ies"}
-              {includeHidden && " (including hidden)"}
+              {query.includeHidden && " (including hidden)"}
             </p>
             <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {items?.map((o, idx) => (
@@ -459,19 +542,16 @@ export default function FeedPage() {
             outside the branches above so it survives even when a hide
             filter's default leaves nothing else on the page (an entirely
             hidden feed is exactly the case this control exists for). */}
-        {truth && !listLoading && !listError && (hiddenCount > 0 || includeHidden) && (
+        {truth && !listLoading && !listError && (hiddenCount > 0 || query.includeHidden) && (
           <div className="mt-4 flex justify-center">
             <Button
               type="button"
               variant="outline"
               size="sm"
               data-testid="toggle-hidden-opportunities"
-              onClick={() => {
-                setPage(1)
-                setIncludeHidden((v) => !v)
-              }}
+              onClick={() => handleQueryChange({ ...query, includeHidden: !query.includeHidden })}
             >
-              {includeHidden ? (
+              {query.includeHidden ? (
                 <>
                   <EyeOff aria-hidden="true" className="size-3.5" />
                   Hide hidden opportunities
@@ -494,6 +574,15 @@ export default function FeedPage() {
           refreshFromFirstPage()
           refreshDashboard()
         }}
+      />
+
+      <FeedQueryDrawer
+        open={feedQueryDrawerOpen}
+        onOpenChange={setFeedQueryDrawerOpen}
+        value={query}
+        onChange={handleQueryChange}
+        metadata={feedMetadata}
+        metadataError={feedMetadataError}
       />
 
       <FacetsPanel

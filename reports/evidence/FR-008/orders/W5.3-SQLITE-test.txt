@@ -1,0 +1,7 @@
+COMMAND: python -m unittest storage.test_feed_query api.test_feed_filter_metadata api.test_feed_saved_query_views
+........................
+----------------------------------------------------------------------
+Ran 24 tests in 4.591s
+
+OK
+EXIT_CODE: 0

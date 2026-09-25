@@ -141,6 +141,85 @@ export interface OpportunityListResponse {
   items: OpportunityListItem[]
 }
 
+export type FeedMultiFacetId =
+  | "work_mode"
+  | "location_country"
+  | "location_city"
+  | "remote_scope"
+  | "employment_type"
+  | "seniority_level"
+  | "target_tier"
+  | "title_family"
+  | "source_id"
+
+export type FeedFacetId = "track" | "decision" | FeedMultiFacetId
+export type FeedScoreId = "fit_score" | "preference_score" | "confidence_score" | "priority_score"
+export type FeedSortId =
+  | "recommended"
+  | "fit_desc"
+  | "fit_asc"
+  | "newest_posted"
+  | "oldest_posted"
+  | "remote_first"
+
+export interface FeedScoreBounds {
+  min: string
+  max: string
+}
+
+/** Complete filter/sort state supported by the W5.1 SQL feed contract. */
+export interface FeedQueryState {
+  track: string
+  decision: string
+  q: string
+  multi: Record<FeedMultiFacetId, string[]>
+  scoreRanges: Record<FeedScoreId, FeedScoreBounds>
+  postedFrom: string
+  postedTo: string
+  sortBy: FeedSortId
+  includeHidden: boolean
+}
+
+export interface FeedFacetOptionCount {
+  value: string
+  count: number
+}
+
+export interface FeedFacetMetadata {
+  selection: "single" | "multiple"
+  values: FeedFacetOptionCount[]
+  option_count: number
+  truncated: boolean
+}
+
+export interface FeedScoreRangeMetadata {
+  min: number | null
+  max: number | null
+  unknown_count: number
+  threshold_counts: Record<"90+" | "80+" | "70+" | "60+" | "50+", number>
+}
+
+export interface FeedUnavailableFilter {
+  id: string
+  label: string
+  reason: string
+}
+
+export interface FeedFilterMetadataResponse {
+  truth_pack_hash: string
+  count_scope: {
+    visible_only: boolean
+    independent_of_selected_filters: boolean
+    includes_tracked_and_ineligible: boolean
+  }
+  facets: Record<FeedFacetId, FeedFacetMetadata>
+  ranges: Record<FeedScoreId, FeedScoreRangeMetadata> & {
+    posted_date: { min: string | null; max: string | null; unknown_count: number }
+  }
+  sorts: Array<{ value: FeedSortId; label: string }>
+  unavailable_filters: FeedUnavailableFilter[]
+}
+
 /** D3 — founder-controlled filters (`founder_filter_settings`). A toggle
  * changes only whether a row is hidden, ranked, or merely labelled: it
  * never changes `decision` or `fit_score` on any `OpportunityListItem`. */
@@ -431,6 +510,8 @@ export interface SavedView {
   name: string
   facets: Record<string, { include: string[]; exclude: string[] }>
   search_query: string | null
+  /** Present for FR-008 feed-query views; null for legacy facet-only views. */
+  feed_query?: FeedQueryState | null
   is_default: boolean
 }
 
@@ -442,6 +523,7 @@ export interface SavedViewCreateRequest {
   name: string
   facets: Record<string, { include: string[]; exclude: string[] }>
   search_query?: string | null
+  feed_query?: FeedQueryState
   is_default?: boolean
 }
 
@@ -449,6 +531,7 @@ export interface SavedViewUpdateRequest {
   name?: string
   facets?: Record<string, { include: string[]; exclude: string[] }>
   search_query?: string | null
+  feed_query?: FeedQueryState
   is_default?: boolean
 }
 

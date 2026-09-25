@@ -5,7 +5,7 @@
  * no idea this file exists.
  */
 import { http, HttpResponse } from "msw"
-import type { ActionType, FeedbackLabel } from "@/lib/contract/types"
+import type { ActionType, FeedbackLabel, FeedQueryState } from "@/lib/contract/types"
 import { getStore } from "@/lib/mock/store"
 import { resolveScenario } from "@/lib/mock/scenario"
 
@@ -63,12 +63,20 @@ export const handlers = [
   }),
 
   // ---- opportunities ----
+  http.get("/api/feed/filter-metadata", ({ request }) => {
+    if (!requireAuth(request)) return unauthorized()
+    return HttpResponse.json(store().feedFilterMetadata())
+  }),
+
   http.get("/api/opportunities", ({ request }) => {
     if (!requireAuth(request)) return unauthorized()
     const url = new URL(request.url)
     const track = url.searchParams.get("track") ?? undefined
     const decision = url.searchParams.get("decision") ?? undefined
-    const minScoreRaw = url.searchParams.get("min_score")
+    const numberParam = (key: string) => {
+      const raw = url.searchParams.get(key)
+      return raw === null || raw === "" ? undefined : Number(raw)
+    }
     const q = url.searchParams.get("q") ?? undefined
     const page = Number(url.searchParams.get("page") ?? "1")
     const pageSize = Number(url.searchParams.get("page_size") ?? "25")
@@ -77,7 +85,27 @@ export const handlers = [
     const result = store().listOpportunities({
       track,
       decision,
-      min_score: minScoreRaw ? Number(minScoreRaw) : undefined,
+      min_score: numberParam("min_score"),
+      min_fit_score: numberParam("min_fit_score"),
+      max_fit_score: numberParam("max_fit_score"),
+      min_preference_score: numberParam("min_preference_score"),
+      max_preference_score: numberParam("max_preference_score"),
+      min_confidence_score: numberParam("min_confidence_score"),
+      max_confidence_score: numberParam("max_confidence_score"),
+      min_priority_score: numberParam("min_priority_score"),
+      max_priority_score: numberParam("max_priority_score"),
+      posted_from: url.searchParams.get("posted_from") ?? undefined,
+      posted_to: url.searchParams.get("posted_to") ?? undefined,
+      work_mode: url.searchParams.getAll("work_mode"),
+      location_country: url.searchParams.getAll("location_country"),
+      location_city: url.searchParams.getAll("location_city"),
+      remote_scope: url.searchParams.getAll("remote_scope"),
+      employment_type: url.searchParams.getAll("employment_type"),
+      seniority_level: url.searchParams.getAll("seniority_level"),
+      target_tier: url.searchParams.getAll("target_tier"),
+      title_family: url.searchParams.getAll("title_family"),
+      source_id: url.searchParams.getAll("source_id"),
+      sort_by: (url.searchParams.get("sort_by") ?? "recommended") as "recommended" | "fit_desc" | "fit_asc" | "newest_posted" | "oldest_posted" | "remote_first",
       q,
       page,
       page_size: pageSize,
@@ -260,6 +288,7 @@ export const handlers = [
       name?: string
       facets?: Record<string, { include: string[]; exclude: string[] }>
       search_query?: string | null
+      feed_query?: FeedQueryState
       is_default?: boolean
     }
     return HttpResponse.json(
@@ -267,6 +296,7 @@ export const handlers = [
         name: body.name ?? "",
         facets: body.facets ?? {},
         search_query: body.search_query ?? null,
+        feed_query: body.feed_query,
         is_default: body.is_default ?? false,
       })
     )
@@ -278,6 +308,7 @@ export const handlers = [
       name?: string
       facets?: Record<string, { include: string[]; exclude: string[] }>
       search_query?: string | null
+      feed_query?: FeedQueryState
       is_default?: boolean
     }
     const result = store().updateSavedView(String(params.view_id), body)

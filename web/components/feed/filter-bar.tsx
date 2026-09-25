@@ -5,6 +5,8 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { SlidersHorizontal } from "lucide-react"
 import type { Track, Decision } from "@/lib/contract/types"
+import { FEED_SORT_IDS, FEED_SORT_LABELS, FEED_UNAVAILABLE_SORT_GROUPS } from "@/lib/feed-query-state"
+import type { FeedFilterMetadataResponse, FeedSortId } from "@/lib/contract/types"
 
 export interface FeedFilters {
   track: Track | ""
@@ -40,6 +42,11 @@ export function FilterBar({
   filters,
   onChange,
   onOpenFounderFilters,
+  sortBy,
+  onSortChange,
+  onOpenAdvanced,
+  advancedDisabled = false,
+  metadata,
 }: {
   filters: FeedFilters
   onChange: (next: FeedFilters) => void
@@ -48,12 +55,19 @@ export function FilterBar({
    * the drawer's filters decide what is hidden, ranked, or labelled across
    * every query. */
   onOpenFounderFilters: () => void
+  sortBy: FeedSortId
+  onSortChange: (next: FeedSortId) => void
+  onOpenAdvanced: () => void
+  advancedDisabled?: boolean
+  metadata?: FeedFilterMetadataResponse | null
 }) {
   const hasActiveFilters =
     filters.track !== "" ||
     filters.decision !== "" ||
     filters.minScore !== "" ||
     filters.q !== ""
+  const trackValues = [...new Set([...TRACKS, ...(metadata?.facets.track.values.map((option) => option.value as Track) ?? [])])]
+  const decisionValues = [...new Set([...DECISIONS, ...(metadata?.facets.decision.values.map((option) => option.value as Exclude<Decision, null>) ?? [])])]
 
   return (
     <form
@@ -73,9 +87,9 @@ export function FilterBar({
           }
         >
           <option value="">All tracks</option>
-          {TRACKS.map((t) => (
+          {trackValues.map((t) => (
             <option key={t} value={t}>
-              {t}
+              {t}{metadata?.facets.track.values.find((option) => option.value === t) ? ` (${metadata.facets.track.values.find((option) => option.value === t)?.count})` : ""}
             </option>
           ))}
         </select>
@@ -95,9 +109,9 @@ export function FilterBar({
           }
         >
           <option value="">All decisions</option>
-          {DECISIONS.map((d) => (
+          {decisionValues.map((d) => (
             <option key={d} value={d}>
-              {d}
+              {d}{metadata?.facets.decision.values.find((option) => option.value === d) ? ` (${metadata.facets.decision.values.find((option) => option.value === d)?.count})` : ""}
             </option>
           ))}
         </select>
@@ -129,6 +143,33 @@ export function FilterBar({
         />
       </div>
 
+      <div className="flex flex-col gap-1">
+        <Label htmlFor="feed-sort">Sort</Label>
+        <select
+          id="feed-sort"
+          className={selectClasses}
+          value={sortBy}
+          disabled={advancedDisabled}
+          title={advancedDisabled ? "Sort is unavailable on this API adapter" : undefined}
+          onChange={(e) => onSortChange(e.target.value as FeedSortId)}
+        >
+          <optgroup label="Available">
+            {FEED_SORT_IDS.map((sort) => (
+              <option key={sort} value={sort}>{FEED_SORT_LABELS[sort]}</option>
+            ))}
+          </optgroup>
+          {FEED_UNAVAILABLE_SORT_GROUPS.map((group) => (
+            <optgroup key={group.label} label={`${group.label} — unavailable`}>
+              {group.options.map((label) => (
+                <option key={label} disabled title={group.reason}>
+                  {label} — unavailable: {group.reason}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </div>
+
       {hasActiveFilters && (
         <Button
           type="button"
@@ -149,6 +190,18 @@ export function FilterBar({
       >
         <SlidersHorizontal aria-hidden="true" className="size-3.5" />
         Filters
+      </Button>
+
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        data-testid="open-advanced-feed-filters"
+        title={advancedDisabled ? "Advanced filtering is unsupported by this API adapter" : undefined}
+        onClick={onOpenAdvanced}
+      >
+        <SlidersHorizontal aria-hidden="true" className="size-3.5" />
+        More filters
       </Button>
     </form>
   )

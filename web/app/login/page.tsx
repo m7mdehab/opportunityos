@@ -21,6 +21,9 @@ export default function LoginPage() {
     setError(null)
     try {
       await api.auth.login(password, email)
+      if (process.env.NEXT_PUBLIC_USE_MOCK_API === "1") {
+        window.localStorage.setItem("opportunityos.mock.authenticated", "1")
+      }
       router.push("/")
     } catch (err) {
       if (err instanceof ApiError && err.status === 429) {

@@ -19,6 +19,7 @@ import type {
   Facet,
   FeedbackLabel,
   FeedbackResponse,
+  FeedFilterMetadataResponse,
   FilterUpdateRequest,
   FiltersResponse,
   FounderFilter,
@@ -42,6 +43,9 @@ import type {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const method = (init?.method ?? "GET").toUpperCase()
+  const mockSession = process.env.NEXT_PUBLIC_USE_MOCK_API === "1" &&
+    typeof window !== "undefined" &&
+    window.localStorage.getItem("opportunityos.mock.authenticated") === "1"
   const res = await fetch(path, {
     ...init,
     credentials: "same-origin",
@@ -50,6 +54,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...(method !== "GET" && method !== "HEAD" && method !== "OPTIONS"
         ? { "X-OpportunityOS-CSRF": "1" }
         : {}),
+      ...(mockSession ? { "X-Mock-Bypass-Auth": "1" } : {}),
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
       ...init?.headers,
     },
@@ -78,7 +83,13 @@ export const api = {
         body: JSON.stringify({ password, email }),
       })
     },
-    logout: () => request<AuthenticatedResponse>("/api/auth/logout", { method: "POST" }),
+    logout: async () => {
+      const result = await request<AuthenticatedResponse>("/api/auth/logout", { method: "POST" })
+      if (process.env.NEXT_PUBLIC_USE_MOCK_API === "1" && typeof window !== "undefined") {
+        window.localStorage.removeItem("opportunityos.mock.authenticated")
+      }
+      return result
+    },
     logoutAll: () =>
       request<AuthenticatedResponse>("/api/auth/logout-all", { method: "POST" }),
     me: () => request<AuthenticatedResponse>("/api/auth/me"),
@@ -89,7 +100,27 @@ export const api = {
       track?: string
       decision?: string
       min_score?: number
+      min_fit_score?: number
+      max_fit_score?: number
+      min_preference_score?: number
+      max_preference_score?: number
+      min_confidence_score?: number
+      max_confidence_score?: number
+      min_priority_score?: number
+      max_priority_score?: number
       since?: string
+      posted_from?: string
+      posted_to?: string
+      work_mode?: string[]
+      location_country?: string[]
+      location_city?: string[]
+      remote_scope?: string[]
+      employment_type?: string[]
+      seniority_level?: string[]
+      target_tier?: string[]
+      title_family?: string[]
+      source_id?: string[]
+      sort_by?: string
       q?: string
       page?: number
       page_size?: number
@@ -100,7 +131,11 @@ export const api = {
     }) => {
       const search = new URLSearchParams()
       for (const [key, value] of Object.entries(params)) {
-        if (value !== undefined && value !== "" && value !== null) {
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            if (item !== "") search.append(key, String(item))
+          }
+        } else if (value !== undefined && value !== "" && value !== null && value !== false) {
           search.set(key, String(value))
         }
       }
@@ -144,6 +179,10 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ type, until }),
       }),
+  },
+
+  feedFilterMetadata: {
+    get: () => request<FeedFilterMetadataResponse>("/api/feed/filter-metadata"),
   },
 
   dashboard: {

@@ -54,6 +54,21 @@ async function hostedAccess(request: NextRequest, config: HostedConfig): Promise
 }
 function hostedFeedRow(row: Record<string, unknown>) { let reasons: string[] = []; const raw = row.reasons_json; if (typeof raw === "string") { try { const parsed = JSON.parse(raw); if (Array.isArray(parsed)) reasons = parsed.map((x) => typeof x === "string" ? x : typeof x?.text === "string" ? x.text : "").filter(Boolean); } catch {} } return { id: String(row.opportunity_id ?? row.id ?? ""), title: row.title ?? "", organization: row.organization ?? "", source_id: row.source_id ?? "", source_url: row.source_url ?? "", track: row.track, decision: row.qualification_decision ?? null, fit_score: row.fit_score ?? null, top_reasons: reasons, deadline: row.deadline ?? null, posted_date: row.posted_date ?? null, is_stale: false, action_state: null, feedback_label: null, hidden_by: [], flagged_by: [], work_mode: row.work_mode ?? "unspecified", work_mode_source: null, location_country: row.location_country ?? null, location_city: row.location_city ?? null, location_region: row.location_region ?? null, remote_scope: row.remote_scope ?? "unspecified", remote_scope_regions: [], employment_type: row.employment_type ?? "unspecified", seniority_level: row.seniority_level ?? "unspecified", compensation_min: null, compensation_max: null, compensation_currency: null, compensation_period: null, title_family: row.title_family ?? null, title_level: null, family_key: null, family_size: null }; }
 
+function hostedSavedView(row: Record<string, unknown>) {
+  let raw: unknown = row.facets_json;
+  if (typeof raw === "string") { try { raw = JSON.parse(raw); } catch { raw = {}; } }
+  const object = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+  const isEnvelope = object.__opportunityos_saved_view_v2 && typeof object.__opportunityos_saved_view_v2 === "object";
+  return {
+    id: row.id,
+    name: row.name,
+    facets: isEnvelope && object.facet_selections && typeof object.facet_selections === "object" ? object.facet_selections : object,
+    feed_query: isEnvelope && object.feed_query && typeof object.feed_query === "object" ? object.feed_query : null,
+    search_query: row.search_query ?? null,
+    is_default: Boolean(row.is_default),
+  };
+}
+
 type HostedFacetDefinition = {
   facet_id: string;
   value_type: "enum" | "string" | "boolean" | "range" | "date-window";
@@ -217,7 +232,15 @@ async function hostedFacetPayload(config: HostedConfig, token: string): Promise<
 }
 async function hostedContract(request: NextRequest, path: string[], token: string, config: HostedConfig): Promise<NextResponse> {
   const subpath = path.join("/"); const method = request.method.toUpperCase(); const url = new URL(request.url);
+  if (subpath === "feed/filter-metadata" && method === "GET") {
+    return hostedError("Advanced feed metadata and query filtering are unsupported by the hosted adapter. Track, decision, fit minimum, and search remain available.", 501);
+  }
   if (subpath === "opportunities" && method === "GET") {
+    const advancedKeys = ["max_score", "max_fit_score", "min_preference_score", "max_preference_score", "min_confidence_score", "max_confidence_score", "min_priority_score", "max_priority_score", "posted_from", "posted_to", "work_mode", "location_country", "location_city", "remote_scope", "employment_type", "seniority_level", "target_tier", "title_family", "source_id", "include_hidden"];
+    const fitMinimumDiffers = url.searchParams.has("min_fit_score") && url.searchParams.get("min_fit_score") !== url.searchParams.get("min_score");
+    if (advancedKeys.some((key) => url.searchParams.has(key)) || fitMinimumDiffers || (url.searchParams.has("sort_by") && url.searchParams.get("sort_by") !== "recommended")) {
+      return hostedError("Advanced feed query filters and sorting are unsupported by the hosted adapter. Track, decision, fit minimum, and search remain available.", 501);
+    }
     const page = Math.max(1, Number(url.searchParams.get("page") ?? "1") || 1); const pageSize = Math.min(200, Math.max(1, Number(url.searchParams.get("page_size") ?? "25") || 25));
     const q = new URL(`${config.origin}/rest/v1/founder_feed`); q.searchParams.set("select", "*"); q.searchParams.set("order", "priority_score.desc,opportunity_id.asc"); q.searchParams.set("offset", String((page - 1) * pageSize)); q.searchParams.set("limit", String(pageSize));
     for (const [key, column, op] of [["track", "track", "eq"], ["decision", "qualification_decision", "eq"], ["min_score", "fit_score", "gte"]] as const) { const value = url.searchParams.get(key); if (value) q.searchParams.set(column, `${op}.${value}`); }
@@ -234,7 +257,7 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
     const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status });
     if (subpath === "filters") return NextResponse.json({ filters: Array.isArray(rows) ? rows.map((row: Record<string, unknown>) => ({ filter_id: row.filter_id, enabled: Boolean(row.enabled), mode: row.mode, params: typeof row.params_json === "string" ? JSON.parse(row.params_json) : {}, affected_count: 0, description: "", unavailable_reason: null })) : [] });
     if (subpath === "facets") return hostedFacetPayload(config, token);
-    return NextResponse.json({ views: Array.isArray(rows) ? rows.map((row: Record<string, unknown>) => ({ id: row.id, name: row.name, facets: typeof row.facets_json === "string" ? JSON.parse(row.facets_json) : {}, search_query: row.search_query ?? null, is_default: Boolean(row.is_default) })) : [] });
+    return NextResponse.json({ views: Array.isArray(rows) ? rows.map((row: Record<string, unknown>) => hostedSavedView(row)) : [] });
   }
   if (subpath === "truth/status" && method === "GET") {
     const hash = runtimeEnv().NEXT_PUBLIC_TRUTH_PACK_HASH?.trim() || null;

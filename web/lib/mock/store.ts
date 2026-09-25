@@ -11,6 +11,12 @@ import type {
   Facet,
   FacetsResponse,
   FacetValueState,
+  FeedFacetId,
+  FeedFilterMetadataResponse,
+  FeedMultiFacetId,
+  FeedScoreId,
+  FeedSortId,
+  FeedQueryState,
   FeedbackLabel,
   FilterMode,
   FiltersResponse,
@@ -47,6 +53,43 @@ interface FilterSetting {
 }
 
 const HIGH_FIT_THRESHOLD = 70
+
+const FEED_FACETS: FeedFacetId[] = [
+  "track", "decision", "work_mode", "location_country", "location_city",
+  "remote_scope", "employment_type", "seniority_level", "target_tier",
+  "title_family", "source_id",
+]
+const FEED_MULTI_FACETS: FeedMultiFacetId[] = [
+  "work_mode", "location_country", "location_city", "remote_scope",
+  "employment_type", "seniority_level", "target_tier", "title_family", "source_id",
+]
+const FEED_SCORES: FeedScoreId[] = ["fit_score", "preference_score", "confidence_score", "priority_score"]
+const FEED_SORTS: Array<{ value: FeedSortId; label: string }> = [
+  { value: "recommended", label: "Recommended" },
+  { value: "fit_desc", label: "Fit score: high to low" },
+  { value: "fit_asc", label: "Fit score: low to high" },
+  { value: "newest_posted", label: "Newest posted" },
+  { value: "oldest_posted", label: "Oldest posted" },
+  { value: "remote_first", label: "Remote first" },
+]
+const MOCK_UNAVAILABLE_FEED_FILTERS = [
+  { id: "tracking_state", label: "Tracking state", reason: "Saved, snoozed, dismissed, applied, and submitted states are outside the feed-query contract." },
+  { id: "eligibility_evidence", label: "Eligibility evidence", reason: "Only the qualification decision is queryable; sponsorship and work-authorization evidence are not structured feed fields." },
+  { id: "title_level_and_keywords", label: "Title level and exact title keywords", reason: "Title level and exact title keywords are not exposed as feed filters; general text search remains available." },
+  { id: "location_region", label: "Location regions", reason: "Region text is not normalized into exact selectable values." },
+  { id: "skill_match_and_gaps", label: "Skill match and gaps", reason: "Required, matched, missing, and preferred skills are not structured query fields." },
+  { id: "experience_responsibility", label: "Experience and responsibility", reason: "Years of experience and responsibility evidence are not queryable feed fields." },
+  { id: "work_authorization_relocation", label: "Work authorization and relocation", reason: "Authorization, sponsorship, relocation, and on-site cadence are not queryable feed fields." },
+  { id: "compensation", label: "Compensation ranges", reason: "Comparable compensation amounts, currencies, and pay periods are not part of the feed-query projection." },
+  { id: "company_attributes", label: "Company attributes", reason: "Industry, size, stage, ownership, funding, and employer-name dimensions are not normalized feed filters." },
+  { id: "source_taxonomy_and_health", label: "Source family, ATS, and source health", reason: "Source ID is queryable; source family, ATS type, quality, health, and error rate are not normalized." },
+  { id: "posting_health", label: "Posting freshness and health", reason: "Posted-date bounds are queryable; deadline, stale state, duplicate, and closed signals are not." },
+  { id: "content_completeness", label: "Content completeness", reason: "Description coverage, length, structured-field coverage, and extraction confidence are not queryable." },
+  { id: "education_certification", label: "Education and certification", reason: "Degree, education level, and certification requirements are not structured feed filters." },
+  { id: "language_timezone_travel", label: "Language, time zone, and travel", reason: "Language, time-zone overlap, and travel requirements are not structured feed filters." },
+  { id: "cv_application_readiness", label: "CV and application readiness", reason: "CV selection and application-artifact readiness are tracker concerns outside feed-query dimensions." },
+  { id: "tracked_user_metadata", label: "Tracked-job user metadata", reason: "Notes, follow-up dates, application status, and user tags are not part of feed-query dimensions." },
+]
 
 /** C1 mock facet surface. A trimmed set of the real API's 15 facets,
  * bucketed over fields this mock's `SeedOpportunity` actually models
@@ -432,6 +475,7 @@ export class MockStore {
     name: string
     facets: SavedView["facets"]
     search_query?: string | null
+    feed_query?: FeedQueryState
     is_default?: boolean
   }): SavedView {
     if (body.is_default) {
@@ -442,6 +486,7 @@ export class MockStore {
       name: body.name,
       facets: body.facets,
       search_query: body.search_query ?? null,
+      feed_query: body.feed_query ?? null,
       is_default: body.is_default ?? false,
     }
     this.savedViews.push(view)
@@ -454,6 +499,7 @@ export class MockStore {
       name?: string
       facets?: SavedView["facets"]
       search_query?: string | null
+      feed_query?: FeedQueryState
       is_default?: boolean
     }
   ): SavedView | null {
@@ -462,6 +508,7 @@ export class MockStore {
     if (body.name !== undefined) view.name = body.name
     if (body.facets !== undefined) view.facets = body.facets
     if (body.search_query !== undefined) view.search_query = body.search_query
+    if (body.feed_query !== undefined) view.feed_query = body.feed_query
     if (body.is_default) {
       for (const v of this.savedViews) v.is_default = false
       view.is_default = true
@@ -517,10 +564,87 @@ export class MockStore {
       .length
   }
 
+  feedFilterMetadata(): FeedFilterMetadataResponse {
+    const items = [...this.opportunities.values()]
+    const facets = {} as FeedFilterMetadataResponse["facets"]
+    for (const facet of FEED_FACETS) {
+      const counts = new Map<string, number>()
+      for (const item of items) {
+        const value = mockFacetValue(item, facet)
+        counts.set(value, (counts.get(value) ?? 0) + 1)
+      }
+      const ordered = [...counts.entries()].sort(([leftValue, leftCount], [rightValue, rightCount]) =>
+        rightCount - leftCount || leftValue.localeCompare(rightValue)
+      )
+      facets[facet] = {
+        selection: facet === "track" || facet === "decision" ? "single" : "multiple",
+        values: ordered.slice(0, 100).map(([value, count]) => ({ value, count })),
+        option_count: ordered.length,
+        truncated: ordered.length > 100,
+      }
+    }
+
+    const ranges = {} as FeedFilterMetadataResponse["ranges"]
+    for (const score of FEED_SCORES) {
+      const scores = items.map((item) => mockFeedScore(item, score)).filter((value): value is number => value !== null)
+      ranges[score] = {
+        min: scores.length ? Math.min(...scores) : null,
+        max: scores.length ? Math.max(...scores) : null,
+        unknown_count: items.length - scores.length,
+        threshold_counts: {
+          "90+": scores.filter((value) => value >= 90).length,
+          "80+": scores.filter((value) => value >= 80).length,
+          "70+": scores.filter((value) => value >= 70).length,
+          "60+": scores.filter((value) => value >= 60).length,
+          "50+": scores.filter((value) => value >= 50).length,
+        },
+      }
+    }
+    const postedDates = items.map((item) => item.posted_date?.trim() ?? "").filter(Boolean).sort()
+    ranges.posted_date = {
+      min: postedDates[0] ?? null,
+      max: postedDates[postedDates.length - 1] ?? null,
+      unknown_count: items.length - postedDates.length,
+    }
+
+    return {
+      truth_pack_hash: this.truthStatus().hash ?? "synthetic-mock-truth-pack",
+      count_scope: {
+        visible_only: true,
+        independent_of_selected_filters: true,
+        includes_tracked_and_ineligible: true,
+      },
+      facets,
+      ranges,
+      sorts: FEED_SORTS,
+      unavailable_filters: MOCK_UNAVAILABLE_FEED_FILTERS,
+    }
+  }
+
   listOpportunities(filters: {
     track?: string
     decision?: string
     min_score?: number
+    min_fit_score?: number
+    max_fit_score?: number
+    min_preference_score?: number
+    max_preference_score?: number
+    min_confidence_score?: number
+    max_confidence_score?: number
+    min_priority_score?: number
+    max_priority_score?: number
+    posted_from?: string
+    posted_to?: string
+    work_mode?: string[]
+    location_country?: string[]
+    location_city?: string[]
+    remote_scope?: string[]
+    employment_type?: string[]
+    seniority_level?: string[]
+    target_tier?: string[]
+    title_family?: string[]
+    source_id?: string[]
+    sort_by?: FeedSortId
     q?: string
     page?: number
     page_size?: number
@@ -534,12 +658,38 @@ export class MockStore {
       items = items.filter((o) => o.track === filters.track)
     }
     if (filters.decision) {
-      items = items.filter((o) => o.decision === filters.decision)
+      items = items.filter((o) => mockFacetValue(o, "decision") === filters.decision)
     }
-    if (filters.min_score !== undefined && !Number.isNaN(filters.min_score)) {
-      items = items.filter(
-        (o) => o.fit_score !== null && o.fit_score >= filters.min_score!
-      )
+    const multiSelections: Record<FeedMultiFacetId, string[] | undefined> = {
+      work_mode: filters.work_mode,
+      location_country: filters.location_country,
+      location_city: filters.location_city,
+      remote_scope: filters.remote_scope,
+      employment_type: filters.employment_type,
+      seniority_level: filters.seniority_level,
+      target_tier: filters.target_tier,
+      title_family: filters.title_family,
+      source_id: filters.source_id,
+    }
+    for (const facet of FEED_MULTI_FACETS) {
+      const selected = multiSelections[facet]
+      if (selected?.length) items = items.filter((item) => selected.includes(mockFacetValue(item, facet)))
+    }
+    const scoreBounds: Array<[FeedScoreId, number | undefined, number | undefined]> = [
+      ["fit_score", filters.min_fit_score ?? filters.min_score, filters.max_fit_score],
+      ["preference_score", filters.min_preference_score, filters.max_preference_score],
+      ["confidence_score", filters.min_confidence_score, filters.max_confidence_score],
+      ["priority_score", filters.min_priority_score, filters.max_priority_score],
+    ]
+    for (const [scoreId, minimum, maximum] of scoreBounds) {
+      if (minimum !== undefined && !Number.isNaN(minimum)) items = items.filter((item) => {
+        const score = mockFeedScore(item, scoreId)
+        return score !== null && score >= minimum
+      })
+      if (maximum !== undefined && !Number.isNaN(maximum)) items = items.filter((item) => {
+        const score = mockFeedScore(item, scoreId)
+        return score !== null && score <= maximum
+      })
     }
     if (filters.q) {
       const q = filters.q.toLowerCase()
@@ -549,6 +699,8 @@ export class MockStore {
           o.organization.toLowerCase().includes(q)
       )
     }
+    if (filters.posted_from) items = items.filter((item) => Boolean(item.posted_date && item.posted_date >= filters.posted_from!))
+    if (filters.posted_to) items = items.filter((item) => Boolean(item.posted_date && item.posted_date <= filters.posted_to!))
 
     // Decorate every item with its current hidden_by/flagged_by before
     // deciding visibility, so hidden_count always reflects the full
@@ -566,9 +718,29 @@ export class MockStore {
     // non-demoted ones at an equal score, per the contract's §4 sorting
     // rule. decision and fit_score themselves are never touched by any
     // filter — only this sort position and hidden_by/flagged_by are.
+    const sortBy = filters.sort_by ?? "recommended"
     visible.sort((a, b) => {
       const ao = a.o
       const bo = b.o
+      if (sortBy === "remote_first") {
+        const aRemote = mockExtractionFields(ao).work_mode === "remote"
+        const bRemote = mockExtractionFields(bo).work_mode === "remote"
+        if (aRemote !== bRemote) return aRemote ? -1 : 1
+      }
+      if (sortBy === "newest_posted" || sortBy === "oldest_posted") {
+        const ad = ao.posted_date ?? ""
+        const bd = bo.posted_date ?? ""
+        if (ad !== bd) {
+          if (!ad) return 1
+          if (!bd) return -1
+          return sortBy === "newest_posted" ? (ad > bd ? -1 : 1) : (ad < bd ? -1 : 1)
+        }
+      }
+      if (sortBy === "fit_asc" && ao.fit_score !== bo.fit_score) {
+        if (ao.fit_score === null) return 1
+        if (bo.fit_score === null) return -1
+        return ao.fit_score - bo.fit_score
+      }
       if (ao.fit_score === null && bo.fit_score !== null) return 1
       if (ao.fit_score !== null && bo.fit_score === null) return -1
       if (
@@ -890,6 +1062,36 @@ const MOCK_LOCATIONS: Array<{ city: string | null; country: string | null; regio
 ]
 const MOCK_EMPLOYMENT_TYPES = ["full_time", "contract", "part_time", "unspecified"] as const
 const MOCK_SENIORITY_LEVELS = ["mid", "senior", "lead", "unspecified"] as const
+
+function mockFacetValue(o: SeedOpportunity, facet: FeedFacetId): string {
+  const extraction = mockExtractionFields(o)
+  let raw: string | null | undefined
+  switch (facet) {
+    case "track": return o.track
+    case "decision": raw = o.decision; break
+    case "work_mode": raw = extraction.work_mode; break
+    case "location_country": raw = extraction.location_country; break
+    case "location_city": raw = extraction.location_city; break
+    case "remote_scope": raw = extraction.remote_scope; break
+    case "employment_type": raw = extraction.employment_type; break
+    case "seniority_level": raw = extraction.seniority_level; break
+    case "target_tier": raw = null; break
+    case "title_family": raw = extraction.title_family; break
+    case "source_id": raw = o.source_id; break
+  }
+  const normalized = raw?.trim() ?? ""
+  if (!normalized || normalized.toLocaleLowerCase() === "unknown" || (facet === "title_family" && normalized.toLocaleLowerCase() === "other")) return "unknown"
+  return normalized.toLocaleLowerCase()
+}
+
+function mockFeedScore(o: SeedOpportunity, score: FeedScoreId): number | null {
+  if (score === "fit_score") return o.fit_score
+  if (o.fit_score === null) return null
+  const hash = hashString(o.id)
+  if (score === "preference_score") return (hash * 17 + 31) % 101
+  if (score === "confidence_score") return (hash * 13 + 47) % 101
+  return Math.round((o.fit_score * 0.7 + ((hash * 19 + 13) % 101) * 0.3) * 100) / 100
+}
 
 function mockExtractionFields(o: SeedOpportunity): OpportunityExtractionFields {
   const h = hashString(o.id)

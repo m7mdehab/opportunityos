@@ -980,6 +980,7 @@ class SavedViewCreateRequest(BaseModel):
     name: str
     facets: dict[str, Any] = {}
     search_query: str | None = None
+    feed_query: dict[str, Any] | None = None
     is_default: bool = False
 
 
@@ -991,6 +992,7 @@ def create_saved_view_route(payload: SavedViewCreateRequest, session: Session = 
         name=payload.name,
         facets=payload.facets,
         search_query=payload.search_query,
+        feed_query=payload.feed_query,
         is_default=payload.is_default,
         now=now,
     )
@@ -1000,6 +1002,7 @@ class SavedViewUpdateRequest(BaseModel):
     name: str | None = None
     facets: dict[str, Any] | None = None
     search_query: str | None = None
+    feed_query: dict[str, Any] | None = None
     is_default: bool | None = None
 
 
@@ -1012,6 +1015,7 @@ def update_saved_view_route(view_id: str, payload: SavedViewUpdateRequest, sessi
         name=payload.name,
         facets=payload.facets,
         search_query=payload.search_query,
+        feed_query=payload.feed_query,
         is_default=payload.is_default,
         now=now,
     )

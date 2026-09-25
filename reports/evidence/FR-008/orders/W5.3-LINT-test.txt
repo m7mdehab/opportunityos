@@ -1,0 +1,6 @@
+COMMAND: npm run lint
+
+> web@0.1.0 lint
+> eslint . --max-warnings=0
+
+EXIT_CODE: 0
