@@ -1,0 +1,16 @@
+
+B2.6 corpus ordering: Senior Customer Engineer = 46.61, Senior Data Engineer (best data-engineering match) = 87.5
+{"timestamp": "2026-09-25T06:25:39.222902+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.evaluate_new_completed", "component": "worker.handlers", "data": {"truth_pack_hash": "truth-worker-retry", "evaluated_count": 1}}
+..................F.............................................
+======================================================================
+FAIL: test_geography_and_other_preferences_read_structured_job_attributes (matching.test_scorer.TestPreferenceScoreIsolation.test_geography_and_other_preferences_read_structured_job_attributes)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w32-preference-score\matching\test_scorer.py", line 490, in test_geography_and_other_preferences_read_structured_job_attributes
+    self.assertEqual(evaluation.preference_score, 100.0)
+AssertionError: 88.57 != 100.0
+
+----------------------------------------------------------------------
+Ran 64 tests in 8.950s
+
+FAILED (failures=1)

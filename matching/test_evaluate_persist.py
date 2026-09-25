@@ -21,6 +21,8 @@ from storage.engine import get_engine, get_session_factory, init_db
 from storage.feed_projection import FeedProjectionRecord
 from storage.models import MatchEvaluationRecord, OpportunityRecord
 from storage.repository import StorageRepository
+from truth.models import AtomicAssertion, EvidenceRecord, VerificationStatus
+from truth import predicates
 
 
 class EvaluateAndStoreTest(unittest.TestCase):
@@ -266,7 +268,7 @@ class EvaluateAndStoreTest(unittest.TestCase):
         detail = json.loads(record.evaluation_detail_json)
         self.assertEqual(
             set(detail.keys()),
-            {"hard_constraints", "strengths", "gaps", "unknowns", "uncertainty_penalty", "explanation"},
+            {"hard_constraints", "strengths", "gaps", "unknowns", "uncertainty_penalty", "preference_score", "explanation"},
         )
         self.assertIsInstance(detail["hard_constraints"], list)
         self.assertGreater(len(detail["hard_constraints"]), 0)
@@ -304,7 +306,34 @@ class EvaluateAndStoreTest(unittest.TestCase):
         self.assertIsInstance(detail["gaps"], list)
         self.assertIsInstance(detail["unknowns"], list)
         self.assertIsInstance(detail["uncertainty_penalty"], float)
+        self.assertIsNone(detail["preference_score"])
         self.assertIsInstance(detail["explanation"], str)
+
+    def test_preference_score_is_persisted_from_synthetic_evaluation(self) -> None:
+        graph = create_test_graph()
+        graph.add_evidence(EvidenceRecord(
+            id="ev-pref-persist",
+            content="Prefers remote roles.",
+            source="manual",
+            locator="preference.work_mode",
+        ))
+        graph.add_assertion(AtomicAssertion(
+            id="a-pref-persist",
+            subject_id="founder",
+            predicate=predicates.PREFERENCE_WORK_MODE,
+            value="remote",
+            evidence_ids=("ev-pref-persist",),
+            verification_status=VerificationStatus.VERIFIED,
+        ))
+        record = self._evaluate_and_store(
+            create_test_opportunity(opp_id="opp-preference-persist"),
+            graph,
+            self.repository,
+            truth_pack_hash="hash-pref-persist",
+        )
+
+        detail = json.loads(record.evaluation_detail_json)
+        self.assertEqual(detail["preference_score"], 100.0)
 
     def test_concurrent_evaluate_and_store_same_hash_does_not_raise(self) -> None:
         """Simulates the SELECT-then-write race (Finding 5): two callers both

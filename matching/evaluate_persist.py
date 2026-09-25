@@ -141,7 +141,8 @@ def _build_reasons(evaluation: MatchEvaluation) -> list[dict[str, Any]]:
 def _evaluation_detail_json(evaluation: MatchEvaluation) -> str:
     """Serialize the D6 detail-route payload: full hard-constraint checklist
     plus the evaluation-level strengths/gaps/unknowns/uncertainty_penalty/
-    explanation. ``passed`` is written as the literal JSON ``true``/``false``/
+    preference_score/explanation. ``passed`` is written as literal JSON
+    ``true``/``false``/
     ``null`` -- ``null`` means UNKNOWN (``HardConstraintResult.passed is
     None``) and is never coerced to ``false``.
     """
@@ -171,6 +172,7 @@ def _evaluation_detail_json(evaluation: MatchEvaluation) -> str:
         "gaps": list(evaluation.gaps),
         "unknowns": list(evaluation.unknowns),
         "uncertainty_penalty": evaluation.uncertainty_penalty,
+        "preference_score": evaluation.preference_score,
         "explanation": evaluation.explanation,
     }
     return json.dumps(payload, sort_keys=True)

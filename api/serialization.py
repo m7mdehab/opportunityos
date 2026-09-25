@@ -25,7 +25,8 @@ five JSON-bearing columns this module reads:
                             "founder_side_evidence", "decision", "confidence",
                             "requirement_mandatory", "explanation"}, ...],
      "strengths": [str, ...], "gaps": [str, ...], "unknowns": [str, ...],
-     "uncertainty_penalty": float, "explanation": str}
+     "uncertainty_penalty": float, "preference_score": float|null,
+     "explanation": str}
     Nullable because rows persisted before this column existed have no
     detail payload -- see `unpack_evaluation_detail`.
 
@@ -84,6 +85,7 @@ _EVALUATION_DETAIL_DEFAULT: dict[str, Any] = {
     "gaps": [],
     "unknowns": [],
     "uncertainty_penalty": 0.0,
+    "preference_score": None,
     "explanation": "",
 }
 

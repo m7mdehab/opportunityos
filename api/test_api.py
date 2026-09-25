@@ -1017,6 +1017,7 @@ class OpportunityRoutesTest(ApiTestCase):
                 "gaps": ["gap one"],
                 "unknowns": ["unknown one"],
                 "uncertainty_penalty": 0.1,
+                "preference_score": 72.3,
                 "explanation": "synthetic evaluation for API tests",
             },
         )
@@ -1046,6 +1047,7 @@ class OpportunityRoutesTest(ApiTestCase):
 
         self.assertEqual(body["scoring"]["fit_score"], 55.5)
         self.assertEqual(body["scoring"]["uncertainty_penalty"], 0.1)
+        self.assertEqual(body["scoring"]["preference_score"], 72.3)
         self.assertEqual(body["scoring"]["strengths"], ["strength one"])
         self.assertEqual(body["scoring"]["gaps"], ["gap one"])
         self.assertEqual(body["scoring"]["unknowns"], ["unknown one"])
@@ -1089,6 +1091,7 @@ class OpportunityRoutesTest(ApiTestCase):
         self.assertEqual(scoring["strengths"], ["strong python background"])
         self.assertEqual(scoring["gaps"], ["no prior nonprofit work"])
         self.assertEqual(scoring["unknowns"], ["salary range not disclosed"])
+        self.assertIsNone(scoring["preference_score"])
         # evaluation_detail_json is NULL -> hard_constraints has nowhere to
         # come from for this row, so it is empty rather than fabricated.
         self.assertEqual(detail.json()["qualification"]["constraints"], [])
@@ -3860,4 +3863,3 @@ class TutoringRoutesTest(ApiTestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

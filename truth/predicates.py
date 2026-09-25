@@ -139,6 +139,15 @@ _ASSERTION_ONLY_SPECS: tuple[PredicateSpec, ...] = (
             "Supplied only via the pack's top-level `assertions:` section."
         ),
     ),
+    PredicateSpec(name="preference.work_mode", kind=PredicateKind.ASSERTION_ONLY, source="assertions", description="Founder's preferred work modes; supplied only via assertions."),
+    PredicateSpec(name="preference.employment_type", kind=PredicateKind.ASSERTION_ONLY, source="assertions", description="Founder's preferred employment types; supplied only via assertions."),
+    PredicateSpec(name="preference.geography", kind=PredicateKind.ASSERTION_ONLY, source="assertions", description="Founder's preferred job geography; supplied only via assertions."),
+    PredicateSpec(name="preference.relocation", kind=PredicateKind.ASSERTION_ONLY, source="assertions", description="Founder's relocation preference; supplied only via assertions."),
+    PredicateSpec(name="preference.compensation", kind=PredicateKind.ASSERTION_ONLY, source="assertions", description="Founder's minimum compensation preference with currency and interval; supplied only via assertions."),
+    PredicateSpec(name="preference.industry", kind=PredicateKind.ASSERTION_ONLY, source="assertions", description="Founder's preferred industries; supplied only via assertions."),
+    PredicateSpec(name="preference.company", kind=PredicateKind.ASSERTION_ONLY, source="assertions", description="Founder's preferred companies; supplied only via assertions."),
+    PredicateSpec(name="preference.time_zone", kind=PredicateKind.ASSERTION_ONLY, source="assertions", description="Founder's preferred time zone or overlap; supplied only via assertions."),
+    PredicateSpec(name="preference.travel", kind=PredicateKind.ASSERTION_ONLY, source="assertions", description="Founder's travel preference; supplied only via assertions."),
 )
 
 _REGISTRY: dict[str, PredicateSpec] = {
@@ -219,6 +228,15 @@ LOCATION_CITY = "location.city"
 LOCATION_COUNTRY = "location.country"
 CAPACITY_TEAM_SIZE = "capacity.team_size"
 PREFERENCE_FULLTIME_ONSITE_PREMIUM_MONTHLY = "preference.fulltime_onsite_premium_monthly"
+PREFERENCE_WORK_MODE = "preference.work_mode"
+PREFERENCE_EMPLOYMENT_TYPE = "preference.employment_type"
+PREFERENCE_GEOGRAPHY = "preference.geography"
+PREFERENCE_RELOCATION = "preference.relocation"
+PREFERENCE_COMPENSATION = "preference.compensation"
+PREFERENCE_INDUSTRY = "preference.industry"
+PREFERENCE_COMPANY = "preference.company"
+PREFERENCE_TIME_ZONE = "preference.time_zone"
+PREFERENCE_TRAVEL = "preference.travel"
 
 # Grouped tuples for `matching/` call sites that scan for founder location facts.
 RESIDENCE_LOCATION_PREDICATES: tuple[str, ...] = (
@@ -297,6 +315,15 @@ _NAMED_CONSTANTS: tuple[str, ...] = (
     LOCATION_COUNTRY,
     CAPACITY_TEAM_SIZE,
     PREFERENCE_FULLTIME_ONSITE_PREMIUM_MONTHLY,
+    PREFERENCE_WORK_MODE,
+    PREFERENCE_EMPLOYMENT_TYPE,
+    PREFERENCE_GEOGRAPHY,
+    PREFERENCE_RELOCATION,
+    PREFERENCE_COMPENSATION,
+    PREFERENCE_INDUSTRY,
+    PREFERENCE_COMPANY,
+    PREFERENCE_TIME_ZONE,
+    PREFERENCE_TRAVEL,
 )
 
 # Fail fast at import time if a named constant above ever drifts from the registry.

@@ -20,7 +20,7 @@ from opportunity.models import (
     SeniorityLevel,
     Track,
 )
-from opportunity.normalization import extract_skills_from_text
+from opportunity.normalization import COUNTRY_ALIASES, extract_skills_from_text
 from truth import predicates
 from truth.graph import TruthGraph
 from truth.models import CertificationState, Polarity, VerificationStatus
@@ -136,6 +136,262 @@ def _monthly_compensation(comp: Any) -> float | None:
     if comp.interval == CompensationInterval.YEARLY:
         return amount / 12.0
     return None
+
+
+def _normalize_preference_value(value: Any) -> str:
+    """Normalize a categorical preference for exact, case-insensitive comparison."""
+    return " ".join(str(getattr(value, "value", value)).casefold().split())
+
+
+def _normalize_relocation_value(value: Any) -> str:
+    normalized = _normalize_preference_value(value).replace("_", " ")
+    if normalized in {"true", "yes", "required", "willing", "willing to relocate", "open to relocation", "open to relocate"}:
+        return "yes"
+    if normalized in {"false", "no", "not required", "no relocation", "unwilling", "unwilling to relocate", "not willing to relocate"}:
+        return "no"
+    return normalized
+
+
+def _normalize_time_zone(value: Any) -> str:
+    normalized = _normalize_preference_value(value).replace(" ", "")
+    match = re.fullmatch(r"(?:utc|gmt)([+-])(\d{1,2})(?::?(\d{2}))?", normalized)
+    if match:
+        sign, hours, minutes = match.groups()
+        return f"utc{sign}{int(hours):02d}:{minutes or '00'}"
+    return normalized
+
+
+def _normalize_geography_value(value: Any) -> str:
+    normalized = _normalize_preference_value(value)
+    return COUNTRY_ALIASES.get(normalized, normalized).casefold()
+
+
+def _normalize_track_preference(value: Any) -> str:
+    normalized = _normalize_preference_value(value)
+    return "independent" if normalized in {"independent", "procurement"} else normalized
+
+
+def _verified_positive_assertions(truth_graph: TruthGraph, predicate_names: set[str]) -> tuple[Any, ...]:
+    return tuple(
+        assertion for assertion in truth_graph.assertions.values()
+        if assertion.predicate in predicate_names
+        and assertion.verification_status == VerificationStatus.VERIFIED
+        and assertion.polarity == Polarity.POSITIVE
+    )
+
+
+def _structured_attributes(opp: Opportunity) -> dict[str, str]:
+    return {
+        str(key).casefold().strip(): str(value).strip()
+        for key, value in opp.extra_attributes
+        if str(key).strip() and str(value).strip()
+    }
+
+
+def _asserted_preference_dimension(
+    *,
+    dimension_name: str,
+    label: str,
+    assertions: tuple[Any, ...],
+    job_values: tuple[str, ...],
+    opportunity_fields: tuple[str, ...],
+    worldwide_remote: bool = False,
+) -> MatchDimensionScore | None:
+    """Build a diagnostic preference dimension from verified assertions and
+    structured job values only. An absent/incomparable side is unknown and
+    has no effect on preference_score or capability scoring.
+    """
+    if not assertions:
+        return None
+    normalizer = _normalize_preference_value
+    if dimension_name == "preference_relocation":
+        normalizer = _normalize_relocation_value
+    elif dimension_name == "preference_time_zone":
+        normalizer = _normalize_time_zone
+    elif dimension_name == "preference_geography":
+        normalizer = _normalize_geography_value
+    elif dimension_name == "preference_track":
+        normalizer = _normalize_track_preference
+    founder_values = {
+        normalizer(assertion.value)
+        for assertion in assertions
+        if assertion.value is not None and normalizer(assertion.value)
+    }
+    normalized_job_values = {normalizer(value) for value in job_values if value}
+    refs = tuple(assertion.id for assertion in assertions)
+    if not founder_values:
+        return MatchDimensionScore(
+            dimension_name=dimension_name,
+            raw_score=0.5,
+            weight=0.0,
+            weighted_score=0.0,
+            explanation=f"{label} preference assertion has no comparable value.",
+            unknowns=(f"Verified {label.casefold()} preference has no comparable value",),
+            evidence_refs=refs,
+            opportunity_field_refs=opportunity_fields,
+        )
+    if not normalized_job_values:
+        return MatchDimensionScore(
+            dimension_name=dimension_name,
+            raw_score=0.5,
+            weight=0.0,
+            weighted_score=0.0,
+            explanation=f"{label} preference cannot be compared because the structured job field is unstated.",
+            unknowns=(f"Structured opportunity {label.casefold()} is unstated",),
+            evidence_refs=refs,
+            opportunity_field_refs=opportunity_fields,
+        )
+
+    matched = bool(founder_values & normalized_job_values) or (
+        worldwide_remote and "worldwide" in normalized_job_values
+    ) or "worldwide" in founder_values
+    if matched:
+        return MatchDimensionScore(
+            dimension_name=dimension_name,
+            raw_score=1.0,
+            weight=0.0,
+            weighted_score=0.0,
+            explanation=f"Structured opportunity {label.casefold()} matches a verified Founder preference.",
+            strengths=(f"{label} preference match",),
+            evidence_refs=refs,
+            opportunity_field_refs=opportunity_fields,
+        )
+    return MatchDimensionScore(
+        dimension_name=dimension_name,
+        raw_score=0.2,
+        weight=0.0,
+        weighted_score=0.0,
+        explanation=f"Structured opportunity {label.casefold()} does not match a verified Founder preference.",
+        gaps=(f"{label} preference mismatch",),
+        evidence_refs=refs,
+        opportunity_field_refs=opportunity_fields,
+    )
+
+
+def _asserted_preference_dimensions(opp: Opportunity, truth_graph: TruthGraph) -> list[MatchDimensionScore]:
+    """Score preference categories whose asserted preference exists.
+
+    Job-side values are strictly sourced from typed Opportunity fields or
+    explicit extra_attributes; title/description text is never used here.
+    """
+    attrs = _structured_attributes(opp)
+
+    def values_for(*keys: str) -> tuple[str, ...]:
+        return tuple(attrs[key.casefold()] for key in keys if attrs.get(key.casefold()))
+
+    categories = (
+        (
+            "preference_track", "Opportunity track",
+            {predicates.PREFERENCE_TRACK},
+            ("independent" if opp.track == Track.PROCUREMENT else "employment",),
+            ("track",), False,
+        ),
+        (
+            "preference_work_mode", "Work mode",
+            {predicates.PREFERENCE_WORK_MODE},
+            (_normalize_preference_value(opp.work_mode),)
+            if _normalize_preference_value(opp.work_mode) != "unspecified" else (),
+            ("work_mode",), False,
+        ),
+        (
+            "preference_employment_type", "Employment type",
+            {predicates.PREFERENCE_EMPLOYMENT_TYPE},
+            (_normalize_preference_value(opp.employment_type),)
+            if _normalize_preference_value(opp.employment_type) != "unspecified" else (),
+            ("employment_type",), False,
+        ),
+        (
+            "preference_geography", "Geography",
+            {predicates.PREFERENCE_GEOGRAPHY},
+            tuple(value for value in (
+                opp.location_country, opp.location_region, opp.location_city,
+                *opp.remote_scope_regions,
+                "worldwide" if _normalize_preference_value(opp.remote_scope) == "worldwide" else "",
+            ) if value),
+            ("location_country", "location_region", "location_city", "remote_scope_regions"),
+            _normalize_preference_value(opp.remote_scope) == "worldwide",
+        ),
+        (
+            "preference_relocation", "Relocation",
+            {predicates.PREFERENCE_RELOCATION},
+            values_for("relocation_required", "relocation"),
+            ("extra_attributes.relocation_required", "extra_attributes.relocation"), False,
+        ),
+        (
+            "preference_industry", "Industry",
+            {predicates.PREFERENCE_INDUSTRY},
+            values_for("industry"),
+            ("extra_attributes.industry",), False,
+        ),
+        (
+            "preference_company", "Company",
+            {predicates.PREFERENCE_COMPANY},
+            tuple(value for value in (opp.organization, *values_for("company", "company_name")) if value),
+            ("organization", "extra_attributes.company"), False,
+        ),
+        (
+            "preference_time_zone", "Time-zone",
+            {predicates.PREFERENCE_TIME_ZONE},
+            values_for("time_zone", "timezone", "time_zone_overlap"),
+            ("extra_attributes.time_zone", "extra_attributes.time_zone_overlap"), False,
+        ),
+        (
+            "preference_travel", "Travel",
+            {predicates.PREFERENCE_TRAVEL},
+            values_for("travel_expectation", "travel_required", "travel"),
+            ("extra_attributes.travel_expectation", "extra_attributes.travel_required"), False,
+        ),
+    )
+
+    scores: list[MatchDimensionScore] = []
+    for name, label, predicate_names, job_values, fields, worldwide_remote in categories:
+        assertion_group = _verified_positive_assertions(truth_graph, predicate_names)
+        if name == "preference_track":
+            assertion_group = tuple(
+                assertion for assertion in assertion_group
+                if _normalize_track_preference(assertion.value) in {"employment", "independent"}
+            )
+        score = _asserted_preference_dimension(
+            dimension_name=name,
+            label=label,
+            assertions=assertion_group,
+            job_values=job_values,
+            opportunity_fields=fields,
+            worldwide_remote=worldwide_remote,
+        )
+        if score is not None:
+            scores.append(score)
+    return scores
+
+
+def _parse_compensation_preference(value: Any) -> tuple[float, str, str] | None:
+    """Parse a Founder-authored minimum as '<amount> ISO interval'."""
+    if isinstance(value, dict):
+        try:
+            amount = float(value["min_amount"])
+            currency = str(value["currency"]).upper().strip()
+            interval = str(value["interval"]).casefold().strip()
+        except (KeyError, TypeError, ValueError):
+            return None
+    else:
+        match = re.fullmatch(
+            r"\s*([\d,]+(?:\.\d+)?)\s+([A-Za-z]{3})\s+(hourly|daily|weekly|monthly|yearly|annual|project)\s*",
+            str(value), re.IGNORECASE,
+        )
+        if not match:
+            return None
+        amount_text, currency, interval = match.groups()
+        try:
+            amount = float(amount_text.replace(",", ""))
+        except ValueError:
+            return None
+        currency = currency.upper()
+        interval = interval.casefold()
+    if interval == "annual":
+        interval = "yearly"
+    if amount < 0 or len(currency) != 3 or interval not in {item.value for item in CompensationInterval}:
+        return None
+    return amount, currency, interval
 
 
 def _credential_kind(text: str) -> str | None:
@@ -266,9 +522,58 @@ class OpportunityScorer:
         else:
             dim_scores, uncertainty = self._score_employment(opp, truth_graph, evaluated_at)
 
-        # Calculate weighted overall score
-        total_weighted = sum(ds.weighted_score for ds in dim_scores)
-        overall_score = max(0.0, min(100.0, (total_weighted - (uncertainty * self.policy.uncertainty_penalty_weight)) * 100.0))
+        dim_scores.extend(_asserted_preference_dimensions(opp, truth_graph))
+        compensation_preference = self._score_asserted_compensation_preference(opp, truth_graph)
+        if compensation_preference is not None:
+            dim_scores.append(compensation_preference)
+
+        # Objective fit uses capability dimensions only. Preference dimensions,
+        # qualification-only geography, and procurement compliance never enter
+        # this aggregate. Normalize over the active capability weights so
+        # uncalibrated zero-weight W3.1 dimensions remain visible without
+        # reducing the score's range.
+        capability_dimensions = (
+            {"service_capabilities", "scope_complexity", "portfolio_evidence"}
+            if opp.track == Track.PROCUREMENT
+            else {
+                "core_skills", "experience_fit", "seniority_fit", "responsibility_scope",
+                "domain_fit", "title_family_fit", "education_certification_fit",
+            }
+        )
+        active_capability = [
+            ds for ds in dim_scores
+            if ds.dimension_name in capability_dimensions and ds.weight > 0.0
+        ]
+        capability_weight = sum(ds.weight for ds in active_capability)
+        capability_fit = (
+            sum(ds.weighted_score for ds in active_capability) / capability_weight
+            if capability_weight > 0.0 else 0.5
+        )
+        overall_score = max(
+            0.0,
+            min(100.0, (capability_fit - (uncertainty * self.policy.uncertainty_penalty_weight)) * 100.0),
+        )
+
+        preference_components = [
+            ds for ds in dim_scores
+            if ds.dimension_name == "target_role_family_preference"
+            and ds.evidence_refs and (ds.strengths or ds.gaps)
+        ]
+        preference_components.extend(
+            ds for ds in dim_scores
+            if ds.dimension_name == "compensation_fit"
+            and compensation_preference is None
+            and ds.evidence_refs and (ds.strengths or ds.gaps)
+        )
+        preference_components.extend(
+            ds for ds in dim_scores
+            if ds.dimension_name.startswith("preference_")
+            and ds.evidence_refs and (ds.strengths or ds.gaps)
+        )
+        preference_score = (
+            round(sum(ds.raw_score for ds in preference_components) / len(preference_components) * 100.0, 2)
+            if preference_components else None
+        )
 
         # If hard failure occurred and auto-rejection is enabled, cap score
         if qual_decision == QualificationDecision.INELIGIBLE:
@@ -292,6 +597,7 @@ class OpportunityScorer:
         explanation_parts = [
             f"Qualification: {qual_decision.value.upper()}.",
             f"Overall Fit Score: {round(overall_score, 1)}/100.",
+            f"Preference Score: {round(preference_score, 1)}/100." if preference_score is not None else "Preference Score: no comparable stated preferences.",
             f"Strengths: {len(strengths)} identified.",
             f"Gaps: {len(gaps)} identified.",
             f"Unknowns: {len(unknowns)} identified.",
@@ -316,6 +622,84 @@ class OpportunityScorer:
             policy_version=self.policy.version,
             evaluated_at=evaluated_at,
             score_breakdown=breakdown,
+            preference_score=preference_score,
+        )
+
+    def _score_asserted_compensation_preference(
+        self, opp: Opportunity, truth_graph: TruthGraph,
+    ) -> MatchDimensionScore | None:
+        assertions = _verified_positive_assertions(truth_graph, {predicates.PREFERENCE_COMPENSATION})
+        if not assertions:
+            return None
+        comp = opp.compensation
+        parsed = [
+            (assertion, _parse_compensation_preference(assertion.value))
+            for assertion in assertions
+        ]
+        usable = [(assertion, preference) for assertion, preference in parsed if preference is not None]
+        refs = tuple(assertion.id for assertion in assertions)
+        if comp is None or comp.min_amount is None:
+            return MatchDimensionScore(
+                dimension_name="preference_compensation",
+                raw_score=0.5,
+                weight=0.0,
+                weighted_score=0.0,
+                explanation="Founder compensation preference cannot be compared because the posting omits compensation.",
+                unknowns=("Opportunity compensation is unstated",),
+                evidence_refs=refs,
+                opportunity_field_refs=("compensation",),
+            )
+        if not usable:
+            return MatchDimensionScore(
+                dimension_name="preference_compensation",
+                raw_score=0.5,
+                weight=0.0,
+                weighted_score=0.0,
+                explanation="Founder compensation preference has no supported amount/currency/interval value.",
+                unknowns=("Compensation preference is not in the comparable amount/currency/interval form",),
+                evidence_refs=refs,
+                opportunity_field_refs=("compensation",),
+            )
+        comp_currency = (comp.currency or "").upper().strip()
+        comp_interval = _normalize_preference_value(comp.interval)
+        comparable = [
+            (assertion, preference) for assertion, preference in usable
+            if preference[1] == comp_currency and preference[2] == comp_interval
+        ]
+        if not comparable:
+            return MatchDimensionScore(
+                dimension_name="preference_compensation",
+                raw_score=0.5,
+                weight=0.0,
+                weighted_score=0.0,
+                explanation="Founder compensation preference and posting use different currencies or intervals.",
+                unknowns=("Compensation preference and opportunity are not currency/interval comparable",),
+                evidence_refs=refs,
+                opportunity_field_refs=("compensation",),
+            )
+        max_amount = comp.max_amount if comp.max_amount is not None else comp.min_amount
+        matched = [item for item in comparable if max_amount >= item[1][0]]
+        if matched:
+            matched_refs = tuple(assertion.id for assertion, _ in matched)
+            return MatchDimensionScore(
+                dimension_name="preference_compensation",
+                raw_score=1.0,
+                weight=0.0,
+                weighted_score=0.0,
+                explanation="Opportunity compensation meets a verified minimum Founder preference.",
+                strengths=("Compensation preference met",),
+                evidence_refs=matched_refs,
+                opportunity_field_refs=("compensation",),
+            )
+        return MatchDimensionScore(
+            dimension_name="preference_compensation",
+            raw_score=0.2,
+            weight=0.0,
+            weighted_score=0.0,
+            explanation="Opportunity compensation is below every comparable verified minimum Founder preference.",
+            gaps=("Compensation preference not met",),
+            evidence_refs=tuple(assertion.id for assertion, _ in comparable),
+            opportunity_field_refs=("compensation",),
         )
 
     def _score_employment(
@@ -735,7 +1119,6 @@ class OpportunityScorer:
             geo_gaps = ()
             geo_unknowns = ("Founder jurisdiction unasserted in truth graph",)
             geo_refs = ()
-            uncertainty_acc += 0.1
         elif geo_status == "excluded":
             geo_score = 0.0
             geo_strengths = ()
@@ -748,7 +1131,6 @@ class OpportunityScorer:
             geo_gaps = ()
             geo_unknowns = ("Geographic eligibility requires applicant confirmation",)
             geo_refs = ()
-            uncertainty_acc += 0.2
 
         w_geo = weights.get("geography", 0.10)
         scores.append(MatchDimensionScore(
@@ -796,13 +1178,11 @@ class OpportunityScorer:
                 comp_strengths = ()
                 comp_gaps = ()
                 comp_unknowns = (f"Opportunity compensation stated ({comp.min_amount} {comp.currency or ''} {interval_name}); compatible founder target economics unconfigured in policy",)
-                uncertainty_acc += 0.1
         else:
             comp_score = 0.50
             comp_strengths = ()
             comp_gaps = ()
             comp_unknowns = ("Compensation unstated in opportunity posting",)
-            uncertainty_acc += 0.1
 
         # Premium full-time/on-site rule: a RANKING signal only, never a hard constraint
         # and never a penalty for unstated compensation. It only ever adds a gap note and
@@ -824,6 +1204,7 @@ class OpportunityScorer:
                 a for a in truth_graph.assertions.values()
                 if a.predicate == predicates.PREFERENCE_FULLTIME_ONSITE_PREMIUM_MONTHLY
                 and a.verification_status == VerificationStatus.VERIFIED
+                and a.polarity == Polarity.POSITIVE
             ]
             threshold = _parse_currency_threshold(premium_assertions[0].value) if premium_assertions else None
             if threshold is not None:
@@ -843,6 +1224,11 @@ class OpportunityScorer:
                         )
                         comp_score = min(comp_score, 0.35)
                         comp_signal_tags = ("premium_shortfall",)
+                    else:
+                        comp_strengths = comp_strengths + (
+                            f"Full-time on-site compensation meets the founder's {threshold_amount:.0f} {threshold_currency}/month preference",
+                        )
+                        comp_score = max(comp_score, 0.90)
                 # else: compensation unstated, non-monthly/yearly, or a different currency
                 # than the threshold -> UNKNOWN for this rule, never a penalty.
 
@@ -866,6 +1252,7 @@ class OpportunityScorer:
             a for a in truth_graph.assertions.values()
             if a.predicate == predicates.CAREER_TARGET_ROLE
             and a.verification_status == VerificationStatus.VERIFIED
+            and a.polarity == Polarity.POSITIVE
         ]
         if not target_role_assertions:
             traj_score = 0.50
@@ -873,7 +1260,6 @@ class OpportunityScorer:
             traj_gaps = ()
             traj_unknowns = ("Founder career trajectory preferences unstated in truth graph",)
             traj_ev_refs = ()
-            uncertainty_acc += 0.1
         else:
             matched_traj = [a for a in target_role_assertions if str(a.value).casefold() in opp.title.casefold()]
             if matched_traj:
@@ -912,6 +1298,7 @@ class OpportunityScorer:
             a for a in truth_graph.assertions.values()
             if a.predicate == predicates.CAREER_TARGET_ROLE
             and a.verification_status == VerificationStatus.VERIFIED
+            and a.polarity == Polarity.POSITIVE
         ]
         if not target_role_family_assertions:
             title_family_score = 0.50
@@ -919,7 +1306,6 @@ class OpportunityScorer:
             title_family_gaps = ()
             title_family_unknowns = ("Founder has no verified career.target_role assertion to compare title families against",)
             title_family_ev_refs = ()
-            uncertainty_acc += 0.1
         else:
             target_families = {
                 normalize_title(str(a.value))[0]: a for a in target_role_family_assertions
@@ -938,7 +1324,6 @@ class OpportunityScorer:
                 title_family_gaps = ()
                 title_family_unknowns = (f"Posting title did not normalize to a known family (rule: {opp_family_rule})",)
                 title_family_ev_refs = ()
-                uncertainty_acc += 0.05
             else:
                 title_family_score = 0.20
                 title_family_strengths = ()
@@ -1309,13 +1694,11 @@ class OpportunityScorer:
                 bud_strengths = ()
                 bud_gaps = ()
                 bud_unknowns = (f"Procurement budget stated ({comp.min_amount} {comp.currency or ''} {interval_name}); compatible founder {interval_name} target economics unconfigured in policy",)
-                uncertainty_acc += 0.1
         else:
             bud_score = 0.50
             bud_strengths = ()
             bud_gaps = ()
             bud_unknowns = ("Procurement budget unstated in notice metadata",)
-            uncertainty_acc += 0.1
 
         scores.append(MatchDimensionScore(
             dimension_name="budget_fit",
@@ -1337,7 +1720,6 @@ class OpportunityScorer:
             deliv_strengths = ()
             deliv_gaps = ()
             deliv_unknowns = ("Buyer country unspecified in notice metadata",)
-            uncertainty_acc += 0.1
         else:
             prohibited = getattr(self.policy, "prohibited_jurisdictions", ())
             approved = getattr(self.policy, "approved_delivery_jurisdictions", ())
@@ -1356,7 +1738,6 @@ class OpportunityScorer:
                 deliv_strengths = ()
                 deliv_gaps = ()
                 deliv_unknowns = (f"Buyer country '{buyer_loc}' delivery compliance unconfirmed",)
-                uncertainty_acc += 0.1
 
         w_deliv = weights.get("delivery", 0.10)
         scores.append(MatchDimensionScore(
@@ -1382,13 +1763,11 @@ class OpportunityScorer:
             ev_strengths = ()
             ev_gaps = ("Zero verified assertions in truth graph to substantiate proposal",)
             ev_unknowns = ()
-            uncertainty_acc += 0.50
         elif verified_count < 3:
             ev_score = 0.40
             ev_strengths = ()
             ev_gaps = ()
             ev_unknowns = ("Sparse verified assertions in truth graph",)
-            uncertainty_acc += 0.20
         else:
             ev_score = min(1.0, 0.60 + (verified_count * 0.05))
             ev_strengths = (f"{verified_count} verified truth graph assertions available for proposal substantiation",)

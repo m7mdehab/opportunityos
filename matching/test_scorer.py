@@ -375,6 +375,135 @@ class TestScoringPolicyWeightsSumToOne(unittest.TestCase):
             "are absent from ScoringPolicy().independent_weights.",
         )
 
+
+class TestPreferenceScoreIsolation(unittest.TestCase):
+    def _add_preference(
+        self,
+        graph: TruthGraph,
+        *,
+        value: str,
+        status: VerificationStatus = VerificationStatus.VERIFIED,
+        polarity: Polarity = Polarity.POSITIVE,
+        predicate: str = predicates.PREFERENCE_WORK_MODE,
+    ) -> None:
+        sequence = getattr(self, "_preference_fixture_sequence", 0) + 1
+        self._preference_fixture_sequence = sequence
+        ev_id = f"ev-pref-{sequence}"
+        assertion_id = f"a-pref-{sequence}"
+        graph.add_evidence(EvidenceRecord(
+            id=ev_id, content=f"Preference: {value}", source="manual", locator=predicate,
+        ))
+        graph.add_assertion(AtomicAssertion(
+            id=assertion_id,
+            subject_id="founder",
+            predicate=predicate,
+            value=value,
+            evidence_ids=(ev_id,),
+            verification_status=status,
+            polarity=polarity,
+        ))
+
+    def test_work_mode_preference_is_separate_from_capability_and_qualification(self) -> None:
+        graph = create_test_graph()
+        opp = create_test_opportunity(work_mode=WorkMode.REMOTE, remote_scope=RemoteScope.WORLDWIDE)
+        baseline = OpportunityScorer().evaluate(opp, graph)
+        self._add_preference(graph, value="remote")
+        preferred = OpportunityScorer().evaluate(opp, graph)
+
+        self.assertEqual(preferred.preference_score, 100.0)
+        self.assertEqual(preferred.overall_fit_score, baseline.overall_fit_score)
+        self.assertEqual(preferred.qualification_decision, baseline.qualification_decision)
+        self.assertEqual(
+            next(d for d in preferred.dimension_scores if d.dimension_name == "preference_work_mode").weight,
+            0.0,
+        )
+
+    def test_only_verified_positive_preference_assertions_are_scored(self) -> None:
+        for status, polarity in (
+            (VerificationStatus.UNVERIFIED, Polarity.POSITIVE),
+            (VerificationStatus.VERIFIED, Polarity.NEGATIVE),
+        ):
+            graph = create_test_graph()
+            self._add_preference(graph, value="remote", status=status, polarity=polarity)
+            evaluation = OpportunityScorer().evaluate(
+                create_test_opportunity(work_mode=WorkMode.REMOTE, remote_scope=RemoteScope.WORLDWIDE),
+                graph,
+            )
+            self.assertIsNone(evaluation.preference_score)
+            self.assertNotIn("preference_work_mode", {d.dimension_name for d in evaluation.dimension_scores})
+
+    def test_preference_track_does_not_accept_work_mode_values(self) -> None:
+        graph = create_test_graph()
+        self._add_preference(graph, value="remote", predicate=predicates.PREFERENCE_TRACK)
+        evaluation = OpportunityScorer().evaluate(create_test_opportunity(), graph)
+
+        self.assertIsNone(evaluation.preference_score)
+        self.assertNotIn("preference_track", {d.dimension_name for d in evaluation.dimension_scores})
+
+    def test_missing_structured_job_value_does_not_create_a_preference_score(self) -> None:
+        graph = create_test_graph()
+        self._add_preference(graph, value="remote")
+        opp = replace(create_test_opportunity(), work_mode=WorkMode.UNSPECIFIED, remote_scope=RemoteScope.UNSPECIFIED)
+        evaluation = OpportunityScorer().evaluate(opp, graph)
+
+        self.assertIsNone(evaluation.preference_score)
+        dimension = next(d for d in evaluation.dimension_scores if d.dimension_name == "preference_work_mode")
+        self.assertTrue(dimension.unknowns)
+        self.assertEqual(dimension.weighted_score, 0.0)
+
+    def test_currency_and_interval_typed_compensation_preference(self) -> None:
+        graph = create_test_graph()
+        self._add_preference(
+            graph,
+            value="85000 EGP monthly",
+            predicate=predicates.PREFERENCE_COMPENSATION,
+        )
+        opportunity = create_test_opportunity(
+            compensation=Compensation(
+                min_amount=90000,
+                max_amount=100000,
+                currency="EGP",
+                interval=CompensationInterval.MONTHLY,
+            ),
+        )
+        evaluation = OpportunityScorer().evaluate(opportunity, graph)
+
+        self.assertEqual(evaluation.preference_score, 100.0)
+        dimension = next(d for d in evaluation.dimension_scores if d.dimension_name == "preference_compensation")
+        self.assertEqual(dimension.raw_score, 1.0)
+        self.assertTrue(dimension.evidence_refs)
+        self.assertTrue(all(ref.startswith("a-pref-") for ref in dimension.evidence_refs))
+
+    def test_geography_and_other_preferences_read_structured_job_attributes(self) -> None:
+        graph = create_test_graph()
+        self._add_preference(graph, value="Egypt", predicate=predicates.PREFERENCE_GEOGRAPHY)
+        self._add_preference(graph, value="fintech", predicate=predicates.PREFERENCE_INDUSTRY)
+        self._add_preference(graph, value="Cloudflare", predicate=predicates.PREFERENCE_COMPANY)
+        self._add_preference(graph, value="UTC+2", predicate=predicates.PREFERENCE_TIME_ZONE)
+        self._add_preference(graph, value="contract", predicate=predicates.PREFERENCE_EMPLOYMENT_TYPE)
+        self._add_preference(graph, value="willing to relocate", predicate=predicates.PREFERENCE_RELOCATION)
+        self._add_preference(graph, value="none", predicate=predicates.PREFERENCE_TRAVEL)
+        opp = replace(
+            create_test_opportunity(work_mode=WorkMode.ONSITE, employment_type=EmploymentType.CONTRACT),
+            location_country="EG",
+            extra_attributes=(
+                ("industry", "FinTech"),
+                ("time_zone", "utc+02:00"),
+                ("relocation_required", "true"),
+                ("travel_expectation", "none"),
+            ),
+        )
+        evaluation = OpportunityScorer().evaluate(opp, graph)
+
+        self.assertEqual(evaluation.preference_score, 100.0)
+        for name in (
+            "preference_geography", "preference_industry", "preference_company",
+            "preference_time_zone", "preference_employment_type", "preference_relocation",
+            "preference_travel",
+        ):
+            dimension = next(d for d in evaluation.dimension_scores if d.dimension_name == name)
+            self.assertEqual(dimension.raw_score, 1.0)
+
 def _skill_assertion(graph: TruthGraph, *, skill_id: str, name: str, proficiency: str | None, evidence_count: int) -> None:
     """Add one skill.name (+ optional skill.proficiency) assertion under its
     own subject_id -- `skill_id` -- exactly as a real founder-shaped pack's

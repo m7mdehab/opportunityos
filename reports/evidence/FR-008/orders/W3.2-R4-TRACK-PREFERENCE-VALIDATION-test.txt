@@ -1,0 +1,8 @@
+
+B2.6 corpus ordering: Senior Customer Engineer = 46.61, Senior Data Engineer (best data-engineering match) = 87.5
+{"timestamp": "2026-09-25T06:32:34.512629+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.evaluate_new_completed", "component": "worker.handlers", "data": {"truth_pack_hash": "truth-worker-retry", "evaluated_count": 1}}
+.................................................................
+----------------------------------------------------------------------
+Ran 65 tests in 6.767s
+
+OK

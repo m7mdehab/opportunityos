@@ -267,6 +267,22 @@ class TestPredicateRegistryCompleteness(unittest.TestCase):
                     f"assertion-only predicate {name!r} must name its owning pack section",
                 )
 
+    def test_fr008_preference_predicates_are_registered_as_assertion_only(self) -> None:
+        registry = predicates.all_predicates()
+        for name in (
+            predicates.PREFERENCE_WORK_MODE,
+            predicates.PREFERENCE_EMPLOYMENT_TYPE,
+            predicates.PREFERENCE_GEOGRAPHY,
+            predicates.PREFERENCE_RELOCATION,
+            predicates.PREFERENCE_COMPENSATION,
+            predicates.PREFERENCE_INDUSTRY,
+            predicates.PREFERENCE_COMPANY,
+            predicates.PREFERENCE_TIME_ZONE,
+            predicates.PREFERENCE_TRAVEL,
+        ):
+            self.assertEqual(registry[name].kind, PredicateKind.ASSERTION_ONLY)
+            self.assertEqual(registry[name].source, "assertions")
+
     def test_known_orphans_are_no_longer_referenced_by_their_old_spelling(self) -> None:
         """The specific orphan spellings this brief's defect list named must be gone
         from the files this D2 deliverable fixed (scorer.py, qualification.py,

@@ -173,6 +173,9 @@ class MatchEvaluation:
     policy_version: str
     evaluated_at: str
     score_breakdown: tuple[tuple[str, float], ...] = ()
+    # Preference fit is a separate, nullable ranking signal. None means no
+    # stated preference had comparable Founder-side and job-side evidence.
+    preference_score: float | None = None
 
     @property
     def is_qualified(self) -> bool:

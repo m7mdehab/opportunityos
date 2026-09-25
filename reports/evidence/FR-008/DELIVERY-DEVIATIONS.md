@@ -82,3 +82,15 @@ The first W3.1 focused acceptance ran 136 tests and reported four errors in the 
 ## W3.1 report whitespace remediation
 
 After the implementation, report, and progress checkpoint was committed, a staged `git diff --check` found two Markdown hard-break spaces in the W3.1 report. The exact command output is preserved in `orders/W3.1-STAGED-diff-check.txt`. `W3.1-R3-DOCUMENT-WHITESPACE` removed those spaces without changing source behavior; repository integrity and diff checks then passed in R3. The original integrated 136-test run remains applicable because R3 changed documentation only.
+
+## W3.2 initial fixture failure and R1 correction
+
+The initial W3.2 focused acceptance ran 63 tests and reported five errors in the new synthetic preference helper. The fixture treated `TruthGraph.evidence` as a collection, but it is a lookup method; no scoring assertions in those five tests were reached. The complete raw output remains in `orders/W3.2-test.txt`. `W3.2-R1-FIXTURE-REMEDIATION` changed only test-local ID generation to use a deterministic counter. R1 passed all 63 focused scorer, persistence, model, and predicate tests, repository integrity, and diff check; raw output is preserved in `orders/W3.2-R1-FIXTURE-REMEDIATION-*`.
+
+## W3.2 geography normalization mismatch and R3 correction
+
+The W3.2-R2 final acceptance ran 64 focused tests and found one failure: a synthetic `Egypt` preference did not match structured ISO-2 country `EG` because the shared country alias table returned uppercase while exact comparison used lowercase. The full red transcript remains unchanged at `orders/W3.2-R2-test.txt`. API R2 passed 6 tests with 19 environment skips; repository integrity and diff checks passed. `W3.2-R3-GEOGRAPHY-NORMALIZATION` lowercased the canonical alias result only. R3 then passed all 64 focused tests, repository integrity, and diff check. No eligibility, qualification, weight, or corpus state was changed.
+
+## W3.2 legacy track-preference value validation
+
+After the geographic correction passed, code review found that the legacy `preference.track` predicate could carry an unrelated value such as `remote`. Since that predicate is specifically employment-versus-independent, treating `remote` as a direct mismatch would confuse predicate families. `W3.2-R4-TRACK-PREFERENCE-VALIDATION` now filters track values to the supported categories and tests the unrelated-value case. R4 passed all 65 focused tests, repository integrity, and diff check; earlier R1/R2 red outputs remain unchanged.
