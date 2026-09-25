@@ -1,0 +1,21 @@
+=== diff from W6.6 order base ===
+ api/routes_api.py                                  | 103 ++++++
+ api/test_tracker_documents_service.py              | 231 ++++++++++++
+ api/tracker_documents_service.py                   | 399 +++++++++++++++++++++
+ .../orders/W6.6-DOCUMENT-ASSOCIATIONS-ORDER.md     |  74 ++++
+ .../orders/W6.6-DOCUMENT-ASSOCIATIONS-READINESS.md |  28 ++
+ .../evidence/FR-008/orders/W6.6-FEATURE-diff.txt   |  11 +
+ .../FR-008/orders/W6.6-FEATURE-raw-output.zip      | Bin 0 -> 2125 bytes
+ .../FR-008/orders/W6.6-FEATURE-repository.txt      |   1 +
+ .../evidence/FR-008/orders/W6.6-FEATURE-test.txt   |  85 +++++
+ web/app/api/[...path]/route.ts                     |   9 +
+ web/components/feed/detail-drawer.tsx              |   3 +
+ web/components/feed/tracker-documents.tsx          | 141 ++++++++
+ web/lib/api/client.ts                              |  28 ++
+ web/lib/contract/types.ts                          |  43 +++
+ web/lib/mock/handlers.ts                           |  66 +++-
+ web/lib/mock/store.ts                              | 201 +++++++++++
+ web/tests/e2e/fr008-tracker-triage.spec.ts         |  88 +++++
+ 17 files changed, 1510 insertions(+), 1 deletion(-)
+
+=== commit-range diff check ===
