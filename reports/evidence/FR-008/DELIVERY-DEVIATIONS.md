@@ -78,3 +78,7 @@ W2.3-R2 ran from source base `3857d94043a6d433ad2553611ad9ee86997da104`. All 51 
 ## W3.1 initial acceptance and fixture remediation
 
 The first W3.1 focused acceptance ran 136 tests and reported four errors in the newly added synthetic education/certification tests. The fixtures passed `requirements=` to `create_test_opportunity`, which does not expose that argument. The complete unedited output remains in `orders/W3.1-test.txt`; no production-scoring assertion failed. `W3.1-R2-FIXTURE-REMEDIATION` changed only the synthetic test setup to apply requirements with `dataclasses.replace`, then reran the acceptance set from exact source base `6e2fe67a8e988fcb1ada9ab1dea45df8a683d0e3`. R2 passed all 136 tests, repository integrity, and diff check. The integrated branch rerun also passed all 136 tests and repository integrity/diff checks; outputs are preserved in `orders/W3.1-R2-*` and `orders/W3.1-INT-*`. The original red log remains unchanged.
+
+## W3.1 report whitespace remediation
+
+After the implementation, report, and progress checkpoint was committed, a staged `git diff --check` found two Markdown hard-break spaces in the W3.1 report. The exact command output is preserved in `orders/W3.1-STAGED-diff-check.txt`. `W3.1-R3-DOCUMENT-WHITESPACE` removed those spaces without changing source behavior; repository integrity and diff checks then passed in R3. The original integrated 136-test run remains applicable because R3 changed documentation only.
