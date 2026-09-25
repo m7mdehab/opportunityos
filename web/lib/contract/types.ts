@@ -543,6 +543,49 @@ export interface TrackerInterviewMutationResponse {
   changed: boolean
 }
 
+export type TrackerDocumentKind = "cv" | "cover_letter"
+
+export interface TrackerDocumentCandidate {
+  document_kind: TrackerDocumentKind
+  document_id: string
+  label: string
+  format: "pdf" | "docx"
+  recommended: boolean
+  created_at?: string | null
+}
+
+export interface TrackerDocumentCandidateListResponse {
+  opportunity_id: string
+  page: number
+  page_size: number
+  total: number
+  items: TrackerDocumentCandidate[]
+}
+
+export interface TrackerDocumentLink {
+  id: string
+  opportunity_id: string
+  document_kind: TrackerDocumentKind
+  document_id: string
+  linked_at: string
+  unlinked_at: string | null
+}
+
+export interface TrackerDocumentListResponse {
+  opportunity_id: string
+  page: number
+  page_size: number
+  total: number
+  selected_cv_document_id: string | null
+  selected_cover_letter_document_id: string | null
+  items: TrackerDocumentLink[]
+}
+
+export interface TrackerDocumentMutationResponse {
+  link: TrackerDocumentLink
+  changed: boolean
+}
+
 export interface DashboardDay {
   date: string
   fetched: number

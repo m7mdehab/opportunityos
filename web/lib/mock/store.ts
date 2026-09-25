@@ -49,6 +49,12 @@ import type {
   TrackerInterviewMutationResponse,
   TrackerInterviewOutcome,
   TrackerInterviewSummaryResponse,
+  TrackerDocumentCandidate,
+  TrackerDocumentKind,
+  TrackerDocumentLink,
+  TrackerDocumentListResponse,
+  TrackerDocumentCandidateListResponse,
+  TrackerDocumentMutationResponse,
   TrackerState,
 } from "@/lib/contract/types"
 import {
@@ -99,6 +105,20 @@ interface MockTrackerInterviewIdempotency {
   opportunity_id: string
   interview_id: string
 }
+
+interface MockTrackerDocumentIdempotency {
+  idempotency_key: string
+  action_type: "tracker_document_linked" | "tracker_document_unlinked"
+  opportunity_id: string
+  document_kind: TrackerDocumentKind
+  document_id: string
+  link_id: string
+}
+
+const MOCK_CV_CANDIDATES: TrackerDocumentCandidate[] = [
+  { document_kind: "cv", document_id: "mock-cv-general", label: "General résumé", format: "pdf", recommended: true },
+  { document_kind: "cv", document_id: "mock-cv-data", label: "Data résumé", format: "pdf", recommended: false },
+]
 
 const HIGH_FIT_THRESHOLD = 70
 
@@ -304,6 +324,9 @@ export class MockStore {
   /** Synthetic interview records, private notes, and idempotency live in their own mock namespace. */
   private trackerInterviews = new Map<string, TrackerInterview[]>()
   private trackerInterviewIdempotency: MockTrackerInterviewIdempotency[] = []
+  /** Synthetic ID-only document associations live in their own mock namespace. */
+  private trackerDocuments = new Map<string, TrackerDocumentLink[]>()
+  private trackerDocumentIdempotency: MockTrackerDocumentIdempotency[] = []
 
   constructor(scenario: MockScenario) {
     this.scenario = scenario
@@ -388,6 +411,7 @@ export class MockStore {
     this.restoreTrackerNotes()
     this.restoreTrackerFollowUps()
     this.restoreTrackerInterviews()
+    this.restoreTrackerDocuments()
     this.dailyCounters = this.seedDailyCounters()
   }
 
@@ -409,6 +433,10 @@ export class MockStore {
 
   private trackerInterviewsStorageKey() {
     return `opportunityos.mock.interviews.${this.scenario}`
+  }
+
+  private trackerDocumentsStorageKey() {
+    return `opportunityos.mock.documents.${this.scenario}`
   }
 
   private restoreTrackerState() {
@@ -645,6 +673,179 @@ export class MockStore {
       }))
     } catch {
       // Synthetic review data must not break the mock workflow.
+    }
+  }
+
+  private restoreTrackerDocuments() {
+    if (typeof window === "undefined") return
+    try {
+      const raw = window.localStorage.getItem(this.trackerDocumentsStorageKey())
+      if (!raw) return
+      const saved: unknown = JSON.parse(raw)
+      if (!saved || typeof saved !== "object") return
+      const object = saved as { documents?: unknown; idempotency?: unknown }
+      if (Array.isArray(object.documents)) {
+        for (const entry of object.documents) {
+          if (
+            entry && typeof entry === "object" &&
+            "id" in entry && typeof entry.id === "string" &&
+            "opportunity_id" in entry && typeof entry.opportunity_id === "string" &&
+            "document_kind" in entry && (entry.document_kind === "cv" || entry.document_kind === "cover_letter") &&
+            "document_id" in entry && typeof entry.document_id === "string" &&
+            "linked_at" in entry && typeof entry.linked_at === "string" &&
+            "unlinked_at" in entry && (typeof entry.unlinked_at === "string" || entry.unlinked_at === null) &&
+            this.opportunities.has(entry.opportunity_id)
+          ) {
+            const rows = this.trackerDocuments.get(entry.opportunity_id) ?? []
+            rows.push(entry as TrackerDocumentLink)
+            this.trackerDocuments.set(entry.opportunity_id, rows)
+          }
+        }
+      }
+      if (Array.isArray(object.idempotency)) {
+        this.trackerDocumentIdempotency = object.idempotency.filter((entry): entry is MockTrackerDocumentIdempotency =>
+          Boolean(
+            entry && typeof entry === "object" &&
+            "idempotency_key" in entry && typeof entry.idempotency_key === "string" &&
+            "action_type" in entry && ["tracker_document_linked", "tracker_document_unlinked"].includes(String(entry.action_type)) &&
+            "opportunity_id" in entry && typeof entry.opportunity_id === "string" &&
+            "document_kind" in entry && (entry.document_kind === "cv" || entry.document_kind === "cover_letter") &&
+            "document_id" in entry && typeof entry.document_id === "string" &&
+            "link_id" in entry && typeof entry.link_id === "string"
+          )
+        )
+      }
+    } catch {
+      // Keep synthetic association flows usable when browser storage is blocked.
+    }
+  }
+
+  private persistTrackerDocuments() {
+    if (typeof window === "undefined") return
+    try {
+      window.localStorage.setItem(this.trackerDocumentsStorageKey(), JSON.stringify({
+        documents: [...this.trackerDocuments.values()].flat(),
+        idempotency: this.trackerDocumentIdempotency,
+      }))
+    } catch {
+      // Synthetic review data must not break the mock workflow.
+    }
+  }
+
+  private mockDocumentCandidates(opportunityId: string): TrackerDocumentCandidate[] {
+    const coverLetter: TrackerDocumentCandidate = {
+      document_kind: "cover_letter",
+      document_id: `mock-cover-letter-${opportunityId}`,
+      label: "Cover letter · Classic",
+      format: "docx",
+      recommended: false,
+      created_at: new Date().toISOString(),
+    }
+    return [...MOCK_CV_CANDIDATES, coverLetter]
+  }
+
+  private selectedMockDocumentId(opportunityId: string, kind: TrackerDocumentKind): string | null {
+    return (this.trackerDocuments.get(opportunityId) ?? []).find((row) => row.document_kind === kind && !row.unlinked_at)?.document_id ?? null
+  }
+
+  listOpportunityTrackerDocuments(opportunityId: string, page = 1, pageSize = 50): TrackerDocumentListResponse | "not_found" | "not_tracked" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    if (!this.applicationTrackerState(opportunityId)) return "not_tracked"
+    const active = (this.trackerDocuments.get(opportunityId) ?? []).filter((row) => !row.unlinked_at)
+    const normalizedPage = Math.max(1, Math.floor(page) || 1)
+    const normalizedSize = Math.min(100, Math.max(1, Math.floor(pageSize) || 50))
+    return {
+      opportunity_id: opportunityId,
+      page: normalizedPage,
+      page_size: normalizedSize,
+      total: active.length,
+      selected_cv_document_id: this.selectedMockDocumentId(opportunityId, "cv"),
+      selected_cover_letter_document_id: this.selectedMockDocumentId(opportunityId, "cover_letter"),
+      items: [...active].sort((left, right) => left.document_kind.localeCompare(right.document_kind) || left.document_id.localeCompare(right.document_id))
+        .slice((normalizedPage - 1) * normalizedSize, normalizedPage * normalizedSize),
+    }
+  }
+
+  listOpportunityTrackerDocumentCandidates(opportunityId: string, page = 1, pageSize = 50): TrackerDocumentCandidateListResponse | "not_found" | "not_tracked" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    if (!this.applicationTrackerState(opportunityId)) return "not_tracked"
+    const candidates = this.mockDocumentCandidates(opportunityId)
+    const normalizedPage = Math.max(1, Math.floor(page) || 1)
+    const normalizedSize = Math.min(100, Math.max(1, Math.floor(pageSize) || 50))
+    return {
+      opportunity_id: opportunityId,
+      page: normalizedPage,
+      page_size: normalizedSize,
+      total: candidates.length,
+      items: candidates.slice((normalizedPage - 1) * normalizedSize, normalizedPage * normalizedSize),
+    }
+  }
+
+  linkTrackerDocument(opportunityId: string, kind: TrackerDocumentKind, documentId: string, idempotencyKey: string): TrackerDocumentMutationResponse | "not_found" | "not_tracked" | "invalid_document" | "invalid_idempotency_key" | "idempotency_conflict" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    const state = this.applicationTrackerState(opportunityId)
+    if (!state) return "not_tracked"
+    if (!this.mockDocumentCandidates(opportunityId).some((candidate) => candidate.document_kind === kind && candidate.document_id === documentId)) return "invalid_document"
+    if (typeof idempotencyKey !== "string" || !idempotencyKey.trim() || idempotencyKey.length > 128) return "invalid_idempotency_key"
+    const prior = this.trackerDocumentIdempotency.find((entry) => entry.idempotency_key === idempotencyKey)
+    const rows = this.trackerDocuments.get(opportunityId) ?? []
+    if (prior) {
+      if (prior.action_type !== "tracker_document_linked" || prior.opportunity_id !== opportunityId || prior.document_kind !== kind || prior.document_id !== documentId) return "idempotency_conflict"
+      const link = rows.find((entry) => entry.id === prior.link_id)
+      return link ? { link, changed: false } : "not_found"
+    }
+    const active = rows.filter((row) => row.document_kind === kind && !row.unlinked_at)
+    const existingActive = active.find((row) => row.document_id === documentId)
+    if (existingActive && active.length === 1) return { link: existingActive, changed: false }
+    const now = new Date().toISOString()
+    for (const row of active) if (row.document_id !== documentId) row.unlinked_at = now
+    let link = rows.find((row) => row.document_kind === kind && row.document_id === documentId)
+    if (link) {
+      link.linked_at = now
+      link.unlinked_at = null
+    } else {
+      link = { id: `mock-tracker-document-${crypto.randomUUID()}`, opportunity_id: opportunityId, document_kind: kind, document_id: documentId, linked_at: now, unlinked_at: null }
+      rows.push(link)
+      this.trackerDocuments.set(opportunityId, rows)
+    }
+    this.trackerDocumentIdempotency.push({ idempotency_key: idempotencyKey, action_type: "tracker_document_linked", opportunity_id: opportunityId, document_kind: kind, document_id: documentId, link_id: link.id })
+    this.persistTrackerDocuments()
+    this.recordTrackerDocumentEvent(opportunityId, state, "tracker_document_linked", kind, documentId)
+    return { link, changed: true }
+  }
+
+  unlinkTrackerDocument(opportunityId: string, linkId: string, idempotencyKey: string): TrackerDocumentMutationResponse | "not_found" | "not_tracked" | "invalid_idempotency_key" | "idempotency_conflict" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    const state = this.applicationTrackerState(opportunityId)
+    if (!state) return "not_tracked"
+    const rows = this.trackerDocuments.get(opportunityId) ?? []
+    const link = rows.find((row) => row.id === linkId)
+    if (!link) return "not_found"
+    if (typeof idempotencyKey !== "string" || !idempotencyKey.trim() || idempotencyKey.length > 128) return "invalid_idempotency_key"
+    const prior = this.trackerDocumentIdempotency.find((entry) => entry.idempotency_key === idempotencyKey)
+    if (prior) {
+      if (prior.action_type !== "tracker_document_unlinked" || prior.opportunity_id !== opportunityId || prior.document_kind !== link.document_kind || prior.document_id !== link.document_id) return "idempotency_conflict"
+      return { link, changed: false }
+    }
+    if (link.unlinked_at) return { link, changed: false }
+    link.unlinked_at = new Date().toISOString()
+    this.trackerDocumentIdempotency.push({ idempotency_key: idempotencyKey, action_type: "tracker_document_unlinked", opportunity_id: opportunityId, document_kind: link.document_kind, document_id: link.document_id, link_id: link.id })
+    this.persistTrackerDocuments()
+    this.recordTrackerDocumentEvent(opportunityId, state, "tracker_document_unlinked", link.document_kind, link.document_id)
+    return { link, changed: true }
+  }
+
+  private recordTrackerDocumentEvent(opportunityId: string, state: TrackerState, actionType: string, documentKind: TrackerDocumentKind, documentId: string) {
+    const event: MockTrackerEvent = {
+      opportunity_id: opportunityId, action_type: actionType, from_state: state, to_state: state,
+      event_at: new Date().toISOString(), metadata_json: JSON.stringify({ document_kind: documentKind, document_id: documentId }),
+    }
+    this.trackerEvents.push(event)
+    if (typeof window === "undefined") return
+    try {
+      window.localStorage.setItem(this.trackerEventsStorageKey(), JSON.stringify(this.trackerEvents))
+    } catch {
+      // Synthetic events are best-effort in the browser mock.
     }
   }
 

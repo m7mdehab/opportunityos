@@ -46,6 +46,10 @@ import type {
   TrackerInterviewListResponse,
   TrackerInterviewSummaryResponse,
   TrackerInterviewMutationResponse,
+  TrackerDocumentKind,
+  TrackerDocumentCandidateListResponse,
+  TrackerDocumentListResponse,
+  TrackerDocumentMutationResponse,
   TutoringPlatform,
   TutoringPlatformsResponse,
   TutoringProfileMaterialResponse,
@@ -295,6 +299,30 @@ export const api = {
         request<TrackerInterviewMutationResponse>(`/api/opportunities/${opportunityId}/interviews/${interviewId}`, {
           method: "PATCH",
           body: JSON.stringify({ ...body, idempotency_key: idempotencyKey }),
+      }),
+    },
+    documents: {
+      list: (opportunityId: string, params: { page?: number; page_size?: number } = {}) => {
+        const search = new URLSearchParams()
+        search.set("page", String(params.page ?? 1))
+        search.set("page_size", String(params.page_size ?? 50))
+        return request<TrackerDocumentListResponse>(`/api/opportunities/${opportunityId}/tracker-documents?${search.toString()}`)
+      },
+      candidates: (opportunityId: string, params: { page?: number; page_size?: number } = {}) => {
+        const search = new URLSearchParams()
+        search.set("page", String(params.page ?? 1))
+        search.set("page_size", String(params.page_size ?? 50))
+        return request<TrackerDocumentCandidateListResponse>(`/api/opportunities/${opportunityId}/tracker-documents/candidates?${search.toString()}`)
+      },
+      link: (opportunityId: string, documentKind: TrackerDocumentKind, documentId: string, idempotencyKey: string) =>
+        request<TrackerDocumentMutationResponse>(`/api/opportunities/${opportunityId}/tracker-documents`, {
+          method: "POST",
+          body: JSON.stringify({ document_kind: documentKind, document_id: documentId, idempotency_key: idempotencyKey }),
+        }),
+      unlink: (opportunityId: string, linkId: string, idempotencyKey: string) =>
+        request<TrackerDocumentMutationResponse>(`/api/opportunities/${opportunityId}/tracker-documents/${linkId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ linked: false, idempotency_key: idempotencyKey }),
         }),
     },
   },

@@ -1,0 +1,85 @@
+
+> web@0.1.0 test:e2e
+> playwright test --grep documents|interviews create|FR-008 basic triage tracker|C3 keyboard flow
+
+[WebServer] (node:5268) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:6372) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:6372) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:8096) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:39584) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:3232) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:20660) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:39036) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:28348) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:32436) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:37864) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:25788) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:4232) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 10 tests using 1 worker
+
+(node:39932) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  1 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:65:7 › FR-008 basic triage tracker › save, explicit apply, reject, bucket placement, and source-link truthfulness (9.8s)
+  ok  2 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:118:7 › FR-008 basic triage tracker › application pipeline moves forward, records one event per stage, and closes jobs (9.8s)
+  ok  3 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:159:7 › FR-008 basic triage tracker › private application notes create, edit, archive, and persist without duplicate events (8.8s)
+  ok  4 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:227:7 › FR-008 basic triage tracker › follow-ups create, reschedule, complete, reopen, and persist with private metadata (9.3s)
+  ok  5 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:328:7 › FR-008 basic triage tracker › interviews create, edit, complete, persist, and stay private in the upcoming summary (9.0s)
+  ok  6 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:411:7 › FR-008 basic triage tracker › application document links replace cleanly, persist, and record ID-only events (7.2s)
+  ok  7 [chromium] › tests\e2e\keyboard.spec.ts:29:7 › C3 keyboard flow (j/k/o/a/x) › j/k move the cursor and move real DOM focus with it (2.3s)
+  ok  8 [chromium] › tests\e2e\keyboard.spec.ts:59:7 › C3 keyboard flow (j/k/o/a/x) › o opens the drawer for the focused card (2.6s)
+  ok  9 [chromium] › tests\e2e\keyboard.spec.ts:76:7 › C3 keyboard flow (j/k/o/a/x) › a marks the focused card applied; moving on, x rejects the next one (2.2s)
+  ok 10 [chromium] › tests\e2e\keyboard.spec.ts:112:7 › C3 keyboard flow (j/k/o/a/x) › shortcuts do not fire while a text input has focus (2.3s)
+
+  10 passed (1.6m)
+
+=== Reproduced initial fixture failure before correction ===
+F
+======================================================================
+FAIL: test_cached_cover_letter_link_is_same_opportunity_and_metadata_only (api.test_tracker_documents_service.TrackerDocumentsServiceTest.test_cached_cover_letter_link_is_same_opportunity_and_metadata_only)
+----------------------------------------------------------------------
+api.tracker_documents_service.TrackerDocumentError: documents are available only for application-tracked jobs
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w66-document-associations\api\test_tracker_documents_service.py", line 197, in test_cached_cover_letter_link_is_same_opportunity_and_metadata_only
+    with self.assertRaisesRegex(TrackerDocumentError, "unavailable for this opportunity"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: "unavailable for this opportunity" does not match "documents are available only for application-tracked jobs"
+
+----------------------------------------------------------------------
+Ran 1 test in 0.106s
+
+FAILED (failures=1)
+
+=== Corrected focused tracker service tests ===
+..............................
+----------------------------------------------------------------------
+Ran 30 tests in 2.367s
+
+OK
+
+=== Next route type generation ===
+Generating route types...
+✓ Types generated successfully
+
+=== TypeScript ===
+
+=== ESLint ===
+
+> web@0.1.0 lint
+> eslint . --max-warnings=0 --no-cache

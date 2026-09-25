@@ -115,6 +115,13 @@ from .tracker_interviews_service import (
     list_tracker_interviews,
     update_tracker_interview,
 )
+from .tracker_documents_service import (
+    TrackerDocumentError,
+    link_tracker_document,
+    list_tracker_document_candidates,
+    list_tracker_documents,
+    unlink_tracker_document,
+)
 from .search import is_query_unparseable, rank_key, search_opportunity_ids
 from .serialization import (
     serialize_constraint,
@@ -1635,6 +1642,102 @@ def patch_opportunity_interview(
         session.rollback()
         raise _tracker_interview_error(exc) from exc
     return {"interview": result.interview, "changed": result.changed}
+
+
+def _tracker_document_error(exc: TrackerDocumentError) -> HTTPException:
+    message = str(exc)
+    if message in {"opportunity not found", "document association not found"}:
+        return HTTPException(status_code=404, detail=message)
+    if (
+        message.startswith(("document_id", "unknown document_kind", "unknown CV", "cover-letter document identity", "idempotency_key is"))
+    ):
+        return HTTPException(status_code=422, detail=message)
+    return HTTPException(status_code=409, detail=message)
+
+
+@router.get("/opportunities/{opportunity_id}/tracker-documents")
+def get_tracker_documents(
+    opportunity_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1),
+    session: Session = Depends(get_db),
+):
+    try:
+        return list_tracker_documents(session, opportunity_id, page=page, page_size=page_size)
+    except TrackerDocumentError as exc:
+        raise _tracker_document_error(exc) from exc
+
+
+@router.get("/opportunities/{opportunity_id}/tracker-documents/candidates")
+def get_tracker_document_candidates(
+    opportunity_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1),
+    session: Session = Depends(get_db),
+):
+    try:
+        return list_tracker_document_candidates(session, opportunity_id, page=page, page_size=page_size)
+    except TrackerDocumentError as exc:
+        raise _tracker_document_error(exc) from exc
+
+
+class TrackerDocumentLinkRequest(BaseModel):
+    document_kind: Literal["cv", "cover_letter"]
+    document_id: str
+    idempotency_key: str
+
+
+class TrackerDocumentUnlinkRequest(BaseModel):
+    linked: bool
+    idempotency_key: str
+
+
+@router.post("/opportunities/{opportunity_id}/tracker-documents")
+def post_tracker_document(
+    opportunity_id: str,
+    payload: TrackerDocumentLinkRequest,
+    session: Session = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    try:
+        result = link_tracker_document(
+            session,
+            opportunity_id,
+            payload.document_kind,
+            payload.document_id,
+            now,
+            request_key=payload.idempotency_key,
+        )
+        session.commit()
+    except TrackerDocumentError as exc:
+        session.rollback()
+        raise _tracker_document_error(exc) from exc
+    return {"link": result.link, "changed": result.changed}
+
+
+@router.patch("/opportunities/{opportunity_id}/tracker-documents/{link_id}")
+def patch_tracker_document(
+    opportunity_id: str,
+    link_id: str,
+    payload: TrackerDocumentUnlinkRequest,
+    session: Session = Depends(get_db),
+):
+    if payload.linked:
+        raise HTTPException(status_code=422, detail="linked can only be set to false")
+    now = datetime.now(timezone.utc)
+    try:
+        result = unlink_tracker_document(
+            session,
+            opportunity_id,
+            link_id,
+            now,
+            request_key=payload.idempotency_key,
+        )
+        session.commit()
+    except TrackerDocumentError as exc:
+        session.rollback()
+        raise _tracker_document_error(exc) from exc
+    return {"link": result.link, "changed": result.changed}
 
 
 def _posted_date_sort_key(value: str | None) -> tuple[int, Any]:

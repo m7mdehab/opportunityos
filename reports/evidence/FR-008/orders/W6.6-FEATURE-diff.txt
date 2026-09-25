@@ -1,0 +1,11 @@
+=== git diff --check ===
+=== changed source summary ===
+ api/routes_api.py                          | 103 +++++++++++++++
+ web/app/api/[...path]/route.ts             |   9 ++
+ web/components/feed/detail-drawer.tsx      |   3 +
+ web/lib/api/client.ts                      |  28 ++++
+ web/lib/contract/types.ts                  |  43 ++++++
+ web/lib/mock/handlers.ts                   |  66 +++++++++-
+ web/lib/mock/store.ts                      | 201 +++++++++++++++++++++++++++++
+ web/tests/e2e/fr008-tracker-triage.spec.ts |  88 +++++++++++++
+ 8 files changed, 540 insertions(+), 1 deletion(-)

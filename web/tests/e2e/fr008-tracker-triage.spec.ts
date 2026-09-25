@@ -407,4 +407,92 @@ test.describe("FR-008 basic triage tracker", () => {
     await expect(persistedRow).toContainText("Completed")
     expect(await trackerEvents(page, opportunityId)).toHaveLength(4)
   })
+
+  test("application document links replace cleanly, persist, and record ID-only events", async ({ page }) => {
+    await login(page)
+    const opportunityId = await actOnFirstJob(page, "Mark applied", "applied")
+    await page.getByTestId("workspace-tracker").click()
+    await page.getByTestId("tracker-bucket-applied").click()
+    const candidatesResponsePromise = page.waitForResponse((response) => response.request().method() === "GET" && response.url().endsWith(`/opportunities/${opportunityId}/tracker-documents/candidates?page=1&page_size=50`))
+    await page.getByTestId(`opportunity-card-${opportunityId}`).click()
+
+    const drawer = page.getByRole("dialog")
+    const documents = drawer.getByTestId("tracker-documents")
+    await expect(documents).toBeVisible()
+    await expect(documents).toContainText("General résumé")
+    const candidatePayload = await (await candidatesResponsePromise).json() as { items: Array<Record<string, unknown>> }
+    expect(candidatePayload.items.length).toBeGreaterThan(0)
+    expect(candidatePayload.items.every((candidate) => Object.keys(candidate).every((key) => ["document_kind", "document_id", "label", "format", "recommended", "created_at"].includes(key)))).toBe(true)
+    expect(JSON.stringify(candidatePayload)).not.toMatch(/\.pdf|\.docx|object.?path|checksum|payload|storage.?key|PRIVATE/i)
+
+    const cvSelect = documents.getByLabel("Available document")
+    await expect(cvSelect).toHaveValue("mock-cv-general")
+    const [firstLink] = await Promise.all([
+      page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith(`/opportunities/${opportunityId}/tracker-documents`)),
+      documents.getByRole("button", { name: "Link selection" }).click(),
+    ])
+    expect(firstLink.status(), await firstLink.text()).toBe(200)
+    await expect(documents.getByTestId("tracker-document-cv")).toContainText("General résumé")
+
+    const [noopLink] = await Promise.all([
+      page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith(`/opportunities/${opportunityId}/tracker-documents`)),
+      documents.getByRole("button", { name: "Link selection" }).click(),
+    ])
+    expect(noopLink.status()).toBe(200)
+    expect((await noopLink.json() as { changed: boolean }).changed).toBe(false)
+    expect((await trackerEvents(page, opportunityId)).filter((event) => event.action_type.startsWith("tracker_document_") )).toHaveLength(1)
+
+    await cvSelect.selectOption("mock-cv-data")
+    const [replacement] = await Promise.all([
+      page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith(`/opportunities/${opportunityId}/tracker-documents`)),
+      documents.getByRole("button", { name: "Link selection" }).click(),
+    ])
+    expect(replacement.status()).toBe(200)
+    await expect(documents.getByTestId("tracker-document-cv")).toContainText("Data résumé")
+    await expect(documents.locator('[data-testid="tracker-document-cv"]')).toHaveCount(1)
+
+    await documents.getByLabel("Document type").selectOption("cover_letter")
+    await expect(documents.getByLabel("Available document")).toHaveValue(`mock-cover-letter-${opportunityId}`)
+    const [coverLetterLink] = await Promise.all([
+      page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith(`/opportunities/${opportunityId}/tracker-documents`)),
+      documents.getByRole("button", { name: "Link selection" }).click(),
+    ])
+    expect(coverLetterLink.status()).toBe(200)
+    const linkedLetter = documents.getByTestId("tracker-document-cover_letter")
+    await expect(linkedLetter).toContainText("Cover letter · Classic")
+    const [unlinkResponse] = await Promise.all([
+      page.waitForResponse((response) => response.request().method() === "PATCH" && response.url().includes(`/opportunities/${opportunityId}/tracker-documents/`)),
+      linkedLetter.getByRole("button", { name: "Unlink cover letter" }).click(),
+    ])
+    expect(unlinkResponse.status()).toBe(200)
+    await expect(documents.getByTestId("tracker-document-cover_letter")).toHaveCount(0)
+
+    const events = await trackerEvents(page, opportunityId)
+    expect(events.slice(-4).map((event) => event.action_type)).toEqual([
+      "tracker_document_linked", "tracker_document_linked", "tracker_document_linked", "tracker_document_unlinked",
+    ])
+    expect(events.slice(-4).map((event) => JSON.parse(event.metadata_json ?? "{}"))).toEqual([
+      { document_kind: "cv", document_id: "mock-cv-general" },
+      { document_kind: "cv", document_id: "mock-cv-data" },
+      { document_kind: "cover_letter", document_id: `mock-cover-letter-${opportunityId}` },
+      { document_kind: "cover_letter", document_id: `mock-cover-letter-${opportunityId}` },
+    ])
+    const eventPayload = JSON.stringify(events.slice(-4))
+    expect(eventPayload).not.toMatch(/\.pdf|\.docx|object.?path|checksum|PRIVATE/i)
+
+    await page.keyboard.press("Escape")
+    const trackerCard = page.getByTestId(`opportunity-card-${opportunityId}`)
+    await expect(trackerCard).not.toContainText("Data résumé")
+    await expect(trackerCard).not.toContainText("Cover letter")
+
+    await page.reload()
+    await expect(page.getByTestId("workspace-jobs")).toBeVisible()
+    await page.getByTestId("workspace-tracker").click()
+    await page.getByTestId("tracker-bucket-applied").click()
+    await page.getByTestId(`opportunity-card-${opportunityId}`).click()
+    const persistedDocuments = page.getByRole("dialog").getByTestId("tracker-documents")
+    await expect(persistedDocuments.getByTestId("tracker-document-cv")).toContainText("Data résumé")
+    await expect(persistedDocuments.getByTestId("tracker-document-cover_letter")).toHaveCount(0)
+    expect(await trackerEvents(page, opportunityId)).toHaveLength(events.length)
+  })
 })

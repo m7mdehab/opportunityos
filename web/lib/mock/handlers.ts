@@ -5,7 +5,7 @@
  * no idea this file exists.
  */
 import { http, HttpResponse } from "msw"
-import type { ActionType, ApplicationStage, FeedbackLabel, FeedQueryState, TrackerBucket, TrackerFollowUpBucket } from "@/lib/contract/types"
+import type { ActionType, ApplicationStage, FeedbackLabel, FeedQueryState, TrackerBucket, TrackerDocumentKind, TrackerFollowUpBucket } from "@/lib/contract/types"
 import { getStore } from "@/lib/mock/store"
 import { resolveScenario } from "@/lib/mock/scenario"
 
@@ -239,6 +239,70 @@ export const handlers = [
     if (result === "invalid_enum") return HttpResponse.json({ detail: "unknown interview type, format, or outcome" }, { status: 422 })
     if (result === "invalid_text") return HttpResponse.json({ detail: "interview text exceeds its allowed length or has an invalid type" }, { status: 422 })
     if (result === "invalid_field") return HttpResponse.json({ detail: "unknown interview field" }, { status: 422 })
+    return HttpResponse.json(result)
+  }),
+
+  http.get("/api/opportunities/:id/tracker-documents/candidates", ({ request, params }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const url = new URL(request.url)
+    const page = Number(url.searchParams.get("page") ?? "1")
+    const pageSize = Number(url.searchParams.get("page_size") ?? "50")
+    if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1) {
+      return HttpResponse.json({ detail: "page and page_size must be positive integers" }, { status: 422 })
+    }
+    const result = store().listOpportunityTrackerDocumentCandidates(String(params.id), page, pageSize)
+    if (result === "not_found") return HttpResponse.json({ detail: "opportunity not found" }, { status: 404 })
+    if (result === "not_tracked") return HttpResponse.json({ detail: "documents are available only for application-tracked jobs" }, { status: 409 })
+    return HttpResponse.json(result)
+  }),
+
+  http.get("/api/opportunities/:id/tracker-documents", ({ request, params }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const url = new URL(request.url)
+    const page = Number(url.searchParams.get("page") ?? "1")
+    const pageSize = Number(url.searchParams.get("page_size") ?? "50")
+    if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1) {
+      return HttpResponse.json({ detail: "page and page_size must be positive integers" }, { status: 422 })
+    }
+    const result = store().listOpportunityTrackerDocuments(String(params.id), page, pageSize)
+    if (result === "not_found") return HttpResponse.json({ detail: "opportunity not found" }, { status: 404 })
+    if (result === "not_tracked") return HttpResponse.json({ detail: "documents are available only for application-tracked jobs" }, { status: 409 })
+    return HttpResponse.json(result)
+  }),
+
+  http.post("/api/opportunities/:id/tracker-documents", async ({ request, params }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
+    if (body.document_kind !== "cv" && body.document_kind !== "cover_letter") {
+      return HttpResponse.json({ detail: "unknown document_kind" }, { status: 422 })
+    }
+    if (typeof body.document_id !== "string" || !body.document_id.trim() || body.document_id.length > 128) {
+      return HttpResponse.json({ detail: "document_id is required and must be at most 128 characters" }, { status: 422 })
+    }
+    if (typeof body.idempotency_key !== "string" || !body.idempotency_key.trim() || body.idempotency_key.length > 128) {
+      return HttpResponse.json({ detail: "idempotency_key is required and must be at most 128 characters" }, { status: 422 })
+    }
+    const result = store().linkTrackerDocument(String(params.id), body.document_kind as TrackerDocumentKind, body.document_id, body.idempotency_key)
+    if (result === "not_found") return HttpResponse.json({ detail: "opportunity not found" }, { status: 404 })
+    if (result === "not_tracked") return HttpResponse.json({ detail: "documents are available only for application-tracked jobs" }, { status: 409 })
+    if (result === "invalid_document") return HttpResponse.json({ detail: "document identity is unavailable for this opportunity" }, { status: 422 })
+    if (result === "invalid_idempotency_key") return HttpResponse.json({ detail: "idempotency_key is required and must be at most 128 characters" }, { status: 422 })
+    if (result === "idempotency_conflict") return HttpResponse.json({ detail: "idempotency_key was already used for another document operation" }, { status: 409 })
+    return HttpResponse.json(result)
+  }),
+
+  http.patch("/api/opportunities/:id/tracker-documents/:linkId", async ({ request, params }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
+    if (body.linked !== false) return HttpResponse.json({ detail: "linked can only be set to false" }, { status: 422 })
+    if (typeof body.idempotency_key !== "string" || !body.idempotency_key.trim() || body.idempotency_key.length > 128) {
+      return HttpResponse.json({ detail: "idempotency_key is required and must be at most 128 characters" }, { status: 422 })
+    }
+    const result = store().unlinkTrackerDocument(String(params.id), String(params.linkId), body.idempotency_key)
+    if (result === "not_found") return HttpResponse.json({ detail: "document association or opportunity not found" }, { status: 404 })
+    if (result === "not_tracked") return HttpResponse.json({ detail: "documents are available only for application-tracked jobs" }, { status: 409 })
+    if (result === "invalid_idempotency_key") return HttpResponse.json({ detail: "idempotency_key is required and must be at most 128 characters" }, { status: 422 })
+    if (result === "idempotency_conflict") return HttpResponse.json({ detail: "idempotency_key was already used for another document operation" }, { status: 409 })
     return HttpResponse.json(result)
   }),
 

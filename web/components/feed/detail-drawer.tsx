@@ -17,6 +17,7 @@ import { FeedbackButtons } from "@/components/feed/feedback-buttons"
 import { TriageActions } from "@/components/feed/triage-actions"
 import { TrackerFollowUps } from "@/components/feed/tracker-followups"
 import { TrackerInterviews } from "@/components/feed/tracker-interviews"
+import { TrackerDocuments } from "@/components/feed/tracker-documents"
 import { TrackerNotes } from "@/components/feed/tracker-notes"
 import { api } from "@/lib/api/client"
 import { ApiError } from "@/lib/contract/types"
@@ -517,6 +518,8 @@ export function DetailDrawer({
                 <>
                   <Separator />
                   <TrackerNotes key={opportunityId} opportunityId={opportunityId} />
+                  <Separator />
+                  <TrackerDocuments key={`documents-${opportunityId}`} opportunityId={opportunityId} />
                 </>
               )}
 
