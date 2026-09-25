@@ -450,7 +450,7 @@ class OpportunityScorer:
             opportunity_field_refs=("skills", "description") if opp_skills else (),
         ))
 
-        # 2. Relevant experience (verified employment tenure).
+        # 2. Verified professional experience against the role's tenure floor.
         opp_level = opp.seniority
         required_level = _REQUIRED_LEVEL_BY_OPP_SENIORITY.get(opp_level)
         posting_title_level = normalize_title(opp.title)[1]
@@ -903,24 +903,10 @@ class OpportunityScorer:
             opportunity_field_refs=("title",),
         ))
 
-        # 8. Target-role-family preference (B3, BRIEF-FR-006): compares the posting's
-        # normalized title family (`matching/title_family.py`, driven by the
-        # committed `matching/title_families.yaml`) against the families the
-        # founder's verified CAREER_TARGET_ROLE assertions themselves. This is
-        # a preference signal and is kept out of the capability title-history
-        # dimension added below.
-        # normalize onto. Distinguishes near-identical titles by family (not
-        # only by score) -- e.g. "Senior Customer Engineer" postings no
-        # longer read as a data-engineering match just because both titles
-        # contain "Engineer".
-        #
-        # Weight note: this dimension is new, so `employment_weights` is
-        # rebalanced to keep the total at 1.0 without touching any other
-        # implementer's dimension in this concurrent wave: `domain` drops
-        # from its 0.10 default to 0.05 (domain_fit's term-overlap check
-        # already covers much of the same ground as title-family alignment,
-        # so halving it is a reasonable reallocation) and the freed 0.05
-        # funds `title_family` at 0.05. Every other default is unchanged.
+        # 8. Target-role-family preference compares verified Founder target-role
+        # assertions with the posting family. It stays separate from the
+        # capability title-family dimension below, which reads verified
+        # employment-title assertions.
         opp_family_id, opp_level, opp_family_rule = normalize_title(opp.title)
         target_role_family_assertions = [
             a for a in truth_graph.assertions.values()
