@@ -36,6 +36,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from sqlalchemy import func, text
 
 from api.app import create_app
 from api.settings import Settings
@@ -386,25 +387,82 @@ class TestPostgresQueueDurability(unittest.TestCase):
             q = BackgroundWorkerQueue(session, worker_id="flaky-worker-1")
             job_id = self._enqueue(q, max_retries=2)
 
-            c1 = q.claim_next_job(lease_duration_seconds=0)
+            def expire_crashed_lease(expected_owner: str, expected_retry_count: int) -> None:
+                persisted_session = self.session_factory()
+                try:
+                    job_row = (
+                        persisted_session.query(WorkerJobRecord)
+                        .filter(WorkerJobRecord.id == job_id)
+                        .one()
+                    )
+                    self.assertEqual("RUNNING", job_row.status)
+                    self.assertEqual(expected_owner, job_row.lease_owner)
+                    self.assertEqual(expected_retry_count, job_row.retry_count)
+                    self.assertIsNotNone(job_row.lease_expires_at)
+
+                    job_row.lease_expires_at = func.now() - text("INTERVAL '10 seconds'")
+                    persisted_session.commit()
+                finally:
+                    persisted_session.close()
+
+                verification_session = self.session_factory()
+                try:
+                    expired_row = (
+                        verification_session.query(WorkerJobRecord)
+                        .filter(WorkerJobRecord.id == job_id)
+                        .one()
+                    )
+                    self.assertEqual("RUNNING", expired_row.status)
+                    self.assertEqual(expected_owner, expired_row.lease_owner)
+                    self.assertEqual(expected_retry_count, expired_row.retry_count)
+                    self.assertIsNotNone(expired_row.lease_expires_at)
+                    self.assertIsNotNone(
+                        verification_session.query(WorkerJobRecord.id)
+                        .filter(
+                            WorkerJobRecord.id == job_id,
+                            WorkerJobRecord.lease_expires_at < func.now(),
+                        )
+                        .one_or_none(),
+                        "persisted crash lease must be expired according to PostgreSQL",
+                    )
+                finally:
+                    verification_session.close()
+
+            c1 = q.claim_next_job(lease_duration_seconds=60)
             self.assertIsNotNone(c1)
+            self.assertEqual(job_id, c1.id)
+            self.assertEqual("RUNNING", c1.status)
+            self.assertEqual("flaky-worker-1", c1.lease_owner)
             self.assertEqual(0, c1.retry_count)
+            expire_crashed_lease("flaky-worker-1", expected_retry_count=0)
 
             q2 = BackgroundWorkerQueue(session, worker_id="flaky-worker-2")
-            c2 = q2.claim_next_job(lease_duration_seconds=0)
+            c2 = q2.claim_next_job(lease_duration_seconds=60)
             self.assertIsNotNone(c2)
+            self.assertEqual(job_id, c2.id)
+            self.assertEqual("RUNNING", c2.status)
+            self.assertEqual("flaky-worker-2", c2.lease_owner)
             self.assertEqual(1, c2.retry_count)
+            expire_crashed_lease("flaky-worker-2", expected_retry_count=1)
 
             q3 = BackgroundWorkerQueue(session, worker_id="sweeper-worker")
             c3 = q3.claim_next_job(lease_duration_seconds=60)
             self.assertIsNone(c3, "Dead-lettered job must not be returned for execution")
 
-            job_row = session.query(WorkerJobRecord).filter(WorkerJobRecord.id == job_id).one()
-            self.assertEqual("DEAD_LETTER", job_row.status)
-            self.assertIsNone(job_row.lease_owner)
-            self.assertIsNone(job_row.lease_expires_at)
-            self.assertEqual(2, job_row.retry_count)
-            self.assertIn("retry_count 2 reached max_retries 2", job_row.error_message)
+            verification_session = self.session_factory()
+            try:
+                job_row = (
+                    verification_session.query(WorkerJobRecord)
+                    .filter(WorkerJobRecord.id == job_id)
+                    .one()
+                )
+                self.assertEqual("DEAD_LETTER", job_row.status)
+                self.assertIsNone(job_row.lease_owner)
+                self.assertIsNone(job_row.lease_expires_at)
+                self.assertEqual(2, job_row.retry_count)
+                self.assertIn("retry_count 2 reached max_retries 2", job_row.error_message)
+            finally:
+                verification_session.close()
         finally:
             session.close()
 
