@@ -88,6 +88,8 @@ export default function FeedPage() {
   // ---- C1 facets panel / C4 hidden-reasons / E23 manual sources ----
   const [facetsPanelOpen, setFacetsPanelOpen] = useState(false)
   const [feedQueryDrawerOpen, setFeedQueryDrawerOpen] = useState(false)
+  const advancedFeedTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const previousFeedQueryDrawerOpen = useRef(false)
   const [hiddenReasonsOpen, setHiddenReasonsOpen] = useState(false)
   const [manualSourcesOpen, setManualSourcesOpen] = useState(false)
 
@@ -288,6 +290,13 @@ export default function FeedPage() {
     cardRefs.current.get(id)?.focus()
   }, [focusedIndex, items, anyPanelOpen])
 
+  useEffect(() => {
+    if (previousFeedQueryDrawerOpen.current && !feedQueryDrawerOpen) {
+      window.setTimeout(() => advancedFeedTriggerRef.current?.focus(), 0)
+    }
+    previousFeedQueryDrawerOpen.current = feedQueryDrawerOpen
+  }, [feedQueryDrawerOpen])
+
   // j/k/o/a/x (required behaviour #4). Disabled while a text input has
   // focus or any drawer/panel is open, so the shortcuts never fight a
   // field the founder is typing into or a dialog with its own keyboard
@@ -454,7 +463,7 @@ export default function FeedPage() {
         onOpenHiddenReasons={() => setHiddenReasonsOpen(true)}
       />
 
-      <div role="group" aria-label="Opportunity workspace" className="flex flex-wrap gap-2 border-b border-border bg-background px-4 py-2 sm:px-6">
+      <nav aria-label="Opportunity workspace" className="flex flex-wrap gap-2 border-b border-border bg-background px-4 py-2 sm:px-6">
         <Button
           type="button"
           size="sm"
@@ -475,7 +484,7 @@ export default function FeedPage() {
         >
           Tracker
         </Button>
-      </div>
+      </nav>
 
       {/* Master's addition #1: the >10% over-hiding warning must be
           visible, not just a tested pure function. See
@@ -497,6 +506,9 @@ export default function FeedPage() {
             sortBy={query.sortBy}
             onSortChange={(sortBy) => handleQueryChange({ ...query, sortBy })}
             onOpenAdvanced={() => setFeedQueryDrawerOpen(true)}
+            onAdvancedTriggerRef={(element) => {
+              advancedFeedTriggerRef.current = element
+            }}
             advancedDisabled={!feedMetadata}
             metadata={feedMetadata}
           />

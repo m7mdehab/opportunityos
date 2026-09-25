@@ -36,7 +36,7 @@ const DECISIONS: Exclude<Decision, null>[] = [
 ]
 
 const selectClasses =
-  "h-8 rounded-lg border border-input bg-card text-foreground px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+  "h-8 w-40 max-w-full rounded-lg border border-input bg-card text-foreground px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
 
 export function FilterBar({
   filters,
@@ -45,6 +45,7 @@ export function FilterBar({
   sortBy,
   onSortChange,
   onOpenAdvanced,
+  onAdvancedTriggerRef,
   advancedDisabled = false,
   metadata,
 }: {
@@ -58,6 +59,7 @@ export function FilterBar({
   sortBy: FeedSortId
   onSortChange: (next: FeedSortId) => void
   onOpenAdvanced: () => void
+  onAdvancedTriggerRef?: (element: HTMLButtonElement | null) => void
   advancedDisabled?: boolean
   metadata?: FeedFilterMetadataResponse | null
 }) {
@@ -76,7 +78,7 @@ export function FilterBar({
       className="flex flex-wrap items-end gap-3 border-b border-border bg-background px-4 py-3 sm:px-6"
       onSubmit={(e) => e.preventDefault()}
     >
-      <div className="flex flex-col gap-1">
+      <div className="flex min-w-0 max-w-full flex-col gap-1">
         <Label htmlFor="filter-track">Track</Label>
         <select
           id="filter-track"
@@ -95,7 +97,7 @@ export function FilterBar({
         </select>
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className="flex min-w-0 max-w-full flex-col gap-1">
         <Label htmlFor="filter-decision">Decision</Label>
         <select
           id="filter-decision"
@@ -117,7 +119,7 @@ export function FilterBar({
         </select>
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className="flex min-w-0 max-w-full flex-col gap-1">
         <Label htmlFor="filter-min-score">Min score</Label>
         <Input
           id="filter-min-score"
@@ -131,7 +133,7 @@ export function FilterBar({
         />
       </div>
 
-      <div className="flex flex-1 min-w-[10rem] flex-col gap-1">
+      <div className="flex min-w-[10rem] max-w-full flex-1 flex-col gap-1">
         <Label htmlFor="filter-search">Search</Label>
         <Input
           id="filter-search"
@@ -143,7 +145,7 @@ export function FilterBar({
         />
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className="flex min-w-0 max-w-full flex-col gap-1">
         <Label htmlFor="feed-sort">Sort</Label>
         <select
           id="feed-sort"
@@ -194,6 +196,7 @@ export function FilterBar({
 
       <Button
         type="button"
+        ref={onAdvancedTriggerRef}
         variant="outline"
         size="sm"
         data-testid="open-advanced-feed-filters"
