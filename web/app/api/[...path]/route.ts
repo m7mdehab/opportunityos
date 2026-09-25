@@ -247,6 +247,16 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
       501,
     );
   }
+  if (
+    (path.length === 2 && path[0] === "tracker" && path[1] === "follow-ups" && method === "GET") ||
+    (path.length === 3 && path[0] === "opportunities" && path[2] === "follow-ups" && (method === "GET" || method === "POST")) ||
+    (path.length === 4 && path[0] === "opportunities" && path[2] === "follow-ups" && method === "PATCH")
+  ) {
+    return hostedError(
+      "Tracker follow-ups are not supported by the hosted adapter until follow-up changes and append-only activity events can be persisted atomically.",
+      501,
+    );
+  }
   if (subpath === "feed/filter-metadata" && method === "GET") {
     return hostedError("Advanced feed metadata and query filtering are unsupported by the hosted adapter. Track, decision, fit minimum, and search remain available.", 501);
   }
@@ -335,6 +345,16 @@ async function hostedRequest(request: NextRequest, path: string[]): Promise<Next
   if (trackerNotesRoute) {
     return hostedError(
       "Private tracker notes are not supported by the hosted adapter until note changes and append-only activity events can be persisted atomically.",
+      501,
+    );
+  }
+  const trackerFollowUpsRoute =
+    (path.length === 2 && path[0] === "tracker" && path[1] === "follow-ups" && method === "GET") ||
+    (path.length === 3 && path[0] === "opportunities" && path[2] === "follow-ups" && (method === "GET" || method === "POST")) ||
+    (path.length === 4 && path[0] === "opportunities" && path[2] === "follow-ups" && method === "PATCH");
+  if (trackerFollowUpsRoute) {
+    return hostedError(
+      "Tracker follow-ups are not supported by the hosted adapter until follow-up changes and append-only activity events can be persisted atomically.",
       501,
     );
   }

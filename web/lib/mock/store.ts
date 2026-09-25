@@ -35,6 +35,11 @@ import type {
   SourcesHealthResponse,
   TruthStatusResponse,
   TrackerBucket,
+  TrackerFollowUp,
+  TrackerFollowUpBucket,
+  TrackerFollowUpListResponse,
+  TrackerFollowUpMutationResponse,
+  TrackerFollowUpSummaryResponse,
   TrackerListResponse,
   TrackerNote,
   TrackerNoteListResponse,
@@ -74,6 +79,13 @@ interface MockTrackerNoteIdempotency {
   action_type: "tracker_note_created" | "tracker_note_updated" | "tracker_note_archived"
   opportunity_id: string
   note_id: string
+}
+
+interface MockTrackerFollowUpIdempotency {
+  idempotency_key: string
+  action_type: "follow_up_created" | "follow_up_updated" | "follow_up_completed" | "follow_up_reopened"
+  opportunity_id: string
+  follow_up_id: string
 }
 
 const HIGH_FIT_THRESHOLD = 70
@@ -197,6 +209,19 @@ function daysAgoUtc(n: number): string {
   return d.toISOString().slice(0, 10)
 }
 
+function isIsoCalendarDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const parsed = new Date(`${value}T00:00:00.000Z`)
+  return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value
+}
+
+function followUpStatus(dueDate: string, completedAt: string | null, today: string): TrackerFollowUp["status"] {
+  if (completedAt) return "completed"
+  if (dueDate < today) return "overdue"
+  if (dueDate === today) return "due_today"
+  return "upcoming"
+}
+
 export class MockStore {
   scenario: MockScenario
   authenticated = false
@@ -227,6 +252,9 @@ export class MockStore {
   /** Synthetic private notes used only by authenticated mock browser flows. */
   private trackerNotes = new Map<string, TrackerNote[]>()
   private trackerNoteIdempotency: MockTrackerNoteIdempotency[] = []
+  /** Synthetic follow-ups and request keys live only in mock local storage. */
+  private trackerFollowUps = new Map<string, TrackerFollowUp[]>()
+  private trackerFollowUpIdempotency: MockTrackerFollowUpIdempotency[] = []
 
   constructor(scenario: MockScenario) {
     this.scenario = scenario
@@ -309,6 +337,7 @@ export class MockStore {
 
     this.restoreTrackerState()
     this.restoreTrackerNotes()
+    this.restoreTrackerFollowUps()
     this.dailyCounters = this.seedDailyCounters()
   }
 
@@ -322,6 +351,10 @@ export class MockStore {
 
   private trackerNotesStorageKey() {
     return `opportunityos.mock.tracker-notes.${this.scenario}`
+  }
+
+  private trackerFollowUpsStorageKey() {
+    return `opportunityos.mock.follow-ups.${this.scenario}`
   }
 
   private restoreTrackerState() {
@@ -430,6 +463,83 @@ export class MockStore {
     }
   }
 
+  private eligibleFollowUpTrackerState(opportunityId: string): TrackerState | null {
+    const opportunity = this.opportunities.get(opportunityId)
+    if (!opportunity) return null
+    const state = opportunity.action_state === "submitted" ? "applied" : opportunity.action_state
+    const eligible = new Set<TrackerState>([
+      "saved", "applied", "recruiter_screen", "assessment", "interviewing",
+      "final_interview", "offer", "accepted",
+    ])
+    return state && eligible.has(state as TrackerState) ? state as TrackerState : null
+  }
+
+  private restoreTrackerFollowUps() {
+    if (typeof window === "undefined") return
+    try {
+      const raw = window.localStorage.getItem(this.trackerFollowUpsStorageKey())
+      if (!raw) return
+      const saved: unknown = JSON.parse(raw)
+      if (!saved || typeof saved !== "object") return
+      const object = saved as { follow_ups?: unknown; idempotency?: unknown }
+      if (Array.isArray(object.follow_ups)) {
+        for (const entry of object.follow_ups) {
+          if (
+            entry && typeof entry === "object" &&
+            "id" in entry && typeof entry.id === "string" &&
+            "opportunity_id" in entry && typeof entry.opportunity_id === "string" &&
+            "due_date" in entry && isIsoCalendarDate(entry.due_date) &&
+            "note_text" in entry && (typeof entry.note_text === "string" || entry.note_text === null) &&
+            "completed_at" in entry && (typeof entry.completed_at === "string" || entry.completed_at === null) &&
+            "created_at" in entry && typeof entry.created_at === "string" &&
+            "updated_at" in entry && typeof entry.updated_at === "string" &&
+            this.opportunities.has(entry.opportunity_id)
+          ) {
+            const today = new Date().toISOString().slice(0, 10)
+            const note: TrackerFollowUp = {
+              id: entry.id,
+              opportunity_id: entry.opportunity_id,
+              due_date: entry.due_date,
+              note_text: entry.note_text,
+              completed_at: entry.completed_at,
+              status: followUpStatus(entry.due_date, entry.completed_at, today),
+              created_at: entry.created_at,
+              updated_at: entry.updated_at,
+            }
+            const rows = this.trackerFollowUps.get(note.opportunity_id) ?? []
+            rows.push(note)
+            this.trackerFollowUps.set(note.opportunity_id, rows)
+          }
+        }
+      }
+      if (Array.isArray(object.idempotency)) {
+        this.trackerFollowUpIdempotency = object.idempotency.filter((entry): entry is MockTrackerFollowUpIdempotency =>
+          Boolean(
+            entry && typeof entry === "object" &&
+            "idempotency_key" in entry && typeof entry.idempotency_key === "string" &&
+            "action_type" in entry && ["follow_up_created", "follow_up_updated", "follow_up_completed", "follow_up_reopened"].includes(String(entry.action_type)) &&
+            "opportunity_id" in entry && typeof entry.opportunity_id === "string" &&
+            "follow_up_id" in entry && typeof entry.follow_up_id === "string"
+          )
+        )
+      }
+    } catch {
+      // Synthetic follow-ups remain usable in memory when storage is blocked.
+    }
+  }
+
+  private persistTrackerFollowUps() {
+    if (typeof window === "undefined") return
+    try {
+      window.localStorage.setItem(this.trackerFollowUpsStorageKey(), JSON.stringify({
+        follow_ups: [...this.trackerFollowUps.values()].flat(),
+        idempotency: this.trackerFollowUpIdempotency,
+      }))
+    } catch {
+      // Synthetic review data must not break the mock workflow.
+    }
+  }
+
   private applicationTrackerState(opportunityId: string): TrackerState | null {
     const opportunity = this.opportunities.get(opportunityId)
     if (!opportunity) return null
@@ -490,6 +600,55 @@ export class MockStore {
       }
     } else {
       this.trackerEvents.push(event)
+    }
+  }
+
+  private recordTrackerFollowUpEvent(
+    opportunityId: string,
+    state: TrackerState,
+    actionType: MockTrackerEvent["action_type"],
+    followUpId: string
+  ) {
+    const event: MockTrackerEvent = {
+      opportunity_id: opportunityId,
+      action_type: actionType,
+      from_state: state,
+      to_state: state,
+      event_at: new Date().toISOString(),
+      metadata_json: JSON.stringify({ follow_up_id: followUpId }),
+    }
+    if (typeof window === "undefined") {
+      this.trackerEvents.push(event)
+      return
+    }
+    try {
+      const persisted: unknown = JSON.parse(window.localStorage.getItem(this.trackerEventsStorageKey()) ?? "[]")
+      const persistedEvents = Array.isArray(persisted) ? persisted.filter((entry): entry is MockTrackerEvent =>
+        Boolean(
+          entry && typeof entry === "object" &&
+          "opportunity_id" in entry && typeof entry.opportunity_id === "string" &&
+          "action_type" in entry && typeof entry.action_type === "string" &&
+          "from_state" in entry && typeof entry.from_state === "string" &&
+          "to_state" in entry && typeof entry.to_state === "string" &&
+          "event_at" in entry && typeof entry.event_at === "string"
+        )
+      ) : []
+      const byEventIdentity = new Map<string, MockTrackerEvent>()
+      for (const existing of [...persistedEvents, ...this.trackerEvents, event]) {
+        const identity = [
+          existing.opportunity_id,
+          existing.action_type,
+          existing.from_state,
+          existing.to_state,
+          existing.event_at,
+          existing.metadata_json ?? "",
+        ].join("\u0000")
+        byEventIdentity.set(identity, existing)
+      }
+      this.trackerEvents = [...byEventIdentity.values()]
+      window.localStorage.setItem(this.trackerEventsStorageKey(), JSON.stringify(this.trackerEvents))
+    } catch {
+      // Synthetic activity must not fail the mock follow-up workflow.
     }
   }
 
@@ -594,6 +753,174 @@ export class MockStore {
     this.persistTrackerNotes()
     this.recordTrackerNoteEvent(opportunityId, state, actionType, note.id)
     return { note, changed: true }
+  }
+
+  listOpportunityTrackerFollowUps(
+    opportunityId: string,
+    page = 1,
+    pageSize = 50
+  ): TrackerFollowUpListResponse | "not_found" | "not_tracked" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    if (!this.eligibleFollowUpTrackerState(opportunityId)) return "not_tracked"
+    const rows = this.trackerFollowUps.get(opportunityId) ?? []
+    const normalizedPage = Math.max(1, Math.floor(page) || 1)
+    const normalizedSize = Math.min(100, Math.max(1, Math.floor(pageSize) || 50))
+    return {
+      opportunity_id: opportunityId,
+      page: normalizedPage,
+      page_size: normalizedSize,
+      total: rows.length,
+      items: [...rows]
+        .sort((left, right) => left.due_date.localeCompare(right.due_date) || left.id.localeCompare(right.id))
+        .slice((normalizedPage - 1) * normalizedSize, normalizedPage * normalizedSize),
+    }
+  }
+
+  listTrackerFollowUps(
+    bucket: TrackerFollowUpBucket,
+    page = 1,
+    pageSize = 25
+  ): TrackerFollowUpSummaryResponse | "invalid_bucket" {
+    if (!["due_today", "overdue", "upcoming"].includes(bucket)) return "invalid_bucket"
+    const today = new Date().toISOString().slice(0, 10)
+    const items = [...this.trackerFollowUps.values()].flat()
+      .filter((followUp) => !followUp.completed_at && this.eligibleFollowUpTrackerState(followUp.opportunity_id))
+      .map((followUp) => ({ followUp, status: followUpStatus(followUp.due_date, followUp.completed_at, today) }))
+      .filter(({ status }) => status === bucket)
+      .sort((left, right) => left.followUp.due_date.localeCompare(right.followUp.due_date) || left.followUp.id.localeCompare(right.followUp.id))
+    const normalizedPage = Math.max(1, Math.floor(page) || 1)
+    const normalizedSize = Math.min(100, Math.max(1, Math.floor(pageSize) || 25))
+    return {
+      bucket,
+      page: normalizedPage,
+      page_size: normalizedSize,
+      total: items.length,
+      items: items.slice((normalizedPage - 1) * normalizedSize, normalizedPage * normalizedSize).flatMap(({ followUp }) => {
+        const opportunity = this.opportunities.get(followUp.opportunity_id)
+        const trackerState = this.eligibleFollowUpTrackerState(followUp.opportunity_id)
+        if (!opportunity || !trackerState) return []
+        return [{
+          id: followUp.id,
+          opportunity_id: followUp.opportunity_id,
+          due_date: followUp.due_date,
+          completed_at: followUp.completed_at,
+          status: followUpStatus(followUp.due_date, followUp.completed_at, today),
+          created_at: followUp.created_at,
+          updated_at: followUp.updated_at,
+          opportunity: {
+            id: opportunity.id,
+            title: opportunity.title,
+            organization: opportunity.organization,
+            tracker_state: trackerState,
+          },
+        }]
+      }),
+    }
+  }
+
+  createTrackerFollowUp(
+    opportunityId: string,
+    dueDate: string,
+    noteText: string | null | undefined,
+    idempotencyKey: string
+  ): TrackerFollowUpMutationResponse | "not_found" | "not_tracked" | "invalid_due_date" | "invalid_note_text" | "invalid_idempotency_key" | "idempotency_conflict" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    const state = this.eligibleFollowUpTrackerState(opportunityId)
+    if (!state) return "not_tracked"
+    if (!isIsoCalendarDate(dueDate)) return "invalid_due_date"
+    if (typeof idempotencyKey !== "string" || !idempotencyKey.trim() || idempotencyKey.length > 128) return "invalid_idempotency_key"
+    const cleanedNote = noteText?.trim() || null
+    if (cleanedNote && cleanedNote.length > 4000) return "invalid_note_text"
+    const prior = this.trackerFollowUpIdempotency.find((entry) => entry.idempotency_key === idempotencyKey)
+    if (prior) {
+      if (prior.action_type !== "follow_up_created" || prior.opportunity_id !== opportunityId) return "idempotency_conflict"
+      const followUp = (this.trackerFollowUps.get(opportunityId) ?? []).find((entry) => entry.id === prior.follow_up_id)
+      return followUp ? { follow_up: followUp, changed: false } : "not_found"
+    }
+    const now = new Date().toISOString()
+    const followUp: TrackerFollowUp = {
+      id: `mock-follow-up-${crypto.randomUUID()}`,
+      opportunity_id: opportunityId,
+      due_date: dueDate,
+      note_text: cleanedNote,
+      completed_at: null,
+      status: followUpStatus(dueDate, null, now.slice(0, 10)),
+      created_at: now,
+      updated_at: now,
+    }
+    this.trackerFollowUps.set(opportunityId, [...(this.trackerFollowUps.get(opportunityId) ?? []), followUp])
+    this.trackerFollowUpIdempotency.push({
+      idempotency_key: idempotencyKey,
+      action_type: "follow_up_created",
+      opportunity_id: opportunityId,
+      follow_up_id: followUp.id,
+    })
+    this.persistTrackerFollowUps()
+    this.recordTrackerFollowUpEvent(opportunityId, state, "follow_up_created", followUp.id)
+    return { follow_up: followUp, changed: true }
+  }
+
+  updateTrackerFollowUp(
+    opportunityId: string,
+    followUpId: string,
+    idempotencyKey: string,
+    update: { due_date?: string; note_text?: string | null; note_text_provided?: boolean; completed?: boolean }
+  ): TrackerFollowUpMutationResponse | "not_found" | "not_tracked" | "invalid_due_date" | "invalid_note_text" | "invalid_idempotency_key" | "invalid_update" | "idempotency_conflict" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    const state = this.eligibleFollowUpTrackerState(opportunityId)
+    if (!state) return "not_tracked"
+    const followUp = (this.trackerFollowUps.get(opportunityId) ?? []).find((entry) => entry.id === followUpId)
+    if (!followUp) return "not_found"
+    const hasCompletion = update.completed !== undefined
+    const hasDueDate = update.due_date !== undefined
+    const hasNote = update.note_text_provided === true
+    if (hasCompletion ? hasDueDate || hasNote : !hasDueDate && !hasNote) return "invalid_update"
+    if (hasDueDate && !isIsoCalendarDate(update.due_date)) return "invalid_due_date"
+    const cleanedNote = hasNote ? update.note_text?.trim() || null : undefined
+    if (cleanedNote && cleanedNote.length > 4000) return "invalid_note_text"
+    if (typeof idempotencyKey !== "string" || !idempotencyKey.trim() || idempotencyKey.length > 128) return "invalid_idempotency_key"
+    const actionType = update.completed === true
+      ? "follow_up_completed"
+      : update.completed === false
+        ? "follow_up_reopened"
+        : "follow_up_updated"
+    const prior = this.trackerFollowUpIdempotency.find((entry) => entry.idempotency_key === idempotencyKey)
+    if (prior) {
+      if (prior.action_type !== actionType || prior.opportunity_id !== opportunityId || prior.follow_up_id !== followUpId) return "idempotency_conflict"
+      return { follow_up: followUp, changed: false }
+    }
+    const now = new Date().toISOString()
+    let changed = false
+    if (hasCompletion) {
+      if (update.completed && !followUp.completed_at) {
+        followUp.completed_at = now
+        changed = true
+      } else if (!update.completed && followUp.completed_at) {
+        followUp.completed_at = null
+        changed = true
+      }
+    } else {
+      if (hasDueDate && update.due_date !== followUp.due_date) {
+        followUp.due_date = update.due_date!
+        changed = true
+      }
+      if (hasNote && cleanedNote !== followUp.note_text) {
+        followUp.note_text = cleanedNote ?? null
+        changed = true
+      }
+    }
+    if (!changed) return { follow_up: followUp, changed: false }
+    followUp.updated_at = now
+    followUp.status = followUpStatus(followUp.due_date, followUp.completed_at, now.slice(0, 10))
+    this.trackerFollowUpIdempotency.push({
+      idempotency_key: idempotencyKey,
+      action_type: actionType,
+      opportunity_id: opportunityId,
+      follow_up_id: followUpId,
+    })
+    this.persistTrackerFollowUps()
+    this.recordTrackerFollowUpEvent(opportunityId, state, actionType, followUpId)
+    return { follow_up: followUp, changed: true }
   }
 
   private persistTrackerState() {

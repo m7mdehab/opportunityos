@@ -90,6 +90,9 @@ export type ApplicationStage =
 
 export type TrackerBucket = "saved" | "applied" | "rejected" | "all"
 
+export type TrackerFollowUpBucket = "due_today" | "overdue" | "upcoming"
+export type TrackerFollowUpStatus = TrackerFollowUpBucket | "completed"
+
 export type ActionState = TrackerState | "submitted" | null
 
 export type FeedbackLabel =
@@ -447,6 +450,47 @@ export interface TrackerNoteListResponse {
 
 export interface TrackerNoteMutationResponse {
   note: TrackerNote
+  changed: boolean
+}
+
+export interface TrackerFollowUp {
+  id: string
+  opportunity_id: string
+  due_date: string
+  note_text: string | null
+  completed_at: string | null
+  status: TrackerFollowUpStatus
+  created_at: string
+  updated_at: string
+}
+
+export interface TrackerFollowUpListResponse {
+  opportunity_id: string
+  page: number
+  page_size: number
+  total: number
+  items: TrackerFollowUp[]
+}
+
+export interface TrackerFollowUpSummaryItem extends Omit<TrackerFollowUp, "note_text"> {
+  opportunity: {
+    id: string
+    title: string
+    organization: string
+    tracker_state: TrackerState
+  }
+}
+
+export interface TrackerFollowUpSummaryResponse {
+  bucket: TrackerFollowUpBucket
+  page: number
+  page_size: number
+  total: number
+  items: TrackerFollowUpSummaryItem[]
+}
+
+export interface TrackerFollowUpMutationResponse {
+  follow_up: TrackerFollowUp
   changed: boolean
 }
 

@@ -223,4 +223,105 @@ test.describe("FR-008 basic triage tracker", () => {
     await expect(archivedNotes).toContainText("No notes yet.")
     expect(await trackerEvents(page, opportunityId)).toHaveLength(4)
   })
+
+  test("follow-ups create, reschedule, complete, reopen, and persist with private metadata", async ({ page }) => {
+    await login(page)
+    const opportunityId = await actOnFirstJob(page, "Save for later", "saved")
+    await page.getByTestId("workspace-tracker").click()
+    await page.getByTestId(`opportunity-card-${opportunityId}`).click()
+
+    const drawer = page.getByRole("dialog")
+    const followUps = drawer.getByTestId("tracker-follow-ups")
+    await expect(followUps).toBeVisible()
+    const today = new Date().toISOString().slice(0, 10)
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    await followUps.getByLabel("Follow-up due date").fill(today)
+    await followUps.getByLabel("Follow-up note").fill("Ask the recruiter about next steps")
+    const [createResponse] = await Promise.all([
+      page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith(`/opportunities/${opportunityId}/follow-ups`)),
+      followUps.getByRole("button", { name: "Add follow-up" }).click(),
+    ])
+    expect(createResponse.status(), await createResponse.text()).toBe(200)
+    const row = followUps.locator('[data-testid^="tracker-follow-up-"]').filter({ hasText: "Ask the recruiter about next steps" }).first()
+    await expect(row).toContainText("Due today")
+    let events = await trackerEvents(page, opportunityId)
+    expect(events.map((event) => event.action_type)).toEqual(["saved", "follow_up_created"])
+    expect(JSON.parse(events[1].metadata_json ?? "{}")).toHaveProperty("follow_up_id")
+    expect(events[1].metadata_json).not.toContain("recruiter")
+
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    await followUps.getByLabel("Follow-up due date").fill(yesterday)
+    await followUps.getByLabel("Follow-up note").fill("Private overdue reminder")
+    const [overdueCreateResponse] = await Promise.all([
+      page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith(`/opportunities/${opportunityId}/follow-ups`)),
+      followUps.getByRole("button", { name: "Add follow-up" }).click(),
+    ])
+    expect(overdueCreateResponse.status()).toBe(200)
+    const overdueRow = followUps.locator('[data-testid^="tracker-follow-up-"]').filter({ hasText: "Private overdue reminder" }).first()
+    await expect(overdueRow).toContainText("Overdue")
+    events = await trackerEvents(page, opportunityId)
+    expect(events.map((event) => event.action_type)).toEqual(["saved", "follow_up_created", "follow_up_created"])
+    expect(events.slice(1).every((event) => !event.metadata_json?.includes("Private"))).toBe(true)
+
+    await page.keyboard.press("Escape")
+    const dueTodaySummary = page.getByTestId("tracker-follow-ups-overview").locator('[data-testid^="tracker-follow-up-summary-"]').first()
+    await expect(dueTodaySummary).toBeVisible()
+    await expect(dueTodaySummary).not.toContainText("Ask the recruiter about next steps")
+    await page.getByTestId("tracker-follow-up-bucket-overdue").click()
+    const overdueSummary = page.getByTestId("tracker-follow-ups-overview").locator('[data-testid^="tracker-follow-up-summary-"]').first()
+    await expect(overdueSummary).toBeVisible()
+    await expect(overdueSummary).not.toContainText("Private overdue reminder")
+    await overdueSummary.getByRole("button", { name: "Open job" }).click()
+    await expect(page.getByRole("dialog").getByTestId("tracker-follow-ups")).toBeVisible()
+
+    await row.getByRole("button", { name: "Edit follow-up" }).click()
+    await followUps.getByLabel("Edit follow-up due date").fill(tomorrow)
+    await followUps.getByLabel("Edit follow-up note").fill("Check back after the interview")
+    const [updateResponse] = await Promise.all([
+      page.waitForResponse((response) => response.request().method() === "PATCH" && response.url().includes(`/opportunities/${opportunityId}/follow-ups/`)),
+      followUps.getByRole("button", { name: "Save follow-up" }).click(),
+    ])
+    expect(updateResponse.status()).toBe(200)
+    await expect(followUps).toContainText("Check back after the interview")
+    const movedRow = followUps.locator('[data-testid^="tracker-follow-up-"]').filter({ hasText: "Check back after the interview" }).first()
+    await movedRow.getByRole("button", { name: "Edit follow-up" }).click()
+    const [noopResponse] = await Promise.all([
+      page.waitForResponse((response) => response.request().method() === "PATCH" && response.url().includes(`/opportunities/${opportunityId}/follow-ups/`)),
+      followUps.getByRole("button", { name: "Save follow-up" }).click(),
+    ])
+    expect(noopResponse.status()).toBe(200)
+    expect(await trackerEvents(page, opportunityId)).toHaveLength(4)
+
+    await page.keyboard.press("Escape")
+    await page.getByTestId("tracker-follow-up-bucket-upcoming").click()
+    const summaryRow = page.locator('[data-testid^="tracker-follow-up-summary-"]').first()
+    await expect(summaryRow).toBeVisible()
+    await expect(summaryRow).not.toContainText("Check back after the interview")
+    await summaryRow.getByRole("button", { name: "Open job" }).click()
+    const reopenedDrawer = page.getByRole("dialog")
+    const reopenedFollowUps = reopenedDrawer.getByTestId("tracker-follow-ups")
+    const persistedRow = reopenedFollowUps.locator('[data-testid^="tracker-follow-up-"]').filter({ hasText: "Check back after the interview" }).first()
+    await expect(persistedRow).toContainText("Upcoming")
+
+    await persistedRow.getByRole("button", { name: "Complete follow-up" }).click()
+    await expect(persistedRow).toContainText("Completed")
+    events = await trackerEvents(page, opportunityId)
+    expect(events.at(-1)?.action_type).toBe("follow_up_completed")
+    expect(events.at(-1)?.metadata_json).not.toContain("interview")
+
+    await persistedRow.getByRole("button", { name: "Reopen follow-up" }).click()
+    await expect(persistedRow).toContainText("Upcoming")
+    events = await trackerEvents(page, opportunityId)
+    expect(events.slice(-2).map((event) => event.action_type)).toEqual(["follow_up_completed", "follow_up_reopened"])
+
+    await page.reload()
+    await expect(page.getByTestId("workspace-jobs")).toBeVisible()
+    await page.getByTestId("workspace-tracker").click()
+    await page.getByTestId("tracker-bucket-saved").click()
+    await page.getByTestId(`opportunity-card-${opportunityId}`).click()
+    const persistedAgain = page.getByRole("dialog").getByTestId("tracker-follow-ups")
+    await expect(persistedAgain).toContainText("Check back after the interview")
+    await expect(persistedAgain.locator('[data-testid^="tracker-follow-up-"]').filter({ hasText: "Check back after the interview" }).first()).toContainText("Upcoming")
+    expect(await trackerEvents(page, opportunityId)).toHaveLength(6)
+  })
 })

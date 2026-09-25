@@ -1,0 +1,5 @@
+Command: git diff --cached --check
+Exit code: 0
+Output: no whitespace findings
+
+The initial check found an extra blank line at the end of W6.4-FEATURE-eslint-test.txt. The original output is preserved in W6.4-FEATURE-R1-diff.txt and the raw-output archive. The readable transcript was normalized; the final cached diff check passed.

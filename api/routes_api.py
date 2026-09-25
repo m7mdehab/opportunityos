@@ -101,6 +101,13 @@ from .tracker_notes_service import (
     list_tracker_notes,
     update_tracker_note,
 )
+from .tracker_followups_service import (
+    TrackerFollowUpError,
+    create_tracker_follow_up,
+    list_opportunity_follow_ups,
+    list_tracker_follow_ups,
+    update_tracker_follow_up,
+)
 from .search import is_query_unparseable, rank_key, search_opportunity_ids
 from .serialization import (
     serialize_constraint,
@@ -1381,6 +1388,123 @@ def patch_tracker_note(
         session.rollback()
         raise _tracker_note_error(exc) from exc
     return {"note": result.note, "changed": result.changed}
+
+
+def _tracker_follow_up_error(exc: TrackerFollowUpError) -> HTTPException:
+    message = str(exc)
+    if message in {"opportunity not found", "follow-up not found"}:
+        return HTTPException(status_code=404, detail=message)
+    if (
+        message.startswith("due_date")
+        or message.startswith("note_text")
+        or message.startswith("idempotency_key is")
+        or message.startswith("idempotency_key is too")
+        or message.startswith("provide ")
+        or message == "unknown follow-up bucket"
+    ):
+        return HTTPException(status_code=422, detail=message)
+    return HTTPException(status_code=409, detail=message)
+
+
+@router.get("/tracker/follow-ups")
+def get_tracker_follow_ups(
+    bucket: Literal["due_today", "overdue", "upcoming"],
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1),
+    session: Session = Depends(get_db),
+):
+    try:
+        return list_tracker_follow_ups(
+            session,
+            bucket,
+            today=datetime.now(timezone.utc).date(),
+            page=page,
+            page_size=page_size,
+        )
+    except TrackerFollowUpError as exc:
+        raise _tracker_follow_up_error(exc) from exc
+
+
+@router.get("/opportunities/{opportunity_id}/follow-ups")
+def get_opportunity_follow_ups(
+    opportunity_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1),
+    session: Session = Depends(get_db),
+):
+    try:
+        return list_opportunity_follow_ups(
+            session,
+            opportunity_id,
+            today=datetime.now(timezone.utc).date(),
+            page=page,
+            page_size=page_size,
+        )
+    except TrackerFollowUpError as exc:
+        raise _tracker_follow_up_error(exc) from exc
+
+
+class TrackerFollowUpCreateRequest(BaseModel):
+    due_date: str
+    note_text: str | None = None
+    idempotency_key: str
+
+
+class TrackerFollowUpUpdateRequest(BaseModel):
+    due_date: str | None = None
+    note_text: str | None = None
+    completed: bool | None = None
+    idempotency_key: str
+
+
+@router.post("/opportunities/{opportunity_id}/follow-ups")
+def post_opportunity_follow_up(
+    opportunity_id: str,
+    payload: TrackerFollowUpCreateRequest,
+    session: Session = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    try:
+        result = create_tracker_follow_up(
+            session,
+            opportunity_id,
+            payload.due_date,
+            payload.note_text,
+            now,
+            request_key=payload.idempotency_key,
+        )
+        session.commit()
+    except TrackerFollowUpError as exc:
+        session.rollback()
+        raise _tracker_follow_up_error(exc) from exc
+    return {"follow_up": result.follow_up, "changed": result.changed}
+
+
+@router.patch("/opportunities/{opportunity_id}/follow-ups/{follow_up_id}")
+def patch_opportunity_follow_up(
+    opportunity_id: str,
+    follow_up_id: str,
+    payload: TrackerFollowUpUpdateRequest,
+    session: Session = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    try:
+        result = update_tracker_follow_up(
+            session,
+            opportunity_id,
+            follow_up_id,
+            now,
+            request_key=payload.idempotency_key,
+            due_date=payload.due_date,
+            note_text=payload.note_text,
+            note_text_provided="note_text" in payload.model_fields_set,
+            completed=payload.completed,
+        )
+        session.commit()
+    except TrackerFollowUpError as exc:
+        session.rollback()
+        raise _tracker_follow_up_error(exc) from exc
+    return {"follow_up": result.follow_up, "changed": result.changed}
 
 
 def _posted_date_sort_key(value: str | None) -> tuple[int, Any]:

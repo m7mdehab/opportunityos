@@ -1,0 +1,24 @@
+W6.4 feature acceptance setup attempts
+======================================
+
+These are the captured command responses and remediation notes from preparing the isolated feature worktree. They are preserved with the final acceptance outputs in W6.4-FEATURE-raw-output.zip.
+
+1. Python test file was initially created at the wrong worktree path.
+   Command: python -m unittest api.test_tracker_followups_service api.test_tracker_notes_service api.test_tracker_service
+   Result: ImportError; api.test_tracker_followups_service could not be imported from the feature worktree.
+   Cause/remediation: the new test file was at C:\Users\M7mdEhab\projects\oos-w64-followups\api\test_tracker_followups_service.py rather than C:\Users\M7mdEhab\projects\oos-wt\fr008-w64-followups\api\test_tracker_followups_service.py. It was moved into the feature worktree, then the same command passed all 21 tests (see W6.4-FEATURE-service-test.txt).
+
+2. The feature worktree did not have its web dependencies installed.
+   Initial output included: npm warn exec The following package was not found and will be installed: next@16.3.6
+   The follow-on ESLint invocation returned: 'eslint' is not recognized as an internal or external command.
+   A Next type-generation retry reported that TypeScript, @types/react, and @types/node were missing and offered to install them. That automatic install was interrupted. An attempt to invoke the integration worktree's ESLint binary directly failed with ERR_MODULE_NOT_FOUND for eslint imported from the feature worktree's eslint.config.mjs.
+
+3. A first local npm install was incomplete.
+   Command: npm install --no-save --ignore-scripts
+   Result: changed 324 packages and reported 0 vulnerabilities, but ESLint then failed with Cannot find module '...web\\node_modules\\esutils\\lib\\utils.js'.
+   Remediation: npm ci --ignore-scripts completed against the committed web/package-lock.json (added 862 packages; 0 vulnerabilities). This modified only ignored web/node_modules state; package manifests and lockfile stayed unchanged. Typegen, TypeScript, and ESLint then passed.
+
+4. The first post-install ESLint pass reported one warning at web/lib/mock/store.ts:802 for the unused _privateNote destructuring binding.
+   Remediation: the tracker summary now constructs its public fields explicitly, so note_text is never included or destructured. The final ESLint run passed with --max-warnings=0.
+
+No configured database URL was passed to the browser acceptance commands. No private Founder data, live service, migration, deployment, or hosted provider was used.

@@ -37,6 +37,10 @@ import type {
   TruthStatusResponse,
   TrackerBucket,
   TrackerListResponse,
+  TrackerFollowUpBucket,
+  TrackerFollowUpListResponse,
+  TrackerFollowUpSummaryResponse,
+  TrackerFollowUpMutationResponse,
   TrackerNoteListResponse,
   TrackerNoteMutationResponse,
   TutoringPlatform,
@@ -229,7 +233,41 @@ export const api = {
             method: "PATCH",
             body: JSON.stringify({ ...body, idempotency_key: idempotencyKey }),
           }
-        ),
+      ),
+    },
+    followUps: {
+      list: (opportunityId: string, params: { page?: number; page_size?: number } = {}) => {
+        const search = new URLSearchParams()
+        search.set("page", String(params.page ?? 1))
+        search.set("page_size", String(params.page_size ?? 50))
+        return request<TrackerFollowUpListResponse>(
+          `/api/opportunities/${opportunityId}/follow-ups?${search.toString()}`
+        )
+      },
+      overview: (bucket: TrackerFollowUpBucket, params: { page?: number; page_size?: number } = {}) => {
+        const search = new URLSearchParams()
+        search.set("bucket", bucket)
+        search.set("page", String(params.page ?? 1))
+        search.set("page_size", String(params.page_size ?? 25))
+        return request<TrackerFollowUpSummaryResponse>(`/api/tracker/follow-ups?${search.toString()}`)
+      },
+      create: (
+        opportunityId: string,
+        body: { due_date: string; note_text?: string | null },
+        idempotencyKey: string
+      ) => request<TrackerFollowUpMutationResponse>(`/api/opportunities/${opportunityId}/follow-ups`, {
+        method: "POST",
+        body: JSON.stringify({ ...body, idempotency_key: idempotencyKey }),
+      }),
+      update: (
+        opportunityId: string,
+        followUpId: string,
+        body: { due_date?: string; note_text?: string | null } | { completed: boolean },
+        idempotencyKey: string
+      ) => request<TrackerFollowUpMutationResponse>(
+        `/api/opportunities/${opportunityId}/follow-ups/${followUpId}`,
+        { method: "PATCH", body: JSON.stringify({ ...body, idempotency_key: idempotencyKey }) }
+      ),
     },
   },
 

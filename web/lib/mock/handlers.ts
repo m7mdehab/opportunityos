@@ -5,7 +5,7 @@
  * no idea this file exists.
  */
 import { http, HttpResponse } from "msw"
-import type { ActionType, ApplicationStage, FeedbackLabel, FeedQueryState, TrackerBucket } from "@/lib/contract/types"
+import type { ActionType, ApplicationStage, FeedbackLabel, FeedQueryState, TrackerBucket, TrackerFollowUpBucket } from "@/lib/contract/types"
 import { getStore } from "@/lib/mock/store"
 import { resolveScenario } from "@/lib/mock/scenario"
 
@@ -82,6 +82,23 @@ export const handlers = [
     ))
   }),
 
+  http.get("/api/tracker/follow-ups", ({ request }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const url = new URL(request.url)
+    const bucket = url.searchParams.get("bucket") ?? "due_today"
+    const page = Number(url.searchParams.get("page") ?? "1")
+    const pageSize = Number(url.searchParams.get("page_size") ?? "25")
+    if (!(["due_today", "overdue", "upcoming"] as string[]).includes(bucket)) {
+      return HttpResponse.json({ detail: "unknown follow-up bucket" }, { status: 422 })
+    }
+    if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1) {
+      return HttpResponse.json({ detail: "page and page_size must be positive integers" }, { status: 422 })
+    }
+    const result = store().listTrackerFollowUps(bucket as TrackerFollowUpBucket, page, pageSize)
+    if (result === "invalid_bucket") return HttpResponse.json({ detail: "unknown follow-up bucket" }, { status: 422 })
+    return HttpResponse.json(result)
+  }),
+
   http.get("/api/opportunities", ({ request }) => {
     if (!requireAuth(request)) return unauthorized()
     const url = new URL(request.url)
@@ -138,6 +155,85 @@ export const handlers = [
       )
     }
     return HttpResponse.json(detail)
+  }),
+
+  http.get("/api/opportunities/:id/follow-ups", ({ request, params }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const url = new URL(request.url)
+    const page = Number(url.searchParams.get("page") ?? "1")
+    const pageSize = Number(url.searchParams.get("page_size") ?? "50")
+    if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1) {
+      return HttpResponse.json({ detail: "page and page_size must be positive integers" }, { status: 422 })
+    }
+    const result = store().listOpportunityTrackerFollowUps(String(params.id), page, pageSize)
+    if (result === "not_found") return HttpResponse.json({ detail: "opportunity not found" }, { status: 404 })
+    if (result === "not_tracked") return HttpResponse.json({ detail: "follow-ups are available only for Saved and Applied jobs" }, { status: 409 })
+    return HttpResponse.json(result)
+  }),
+
+  http.post("/api/opportunities/:id/follow-ups", async ({ request, params }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const body = (await request.json().catch(() => ({}))) as {
+      due_date?: unknown
+      note_text?: unknown
+      idempotency_key?: unknown
+    }
+    if (typeof body.due_date !== "string") return HttpResponse.json({ detail: "due_date must use YYYY-MM-DD" }, { status: 422 })
+    if (body.note_text !== undefined && body.note_text !== null && typeof body.note_text !== "string") {
+      return HttpResponse.json({ detail: "note_text must be a string or null" }, { status: 422 })
+    }
+    if (typeof body.idempotency_key !== "string" || !body.idempotency_key.trim() || body.idempotency_key.length > 128) {
+      return HttpResponse.json({ detail: "idempotency_key is required and must be at most 128 characters" }, { status: 422 })
+    }
+    const result = store().createTrackerFollowUp(
+      String(params.id), body.due_date, body.note_text as string | null | undefined, body.idempotency_key
+    )
+    if (result === "not_found") return HttpResponse.json({ detail: "opportunity not found" }, { status: 404 })
+    if (result === "not_tracked") return HttpResponse.json({ detail: "follow-ups are available only for Saved and Applied jobs" }, { status: 409 })
+    if (result === "invalid_due_date") return HttpResponse.json({ detail: "due_date must use YYYY-MM-DD" }, { status: 422 })
+    if (result === "invalid_note_text") return HttpResponse.json({ detail: "note_text cannot exceed 4000 characters" }, { status: 422 })
+    if (result === "invalid_idempotency_key") return HttpResponse.json({ detail: "idempotency_key is required and must be at most 128 characters" }, { status: 422 })
+    if (result === "idempotency_conflict") return HttpResponse.json({ detail: "idempotency_key was already used for another follow-up operation" }, { status: 409 })
+    return HttpResponse.json(result)
+  }),
+
+  http.patch("/api/opportunities/:id/follow-ups/:followUpId", async ({ request, params }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const body = (await request.json().catch(() => ({}))) as {
+      due_date?: unknown
+      note_text?: unknown
+      completed?: unknown
+      idempotency_key?: unknown
+    }
+    const hasDueDate = "due_date" in body
+    const hasNote = "note_text" in body
+    const hasCompletion = "completed" in body
+    if (hasDueDate && typeof body.due_date !== "string") return HttpResponse.json({ detail: "due_date must use YYYY-MM-DD" }, { status: 422 })
+    if (hasNote && body.note_text !== null && typeof body.note_text !== "string") {
+      return HttpResponse.json({ detail: "note_text must be a string or null" }, { status: 422 })
+    }
+    if (hasCompletion && typeof body.completed !== "boolean") return HttpResponse.json({ detail: "completed must be a boolean" }, { status: 422 })
+    if (typeof body.idempotency_key !== "string" || !body.idempotency_key.trim() || body.idempotency_key.length > 128) {
+      return HttpResponse.json({ detail: "idempotency_key is required and must be at most 128 characters" }, { status: 422 })
+    }
+    const result = store().updateTrackerFollowUp(
+      String(params.id),
+      String(params.followUpId),
+      body.idempotency_key,
+      {
+        ...(hasDueDate ? { due_date: body.due_date as string } : {}),
+        ...(hasNote ? { note_text: body.note_text as string | null, note_text_provided: true } : {}),
+        ...(hasCompletion ? { completed: body.completed as boolean } : {}),
+      },
+    )
+    if (result === "not_found") return HttpResponse.json({ detail: "follow-up or opportunity not found" }, { status: 404 })
+    if (result === "not_tracked") return HttpResponse.json({ detail: "follow-ups are available only for Saved and Applied jobs" }, { status: 409 })
+    if (result === "invalid_due_date") return HttpResponse.json({ detail: "due_date must use YYYY-MM-DD" }, { status: 422 })
+    if (result === "invalid_note_text") return HttpResponse.json({ detail: "note_text cannot exceed 4000 characters" }, { status: 422 })
+    if (result === "invalid_idempotency_key") return HttpResponse.json({ detail: "idempotency_key is required and must be at most 128 characters" }, { status: 422 })
+    if (result === "invalid_update") return HttpResponse.json({ detail: "provide due_date/note_text changes or completed state" }, { status: 422 })
+    if (result === "idempotency_conflict") return HttpResponse.json({ detail: "idempotency_key was already used for another follow-up operation" }, { status: 409 })
+    return HttpResponse.json(result)
   }),
 
   http.get("/api/opportunities/:id/tracker-notes", ({ request, params }) => {
