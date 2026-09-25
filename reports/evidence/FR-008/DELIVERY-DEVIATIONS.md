@@ -58,3 +58,7 @@ R7 ran once from exact source base `1dda8b6` against a fresh local disposable da
 The failure was `test_lease_expiration_and_recovery`, which attempted to reclaim a job immediately after creating a zero-second lease. This is a remaining boundary in the same PostgreSQL queue durability test file, not a production queue failure. `W1-QUEUE-LEASE-RECOVERY-REMEDIATION` will use a nonzero lease, persist an explicit past expiry via PostgreSQL time, and verify the expired row before the second worker claims it.
 
 `W1-QUEUE-LEASE-RECOVERY-REMEDIATION` changed only that remaining queue test setup: it now creates a 60-second lease, persists expiry using PostgreSQL time, checks the committed owner/status/retry count and expiry from a fresh session, then verifies recovery. All 17 queue durability tests passed, along with repository integrity and diff check. R8 is the next one-shot integrated full-suite run; R7 evidence remains red and unchanged.
+
+## W1-WAVE-VERIFY-R8 result
+
+R8 ran once from exact source base `0a0de55` against a fresh local disposable database (`opportunityos_fr008_wave8`). Guard, repository integrity, target preflight, Alembic migration, and diff check all passed. The full suite passed: 1,596 tests, 22 skips, no failures or errors. The unedited outputs are preserved in `W1-WAVE-R8-{guard,repository,backend,diff-check}.txt`; the backend transcript records each command exit code. This restores a green integrated Wave 1 checkpoint after the bounded R5–R7 test-only remediations.
