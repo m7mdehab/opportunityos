@@ -2,13 +2,17 @@
 from __future__ import annotations
 
 import argparse
-import fnmatch
 import json
 import os
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+try:
+    from scripts.sync_mirror import is_allowlisted, load_allowlist
+except ModuleNotFoundError:  # running as `python scripts/check_guard.py`
+    from sync_mirror import is_allowlisted, load_allowlist
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,16 +29,12 @@ def repository_files() -> list[Path]:
 
 
 def allowlist() -> list[str]:
-    return [
-        line.strip()
-        for line in (ROOT / ".mirror-allowlist").read_text(encoding="utf-8").splitlines()
-        if line.strip() and not line.lstrip().startswith("#")
-    ]
+    return load_allowlist(ROOT / ".mirror-allowlist")
 
 
 def mirrored(path: Path, patterns: list[str]) -> bool:
     relative = path.relative_to(ROOT).as_posix()
-    return any(fnmatch.fnmatchcase(relative, pattern) for pattern in patterns)
+    return is_allowlisted(relative, patterns)
 
 
 def readable(path: Path) -> str:

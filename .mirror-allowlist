@@ -1,3 +1,5 @@
+# Ordered rules: the last matching rule wins. Rules are allow patterns by default;
+# prefix a pattern with ! to deny it. A later rule can explicitly re-include a path.
 docs/**
 briefs/**
 reports/**
@@ -8,3 +10,7 @@ recon/**
 .github/workflows/**
 .github/pii-patterns.txt
 .mirror-allowlist
+!briefs/BRIEF-FR-008.md
+!briefs/FR-008-FOLLOW-UP.md
+!reports/REPORT-FR-008.md
+!reports/evidence/FR-008/**

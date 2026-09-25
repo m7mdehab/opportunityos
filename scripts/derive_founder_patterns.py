@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import fnmatch
 import itertools
 import json
 import os
@@ -11,6 +10,11 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+
+try:
+    from scripts.sync_mirror import is_allowlisted, load_allowlist
+except ModuleNotFoundError:  # running as `python scripts/derive_founder_patterns.py`
+    from sync_mirror import is_allowlisted, load_allowlist
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -121,16 +125,12 @@ def pattern_set(name: str, email: str, login: str) -> tuple[list[str], str]:
 
 
 def mirrored_files(root: Path) -> list[Path]:
-    allowlist = [
-        line.strip()
-        for line in (root / ".mirror-allowlist").read_text(encoding="utf-8").splitlines()
-        if line.strip() and not line.lstrip().startswith("#")
-    ]
+    allowlist = load_allowlist(root / ".mirror-allowlist")
     tracked = command("git", "ls-files", "-z").split("\x00")
     return [
         root / relative
         for relative in tracked
-        if relative and any(fnmatch.fnmatchcase(relative, pattern) for pattern in allowlist)
+        if relative and is_allowlisted(relative, allowlist)
     ]
 
 

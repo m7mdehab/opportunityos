@@ -18,6 +18,27 @@ This mirror is disposable. If content is ever exposed here incorrectly, delete t
 """
 
 
+def load_allowlist(path: Path) -> list[str]:
+    return [
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+
+
+def is_allowlisted(relative_path: str, patterns: list[str]) -> bool:
+    """Apply ordered mirror rules; the last matching rule determines inclusion."""
+    included = False
+    for rule in patterns:
+        denied = rule.startswith("!")
+        pattern = rule[1:] if denied else rule
+        if not pattern:
+            raise ValueError("mirror deny rules must include a pattern")
+        if fnmatch.fnmatchcase(relative_path, pattern):
+            included = not denied
+    return included
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("source", type=Path)
@@ -30,11 +51,7 @@ def main() -> None:
     if source == destination or not (destination / ".git").is_dir():
         raise SystemExit("RULE MIRROR_TARGET FAILED: destination must be a separate git checkout. REMEDY: clone the public mirror into a clean temporary directory.")
 
-    patterns = [
-        line.strip()
-        for line in (source / ".mirror-allowlist").read_text(encoding="utf-8").splitlines()
-        if line.strip() and not line.lstrip().startswith("#")
-    ]
+    patterns = load_allowlist(source / ".mirror-allowlist")
     tracked = subprocess.run(
         ["git", "ls-files", "-z"], cwd=source, capture_output=True, check=True
     ).stdout.split(b"\0")
@@ -54,7 +71,7 @@ def main() -> None:
         if not raw:
             continue
         relative = raw.decode("utf-8")
-        if not any(fnmatch.fnmatchcase(relative, pattern) for pattern in patterns):
+        if not is_allowlisted(relative, patterns):
             continue
         dest_relative = relative
         if relative.startswith(".github/workflows/"):
