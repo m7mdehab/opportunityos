@@ -201,24 +201,14 @@ class OpportunityScorer:
         # strength additionally requires the posting to have listed that skill
         # as *required* (opportunity/inference_rules.yaml headed-list rules),
         # not merely nice-to-have.
-        skill_name_assertions = [
-            a for a in truth_graph.assertions.values()
-            if a.predicate == predicates.SKILL_NAME and a.verification_status == VerificationStatus.VERIFIED
-        ]
-        skill_proficiency_by_subject = {
-            a.subject_id: skill_matching.normalize_proficiency(str(a.value) if a.value is not None else None)
-            for a in truth_graph.assertions.values()
-            if a.predicate == predicates.SKILL_PROFICIENCY
-        }
-        founder_skills_by_name: dict[str, tuple[str | None, tuple[str, ...]]] = {}
-        for a in skill_name_assertions:
-            name_key = str(a.value).casefold()
-            proficiency = skill_proficiency_by_subject.get(a.subject_id)
-            existing = founder_skills_by_name.get(name_key)
-            if existing is None or (existing[0] is None and proficiency is not None):
-                founder_skills_by_name[name_key] = (proficiency, a.evidence_ids)
+        founder_skills_by_name = skill_matching.build_verified_skill_index(
+            truth_graph.assertions.values(),
+        )
 
-        opp_skills = [s.casefold() for s in opp.skills]
+        opp_skills = [
+            normalized for raw in opp.skills
+            if (normalized := skill_matching.normalize_skill_label(raw))
+        ]
         if not founder_skills_by_name:
             if opp_skills:
                 skill_ratio = 0.0

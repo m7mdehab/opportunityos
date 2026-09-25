@@ -26,12 +26,18 @@ these primitives to the truth graph and the opportunity payload.
 """
 from __future__ import annotations
 
+from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 import re
+import unicodedata
+from typing import TypeAlias
 
 import yaml
+from truth import predicates
+from truth.models import AtomicAssertion, Polarity, VerificationStatus
 
 _RULES_PATH = Path(__file__).resolve().parent.parent / "opportunity" / "inference_rules.yaml"
 
@@ -57,7 +63,7 @@ PARTIAL_TIERS: frozenset[str] = frozenset(
 def normalize_proficiency(raw: str | None) -> str | None:
     """Casefold/strip a proficiency string and return it only if it belongs
     to the closed vocabulary; otherwise return None, meaning *unknown*."""
-    if raw is None:
+    if not isinstance(raw, str):
         return None
     candidate = raw.strip().casefold()
     return candidate if candidate in _TIER_RANK else None
@@ -80,6 +86,80 @@ def is_partial_proficiency(raw: str | None) -> bool:
 def meets_strength_floor(raw: str | None) -> bool:
     """True only for `working`, `advanced`, `expert`."""
     return not is_partial_proficiency(raw)
+
+
+def normalize_skill_label(raw: str | None) -> str:
+    """Return the literal skill label normalized for exact matching.
+
+    The only transformations are canonical Unicode composition, whitespace
+    collapse, and case-folding. This deliberately does not expand aliases or
+    infer related skills (for example, ``JS`` is not ``JavaScript``).
+    """
+    if not isinstance(raw, str):
+        return ""
+    normalized = unicodedata.normalize("NFC", raw)
+    collapsed = " ".join(normalized.split())
+    return unicodedata.normalize("NFC", collapsed.casefold())
+
+
+SkillIndexEntry: TypeAlias = tuple[str | None, tuple[str, ...]]
+
+
+def build_verified_skill_index(
+    assertions: Iterable[AtomicAssertion],
+) -> dict[str, SkillIndexEntry]:
+    """Index verified career skill names and their safely joined evidence.
+
+    Skill names are grouped by exact normalized label. Proficiency is joined
+    only through the same assertion subject and only from verified
+    ``skill.proficiency`` assertions. Conflicting (or unrecognized) verified
+    tiers keep proficiency unknown. References from verified name assertions
+    are always retained; proficiency references are included only when one
+    unambiguous accepted tier exists.
+    """
+    name_rows: list[tuple[str, str, tuple[str, ...]]] = []
+    proficiency_by_subject: dict[str, list[tuple[str | None, tuple[str, ...]]]] = defaultdict(list)
+
+    for assertion in assertions:
+        if (
+            assertion.verification_status is not VerificationStatus.VERIFIED
+            or assertion.polarity is not Polarity.POSITIVE
+        ):
+            continue
+        if assertion.predicate == predicates.SKILL_NAME:
+            key = normalize_skill_label(assertion.value)
+            if key:
+                name_rows.append((key, assertion.subject_id, assertion.evidence_ids))
+        elif assertion.predicate == predicates.SKILL_PROFICIENCY:
+            tier = normalize_proficiency(assertion.value)
+            proficiency_by_subject[assertion.subject_id].append((tier, assertion.evidence_ids))
+
+    names_by_key: dict[str, list[tuple[str, tuple[str, ...]]]] = defaultdict(list)
+    for key, subject_id, evidence_refs in name_rows:
+        names_by_key[key].append((subject_id, evidence_refs))
+
+    result: dict[str, SkillIndexEntry] = {}
+    for key, skill_names in names_by_key.items():
+        name_refs = [ref for _, refs in skill_names for ref in refs]
+        subject_ids = dict.fromkeys(subject for subject, _ in skill_names)
+        observed = [
+            tier_ref
+            for subject_id in subject_ids
+            for tier_ref in proficiency_by_subject.get(subject_id, ())
+        ]
+        observed_tiers = {tier for tier, _ in observed}
+        accepted_tier = None
+        proficiency_refs: list[str] = []
+        if len(observed_tiers) == 1 and None not in observed_tiers:
+            accepted_tier = next(iter(observed_tiers))
+            proficiency_refs = [
+                ref for tier, refs in observed if tier == accepted_tier for ref in refs
+            ]
+
+        evidence_refs = tuple(dict.fromkeys((*name_refs, *proficiency_refs)))
+        result[key] = (accepted_tier, evidence_refs)
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -131,14 +211,17 @@ def split_required_and_nice_to_have(
     matches at all -- is `nice_to_have`.
     """
     required_rules, nice_rules = _load_skill_requirement_rules()
-    skill_pool = {s.casefold() for s in skills if s.strip()}
+    skill_pool = {
+        normalized for raw in skills
+        if (normalized := normalize_skill_label(raw))
+    }
     if not skill_pool:
         return frozenset(), frozenset()
 
     required: set[str] = set()
     state = "nice_to_have"  # conservative default before any header is seen
     for raw_line in _description_to_lines(description):
-        line = raw_line.strip()
+        line = normalize_skill_label(raw_line)
         if not line:
             continue
         if any(rule.pattern.search(line) for rule in required_rules):
@@ -200,7 +283,7 @@ def evaluate_skill_matches(
     seen: set[str] = set()
     matches: list[SkillMatch] = []
     for raw in opp_skills:
-        name = raw.casefold()
+        name = normalize_skill_label(raw)
         if not name or name in seen:
             continue
         seen.add(name)
