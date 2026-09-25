@@ -267,29 +267,34 @@ class TestQualificationEngine(unittest.TestCase):
         self.truth_graph = create_test_graph()
 
     def test_qualified_remote_opportunity(self) -> None:
-        opp = create_test_opportunity()
+        opp = create_test_opportunity(remote_scope=RemoteScope.WORLDWIDE)
         decision, constraints = self.engine.evaluate(opp, self.truth_graph)
         self.assertEqual(decision, QualificationDecision.QUALIFIED)
         self.assertTrue(all(c.passed is True for c in constraints))
 
-    def test_ineligible_geographically_excluded(self) -> None:
-        opp = create_test_opportunity(geo_status="excluded")
-        decision, constraints = self.engine.evaluate(opp, self.truth_graph)
-        self.assertEqual(decision, QualificationDecision.INELIGIBLE)
-        failed = [c for c in constraints if c.constraint_name == "geographic_eligibility"]
-        self.assertTrue(len(failed) > 0)
-        self.assertTrue(failed[0].is_hard_failure)
+    def test_status_only_legacy_geography_remains_uncertain(self) -> None:
+        for status in ("excluded", "eligible", "ineligible"):
+            with self.subTest(status=status):
+                opp = create_test_opportunity(geo_status=status)
+                decision, constraints = self.engine.evaluate(opp, self.truth_graph)
+                geo = [c for c in constraints if c.constraint_name == "geographic_eligibility"]
+                self.assertEqual(QualificationDecision.UNCERTAIN, decision)
+                self.assertEqual(1, len(geo))
+                self.assertIsNone(geo[0].passed)
+                self.assertFalse(geo[0].is_hard_failure)
 
-    def test_ineligible_mandatory_onsite_foreign_location(self) -> None:
+    def test_different_onsite_location_does_not_assume_relocation_refusal(self) -> None:
         opp = create_test_opportunity(
+            geo_status="excluded",
             work_mode=WorkMode.ONSITE,
             location_raw="Berlin, Germany",
         )
         decision, constraints = self.engine.evaluate(opp, self.truth_graph)
-        self.assertEqual(decision, QualificationDecision.INELIGIBLE)
-        failed = [c for c in constraints if c.constraint_name == "work_mode_onsite"]
-        self.assertTrue(len(failed) > 0)
-        self.assertTrue(failed[0].is_hard_failure)
+        onsite = [c for c in constraints if c.constraint_name == "work_mode_onsite"]
+        self.assertEqual(QualificationDecision.UNCERTAIN, decision)
+        self.assertEqual(1, len(onsite))
+        self.assertIsNone(onsite[0].passed)
+        self.assertFalse(onsite[0].is_hard_failure)
 
     def test_ineligible_explicit_foreign_work_auth(self) -> None:
         opp = create_test_opportunity(
@@ -310,6 +315,7 @@ class TestQualificationEngine(unittest.TestCase):
         # Opportunity without explicit language or work authorization statements evaluates cleanly without false hard failures
         opp = create_test_opportunity(
             description="Software Engineer role working on backend microservices.",
+            remote_scope=RemoteScope.WORLDWIDE,
         )
         decision, constraints = self.engine.evaluate(opp, self.truth_graph)
         self.assertEqual(decision, QualificationDecision.QUALIFIED)
@@ -335,6 +341,38 @@ class TestQualificationEngine(unittest.TestCase):
         self.assertEqual(1, len(geo))
         self.assertTrue(geo[0].passed)
         self.assertFalse(geo[0].is_hard_failure)
+
+    def test_structured_worldwide_remote_overrides_legacy_exclusion_and_employer_country(self) -> None:
+        opp = create_test_opportunity(
+            geo_status="excluded",
+            work_mode=WorkMode.REMOTE,
+            location_country="DE",
+            remote_scope=RemoteScope.WORLDWIDE,
+        )
+        decision, constraints = self.engine.evaluate(opp, self.truth_graph)
+        geo = [c for c in constraints if c.constraint_name == "geographic_eligibility"]
+        self.assertEqual(QualificationDecision.QUALIFIED, decision)
+        self.assertEqual(1, len(geo))
+        self.assertTrue(geo[0].passed)
+        self.assertFalse(geo[0].is_hard_failure)
+
+    def test_same_verified_residence_location_onsite_is_consistent(self) -> None:
+        residence = next(
+            str(assertion.value)
+            for assertion in self.truth_graph.assertions.values()
+            if assertion.predicate == "residence.country"
+            and assertion.verification_status == VerificationStatus.VERIFIED
+        )
+        opp = create_test_opportunity(
+            geo_status="unclear",
+            work_mode=WorkMode.ONSITE,
+            location_raw=residence,
+        )
+        _, constraints = self.engine.evaluate(opp, self.truth_graph)
+        onsite = [c for c in constraints if c.constraint_name == "work_mode_onsite"]
+        self.assertEqual(1, len(onsite))
+        self.assertTrue(onsite[0].passed)
+        self.assertFalse(onsite[0].is_hard_failure)
 
     def test_region_restricted_excluding_egypt_is_labelled_not_hidden(self) -> None:
         opp = create_test_opportunity(
@@ -369,16 +407,23 @@ class TestQualificationEngine(unittest.TestCase):
         self.assertEqual(1, len(geo))
         self.assertTrue(geo[0].passed)
 
-    def test_location_country_with_verified_negative_authorization_onsite_is_ineligible(self) -> None:
+    def test_location_country_with_verified_negative_authorization_physical_presence_is_ineligible(self) -> None:
         # Truth graph has a verified NEGATIVE work_authorization.jurisdiction="Germany".
-        # Physical presence is actually required (onsite) -> hard failure.
-        opp = create_test_opportunity(geo_status="unclear", location_country="DE", work_mode=WorkMode.ONSITE)
-        decision, constraints = self.engine.evaluate(opp, self.truth_graph)
-        self.assertEqual(QualificationDecision.INELIGIBLE, decision)
-        geo = [c for c in constraints if c.constraint_name == "geographic_eligibility"]
-        self.assertEqual(1, len(geo))
-        self.assertFalse(geo[0].passed)
-        self.assertTrue(geo[0].is_hard_failure)
+        # Structured onsite or hybrid presence in that jurisdiction -> hard failure.
+        for work_mode in (WorkMode.ONSITE, WorkMode.HYBRID):
+            with self.subTest(work_mode=work_mode.value):
+                opp = create_test_opportunity(
+                    geo_status="unclear",
+                    location_country="DE",
+                    work_mode=work_mode,
+                    remote_scope=RemoteScope.WORLDWIDE,
+                )
+                decision, constraints = self.engine.evaluate(opp, self.truth_graph)
+                self.assertEqual(QualificationDecision.INELIGIBLE, decision)
+                geo = [c for c in constraints if c.constraint_name == "geographic_eligibility"]
+                self.assertEqual(1, len(geo))
+                self.assertFalse(geo[0].passed)
+                self.assertTrue(geo[0].is_hard_failure)
 
     def test_location_country_with_verified_negative_authorization_remote_is_labelled_not_hard_failure(self) -> None:
         # Same verified NEGATIVE work_authorization.jurisdiction="Germany", but the role
@@ -401,15 +446,15 @@ class TestQualificationEngine(unittest.TestCase):
         self.assertIsNone(geo[0].passed)
         self.assertFalse(geo[0].is_hard_failure)
 
-    def test_neither_country_nor_remote_scope_falls_back_to_prior_behavior(self) -> None:
-        # No location_country, no remote_scope -> unchanged pre-A1 blanket UNCERTAIN.
+    def test_neither_country_nor_remote_scope_remains_uncertain(self) -> None:
+        # No location_country or remote_scope -> legacy status is insufficient to resolve.
         opp = create_test_opportunity(geo_status="unclear")
         decision, constraints = self.engine.evaluate(opp, self.truth_graph)
         self.assertEqual(QualificationDecision.UNCERTAIN, decision)
         geo = [c for c in constraints if c.constraint_name == "geographic_eligibility"]
         self.assertEqual(1, len(geo))
         self.assertIsNone(geo[0].passed)
-        self.assertIn("uncertain", geo[0].reason.casefold())
+        self.assertIn("unresolved", geo[0].reason.casefold())
 
 
 if __name__ == "__main__":
