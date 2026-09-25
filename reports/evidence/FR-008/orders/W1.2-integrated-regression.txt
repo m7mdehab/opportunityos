@@ -1,0 +1,80 @@
+test_hash_verified_skill_and_capability_graph_is_reference_complete (matching.test_fr008_capability_evidence.TestCanonicalCapabilityEvidenceContract.test_hash_verified_skill_and_capability_graph_is_reference_complete) ... ok
+test_conflicting_verified_tiers_remain_unknown (matching.test_fr008_capability_evidence.TestVerifiedSkillIndex.test_conflicting_verified_tiers_remain_unknown) ... ok
+test_duplicate_labels_aggregate_name_and_proficiency_references (matching.test_fr008_capability_evidence.TestVerifiedSkillIndex.test_duplicate_labels_aggregate_name_and_proficiency_references) ... ok
+test_synonyms_and_capability_tools_do_not_enter_career_skill_index (matching.test_fr008_capability_evidence.TestVerifiedSkillIndex.test_synonyms_and_capability_tools_do_not_enter_career_skill_index) ... ok
+test_unicode_whitespace_and_case_are_formatting_only (matching.test_fr008_capability_evidence.TestVerifiedSkillIndex.test_unicode_whitespace_and_case_are_formatting_only) ... ok
+test_unverified_names_and_narrative_values_are_not_skills (matching.test_fr008_capability_evidence.TestVerifiedSkillIndex.test_unverified_names_and_narrative_values_are_not_skills) ... ok
+test_unverified_proficiency_cannot_change_tier_or_add_references (matching.test_fr008_capability_evidence.TestVerifiedSkillIndex.test_unverified_proficiency_cannot_change_tier_or_add_references) ... ok
+test_verified_negative_assertions_do_not_create_positive_capabilities (matching.test_fr008_capability_evidence.TestVerifiedSkillIndex.test_verified_negative_assertions_do_not_create_positive_capabilities) ... ok
+test_career_goal_does_not_match_as_a_target_role (matching.test_scorer.TestCareerTrajectoryPredicateIsolation.test_career_goal_does_not_match_as_a_target_role) ... ok
+test_remote_track_does_not_match_remote_title_as_career_target_role (matching.test_scorer.TestCareerTrajectoryPredicateIsolation.test_remote_track_does_not_match_remote_title_as_career_target_role) ... ok
+test_verified_target_role_matches_title_and_supplies_evidence (matching.test_scorer.TestCareerTrajectoryPredicateIsolation.test_verified_target_role_matches_title_and_supplies_evidence) ... ok
+test_high_fit_employment_opportunity (matching.test_scorer.TestOpportunityScorerAndMapper.test_high_fit_employment_opportunity) ... ok
+test_low_fit_different_skills_opportunity (matching.test_scorer.TestOpportunityScorerAndMapper.test_low_fit_different_skills_opportunity) ... ok
+test_name_matched_skill_with_unknown_proficiency_is_not_a_strength (matching.test_scorer.TestOpportunityScorerAndMapper.test_name_matched_skill_with_unknown_proficiency_is_not_a_strength) ... ok
+test_requirement_mapping_classification (matching.test_scorer.TestOpportunityScorerAndMapper.test_requirement_mapping_classification) ... ok
+test_egp_compensation_below_threshold_records_gap_but_stays_qualified (matching.test_scorer.TestPremiumFullTimeOnsiteRule.test_egp_compensation_below_threshold_records_gap_but_stays_qualified) ... ok
+test_non_fulltime_role_never_triggers_the_rule (matching.test_scorer.TestPremiumFullTimeOnsiteRule.test_non_fulltime_role_never_triggers_the_rule) ... ok
+test_unknown_compensation_is_never_penalized (matching.test_scorer.TestPremiumFullTimeOnsiteRule.test_unknown_compensation_is_never_penalized) ... ok
+test_usd_compensation_meets_threshold_records_no_gap (matching.test_scorer.TestPremiumFullTimeOnsiteRule.test_usd_compensation_meets_threshold_records_no_gap) ... ok
+test_employment_weights_sum_to_one (matching.test_scorer.TestScoringPolicyWeightsSumToOne.test_employment_weights_sum_to_one) ... ok
+test_every_employment_weight_key_scorer_reads_is_in_the_policy_dict (matching.test_scorer.TestScoringPolicyWeightsSumToOne.test_every_employment_weight_key_scorer_reads_is_in_the_policy_dict) ... ok
+test_every_independent_weight_key_scorer_reads_is_in_the_policy_dict (matching.test_scorer.TestScoringPolicyWeightsSumToOne.test_every_independent_weight_key_scorer_reads_is_in_the_policy_dict) ... ok
+test_independent_weights_sum_to_one (matching.test_scorer.TestScoringPolicyWeightsSumToOne.test_independent_weights_sum_to_one) ... ok
+test_senior_customer_engineer_no_longer_outscores_data_engineering_match (matching.test_scorer.TestSkillProficiencyOrderingAcceptance.test_senior_customer_engineer_no_longer_outscores_data_engineering_match) ... ok
+test_matching_family (matching.test_scorer.TestTitleFamilyFitDimensionIntegration.test_matching_family) ... ok
+test_mismatched_family (matching.test_scorer.TestTitleFamilyFitDimensionIntegration.test_mismatched_family) ... ok
+test_no_target_role_assertion (matching.test_scorer.TestTitleFamilyFitDimensionIntegration.test_no_target_role_assertion) ... ok
+test_other_family_posting (matching.test_scorer.TestTitleFamilyFitDimensionIntegration.test_other_family_posting) ... ok
+test_basic_is_partial (matching.test_skills.TestProficiencyTiers.test_basic_is_partial) ... ok
+test_foundations_is_partial (matching.test_skills.TestProficiencyTiers.test_foundations_is_partial) ... ok
+test_ordering_is_explicit_and_visible (matching.test_skills.TestProficiencyTiers.test_ordering_is_explicit_and_visible) ... ok
+test_proficiency_is_case_and_whitespace_insensitive (matching.test_skills.TestProficiencyTiers.test_proficiency_is_case_and_whitespace_insensitive) ... ok
+test_unknown_or_absent_proficiency_is_partial (matching.test_skills.TestProficiencyTiers.test_unknown_or_absent_proficiency_is_partial) ... ok
+test_working_and_above_can_produce_a_strength (matching.test_skills.TestProficiencyTiers.test_working_and_above_can_produce_a_strength) ... ok
+test_headed_greenhouse_list_splits_correctly (matching.test_skills.TestRequiredNiceToHaveSplit.test_headed_greenhouse_list_splits_correctly) ... ok
+test_headed_lever_list_splits_correctly (matching.test_skills.TestRequiredNiceToHaveSplit.test_headed_lever_list_splits_correctly) ... ok
+test_no_skills_returns_empty_sets (matching.test_skills.TestRequiredNiceToHaveSplit.test_no_skills_returns_empty_sets) ... ok
+test_unheaded_description_yields_all_nice_to_have (matching.test_skills.TestRequiredNiceToHaveSplit.test_unheaded_description_yields_all_nice_to_have) ... ok
+test_basic_skill_never_produces_a_strength_string (matching.test_skills.TestSkillMatchEvaluationAndReason.test_basic_skill_never_produces_a_strength_string) ... ok
+test_five_sample_reasons_each_name_all_four_elements (matching.test_skills.TestSkillMatchEvaluationAndReason.test_five_sample_reasons_each_name_all_four_elements) ... ok
+test_nice_to_have_match_is_never_a_strength_even_at_expert (matching.test_skills.TestSkillMatchEvaluationAndReason.test_nice_to_have_match_is_never_a_strength_even_at_expert) ... ok
+test_reason_names_required_list_matched_evidence_and_missing (matching.test_skills.TestSkillMatchEvaluationAndReason.test_reason_names_required_list_matched_evidence_and_missing) ... ok
+test_required_match_at_working_or_above_is_a_strength (matching.test_skills.TestSkillMatchEvaluationAndReason.test_required_match_at_working_or_above_is_a_strength) ... ok
+test_direct_and_recursive_provenance_are_distinct (truth.test_graph.TruthGraphTests.test_direct_and_recursive_provenance_are_distinct) ... ok
+test_duplicate_nodes_are_rejected (truth.test_graph.TruthGraphTests.test_duplicate_nodes_are_rejected) ... ok
+test_fact_and_inference_categories_do_not_overlap (truth.test_graph.TruthGraphTests.test_fact_and_inference_categories_do_not_overlap) ... ok
+test_indexes_are_read_only_views (truth.test_graph.TruthGraphTests.test_indexes_are_read_only_views) ... ok
+test_indexes_atomic_evidence_and_profiles (truth.test_graph.TruthGraphTests.test_indexes_atomic_evidence_and_profiles) ... ok
+test_month_granular_date_evidence_supports_only_first_of_month_normalization (truth.test_graph.TruthGraphTests.test_month_granular_date_evidence_supports_only_first_of_month_normalization) ... ok
+test_provenance_edge_list_preserves_owning_node (truth.test_graph.TruthGraphTests.test_provenance_edge_list_preserves_owning_node) ... ok
+test_reverse_provenance_indexing (truth.test_graph.TruthGraphTests.test_reverse_provenance_indexing) ... ok
+test_unknown_evidence_rejects_profile_transactionally (truth.test_graph.TruthGraphTests.test_unknown_evidence_rejects_profile_transactionally) ... ok
+test_canonical_skill_aliases_are_case_and_separator_insensitive (truth.test_ingest.IngestionTests.test_canonical_skill_aliases_are_case_and_separator_insensitive) ... ok
+test_dates_are_strict_iso_8601_calendar_dates (truth.test_ingest.IngestionTests.test_dates_are_strict_iso_8601_calendar_dates) ... ok
+test_dict_ingestion_constructs_and_links_graph (truth.test_ingest.IngestionTests.test_dict_ingestion_constructs_and_links_graph) ... ok
+test_fractional_strings_are_rejected_for_integer_fields (truth.test_ingest.IngestionTests.test_fractional_strings_are_rejected_for_integer_fields) ... ok
+test_ingestion_supports_assertions_relations_and_metrics (truth.test_ingest.IngestionTests.test_ingestion_supports_assertions_relations_and_metrics) ... ok
+test_invalid_enum_and_naive_datetime_are_rejected (truth.test_ingest.IngestionTests.test_invalid_enum_and_naive_datetime_are_rejected) ... ok
+test_json_ingestion_is_deterministic (truth.test_ingest.IngestionTests.test_json_ingestion_is_deterministic) ... ok
+test_json_rejects_non_object_root_and_duplicate_graph_ids (truth.test_ingest.IngestionTests.test_json_rejects_non_object_root_and_duplicate_graph_ids) ... ok
+test_loader_rejects_unknown_format (truth.test_ingest.IngestionTests.test_loader_rejects_unknown_format) ... ok
+test_never_claim_concept_is_validated_without_silent_default (truth.test_ingest.IngestionTests.test_never_claim_concept_is_validated_without_silent_default) ... ok
+test_unknown_evidence_reference_is_rejected (truth.test_ingest.IngestionTests.test_unknown_evidence_reference_is_rejected) ... ok
+test_unknown_fields_fail_closed (truth.test_ingest.IngestionTests.test_unknown_fields_fail_closed) ... ok
+test_yaml_ingestion_supports_truth_pack_subset (truth.test_ingest.IngestionTests.test_yaml_ingestion_supports_truth_pack_subset) ... ok
+test_yaml_rejects_unsafe_features_and_duplicate_keys (truth.test_ingest.IngestionTests.test_yaml_rejects_unsafe_features_and_duplicate_keys) ... ok
+
+----------------------------------------------------------------------
+Ran 66 tests in 1.767s
+
+OK
+
+B2.6 corpus ordering: Senior Customer Engineer = 46.08, Senior Data Engineer (best data-engineering match) = 82.5
+
+B2.7 sample reason strings:
+  - Required: Python, Sql -> you have Python (expert-evidence: 2 records); Sql not in your pack.
+  - Required: Go, Rust -> you have Go (working, 1 record); Rust not in your pack.
+  - Required: Docker -> you have Docker (basic, 1 record). Nice-to-have: you have Kubernetes (advanced, 1 record).
+  - Required: Terraform -> you have none; Terraform not in your pack.
+  - Required: Aws -> you have Aws (advanced, 2 records). Nice-to-have: you have Gcp (working, 1 record); Azure not in your pack.

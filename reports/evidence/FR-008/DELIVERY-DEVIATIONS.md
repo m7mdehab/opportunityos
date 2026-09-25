@@ -21,6 +21,12 @@ The run completed 1,566 tests with 22 skips and three failures. The complete une
 
 R2 ran once on a fresh disposable database after the three bounded test corrections. Guard, repository integrity, target preflight, migration, and diff check passed. The suite ran 1,586 tests with 22 skips and one failure: `test_dead_letter_handling` expected `DEAD_LETTER` but got `RUNNING`. The complete transcript is preserved in `W1-WAVE-R2-backend.txt`, with the companion guard/repository/diff outputs. The new failure is consistent with the remaining test's zero-second lease boundary; `W1-QUEUE-DEADLETTER-REMEDIATION` owns that test-only investigation. No Wave 1 full-suite checkpoint or push is green yet.
 
+## Dead-letter test remediation and W1-WAVE-VERIFY-R3 result
+
+`W1-QUEUE-DEADLETTER-REMEDIATION` changed only `worker/test_postgres_queue_durability.py`. The test now records each simulated crashed worker's lease as expired using PostgreSQL's clock, commits it, and verifies the persisted owner, retry count, running status, and expiry from a fresh session before the next recovery claim. Its focused PostgreSQL test passed; repository integrity and diff checks passed. Commit `7c0b18c` integrates the change plus its acceptance output. The first failed focused attempt is retained beside the passing evidence.
+
+R3 ran once from exact code base `7c0b18c` using a fresh disposable database. Guard, repository integrity, target preflight (`opportunityos_fr008_wave3`), migration, and diff check passed. The full suite passed: 1,586 tests, 22 skips, no failures or errors. The unedited transcripts are preserved in `W1-WAVE-R3-{guard,repository,backend,diff-check}.txt`; this is the first green integrated Wave 1 full-suite result. The branch is reviewable and may be pushed, but FR-008 remains partial pending W1.3 and Waves 2–8.
+
 ## Founder-testable state
 
 Repository slices exist for privacy-safe gold-review contracts and verified capability evidence. No new live application surface has been deployed; Founder-testable progress remains 0% pending a permitted FR-008 preview environment and later gold-review workflow.
