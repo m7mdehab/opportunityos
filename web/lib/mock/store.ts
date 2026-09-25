@@ -317,6 +317,8 @@ export class MockStore {
   savedViews: SavedView[]
   /** Synthetic append-only event history used to mirror tracker transitions in mock flows. */
   private trackerEvents: MockTrackerEvent[] = []
+  /** Expiry dates for synthetic snoozes; absence mirrors an undated, active snooze. */
+  private trackerSnoozeUntil = new Map<string, string>()
   /** Synthetic private notes used only by authenticated mock browser flows. */
   private trackerNotes = new Map<string, TrackerNote[]>()
   private trackerNoteIdempotency: MockTrackerNoteIdempotency[] = []
@@ -465,7 +467,18 @@ export class MockStore {
               allowedStates.has(entry.action_state)
             ) {
               const opportunity = this.opportunities.get(entry.id)
-              if (opportunity) opportunity.action_state = entry.action_state as ActionState
+              if (opportunity) {
+                opportunity.action_state = entry.action_state as ActionState
+                if (
+                  entry.action_state === "snoozed" &&
+                  "snoozed_until" in entry &&
+                  isIsoCalendarDate(entry.snoozed_until)
+                ) {
+                  this.trackerSnoozeUntil.set(entry.id, entry.snoozed_until)
+                } else {
+                  this.trackerSnoozeUntil.delete(entry.id)
+                }
+              }
             }
           }
         }
@@ -1384,16 +1397,62 @@ export class MockStore {
     return { follow_up: followUp, changed: true }
   }
 
-  private persistTrackerState() {
-    if (typeof window === "undefined") return
+  private persistTrackerState(): boolean {
+    if (typeof window === "undefined") return true
     const states = [...this.opportunities.values()]
       .filter((opportunity) => opportunity.action_state !== null)
-      .map(({ id, action_state }) => ({ id, action_state }))
+      .map(({ id, action_state }) => ({
+        id,
+        action_state,
+        ...(action_state === "snoozed"
+          ? { snoozed_until: this.trackerSnoozeUntil.get(id) ?? null }
+          : {}),
+      }))
     try {
       window.localStorage.setItem(this.trackerStorageKey(), JSON.stringify(states))
+      return true
     } catch {
-      // This is synthetic review data; a blocked store must not fail the action.
+      return false
     }
+  }
+
+  private persistTrackerTransition(
+    opportunity: SeedOpportunity,
+    nextActionState: ActionState,
+    fromState: string,
+    toState: string,
+    actionType: string,
+    snoozedUntil: string | null = null
+  ): boolean {
+    const previousActionState = opportunity.action_state
+    const previousSnoozedUntil = this.trackerSnoozeUntil.get(opportunity.id)
+    opportunity.action_state = nextActionState
+    if (nextActionState === "snoozed" && snoozedUntil) {
+      this.trackerSnoozeUntil.set(opportunity.id, snoozedUntil)
+    } else {
+      this.trackerSnoozeUntil.delete(opportunity.id)
+    }
+
+    if (!this.persistTrackerState()) {
+      opportunity.action_state = previousActionState
+      if (previousSnoozedUntil) {
+        this.trackerSnoozeUntil.set(opportunity.id, previousSnoozedUntil)
+      } else {
+        this.trackerSnoozeUntil.delete(opportunity.id)
+      }
+      return false
+    }
+
+    if (fromState !== toState) {
+      this.recordTrackerTransition(opportunity.id, fromState, toState, actionType)
+    }
+    return true
+  }
+
+  private isSnoozeActive(opportunityId: string, now = Date.now()): boolean {
+    const snoozedUntil = this.trackerSnoozeUntil.get(opportunityId)
+    if (!snoozedUntil) return true
+    return Date.parse(`${snoozedUntil}T00:00:00.000Z`) > now
   }
 
   private recordTrackerTransition(
@@ -1794,14 +1853,17 @@ export class MockStore {
     include_hidden?: boolean
   }): OpportunityListResponse {
     // Jobs / To Review is an inbox: completed triage actions leave only after
-    // the mock store has recorded them, matching the durable API contract.
+    // the mock store has persisted them, matching the durable API contract.
+    const outsideToReview = new Set([
+      "saved", "submitted", "applied", "recruiter_screen", "assessment",
+      "interviewing", "final_interview", "offer", "accepted",
+      "rejected_by_founder", "rejected_by_employer", "withdrawn", "no_response",
+      "position_closed", "archived", "dismissed",
+    ])
     let items = [...this.opportunities.values()].filter(
-      (o) => ![
-        "saved", "submitted", "applied", "recruiter_screen", "assessment",
-        "interviewing", "final_interview", "offer", "accepted",
-        "rejected_by_founder", "rejected_by_employer", "withdrawn", "no_response",
-        "position_closed", "archived", "dismissed", "snoozed",
-      ].includes(o.action_state ?? "")
+      (o) => o.action_state === "snoozed"
+        ? this.isSnoozeActive(o.id) === false
+        : !outsideToReview.has(o.action_state ?? "")
     )
 
     if (filters.track) {
@@ -1917,7 +1979,13 @@ export class MockStore {
       page_size: pageSize,
       total: visible.length,
       hidden_count: hiddenCount,
-      items: paged.map((d) => toListItem(d.o, d.hidden_by, d.flagged_by)),
+      items: paged.map((d) => {
+        const item = toListItem(d.o, d.hidden_by, d.flagged_by)
+        if (d.o.action_state === "snoozed" && !this.isSnoozeActive(d.o.id)) {
+          item.action_state = "to_review"
+        }
+        return item
+      }),
     }
   }
 
@@ -2026,6 +2094,11 @@ export class MockStore {
     const o = this.opportunities.get(id)
     if (!o) return null
 
+    if (
+      type === "snooze" &&
+      (!isIsoCalendarDate(until) || Date.parse(`${until}T00:00:00.000Z`) <= Date.now())
+    ) return null
+
     const previousState = o.action_state === "submitted"
       ? "applied"
       : o.action_state ?? "to_review"
@@ -2059,9 +2132,9 @@ export class MockStore {
       const canClose = terminalStages.includes(stage) && previousIndex >= 0
       if (!canMoveForward && !canClose) return null
 
-      o.action_state = stage
-      this.recordTrackerTransition(id, previousState, stage, "application_stage_updated")
-      this.persistTrackerState()
+      if (!this.persistTrackerTransition(o, stage, previousState, stage, "application_stage_updated")) {
+        return "persistence_failed"
+      }
       return {
         opportunity_id: id,
         action_state: stage,
@@ -2085,7 +2158,9 @@ export class MockStore {
         }
       }
       if (!["to_review", "saved", "snoozed", "dismissed"].includes(previousState)) return null
-      o.action_state = "submitted"
+      if (!this.persistTrackerTransition(o, "submitted", previousState, "applied", "applied")) {
+        return "persistence_failed"
+      }
       const entry = {
         action_id: `act-${id}-${o.action_history.length + 1}`,
         action_status: "submitted",
@@ -2096,8 +2171,6 @@ export class MockStore {
       }
       o.action_history.push(entry)
       this.today().applied += 1
-      this.recordTrackerTransition(id, previousState, "applied", "applied")
-      this.persistTrackerState()
       return {
         opportunity_id: id,
         action_state: o.action_state,
@@ -2120,9 +2193,9 @@ export class MockStore {
         }
       }
       if (previousState !== "to_review" && previousState !== "snoozed") return null
-      o.action_state = "saved"
-      this.recordTrackerTransition(id, previousState, "saved", "saved")
-      this.persistTrackerState()
+      if (!this.persistTrackerTransition(o, "saved", previousState, "saved", "saved")) {
+        return "persistence_failed"
+      }
       return {
         opportunity_id: id,
         action_state: o.action_state,
@@ -2145,9 +2218,9 @@ export class MockStore {
         }
       }
       if (!["to_review", "saved", "snoozed", "dismissed"].includes(previousState)) return null
-      o.action_state = "rejected_by_founder"
-      this.recordTrackerTransition(id, previousState, "rejected_by_founder", "rejected_by_founder")
-      this.persistTrackerState()
+      if (!this.persistTrackerTransition(o, "rejected_by_founder", previousState, "rejected_by_founder", "rejected_by_founder")) {
+        return "persistence_failed"
+      }
       return {
         opportunity_id: id,
         action_state: o.action_state,
@@ -2167,9 +2240,9 @@ export class MockStore {
         until: null,
         created_at: new Date().toISOString(),
       }
-      o.action_state = "dismissed"
-      this.recordTrackerTransition(id, previousState, "dismissed", "dismissed")
-      this.persistTrackerState()
+      if (!this.persistTrackerTransition(o, "dismissed", previousState, "dismissed", "dismissed")) {
+        return "persistence_failed"
+      }
       return {
         opportunity_id: id,
         action_state: o.action_state,
@@ -2181,18 +2254,23 @@ export class MockStore {
     }
 
     // snooze
-    if (previousState === "snoozed") return {
-      opportunity_id: id,
-      action_state: o.action_state,
-      tracker_state: "snoozed" as const,
-      action_id: null,
-      until,
-      created_at: new Date().toISOString(),
+    if (previousState === "snoozed") {
+      if (!this.persistTrackerTransition(o, "snoozed", previousState, "snoozed", "snoozed", until)) {
+        return "persistence_failed"
+      }
+      return {
+        opportunity_id: id,
+        action_state: o.action_state,
+        tracker_state: "snoozed" as const,
+        action_id: null,
+        until,
+        created_at: new Date().toISOString(),
+      }
     }
     if (previousState !== "to_review" && previousState !== "dismissed") return null
-    o.action_state = "snoozed"
-    this.recordTrackerTransition(id, previousState, "snoozed", "snoozed")
-    this.persistTrackerState()
+    if (!this.persistTrackerTransition(o, "snoozed", previousState, "snoozed", "snoozed", until)) {
+      return "persistence_failed"
+    }
     return {
       opportunity_id: id,
       action_state: o.action_state,

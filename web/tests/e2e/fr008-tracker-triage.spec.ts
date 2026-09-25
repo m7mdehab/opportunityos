@@ -91,6 +91,7 @@ test.describe("FR-008 basic triage tracker", () => {
 
     await page.reload()
     await expect(page.getByTestId("workspace-jobs")).toBeVisible()
+    await expect(page.getByTestId(`opportunity-card-${savedId}`)).toHaveCount(0)
     await page.getByTestId("workspace-tracker").click()
     await page.getByTestId("tracker-bucket-saved").click()
     await expect(page.getByTestId(`opportunity-card-${savedId}`)).toBeVisible()
@@ -113,6 +114,72 @@ test.describe("FR-008 basic triage tracker", () => {
     await expect(page.getByTestId(`opportunity-card-${savedId}`)).toBeVisible()
     await expect(page.getByTestId(`opportunity-card-${appliedId}`)).toBeVisible()
     await expect(page.getByTestId(`opportunity-card-${rejectedId}`)).toBeVisible()
+  })
+
+  test("a failed tracker-state storage write leaves the job in To Review", async ({ page }) => {
+    await login(page)
+    const card = page.locator('[data-testid^="opportunity-card-"]').first()
+    const testId = await card.getAttribute("data-testid")
+    if (!testId) throw new Error("first job card has no stable test id")
+    const opportunityId = testId.replace("opportunity-card-", "")
+
+    await page.evaluate(() => {
+      const originalSetItem = Storage.prototype.setItem
+      Storage.prototype.setItem = function (this: Storage, key: string, value: string) {
+        if (key === "opportunityos.mock.tracker.default") {
+          throw new DOMException("synthetic storage failure", "QuotaExceededError")
+        }
+        return originalSetItem.call(this, key, value)
+      }
+    })
+
+    await card.click()
+    const drawer = page.getByRole("dialog")
+    const [response] = await Promise.all([
+      page.waitForResponse((res) => res.request().method() === "POST" && res.url().includes("/actions")),
+      drawer.getByRole("button", { name: "Save for later", exact: true }).click(),
+    ])
+    expect(response.status(), await response.text()).toBe(503)
+    await expect(drawer.getByRole("alert")).toContainText("Could not persist tracker state")
+    await page.keyboard.press("Escape")
+    await expect(page.getByTestId(`opportunity-card-${opportunityId}`)).toBeVisible()
+
+    await page.reload()
+    await expect(page.getByTestId("workspace-jobs")).toBeVisible()
+    await expect(page.getByTestId(`opportunity-card-${opportunityId}`)).toBeVisible()
+    expect(await trackerEvents(page, opportunityId)).toHaveLength(0)
+  })
+
+  test("active snoozes stay out of To Review and expired snoozes resurface", async ({ page }) => {
+    await login(page)
+    const card = page.locator('[data-testid^="opportunity-card-"]').first()
+    const testId = await card.getAttribute("data-testid")
+    if (!testId) throw new Error("first job card has no stable test id")
+    const opportunityId = testId.replace("opportunity-card-", "")
+    const future = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString().slice(0, 10)
+
+    const status = await page.evaluate(async ({ id, until }) => {
+      const response = await fetch(`/api/opportunities/${id}/actions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "snooze", until }),
+      })
+      return response.status
+    }, { id: opportunityId, until: future })
+    expect(status).toBe(200)
+    await page.reload()
+    await expect(page.getByTestId(`opportunity-card-${opportunityId}`)).toHaveCount(0)
+
+    const expired = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    await page.evaluate(({ id, until }) => {
+      localStorage.setItem("opportunityos.mock.tracker.default", JSON.stringify([
+        { id, action_state: "snoozed", snoozed_until: until },
+      ]))
+    }, { id: opportunityId, until: expired })
+    await page.reload()
+    const resurfaced = page.getByTestId(`opportunity-card-${opportunityId}`)
+    await expect(resurfaced).toBeVisible()
+    await expect(resurfaced.getByText("Snoozed", { exact: true })).toHaveCount(0)
   })
 
   test("application pipeline moves forward, records one event per stage, and closes jobs", async ({ page }) => {

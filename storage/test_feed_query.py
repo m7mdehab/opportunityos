@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal, get_args, get_origin, get_type_hints
 
 from sqlalchemy import create_engine
@@ -215,6 +215,45 @@ class FeedQueryContractTest(unittest.TestCase):
         tracked_ids = {row.opportunity_id for row in explicitly_including_tracked.rows}
         self.assertTrue({"opp-6", "opp-7", "opp-9"}.issubset(tracked_ids))
         self.assertIn("opp-8", tracked_ids)
+
+    def test_default_inbox_excludes_every_saved_pipeline_and_closed_tracker_state(self) -> None:
+        as_of = datetime(2026, 9, 25, 12, 0, 0)
+        states = [
+            "saved", "applied", "recruiter_screen", "assessment", "interviewing",
+            "final_interview", "offer", "accepted", "rejected_by_founder",
+            "rejected_by_employer", "withdrawn", "no_response", "position_closed",
+            "archived", "dismissed", "snoozed",
+        ]
+        for index, state in enumerate(states):
+            opportunity_id = f"tracked-{index:02d}"
+            self.add_projection(opportunity_id, fit=90.0 - index, priority=90.0 - index)
+            self.session.add(FounderTriageStateRecord(
+                opportunity_id=opportunity_id,
+                state=state,
+                snoozed_until=(as_of + timedelta(days=1)) if state == "snoozed" else None,
+                created_at=as_of,
+                updated_at=as_of,
+            ))
+        self.session.commit()
+
+        default = feed_page(
+            self.session,
+            FeedQuerySpec(truth_pack_hash="truth-a", include_hidden=True, as_of=as_of),
+        )
+        default_ids = {row.opportunity_id for row in default.rows}
+        self.assertTrue(all(f"tracked-{index:02d}" not in default_ids for index in range(len(states))))
+
+        explicitly_including_tracked = feed_page(
+            self.session,
+            FeedQuerySpec(
+                truth_pack_hash="truth-a",
+                include_hidden=True,
+                include_tracked=True,
+                as_of=as_of,
+            ),
+        )
+        included_ids = {row.opportunity_id for row in explicitly_including_tracked.rows}
+        self.assertTrue(all(f"tracked-{index:02d}" in included_ids for index in range(len(states))))
 
     def test_composite_score_tie_break_is_opportunity_id(self) -> None:
         self.add_projection("opp-6", fit=80.0, priority=80.0)

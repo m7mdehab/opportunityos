@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 from fastapi import Response
 from sqlalchemy import create_engine
@@ -125,6 +126,29 @@ class TrackerServiceTest(unittest.TestCase):
                 .filter_by(opportunity_id="synthetic-2")
                 .count(),
                 2,
+            )
+        finally:
+            session.close()
+
+    def test_failed_action_commit_leaves_no_triage_state_or_activity_event(self) -> None:
+        session = self.Session()
+        try:
+            with patch.object(session, "commit", side_effect=RuntimeError("synthetic commit failure")):
+                with self.assertRaisesRegex(RuntimeError, "synthetic commit failure"):
+                    submit_action(
+                        "synthetic-1",
+                        ActionRequest(type="save", idempotency_key="failed-save"),
+                        Response(),
+                        session,
+                    )
+            session.rollback()
+
+            self.assertIsNone(session.get(FounderTriageStateRecord, "synthetic-1"))
+            self.assertEqual(
+                session.query(FounderActivityEventRecord)
+                .filter_by(opportunity_id="synthetic-1")
+                .count(),
+                0,
             )
         finally:
             session.close()

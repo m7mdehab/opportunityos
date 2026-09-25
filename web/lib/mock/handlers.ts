@@ -526,7 +526,13 @@ export const handlers = [
     if (!body.type || !ACTION_TYPES.includes(body.type as ActionType)) {
       return HttpResponse.json({ detail: "unknown action type" }, { status: 422 })
     }
-    if (body.type === "snooze" && !body.until) {
+    if (
+      body.type === "snooze" &&
+      (!body.until || !/^\d{4}-\d{2}-\d{2}$/.test(body.until) ||
+        Number.isNaN(Date.parse(`${body.until}T00:00:00.000Z`)) ||
+        new Date(`${body.until}T00:00:00.000Z`).toISOString().slice(0, 10) !== body.until ||
+        Date.parse(`${body.until}T00:00:00.000Z`) <= Date.now())
+    ) {
       return HttpResponse.json(
         { detail: "snooze requires a future 'until' date" },
         { status: 422 }
@@ -550,6 +556,12 @@ export const handlers = [
       body.until ?? null,
       body.stage
     )
+    if (result === "persistence_failed") {
+      return HttpResponse.json(
+        { detail: "Could not persist tracker state. The job remains in To Review." },
+        { status: 503 }
+      )
+    }
     if (!result) {
       return HttpResponse.json(
         { detail: body.type === "set_stage" ? "invalid application stage transition" : "opportunity not found" },
