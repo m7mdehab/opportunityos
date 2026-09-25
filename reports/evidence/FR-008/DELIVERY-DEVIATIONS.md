@@ -94,3 +94,7 @@ The W3.2-R2 final acceptance ran 64 focused tests and found one failure: a synth
 ## W3.2 legacy track-preference value validation
 
 After the geographic correction passed, code review found that the legacy `preference.track` predicate could carry an unrelated value such as `remote`. Since that predicate is specifically employment-versus-independent, treating `remote` as a direct mismatch would confuse predicate families. `W3.2-R4-TRACK-PREFERENCE-VALIDATION` now filters track values to the supported categories and tests the unrelated-value case. R4 passed all 65 focused tests, repository integrity, and diff check; earlier R1/R2 red outputs remain unchanged.
+
+## W3.2 API database-test environment skips and R5
+
+The integrated `python -m unittest api.test_api` command exited 0 with 6 passing tests and 19 skips. The skipped `ApiTestCase` methods require `OPPORTUNITYOS_DB_URL` to point to PostgreSQL; this environment has no such variable and no local PostgreSQL client. No database was contacted. `W3.2-R5-PORTABLE-API-CONTRACT` adds a database-free test around `_build_opportunity_detail` using synthetic persisted fields. The dedicated portable test passed 2/2; rerunning the whole module passed 8 tests and skipped 19. Repository integrity and diff checks passed. This verifies numeric and legacy-null detail payload assembly, but does not claim a PostgreSQL-backed HTTP round trip; that acceptance remains pending a safe local disposable database.

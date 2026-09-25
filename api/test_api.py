@@ -2202,6 +2202,92 @@ class SourcesAndWorkerTest(ApiTestCase):
 
 
 # ---------------------------------------------------------------------------
+# W3.2 portable preference-score API contract
+# ---------------------------------------------------------------------------
+
+
+class PreferenceScoreDetailPortableTest(unittest.TestCase):
+    """Exercise detail-payload assembly without a database connection."""
+
+    def _build_detail(self, evaluation_detail):
+        from types import SimpleNamespace
+
+        from api.routes_api import _build_opportunity_detail
+
+        class EmptyQuery:
+            def filter_by(self, **kwargs):
+                return self
+
+            def order_by(self, *args):
+                return self
+
+            def all(self):
+                return []
+
+        class EmptySession:
+            def query(self, *args):
+                return EmptyQuery()
+
+        evaluation = SimpleNamespace(
+            reasons_json="[]",
+            dimension_scores_json="[]",
+            evaluation_detail_json=evaluation_detail,
+            qualification_decision="qualified",
+            fit_score=78.0,
+            policy_version="synthetic-policy",
+            evaluated_at=datetime(2026, 9, 25, tzinfo=timezone.utc),
+            truth_pack_hash="synthetic-hash",
+        )
+        opportunity = SimpleNamespace(
+            id="synthetic-api-pref",
+            title="Synthetic role",
+            organization="Synthetic company",
+            source_id="synthetic-source",
+            source_url="https://example.invalid/job",
+            track="employment",
+            description="Synthetic opportunity.",
+            deadline=None,
+            posted_date=None,
+            is_stale=False,
+            reverified_at=None,
+            family_key=None,
+            work_mode="remote",
+            work_mode_source="adapter",
+            location_country="",
+            location_city="",
+            location_region="",
+            remote_scope="worldwide",
+            remote_scope_regions=None,
+            employment_type="full_time",
+            seniority_level="senior",
+            compensation_min=None,
+            compensation_max=None,
+            compensation_currency=None,
+            compensation_period=None,
+            title_family=None,
+            title_level=None,
+        )
+        with patch("api.routes_api._latest_evaluation", return_value=evaluation):
+            return _build_opportunity_detail(EmptySession(), opportunity)
+
+    def test_detail_exposes_persisted_preference_score(self):
+        detail_json = json.dumps({
+            "hard_constraints": [],
+            "strengths": [],
+            "gaps": [],
+            "unknowns": [],
+            "uncertainty_penalty": 0.0,
+            "preference_score": 67.5,
+            "explanation": "synthetic",
+        })
+
+        self.assertEqual(self._build_detail(detail_json)["scoring"]["preference_score"], 67.5)
+
+    def test_legacy_null_detail_exposes_null_preference_score(self):
+        self.assertIsNone(self._build_detail(None)["scoring"]["preference_score"])
+
+
+# ---------------------------------------------------------------------------
 # High-fit threshold default
 # ---------------------------------------------------------------------------
 
