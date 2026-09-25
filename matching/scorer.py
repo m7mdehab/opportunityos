@@ -624,7 +624,7 @@ class OpportunityScorer:
         # 7. Career Trajectory
         target_role_assertions = [
             a for a in truth_graph.assertions.values()
-            if a.predicate in predicates.CAREER_TRAJECTORY_PREDICATES
+            if a.predicate == predicates.CAREER_TARGET_ROLE
             and a.verification_status == VerificationStatus.VERIFIED
         ]
         if not target_role_assertions:
