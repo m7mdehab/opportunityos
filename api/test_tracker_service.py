@@ -584,6 +584,89 @@ class TrackerServiceTest(unittest.TestCase):
         finally:
             session.close()
 
+    def test_undo_mark_applied_returns_to_saved_and_restores_saved_timestamp(self) -> None:
+        session = self.Session()
+        try:
+            saved = submit_action(
+                "synthetic-1",
+                ActionRequest(type="save", idempotency_key="save-before-apply"),
+                Response(),
+                session,
+            )
+            saved_at = session.get(FounderTriageStateRecord, "synthetic-1").saved_at
+            applied = submit_action(
+                "synthetic-1",
+                ActionRequest(type="mark_applied", idempotency_key="apply-after-save"),
+                Response(),
+                session,
+            )
+            self.assertTrue(saved["undo_event_id"])
+            self.assertTrue(applied["undo_event_id"])
+
+            restored = restore_action(
+                "synthetic-1",
+                RestoreTrackerRequest(
+                    event_id=applied["undo_event_id"],
+                    idempotency_key="undo-apply-to-saved",
+                ),
+                session,
+            )
+            state = session.get(FounderTriageStateRecord, "synthetic-1")
+            self.assertEqual(restored["tracker_state"], "saved")
+            self.assertEqual(state.state, "saved")
+            self.assertEqual(state.saved_at, saved_at)
+            self.assertIsNone(state.applied_at)
+            self.assertEqual(
+                session.query(FounderActivityEventRecord)
+                .filter_by(opportunity_id="synthetic-1")
+                .count(),
+                3,
+            )
+        finally:
+            session.close()
+
+    def test_unrelated_newer_activity_makes_undo_conflict_without_state_change(self) -> None:
+        now = datetime.now(timezone.utc)
+        session = self.Session()
+        try:
+            saved = submit_action(
+                "synthetic-4",
+                ActionRequest(type="save", idempotency_key="save-before-note"),
+                Response(),
+                session,
+            )
+            session.add(FounderActivityEventRecord(
+                id="tracker-event-unrelated-newer",
+                opportunity_id="synthetic-4",
+                action_type="tracker_note_created",
+                from_state="saved",
+                to_state="saved",
+                event_at=now + timedelta(minutes=1),
+                metadata_json="{}",
+                created_at=now + timedelta(minutes=1),
+            ))
+            session.commit()
+
+            with self.assertRaises(HTTPException) as raised:
+                restore_action(
+                    "synthetic-4",
+                    RestoreTrackerRequest(
+                        event_id=saved["undo_event_id"],
+                        idempotency_key="undo-before-note",
+                    ),
+                    session,
+                )
+            self.assertEqual(raised.exception.status_code, 409)
+            self.assertEqual(session.get(FounderTriageStateRecord, "synthetic-4").state, "saved")
+            self.assertEqual(
+                session.query(FounderActivityEventRecord)
+                .filter_by(opportunity_id="synthetic-4", action_type="tracker_restored")
+                .count(),
+                0,
+            )
+        finally:
+            session.close()
+
     def test_stale_undo_is_conflict_and_does_not_write_a_restore_event(self) -> None:
         session = self.Session()
         try:
