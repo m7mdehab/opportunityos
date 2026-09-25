@@ -1,0 +1,17 @@
+test_all_brief_actionability_choices_are_accepted (matching.test_gold_review.TestGoldReviewLabels.test_all_brief_actionability_choices_are_accepted) ... ok
+test_all_capability_bands_and_target_tiers_are_accepted (matching.test_gold_review.TestGoldReviewLabels.test_all_capability_bands_and_target_tiers_are_accepted) ... ok
+test_invalid_label_values_and_unreviewed_correctness_types_are_rejected (matching.test_gold_review.TestGoldReviewLabels.test_invalid_label_values_and_unreviewed_correctness_types_are_rejected) ... ok
+test_labels_and_selections_have_no_source_content_fields (matching.test_gold_review.TestGoldReviewLabels.test_labels_and_selections_have_no_source_content_fields) ... ok
+test_missing_fields_wrong_version_and_invalid_json_are_rejected (matching.test_gold_review.TestGoldReviewLabels.test_missing_fields_wrong_version_and_invalid_json_are_rejected) ... ok
+test_unlisted_source_content_fields_and_duplicate_json_fields_are_rejected (matching.test_gold_review.TestGoldReviewLabels.test_unlisted_source_content_fields_and_duplicate_json_fields_are_rejected) ... ok
+test_versioned_serialization_round_trips_only_allowlisted_fields (matching.test_gold_review.TestGoldReviewLabels.test_versioned_serialization_round_trips_only_allowlisted_fields) ... ok
+test_duplicate_candidate_ids_are_rejected (matching.test_gold_review.TestGoldReviewSampler.test_duplicate_candidate_ids_are_rejected) ... ok
+test_insufficient_or_absent_stratum_fails_without_partial_selection (matching.test_gold_review.TestGoldReviewSampler.test_insufficient_or_absent_stratum_fails_without_partial_selection) ... ok
+test_invalid_candidate_and_quota_inputs_are_rejected (matching.test_gold_review.TestGoldReviewSampler.test_invalid_candidate_and_quota_inputs_are_rejected) ... ok
+test_selection_is_deterministic_and_independent_of_input_order (matching.test_gold_review.TestGoldReviewSampler.test_selection_is_deterministic_and_independent_of_input_order) ... ok
+test_selection_is_unique_and_meets_every_requested_quota (matching.test_gold_review.TestGoldReviewSampler.test_selection_is_unique_and_meets_every_requested_quota) ... ok
+
+----------------------------------------------------------------------
+Ran 12 tests in 0.021s
+
+OK
