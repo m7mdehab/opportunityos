@@ -1,0 +1,14 @@
+W6.5 integration acceptance transcript
+Feature source: a1cb466 (work/fr008-w65-interviews), pushed.
+Integration source: 179bd14 (work/fr008-incremental-delivery), cherry-picked from feature.
+Integration report/progress and this evidence are recorded separately after the source checkpoint.
+
+- python -m unittest api.test_tracker_interviews_service api.test_tracker_followups_service api.test_tracker_notes_service api.test_tracker_service: 25 passed; OK.
+- npm exec -- next typegen: route types generated successfully.
+- npm exec -- tsc --noEmit: exit 0.
+- npm run lint -- --no-cache: exit 0; zero warnings.
+- npm run test:e2e -- --grep "interviews create|FR-008 basic triage tracker|C3 keyboard flow": 9 Chromium tests passed in 1.5m.
+- python scripts/check_repository.py: Repository integrity checks passed.
+- git diff 5aa4995..HEAD --check: exit 0.
+
+The final browser run used synthetic MSW/localStorage only; OPPORTUNITYOS_DB_URL was unset. Earlier feature-only setup and test failures plus their remediations are captured in W6.5-FEATURE-raw-output.zip. This integration run produced no failures.

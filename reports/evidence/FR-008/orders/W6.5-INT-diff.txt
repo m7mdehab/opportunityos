@@ -1,0 +1,23 @@
+Integration diff evidence from the W6.4 acceptance checkpoint 5aa4995 to source checkpoint 179bd14:
+ api/routes_api.py                                  | 130 ++++++++
+ api/test_tracker_interviews_service.py             | 214 ++++++++++++
+ api/tracker_interviews_service.py                  | 361 +++++++++++++++++++++
+ reports/evidence/FR-008/PROGRESS.md                |   4 +-
+ reports/evidence/FR-008/W6.4-FOLLOWUPS-REPORT.md   |   2 +-
+ .../evidence/FR-008/orders/W6.5-FEATURE-diff.txt   |  18 +
+ .../FR-008/orders/W6.5-FEATURE-raw-output.zip      | Bin 0 -> 2509565 bytes
+ .../FR-008/orders/W6.5-FEATURE-repository.txt      |   7 +
+ .../evidence/FR-008/orders/W6.5-FEATURE-test.txt   |  27 ++
+ .../FR-008/orders/W6.5-INTERVIEWS-ORDER.md         |  76 +++++
+ .../FR-008/orders/W6.5-INTERVIEWS-READINESS.md     |  20 ++
+ web/app/api/[...path]/route.ts                     |  10 +
+ web/components/feed/detail-drawer.tsx              |  19 ++
+ web/components/feed/tracker-interviews.tsx         | 218 +++++++++++++
+ web/components/feed/tracker-view.tsx               |  47 +++
+ web/lib/api/client.ts                              |  28 ++
+ web/lib/contract/types.ts                          |  49 +++
+ web/lib/mock/handlers.ts                           |  71 ++++
+ web/lib/mock/store.ts                              | 236 ++++++++++++++
+ web/tests/e2e/fr008-tracker-triage.spec.ts         |  83 +++++
+ 20 files changed, 1618 insertions(+), 2 deletions(-)
+Changes are the W6.5 interview service, API routes, static hosted 501 boundary, detail and Tracker UI, client contract, synthetic MSW persistence/handlers, service and browser coverage, and feature acceptance evidence. git diff 5aa4995..HEAD --check: exit 0.

@@ -1,0 +1,6 @@
+Integration worktree repository/integrity evidence
+- python scripts/check_repository.py: Repository integrity checks passed.
+- git diff 5aa4995..HEAD --check: exit 0.
+- The supplied untracked briefs/BRIEF-FR-008.md, briefs/FR-008-FOLLOW-UP.md and W0 evidence were left untouched and unstaged.
+- Integration source checkpoint 179bd14 contains only the pushed W6.5 feature commit cherry-pick.
+- No live/configured DB, private Founder files, provider, migration, corpus, deployment, PR, or merge was used.
