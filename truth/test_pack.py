@@ -471,6 +471,13 @@ class LoadTruthPackRemoteAndIntegrityTest(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             path = _write(Path(tmp), "pack.yaml", self.yaml_content)
             with self.assertRaises(TruthPackInvalid) as ctx:
+                load_truth_pack(path, allow_local_path=False)
+            self.assertIn("local filesystem paths not allowed", str(ctx.exception))
+
+    def test_load_truth_pack_cloud_mode_rejects_arbitrary_local_path_with_hash(self):
+        with TemporaryDirectory() as tmp:
+            path = _write(Path(tmp), "pack.yaml", self.yaml_content)
+            with self.assertRaises(TruthPackInvalid) as ctx:
                 load_truth_pack(path, expected_hash=self.raw_hash, cloud_mode=True)
             self.assertIn("local filesystem paths not allowed", str(ctx.exception))
 

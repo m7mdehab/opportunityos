@@ -6,6 +6,7 @@ test_invalid_pack_raises_truth_pack_invalid_with_findings (truth.test_pack.LoadF
 test_missing_file_raises_truth_pack_missing (truth.test_pack.LoadFounderPackMissingTest.test_missing_file_raises_truth_pack_missing) ... ok
 test_report_and_loaded_pack_shape (truth.test_pack.LoadFounderPackReportTest.test_report_and_loaded_pack_shape) ... ok
 test_load_founder_pack_uses_repository_snapshot_in_cloud_mode_without_uri (truth.test_pack.LoadTruthPackRemoteAndIntegrityTest.test_load_founder_pack_uses_repository_snapshot_in_cloud_mode_without_uri) ... ok
+test_load_truth_pack_cloud_mode_rejects_arbitrary_local_path_with_hash (truth.test_pack.LoadTruthPackRemoteAndIntegrityTest.test_load_truth_pack_cloud_mode_rejects_arbitrary_local_path_with_hash) ... ok
 test_load_truth_pack_cloud_mode_rejects_data_uri_by_default (truth.test_pack.LoadTruthPackRemoteAndIntegrityTest.test_load_truth_pack_cloud_mode_rejects_data_uri_by_default) ... ok
 test_load_truth_pack_cloud_mode_rejects_local_path (truth.test_pack.LoadTruthPackRemoteAndIntegrityTest.test_load_truth_pack_cloud_mode_rejects_local_path) ... ok
 test_load_truth_pack_cloud_mode_rejects_plain_http (truth.test_pack.LoadTruthPackRemoteAndIntegrityTest.test_load_truth_pack_cloud_mode_rejects_plain_http) ... ok
@@ -26,6 +27,6 @@ test_template_covers_every_documented_section (truth.test_pack.TruthPackTemplate
 test_template_loads_with_zero_validator_errors (truth.test_pack.TruthPackTemplateTest.test_template_loads_with_zero_validator_errors) ... ok
 
 ----------------------------------------------------------------------
-Ran 26 tests in 4.884s
+Ran 27 tests in 4.404s
 
 OK
