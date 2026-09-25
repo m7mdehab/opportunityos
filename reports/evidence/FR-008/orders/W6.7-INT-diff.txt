@@ -1,0 +1,27 @@
+=== commit-range diff check from W6.7 base ===
+=== integrated source diff summary ===
+ api/routes_api.py                                  |  14 ++
+ api/test_tracker_activity_service.py               | 126 ++++++++++++++++
+ api/tracker_activity_service.py                    |  68 +++++++++
+ .../FR-008/orders/W6.7-ACTIVITY-TIMELINE-ORDER.md  |  68 +++++++++
+ .../orders/W6.7-ACTIVITY-TIMELINE-READINESS.md     |  23 +++
+ .../evidence/FR-008/orders/W6.7-FEATURE-diff.txt   |  15 ++
+ .../FR-008/orders/W6.7-FEATURE-raw-output.zip      | Bin 0 -> 2562 bytes
+ .../FR-008/orders/W6.7-FEATURE-repository.txt      |   1 +
+ .../evidence/FR-008/orders/W6.7-FEATURE-test.txt   | 134 +++++++++++++++++
+ web/app/api/[...path]/route.ts                     |   8 +
+ web/components/feed/detail-drawer.tsx              |   8 +
+ web/components/feed/tracker-activity-timeline.tsx  | 162 +++++++++++++++++++++
+ web/components/feed/tracker-documents.tsx          |   3 +
+ web/components/feed/tracker-followups.tsx          |   4 +
+ web/components/feed/tracker-interviews.tsx         |   3 +
+ web/components/feed/tracker-notes.tsx              |   4 +
+ web/lib/api/client.ts                              |   9 ++
+ web/lib/contract/types.ts                          |  16 ++
+ web/lib/mock/handlers.ts                           |  13 ++
+ web/lib/mock/store.ts                              |  24 +++
+ web/lib/tracker-activity.ts                        |   7 +
+ web/tests/e2e/fr008-tracker-triage.spec.ts         |  75 ++++++++++
+ 22 files changed, 785 insertions(+)
+
+=== commit-range diff check ===

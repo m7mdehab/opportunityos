@@ -1,0 +1,68 @@
+=== Full focused tracker service suite ===
+..................................
+----------------------------------------------------------------------
+Ran 34 tests in 3.460s
+
+OK
+
+=== Next route type generation ===
+Generating route types...
+✓ Types generated successfully
+
+=== TypeScript ===
+
+=== ESLint ===
+
+> web@0.1.0 lint
+> eslint . --max-warnings=0 --no-cache
+
+
+=== Full tracker and keyboard Chromium acceptance ===
+
+> web@0.1.0 test:e2e
+> playwright test --grep documents|interviews create|activity timeline|FR-008 basic triage tracker|C3 keyboard flow
+
+[WebServer] (node:10644) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:8884) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:8884) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:19392) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:1772) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:37668) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:27724) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:2576) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:20296) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:21136) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:19508) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:26188) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:5404) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 11 tests using 1 worker
+
+(node:2592) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  1 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:65:7 › FR-008 basic triage tracker › save, explicit apply, reject, bucket placement, and source-link truthfulness (13.5s)
+  ok  2 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:118:7 › FR-008 basic triage tracker › application pipeline moves forward, records one event per stage, and closes jobs (11.8s)
+  ok  3 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:159:7 › FR-008 basic triage tracker › private application notes create, edit, archive, and persist without duplicate events (8.0s)
+  ok  4 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:227:7 › FR-008 basic triage tracker › follow-ups create, reschedule, complete, reopen, and persist with private metadata (9.6s)
+  ok  5 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:328:7 › FR-008 basic triage tracker › interviews create, edit, complete, persist, and stay private in the upcoming summary (8.2s)
+  ok  6 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:411:7 › FR-008 basic triage tracker › application document links replace cleanly, persist, and record ID-only events (8.9s)
+  ok  7 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:499:7 › FR-008 basic triage tracker › activity timeline is private, newest-first, refreshes after tracker edits, and persists (7.9s)
+  ok  8 [chromium] › tests\e2e\keyboard.spec.ts:29:7 › C3 keyboard flow (j/k/o/a/x) › j/k move the cursor and move real DOM focus with it (1.4s)
+  ok  9 [chromium] › tests\e2e\keyboard.spec.ts:59:7 › C3 keyboard flow (j/k/o/a/x) › o opens the drawer for the focused card (2.0s)
+  ok 10 [chromium] › tests\e2e\keyboard.spec.ts:76:7 › C3 keyboard flow (j/k/o/a/x) › a marks the focused card applied; moving on, x rejects the next one (2.3s)
+  ok 11 [chromium] › tests\e2e\keyboard.spec.ts:112:7 › C3 keyboard flow (j/k/o/a/x) › shortcuts do not fire while a text input has focus (2.2s)
+
+  11 passed (2.3m)
