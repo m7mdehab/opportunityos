@@ -278,11 +278,45 @@ class TestPostgresQueueDurability(unittest.TestCase):
             q1 = BackgroundWorkerQueue(session1, worker_id="crashed-pg-worker")
             job_id = self._enqueue(q1, max_retries=3)
 
-            claimed1 = q1.claim_next_job(lease_duration_seconds=0)
+            claimed1 = q1.claim_next_job(lease_duration_seconds=60)
             self.assertIsNotNone(claimed1)
             self.assertEqual(job_id, claimed1.id)
             self.assertEqual("RUNNING", claimed1.status)
             self.assertEqual("crashed-pg-worker", claimed1.lease_owner)
+
+            expiry_session = self.session_factory()
+            try:
+                row = expiry_session.query(WorkerJobRecord).filter(WorkerJobRecord.id == job_id).one()
+                self.assertEqual("RUNNING", row.status)
+                self.assertEqual("crashed-pg-worker", row.lease_owner)
+                self.assertEqual(0, row.retry_count)
+                self.assertIsNotNone(row.lease_expires_at)
+                row.lease_expires_at = func.now() - text("INTERVAL '10 seconds'")
+                expiry_session.commit()
+            finally:
+                expiry_session.close()
+
+            verification_session = self.session_factory()
+            try:
+                expired_row = (
+                    verification_session.query(WorkerJobRecord)
+                    .filter(WorkerJobRecord.id == job_id)
+                    .one()
+                )
+                self.assertEqual("RUNNING", expired_row.status)
+                self.assertEqual("crashed-pg-worker", expired_row.lease_owner)
+                self.assertEqual(0, expired_row.retry_count)
+                self.assertIsNotNone(
+                    verification_session.query(WorkerJobRecord.id)
+                    .filter(
+                        WorkerJobRecord.id == job_id,
+                        WorkerJobRecord.lease_expires_at < func.now(),
+                    )
+                    .one_or_none(),
+                    "persisted crashed-worker lease must be expired according to PostgreSQL",
+                )
+            finally:
+                verification_session.close()
 
             session1.close()
 
