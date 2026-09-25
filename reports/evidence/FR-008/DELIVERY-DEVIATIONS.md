@@ -30,3 +30,9 @@ R3 ran once from exact code base `7c0b18c` using a fresh disposable database. Gu
 ## Founder-testable state
 
 Repository slices exist for privacy-safe gold-review contracts and verified capability evidence. No new live application surface has been deployed; Founder-testable progress remains 0% pending a permitted FR-008 preview environment and later gold-review workflow.
+
+## W1-WAVE-VERIFY-R4 result and evidence-capture wrapper deviation
+
+R4 ran once from the exact source base `7dd17b5` using a fresh disposable database (`opportunityos_fr008_wave4`) and an isolated runner. Guard, repository integrity, target preflight, Alembic migration, the full backend suite, and diff check all passed. The suite passed 1,594 tests with 22 skips and no failures or errors. The unedited outputs are preserved in `W1-WAVE-R4-{guard,repository,backend,diff-check}.txt`; the backend transcript includes the acceptance command exit markers.
+
+One PowerShell `Add-Content` command used to append a human-readable label to the evidence wrapper failed because of quoting. The acceptance commands continued, each exit marker was captured, and the raw output files were copied byte-identically from the isolated runner with hashes verified. This is a wrapper-only evidence-capture deviation; no acceptance command was rerun, no output was rewritten, and the run remains green. Future evidence wrappers should use a quoting-safe literal here-string or write the label before command execution.

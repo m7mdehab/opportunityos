@@ -1,0 +1,2 @@
+Guard checks passed for repository and mirror boundary.
+EXIT_CODE=0

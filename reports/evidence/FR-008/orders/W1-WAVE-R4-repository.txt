@@ -1,0 +1,2 @@
+Repository integrity checks passed.
+EXIT_CODE=0
