@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Iterable
 
-from sqlalchemy import func, literal_column
+from sqlalchemy import exists, func, literal_column, not_, or_
 from sqlalchemy.orm import Query, Session
 
+from outbound.models import ActionStatus
 from storage.feed_projection import FeedProjectionRecord
+from storage.models import FounderTriageStateRecord, OutboundActionRecordModel
 
 
 @dataclass(frozen=True)
@@ -30,6 +33,8 @@ class FeedQuerySpec:
     source_id: str | None = None
     q: str | None = None
     include_hidden: bool = False
+    include_tracked: bool = False
+    as_of: datetime | None = None
     page: int = 1
     page_size: int = 25
 
@@ -69,8 +74,15 @@ def build_feed_query(session: Session, spec: FeedQuerySpec) -> Query:
         query = query.filter(FeedProjectionRecord.track == spec.track)
     if spec.decision:
         query = query.filter(
-            FeedProjectionRecord.qualification_decision == spec.decision
+            func.lower(FeedProjectionRecord.qualification_decision) == spec.decision.casefold()
         )
+    elif not spec.decision or spec.decision.casefold() != "ineligible":
+        # Only a proven ineligible decision is excluded. A missing or review-
+        # required decision remains available for review.
+        query = query.filter(or_(
+            FeedProjectionRecord.qualification_decision.is_(None),
+            func.lower(FeedProjectionRecord.qualification_decision) != "ineligible",
+        ))
     if spec.min_score is not None:
         query = query.filter(FeedProjectionRecord.fit_score >= spec.min_score)
     if spec.max_score is not None:
@@ -91,6 +103,24 @@ def build_feed_query(session: Session, spec: FeedQuerySpec) -> Query:
         tsquery = func.websearch_to_tsquery(literal_column("'simple'"), spec.q.strip())
         query = query.filter(FeedProjectionRecord.search_tsv.op("@@")(tsquery))
 
+    if not spec.include_tracked:
+        as_of = spec.as_of or datetime.now(timezone.utc)
+        if as_of.tzinfo is not None:
+            as_of = as_of.astimezone(timezone.utc).replace(tzinfo=None)
+        active_triage = exists().where(
+            FounderTriageStateRecord.opportunity_id == FeedProjectionRecord.opportunity_id,
+            or_(
+                FounderTriageStateRecord.state != "snoozed",
+                FounderTriageStateRecord.snoozed_until.is_(None),
+                FounderTriageStateRecord.snoozed_until > as_of,
+            ),
+        )
+        submitted_action = exists().where(
+            OutboundActionRecordModel.opportunity_id == FeedProjectionRecord.opportunity_id,
+            OutboundActionRecordModel.action_status == ActionStatus.SUBMITTED.value,
+        )
+        query = query.filter(not_(active_triage), not_(submitted_action))
+
     return query
 
 
@@ -99,8 +129,6 @@ def ordered_feed_query(query: Query) -> Query:
 
     return query.order_by(
         FeedProjectionRecord.priority_score.desc().nullslast(),
-        FeedProjectionRecord.fit_score.desc().nullslast(),
-        FeedProjectionRecord.posted_date.desc().nullslast(),
         FeedProjectionRecord.id.asc(),
     )
 

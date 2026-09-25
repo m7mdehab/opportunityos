@@ -47,6 +47,7 @@ from storage.models import (
 )
 from storage.feed_projection import FeedProjectionRecord
 from storage.feed_query import FeedQuerySpec, feed_page
+from storage.ranking import feed_ranking_components
 from storage.repository import StorageRepository
 from truth.pack import TruthPackInvalid, TruthPackMissing, load_founder_pack
 from truth.validator import ClaimValidator
@@ -162,7 +163,9 @@ def _ranking_filter_contexts(
     if not opportunities:
         return []
 
-    detail_needed = any(affects_order(filter_id) for filter_id in ("geo_eligibility", "work_mode_onsite"))
+    # Preference/confidence and source evidence are part of the visible
+    # Recommended breakdown. This is bounded to the already-paginated rows.
+    detail_needed = True
     dimensions_needed = affects_order("premium_fulltime_onsite")
     opp_ids = [opp.id for opp in opportunities]
     evaluations = (
@@ -1045,6 +1048,7 @@ def list_opportunities(
     since: str | None = None,
     q: str | None = None,
     include_hidden: bool = False,
+    include_tracked: bool = False,
     page: int = 1,
     page_size: int = 25,
     session: Session = Depends(get_db),
@@ -1095,6 +1099,7 @@ def list_opportunities(
         since=since,
         q=q,
         include_hidden=include_hidden,
+        include_tracked=include_tracked,
         page=norm_page,
         page_size=norm_page_size,
     )
@@ -1160,6 +1165,7 @@ def list_opportunities(
                 "feedback_label": feedback_labels.get(opp.id),
                 "hidden_by": hidden_by,
                 "flagged_by": flagged_by,
+                "ranking": _recommended_ranking_payload(proj, ctx, opp),
             }
             row.update(serialize_opportunity_extraction_fields(opp, family_sizes.get(opp.family_key)))
             page_items.append(row)
@@ -1184,6 +1190,19 @@ def _posted_date_sort_key(value: str | None) -> tuple[int, Any]:
     except ValueError:
         return (1, "")
     return (0, -(parsed.toordinal()))
+
+
+def _recommended_ranking_payload(projection, context, opportunity) -> dict[str, Any]:
+    """Expose the stored composite and every component used by Recommended."""
+    return feed_ranking_components(
+        decision=projection.qualification_decision,
+        fit_score=projection.fit_score,
+        priority_score=projection.priority_score,
+        evaluation_detail=context.evaluation_detail if context is not None else None,
+        posted_date=opportunity.posted_date,
+        is_stale=bool(opportunity.is_stale),
+        as_of=(projection.projected_at.date() if projection.projected_at is not None else date.today()),
+    )
 
 
 def _build_opportunity_detail(session: Session, opp: OpportunityRecord) -> dict[str, Any]:

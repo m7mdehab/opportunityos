@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -16,6 +17,7 @@ from storage.feed_projection_service import (
     refresh_opportunity_projection,
 )
 from storage.feed_query import FeedQuerySpec, feed_page
+from storage.ranking import recommended_priority_score
 from storage.models import Base, FounderFilterSettingRecord, MatchEvaluationRecord, OpportunityRecord
 
 
@@ -35,7 +37,14 @@ class FeedProjectionMaterializationTest(unittest.TestCase):
         except FileNotFoundError:
             pass
 
-    def _opportunity(self, opportunity_id: str, *, title: str = "Data Engineer") -> OpportunityRecord:
+    def _opportunity(
+        self,
+        opportunity_id: str,
+        *,
+        title: str = "Data Engineer",
+        posted_date: str = "2026-09-17",
+        is_stale: bool = False,
+    ) -> OpportunityRecord:
         return OpportunityRecord(
             id=opportunity_id,
             track="employment",
@@ -45,7 +54,8 @@ class FeedProjectionMaterializationTest(unittest.TestCase):
             source_id="fixture",
             source_url=f"https://example.invalid/{opportunity_id}",
             content_hash=(opportunity_id[-1] * 64)[:64],
-            posted_date="2026-09-17",
+            posted_date=posted_date,
+            is_stale=is_stale,
             work_mode="remote",
             location_country="EG",
             location_city="Cairo",
@@ -62,6 +72,7 @@ class FeedProjectionMaterializationTest(unittest.TestCase):
         truth_hash: str = "truth-a",
         fit: float = 82.0,
         decision: str = "qualified",
+        detail: dict | None = None,
     ) -> MatchEvaluationRecord:
         now = datetime(2026, 9, 17, tzinfo=timezone.utc)
         return MatchEvaluationRecord(
@@ -72,7 +83,7 @@ class FeedProjectionMaterializationTest(unittest.TestCase):
             fit_score=fit,
             dimension_scores_json="[]",
             reasons_json='[{"reason":"fixture"}]',
-            evaluation_detail_json=None,
+            evaluation_detail_json=json.dumps(detail) if detail is not None else None,
             policy_version="test-v1",
             evaluated_at=now,
         )
@@ -156,7 +167,7 @@ class FeedProjectionMaterializationTest(unittest.TestCase):
             row = session.query(FeedProjectionRecord).one()
             self.assertTrue(row.visible)
             self.assertEqual(row.fit_score, 72.0)
-            self.assertEqual(row.priority_score, -928.0)
+            self.assertLess(row.priority_score, 0.0)
         finally:
             session.close()
 
@@ -170,6 +181,7 @@ class FeedProjectionMaterializationTest(unittest.TestCase):
             session.commit()
             rebuild_feed_projection(session, truth_graph=None, truth_pack_hash="truth-a")
             session.commit()
+            initial_priority = session.query(FeedProjectionRecord).one().priority_score
 
             evaluation.fit_score = 95.0
             evaluation.reasons_json = '[{"reason":"updated"}]'
@@ -179,8 +191,52 @@ class FeedProjectionMaterializationTest(unittest.TestCase):
 
             row = session.query(FeedProjectionRecord).one()
             self.assertEqual(row.fit_score, 95.0)
-            self.assertEqual(row.priority_score, 95.0)
+            self.assertGreater(row.priority_score, initial_priority)
             self.assertIn("updated", row.reasons_json)
+        finally:
+            session.close()
+
+    def test_recommended_priority_uses_existing_evaluation_detail_and_posting_freshness(self) -> None:
+        session = self.Session()
+        try:
+            opportunity = self._opportunity("opp-ranked", posted_date="2026-09-24")
+            evaluation = self._evaluation(
+                "opp-ranked",
+                fit=82.25,
+                decision="uncertain",
+                detail={
+                    "preference_score": 77.5,
+                    "confidence_score": 84.25,
+                    "confidence_factors": [
+                        {"name": "source_freshness_and_strength", "score": 68.0},
+                    ],
+                },
+            )
+            session.add(opportunity)
+            session.flush()
+            session.add(evaluation)
+            session.commit()
+
+            projected_at = datetime(2026, 9, 25, 12, 0, 0, tzinfo=timezone.utc)
+            record = refresh_opportunity_projection(
+                session,
+                opportunity_id="opp-ranked",
+                truth_pack_hash="truth-a",
+                projected_at=projected_at,
+            )
+            session.commit()
+
+            expected = recommended_priority_score(
+                decision="uncertain",
+                fit_score=82.25,
+                preference_score=77.5,
+                confidence_score=84.25,
+                freshness_score=100.0,
+                source_confidence=68.0,
+                rank_penalty=0,
+            )
+            self.assertEqual(record.fit_score, 82.25)
+            self.assertEqual(record.priority_score, expected)
         finally:
             session.close()
 
@@ -321,4 +377,3 @@ class FeedProjectionMaterializationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

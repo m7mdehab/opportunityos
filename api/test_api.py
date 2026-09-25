@@ -2313,6 +2313,65 @@ class ConfidenceScoreDetailPortableTest(unittest.TestCase):
         self.assertEqual(scoring["confidence_factors"], [])
 
 
+class RecommendedOrderingPortableTest(unittest.TestCase):
+    """Exercise list-card ranking components without a database connection."""
+
+    def test_list_ranking_exposes_composite_and_each_component_separately(self):
+        from types import SimpleNamespace
+
+        from api.routes_api import _recommended_ranking_payload
+
+        projection = SimpleNamespace(
+            qualification_decision="qualified",
+            fit_score=82.25,
+            priority_score=123456789.0,
+            projected_at=datetime(2026, 9, 25, tzinfo=timezone.utc),
+        )
+        context = SimpleNamespace(evaluation_detail={
+            "preference_score": 77.5,
+            "confidence_score": 84.25,
+            "confidence_factors": [
+                {"name": "source_freshness_and_strength", "score": 68.0},
+            ],
+        })
+        opportunity = SimpleNamespace(
+            posted_date="2026-09-24",
+            is_stale=False,
+        )
+
+        ranking = _recommended_ranking_payload(projection, context, opportunity)
+        self.assertEqual(ranking, {
+            "priority_score": 123456789.0,
+            "eligibility": "eligible",
+            "capability_fit": 82.25,
+            "preference_score": 77.5,
+            "confidence_score": 84.25,
+            "freshness_score": 100.0,
+            "source_confidence": 68.0,
+        })
+
+    def test_missing_components_remain_null_in_list_payload(self):
+        from types import SimpleNamespace
+
+        from api.routes_api import _recommended_ranking_payload
+
+        projection = SimpleNamespace(
+            qualification_decision="uncertain",
+            fit_score=50.0,
+            priority_score=100.0,
+            projected_at=datetime(2026, 9, 25, tzinfo=timezone.utc),
+        )
+        context = SimpleNamespace(evaluation_detail={})
+        opportunity = SimpleNamespace(posted_date=None, is_stale=False)
+        ranking = _recommended_ranking_payload(projection, context, opportunity)
+        self.assertEqual(ranking["eligibility"], "review_required")
+        self.assertEqual(ranking["capability_fit"], 50.0)
+        self.assertIsNone(ranking["preference_score"])
+        self.assertIsNone(ranking["confidence_score"])
+        self.assertIsNone(ranking["freshness_score"])
+        self.assertIsNone(ranking["source_confidence"])
+
+
 # ---------------------------------------------------------------------------
 # High-fit threshold default
 # ---------------------------------------------------------------------------

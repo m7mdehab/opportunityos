@@ -18,6 +18,11 @@ from api.filters import (
 )
 from api.serialization import unpack_dimension_scores, unpack_evaluation_detail, unpack_reasons
 from storage.feed_projection import FeedProjectionRecord, projection_identity
+from storage.ranking import (
+    posting_freshness_score,
+    recommended_priority_score,
+    source_confidence_score,
+)
 from storage.models import (
     FieldProvenanceRecord,
     FounderFacetRecord,
@@ -188,11 +193,13 @@ def build_projection_record(
         qualification_decision = evaluation.qualification_decision
         reasons_json = evaluation.reasons_json
         evaluated_at = evaluation.evaluated_at
+        evaluation_detail = unpack_evaluation_detail(evaluation.evaluation_detail_json)
     else:
         fit_score = None
         qualification_decision = None
         reasons_json = "[]"
         evaluated_at = now
+        evaluation_detail = {}
 
     hidden_by: list[str] = []
     rank_penalty = 0
@@ -208,10 +215,25 @@ def build_projection_record(
         red_line = _specific_filter_match("red_lines", context)
         industry_match = _specific_filter_match("excluded_industries", context)
 
-    # Existing request ordering is rank-penalty tier first, then fit score. Fit
-    # is constrained to 0..100, so a 1000-point tier gap preserves that order
-    # without mutating the persisted fit score itself.
-    priority_score = (fit_score - (1000.0 * rank_penalty)) if fit_score is not None else None
+    # Keep the user's rank-only filter as an explicit outer demotion tier,
+    # then encode the W3.4 Recommended component order in the existing column.
+    if evaluation is None:
+        priority_score = None
+    else:
+        freshness = posting_freshness_score(
+            opportunity.posted_date,
+            is_stale=bool(opportunity.is_stale),
+            as_of=now.date(),
+        )
+        priority_score = recommended_priority_score(
+            decision=qualification_decision,
+            fit_score=fit_score,
+            preference_score=evaluation_detail.get("preference_score"),
+            confidence_score=evaluation_detail.get("confidence_score"),
+            freshness_score=freshness,
+            source_confidence=source_confidence_score(evaluation_detail),
+            rank_penalty=rank_penalty,
+        )
 
     return FeedProjectionRecord(
         id=projection_identity(opportunity.id, truth_pack_hash),
@@ -442,4 +464,3 @@ def refresh_opportunity_projection(
     )
     upsert_projection(session, record)
     return record
-

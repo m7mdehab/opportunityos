@@ -1,0 +1,24 @@
+.....F...............
+======================================================================
+FAIL: test_composite_score_tie_break_is_opportunity_id (storage.test_feed_query.FeedQueryContractTest.test_composite_score_tie_break_is_opportunity_id)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w34-recommended-ordering\storage\test_feed_query.py", line 217, in test_composite_score_tie_break_is_opportunity_id
+    self.assertEqual(tied_ids, ["opp-6", "opp-z"])
+AssertionError: Lists differ: ['opp-z'] != ['opp-6', 'opp-z']
+
+First differing element 0:
+'opp-z'
+'opp-6'
+
+Second list contains 1 additional elements.
+First extra element 1:
+'opp-z'
+
+- ['opp-z']
++ ['opp-6', 'opp-z']
+
+----------------------------------------------------------------------
+Ran 21 tests in 5.430s
+
+FAILED (failures=1)
