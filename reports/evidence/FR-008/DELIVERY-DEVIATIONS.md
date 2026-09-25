@@ -17,6 +17,10 @@ The run completed 1,566 tests with 22 skips and three failures. The complete une
 
 `W1-BASELINE-TEST-REMEDIATION` owns the bounded test-only corrections. No FR-008 full-suite checkpoint or push is considered green until the remediation acceptance and subsequent integrated Wave 1 run pass.
 
+## W1-WAVE-VERIFY-R2 result
+
+R2 ran once on a fresh disposable database after the three bounded test corrections. Guard, repository integrity, target preflight, migration, and diff check passed. The suite ran 1,586 tests with 22 skips and one failure: `test_dead_letter_handling` expected `DEAD_LETTER` but got `RUNNING`. The complete transcript is preserved in `W1-WAVE-R2-backend.txt`, with the companion guard/repository/diff outputs. The new failure is consistent with the remaining test's zero-second lease boundary; `W1-QUEUE-DEADLETTER-REMEDIATION` owns that test-only investigation. No Wave 1 full-suite checkpoint or push is green yet.
+
 ## Founder-testable state
 
 Repository slices exist for privacy-safe gold-review contracts and verified capability evidence. No new live application surface has been deployed; Founder-testable progress remains 0% pending a permitted FR-008 preview environment and later gold-review workflow.
