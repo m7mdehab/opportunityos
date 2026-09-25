@@ -494,6 +494,55 @@ export interface TrackerFollowUpMutationResponse {
   changed: boolean
 }
 
+export type TrackerInterviewType = "recruiter_screen" | "hiring_manager" | "technical" | "take_home" | "live_coding" | "case_study" | "panel" | "final" | "other"
+export type TrackerInterviewFormat = "phone" | "video" | "in_person"
+export type TrackerInterviewOutcome = "pending" | "completed" | "passed" | "not_selected" | "cancelled" | "other"
+
+export interface TrackerInterview {
+  id: string
+  opportunity_id: string
+  scheduled_at: string | null
+  round_label: string | null
+  interview_type: TrackerInterviewType | null
+  interview_format: TrackerInterviewFormat | null
+  interviewer_name: string | null
+  preparation_notes: string | null
+  post_interview_notes: string | null
+  outcome: TrackerInterviewOutcome | null
+  created_at: string
+  updated_at: string
+}
+
+export interface TrackerInterviewListResponse {
+  opportunity_id: string
+  page: number
+  page_size: number
+  total: number
+  items: TrackerInterview[]
+}
+
+export interface TrackerInterviewSummaryItem extends Omit<TrackerInterview, "preparation_notes" | "post_interview_notes"> {
+  opportunity: {
+    id: string
+    title: string
+    organization: string
+    tracker_state: TrackerState
+  }
+}
+
+export interface TrackerInterviewSummaryResponse {
+  bucket: "upcoming"
+  page: number
+  page_size: number
+  total: number
+  items: TrackerInterviewSummaryItem[]
+}
+
+export interface TrackerInterviewMutationResponse {
+  interview: TrackerInterview
+  changed: boolean
+}
+
 export interface DashboardDay {
   date: string
   fetched: number

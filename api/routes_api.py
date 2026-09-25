@@ -108,6 +108,13 @@ from .tracker_followups_service import (
     list_tracker_follow_ups,
     update_tracker_follow_up,
 )
+from .tracker_interviews_service import (
+    TrackerInterviewError,
+    create_tracker_interview,
+    list_opportunity_interviews,
+    list_tracker_interviews,
+    update_tracker_interview,
+)
 from .search import is_query_unparseable, rank_key, search_opportunity_ids
 from .serialization import (
     serialize_constraint,
@@ -1505,6 +1512,129 @@ def patch_opportunity_follow_up(
         session.rollback()
         raise _tracker_follow_up_error(exc) from exc
     return {"follow_up": result.follow_up, "changed": result.changed}
+
+
+def _tracker_interview_error(exc: TrackerInterviewError) -> HTTPException:
+    message = str(exc)
+    if message in {"opportunity not found", "interview not found"}:
+        return HTTPException(status_code=404, detail=message)
+    if (
+        message.startswith(("scheduled_at", "round_label", "interviewer_name", "preparation_notes", "post_interview_notes"))
+        or message.startswith("unknown interview")
+        or message.startswith("unknown outcome")
+        or message.startswith("idempotency_key is")
+        or message.startswith("provide ")
+        or message == "unknown interview bucket"
+    ):
+        return HTTPException(status_code=422, detail=message)
+    return HTTPException(status_code=409, detail=message)
+
+
+@router.get("/tracker/interviews")
+def get_tracker_interviews(
+    bucket: Literal["upcoming"] = "upcoming",
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1),
+    session: Session = Depends(get_db),
+):
+    try:
+        return list_tracker_interviews(
+            session,
+            bucket,
+            now=datetime.now(timezone.utc),
+            page=page,
+            page_size=page_size,
+        )
+    except TrackerInterviewError as exc:
+        raise _tracker_interview_error(exc) from exc
+
+
+@router.get("/opportunities/{opportunity_id}/interviews")
+def get_opportunity_interviews(
+    opportunity_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1),
+    session: Session = Depends(get_db),
+):
+    try:
+        return list_opportunity_interviews(session, opportunity_id, page=page, page_size=page_size)
+    except TrackerInterviewError as exc:
+        raise _tracker_interview_error(exc) from exc
+
+
+class TrackerInterviewCreateRequest(BaseModel):
+    scheduled_at: str | None = None
+    round_label: str | None = None
+    interview_type: str | None = None
+    interview_format: str | None = None
+    interviewer_name: str | None = None
+    preparation_notes: str | None = None
+    post_interview_notes: str | None = None
+    outcome: str | None = None
+    idempotency_key: str
+
+
+class TrackerInterviewUpdateRequest(BaseModel):
+    scheduled_at: str | None = None
+    round_label: str | None = None
+    interview_type: str | None = None
+    interview_format: str | None = None
+    interviewer_name: str | None = None
+    preparation_notes: str | None = None
+    post_interview_notes: str | None = None
+    outcome: str | None = None
+    idempotency_key: str
+
+
+@router.post("/opportunities/{opportunity_id}/interviews")
+def post_opportunity_interview(
+    opportunity_id: str,
+    payload: TrackerInterviewCreateRequest,
+    session: Session = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    try:
+        result = create_tracker_interview(
+            session,
+            opportunity_id,
+            payload.model_dump(exclude={"idempotency_key"}),
+            now,
+            request_key=payload.idempotency_key,
+        )
+        session.commit()
+    except TrackerInterviewError as exc:
+        session.rollback()
+        raise _tracker_interview_error(exc) from exc
+    return {"interview": result.interview, "changed": result.changed}
+
+
+@router.patch("/opportunities/{opportunity_id}/interviews/{interview_id}")
+def patch_opportunity_interview(
+    opportunity_id: str,
+    interview_id: str,
+    payload: TrackerInterviewUpdateRequest,
+    session: Session = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    fields = {
+        field: getattr(payload, field)
+        for field in payload.model_fields_set
+        if field != "idempotency_key"
+    }
+    try:
+        result = update_tracker_interview(
+            session,
+            opportunity_id,
+            interview_id,
+            fields,
+            now,
+            request_key=payload.idempotency_key,
+        )
+        session.commit()
+    except TrackerInterviewError as exc:
+        session.rollback()
+        raise _tracker_interview_error(exc) from exc
+    return {"interview": result.interview, "changed": result.changed}
 
 
 def _posted_date_sort_key(value: str | None) -> tuple[int, Any]:

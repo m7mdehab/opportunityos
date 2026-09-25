@@ -99,6 +99,20 @@ export const handlers = [
     return HttpResponse.json(result)
   }),
 
+  http.get("/api/tracker/interviews", ({ request }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const url = new URL(request.url)
+    const bucket = url.searchParams.get("bucket") ?? "upcoming"
+    const page = Number(url.searchParams.get("page") ?? "1")
+    const pageSize = Number(url.searchParams.get("page_size") ?? "25")
+    if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1) {
+      return HttpResponse.json({ detail: "page and page_size must be positive integers" }, { status: 422 })
+    }
+    const result = store().listTrackerInterviews(bucket, page, pageSize)
+    if (result === "invalid_bucket") return HttpResponse.json({ detail: "unknown interview bucket" }, { status: 422 })
+    return HttpResponse.json(result)
+  }),
+
   http.get("/api/opportunities", ({ request }) => {
     if (!requireAuth(request)) return unauthorized()
     const url = new URL(request.url)
@@ -168,6 +182,63 @@ export const handlers = [
     const result = store().listOpportunityTrackerFollowUps(String(params.id), page, pageSize)
     if (result === "not_found") return HttpResponse.json({ detail: "opportunity not found" }, { status: 404 })
     if (result === "not_tracked") return HttpResponse.json({ detail: "follow-ups are available only for Saved and Applied jobs" }, { status: 409 })
+    return HttpResponse.json(result)
+  }),
+
+  http.get("/api/opportunities/:id/interviews", ({ request, params }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const url = new URL(request.url)
+    const page = Number(url.searchParams.get("page") ?? "1")
+    const pageSize = Number(url.searchParams.get("page_size") ?? "50")
+    if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1) {
+      return HttpResponse.json({ detail: "page and page_size must be positive integers" }, { status: 422 })
+    }
+    const result = store().listOpportunityTrackerInterviews(String(params.id), page, pageSize)
+    if (result === "not_found") return HttpResponse.json({ detail: "opportunity not found" }, { status: 404 })
+    if (result === "not_tracked") return HttpResponse.json({ detail: "interviews are available only for Applied jobs" }, { status: 409 })
+    return HttpResponse.json(result)
+  }),
+
+  http.post("/api/opportunities/:id/interviews", async ({ request, params }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
+    const idempotencyKey = body.idempotency_key
+    if (typeof idempotencyKey !== "string" || !idempotencyKey.trim() || idempotencyKey.length > 128) {
+      return HttpResponse.json({ detail: "idempotency_key is required and must be at most 128 characters" }, { status: 422 })
+    }
+    const fields = { ...body }
+    delete fields.idempotency_key
+    const result = store().createTrackerInterview(String(params.id), fields, idempotencyKey)
+    if (result === "not_found") return HttpResponse.json({ detail: "opportunity not found" }, { status: 404 })
+    if (result === "not_tracked") return HttpResponse.json({ detail: "interviews are available only for Applied jobs" }, { status: 409 })
+    if (result === "invalid_idempotency_key") return HttpResponse.json({ detail: "idempotency_key is required and must be at most 128 characters" }, { status: 422 })
+    if (result === "idempotency_conflict") return HttpResponse.json({ detail: "idempotency_key was already used for another interview operation" }, { status: 409 })
+    if (result === "invalid_datetime") return HttpResponse.json({ detail: "scheduled_at must be an ISO 8601 datetime with an explicit UTC offset" }, { status: 422 })
+    if (result === "invalid_enum") return HttpResponse.json({ detail: "unknown interview type, format, or outcome" }, { status: 422 })
+    if (result === "invalid_text") return HttpResponse.json({ detail: "interview text exceeds its allowed length or has an invalid type" }, { status: 422 })
+    if (result === "invalid_field") return HttpResponse.json({ detail: "unknown interview field" }, { status: 422 })
+    return HttpResponse.json(result)
+  }),
+
+  http.patch("/api/opportunities/:id/interviews/:interviewId", async ({ request, params }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
+    const idempotencyKey = body.idempotency_key
+    if (typeof idempotencyKey !== "string" || !idempotencyKey.trim() || idempotencyKey.length > 128) {
+      return HttpResponse.json({ detail: "idempotency_key is required and must be at most 128 characters" }, { status: 422 })
+    }
+    const fields = { ...body }
+    delete fields.idempotency_key
+    const result = store().updateTrackerInterview(String(params.id), String(params.interviewId), fields, idempotencyKey)
+    if (result === "not_found") return HttpResponse.json({ detail: "interview or opportunity not found" }, { status: 404 })
+    if (result === "not_tracked") return HttpResponse.json({ detail: "interviews are available only for Applied jobs" }, { status: 409 })
+    if (result === "invalid_idempotency_key") return HttpResponse.json({ detail: "idempotency_key is required and must be at most 128 characters" }, { status: 422 })
+    if (result === "idempotency_conflict") return HttpResponse.json({ detail: "idempotency_key was already used for another interview operation" }, { status: 409 })
+    if (result === "invalid_update") return HttpResponse.json({ detail: "provide at least one interview field" }, { status: 422 })
+    if (result === "invalid_datetime") return HttpResponse.json({ detail: "scheduled_at must be an ISO 8601 datetime with an explicit UTC offset" }, { status: 422 })
+    if (result === "invalid_enum") return HttpResponse.json({ detail: "unknown interview type, format, or outcome" }, { status: 422 })
+    if (result === "invalid_text") return HttpResponse.json({ detail: "interview text exceeds its allowed length or has an invalid type" }, { status: 422 })
+    if (result === "invalid_field") return HttpResponse.json({ detail: "unknown interview field" }, { status: 422 })
     return HttpResponse.json(result)
   }),
 

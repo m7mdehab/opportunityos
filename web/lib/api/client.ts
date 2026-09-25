@@ -43,6 +43,9 @@ import type {
   TrackerFollowUpMutationResponse,
   TrackerNoteListResponse,
   TrackerNoteMutationResponse,
+  TrackerInterviewListResponse,
+  TrackerInterviewSummaryResponse,
+  TrackerInterviewMutationResponse,
   TutoringPlatform,
   TutoringPlatformsResponse,
   TutoringProfileMaterialResponse,
@@ -268,6 +271,31 @@ export const api = {
         `/api/opportunities/${opportunityId}/follow-ups/${followUpId}`,
         { method: "PATCH", body: JSON.stringify({ ...body, idempotency_key: idempotencyKey }) }
       ),
+    },
+    interviews: {
+      list: (opportunityId: string, params: { page?: number; page_size?: number } = {}) => {
+        const search = new URLSearchParams()
+        search.set("page", String(params.page ?? 1))
+        search.set("page_size", String(params.page_size ?? 50))
+        return request<TrackerInterviewListResponse>(`/api/opportunities/${opportunityId}/interviews?${search.toString()}`)
+      },
+      overview: (params: { page?: number; page_size?: number } = {}) => {
+        const search = new URLSearchParams()
+        search.set("bucket", "upcoming")
+        search.set("page", String(params.page ?? 1))
+        search.set("page_size", String(params.page_size ?? 25))
+        return request<TrackerInterviewSummaryResponse>(`/api/tracker/interviews?${search.toString()}`)
+      },
+      create: (opportunityId: string, body: Partial<Omit<TrackerInterviewListResponse["items"][number], "id" | "opportunity_id" | "created_at" | "updated_at">>, idempotencyKey: string) =>
+        request<TrackerInterviewMutationResponse>(`/api/opportunities/${opportunityId}/interviews`, {
+          method: "POST",
+          body: JSON.stringify({ ...body, idempotency_key: idempotencyKey }),
+        }),
+      update: (opportunityId: string, interviewId: string, body: Partial<Omit<TrackerInterviewListResponse["items"][number], "id" | "opportunity_id" | "created_at" | "updated_at">>, idempotencyKey: string) =>
+        request<TrackerInterviewMutationResponse>(`/api/opportunities/${opportunityId}/interviews/${interviewId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ ...body, idempotency_key: idempotencyKey }),
+        }),
     },
   },
 

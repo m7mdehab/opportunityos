@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { OpportunityCard } from "@/components/feed/opportunity-card"
 import { Button } from "@/components/ui/button"
 import { TRACKER_FOLLOW_UPS_CHANGED_EVENT } from "@/components/feed/tracker-followups"
+import { TRACKER_INTERVIEWS_CHANGED_EVENT } from "@/components/feed/tracker-interviews"
 import { api } from "@/lib/api/client"
 import { ApiError } from "@/lib/contract/types"
 import type {
@@ -12,6 +13,7 @@ import type {
   TrackerFollowUpBucket,
   TrackerFollowUpSummaryResponse,
   TrackerListResponse,
+  TrackerInterviewSummaryResponse,
 } from "@/lib/contract/types"
 
 const PAGE_SIZE = 20
@@ -48,6 +50,8 @@ export function TrackerView({
   const [followUpBucket, setFollowUpBucket] = useState<TrackerFollowUpBucket>("due_today")
   const [followUpResult, setFollowUpResult] = useState<TrackerFollowUpSummaryResponse | null>(null)
   const [followUpError, setFollowUpError] = useState<string | null>(null)
+  const [interviewResult, setInterviewResult] = useState<TrackerInterviewSummaryResponse | null>(null)
+  const [interviewError, setInterviewError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -88,6 +92,28 @@ export function TrackerView({
       window.removeEventListener(TRACKER_FOLLOW_UPS_CHANGED_EVENT, loadFollowUps)
     }
   }, [followUpBucket, refreshKey])
+
+  useEffect(() => {
+    let cancelled = false
+    const loadInterviews = () => {
+      api.tracker.interviews.overview({ page: 1, page_size: 25 })
+        .then((response) => {
+          if (cancelled) return
+          setInterviewResult(response)
+          setInterviewError(null)
+        })
+        .catch((requestFailure: unknown) => {
+          if (cancelled) return
+          setInterviewError(requestError(requestFailure))
+        })
+    }
+    loadInterviews()
+    window.addEventListener(TRACKER_INTERVIEWS_CHANGED_EVENT, loadInterviews)
+    return () => {
+      cancelled = true
+      window.removeEventListener(TRACKER_INTERVIEWS_CHANGED_EVENT, loadInterviews)
+    }
+  }, [refreshKey])
 
   const currentResult = result?.bucket === bucket && result.page === page ? result : null
   const pageCount = Math.max(1, Math.ceil((currentResult?.total ?? 0) / PAGE_SIZE))
@@ -165,6 +191,27 @@ export function TrackerView({
             ))}
           </ul>
         )}
+      </section>
+
+      <section aria-labelledby="tracker-interviews-overview-heading" data-testid="tracker-interviews-overview" className="rounded-lg border p-4">
+        <div>
+          <h3 id="tracker-interviews-overview-heading" className="text-sm font-semibold">Upcoming interviews</h3>
+          <p className="mt-1 text-xs text-muted-foreground">Scheduled interviews for jobs in your Applied tracker.</p>
+        </div>
+        {interviewError && <p role="alert" className="mt-3 text-sm text-destructive">{interviewError}</p>}
+        {!interviewError && !interviewResult && <p role="status" className="mt-3 text-xs text-muted-foreground">Loading interviews…</p>}
+        {interviewResult?.items.length === 0 && <p data-testid="tracker-interviews-overview-empty" className="mt-3 text-sm text-muted-foreground">No upcoming interviews.</p>}
+        {!!interviewResult?.items.length && <ul className="mt-3 divide-y">
+          {interviewResult.items.map((item) => <li key={item.id} data-testid={`tracker-interview-summary-${item.id}`} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+            <div>
+              <p className="text-sm font-medium">{item.round_label || item.interview_type?.replaceAll("_", " ") || "Interview"}</p>
+              <p className="text-xs text-muted-foreground">{item.opportunity.title} · {item.opportunity.organization} · {item.scheduled_at ? `${new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(new Date(item.scheduled_at))} UTC` : "Time not set"}</p>
+            </div>
+            <Button type="button" size="sm" variant="outline" onClick={() => onOpen({ id: item.opportunity.id, tracker_state: item.opportunity.tracker_state, action_state: item.opportunity.tracker_state })}>
+              Open job
+            </Button>
+          </li>)}
+        </ul>}
       </section>
 
       <div role="tablist" aria-label="Tracker buckets" className="flex flex-wrap gap-2">

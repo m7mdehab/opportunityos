@@ -1,0 +1,7 @@
+Feature worktree repository/integrity evidence
+- python scripts/check_repository.py: Repository integrity checks passed.
+- git diff --check: exit 0.
+- Source review confirmed no schema/migration changes and no files outside the W6.5 order's allowlist.
+- Feature worktree: work/fr008-w65-interviews, based on pushed order-lock commit 98168f1.
+- Hosted integration adapter returns static 501 for GET /tracker/interviews, GET/POST /opportunities/{id}/interviews, and PATCH /opportunities/{id}/interviews/{interview_id} before hostedConfig/auth/provider work.
+- No database target was configured or contacted; no private Founder files, deployment, PR, or merge was used.

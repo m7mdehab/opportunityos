@@ -358,6 +358,16 @@ async function hostedRequest(request: NextRequest, path: string[]): Promise<Next
       501,
     );
   }
+  const trackerInterviewsRoute =
+    (path.length === 2 && path[0] === "tracker" && path[1] === "interviews" && method === "GET") ||
+    (path.length === 3 && path[0] === "opportunities" && path[2] === "interviews" && (method === "GET" || method === "POST")) ||
+    (path.length === 4 && path[0] === "opportunities" && path[2] === "interviews" && method === "PATCH");
+  if (trackerInterviewsRoute) {
+    return hostedError(
+      "Tracker interviews are not supported by the hosted adapter until interview changes and append-only activity events can be persisted atomically.",
+      501,
+    );
+  }
   const config = hostedConfig(); if (!config) return hostedError("hosted Supabase configuration is unavailable", 503);
   if (method !== "GET" && method !== "HEAD" && request.headers.get("x-opportunityos-csrf") !== "1") return hostedError("CSRF validation failed", 403);
   const subpath = path.join("/");

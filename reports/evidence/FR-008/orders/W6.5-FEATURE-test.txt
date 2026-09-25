@@ -1,0 +1,27 @@
+FR-008 W6.5 interview feature acceptance
+Base: 98168f1 (pushed W6.5 order lock)
+Worktree: work/fr008-w65-interviews
+Scope: SQL service/routes + local mock/detail/Tracker UI + focused tests. Founder-testable remains 0%.
+
+Captured initial findings and remediations
+- Initial focused service run: 3 passed, 1 fixture error. The test tried to create an interview on synthetic-interview-4 (rejected state) through the correctly guarded service. The exclusion fixture was changed to seed a synthetic interview row directly, then verify it is filtered from the summary.
+- First ESLint run failed on four unused bindings in interview privacy projections. The summary projection now explicitly strips note keys via filtered entries; request bodies copy then delete idempotency_key before passing fields.
+- First TypeScript run failed with TS2790 when deleting required note properties. Replaced with an explicit Omit projection.
+- Initial Playwright startup failed before tests because Next/Turbopack rejected the feature worktree's node_modules junction pointing outside the project root. The junction was removed and dependencies installed in this worktree via npm ci. A concurrent cleanup race returned ENOTEMPTY once; the retry completed: 862 packages added, 0 vulnerabilities.
+- First interview Chromium run returned 409 on create. Mock actions represent mark-applied as internal action_state "submitted" while exposing canonical tracker_state "applied". The interview eligibility helper now maps only that internal mock alias to Applied before applying the strict Applied-bucket allowlist.
+- All findings above were corrected before final green checks. Supporting original lint and Turbopack output is in this archive.
+
+Final acceptance commands and outcomes
+- python -m unittest api.test_tracker_interviews_service api.test_tracker_followups_service api.test_tracker_notes_service api.test_tracker_service: 25 tests passed; OK.
+- npm exec -- next typegen: route types generated successfully.
+- npm exec -- tsc --noEmit: exit 0.
+- npm run lint -- --no-cache: exit 0; zero warnings.
+- npm run test:e2e -- --grep "interviews create|FR-008 basic triage tracker|C3 keyboard flow": 9 Chromium tests passed in 1.4m. This final run followed all code changes and includes basic triage, pipeline, notes, follow-ups, interview create/edit/no-op/complete/refresh/privacy, and keyboard flows.
+- python scripts/check_repository.py: Repository integrity checks passed.
+- git diff --check: exit 0.
+
+Boundary checks
+- Interview API reuses W4.1 FounderInterviewRecord and FounderActivityEventRecord; no schema or migration change.
+- Event metadata is ID-only; upcoming summaries omit preparation_notes and post_interview_notes.
+- Hosted adapter has static 501 checks for all four interview route shapes before hostedConfig/auth/provider work.
+- E2E ran against synthetic MSW/localStorage only. OPPORTUNITYOS_DB_URL was unset for the run. No live DB, private Founder profile/content, external provider, corpus, migration, deployment, PR, merge, or Founder review was used.

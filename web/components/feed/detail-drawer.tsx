@@ -16,6 +16,7 @@ import { DecisionBadge } from "@/components/feed/decision-badge"
 import { FeedbackButtons } from "@/components/feed/feedback-buttons"
 import { TriageActions } from "@/components/feed/triage-actions"
 import { TrackerFollowUps } from "@/components/feed/tracker-followups"
+import { TrackerInterviews } from "@/components/feed/tracker-interviews"
 import { TrackerNotes } from "@/components/feed/tracker-notes"
 import { api } from "@/lib/api/client"
 import { ApiError } from "@/lib/contract/types"
@@ -44,6 +45,16 @@ const APPLICATION_TRACKED_STATES = new Set([
 const FOLLOW_UP_TRACKED_STATES = new Set([
   "saved",
   "submitted",
+  "applied",
+  "recruiter_screen",
+  "assessment",
+  "interviewing",
+  "final_interview",
+  "offer",
+  "accepted",
+])
+
+const INTERVIEW_TRACKED_STATES = new Set([
   "applied",
   "recruiter_screen",
   "assessment",
@@ -514,6 +525,14 @@ export function DetailDrawer({
                 <>
                   <Separator />
                   <TrackerFollowUps key={opportunityId} opportunityId={opportunityId} />
+                </>
+              )}
+
+            {opportunityId && actionState &&
+              INTERVIEW_TRACKED_STATES.has(actionState) && (
+                <>
+                  <Separator />
+                  <TrackerInterviews key={opportunityId} opportunityId={opportunityId} />
                 </>
               )}
 

@@ -1,0 +1,18 @@
+Feature source diff evidence
+Tracked changes:
+ api/routes_api.py                          | 130 ++++++++++++++++
+ web/app/api/[...path]/route.ts             |  10 ++
+ web/components/feed/detail-drawer.tsx      |  19 +++
+ web/components/feed/tracker-view.tsx       |  47 ++++++
+ web/lib/api/client.ts                      |  28 ++++
+ web/lib/contract/types.ts                  |  49 ++++++
+ web/lib/mock/handlers.ts                   |  71 +++++++++
+ web/lib/mock/store.ts                      | 236 +++++++++++++++++++++++++++++
+ web/tests/e2e/fr008-tracker-triage.spec.ts |  83 ++++++++++
+ 9 files changed, 673 insertions(+)
+New W6.5 files:
+api/tracker_interviews_service.py
+api/test_tracker_interviews_service.py
+web/components/feed/tracker-interviews.tsx
+
+Other changes are limited to the W6.5 order allowlist: API imports/routes, explicit hosted 501 boundary, client contract, interview detail UI and Tracker overview, synthetic MSW storage/handlers, and focused Chromium coverage. git diff --check: exit 0.

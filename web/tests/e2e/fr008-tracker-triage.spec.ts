@@ -324,4 +324,87 @@ test.describe("FR-008 basic triage tracker", () => {
     await expect(persistedAgain.locator('[data-testid^="tracker-follow-up-"]').filter({ hasText: "Check back after the interview" }).first()).toContainText("Upcoming")
     expect(await trackerEvents(page, opportunityId)).toHaveLength(6)
   })
+
+  test("interviews create, edit, complete, persist, and stay private in the upcoming summary", async ({ page }) => {
+    await login(page)
+    const opportunityId = await actOnFirstJob(page, "Mark applied", "applied")
+    await page.getByTestId("workspace-tracker").click()
+    await page.getByTestId("tracker-bucket-applied").click()
+    await page.getByTestId(`opportunity-card-${opportunityId}`).click()
+
+    const drawer = page.getByRole("dialog")
+    const interviews = drawer.getByTestId("tracker-interviews")
+    await expect(interviews).toBeVisible()
+    const scheduledAt = await page.evaluate(() => {
+      const future = new Date(Date.now() + 48 * 60 * 60 * 1000)
+      return new Date(future.getTime() - future.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
+    })
+    await interviews.getByLabel("New interview schedule").fill(scheduledAt)
+    await interviews.getByLabel("New interview round").fill("Technical round")
+    await interviews.getByLabel("New interview type").selectOption("technical")
+    await interviews.getByLabel("New interview format").selectOption("video")
+    await interviews.getByLabel("New interviewer").fill("Synthetic interviewer")
+    await interviews.getByLabel("New preparation notes").fill("PRIVATE PREPARATION NOTES")
+    await interviews.getByLabel("New post-interview notes").fill("PRIVATE DEBRIEF NOTES")
+    const [createResponse] = await Promise.all([
+      page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith(`/opportunities/${opportunityId}/interviews`)),
+      interviews.getByRole("button", { name: "Add interview" }).click(),
+    ])
+    expect(createResponse.status(), await createResponse.text()).toBe(200)
+    const interviewRow = interviews.locator('[data-testid^="tracker-interview-"]').first()
+    const interviewTestId = await interviewRow.getAttribute("data-testid")
+    const interviewId = interviewTestId?.replace("tracker-interview-", "")
+    expect(interviewId).toBeTruthy()
+    await expect(interviewRow).toContainText("Technical round")
+    await expect(interviewRow).toContainText("PRIVATE PREPARATION NOTES")
+    let events = await trackerEvents(page, opportunityId)
+    expect(events.at(-1)?.action_type).toBe("interview_added")
+    expect(JSON.parse(events.at(-1)?.metadata_json ?? "{}")).toEqual({ interview_id: interviewId })
+    expect(events.at(-1)?.metadata_json).not.toContain("PRIVATE")
+
+    await page.keyboard.press("Escape")
+    const summary = page.getByTestId("tracker-interviews-overview").getByTestId(`tracker-interview-summary-${interviewId}`)
+    await expect(summary).toBeVisible()
+    await expect(summary).not.toContainText("PRIVATE PREPARATION NOTES")
+    await expect(summary).not.toContainText("PRIVATE DEBRIEF NOTES")
+    await summary.getByRole("button", { name: "Open job" }).click()
+    const reopened = page.getByRole("dialog").getByTestId("tracker-interviews")
+    const reopenedRow = reopened.getByTestId(`tracker-interview-${interviewId}`)
+    await reopenedRow.getByRole("button", { name: "Edit interview" }).click()
+    await reopened.getByLabel("Edit interviewer").fill("Updated synthetic interviewer")
+    const [updateResponse] = await Promise.all([
+      page.waitForResponse((response) => response.request().method() === "PATCH" && response.url().includes(`/opportunities/${opportunityId}/interviews/`)),
+      reopened.getByRole("button", { name: "Save interview" }).click(),
+    ])
+    expect(updateResponse.status()).toBe(200)
+    expect((await trackerEvents(page, opportunityId)).at(-1)?.action_type).toBe("interview_updated")
+
+    await reopenedRow.getByRole("button", { name: "Edit interview" }).click()
+    const [noOpResponse] = await Promise.all([
+      page.waitForResponse((response) => response.request().method() === "PATCH" && response.url().includes(`/opportunities/${opportunityId}/interviews/`)),
+      reopened.getByRole("button", { name: "Save interview" }).click(),
+    ])
+    expect(noOpResponse.status()).toBe(200)
+    expect(await trackerEvents(page, opportunityId)).toHaveLength(3)
+
+    await reopenedRow.getByRole("button", { name: "Complete interview" }).click()
+    await expect(reopenedRow).toContainText("Completed")
+    events = await trackerEvents(page, opportunityId)
+    expect(events.at(-1)?.action_type).toBe("interview_completed")
+    expect(JSON.parse(events.at(-1)?.metadata_json ?? "{}")).toEqual({ interview_id: interviewId })
+    await page.keyboard.press("Escape")
+    await expect(page.getByTestId("tracker-interviews-overview-empty")).toBeVisible()
+
+    await page.reload()
+    await expect(page.getByTestId("workspace-jobs")).toBeVisible()
+    await page.getByTestId("workspace-tracker").click()
+    await page.getByTestId("tracker-bucket-applied").click()
+    await page.getByTestId(`opportunity-card-${opportunityId}`).click()
+    const persisted = page.getByRole("dialog").getByTestId("tracker-interviews")
+    const persistedRow = persisted.getByTestId(`tracker-interview-${interviewId}`)
+    await expect(persistedRow).toContainText("Updated synthetic interviewer")
+    await expect(persistedRow).toContainText("PRIVATE DEBRIEF NOTES")
+    await expect(persistedRow).toContainText("Completed")
+    expect(await trackerEvents(page, opportunityId)).toHaveLength(4)
+  })
 })

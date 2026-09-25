@@ -44,6 +44,11 @@ import type {
   TrackerNote,
   TrackerNoteListResponse,
   TrackerNoteMutationResponse,
+  TrackerInterview,
+  TrackerInterviewListResponse,
+  TrackerInterviewMutationResponse,
+  TrackerInterviewOutcome,
+  TrackerInterviewSummaryResponse,
   TrackerState,
 } from "@/lib/contract/types"
 import {
@@ -86,6 +91,13 @@ interface MockTrackerFollowUpIdempotency {
   action_type: "follow_up_created" | "follow_up_updated" | "follow_up_completed" | "follow_up_reopened"
   opportunity_id: string
   follow_up_id: string
+}
+
+interface MockTrackerInterviewIdempotency {
+  idempotency_key: string
+  action_type: "interview_added" | "interview_updated" | "interview_completed"
+  opportunity_id: string
+  interview_id: string
 }
 
 const HIGH_FIT_THRESHOLD = 70
@@ -222,6 +234,40 @@ function followUpStatus(dueDate: string, completedAt: string | null, today: stri
   return "upcoming"
 }
 
+const MOCK_INTERVIEW_TYPES = new Set(["recruiter_screen", "hiring_manager", "technical", "take_home", "live_coding", "case_study", "panel", "final", "other"])
+const MOCK_INTERVIEW_FORMATS = new Set(["phone", "video", "in_person"])
+const MOCK_INTERVIEW_OUTCOMES = new Set<TrackerInterviewOutcome>(["pending", "completed", "passed", "not_selected", "cancelled", "other"])
+const MOCK_INTERVIEW_DONE = new Set<TrackerInterviewOutcome>(["completed", "passed", "not_selected", "cancelled"])
+const MOCK_INTERVIEW_FIELDS = new Set(["scheduled_at", "round_label", "interview_type", "interview_format", "interviewer_name", "preparation_notes", "post_interview_notes", "outcome"])
+
+function normalizeMockInterviewFields(fields: Record<string, unknown>): Partial<TrackerInterview> | "invalid_field" | "invalid_datetime" | "invalid_enum" | "invalid_text" {
+  const normalized: Partial<TrackerInterview> = {}
+  const lengths: Record<string, number> = { round_label: 64, interviewer_name: 128, preparation_notes: 4000, post_interview_notes: 4000 }
+  for (const [field, value] of Object.entries(fields)) {
+    if (!MOCK_INTERVIEW_FIELDS.has(field)) return "invalid_field"
+    if (field === "scheduled_at") {
+      if (value === null) normalized.scheduled_at = null
+      else if (typeof value === "string" && /(?:Z|[+-]\d{2}:\d{2})$/i.test(value) && Number.isFinite(Date.parse(value))) normalized.scheduled_at = new Date(value).toISOString()
+      else return "invalid_datetime"
+    } else if (field in lengths) {
+      if (value !== null && typeof value !== "string") return "invalid_text"
+      const cleaned = typeof value === "string" ? value.trim() : ""
+      if (cleaned.length > lengths[field]) return "invalid_text"
+      ;(normalized as Record<string, unknown>)[field] = cleaned || null
+    } else if (field === "interview_type") {
+      if (value !== null && (typeof value !== "string" || !MOCK_INTERVIEW_TYPES.has(value))) return "invalid_enum"
+      normalized.interview_type = value as TrackerInterview["interview_type"]
+    } else if (field === "interview_format") {
+      if (value !== null && (typeof value !== "string" || !MOCK_INTERVIEW_FORMATS.has(value))) return "invalid_enum"
+      normalized.interview_format = value as TrackerInterview["interview_format"]
+    } else if (field === "outcome") {
+      if (value !== null && (typeof value !== "string" || !MOCK_INTERVIEW_OUTCOMES.has(value as TrackerInterviewOutcome))) return "invalid_enum"
+      normalized.outcome = value as TrackerInterviewOutcome | null
+    }
+  }
+  return normalized
+}
+
 export class MockStore {
   scenario: MockScenario
   authenticated = false
@@ -255,6 +301,9 @@ export class MockStore {
   /** Synthetic follow-ups and request keys live only in mock local storage. */
   private trackerFollowUps = new Map<string, TrackerFollowUp[]>()
   private trackerFollowUpIdempotency: MockTrackerFollowUpIdempotency[] = []
+  /** Synthetic interview records, private notes, and idempotency live in their own mock namespace. */
+  private trackerInterviews = new Map<string, TrackerInterview[]>()
+  private trackerInterviewIdempotency: MockTrackerInterviewIdempotency[] = []
 
   constructor(scenario: MockScenario) {
     this.scenario = scenario
@@ -338,6 +387,7 @@ export class MockStore {
     this.restoreTrackerState()
     this.restoreTrackerNotes()
     this.restoreTrackerFollowUps()
+    this.restoreTrackerInterviews()
     this.dailyCounters = this.seedDailyCounters()
   }
 
@@ -355,6 +405,10 @@ export class MockStore {
 
   private trackerFollowUpsStorageKey() {
     return `opportunityos.mock.follow-ups.${this.scenario}`
+  }
+
+  private trackerInterviewsStorageKey() {
+    return `opportunityos.mock.interviews.${this.scenario}`
   }
 
   private restoreTrackerState() {
@@ -540,6 +594,60 @@ export class MockStore {
     }
   }
 
+  private restoreTrackerInterviews() {
+    if (typeof window === "undefined") return
+    try {
+      const raw = window.localStorage.getItem(this.trackerInterviewsStorageKey())
+      if (!raw) return
+      const saved: unknown = JSON.parse(raw)
+      if (!saved || typeof saved !== "object") return
+      const object = saved as { interviews?: unknown; idempotency?: unknown }
+      if (Array.isArray(object.interviews)) {
+        for (const entry of object.interviews) {
+          if (
+            entry && typeof entry === "object" &&
+            "id" in entry && typeof entry.id === "string" &&
+            "opportunity_id" in entry && typeof entry.opportunity_id === "string" &&
+            "scheduled_at" in entry && (typeof entry.scheduled_at === "string" || entry.scheduled_at === null) &&
+            "outcome" in entry && typeof entry.outcome === "string" &&
+            "created_at" in entry && typeof entry.created_at === "string" &&
+            "updated_at" in entry && typeof entry.updated_at === "string" &&
+            this.opportunities.has(entry.opportunity_id)
+          ) {
+            const rows = this.trackerInterviews.get(entry.opportunity_id) ?? []
+            rows.push(entry as TrackerInterview)
+            this.trackerInterviews.set(entry.opportunity_id, rows)
+          }
+        }
+      }
+      if (Array.isArray(object.idempotency)) {
+        this.trackerInterviewIdempotency = object.idempotency.filter((entry): entry is MockTrackerInterviewIdempotency =>
+          Boolean(
+            entry && typeof entry === "object" &&
+            "idempotency_key" in entry && typeof entry.idempotency_key === "string" &&
+            "action_type" in entry && ["interview_added", "interview_updated", "interview_completed"].includes(String(entry.action_type)) &&
+            "opportunity_id" in entry && typeof entry.opportunity_id === "string" &&
+            "interview_id" in entry && typeof entry.interview_id === "string"
+          )
+        )
+      }
+    } catch {
+      // Keep synthetic interview flows usable when browser storage is blocked.
+    }
+  }
+
+  private persistTrackerInterviews() {
+    if (typeof window === "undefined") return
+    try {
+      window.localStorage.setItem(this.trackerInterviewsStorageKey(), JSON.stringify({
+        interviews: [...this.trackerInterviews.values()].flat(),
+        idempotency: this.trackerInterviewIdempotency,
+      }))
+    } catch {
+      // Synthetic review data must not break the mock workflow.
+    }
+  }
+
   private applicationTrackerState(opportunityId: string): TrackerState | null {
     const opportunity = this.opportunities.get(opportunityId)
     if (!opportunity) return null
@@ -549,6 +657,134 @@ export class MockStore {
       "offer", "accepted", "rejected_by_employer", "withdrawn", "no_response",
     ])
     return state && applicationStates.has(state) ? state : null
+  }
+
+  private interviewTrackerState(opportunityId: string): TrackerState | null {
+    const opportunity = this.opportunities.get(opportunityId)
+    if (!opportunity) return null
+    const state = opportunity.action_state === "submitted" ? "applied" : opportunity.action_state
+    const appliedBucket = new Set<TrackerState>(["applied", "recruiter_screen", "assessment", "interviewing", "final_interview", "offer", "accepted"])
+    return state && appliedBucket.has(state as TrackerState) ? state as TrackerState : null
+  }
+
+  listOpportunityTrackerInterviews(opportunityId: string, page = 1, pageSize = 50): TrackerInterviewListResponse | "not_found" | "not_tracked" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    if (!this.interviewTrackerState(opportunityId)) return "not_tracked"
+    const rows = this.trackerInterviews.get(opportunityId) ?? []
+    const normalizedPage = Math.max(1, Math.floor(page) || 1)
+    const normalizedSize = Math.min(100, Math.max(1, Math.floor(pageSize) || 50))
+    return {
+      opportunity_id: opportunityId,
+      page: normalizedPage,
+      page_size: normalizedSize,
+      total: rows.length,
+      items: [...rows].sort((left, right) => {
+        if (!left.scheduled_at) return right.scheduled_at ? 1 : left.id.localeCompare(right.id)
+        if (!right.scheduled_at) return -1
+        return left.scheduled_at.localeCompare(right.scheduled_at) || left.id.localeCompare(right.id)
+      }).slice((normalizedPage - 1) * normalizedSize, normalizedPage * normalizedSize),
+    }
+  }
+
+  listTrackerInterviews(bucket: string, page = 1, pageSize = 25): TrackerInterviewSummaryResponse | "invalid_bucket" {
+    if (bucket !== "upcoming") return "invalid_bucket"
+    const now = Date.now()
+    const items = [...this.trackerInterviews.values()].flat()
+      .filter((interview) => interview.scheduled_at && Date.parse(interview.scheduled_at) >= now && !MOCK_INTERVIEW_DONE.has(interview.outcome ?? "pending") && this.interviewTrackerState(interview.opportunity_id))
+      .sort((left, right) => Date.parse(left.scheduled_at ?? "") - Date.parse(right.scheduled_at ?? "") || left.id.localeCompare(right.id))
+      .flatMap((interview) => {
+        const opportunity = this.opportunities.get(interview.opportunity_id)
+        const trackerState = this.interviewTrackerState(interview.opportunity_id)
+        if (!opportunity || !trackerState) return []
+        const safeInterview = Object.fromEntries(
+          Object.entries(interview).filter(([field]) => field !== "preparation_notes" && field !== "post_interview_notes")
+        ) as Omit<TrackerInterview, "preparation_notes" | "post_interview_notes">
+        return [{ ...safeInterview, opportunity: { id: opportunity.id, title: opportunity.title, organization: opportunity.organization, tracker_state: trackerState } }]
+      })
+    const normalizedPage = Math.max(1, Math.floor(page) || 1)
+    const normalizedSize = Math.min(100, Math.max(1, Math.floor(pageSize) || 25))
+    return { bucket: "upcoming", page: normalizedPage, page_size: normalizedSize, total: items.length, items: items.slice((normalizedPage - 1) * normalizedSize, normalizedPage * normalizedSize) }
+  }
+
+  createTrackerInterview(
+    opportunityId: string,
+    fields: Record<string, unknown>,
+    idempotencyKey: string,
+  ): TrackerInterviewMutationResponse | "not_found" | "not_tracked" | "invalid_datetime" | "invalid_enum" | "invalid_text" | "invalid_field" | "invalid_idempotency_key" | "idempotency_conflict" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    const state = this.interviewTrackerState(opportunityId)
+    if (!state) return "not_tracked"
+    const normalized = normalizeMockInterviewFields(fields)
+    if (typeof normalized === "string") return normalized
+    if (typeof idempotencyKey !== "string" || !idempotencyKey.trim() || idempotencyKey.length > 128) return "invalid_idempotency_key"
+    const prior = this.trackerInterviewIdempotency.find((entry) => entry.idempotency_key === idempotencyKey)
+    if (prior) {
+      if (prior.action_type !== "interview_added" || prior.opportunity_id !== opportunityId) return "idempotency_conflict"
+      const interview = (this.trackerInterviews.get(opportunityId) ?? []).find((entry) => entry.id === prior.interview_id)
+      return interview ? { interview, changed: false } : "not_found"
+    }
+    const now = new Date().toISOString()
+    const interview: TrackerInterview = {
+      id: `mock-interview-${crypto.randomUUID()}`, opportunity_id: opportunityId,
+      scheduled_at: normalized.scheduled_at ?? null, round_label: normalized.round_label ?? null,
+      interview_type: normalized.interview_type ?? null, interview_format: normalized.interview_format ?? null,
+      interviewer_name: normalized.interviewer_name ?? null, preparation_notes: normalized.preparation_notes ?? null,
+      post_interview_notes: normalized.post_interview_notes ?? null, outcome: normalized.outcome ?? "pending",
+      created_at: now, updated_at: now,
+    }
+    this.trackerInterviews.set(opportunityId, [...(this.trackerInterviews.get(opportunityId) ?? []), interview])
+    this.trackerInterviewIdempotency.push({ idempotency_key: idempotencyKey, action_type: "interview_added", opportunity_id: opportunityId, interview_id: interview.id })
+    this.persistTrackerInterviews()
+    this.recordTrackerInterviewEvent(opportunityId, state, "interview_added", interview.id)
+    return { interview, changed: true }
+  }
+
+  updateTrackerInterview(
+    opportunityId: string,
+    interviewId: string,
+    fields: Record<string, unknown>,
+    idempotencyKey: string,
+  ): TrackerInterviewMutationResponse | "not_found" | "not_tracked" | "invalid_datetime" | "invalid_enum" | "invalid_text" | "invalid_field" | "invalid_update" | "invalid_idempotency_key" | "idempotency_conflict" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    const state = this.interviewTrackerState(opportunityId)
+    if (!state) return "not_tracked"
+    const interview = (this.trackerInterviews.get(opportunityId) ?? []).find((entry) => entry.id === interviewId)
+    if (!interview) return "not_found"
+    if (!Object.keys(fields).length) return "invalid_update"
+    const normalized = normalizeMockInterviewFields(fields)
+    if (typeof normalized === "string") return normalized
+    if (typeof idempotencyKey !== "string" || !idempotencyKey.trim() || idempotencyKey.length > 128) return "invalid_idempotency_key"
+    const nextOutcome = normalized.outcome === undefined ? interview.outcome : normalized.outcome
+    const isCompletionTransition = (interview.outcome === null || interview.outcome === "pending") && nextOutcome !== null && nextOutcome !== undefined && ["completed", "passed", "not_selected"].includes(nextOutcome)
+    const isCompletionReplay = Object.keys(normalized).length === 1 && normalized.outcome === interview.outcome && interview.outcome !== null && ["completed", "passed", "not_selected"].includes(interview.outcome)
+    const actionType = isCompletionTransition || isCompletionReplay
+      ? "interview_completed"
+      : "interview_updated"
+    const prior = this.trackerInterviewIdempotency.find((entry) => entry.idempotency_key === idempotencyKey)
+    if (prior) {
+      if (prior.action_type !== actionType || prior.opportunity_id !== opportunityId || prior.interview_id !== interviewId) return "idempotency_conflict"
+      return { interview, changed: false }
+    }
+    if (Object.entries(normalized).every(([field, value]) => interview[field as keyof TrackerInterview] === value)) return { interview, changed: false }
+    Object.assign(interview, normalized, { updated_at: new Date().toISOString() })
+    this.trackerInterviewIdempotency.push({ idempotency_key: idempotencyKey, action_type: actionType, opportunity_id: opportunityId, interview_id: interviewId })
+    this.persistTrackerInterviews()
+    this.recordTrackerInterviewEvent(opportunityId, state, actionType, interviewId)
+    return { interview, changed: true }
+  }
+
+  private recordTrackerInterviewEvent(opportunityId: string, state: TrackerState, actionType: string, interviewId: string) {
+    const event: MockTrackerEvent = {
+      opportunity_id: opportunityId, action_type: actionType, from_state: state, to_state: state,
+      event_at: new Date().toISOString(), metadata_json: JSON.stringify({ interview_id: interviewId }),
+    }
+    this.trackerEvents.push(event)
+    if (typeof window === "undefined") return
+    try {
+      window.localStorage.setItem(this.trackerEventsStorageKey(), JSON.stringify(this.trackerEvents))
+    } catch {
+      // Synthetic events are best-effort in the browser mock.
+    }
   }
 
   private recordTrackerNoteEvent(
