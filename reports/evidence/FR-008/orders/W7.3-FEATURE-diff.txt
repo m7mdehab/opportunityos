@@ -1,0 +1,15 @@
+W7.3 feature diff verification
+Branch: work/fr008-w73-job-detail-explanations
+Order lock/base: 0cb8bbf
+Feature checkpoint: 64f3a98
+
+Command: git diff --check 0cb8bbf..64f3a98
+Output: no whitespace errors; exit code 0.
+
+Changed paths:
+web/components/feed/detail-drawer.tsx
+web/lib/contract/types.ts
+web/lib/mock/store.ts
+web/tests/e2e/fr008-explanations.spec.ts
+
+Only the W7.3 allowed detail drawer, TypeScript contract, synthetic mock, and explanation browser test paths are included. No scoring algorithm, backend serialization, migration/schema, generated state document, supplied brief, or private Founder data is included.

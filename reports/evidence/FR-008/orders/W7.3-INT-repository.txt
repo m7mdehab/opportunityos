@@ -1,0 +1,10 @@
+W7.3 integration repository integrity
+Branch: work/fr008-incremental-delivery
+Order lock/base: 0cb8bbf
+Integrated checkpoint: 8dcfd9e
+
+Command: python scripts/check_repository.py
+Output: Repository integrity checks passed.
+Exit code: 0
+
+Protected supplied briefs and W0 evidence remain untracked and untouched. No configured/live database, private data, migration/schema, or generated state document was changed.

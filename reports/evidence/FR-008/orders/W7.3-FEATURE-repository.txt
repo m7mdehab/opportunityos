@@ -1,0 +1,10 @@
+W7.3 feature repository integrity
+Branch: work/fr008-w73-job-detail-explanations
+Order lock: 0cb8bbf
+Feature checkpoint: 64f3a98
+
+Command: python scripts/check_repository.py
+Output: Repository integrity checks passed.
+Exit code: 0
+
+The final feature worktree includes only the four W7.3 source/test paths allowed by the order. No supplied brief, W0 evidence, private data, migration/schema, generated state document, or unrelated tracker flow was changed.

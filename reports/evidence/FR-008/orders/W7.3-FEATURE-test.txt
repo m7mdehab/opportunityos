@@ -1,0 +1,70 @@
+W7.3 feature verification transcript
+Branch: work/fr008-w73-job-detail-explanations
+Order lock: 0cb8bbf
+OPPORTUNITYOS_DB_URL explicitly unset for browser tests
+
+
+> web@0.1.0 lint
+> eslint . --max-warnings=0
+
+Generating route types...
+✓ Types generated successfully
+[WebServer] (node:23892) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:8860) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:8860) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:14344) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:29900) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:12648) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:32672) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:28524) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:28416) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:28884) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:36844) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:38172) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 19 tests using 1 worker
+
+(node:11004) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  1 [chromium] › tests\e2e\fr008-explanations.spec.ts:33:7 › FR-008 job detail explanations › separates eligibility, fit, preference, and confidence with evidence (3.1s)
+  ok  2 [chromium] › tests\e2e\fr008-explanations.spec.ts:48:7 › FR-008 job detail explanations › shows neutral unavailable states when no Founder truth pack has been evaluated (3.0s)
+  ok  3 [chromium] › tests\e2e\fr008-explanations.spec.ts:59:7 › FR-008 job detail explanations › treats absent score fields in a legacy detail response as unavailable (2.7s)
+  ok  4 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:65:7 › FR-008 basic triage tracker › To Review cards provide Save, Mark Applied, and Reject with a latest-action Undo (3.7s)
+  ok  5 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:125:7 › FR-008 basic triage tracker › detail-drawer triage offers Undo and applied audit history survives reload (9.6s)
+  ok  6 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:173:7 › FR-008 basic triage tracker › a newer tracker action makes the earlier Undo stale (2.8s)
+  ok  7 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:202:7 › FR-008 basic triage tracker › save, explicit apply, reject, bucket placement, and source-link truthfulness (19.2s)
+  ok  8 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:256:7 › FR-008 basic triage tracker › a failed tracker-state storage write leaves the job in To Review (3.5s)
+  ok  9 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:290:7 › FR-008 basic triage tracker › active snoozes stay out of To Review and expired snoozes resurface (3.0s)
+  ok 10 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:322:7 › FR-008 basic triage tracker › application pipeline moves forward, records one event per stage, and closes jobs (8.7s)
+  ok 11 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:363:7 › FR-008 basic triage tracker › private application notes create, edit, archive, and persist without duplicate events (9.1s)
+  ok 12 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:431:7 › FR-008 basic triage tracker › follow-ups create, reschedule, complete, reopen, and persist with private metadata (9.2s)
+  ok 13 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:532:7 › FR-008 basic triage tracker › interviews create, edit, complete, persist, and stay private in the upcoming summary (7.7s)
+  ok 14 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:615:7 › FR-008 basic triage tracker › application document links replace cleanly, persist, and record ID-only events (8.2s)
+  ok 15 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:703:7 › FR-008 basic triage tracker › activity timeline is private, newest-first, refreshes after tracker edits, and persists (8.5s)
+  ok 16 [chromium] › tests\e2e\keyboard.spec.ts:29:7 › C3 keyboard flow (j/k/o/a/x) › j/k move the cursor and move real DOM focus with it (1.3s)
+  ok 17 [chromium] › tests\e2e\keyboard.spec.ts:59:7 › C3 keyboard flow (j/k/o/a/x) › o opens the drawer for the focused card (2.5s)
+  ok 18 [chromium] › tests\e2e\keyboard.spec.ts:76:7 › C3 keyboard flow (j/k/o/a/x) › a marks the focused card applied; moving on, x rejects the next one (2.8s)
+  ok 19 [chromium] › tests\e2e\keyboard.spec.ts:112:7 › C3 keyboard flow (j/k/o/a/x) › shortcuts do not fire while a text input has focus (2.7s)
+
+  19 passed (2.5m)
+Repository integrity checks passed.
+## work/fr008-w73-job-detail-explanations
+ M web/components/feed/detail-drawer.tsx
+ M web/lib/contract/types.ts
+ M web/lib/mock/store.ts
+?? reports/evidence/FR-008/orders/W7.3-FEATURE-test.txt
+?? web/tests/e2e/fr008-explanations.spec.ts
+
+Historical diagnostic and remediation: the first no-truth-pack browser case loaded the default mock scenario after the login redirect. The scenario helper now reattaches the selected mock scenario to History API navigations, following the established degraded-truth E2E pattern. The rerun passed all three explanation cases, and the final feature regression run passed all 19 cases.
