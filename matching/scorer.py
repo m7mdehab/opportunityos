@@ -20,6 +20,7 @@ from opportunity.models import (
     SeniorityLevel,
     Track,
 )
+from opportunity.normalization import extract_skills_from_text
 from truth import predicates
 from truth.graph import TruthGraph
 from truth.models import VerificationStatus
@@ -33,6 +34,7 @@ from .models import (
     QualificationDecision,
     ScoringPolicy,
 )
+from .requirements import RequirementPriority
 from .qualification import QualificationEngine
 from .title_family import normalize_title
 
@@ -205,10 +207,32 @@ class OpportunityScorer:
             truth_graph.assertions.values(),
         )
 
-        opp_skills = [
-            normalized for raw in opp.skills
+        raw_skill_names = tuple(dict.fromkeys((
+            *opp.skills,
+            *extract_skills_from_text(opp.description),
+        )))
+        all_opp_skills = [
+            normalized for raw in raw_skill_names
             if (normalized := skill_matching.normalize_skill_label(raw))
         ]
+        all_skill_priorities = skill_matching.classify_skill_priorities(
+            opp.description, tuple(raw_skill_names),
+        )
+        candidate_priorities = {
+            RequirementPriority.MANDATORY,
+            RequirementPriority.STRONGLY_PREFERRED,
+            RequirementPriority.NICE_TO_HAVE,
+        }
+        skill_priorities = {
+            skill: all_skill_priorities.get(skill, RequirementPriority.UNKNOWN)
+            for skill in all_opp_skills
+            if all_skill_priorities.get(skill, RequirementPriority.UNKNOWN) in candidate_priorities
+        }
+        opp_skills = tuple(skill_priorities)
+        required_skills = frozenset(
+            skill for skill, priority in skill_priorities.items()
+            if priority == RequirementPriority.MANDATORY
+        )
         if not founder_skills_by_name:
             if opp_skills:
                 skill_ratio = 0.0
@@ -222,17 +246,20 @@ class OpportunityScorer:
                 skill_ratio = 0.5
                 skill_strengths = ()
                 skill_gaps = ()
-                skill_unknowns = ("No explicit skills in opportunity or founder truth graph",)
+                if all_opp_skills:
+                    skill_unknowns = (
+                        "Posting mentions skills without candidate requirement or preference evidence; priority is unknown or contextual.",
+                    )
+                else:
+                    skill_unknowns = ("No explicit skills in opportunity or founder truth graph",)
                 skill_ev_refs = ()
                 skill_explanation = "No explicit skills specified in posting."
                 uncertainty_acc += 0.3
         else:
             if opp_skills:
-                required_skills, _nice_to_have_skills = skill_matching.split_required_and_nice_to_have(
-                    opp.description, tuple(opp.skills),
-                )
                 skill_evals = skill_matching.evaluate_skill_matches(
                     tuple(opp_skills), required_skills, founder_skills_by_name,
+                    priorities=skill_priorities,
                 )
                 strength_matches = [m for m in skill_evals if m.is_strength]
                 partial_matches = [m for m in skill_evals if m.is_partial]
@@ -249,14 +276,17 @@ class OpportunityScorer:
                 skill_gaps = tuple(
                     (
                         f"Unverified skill requirement: {m.name.title()}" if m.required
-                        else f"Nice-to-have skill not in founder pack: {m.name.title()}"
+                        else f"{m.priority.value.replace('_', ' ').title()} skill not in founder pack: {m.name.title()}"
                     )
                     for m in gap_matches
                 )
                 skill_unknowns = tuple(
                     (
                         f"Partial skill signal: {m.name.title()} ({m.proficiency or 'unknown'} proficiency; "
-                        + ("required, below working proficiency" if m.required else "nice-to-have match")
+                        + (
+                            "required, below working proficiency" if m.required
+                            else f"{m.priority.value.replace('_', ' ')} match"
+                        )
                         + ") -- not a core-skill strength"
                     )
                     for m in partial_matches
@@ -285,7 +315,7 @@ class OpportunityScorer:
             gaps=skill_gaps,
             unknowns=skill_unknowns,
             evidence_refs=skill_ev_refs,
-            opportunity_field_refs=("skills",) if opp_skills else (),
+            opportunity_field_refs=("skills", "description") if opp_skills else (),
         ))
 
         # 2. Experience & Seniority Fit -- derived from the truth graph's actual

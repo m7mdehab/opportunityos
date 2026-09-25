@@ -15,6 +15,7 @@ from matching.models import (
     MatchEvaluation,
     QualificationDecision,
     RequirementMapping,
+    RequirementPriority,
     RequirementSupportStatus,
     ScoringPolicy,
     TailoredArtifact,
@@ -97,6 +98,30 @@ class TestMatchingModels(unittest.TestCase):
                 weight=0.5,
                 weighted_score=0.75,
                 explanation="test",
+            )
+
+    def test_requirement_mapping_priority_is_typed_and_compatible(self) -> None:
+        legacy = RequirementMapping(
+            requirement_text="Python",
+            requirement_type="skill",
+            status=RequirementSupportStatus.UNKNOWN,
+        )
+        self.assertIs(legacy.requirement_priority, RequirementPriority.UNKNOWN)
+
+        mandatory = RequirementMapping(
+            requirement_text="Must have Python",
+            requirement_type="skill",
+            status=RequirementSupportStatus.UNKNOWN,
+            requirement_priority="mandatory",
+        )
+        self.assertIs(mandatory.requirement_priority, RequirementPriority.MANDATORY)
+
+        with self.assertRaisesRegex(ValueError, "requirement_priority"):
+            RequirementMapping(
+                requirement_text="Python",
+                requirement_type="skill",
+                status=RequirementSupportStatus.UNKNOWN,
+                requirement_priority="ambiguous",
             )
 
     def test_tailored_artifact_hash_generation(self) -> None:

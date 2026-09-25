@@ -19,6 +19,7 @@ from truth import predicates
 from matching.mapping import RequirementMapper
 from matching.models import (
     QualificationDecision,
+    RequirementPriority,
     RequirementSupportStatus,
     ScoringPolicy,
 )
@@ -130,7 +131,11 @@ class TestOpportunityScorerAndMapper(unittest.TestCase):
         # partial, never a strength -- even though the name matches and the
         # posting's default description carries no required/nice-to-have
         # header (so every skill is conservatively nice-to-have too).
-        opp = create_test_opportunity(skills=("Python", "Go"), title="Senior Distributed Systems Architect")
+        opp = create_test_opportunity(
+            skills=("Python", "Go"),
+            title="Senior Distributed Systems Architect",
+            description="Requirements:\nPython\nGo",
+        )
         eval_res = self.scorer.evaluate(opp, self.truth_graph)
         skills_dim = next(d for d in eval_res.dimension_scores if d.dimension_name == "core_skills")
         self.assertEqual(skills_dim.strengths, ())
@@ -140,6 +145,7 @@ class TestOpportunityScorerAndMapper(unittest.TestCase):
         opp = create_test_opportunity(
             skills=("Rust", "Haskell", "Scala"),
             title="Junior Frontend Developer",
+            description="Requirements:\nRust\nHaskell\nScala",
         )
         eval_res = self.scorer.evaluate(opp, self.truth_graph)
         self.assertTrue(eval_res.overall_fit_score < 70.0)
@@ -148,12 +154,48 @@ class TestOpportunityScorerAndMapper(unittest.TestCase):
     def test_requirement_mapping_classification(self) -> None:
         opp = create_test_opportunity(
             skills=("Python", "Rust"),
+            description="Requirements:\nPython\nRust",
         )
         req_map = self.mapper.map_requirements(opp, self.truth_graph)
         self.assertEqual(req_map.opportunity_id, opp.id)
         statuses = [m.status for m in req_map.mappings]
         self.assertIn(RequirementSupportStatus.SUPPORTED, statuses)  # Python
         self.assertIn(RequirementSupportStatus.GAP, statuses)        # Rust
+        priorities = {
+            m.requirement_text.removeprefix("Proficiency in "): m.requirement_priority
+            for m in req_map.mappings if m.requirement_type == "skill"
+        }
+        self.assertEqual(priorities["Python"], RequirementPriority.MANDATORY)
+        self.assertEqual(priorities["Rust"], RequirementPriority.MANDATORY)
+
+    def test_company_technology_mentions_are_context_not_skill_gaps(self) -> None:
+        opp = create_test_opportunity(
+            skills=("Python", "Go"),
+            description="About Us:\nWe use Python and Go in our platform.",
+        )
+        req_map = self.mapper.map_requirements(opp, self.truth_graph)
+        skill_maps = [m for m in req_map.mappings if m.requirement_type == "skill"]
+        self.assertTrue(skill_maps)
+        self.assertTrue(all(m.requirement_priority == RequirementPriority.CONTEXTUAL for m in skill_maps))
+        self.assertTrue(all(m.status != RequirementSupportStatus.GAP for m in skill_maps))
+
+        evaluation = self.scorer.evaluate(opp, self.truth_graph)
+        skills_dim = next(d for d in evaluation.dimension_scores if d.dimension_name == "core_skills")
+        self.assertEqual(skills_dim.raw_score, 0.5)
+        self.assertEqual(skills_dim.strengths, ())
+        self.assertEqual(skills_dim.gaps, ())
+
+    def test_full_description_skill_extraction_precedes_neutral_fallback(self) -> None:
+        graph = _with_skill_proficiency(self.truth_graph, proficiency="expert")
+        opp = create_test_opportunity(
+            skills=(),
+            description="Requirements:\nPython\nGo",
+        )
+        evaluation = self.scorer.evaluate(opp, graph)
+        skills_dim = next(d for d in evaluation.dimension_scores if d.dimension_name == "core_skills")
+        self.assertTrue(any("Python" in s for s in skills_dim.strengths))
+        self.assertTrue(any("Go" in s for s in skills_dim.strengths))
+        self.assertEqual(skills_dim.raw_score, 1.0)
 
 
 def _with_premium_threshold(graph, threshold: str):

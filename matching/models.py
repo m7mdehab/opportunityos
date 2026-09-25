@@ -13,6 +13,7 @@ from typing import Any
 
 from opportunity.models import Opportunity, Track
 from truth.models import AtomicAssertion, EvidenceRecord, MetricAssertion
+from .requirements import RequirementPriority
 
 
 class QualificationDecision(str, Enum):
@@ -196,10 +197,18 @@ class RequirementMapping:
     supporting_evidence_ids: tuple[str, ...] = ()
     confidence: float = 1.0
     rationale: str = ""
+    requirement_priority: RequirementPriority = RequirementPriority.UNKNOWN
 
     def __post_init__(self) -> None:
         if not self.requirement_text:
             raise ValueError("requirement_text cannot be empty")
+        if isinstance(self.requirement_priority, str):
+            try:
+                object.__setattr__(self, "requirement_priority", RequirementPriority(self.requirement_priority))
+            except ValueError as exc:
+                raise ValueError(f"invalid requirement_priority: {self.requirement_priority}") from exc
+        elif not isinstance(self.requirement_priority, RequirementPriority):
+            raise ValueError("requirement_priority must be a RequirementPriority")
 
 
 @dataclass(frozen=True, slots=True)
