@@ -1,0 +1,4 @@
+COMMAND: git diff --check
+EXIT CODE: 0
+STDOUT: (empty)
+STDERR: (empty)
