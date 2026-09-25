@@ -377,16 +377,22 @@ class ScoringPolicy:
         # policy default actually read by matching/scorer.py's
         # `weights.get("domain", ...)` fallback -- the fallback default
         # alone (previously edited in scorer.py) never fires while this key
-        # is present, so it was the only place that mattered. Rebalanced
-        # 0.10 -> 0.05 to make room for "title_family" below without the
-        # dict summing to more than 1.0.
+        # is present, so it was the only place that mattered. The historical
+        # 0.10 -> 0.05 reallocation funded the former target-role-family
+        # preference; W3.1 names that contribution explicitly below.
         "domain": 0.05,
         "geography": 0.10,
         "compensation": 0.05,
         "trajectory": 0.05,
-        # New in B3: title_family_fit dimension weight. Sum: 0.35 + 0.20 +
-        # 0.15 + 0.05 + 0.10 + 0.05 + 0.05 + 0.05 = 1.00.
-        "title_family": 0.05,
+        # FR-008 W3.1 adds capability and preference dimensions before the
+        # required real-Founder gold-set calibration. Keep new capability
+        # dimensions visible but unweighted for now; this is not a calibrated
+        # zero-importance judgment. Preserve the prior 0.05 target-role
+        # preference contribution under an explicitly named preference key.
+        "title_family": 0.0,
+        "seniority": 0.0,
+        "education_certification": 0.0,
+        "target_role_family_preference": 0.05,
     })
     independent_weights: dict[str, float] = field(default_factory=lambda: {
         "services": 0.35,

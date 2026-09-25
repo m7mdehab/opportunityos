@@ -14,7 +14,7 @@ from opportunity.models import (
     Track,
 )
 from truth.graph import TruthGraph
-from truth.models import AtomicAssertion, EvidenceRecord, VerificationStatus
+from truth.models import AtomicAssertion, CertificationState, EvidenceRecord, Polarity, VerificationStatus
 from truth import predicates
 from matching.mapping import RequirementMapper
 from matching.models import (
@@ -526,6 +526,34 @@ def _graph_with_target_role(target_role_value: str) -> TruthGraph:
     return graph
 
 
+def _add_verified_assertion(
+    graph: TruthGraph,
+    *,
+    assertion_id: str,
+    predicate: str,
+    value,
+    subject_id: str = "founder",
+    evidence_text: str | None = None,
+    polarity: Polarity = Polarity.POSITIVE,
+) -> None:
+    evidence_id = f"ev-{assertion_id}"
+    graph.add_evidence(EvidenceRecord(
+        id=evidence_id,
+        content=evidence_text or str(value),
+        source="synthetic-test",
+        locator=f"test.{predicate}",
+    ))
+    graph.add_assertion(AtomicAssertion(
+        id=assertion_id,
+        subject_id=subject_id,
+        predicate=predicate,
+        value=value,
+        evidence_ids=(evidence_id,),
+        verification_status=VerificationStatus.VERIFIED,
+        polarity=polarity,
+    ))
+
+
 class TestCareerTrajectoryPredicateIsolation(unittest.TestCase):
     """Only verified career.target_role assertions may match posting titles."""
 
@@ -661,7 +689,7 @@ class TestTitleFamilyFitDimensionIntegration(unittest.TestCase):
 
     def _dimension(self, evaluation):
         return next(
-            ds for ds in evaluation.dimension_scores if ds.dimension_name == "title_family_fit"
+            ds for ds in evaluation.dimension_scores if ds.dimension_name == "target_role_family_preference"
         )
 
     def test_matching_family(self) -> None:
@@ -705,6 +733,140 @@ class TestTitleFamilyFitDimensionIntegration(unittest.TestCase):
         self.assertEqual(dim.raw_score, 0.50)
         self.assertTrue(dim.unknowns)
         self.assertIn("no verified career.target_role assertion", dim.unknowns[0])
+
+
+class TestFR008CapabilityDimensions(unittest.TestCase):
+    def _dimension(self, evaluation, name: str):
+        return next(ds for ds in evaluation.dimension_scores if ds.dimension_name == name)
+
+    def test_employment_capability_dimensions_are_distinct(self) -> None:
+        evaluation = OpportunityScorer().evaluate(
+            create_test_opportunity(title="Senior Data Engineer"),
+            create_test_graph(),
+        )
+        dimensions = {dimension.dimension_name for dimension in evaluation.dimension_scores}
+        self.assertTrue({
+            "core_skills",
+            "experience_fit",
+            "seniority_fit",
+            "responsibility_scope",
+            "domain_fit",
+            "title_family_fit",
+            "education_certification_fit",
+        }.issubset(dimensions))
+        self.assertIn("target_role_family_preference", dimensions)
+
+    def test_verified_employment_family_is_capability_evidence(self) -> None:
+        graph = TruthGraph()
+        _add_verified_assertion(
+            graph,
+            assertion_id="a-employment-title",
+            predicate=predicates.EMPLOYMENT_TITLE,
+            value="Senior Data Engineer",
+            subject_id="employment-1",
+        )
+        evaluation = OpportunityScorer().evaluate(
+            create_test_opportunity(title="Senior Data Engineer"),
+            graph,
+        )
+        capability = self._dimension(evaluation, "title_family_fit")
+        preference = self._dimension(evaluation, "target_role_family_preference")
+        self.assertEqual(capability.raw_score, 1.0)
+        self.assertEqual(capability.evidence_refs, ("a-employment-title",))
+        self.assertTrue(capability.strengths)
+        self.assertEqual(preference.evidence_refs, ())
+        self.assertTrue(preference.unknowns)
+
+    def test_verified_completed_certification_matches_explicit_requirement(self) -> None:
+        graph = TruthGraph()
+        _add_verified_assertion(
+            graph,
+            assertion_id="a-pmp-name",
+            predicate=predicates.CERTIFICATION_NAME,
+            value="PMP",
+            subject_id="credential-pmp",
+            evidence_text="PMP certification completed.",
+        )
+        _add_verified_assertion(
+            graph,
+            assertion_id="a-pmp-state",
+            predicate=predicates.CERTIFICATION_STATE,
+            value=CertificationState.COMPLETED,
+            subject_id="credential-pmp",
+            evidence_text="The PMP certification is completed.",
+        )
+        opportunity = create_test_opportunity(requirements=("PMP certification required",))
+        evaluation = OpportunityScorer().evaluate(opportunity, graph)
+        dimension = self._dimension(evaluation, "education_certification_fit")
+        self.assertEqual(dimension.raw_score, 1.0)
+        self.assertEqual(dimension.gaps, ())
+        self.assertEqual(set(dimension.evidence_refs), {"a-pmp-name", "a-pmp-state"})
+        self.assertTrue(dimension.strengths)
+
+    def test_higher_verified_degree_matches_required_degree_and_field(self) -> None:
+        graph = TruthGraph()
+        _add_verified_assertion(
+            graph,
+            assertion_id="a-education-qualification",
+            predicate=predicates.EDUCATION_QUALIFICATION,
+            value="Master of Science in Computer Science",
+            subject_id="education-1",
+        )
+        opportunity = create_test_opportunity(
+            requirements=("Bachelor's degree in Computer Science required",),
+        )
+        evaluation = OpportunityScorer().evaluate(opportunity, graph)
+        dimension = self._dimension(evaluation, "education_certification_fit")
+        self.assertEqual(dimension.raw_score, 1.0)
+        self.assertEqual(dimension.evidence_refs, ("a-education-qualification",))
+
+    def test_missing_credential_evidence_stays_unknown_not_gap(self) -> None:
+        evaluation = OpportunityScorer().evaluate(
+            create_test_opportunity(requirements=("PMP certification required",)),
+            TruthGraph(),
+        )
+        dimension = self._dimension(evaluation, "education_certification_fit")
+        self.assertEqual(dimension.raw_score, 0.5)
+        self.assertEqual(dimension.gaps, ())
+        self.assertTrue(any("No verified matching certification record" in note for note in dimension.unknowns))
+
+    def test_company_context_credential_mention_is_not_applicant_requirement(self) -> None:
+        evaluation = OpportunityScorer().evaluate(
+            create_test_opportunity(description="We use CISSP standards in our internal controls."),
+            TruthGraph(),
+        )
+        dimension = self._dimension(evaluation, "education_certification_fit")
+        self.assertEqual(dimension.raw_score, 0.5)
+        self.assertFalse(dimension.gaps)
+        self.assertEqual(
+            dimension.unknowns,
+            ("Posting does not state an explicit applicant-facing education or certification requirement",),
+        )
+
+    def test_planned_certification_does_not_match_as_held(self) -> None:
+        graph = TruthGraph()
+        _add_verified_assertion(
+            graph,
+            assertion_id="a-pmp-name",
+            predicate=predicates.CERTIFICATION_NAME,
+            value="PMP",
+            subject_id="credential-pmp",
+        )
+        _add_verified_assertion(
+            graph,
+            assertion_id="a-pmp-state",
+            predicate=predicates.CERTIFICATION_STATE,
+            value=CertificationState.PLANNED,
+            subject_id="credential-pmp",
+        )
+        evaluation = OpportunityScorer().evaluate(
+            create_test_opportunity(requirements=("PMP certification required",)),
+            graph,
+        )
+        dimension = self._dimension(evaluation, "education_certification_fit")
+        self.assertEqual(dimension.strengths, ())
+        self.assertEqual(dimension.gaps, ())
+        self.assertTrue(dimension.unknowns)
 
 
 if __name__ == "__main__":

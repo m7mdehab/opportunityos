@@ -280,7 +280,7 @@ class TestShortTenureTeamLeadDoesNotMatchStaffPosting(unittest.TestCase):
         opp = _staff_or_principal_opportunity("Staff Data Engineer", SeniorityLevel.LEAD)
         evaluation = OpportunityScorer().evaluate(opp, graph)
         dim = next(
-            d for d in evaluation.dimension_scores if d.dimension_name == "seniority_and_experience"
+            d for d in evaluation.dimension_scores if d.dimension_name == "experience_fit"
         )
 
         self.assertEqual(dim.strengths, ())

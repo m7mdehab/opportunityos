@@ -23,7 +23,7 @@ from opportunity.models import (
 from opportunity.normalization import extract_skills_from_text
 from truth import predicates
 from truth.graph import TruthGraph
-from truth.models import VerificationStatus
+from truth.models import CertificationState, Polarity, VerificationStatus
 
 from . import seniority
 from . import skills as skill_matching
@@ -35,10 +35,34 @@ from .models import (
     ScoringPolicy,
 )
 from .requirements import RequirementPriority
+from .requirements import classify_requirement_text
 from .qualification import QualificationEngine
 from .title_family import normalize_title
 
 _CURRENCY_THRESHOLD_RE = re.compile(r"^\s*([\d,]+(?:\.\d+)?)\s*([A-Za-z]{3})\s*$")
+_DEGREE_CUE_RE = re.compile(
+    r"\b(?:degree|bachelor(?:'s|s)?|master(?:'s|s)?|mba|ph\.?d\.?|doctorate|doctoral|associate\s+degree)\b",
+    re.IGNORECASE,
+)
+_CERTIFICATION_CUE_RE = re.compile(
+    r"\b(?:certification|certificate|certified|licen[cs]e|pmp|cissp|cfa|cpa|ccna|cisa|aws\s+certified|"
+    r"azure\s+certified|google\s+cloud\s+certified)\b",
+    re.IGNORECASE,
+)
+_CREDENTIAL_NOISE_WORDS = frozenset({
+    "a", "an", "and", "or", "the", "of", "in", "with", "for", "to", "from",
+    "degree", "certification", "certificate", "certified", "license", "licence",
+    "required", "preferred", "strongly", "highly", "minimum", "qualification",
+    "qualifications", "hold", "held", "having", "equivalent", "plus", "desired",
+})
+_DEGREE_LEVEL_RANK = {"associate": 1, "bachelor": 2, "master": 3, "doctorate": 4}
+_DEGREE_ALIASES = {
+    "bachelor": "bachelor", "bachelors": "bachelor", "ba": "bachelor", "bs": "bachelor",
+    "bsc": "bachelor", "bba": "bachelor", "master": "master", "masters": "master",
+    "ma": "master", "ms": "master", "msc": "master", "mba": "master",
+    "phd": "doctorate", "doctorate": "doctorate", "doctoral": "doctorate",
+    "associate": "associate", "associates": "associate",
+}
 
 # Opportunity.seniority (opportunity/models.py's SeniorityLevel) has no
 # separate "staff" member; industry usage treats "Staff" and "Lead" as the
@@ -112,6 +136,114 @@ def _monthly_compensation(comp: Any) -> float | None:
     if comp.interval == CompensationInterval.YEARLY:
         return amount / 12.0
     return None
+
+
+def _credential_kind(text: str) -> str | None:
+    """Return the credential family only when the posting names one."""
+    if _DEGREE_CUE_RE.search(text):
+        return "education"
+    if _CERTIFICATION_CUE_RE.search(text):
+        return "certification"
+    return None
+
+
+def _credential_requirement_items(opp: Opportunity) -> tuple[tuple[str, str, RequirementPriority], ...]:
+    """Extract explicit posting-side education/certification requirements.
+
+    Structured requirements carry their source-section context. Free
+    description text must state a priority itself or appear beneath an
+    applicant-facing requirements/preferred heading; an incidental credential
+    mention in company context is not promoted into a requirement.
+    """
+    items: list[tuple[str, str, RequirementPriority]] = []
+    seen: set[tuple[str, str]] = set()
+    applicable_priorities = {
+        RequirementPriority.MANDATORY,
+        RequirementPriority.STRONGLY_PREFERRED,
+        RequirementPriority.NICE_TO_HAVE,
+    }
+
+    def add(text: str, source_section: str | RequirementPriority | None) -> None:
+        kind = _credential_kind(text)
+        if not kind:
+            return
+        priority = classify_requirement_text(text, source_section=source_section)
+        if priority not in applicable_priorities:
+            return
+        key = (kind, " ".join(text.casefold().split()))
+        if key not in seen:
+            seen.add(key)
+            items.append((kind, text.strip(" -*•\t"), priority))
+
+    for requirement in opp.requirements:
+        add(requirement, "requirements")
+
+    section_priority: RequirementPriority | None = None
+    for raw_line in (opp.description or "").splitlines():
+        line = raw_line.strip().lstrip("-*• ").strip()
+        if not line:
+            continue
+        heading = line.rstrip(":").casefold()
+        if len(heading) <= 90 and not _credential_kind(line):
+            if re.search(r"\b(?:strongly|highly) preferred\b", heading):
+                section_priority = RequirementPriority.STRONGLY_PREFERRED
+                continue
+            if re.search(r"\b(?:preferred|nice to have|bonus|desired)\b", heading):
+                section_priority = RequirementPriority.NICE_TO_HAVE
+                continue
+            if re.search(r"\b(?:requirements?|minimum qualifications?|what you(?:'ll| will) need|qualifications)\b", heading):
+                section_priority = RequirementPriority.MANDATORY
+                continue
+            if line.endswith(":"):
+                section_priority = None
+                continue
+
+        for sentence in re.split(r"(?<=[.!?])\s+", line):
+            add(sentence, section_priority)
+
+    return tuple(items)
+
+
+def _credential_tokens(text: str) -> frozenset[str]:
+    return frozenset(
+        token for token in re.findall(r"[a-z0-9]+", text.casefold())
+        if token not in _CREDENTIAL_NOISE_WORDS and len(token) > 1
+    )
+
+
+def _degree_level(text: str) -> str | None:
+    tokens = re.findall(r"[a-z0-9]+", text.casefold())
+    for token in tokens:
+        level = _DEGREE_ALIASES.get(token)
+        if level:
+            return level
+    return None
+
+
+def _credential_requirement_matches(kind: str, requirement: str, founder_credential: str) -> bool:
+    """Match only directly named, verified credentials; unlisted facts stay unknown."""
+    requirement_tokens = _credential_tokens(requirement)
+    founder_tokens = _credential_tokens(founder_credential)
+    if not requirement_tokens or not founder_tokens:
+        return False
+
+    if kind == "education":
+        required_level = _degree_level(requirement)
+        founder_level = _degree_level(founder_credential)
+        if required_level:
+            if not founder_level or _DEGREE_LEVEL_RANK[founder_level] < _DEGREE_LEVEL_RANK[required_level]:
+                return False
+            requirement_tokens = frozenset(
+                token for token in requirement_tokens if token not in _DEGREE_ALIASES
+            )
+            founder_tokens = frozenset(
+                token for token in founder_tokens if token not in _DEGREE_ALIASES
+            )
+            if not requirement_tokens:
+                return True
+        return requirement_tokens.issubset(founder_tokens)
+
+    return requirement_tokens.issubset(founder_tokens)
 
 
 class OpportunityScorer:
@@ -318,11 +450,12 @@ class OpportunityScorer:
             opportunity_field_refs=("skills", "description") if opp_skills else (),
         ))
 
-        # 2. Experience & Seniority Fit -- derived from the truth graph's actual
-        # employment tenure and verified people-leadership evidence (ADR-0016),
-        # never from a title-keyword substring test. See matching/seniority.py.
+        # 2. Relevant experience (verified employment tenure).
         opp_level = opp.seniority
         required_level = _REQUIRED_LEVEL_BY_OPP_SENIORITY.get(opp_level)
+        posting_title_level = normalize_title(opp.title)[1]
+        if required_level is None and posting_title_level in seniority.THRESHOLDS_BY_LEVEL:
+            required_level = posting_title_level
         family_aliases = _family_aliases_from_title(opp.title)
         try:
             as_of = date.fromisoformat(evaluated_at)
@@ -337,70 +470,157 @@ class OpportunityScorer:
         family_label = family_aliases[0] if family_aliases else "the opportunity's role family"
 
         if assessment is None:
-            seniority_score = 0.5
-            seniority_strengths = ()
-            seniority_gaps = ()
-            seniority_unknowns = (
+            experience_score = 0.5
+            experience_strengths = ()
+            experience_gaps = ()
+            experience_unknowns = (
                 "No verified employment record (title + start date) in founder truth graph",
             )
-            seniority_ev_refs = ()
-            seniority_explanation = (
-                f"Seniority requirement evaluated as {opp_level.value.title()}; founder truth graph has no "
+            experience_ev_refs = ()
+            experience_explanation = (
+                f"Experience requirement evaluated as {opp_level.value.title()}; founder truth graph has no "
                 "verified employment record with both a title and a start date to compute tenure from."
             )
             uncertainty_acc += 0.3
         elif required_level is None:
-            seniority_score = 0.7
-            seniority_strengths = ()
-            seniority_gaps = ()
-            seniority_unknowns = ("Opportunity seniority unspecified",)
-            seniority_ev_refs = assessment.tenure_evidence_refs
-            seniority_explanation = seniority.explain(assessment, family_label=family_label)
+            experience_score = 0.7
+            experience_strengths = ()
+            experience_gaps = ()
+            experience_unknowns = ("Opportunity does not specify a seniority or years-of-experience threshold",)
+            experience_ev_refs = assessment.tenure_evidence_refs
+            experience_explanation = seniority.explain(assessment, family_label=family_label)
             uncertainty_acc += 0.1
         else:
-            seniority_ev_refs = tuple(sorted(set(assessment.tenure_evidence_refs) | set(assessment.leadership_evidence_refs)))
-            seniority_explanation = seniority.explain(assessment, family_label=family_label)
-            if assessment.meets_requirement:
-                seniority_score = 1.0
-                seniority_strengths = (
-                    f"Seniority alignment: {assessment.requirement.level.title()} requirement met with "
-                    f"{assessment.total_months} verified professional month(s)"
-                    + (", including verified people-leadership evidence" if assessment.requirement.requires_leadership else "")
-                    + ".",
+            experience_ev_refs = assessment.tenure_evidence_refs
+            experience_explanation = seniority.explain(assessment, family_label=family_label)
+            if assessment.months_gap == 0:
+                experience_score = 1.0
+                experience_strengths = (
+                    f"Verified professional experience: {assessment.total_months} month(s) meets the "
+                    f"{assessment.requirement.level.title()} threshold of {assessment.requirement.months_floor} month(s).",
                 )
-                seniority_gaps = ()
-                seniority_unknowns = ()
+                experience_gaps = ()
+                experience_unknowns = ()
             else:
-                seniority_score = 0.35
-                seniority_strengths = ()
-                if assessment.months_gap > 0:
-                    seniority_gaps = (
-                        f"Role requires {assessment.requirement.level.title()} "
-                        f"({assessment.requirement.months_floor}+ verified professional months); founder has "
-                        f"{assessment.total_months}, a gap of {assessment.months_gap} month(s)",
-                    )
-                else:
-                    seniority_gaps = (
-                        f"Role requires {assessment.requirement.level.title()}, which also requires verified "
-                        "people-leadership evidence from responsibilities/achievements; none found",
-                    )
-                seniority_unknowns = ()
+                experience_score = 0.35
+                experience_strengths = ()
+                experience_gaps = (
+                    f"Role requires {assessment.requirement.level.title()} "
+                    f"({assessment.requirement.months_floor}+ verified professional months); founder has "
+                    f"{assessment.total_months}, a gap of {assessment.months_gap} month(s)",
+                )
+                experience_unknowns = ()
 
         w_exp = weights.get("experience", 0.20)
         scores.append(MatchDimensionScore(
-            dimension_name="seniority_and_experience",
-            raw_score=seniority_score,
+            dimension_name="experience_fit",
+            raw_score=experience_score,
             weight=w_exp,
-            weighted_score=seniority_score * w_exp,
-            explanation=seniority_explanation,
-            strengths=seniority_strengths,
-            gaps=seniority_gaps,
-            unknowns=seniority_unknowns,
-            evidence_refs=seniority_ev_refs,
+            weighted_score=experience_score * w_exp,
+            explanation=experience_explanation,
+            strengths=experience_strengths,
+            gaps=experience_gaps,
+            unknowns=experience_unknowns,
+            evidence_refs=experience_ev_refs,
             opportunity_field_refs=("seniority", "title"),
         ))
 
-        # 3. Responsibility & Scope Fit
+        # 3. Seniority level is a separate title/scope signal. Title level and
+        # verified leadership may support a match; a lower or unspecified title
+        # never proves the Founder cannot do the work.
+        _seniority_rank = {"junior": 1, "mid": 2, "senior": 3, "staff": 4, "principal": 5}
+        required_seniority_level = (
+            _REQUIRED_LEVEL_BY_OPP_SENIORITY.get(opp_level)
+            or (posting_title_level if posting_title_level in _seniority_rank else None)
+        )
+        founder_title_assertions = [
+            a for a in truth_graph.assertions.values()
+            if a.predicate in {predicates.EMPLOYMENT_TITLE, predicates.EMPLOYMENT_MARKET_FACING_TITLE}
+            and a.verification_status == VerificationStatus.VERIFIED
+            and a.polarity == Polarity.POSITIVE
+        ]
+        founder_title_levels = [
+            (a, normalize_title(str(a.value))[1])
+            for a in founder_title_assertions
+        ]
+        founder_title_levels = [
+            (a, level) for a, level in founder_title_levels if level in _seniority_rank
+        ]
+        if required_seniority_level is None:
+            seniority_fit_score = 0.5
+            seniority_fit_strengths = ()
+            seniority_fit_gaps = ()
+            seniority_fit_unknowns = ("Posting title and structured seniority do not state a level to compare",)
+            seniority_fit_refs = ()
+        elif not founder_title_levels:
+            seniority_fit_score = 0.5
+            seniority_fit_strengths = ()
+            seniority_fit_gaps = ()
+            seniority_fit_unknowns = (
+                "Verified employment evidence does not state a comparable seniority level"
+                if founder_title_assertions else
+                "No verified employment-title evidence is available to compare seniority",
+            )
+            seniority_fit_refs = tuple(a.id for a in founder_title_assertions)
+        else:
+            highest_assertion, highest_level = max(
+                founder_title_levels, key=lambda item: _seniority_rank[item[1]],
+            )
+            seniority_fit_refs = tuple(sorted(
+                {
+                    a.id for a, level in founder_title_levels
+                    if _seniority_rank[level] == _seniority_rank[highest_level]
+                }
+                | (set(assessment.leadership_evidence_refs) if assessment else set())
+            ))
+            requires_leadership = required_seniority_level in {"staff", "principal"}
+            level_meets = _seniority_rank[highest_level] >= _seniority_rank[required_seniority_level]
+            leadership_verified = bool(assessment and assessment.has_leadership)
+            if level_meets and (not requires_leadership or leadership_verified):
+                seniority_fit_score = 1.0
+                seniority_fit_strengths = (
+                    f"Verified employment title level {highest_level.title()} aligns with the "
+                    f"{required_seniority_level.title()} posting level"
+                    + (" and verified leadership responsibilities" if requires_leadership else "")
+                    + f" ({highest_assertion.id}).",
+                )
+                seniority_fit_gaps = ()
+                seniority_fit_unknowns = ()
+            else:
+                seniority_fit_score = 0.5
+                seniority_fit_strengths = ()
+                seniority_fit_gaps = ()
+                seniority_fit_unknowns = (
+                    "Verified title and leadership evidence does not establish the requested seniority; review the role scope",
+                )
+
+        w_seniority = weights.get("seniority", 0.0)
+        scores.append(MatchDimensionScore(
+            dimension_name="seniority_fit",
+            raw_score=seniority_fit_score,
+            weight=w_seniority,
+            weighted_score=seniority_fit_score * w_seniority,
+            explanation=(
+                f"Posting seniority level: {required_seniority_level or 'unspecified'}; "
+                f"verified founder title level: {highest_level if founder_title_levels else 'unknown'}."
+            ),
+            strengths=seniority_fit_strengths,
+            gaps=seniority_fit_gaps,
+            unknowns=seniority_fit_unknowns,
+            evidence_refs=seniority_fit_refs,
+            opportunity_field_refs=("seniority", "title"),
+        ))
+        scores.append(MatchDimensionScore(
+            dimension_name="seniority_and_experience",
+            raw_score=(experience_score + seniority_fit_score) / 2.0,
+            weight=0.0,
+            weighted_score=0.0,
+            explanation="Compatibility projection; use experience_fit and seniority_fit for separate evidence.",
+            evidence_refs=tuple(sorted(set(experience_ev_refs) | set(seniority_fit_refs))),
+            opportunity_field_refs=("seniority", "title"),
+        ))
+
+        # 4. Experience responsibility and scope alignment.
         founder_resp_assertions = [
             a for a in truth_graph.assertions.values()
             if a.predicate in predicates.RESPONSIBILITY_SCOPE_PREDICATES
@@ -683,10 +903,12 @@ class OpportunityScorer:
             opportunity_field_refs=("title",),
         ))
 
-        # 8. Title-Family Fit (B3, BRIEF-FR-006): compares the posting's
+        # 8. Target-role-family preference (B3, BRIEF-FR-006): compares the posting's
         # normalized title family (`matching/title_family.py`, driven by the
         # committed `matching/title_families.yaml`) against the families the
-        # founder's verified CAREER_TARGET_ROLE assertions themselves
+        # founder's verified CAREER_TARGET_ROLE assertions themselves. This is
+        # a preference signal and is kept out of the capability title-history
+        # dimension added below.
         # normalize onto. Distinguishes near-identical titles by family (not
         # only by score) -- e.g. "Senior Customer Engineer" postings no
         # longer read as a data-engineering match just because both titles
@@ -740,9 +962,9 @@ class OpportunityScorer:
                 title_family_unknowns = ()
                 title_family_ev_refs = tuple(a.id for a in target_role_family_assertions)
 
-        w_title_family = weights.get("title_family", 0.05)
+        w_title_family = weights.get("target_role_family_preference", 0.05)
         scores.append(MatchDimensionScore(
-            dimension_name="title_family_fit",
+            dimension_name="target_role_family_preference",
             raw_score=title_family_score,
             weight=w_title_family,
             weighted_score=title_family_score * w_title_family,
@@ -758,6 +980,137 @@ class OpportunityScorer:
             unknowns=title_family_unknowns,
             evidence_refs=title_family_ev_refs,
             opportunity_field_refs=("title",),
+        ))
+
+        # 9. Capability role-family history. A target-role preference assertion
+        # is deliberately not reused as evidence that the Founder has done the
+        # work before.
+        founder_role_assertions = [
+            a for a in truth_graph.assertions.values()
+            if a.predicate in {predicates.EMPLOYMENT_TITLE, predicates.EMPLOYMENT_MARKET_FACING_TITLE}
+            and a.verification_status == VerificationStatus.VERIFIED
+            and a.polarity == Polarity.POSITIVE
+        ]
+        matched_role_history = [
+            a for a in founder_role_assertions
+            if opp_family_id != "other" and normalize_title(str(a.value))[0] == opp_family_id
+        ]
+        if matched_role_history:
+            role_history_score = 1.0
+            role_history_strengths = (
+                f"Verified employment role history matches posting family '{opp_family_id}' "
+                f"(rule: {opp_family_rule}).",
+            )
+            role_history_unknowns = ()
+            role_history_refs = tuple(a.id for a in matched_role_history)
+        else:
+            role_history_score = 0.5
+            role_history_strengths = ()
+            role_history_unknowns = (
+                "No verified employment-title evidence establishes a direct match to the posting's role family",
+            )
+            role_history_refs = tuple(a.id for a in founder_role_assertions)
+
+        w_role_family = weights.get("title_family", 0.0)
+        scores.append(MatchDimensionScore(
+            dimension_name="title_family_fit",
+            raw_score=role_history_score,
+            weight=w_role_family,
+            weighted_score=role_history_score * w_role_family,
+            explanation=(
+                f"Posting family '{opp_family_id}' compared with "
+                f"{len(founder_role_assertions)} verified employment-title assertion(s)."
+            ),
+            strengths=role_history_strengths,
+            gaps=(),
+            unknowns=role_history_unknowns,
+            evidence_refs=role_history_refs,
+            opportunity_field_refs=("title",),
+        ))
+
+        # 10. Education/certification. Only explicit applicant-facing posting
+        # requirements are compared, and missing Founder records stay unknown.
+        credential_requirements = _credential_requirement_items(opp)
+        education_assertions = [
+            a for a in truth_graph.assertions.values()
+            if a.predicate == predicates.EDUCATION_QUALIFICATION
+            and a.verification_status == VerificationStatus.VERIFIED
+            and a.polarity == Polarity.POSITIVE
+        ]
+        certification_states = {
+            a.subject_id: (str(a.value).casefold().split(".")[-1], a)
+            for a in truth_graph.assertions.values()
+            if a.predicate == predicates.CERTIFICATION_STATE
+            and a.verification_status == VerificationStatus.VERIFIED
+            and a.polarity == Polarity.POSITIVE
+        }
+        certification_assertions = [
+            a for a in truth_graph.assertions.values()
+            if a.predicate == predicates.CERTIFICATION_NAME
+            and a.verification_status == VerificationStatus.VERIFIED
+            and a.polarity == Polarity.POSITIVE
+            and a.subject_id in certification_states
+            and certification_states[a.subject_id][0] == CertificationState.COMPLETED.value
+        ]
+        available_credentials: list[tuple[str, str, tuple[str, ...]]] = [
+            ("education", str(a.value), (a.id,))
+            for a in education_assertions
+        ]
+        available_credentials.extend(
+            (
+                "certification",
+                str(a.value),
+                (a.id, certification_states[a.subject_id][1].id),
+            )
+            for a in certification_assertions
+        )
+        if not credential_requirements:
+            credential_score = 0.5
+            credential_strengths = ()
+            credential_unknowns = (
+                "Posting does not state an explicit applicant-facing education or certification requirement",
+            )
+            credential_refs = ()
+        else:
+            matched_credentials: list[tuple[str, str, tuple[str, ...]]] = []
+            unresolved_credentials: list[str] = []
+            for kind, requirement, priority in credential_requirements:
+                match = next((
+                    candidate for candidate in available_credentials
+                    if candidate[0] == kind
+                    and _credential_requirement_matches(kind, requirement, candidate[1])
+                ), None)
+                if match:
+                    matched_credentials.append((requirement, priority.value, match[2]))
+                else:
+                    unresolved_credentials.append(
+                        f"No verified matching {kind} record for {priority.value.replace('_', ' ')} posting credential: {requirement}"
+                    )
+            credential_score = 1.0 if not unresolved_credentials else 0.5
+            credential_strengths = tuple(
+                f"Verified {priority.replace('_', ' ')} credential match: {requirement}"
+                for requirement, priority, _ in matched_credentials
+            )
+            credential_unknowns = tuple(unresolved_credentials)
+            credential_refs = tuple(sorted({
+                ref for _, _, refs in matched_credentials for ref in refs
+            }))
+
+        w_credential = weights.get("education_certification", 0.0)
+        scores.append(MatchDimensionScore(
+            dimension_name="education_certification_fit",
+            raw_score=credential_score,
+            weight=w_credential,
+            weighted_score=credential_score * w_credential,
+            explanation=(
+                f"Compared {len(credential_requirements)} explicit education/certification requirement(s) "
+                f"with {len(available_credentials)} verified held credential record(s)."
+            ),
+            strengths=credential_strengths,
+            gaps=(),
+            unknowns=credential_unknowns,
+            evidence_refs=credential_refs,
+            opportunity_field_refs=("requirements", "description") if credential_requirements else (),
         ))
 
         return scores, uncertainty_acc
