@@ -9,9 +9,9 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
-from typing import Any, Iterator
+from typing import Any, Iterator, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session, defer
@@ -1046,6 +1046,28 @@ def list_opportunities(
     min_score: float | None = None,
     max_score: float | None = None,
     since: str | None = None,
+    work_mode: list[str] | None = Query(default=None),
+    location_country: list[str] | None = Query(default=None),
+    location_city: list[str] | None = Query(default=None),
+    remote_scope: list[str] | None = Query(default=None),
+    employment_type: list[str] | None = Query(default=None),
+    seniority_level: list[str] | None = Query(default=None),
+    target_tier: list[str] | None = Query(default=None),
+    title_family: list[str] | None = Query(default=None),
+    source_id: list[str] | None = Query(default=None),
+    min_fit_score: float | None = Query(default=None, ge=0, le=100),
+    max_fit_score: float | None = Query(default=None, ge=0, le=100),
+    min_preference_score: float | None = Query(default=None, ge=0, le=100),
+    max_preference_score: float | None = Query(default=None, ge=0, le=100),
+    min_confidence_score: float | None = Query(default=None, ge=0, le=100),
+    max_confidence_score: float | None = Query(default=None, ge=0, le=100),
+    min_priority_score: float | None = None,
+    max_priority_score: float | None = None,
+    posted_from: date | None = None,
+    posted_to: date | None = None,
+    sort_by: Literal[
+        "recommended", "fit_desc", "fit_asc", "newest_posted", "oldest_posted", "remote_first"
+    ] = "recommended",
     q: str | None = None,
     include_hidden: bool = False,
     include_tracked: bool = False,
@@ -1097,6 +1119,26 @@ def list_opportunities(
         min_score=min_score,
         max_score=max_score,
         since=since,
+        work_modes=tuple(work_mode or ()),
+        location_countries=tuple(location_country or ()),
+        location_cities=tuple(location_city or ()),
+        remote_scopes=tuple(remote_scope or ()),
+        employment_types=tuple(employment_type or ()),
+        seniority_levels=tuple(seniority_level or ()),
+        target_tiers=tuple(target_tier or ()),
+        title_families=tuple(title_family or ()),
+        source_ids=tuple(source_id or ()),
+        min_fit_score=min_fit_score,
+        max_fit_score=max_fit_score,
+        min_preference_score=min_preference_score,
+        max_preference_score=max_preference_score,
+        min_confidence_score=min_confidence_score,
+        max_confidence_score=max_confidence_score,
+        min_priority_score=min_priority_score,
+        max_priority_score=max_priority_score,
+        posted_from=posted_from,
+        posted_to=posted_to,
+        sort_by=sort_by,
         q=q,
         include_hidden=include_hidden,
         include_tracked=include_tracked,

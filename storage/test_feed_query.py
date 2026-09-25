@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from datetime import datetime, timezone
+from typing import Literal, get_args, get_origin, get_type_hints
 
 from sqlalchemy import create_engine
 from sqlalchemy.dialects import postgresql
@@ -29,15 +30,20 @@ class FeedQueryContractTest(unittest.TestCase):
             *,
             truth_hash: str = "truth-a",
             decision: str = "QUALIFIED",
-            fit: float = 80.0,
+            fit: float | None = 80.0,
             priority: float | None = None,
             visible: bool = True,
             track: str = "employment",
             work_mode: str = "remote",
             country: str | None = "EG",
             family: str | None = "data_engineering",
+            target_tier: str | None = "primary",
+            preference: float | None = None,
+            confidence: float | None = None,
+            employment_type: str = "full_time",
+            seniority_level: str = "mid",
+            posted_date: str | None = "2026-09-17",
             source_id: str = "example",
-            posted_date: str = "2026-09-17",
         ) -> None:
             self.session.add(
                 FeedProjectionRecord(
@@ -54,14 +60,17 @@ class FeedQueryContractTest(unittest.TestCase):
                     track=track,
                     opportunity_type="employment",
                     title_family=family,
-                    seniority_level="mid",
+                    target_tier=target_tier,
+                    preference_score=preference,
+                    confidence_score=confidence,
+                    seniority_level=seniority_level,
                     work_mode=work_mode,
                     location_country=country,
                     location_city="Cairo" if country == "EG" else None,
                     location_region=None,
                     remote_scope="worldwide",
                     remote_scope_regions=None,
-                    employment_type="full_time",
+                    employment_type=employment_type,
                     qualification_decision=decision,
                     fit_score=fit,
                     priority_score=fit if priority is None else priority,
@@ -248,6 +257,195 @@ class FeedQueryContractTest(unittest.TestCase):
         self.assertIn("FROM feed_projection", sql)
         self.assertNotIn("FROM opportunities", sql)
         self.assertNotIn("JOIN opportunities", sql)
+
+    def test_multiselect_values_are_or_within_facets_and_and_between_facets(self) -> None:
+        self.add_projection(
+            "opp-5", work_mode="hybrid", country="US", employment_type="contract"
+        )
+        self.add_projection(
+            "opp-6", work_mode="onsite", country="EG", employment_type="full_time"
+        )
+        self.add_projection(
+            "opp-7", work_mode="hybrid", country="CA", employment_type="contract"
+        )
+        self.session.commit()
+
+        result = feed_page(self.session, FeedQuerySpec(
+            truth_pack_hash="truth-a",
+            work_modes=("remote", "hybrid"),
+            location_countries=("EG", "US"),
+            employment_types=("full_time", "contract"),
+            target_tiers=("primary",),
+            title_families=("data_engineering",),
+            include_hidden=True,
+        ))
+        self.assertEqual(
+            {row.opportunity_id for row in result.rows},
+            {"opp-1", "opp-2", "opp-3", "opp-5"},
+        )
+        self.assertEqual(result.total, 4)
+
+    def test_unknown_nulls_and_stored_unspecified_values_are_explicitly_filterable(self) -> None:
+        self.add_projection(
+            "opp-5", country=None, family=None, target_tier=None,
+            work_mode="unspecified", employment_type="unspecified",
+        )
+        self.add_projection("opp-6", country="EG", family="other", target_tier="stretch")
+        self.session.commit()
+
+        null_selection = feed_page(self.session, FeedQuerySpec(
+            truth_pack_hash="truth-a",
+            location_countries=("unknown",),
+            target_tiers=("unknown",),
+            title_families=("unknown",),
+            include_hidden=True,
+        ))
+        self.assertEqual([row.opportunity_id for row in null_selection.rows], ["opp-5"])
+
+        unmapped_families = feed_page(self.session, FeedQuerySpec(
+            truth_pack_hash="truth-a", title_families=("unknown",), include_hidden=True
+        ))
+        self.assertEqual(
+            {row.opportunity_id for row in unmapped_families.rows}, {"opp-5", "opp-6"}
+        )
+
+        unspecified = feed_page(self.session, FeedQuerySpec(
+            truth_pack_hash="truth-a",
+            work_modes=("unknown",),
+            employment_types=("unknown",),
+            include_hidden=True,
+        ))
+        self.assertEqual([row.opportunity_id for row in unspecified.rows], ["opp-5"])
+
+    def test_independent_score_ranges_and_posting_dates_filter_before_count_and_page(self) -> None:
+        self.add_projection(
+            "opp-5", fit=86.0, preference=78.0, confidence=82.0,
+            priority=75.0, posted_date="2026-09-20",
+        )
+        self.add_projection(
+            "opp-6", fit=88.0, preference=77.0, confidence=95.0,
+            priority=74.0, posted_date="2026-09-22",
+        )
+        self.add_projection(
+            "opp-7", fit=86.0, preference=55.0, confidence=82.0,
+            priority=73.0, posted_date="2026-09-21",
+        )
+        self.session.commit()
+
+        result = feed_page(self.session, FeedQuerySpec(
+            truth_pack_hash="truth-a",
+            min_fit_score=80.0,
+            max_fit_score=90.0,
+            min_preference_score=70.0,
+            max_confidence_score=90.0,
+            min_priority_score=70.0,
+            posted_from="2026-09-19",
+            posted_to="2026-09-21",
+            include_hidden=True,
+            page=1,
+            page_size=1,
+        ))
+        self.assertEqual(result.total, 1)
+        self.assertEqual([row.opportunity_id for row in result.rows], ["opp-5"])
+        self.assertEqual(result.page_size, 1)
+
+    def test_supported_sorts_are_deterministic_null_last_and_remote_is_only_ordering(self) -> None:
+        self.add_projection("opp-5", fit=85.0, priority=100.0, work_mode="onsite", posted_date="2026-09-24")
+        self.add_projection("opp-6", fit=90.0, priority=20.0, work_mode="remote", posted_date=None)
+        self.add_projection("opp-7", fit=None, priority=None, work_mode="hybrid", posted_date="2026-09-25")
+        self.add_projection("opp-8", decision="INELIGIBLE", fit=100.0, priority=100.0, work_mode="remote")
+        self.session.commit()
+
+        fit_sorted = feed_page(self.session, FeedQuerySpec(
+            truth_pack_hash="truth-a", sort_by="fit_desc", include_hidden=True
+        ))
+        self.assertEqual(
+            [row.opportunity_id for row in fit_sorted.rows[:3]], ["opp-3", "opp-1", "opp-6"]
+        )
+        self.assertEqual(fit_sorted.rows[-1].opportunity_id, "opp-7")
+        fit_ascending = feed_page(self.session, FeedQuerySpec(
+            truth_pack_hash="truth-a", sort_by="fit_asc", include_hidden=True
+        ))
+        self.assertEqual(fit_ascending.rows[0].opportunity_id, "opp-2")
+        self.assertEqual(fit_ascending.rows[-1].opportunity_id, "opp-7")
+
+        newest = feed_page(self.session, FeedQuerySpec(
+            truth_pack_hash="truth-a", sort_by="newest_posted", include_hidden=True
+        ))
+        self.assertEqual(newest.rows[0].opportunity_id, "opp-7")
+        self.assertEqual(newest.rows[-1].opportunity_id, "opp-6")
+        oldest = feed_page(self.session, FeedQuerySpec(
+            truth_pack_hash="truth-a", sort_by="oldest_posted", include_hidden=True
+        ))
+        self.assertEqual(oldest.rows[0].opportunity_id, "opp-1")
+        self.assertEqual(oldest.rows[-1].opportunity_id, "opp-6")
+
+        recommended = feed_page(self.session, FeedQuerySpec(
+            truth_pack_hash="truth-a", include_hidden=True
+        ))
+        remote_first = feed_page(self.session, FeedQuerySpec(
+            truth_pack_hash="truth-a", sort_by="remote_first", include_hidden=True
+        ))
+        self.assertEqual(
+            {row.opportunity_id for row in remote_first.rows},
+            {row.opportunity_id for row in recommended.rows},
+        )
+        self.assertNotIn("opp-8", {row.opportunity_id for row in remote_first.rows})
+        self.assertEqual(remote_first.rows[0].opportunity_id, "opp-3")
+        self.assertEqual(remote_first.rows[0].fit_score, 99.0)
+
+        with self.assertRaises(ValueError):
+            feed_page(self.session, FeedQuerySpec(
+                truth_pack_hash="truth-a", sort_by="random", include_hidden=True
+            ))
+
+    def test_new_filters_compile_to_projection_only_postgresql_sql(self) -> None:
+        query = build_feed_query(self.session, FeedQuerySpec(
+            truth_pack_hash="truth-a",
+            work_modes=("remote", "hybrid"),
+            location_countries=("EG", "unknown"),
+            employment_types=("full_time",),
+            target_tiers=("primary", "unknown"),
+            min_fit_score=70.0,
+            min_preference_score=60.0,
+            min_confidence_score=50.0,
+            posted_from="2026-09-01",
+            posted_to="2026-09-30",
+        ))
+        sql = str(query.statement.compile(
+            dialect=postgresql.dialect(),
+            compile_kwargs={"literal_binds": True},
+        ))
+        self.assertIn("feed_projection.work_mode", sql)
+        self.assertIn("feed_projection.location_country", sql)
+        self.assertIn("feed_projection.employment_type", sql)
+        self.assertIn("feed_projection.target_tier", sql)
+        self.assertIn("feed_projection.preference_score", sql)
+        self.assertIn("feed_projection.confidence_score", sql)
+        self.assertIn("feed_projection.posted_date", sql)
+        self.assertNotIn("FROM opportunities", sql)
+        self.assertNotIn("JOIN opportunities", sql)
+
+    def test_opportunities_route_exposes_repeatable_facets_and_constrained_sort(self) -> None:
+        from api.routes_api import router
+
+        route = next(
+            route for route in router.routes
+            if getattr(route, "path", None) == "/api/opportunities"
+        )
+        query_names = {parameter.name for parameter in route.dependant.query_params}
+        self.assertTrue({
+            "work_mode", "location_country", "employment_type", "target_tier",
+            "title_family", "min_fit_score", "posted_from", "posted_to", "sort_by",
+        }.issubset(query_names))
+
+        hints = get_type_hints(route.endpoint)
+        self.assertIn(list[str], get_args(hints["work_mode"]))
+        self.assertIs(get_origin(hints["sort_by"]), Literal)
+        self.assertEqual(
+            set(get_args(hints["sort_by"])),
+            {"recommended", "fit_desc", "fit_asc", "newest_posted", "oldest_posted", "remote_first"},
+        )
 
 
 if __name__ == "__main__":

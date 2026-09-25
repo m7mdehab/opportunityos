@@ -1,15 +1,25 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Iterable
 
-from sqlalchemy import exists, func, literal_column, not_, or_
+from sqlalchemy import case, exists, func, literal_column, not_, or_
 from sqlalchemy.orm import Query, Session
 
 from outbound.models import ActionStatus
 from storage.feed_projection import FeedProjectionRecord
 from storage.models import FounderTriageStateRecord, OutboundActionRecordModel
+
+UNKNOWN_FILTER_VALUE = "unknown"
+FEED_SORTS = frozenset({
+    "recommended",
+    "fit_desc",
+    "fit_asc",
+    "newest_posted",
+    "oldest_posted",
+    "remote_first",
+})
 
 
 @dataclass(frozen=True)
@@ -37,6 +47,26 @@ class FeedQuerySpec:
     as_of: datetime | None = None
     page: int = 1
     page_size: int = 25
+    work_modes: tuple[str, ...] = ()
+    location_countries: tuple[str, ...] = ()
+    location_cities: tuple[str, ...] = ()
+    remote_scopes: tuple[str, ...] = ()
+    employment_types: tuple[str, ...] = ()
+    seniority_levels: tuple[str, ...] = ()
+    target_tiers: tuple[str, ...] = ()
+    title_families: tuple[str, ...] = ()
+    source_ids: tuple[str, ...] = ()
+    min_fit_score: float | None = None
+    max_fit_score: float | None = None
+    min_preference_score: float | None = None
+    max_preference_score: float | None = None
+    min_confidence_score: float | None = None
+    max_confidence_score: float | None = None
+    min_priority_score: float | None = None
+    max_priority_score: float | None = None
+    posted_from: date | str | None = None
+    posted_to: date | str | None = None
+    sort_by: str = "recommended"
 
     @property
     def normalized_page(self) -> int:
@@ -53,6 +83,67 @@ class FeedPage:
     total: int
     page: int
     page_size: int
+
+
+def _values(values: tuple[str, ...] | str | None) -> tuple[str, ...]:
+    if values is None:
+        return ()
+    candidates = (values,) if isinstance(values, str) else values
+    return tuple(dict.fromkeys(
+        value.strip() for value in candidates
+        if isinstance(value, str) and value.strip()
+    ))
+
+
+def _apply_multi_select(
+    query: Query,
+    column,
+    selected_values: tuple[str, ...] | str | None,
+    *,
+    nullable_unknown=None,
+    case_insensitive: bool = True,
+    unknown_aliases: tuple[str, ...] = (),
+    unknown_maps_to_unspecified: bool = True,
+) -> Query:
+    values = list(dict.fromkeys(value.casefold() for value in _values(selected_values)))
+    unknown_selected = UNKNOWN_FILTER_VALUE in values
+    values = [value for value in values if value != UNKNOWN_FILTER_VALUE]
+    for alias in unknown_aliases:
+        normalized_alias = alias.casefold()
+        if normalized_alias in values:
+            values = [value for value in values if value != normalized_alias]
+            unknown_selected = True
+
+    clauses = []
+    if unknown_selected and nullable_unknown is None and unknown_maps_to_unspecified:
+        # Non-null normalized fields encode missing extraction as "unspecified".
+        if "unspecified" not in values:
+            values.append("unspecified")
+    elif unknown_selected and nullable_unknown is None:
+        values.append(UNKNOWN_FILTER_VALUE)
+    if values:
+        clauses.append(
+            func.lower(column).in_(values) if case_insensitive else column.in_(values)
+        )
+    if unknown_selected and nullable_unknown is not None:
+        clauses.append(nullable_unknown)
+
+    if clauses:
+        query = query.filter(or_(*clauses))
+    return query
+
+
+def _date_bound(value: date | str | None) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    candidate = value.strip()
+    if not candidate:
+        return None
+    return date.fromisoformat(candidate).isoformat()
 
 
 def build_feed_query(session: Session, spec: FeedQuerySpec) -> Query:
@@ -87,18 +178,76 @@ def build_feed_query(session: Session, spec: FeedQuerySpec) -> Query:
         query = query.filter(FeedProjectionRecord.fit_score >= spec.min_score)
     if spec.max_score is not None:
         query = query.filter(FeedProjectionRecord.fit_score <= spec.max_score)
-    if spec.since:
-        query = query.filter(FeedProjectionRecord.posted_date >= spec.since)
-    if spec.work_mode:
-        query = query.filter(FeedProjectionRecord.work_mode == spec.work_mode)
-    if spec.location_country:
-        query = query.filter(
-            FeedProjectionRecord.location_country == spec.location_country
+    score_ranges = (
+        (FeedProjectionRecord.fit_score, spec.min_fit_score, spec.max_fit_score),
+        (FeedProjectionRecord.preference_score, spec.min_preference_score, spec.max_preference_score),
+        (FeedProjectionRecord.confidence_score, spec.min_confidence_score, spec.max_confidence_score),
+        (FeedProjectionRecord.priority_score, spec.min_priority_score, spec.max_priority_score),
+    )
+    for column, minimum, maximum in score_ranges:
+        if minimum is not None:
+            query = query.filter(column >= minimum)
+        if maximum is not None:
+            query = query.filter(column <= maximum)
+
+    lower_dates = [bound for bound in (spec.since, _date_bound(spec.posted_from)) if bound]
+    upper_date = _date_bound(spec.posted_to)
+    if lower_dates:
+        query = query.filter(FeedProjectionRecord.posted_date >= max(lower_dates))
+    if upper_date:
+        query = query.filter(FeedProjectionRecord.posted_date <= upper_date)
+
+    work_modes = spec.work_modes or ((spec.work_mode,) if spec.work_mode else ())
+    query = _apply_multi_select(
+        query, FeedProjectionRecord.work_mode, work_modes,
+        case_insensitive=True,
+    )
+    countries = spec.location_countries or ((spec.location_country,) if spec.location_country else ())
+    query = _apply_multi_select(
+        query, FeedProjectionRecord.location_country, countries,
+        nullable_unknown=or_(
+            FeedProjectionRecord.location_country.is_(None),
+            func.trim(FeedProjectionRecord.location_country) == "",
+        ),
+        case_insensitive=True,
+    )
+    for column, values in (
+        (FeedProjectionRecord.location_city, spec.location_cities),
+        (FeedProjectionRecord.target_tier, spec.target_tiers),
+    ):
+        query = _apply_multi_select(
+            query, column, values,
+            nullable_unknown=or_(column.is_(None), func.trim(column) == ""),
+            case_insensitive=True,
         )
-    if spec.title_family:
-        query = query.filter(FeedProjectionRecord.title_family == spec.title_family)
-    if spec.source_id:
-        query = query.filter(FeedProjectionRecord.source_id == spec.source_id)
+    query = _apply_multi_select(
+        query, FeedProjectionRecord.remote_scope, spec.remote_scopes,
+        case_insensitive=True,
+    )
+    query = _apply_multi_select(
+        query, FeedProjectionRecord.employment_type, spec.employment_types,
+        case_insensitive=True,
+    )
+    query = _apply_multi_select(
+        query, FeedProjectionRecord.seniority_level, spec.seniority_levels,
+        case_insensitive=True,
+    )
+    families = spec.title_families or ((spec.title_family,) if spec.title_family else ())
+    query = _apply_multi_select(
+        query, FeedProjectionRecord.title_family, families,
+        nullable_unknown=or_(
+            FeedProjectionRecord.title_family.is_(None),
+            func.lower(func.trim(FeedProjectionRecord.title_family)).in_(("", "other", "unknown")),
+        ),
+        case_insensitive=True,
+        unknown_aliases=("other",),
+    )
+    sources = spec.source_ids or ((spec.source_id,) if spec.source_id else ())
+    query = _apply_multi_select(
+        query, FeedProjectionRecord.source_id, sources,
+        case_insensitive=True,
+        unknown_maps_to_unspecified=False,
+    )
     if spec.q and spec.q.strip():
         tsquery = func.websearch_to_tsquery(literal_column("'simple'"), spec.q.strip())
         query = query.filter(FeedProjectionRecord.search_tsv.op("@@")(tsquery))
@@ -124,13 +273,27 @@ def build_feed_query(session: Session, spec: FeedQuerySpec) -> Query:
     return query
 
 
-def ordered_feed_query(query: Query) -> Query:
-    """Apply deterministic founder-feed ordering entirely in SQL."""
+def ordered_feed_query(query: Query, sort_by: str = "recommended") -> Query:
+    """Apply a supported deterministic founder-feed order entirely in SQL."""
+    if sort_by not in FEED_SORTS:
+        raise ValueError(f"unsupported feed sort: {sort_by!r}")
 
-    return query.order_by(
-        FeedProjectionRecord.priority_score.desc().nullslast(),
-        FeedProjectionRecord.id.asc(),
-    )
+    if sort_by == "fit_desc":
+        ordering = (FeedProjectionRecord.fit_score.desc().nullslast(),)
+    elif sort_by == "fit_asc":
+        ordering = (FeedProjectionRecord.fit_score.asc().nullslast(),)
+    elif sort_by == "newest_posted":
+        ordering = (FeedProjectionRecord.posted_date.desc().nullslast(),)
+    elif sort_by == "oldest_posted":
+        ordering = (FeedProjectionRecord.posted_date.asc().nullslast(),)
+    elif sort_by == "remote_first":
+        ordering = (
+            case((func.lower(FeedProjectionRecord.work_mode) == "remote", 0), else_=1).asc(),
+            FeedProjectionRecord.priority_score.desc().nullslast(),
+        )
+    else:
+        ordering = (FeedProjectionRecord.priority_score.desc().nullslast(),)
+    return query.order_by(*ordering, FeedProjectionRecord.id.asc())
 
 
 def feed_page(session: Session, spec: FeedQuerySpec) -> FeedPage:
@@ -141,7 +304,7 @@ def feed_page(session: Session, spec: FeedQuerySpec) -> FeedPage:
     page = spec.normalized_page
     page_size = spec.normalized_page_size
     rows: Iterable[FeedProjectionRecord] = (
-        ordered_feed_query(base)
+        ordered_feed_query(base, spec.sort_by)
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()

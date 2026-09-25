@@ -159,11 +159,11 @@ class FeedRegressionContractTest(unittest.TestCase):
             sql = str(query.statement.compile(compile_kwargs={"literal_binds": True}))
 
             self.assertIn("FROM feed_projection", sql)
-            self.assertIn("feed_projection.qualification_decision = 'qualified'", sql)
+            self.assertIn("lower(feed_projection.qualification_decision) = 'qualified'", sql)
             self.assertIn("feed_projection.fit_score >= 80", sql)
             self.assertIn("feed_projection.track = 'employment'", sql)
-            self.assertIn("feed_projection.work_mode = 'remote'", sql)
-            self.assertIn("feed_projection.location_country = 'EG'", sql)
+            self.assertIn("lower(feed_projection.work_mode) IN ('remote')", sql)
+            self.assertIn("lower(feed_projection.location_country) IN ('eg')", sql)
             self.assertNotIn("opportunities.description", sql)
             self.assertNotIn("JOIN opportunities", sql)
         finally:
