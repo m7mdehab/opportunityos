@@ -43,7 +43,8 @@ class FullCorpusClusteringAcceptanceTests(unittest.TestCase):
 
         engine = QualificationEngine()
         graph = founder_shaped_graph()
-        decisions = collections.Counter(engine.evaluate(opp, graph)[0].value for opp in self.opportunities)
+        evaluations = [(opp, engine.evaluate(opp, graph)) for opp in self.opportunities]
+        decisions = collections.Counter(decision.value for _, (decision, _) in evaluations)
         uncertain = decisions.get("uncertain", 0)
 
         work_target_count = math.ceil(0.90 * total)
@@ -66,15 +67,25 @@ class FullCorpusClusteringAcceptanceTests(unittest.TestCase):
             f"geo_needed={geo_needed}/{geo_missing} currently-unresolved rows"
         )
 
-        # The uncertainty target is already truthfully satisfied.  The two
-        # extraction coverage thresholds are evidence measurements, not goals
-        # that may be manufactured: a missing source/native/inference signal
-        # stays unspecified and is dispositioned in the FR-006 report.
-        self.assertLess(
-            uncertain / total,
-            0.25,
-            "A-12 frozen acceptance requires qualification uncertainty below 25%",
-        )
+        # FR-008 W2.1 supersedes the former FR-006 aggregate uncertainty ceiling:
+        # legacy eligibility labels are not evidence, and unresolved location
+        # restrictions must stay review-required. Keep reporting the aggregate
+        # above, but enforce the new contract on corpus rows that have only a
+        # legacy geography label and no structured country or remote scope.
+        legacy_status_only = [
+            (opp, results)
+            for opp, (_, results) in evaluations
+            if opp.geographic_eligibility is not None
+            and not opp.location_country
+            and opp.remote_scope == "unspecified"
+        ]
+        self.assertGreater(len(legacy_status_only), 0)
+        for opp, results in legacy_status_only:
+            geo = [result for result in results if result.constraint_name == "geographic_eligibility"]
+            with self.subTest(status_only_geography=True):
+                self.assertEqual(1, len(geo))
+                self.assertIsNone(geo[0].passed)
+                self.assertFalse(geo[0].is_hard_failure)
 
     def test_a13_title_family_coverage_meets_frozen_threshold(self) -> None:
         self.assertEqual([], self.parse_errors)

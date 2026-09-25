@@ -9,6 +9,7 @@ from opportunity.models import (
     CompensationInterval,
     EmploymentType,
     Opportunity,
+    RemoteScope,
     WorkMode,
     Track,
 )
@@ -113,6 +114,7 @@ class TestOpportunityScorerAndMapper(unittest.TestCase):
             skills=("Python", "Go"),
             title="Senior Distributed Systems Architect",
             description="Build distributed systems.\nRequirements:\nPython\nGo",
+            remote_scope=RemoteScope.WORLDWIDE,
         )
         eval_res = self.scorer.evaluate(opp, graph)
         self.assertEqual(eval_res.qualification_decision, QualificationDecision.QUALIFIED)

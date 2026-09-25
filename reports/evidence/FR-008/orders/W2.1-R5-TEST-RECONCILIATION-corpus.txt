@@ -1,0 +1,9 @@
+A-12 current corpus: work_mode=434/540 (80.4%) geo=532/540 (98.5%) uncertain=459/540 (85.0%) work_mode_source={'adapter': 180, 'inference': 254, 'none': 106}
+A-12 truthful-signal gap: work_needed=52/106 currently-unspecified rows geo_needed=0/8 currently-unresolved rows
+test_a12_remeasures_frozen_corpus_without_inventing_missing_signals (scripts.test_fr006_recovery.FullCorpusClusteringAcceptanceTests.test_a12_remeasures_frozen_corpus_without_inventing_missing_signals) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 43.549s
+
+OK
+COMMAND_EXIT_CODE=0
