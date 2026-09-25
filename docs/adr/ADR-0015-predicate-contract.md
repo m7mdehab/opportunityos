@@ -27,10 +27,11 @@ Not every predicate `matching/` reads is a defect, though. The truth pack
 format also accepts a top-level `assertions:` section
 (`truth/ingest.py:566-576`, `parse_assertion`) that lets a pack author assert
 *any* predicate string directly, with its own evidence, independent of any
-profile projection. `career.target_role`, `preference.track`, `career.goal`,
-and the founder's residence/location facts have always been supplied this
-way — never projected by `truth/graph.py`, and never meant to be. Before this
-ADR, nothing distinguished "the graph doesn't emit this because it's a typo"
+profile projection. `career.target_role` was historically supplied this way;
+BRIEF-FR-008 adds a structured, evidence-linked profile projection for it and
+keeps the legacy assertion form loadable. `preference.track`, `career.goal`,
+and the founder's residence/location facts remain supplied this way — never
+projected by `truth/graph.py`. Before this ADR, nothing distinguished "the graph doesn't emit this because it's a typo"
 from "the graph doesn't emit this because it was never supposed to." A fix
 that just added spellings to `CANONICAL_MATERIAL_MANIFEST` would have been
 wrong twice: it would still leave `matching/` free to invent new predicate
@@ -45,7 +46,9 @@ answer a question that belongs to the pack format, not the graph.
    - **PROJECTED** — derived programmatically from
      `truth.models.CANONICAL_MATERIAL_MANIFEST`, so this half of the registry
      cannot drift from what `truth/graph.py` actually emits without a source
-     change to the (frozen) manifest itself.
+     change to the manifest itself. The W1.3 target-role extension adds
+     `career.target_role` and `career.target_role_tier` as projected fields on
+     one evidence-linked entity; omitting the tier emits no tier assertion.
    - **ASSERTION_ONLY** — declared by hand, each with the owning pack section
      (`assertions`, per `truth/ingest.py:566-576`) and a description of why no
      profile field projects it. This is not a defect list; it is a contract

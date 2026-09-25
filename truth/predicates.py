@@ -10,10 +10,11 @@ sources:
 2. **ASSERTION_ONLY** — supplied by a truth pack's top-level `assertions:` section
    (`truth/ingest.py::parse_assertion`, invoked from `graph_from_dict`). Nothing in
    `truth/graph.py` projects these; they exist only if a pack author writes them
-   directly into `assertions:`. They are not defects — `career.target_role`,
-   `preference.track`, `career.goal`, residence/location, capacity.team_size, and the
-   premium full-time/on-site compensation threshold are all legitimately supplied this
-   way — but code that reads them must know they carry no profile-projection guarantee.
+   directly into `assertions:`. They are not defects — legacy `career.target_role`
+   assertions remain loadable, and `preference.track`, `career.goal`, residence/location,
+   capacity.team_size, and the premium full-time/on-site compensation threshold are all
+   legitimately supplied this way — but code that reads them must know which predicates
+   have a profile-projection guarantee.
 
 `matching/scorer.py` and `matching/qualification.py` import predicate names from this
 module exclusively; neither spells a predicate string literal itself. See
@@ -69,15 +70,6 @@ def _projected_specs() -> dict[str, PredicateSpec]:
 # names that owning pack section.
 # ---------------------------------------------------------------------------
 _ASSERTION_ONLY_SPECS: tuple[PredicateSpec, ...] = (
-    PredicateSpec(
-        name="career.target_role",
-        kind=PredicateKind.ASSERTION_ONLY,
-        source="assertions",
-        description=(
-            "Founder's declared target role. Supplied only via the pack's top-level "
-            "`assertions:` section; no profile field projects it."
-        ),
-    ),
     PredicateSpec(
         name="preference.track",
         kind=PredicateKind.ASSERTION_ONLY,
@@ -181,6 +173,8 @@ def is_declared(name: str) -> bool:
 # ---------------------------------------------------------------------------
 
 # PROJECTED (truth/graph.py, from CANONICAL_MATERIAL_MANIFEST)
+CAREER_TARGET_ROLE = "career.target_role"
+CAREER_TARGET_ROLE_TIER = "career.target_role_tier"
 SKILL_NAME = "skill.name"
 # BRIEF-FR-006 B2: already projected today -- truth/models.py's
 # CANONICAL_MATERIAL_MANIFEST declares `MaterialFieldSpec(SkillRecord,
@@ -213,7 +207,6 @@ LANGUAGE_PROFICIENCY = "language.proficiency"
 CAPACITY_ANNUAL_TURNOVER_USD = "capacity.annual_turnover_usd"
 
 # ASSERTION_ONLY (pack's top-level `assertions:` section)
-CAREER_TARGET_ROLE = "career.target_role"
 PREFERENCE_TRACK = "preference.track"
 CAREER_GOAL = "career.goal"
 RESIDENCE_COUNTRY = "residence.country"
@@ -235,6 +228,7 @@ RESIDENCE_LOCATION_PREDICATES: tuple[str, ...] = (
 
 CAREER_TRAJECTORY_PREDICATES: tuple[str, ...] = (
     CAREER_TARGET_ROLE,
+    CAREER_TARGET_ROLE_TIER,
     PREFERENCE_TRACK,
     CAREER_GOAL,
 )
@@ -269,6 +263,8 @@ DOMAIN_FIT_PREDICATES: tuple[str, ...] = (
 )
 
 _NAMED_CONSTANTS: tuple[str, ...] = (
+    CAREER_TARGET_ROLE,
+    CAREER_TARGET_ROLE_TIER,
     SKILL_NAME,
     SKILL_PROFICIENCY,
     SKILL_CATEGORY,
@@ -286,7 +282,6 @@ _NAMED_CONSTANTS: tuple[str, ...] = (
     LANGUAGE_LANGUAGE,
     LANGUAGE_PROFICIENCY,
     CAPACITY_ANNUAL_TURNOVER_USD,
-    CAREER_TARGET_ROLE,
     PREFERENCE_TRACK,
     CAREER_GOAL,
     RESIDENCE_COUNTRY,

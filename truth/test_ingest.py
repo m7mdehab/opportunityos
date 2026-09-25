@@ -75,6 +75,83 @@ career_profile:
         )
         self.assertEqual("Python", graph.entity("skill-python").name)
 
+    def test_target_role_tier_ingests_only_configured_values(self):
+        document = {
+            "evidence": [{
+                "id": "ev-target-role",
+                "content": "Primary target role: LLM Engineer.",
+                "source": "fixture",
+                "locator": "career_profile.target_roles.0",
+            }],
+            "career_profile": {
+                "id": "career-targets",
+                "target_roles": [{
+                    "id": "target-llm-engineer",
+                    "title": "LLM Engineer",
+                    "tier": "primary",
+                    "evidence_ids": ["ev-target-role"],
+                }],
+            },
+        }
+        graph = graph_from_dict(document)
+        self.assertEqual("primary", graph.entity("target-llm-engineer").tier.value)
+        document["career_profile"]["target_roles"][0]["tier"] = "core"
+        with self.assertRaisesRegex(IngestionError, "target_role.tier must be one of"):
+            graph_from_dict(document)
+
+    def test_missing_target_role_tier_is_unknown_and_legacy_assertions_load(self):
+        target_role_document = {
+            "evidence": [
+                {
+                    "id": "ev-target-role",
+                    "content": "Target role: Technical Consultant.",
+                    "source": "fixture",
+                    "locator": "career_profile.target_roles.0",
+                },
+                {
+                    "id": "ev-target-tier-null",
+                    "content": None,
+                    "source": "fixture",
+                    "locator": "career_profile.target_roles.0.tier",
+                    "verification_status": "explicit_null",
+                },
+            ],
+            "career_profile": {
+                "id": "career-targets",
+                "target_roles": [{
+                    "id": "target-technical-consultant",
+                    "title": "Technical Consultant",
+                    "evidence_ids": ["ev-target-role", "ev-target-tier-null"],
+                }],
+            },
+        }
+        graph = graph_from_dict(target_role_document)
+        self.assertIsNone(graph.entity("target-technical-consultant").tier)
+        self.assertFalse(any(
+            assertion.predicate == "career.target_role_tier"
+            for assertion in graph.assertions.values()
+        ))
+
+        legacy_graph = graph_from_dict({
+            "evidence": [{
+                "id": "ev-legacy-target-role",
+                "content": "Data Integration Engineer",
+                "source": "fixture",
+                "locator": "assertions.target_role",
+            }],
+            "assertions": [{
+                "id": "legacy-target-role-assertion",
+                "subject_id": "founder",
+                "predicate": "career.target_role",
+                "value": "Data Integration Engineer",
+                "evidence_ids": ["ev-legacy-target-role"],
+            }],
+        })
+        self.assertEqual(
+            "Data Integration Engineer",
+            legacy_graph.assertions["legacy-target-role-assertion"].value,
+        )
+
     def test_canonical_skill_aliases_are_case_and_separator_insensitive(self):
         cases = {
             " AWS ": "AWS", "amazon-web-services": "AWS", "k8s": "Kubernetes",

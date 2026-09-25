@@ -241,6 +241,12 @@ class TestPredicateRegistryCompleteness(unittest.TestCase):
             self.assertIn(spec.kind, (PredicateKind.PROJECTED, PredicateKind.ASSERTION_ONLY))
             self.assertTrue(spec.source, f"predicate {name!r} must name its source")
 
+    def test_target_role_predicates_are_projected(self) -> None:
+        registry = predicates.all_predicates()
+        for name in (predicates.CAREER_TARGET_ROLE, predicates.CAREER_TARGET_ROLE_TIER):
+            self.assertEqual(PredicateKind.PROJECTED, registry[name].kind)
+            self.assertIn("TargetRoleRecord", registry[name].source)
+
     def test_projected_predicates_match_the_canonical_manifest(self) -> None:
         from truth.models import CANONICAL_MATERIAL_MANIFEST
 

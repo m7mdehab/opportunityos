@@ -566,6 +566,42 @@ class TestCareerTrajectoryPredicateIsolation(unittest.TestCase):
         self.assertEqual(trajectory.evidence_refs, ("a-target-role",))
 
 
+    def test_profile_target_role_projection_matches_title_and_supplies_evidence(self) -> None:
+        from truth.models import CareerProfile, TargetRoleRecord, TargetRoleTier
+
+        graph = TruthGraph()
+        graph.add_evidence(EvidenceRecord(
+            id="ev-typed-target-role",
+            content="Primary target role: Data Engineer.",
+            source="manual",
+            locator="career_profile.target_roles.0",
+        ))
+        graph.add_career_profile(CareerProfile(
+            id="career-typed-targets",
+            target_roles=(TargetRoleRecord(
+                id="target-data-engineer",
+                title="Data Engineer",
+                evidence_ids=("ev-typed-target-role",),
+                tier=TargetRoleTier.PRIMARY,
+            ),),
+        ))
+
+        evaluation = OpportunityScorer().evaluate(
+            create_test_opportunity(title="Data Engineer"),
+            graph,
+        )
+        trajectory = next(
+            ds for ds in evaluation.dimension_scores if ds.dimension_name == "career_trajectory"
+        )
+        role_assertion = next(
+            assertion for assertion in graph.assertions.values()
+            if assertion.predicate == predicates.CAREER_TARGET_ROLE
+        )
+
+        self.assertEqual(trajectory.raw_score, 0.95)
+        self.assertEqual(trajectory.evidence_refs, (role_assertion.id,))
+
+
 class TestTitleFamilyFitDimensionIntegration(unittest.TestCase):
     """Council review #1 finding 3 (BRIEF-FR-006 B3): `title_family_fit`
     shipped with no test that ran a full `Opportunity`/`TruthGraph` pair

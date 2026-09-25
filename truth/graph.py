@@ -34,6 +34,7 @@ from .models import (
     RelationType,
     ServiceRecord,
     SkillRecord,
+    TargetRoleRecord,
     TypedRelation,
     VerificationStatus,
     WorkAuthorization,
@@ -916,6 +917,11 @@ class TruthGraph:
                 continue
 
             if val is None or val == () or val == []:
+                if isinstance(entity, TargetRoleRecord) and spec.field_name == "tier":
+                    # A missing tier is unknown, even if another referenced
+                    # record carries an explicit-null status for a different
+                    # target-role detail.
+                    continue
                 # Project explicit null if evidence is EXPLICIT_NULL
                 if any(self._evidence.get(ev_id) and self._evidence[ev_id].verification_status is VerificationStatus.EXPLICIT_NULL for ev_id in entity_ev_ids):
                     self._project_field_assertion(
@@ -1180,6 +1186,7 @@ class TruthGraph:
             yield from profile.skills
             yield from profile.languages
             yield from profile.work_authorizations
+            yield from profile.target_roles
             yield from profile.red_lines
             yield from profile.never_claims
         else:
@@ -1315,4 +1322,3 @@ class TruthGraph:
             red_lines.extend(profile.red_lines)
             never_claims.extend(profile.never_claims)
         return tuple(red_lines), tuple(never_claims)
-

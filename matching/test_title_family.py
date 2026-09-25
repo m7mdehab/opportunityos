@@ -13,7 +13,7 @@ from matching.title_family import normalize_title
 
 _KNOWN_FAMILIES = frozenset({
     "customer_solutions_engineering", "ml_ai_engineering", "data_science",
-    "data_migration", "analytics_bi", "tutoring", "data_engineering",
+    "data_migration", "data_quality_management", "analytics_bi", "tutoring", "data_engineering",
     "web_frontend", "backend", "devops_platform", "product",
     "project_program_management", "other",
 })
@@ -455,6 +455,30 @@ class TestBroadenedLabourMarketFamilies(unittest.TestCase):
         self.assertEqual(sales_family, "customer_solutions_engineering")
         self.assertNotEqual(sales_family, "sales_account_management")
         self.assertNotEqual(ml_family, sales_family)
+
+
+class TestFR008GenericTargetRoleFamilies(unittest.TestCase):
+    def test_brief_role_examples_normalize_to_known_families(self) -> None:
+        cases = {
+            "Data Integration Engineer": "data_engineering",
+            "Data Integration Consultant": "data_engineering",
+            "Technical Analyst": "analytics_bi",
+            "Business Analyst": "analytics_bi",
+            "Technical / Business Analyst": "analytics_bi",
+            "LLM Engineer": "ml_ai_engineering",
+            "LLM Engineering Lead": "ml_ai_engineering",
+            "Data Quality Specialist": "data_quality_management",
+            "Data Governance Analyst": "data_quality_management",
+            "Data Management Analyst": "data_quality_management",
+            "Technical Consultant": "customer_solutions_engineering",
+            "AI Solutions Consultant": "customer_solutions_engineering",
+            "AI Technical Solutions Consultant": "customer_solutions_engineering",
+        }
+        for title, expected_family in cases.items():
+            with self.subTest(title=title):
+                family, _, _ = normalize_title(title)
+                self.assertEqual(expected_family, family)
+                self.assertIn(family, _KNOWN_FAMILIES)
 
 
 if __name__ == "__main__":

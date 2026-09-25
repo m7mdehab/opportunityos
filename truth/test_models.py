@@ -12,6 +12,8 @@ from truth.models import (
     EvidenceRecord,
     MetricVerification,
     ServiceRecord,
+    TargetRoleRecord,
+    TargetRoleTier,
     VerificationStatus,
 )
 
@@ -22,6 +24,19 @@ class ModelTests(unittest.TestCase):
         self.assertEqual("derived_capability", AssertionType.DERIVED_CAPABILITY.value)
         self.assertEqual("planned", CertificationState.PLANNED.value)
         self.assertEqual("approximate", MetricVerification.APPROXIMATE.value)
+        self.assertEqual(("primary", "adjacent", "stretch"), tuple(tier.value for tier in TargetRoleTier))
+
+    def test_target_role_tier_is_optional_and_typed(self):
+        role = TargetRoleRecord("target-data-engineer", "Data Engineer", ("ev-target",))
+        self.assertIsNone(role.tier)
+        self.assertEqual(
+            TargetRoleTier.PRIMARY,
+            TargetRoleRecord(
+                "target-llm-engineer", "LLM Engineer", ("ev-target",), TargetRoleTier.PRIMARY
+            ).tier,
+        )
+        with self.assertRaisesRegex(ValueError, "TargetRoleTier"):
+            TargetRoleRecord("target-invalid", "Data Engineer", ("ev-target",), "primary")
 
     def test_models_are_immutable(self):
         evidence = EvidenceRecord(

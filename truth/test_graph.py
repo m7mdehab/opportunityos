@@ -3,7 +3,14 @@ from datetime import date
 
 from truth.fixtures import synthetic_career_profile, synthetic_evidence, synthetic_graph
 from truth.graph import TruthGraph, _single_record_supports_value
-from truth.models import AssertionType, CareerProfile, EvidenceRecord
+from truth.models import (
+    AssertionType,
+    CareerProfile,
+    EvidenceRecord,
+    TargetRoleRecord,
+    TargetRoleTier,
+    VerificationStatus,
+)
 
 
 class TruthGraphTests(unittest.TestCase):
@@ -50,6 +57,65 @@ class TruthGraphTests(unittest.TestCase):
             ("achievement-verified", "ev-achievement"),
             {(entity_id, evidence.id) for entity_id, evidence in edges},
         )
+
+    def test_target_role_and_tier_project_with_shared_subject_and_evidence(self):
+        graph = TruthGraph()
+        graph.add_evidence(EvidenceRecord(
+            "ev-target-role",
+            "Primary target role: Data Integration Engineer.",
+            "founder_assertion",
+            "career_profile.target_roles.0",
+        ))
+        graph.add_career_profile(CareerProfile(
+            "career-targets",
+            target_roles=(TargetRoleRecord(
+                "target-data-integration",
+                "Data Integration Engineer",
+                ("ev-target-role",),
+                TargetRoleTier.PRIMARY,
+            ),),
+        ))
+
+        projections = {
+            assertion.predicate: assertion
+            for assertion in graph.assertions.values()
+            if assertion.subject_id == "target-data-integration"
+        }
+        role_assertion = projections["career.target_role"]
+        tier_assertion = projections["career.target_role_tier"]
+        self.assertEqual("Data Integration Engineer", role_assertion.value)
+        self.assertEqual("primary", tier_assertion.value)
+        self.assertEqual(role_assertion.subject_id, tier_assertion.subject_id)
+        self.assertEqual(("ev-target-role",), role_assertion.evidence_ids)
+        self.assertEqual(role_assertion.evidence_ids, tier_assertion.evidence_ids)
+
+    def test_missing_target_role_tier_stays_unprojected(self):
+        graph = TruthGraph()
+        graph.add_evidence(EvidenceRecord(
+            "ev-target-role",
+            "Target role: Technical Consultant.",
+            "founder_assertion",
+            "career_profile.target_roles.0",
+        ))
+        graph.add_evidence(EvidenceRecord(
+            "ev-target-tier-null",
+            None,
+            "founder_assertion",
+            "career_profile.target_roles.0.tier",
+            verification_status=VerificationStatus.EXPLICIT_NULL,
+        ))
+        graph.add_career_profile(CareerProfile(
+            "career-targets",
+            target_roles=(TargetRoleRecord(
+                "target-technical-consultant",
+                "Technical Consultant",
+                ("ev-target-role", "ev-target-tier-null"),
+            ),),
+        ))
+        self.assertFalse(any(
+            assertion.predicate == "career.target_role_tier"
+            for assertion in graph.assertions.values()
+        ))
 
     def test_fact_and_inference_categories_do_not_overlap(self):
         graph = synthetic_graph()
