@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api/client"
 import { ApiError } from "@/lib/contract/types"
 import type { TrackerNote } from "@/lib/contract/types"
+import { notifyTrackerActivityChanged } from "@/lib/tracker-activity"
 
 function failureMessage(failure: unknown) {
   if (
@@ -56,6 +57,7 @@ export function TrackerNotes({ opportunityId }: { opportunityId: string }) {
       await api.tracker.notes.create(opportunityId, draft, crypto.randomUUID())
       setDraft("")
       await refresh()
+      notifyTrackerActivityChanged()
     } catch (failure) {
       setError(failureMessage(failure))
     } finally {
@@ -76,6 +78,7 @@ export function TrackerNotes({ opportunityId }: { opportunityId: string }) {
       setEditingId(null)
       setEditDraft("")
       await refresh()
+      notifyTrackerActivityChanged()
     } catch (failure) {
       setError(failureMessage(failure))
     } finally {
@@ -95,6 +98,7 @@ export function TrackerNotes({ opportunityId }: { opportunityId: string }) {
       )
       if (editingId === noteId) setEditingId(null)
       await refresh()
+      notifyTrackerActivityChanged()
     } catch (failure) {
       setError(failureMessage(failure))
     } finally {

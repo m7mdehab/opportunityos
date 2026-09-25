@@ -55,6 +55,8 @@ import type {
   TrackerDocumentListResponse,
   TrackerDocumentCandidateListResponse,
   TrackerDocumentMutationResponse,
+  TrackerActivityEvent,
+  TrackerActivityListResponse,
   TrackerState,
 } from "@/lib/contract/types"
 import {
@@ -846,6 +848,28 @@ export class MockStore {
       window.localStorage.setItem(this.trackerEventsStorageKey(), JSON.stringify(this.trackerEvents))
     } catch {
       // Synthetic events are best-effort in the browser mock.
+    }
+  }
+
+  listOpportunityTrackerActivity(opportunityId: string, page = 1, pageSize = 50): TrackerActivityListResponse | "not_found" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    const items: TrackerActivityEvent[] = this.trackerEvents
+      .flatMap((entry, index) => entry.opportunity_id === opportunityId ? [{
+        id: `mock-activity-${String(index).padStart(8, "0")}`,
+        action_type: entry.action_type,
+        from_state: entry.from_state || null,
+        to_state: entry.to_state || null,
+        event_at: entry.event_at,
+      }] : [])
+      .sort((left, right) => right.event_at.localeCompare(left.event_at) || right.id.localeCompare(left.id))
+    const normalizedPage = Math.max(1, Math.floor(page) || 1)
+    const normalizedSize = Math.min(100, Math.max(1, Math.floor(pageSize) || 50))
+    return {
+      opportunity_id: opportunityId,
+      page: normalizedPage,
+      page_size: normalizedSize,
+      total: items.length,
+      items: items.slice((normalizedPage - 1) * normalizedSize, normalizedPage * normalizedSize),
     }
   }
 

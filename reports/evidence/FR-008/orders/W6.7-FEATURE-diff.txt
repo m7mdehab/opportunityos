@@ -1,0 +1,15 @@
+=== git diff --check from activity order base ===
+=== source diff summary ===
+ api/routes_api.py                          | 14 ++++++
+ web/app/api/[...path]/route.ts             |  8 ++++
+ web/components/feed/detail-drawer.tsx      |  8 ++++
+ web/components/feed/tracker-documents.tsx  |  3 ++
+ web/components/feed/tracker-followups.tsx  |  4 ++
+ web/components/feed/tracker-interviews.tsx |  3 ++
+ web/components/feed/tracker-notes.tsx      |  4 ++
+ web/lib/api/client.ts                      |  9 ++++
+ web/lib/contract/types.ts                  | 16 +++++++
+ web/lib/mock/handlers.ts                   | 13 ++++++
+ web/lib/mock/store.ts                      | 24 ++++++++++
+ web/tests/e2e/fr008-tracker-triage.spec.ts | 75 ++++++++++++++++++++++++++++++
+ 12 files changed, 181 insertions(+)

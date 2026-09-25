@@ -19,8 +19,10 @@ import { TrackerFollowUps } from "@/components/feed/tracker-followups"
 import { TrackerInterviews } from "@/components/feed/tracker-interviews"
 import { TrackerDocuments } from "@/components/feed/tracker-documents"
 import { TrackerNotes } from "@/components/feed/tracker-notes"
+import { TrackerActivityTimeline } from "@/components/feed/tracker-activity-timeline"
 import { api } from "@/lib/api/client"
 import { ApiError } from "@/lib/contract/types"
+import { notifyTrackerActivityChanged } from "@/lib/tracker-activity"
 import type {
   ActionState,
   ActionType,
@@ -181,6 +183,7 @@ export function DetailDrawer({
       const state = res.tracker_state ?? res.action_state
       setActionState(state)
       onActionSubmitted(opportunityId, state)
+      notifyTrackerActivityChanged()
     } catch (actionFailure) {
       const detail = actionFailure instanceof ApiError &&
         actionFailure.body && typeof actionFailure.body === "object" &&
@@ -538,6 +541,11 @@ export function DetailDrawer({
                   <TrackerInterviews key={opportunityId} opportunityId={opportunityId} />
                 </>
               )}
+
+            <>
+              <Separator />
+              <TrackerActivityTimeline key={`activity-${detail.id}`} opportunityId={detail.id} />
+            </>
 
             {(detail.action_history.length > 0 ||
               detail.feedback_history.length > 0) && (

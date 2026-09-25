@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api/client"
 import { ApiError } from "@/lib/contract/types"
 import type { TrackerFollowUp, TrackerFollowUpStatus } from "@/lib/contract/types"
+import { notifyTrackerActivityChanged } from "@/lib/tracker-activity"
 
 export const TRACKER_FOLLOW_UPS_CHANGED_EVENT = "opportunityos:tracker-follow-ups-changed"
 
@@ -80,6 +81,7 @@ export function TrackerFollowUps({ opportunityId }: { opportunityId: string }) {
       setDraftNote("")
       await refresh()
       window.dispatchEvent(new Event(TRACKER_FOLLOW_UPS_CHANGED_EVENT))
+      notifyTrackerActivityChanged()
     } catch (failure) {
       setError(failureMessage(failure))
     } finally {
@@ -100,6 +102,7 @@ export function TrackerFollowUps({ opportunityId }: { opportunityId: string }) {
       setEditingId(null)
       await refresh()
       window.dispatchEvent(new Event(TRACKER_FOLLOW_UPS_CHANGED_EVENT))
+      notifyTrackerActivityChanged()
     } catch (failure) {
       setError(failureMessage(failure))
     } finally {
@@ -120,6 +123,7 @@ export function TrackerFollowUps({ opportunityId }: { opportunityId: string }) {
       if (editingId === followUp.id) setEditingId(null)
       await refresh()
       window.dispatchEvent(new Event(TRACKER_FOLLOW_UPS_CHANGED_EVENT))
+      notifyTrackerActivityChanged()
     } catch (failure) {
       setError(failureMessage(failure))
     } finally {

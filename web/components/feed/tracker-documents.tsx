@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api/client"
 import { ApiError } from "@/lib/contract/types"
 import type { TrackerDocumentCandidate, TrackerDocumentKind, TrackerDocumentLink } from "@/lib/contract/types"
+import { notifyTrackerActivityChanged } from "@/lib/tracker-activity"
 
 export const TRACKER_DOCUMENTS_CHANGED_EVENT = "opportunityos:tracker-documents-changed"
 
@@ -74,6 +75,7 @@ export function TrackerDocuments({ opportunityId }: { opportunityId: string }) {
       await api.tracker.documents.link(opportunityId, kind, documentId, crypto.randomUUID())
       await refresh()
       window.dispatchEvent(new Event(TRACKER_DOCUMENTS_CHANGED_EVENT))
+      notifyTrackerActivityChanged()
     } catch (failure) {
       setError(failureMessage(failure))
     } finally {
@@ -88,6 +90,7 @@ export function TrackerDocuments({ opportunityId }: { opportunityId: string }) {
       await api.tracker.documents.unlink(opportunityId, linkId, crypto.randomUUID())
       await refresh()
       window.dispatchEvent(new Event(TRACKER_DOCUMENTS_CHANGED_EVENT))
+      notifyTrackerActivityChanged()
     } catch (failure) {
       setError(failureMessage(failure))
     } finally {

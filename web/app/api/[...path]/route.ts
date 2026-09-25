@@ -377,6 +377,14 @@ async function hostedRequest(request: NextRequest, path: string[]): Promise<Next
       501,
     );
   }
+  const trackerEventsRoute =
+    path.length === 3 && path[0] === "opportunities" && path[2] === "tracker-events" && method === "GET";
+  if (trackerEventsRoute) {
+    return hostedError(
+      "Tracker activity timelines are not supported by the hosted adapter until a safe read projection is available.",
+      501,
+    );
+  }
   const config = hostedConfig(); if (!config) return hostedError("hosted Supabase configuration is unavailable", 503);
   if (method !== "GET" && method !== "HEAD" && request.headers.get("x-opportunityos-csrf") !== "1") return hostedError("CSRF validation failed", 403);
   const subpath = path.join("/");

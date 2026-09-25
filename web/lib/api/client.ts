@@ -50,6 +50,7 @@ import type {
   TrackerDocumentCandidateListResponse,
   TrackerDocumentListResponse,
   TrackerDocumentMutationResponse,
+  TrackerActivityListResponse,
   TutoringPlatform,
   TutoringPlatformsResponse,
   TutoringProfileMaterialResponse,
@@ -324,6 +325,14 @@ export const api = {
           method: "PATCH",
           body: JSON.stringify({ linked: false, idempotency_key: idempotencyKey }),
         }),
+    },
+    activity: {
+      list: (opportunityId: string, params: { page?: number; page_size?: number } = {}) => {
+        const search = new URLSearchParams()
+        search.set("page", String(params.page ?? 1))
+        search.set("page_size", String(params.page_size ?? 50))
+        return request<TrackerActivityListResponse>(`/api/opportunities/${opportunityId}/tracker-events?${search.toString()}`)
+      },
     },
   },
 

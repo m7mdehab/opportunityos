@@ -171,6 +171,19 @@ export const handlers = [
     return HttpResponse.json(detail)
   }),
 
+  http.get("/api/opportunities/:id/tracker-events", ({ request, params }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const url = new URL(request.url)
+    const page = Number(url.searchParams.get("page") ?? "1")
+    const pageSize = Number(url.searchParams.get("page_size") ?? "50")
+    if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1) {
+      return HttpResponse.json({ detail: "page and page_size must be positive integers" }, { status: 422 })
+    }
+    const result = store().listOpportunityTrackerActivity(String(params.id), page, pageSize)
+    if (result === "not_found") return HttpResponse.json({ detail: "opportunity not found" }, { status: 404 })
+    return HttpResponse.json(result)
+  }),
+
   http.get("/api/opportunities/:id/follow-ups", ({ request, params }) => {
     if (!requireAuth(request)) return unauthorized()
     const url = new URL(request.url)

@@ -586,6 +586,22 @@ export interface TrackerDocumentMutationResponse {
   changed: boolean
 }
 
+export interface TrackerActivityEvent {
+  id: string
+  action_type: string
+  from_state: string | null
+  to_state: string | null
+  event_at: string
+}
+
+export interface TrackerActivityListResponse {
+  opportunity_id: string
+  page: number
+  page_size: number
+  total: number
+  items: TrackerActivityEvent[]
+}
+
 export interface DashboardDay {
   date: string
   fetched: number

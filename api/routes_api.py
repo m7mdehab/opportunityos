@@ -122,6 +122,7 @@ from .tracker_documents_service import (
     list_tracker_documents,
     unlink_tracker_document,
 )
+from .tracker_activity_service import TrackerActivityError, list_tracker_activity
 from .search import is_query_unparseable, rank_key, search_opportunity_ids
 from .serialization import (
     serialize_constraint,
@@ -1738,6 +1739,19 @@ def patch_tracker_document(
         session.rollback()
         raise _tracker_document_error(exc) from exc
     return {"link": result.link, "changed": result.changed}
+
+
+@router.get("/opportunities/{opportunity_id}/tracker-events")
+def get_tracker_activity(
+    opportunity_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1),
+    session: Session = Depends(get_db),
+):
+    try:
+        return list_tracker_activity(session, opportunity_id, page=page, page_size=page_size)
+    except TrackerActivityError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 def _posted_date_sort_key(value: str | None) -> tuple[int, Any]:

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api/client"
 import { ApiError } from "@/lib/contract/types"
 import type { TrackerInterview, TrackerInterviewFormat, TrackerInterviewOutcome, TrackerInterviewType } from "@/lib/contract/types"
+import { notifyTrackerActivityChanged } from "@/lib/tracker-activity"
 
 export const TRACKER_INTERVIEWS_CHANGED_EVENT = "opportunityos:tracker-interviews-changed"
 
@@ -116,6 +117,7 @@ export function TrackerInterviews({ opportunityId }: { opportunityId: string }) 
       setDraft(EMPTY_DRAFT)
       await refresh()
       window.dispatchEvent(new Event(TRACKER_INTERVIEWS_CHANGED_EVENT))
+      notifyTrackerActivityChanged()
     } catch (failure) {
       setError(failureMessage(failure))
     } finally {
@@ -131,6 +133,7 @@ export function TrackerInterviews({ opportunityId }: { opportunityId: string }) 
       setEditingId(null)
       await refresh()
       window.dispatchEvent(new Event(TRACKER_INTERVIEWS_CHANGED_EVENT))
+      notifyTrackerActivityChanged()
     } catch (failure) {
       setError(failureMessage(failure))
     } finally {
