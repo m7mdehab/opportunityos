@@ -1,0 +1,80 @@
+W7.2 feature verification transcript
+Branch: work/fr008-w72-one-click-undo
+Order lock: 48d14ac
+Feature source and test checkpoints: 74c8127, 23a25ef
+OPPORTUNITYOS_DB_URL explicitly unset for browser tests
+
+.................................
+----------------------------------------------------------------------
+Ran 33 tests in 2.188s
+
+OK
+
+> web@0.1.0 lint
+> eslint . --max-warnings=0
+
+Generating route types...
+✓ Types generated successfully
+[WebServer] (node:30660) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:32328) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:32328) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:22132) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:22592) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:9520) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:21916) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:36564) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:29520) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:38608) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:38084) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:9756) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 16 tests using 1 worker
+
+(node:8096) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  1 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:65:7 › FR-008 basic triage tracker › To Review cards provide Save, Mark Applied, and Reject with a latest-action Undo (5.7s)
+  ok  2 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:125:7 › FR-008 basic triage tracker › detail-drawer triage offers Undo and applied audit history survives reload (9.7s)
+  ok  3 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:173:7 › FR-008 basic triage tracker › a newer tracker action makes the earlier Undo stale (3.5s)
+  ok  4 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:202:7 › FR-008 basic triage tracker › save, explicit apply, reject, bucket placement, and source-link truthfulness (16.4s)
+  ok  5 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:256:7 › FR-008 basic triage tracker › a failed tracker-state storage write leaves the job in To Review (3.6s)
+  ok  6 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:290:7 › FR-008 basic triage tracker › active snoozes stay out of To Review and expired snoozes resurface (3.0s)
+  ok  7 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:322:7 › FR-008 basic triage tracker › application pipeline moves forward, records one event per stage, and closes jobs (8.7s)
+  ok  8 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:363:7 › FR-008 basic triage tracker › private application notes create, edit, archive, and persist without duplicate events (9.6s)
+  ok  9 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:431:7 › FR-008 basic triage tracker › follow-ups create, reschedule, complete, reopen, and persist with private metadata (9.9s)
+  ok 10 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:532:7 › FR-008 basic triage tracker › interviews create, edit, complete, persist, and stay private in the upcoming summary (8.2s)
+  ok 11 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:615:7 › FR-008 basic triage tracker › application document links replace cleanly, persist, and record ID-only events (6.9s)
+  ok 12 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:703:7 › FR-008 basic triage tracker › activity timeline is private, newest-first, refreshes after tracker edits, and persists (8.8s)
+  ok 13 [chromium] › tests\e2e\keyboard.spec.ts:29:7 › C3 keyboard flow (j/k/o/a/x) › j/k move the cursor and move real DOM focus with it (1.6s)
+  ok 14 [chromium] › tests\e2e\keyboard.spec.ts:59:7 › C3 keyboard flow (j/k/o/a/x) › o opens the drawer for the focused card (1.8s)
+  ok 15 [chromium] › tests\e2e\keyboard.spec.ts:76:7 › C3 keyboard flow (j/k/o/a/x) › a marks the focused card applied; moving on, x rejects the next one (2.6s)
+  ok 16 [chromium] › tests\e2e\keyboard.spec.ts:112:7 › C3 keyboard flow (j/k/o/a/x) › shortcuts do not fire while a text input has focus (2.3s)
+
+  16 passed (2.4m)
+Repository integrity checks passed.
+23a25ef test(fr008): cover saved and unrelated undo cases
+74c8127 feat(fr008): add one-click triage and undo
+## work/fr008-w72-one-click-undo
+?? reports/evidence/FR-008/orders/W7.2-FEATURE-test.txt
+
+Historical diagnostic findings and fixes from the W7.2 feature run:
+1. A stale-Undo unit fixture first attempted the invalid `saved -> snoozed` transition; it now uses valid `saved -> rejected_by_founder` activity.
+2. Direct TypeScript checking before Next route type generation first reported missing generated `LayoutProps`; running `npx next typegen` before `npx tsc --noEmit` passed.
+3. A stale-Undo browser assertion initially matched multiple alert regions; a stable `tracker-undo-error` test id now scopes the assertion.
+4. A detail-state synchronization change initially cleared loaded detail data; opportunity reset and action-state synchronization are separated.
+5. The login helper initially rejected the valid shareable root URL carrying query parameters; both root URL forms are accepted.
+6. The page-level Undo notice was initially obscured by the open detail sheet; the open drawer now renders its own short-lived Undo prompt.
+7. Added final temporary-SQLite regressions for Undo from Applied back to Saved while restoring `saved_at`, and for rejecting Undo after unrelated newer activity.
+
+These findings are retained as remediation notes; the final green console output and Playwright artifacts from the reruns follow above.

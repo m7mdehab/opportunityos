@@ -1,0 +1,27 @@
+W7.2 integration diff verification
+Branch: work/fr008-incremental-delivery
+Order lock/base: 48d14ac
+Integrated source checkpoint: 230c15a
+Supplemental test checkpoint: 3235eb3
+
+Command: `git diff --check 48d14ac..HEAD`
+Output: no whitespace errors; exit code 0.
+
+Changed paths:
+api/routes_api.py
+api/test_tracker_service.py
+api/tracker_service.py
+outbound/models.py
+storage/test_feed_query.py
+web/app/api/[...path]/route.ts
+web/app/page.tsx
+web/components/feed/detail-drawer.tsx
+web/components/feed/opportunity-card.tsx
+web/components/feed/tracker-activity-timeline.tsx
+web/lib/api/client.ts
+web/lib/contract/types.ts
+web/lib/mock/handlers.ts
+web/lib/mock/store.ts
+web/tests/e2e/fr008-tracker-triage.spec.ts
+
+Only W7.2 source and test paths from its order are included. No migration/schema, generated state document, supplied brief, W0 evidence, private Founder data, or unrelated tracker-flow change is included.

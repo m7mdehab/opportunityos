@@ -1,0 +1,27 @@
+W7.2 feature diff verification
+Branch: work/fr008-w72-one-click-undo
+Order lock/base: 48d14ac
+Feature source checkpoint: 74c8127
+Supplemental test checkpoint: 23a25ef
+
+Command: `git diff --check 48d14ac..HEAD`
+Output: no whitespace errors; exit code 0.
+
+Changed paths:
+api/routes_api.py
+api/test_tracker_service.py
+api/tracker_service.py
+outbound/models.py
+storage/test_feed_query.py
+web/app/api/[...path]/route.ts
+web/app/page.tsx
+web/components/feed/detail-drawer.tsx
+web/components/feed/opportunity-card.tsx
+web/components/feed/tracker-activity-timeline.tsx
+web/lib/api/client.ts
+web/lib/contract/types.ts
+web/lib/mock/handlers.ts
+web/lib/mock/store.ts
+web/tests/e2e/fr008-tracker-triage.spec.ts
+
+No migration/schema, generated state document, supplied brief, W0 evidence, private Founder data, or unrelated tracker-flow change is included.

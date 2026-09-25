@@ -1,0 +1,83 @@
+W7.2 integration verification transcript
+Branch: work/fr008-incremental-delivery
+Order lock: 48d14ac
+Integrated source and test checkpoints: 230c15a, 3235eb3
+OPPORTUNITYOS_DB_URL explicitly unset for browser tests
+
+.................................
+----------------------------------------------------------------------
+Ran 33 tests in 2.960s
+
+OK
+
+> web@0.1.0 lint
+> eslint . --max-warnings=0
+
+Generating route types...
+✓ Types generated successfully
+[WebServer] (node:38940) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:36116) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:36116) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:21600) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:13532) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:30916) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:38304) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:31596) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:3048) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:38896) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:29464) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:9572) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 16 tests using 1 worker
+
+(node:36868) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  1 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:65:7 › FR-008 basic triage tracker › To Review cards provide Save, Mark Applied, and Reject with a latest-action Undo (5.1s)
+  ok  2 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:125:7 › FR-008 basic triage tracker › detail-drawer triage offers Undo and applied audit history survives reload (9.2s)
+  ok  3 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:173:7 › FR-008 basic triage tracker › a newer tracker action makes the earlier Undo stale (1.9s)
+  ok  4 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:202:7 › FR-008 basic triage tracker › save, explicit apply, reject, bucket placement, and source-link truthfulness (9.5s)
+  ok  5 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:256:7 › FR-008 basic triage tracker › a failed tracker-state storage write leaves the job in To Review (3.8s)
+  ok  6 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:290:7 › FR-008 basic triage tracker › active snoozes stay out of To Review and expired snoozes resurface (3.0s)
+  ok  7 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:322:7 › FR-008 basic triage tracker › application pipeline moves forward, records one event per stage, and closes jobs (10.0s)
+  ok  8 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:363:7 › FR-008 basic triage tracker › private application notes create, edit, archive, and persist without duplicate events (7.8s)
+  ok  9 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:431:7 › FR-008 basic triage tracker › follow-ups create, reschedule, complete, reopen, and persist with private metadata (9.9s)
+  ok 10 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:532:7 › FR-008 basic triage tracker › interviews create, edit, complete, persist, and stay private in the upcoming summary (8.6s)
+  ok 11 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:615:7 › FR-008 basic triage tracker › application document links replace cleanly, persist, and record ID-only events (7.5s)
+  ok 12 [chromium] › tests\e2e\fr008-tracker-triage.spec.ts:703:7 › FR-008 basic triage tracker › activity timeline is private, newest-first, refreshes after tracker edits, and persists (7.2s)
+  ok 13 [chromium] › tests\e2e\keyboard.spec.ts:29:7 › C3 keyboard flow (j/k/o/a/x) › j/k move the cursor and move real DOM focus with it (2.3s)
+  ok 14 [chromium] › tests\e2e\keyboard.spec.ts:59:7 › C3 keyboard flow (j/k/o/a/x) › o opens the drawer for the focused card (2.6s)
+  ok 15 [chromium] › tests\e2e\keyboard.spec.ts:76:7 › C3 keyboard flow (j/k/o/a/x) › a marks the focused card applied; moving on, x rejects the next one (2.3s)
+  ok 16 [chromium] › tests\e2e\keyboard.spec.ts:112:7 › C3 keyboard flow (j/k/o/a/x) › shortcuts do not fire while a text input has focus (2.2s)
+
+  16 passed (2.2m)
+Repository integrity checks passed.
+3235eb3 test(fr008): cover saved and unrelated undo cases
+230c15a feat(fr008): add one-click triage and undo
+## work/fr008-incremental-delivery...origin/work/fr008-incremental-delivery
+?? briefs/BRIEF-FR-008.md
+?? briefs/FR-008-FOLLOW-UP.md
+?? reports/evidence/FR-008/orders/W0-VERIFY-backend.txt
+?? reports/evidence/FR-008/orders/W0-VERIFY-guard.txt
+?? reports/evidence/FR-008/orders/W0-VERIFY-repository.txt
+?? reports/evidence/FR-008/orders/W0-VERIFY-web.txt
+?? reports/evidence/FR-008/orders/W0.1-baseline.txt
+?? reports/evidence/FR-008/orders/W7.2-FEATURE-diff.txt
+?? reports/evidence/FR-008/orders/W7.2-FEATURE-repository.txt
+?? reports/evidence/FR-008/orders/W7.2-FEATURE-test.txt
+?? reports/evidence/FR-008/orders/W7.2-INT-diff.txt
+?? reports/evidence/FR-008/orders/W7.2-INT-repository.txt
+?? reports/evidence/FR-008/orders/W7.2-INT-test.txt
+
+Additional acceptance cases introduced after the first integration run are included in the final 33-test SQLite rerun: Undo from Applied to Saved restores the original `saved_at`; unrelated newer activity causes a 409 with no state change or restore event. The feature-run diagnostic remediations are summarized in `W7.2-FEATURE-test.txt`. The final green integration output and Playwright artifacts are included in the integration raw-output archive.

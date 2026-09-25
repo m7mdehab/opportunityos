@@ -1,0 +1,11 @@
+W7.2 feature repository integrity
+Branch: work/fr008-w72-one-click-undo
+Order lock: 48d14ac
+Feature source checkpoint: 74c8127
+Supplemental acceptance-test checkpoint: 23a25ef
+
+Command: `python scripts/check_repository.py`
+Output: `Repository integrity checks passed.`
+Exit code: 0
+
+The final feature worktree has no source changes beyond the committed checkpoint. Evidence files are stored on the integration worktree. No supplied brief, W0 evidence, private data, migration/schema, or generated state document was changed.
