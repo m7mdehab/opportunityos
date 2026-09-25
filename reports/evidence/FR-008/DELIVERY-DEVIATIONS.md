@@ -68,3 +68,9 @@ R8 ran once from exact source base `0a0de55` against a fresh local disposable da
 The first W2.2 focused acceptance ran 36 tests and failed in two places; its complete raw output is preserved unchanged in `orders/W2.2-test.txt`. The confidence-bound model test omitted the newly required synthetic source pointer, so model validation stopped before reaching the intended confidence assertion. The work-authorization evidence assertion also exposed that the regex's full match included the word `without` from the following sponsorship clause. The remediation supplied a synthetic pointer to the model test and changed the regex terminator to a lookahead, leaving qualification decisions unchanged while keeping the evidence quotation within the mandatory authorization phrase.
 
 W2.2-R2 ran from source base `1a7678e1c1c3f5c9be7ae88ec381d55c2ff8202c`. All 37 focused model, qualification, persistence, and API serialization tests passed. Repository integrity and `git diff --check` passed. Raw outputs are preserved in `orders/W2.2-R2-{test,repository,diff-check}.txt`; the original red output remains beside the green remediation evidence.
+
+## W2.3 initial acceptance and remediation
+
+The first W2.3 focused acceptance ran 51 tests and had one failure. The new test expected acronym-preserving `AWS`, while the established display renderer title-cases normalized skill labels as `Aws`. No classification or score assertion failed. The complete raw output is preserved unchanged in `orders/W2.3-test.txt`; the assertion was aligned with the existing renderer.
+
+W2.3-R2 ran from source base `3857d94043a6d433ad2553611ad9ee86997da104`. All 51 requirement, model, skill, and scorer tests passed. Repository integrity and `git diff --check` passed. Raw outputs are preserved in `orders/W2.3-R2-{test,repository,diff-check}.txt`; the original red output remains beside the green remediation evidence.

@@ -1,0 +1,15 @@
+
+B2.7 sample reason strings:
+  - Required: Python, Sql -> you have Python (expert-evidence: 2 records); Sql not in your pack.
+  - Required: Go, Rust -> you have Go (working, 1 record); Rust not in your pack.
+  - Required: Docker -> you have Docker (basic, 1 record). Nice-to-have: you have Kubernetes (advanced, 1 record).
+  - Required: Terraform -> you have none; Terraform not in your pack.
+  - Required: Aws -> you have Aws (advanced, 2 records). Nice-to-have: you have Gcp (working, 1 record); Azure not in your pack.
+
+B2.6 corpus ordering: Senior Customer Engineer = 46.08, Senior Data Engineer (best data-engineering match) = 82.5
+...................................................
+----------------------------------------------------------------------
+Ran 51 tests in 0.270s
+
+OK
+EXIT_CODE=0
