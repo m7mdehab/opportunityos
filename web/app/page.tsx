@@ -518,16 +518,6 @@ export default function FeedPage() {
         >
           Jobs / To Review
         </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant={activeWorkspace === "tracker" ? "default" : "outline"}
-          aria-pressed={activeWorkspace === "tracker"}
-          data-testid="workspace-tracker"
-          onClick={() => setActiveWorkspace("tracker")}
-        >
-          Tracker
-        </Button>
       </nav>
 
       {/* Master's addition #1: the >10% over-hiding warning must be
