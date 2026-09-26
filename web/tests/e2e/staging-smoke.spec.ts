@@ -142,6 +142,28 @@ test.describe("Cloudflare staging hosted smoke", () => {
     expect(undoResponse.status(), await undoResponse.text()).toBe(200);
     await expect(page.getByTestId("tracker-undo-notice")).toHaveCount(0);
 
+    // 4b. FR-008 live review controls must be present in the deployed UI.
+    // This is the regression gate for the release bug where a generic deploy
+    // succeeded while the founder-visible W7.5 controls were absent.
+    await expect(page.getByTestId("filter-facet-track")).toBeVisible();
+    await expect(page.getByTestId("filter-facet-decision")).toBeVisible();
+    await expect(page.getByTestId("open-advanced-feed-filters")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Select all visible" })).toBeVisible();
+    await expect(page.getByText(/0 selected/)).toBeVisible();
+
+    await page.getByTestId("filter-facet-track").click();
+    const trackFacet = page.locator('[data-testid="filter-facet-track"]');
+    await expect(trackFacet.locator('input[type="checkbox"]').first()).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    const feedMetadata = await pageJson<{ facets: Record<string, unknown>; sorts: unknown[] }>(
+      page,
+      "/api/feed/filter-metadata"
+    );
+    expect(feedMetadata.ok, `feed/filter-metadata returned ${feedMetadata.status}`).toBe(true);
+    expect(typeof feedMetadata.body.facets).toBe("object");
+    expect(Array.isArray(feedMetadata.body.sorts)).toBe(true);
+
     // 5. Feed endpoint returns exact contract
     const firstPage = await pageJson<{
       page: number;
