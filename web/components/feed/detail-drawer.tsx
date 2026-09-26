@@ -16,14 +16,8 @@ import { ConstraintOutcomeBadge } from "@/components/feed/constraint-outcome"
 import { DecisionBadge } from "@/components/feed/decision-badge"
 import { FeedbackButtons } from "@/components/feed/feedback-buttons"
 import { TriageActions } from "@/components/feed/triage-actions"
-import { TrackerFollowUps } from "@/components/feed/tracker-followups"
-import { TrackerInterviews } from "@/components/feed/tracker-interviews"
-import { TrackerDocuments } from "@/components/feed/tracker-documents"
-import { TrackerNotes } from "@/components/feed/tracker-notes"
-import { TrackerActivityTimeline } from "@/components/feed/tracker-activity-timeline"
 import { api } from "@/lib/api/client"
 import { ApiError } from "@/lib/contract/types"
-import { notifyTrackerActivityChanged } from "@/lib/tracker-activity"
 import type {
   ActionState,
   ActionResponse,
@@ -32,42 +26,6 @@ import type {
   FeedbackLabel,
   OpportunityDetail,
 } from "@/lib/contract/types"
-
-const APPLICATION_TRACKED_STATES = new Set([
-  "submitted",
-  "applied",
-  "recruiter_screen",
-  "assessment",
-  "interviewing",
-  "final_interview",
-  "offer",
-  "accepted",
-  "rejected_by_employer",
-  "withdrawn",
-  "no_response",
-])
-
-const FOLLOW_UP_TRACKED_STATES = new Set([
-  "saved",
-  "submitted",
-  "applied",
-  "recruiter_screen",
-  "assessment",
-  "interviewing",
-  "final_interview",
-  "offer",
-  "accepted",
-])
-
-const INTERVIEW_TRACKED_STATES = new Set([
-  "applied",
-  "recruiter_screen",
-  "assessment",
-  "interviewing",
-  "final_interview",
-  "offer",
-  "accepted",
-])
 
 function formatScore(score: number | null | undefined): string {
   return typeof score === "number" && Number.isFinite(score)
@@ -215,7 +173,6 @@ export function DetailDrawer({
       const state = res.tracker_state ?? res.action_state
       setActionState(state)
       onActionSubmitted(opportunityId, state, res)
-      notifyTrackerActivityChanged()
     } catch (actionFailure) {
       const detail = actionFailure instanceof ApiError &&
         actionFailure.body && typeof actionFailure.body === "object" &&
@@ -620,37 +577,6 @@ export function DetailDrawer({
               )}
               {undoError && <p role="alert" data-testid="tracker-undo-error" className="mt-2 text-sm text-destructive">{undoError}</p>}
             </section>
-
-            {opportunityId && actionState &&
-              APPLICATION_TRACKED_STATES.has(actionState) && (
-                <>
-                  <Separator />
-                  <TrackerNotes key={opportunityId} opportunityId={opportunityId} />
-                  <Separator />
-                  <TrackerDocuments key={`documents-${opportunityId}`} opportunityId={opportunityId} />
-                </>
-              )}
-
-            {opportunityId && actionState &&
-              FOLLOW_UP_TRACKED_STATES.has(actionState) && (
-                <>
-                  <Separator />
-                  <TrackerFollowUps key={opportunityId} opportunityId={opportunityId} />
-                </>
-              )}
-
-            {opportunityId && actionState &&
-              INTERVIEW_TRACKED_STATES.has(actionState) && (
-                <>
-                  <Separator />
-                  <TrackerInterviews key={opportunityId} opportunityId={opportunityId} />
-                </>
-              )}
-
-            <>
-              <Separator />
-              <TrackerActivityTimeline key={`activity-${detail.id}`} opportunityId={detail.id} />
-            </>
 
             {(detail.action_history.length > 0 ||
               detail.feedback_history.length > 0) && (
