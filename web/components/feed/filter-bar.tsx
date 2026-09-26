@@ -385,11 +385,13 @@ export function FilterBar({
         Filters
       </Button>
 
+      <div aria-hidden="true" className="order-2 h-0 basis-full" />
       <Button
         type="button"
         ref={onAdvancedTriggerRef}
         variant="outline"
         size="lg"
+        className="order-3"
         data-testid="open-advanced-feed-filters"
         disabled={advancedDisabled}
         onClick={onOpenAdvanced}
