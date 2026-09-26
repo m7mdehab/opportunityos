@@ -236,6 +236,7 @@ export function FeedQueryDrawer({
             <h3 id="feed-score-heading" className="text-sm font-semibold">Score ranges</h3>
             {FEED_SCORE_IDS.map((score) => {
               const stats = metadata?.ranges[score]
+              const scoreDisabled = advancedDisabled || (stats?.min == null && stats?.max == null)
               return (
                 <div key={score} className="rounded-lg border border-border p-3">
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -243,12 +244,12 @@ export function FeedQueryDrawer({
                     <p className="text-xs text-muted-foreground">{stats ? `${stats.min ?? "—"} to ${stats.max ?? "—"}; ${stats.unknown_count} unscored` : "Metadata unavailable"}</p>
                   </div>
                   <div className="flex gap-2">
-                    <div className="flex-1"><Label htmlFor={`${score}-min`} className="text-xs">Minimum</Label><Input id={`${score}-min`} aria-label={`${SCORE_LABELS[score]} minimum`} type="number" min={0} max={100} value={value.scoreRanges[score].min} disabled={advancedDisabled} onChange={(event) => onChange({ ...value, scoreRanges: { ...value.scoreRanges, [score]: { ...value.scoreRanges[score], min: event.target.value } } })} /></div>
-                    <div className="flex-1"><Label htmlFor={`${score}-max`} className="text-xs">Maximum</Label><Input id={`${score}-max`} aria-label={`${SCORE_LABELS[score]} maximum`} type="number" min={0} max={100} value={value.scoreRanges[score].max} disabled={advancedDisabled} onChange={(event) => onChange({ ...value, scoreRanges: { ...value.scoreRanges, [score]: { ...value.scoreRanges[score], max: event.target.value } } })} /></div>
+                    <div className="flex-1"><Label htmlFor={`${score}-min`} className="text-xs">Minimum</Label><Input id={`${score}-min`} aria-label={`${SCORE_LABELS[score]} minimum`} type="number" min={0} max={100} value={value.scoreRanges[score].min} disabled={scoreDisabled} onChange={(event) => onChange({ ...value, scoreRanges: { ...value.scoreRanges, [score]: { ...value.scoreRanges[score], min: event.target.value } } })} /></div>
+                    <div className="flex-1"><Label htmlFor={`${score}-max`} className="text-xs">Maximum</Label><Input id={`${score}-max`} aria-label={`${SCORE_LABELS[score]} maximum`} type="number" min={0} max={100} value={value.scoreRanges[score].max} disabled={scoreDisabled} onChange={(event) => onChange({ ...value, scoreRanges: { ...value.scoreRanges, [score]: { ...value.scoreRanges[score], max: event.target.value } } })} /></div>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1.5" aria-label={`${SCORE_LABELS[score]} quick thresholds`}>
                     {THRESHOLDS.map((threshold) => (
-                      <Button key={threshold} type="button" variant={value.scoreRanges[score].min === threshold.slice(0, -1) ? "secondary" : "outline"} size="xs" disabled={advancedDisabled} onClick={() => onChange({ ...value, scoreRanges: { ...value.scoreRanges, [score]: { ...value.scoreRanges[score], min: threshold.slice(0, -1) } } })}>
+                      <Button key={threshold} type="button" variant={value.scoreRanges[score].min === threshold.slice(0, -1) ? "secondary" : "outline"} size="xs" disabled={scoreDisabled} onClick={() => onChange({ ...value, scoreRanges: { ...value.scoreRanges, [score]: { ...value.scoreRanges[score], min: threshold.slice(0, -1) } } })}>
                         {threshold}{stats ? ` · ${stats.threshold_counts[threshold]}` : ""}
                       </Button>
                     ))}
