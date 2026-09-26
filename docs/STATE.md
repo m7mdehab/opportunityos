@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `18dc6d8` — fix(ci): validate repository-defined CV portfolio
+- **State generated at commit:** `c0c621e` — chore(worker): trigger bounded recovery after predicate repair
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
