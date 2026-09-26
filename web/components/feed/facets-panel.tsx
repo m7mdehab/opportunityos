@@ -38,10 +38,6 @@ function facetTitle(facetId: string): string {
   return facetId.replaceAll("_", " ")
 }
 
-function facetOnlyViews(views: SavedView[]): SavedView[] {
-  return views.filter((view) => !view.feed_query)
-}
-
 function ValueRow({
   facet,
   value,
@@ -209,7 +205,7 @@ export function FacetsPanel({
     Promise.all([api.facets.list(), api.savedViews.list()])
       .then(([f, v]) => {
         setFacets(f.facets)
-        setViews(facetOnlyViews(v.views))
+        setViews(v.views)
       })
       .catch(() => setError("Could not load facets."))
       .finally(() => setLoading(false))
@@ -271,7 +267,7 @@ export function FacetsPanel({
       })
       setNewViewName("")
       const res = await api.savedViews.list()
-      setViews(facetOnlyViews(res.views))
+      setViews(res.views)
     } catch {
       setViewError("Could not save this view.")
     }
@@ -294,7 +290,7 @@ export function FacetsPanel({
   async function handleSetDefault(view: SavedView) {
     await api.savedViews.update(view.id, { is_default: true })
     const res = await api.savedViews.list()
-    setViews(facetOnlyViews(res.views))
+    setViews(res.views)
   }
 
   return (
