@@ -68,7 +68,9 @@ test.describe("fixed CV and generated cover-letter artifacts", () => {
     await login(page)
     // opp-002 is intentionally a historical dismissed fixture. This artifact
     // test needs that fixture, not the default To Review inbox.
-    await page.getByTestId("filter-activity").selectOption("any")
+    const activity = page.getByTestId("filter-facet-activity")
+    await activity.locator("summary").click()
+    await activity.getByRole("checkbox", { name: "Any activity", exact: true }).check()
     const showHidden = page.getByTestId("toggle-hidden-opportunities")
     await showHidden.click()
 
