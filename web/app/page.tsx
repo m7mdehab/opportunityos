@@ -38,6 +38,7 @@ import type {
   FeedbackLabel,
   OpportunityListItem,
   SourceHealth,
+  SourceOverview,
   TruthStatusResponse,
 } from "@/lib/contract/types"
 
@@ -56,6 +57,11 @@ export default function FeedPage() {
   const [metricPeriod, setMetricPeriod] = useState<"today" | "yesterday" | "date" | "all_time">("today")
   const [metricDate, setMetricDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [sources, setSources] = useState<SourceHealth[] | null>(null)
+  const [sourceOverview, setSourceOverview] = useState<SourceOverview[]>([])
+  const [sourceFamily, setSourceFamily] = useState("")
+  const [sourceId, setSourceId] = useState("")
+  const [activity, setActivity] = useState("to_review")
+  const [feedback, setFeedback] = useState("")
 
   const [query, setQuery] = useState<FeedQueryState>(EMPTY_FEED_QUERY)
   const [queryReady, setQueryReady] = useState(false)
@@ -166,6 +172,10 @@ export default function FeedPage() {
     decision: query.decision as FeedFilters["decision"],
     minScore: query.scoreRanges.fit_score.min,
     q: query.q,
+    sourceFamily,
+    sourceId,
+    activity,
+    feedback,
   }
 
   const handleQueryChange = useCallback((next: FeedQueryState) => {
@@ -188,6 +198,10 @@ export default function FeedPage() {
       .health()
       .then((r) => setSources(r.sources))
       .catch(() => undefined)
+    api.sources
+      .overview()
+      .then((r) => setSourceOverview(r.sources))
+      .catch(() => setSourceOverview([]))
   }, [])
 
   const refreshTruth = useCallback(() => {
@@ -213,6 +227,10 @@ export default function FeedPage() {
         posted_from: query.postedFrom || undefined,
         posted_to: query.postedTo || undefined,
         ...query.multi,
+        source_family: sourceFamily || undefined,
+        source_id: sourceId || undefined,
+        activity: activity || undefined,
+        feedback: feedback || undefined,
         sort_by: query.sortBy,
         q: query.q || undefined,
         page,
@@ -235,7 +253,7 @@ export default function FeedPage() {
         setListError(detail)
       })
       .finally(() => setListLoading(false))
-  }, [query, page, router])
+  }, [query, sourceFamily, sourceId, activity, feedback, page, router])
 
   const refreshFromFirstPage = useCallback(() => {
     if (page === 1) refreshList()
@@ -448,7 +466,7 @@ export default function FeedPage() {
       )
       if (undoNotice.opportunityId === selectedId) setSelectedActionState(response.action_state)
       setUndoNotice(null)
-        refreshDashboard()
+      refreshDashboard()
       refreshFromFirstPage()
     } catch (failure) {
       const detail = failure instanceof ApiError && failure.body && typeof failure.body === "object" && "detail" in failure.body && typeof failure.body.detail === "string"
@@ -508,13 +526,20 @@ export default function FeedPage() {
         <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-4 py-2 sm:px-6">
           <FilterBar
             filters={filters}
-            onChange={(nextFilters) => handleQueryChange({
-              ...query,
-              track: nextFilters.track,
-              decision: nextFilters.decision,
-              q: nextFilters.q,
-              scoreRanges: { ...query.scoreRanges, fit_score: { ...query.scoreRanges.fit_score, min: nextFilters.minScore } },
-            })}
+            sources={sourceOverview}
+            onChange={(nextFilters) => {
+              setSourceFamily(nextFilters.sourceFamily)
+              setSourceId(nextFilters.sourceId)
+              setActivity(nextFilters.activity)
+              setFeedback(nextFilters.feedback)
+              handleQueryChange({
+                ...query,
+                track: nextFilters.track,
+                decision: nextFilters.decision,
+                q: nextFilters.q,
+                scoreRanges: { ...query.scoreRanges, fit_score: { ...query.scoreRanges.fit_score, min: nextFilters.minScore } },
+              })
+            }}
             onOpenFounderFilters={() => setFiltersDrawerOpen(true)}
             sortBy={query.sortBy}
             onSortChange={(sortBy) => handleQueryChange({ ...query, sortBy })}
@@ -775,10 +800,6 @@ export default function FeedPage() {
         onOpened={refreshDashboard}
         onFeedbackSubmitted={handleFeedbackSubmitted}
         onActionSubmitted={handleActionSubmitted}
-        undoNotice={undoNotice}
-        undoSubmitting={undoSubmitting}
-        undoError={undoError}
-        onUndo={() => void handleUndo()}
       />
     </div>
   )
