@@ -121,6 +121,11 @@ export function FilterBar({
   filters,
   onChange,
   onOpenFounderFilters,
+  onOpenManualSources,
+  onOpenFacets,
+  onToggleTutoringLane,
+  tutoringActive = false,
+  tutoringDisabled = false,
   onOpenAdvanced,
   onAdvancedTriggerRef,
   sortBy,
@@ -132,6 +137,11 @@ export function FilterBar({
   filters: FeedFilters
   onChange: (next: FeedFilters) => void
   onOpenFounderFilters: () => void
+  onOpenManualSources: () => void
+  onOpenFacets?: () => void
+  onToggleTutoringLane?: () => void
+  tutoringActive?: boolean
+  tutoringDisabled?: boolean
   onOpenAdvanced: () => void
   onAdvancedTriggerRef?: (element: HTMLButtonElement | null) => void
   sortBy: FeedSortId
@@ -387,6 +397,42 @@ export function FilterBar({
         <SlidersHorizontal aria-hidden="true" className="size-3.5" />
         Advanced
       </Button>
+
+      {onOpenFacets && (
+        <Button
+          type="button"
+          variant="outline"
+          size="lg"
+          data-testid="open-facets-panel"
+          onClick={onOpenFacets}
+        >
+          Facets
+        </Button>
+      )}
+
+      <Button
+        type="button"
+        variant="outline"
+        size="lg"
+        data-testid="open-manual-sources-panel"
+        onClick={onOpenManualSources}
+      >
+        Check manually
+      </Button>
+
+      {onToggleTutoringLane && (
+        <Button
+          type="button"
+          variant={tutoringActive ? "secondary" : "outline"}
+          size="lg"
+          data-testid="toggle-tutoring-lane"
+          aria-pressed={tutoringActive}
+          disabled={tutoringDisabled}
+          onClick={onToggleTutoringLane}
+        >
+          Tutoring Lane
+        </Button>
+      )}
     </form>
   )
 }
