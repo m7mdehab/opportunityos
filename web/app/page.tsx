@@ -152,7 +152,7 @@ export default function FeedPage() {
   }, [authPhase])
 
   useEffect(() => {
-    if (!queryReady) return
+    if (authPhase !== "authenticated" || !queryReady) return
     const timer = window.setTimeout(() => {
       const current = new URLSearchParams(window.location.search)
       const next = updateFeedUrlParams(current, query, page, PAGE_SIZE)
@@ -161,7 +161,7 @@ export default function FeedPage() {
       window.history.pushState({ feedQuery: true }, "", `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`)
     }, 250)
     return () => window.clearTimeout(timer)
-  }, [page, query, queryReady])
+  }, [authPhase, page, query, queryReady])
 
   const filters: FeedFilters = {
     track: query.track as FeedFilters["track"],
