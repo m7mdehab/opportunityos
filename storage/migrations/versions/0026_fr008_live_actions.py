@@ -97,8 +97,7 @@ BEGIN
     WHERE opportunity_id = p_opportunity_id
       AND candidate_id = 'founder'
       AND adapter_name = 'founder_attested'
-      AND action_status = 'submitted'
-    ORDER BY created_at ASC, id ASC
+    ORDER BY (action_status='submitted') DESC, created_at ASC, id ASC
     LIMIT 1;
 
     IF existing_id IS NULL THEN
@@ -125,6 +124,9 @@ BEGIN
       );
     ELSE
       action_id := existing_id;
+      UPDATE public.outbound_actions
+      SET action_status='submitted', updated_at=now_ts
+      WHERE id=existing_id AND action_status<>'submitted';
     END IF;
   END IF;
 
