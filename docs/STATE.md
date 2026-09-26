@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `c0c621e` — chore(worker): trigger bounded recovery after predicate repair
+- **State generated at commit:** `86109c4` — test(storage): cover concurrent orphan cleanup race
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
