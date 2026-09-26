@@ -248,47 +248,22 @@ export const OpportunityCard = forwardRef<
           Quick apply ↗
         </a>
       </footer>
+      <div
+        role={canTriage ? "group" : undefined}
+        aria-label={canTriage ? `Review actions for ${o.title}` : undefined}
+        className="flex min-h-9 flex-wrap items-center gap-2 border-t border-border/70 px-4 py-1"
+      >
+        {canTriage && (
+          <>
+            <Button type="button" size="sm" variant="outline" data-testid={`quick-save-${o.id}`} disabled={triagePending} onClick={() => onTriageAction("save")}>Save</Button>
+            <Button type="button" size="sm" variant="outline" data-testid={`quick-mark-applied-${o.id}`} disabled={triagePending} onClick={() => onTriageAction("mark_applied")}>Mark Applied</Button>
+            <Button type="button" size="sm" variant="destructive" data-testid={`quick-reject-${o.id}`} disabled={triagePending} onClick={() => onTriageAction("reject")}>Reject</Button>
+            {triagePending && <span role="status" className="text-xs text-muted-foreground">Updating…</span>}
+            {triageError && <span role="alert" className="text-xs text-destructive">{triageError}</span>}
+          </>
+        )}
+      </div>
       </article>
-      {canTriage && (
-        <div
-          role="group"
-          aria-label={`Review actions for ${o.title}`}
-          className="flex flex-wrap items-center gap-2 px-1"
-        >
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            data-testid={`quick-save-${o.id}`}
-            disabled={triagePending}
-            onClick={() => onTriageAction("save")}
-          >
-            Save
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            data-testid={`quick-mark-applied-${o.id}`}
-            disabled={triagePending}
-            onClick={() => onTriageAction("mark_applied")}
-          >
-            Mark Applied
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="destructive"
-            data-testid={`quick-reject-${o.id}`}
-            disabled={triagePending}
-            onClick={() => onTriageAction("reject")}
-          >
-            Reject
-          </Button>
-          {triagePending && <span role="status" className="text-xs text-muted-foreground">Updating…</span>}
-          {triageError && <span role="alert" className="text-xs text-destructive">{triageError}</span>}
-        </div>
-      )}
     </li>
   )
 })
