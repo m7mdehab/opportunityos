@@ -1,0 +1,63 @@
+
+B2.6 corpus ordering: Senior Customer Engineer = 46.61, Senior Data Engineer (best data-engineering match) = 87.5
+{"timestamp": "2026-09-25T06:17:43.780895+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.evaluate_new_completed", "component": "worker.handlers", "data": {"truth_pack_hash": "truth-worker-retry", "evaluated_count": 1}}
+.................EEEEE.........................................
+======================================================================
+ERROR: test_currency_and_interval_typed_compensation_preference (matching.test_scorer.TestPreferenceScoreIsolation.test_currency_and_interval_typed_compensation_preference)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w32-preference-score\matching\test_scorer.py", line 446, in test_currency_and_interval_typed_compensation_preference
+    self._add_preference(
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w32-preference-score\matching\test_scorer.py", line 389, in _add_preference
+    ev_id = f"ev-pref-{len(graph.evidence)}"
+                       ^^^^^^^^^^^^^^^^^^^
+TypeError: object of type 'method' has no len()
+
+======================================================================
+ERROR: test_geography_and_other_preferences_read_structured_job_attributes (matching.test_scorer.TestPreferenceScoreIsolation.test_geography_and_other_preferences_read_structured_job_attributes)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w32-preference-score\matching\test_scorer.py", line 469, in test_geography_and_other_preferences_read_structured_job_attributes
+    self._add_preference(graph, value="EG", predicate=predicates.PREFERENCE_GEOGRAPHY)
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w32-preference-score\matching\test_scorer.py", line 389, in _add_preference
+    ev_id = f"ev-pref-{len(graph.evidence)}"
+                       ^^^^^^^^^^^^^^^^^^^
+TypeError: object of type 'method' has no len()
+
+======================================================================
+ERROR: test_missing_structured_job_value_does_not_create_a_preference_score (matching.test_scorer.TestPreferenceScoreIsolation.test_missing_structured_job_value_does_not_create_a_preference_score)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w32-preference-score\matching\test_scorer.py", line 435, in test_missing_structured_job_value_does_not_create_a_preference_score
+    self._add_preference(graph, value="remote")
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w32-preference-score\matching\test_scorer.py", line 389, in _add_preference
+    ev_id = f"ev-pref-{len(graph.evidence)}"
+                       ^^^^^^^^^^^^^^^^^^^
+TypeError: object of type 'method' has no len()
+
+======================================================================
+ERROR: test_only_verified_positive_preference_assertions_are_scored (matching.test_scorer.TestPreferenceScoreIsolation.test_only_verified_positive_preference_assertions_are_scored)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w32-preference-score\matching\test_scorer.py", line 425, in test_only_verified_positive_preference_assertions_are_scored
+    self._add_preference(graph, value="remote", status=status, polarity=polarity)
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w32-preference-score\matching\test_scorer.py", line 389, in _add_preference
+    ev_id = f"ev-pref-{len(graph.evidence)}"
+                       ^^^^^^^^^^^^^^^^^^^
+TypeError: object of type 'method' has no len()
+
+======================================================================
+ERROR: test_work_mode_preference_is_separate_from_capability_and_qualification (matching.test_scorer.TestPreferenceScoreIsolation.test_work_mode_preference_is_separate_from_capability_and_qualification)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w32-preference-score\matching\test_scorer.py", line 408, in test_work_mode_preference_is_separate_from_capability_and_qualification
+    self._add_preference(graph, value="remote")
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w32-preference-score\matching\test_scorer.py", line 389, in _add_preference
+    ev_id = f"ev-pref-{len(graph.evidence)}"
+                       ^^^^^^^^^^^^^^^^^^^
+TypeError: object of type 'method' has no len()
+
+----------------------------------------------------------------------
+Ran 63 tests in 7.992s
+
+FAILED (errors=5)

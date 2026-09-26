@@ -1,0 +1,13 @@
+test_hash_verified_skill_and_capability_graph_is_reference_complete (matching.test_fr008_capability_evidence.TestCanonicalCapabilityEvidenceContract.test_hash_verified_skill_and_capability_graph_is_reference_complete) ... ok
+test_conflicting_verified_tiers_remain_unknown (matching.test_fr008_capability_evidence.TestVerifiedSkillIndex.test_conflicting_verified_tiers_remain_unknown) ... ok
+test_duplicate_labels_aggregate_name_and_proficiency_references (matching.test_fr008_capability_evidence.TestVerifiedSkillIndex.test_duplicate_labels_aggregate_name_and_proficiency_references) ... ok
+test_synonyms_and_capability_tools_do_not_enter_career_skill_index (matching.test_fr008_capability_evidence.TestVerifiedSkillIndex.test_synonyms_and_capability_tools_do_not_enter_career_skill_index) ... ok
+test_unicode_whitespace_and_case_are_formatting_only (matching.test_fr008_capability_evidence.TestVerifiedSkillIndex.test_unicode_whitespace_and_case_are_formatting_only) ... ok
+test_unverified_names_and_narrative_values_are_not_skills (matching.test_fr008_capability_evidence.TestVerifiedSkillIndex.test_unverified_names_and_narrative_values_are_not_skills) ... ok
+test_unverified_proficiency_cannot_change_tier_or_add_references (matching.test_fr008_capability_evidence.TestVerifiedSkillIndex.test_unverified_proficiency_cannot_change_tier_or_add_references) ... ok
+test_verified_negative_assertions_do_not_create_positive_capabilities (matching.test_fr008_capability_evidence.TestVerifiedSkillIndex.test_verified_negative_assertions_do_not_create_positive_capabilities) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.832s
+
+OK

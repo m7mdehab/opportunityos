@@ -1,0 +1,21 @@
+test_no_employment_history_returns_none (matching.test_seniority.TestAssessmentEdgeCases.test_no_employment_history_returns_none) ... ok
+test_unspecified_required_level_does_not_meet_but_is_not_fabricated (matching.test_seniority.TestAssessmentEdgeCases.test_unspecified_required_level_does_not_meet_but_is_not_fabricated) ... ok
+test_explanation_names_months_family_level_and_gap (matching.test_seniority.TestExplain.test_explanation_names_months_family_level_and_gap) ... ok
+test_empty_graph_has_no_spans (matching.test_seniority.TestExtractEmploymentSpans.test_empty_graph_has_no_spans) ... ok
+test_title_without_start_date_produces_no_span (matching.test_seniority.TestExtractEmploymentSpans.test_title_without_start_date_produces_no_span) ... ok
+test_family_alias_restricts_to_matching_titles (matching.test_seniority.TestMonthsInFamily.test_family_alias_restricts_to_matching_titles) ... ok
+test_leadership_in_title_only_does_not_count (matching.test_seniority.TestPeopleLeadershipEvidence.test_leadership_in_title_only_does_not_count) ... ok
+test_leadership_present_in_responsibility_text_counts (matching.test_seniority.TestPeopleLeadershipEvidence.test_leadership_present_in_responsibility_text_counts) ... ok
+test_20_month_team_lead_title_earns_no_staff_strength (matching.test_seniority.TestShortTenureTeamLeadDoesNotMatchStaffPosting.test_20_month_team_lead_title_earns_no_staff_strength) ... ok
+test_enough_months_with_leadership_meets_staff (matching.test_seniority.TestStaffPrincipalRequireLeadership.test_enough_months_with_leadership_meets_staff) ... ok
+test_enough_months_without_leadership_still_fails_staff (matching.test_seniority.TestStaffPrincipalRequireLeadership.test_enough_months_without_leadership_still_fails_staff) ... ok
+test_concurrent_overlapping_roles_counted_once (matching.test_seniority.TestTotalProfessionalMonths.test_concurrent_overlapping_roles_counted_once) ... ok
+test_fails_one_month_under_mid_threshold (matching.test_seniority.TestTotalProfessionalMonths.test_fails_one_month_under_mid_threshold) ... ok
+test_internship_excluded_from_total_months (matching.test_seniority.TestTotalProfessionalMonths.test_internship_excluded_from_total_months) ... ok
+test_meets_one_month_over_mid_threshold (matching.test_seniority.TestTotalProfessionalMonths.test_meets_one_month_over_mid_threshold) ... ok
+test_meets_requirement_exactly_at_mid_threshold (matching.test_seniority.TestTotalProfessionalMonths.test_meets_requirement_exactly_at_mid_threshold) ... ok
+
+----------------------------------------------------------------------
+Ran 16 tests in 0.293s
+
+OK

@@ -1118,12 +1118,11 @@ rules:
 # `set` an Opportunity field, they classify lines of posting body text, so
 # they live in their own top-level key rather than the `rules:` list above.
 # Evaluated top-to-bottom per line, same convention as `rules:` above: the
-# most recently matched header (required or nice-to-have) governs every
-# subsequent line until the next header. Greenhouse and Lever both ship
-# headed HTML lists (`<h3>Requirements:</h3><ul><li>...`); a description
-# with no header match at all leaves every skill nice-to-have, the
-# conservative default -- inflating "required" inflates the founder's
-# apparent match.
+# most recently matched header (required, preference, or contextual) governs
+# subsequent lines until another header. Greenhouse and Lever ship headed
+# HTML lists (`<h3>Requirements:</h3><ul><li>...`). The new five-class
+# classifier leaves unheaded mentions UNKNOWN; the legacy two-set helper
+# below remains conservative and continues treating them as nice-to-have.
 skill_requirement_rules:
   required_headers:
   - id: header_requirements
@@ -1157,3 +1156,14 @@ skill_requirement_rules:
   - id: header_pluses
     pattern: (?i)^plus(?:es)?\s*:?\s*$
     description: '''Pluses:'' section heading.'
+  strongly_preferred_headers:
+  - id: header_strongly_preferred
+    pattern: (?i)^(?:strongly|highly|particularly)\s+preferred(?:\s+qualifications?|\s+skills?)?\s*:?\s*$
+    description: Explicit strong-preference section; preferred evidence must not become mandatory.
+  contextual_headers:
+  - id: header_responsibilities
+    pattern: (?i)^(?:what\s+you(?:'ll|\s+will)\s+do|responsibilities|your\s+responsibilities|the\s+role|about\s+the\s+role|role\s+overview)\s*:?\s*$
+    description: Role duties and overview provide context, not candidate requirements by themselves.
+  - id: header_company_context
+    pattern: (?i)^(?:about\s+us|about\s+(?:the\s+)?company|who\s+we\s+are|our\s+(?:company|mission|values|story|team))\s*:?\s*$
+    description: Company boilerplate is contextual; technologies mentioned here are not candidate requirements.

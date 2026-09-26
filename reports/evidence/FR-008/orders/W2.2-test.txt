@@ -1,0 +1,32 @@
+{"timestamp": "2026-09-25T04:55:49.256650+00:00", "level": "INFO", "logger": "opportunityos.worker.handlers", "message": "worker.evaluate_new_completed", "component": "worker.handlers", "data": {"truth_pack_hash": "truth-worker-retry", "evaluated_count": 1}}
+F.......F...........................
+======================================================================
+FAIL: test_hard_constraint_evidence_aliases_and_bounds (matching.test_models.TestMatchingModels.test_hard_constraint_evidence_aliases_and_bounds)
+----------------------------------------------------------------------
+ValueError: a hard-constraint result requires a valid job-side source pointer
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w22-evidence\matching\test_models.py", line 81, in test_hard_constraint_evidence_aliases_and_bounds
+    with self.assertRaisesRegex(ValueError, "confidence"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: "confidence" does not match "a hard-constraint result requires a valid job-side source pointer"
+
+======================================================================
+FAIL: test_ineligible_explicit_foreign_work_auth (matching.test_qualification.TestQualificationEngine.test_ineligible_explicit_foreign_work_auth)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w22-evidence\matching\test_qualification.py", line 308, in test_ineligible_explicit_foreign_work_auth
+    self.assertEqual(failed[0].job_evidence_text, "Must have valid work authorization in Germany")
+AssertionError: 'Must have valid work authorization in Germany without' != 'Must have valid work authorization in Germany'
+- Must have valid work authorization in Germany without
+?                                              --------
++ Must have valid work authorization in Germany
+
+
+----------------------------------------------------------------------
+Ran 36 tests in 7.854s
+
+FAILED (failures=2)
+EXIT_CODE=1

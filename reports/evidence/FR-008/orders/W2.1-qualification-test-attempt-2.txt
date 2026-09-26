@@ -1,0 +1,23 @@
+test_different_onsite_location_does_not_assume_relocation_refusal (matching.test_qualification.TestQualificationEngine.test_different_onsite_location_does_not_assume_relocation_refusal) ... ok
+test_ineligible_explicit_foreign_work_auth (matching.test_qualification.TestQualificationEngine.test_ineligible_explicit_foreign_work_auth) ... ok
+test_location_country_matching_founder_authorization_resolves_eligible (matching.test_qualification.TestQualificationEngine.test_location_country_matching_founder_authorization_resolves_eligible) ... ok
+test_location_country_unasserted_stays_uncertain_not_ineligible (matching.test_qualification.TestQualificationEngine.test_location_country_unasserted_stays_uncertain_not_ineligible) ... ok
+test_location_country_with_verified_negative_authorization_onsite_is_ineligible (matching.test_qualification.TestQualificationEngine.test_location_country_with_verified_negative_authorization_onsite_is_ineligible) ... ok
+test_location_country_with_verified_negative_authorization_remote_is_labelled_not_hard_failure (matching.test_qualification.TestQualificationEngine.test_location_country_with_verified_negative_authorization_remote_is_labelled_not_hard_failure) ... ok
+test_neither_country_nor_remote_scope_remains_uncertain (matching.test_qualification.TestQualificationEngine.test_neither_country_nor_remote_scope_remains_uncertain) ... ok
+test_qualified_remote_opportunity (matching.test_qualification.TestQualificationEngine.test_qualified_remote_opportunity) ... ok
+test_region_restricted_excluding_egypt_is_labelled_not_hidden (matching.test_qualification.TestQualificationEngine.test_region_restricted_excluding_egypt_is_labelled_not_hidden) ... ok
+test_region_restricted_including_egypt_resolves_eligible (matching.test_qualification.TestQualificationEngine.test_region_restricted_including_egypt_resolves_eligible) ... ok
+test_same_verified_residence_location_onsite_is_consistent (matching.test_qualification.TestQualificationEngine.test_same_verified_residence_location_onsite_is_consistent) ... ok
+test_status_only_legacy_geography_remains_uncertain (matching.test_qualification.TestQualificationEngine.test_status_only_legacy_geography_remains_uncertain) ... ok
+test_structured_worldwide_remote_overrides_legacy_exclusion_and_employer_country (matching.test_qualification.TestQualificationEngine.test_structured_worldwide_remote_overrides_legacy_exclusion_and_employer_country) ... ok
+test_uncertain_on_missing_opportunity_metadata (matching.test_qualification.TestQualificationEngine.test_uncertain_on_missing_opportunity_metadata) ... ok
+test_uncertain_on_unstated_work_authorization (matching.test_qualification.TestQualificationEngine.test_uncertain_on_unstated_work_authorization) ... ok
+test_unknown_is_not_false_authority_rule (matching.test_qualification.TestQualificationEngine.test_unknown_is_not_false_authority_rule) ... ok
+test_worldwide_remote_scope_resolves_eligible (matching.test_qualification.TestQualificationEngine.test_worldwide_remote_scope_resolves_eligible) ... ok
+
+----------------------------------------------------------------------
+Ran 17 tests in 0.024s
+
+OK
+COMMAND_EXIT_CODE=0

@@ -17,26 +17,61 @@ from opportunity.models import (
     EmploymentType,
     Opportunity,
     RemotePolicy,
+    RemoteScope,
     SeniorityLevel,
     Track,
+    WorkMode,
 )
+from opportunity.normalization import COUNTRY_ALIASES, extract_skills_from_text
 from truth import predicates
 from truth.graph import TruthGraph
-from truth.models import VerificationStatus
+from truth.models import CertificationState, Polarity, VerificationStatus
 
 from . import seniority
 from . import skills as skill_matching
 from .models import (
+    ConfidenceFactor,
     HardConstraintResult,
     MatchDimensionScore,
     MatchEvaluation,
     QualificationDecision,
     ScoringPolicy,
 )
+from .requirements import RequirementPriority
+from .requirements import classify_requirement_text
 from .qualification import QualificationEngine
 from .title_family import normalize_title
 
 _CURRENCY_THRESHOLD_RE = re.compile(r"^\s*([\d,]+(?:\.\d+)?)\s*([A-Za-z]{3})\s*$")
+_YEARS_EXPERIENCE_RE = re.compile(r"\b\d+(?:\s*(?:-|to)\s*\d+)?\s*\+?\s*years?\b", re.IGNORECASE)
+_AMBIGUOUS_EXPERIENCE_RE = re.compile(
+    r"\b(?:several|significant|extensive|substantial|considerable)\s+years?\b|"
+    r"\byears?\s+of\s+experience\b|\bexperienced\s+(?:professional|candidate|engineer|developer)\b",
+    re.IGNORECASE,
+)
+_DEGREE_CUE_RE = re.compile(
+    r"\b(?:degree|bachelor(?:'s|s)?|master(?:'s|s)?|mba|ph\.?d\.?|doctorate|doctoral|associate\s+degree)\b",
+    re.IGNORECASE,
+)
+_CERTIFICATION_CUE_RE = re.compile(
+    r"\b(?:certification|certificate|certified|licen[cs]e|pmp|cissp|cfa|cpa|ccna|cisa|aws\s+certified|"
+    r"azure\s+certified|google\s+cloud\s+certified)\b",
+    re.IGNORECASE,
+)
+_CREDENTIAL_NOISE_WORDS = frozenset({
+    "a", "an", "and", "or", "the", "of", "in", "with", "for", "to", "from",
+    "degree", "certification", "certificate", "certified", "license", "licence",
+    "required", "preferred", "strongly", "highly", "minimum", "qualification",
+    "qualifications", "hold", "held", "having", "equivalent", "plus", "desired",
+})
+_DEGREE_LEVEL_RANK = {"associate": 1, "bachelor": 2, "master": 3, "doctorate": 4}
+_DEGREE_ALIASES = {
+    "bachelor": "bachelor", "bachelors": "bachelor", "ba": "bachelor", "bs": "bachelor",
+    "bsc": "bachelor", "bba": "bachelor", "master": "master", "masters": "master",
+    "ma": "master", "ms": "master", "msc": "master", "mba": "master",
+    "phd": "doctorate", "doctorate": "doctorate", "doctoral": "doctorate",
+    "associate": "associate", "associates": "associate",
+}
 
 # Opportunity.seniority (opportunity/models.py's SeniorityLevel) has no
 # separate "staff" member; industry usage treats "Staff" and "Lead" as the
@@ -112,6 +147,561 @@ def _monthly_compensation(comp: Any) -> float | None:
     return None
 
 
+def _normalize_preference_value(value: Any) -> str:
+    """Normalize a categorical preference for exact, case-insensitive comparison."""
+    return " ".join(str(getattr(value, "value", value)).casefold().split())
+
+
+def _normalize_relocation_value(value: Any) -> str:
+    normalized = _normalize_preference_value(value).replace("_", " ")
+    if normalized in {"true", "yes", "required", "willing", "willing to relocate", "open to relocation", "open to relocate"}:
+        return "yes"
+    if normalized in {"false", "no", "not required", "no relocation", "unwilling", "unwilling to relocate", "not willing to relocate"}:
+        return "no"
+    return normalized
+
+
+def _normalize_time_zone(value: Any) -> str:
+    normalized = _normalize_preference_value(value).replace(" ", "")
+    match = re.fullmatch(r"(?:utc|gmt)([+-])(\d{1,2})(?::?(\d{2}))?", normalized)
+    if match:
+        sign, hours, minutes = match.groups()
+        return f"utc{sign}{int(hours):02d}:{minutes or '00'}"
+    return normalized
+
+
+def _normalize_geography_value(value: Any) -> str:
+    normalized = _normalize_preference_value(value)
+    return COUNTRY_ALIASES.get(normalized, normalized).casefold()
+
+
+def _normalize_track_preference(value: Any) -> str:
+    normalized = _normalize_preference_value(value)
+    return "independent" if normalized in {"independent", "procurement"} else normalized
+
+
+def _confidence_factors(
+    opp: Opportunity,
+    dimension_scores: list[MatchDimensionScore],
+    evaluated_at: str,
+) -> tuple[ConfidenceFactor, ...]:
+    """Return the seven brief-defined evidence-quality factors.
+
+    These intentionally simple thresholds are an inspectable interim heuristic,
+    equally averaged until reviewed Founder gold labels support calibration.
+    """
+    factors: list[ConfidenceFactor] = []
+
+    description_length = len((opp.description or "").strip())
+    if description_length >= 1200:
+        description_score = 100.0
+    elif description_length >= 600:
+        description_score = 85.0
+    elif description_length >= 250:
+        description_score = 70.0
+    elif description_length >= 80:
+        description_score = 50.0
+    else:
+        description_score = 25.0
+    factors.append(ConfidenceFactor(
+        name="description_completeness",
+        score=description_score,
+        explanation=f"Description has {description_length} characters; interim completeness bands are <80, 80–249, 250–599, 600–1199, and 1200+.",
+    ))
+
+    work_mode = getattr(opp.work_mode, "value", str(opp.work_mode))
+    remote_scope = getattr(opp.remote_scope, "value", str(opp.remote_scope))
+    has_location = bool(opp.location_country or opp.location_region or opp.location_city or opp.location_raw.strip())
+    location_text = (opp.location_raw or "").casefold()
+    if work_mode == WorkMode.REMOTE.value:
+        if remote_scope == RemoteScope.WORLDWIDE.value:
+            location_score, location_basis = 100.0, "worldwide remote scope is structured"
+        elif remote_scope == RemoteScope.REGION_RESTRICTED.value and opp.remote_scope_regions:
+            location_score, location_basis = 90.0, "region-restricted remote scope and regions are structured"
+        elif remote_scope == RemoteScope.REGION_RESTRICTED.value:
+            location_score, location_basis = 70.0, "remote scope is region-restricted but its regions are unstated"
+        elif any(cue in location_text for cue in ("worldwide", "global", "anywhere")):
+            location_score, location_basis = 80.0, "location text states worldwide availability but the remote-scope field is unspecified"
+        else:
+            location_score, location_basis = 50.0, "remote work is stated but its eligible scope is unspecified"
+    elif work_mode == WorkMode.HYBRID.value:
+        location_score, location_basis = (90.0, "hybrid mode and location are stated") if has_location else (40.0, "hybrid mode is stated but location is absent")
+    elif work_mode == WorkMode.ONSITE.value:
+        location_score, location_basis = (90.0, "on-site mode and location are stated") if has_location else (35.0, "on-site mode is stated but location is absent")
+    else:
+        location_score, location_basis = (55.0, "location is stated but work mode is unspecified") if has_location else (25.0, "work mode and location are unspecified")
+    factors.append(ConfidenceFactor(
+        name="location_remote_scope_clarity",
+        score=location_score,
+        explanation=location_basis,
+    ))
+
+    experience_text = " ".join((opp.title, opp.description, *opp.requirements)).casefold()
+    if _YEARS_EXPERIENCE_RE.search(experience_text):
+        experience_score, experience_basis = 95.0, "a numeric years-of-experience threshold is present"
+    elif _AMBIGUOUS_EXPERIENCE_RE.search(experience_text):
+        experience_score, experience_basis = 40.0, "experience is described with an unquantified phrase"
+    elif opp.seniority != SeniorityLevel.UNSPECIFIED or normalize_title(opp.title)[1] in seniority.THRESHOLDS_BY_LEVEL:
+        experience_score, experience_basis = 75.0, "a seniority level is stated but no numeric years threshold is available"
+    else:
+        experience_score, experience_basis = 50.0, "no explicit years threshold or comparable seniority level is stated"
+    factors.append(ConfidenceFactor(
+        name="experience_requirement_clarity",
+        score=experience_score,
+        explanation=experience_basis,
+    ))
+
+    extracted_skills = extract_skills_from_text(
+        " ".join((opp.description or "", *opp.requirements))
+    )
+    if opp.skills:
+        skill_score, skill_basis = 95.0, f"{len(opp.skills)} structured required skill(s) are available"
+    elif opp.requirements and extracted_skills:
+        skill_score, skill_basis = 70.0, f"no structured skill list; {len(extracted_skills)} skill(s) were extracted from requirements/description"
+    elif extracted_skills:
+        skill_score, skill_basis = 55.0, f"no structured skill list; {len(extracted_skills)} skill(s) were extracted from description text"
+    else:
+        skill_score, skill_basis = 25.0, "no structured or reliably extracted required skills are available"
+    factors.append(ConfidenceFactor(
+        name="required_skill_extraction_reliability",
+        score=skill_score,
+        explanation=skill_basis,
+    ))
+
+    compensation = opp.compensation
+    if (
+        compensation is not None
+        and compensation.min_amount is not None
+        and bool(compensation.currency)
+        and compensation.interval != CompensationInterval.UNSPECIFIED
+    ):
+        compensation_score, compensation_basis = 100.0, "amount, currency, and interval are all stated"
+    elif compensation is not None and any((
+        compensation.min_amount is not None,
+        compensation.max_amount is not None,
+        bool(compensation.currency),
+        compensation.interval != CompensationInterval.UNSPECIFIED,
+    )):
+        compensation_score, compensation_basis = 50.0, "compensation is partially stated; amount, currency, or interval is missing"
+    else:
+        compensation_score, compensation_basis = 25.0, "compensation is not stated"
+    factors.append(ConfidenceFactor(
+        name="compensation_completeness",
+        score=compensation_score,
+        explanation=compensation_basis,
+    ))
+
+    provenance = opp.raw_provenance
+    if provenance is None:
+        freshness_score, strength_score = 20.0, 20.0
+        freshness_basis = "source fetch timestamp is unavailable"
+        strength_basis = "source provenance is unavailable"
+    else:
+        try:
+            evaluation_date = date.fromisoformat(str(evaluated_at)[:10])
+            fetched_date = date.fromisoformat(provenance.fetched_at[:10])
+            age_days = max(0, (evaluation_date - fetched_date).days)
+            if age_days <= 7:
+                freshness_score = 100.0
+            elif age_days <= 30:
+                freshness_score = 80.0
+            elif age_days <= 90:
+                freshness_score = 55.0
+            elif age_days <= 180:
+                freshness_score = 35.0
+            else:
+                freshness_score = 15.0
+            freshness_basis = f"source was fetched {age_days} day(s) before evaluation; interim freshness bands are 7/30/90/180 days"
+        except (TypeError, ValueError):
+            freshness_score = 40.0
+            freshness_basis = "source fetch or evaluation date could not be parsed"
+        source_fields = (
+            bool(provenance.source_id),
+            bool(provenance.source_url or opp.source_url),
+            bool(provenance.feed_url),
+            bool(provenance.raw_pointer or opp.raw_record_pointer),
+            bool(provenance.payload_checksum or provenance.feed_checksum or opp.record_checksum),
+        )
+        present_source_fields = sum(source_fields)
+        strength_score = 20.0 + (present_source_fields * 16.0)
+        strength_basis = f"{present_source_fields}/5 source identity, URL, feed, raw-pointer, and checksum provenance signals are present"
+    factors.append(ConfidenceFactor(
+        name="source_freshness_and_strength",
+        score=round((freshness_score + strength_score) / 2.0, 2),
+        explanation=f"Freshness: {freshness_basis}; strength: {strength_basis}.",
+    ))
+
+    capability_dimensions = (
+        {"service_capabilities", "scope_complexity", "portfolio_evidence"}
+        if opp.track == Track.PROCUREMENT
+        else {
+            "core_skills", "experience_fit", "seniority_fit", "responsibility_scope",
+            "domain_fit", "title_family_fit", "education_certification_fit",
+        }
+    )
+    relevant_dimensions = [
+        dimension for dimension in dimension_scores
+        if dimension.dimension_name in capability_dimensions
+    ]
+    if not relevant_dimensions:
+        founder_evidence_score = 50.0
+        founder_evidence_basis = "no relevant capability dimensions were produced"
+    else:
+        completeness_scores = []
+        for dimension in relevant_dimensions:
+            if dimension.unknowns and not dimension.evidence_refs:
+                completeness_scores.append(35.0)
+            elif dimension.unknowns:
+                completeness_scores.append(65.0)
+            elif dimension.evidence_refs:
+                completeness_scores.append(95.0)
+            else:
+                completeness_scores.append(55.0)
+        founder_evidence_score = round(sum(completeness_scores) / len(completeness_scores), 2)
+        incomplete_count = sum(score < 95.0 for score in completeness_scores)
+        founder_evidence_basis = (
+            f"{incomplete_count}/{len(relevant_dimensions)} relevant capability dimension(s) have incomplete or unreferenced Founder evidence"
+        )
+    factors.append(ConfidenceFactor(
+        name="founder_evidence_completeness",
+        score=founder_evidence_score,
+        explanation=founder_evidence_basis,
+    ))
+
+    return tuple(factors)
+
+
+def _verified_positive_assertions(truth_graph: TruthGraph, predicate_names: set[str]) -> tuple[Any, ...]:
+    return tuple(
+        assertion for assertion in truth_graph.assertions.values()
+        if assertion.predicate in predicate_names
+        and assertion.verification_status == VerificationStatus.VERIFIED
+        and assertion.polarity == Polarity.POSITIVE
+    )
+
+
+def _structured_attributes(opp: Opportunity) -> dict[str, str]:
+    return {
+        str(key).casefold().strip(): str(value).strip()
+        for key, value in opp.extra_attributes
+        if str(key).strip() and str(value).strip()
+    }
+
+
+def _asserted_preference_dimension(
+    *,
+    dimension_name: str,
+    label: str,
+    assertions: tuple[Any, ...],
+    job_values: tuple[str, ...],
+    opportunity_fields: tuple[str, ...],
+    worldwide_remote: bool = False,
+) -> MatchDimensionScore | None:
+    """Build a diagnostic preference dimension from verified assertions and
+    structured job values only. An absent/incomparable side is unknown and
+    has no effect on preference_score or capability scoring.
+    """
+    if not assertions:
+        return None
+    normalizer = _normalize_preference_value
+    if dimension_name == "preference_relocation":
+        normalizer = _normalize_relocation_value
+    elif dimension_name == "preference_time_zone":
+        normalizer = _normalize_time_zone
+    elif dimension_name == "preference_geography":
+        normalizer = _normalize_geography_value
+    elif dimension_name == "preference_track":
+        normalizer = _normalize_track_preference
+    founder_values = {
+        normalizer(assertion.value)
+        for assertion in assertions
+        if assertion.value is not None and normalizer(assertion.value)
+    }
+    normalized_job_values = {normalizer(value) for value in job_values if value}
+    refs = tuple(assertion.id for assertion in assertions)
+    if not founder_values:
+        return MatchDimensionScore(
+            dimension_name=dimension_name,
+            raw_score=0.5,
+            weight=0.0,
+            weighted_score=0.0,
+            explanation=f"{label} preference assertion has no comparable value.",
+            unknowns=(f"Verified {label.casefold()} preference has no comparable value",),
+            evidence_refs=refs,
+            opportunity_field_refs=opportunity_fields,
+        )
+    if not normalized_job_values:
+        return MatchDimensionScore(
+            dimension_name=dimension_name,
+            raw_score=0.5,
+            weight=0.0,
+            weighted_score=0.0,
+            explanation=f"{label} preference cannot be compared because the structured job field is unstated.",
+            unknowns=(f"Structured opportunity {label.casefold()} is unstated",),
+            evidence_refs=refs,
+            opportunity_field_refs=opportunity_fields,
+        )
+
+    matched = bool(founder_values & normalized_job_values) or (
+        worldwide_remote and "worldwide" in normalized_job_values
+    ) or "worldwide" in founder_values
+    if matched:
+        return MatchDimensionScore(
+            dimension_name=dimension_name,
+            raw_score=1.0,
+            weight=0.0,
+            weighted_score=0.0,
+            explanation=f"Structured opportunity {label.casefold()} matches a verified Founder preference.",
+            strengths=(f"{label} preference match",),
+            evidence_refs=refs,
+            opportunity_field_refs=opportunity_fields,
+        )
+    return MatchDimensionScore(
+        dimension_name=dimension_name,
+        raw_score=0.2,
+        weight=0.0,
+        weighted_score=0.0,
+        explanation=f"Structured opportunity {label.casefold()} does not match a verified Founder preference.",
+        gaps=(f"{label} preference mismatch",),
+        evidence_refs=refs,
+        opportunity_field_refs=opportunity_fields,
+    )
+
+
+def _asserted_preference_dimensions(opp: Opportunity, truth_graph: TruthGraph) -> list[MatchDimensionScore]:
+    """Score preference categories whose asserted preference exists.
+
+    Job-side values are strictly sourced from typed Opportunity fields or
+    explicit extra_attributes; title/description text is never used here.
+    """
+    attrs = _structured_attributes(opp)
+
+    def values_for(*keys: str) -> tuple[str, ...]:
+        return tuple(attrs[key.casefold()] for key in keys if attrs.get(key.casefold()))
+
+    categories = (
+        (
+            "preference_track", "Opportunity track",
+            {predicates.PREFERENCE_TRACK},
+            ("independent" if opp.track == Track.PROCUREMENT else "employment",),
+            ("track",), False,
+        ),
+        (
+            "preference_work_mode", "Work mode",
+            {predicates.PREFERENCE_WORK_MODE},
+            (_normalize_preference_value(opp.work_mode),)
+            if _normalize_preference_value(opp.work_mode) != "unspecified" else (),
+            ("work_mode",), False,
+        ),
+        (
+            "preference_employment_type", "Employment type",
+            {predicates.PREFERENCE_EMPLOYMENT_TYPE},
+            (_normalize_preference_value(opp.employment_type),)
+            if _normalize_preference_value(opp.employment_type) != "unspecified" else (),
+            ("employment_type",), False,
+        ),
+        (
+            "preference_geography", "Geography",
+            {predicates.PREFERENCE_GEOGRAPHY},
+            tuple(value for value in (
+                opp.location_country, opp.location_region, opp.location_city,
+                *opp.remote_scope_regions,
+                "worldwide" if _normalize_preference_value(opp.remote_scope) == "worldwide" else "",
+            ) if value),
+            ("location_country", "location_region", "location_city", "remote_scope_regions"),
+            _normalize_preference_value(opp.remote_scope) == "worldwide",
+        ),
+        (
+            "preference_relocation", "Relocation",
+            {predicates.PREFERENCE_RELOCATION},
+            values_for("relocation_required", "relocation"),
+            ("extra_attributes.relocation_required", "extra_attributes.relocation"), False,
+        ),
+        (
+            "preference_industry", "Industry",
+            {predicates.PREFERENCE_INDUSTRY},
+            values_for("industry"),
+            ("extra_attributes.industry",), False,
+        ),
+        (
+            "preference_company", "Company",
+            {predicates.PREFERENCE_COMPANY},
+            tuple(value for value in (opp.organization, *values_for("company", "company_name")) if value),
+            ("organization", "extra_attributes.company"), False,
+        ),
+        (
+            "preference_time_zone", "Time-zone",
+            {predicates.PREFERENCE_TIME_ZONE},
+            values_for("time_zone", "timezone", "time_zone_overlap"),
+            ("extra_attributes.time_zone", "extra_attributes.time_zone_overlap"), False,
+        ),
+        (
+            "preference_travel", "Travel",
+            {predicates.PREFERENCE_TRAVEL},
+            values_for("travel_expectation", "travel_required", "travel"),
+            ("extra_attributes.travel_expectation", "extra_attributes.travel_required"), False,
+        ),
+    )
+
+    scores: list[MatchDimensionScore] = []
+    for name, label, predicate_names, job_values, fields, worldwide_remote in categories:
+        assertion_group = _verified_positive_assertions(truth_graph, predicate_names)
+        if name == "preference_track":
+            assertion_group = tuple(
+                assertion for assertion in assertion_group
+                if _normalize_track_preference(assertion.value) in {"employment", "independent"}
+            )
+        score = _asserted_preference_dimension(
+            dimension_name=name,
+            label=label,
+            assertions=assertion_group,
+            job_values=job_values,
+            opportunity_fields=fields,
+            worldwide_remote=worldwide_remote,
+        )
+        if score is not None:
+            scores.append(score)
+    return scores
+
+
+def _parse_compensation_preference(value: Any) -> tuple[float, str, str] | None:
+    """Parse a Founder-authored minimum as '<amount> ISO interval'."""
+    if isinstance(value, dict):
+        try:
+            amount = float(value["min_amount"])
+            currency = str(value["currency"]).upper().strip()
+            interval = str(value["interval"]).casefold().strip()
+        except (KeyError, TypeError, ValueError):
+            return None
+    else:
+        match = re.fullmatch(
+            r"\s*([\d,]+(?:\.\d+)?)\s+([A-Za-z]{3})\s+(hourly|daily|weekly|monthly|yearly|annual|project)\s*",
+            str(value), re.IGNORECASE,
+        )
+        if not match:
+            return None
+        amount_text, currency, interval = match.groups()
+        try:
+            amount = float(amount_text.replace(",", ""))
+        except ValueError:
+            return None
+        currency = currency.upper()
+        interval = interval.casefold()
+    if interval == "annual":
+        interval = "yearly"
+    if amount < 0 or len(currency) != 3 or interval not in {item.value for item in CompensationInterval}:
+        return None
+    return amount, currency, interval
+
+
+def _credential_kind(text: str) -> str | None:
+    """Return the credential family only when the posting names one."""
+    if _DEGREE_CUE_RE.search(text):
+        return "education"
+    if _CERTIFICATION_CUE_RE.search(text):
+        return "certification"
+    return None
+
+
+def _credential_requirement_items(opp: Opportunity) -> tuple[tuple[str, str, RequirementPriority], ...]:
+    """Extract explicit posting-side education/certification requirements.
+
+    Structured requirements carry their source-section context. Free
+    description text must state a priority itself or appear beneath an
+    applicant-facing requirements/preferred heading; an incidental credential
+    mention in company context is not promoted into a requirement.
+    """
+    items: list[tuple[str, str, RequirementPriority]] = []
+    seen: set[tuple[str, str]] = set()
+    applicable_priorities = {
+        RequirementPriority.MANDATORY,
+        RequirementPriority.STRONGLY_PREFERRED,
+        RequirementPriority.NICE_TO_HAVE,
+    }
+
+    def add(text: str, source_section: str | RequirementPriority | None) -> None:
+        kind = _credential_kind(text)
+        if not kind:
+            return
+        priority = classify_requirement_text(text, source_section=source_section)
+        if priority not in applicable_priorities:
+            return
+        key = (kind, " ".join(text.casefold().split()))
+        if key not in seen:
+            seen.add(key)
+            items.append((kind, text.strip(" -*•\t"), priority))
+
+    for requirement in opp.requirements:
+        add(requirement, "requirements")
+
+    section_priority: RequirementPriority | None = None
+    for raw_line in (opp.description or "").splitlines():
+        line = raw_line.strip().lstrip("-*• ").strip()
+        if not line:
+            continue
+        heading = line.rstrip(":").casefold()
+        if len(heading) <= 90 and not _credential_kind(line):
+            if re.search(r"\b(?:strongly|highly) preferred\b", heading):
+                section_priority = RequirementPriority.STRONGLY_PREFERRED
+                continue
+            if re.search(r"\b(?:preferred|nice to have|bonus|desired)\b", heading):
+                section_priority = RequirementPriority.NICE_TO_HAVE
+                continue
+            if re.search(r"\b(?:requirements?|minimum qualifications?|what you(?:'ll| will) need|qualifications)\b", heading):
+                section_priority = RequirementPriority.MANDATORY
+                continue
+            if line.endswith(":"):
+                section_priority = None
+                continue
+
+        for sentence in re.split(r"(?<=[.!?])\s+", line):
+            add(sentence, section_priority)
+
+    return tuple(items)
+
+
+def _credential_tokens(text: str) -> frozenset[str]:
+    return frozenset(
+        token for token in re.findall(r"[a-z0-9]+", text.casefold())
+        if token not in _CREDENTIAL_NOISE_WORDS and len(token) > 1
+    )
+
+
+def _degree_level(text: str) -> str | None:
+    tokens = re.findall(r"[a-z0-9]+", text.casefold())
+    for token in tokens:
+        level = _DEGREE_ALIASES.get(token)
+        if level:
+            return level
+    return None
+
+
+def _credential_requirement_matches(kind: str, requirement: str, founder_credential: str) -> bool:
+    """Match only directly named, verified credentials; unlisted facts stay unknown."""
+    requirement_tokens = _credential_tokens(requirement)
+    founder_tokens = _credential_tokens(founder_credential)
+    if not requirement_tokens or not founder_tokens:
+        return False
+
+    if kind == "education":
+        required_level = _degree_level(requirement)
+        founder_level = _degree_level(founder_credential)
+        if required_level:
+            if not founder_level or _DEGREE_LEVEL_RANK[founder_level] < _DEGREE_LEVEL_RANK[required_level]:
+                return False
+            requirement_tokens = frozenset(
+                token for token in requirement_tokens if token not in _DEGREE_ALIASES
+            )
+            founder_tokens = frozenset(
+                token for token in founder_tokens if token not in _DEGREE_ALIASES
+            )
+            if not requirement_tokens:
+                return True
+        return requirement_tokens.issubset(founder_tokens)
+
+    return requirement_tokens.issubset(founder_tokens)
+
+
 class OpportunityScorer:
     """Evaluates multidimensional fit and ranking for opportunities against founder truth."""
 
@@ -132,9 +722,61 @@ class OpportunityScorer:
         else:
             dim_scores, uncertainty = self._score_employment(opp, truth_graph, evaluated_at)
 
-        # Calculate weighted overall score
-        total_weighted = sum(ds.weighted_score for ds in dim_scores)
-        overall_score = max(0.0, min(100.0, (total_weighted - (uncertainty * self.policy.uncertainty_penalty_weight)) * 100.0))
+        dim_scores.extend(_asserted_preference_dimensions(opp, truth_graph))
+        compensation_preference = self._score_asserted_compensation_preference(opp, truth_graph)
+        if compensation_preference is not None:
+            dim_scores.append(compensation_preference)
+
+        # Objective fit uses capability dimensions only. Preference dimensions,
+        # qualification-only geography, and procurement compliance never enter
+        # this aggregate. Normalize over the active capability weights so
+        # uncalibrated zero-weight W3.1 dimensions remain visible without
+        # reducing the score's range.
+        capability_dimensions = (
+            {"service_capabilities", "scope_complexity", "portfolio_evidence"}
+            if opp.track == Track.PROCUREMENT
+            else {
+                "core_skills", "experience_fit", "seniority_fit", "responsibility_scope",
+                "domain_fit", "title_family_fit", "education_certification_fit",
+            }
+        )
+        active_capability = [
+            ds for ds in dim_scores
+            if ds.dimension_name in capability_dimensions and ds.weight > 0.0
+        ]
+        capability_weight = sum(ds.weight for ds in active_capability)
+        capability_fit = (
+            sum(ds.weighted_score for ds in active_capability) / capability_weight
+            if capability_weight > 0.0 else 0.5
+        )
+        # Unknown evidence is reported separately through uncertainty and the
+        # confidence factors. It is not an assumed capability shortfall.
+        overall_score = max(0.0, min(100.0, capability_fit * 100.0))
+
+        preference_components = [
+            ds for ds in dim_scores
+            if ds.dimension_name == "target_role_family_preference"
+            and ds.evidence_refs and (ds.strengths or ds.gaps)
+        ]
+        preference_components.extend(
+            ds for ds in dim_scores
+            if ds.dimension_name == "compensation_fit"
+            and compensation_preference is None
+            and ds.evidence_refs and (ds.strengths or ds.gaps)
+        )
+        preference_components.extend(
+            ds for ds in dim_scores
+            if ds.dimension_name.startswith("preference_")
+            and ds.evidence_refs and (ds.strengths or ds.gaps)
+        )
+        preference_score = (
+            round(sum(ds.raw_score for ds in preference_components) / len(preference_components) * 100.0, 2)
+            if preference_components else None
+        )
+        confidence_factors = _confidence_factors(opp, dim_scores, evaluated_at)
+        confidence_score = round(
+            sum(factor.score for factor in confidence_factors) / len(confidence_factors), 2,
+        ) if confidence_factors else 0.0
 
         # If hard failure occurred and auto-rejection is enabled, cap score
         if qual_decision == QualificationDecision.INELIGIBLE:
@@ -158,6 +800,8 @@ class OpportunityScorer:
         explanation_parts = [
             f"Qualification: {qual_decision.value.upper()}.",
             f"Overall Fit Score: {round(overall_score, 1)}/100.",
+            f"Preference Score: {round(preference_score, 1)}/100." if preference_score is not None else "Preference Score: no comparable stated preferences.",
+            f"Confidence Score: {confidence_score}/100 (interim heuristic; not gold-set calibrated).",
             f"Strengths: {len(strengths)} identified.",
             f"Gaps: {len(gaps)} identified.",
             f"Unknowns: {len(unknowns)} identified.",
@@ -182,6 +826,86 @@ class OpportunityScorer:
             policy_version=self.policy.version,
             evaluated_at=evaluated_at,
             score_breakdown=breakdown,
+            preference_score=preference_score,
+            confidence_score=confidence_score,
+            confidence_factors=confidence_factors,
+        )
+
+    def _score_asserted_compensation_preference(
+        self, opp: Opportunity, truth_graph: TruthGraph,
+    ) -> MatchDimensionScore | None:
+        assertions = _verified_positive_assertions(truth_graph, {predicates.PREFERENCE_COMPENSATION})
+        if not assertions:
+            return None
+        comp = opp.compensation
+        parsed = [
+            (assertion, _parse_compensation_preference(assertion.value))
+            for assertion in assertions
+        ]
+        usable = [(assertion, preference) for assertion, preference in parsed if preference is not None]
+        refs = tuple(assertion.id for assertion in assertions)
+        if comp is None or comp.min_amount is None:
+            return MatchDimensionScore(
+                dimension_name="preference_compensation",
+                raw_score=0.5,
+                weight=0.0,
+                weighted_score=0.0,
+                explanation="Founder compensation preference cannot be compared because the posting omits compensation.",
+                unknowns=("Opportunity compensation is unstated",),
+                evidence_refs=refs,
+                opportunity_field_refs=("compensation",),
+            )
+        if not usable:
+            return MatchDimensionScore(
+                dimension_name="preference_compensation",
+                raw_score=0.5,
+                weight=0.0,
+                weighted_score=0.0,
+                explanation="Founder compensation preference has no supported amount/currency/interval value.",
+                unknowns=("Compensation preference is not in the comparable amount/currency/interval form",),
+                evidence_refs=refs,
+                opportunity_field_refs=("compensation",),
+            )
+        comp_currency = (comp.currency or "").upper().strip()
+        comp_interval = _normalize_preference_value(comp.interval)
+        comparable = [
+            (assertion, preference) for assertion, preference in usable
+            if preference[1] == comp_currency and preference[2] == comp_interval
+        ]
+        if not comparable:
+            return MatchDimensionScore(
+                dimension_name="preference_compensation",
+                raw_score=0.5,
+                weight=0.0,
+                weighted_score=0.0,
+                explanation="Founder compensation preference and posting use different currencies or intervals.",
+                unknowns=("Compensation preference and opportunity are not currency/interval comparable",),
+                evidence_refs=refs,
+                opportunity_field_refs=("compensation",),
+            )
+        max_amount = comp.max_amount if comp.max_amount is not None else comp.min_amount
+        matched = [item for item in comparable if max_amount >= item[1][0]]
+        if matched:
+            matched_refs = tuple(assertion.id for assertion, _ in matched)
+            return MatchDimensionScore(
+                dimension_name="preference_compensation",
+                raw_score=1.0,
+                weight=0.0,
+                weighted_score=0.0,
+                explanation="Opportunity compensation meets a verified minimum Founder preference.",
+                strengths=("Compensation preference met",),
+                evidence_refs=matched_refs,
+                opportunity_field_refs=("compensation",),
+            )
+        return MatchDimensionScore(
+            dimension_name="preference_compensation",
+            raw_score=0.2,
+            weight=0.0,
+            weighted_score=0.0,
+            explanation="Opportunity compensation is below every comparable verified minimum Founder preference.",
+            gaps=("Compensation preference not met",),
+            evidence_refs=tuple(assertion.id for assertion, _ in comparable),
+            opportunity_field_refs=("compensation",),
         )
 
     def _score_employment(
@@ -201,24 +925,36 @@ class OpportunityScorer:
         # strength additionally requires the posting to have listed that skill
         # as *required* (opportunity/inference_rules.yaml headed-list rules),
         # not merely nice-to-have.
-        skill_name_assertions = [
-            a for a in truth_graph.assertions.values()
-            if a.predicate == predicates.SKILL_NAME and a.verification_status == VerificationStatus.VERIFIED
-        ]
-        skill_proficiency_by_subject = {
-            a.subject_id: skill_matching.normalize_proficiency(str(a.value) if a.value is not None else None)
-            for a in truth_graph.assertions.values()
-            if a.predicate == predicates.SKILL_PROFICIENCY
-        }
-        founder_skills_by_name: dict[str, tuple[str | None, tuple[str, ...]]] = {}
-        for a in skill_name_assertions:
-            name_key = str(a.value).casefold()
-            proficiency = skill_proficiency_by_subject.get(a.subject_id)
-            existing = founder_skills_by_name.get(name_key)
-            if existing is None or (existing[0] is None and proficiency is not None):
-                founder_skills_by_name[name_key] = (proficiency, a.evidence_ids)
+        founder_skills_by_name = skill_matching.build_verified_skill_index(
+            truth_graph.assertions.values(),
+        )
 
-        opp_skills = [s.casefold() for s in opp.skills]
+        raw_skill_names = tuple(dict.fromkeys((
+            *opp.skills,
+            *extract_skills_from_text(opp.description),
+        )))
+        all_opp_skills = [
+            normalized for raw in raw_skill_names
+            if (normalized := skill_matching.normalize_skill_label(raw))
+        ]
+        all_skill_priorities = skill_matching.classify_skill_priorities(
+            opp.description, tuple(raw_skill_names),
+        )
+        candidate_priorities = {
+            RequirementPriority.MANDATORY,
+            RequirementPriority.STRONGLY_PREFERRED,
+            RequirementPriority.NICE_TO_HAVE,
+        }
+        skill_priorities = {
+            skill: all_skill_priorities.get(skill, RequirementPriority.UNKNOWN)
+            for skill in all_opp_skills
+            if all_skill_priorities.get(skill, RequirementPriority.UNKNOWN) in candidate_priorities
+        }
+        opp_skills = tuple(skill_priorities)
+        required_skills = frozenset(
+            skill for skill, priority in skill_priorities.items()
+            if priority == RequirementPriority.MANDATORY
+        )
         if not founder_skills_by_name:
             if opp_skills:
                 skill_ratio = 0.0
@@ -232,17 +968,20 @@ class OpportunityScorer:
                 skill_ratio = 0.5
                 skill_strengths = ()
                 skill_gaps = ()
-                skill_unknowns = ("No explicit skills in opportunity or founder truth graph",)
+                if all_opp_skills:
+                    skill_unknowns = (
+                        "Posting mentions skills without candidate requirement or preference evidence; priority is unknown or contextual.",
+                    )
+                else:
+                    skill_unknowns = ("No explicit skills in opportunity or founder truth graph",)
                 skill_ev_refs = ()
                 skill_explanation = "No explicit skills specified in posting."
                 uncertainty_acc += 0.3
         else:
             if opp_skills:
-                required_skills, _nice_to_have_skills = skill_matching.split_required_and_nice_to_have(
-                    opp.description, tuple(opp.skills),
-                )
                 skill_evals = skill_matching.evaluate_skill_matches(
                     tuple(opp_skills), required_skills, founder_skills_by_name,
+                    priorities=skill_priorities,
                 )
                 strength_matches = [m for m in skill_evals if m.is_strength]
                 partial_matches = [m for m in skill_evals if m.is_partial]
@@ -259,14 +998,17 @@ class OpportunityScorer:
                 skill_gaps = tuple(
                     (
                         f"Unverified skill requirement: {m.name.title()}" if m.required
-                        else f"Nice-to-have skill not in founder pack: {m.name.title()}"
+                        else f"{m.priority.value.replace('_', ' ').title()} skill not in founder pack: {m.name.title()}"
                     )
                     for m in gap_matches
                 )
                 skill_unknowns = tuple(
                     (
                         f"Partial skill signal: {m.name.title()} ({m.proficiency or 'unknown'} proficiency; "
-                        + ("required, below working proficiency" if m.required else "nice-to-have match")
+                        + (
+                            "required, below working proficiency" if m.required
+                            else f"{m.priority.value.replace('_', ' ')} match"
+                        )
                         + ") -- not a core-skill strength"
                     )
                     for m in partial_matches
@@ -295,14 +1037,15 @@ class OpportunityScorer:
             gaps=skill_gaps,
             unknowns=skill_unknowns,
             evidence_refs=skill_ev_refs,
-            opportunity_field_refs=("skills",) if opp_skills else (),
+            opportunity_field_refs=("skills", "description") if opp_skills else (),
         ))
 
-        # 2. Experience & Seniority Fit -- derived from the truth graph's actual
-        # employment tenure and verified people-leadership evidence (ADR-0016),
-        # never from a title-keyword substring test. See matching/seniority.py.
+        # 2. Verified professional experience against the role's tenure floor.
         opp_level = opp.seniority
         required_level = _REQUIRED_LEVEL_BY_OPP_SENIORITY.get(opp_level)
+        posting_title_level = normalize_title(opp.title)[1]
+        if required_level is None and posting_title_level in seniority.THRESHOLDS_BY_LEVEL:
+            required_level = posting_title_level
         family_aliases = _family_aliases_from_title(opp.title)
         try:
             as_of = date.fromisoformat(evaluated_at)
@@ -317,70 +1060,161 @@ class OpportunityScorer:
         family_label = family_aliases[0] if family_aliases else "the opportunity's role family"
 
         if assessment is None:
-            seniority_score = 0.5
-            seniority_strengths = ()
-            seniority_gaps = ()
-            seniority_unknowns = (
+            experience_score = 0.5
+            experience_strengths = ()
+            experience_gaps = ()
+            experience_unknowns = (
                 "No verified employment record (title + start date) in founder truth graph",
             )
-            seniority_ev_refs = ()
-            seniority_explanation = (
-                f"Seniority requirement evaluated as {opp_level.value.title()}; founder truth graph has no "
+            experience_ev_refs = ()
+            experience_explanation = (
+                f"Experience requirement evaluated as {opp_level.value.title()}; founder truth graph has no "
                 "verified employment record with both a title and a start date to compute tenure from."
             )
             uncertainty_acc += 0.3
         elif required_level is None:
-            seniority_score = 0.7
-            seniority_strengths = ()
-            seniority_gaps = ()
-            seniority_unknowns = ("Opportunity seniority unspecified",)
-            seniority_ev_refs = assessment.tenure_evidence_refs
-            seniority_explanation = seniority.explain(assessment, family_label=family_label)
+            experience_score = 0.7
+            experience_strengths = ()
+            experience_gaps = ()
+            experience_unknowns = ("Opportunity does not specify a seniority or years-of-experience threshold",)
+            experience_ev_refs = assessment.tenure_evidence_refs
+            experience_explanation = seniority.explain(assessment, family_label=family_label)
             uncertainty_acc += 0.1
         else:
-            seniority_ev_refs = tuple(sorted(set(assessment.tenure_evidence_refs) | set(assessment.leadership_evidence_refs)))
-            seniority_explanation = seniority.explain(assessment, family_label=family_label)
-            if assessment.meets_requirement:
-                seniority_score = 1.0
-                seniority_strengths = (
-                    f"Seniority alignment: {assessment.requirement.level.title()} requirement met with "
-                    f"{assessment.total_months} verified professional month(s)"
-                    + (", including verified people-leadership evidence" if assessment.requirement.requires_leadership else "")
-                    + ".",
+            experience_ev_refs = assessment.tenure_evidence_refs
+            experience_explanation = seniority.explain(assessment, family_label=family_label)
+            if assessment.months_gap == 0:
+                experience_score = 1.0
+                experience_strengths = (
+                    f"Verified professional experience: {assessment.total_months} month(s) meets the "
+                    f"{assessment.requirement.level.title()} threshold of {assessment.requirement.months_floor} month(s).",
                 )
-                seniority_gaps = ()
-                seniority_unknowns = ()
+                experience_gaps = ()
+                experience_unknowns = ()
             else:
-                seniority_score = 0.35
-                seniority_strengths = ()
-                if assessment.months_gap > 0:
-                    seniority_gaps = (
-                        f"Role requires {assessment.requirement.level.title()} "
-                        f"({assessment.requirement.months_floor}+ verified professional months); founder has "
-                        f"{assessment.total_months}, a gap of {assessment.months_gap} month(s)",
-                    )
-                else:
-                    seniority_gaps = (
-                        f"Role requires {assessment.requirement.level.title()}, which also requires verified "
-                        "people-leadership evidence from responsibilities/achievements; none found",
-                    )
-                seniority_unknowns = ()
+                experience_score = 0.35
+                experience_strengths = ()
+                experience_gaps = (
+                    f"Role requires {assessment.requirement.level.title()} "
+                    f"({assessment.requirement.months_floor}+ verified professional months); founder has "
+                    f"{assessment.total_months}, a gap of {assessment.months_gap} month(s)",
+                )
+                experience_unknowns = ()
 
         w_exp = weights.get("experience", 0.20)
         scores.append(MatchDimensionScore(
-            dimension_name="seniority_and_experience",
-            raw_score=seniority_score,
+            dimension_name="experience_fit",
+            raw_score=experience_score,
             weight=w_exp,
-            weighted_score=seniority_score * w_exp,
-            explanation=seniority_explanation,
-            strengths=seniority_strengths,
-            gaps=seniority_gaps,
-            unknowns=seniority_unknowns,
-            evidence_refs=seniority_ev_refs,
+            weighted_score=experience_score * w_exp,
+            explanation=experience_explanation,
+            strengths=experience_strengths,
+            gaps=experience_gaps,
+            unknowns=experience_unknowns,
+            evidence_refs=experience_ev_refs,
             opportunity_field_refs=("seniority", "title"),
         ))
 
-        # 3. Responsibility & Scope Fit
+        # 3. Seniority level is a separate title/scope signal. Title level and
+        # verified leadership may support a match; a lower or unspecified title
+        # never proves the Founder cannot do the work.
+        _seniority_rank = {"junior": 1, "mid": 2, "senior": 3, "staff": 4, "principal": 5}
+        required_seniority_level = (
+            _REQUIRED_LEVEL_BY_OPP_SENIORITY.get(opp_level)
+            or (posting_title_level if posting_title_level in _seniority_rank else None)
+        )
+        founder_title_assertions = [
+            a for a in truth_graph.assertions.values()
+            if a.predicate in {predicates.EMPLOYMENT_TITLE, predicates.EMPLOYMENT_MARKET_FACING_TITLE}
+            and a.verification_status == VerificationStatus.VERIFIED
+            and a.polarity == Polarity.POSITIVE
+        ]
+        founder_title_levels = [
+            (a, normalize_title(str(a.value))[1])
+            for a in founder_title_assertions
+        ]
+        founder_title_levels = [
+            (a, level) for a, level in founder_title_levels if level in _seniority_rank
+        ]
+        founder_title_level_label = (
+            max(founder_title_levels, key=lambda item: _seniority_rank[item[1]])[1]
+            if founder_title_levels else "unknown"
+        )
+        if required_seniority_level is None:
+            seniority_fit_score = 0.5
+            seniority_fit_strengths = ()
+            seniority_fit_gaps = ()
+            seniority_fit_unknowns = ("Posting title and structured seniority do not state a level to compare",)
+            seniority_fit_refs = ()
+        elif not founder_title_levels:
+            seniority_fit_score = 0.5
+            seniority_fit_strengths = ()
+            seniority_fit_gaps = ()
+            seniority_fit_unknowns = (
+                "Verified employment evidence does not state a comparable seniority level"
+                if founder_title_assertions else
+                "No verified employment-title evidence is available to compare seniority",
+            )
+            seniority_fit_refs = tuple(a.id for a in founder_title_assertions)
+        else:
+            highest_assertion, highest_level = max(
+                founder_title_levels, key=lambda item: _seniority_rank[item[1]],
+            )
+            seniority_fit_refs = tuple(sorted(
+                {
+                    a.id for a, level in founder_title_levels
+                    if _seniority_rank[level] == _seniority_rank[highest_level]
+                }
+                | (set(assessment.leadership_evidence_refs) if assessment else set())
+            ))
+            requires_leadership = required_seniority_level in {"staff", "principal"}
+            level_meets = _seniority_rank[highest_level] >= _seniority_rank[required_seniority_level]
+            leadership_verified = bool(assessment and assessment.has_leadership)
+            if level_meets and (not requires_leadership or leadership_verified):
+                seniority_fit_score = 1.0
+                seniority_fit_strengths = (
+                    f"Verified employment title level {highest_level.title()} aligns with the "
+                    f"{required_seniority_level.title()} posting level"
+                    + (" and verified leadership responsibilities" if requires_leadership else "")
+                    + f" ({highest_assertion.id}).",
+                )
+                seniority_fit_gaps = ()
+                seniority_fit_unknowns = ()
+            else:
+                seniority_fit_score = 0.5
+                seniority_fit_strengths = ()
+                seniority_fit_gaps = ()
+                seniority_fit_unknowns = (
+                    "Verified title and leadership evidence does not establish the requested seniority; review the role scope",
+                )
+
+        w_seniority = weights.get("seniority", 0.0)
+        scores.append(MatchDimensionScore(
+            dimension_name="seniority_fit",
+            raw_score=seniority_fit_score,
+            weight=w_seniority,
+            weighted_score=seniority_fit_score * w_seniority,
+            explanation=(
+                f"Posting seniority level: {required_seniority_level or 'unspecified'}; "
+                f"verified founder title level: {founder_title_level_label}."
+            ),
+            strengths=seniority_fit_strengths,
+            gaps=seniority_fit_gaps,
+            unknowns=seniority_fit_unknowns,
+            evidence_refs=seniority_fit_refs,
+            opportunity_field_refs=("seniority", "title"),
+        ))
+        scores.append(MatchDimensionScore(
+            dimension_name="seniority_and_experience",
+            raw_score=(experience_score + seniority_fit_score) / 2.0,
+            weight=0.0,
+            weighted_score=0.0,
+            explanation="Compatibility projection; use experience_fit and seniority_fit for separate evidence.",
+            evidence_refs=tuple(sorted(set(experience_ev_refs) | set(seniority_fit_refs))),
+            opportunity_field_refs=("seniority", "title"),
+        ))
+
+        # 4. Experience responsibility and scope alignment.
         founder_resp_assertions = [
             a for a in truth_graph.assertions.values()
             if a.predicate in predicates.RESPONSIBILITY_SCOPE_PREDICATES
@@ -495,7 +1329,6 @@ class OpportunityScorer:
             geo_gaps = ()
             geo_unknowns = ("Founder jurisdiction unasserted in truth graph",)
             geo_refs = ()
-            uncertainty_acc += 0.1
         elif geo_status == "excluded":
             geo_score = 0.0
             geo_strengths = ()
@@ -508,7 +1341,6 @@ class OpportunityScorer:
             geo_gaps = ()
             geo_unknowns = ("Geographic eligibility requires applicant confirmation",)
             geo_refs = ()
-            uncertainty_acc += 0.2
 
         w_geo = weights.get("geography", 0.10)
         scores.append(MatchDimensionScore(
@@ -556,13 +1388,11 @@ class OpportunityScorer:
                 comp_strengths = ()
                 comp_gaps = ()
                 comp_unknowns = (f"Opportunity compensation stated ({comp.min_amount} {comp.currency or ''} {interval_name}); compatible founder target economics unconfigured in policy",)
-                uncertainty_acc += 0.1
         else:
             comp_score = 0.50
             comp_strengths = ()
             comp_gaps = ()
             comp_unknowns = ("Compensation unstated in opportunity posting",)
-            uncertainty_acc += 0.1
 
         # Premium full-time/on-site rule: a RANKING signal only, never a hard constraint
         # and never a penalty for unstated compensation. It only ever adds a gap note and
@@ -584,6 +1414,7 @@ class OpportunityScorer:
                 a for a in truth_graph.assertions.values()
                 if a.predicate == predicates.PREFERENCE_FULLTIME_ONSITE_PREMIUM_MONTHLY
                 and a.verification_status == VerificationStatus.VERIFIED
+                and a.polarity == Polarity.POSITIVE
             ]
             threshold = _parse_currency_threshold(premium_assertions[0].value) if premium_assertions else None
             if threshold is not None:
@@ -603,6 +1434,11 @@ class OpportunityScorer:
                         )
                         comp_score = min(comp_score, 0.35)
                         comp_signal_tags = ("premium_shortfall",)
+                    else:
+                        comp_strengths = comp_strengths + (
+                            f"Full-time on-site compensation meets the founder's {threshold_amount:.0f} {threshold_currency}/month preference",
+                        )
+                        comp_score = max(comp_score, 0.90)
                 # else: compensation unstated, non-monthly/yearly, or a different currency
                 # than the threshold -> UNKNOWN for this rule, never a penalty.
 
@@ -624,8 +1460,9 @@ class OpportunityScorer:
         # 7. Career Trajectory
         target_role_assertions = [
             a for a in truth_graph.assertions.values()
-            if a.predicate in predicates.CAREER_TRAJECTORY_PREDICATES
+            if a.predicate == predicates.CAREER_TARGET_ROLE
             and a.verification_status == VerificationStatus.VERIFIED
+            and a.polarity == Polarity.POSITIVE
         ]
         if not target_role_assertions:
             traj_score = 0.50
@@ -633,7 +1470,6 @@ class OpportunityScorer:
             traj_gaps = ()
             traj_unknowns = ("Founder career trajectory preferences unstated in truth graph",)
             traj_ev_refs = ()
-            uncertainty_acc += 0.1
         else:
             matched_traj = [a for a in target_role_assertions if str(a.value).casefold() in opp.title.casefold()]
             if matched_traj:
@@ -663,27 +1499,16 @@ class OpportunityScorer:
             opportunity_field_refs=("title",),
         ))
 
-        # 8. Title-Family Fit (B3, BRIEF-FR-006): compares the posting's
-        # normalized title family (`matching/title_family.py`, driven by the
-        # committed `matching/title_families.yaml`) against the families the
-        # founder's verified CAREER_TARGET_ROLE assertions themselves
-        # normalize onto. Distinguishes near-identical titles by family (not
-        # only by score) -- e.g. "Senior Customer Engineer" postings no
-        # longer read as a data-engineering match just because both titles
-        # contain "Engineer".
-        #
-        # Weight note: this dimension is new, so `employment_weights` is
-        # rebalanced to keep the total at 1.0 without touching any other
-        # implementer's dimension in this concurrent wave: `domain` drops
-        # from its 0.10 default to 0.05 (domain_fit's term-overlap check
-        # already covers much of the same ground as title-family alignment,
-        # so halving it is a reasonable reallocation) and the freed 0.05
-        # funds `title_family` at 0.05. Every other default is unchanged.
+        # 8. Target-role-family preference compares verified Founder target-role
+        # assertions with the posting family. It stays separate from the
+        # capability title-family dimension below, which reads verified
+        # employment-title assertions.
         opp_family_id, opp_level, opp_family_rule = normalize_title(opp.title)
         target_role_family_assertions = [
             a for a in truth_graph.assertions.values()
             if a.predicate == predicates.CAREER_TARGET_ROLE
             and a.verification_status == VerificationStatus.VERIFIED
+            and a.polarity == Polarity.POSITIVE
         ]
         if not target_role_family_assertions:
             title_family_score = 0.50
@@ -691,7 +1516,6 @@ class OpportunityScorer:
             title_family_gaps = ()
             title_family_unknowns = ("Founder has no verified career.target_role assertion to compare title families against",)
             title_family_ev_refs = ()
-            uncertainty_acc += 0.1
         else:
             target_families = {
                 normalize_title(str(a.value))[0]: a for a in target_role_family_assertions
@@ -710,7 +1534,6 @@ class OpportunityScorer:
                 title_family_gaps = ()
                 title_family_unknowns = (f"Posting title did not normalize to a known family (rule: {opp_family_rule})",)
                 title_family_ev_refs = ()
-                uncertainty_acc += 0.05
             else:
                 title_family_score = 0.20
                 title_family_strengths = ()
@@ -720,9 +1543,9 @@ class OpportunityScorer:
                 title_family_unknowns = ()
                 title_family_ev_refs = tuple(a.id for a in target_role_family_assertions)
 
-        w_title_family = weights.get("title_family", 0.05)
+        w_title_family = weights.get("target_role_family_preference", 0.05)
         scores.append(MatchDimensionScore(
-            dimension_name="title_family_fit",
+            dimension_name="target_role_family_preference",
             raw_score=title_family_score,
             weight=w_title_family,
             weighted_score=title_family_score * w_title_family,
@@ -738,6 +1561,137 @@ class OpportunityScorer:
             unknowns=title_family_unknowns,
             evidence_refs=title_family_ev_refs,
             opportunity_field_refs=("title",),
+        ))
+
+        # 9. Capability role-family history. A target-role preference assertion
+        # is deliberately not reused as evidence that the Founder has done the
+        # work before.
+        founder_role_assertions = [
+            a for a in truth_graph.assertions.values()
+            if a.predicate in {predicates.EMPLOYMENT_TITLE, predicates.EMPLOYMENT_MARKET_FACING_TITLE}
+            and a.verification_status == VerificationStatus.VERIFIED
+            and a.polarity == Polarity.POSITIVE
+        ]
+        matched_role_history = [
+            a for a in founder_role_assertions
+            if opp_family_id != "other" and normalize_title(str(a.value))[0] == opp_family_id
+        ]
+        if matched_role_history:
+            role_history_score = 1.0
+            role_history_strengths = (
+                f"Verified employment role history matches posting family '{opp_family_id}' "
+                f"(rule: {opp_family_rule}).",
+            )
+            role_history_unknowns = ()
+            role_history_refs = tuple(a.id for a in matched_role_history)
+        else:
+            role_history_score = 0.5
+            role_history_strengths = ()
+            role_history_unknowns = (
+                "No verified employment-title evidence establishes a direct match to the posting's role family",
+            )
+            role_history_refs = tuple(a.id for a in founder_role_assertions)
+
+        w_role_family = weights.get("title_family", 0.0)
+        scores.append(MatchDimensionScore(
+            dimension_name="title_family_fit",
+            raw_score=role_history_score,
+            weight=w_role_family,
+            weighted_score=role_history_score * w_role_family,
+            explanation=(
+                f"Posting family '{opp_family_id}' compared with "
+                f"{len(founder_role_assertions)} verified employment-title assertion(s)."
+            ),
+            strengths=role_history_strengths,
+            gaps=(),
+            unknowns=role_history_unknowns,
+            evidence_refs=role_history_refs,
+            opportunity_field_refs=("title",),
+        ))
+
+        # 10. Education/certification. Only explicit applicant-facing posting
+        # requirements are compared, and missing Founder records stay unknown.
+        credential_requirements = _credential_requirement_items(opp)
+        education_assertions = [
+            a for a in truth_graph.assertions.values()
+            if a.predicate == predicates.EDUCATION_QUALIFICATION
+            and a.verification_status == VerificationStatus.VERIFIED
+            and a.polarity == Polarity.POSITIVE
+        ]
+        certification_states = {
+            a.subject_id: (str(a.value).casefold().split(".")[-1], a)
+            for a in truth_graph.assertions.values()
+            if a.predicate == predicates.CERTIFICATION_STATE
+            and a.verification_status == VerificationStatus.VERIFIED
+            and a.polarity == Polarity.POSITIVE
+        }
+        certification_assertions = [
+            a for a in truth_graph.assertions.values()
+            if a.predicate == predicates.CERTIFICATION_NAME
+            and a.verification_status == VerificationStatus.VERIFIED
+            and a.polarity == Polarity.POSITIVE
+            and a.subject_id in certification_states
+            and certification_states[a.subject_id][0] == CertificationState.COMPLETED.value
+        ]
+        available_credentials: list[tuple[str, str, tuple[str, ...]]] = [
+            ("education", str(a.value), (a.id,))
+            for a in education_assertions
+        ]
+        available_credentials.extend(
+            (
+                "certification",
+                str(a.value),
+                (a.id, certification_states[a.subject_id][1].id),
+            )
+            for a in certification_assertions
+        )
+        if not credential_requirements:
+            credential_score = 0.5
+            credential_strengths = ()
+            credential_unknowns = (
+                "Posting does not state an explicit applicant-facing education or certification requirement",
+            )
+            credential_refs = ()
+        else:
+            matched_credentials: list[tuple[str, str, tuple[str, ...]]] = []
+            unresolved_credentials: list[str] = []
+            for kind, requirement, priority in credential_requirements:
+                match = next((
+                    candidate for candidate in available_credentials
+                    if candidate[0] == kind
+                    and _credential_requirement_matches(kind, requirement, candidate[1])
+                ), None)
+                if match:
+                    matched_credentials.append((requirement, priority.value, match[2]))
+                else:
+                    unresolved_credentials.append(
+                        f"No verified matching {kind} record for {priority.value.replace('_', ' ')} posting credential: {requirement}"
+                    )
+            credential_score = 1.0 if not unresolved_credentials else 0.5
+            credential_strengths = tuple(
+                f"Verified {priority.replace('_', ' ')} credential match: {requirement}"
+                for requirement, priority, _ in matched_credentials
+            )
+            credential_unknowns = tuple(unresolved_credentials)
+            credential_refs = tuple(sorted({
+                ref for _, _, refs in matched_credentials for ref in refs
+            }))
+
+        w_credential = weights.get("education_certification", 0.0)
+        scores.append(MatchDimensionScore(
+            dimension_name="education_certification_fit",
+            raw_score=credential_score,
+            weight=w_credential,
+            weighted_score=credential_score * w_credential,
+            explanation=(
+                f"Compared {len(credential_requirements)} explicit education/certification requirement(s) "
+                f"with {len(available_credentials)} verified held credential record(s)."
+            ),
+            strengths=credential_strengths,
+            gaps=(),
+            unknowns=credential_unknowns,
+            evidence_refs=credential_refs,
+            opportunity_field_refs=("requirements", "description") if credential_requirements else (),
         ))
 
         return scores, uncertainty_acc
@@ -950,13 +1904,11 @@ class OpportunityScorer:
                 bud_strengths = ()
                 bud_gaps = ()
                 bud_unknowns = (f"Procurement budget stated ({comp.min_amount} {comp.currency or ''} {interval_name}); compatible founder {interval_name} target economics unconfigured in policy",)
-                uncertainty_acc += 0.1
         else:
             bud_score = 0.50
             bud_strengths = ()
             bud_gaps = ()
             bud_unknowns = ("Procurement budget unstated in notice metadata",)
-            uncertainty_acc += 0.1
 
         scores.append(MatchDimensionScore(
             dimension_name="budget_fit",
@@ -978,7 +1930,6 @@ class OpportunityScorer:
             deliv_strengths = ()
             deliv_gaps = ()
             deliv_unknowns = ("Buyer country unspecified in notice metadata",)
-            uncertainty_acc += 0.1
         else:
             prohibited = getattr(self.policy, "prohibited_jurisdictions", ())
             approved = getattr(self.policy, "approved_delivery_jurisdictions", ())
@@ -997,7 +1948,6 @@ class OpportunityScorer:
                 deliv_strengths = ()
                 deliv_gaps = ()
                 deliv_unknowns = (f"Buyer country '{buyer_loc}' delivery compliance unconfirmed",)
-                uncertainty_acc += 0.1
 
         w_deliv = weights.get("delivery", 0.10)
         scores.append(MatchDimensionScore(
@@ -1023,13 +1973,11 @@ class OpportunityScorer:
             ev_strengths = ()
             ev_gaps = ("Zero verified assertions in truth graph to substantiate proposal",)
             ev_unknowns = ()
-            uncertainty_acc += 0.50
         elif verified_count < 3:
             ev_score = 0.40
             ev_strengths = ()
             ev_gaps = ()
             ev_unknowns = ("Sparse verified assertions in truth graph",)
-            uncertainty_acc += 0.20
         else:
             ev_score = min(1.0, 0.60 + (verified_count * 0.05))
             ev_strengths = (f"{verified_count} verified truth graph assertions available for proposal substantiation",)

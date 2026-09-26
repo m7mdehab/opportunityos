@@ -10,6 +10,7 @@ from __future__ import annotations
 import unittest
 
 from matching import skills as sk
+from matching.requirements import RequirementPriority
 
 
 class TestProficiencyTiers(unittest.TestCase):
@@ -102,6 +103,24 @@ class TestRequiredNiceToHaveSplit(unittest.TestCase):
 
 
 class TestSkillMatchEvaluationAndReason(unittest.TestCase):
+    def test_strong_preference_stays_distinct_from_mandatory_and_nice(self) -> None:
+        matches = sk.evaluate_skill_matches(
+            ("Python", "Kafka", "AWS"),
+            frozenset({"python"}),
+            {"python": ("expert", ("ev-py",)), "kafka": ("working", ("ev-kafka",))},
+            priorities={
+                "python": RequirementPriority.MANDATORY,
+                "kafka": RequirementPriority.STRONGLY_PREFERRED,
+                "aws": RequirementPriority.NICE_TO_HAVE,
+            },
+        )
+        self.assertTrue(matches[0].is_strength)
+        self.assertEqual(matches[1].priority, RequirementPriority.STRONGLY_PREFERRED)
+        self.assertFalse(matches[1].is_strength)
+        reason = sk.render_reason(matches)
+        self.assertIn("Strongly preferred: Kafka", reason)
+        self.assertIn("Nice-to-have: Aws not in your pack", reason)
+
     def test_basic_skill_never_produces_a_strength_string(self) -> None:
         # B2.5 anti-regression, at the unit level: search every generated
         # reason string for the old code's exact phrase pattern

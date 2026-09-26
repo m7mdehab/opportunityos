@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import unittest
+from dataclasses import replace
 from datetime import date
 
 from opportunity.models import (
@@ -9,15 +10,18 @@ from opportunity.models import (
     CompensationInterval,
     EmploymentType,
     Opportunity,
+    RemoteScope,
+    SeniorityLevel,
     WorkMode,
     Track,
 )
 from truth.graph import TruthGraph
-from truth.models import AtomicAssertion, EvidenceRecord, VerificationStatus
+from truth.models import AtomicAssertion, CertificationState, EvidenceRecord, Polarity, VerificationStatus
 from truth import predicates
 from matching.mapping import RequirementMapper
 from matching.models import (
     QualificationDecision,
+    RequirementPriority,
     RequirementSupportStatus,
     ScoringPolicy,
 )
@@ -113,6 +117,7 @@ class TestOpportunityScorerAndMapper(unittest.TestCase):
             skills=("Python", "Go"),
             title="Senior Distributed Systems Architect",
             description="Build distributed systems.\nRequirements:\nPython\nGo",
+            remote_scope=RemoteScope.WORLDWIDE,
         )
         eval_res = self.scorer.evaluate(opp, graph)
         self.assertEqual(eval_res.qualification_decision, QualificationDecision.QUALIFIED)
@@ -128,7 +133,11 @@ class TestOpportunityScorerAndMapper(unittest.TestCase):
         # partial, never a strength -- even though the name matches and the
         # posting's default description carries no required/nice-to-have
         # header (so every skill is conservatively nice-to-have too).
-        opp = create_test_opportunity(skills=("Python", "Go"), title="Senior Distributed Systems Architect")
+        opp = create_test_opportunity(
+            skills=("Python", "Go"),
+            title="Senior Distributed Systems Architect",
+            description="Requirements:\nPython\nGo",
+        )
         eval_res = self.scorer.evaluate(opp, self.truth_graph)
         skills_dim = next(d for d in eval_res.dimension_scores if d.dimension_name == "core_skills")
         self.assertEqual(skills_dim.strengths, ())
@@ -138,6 +147,7 @@ class TestOpportunityScorerAndMapper(unittest.TestCase):
         opp = create_test_opportunity(
             skills=("Rust", "Haskell", "Scala"),
             title="Junior Frontend Developer",
+            description="Requirements:\nRust\nHaskell\nScala",
         )
         eval_res = self.scorer.evaluate(opp, self.truth_graph)
         self.assertTrue(eval_res.overall_fit_score < 70.0)
@@ -146,12 +156,48 @@ class TestOpportunityScorerAndMapper(unittest.TestCase):
     def test_requirement_mapping_classification(self) -> None:
         opp = create_test_opportunity(
             skills=("Python", "Rust"),
+            description="Requirements:\nPython\nRust",
         )
         req_map = self.mapper.map_requirements(opp, self.truth_graph)
         self.assertEqual(req_map.opportunity_id, opp.id)
         statuses = [m.status for m in req_map.mappings]
         self.assertIn(RequirementSupportStatus.SUPPORTED, statuses)  # Python
         self.assertIn(RequirementSupportStatus.GAP, statuses)        # Rust
+        priorities = {
+            m.requirement_text.removeprefix("Proficiency in "): m.requirement_priority
+            for m in req_map.mappings if m.requirement_type == "skill"
+        }
+        self.assertEqual(priorities["Python"], RequirementPriority.MANDATORY)
+        self.assertEqual(priorities["Rust"], RequirementPriority.MANDATORY)
+
+    def test_company_technology_mentions_are_context_not_skill_gaps(self) -> None:
+        opp = create_test_opportunity(
+            skills=("Python", "Go"),
+            description="About Us:\nWe use Python and Go in our platform.",
+        )
+        req_map = self.mapper.map_requirements(opp, self.truth_graph)
+        skill_maps = [m for m in req_map.mappings if m.requirement_type == "skill"]
+        self.assertTrue(skill_maps)
+        self.assertTrue(all(m.requirement_priority == RequirementPriority.CONTEXTUAL for m in skill_maps))
+        self.assertTrue(all(m.status != RequirementSupportStatus.GAP for m in skill_maps))
+
+        evaluation = self.scorer.evaluate(opp, self.truth_graph)
+        skills_dim = next(d for d in evaluation.dimension_scores if d.dimension_name == "core_skills")
+        self.assertEqual(skills_dim.raw_score, 0.5)
+        self.assertEqual(skills_dim.strengths, ())
+        self.assertEqual(skills_dim.gaps, ())
+
+    def test_full_description_skill_extraction_precedes_neutral_fallback(self) -> None:
+        graph = _with_skill_proficiency(self.truth_graph, proficiency="expert")
+        opp = create_test_opportunity(
+            skills=(),
+            description="Requirements:\nPython\nGo",
+        )
+        evaluation = self.scorer.evaluate(opp, graph)
+        skills_dim = next(d for d in evaluation.dimension_scores if d.dimension_name == "core_skills")
+        self.assertTrue(any("Python" in s for s in skills_dim.strengths))
+        self.assertTrue(any("Go" in s for s in skills_dim.strengths))
+        self.assertEqual(skills_dim.raw_score, 1.0)
 
 
 def _with_premium_threshold(graph, threshold: str):
@@ -330,6 +376,259 @@ class TestScoringPolicyWeightsSumToOne(unittest.TestCase):
             "are absent from ScoringPolicy().independent_weights.",
         )
 
+
+class TestPreferenceScoreIsolation(unittest.TestCase):
+    def _add_preference(
+        self,
+        graph: TruthGraph,
+        *,
+        value: str,
+        status: VerificationStatus = VerificationStatus.VERIFIED,
+        polarity: Polarity = Polarity.POSITIVE,
+        predicate: str = predicates.PREFERENCE_WORK_MODE,
+    ) -> None:
+        sequence = getattr(self, "_preference_fixture_sequence", 0) + 1
+        self._preference_fixture_sequence = sequence
+        ev_id = f"ev-pref-{sequence}"
+        assertion_id = f"a-pref-{sequence}"
+        graph.add_evidence(EvidenceRecord(
+            id=ev_id, content=f"Preference: {value}", source="manual", locator=predicate,
+        ))
+        graph.add_assertion(AtomicAssertion(
+            id=assertion_id,
+            subject_id="founder",
+            predicate=predicate,
+            value=value,
+            evidence_ids=(ev_id,),
+            verification_status=status,
+            polarity=polarity,
+        ))
+
+    def test_work_mode_preference_is_separate_from_capability_and_qualification(self) -> None:
+        graph = create_test_graph()
+        opp = create_test_opportunity(work_mode=WorkMode.REMOTE, remote_scope=RemoteScope.WORLDWIDE)
+        baseline = OpportunityScorer().evaluate(opp, graph)
+        self._add_preference(graph, value="remote")
+        preferred = OpportunityScorer().evaluate(opp, graph)
+
+        self.assertEqual(preferred.preference_score, 100.0)
+        self.assertEqual(preferred.overall_fit_score, baseline.overall_fit_score)
+        self.assertEqual(preferred.qualification_decision, baseline.qualification_decision)
+        self.assertEqual(preferred.confidence_score, baseline.confidence_score)
+        self.assertEqual(
+            next(d for d in preferred.dimension_scores if d.dimension_name == "preference_work_mode").weight,
+            0.0,
+        )
+
+    def test_only_verified_positive_preference_assertions_are_scored(self) -> None:
+        for status, polarity in (
+            (VerificationStatus.UNVERIFIED, Polarity.POSITIVE),
+            (VerificationStatus.VERIFIED, Polarity.NEGATIVE),
+        ):
+            graph = create_test_graph()
+            self._add_preference(graph, value="remote", status=status, polarity=polarity)
+            evaluation = OpportunityScorer().evaluate(
+                create_test_opportunity(work_mode=WorkMode.REMOTE, remote_scope=RemoteScope.WORLDWIDE),
+                graph,
+            )
+            self.assertIsNone(evaluation.preference_score)
+            self.assertNotIn("preference_work_mode", {d.dimension_name for d in evaluation.dimension_scores})
+
+    def test_preference_track_does_not_accept_work_mode_values(self) -> None:
+        graph = create_test_graph()
+        self._add_preference(graph, value="remote", predicate=predicates.PREFERENCE_TRACK)
+        evaluation = OpportunityScorer().evaluate(create_test_opportunity(), graph)
+
+        self.assertIsNone(evaluation.preference_score)
+        self.assertNotIn("preference_track", {d.dimension_name for d in evaluation.dimension_scores})
+
+    def test_missing_structured_job_value_does_not_create_a_preference_score(self) -> None:
+        graph = create_test_graph()
+        self._add_preference(graph, value="remote")
+        opp = replace(create_test_opportunity(), work_mode=WorkMode.UNSPECIFIED, remote_scope=RemoteScope.UNSPECIFIED)
+        evaluation = OpportunityScorer().evaluate(opp, graph)
+
+        self.assertIsNone(evaluation.preference_score)
+        dimension = next(d for d in evaluation.dimension_scores if d.dimension_name == "preference_work_mode")
+        self.assertTrue(dimension.unknowns)
+        self.assertEqual(dimension.weighted_score, 0.0)
+
+    def test_currency_and_interval_typed_compensation_preference(self) -> None:
+        graph = create_test_graph()
+        self._add_preference(
+            graph,
+            value="85000 EGP monthly",
+            predicate=predicates.PREFERENCE_COMPENSATION,
+        )
+        opportunity = create_test_opportunity(
+            compensation=Compensation(
+                min_amount=90000,
+                max_amount=100000,
+                currency="EGP",
+                interval=CompensationInterval.MONTHLY,
+            ),
+        )
+        evaluation = OpportunityScorer().evaluate(opportunity, graph)
+
+        self.assertEqual(evaluation.preference_score, 100.0)
+        dimension = next(d for d in evaluation.dimension_scores if d.dimension_name == "preference_compensation")
+        self.assertEqual(dimension.raw_score, 1.0)
+        self.assertTrue(dimension.evidence_refs)
+        self.assertTrue(all(ref.startswith("a-pref-") for ref in dimension.evidence_refs))
+
+    def test_geography_and_other_preferences_read_structured_job_attributes(self) -> None:
+        graph = create_test_graph()
+        self._add_preference(graph, value="Egypt", predicate=predicates.PREFERENCE_GEOGRAPHY)
+        self._add_preference(graph, value="fintech", predicate=predicates.PREFERENCE_INDUSTRY)
+        self._add_preference(graph, value="Cloudflare", predicate=predicates.PREFERENCE_COMPANY)
+        self._add_preference(graph, value="UTC+2", predicate=predicates.PREFERENCE_TIME_ZONE)
+        self._add_preference(graph, value="contract", predicate=predicates.PREFERENCE_EMPLOYMENT_TYPE)
+        self._add_preference(graph, value="willing to relocate", predicate=predicates.PREFERENCE_RELOCATION)
+        self._add_preference(graph, value="none", predicate=predicates.PREFERENCE_TRAVEL)
+        opp = replace(
+            create_test_opportunity(work_mode=WorkMode.ONSITE, employment_type=EmploymentType.CONTRACT),
+            location_country="EG",
+            extra_attributes=(
+                ("industry", "FinTech"),
+                ("time_zone", "utc+02:00"),
+                ("relocation_required", "true"),
+                ("travel_expectation", "none"),
+            ),
+        )
+        evaluation = OpportunityScorer().evaluate(opp, graph)
+
+        self.assertEqual(evaluation.preference_score, 100.0)
+        for name in (
+            "preference_geography", "preference_industry", "preference_company",
+            "preference_time_zone", "preference_employment_type", "preference_relocation",
+            "preference_travel",
+        ):
+            dimension = next(d for d in evaluation.dimension_scores if d.dimension_name == name)
+            self.assertEqual(dimension.raw_score, 1.0)
+
+class TestConfidenceScore(unittest.TestCase):
+    def _score(self, opp=None, graph=None, evaluated_at="2026-09-25", policy=None):
+        return OpportunityScorer(policy=policy).evaluate(
+            opp if opp is not None else create_test_opportunity(),
+            graph if graph is not None else create_test_graph(),
+            evaluated_at=evaluated_at,
+        )
+
+    @staticmethod
+    def _factor(evaluation, name):
+        return next(factor for factor in evaluation.confidence_factors if factor.name == name)
+
+    def test_seven_named_factors_are_bounded_deterministic_and_equally_averaged(self) -> None:
+        opportunity = create_test_opportunity()
+        first = self._score(opportunity)
+        second = self._score(opportunity)
+        expected_names = {
+            "description_completeness", "location_remote_scope_clarity",
+            "experience_requirement_clarity", "required_skill_extraction_reliability",
+            "compensation_completeness", "source_freshness_and_strength",
+            "founder_evidence_completeness",
+        }
+        self.assertEqual({factor.name for factor in first.confidence_factors}, expected_names)
+        self.assertEqual(first.confidence_factors, second.confidence_factors)
+        self.assertEqual(first.confidence_score, second.confidence_score)
+        self.assertEqual(first.confidence_score, round(sum(f.score for f in first.confidence_factors) / 7, 2))
+        self.assertGreaterEqual(first.confidence_score, 0.0)
+        self.assertLessEqual(first.confidence_score, 100.0)
+        self.assertIn("not gold-set calibrated", first.explanation)
+
+    def test_description_location_experience_and_skill_factors_track_evidence_quality(self) -> None:
+        baseline = create_test_opportunity()
+        short = replace(baseline, description="Short posting.")
+        complete_description = replace(baseline, description="D" * 1200)
+        self.assertLess(
+            self._factor(self._score(short), "description_completeness").score,
+            self._factor(self._score(complete_description), "description_completeness").score,
+        )
+
+        remote_unspecified = replace(baseline, remote_scope=RemoteScope.UNSPECIFIED)
+        remote_worldwide = replace(baseline, remote_scope=RemoteScope.WORLDWIDE)
+        self.assertLess(
+            self._factor(self._score(remote_unspecified), "location_remote_scope_clarity").score,
+            self._factor(self._score(remote_worldwide), "location_remote_scope_clarity").score,
+        )
+
+        clear_experience = replace(baseline, requirements=("5+ years of experience",))
+        vague_experience = replace(
+            baseline,
+            title="Engineer",
+            seniority=SeniorityLevel.UNSPECIFIED,
+            requirements=("Several years of experience",),
+        )
+        self.assertGreater(
+            self._factor(self._score(clear_experience), "experience_requirement_clarity").score,
+            self._factor(self._score(vague_experience), "experience_requirement_clarity").score,
+        )
+
+        structured_skills = replace(baseline, skills=("Python",))
+        unextractable_skills = replace(
+            baseline,
+            skills=(),
+            requirements=(),
+            description="Collaborate on product work.",
+        )
+        self.assertGreater(
+            self._factor(self._score(structured_skills), "required_skill_extraction_reliability").score,
+            self._factor(self._score(unextractable_skills), "required_skill_extraction_reliability").score,
+        )
+
+    def test_compensation_source_and_founder_evidence_factors_reflect_completeness(self) -> None:
+        baseline = create_test_opportunity()
+        complete_compensation = replace(
+            baseline,
+            compensation=Compensation(
+                min_amount=100000,
+                currency="USD",
+                interval=CompensationInterval.YEARLY,
+            ),
+        )
+        self.assertGreater(
+            self._factor(self._score(complete_compensation), "compensation_completeness").score,
+            self._factor(self._score(baseline), "compensation_completeness").score,
+        )
+
+        fresh_provenance = replace(baseline.raw_provenance, fetched_at="2026-09-24T00:00:00Z")
+        stale_provenance = replace(baseline.raw_provenance, fetched_at="2025-01-01T00:00:00Z")
+        fresh = replace(baseline, raw_provenance=fresh_provenance)
+        stale = replace(baseline, raw_provenance=stale_provenance)
+        self.assertGreater(
+            self._factor(self._score(fresh), "source_freshness_and_strength").score,
+            self._factor(self._score(stale), "source_freshness_and_strength").score,
+        )
+
+        no_founder_evidence = self._score(baseline, graph=TruthGraph())
+        reviewed_evidence = self._score(baseline, graph=create_test_graph())
+        self.assertLess(
+            self._factor(no_founder_evidence, "founder_evidence_completeness").score,
+            self._factor(reviewed_evidence, "founder_evidence_completeness").score,
+        )
+        self.assertNotEqual(no_founder_evidence.qualification_decision, QualificationDecision.INELIGIBLE)
+
+    def test_missing_evidence_does_not_reduce_fit_via_uncertainty_penalty(self) -> None:
+        opportunity = create_test_opportunity()
+        sparse_graph = TruthGraph()
+        no_penalty = self._score(
+            opportunity,
+            graph=sparse_graph,
+            policy=ScoringPolicy(uncertainty_penalty_weight=0.0),
+        )
+        configured_penalty = self._score(
+            opportunity,
+            graph=sparse_graph,
+            policy=ScoringPolicy(uncertainty_penalty_weight=0.95),
+        )
+        self.assertEqual(no_penalty.qualification_decision, configured_penalty.qualification_decision)
+        self.assertEqual(no_penalty.overall_fit_score, configured_penalty.overall_fit_score)
+        self.assertGreater(no_penalty.uncertainty_penalty, 0.0)
+        complete_evidence = self._score(opportunity, graph=create_test_graph())
+        self.assertLess(no_penalty.confidence_score, complete_evidence.confidence_score)
+        self.assertTrue(all(not result.is_hard_failure for result in no_penalty.hard_constraints))
+
+
 def _skill_assertion(graph: TruthGraph, *, skill_id: str, name: str, proficiency: str | None, evidence_count: int) -> None:
     """Add one skill.name (+ optional skill.proficiency) assertion under its
     own subject_id -- `skill_id` -- exactly as a real founder-shaped pack's
@@ -482,6 +781,161 @@ def _graph_with_target_role(target_role_value: str) -> TruthGraph:
     return graph
 
 
+def _add_verified_assertion(
+    graph: TruthGraph,
+    *,
+    assertion_id: str,
+    predicate: str,
+    value,
+    subject_id: str = "founder",
+    evidence_text: str | None = None,
+    polarity: Polarity = Polarity.POSITIVE,
+) -> None:
+    evidence_id = f"ev-{assertion_id}"
+    graph.add_evidence(EvidenceRecord(
+        id=evidence_id,
+        content=evidence_text or str(value),
+        source="synthetic-test",
+        locator=f"test.{predicate}",
+    ))
+    graph.add_assertion(AtomicAssertion(
+        id=assertion_id,
+        subject_id=subject_id,
+        predicate=predicate,
+        value=value,
+        evidence_ids=(evidence_id,),
+        verification_status=VerificationStatus.VERIFIED,
+        polarity=polarity,
+    ))
+
+
+def _opportunity_with_requirements(requirements: tuple[str, ...], **kwargs):
+    return replace(
+        create_test_opportunity(**kwargs),
+        requirements=requirements,
+    )
+
+
+class TestCareerTrajectoryPredicateIsolation(unittest.TestCase):
+    """Only verified career.target_role assertions may match posting titles."""
+
+    def test_remote_track_does_not_match_remote_title_as_career_target_role(self) -> None:
+        graph = TruthGraph()
+        graph.add_evidence(EvidenceRecord(
+            id="ev-remote-track",
+            content="Prefers remote work.",
+            source="manual",
+            locator="preference.track",
+        ))
+        graph.add_assertion(AtomicAssertion(
+            id="a-remote-track",
+            subject_id="founder",
+            predicate=predicates.PREFERENCE_TRACK,
+            value=WorkMode.REMOTE.value,
+            evidence_ids=("ev-remote-track",),
+            verification_status=VerificationStatus.VERIFIED,
+        ))
+
+        evaluation = OpportunityScorer().evaluate(
+            create_test_opportunity(title="Remote Data Engineer"),
+            graph,
+        )
+        trajectory = next(
+            ds for ds in evaluation.dimension_scores if ds.dimension_name == "career_trajectory"
+        )
+
+        self.assertEqual(trajectory.raw_score, 0.50)
+        self.assertEqual(trajectory.weighted_score, 0.025)
+        self.assertEqual(trajectory.strengths, ())
+        self.assertEqual(trajectory.evidence_refs, ())
+        self.assertNotIn("a-remote-track", trajectory.evidence_refs)
+
+    def test_career_goal_does_not_match_as_a_target_role(self) -> None:
+        graph = TruthGraph()
+        graph.add_evidence(EvidenceRecord(
+            id="ev-career-goal",
+            content="Career goal: Data Engineer.",
+            source="manual",
+            locator="career.goal",
+        ))
+        graph.add_assertion(AtomicAssertion(
+            id="a-career-goal",
+            subject_id="founder",
+            predicate=predicates.CAREER_GOAL,
+            value="Data Engineer",
+            evidence_ids=("ev-career-goal",),
+            verification_status=VerificationStatus.VERIFIED,
+        ))
+
+        evaluation = OpportunityScorer().evaluate(
+            create_test_opportunity(title="Data Engineer"),
+            graph,
+        )
+        trajectory = next(
+            ds for ds in evaluation.dimension_scores if ds.dimension_name == "career_trajectory"
+        )
+
+        self.assertEqual(trajectory.raw_score, 0.50)
+        self.assertEqual(trajectory.weighted_score, 0.025)
+        self.assertEqual(trajectory.strengths, ())
+        self.assertEqual(trajectory.evidence_refs, ())
+        self.assertNotIn("a-career-goal", trajectory.evidence_refs)
+
+    def test_verified_target_role_matches_title_and_supplies_evidence(self) -> None:
+        graph = _graph_with_target_role("Data Engineer")
+        evaluation = OpportunityScorer().evaluate(
+            create_test_opportunity(title="Data Engineer"),
+            graph,
+        )
+        trajectory = next(
+            ds for ds in evaluation.dimension_scores if ds.dimension_name == "career_trajectory"
+        )
+
+        self.assertEqual(trajectory.raw_score, 0.95)
+        self.assertEqual(trajectory.weighted_score, 0.0475)
+        self.assertEqual(
+            trajectory.strengths,
+            ("Opportunity title matches target role: Data Engineer",),
+        )
+        self.assertEqual(trajectory.evidence_refs, ("a-target-role",))
+
+
+    def test_profile_target_role_projection_matches_title_and_supplies_evidence(self) -> None:
+        from truth.models import CareerProfile, TargetRoleRecord, TargetRoleTier
+
+        graph = TruthGraph()
+        graph.add_evidence(EvidenceRecord(
+            id="ev-typed-target-role",
+            content="Primary target role: Data Engineer.",
+            source="manual",
+            locator="career_profile.target_roles.0",
+        ))
+        graph.add_career_profile(CareerProfile(
+            id="career-typed-targets",
+            target_roles=(TargetRoleRecord(
+                id="target-data-engineer",
+                title="Data Engineer",
+                evidence_ids=("ev-typed-target-role",),
+                tier=TargetRoleTier.PRIMARY,
+            ),),
+        ))
+
+        evaluation = OpportunityScorer().evaluate(
+            create_test_opportunity(title="Data Engineer"),
+            graph,
+        )
+        trajectory = next(
+            ds for ds in evaluation.dimension_scores if ds.dimension_name == "career_trajectory"
+        )
+        role_assertion = next(
+            assertion for assertion in graph.assertions.values()
+            if assertion.predicate == predicates.CAREER_TARGET_ROLE
+        )
+
+        self.assertEqual(trajectory.raw_score, 0.95)
+        self.assertEqual(trajectory.evidence_refs, (role_assertion.id,))
+
+
 class TestTitleFamilyFitDimensionIntegration(unittest.TestCase):
     """Council review #1 finding 3 (BRIEF-FR-006 B3): `title_family_fit`
     shipped with no test that ran a full `Opportunity`/`TruthGraph` pair
@@ -497,7 +951,7 @@ class TestTitleFamilyFitDimensionIntegration(unittest.TestCase):
 
     def _dimension(self, evaluation):
         return next(
-            ds for ds in evaluation.dimension_scores if ds.dimension_name == "title_family_fit"
+            ds for ds in evaluation.dimension_scores if ds.dimension_name == "target_role_family_preference"
         )
 
     def test_matching_family(self) -> None:
@@ -541,6 +995,140 @@ class TestTitleFamilyFitDimensionIntegration(unittest.TestCase):
         self.assertEqual(dim.raw_score, 0.50)
         self.assertTrue(dim.unknowns)
         self.assertIn("no verified career.target_role assertion", dim.unknowns[0])
+
+
+class TestFR008CapabilityDimensions(unittest.TestCase):
+    def _dimension(self, evaluation, name: str):
+        return next(ds for ds in evaluation.dimension_scores if ds.dimension_name == name)
+
+    def test_employment_capability_dimensions_are_distinct(self) -> None:
+        evaluation = OpportunityScorer().evaluate(
+            create_test_opportunity(title="Senior Data Engineer"),
+            create_test_graph(),
+        )
+        dimensions = {dimension.dimension_name for dimension in evaluation.dimension_scores}
+        self.assertTrue({
+            "core_skills",
+            "experience_fit",
+            "seniority_fit",
+            "responsibility_scope",
+            "domain_fit",
+            "title_family_fit",
+            "education_certification_fit",
+        }.issubset(dimensions))
+        self.assertIn("target_role_family_preference", dimensions)
+
+    def test_verified_employment_family_is_capability_evidence(self) -> None:
+        graph = TruthGraph()
+        _add_verified_assertion(
+            graph,
+            assertion_id="a-employment-title",
+            predicate=predicates.EMPLOYMENT_TITLE,
+            value="Senior Data Engineer",
+            subject_id="employment-1",
+        )
+        evaluation = OpportunityScorer().evaluate(
+            create_test_opportunity(title="Senior Data Engineer"),
+            graph,
+        )
+        capability = self._dimension(evaluation, "title_family_fit")
+        preference = self._dimension(evaluation, "target_role_family_preference")
+        self.assertEqual(capability.raw_score, 1.0)
+        self.assertEqual(capability.evidence_refs, ("a-employment-title",))
+        self.assertTrue(capability.strengths)
+        self.assertEqual(preference.evidence_refs, ())
+        self.assertTrue(preference.unknowns)
+
+    def test_verified_completed_certification_matches_explicit_requirement(self) -> None:
+        graph = TruthGraph()
+        _add_verified_assertion(
+            graph,
+            assertion_id="a-pmp-name",
+            predicate=predicates.CERTIFICATION_NAME,
+            value="PMP",
+            subject_id="credential-pmp",
+            evidence_text="PMP certification completed.",
+        )
+        _add_verified_assertion(
+            graph,
+            assertion_id="a-pmp-state",
+            predicate=predicates.CERTIFICATION_STATE,
+            value=CertificationState.COMPLETED,
+            subject_id="credential-pmp",
+            evidence_text="The PMP certification is completed.",
+        )
+        opportunity = _opportunity_with_requirements(("PMP certification required",))
+        evaluation = OpportunityScorer().evaluate(opportunity, graph)
+        dimension = self._dimension(evaluation, "education_certification_fit")
+        self.assertEqual(dimension.raw_score, 1.0)
+        self.assertEqual(dimension.gaps, ())
+        self.assertEqual(set(dimension.evidence_refs), {"a-pmp-name", "a-pmp-state"})
+        self.assertTrue(dimension.strengths)
+
+    def test_higher_verified_degree_matches_required_degree_and_field(self) -> None:
+        graph = TruthGraph()
+        _add_verified_assertion(
+            graph,
+            assertion_id="a-education-qualification",
+            predicate=predicates.EDUCATION_QUALIFICATION,
+            value="Master of Science in Computer Science",
+            subject_id="education-1",
+        )
+        opportunity = _opportunity_with_requirements(
+            ("Bachelor's degree in Computer Science required",),
+        )
+        evaluation = OpportunityScorer().evaluate(opportunity, graph)
+        dimension = self._dimension(evaluation, "education_certification_fit")
+        self.assertEqual(dimension.raw_score, 1.0)
+        self.assertEqual(dimension.evidence_refs, ("a-education-qualification",))
+
+    def test_missing_credential_evidence_stays_unknown_not_gap(self) -> None:
+        evaluation = OpportunityScorer().evaluate(
+            _opportunity_with_requirements(("PMP certification required",)),
+            TruthGraph(),
+        )
+        dimension = self._dimension(evaluation, "education_certification_fit")
+        self.assertEqual(dimension.raw_score, 0.5)
+        self.assertEqual(dimension.gaps, ())
+        self.assertTrue(any("No verified matching certification record" in note for note in dimension.unknowns))
+
+    def test_company_context_credential_mention_is_not_applicant_requirement(self) -> None:
+        evaluation = OpportunityScorer().evaluate(
+            create_test_opportunity(description="We use CISSP standards in our internal controls."),
+            TruthGraph(),
+        )
+        dimension = self._dimension(evaluation, "education_certification_fit")
+        self.assertEqual(dimension.raw_score, 0.5)
+        self.assertFalse(dimension.gaps)
+        self.assertEqual(
+            dimension.unknowns,
+            ("Posting does not state an explicit applicant-facing education or certification requirement",),
+        )
+
+    def test_planned_certification_does_not_match_as_held(self) -> None:
+        graph = TruthGraph()
+        _add_verified_assertion(
+            graph,
+            assertion_id="a-pmp-name",
+            predicate=predicates.CERTIFICATION_NAME,
+            value="PMP",
+            subject_id="credential-pmp",
+        )
+        _add_verified_assertion(
+            graph,
+            assertion_id="a-pmp-state",
+            predicate=predicates.CERTIFICATION_STATE,
+            value=CertificationState.PLANNED,
+            subject_id="credential-pmp",
+        )
+        evaluation = OpportunityScorer().evaluate(
+            _opportunity_with_requirements(("PMP certification required",)),
+            graph,
+        )
+        dimension = self._dimension(evaluation, "education_certification_fit")
+        self.assertEqual(dimension.strengths, ())
+        self.assertEqual(dimension.gaps, ())
+        self.assertTrue(dimension.unknowns)
 
 
 if __name__ == "__main__":

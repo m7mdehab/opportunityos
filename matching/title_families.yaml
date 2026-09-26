@@ -12,6 +12,8 @@ families:
   - pre sales engineer
   - technical account manager
   - solutions consultant
+  - technical consultant
+  - technical solutions consultant
   - customer solutions engineer
   - forward deployed engineer
   - solutions architect
@@ -24,6 +26,8 @@ families:
   - \btechnical\s+account\s+manager\b
   - \bsales\s+engineering\b
   - \bcustomer\s+solutions?\s+engineer\b
+  - \btechnical\s+solutions?\s+consultant\b
+  - \btechnical\s+consultant\b
   - \bforward\s+deployed\s+engineer\b
   - \bsolutions?\s+architect\b
   negative_patterns:
@@ -34,6 +38,10 @@ families:
   - machine learning engineer
   - ml engineer
   - ai engineer
+  - llm engineer
+  - llm engineering
+  - large language model engineer
+  - generative ai engineer
   - artificial intelligence engineer
   - deep learning engineer
   - nlp engineer
@@ -44,6 +52,7 @@ families:
   - \bmachine\s+learning\s+engineer\b
   - \bml\s+engineer\b
   - \bai\s+engineer\b
+  - \b(llm|large\s+language\s+models?|generative\s+ai)\s+(engineering|engineer|developer|specialist)\b
   - \bartificial\s+intelligence\s+engineer\b
   - \b(deep\s+learning|nlp|computer\s+vision|mlops)\s+engineer\b
   - \bai\s+research\b
@@ -74,6 +83,24 @@ families:
   - \b(data|cloud|system|platform|infrastructure)\s+migration\b
   - \bmigration\s+(engineer|specialist|consultant|lead)\b
   negative_patterns: []
+- id: data_quality_management
+  display_name: Data Quality / Management
+  aliases:
+  - data quality
+  - data quality analyst
+  - data quality engineer
+  - data quality specialist
+  - data governance
+  - data governance analyst
+  - data governance engineer
+  - data management
+  - data management analyst
+  - data management specialist
+  - data steward
+  - data stewardship
+  patterns:
+  - \bdata\s+(quality|governance|management|stewardship)\b
+  negative_patterns: []
 - id: analytics_bi
   display_name: Analytics / BI
   aliases:
@@ -87,6 +114,8 @@ families:
   - business systems analyst
   - business analyst
   - it business analyst
+  - technical analyst
+  - technical business analyst
   - crm lead
   patterns:
   - \bdata\s+analyst\b
@@ -97,6 +126,7 @@ families:
   - \badvanced\s+analytics\b
   - \banalytics\b
   - \bbusiness\s+systems?\s+analyst\b
+  - \btechnical\s+(business\s+)?analyst\b
   - \bbusiness\s+analyst\b
   - ^\s*analyst\s*$
   negative_patterns: []
@@ -122,11 +152,14 @@ families:
   - data infrastructure engineer
   - data pipeline engineer
   - data architect
+  - data integration engineer
+  - data integration specialist
   patterns:
   - \bdata\s+(platform\s+|infrastructure\s+|pipeline\s+)?engineer\b
   - \betl\s+engineer\b
   - \bbig\s*data\s+engineer\b
   - \bdata\s+architect\b
+  - \bdata\s+integration\b
   - \bdata\s+platform\b
   negative_patterns:
   - \b(customer|sales|solutions?)\b

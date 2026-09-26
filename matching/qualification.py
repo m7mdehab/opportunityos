@@ -8,6 +8,7 @@ language evaluates strictly to UNCERTAIN/REVIEW.
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from typing import Any
 
 from opportunity.models import Opportunity, RemotePolicy, RemoteScope, Track, WorkMode
@@ -21,6 +22,61 @@ from .models import (
     QualificationDecision,
     ScoringPolicy,
 )
+
+
+def _job_source_pointer(opp: Opportunity, field_name: str) -> str:
+    """Resolve a job-side source pointer, preferring field-level lineage."""
+    aliases = {"remote_policy": "work_mode", "location": "location_raw"}
+    field_candidates = field_name.split("/")
+    for candidate in field_candidates:
+        lookup_field = aliases.get(candidate, candidate)
+        field_leaf = lookup_field.rsplit(".", 1)[-1]
+        for provenance in opp.field_provenances:
+            if provenance.field_name in {candidate, lookup_field, field_leaf} and provenance.raw_pointer:
+                return provenance.raw_pointer
+
+    record_pointer = opp.raw_record_pointer
+    if not record_pointer and opp.raw_provenance is not None:
+        record_pointer = opp.raw_provenance.raw_pointer
+    lookup_field = aliases.get(field_candidates[0], field_candidates[0])
+    if record_pointer:
+        return f"{record_pointer}.{lookup_field}"
+    # Synthetic and legacy records may lack raw adapter lineage. Keep the
+    # normalized field addressable without presenting it as raw source text.
+    return f"opportunity:{opp.id}#/{lookup_field}"
+
+
+def _structured_job_evidence(opp: Opportunity, field_name: str) -> str:
+    """Render a compact field/value citation when no exact job text was matched."""
+    pm = opp.procurement_metadata
+    values: dict[str, Any] = {
+        "remote_scope": opp.remote_scope.value,
+        "remote_scope_regions": ", ".join(opp.remote_scope_regions),
+        "location_country": opp.location_country,
+        "work_mode": opp.work_mode.value,
+        "remote_policy": opp.work_mode.value,
+        "location_raw": opp.location_raw,
+        "location": opp.location_raw,
+        "title": opp.title,
+        "requirements": "; ".join(opp.requirements),
+        "skills": "; ".join(opp.skills),
+        "description": "",
+        "procurement_metadata": "present" if pm is not None else "missing",
+        "procurement_metadata.buyer_country": pm.buyer_country if pm else "",
+        "buyer_country": pm.buyer_country if pm else "",
+        "procurement_metadata.turnover_required": pm.turnover_required if pm else None,
+        "turnover_required": pm.turnover_required if pm else None,
+        "procurement_metadata.bid_bonding_required": pm.bid_bonding_required if pm else None,
+        "bid_bonding_required": pm.bid_bonding_required if pm else None,
+        "procurement_metadata.languages": ", ".join(pm.languages) if pm else "",
+        "languages": ", ".join(pm.languages) if pm else "",
+    }
+    citations: list[str] = []
+    for candidate in field_name.split("/"):
+        value = values.get(candidate)
+        if value is not None and str(value).strip():
+            citations.append(f"{candidate}={value}")
+    return "; ".join(citations) or field_name
 
 
 class QualificationEngine:
@@ -38,6 +94,22 @@ class QualificationEngine:
         else:
             results.extend(self._evaluate_employment_constraints(opp, truth_graph))
 
+        # Older and synthetic Opportunity values can lack raw-record lineage.
+        # Every result still needs an addressable job-side field pointer; the
+        # fallback identifies the normalized Opportunity field explicitly.
+        results = [
+            replace(
+                result,
+                provenance_pointer=_job_source_pointer(opp, result.job_evidence_field),
+                source_pointer=_job_source_pointer(opp, result.job_evidence_field),
+                job_evidence_text=(
+                    result.job_evidence_text
+                    or _structured_job_evidence(opp, result.job_evidence_field)
+                ),
+            )
+            for result in results
+        ]
+
         # Determine overall qualification decision
         has_hard_failure = any(r.is_hard_failure for r in results)
         has_uncertainty = any(r.passed is None for r in results)
@@ -54,17 +126,20 @@ class QualificationEngine:
     def _resolve_geo_from_extracted_fields(
         self, opp: Opportunity, truth_graph: TruthGraph
     ) -> HardConstraintResult | None:
-        """BRIEF-FR-006 A1 qualifier change: geographic eligibility resolves whenever
-        the opportunity has a ``location_country`` OR a ``remote_scope`` -- UNCERTAIN
-        (the pre-existing blanket fallback) is reserved for when BOTH are absent.
-        Region-restricted remote roles that exclude Egypt are LABELLED "remote but
-        region-restricted"; this method never returns ``is_hard_failure=True`` for
-        that case -- it is never hidden and never made ineligible. Per-country
-        eligibility reads the founder's verified work-authorization jurisdictions
-        and residence/location assertions from the truth graph. Returns ``None``
-        (defer to the caller's pre-existing fallback) when neither field is present.
+        """Resolve employment geography from structured opportunity and verified
+        Founder evidence. Legacy ``GeographicEligibility.status`` and ``reason`` are
+        derived labels and are deliberately not consulted here or by the caller.
+
+        Returns ``None`` when structured geography is insufficient, so the caller
+        can keep the result review-required. A negative authorization is a hard
+        failure only when structured work mode and country establish physical
+        presence in that same jurisdiction.
         """
-        if opp.remote_scope == RemoteScope.WORLDWIDE:
+        # Remote scope can describe applicant availability when structured fields
+        # do not establish mandatory physical presence. Hybrid and onsite work
+        # still require presence at the named location.
+        scope_can_resolve_applicant_region = opp.work_mode not in {WorkMode.ONSITE, WorkMode.HYBRID}
+        if scope_can_resolve_applicant_region and opp.remote_scope == RemoteScope.WORLDWIDE:
             return HardConstraintResult(
                 constraint_name="geographic_eligibility",
                 passed=True,
@@ -75,7 +150,7 @@ class QualificationEngine:
                 provenance_pointer=f"{opp.raw_record_pointer}.remote_scope",
             )
 
-        if opp.remote_scope == RemoteScope.REGION_RESTRICTED:
+        if scope_can_resolve_applicant_region and opp.remote_scope == RemoteScope.REGION_RESTRICTED:
             regions = tuple(r.upper() for r in opp.remote_scope_regions)
             includes_eg = "EG" in regions or "MENA" in regions or "EMEA" in regions
             if includes_eg:
@@ -156,7 +231,9 @@ class QualificationEngine:
                         required_field="location_country",
                         founder_fact=f"Verified lack of work authorization in {country_name.title()}",
                         is_hard_failure=True,
-                        provenance_pointer=f"{opp.raw_record_pointer}.location_country",
+                        provenance_pointer=_job_source_pointer(opp, "location_country"),
+                        job_evidence_text=f"work_mode={opp.work_mode.value}; location_country={opp.location_country}",
+                        requirement_mandatory=True,
                     )
                 return HardConstraintResult(
                     constraint_name="geographic_eligibility",
@@ -188,51 +265,20 @@ class QualificationEngine:
     def _evaluate_employment_constraints(self, opp: Opportunity, truth_graph: TruthGraph) -> list[HardConstraintResult]:
         results: list[HardConstraintResult] = []
 
-        # 1. Geographic Eligibility (BRIEF-001 integration via Opportunity.geographic_eligibility)
-        geo = opp.geographic_eligibility
-        if geo is not None:
-            if geo.status == "excluded":
-                results.append(HardConstraintResult(
-                    constraint_name="geographic_eligibility",
-                    passed=False,
-                    reason=f"Geographically excluded: {geo.reason}",
-                    required_field="geographic_eligibility",
-                    founder_fact=f"Policy exclusion: {geo.reason}",
-                    is_hard_failure=True,
-                    provenance_pointer=opp.raw_record_pointer,
-                ))
-            elif geo.status == "eligible":
-                results.append(HardConstraintResult(
-                    constraint_name="geographic_eligibility",
-                    passed=True,
-                    reason=f"Geographically eligible: {geo.reason}",
-                    required_field="geographic_eligibility",
-                    founder_fact=f"Eligible status: {geo.reason}",
-                    is_hard_failure=False,
-                    provenance_pointer=opp.raw_record_pointer,
-                ))
-            else:  # unclear / ineligible without hard exclusion
-                resolved = self._resolve_geo_from_extracted_fields(opp, truth_graph)
-                results.append(resolved or HardConstraintResult(
-                    constraint_name="geographic_eligibility",
-                    passed=None,
-                    reason=f"Geographic eligibility uncertain: {geo.reason}",
-                    required_field="geographic_eligibility",
-                    founder_fact="Geographic eligibility requires applicant confirmation",
-                    is_hard_failure=False,
-                    provenance_pointer=opp.raw_record_pointer,
-                ))
-        else:
-            resolved = self._resolve_geo_from_extracted_fields(opp, truth_graph)
-            results.append(resolved or HardConstraintResult(
-                constraint_name="geographic_eligibility",
-                passed=None,
-                reason="Opportunity lacks geographic classification metadata",
-                required_field="geographic_eligibility",
-                founder_fact="Geographic metadata unasserted",
-                is_hard_failure=False,
-                provenance_pointer=opp.raw_record_pointer,
-            ))
+        # 1. Geographic eligibility. The older status/reason pair is a derived
+        # classifier label and cannot establish either an applicant restriction or
+        # Founder compatibility. Only structured opportunity fields and verified
+        # Founder evidence can resolve this constraint.
+        resolved = self._resolve_geo_from_extracted_fields(opp, truth_graph)
+        results.append(resolved or HardConstraintResult(
+            constraint_name="geographic_eligibility",
+            passed=None,
+            reason="Geographic eligibility is unresolved from structured location and remote-scope evidence",
+            required_field="remote_scope/location_country/work_mode",
+            founder_fact="Verified Founder compatibility with the required work location is unasserted",
+            is_hard_failure=False,
+            provenance_pointer=_job_source_pointer(opp, "remote_scope"),
+        ))
 
         # 2. Remote Policy / On-Site Mandate
         if opp.remote_policy == RemotePolicy.ON_SITE:
@@ -251,6 +297,7 @@ class QualificationEngine:
                     founder_fact="Founder physical location unasserted in truth graph",
                     is_hard_failure=False,
                     provenance_pointer=f"{opp.raw_record_pointer}.location",
+                    requirement_mandatory=True,
                 ))
             elif not opp.location_raw:
                 results.append(HardConstraintResult(
@@ -258,9 +305,10 @@ class QualificationEngine:
                     passed=None,
                     reason="On-site policy specified but location text is absent",
                     required_field="remote_policy",
-                    founder_fact=f"Founder verified location: {', '.join(founder_locs)}",
+                    founder_fact="A verified Founder residence exists, but the required onsite location is unasserted",
                     is_hard_failure=False,
                     provenance_pointer=f"{opp.raw_record_pointer}.location",
+                    requirement_mandatory=True,
                 ))
             else:
                 loc_lower = opp.location_raw.casefold()
@@ -269,21 +317,23 @@ class QualificationEngine:
                     results.append(HardConstraintResult(
                         constraint_name="work_mode_onsite",
                         passed=True,
-                        reason=f"On-site requirement matches founder verified location: '{opp.location_raw}'",
+                        reason="On-site location is consistent with a verified Founder residence",
                         required_field="remote_policy",
-                        founder_fact=f"Founder verified location: {', '.join(founder_locs)}",
+                        founder_fact="Verified Founder residence is consistent with the onsite location",
                         is_hard_failure=False,
                         provenance_pointer=f"{opp.raw_record_pointer}.location",
+                        requirement_mandatory=True,
                     ))
                 else:
                     results.append(HardConstraintResult(
                         constraint_name="work_mode_onsite",
-                        passed=False,
-                        reason=f"Mandatory on-site attendance required at '{opp.location_raw}', conflicting with verified founder location",
+                        passed=None,
+                        reason="Mandatory onsite location differs from a verified Founder residence; relocation feasibility is unasserted",
                         required_field="remote_policy",
-                        founder_fact=f"Founder verified location: {', '.join(founder_locs)}",
-                        is_hard_failure=True,
+                        founder_fact="No verified Founder-side restriction establishes inability or unwillingness to relocate",
+                        is_hard_failure=False,
                         provenance_pointer=f"{opp.raw_record_pointer}.location",
+                        requirement_mandatory=True,
                     ))
         elif opp.remote_policy in {RemotePolicy.REMOTE, RemotePolicy.HYBRID}:
             results.append(HardConstraintResult(
@@ -294,11 +344,12 @@ class QualificationEngine:
                 founder_fact="Opportunity permits remote/hybrid engagement",
                 is_hard_failure=False,
                 provenance_pointer=f"{opp.raw_record_pointer}.remote_policy",
+                requirement_mandatory=True,
             ))
 
         # 3. Explicit Work Authorization Requirements
         auth_req_match = re.search(
-            r"\b(?:must\s+have\s+valid\s+work\s+authorization\s+in|eligible\s+to\s+work\s+in|authorized\s+to\s+work\s+in)\s+([A-Za-z\s]+?)(?:\.|\bwithout\b|\band\b|$)",
+            r"\b(?:must\s+have\s+valid\s+work\s+authorization\s+in|eligible\s+to\s+work\s+in|authorized\s+to\s+work\s+in)\s+([A-Za-z\s]+?)(?=\.|\bwithout\b|\band\b|$)",
             opp.description,
             re.IGNORECASE,
         )
@@ -327,7 +378,9 @@ class QualificationEngine:
                     required_field="description",
                     founder_fact=f"Verified authorization for {required_jurisdiction}",
                     is_hard_failure=False,
-                    provenance_pointer=f"{opp.raw_record_pointer}.description",
+                    provenance_pointer=_job_source_pointer(opp, "description"),
+                    job_evidence_text=auth_req_match.group(0).strip(),
+                    requirement_mandatory=True,
                 ))
             elif auth_negations:
                 results.append(HardConstraintResult(
@@ -337,7 +390,9 @@ class QualificationEngine:
                     required_field="description",
                     founder_fact=f"Verified lack of work authorization for {required_jurisdiction}",
                     is_hard_failure=True,
-                    provenance_pointer=f"{opp.raw_record_pointer}.description",
+                    provenance_pointer=_job_source_pointer(opp, "description"),
+                    job_evidence_text=auth_req_match.group(0).strip(),
+                    requirement_mandatory=True,
                 ))
             else:
                 results.append(HardConstraintResult(
@@ -347,7 +402,9 @@ class QualificationEngine:
                     required_field="description",
                     founder_fact="Founder work authorization unasserted in truth graph",
                     is_hard_failure=False,
-                    provenance_pointer=f"{opp.raw_record_pointer}.description",
+                    provenance_pointer=_job_source_pointer(opp, "description"),
+                    job_evidence_text=auth_req_match.group(0).strip(),
+                    requirement_mandatory=True,
                 ))
 
         # 4. Mandatory Language Requirements
@@ -379,30 +436,36 @@ class QualificationEngine:
                     constraint_name="language_requirement",
                     passed=True,
                     reason=f"Founder verified in required language '{req_lang}'",
-                    required_field="requirements",
+                    required_field=("title" if lang_match.start() < len(opp.title) else "description"),
                     founder_fact=f"Verified proficiency in {req_lang}",
                     is_hard_failure=False,
-                    provenance_pointer=f"{opp.raw_record_pointer}.requirements",
+                    provenance_pointer=_job_source_pointer(opp, "title" if lang_match.start() < len(opp.title) else "description"),
+                    job_evidence_text=lang_match.group(0),
+                    requirement_mandatory=True,
                 ))
             elif negated_langs:
                 results.append(HardConstraintResult(
                     constraint_name="language_requirement",
                     passed=False,
                     reason=f"Mandatory language required: '{req_lang}', which founder explicitly lacks under verified truth graph",
-                    required_field="requirements",
+                    required_field=("title" if lang_match.start() < len(opp.title) else "description"),
                     founder_fact=f"Verified lack of proficiency in {req_lang}",
                     is_hard_failure=True,
-                    provenance_pointer=f"{opp.raw_record_pointer}.requirements",
+                    provenance_pointer=_job_source_pointer(opp, "title" if lang_match.start() < len(opp.title) else "description"),
+                    job_evidence_text=lang_match.group(0),
+                    requirement_mandatory=True,
                 ))
             else:
                 results.append(HardConstraintResult(
                     constraint_name="language_requirement",
                     passed=None,
                     reason=f"Mandatory language required: '{req_lang}'; founder proficiency unasserted in truth graph",
-                    required_field="requirements",
+                    required_field=("title" if lang_match.start() < len(opp.title) else "description"),
                     founder_fact=f"Language proficiency for '{req_lang}' unasserted in truth graph",
                     is_hard_failure=False,
-                    provenance_pointer=f"{opp.raw_record_pointer}.requirements",
+                    provenance_pointer=_job_source_pointer(opp, "title" if lang_match.start() < len(opp.title) else "description"),
+                    job_evidence_text=lang_match.group(0),
+                    requirement_mandatory=True,
                 ))
 
         return results
@@ -419,7 +482,7 @@ class QualificationEngine:
                 required_field="procurement_metadata",
                 founder_fact="Procurement metadata unasserted",
                 is_hard_failure=False,
-                provenance_pointer=opp.raw_record_pointer,
+                provenance_pointer=_job_source_pointer(opp, "procurement_metadata"),
             ))
             return results
 
@@ -436,7 +499,9 @@ class QualificationEngine:
                     required_field="procurement_metadata.buyer_country",
                     founder_fact=f"Policy prohibited jurisdictions: {', '.join(prohibited)}",
                     is_hard_failure=True,
-                    provenance_pointer=f"{opp.raw_record_pointer}.buyer_country",
+                    provenance_pointer=_job_source_pointer(opp, "procurement_metadata.buyer_country"),
+                    job_evidence_text=f"buyer_country={buyer_country}",
+                    requirement_mandatory=False,
                 ))
             elif approved and any(a.casefold() in buyer_country.casefold() for a in approved):
                 results.append(HardConstraintResult(
@@ -447,6 +512,7 @@ class QualificationEngine:
                     founder_fact=f"Approved delivery jurisdiction: {buyer_country}",
                     is_hard_failure=False,
                     provenance_pointer=f"{opp.raw_record_pointer}.buyer_country",
+                    requirement_mandatory=False,
                 ))
             else:
                 results.append(HardConstraintResult(
@@ -457,6 +523,7 @@ class QualificationEngine:
                     founder_fact="Buyer jurisdiction compliance unconfirmed",
                     is_hard_failure=False,
                     provenance_pointer=f"{opp.raw_record_pointer}.buyer_country",
+                    requirement_mandatory=False,
                 ))
 
         # 2. Turnover / Minimum Financial Requirements
@@ -475,6 +542,7 @@ class QualificationEngine:
                     founder_fact="Founder annual turnover unasserted in truth graph",
                     is_hard_failure=False,
                     provenance_pointer=f"{opp.raw_record_pointer}.turnover_required",
+                    requirement_mandatory=True,
                 ))
             else:
                 verified_turnover = max(
@@ -490,6 +558,7 @@ class QualificationEngine:
                         founder_fact=f"Verified turnover: {verified_turnover}",
                         is_hard_failure=False,
                         provenance_pointer=f"{opp.raw_record_pointer}.turnover_required",
+                        requirement_mandatory=True,
                     ))
                 else:
                     results.append(HardConstraintResult(
@@ -499,7 +568,9 @@ class QualificationEngine:
                         required_field="procurement_metadata.turnover_required",
                         founder_fact=f"Founder verified turnover capacity: {verified_turnover}",
                         is_hard_failure=True,
-                        provenance_pointer=f"{opp.raw_record_pointer}.turnover_required",
+                        provenance_pointer=_job_source_pointer(opp, "procurement_metadata.turnover_required"),
+                        job_evidence_text=f"minimum annual turnover required: {pm.turnover_required}",
+                        requirement_mandatory=True,
                     ))
 
         # 3. Bid Bonding Requirement
@@ -512,6 +583,7 @@ class QualificationEngine:
                 founder_fact="Bid bonding facility requires explicit engagement signoff",
                 is_hard_failure=False,
                 provenance_pointer=f"{opp.raw_record_pointer}.bid_bonding_required",
+                requirement_mandatory=True,
             ))
 
         # 4. Mandatory Languages in Procurement
@@ -535,6 +607,7 @@ class QualificationEngine:
                     founder_fact="Founder languages unasserted in truth graph",
                     is_hard_failure=False,
                     provenance_pointer=f"{opp.raw_record_pointer}.languages",
+                    requirement_mandatory=True,
                 ))
             else:
                 missing_langs = [l for l in pm.languages if l.title() not in verified_lang_names]
@@ -547,6 +620,7 @@ class QualificationEngine:
                         founder_fact=f"Founder verified languages: {', '.join(sorted(verified_lang_names))}",
                         is_hard_failure=False,
                         provenance_pointer=f"{opp.raw_record_pointer}.languages",
+                        requirement_mandatory=True,
                     ))
                 else:
                     results.append(HardConstraintResult(
@@ -557,6 +631,7 @@ class QualificationEngine:
                         founder_fact=f"Founder languages: {', '.join(sorted(verified_lang_names))}",
                         is_hard_failure=False,
                         provenance_pointer=f"{opp.raw_record_pointer}.languages",
+                        requirement_mandatory=True,
                     ))
 
         return results

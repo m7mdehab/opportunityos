@@ -4,7 +4,7 @@ from __future__ import annotations
 import unittest
 from datetime import date
 
-from opportunity.models import RemotePolicy, SeniorityLevel, Track
+from opportunity.models import RemotePolicy, RemoteScope, SeniorityLevel, Track, WorkMode
 from matching.compiler_employment import EmploymentArtifactCompiler
 from matching.gold_set import BenchmarkItem, GoldSetHarness
 from matching.models import QualificationDecision
@@ -79,15 +79,20 @@ class TestDeterministicReplayAndGoldSet(unittest.TestCase):
                 "Python\n"
                 "Go"
             ),
+            remote_scope=RemoteScope.WORLDWIDE,
         )
         opp_low = create_test_opportunity(
             opp_id="bench-low-fit",
             title="Junior Frontend React Developer",
             skills=("React", "CSS", "JavaScript"),
+            remote_scope=RemoteScope.WORLDWIDE,
         )
         opp_excluded = create_test_opportunity(
             opp_id="bench-excluded",
             geo_status="excluded",
+            work_mode=WorkMode.ONSITE,
+            location_country="DE",
+            location_raw="Berlin, Germany",
         )
 
         items = (
@@ -116,7 +121,7 @@ class TestDeterministicReplayAndGoldSet(unittest.TestCase):
                 min_expected_fit_score=0.0,
                 max_expected_fit_score=50.0,
                 must_fail_constraints=("geographic_eligibility",),
-                rationale="Geographically excluded opportunity.",
+                rationale="Structured onsite country conflicts with verified negative authorization.",
             ),
         )
 

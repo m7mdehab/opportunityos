@@ -19,9 +19,15 @@ five JSON-bearing columns this module reads:
 `evaluation_detail_json` -> nullable JSON object:
     {"hard_constraints": [{"constraint_name", "passed" (true|false|null),
                             "reason", "required_field", "founder_fact",
-                            "is_hard_failure", "provenance_pointer"}, ...],
+                            "is_hard_failure", "provenance_pointer",
+                            "constraint_type", "job_evidence_text",
+                            "job_evidence_field", "source_pointer",
+                            "founder_side_evidence", "decision", "confidence",
+                            "requirement_mandatory", "explanation"}, ...],
      "strengths": [str, ...], "gaps": [str, ...], "unknowns": [str, ...],
-     "uncertainty_penalty": float, "explanation": str}
+     "uncertainty_penalty": float, "preference_score": float|null,
+     "confidence_score": float|null, "confidence_factors": [{"name", "score", "explanation"}, ...],
+     "explanation": str}
     Nullable because rows persisted before this column existed have no
     detail payload -- see `unpack_evaluation_detail`.
 
@@ -80,6 +86,9 @@ _EVALUATION_DETAIL_DEFAULT: dict[str, Any] = {
     "gaps": [],
     "unknowns": [],
     "uncertainty_penalty": 0.0,
+    "preference_score": None,
+    "confidence_score": None,
+    "confidence_factors": [],
     "explanation": "",
 }
 
@@ -194,12 +203,29 @@ def serialize_opportunity_extraction_fields(opp: Any, family_size: int | None = 
 
 
 def serialize_constraint(entry: dict[str, Any]) -> dict[str, Any]:
+    constraint_name = entry.get("constraint_name", entry.get("constraint_type"))
+    passed = entry.get("decision", entry.get("passed"))
+    required_field = entry.get("job_evidence_field", entry.get("required_field", ""))
+    founder_fact = entry.get("founder_side_evidence", entry.get("founder_fact", ""))
+    reason = entry.get("explanation", entry.get("reason", ""))
+    source_pointer = entry.get("source_pointer", entry.get("provenance_pointer", ""))
     return {
-        "constraint_name": entry.get("constraint_name"),
-        "outcome": constraint_outcome(entry.get("passed")),
-        "reason": entry.get("reason", ""),
-        "required_field": entry.get("required_field", ""),
-        "founder_fact": entry.get("founder_fact", ""),
+        # Compatibility fields retained for current UI clients.
+        "constraint_name": constraint_name,
+        "outcome": constraint_outcome(passed),
+        "reason": reason,
+        "required_field": entry.get("required_field", required_field),
+        "founder_fact": entry.get("founder_fact", founder_fact),
         "is_hard_failure": bool(entry.get("is_hard_failure", False)),
-        "provenance_pointer": entry.get("provenance_pointer", ""),
+        "provenance_pointer": entry.get("provenance_pointer", source_pointer),
+        # FR-008 evidence contract fields.
+        "constraint_type": entry.get("constraint_type", constraint_name),
+        "job_evidence_text": entry.get("job_evidence_text", ""),
+        "job_evidence_field": required_field,
+        "source_pointer": source_pointer,
+        "founder_side_evidence": founder_fact,
+        "decision": passed,
+        "confidence": entry.get("confidence"),
+        "requirement_mandatory": entry.get("requirement_mandatory"),
+        "explanation": reason,
     }

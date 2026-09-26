@@ -13,25 +13,32 @@ Two independent primitives live here:
    ordering and the rule that `basic`/`foundations` are the *partial* tier
    and an absent or unrecognised proficiency string is *also* partial --
    never a strength.
-2. A **required-vs-nice-to-have splitter** (`split_required_and_nice_to_have`)
-   that reads headed-list detection rules from
-   `opportunity/inference_rules.yaml`'s `skill_requirement_rules` section
-   (Greenhouse/Lever descriptions use headed lists such as "Requirements:"
-   and "Nice to have:"). When no header is found, every skill is
-   nice-to-have -- the conservative direction, because inflating "required"
-   inflates the founder's apparent match.
+2. A **five-class priority classifier** (`classify_skill_priorities`) for
+   mandatory, strongly preferred, nice-to-have, contextual, and unknown skill
+   mentions. It reads the headed-list rules in
+   `opportunity/inference_rules.yaml` and keeps unheaded/company technology
+   mentions out of mandatory requirements. The older two-set
+   `split_required_and_nice_to_have` helper remains for compatibility.
 
 `matching/scorer.py`'s skills dimension is the only caller; it owns wiring
 these primitives to the truth graph and the opportunity payload.
 """
 from __future__ import annotations
 
+from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 import re
+import unicodedata
+from typing import TypeAlias
 
 import yaml
+from truth import predicates
+from truth.models import AtomicAssertion, Polarity, VerificationStatus
+
+from .requirements import RequirementPriority, classify_requirement_text
 
 _RULES_PATH = Path(__file__).resolve().parent.parent / "opportunity" / "inference_rules.yaml"
 
@@ -57,7 +64,7 @@ PARTIAL_TIERS: frozenset[str] = frozenset(
 def normalize_proficiency(raw: str | None) -> str | None:
     """Casefold/strip a proficiency string and return it only if it belongs
     to the closed vocabulary; otherwise return None, meaning *unknown*."""
-    if raw is None:
+    if not isinstance(raw, str):
         return None
     candidate = raw.strip().casefold()
     return candidate if candidate in _TIER_RANK else None
@@ -82,6 +89,80 @@ def meets_strength_floor(raw: str | None) -> bool:
     return not is_partial_proficiency(raw)
 
 
+def normalize_skill_label(raw: str | None) -> str:
+    """Return the literal skill label normalized for exact matching.
+
+    The only transformations are canonical Unicode composition, whitespace
+    collapse, and case-folding. This deliberately does not expand aliases or
+    infer related skills (for example, ``JS`` is not ``JavaScript``).
+    """
+    if not isinstance(raw, str):
+        return ""
+    normalized = unicodedata.normalize("NFC", raw)
+    collapsed = " ".join(normalized.split())
+    return unicodedata.normalize("NFC", collapsed.casefold())
+
+
+SkillIndexEntry: TypeAlias = tuple[str | None, tuple[str, ...]]
+
+
+def build_verified_skill_index(
+    assertions: Iterable[AtomicAssertion],
+) -> dict[str, SkillIndexEntry]:
+    """Index verified career skill names and their safely joined evidence.
+
+    Skill names are grouped by exact normalized label. Proficiency is joined
+    only through the same assertion subject and only from verified
+    ``skill.proficiency`` assertions. Conflicting (or unrecognized) verified
+    tiers keep proficiency unknown. References from verified name assertions
+    are always retained; proficiency references are included only when one
+    unambiguous accepted tier exists.
+    """
+    name_rows: list[tuple[str, str, tuple[str, ...]]] = []
+    proficiency_by_subject: dict[str, list[tuple[str | None, tuple[str, ...]]]] = defaultdict(list)
+
+    for assertion in assertions:
+        if (
+            assertion.verification_status is not VerificationStatus.VERIFIED
+            or assertion.polarity is not Polarity.POSITIVE
+        ):
+            continue
+        if assertion.predicate == predicates.SKILL_NAME:
+            key = normalize_skill_label(assertion.value)
+            if key:
+                name_rows.append((key, assertion.subject_id, assertion.evidence_ids))
+        elif assertion.predicate == predicates.SKILL_PROFICIENCY:
+            tier = normalize_proficiency(assertion.value)
+            proficiency_by_subject[assertion.subject_id].append((tier, assertion.evidence_ids))
+
+    names_by_key: dict[str, list[tuple[str, tuple[str, ...]]]] = defaultdict(list)
+    for key, subject_id, evidence_refs in name_rows:
+        names_by_key[key].append((subject_id, evidence_refs))
+
+    result: dict[str, SkillIndexEntry] = {}
+    for key, skill_names in names_by_key.items():
+        name_refs = [ref for _, refs in skill_names for ref in refs]
+        subject_ids = dict.fromkeys(subject for subject, _ in skill_names)
+        observed = [
+            tier_ref
+            for subject_id in subject_ids
+            for tier_ref in proficiency_by_subject.get(subject_id, ())
+        ]
+        observed_tiers = {tier for tier, _ in observed}
+        accepted_tier = None
+        proficiency_refs: list[str] = []
+        if len(observed_tiers) == 1 and None not in observed_tiers:
+            accepted_tier = next(iter(observed_tiers))
+            proficiency_refs = [
+                ref for tier, refs in observed if tier == accepted_tier for ref in refs
+            ]
+
+        evidence_refs = tuple(dict.fromkeys((*name_refs, *proficiency_refs)))
+        result[key] = (accepted_tier, evidence_refs)
+
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Required vs nice-to-have splitting, driven by opportunity/inference_rules.yaml
 # ---------------------------------------------------------------------------
@@ -92,7 +173,12 @@ class _HeaderRule:
 
 
 @lru_cache(maxsize=1)
-def _load_skill_requirement_rules() -> tuple[tuple[_HeaderRule, ...], tuple[_HeaderRule, ...]]:
+def _load_skill_requirement_rules() -> tuple[
+    tuple[_HeaderRule, ...],
+    tuple[_HeaderRule, ...],
+    tuple[_HeaderRule, ...],
+    tuple[_HeaderRule, ...],
+]:
     with _RULES_PATH.open("r", encoding="utf-8") as fh:
         doc = yaml.safe_load(fh)
     section = (doc or {}).get("skill_requirement_rules") or {}
@@ -102,7 +188,13 @@ def _load_skill_requirement_rules() -> tuple[tuple[_HeaderRule, ...], tuple[_Hea
     nice_to_have = tuple(
         _HeaderRule(r["id"], re.compile(r["pattern"])) for r in section.get("nice_to_have_headers", ())
     )
-    return required, nice_to_have
+    strongly_preferred = tuple(
+        _HeaderRule(r["id"], re.compile(r["pattern"])) for r in section.get("strongly_preferred_headers", ())
+    )
+    contextual = tuple(
+        _HeaderRule(r["id"], re.compile(r["pattern"])) for r in section.get("contextual_headers", ())
+    )
+    return required, nice_to_have, strongly_preferred, contextual
 
 
 _BLOCK_BREAK_RE = re.compile(r"</(?:li|p|h[1-6]|div|br)\s*>|<br\s*/?>", re.IGNORECASE)
@@ -119,6 +211,71 @@ def _description_to_lines(description: str) -> list[str]:
     return text.splitlines()
 
 
+def classify_skill_priorities(
+    description: str,
+    skills: tuple[str, ...],
+) -> dict[str, RequirementPriority]:
+    """Classify each extracted skill by its strongest supported job-side cue.
+
+    Mentions outside candidate-requirement or preference sections remain
+    UNKNOWN unless prose identifies company/role context, which is explicitly
+    CONTEXTUAL. The separate legacy splitter below retains its prior two-set
+    behavior for older callers.
+    """
+    required_rules, nice_rules, strong_rules, contextual_rules = _load_skill_requirement_rules()
+    skill_pool = {
+        normalized for raw in skills
+        if (normalized := normalize_skill_label(raw))
+    }
+    if not skill_pool:
+        return {}
+
+    priority_rank = {
+        RequirementPriority.UNKNOWN: 0,
+        RequirementPriority.CONTEXTUAL: 1,
+        RequirementPriority.NICE_TO_HAVE: 2,
+        RequirementPriority.STRONGLY_PREFERRED: 3,
+        RequirementPriority.MANDATORY: 4,
+    }
+    priorities = {skill: RequirementPriority.UNKNOWN for skill in skill_pool}
+    state = RequirementPriority.UNKNOWN
+    for raw_line in _description_to_lines(description):
+        line = normalize_skill_label(raw_line)
+        if not line:
+            continue
+
+        raw_header, separator, raw_content = raw_line.partition(":")
+        header_probe = normalize_skill_label(raw_header if separator else raw_line)
+        header_priority = None
+        if any(rule.pattern.search(header_probe) for rule in strong_rules):
+            header_priority = RequirementPriority.STRONGLY_PREFERRED
+        elif any(rule.pattern.search(header_probe) for rule in required_rules):
+            header_priority = RequirementPriority.MANDATORY
+        elif any(rule.pattern.search(header_probe) for rule in nice_rules):
+            header_priority = RequirementPriority.NICE_TO_HAVE
+        elif any(rule.pattern.search(header_probe) for rule in contextual_rules):
+            header_priority = RequirementPriority.CONTEXTUAL
+
+        if header_priority is not None:
+            state = header_priority
+            # A common compact form is "Requirements: Python"; process any
+            # skill text after the recognized header as well as later lines.
+            line = normalize_skill_label(raw_content) if separator else ""
+            if not line:
+                continue
+
+        line_priority = classify_requirement_text(raw_line)
+        if line_priority == RequirementPriority.UNKNOWN:
+            line_priority = state
+        for skill in skill_pool:
+            if not re.search(rf"(?<![\w-]){re.escape(skill)}(?![\w-])", line, re.IGNORECASE):
+                continue
+            if priority_rank[line_priority] > priority_rank[priorities[skill]]:
+                priorities[skill] = line_priority
+
+    return priorities
+
+
 def split_required_and_nice_to_have(
     description: str, skills: tuple[str, ...],
 ) -> tuple[frozenset[str], frozenset[str]]:
@@ -130,15 +287,18 @@ def split_required_and_nice_to_have(
     description; every other skill -- including all of them when no header
     matches at all -- is `nice_to_have`.
     """
-    required_rules, nice_rules = _load_skill_requirement_rules()
-    skill_pool = {s.casefold() for s in skills if s.strip()}
+    required_rules, nice_rules, _strong_rules, _contextual_rules = _load_skill_requirement_rules()
+    skill_pool = {
+        normalized for raw in skills
+        if (normalized := normalize_skill_label(raw))
+    }
     if not skill_pool:
         return frozenset(), frozenset()
 
     required: set[str] = set()
     state = "nice_to_have"  # conservative default before any header is seen
     for raw_line in _description_to_lines(description):
-        line = raw_line.strip()
+        line = normalize_skill_label(raw_line)
         if not line:
             continue
         if any(rule.pattern.search(line) for rule in required_rules):
@@ -169,6 +329,7 @@ class SkillMatch:
     proficiency: str | None  # normalized tier, or None if unknown/unset
     evidence_count: int
     evidence_refs: tuple[str, ...]
+    priority: RequirementPriority = RequirementPriority.NICE_TO_HAVE
 
     @property
     def is_strength(self) -> bool:
@@ -190,6 +351,7 @@ def evaluate_skill_matches(
     opp_skills: tuple[str, ...],
     required: frozenset[str],
     founder_skills_by_name: dict[str, tuple[str | None, tuple[str, ...]]],
+    priorities: dict[str, RequirementPriority] | None = None,
 ) -> tuple[SkillMatch, ...]:
     """Evaluate each (deduplicated, order-preserving) opportunity skill.
 
@@ -200,16 +362,22 @@ def evaluate_skill_matches(
     seen: set[str] = set()
     matches: list[SkillMatch] = []
     for raw in opp_skills:
-        name = raw.casefold()
+        name = normalize_skill_label(raw)
         if not name or name in seen:
             continue
         seen.add(name)
+        priority = (
+            priorities.get(name, RequirementPriority.MANDATORY if name in required else RequirementPriority.NICE_TO_HAVE)
+            if priorities is not None
+            else RequirementPriority.MANDATORY if name in required else RequirementPriority.NICE_TO_HAVE
+        )
+        is_required = priority == RequirementPriority.MANDATORY
         founder_entry = founder_skills_by_name.get(name)
         if founder_entry is None:
-            matches.append(SkillMatch(name, name in required, False, None, 0, ()))
+            matches.append(SkillMatch(name, is_required, False, None, 0, (), priority))
         else:
             proficiency, evidence_refs = founder_entry
-            matches.append(SkillMatch(name, name in required, True, proficiency, len(evidence_refs), evidence_refs))
+            matches.append(SkillMatch(name, is_required, True, proficiency, len(evidence_refs), evidence_refs, priority))
     return tuple(matches)
 
 
@@ -233,8 +401,9 @@ def render_reason(matches: tuple[SkillMatch, ...]) -> str:
     graph does not establish a skill-to-employment-role linkage today, and
     AGENTS.md forbids fabricating a claim the graph does not support.
     """
-    required_matches = [m for m in matches if m.required]
-    nice_matches = [m for m in matches if not m.required]
+    required_matches = [m for m in matches if m.priority == RequirementPriority.MANDATORY]
+    strong_matches = [m for m in matches if m.priority == RequirementPriority.STRONGLY_PREFERRED]
+    nice_matches = [m for m in matches if m.priority == RequirementPriority.NICE_TO_HAVE]
 
     parts: list[str] = []
     if required_matches:
@@ -247,6 +416,19 @@ def render_reason(matches: tuple[SkillMatch, ...]) -> str:
             clause += "; " + ", ".join(m.name.title() for m in missing) + " not in your pack"
         clause += "."
         parts.append(clause)
+
+    if strong_matches:
+        names = ", ".join(m.name.title() for m in strong_matches)
+        found = [m for m in strong_matches if m.has_founder_match]
+        missing = [m for m in strong_matches if not m.has_founder_match]
+        clause = f"Strongly preferred: {names}"
+        if found:
+            clause += " -> you have " + "; ".join(
+                f"{m.name.title()} ({_evidence_phrase(m)})" for m in found
+            )
+        if missing:
+            clause += "; " + ", ".join(m.name.title() for m in missing) + " not in your pack"
+        parts.append(clause + ".")
 
     if nice_matches:
         nice_have = [m for m in nice_matches if m.has_founder_match]

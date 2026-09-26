@@ -1,0 +1,43 @@
+
+......EEEE..............................................................................................................................
+B2.6 corpus ordering: Senior Customer Engineer = 46.08, Senior Data Engineer (best data-engineering match) = 82.5
+======================================================================
+ERROR: test_higher_verified_degree_matches_required_degree_and_field (matching.test_scorer.TestFR008CapabilityDimensions.test_higher_verified_degree_matches_required_degree_and_field)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w31-capability-dimensions\matching\test_scorer.py", line 815, in test_higher_verified_degree_matches_required_degree_and_field
+    opportunity = create_test_opportunity(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: create_test_opportunity() got an unexpected keyword argument 'requirements'
+
+======================================================================
+ERROR: test_missing_credential_evidence_stays_unknown_not_gap (matching.test_scorer.TestFR008CapabilityDimensions.test_missing_credential_evidence_stays_unknown_not_gap)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w31-capability-dimensions\matching\test_scorer.py", line 825, in test_missing_credential_evidence_stays_unknown_not_gap
+    create_test_opportunity(requirements=("PMP certification required",)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: create_test_opportunity() got an unexpected keyword argument 'requirements'
+
+======================================================================
+ERROR: test_planned_certification_does_not_match_as_held (matching.test_scorer.TestFR008CapabilityDimensions.test_planned_certification_does_not_match_as_held)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w31-capability-dimensions\matching\test_scorer.py", line 863, in test_planned_certification_does_not_match_as_held
+    create_test_opportunity(requirements=("PMP certification required",)),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: create_test_opportunity() got an unexpected keyword argument 'requirements'
+
+======================================================================
+ERROR: test_verified_completed_certification_matches_explicit_requirement (matching.test_scorer.TestFR008CapabilityDimensions.test_verified_completed_certification_matches_explicit_requirement)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\M7mdEhab\projects\oos-wt\fr008-w31-capability-dimensions\matching\test_scorer.py", line 798, in test_verified_completed_certification_matches_explicit_requirement
+    opportunity = create_test_opportunity(requirements=("PMP certification required",))
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: create_test_opportunity() got an unexpected keyword argument 'requirements'
+
+----------------------------------------------------------------------
+Ran 136 tests in 0.688s
+
+FAILED (errors=4)

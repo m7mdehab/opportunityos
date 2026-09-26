@@ -1,0 +1,2 @@
+Repository integrity checks passed.
+COMMAND_EXIT_CODE=0

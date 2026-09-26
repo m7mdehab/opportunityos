@@ -1,0 +1,4 @@
+COMMAND: python scripts/check_repository.py
+EXIT_CODE: 0
+--- RAW OUTPUT ---
+Repository integrity checks passed.
