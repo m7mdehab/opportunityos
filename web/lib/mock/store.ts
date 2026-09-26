@@ -1915,6 +1915,10 @@ export class MockStore {
     target_tier?: string[]
     title_family?: string[]
     source_id?: string[]
+    source_family?: string
+    activity?: string
+    feedback?: string
+    include_tracked?: boolean
     sort_by?: FeedSortId
     q?: string
     page?: number
@@ -1923,19 +1927,34 @@ export class MockStore {
      * filter matched, with `hidden_by` populated on them. */
     include_hidden?: boolean
   }): OpportunityListResponse {
-    // Jobs / To Review is an inbox: completed triage actions leave only after
-    // the mock store has persisted them, matching the durable API contract.
-    const outsideToReview = new Set([
-      "saved", "submitted", "applied", "recruiter_screen", "assessment",
-      "interviewing", "final_interview", "offer", "accepted",
-      "rejected_by_founder", "rejected_by_employer", "withdrawn", "no_response",
-      "position_closed", "archived", "dismissed",
-    ])
-    let items = [...this.opportunities.values()].filter(
-      (o) => o.action_state === "snoozed"
-        ? this.isSnoozeActive(o.id) === false
-        : !outsideToReview.has(o.action_state ?? "")
-    )
+    const isToReview = (o: SeedOpportunity) =>
+      o.action_state === null ||
+      o.action_state === "to_review" ||
+      (o.action_state === "snoozed" && this.isSnoozeActive(o.id) === false)
+
+    let items = [...this.opportunities.values()]
+
+    if (filters.activity && filters.activity !== "any") {
+      if (filters.activity === "has_feedback") {
+        items = items.filter((o) => o.feedback_label !== null)
+      } else if (filters.activity === "to_review") {
+        items = items.filter(isToReview)
+      } else if (filters.activity === "applied") {
+        items = items.filter((o) => o.action_state === "submitted" || o.action_state === "applied")
+      } else {
+        items = items.filter((o) => o.action_state === filters.activity)
+      }
+    } else if (!filters.include_tracked) {
+      items = items.filter(isToReview)
+    }
+
+    if (filters.feedback) {
+      items = items.filter((o) => o.feedback_label === filters.feedback)
+    }
+    if (filters.source_family) {
+      const families = new Map(this.sourcesHealth().sources.map((source) => [source.source_id, source.category]))
+      items = items.filter((o) => families.get(o.source_id) === filters.source_family)
+    }
 
     if (filters.track?.length) {
       items = items.filter((o) => filters.track!.includes(o.track))
@@ -2180,6 +2199,20 @@ export class MockStore {
     const previousState = o.action_state === "submitted"
       ? "applied"
       : o.action_state ?? "to_review"
+
+    if (type === "clear") {
+      o.action_state = null
+      this.trackerSnoozeUntil.delete(id)
+      if (!this.persistTrackerState()) return "persistence_failed"
+      return {
+        opportunity_id: id,
+        action_state: null,
+        tracker_state: "to_review" as const,
+        action_id: null,
+        until: null,
+        created_at: new Date().toISOString(),
+      }
+    }
 
     if (type === "set_stage") {
       const stageTargets: ApplicationStage[] = [
