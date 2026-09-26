@@ -223,6 +223,9 @@ export default function FeedPage() {
         posted_from: query.postedFrom || undefined,
         posted_to: query.postedTo || undefined,
         ...query.multi,
+        activity_type: query.multi.activity_type.includes("any")
+          ? undefined
+          : query.multi.activity_type,
         source_family: query.sourceFamily.length ? query.sourceFamily : undefined,
         activity: query.multi.activity_type.length ? undefined : "to_review",
         include_tracked: query.multi.activity_type.length > 0,
