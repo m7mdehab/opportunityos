@@ -1,15 +1,42 @@
-name: FR-008 W7.5 Live Founder Deploy
+name: FR-008 Live Founder Deploy
 
 on:
   push:
     branches:
-      - release/fr008-w75-production
+      - main
 
 permissions:
   contents: read
 
 jobs:
+  migrate-live:
+    name: Migrate live database
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install repository database tooling
+        run: |
+          python -m pip install -e .
+          python -c "import psycopg, psycopg2; print('PostgreSQL DBAPIs available')"
+      - name: Apply tested repository migration head
+        env:
+          OPPORTUNITYOS_DB_URL: ${{ secrets.CLOUD_DATABASE_URL }}
+          CI: "true"
+        run: |
+          set -euo pipefail
+          alembic upgrade head
+          test "$(alembic heads | grep -c ' (head)')" = 1
+          test "$(alembic current | grep -c '0026_fr008_live_actions')" = 1
+
   deploy-live-founder:
+    needs: migrate-live
     uses: ./.github/workflows/fr007-cloudflare-staging-deploy.yml
     with:
       mode: DEPLOY_STAGING
