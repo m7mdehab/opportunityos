@@ -152,6 +152,7 @@ export const api = {
        * `hide`-mode filter are included in `items` (and `hidden_by` is
        * populated on them) instead of being omitted. */
       include_hidden?: boolean
+      include_tracked?: boolean
     }) => {
       const search = new URLSearchParams()
       for (const [key, value] of Object.entries(params)) {
