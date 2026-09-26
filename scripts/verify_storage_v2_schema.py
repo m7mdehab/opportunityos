@@ -18,7 +18,7 @@ def main() -> None:
 
     config = Config("alembic.ini")
     heads = ScriptDirectory.from_config(config).get_heads()
-    expected_head = "0026_fr008_live_actions"
+    expected_head = "0025_current_feed_fast_path"
     if len(heads) != 1 or heads[0] != expected_head:
         raise AssertionError(f"expected one Storage V2 Alembic head, got {heads!r}")
 
