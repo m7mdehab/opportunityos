@@ -1198,9 +1198,10 @@ def list_opportunities(
                 truth_pack_hash = "active"
 
     resolved_source_ids = list(source_id or ())
+    source_family_values = [source_family] if isinstance(source_family, str) else (source_family or ())
     resolved_source_families = {
         value.strip().casefold()
-        for value in (source_family or ())
+        for value in source_family_values
         if value and value.strip()
     }
     if resolved_source_families:
