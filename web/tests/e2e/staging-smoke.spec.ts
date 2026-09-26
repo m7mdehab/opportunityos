@@ -377,55 +377,44 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await page.keyboard.press("Escape");
     await expect(drawer).not.toBeVisible();
 
-    // 13. Founder activity round-trip uses the normal UI/RPC path. Undo restores
-    // the actionable state while retaining both immutable audit events.
-    await firstCard.click();
+    // 13. Founder Save -> Undo round-trip uses the normal hosted UI/RPC path.
+    const activityOpportunityId = batchIds[0];
+    const activityCard = page.getByTestId(`opportunity-card-${activityOpportunityId}`);
+    await expect(activityCard).toBeVisible();
+    await activityCard.click();
     const activityDrawer = page.getByRole("dialog");
-    const dismissResponsePromise = page.waitForResponse((response) =>
-      response.url().includes("/api/opportunities/") &&
-      response.url().endsWith("/actions") &&
-      response.request().method() === "POST"
-    );
-    await activityDrawer.getByRole("button", { name: "Dismiss" }).click();
-    const dismissResponse = await dismissResponsePromise;
-    expect(dismissResponse.status()).toBe(200);
-    expect(decodeURIComponent(new URL(dismissResponse.url()).pathname)).toContain(
-      `/api/opportunities/${interactiveOpportunityId}/actions`
-    );
-    // The UI only exposes Clear / undo after its client has parsed the
-    // successful response and applied the returned dismissed state. Avoid
-    // consuming the response body a second time in Playwright.
-    await expect(activityDrawer.getByRole("button", { name: "Clear / undo" })).toBeVisible();
+    await expect(activityDrawer).toBeVisible();
 
-    const clearResponsePromise = page.waitForResponse((response) =>
-      response.url().includes("/api/opportunities/") &&
-      response.url().endsWith("/actions") &&
+    const saveResponsePromise = page.waitForResponse((response) =>
+      response.url().includes(`/api/opportunities/${activityOpportunityId}/actions`) &&
       response.request().method() === "POST"
     );
-    await activityDrawer.getByRole("button", { name: "Clear / undo" }).click();
-    const clearResponse = await clearResponsePromise;
-    expect(clearResponse.status()).toBe(200);
-    expect(decodeURIComponent(new URL(clearResponse.url()).pathname)).toContain(
-      `/api/opportunities/${interactiveOpportunityId}/actions`
+    await activityDrawer.getByRole("button", { name: "Save for later" }).click();
+    const saveResponse = await saveResponsePromise;
+    expect(saveResponse.status()).toBe(200);
+    await expect(activityDrawer.getByTestId("undo-tracker-action")).toBeVisible();
+
+    const restoreResponsePromise = page.waitForResponse((response) =>
+      response.url().includes(`/api/opportunities/${activityOpportunityId}/restore`) &&
+      response.request().method() === "POST"
     );
-    // Absence of the undo action after the successful request proves that
-    // the UI applied the cleared state; immutable history is checked below.
-    await expect(activityDrawer.getByRole("button", { name: "Clear / undo" })).toHaveCount(0);
+    await activityDrawer.getByTestId("undo-tracker-action").click();
+    const restoreResponse = await restoreResponsePromise;
+    expect(restoreResponse.status()).toBe(200);
+    await expect(activityDrawer.getByTestId("undo-tracker-action")).toHaveCount(0);
+
     const activityDetail = await pageJson<{
       action_history: Array<{ action_type: string }>;
     }>(
       page,
-      `/api/opportunities/${encodeURIComponent(interactiveOpportunityId)}?activity_proof=${Date.now()}`,
+      `/api/opportunities/${encodeURIComponent(activityOpportunityId)}?activity_proof=${Date.now()}`,
       { cache: "no-store" }
     );
     expect(activityDetail.ok, `activity detail returned ${activityDetail.status}`).toBe(true);
-    expect(activityDetail.body.action_history.some((event) => event.action_type === "dismiss")).toBe(true);
-    expect(
-      activityDetail.body.action_history.some((event) => event.action_type === "clear"),
-      `activity history should retain the clear audit event; observed ${activityDetail.body.action_history.map((event) => event.action_type).join(",")}`
-    ).toBe(true);
+    expect(activityDetail.body.action_history.some((event) => event.action_type === "save")).toBe(true);
+    expect(activityDetail.body.action_history.some((event) => event.action_type === "restore")).toBe(true);
     await page.keyboard.press("Escape");
-    await expect(firstCard).toBeVisible();
+    await expect(activityCard).toBeVisible();
 
     // 14. Read source health only; do not enqueue fresh polls after queue convergence.
     const sources = await pageJson<{ sources: Array<{ source_id: string }> }>(page, "/api/sources/health");
