@@ -57,6 +57,13 @@ function queryViews(views: SavedView[]) {
   return views.filter((view) => view.feed_query)
 }
 
+function normalizeSavedFeedQuery(value: FeedQueryState): FeedQueryState {
+  return {
+    ...value,
+    sourceFamily: Array.isArray(value.sourceFamily) ? value.sourceFamily : [],
+  }
+}
+
 function updateMulti(
   value: FeedQueryState,
   facet: FeedMultiFacetId,
@@ -80,6 +87,7 @@ export function FeedQueryChips({
   const chips: Array<{ key: string; label: string; remove: () => void }> = []
   for (const track of value.track) chips.push({ key: `track:${track}`, label: `Track: ${track}`, remove: () => onChange({ ...value, track: value.track.filter((item) => item !== track) }) })
   for (const decision of value.decision) chips.push({ key: `decision:${decision}`, label: `Decision: ${decision}`, remove: () => onChange({ ...value, decision: value.decision.filter((item) => item !== decision) }) })
+  for (const family of value.sourceFamily) chips.push({ key: `source-family:${family}`, label: `Source: ${family}`, remove: () => onChange({ ...value, sourceFamily: value.sourceFamily.filter((item) => item !== family) }) })
   if (value.q.trim()) chips.push({ key: "q", label: `Search: ${value.q.trim()}`, remove: () => onChange({ ...value, q: "" }) })
   for (const facet of FEED_MULTI_FACET_IDS) {
     for (const option of value.multi[facet]) {
@@ -293,7 +301,7 @@ export function FeedQueryDrawer({
               <ul className="space-y-2">
                 {feeds.map((view) => (
                   <li key={view.id} className="flex flex-wrap items-center gap-2 rounded border border-border p-2">
-                    <Button type="button" variant="ghost" size="sm" className="min-w-0 flex-1 justify-start truncate" disabled={Boolean(metadataError)} title={metadataError ?? undefined} onClick={() => { if (view.feed_query) { onChange(view.feed_query); onOpenChange(false) } }}>{view.name}{view.is_default ? " · Default" : ""}</Button>
+                    <Button type="button" variant="ghost" size="sm" className="min-w-0 flex-1 justify-start truncate" disabled={Boolean(metadataError)} title={metadataError ?? undefined} onClick={() => { if (view.feed_query) { onChange(normalizeSavedFeedQuery(view.feed_query)); onOpenChange(false) } }}>{view.name}{view.is_default ? " · Default" : ""}</Button>
                     {!view.is_default && <Button type="button" variant="outline" size="xs" disabled={saving || Boolean(metadataError)} onClick={() => void setDefault(view)}>Set default</Button>}
                   </li>
                 ))}

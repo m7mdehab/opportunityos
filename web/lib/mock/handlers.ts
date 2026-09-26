@@ -152,7 +152,7 @@ export const handlers = [
       target_tier: url.searchParams.getAll("target_tier"),
       title_family: url.searchParams.getAll("title_family"),
       source_id: url.searchParams.getAll("source_id"),
-      source_family: url.searchParams.get("source_family") ?? undefined,
+      source_family: url.searchParams.getAll("source_family"),
       activity: url.searchParams.get("activity") ?? undefined,
       feedback: url.searchParams.get("feedback") ?? undefined,
       include_tracked: url.searchParams.get("include_tracked") === "true",

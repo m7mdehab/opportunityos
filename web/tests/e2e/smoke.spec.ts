@@ -19,7 +19,9 @@ async function login(page: Page) {
     await expect(page.getByRole("heading", { name: "OpportunityOS" })).toBeVisible()
     // This end-to-end smoke exercises historical fixture rows as well as the
     // default To review queue, so deliberately broaden activity scope.
-    await page.getByLabel("Activity").selectOption("any")
+    const activity = page.getByTestId("filter-facet-activity")
+    await activity.locator("summary").click()
+    await activity.getByRole("checkbox", { name: "Any activity", exact: true }).check()
 }
 
 async function statValue(page: Page, key: string): Promise<number> {

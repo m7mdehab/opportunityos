@@ -25,10 +25,39 @@ test.describe("FR-008 live review controls", () => {
       page.evaluate(() => new URLSearchParams(window.location.search).getAll("track").length)
     ).toBe(2)
 
-    await page.getByRole("button", { name: "Clear filters" }).click()
+    await page.getByRole("search", { name: "Filter opportunities" }).getByRole("button", { name: "Clear filters" }).click()
     await expect.poll(() =>
       page.evaluate(() => new URLSearchParams(window.location.search).getAll("track").length)
     ).toBe(0)
+
+    const source = page.getByTestId("filter-facet-source-family")
+    await source.locator("summary").click()
+    const sourceOptions = source.getByRole("checkbox")
+    expect(await sourceOptions.count()).toBeGreaterThanOrEqual(2)
+    await sourceOptions.nth(0).check()
+    await sourceOptions.nth(1).check()
+    await expect.poll(() =>
+      page.evaluate(() => new URLSearchParams(window.location.search).getAll("source_family").length)
+    ).toBe(2)
+    await page.getByRole("search", { name: "Filter opportunities" }).getByRole("button", { name: "Clear filters" }).click()
+
+    const activity = page.getByTestId("filter-facet-activity")
+    await activity.locator("summary").click()
+    await activity.getByRole("checkbox", { name: "Save", exact: true }).check()
+    await activity.getByRole("checkbox", { name: "Reject", exact: true }).check()
+    await expect.poll(() =>
+      page.evaluate(() => new URLSearchParams(window.location.search).getAll("activity_type").sort())
+    ).toEqual(["reject", "save"])
+    await page.getByRole("search", { name: "Filter opportunities" }).getByRole("button", { name: "Clear filters" }).click()
+
+    const feedback = page.getByTestId("filter-facet-feedback")
+    await feedback.locator("summary").click()
+    await feedback.getByRole("checkbox", { name: "Good match", exact: true }).check()
+    await feedback.getByRole("checkbox", { name: "Bad match", exact: true }).check()
+    await expect.poll(() =>
+      page.evaluate(() => new URLSearchParams(window.location.search).getAll("feedback_label").sort())
+    ).toEqual(["bad_match", "good_match"])
+    await page.getByRole("search", { name: "Filter opportunities" }).getByRole("button", { name: "Clear filters" }).click()
 
     await page.getByTestId("open-advanced-feed-filters").click()
     const drawer = page.getByTestId("feed-query-drawer")
