@@ -57,6 +57,7 @@ import type {
   TutoringProfileMaterialResponse,
   TutoringStatus,
   UnhideByReasonResponse,
+  SourceOverviewResponse,
 } from "@/lib/contract/types"
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -140,6 +141,9 @@ export const api = {
       target_tier?: string[]
       title_family?: string[]
       source_id?: string[]
+      source_family?: string
+      activity?: string
+      feedback?: string
       sort_by?: string
       q?: string
       page?: number
@@ -407,6 +411,7 @@ export const api = {
 
   sources: {
     health: () => request<SourcesHealthResponse>("/api/sources/health"),
+    overview: () => request<SourceOverviewResponse>("/api/sources/overview"),
   },
 
   worker: {
