@@ -193,7 +193,13 @@ export function FilterBar({
     .map((source) => source.source_id)
     .filter((sourceId): sourceId is string => Boolean(sourceId))
   const activityValues = [
-    ...new Set(metadata?.facets.activity_type.values.map((option) => option.value) ?? []),
+    ...new Set([
+      "save",
+      "mark_applied",
+      "reject",
+      "snooze",
+      ...(metadata?.facets.activity_type.values.map((option) => option.value) ?? []),
+    ]),
   ].sort()
   const feedbackValues = [
     ...new Set([
