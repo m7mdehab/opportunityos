@@ -162,7 +162,7 @@ class WorkerErrorDeltaTests(unittest.TestCase):
         self.assertIn("--aggregate-dir w227-error-deltas", workflow)
         self.assertIn("python scripts/fr007_capacity_closure.py preflight", workflow)
         self.assertNotIn("0021_storage_v2", workflow)
-        self.assertIn("0025_current_feed_fast_path", workflow)
+        self.assertIn("0026_fr008_live_actions", workflow)
         self.assertIn('print(f"PROBE_FAILURE={type(exc).__name__}")', workflow)
         self.assertIn("if failures or max_worker > 10 or max_idle != 0 or max_unattributed != 0:", workflow)
         self.assertNotIn("1 <= max_worker", workflow)
