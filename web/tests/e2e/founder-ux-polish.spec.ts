@@ -78,6 +78,14 @@ test.describe("W24 Founder UX polish", () => {
     await page.getByTestId("opportunity-card-opp-001").click()
     const dialog = page.getByRole("dialog")
     await expect(dialog.getByTestId("role-at-a-glance")).toBeVisible()
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    const dialogFitsViewport = await dialog.evaluate((element) => {
+      const box = element.getBoundingClientRect()
+      return (
+        box.left >= -0.5 &&
+        box.right <= window.innerWidth + 0.5 &&
+        element.scrollWidth <= element.clientWidth
+      )
+    })
+    expect(dialogFitsViewport).toBe(true)
   })
 })

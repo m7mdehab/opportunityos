@@ -12,6 +12,7 @@ from api.deps import require_session
 from api.feed_filter_metadata import (
     CATEGORY_FACETS,
     MAX_FACET_VALUES,
+    LIVE_W23_UNAVAILABLE_FILTERS,
     UNAVAILABLE_FILTERS,
     _category_query,
     _date_query,
@@ -34,13 +35,13 @@ class FeedFilterMetadataTest(unittest.TestCase):
 
         self.add_projection(
             "opp-a", truth_hash="truth-x", decision="QUALIFIED", fit=95.0,
-            preference=85.0, confidence=65.0, priority=70.0, posted="2026-09-20",
-            country=None, city="", family="other", tier=None, source="source-a",
+            priority=70.0, posted="2026-09-20",
+            country=None, city="", family="other", source="source-a",
         )
         self.add_projection(
             "opp-b", truth_hash="truth-x", decision="REVIEW_REQUIRED", fit=75.0,
-            preference=None, confidence=91.0, priority=45.0, posted=None,
-            country="EG", city="Cairo", family="data_engineering", tier="primary",
+            priority=45.0, posted=None,
+            country="EG", city="Cairo", family="data_engineering",
             source="source-b",
         )
         self.add_projection(
@@ -64,14 +65,11 @@ class FeedFilterMetadataTest(unittest.TestCase):
         truth_hash: str = "truth-x",
         decision: str | None = "QUALIFIED",
         fit: float | None = 80.0,
-        preference: float | None = 60.0,
-        confidence: float | None = 70.0,
         priority: float | None = 50.0,
         posted: str | None = "2026-09-25",
         country: str | None = "EG",
         city: str | None = "Cairo",
         family: str | None = "data_engineering",
-        tier: str | None = "primary",
         source: str = "example",
         visible: bool = True,
         title: str | None = None,
@@ -90,8 +88,6 @@ class FeedFilterMetadataTest(unittest.TestCase):
             track="employment",
             opportunity_type="employment",
             title_family=family,
-            title_level="mid",
-            target_tier=tier,
             seniority_level="mid",
             work_mode="remote",
             location_country=country,
@@ -102,16 +98,12 @@ class FeedFilterMetadataTest(unittest.TestCase):
             employment_type="full_time",
             qualification_decision=decision,
             fit_score=fit,
-            preference_score=preference,
-            confidence_score=confidence,
             priority_score=priority,
             reasons_json="[\"NO CONTENT SHOULD BE READ\"]",
             red_line_match=not visible,
             excluded_industry_match=False,
             visible=visible,
             visibility_reason=None if visible else "red_line",
-            search_text="synthetic searchable text",
-            search_tsv=None,
             evaluated_at=self.now,
             projected_at=self.now,
         ))
@@ -153,9 +145,10 @@ class FeedFilterMetadataTest(unittest.TestCase):
             "unknown_count": 0,
             "threshold_counts": {"90+": 1, "80+": 1, "70+": 2, "60+": 2, "50+": 2},
         })
-        self.assertEqual(result["preference_score"]["unknown_count"], 1)
-        self.assertEqual(result["preference_score"]["threshold_counts"]["80+"], 1)
-        self.assertEqual(result["confidence_score"]["threshold_counts"]["90+"], 1)
+        self.assertEqual(result["preference_score"]["min"], None)
+        self.assertEqual(result["preference_score"]["max"], None)
+        self.assertEqual(result["confidence_score"]["min"], None)
+        self.assertEqual(result["confidence_score"]["max"], None)
         self.assertEqual(result["priority_score"]["threshold_counts"]["70+"], 1)
         self.assertEqual(result["posted_date"], {
             "min": "2026-09-20",
@@ -191,9 +184,10 @@ class FeedFilterMetadataTest(unittest.TestCase):
         unavailable = result["unavailable_filters"]
         ids = [item["id"] for item in unavailable]
         self.assertEqual(len(ids), len(set(ids)))
-        self.assertEqual(len(unavailable), len(UNAVAILABLE_FILTERS))
+        self.assertEqual(len(unavailable), len(UNAVAILABLE_FILTERS) + len(LIVE_W23_UNAVAILABLE_FILTERS))
         self.assertTrue(all(item["reason"].strip() for item in unavailable))
         self.assertTrue({
+            "target_tier", "preference_score", "confidence_score",
             "tracking_state", "eligibility_evidence", "skill_match_and_gaps",
             "compensation", "company_attributes", "posting_health",
             "cv_application_readiness", "tracked_user_metadata",

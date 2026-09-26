@@ -91,6 +91,57 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole("heading", { name: "OpportunityOS" })).toBeVisible();
 
+    // 4b. FR-008 live review controls are present and genuinely multi-select.
+    const trackFacet = page.getByTestId("filter-facet-track");
+    await expect(trackFacet).toBeVisible();
+    await trackFacet.locator("summary").click();
+    const employmentTrack = trackFacet.getByRole("checkbox", { name: "employment", exact: true });
+    const contractTrack = trackFacet.getByRole("checkbox", { name: "contract", exact: true });
+    await employmentTrack.check();
+    await contractTrack.check();
+    await expect(employmentTrack).toBeChecked();
+    await expect(contractTrack).toBeChecked();
+    await expect.poll(() =>
+      page.evaluate(() => new URLSearchParams(window.location.search).getAll("track").length)
+    ).toBe(2);
+    await page.getByRole("button", { name: "Clear filters" }).click();
+    await expect.poll(() =>
+      page.evaluate(() => new URLSearchParams(window.location.search).getAll("track").length)
+    ).toBe(0);
+
+    // 4c. Card multi-select and batch toolbar must be visible on the hosted UI.
+    await expect(page.getByRole("button", { name: "Select all visible" })).toBeVisible();
+    await page.getByRole("button", { name: "Select all visible" }).click();
+    await expect(page.getByTestId("batch-action-toolbar")).toBeVisible();
+    const selectionBoxes = page.locator('input[type="checkbox"][aria-label^="Select "]');
+    expect(await selectionBoxes.count()).toBeGreaterThan(0);
+    await expect(selectionBoxes.first()).toBeChecked();
+    await page.getByRole("button", { name: "Clear selection" }).click();
+    await expect(page.getByTestId("batch-action-toolbar")).toHaveCount(0);
+
+    // 4d. Prove one hosted Save round-trip and immediately Undo it so the
+    // founder-visible review state is restored after the smoke.
+    const quickSave = page.locator('[data-testid^="quick-save-"]').first();
+    await expect(quickSave).toBeVisible();
+    const [liveSaveResponse] = await Promise.all([
+      page.waitForResponse((response) =>
+        response.request().method() === "POST" &&
+        response.url().includes("/actions")
+      ),
+      quickSave.click(),
+    ]);
+    expect(liveSaveResponse.status(), await liveSaveResponse.text()).toBe(200);
+    await expect(page.getByTestId("tracker-undo-notice")).toBeVisible();
+    const [undoResponse] = await Promise.all([
+      page.waitForResponse((response) =>
+        response.request().method() === "POST" &&
+        response.url().includes("/restore")
+      ),
+      page.getByTestId("undo-tracker-action").click(),
+    ]);
+    expect(undoResponse.status(), await undoResponse.text()).toBe(200);
+    await expect(page.getByTestId("tracker-undo-notice")).toHaveCount(0);
+
     // 5. Feed endpoint returns exact contract
     const firstPage = await pageJson<{
       page: number;
@@ -133,6 +184,78 @@ test.describe("Cloudflare staging hosted smoke", () => {
     expect(first.title.length).toBeGreaterThan(0);
     expect(first.organization.length).toBeGreaterThan(0);
     expect(first.source_url.length).toBeGreaterThan(0);
+
+    // 5a. FR-008 live productivity controls must be present and functional,
+    // not merely compiled into an undeployed branch.
+    await expect(page.getByTestId("filter-facet-track")).toBeVisible();
+    await page.getByTestId("filter-facet-track").locator("summary").click();
+    await expect(page.getByTestId("filter-facet-track").locator('input[type="checkbox"]').first()).toBeVisible();
+    expect(await page.getByTestId("filter-facet-track").locator('input[type="checkbox"]').count()).toBeGreaterThan(1);
+    await page.getByTestId("filter-facet-track").locator("summary").click();
+
+    await page.getByTestId("open-advanced-feed-filters").click();
+    const advancedDrawer = page.getByTestId("feed-query-drawer");
+    await expect(advancedDrawer).toBeVisible();
+    const sourceFacet = page.getByTestId("feed-facet-source_id");
+    await sourceFacet.locator("summary").click();
+    expect(await sourceFacet.locator('input[type="checkbox"]').count()).toBeGreaterThan(1);
+    await page.keyboard.press("Escape");
+    await expect(advancedDrawer).not.toBeVisible();
+
+    const metricPeriod = page.getByTestId("metric-period");
+    await expect(metricPeriod).toBeVisible();
+    await metricPeriod.selectOption("yesterday");
+    await expect(metricPeriod).toHaveValue("yesterday");
+    await metricPeriod.selectOption("today");
+    await expect(metricPeriod).toHaveValue("today");
+
+    const reviewableSaveButtons = page.locator('[data-testid^="quick-save-"]');
+    expect(await reviewableSaveButtons.count(), "Hosted corpus needs two To Review jobs for reversible batch smoke").toBeGreaterThanOrEqual(2);
+    const batchIds: string[] = [];
+    for (let index = 0; index < 2; index += 1) {
+      const testId = await reviewableSaveButtons.nth(index).getAttribute("data-testid");
+      expect(testId).toMatch(/^quick-save-.+/);
+      const opportunityId = testId!.slice("quick-save-".length);
+      batchIds.push(opportunityId);
+      const card = page.getByTestId(`opportunity-card-${opportunityId}`);
+      const listItem = card.locator("xpath=..");
+      await listItem.getByRole("checkbox").check();
+    }
+    const batchToolbar = page.getByTestId("batch-action-toolbar");
+    await expect(batchToolbar).toBeVisible();
+    await expect(page.getByText("2 selected", { exact: true })).toBeVisible();
+    await batchToolbar.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByTestId("batch-action-status")).toContainText("2 jobs updated successfully.");
+
+    // Restore both jobs through the same hosted mutation boundary so smoke is
+    // state-neutral and never leaves test activity as Founder review input.
+    for (const opportunityId of batchIds) {
+      const actionDetail = await pageJson<{
+        action_history: Array<{ action_id: string; action_type: string }>;
+      }>(
+        page,
+        `/api/opportunities/${encodeURIComponent(opportunityId)}?batch_restore=${Date.now()}`,
+        { cache: "no-store" }
+      );
+      expect(actionDetail.ok, `batch detail returned ${actionDetail.status}`).toBe(true);
+      const saveEvent = actionDetail.body.action_history.find((event) => event.action_type === "save");
+      expect(saveEvent?.action_id, "Batch Save must create a reversible hosted activity event").toBeTruthy();
+      const restored = await pageJson<{ tracker_state: string }>(
+        page,
+        `/api/opportunities/${encodeURIComponent(opportunityId)}/restore`,
+        {
+          method: "POST",
+          body: {
+            event_id: saveEvent!.action_id,
+            idempotency_key: `staging-batch-restore-${opportunityId}-${Date.now()}`,
+          },
+        }
+      );
+      expect(restored.ok, `batch restore returned ${restored.status}`).toBe(true);
+    }
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "OpportunityOS" })).toBeVisible();
+    await expect(page.getByTestId(`opportunity-card-${batchIds[0]}`)).toBeVisible();
 
     // 5b. Hosted cold/warm feed SLO and logical-equivalence proof.
     // This smoke runs immediately after a fresh Cloudflare deployment. The
@@ -308,55 +431,44 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await page.keyboard.press("Escape");
     await expect(drawer).not.toBeVisible();
 
-    // 13. Founder activity round-trip uses the normal UI/RPC path. Undo restores
-    // the actionable state while retaining both immutable audit events.
-    await firstCard.click();
+    // 13. Founder Save -> Undo round-trip uses the normal hosted UI/RPC path.
+    const activityOpportunityId = batchIds[0];
+    const activityCard = page.getByTestId(`opportunity-card-${activityOpportunityId}`);
+    await expect(activityCard).toBeVisible();
+    await activityCard.click();
     const activityDrawer = page.getByRole("dialog");
-    const dismissResponsePromise = page.waitForResponse((response) =>
-      response.url().includes("/api/opportunities/") &&
-      response.url().endsWith("/actions") &&
-      response.request().method() === "POST"
-    );
-    await activityDrawer.getByRole("button", { name: "Dismiss" }).click();
-    const dismissResponse = await dismissResponsePromise;
-    expect(dismissResponse.status()).toBe(200);
-    expect(decodeURIComponent(new URL(dismissResponse.url()).pathname)).toContain(
-      `/api/opportunities/${interactiveOpportunityId}/actions`
-    );
-    // The UI only exposes Clear / undo after its client has parsed the
-    // successful response and applied the returned dismissed state. Avoid
-    // consuming the response body a second time in Playwright.
-    await expect(activityDrawer.getByRole("button", { name: "Clear / undo" })).toBeVisible();
+    await expect(activityDrawer).toBeVisible();
 
-    const clearResponsePromise = page.waitForResponse((response) =>
-      response.url().includes("/api/opportunities/") &&
-      response.url().endsWith("/actions") &&
+    const saveResponsePromise = page.waitForResponse((response) =>
+      response.url().includes(`/api/opportunities/${activityOpportunityId}/actions`) &&
       response.request().method() === "POST"
     );
-    await activityDrawer.getByRole("button", { name: "Clear / undo" }).click();
-    const clearResponse = await clearResponsePromise;
-    expect(clearResponse.status()).toBe(200);
-    expect(decodeURIComponent(new URL(clearResponse.url()).pathname)).toContain(
-      `/api/opportunities/${interactiveOpportunityId}/actions`
+    await activityDrawer.getByRole("button", { name: "Save for later" }).click();
+    const saveResponse = await saveResponsePromise;
+    expect(saveResponse.status()).toBe(200);
+    await expect(activityDrawer.getByTestId("undo-tracker-action")).toBeVisible();
+
+    const restoreResponsePromise = page.waitForResponse((response) =>
+      response.url().includes(`/api/opportunities/${activityOpportunityId}/restore`) &&
+      response.request().method() === "POST"
     );
-    // Absence of the undo action after the successful request proves that
-    // the UI applied the cleared state; immutable history is checked below.
-    await expect(activityDrawer.getByRole("button", { name: "Clear / undo" })).toHaveCount(0);
+    await activityDrawer.getByTestId("undo-tracker-action").click();
+    const restoreResponse = await restoreResponsePromise;
+    expect(restoreResponse.status()).toBe(200);
+    await expect(activityDrawer.getByTestId("undo-tracker-action")).toHaveCount(0);
+
     const activityDetail = await pageJson<{
       action_history: Array<{ action_type: string }>;
     }>(
       page,
-      `/api/opportunities/${encodeURIComponent(interactiveOpportunityId)}?activity_proof=${Date.now()}`,
+      `/api/opportunities/${encodeURIComponent(activityOpportunityId)}?activity_proof=${Date.now()}`,
       { cache: "no-store" }
     );
     expect(activityDetail.ok, `activity detail returned ${activityDetail.status}`).toBe(true);
-    expect(activityDetail.body.action_history.some((event) => event.action_type === "dismiss")).toBe(true);
-    expect(
-      activityDetail.body.action_history.some((event) => event.action_type === "clear"),
-      `activity history should retain the clear audit event; observed ${activityDetail.body.action_history.map((event) => event.action_type).join(",")}`
-    ).toBe(true);
+    expect(activityDetail.body.action_history.some((event) => event.action_type === "save")).toBe(true);
+    expect(activityDetail.body.action_history.some((event) => event.action_type === "restore")).toBe(true);
     await page.keyboard.press("Escape");
-    await expect(firstCard).toBeVisible();
+    await expect(activityCard).toBeVisible();
 
     // 14. Read source health only; do not enqueue fresh polls after queue convergence.
     const sources = await pageJson<{ sources: Array<{ source_id: string }> }>(page, "/api/sources/health");

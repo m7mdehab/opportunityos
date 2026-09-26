@@ -34,7 +34,6 @@ CATEGORY_FACETS = (
     CategoryFacet("remote_scope", FeedProjectionRecord.remote_scope),
     CategoryFacet("employment_type", FeedProjectionRecord.employment_type),
     CategoryFacet("seniority_level", FeedProjectionRecord.seniority_level),
-    CategoryFacet("target_tier", FeedProjectionRecord.target_tier),
     CategoryFacet("title_family", FeedProjectionRecord.title_family, unknown_aliases=("other",)),
     CategoryFacet("source_id", FeedProjectionRecord.source_id),
 )
@@ -46,8 +45,6 @@ EVENT_FACETS = (
 
 SCORE_COLUMNS = (
     ("fit_score", FeedProjectionRecord.fit_score),
-    ("preference_score", FeedProjectionRecord.preference_score),
-    ("confidence_score", FeedProjectionRecord.confidence_score),
     ("priority_score", FeedProjectionRecord.priority_score),
 )
 SCORE_THRESHOLDS = (90, 80, 70, 60, 50)
@@ -60,6 +57,24 @@ SORT_LABELS = {
     "oldest_posted": "Oldest posted",
     "remote_first": "Remote first",
 }
+
+LIVE_W23_UNAVAILABLE_FILTERS = (
+    {
+        "id": "target_tier",
+        "label": "Target tier",
+        "reason": "Target tier is not projected into the accepted W23 one-current feed schema.",
+    },
+    {
+        "id": "preference_score",
+        "label": "Preference score",
+        "reason": "Preference score is not projected into the accepted W23 one-current feed schema.",
+    },
+    {
+        "id": "confidence_score",
+        "label": "Confidence score",
+        "reason": "Confidence score is not projected into the accepted W23 one-current feed schema.",
+    },
+)
 
 # These are explicit capability gaps from FR-008 §7. Their reasons describe
 # the current persisted query contract; they do not enable or apply filters.
@@ -232,7 +247,7 @@ def _date_statement(truth_pack_hash: str):
     date_value = func.nullif(func.trim(FeedProjectionRecord.posted_date), "")
     unknown_count = func.sum(case((date_value.is_(None), 1), else_=0))
     return (
-        date_value.label("posted_min"),
+        func.min(date_value).label("posted_min"),
         func.max(date_value).label("posted_max"),
         unknown_count.label("posted_unknown"),
     ), _visible_truth_filter(truth_pack_hash)
@@ -297,6 +312,12 @@ def feed_filter_metadata(session: Session, truth_pack_hash: str) -> dict[str, An
         facet.key: _category_payload(session, facet, truth_pack_hash)
         for facet in CATEGORY_FACETS
     }
+    facets["target_tier"] = {
+        "selection": "multiple",
+        "values": [],
+        "option_count": 0,
+        "truncated": False,
+    }
     for key, model, column in EVENT_FACETS:
         facets[key] = _event_facet_payload(session, truth_pack_hash, model, column)
     return {
@@ -309,6 +330,18 @@ def feed_filter_metadata(session: Session, truth_pack_hash: str) -> dict[str, An
         "facets": facets,
         "ranges": {
             **_score_payload(session, truth_pack_hash),
+            "preference_score": {
+                "min": None,
+                "max": None,
+                "unknown_count": 0,
+                "threshold_counts": {f"{threshold}+": 0 for threshold in SCORE_THRESHOLDS},
+            },
+            "confidence_score": {
+                "min": None,
+                "max": None,
+                "unknown_count": 0,
+                "threshold_counts": {f"{threshold}+": 0 for threshold in SCORE_THRESHOLDS},
+            },
             "posted_date": _date_payload(session, truth_pack_hash),
         },
         "sorts": [
@@ -316,5 +349,5 @@ def feed_filter_metadata(session: Session, truth_pack_hash: str) -> dict[str, An
             for key in SORT_LABELS
             if key in FEED_SORTS
         ],
-        "unavailable_filters": [dict(item) for item in UNAVAILABLE_FILTERS],
+        "unavailable_filters": [dict(item) for item in (*LIVE_W23_UNAVAILABLE_FILTERS, *UNAVAILABLE_FILTERS)],
     }

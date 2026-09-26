@@ -4,11 +4,22 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { SlidersHorizontal } from "lucide-react"
-import type { Track, Decision, SourceOverview } from "@/lib/contract/types"
+import type {
+  Decision,
+  FeedFilterMetadataResponse,
+  FeedSortId,
+  SourceOverview,
+  Track,
+} from "@/lib/contract/types"
+import {
+  FEED_SORT_IDS,
+  FEED_SORT_LABELS,
+  FEED_UNAVAILABLE_SORT_GROUPS,
+} from "@/lib/feed-query-state"
 
 export interface FeedFilters {
-  track: Track | ""
-  decision: Exclude<Decision, null> | ""
+  track: Track[]
+  decision: Exclude<Decision, null>[]
   minScore: string
   q: string
   sourceFamily: string
@@ -18,8 +29,8 @@ export interface FeedFilters {
 }
 
 export const EMPTY_FILTERS: FeedFilters = {
-  track: "",
-  decision: "",
+  track: [],
+  decision: [],
   minScore: "",
   q: "",
   sourceFamily: "",
@@ -42,7 +53,69 @@ const DECISIONS: Exclude<Decision, null>[] = [
 ]
 
 const selectClasses =
-  "h-9 rounded-lg border border-input bg-card text-foreground px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+  "h-9 min-w-0 max-w-full rounded-lg border border-input bg-card px-2.5 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+
+function toggleValue<T extends string>(selected: T[], value: T, checked: boolean): T[] {
+  return checked
+    ? [...new Set([...selected, value])]
+    : selected.filter((item) => item !== value)
+}
+
+function ChecklistFacet<T extends string>({
+  id,
+  label,
+  selected,
+  values,
+  onChange,
+}: {
+  id: string
+  label: string
+  selected: T[]
+  values: T[]
+  onChange: (next: T[]) => void
+}) {
+  return (
+    <details data-testid={`filter-facet-${id}`} className="relative min-w-0 max-w-full">
+      <summary
+        id={`filter-${id}`}
+        className={`${selectClasses} flex cursor-pointer list-none items-center justify-between gap-2`}
+      >
+        <span>{label}</span>
+        <span className="text-xs text-muted-foreground">
+          {selected.length ? selected.length : "All"}
+        </span>
+      </summary>
+      <div className="absolute left-0 z-30 mt-1 max-h-72 w-52 max-w-[calc(100vw-2rem)] overflow-auto rounded-lg border border-border bg-card p-2 shadow-lg">
+        <div className="mb-1 flex justify-end">
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost"
+            onClick={(event) => {
+              onChange([])
+              event.currentTarget.closest("details")?.removeAttribute("open")
+            }}
+          >
+            Clear
+          </Button>
+        </div>
+        {values.map((value) => (
+          <label
+            key={value}
+            className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted"
+          >
+            <input
+              type="checkbox"
+              checked={selected.includes(value)}
+              onChange={(event) => onChange(toggleValue(selected, value, event.target.checked))}
+            />
+            <span className="truncate">{value}</span>
+          </label>
+        ))}
+      </div>
+    </details>
+  )
+}
 
 export function FilterBar({
   filters,
@@ -53,90 +126,109 @@ export function FilterBar({
   onToggleTutoringLane,
   tutoringActive = false,
   tutoringDisabled = false,
+  onOpenAdvanced,
+  onAdvancedTriggerRef,
+  sortBy,
+  onSortChange,
+  advancedDisabled = false,
+  metadata,
   sources,
 }: {
   filters: FeedFilters
   onChange: (next: FeedFilters) => void
-  /** Opens the founder-controlled Filters drawer (D3) — a separate concept
-   * from the search-bar filters above: those narrow this query's request,
-   * the drawer's filters decide what is hidden, ranked, or labelled across
-   * every query. */
   onOpenFounderFilters: () => void
   onOpenManualSources: () => void
   onOpenFacets?: () => void
   onToggleTutoringLane?: () => void
   tutoringActive?: boolean
   tutoringDisabled?: boolean
+  onOpenAdvanced: () => void
+  onAdvancedTriggerRef?: (element: HTMLButtonElement | null) => void
+  sortBy: FeedSortId
+  onSortChange: (next: FeedSortId) => void
+  advancedDisabled?: boolean
+  metadata?: FeedFilterMetadataResponse | null
   sources: SourceOverview[]
 }) {
   const hasActiveFilters =
-    filters.track !== "" ||
-    filters.decision !== "" ||
+    filters.track.length > 0 ||
+    filters.decision.length > 0 ||
     filters.minScore !== "" ||
-    filters.q !== ""
-    || filters.sourceFamily !== ""
-    || filters.sourceId !== ""
-    || filters.activity !== "to_review"
-    || filters.feedback !== ""
+    filters.q !== "" ||
+    filters.sourceFamily !== "" ||
+    filters.sourceId !== "" ||
+    filters.activity !== "to_review" ||
+    filters.feedback !== ""
+
+  const trackValues = [
+    ...new Set([
+      ...TRACKS,
+      ...(metadata?.facets.track.values.map((option) => option.value as Track) ?? []),
+    ]),
+  ]
+  const decisionValues = [
+    ...new Set([
+      ...DECISIONS,
+      ...(metadata?.facets.decision.values.map(
+        (option) => option.value as Exclude<Decision, null>
+      ) ?? []),
+    ]),
+  ]
 
   const families = [...new Set(sources.map((source) => source.source_family))].sort()
-  const familyMeta = new Map(families.map((family) => {
-    const rows = sources.filter((source) => source.source_family === family)
-    return [family, {
-      count: rows.reduce((total, row) => total + (row.manual_only ? 0 : row.opportunity_count), 0),
-      manualOnly: rows.some((row) => row.manual_only),
-    }]
-  }))
-  const sourceIds = sources.filter((source) => source.source_id && !source.manual_only && (!filters.sourceFamily || source.source_family === filters.sourceFamily))
-  const selectedFamily = familyMeta.get(filters.sourceFamily)
-  const allAutomatedCount = sources.reduce((total, row) => total + (row.manual_only ? 0 : row.opportunity_count), 0)
+  const familyMeta = new Map(
+    families.map((family) => {
+      const rows = sources.filter((source) => source.source_family === family)
+      return [
+        family,
+        {
+          count: rows.reduce(
+            (total, row) => total + (row.manual_only ? 0 : row.opportunity_count),
+            0
+          ),
+          manualOnly: rows.some((row) => row.manual_only),
+        },
+      ] as const
+    })
+  )
+  const sourceIds = sources.filter(
+    (source) =>
+      source.source_id &&
+      !source.manual_only &&
+      (!filters.sourceFamily || source.source_family === filters.sourceFamily)
+  )
+  const allAutomatedCount = sources.reduce(
+    (total, row) => total + (row.manual_only ? 0 : row.opportunity_count),
+    0
+  )
 
   return (
     <form
       role="search"
       aria-label="Filter opportunities"
       className="flex flex-wrap items-end gap-3 border-b border-border bg-background px-4 py-3 sm:px-6"
-      onSubmit={(e) => e.preventDefault()}
+      onSubmit={(event) => event.preventDefault()}
     >
-      <div className="flex flex-col gap-1">
+      <div className="flex min-w-0 max-w-full flex-col gap-1">
         <Label htmlFor="filter-track">Track</Label>
-        <select
-          id="filter-track"
-          className={selectClasses}
-          value={filters.track}
-          onChange={(e) =>
-            onChange({ ...filters, track: e.target.value as FeedFilters["track"] })
-          }
-        >
-          <option value="">All tracks</option>
-          {TRACKS.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
+        <ChecklistFacet
+          id="track"
+          label="Track"
+          selected={filters.track}
+          values={trackValues}
+          onChange={(track) => onChange({ ...filters, track })}
+        />
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className="flex min-w-0 max-w-full flex-col gap-1">
         <Label htmlFor="filter-decision">Decision</Label>
-        <select
-          id="filter-decision"
-          className={selectClasses}
-          value={filters.decision}
-          onChange={(e) =>
-            onChange({
-              ...filters,
-              decision: e.target.value as FeedFilters["decision"],
-            })
-          }
-        >
-          <option value="">All decisions</option>
-          {DECISIONS.map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
-          ))}
-        </select>
+        <ChecklistFacet
+          id="decision"
+          label="Decision"
+          selected={filters.decision}
+          values={decisionValues}
+          onChange={(decision) => onChange({ ...filters, decision })}
+        />
       </div>
 
       <div className="flex flex-col gap-1">
@@ -149,11 +241,11 @@ export function FilterBar({
           max={100}
           className="h-9 w-24"
           value={filters.minScore}
-          onChange={(e) => onChange({ ...filters, minScore: e.target.value })}
+          onChange={(event) => onChange({ ...filters, minScore: event.target.value })}
         />
       </div>
 
-      <div className="flex flex-1 min-w-[10rem] flex-col gap-1">
+      <div className="flex min-w-[10rem] flex-1 flex-col gap-1">
         <Label htmlFor="filter-search">Search</Label>
         <Input
           id="filter-search"
@@ -161,39 +253,114 @@ export function FilterBar({
           placeholder="Title or organization"
           className="h-9"
           value={filters.q}
-          onChange={(e) => onChange({ ...filters, q: e.target.value })}
+          onChange={(event) => onChange({ ...filters, q: event.target.value })}
         />
       </div>
 
       <div className="flex flex-col gap-1">
         <Label htmlFor="filter-source-family">Source</Label>
-        <select id="filter-source-family" className={selectClasses} value={filters.sourceFamily} onChange={(e) => onChange({ ...filters, sourceFamily: e.target.value, sourceId: "" })}>
+        <select
+          id="filter-source-family"
+          className={selectClasses}
+          value={filters.sourceFamily}
+          onChange={(event) =>
+            onChange({ ...filters, sourceFamily: event.target.value, sourceId: "" })
+          }
+        >
           <option value="">All sources ({allAutomatedCount})</option>
-          {families.map((family) => { const meta = familyMeta.get(family)!; return <option key={family} value={family}>{family} ({meta.manualOnly ? "Manual only · 0 automated" : meta.count})</option> })}
+          {families.map((family) => {
+            const info = familyMeta.get(family)!
+            return (
+              <option key={family} value={family}>
+                {family} ({info.manualOnly ? "Manual only · 0 automated" : info.count})
+              </option>
+            )
+          })}
         </select>
       </div>
-      <div className="flex flex-col gap-1">
+
+      <div className="order-3 flex flex-col gap-1">
         <Label htmlFor="filter-activity">Activity</Label>
-        <select id="filter-activity" data-testid="filter-activity" className={selectClasses} value={filters.activity} onChange={(e) => onChange({ ...filters, activity: e.target.value })}>
-          <option value="to_review">To review</option><option value="any">Any activity</option><option value="applied">Applied</option><option value="snoozed">Snoozed</option><option value="dismissed">Dismissed</option><option value="has_feedback">Has feedback</option>
+        <select
+          id="filter-activity"
+          data-testid="filter-activity"
+          className={selectClasses}
+          value={filters.activity}
+          onChange={(event) => onChange({ ...filters, activity: event.target.value })}
+        >
+          <option value="to_review">To review</option>
+          <option value="any">Any activity</option>
+          <option value="applied">Applied</option>
+          <option value="snoozed">Snoozed</option>
+          <option value="dismissed">Dismissed</option>
+          <option value="has_feedback">Has feedback</option>
         </select>
       </div>
-      <div className="flex flex-col gap-1">
+
+      <div className="order-3 flex flex-col gap-1">
         <Label htmlFor="filter-feedback">Feedback</Label>
-        <select id="filter-feedback" data-testid="filter-feedback" className={selectClasses} value={filters.feedback} onChange={(e) => onChange({ ...filters, feedback: e.target.value })}>
-          <option value="">All feedback states</option><option value="good_match">Good match</option><option value="bad_match">Bad match</option><option value="eligibility_wrong">Not eligible</option><option value="irrelevant_role">Wrong track</option><option value="duplicate_issue">Duplicate</option>
+        <select
+          id="filter-feedback"
+          data-testid="filter-feedback"
+          className={selectClasses}
+          value={filters.feedback}
+          onChange={(event) => onChange({ ...filters, feedback: event.target.value })}
+        >
+          <option value="">All feedback states</option>
+          <option value="good_match">Good match</option>
+          <option value="bad_match">Bad match</option>
+          <option value="eligibility_wrong">Not eligible</option>
+          <option value="irrelevant_role">Wrong track</option>
+          <option value="duplicate_issue">Duplicate</option>
         </select>
       </div>
-      <Button type="button" variant="outline" size="lg" onClick={onOpenManualSources} data-testid="open-manual-sources-panel">Check manually</Button>
-      {filters.sourceFamily && !selectedFamily?.manualOnly && sourceIds.length > 1 && (
+
+      {filters.sourceFamily && sourceIds.length > 1 && (
         <div className="flex flex-col gap-1">
           <Label htmlFor="filter-source-id">Board</Label>
-          <select id="filter-source-id" className={selectClasses} value={filters.sourceId} onChange={(e) => onChange({ ...filters, sourceId: e.target.value })}>
+          <select
+            id="filter-source-id"
+            className={selectClasses}
+            value={filters.sourceId}
+            onChange={(event) => onChange({ ...filters, sourceId: event.target.value })}
+          >
             <option value="">All {filters.sourceFamily}</option>
-            {sourceIds.map((source) => <option key={source.source_id!} value={source.source_id!}>{source.source_id} ({source.opportunity_count})</option>)}
+            {sourceIds.map((source) => (
+              <option key={source.source_id!} value={source.source_id!}>
+                {source.source_id} ({source.opportunity_count})
+              </option>
+            ))}
           </select>
         </div>
       )}
+
+      <div className="order-3 flex flex-col gap-1">
+        <Label htmlFor="feed-sort">Sort</Label>
+        <select
+          id="feed-sort"
+          className={selectClasses}
+          value={sortBy}
+          disabled={advancedDisabled}
+          onChange={(event) => onSortChange(event.target.value as FeedSortId)}
+        >
+          <optgroup label="Available">
+            {FEED_SORT_IDS.map((sort) => (
+              <option key={sort} value={sort}>
+                {FEED_SORT_LABELS[sort]}
+              </option>
+            ))}
+          </optgroup>
+          {FEED_UNAVAILABLE_SORT_GROUPS.map((group) => (
+            <optgroup key={group.label} label={`${group.label} — unavailable`}>
+              {group.options.map((label) => (
+                <option key={label} disabled>
+                  {label}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </div>
 
       {hasActiveFilters && (
         <Button
@@ -217,13 +384,54 @@ export function FilterBar({
         <SlidersHorizontal aria-hidden="true" className="size-3.5" />
         Filters
       </Button>
+
+      <div aria-hidden="true" className="order-2 h-0 basis-full" />
+      <Button
+        type="button"
+        ref={onAdvancedTriggerRef}
+        variant="outline"
+        size="lg"
+        className="order-3"
+        data-testid="open-advanced-feed-filters"
+        disabled={advancedDisabled}
+        onClick={onOpenAdvanced}
+      >
+        <SlidersHorizontal aria-hidden="true" className="size-3.5" />
+        Advanced
+      </Button>
+
       {onOpenFacets && (
-        <Button type="button" variant="outline" size="lg" onClick={onOpenFacets} data-testid="open-facets-panel">
+        <Button
+          type="button"
+          variant="outline"
+          size="lg"
+          data-testid="open-facets-panel"
+          onClick={onOpenFacets}
+        >
           Facets
         </Button>
       )}
+
+      <Button
+        type="button"
+        variant="outline"
+        size="lg"
+        data-testid="open-manual-sources-panel"
+        onClick={onOpenManualSources}
+      >
+        Check manually
+      </Button>
+
       {onToggleTutoringLane && (
-        <Button type="button" variant={tutoringActive ? "secondary" : "outline"} size="lg" onClick={onToggleTutoringLane} disabled={tutoringDisabled} data-testid="toggle-tutoring-lane" aria-pressed={tutoringActive}>
+        <Button
+          type="button"
+          variant={tutoringActive ? "secondary" : "outline"}
+          size="lg"
+          data-testid="toggle-tutoring-lane"
+          aria-pressed={tutoringActive}
+          disabled={tutoringDisabled}
+          onClick={onToggleTutoringLane}
+        >
           Tutoring Lane
         </Button>
       )}

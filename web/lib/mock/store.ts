@@ -5,12 +5,21 @@
  * a server.
  */
 import type {
+  ActionState,
   ActionType,
+  ApplicationStage,
   DashboardDay,
   DashboardResponse,
+  ConfidenceFactor,
   Facet,
   FacetsResponse,
   FacetValueState,
+  FeedFacetId,
+  FeedFilterMetadataResponse,
+  FeedMultiFacetId,
+  FeedScoreId,
+  FeedSortId,
+  FeedQueryState,
   FeedbackLabel,
   FilterMode,
   FiltersResponse,
@@ -26,6 +35,30 @@ import type {
   SourceHealth,
   SourcesHealthResponse,
   TruthStatusResponse,
+  TrackerBucket,
+  TrackerFollowUp,
+  TrackerFollowUpBucket,
+  TrackerFollowUpListResponse,
+  TrackerFollowUpMutationResponse,
+  TrackerFollowUpSummaryResponse,
+  TrackerListResponse,
+  TrackerNote,
+  TrackerNoteListResponse,
+  TrackerNoteMutationResponse,
+  TrackerInterview,
+  TrackerInterviewListResponse,
+  TrackerInterviewMutationResponse,
+  TrackerInterviewOutcome,
+  TrackerInterviewSummaryResponse,
+  TrackerDocumentCandidate,
+  TrackerDocumentKind,
+  TrackerDocumentLink,
+  TrackerDocumentListResponse,
+  TrackerDocumentCandidateListResponse,
+  TrackerDocumentMutationResponse,
+  TrackerActivityEvent,
+  TrackerActivityListResponse,
+  TrackerState,
 } from "@/lib/contract/types"
 import {
   buildDefaultOpportunities,
@@ -46,7 +79,104 @@ interface FilterSetting {
   params: Record<string, unknown>
 }
 
+interface MockTrackerEvent {
+  opportunity_id: string
+  action_type: string
+  from_state: string
+  to_state: string
+  event_at: string
+  metadata_json?: string
+  idempotency_key?: string
+}
+
+interface MockTrackerNoteIdempotency {
+  idempotency_key: string
+  action_type: "tracker_note_created" | "tracker_note_updated" | "tracker_note_archived"
+  opportunity_id: string
+  note_id: string
+}
+
+interface MockTrackerFollowUpIdempotency {
+  idempotency_key: string
+  action_type: "follow_up_created" | "follow_up_updated" | "follow_up_completed" | "follow_up_reopened"
+  opportunity_id: string
+  follow_up_id: string
+}
+
+interface MockTrackerInterviewIdempotency {
+  idempotency_key: string
+  action_type: "interview_added" | "interview_updated" | "interview_completed"
+  opportunity_id: string
+  interview_id: string
+}
+
+interface MockTrackerDocumentIdempotency {
+  idempotency_key: string
+  action_type: "tracker_document_linked" | "tracker_document_unlinked"
+  opportunity_id: string
+  document_kind: TrackerDocumentKind
+  document_id: string
+  link_id: string
+}
+
+const MOCK_CV_CANDIDATES: TrackerDocumentCandidate[] = [
+  { document_kind: "cv", document_id: "mock-cv-general", label: "General résumé", format: "pdf", recommended: true },
+  { document_kind: "cv", document_id: "mock-cv-data", label: "Data résumé", format: "pdf", recommended: false },
+]
+
 const HIGH_FIT_THRESHOLD = 70
+
+// Fixed, clearly synthetic detail values let the mock demonstrate the
+// evaluation-detail contract without reading or deriving private user data.
+const MOCK_PREFERENCE_SCORE = 76
+const MOCK_CONFIDENCE_FACTORS: ConfidenceFactor[] = [
+  { name: "description_completeness", score: 84, explanation: "Synthetic mock factor: the fixture includes a job description." },
+  { name: "location_remote_scope_clarity", score: 80, explanation: "Synthetic mock factor: location detail is represented by this fixture." },
+  { name: "experience_requirement_clarity", score: 78, explanation: "Synthetic mock factor: experience detail is represented by this fixture." },
+  { name: "skill_extraction_reliability", score: 82, explanation: "Synthetic mock factor: structured requirements are represented by this fixture." },
+  { name: "compensation_completeness", score: 75, explanation: "Synthetic mock factor: compensation evidence is represented by this fixture." },
+  { name: "source_freshness_and_strength", score: 88, explanation: "Synthetic mock factor: source recency is represented by this fixture." },
+  { name: "founder_evidence_completeness", score: 87, explanation: "Synthetic mock factor: evaluation evidence is represented by this fixture." },
+]
+const FEED_FACETS: FeedFacetId[] = [
+  "feedback_label", "activity_type",
+  "track", "decision", "work_mode", "location_country", "location_city",
+  "remote_scope", "employment_type", "seniority_level", "target_tier",
+  "title_family", "source_id",
+]
+const FEED_MULTI_FACETS: FeedMultiFacetId[] = [
+  "feedback_label",
+  "activity_type",
+  "work_mode", "location_country", "location_city", "remote_scope",
+  "employment_type", "seniority_level", "target_tier", "title_family", "source_id",
+]
+const FEED_SCORES: FeedScoreId[] = ["fit_score", "preference_score", "confidence_score", "priority_score"]
+const FEED_SORTS: Array<{ value: FeedSortId; label: string }> = [
+  { value: "recommended", label: "Recommended" },
+  { value: "fit_desc", label: "Fit score: high to low" },
+  { value: "fit_asc", label: "Fit score: low to high" },
+  { value: "newest_posted", label: "Newest posted" },
+  { value: "oldest_posted", label: "Oldest posted" },
+  { value: "remote_first", label: "Remote first" },
+]
+const MOCK_UNAVAILABLE_FEED_FILTERS = [
+  { id: "tracking_state", label: "Tracking state", reason: "Saved, snoozed, dismissed, applied, and submitted states are outside the feed-query contract." },
+  { id: "eligibility_evidence", label: "Eligibility evidence", reason: "Only the qualification decision is queryable; sponsorship and work-authorization evidence are not structured feed fields." },
+  { id: "title_level_and_keywords", label: "Title level and exact title keywords", reason: "Title level and exact title keywords are not exposed as feed filters; general text search remains available." },
+  { id: "location_region", label: "Location regions", reason: "Region text is not normalized into exact selectable values." },
+  { id: "skill_match_and_gaps", label: "Skill match and gaps", reason: "Required, matched, missing, and preferred skills are not structured query fields." },
+  { id: "experience_responsibility", label: "Experience and responsibility", reason: "Years of experience and responsibility evidence are not queryable feed fields." },
+  { id: "work_authorization_relocation", label: "Work authorization and relocation", reason: "Authorization, sponsorship, relocation, and on-site cadence are not queryable feed fields." },
+  { id: "compensation", label: "Compensation ranges", reason: "Comparable compensation amounts, currencies, and pay periods are not part of the feed-query projection." },
+  { id: "company_attributes", label: "Company attributes", reason: "Industry, size, stage, ownership, funding, and employer-name dimensions are not normalized feed filters." },
+  { id: "source_taxonomy_and_health", label: "Source family, ATS, and source health", reason: "Source ID is queryable; source family, ATS type, quality, health, and error rate are not normalized." },
+  { id: "posting_health", label: "Posting freshness and health", reason: "Posted-date bounds are queryable; deadline, stale state, duplicate, and closed signals are not." },
+  { id: "content_completeness", label: "Content completeness", reason: "Description coverage, length, structured-field coverage, and extraction confidence are not queryable." },
+  { id: "education_certification", label: "Education and certification", reason: "Degree, education level, and certification requirements are not structured feed filters." },
+  { id: "language_timezone_travel", label: "Language, time zone, and travel", reason: "Language, time-zone overlap, and travel requirements are not structured feed filters." },
+  { id: "cv_application_readiness", label: "CV and application readiness", reason: "CV selection and application-artifact readiness are tracker concerns outside feed-query dimensions." },
+  { id: "tracked_user_metadata", label: "Tracked-job user metadata", reason: "Notes, follow-up dates, application status, and user tags are not part of feed-query dimensions." },
+]
 
 /** C1 mock facet surface. A trimmed set of the real API's 15 facets,
  * bucketed over fields this mock's `SeedOpportunity` actually models
@@ -130,6 +260,53 @@ function daysAgoUtc(n: number): string {
   return d.toISOString().slice(0, 10)
 }
 
+function isIsoCalendarDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const parsed = new Date(`${value}T00:00:00.000Z`)
+  return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value
+}
+
+function followUpStatus(dueDate: string, completedAt: string | null, today: string): TrackerFollowUp["status"] {
+  if (completedAt) return "completed"
+  if (dueDate < today) return "overdue"
+  if (dueDate === today) return "due_today"
+  return "upcoming"
+}
+
+const MOCK_INTERVIEW_TYPES = new Set(["recruiter_screen", "hiring_manager", "technical", "take_home", "live_coding", "case_study", "panel", "final", "other"])
+const MOCK_INTERVIEW_FORMATS = new Set(["phone", "video", "in_person"])
+const MOCK_INTERVIEW_OUTCOMES = new Set<TrackerInterviewOutcome>(["pending", "completed", "passed", "not_selected", "cancelled", "other"])
+const MOCK_INTERVIEW_DONE = new Set<TrackerInterviewOutcome>(["completed", "passed", "not_selected", "cancelled"])
+const MOCK_INTERVIEW_FIELDS = new Set(["scheduled_at", "round_label", "interview_type", "interview_format", "interviewer_name", "preparation_notes", "post_interview_notes", "outcome"])
+
+function normalizeMockInterviewFields(fields: Record<string, unknown>): Partial<TrackerInterview> | "invalid_field" | "invalid_datetime" | "invalid_enum" | "invalid_text" {
+  const normalized: Partial<TrackerInterview> = {}
+  const lengths: Record<string, number> = { round_label: 64, interviewer_name: 128, preparation_notes: 4000, post_interview_notes: 4000 }
+  for (const [field, value] of Object.entries(fields)) {
+    if (!MOCK_INTERVIEW_FIELDS.has(field)) return "invalid_field"
+    if (field === "scheduled_at") {
+      if (value === null) normalized.scheduled_at = null
+      else if (typeof value === "string" && /(?:Z|[+-]\d{2}:\d{2})$/i.test(value) && Number.isFinite(Date.parse(value))) normalized.scheduled_at = new Date(value).toISOString()
+      else return "invalid_datetime"
+    } else if (field in lengths) {
+      if (value !== null && typeof value !== "string") return "invalid_text"
+      const cleaned = typeof value === "string" ? value.trim() : ""
+      if (cleaned.length > lengths[field]) return "invalid_text"
+      ;(normalized as Record<string, unknown>)[field] = cleaned || null
+    } else if (field === "interview_type") {
+      if (value !== null && (typeof value !== "string" || !MOCK_INTERVIEW_TYPES.has(value))) return "invalid_enum"
+      normalized.interview_type = value as TrackerInterview["interview_type"]
+    } else if (field === "interview_format") {
+      if (value !== null && (typeof value !== "string" || !MOCK_INTERVIEW_FORMATS.has(value))) return "invalid_enum"
+      normalized.interview_format = value as TrackerInterview["interview_format"]
+    } else if (field === "outcome") {
+      if (value !== null && (typeof value !== "string" || !MOCK_INTERVIEW_OUTCOMES.has(value as TrackerInterviewOutcome))) return "invalid_enum"
+      normalized.outcome = value as TrackerInterviewOutcome | null
+    }
+  }
+  return normalized
+}
+
 export class MockStore {
   scenario: MockScenario
   authenticated = false
@@ -155,6 +332,22 @@ export class MockStore {
   facetSettings: Map<string, { include: string[]; exclude: string[] }>
   /** C1 saved views. */
   savedViews: SavedView[]
+  /** Synthetic append-only event history used to mirror tracker transitions in mock flows. */
+  private trackerEvents: MockTrackerEvent[] = []
+  /** Expiry dates for synthetic snoozes; absence mirrors an undated, active snooze. */
+  private trackerSnoozeUntil = new Map<string, string>()
+  /** Synthetic private notes used only by authenticated mock browser flows. */
+  private trackerNotes = new Map<string, TrackerNote[]>()
+  private trackerNoteIdempotency: MockTrackerNoteIdempotency[] = []
+  /** Synthetic follow-ups and request keys live only in mock local storage. */
+  private trackerFollowUps = new Map<string, TrackerFollowUp[]>()
+  private trackerFollowUpIdempotency: MockTrackerFollowUpIdempotency[] = []
+  /** Synthetic interview records, private notes, and idempotency live in their own mock namespace. */
+  private trackerInterviews = new Map<string, TrackerInterview[]>()
+  private trackerInterviewIdempotency: MockTrackerInterviewIdempotency[] = []
+  /** Synthetic ID-only document associations live in their own mock namespace. */
+  private trackerDocuments = new Map<string, TrackerDocumentLink[]>()
+  private trackerDocumentIdempotency: MockTrackerDocumentIdempotency[] = []
 
   constructor(scenario: MockScenario) {
     this.scenario = scenario
@@ -235,7 +428,1126 @@ export class MockStore {
       }
     }
 
+    this.restoreTrackerState()
+    this.restoreTrackerAttestationsFromEvents()
+    this.restoreTrackerNotes()
+    this.restoreTrackerFollowUps()
+    this.restoreTrackerInterviews()
+    this.restoreTrackerDocuments()
     this.dailyCounters = this.seedDailyCounters()
+  }
+
+  private trackerStorageKey() {
+    return `opportunityos.mock.tracker.${this.scenario}`
+  }
+
+  private trackerEventsStorageKey() {
+    return `opportunityos.mock.tracker-events.${this.scenario}`
+  }
+
+  private trackerNotesStorageKey() {
+    return `opportunityos.mock.tracker-notes.${this.scenario}`
+  }
+
+  private trackerFollowUpsStorageKey() {
+    return `opportunityos.mock.follow-ups.${this.scenario}`
+  }
+
+  private trackerInterviewsStorageKey() {
+    return `opportunityos.mock.interviews.${this.scenario}`
+  }
+
+  private trackerDocumentsStorageKey() {
+    return `opportunityos.mock.documents.${this.scenario}`
+  }
+
+  private restoreTrackerState() {
+    if (typeof window === "undefined") return
+    try {
+      const raw = window.localStorage.getItem(this.trackerStorageKey())
+      if (raw) {
+        const saved: unknown = JSON.parse(raw)
+        if (Array.isArray(saved)) {
+          const allowedStates = new Set([
+            "saved", "submitted", "applied", "recruiter_screen", "assessment",
+            "interviewing", "final_interview", "offer", "accepted",
+            "rejected_by_founder", "rejected_by_employer", "withdrawn", "no_response",
+            "position_closed", "archived", "dismissed", "snoozed",
+          ])
+          for (const entry of saved) {
+            if (
+              entry &&
+              typeof entry === "object" &&
+              "id" in entry &&
+              typeof entry.id === "string" &&
+              "action_state" in entry &&
+              typeof entry.action_state === "string" &&
+              allowedStates.has(entry.action_state)
+            ) {
+              const opportunity = this.opportunities.get(entry.id)
+              if (opportunity) {
+                opportunity.action_state = entry.action_state as ActionState
+                if (
+                  entry.action_state === "snoozed" &&
+                  "snoozed_until" in entry &&
+                  isIsoCalendarDate(entry.snoozed_until)
+                ) {
+                  this.trackerSnoozeUntil.set(entry.id, entry.snoozed_until)
+                } else {
+                  this.trackerSnoozeUntil.delete(entry.id)
+                }
+              }
+            }
+          }
+        }
+      }
+      const eventRaw = window.localStorage.getItem(this.trackerEventsStorageKey())
+      if (eventRaw) {
+        const events: unknown = JSON.parse(eventRaw)
+        if (Array.isArray(events)) {
+          this.trackerEvents = events.filter((event): event is MockTrackerEvent =>
+            Boolean(
+              event &&
+              typeof event === "object" &&
+              "opportunity_id" in event && typeof event.opportunity_id === "string" &&
+              "action_type" in event && typeof event.action_type === "string" &&
+              "from_state" in event && typeof event.from_state === "string" &&
+              "to_state" in event && typeof event.to_state === "string" &&
+              "event_at" in event && typeof event.event_at === "string"
+            )
+          )
+        }
+      }
+    } catch {
+      // In-memory mock behavior remains usable if browser storage is blocked.
+    }
+  }
+
+  private restoreTrackerAttestationsFromEvents() {
+    const undoneEvents = new Map<string, string>()
+    for (const event of this.trackerEvents) {
+      if (event.action_type !== "tracker_restored") continue
+      let metadata: Record<string, unknown> = {}
+      try { metadata = JSON.parse(event.metadata_json ?? "{}") as Record<string, unknown> } catch { /* malformed mock event */ }
+      if (typeof metadata.restored_event_id === "string") {
+        undoneEvents.set(metadata.restored_event_id, event.event_at)
+      }
+    }
+
+    for (const [index, event] of this.trackerEvents.entries()) {
+      if (event.action_type !== "applied") continue
+      const opportunity = this.opportunities.get(event.opportunity_id)
+      if (!opportunity) continue
+      let metadata: Record<string, unknown> = {}
+      try { metadata = JSON.parse(event.metadata_json ?? "{}") as Record<string, unknown> } catch { /* malformed mock event */ }
+      if (typeof metadata.attestation_action_id !== "string") continue
+      const actionId = metadata.attestation_action_id
+      if (opportunity.action_history.some((entry) => entry.action_id === actionId)) continue
+      const undoAt = undoneEvents.get(`mock-activity-${String(index).padStart(8, "0")}`)
+      opportunity.action_history.push({
+        action_id: actionId,
+        action_status: undoAt ? "undone" : "submitted",
+        execution_mode: "dry_run",
+        created_at: event.event_at,
+        updated_at: undoAt ?? event.event_at,
+        notes: "Founder-attested: applied outside the platform.",
+      })
+    }
+  }
+
+  private restoreTrackerNotes() {
+    if (typeof window === "undefined") return
+    try {
+      const raw = window.localStorage.getItem(this.trackerNotesStorageKey())
+      if (!raw) return
+      const saved: unknown = JSON.parse(raw)
+      if (!saved || typeof saved !== "object") return
+      const object = saved as { notes?: unknown; idempotency?: unknown }
+      if (Array.isArray(object.notes)) {
+        for (const note of object.notes) {
+          if (
+            note && typeof note === "object" &&
+            "id" in note && typeof note.id === "string" &&
+            "opportunity_id" in note && typeof note.opportunity_id === "string" &&
+            "note_text" in note && typeof note.note_text === "string" &&
+            "created_at" in note && typeof note.created_at === "string" &&
+            "updated_at" in note && typeof note.updated_at === "string" &&
+            "archived_at" in note && (typeof note.archived_at === "string" || note.archived_at === null) &&
+            this.opportunities.has(note.opportunity_id)
+          ) {
+            const rows = this.trackerNotes.get(note.opportunity_id) ?? []
+            rows.push(note as TrackerNote)
+            this.trackerNotes.set(note.opportunity_id, rows)
+          }
+        }
+      }
+      if (Array.isArray(object.idempotency)) {
+        this.trackerNoteIdempotency = object.idempotency.filter((entry): entry is MockTrackerNoteIdempotency =>
+          Boolean(
+            entry && typeof entry === "object" &&
+            "idempotency_key" in entry && typeof entry.idempotency_key === "string" &&
+            "action_type" in entry && ["tracker_note_created", "tracker_note_updated", "tracker_note_archived"].includes(String(entry.action_type)) &&
+            "opportunity_id" in entry && typeof entry.opportunity_id === "string" &&
+            "note_id" in entry && typeof entry.note_id === "string"
+          )
+        )
+      }
+    } catch {
+      // Synthetic notes remain usable in memory when browser storage is blocked.
+    }
+  }
+
+  private persistTrackerNotes() {
+    if (typeof window === "undefined") return
+    try {
+      const notes = [...this.trackerNotes.values()].flat()
+      window.localStorage.setItem(this.trackerNotesStorageKey(), JSON.stringify({
+        notes,
+        idempotency: this.trackerNoteIdempotency,
+      }))
+    } catch {
+      // Synthetic review state must not break the mock workflow.
+    }
+  }
+
+  private eligibleFollowUpTrackerState(opportunityId: string): TrackerState | null {
+    const opportunity = this.opportunities.get(opportunityId)
+    if (!opportunity) return null
+    const state = opportunity.action_state === "submitted" ? "applied" : opportunity.action_state
+    const eligible = new Set<TrackerState>([
+      "saved", "applied", "recruiter_screen", "assessment", "interviewing",
+      "final_interview", "offer", "accepted",
+    ])
+    return state && eligible.has(state as TrackerState) ? state as TrackerState : null
+  }
+
+  private restoreTrackerFollowUps() {
+    if (typeof window === "undefined") return
+    try {
+      const raw = window.localStorage.getItem(this.trackerFollowUpsStorageKey())
+      if (!raw) return
+      const saved: unknown = JSON.parse(raw)
+      if (!saved || typeof saved !== "object") return
+      const object = saved as { follow_ups?: unknown; idempotency?: unknown }
+      if (Array.isArray(object.follow_ups)) {
+        for (const entry of object.follow_ups) {
+          if (
+            entry && typeof entry === "object" &&
+            "id" in entry && typeof entry.id === "string" &&
+            "opportunity_id" in entry && typeof entry.opportunity_id === "string" &&
+            "due_date" in entry && isIsoCalendarDate(entry.due_date) &&
+            "note_text" in entry && (typeof entry.note_text === "string" || entry.note_text === null) &&
+            "completed_at" in entry && (typeof entry.completed_at === "string" || entry.completed_at === null) &&
+            "created_at" in entry && typeof entry.created_at === "string" &&
+            "updated_at" in entry && typeof entry.updated_at === "string" &&
+            this.opportunities.has(entry.opportunity_id)
+          ) {
+            const today = new Date().toISOString().slice(0, 10)
+            const note: TrackerFollowUp = {
+              id: entry.id,
+              opportunity_id: entry.opportunity_id,
+              due_date: entry.due_date,
+              note_text: entry.note_text,
+              completed_at: entry.completed_at,
+              status: followUpStatus(entry.due_date, entry.completed_at, today),
+              created_at: entry.created_at,
+              updated_at: entry.updated_at,
+            }
+            const rows = this.trackerFollowUps.get(note.opportunity_id) ?? []
+            rows.push(note)
+            this.trackerFollowUps.set(note.opportunity_id, rows)
+          }
+        }
+      }
+      if (Array.isArray(object.idempotency)) {
+        this.trackerFollowUpIdempotency = object.idempotency.filter((entry): entry is MockTrackerFollowUpIdempotency =>
+          Boolean(
+            entry && typeof entry === "object" &&
+            "idempotency_key" in entry && typeof entry.idempotency_key === "string" &&
+            "action_type" in entry && ["follow_up_created", "follow_up_updated", "follow_up_completed", "follow_up_reopened"].includes(String(entry.action_type)) &&
+            "opportunity_id" in entry && typeof entry.opportunity_id === "string" &&
+            "follow_up_id" in entry && typeof entry.follow_up_id === "string"
+          )
+        )
+      }
+    } catch {
+      // Synthetic follow-ups remain usable in memory when storage is blocked.
+    }
+  }
+
+  private persistTrackerFollowUps() {
+    if (typeof window === "undefined") return
+    try {
+      window.localStorage.setItem(this.trackerFollowUpsStorageKey(), JSON.stringify({
+        follow_ups: [...this.trackerFollowUps.values()].flat(),
+        idempotency: this.trackerFollowUpIdempotency,
+      }))
+    } catch {
+      // Synthetic review data must not break the mock workflow.
+    }
+  }
+
+  private restoreTrackerInterviews() {
+    if (typeof window === "undefined") return
+    try {
+      const raw = window.localStorage.getItem(this.trackerInterviewsStorageKey())
+      if (!raw) return
+      const saved: unknown = JSON.parse(raw)
+      if (!saved || typeof saved !== "object") return
+      const object = saved as { interviews?: unknown; idempotency?: unknown }
+      if (Array.isArray(object.interviews)) {
+        for (const entry of object.interviews) {
+          if (
+            entry && typeof entry === "object" &&
+            "id" in entry && typeof entry.id === "string" &&
+            "opportunity_id" in entry && typeof entry.opportunity_id === "string" &&
+            "scheduled_at" in entry && (typeof entry.scheduled_at === "string" || entry.scheduled_at === null) &&
+            "outcome" in entry && typeof entry.outcome === "string" &&
+            "created_at" in entry && typeof entry.created_at === "string" &&
+            "updated_at" in entry && typeof entry.updated_at === "string" &&
+            this.opportunities.has(entry.opportunity_id)
+          ) {
+            const rows = this.trackerInterviews.get(entry.opportunity_id) ?? []
+            rows.push(entry as TrackerInterview)
+            this.trackerInterviews.set(entry.opportunity_id, rows)
+          }
+        }
+      }
+      if (Array.isArray(object.idempotency)) {
+        this.trackerInterviewIdempotency = object.idempotency.filter((entry): entry is MockTrackerInterviewIdempotency =>
+          Boolean(
+            entry && typeof entry === "object" &&
+            "idempotency_key" in entry && typeof entry.idempotency_key === "string" &&
+            "action_type" in entry && ["interview_added", "interview_updated", "interview_completed"].includes(String(entry.action_type)) &&
+            "opportunity_id" in entry && typeof entry.opportunity_id === "string" &&
+            "interview_id" in entry && typeof entry.interview_id === "string"
+          )
+        )
+      }
+    } catch {
+      // Keep synthetic interview flows usable when browser storage is blocked.
+    }
+  }
+
+  private persistTrackerInterviews() {
+    if (typeof window === "undefined") return
+    try {
+      window.localStorage.setItem(this.trackerInterviewsStorageKey(), JSON.stringify({
+        interviews: [...this.trackerInterviews.values()].flat(),
+        idempotency: this.trackerInterviewIdempotency,
+      }))
+    } catch {
+      // Synthetic review data must not break the mock workflow.
+    }
+  }
+
+  private restoreTrackerDocuments() {
+    if (typeof window === "undefined") return
+    try {
+      const raw = window.localStorage.getItem(this.trackerDocumentsStorageKey())
+      if (!raw) return
+      const saved: unknown = JSON.parse(raw)
+      if (!saved || typeof saved !== "object") return
+      const object = saved as { documents?: unknown; idempotency?: unknown }
+      if (Array.isArray(object.documents)) {
+        for (const entry of object.documents) {
+          if (
+            entry && typeof entry === "object" &&
+            "id" in entry && typeof entry.id === "string" &&
+            "opportunity_id" in entry && typeof entry.opportunity_id === "string" &&
+            "document_kind" in entry && (entry.document_kind === "cv" || entry.document_kind === "cover_letter") &&
+            "document_id" in entry && typeof entry.document_id === "string" &&
+            "linked_at" in entry && typeof entry.linked_at === "string" &&
+            "unlinked_at" in entry && (typeof entry.unlinked_at === "string" || entry.unlinked_at === null) &&
+            this.opportunities.has(entry.opportunity_id)
+          ) {
+            const rows = this.trackerDocuments.get(entry.opportunity_id) ?? []
+            rows.push(entry as TrackerDocumentLink)
+            this.trackerDocuments.set(entry.opportunity_id, rows)
+          }
+        }
+      }
+      if (Array.isArray(object.idempotency)) {
+        this.trackerDocumentIdempotency = object.idempotency.filter((entry): entry is MockTrackerDocumentIdempotency =>
+          Boolean(
+            entry && typeof entry === "object" &&
+            "idempotency_key" in entry && typeof entry.idempotency_key === "string" &&
+            "action_type" in entry && ["tracker_document_linked", "tracker_document_unlinked"].includes(String(entry.action_type)) &&
+            "opportunity_id" in entry && typeof entry.opportunity_id === "string" &&
+            "document_kind" in entry && (entry.document_kind === "cv" || entry.document_kind === "cover_letter") &&
+            "document_id" in entry && typeof entry.document_id === "string" &&
+            "link_id" in entry && typeof entry.link_id === "string"
+          )
+        )
+      }
+    } catch {
+      // Keep synthetic association flows usable when browser storage is blocked.
+    }
+  }
+
+  private persistTrackerDocuments() {
+    if (typeof window === "undefined") return
+    try {
+      window.localStorage.setItem(this.trackerDocumentsStorageKey(), JSON.stringify({
+        documents: [...this.trackerDocuments.values()].flat(),
+        idempotency: this.trackerDocumentIdempotency,
+      }))
+    } catch {
+      // Synthetic review data must not break the mock workflow.
+    }
+  }
+
+  private mockDocumentCandidates(opportunityId: string): TrackerDocumentCandidate[] {
+    const coverLetter: TrackerDocumentCandidate = {
+      document_kind: "cover_letter",
+      document_id: `mock-cover-letter-${opportunityId}`,
+      label: "Cover letter · Classic",
+      format: "docx",
+      recommended: false,
+      created_at: new Date().toISOString(),
+    }
+    return [...MOCK_CV_CANDIDATES, coverLetter]
+  }
+
+  private selectedMockDocumentId(opportunityId: string, kind: TrackerDocumentKind): string | null {
+    return (this.trackerDocuments.get(opportunityId) ?? []).find((row) => row.document_kind === kind && !row.unlinked_at)?.document_id ?? null
+  }
+
+  listOpportunityTrackerDocuments(opportunityId: string, page = 1, pageSize = 50): TrackerDocumentListResponse | "not_found" | "not_tracked" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    if (!this.applicationTrackerState(opportunityId)) return "not_tracked"
+    const active = (this.trackerDocuments.get(opportunityId) ?? []).filter((row) => !row.unlinked_at)
+    const normalizedPage = Math.max(1, Math.floor(page) || 1)
+    const normalizedSize = Math.min(100, Math.max(1, Math.floor(pageSize) || 50))
+    return {
+      opportunity_id: opportunityId,
+      page: normalizedPage,
+      page_size: normalizedSize,
+      total: active.length,
+      selected_cv_document_id: this.selectedMockDocumentId(opportunityId, "cv"),
+      selected_cover_letter_document_id: this.selectedMockDocumentId(opportunityId, "cover_letter"),
+      items: [...active].sort((left, right) => left.document_kind.localeCompare(right.document_kind) || left.document_id.localeCompare(right.document_id))
+        .slice((normalizedPage - 1) * normalizedSize, normalizedPage * normalizedSize),
+    }
+  }
+
+  listOpportunityTrackerDocumentCandidates(opportunityId: string, page = 1, pageSize = 50): TrackerDocumentCandidateListResponse | "not_found" | "not_tracked" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    if (!this.applicationTrackerState(opportunityId)) return "not_tracked"
+    const candidates = this.mockDocumentCandidates(opportunityId)
+    const normalizedPage = Math.max(1, Math.floor(page) || 1)
+    const normalizedSize = Math.min(100, Math.max(1, Math.floor(pageSize) || 50))
+    return {
+      opportunity_id: opportunityId,
+      page: normalizedPage,
+      page_size: normalizedSize,
+      total: candidates.length,
+      items: candidates.slice((normalizedPage - 1) * normalizedSize, normalizedPage * normalizedSize),
+    }
+  }
+
+  linkTrackerDocument(opportunityId: string, kind: TrackerDocumentKind, documentId: string, idempotencyKey: string): TrackerDocumentMutationResponse | "not_found" | "not_tracked" | "invalid_document" | "invalid_idempotency_key" | "idempotency_conflict" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    const state = this.applicationTrackerState(opportunityId)
+    if (!state) return "not_tracked"
+    if (!this.mockDocumentCandidates(opportunityId).some((candidate) => candidate.document_kind === kind && candidate.document_id === documentId)) return "invalid_document"
+    if (typeof idempotencyKey !== "string" || !idempotencyKey.trim() || idempotencyKey.length > 128) return "invalid_idempotency_key"
+    const prior = this.trackerDocumentIdempotency.find((entry) => entry.idempotency_key === idempotencyKey)
+    const rows = this.trackerDocuments.get(opportunityId) ?? []
+    if (prior) {
+      if (prior.action_type !== "tracker_document_linked" || prior.opportunity_id !== opportunityId || prior.document_kind !== kind || prior.document_id !== documentId) return "idempotency_conflict"
+      const link = rows.find((entry) => entry.id === prior.link_id)
+      return link ? { link, changed: false } : "not_found"
+    }
+    const active = rows.filter((row) => row.document_kind === kind && !row.unlinked_at)
+    const existingActive = active.find((row) => row.document_id === documentId)
+    if (existingActive && active.length === 1) return { link: existingActive, changed: false }
+    const now = new Date().toISOString()
+    for (const row of active) if (row.document_id !== documentId) row.unlinked_at = now
+    let link = rows.find((row) => row.document_kind === kind && row.document_id === documentId)
+    if (link) {
+      link.linked_at = now
+      link.unlinked_at = null
+    } else {
+      link = { id: `mock-tracker-document-${crypto.randomUUID()}`, opportunity_id: opportunityId, document_kind: kind, document_id: documentId, linked_at: now, unlinked_at: null }
+      rows.push(link)
+      this.trackerDocuments.set(opportunityId, rows)
+    }
+    this.trackerDocumentIdempotency.push({ idempotency_key: idempotencyKey, action_type: "tracker_document_linked", opportunity_id: opportunityId, document_kind: kind, document_id: documentId, link_id: link.id })
+    this.persistTrackerDocuments()
+    this.recordTrackerDocumentEvent(opportunityId, state, "tracker_document_linked", kind, documentId)
+    return { link, changed: true }
+  }
+
+  unlinkTrackerDocument(opportunityId: string, linkId: string, idempotencyKey: string): TrackerDocumentMutationResponse | "not_found" | "not_tracked" | "invalid_idempotency_key" | "idempotency_conflict" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    const state = this.applicationTrackerState(opportunityId)
+    if (!state) return "not_tracked"
+    const rows = this.trackerDocuments.get(opportunityId) ?? []
+    const link = rows.find((row) => row.id === linkId)
+    if (!link) return "not_found"
+    if (typeof idempotencyKey !== "string" || !idempotencyKey.trim() || idempotencyKey.length > 128) return "invalid_idempotency_key"
+    const prior = this.trackerDocumentIdempotency.find((entry) => entry.idempotency_key === idempotencyKey)
+    if (prior) {
+      if (prior.action_type !== "tracker_document_unlinked" || prior.opportunity_id !== opportunityId || prior.document_kind !== link.document_kind || prior.document_id !== link.document_id) return "idempotency_conflict"
+      return { link, changed: false }
+    }
+    if (link.unlinked_at) return { link, changed: false }
+    link.unlinked_at = new Date().toISOString()
+    this.trackerDocumentIdempotency.push({ idempotency_key: idempotencyKey, action_type: "tracker_document_unlinked", opportunity_id: opportunityId, document_kind: link.document_kind, document_id: link.document_id, link_id: link.id })
+    this.persistTrackerDocuments()
+    this.recordTrackerDocumentEvent(opportunityId, state, "tracker_document_unlinked", link.document_kind, link.document_id)
+    return { link, changed: true }
+  }
+
+  private recordTrackerDocumentEvent(opportunityId: string, state: TrackerState, actionType: string, documentKind: TrackerDocumentKind, documentId: string) {
+    const event: MockTrackerEvent = {
+      opportunity_id: opportunityId, action_type: actionType, from_state: state, to_state: state,
+      event_at: new Date().toISOString(), metadata_json: JSON.stringify({ document_kind: documentKind, document_id: documentId }),
+    }
+    this.trackerEvents.push(event)
+    if (typeof window === "undefined") return
+    try {
+      window.localStorage.setItem(this.trackerEventsStorageKey(), JSON.stringify(this.trackerEvents))
+    } catch {
+      // Synthetic events are best-effort in the browser mock.
+    }
+  }
+
+  listOpportunityTrackerActivity(opportunityId: string, page = 1, pageSize = 50): TrackerActivityListResponse | "not_found" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    const items: TrackerActivityEvent[] = this.trackerEvents
+      .flatMap((entry, index) => entry.opportunity_id === opportunityId ? [{
+        id: `mock-activity-${String(index).padStart(8, "0")}`,
+        action_type: entry.action_type,
+        from_state: entry.from_state || null,
+        to_state: entry.to_state || null,
+        event_at: entry.event_at,
+      }] : [])
+      .sort((left, right) => right.event_at.localeCompare(left.event_at) || right.id.localeCompare(left.id))
+    const normalizedPage = Math.max(1, Math.floor(page) || 1)
+    const normalizedSize = Math.min(100, Math.max(1, Math.floor(pageSize) || 50))
+    return {
+      opportunity_id: opportunityId,
+      page: normalizedPage,
+      page_size: normalizedSize,
+      total: items.length,
+      items: items.slice((normalizedPage - 1) * normalizedSize, normalizedPage * normalizedSize),
+    }
+  }
+
+  private applicationTrackerState(opportunityId: string): TrackerState | null {
+    const opportunity = this.opportunities.get(opportunityId)
+    if (!opportunity) return null
+    const state = opportunity.action_state === "submitted" ? "applied" : opportunity.action_state
+    const applicationStates = new Set<TrackerState>([
+      "applied", "recruiter_screen", "assessment", "interviewing", "final_interview",
+      "offer", "accepted", "rejected_by_employer", "withdrawn", "no_response",
+    ])
+    return state && applicationStates.has(state) ? state : null
+  }
+
+  private interviewTrackerState(opportunityId: string): TrackerState | null {
+    const opportunity = this.opportunities.get(opportunityId)
+    if (!opportunity) return null
+    const state = opportunity.action_state === "submitted" ? "applied" : opportunity.action_state
+    const appliedBucket = new Set<TrackerState>(["applied", "recruiter_screen", "assessment", "interviewing", "final_interview", "offer", "accepted"])
+    return state && appliedBucket.has(state as TrackerState) ? state as TrackerState : null
+  }
+
+  listOpportunityTrackerInterviews(opportunityId: string, page = 1, pageSize = 50): TrackerInterviewListResponse | "not_found" | "not_tracked" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    if (!this.interviewTrackerState(opportunityId)) return "not_tracked"
+    const rows = this.trackerInterviews.get(opportunityId) ?? []
+    const normalizedPage = Math.max(1, Math.floor(page) || 1)
+    const normalizedSize = Math.min(100, Math.max(1, Math.floor(pageSize) || 50))
+    return {
+      opportunity_id: opportunityId,
+      page: normalizedPage,
+      page_size: normalizedSize,
+      total: rows.length,
+      items: [...rows].sort((left, right) => {
+        if (!left.scheduled_at) return right.scheduled_at ? 1 : left.id.localeCompare(right.id)
+        if (!right.scheduled_at) return -1
+        return left.scheduled_at.localeCompare(right.scheduled_at) || left.id.localeCompare(right.id)
+      }).slice((normalizedPage - 1) * normalizedSize, normalizedPage * normalizedSize),
+    }
+  }
+
+  listTrackerInterviews(bucket: string, page = 1, pageSize = 25): TrackerInterviewSummaryResponse | "invalid_bucket" {
+    if (bucket !== "upcoming") return "invalid_bucket"
+    const now = Date.now()
+    const items = [...this.trackerInterviews.values()].flat()
+      .filter((interview) => interview.scheduled_at && Date.parse(interview.scheduled_at) >= now && !MOCK_INTERVIEW_DONE.has(interview.outcome ?? "pending") && this.interviewTrackerState(interview.opportunity_id))
+      .sort((left, right) => Date.parse(left.scheduled_at ?? "") - Date.parse(right.scheduled_at ?? "") || left.id.localeCompare(right.id))
+      .flatMap((interview) => {
+        const opportunity = this.opportunities.get(interview.opportunity_id)
+        const trackerState = this.interviewTrackerState(interview.opportunity_id)
+        if (!opportunity || !trackerState) return []
+        const safeInterview = Object.fromEntries(
+          Object.entries(interview).filter(([field]) => field !== "preparation_notes" && field !== "post_interview_notes")
+        ) as Omit<TrackerInterview, "preparation_notes" | "post_interview_notes">
+        return [{ ...safeInterview, opportunity: { id: opportunity.id, title: opportunity.title, organization: opportunity.organization, tracker_state: trackerState } }]
+      })
+    const normalizedPage = Math.max(1, Math.floor(page) || 1)
+    const normalizedSize = Math.min(100, Math.max(1, Math.floor(pageSize) || 25))
+    return { bucket: "upcoming", page: normalizedPage, page_size: normalizedSize, total: items.length, items: items.slice((normalizedPage - 1) * normalizedSize, normalizedPage * normalizedSize) }
+  }
+
+  createTrackerInterview(
+    opportunityId: string,
+    fields: Record<string, unknown>,
+    idempotencyKey: string,
+  ): TrackerInterviewMutationResponse | "not_found" | "not_tracked" | "invalid_datetime" | "invalid_enum" | "invalid_text" | "invalid_field" | "invalid_idempotency_key" | "idempotency_conflict" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    const state = this.interviewTrackerState(opportunityId)
+    if (!state) return "not_tracked"
+    const normalized = normalizeMockInterviewFields(fields)
+    if (typeof normalized === "string") return normalized
+    if (typeof idempotencyKey !== "string" || !idempotencyKey.trim() || idempotencyKey.length > 128) return "invalid_idempotency_key"
+    const prior = this.trackerInterviewIdempotency.find((entry) => entry.idempotency_key === idempotencyKey)
+    if (prior) {
+      if (prior.action_type !== "interview_added" || prior.opportunity_id !== opportunityId) return "idempotency_conflict"
+      const interview = (this.trackerInterviews.get(opportunityId) ?? []).find((entry) => entry.id === prior.interview_id)
+      return interview ? { interview, changed: false } : "not_found"
+    }
+    const now = new Date().toISOString()
+    const interview: TrackerInterview = {
+      id: `mock-interview-${crypto.randomUUID()}`, opportunity_id: opportunityId,
+      scheduled_at: normalized.scheduled_at ?? null, round_label: normalized.round_label ?? null,
+      interview_type: normalized.interview_type ?? null, interview_format: normalized.interview_format ?? null,
+      interviewer_name: normalized.interviewer_name ?? null, preparation_notes: normalized.preparation_notes ?? null,
+      post_interview_notes: normalized.post_interview_notes ?? null, outcome: normalized.outcome ?? "pending",
+      created_at: now, updated_at: now,
+    }
+    this.trackerInterviews.set(opportunityId, [...(this.trackerInterviews.get(opportunityId) ?? []), interview])
+    this.trackerInterviewIdempotency.push({ idempotency_key: idempotencyKey, action_type: "interview_added", opportunity_id: opportunityId, interview_id: interview.id })
+    this.persistTrackerInterviews()
+    this.recordTrackerInterviewEvent(opportunityId, state, "interview_added", interview.id)
+    return { interview, changed: true }
+  }
+
+  updateTrackerInterview(
+    opportunityId: string,
+    interviewId: string,
+    fields: Record<string, unknown>,
+    idempotencyKey: string,
+  ): TrackerInterviewMutationResponse | "not_found" | "not_tracked" | "invalid_datetime" | "invalid_enum" | "invalid_text" | "invalid_field" | "invalid_update" | "invalid_idempotency_key" | "idempotency_conflict" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    const state = this.interviewTrackerState(opportunityId)
+    if (!state) return "not_tracked"
+    const interview = (this.trackerInterviews.get(opportunityId) ?? []).find((entry) => entry.id === interviewId)
+    if (!interview) return "not_found"
+    if (!Object.keys(fields).length) return "invalid_update"
+    const normalized = normalizeMockInterviewFields(fields)
+    if (typeof normalized === "string") return normalized
+    if (typeof idempotencyKey !== "string" || !idempotencyKey.trim() || idempotencyKey.length > 128) return "invalid_idempotency_key"
+    const nextOutcome = normalized.outcome === undefined ? interview.outcome : normalized.outcome
+    const isCompletionTransition = (interview.outcome === null || interview.outcome === "pending") && nextOutcome !== null && nextOutcome !== undefined && ["completed", "passed", "not_selected"].includes(nextOutcome)
+    const isCompletionReplay = Object.keys(normalized).length === 1 && normalized.outcome === interview.outcome && interview.outcome !== null && ["completed", "passed", "not_selected"].includes(interview.outcome)
+    const actionType = isCompletionTransition || isCompletionReplay
+      ? "interview_completed"
+      : "interview_updated"
+    const prior = this.trackerInterviewIdempotency.find((entry) => entry.idempotency_key === idempotencyKey)
+    if (prior) {
+      if (prior.action_type !== actionType || prior.opportunity_id !== opportunityId || prior.interview_id !== interviewId) return "idempotency_conflict"
+      return { interview, changed: false }
+    }
+    if (Object.entries(normalized).every(([field, value]) => interview[field as keyof TrackerInterview] === value)) return { interview, changed: false }
+    Object.assign(interview, normalized, { updated_at: new Date().toISOString() })
+    this.trackerInterviewIdempotency.push({ idempotency_key: idempotencyKey, action_type: actionType, opportunity_id: opportunityId, interview_id: interviewId })
+    this.persistTrackerInterviews()
+    this.recordTrackerInterviewEvent(opportunityId, state, actionType, interviewId)
+    return { interview, changed: true }
+  }
+
+  private recordTrackerInterviewEvent(opportunityId: string, state: TrackerState, actionType: string, interviewId: string) {
+    const event: MockTrackerEvent = {
+      opportunity_id: opportunityId, action_type: actionType, from_state: state, to_state: state,
+      event_at: new Date().toISOString(), metadata_json: JSON.stringify({ interview_id: interviewId }),
+    }
+    this.trackerEvents.push(event)
+    if (typeof window === "undefined") return
+    try {
+      window.localStorage.setItem(this.trackerEventsStorageKey(), JSON.stringify(this.trackerEvents))
+    } catch {
+      // Synthetic events are best-effort in the browser mock.
+    }
+  }
+
+  private recordTrackerNoteEvent(
+    opportunityId: string,
+    state: TrackerState,
+    actionType: MockTrackerEvent["action_type"],
+    noteId: string
+  ) {
+    const event: MockTrackerEvent = {
+      opportunity_id: opportunityId,
+      action_type: actionType,
+      from_state: state,
+      to_state: state,
+      event_at: new Date().toISOString(),
+      metadata_json: JSON.stringify({ note_id: noteId }),
+    }
+    if (typeof window !== "undefined") {
+      try {
+        const key = this.trackerEventsStorageKey()
+        const persisted: unknown = JSON.parse(window.localStorage.getItem(key) ?? "[]")
+        const persistedEvents = Array.isArray(persisted)
+          ? persisted.filter((entry): entry is MockTrackerEvent =>
+              Boolean(
+                entry && typeof entry === "object" &&
+                "opportunity_id" in entry && typeof entry.opportunity_id === "string" &&
+                "action_type" in entry && typeof entry.action_type === "string" &&
+                "from_state" in entry && typeof entry.from_state === "string" &&
+                "to_state" in entry && typeof entry.to_state === "string" &&
+                "event_at" in entry && typeof entry.event_at === "string"
+              )
+            )
+          : []
+        const byEventIdentity = new Map<string, MockTrackerEvent>()
+        for (const existing of [...persistedEvents, ...this.trackerEvents, event]) {
+          const identity = [
+            existing.opportunity_id,
+            existing.action_type,
+            existing.from_state,
+            existing.to_state,
+            existing.event_at,
+            existing.metadata_json ?? "",
+          ].join("\u0000")
+          byEventIdentity.set(identity, existing)
+        }
+        this.trackerEvents = [...byEventIdentity.values()]
+        window.localStorage.setItem(key, JSON.stringify(this.trackerEvents))
+      } catch {
+        // Synthetic history is best-effort in the browser mock.
+      }
+    } else {
+      this.trackerEvents.push(event)
+    }
+  }
+
+  private recordTrackerFollowUpEvent(
+    opportunityId: string,
+    state: TrackerState,
+    actionType: MockTrackerEvent["action_type"],
+    followUpId: string
+  ) {
+    const event: MockTrackerEvent = {
+      opportunity_id: opportunityId,
+      action_type: actionType,
+      from_state: state,
+      to_state: state,
+      event_at: new Date().toISOString(),
+      metadata_json: JSON.stringify({ follow_up_id: followUpId }),
+    }
+    if (typeof window === "undefined") {
+      this.trackerEvents.push(event)
+      return
+    }
+    try {
+      const persisted: unknown = JSON.parse(window.localStorage.getItem(this.trackerEventsStorageKey()) ?? "[]")
+      const persistedEvents = Array.isArray(persisted) ? persisted.filter((entry): entry is MockTrackerEvent =>
+        Boolean(
+          entry && typeof entry === "object" &&
+          "opportunity_id" in entry && typeof entry.opportunity_id === "string" &&
+          "action_type" in entry && typeof entry.action_type === "string" &&
+          "from_state" in entry && typeof entry.from_state === "string" &&
+          "to_state" in entry && typeof entry.to_state === "string" &&
+          "event_at" in entry && typeof entry.event_at === "string"
+        )
+      ) : []
+      const byEventIdentity = new Map<string, MockTrackerEvent>()
+      for (const existing of [...persistedEvents, ...this.trackerEvents, event]) {
+        const identity = [
+          existing.opportunity_id,
+          existing.action_type,
+          existing.from_state,
+          existing.to_state,
+          existing.event_at,
+          existing.metadata_json ?? "",
+        ].join("\u0000")
+        byEventIdentity.set(identity, existing)
+      }
+      this.trackerEvents = [...byEventIdentity.values()]
+      window.localStorage.setItem(this.trackerEventsStorageKey(), JSON.stringify(this.trackerEvents))
+    } catch {
+      // Synthetic activity must not fail the mock follow-up workflow.
+    }
+  }
+
+  listTrackerNotes(
+    opportunityId: string,
+    page = 1,
+    pageSize = 50
+  ): TrackerNoteListResponse | "not_found" | "not_tracked" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    if (!this.applicationTrackerState(opportunityId)) return "not_tracked"
+    const active = (this.trackerNotes.get(opportunityId) ?? []).filter((note) => !note.archived_at)
+    const normalizedPage = Math.max(1, Math.floor(page) || 1)
+    const normalizedSize = Math.min(100, Math.max(1, Math.floor(pageSize) || 50))
+    return {
+      opportunity_id: opportunityId,
+      page: normalizedPage,
+      page_size: normalizedSize,
+      total: active.length,
+      items: [...active]
+        .sort((left, right) => right.created_at.localeCompare(left.created_at))
+        .slice((normalizedPage - 1) * normalizedSize, normalizedPage * normalizedSize),
+    }
+  }
+
+  createTrackerNote(
+    opportunityId: string,
+    noteText: string,
+    idempotencyKey: string
+  ): TrackerNoteMutationResponse | "not_found" | "not_tracked" | "idempotency_conflict" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    const state = this.applicationTrackerState(opportunityId)
+    if (!state) return "not_tracked"
+    const prior = this.trackerNoteIdempotency.find((entry) => entry.idempotency_key === idempotencyKey)
+    if (prior) {
+      if (prior.action_type !== "tracker_note_created" || prior.opportunity_id !== opportunityId) {
+        return "idempotency_conflict"
+      }
+      const note = (this.trackerNotes.get(opportunityId) ?? []).find((entry) => entry.id === prior.note_id)
+      return note ? { note, changed: false } : "not_found"
+    }
+    const now = new Date().toISOString()
+    const note: TrackerNote = {
+      id: `mock-note-${crypto.randomUUID()}`,
+      opportunity_id: opportunityId,
+      note_text: noteText.trim(),
+      created_at: now,
+      updated_at: now,
+      archived_at: null,
+    }
+    const notes = this.trackerNotes.get(opportunityId) ?? []
+    notes.push(note)
+    this.trackerNotes.set(opportunityId, notes)
+    this.trackerNoteIdempotency.push({
+      idempotency_key: idempotencyKey,
+      action_type: "tracker_note_created",
+      opportunity_id: opportunityId,
+      note_id: note.id,
+    })
+    this.persistTrackerNotes()
+    this.recordTrackerNoteEvent(opportunityId, state, "tracker_note_created", note.id)
+    return { note, changed: true }
+  }
+
+  updateTrackerNote(
+    opportunityId: string,
+    noteId: string,
+    idempotencyKey: string,
+    update: { note_text?: string; archived?: true }
+  ): TrackerNoteMutationResponse | "not_found" | "not_tracked" | "idempotency_conflict" | "archived" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    const state = this.applicationTrackerState(opportunityId)
+    if (!state) return "not_tracked"
+    const notes = this.trackerNotes.get(opportunityId) ?? []
+    const note = notes.find((entry) => entry.id === noteId)
+    if (!note) return "not_found"
+    const actionType = update.archived ? "tracker_note_archived" : "tracker_note_updated"
+    const prior = this.trackerNoteIdempotency.find((entry) => entry.idempotency_key === idempotencyKey)
+    if (prior) {
+      if (prior.action_type !== actionType || prior.opportunity_id !== opportunityId || prior.note_id !== noteId) {
+        return "idempotency_conflict"
+      }
+      return { note, changed: false }
+    }
+    if (update.archived) {
+      if (note.archived_at) return { note, changed: false }
+      note.archived_at = new Date().toISOString()
+    } else if (update.note_text !== undefined) {
+      if (note.archived_at) return "archived"
+      const cleaned = update.note_text.trim()
+      if (cleaned === note.note_text) return { note, changed: false }
+      note.note_text = cleaned
+    } else {
+      return "idempotency_conflict"
+    }
+    note.updated_at = new Date().toISOString()
+    this.trackerNoteIdempotency.push({
+      idempotency_key: idempotencyKey,
+      action_type: actionType,
+      opportunity_id: opportunityId,
+      note_id: note.id,
+    })
+    this.persistTrackerNotes()
+    this.recordTrackerNoteEvent(opportunityId, state, actionType, note.id)
+    return { note, changed: true }
+  }
+
+  listOpportunityTrackerFollowUps(
+    opportunityId: string,
+    page = 1,
+    pageSize = 50
+  ): TrackerFollowUpListResponse | "not_found" | "not_tracked" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    if (!this.eligibleFollowUpTrackerState(opportunityId)) return "not_tracked"
+    const rows = this.trackerFollowUps.get(opportunityId) ?? []
+    const normalizedPage = Math.max(1, Math.floor(page) || 1)
+    const normalizedSize = Math.min(100, Math.max(1, Math.floor(pageSize) || 50))
+    return {
+      opportunity_id: opportunityId,
+      page: normalizedPage,
+      page_size: normalizedSize,
+      total: rows.length,
+      items: [...rows]
+        .sort((left, right) => left.due_date.localeCompare(right.due_date) || left.id.localeCompare(right.id))
+        .slice((normalizedPage - 1) * normalizedSize, normalizedPage * normalizedSize),
+    }
+  }
+
+  listTrackerFollowUps(
+    bucket: TrackerFollowUpBucket,
+    page = 1,
+    pageSize = 25
+  ): TrackerFollowUpSummaryResponse | "invalid_bucket" {
+    if (!["due_today", "overdue", "upcoming"].includes(bucket)) return "invalid_bucket"
+    const today = new Date().toISOString().slice(0, 10)
+    const items = [...this.trackerFollowUps.values()].flat()
+      .filter((followUp) => !followUp.completed_at && this.eligibleFollowUpTrackerState(followUp.opportunity_id))
+      .map((followUp) => ({ followUp, status: followUpStatus(followUp.due_date, followUp.completed_at, today) }))
+      .filter(({ status }) => status === bucket)
+      .sort((left, right) => left.followUp.due_date.localeCompare(right.followUp.due_date) || left.followUp.id.localeCompare(right.followUp.id))
+    const normalizedPage = Math.max(1, Math.floor(page) || 1)
+    const normalizedSize = Math.min(100, Math.max(1, Math.floor(pageSize) || 25))
+    return {
+      bucket,
+      page: normalizedPage,
+      page_size: normalizedSize,
+      total: items.length,
+      items: items.slice((normalizedPage - 1) * normalizedSize, normalizedPage * normalizedSize).flatMap(({ followUp }) => {
+        const opportunity = this.opportunities.get(followUp.opportunity_id)
+        const trackerState = this.eligibleFollowUpTrackerState(followUp.opportunity_id)
+        if (!opportunity || !trackerState) return []
+        return [{
+          id: followUp.id,
+          opportunity_id: followUp.opportunity_id,
+          due_date: followUp.due_date,
+          completed_at: followUp.completed_at,
+          status: followUpStatus(followUp.due_date, followUp.completed_at, today),
+          created_at: followUp.created_at,
+          updated_at: followUp.updated_at,
+          opportunity: {
+            id: opportunity.id,
+            title: opportunity.title,
+            organization: opportunity.organization,
+            tracker_state: trackerState,
+          },
+        }]
+      }),
+    }
+  }
+
+  createTrackerFollowUp(
+    opportunityId: string,
+    dueDate: string,
+    noteText: string | null | undefined,
+    idempotencyKey: string
+  ): TrackerFollowUpMutationResponse | "not_found" | "not_tracked" | "invalid_due_date" | "invalid_note_text" | "invalid_idempotency_key" | "idempotency_conflict" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    const state = this.eligibleFollowUpTrackerState(opportunityId)
+    if (!state) return "not_tracked"
+    if (!isIsoCalendarDate(dueDate)) return "invalid_due_date"
+    if (typeof idempotencyKey !== "string" || !idempotencyKey.trim() || idempotencyKey.length > 128) return "invalid_idempotency_key"
+    const cleanedNote = noteText?.trim() || null
+    if (cleanedNote && cleanedNote.length > 4000) return "invalid_note_text"
+    const prior = this.trackerFollowUpIdempotency.find((entry) => entry.idempotency_key === idempotencyKey)
+    if (prior) {
+      if (prior.action_type !== "follow_up_created" || prior.opportunity_id !== opportunityId) return "idempotency_conflict"
+      const followUp = (this.trackerFollowUps.get(opportunityId) ?? []).find((entry) => entry.id === prior.follow_up_id)
+      return followUp ? { follow_up: followUp, changed: false } : "not_found"
+    }
+    const now = new Date().toISOString()
+    const followUp: TrackerFollowUp = {
+      id: `mock-follow-up-${crypto.randomUUID()}`,
+      opportunity_id: opportunityId,
+      due_date: dueDate,
+      note_text: cleanedNote,
+      completed_at: null,
+      status: followUpStatus(dueDate, null, now.slice(0, 10)),
+      created_at: now,
+      updated_at: now,
+    }
+    this.trackerFollowUps.set(opportunityId, [...(this.trackerFollowUps.get(opportunityId) ?? []), followUp])
+    this.trackerFollowUpIdempotency.push({
+      idempotency_key: idempotencyKey,
+      action_type: "follow_up_created",
+      opportunity_id: opportunityId,
+      follow_up_id: followUp.id,
+    })
+    this.persistTrackerFollowUps()
+    this.recordTrackerFollowUpEvent(opportunityId, state, "follow_up_created", followUp.id)
+    return { follow_up: followUp, changed: true }
+  }
+
+  updateTrackerFollowUp(
+    opportunityId: string,
+    followUpId: string,
+    idempotencyKey: string,
+    update: { due_date?: string; note_text?: string | null; note_text_provided?: boolean; completed?: boolean }
+  ): TrackerFollowUpMutationResponse | "not_found" | "not_tracked" | "invalid_due_date" | "invalid_note_text" | "invalid_idempotency_key" | "invalid_update" | "idempotency_conflict" {
+    if (!this.opportunities.has(opportunityId)) return "not_found"
+    const state = this.eligibleFollowUpTrackerState(opportunityId)
+    if (!state) return "not_tracked"
+    const followUp = (this.trackerFollowUps.get(opportunityId) ?? []).find((entry) => entry.id === followUpId)
+    if (!followUp) return "not_found"
+    const hasCompletion = update.completed !== undefined
+    const hasDueDate = update.due_date !== undefined
+    const hasNote = update.note_text_provided === true
+    if (hasCompletion ? hasDueDate || hasNote : !hasDueDate && !hasNote) return "invalid_update"
+    if (hasDueDate && !isIsoCalendarDate(update.due_date)) return "invalid_due_date"
+    const cleanedNote = hasNote ? update.note_text?.trim() || null : undefined
+    if (cleanedNote && cleanedNote.length > 4000) return "invalid_note_text"
+    if (typeof idempotencyKey !== "string" || !idempotencyKey.trim() || idempotencyKey.length > 128) return "invalid_idempotency_key"
+    const actionType = update.completed === true
+      ? "follow_up_completed"
+      : update.completed === false
+        ? "follow_up_reopened"
+        : "follow_up_updated"
+    const prior = this.trackerFollowUpIdempotency.find((entry) => entry.idempotency_key === idempotencyKey)
+    if (prior) {
+      if (prior.action_type !== actionType || prior.opportunity_id !== opportunityId || prior.follow_up_id !== followUpId) return "idempotency_conflict"
+      return { follow_up: followUp, changed: false }
+    }
+    const now = new Date().toISOString()
+    let changed = false
+    if (hasCompletion) {
+      if (update.completed && !followUp.completed_at) {
+        followUp.completed_at = now
+        changed = true
+      } else if (!update.completed && followUp.completed_at) {
+        followUp.completed_at = null
+        changed = true
+      }
+    } else {
+      if (hasDueDate && update.due_date !== followUp.due_date) {
+        followUp.due_date = update.due_date!
+        changed = true
+      }
+      if (hasNote && cleanedNote !== followUp.note_text) {
+        followUp.note_text = cleanedNote ?? null
+        changed = true
+      }
+    }
+    if (!changed) return { follow_up: followUp, changed: false }
+    followUp.updated_at = now
+    followUp.status = followUpStatus(followUp.due_date, followUp.completed_at, now.slice(0, 10))
+    this.trackerFollowUpIdempotency.push({
+      idempotency_key: idempotencyKey,
+      action_type: actionType,
+      opportunity_id: opportunityId,
+      follow_up_id: followUpId,
+    })
+    this.persistTrackerFollowUps()
+    this.recordTrackerFollowUpEvent(opportunityId, state, actionType, followUpId)
+    return { follow_up: followUp, changed: true }
+  }
+
+  private persistTrackerState(): boolean {
+    if (typeof window === "undefined") return true
+    const states = [...this.opportunities.values()]
+      .filter((opportunity) => opportunity.action_state !== null)
+      .map(({ id, action_state }) => ({
+        id,
+        action_state,
+        ...(action_state === "snoozed"
+          ? { snoozed_until: this.trackerSnoozeUntil.get(id) ?? null }
+          : {}),
+      }))
+    try {
+      window.localStorage.setItem(this.trackerStorageKey(), JSON.stringify(states))
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  private persistTrackerTransition(
+    opportunity: SeedOpportunity,
+    nextActionState: ActionState,
+    fromState: string,
+    toState: string,
+    actionType: string,
+    snoozedUntil: string | null = null,
+    metadata: Record<string, unknown> = {}
+  ): string | null | false {
+    const previousActionState = opportunity.action_state
+    const previousSnoozedUntil = this.trackerSnoozeUntil.get(opportunity.id)
+    opportunity.action_state = nextActionState
+    if (nextActionState === "snoozed" && snoozedUntil) {
+      this.trackerSnoozeUntil.set(opportunity.id, snoozedUntil)
+    } else {
+      this.trackerSnoozeUntil.delete(opportunity.id)
+    }
+
+    if (!this.persistTrackerState()) {
+      opportunity.action_state = previousActionState
+      if (previousSnoozedUntil) {
+        this.trackerSnoozeUntil.set(opportunity.id, previousSnoozedUntil)
+      } else {
+        this.trackerSnoozeUntil.delete(opportunity.id)
+      }
+      return false
+    }
+
+    if (fromState !== toState) {
+      const eventId = this.recordTrackerTransition(opportunity.id, fromState, toState, actionType, {
+        previous_action_state: previousActionState,
+        previous_snoozed_until: previousSnoozedUntil ?? null,
+        ...metadata,
+      })
+      if (!eventId) {
+        opportunity.action_state = previousActionState
+        if (previousSnoozedUntil) this.trackerSnoozeUntil.set(opportunity.id, previousSnoozedUntil)
+        else this.trackerSnoozeUntil.delete(opportunity.id)
+        this.persistTrackerState()
+        return false
+      }
+      return eventId
+    }
+    return null
+  }
+
+  private isSnoozeActive(opportunityId: string, now = Date.now()): boolean {
+    const snoozedUntil = this.trackerSnoozeUntil.get(opportunityId)
+    if (!snoozedUntil) return true
+    return Date.parse(`${snoozedUntil}T00:00:00.000Z`) > now
+  }
+
+  private recordTrackerTransition(
+    opportunityId: string,
+    fromState: string,
+    toState: string,
+    actionType: string,
+    metadata: Record<string, unknown> = {}
+  ): string | null {
+    const event = {
+      opportunity_id: opportunityId,
+      action_type: actionType,
+      from_state: fromState,
+      to_state: toState,
+      event_at: new Date().toISOString(),
+      ...(typeof metadata.idempotency_key === "string" ? { idempotency_key: metadata.idempotency_key } : {}),
+      ...(Object.keys(metadata).length > 0 ? { metadata_json: JSON.stringify(metadata) } : {}),
+    }
+    this.trackerEvents.push(event)
+    const eventId = `mock-activity-${String(this.trackerEvents.length - 1).padStart(8, "0")}`
+    if (typeof window === "undefined") return eventId
+    try {
+      window.localStorage.setItem(this.trackerEventsStorageKey(), JSON.stringify(this.trackerEvents))
+    } catch {
+      this.trackerEvents.pop()
+      return null
+    }
+    return eventId
+  }
+
+  getTrackerEvents(opportunityId: string) {
+    return this.trackerEvents.filter((event) => event.opportunity_id === opportunityId)
   }
 
   private seedDailyCounters(): DashboardDay[] {
@@ -432,6 +1744,7 @@ export class MockStore {
     name: string
     facets: SavedView["facets"]
     search_query?: string | null
+    feed_query?: FeedQueryState
     is_default?: boolean
   }): SavedView {
     if (body.is_default) {
@@ -442,6 +1755,7 @@ export class MockStore {
       name: body.name,
       facets: body.facets,
       search_query: body.search_query ?? null,
+      feed_query: body.feed_query ?? null,
       is_default: body.is_default ?? false,
     }
     this.savedViews.push(view)
@@ -454,6 +1768,7 @@ export class MockStore {
       name?: string
       facets?: SavedView["facets"]
       search_query?: string | null
+      feed_query?: FeedQueryState
       is_default?: boolean
     }
   ): SavedView | null {
@@ -462,6 +1777,7 @@ export class MockStore {
     if (body.name !== undefined) view.name = body.name
     if (body.facets !== undefined) view.facets = body.facets
     if (body.search_query !== undefined) view.search_query = body.search_query
+    if (body.feed_query !== undefined) view.feed_query = body.feed_query
     if (body.is_default) {
       for (const v of this.savedViews) v.is_default = false
       view.is_default = true
@@ -517,31 +1833,167 @@ export class MockStore {
       .length
   }
 
+  feedFilterMetadata(): FeedFilterMetadataResponse {
+    const items = [...this.opportunities.values()]
+    const facets = {} as FeedFilterMetadataResponse["facets"]
+    for (const facet of FEED_FACETS) {
+      const counts = new Map<string, number>()
+      for (const item of items) {
+        const value = mockFacetValue(item, facet)
+        counts.set(value, (counts.get(value) ?? 0) + 1)
+      }
+      const ordered = [...counts.entries()].sort(([leftValue, leftCount], [rightValue, rightCount]) =>
+        rightCount - leftCount || leftValue.localeCompare(rightValue)
+      )
+      facets[facet] = {
+        selection: "multiple",
+        values: ordered.slice(0, 100).map(([value, count]) => ({ value, count })),
+        option_count: ordered.length,
+        truncated: ordered.length > 100,
+      }
+    }
+
+    const ranges = {} as FeedFilterMetadataResponse["ranges"]
+    for (const score of FEED_SCORES) {
+      const scores = items.map((item) => mockFeedScore(item, score)).filter((value): value is number => value !== null)
+      ranges[score] = {
+        min: scores.length ? Math.min(...scores) : null,
+        max: scores.length ? Math.max(...scores) : null,
+        unknown_count: items.length - scores.length,
+        threshold_counts: {
+          "90+": scores.filter((value) => value >= 90).length,
+          "80+": scores.filter((value) => value >= 80).length,
+          "70+": scores.filter((value) => value >= 70).length,
+          "60+": scores.filter((value) => value >= 60).length,
+          "50+": scores.filter((value) => value >= 50).length,
+        },
+      }
+    }
+    const postedDates = items.map((item) => item.posted_date?.trim() ?? "").filter(Boolean).sort()
+    ranges.posted_date = {
+      min: postedDates[0] ?? null,
+      max: postedDates[postedDates.length - 1] ?? null,
+      unknown_count: items.length - postedDates.length,
+    }
+
+    return {
+      truth_pack_hash: this.truthStatus().hash ?? "synthetic-mock-truth-pack",
+      count_scope: {
+        visible_only: true,
+        independent_of_selected_filters: true,
+        includes_tracked_and_ineligible: true,
+      },
+      facets,
+      ranges,
+      sorts: FEED_SORTS,
+      unavailable_filters: MOCK_UNAVAILABLE_FEED_FILTERS,
+    }
+  }
+
   listOpportunities(filters: {
-    track?: string
-    decision?: string
+    track?: string[]
+    decision?: string[]
     min_score?: number
+    min_fit_score?: number
+    max_fit_score?: number
+    min_preference_score?: number
+    max_preference_score?: number
+    min_confidence_score?: number
+    max_confidence_score?: number
+    min_priority_score?: number
+    max_priority_score?: number
+    posted_from?: string
+    posted_to?: string
+    work_mode?: string[]
+    feedback_label?: string[]
+    activity_type?: string[]
+    location_country?: string[]
+    location_city?: string[]
+    remote_scope?: string[]
+    employment_type?: string[]
+    seniority_level?: string[]
+    target_tier?: string[]
+    title_family?: string[]
+    source_id?: string[]
+    source_family?: string
+    activity?: string
+    feedback?: string
+    include_tracked?: boolean
+    sort_by?: FeedSortId
     q?: string
     page?: number
     page_size?: number
     /** Default `false`. `true` includes items an enabled `hide`-mode
      * filter matched, with `hidden_by` populated on them. */
     include_hidden?: boolean
-    activity?: string
-    feedback?: string
   }): OpportunityListResponse {
+    const isToReview = (o: SeedOpportunity) =>
+      o.action_state === null ||
+      o.action_state === "to_review" ||
+      (o.action_state === "snoozed" && this.isSnoozeActive(o.id) === false)
+
     let items = [...this.opportunities.values()]
 
-    if (filters.track) {
-      items = items.filter((o) => o.track === filters.track)
+    if (filters.activity && filters.activity !== "any") {
+      if (filters.activity === "has_feedback") {
+        items = items.filter((o) => o.feedback_label !== null)
+      } else if (filters.activity === "to_review") {
+        items = items.filter(isToReview)
+      } else if (filters.activity === "applied") {
+        items = items.filter((o) => o.action_state === "submitted" || o.action_state === "applied")
+      } else {
+        items = items.filter((o) => o.action_state === filters.activity)
+      }
+    } else if (!filters.include_tracked) {
+      items = items.filter(isToReview)
     }
-    if (filters.decision) {
-      items = items.filter((o) => o.decision === filters.decision)
+
+    if (filters.feedback) {
+      items = items.filter((o) => o.feedback_label === filters.feedback)
     }
-    if (filters.min_score !== undefined && !Number.isNaN(filters.min_score)) {
-      items = items.filter(
-        (o) => o.fit_score !== null && o.fit_score >= filters.min_score!
-      )
+    if (filters.source_family) {
+      const families = new Map(this.sourcesHealth().sources.map((source) => [source.source_id, source.category]))
+      items = items.filter((o) => families.get(o.source_id) === filters.source_family)
+    }
+
+    if (filters.track?.length) {
+      items = items.filter((o) => filters.track!.includes(o.track))
+    }
+    if (filters.decision?.length) {
+      items = items.filter((o) => filters.decision!.includes(mockFacetValue(o, "decision")))
+    }
+    const multiSelections: Record<FeedMultiFacetId, string[] | undefined> = {
+      feedback_label: filters.feedback_label,
+      activity_type: filters.activity_type,
+      work_mode: filters.work_mode,
+      location_country: filters.location_country,
+      location_city: filters.location_city,
+      remote_scope: filters.remote_scope,
+      employment_type: filters.employment_type,
+      seniority_level: filters.seniority_level,
+      target_tier: filters.target_tier,
+      title_family: filters.title_family,
+      source_id: filters.source_id,
+    }
+    for (const facet of FEED_MULTI_FACETS) {
+      const selected = multiSelections[facet]
+      if (selected?.length) items = items.filter((item) => selected.includes(mockFacetValue(item, facet)))
+    }
+    const scoreBounds: Array<[FeedScoreId, number | undefined, number | undefined]> = [
+      ["fit_score", filters.min_fit_score ?? filters.min_score, filters.max_fit_score],
+      ["preference_score", filters.min_preference_score, filters.max_preference_score],
+      ["confidence_score", filters.min_confidence_score, filters.max_confidence_score],
+      ["priority_score", filters.min_priority_score, filters.max_priority_score],
+    ]
+    for (const [scoreId, minimum, maximum] of scoreBounds) {
+      if (minimum !== undefined && !Number.isNaN(minimum)) items = items.filter((item) => {
+        const score = mockFeedScore(item, scoreId)
+        return score !== null && score >= minimum
+      })
+      if (maximum !== undefined && !Number.isNaN(maximum)) items = items.filter((item) => {
+        const score = mockFeedScore(item, scoreId)
+        return score !== null && score <= maximum
+      })
     }
     if (filters.q) {
       const q = filters.q.toLowerCase()
@@ -551,12 +2003,8 @@ export class MockStore {
           o.organization.toLowerCase().includes(q)
       )
     }
-    if (filters.activity && filters.activity !== "any") {
-      items = items.filter((o) => filters.activity === "has_feedback" ? o.feedback_label !== null : filters.activity === "any" ? (o.action_history.length > 0 || o.feedback_history.length > 0) : filters.activity === "to_review" ? o.action_state === null : filters.activity === "applied" ? o.action_state === "submitted" : o.action_state === filters.activity)
-    }
-    if (filters.feedback) {
-      items = items.filter((o) => o.feedback_label === filters.feedback)
-    }
+    if (filters.posted_from) items = items.filter((item) => Boolean(item.posted_date && item.posted_date >= filters.posted_from!))
+    if (filters.posted_to) items = items.filter((item) => Boolean(item.posted_date && item.posted_date <= filters.posted_to!))
 
     // Decorate every item with its current hidden_by/flagged_by before
     // deciding visibility, so hidden_count always reflects the full
@@ -574,9 +2022,29 @@ export class MockStore {
     // non-demoted ones at an equal score, per the contract's §4 sorting
     // rule. decision and fit_score themselves are never touched by any
     // filter — only this sort position and hidden_by/flagged_by are.
+    const sortBy = filters.sort_by ?? "recommended"
     visible.sort((a, b) => {
       const ao = a.o
       const bo = b.o
+      if (sortBy === "remote_first") {
+        const aRemote = mockExtractionFields(ao).work_mode === "remote"
+        const bRemote = mockExtractionFields(bo).work_mode === "remote"
+        if (aRemote !== bRemote) return aRemote ? -1 : 1
+      }
+      if (sortBy === "newest_posted" || sortBy === "oldest_posted") {
+        const ad = ao.posted_date ?? ""
+        const bd = bo.posted_date ?? ""
+        if (ad !== bd) {
+          if (!ad) return 1
+          if (!bd) return -1
+          return sortBy === "newest_posted" ? (ad > bd ? -1 : 1) : (ad < bd ? -1 : 1)
+        }
+      }
+      if (sortBy === "fit_asc" && ao.fit_score !== bo.fit_score) {
+        if (ao.fit_score === null) return 1
+        if (bo.fit_score === null) return -1
+        return ao.fit_score - bo.fit_score
+      }
       if (ao.fit_score === null && bo.fit_score !== null) return 1
       if (ao.fit_score !== null && bo.fit_score === null) return -1
       if (
@@ -603,7 +2071,51 @@ export class MockStore {
       page_size: pageSize,
       total: visible.length,
       hidden_count: hiddenCount,
-      items: paged.map((d) => toListItem(d.o, d.hidden_by, d.flagged_by)),
+      items: paged.map((d) => {
+        const item = toListItem(d.o, d.hidden_by, d.flagged_by)
+        if (d.o.action_state === "snoozed" && !this.isSnoozeActive(d.o.id)) {
+          item.action_state = "to_review"
+        }
+        return item
+      }),
+    }
+  }
+
+  listTracker(bucket: TrackerBucket, page = 1, pageSize = 25): TrackerListResponse {
+    const appliedStates: TrackerState[] = [
+      "applied", "recruiter_screen", "assessment", "interviewing",
+      "final_interview", "offer", "accepted",
+    ]
+    const rejectedStates: TrackerState[] = [
+      "rejected_by_founder", "rejected_by_employer", "withdrawn",
+      "no_response", "position_closed", "archived", "dismissed",
+    ]
+    const tracked = [...this.opportunities.values()].flatMap((opportunity) => {
+      const state: TrackerState | null = opportunity.action_state === "submitted"
+        ? "applied"
+        : opportunity.action_state
+      if (!state || state === "snoozed") return []
+      const inBucket = bucket === "all"
+        ? state === "saved" || appliedStates.includes(state) || rejectedStates.includes(state)
+        : bucket === "saved"
+          ? state === "saved"
+          : bucket === "applied"
+            ? appliedStates.includes(state)
+            : rejectedStates.includes(state)
+      return inBucket ? [{ opportunity, state }] : []
+    }).sort((left, right) => left.opportunity.id.localeCompare(right.opportunity.id))
+    const normalizedPage = Math.max(1, page)
+    const normalizedPageSize = Math.max(1, Math.min(pageSize, 100))
+    const start = (normalizedPage - 1) * normalizedPageSize
+    return {
+      bucket,
+      page: normalizedPage,
+      page_size: normalizedPageSize,
+      total: tracked.length,
+      items: tracked.slice(start, start + normalizedPageSize).map(({ opportunity, state }) => ({
+        ...toListItem(opportunity, [], []),
+        tracker_state: state,
+      })),
     }
   }
 
@@ -632,14 +2144,19 @@ export class MockStore {
       qualification: { decision: o.decision, constraints: o.constraints },
       scoring: {
         fit_score: o.fit_score,
+        preference_score: o.evaluated_at ? MOCK_PREFERENCE_SCORE : null,
+        confidence_score: o.evaluated_at
+          ? MOCK_CONFIDENCE_FACTORS.reduce((total, factor) => total + factor.score, 0) / MOCK_CONFIDENCE_FACTORS.length
+          : null,
+        confidence_factors: o.evaluated_at ? MOCK_CONFIDENCE_FACTORS : [],
         dimension_scores: o.dimension_scores,
-        strengths: o.strengths,
-        gaps: o.gaps,
-        unknowns: o.unknowns,
+        strengths: o.evaluated_at ? o.strengths : [],
+        gaps: o.evaluated_at ? o.gaps : [],
+        unknowns: o.evaluated_at ? o.unknowns : [],
         uncertainty_penalty: o.uncertainty_penalty,
-        explanation: o.explanation,
-        policy_version: o.policy_version,
-        evaluated_at: o.evaluated_at ?? "",
+        explanation: o.evaluated_at ? o.explanation : "",
+        policy_version: o.evaluated_at ? o.policy_version : null,
+        evaluated_at: o.evaluated_at,
         truth_pack_hash: o.truth_pack_hash,
       },
       evidence_links: o.evidence_links,
@@ -665,15 +2182,74 @@ export class MockStore {
     return entry
   }
 
-  submitAction(id: string, type: ActionType, until: string | null) {
+  submitAction(
+    id: string,
+    type: ActionType,
+    until: string | null,
+    requestedStage?: string | null
+  ) {
     const o = this.opportunities.get(id)
     if (!o) return null
 
+    if (
+      type === "snooze" &&
+      (!isIsoCalendarDate(until) || Date.parse(`${until}T00:00:00.000Z`) <= Date.now())
+    ) return null
+
+    const previousState = o.action_state === "submitted"
+      ? "applied"
+      : o.action_state ?? "to_review"
+
     if (type === "clear") {
       o.action_state = null
+      this.trackerSnoozeUntil.delete(id)
+      if (!this.persistTrackerState()) return "persistence_failed"
       return {
         opportunity_id: id,
         action_state: null,
+        tracker_state: "to_review" as const,
+        action_id: null,
+        until: null,
+        created_at: new Date().toISOString(),
+      }
+    }
+
+    if (type === "set_stage") {
+      const stageTargets: ApplicationStage[] = [
+        "applied", "recruiter_screen", "assessment", "interviewing",
+        "final_interview", "offer", "accepted", "rejected_by_employer",
+        "withdrawn", "no_response",
+      ]
+      if (!requestedStage || !stageTargets.includes(requestedStage as ApplicationStage)) return null
+      const stage = requestedStage as ApplicationStage
+      const forwardStages: ApplicationStage[] = [
+        "applied", "recruiter_screen", "assessment", "interviewing",
+        "final_interview", "offer", "accepted",
+      ]
+      const terminalStages: ApplicationStage[] = ["rejected_by_employer", "withdrawn", "no_response"]
+      if (previousState === stage) {
+        return {
+          opportunity_id: id,
+          action_state: o.action_state,
+          tracker_state: stage,
+          action_id: null,
+          until: null,
+          created_at: new Date().toISOString(),
+        }
+      }
+      const previousIndex = forwardStages.indexOf(previousState as ApplicationStage)
+      const targetIndex = forwardStages.indexOf(stage)
+      const canMoveForward = previousIndex >= 0 && targetIndex > previousIndex
+      const canClose = terminalStages.includes(stage) && previousIndex >= 0
+      if (!canMoveForward && !canClose) return null
+
+      if (this.persistTrackerTransition(o, stage, previousState, stage, "application_stage_updated") === false) {
+        return "persistence_failed"
+      }
+      return {
+        opportunity_id: id,
+        action_state: stage,
+        tracker_state: stage,
         action_id: null,
         until: null,
         created_at: new Date().toISOString(),
@@ -681,9 +2257,33 @@ export class MockStore {
     }
 
     if (type === "mark_applied") {
-      o.action_state = "submitted"
+      if (o.action_state === "submitted") {
+        const prior = [...o.action_history].reverse().find((entry) => entry.action_status === "submitted")
+        return {
+          opportunity_id: id,
+          action_state: "submitted" as const,
+          tracker_state: "applied" as const,
+          action_id: prior?.action_id ?? null,
+          until: null,
+          created_at: prior?.created_at ?? new Date().toISOString(),
+        }
+      }
+      if (!["to_review", "saved", "snoozed", "dismissed"].includes(previousState)) return null
+      const actionId = `act-${id}-${o.action_history.length + 1}`
+      const undoEventId = this.persistTrackerTransition(
+        o,
+        "submitted",
+        previousState,
+        "applied",
+        "applied",
+        null,
+        { attestation_action_id: actionId },
+      )
+      if (undoEventId === false) {
+        return "persistence_failed"
+      }
       const entry = {
-        action_id: `act-${id}-${o.action_history.length + 1}`,
+        action_id: actionId,
         action_status: "submitted",
         execution_mode: "dry_run",
         created_at: new Date().toISOString(),
@@ -695,17 +2295,84 @@ export class MockStore {
       return {
         opportunity_id: id,
         action_state: o.action_state,
+        tracker_state: "applied",
         action_id: entry.action_id,
+        undo_event_id: undoEventId,
         until: null,
         created_at: entry.created_at,
       }
     }
 
-    if (type === "dismiss") {
-      o.action_state = "dismissed"
+    if (type === "save") {
+      if (previousState === "saved") {
+        return {
+          opportunity_id: id,
+          action_state: o.action_state,
+          tracker_state: "saved" as const,
+          action_id: null,
+          until: null,
+          created_at: new Date().toISOString(),
+        }
+      }
+      if (previousState !== "to_review" && previousState !== "snoozed") return null
+      const undoEventId = this.persistTrackerTransition(o, "saved", previousState, "saved", "saved")
+      if (undoEventId === false) {
+        return "persistence_failed"
+      }
       return {
         opportunity_id: id,
         action_state: o.action_state,
+        tracker_state: "saved" as const,
+        action_id: null,
+        undo_event_id: undoEventId,
+        until: null,
+        created_at: new Date().toISOString(),
+      }
+    }
+
+    if (type === "reject") {
+      if (previousState === "rejected_by_founder") {
+        return {
+          opportunity_id: id,
+          action_state: o.action_state,
+          tracker_state: "rejected_by_founder" as const,
+          action_id: null,
+          until: null,
+          created_at: new Date().toISOString(),
+        }
+      }
+      if (!["to_review", "saved", "snoozed", "dismissed"].includes(previousState)) return null
+      const undoEventId = this.persistTrackerTransition(o, "rejected_by_founder", previousState, "rejected_by_founder", "rejected_by_founder")
+      if (undoEventId === false) {
+        return "persistence_failed"
+      }
+      return {
+        opportunity_id: id,
+        action_state: o.action_state,
+        tracker_state: "rejected_by_founder" as const,
+        action_id: null,
+        undo_event_id: undoEventId,
+        until: null,
+        created_at: new Date().toISOString(),
+      }
+    }
+
+    if (type === "dismiss") {
+      if (previousState === "dismissed") return {
+        opportunity_id: id,
+        action_state: o.action_state,
+        tracker_state: "dismissed" as const,
+        action_id: null,
+        until: null,
+        created_at: new Date().toISOString(),
+      }
+      if (this.persistTrackerTransition(o, "dismissed", previousState, "dismissed", "dismissed") === false) {
+        return "persistence_failed"
+      }
+      return {
+        opportunity_id: id,
+        action_state: o.action_state,
+        tracker_state: "dismissed" as const,
         action_id: null,
         until: null,
         created_at: new Date().toISOString(),
@@ -713,13 +2380,109 @@ export class MockStore {
     }
 
     // snooze
-    o.action_state = "snoozed"
+    if (previousState === "snoozed") {
+      if (this.persistTrackerTransition(o, "snoozed", previousState, "snoozed", "snoozed", until) === false) {
+        return "persistence_failed"
+      }
+      return {
+        opportunity_id: id,
+        action_state: o.action_state,
+        tracker_state: "snoozed" as const,
+        action_id: null,
+        until,
+        created_at: new Date().toISOString(),
+      }
+    }
+    if (previousState !== "to_review" && previousState !== "dismissed") return null
+    if (this.persistTrackerTransition(o, "snoozed", previousState, "snoozed", "snoozed", until) === false) {
+        return "persistence_failed"
+    }
     return {
       opportunity_id: id,
       action_state: o.action_state,
+      tracker_state: "snoozed" as const,
       action_id: null,
       until,
       created_at: new Date().toISOString(),
+    }
+  }
+
+  restoreAction(id: string, eventId: string, idempotencyKey: string) {
+    const opportunity = this.opportunities.get(id)
+    if (!opportunity) return "not_found" as const
+    if (!idempotencyKey || idempotencyKey.length > 128) return "conflict" as const
+
+    const priorRestore = this.trackerEvents.find((event) => event.idempotency_key === idempotencyKey)
+    if (priorRestore) {
+      let metadata: Record<string, unknown> = {}
+      try { metadata = JSON.parse(priorRestore.metadata_json ?? "{}") as Record<string, unknown> } catch { /* malformed mock event */ }
+      if (priorRestore.opportunity_id !== id || priorRestore.action_type !== "tracker_restored" || metadata.restored_event_id !== eventId) {
+        return "conflict" as const
+      }
+      return {
+        opportunity_id: id,
+        tracker_state: priorRestore.to_state as TrackerState,
+        action_state: priorRestore.to_state === "to_review" ? null : priorRestore.to_state as ActionState,
+        created_at: priorRestore.event_at,
+      }
+    }
+
+    const eventIndex = /^mock-activity-(\d{8})$/.exec(eventId)?.[1]
+    if (eventIndex === undefined) return "not_found" as const
+    const originalIndex = Number(eventIndex)
+    const original = this.trackerEvents[originalIndex]
+    if (!original || original.opportunity_id !== id) return "not_found" as const
+    if (!["saved", "applied", "rejected_by_founder"].includes(original.action_type)) return "conflict" as const
+
+    let latestIndex = -1
+    for (let index = 0; index < this.trackerEvents.length; index += 1) {
+      if (this.trackerEvents[index].opportunity_id !== id) continue
+      if (latestIndex < 0 ||
+        this.trackerEvents[index].event_at > this.trackerEvents[latestIndex].event_at ||
+        (this.trackerEvents[index].event_at === this.trackerEvents[latestIndex].event_at && index > latestIndex)) {
+        latestIndex = index
+      }
+    }
+    if (latestIndex !== originalIndex) return "conflict" as const
+
+    const currentState = opportunity.action_state === "submitted"
+      ? "applied"
+      : opportunity.action_state ?? "to_review"
+    if (original.to_state !== currentState) return "conflict" as const
+
+    let metadata: Record<string, unknown> = {}
+    try { metadata = JSON.parse(original.metadata_json ?? "{}") as Record<string, unknown> } catch { /* old mock event */ }
+    const savedActionState = metadata.previous_action_state
+    const restoredActionState = savedActionState === null || typeof savedActionState === "string"
+      ? savedActionState as ActionState
+      : original.from_state === "to_review" ? null : original.from_state as ActionState
+    const previousSnoozedUntil = typeof metadata.previous_snoozed_until === "string"
+      ? metadata.previous_snoozed_until
+      : null
+    const restoreEventId = this.persistTrackerTransition(
+      opportunity,
+      restoredActionState,
+      currentState,
+      original.from_state,
+      "tracker_restored",
+      original.from_state === "snoozed" ? previousSnoozedUntil : null,
+      { restored_event_id: eventId, idempotency_key: idempotencyKey },
+    )
+    if (restoreEventId === false) return "persistence_failed" as const
+
+    if (original.action_type === "applied") {
+      const attestation = [...opportunity.action_history].reverse().find((entry) => entry.action_status === "submitted")
+      if (attestation) {
+        attestation.action_status = "undone"
+        attestation.updated_at = new Date().toISOString()
+        this.today().applied = Math.max(0, this.today().applied - 1)
+      }
+    }
+    return {
+      opportunity_id: id,
+      tracker_state: original.from_state as TrackerState,
+      action_state: restoredActionState,
+      created_at: this.trackerEvents[this.trackerEvents.length - 1]?.event_at ?? new Date().toISOString(),
     }
   }
 
@@ -822,20 +2585,32 @@ export class MockStore {
 
   // ---- dashboard / sources / worker / truth ----
 
-  dashboard(days: number): DashboardResponse {
+  dashboard(period: "today" | "yesterday" | "date" | "all_time", selectedDate?: string): DashboardResponse {
     // `hidden_by_filters` for *today* (index 0) is recomputed live against
     // current filter/facet settings on every call -- matching the real
     // API's `dashboard_daily`, which re-runs `apply_filters` against
     // today's rows on every request rather than a value frozen at seed
     // time. Earlier days stay the static snapshot this mock has no
     // per-day history to recompute against.
-    const series = this.dailyCounters.slice(0, days).map((day, i) =>
-      i === 0
-        ? { ...day, hidden_by_filters: this.hiddenCount([...this.opportunities.values()]) }
-        : day
-    )
+    const today = this.dailyCounters[0]
+    const yesterday = this.dailyCounters[1]
+    let chosen = today
+    if (period === "yesterday") chosen = yesterday ?? { ...today, date: "" }
+    if (period === "date") chosen = this.dailyCounters.find((day) => day.date === selectedDate) ?? { ...today, date: selectedDate ?? today.date, fetched: 0, unique_new: 0, qualified: 0, high_fit: 0, opened: 0, labelled: 0, applied: 0, hidden_by_filters: 0 }
+    if (period === "all_time") chosen = this.dailyCounters.reduce((total, day) => ({
+      date: "all-time",
+      fetched: total.fetched + day.fetched,
+      unique_new: total.unique_new + day.unique_new,
+      qualified: total.qualified + day.qualified,
+      high_fit: total.high_fit + day.high_fit,
+      opened: total.opened + day.opened,
+      labelled: total.labelled + day.labelled,
+      applied: total.applied + day.applied,
+      hidden_by_filters: total.hidden_by_filters + day.hidden_by_filters,
+    }), { ...today, date: "all-time", fetched: 0, unique_new: 0, qualified: 0, high_fit: 0, opened: 0, labelled: 0, applied: 0, hidden_by_filters: 0 })
+    const series = [{ ...chosen, ...(period === "today" ? { hidden_by_filters: this.hiddenCount([...this.opportunities.values()]) } : {}) }]
     return {
-      days,
+      days: 1,
       high_fit_threshold: HIGH_FIT_THRESHOLD,
       series,
     }
@@ -909,6 +2684,38 @@ const MOCK_LOCATIONS: Array<{ city: string | null; country: string | null; regio
 ]
 const MOCK_EMPLOYMENT_TYPES = ["full_time", "contract", "part_time", "unspecified"] as const
 const MOCK_SENIORITY_LEVELS = ["mid", "senior", "lead", "unspecified"] as const
+
+function mockFacetValue(o: SeedOpportunity, facet: FeedFacetId): string {
+  const extraction = mockExtractionFields(o)
+  let raw: string | null | undefined
+  switch (facet) {
+    case "feedback_label": raw = o.feedback_label; break
+    case "activity_type": raw = o.action_state; break
+    case "track": return o.track
+    case "decision": raw = o.decision; break
+    case "work_mode": raw = extraction.work_mode; break
+    case "location_country": raw = extraction.location_country; break
+    case "location_city": raw = extraction.location_city; break
+    case "remote_scope": raw = extraction.remote_scope; break
+    case "employment_type": raw = extraction.employment_type; break
+    case "seniority_level": raw = extraction.seniority_level; break
+    case "target_tier": raw = null; break
+    case "title_family": raw = extraction.title_family; break
+    case "source_id": raw = o.source_id; break
+  }
+  const normalized = raw?.trim() ?? ""
+  if (!normalized || normalized.toLocaleLowerCase() === "unknown" || (facet === "title_family" && normalized.toLocaleLowerCase() === "other")) return "unknown"
+  return normalized.toLocaleLowerCase()
+}
+
+function mockFeedScore(o: SeedOpportunity, score: FeedScoreId): number | null {
+  if (score === "fit_score") return o.fit_score
+  if (o.fit_score === null) return null
+  const hash = hashString(o.id)
+  if (score === "preference_score") return (hash * 17 + 31) % 101
+  if (score === "confidence_score") return (hash * 13 + 47) % 101
+  return Math.round((o.fit_score * 0.7 + ((hash * 19 + 13) % 101) * 0.3) * 100) / 100
+}
 
 function mockExtractionFields(o: SeedOpportunity): OpportunityExtractionFields {
   const h = hashString(o.id)

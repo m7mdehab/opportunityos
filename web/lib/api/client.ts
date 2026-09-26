@@ -11,6 +11,8 @@ import { ApiError } from "@/lib/contract/types"
 import type {
   ActionResponse,
   ActionType,
+  ApplicationStage,
+  RestoreTrackerResponse,
   ArtifactTemplateId,
   AuthenticatedResponse,
   DashboardResponse,
@@ -19,6 +21,7 @@ import type {
   Facet,
   FeedbackLabel,
   FeedbackResponse,
+  FeedFilterMetadataResponse,
   FilterUpdateRequest,
   FiltersResponse,
   FounderFilter,
@@ -32,17 +35,36 @@ import type {
   SavedViewsResponse,
   SavedViewUpdateRequest,
   SourcesHealthResponse,
-  SourceOverviewResponse,
   TruthStatusResponse,
+  TrackerBucket,
+  TrackerListResponse,
+  TrackerFollowUpBucket,
+  TrackerFollowUpListResponse,
+  TrackerFollowUpSummaryResponse,
+  TrackerFollowUpMutationResponse,
+  TrackerNoteListResponse,
+  TrackerNoteMutationResponse,
+  TrackerInterviewListResponse,
+  TrackerInterviewSummaryResponse,
+  TrackerInterviewMutationResponse,
+  TrackerDocumentKind,
+  TrackerDocumentCandidateListResponse,
+  TrackerDocumentListResponse,
+  TrackerDocumentMutationResponse,
+  TrackerActivityListResponse,
   TutoringPlatform,
   TutoringPlatformsResponse,
   TutoringProfileMaterialResponse,
   TutoringStatus,
   UnhideByReasonResponse,
+  SourceOverviewResponse,
 } from "@/lib/contract/types"
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const method = (init?.method ?? "GET").toUpperCase()
+  const mockSession = process.env.NEXT_PUBLIC_USE_MOCK_API === "1" &&
+    typeof window !== "undefined" &&
+    window.localStorage.getItem("opportunityos.mock.authenticated") === "1"
   const res = await fetch(path, {
     ...init,
     credentials: "same-origin",
@@ -51,6 +73,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...(method !== "GET" && method !== "HEAD" && method !== "OPTIONS"
         ? { "X-OpportunityOS-CSRF": "1" }
         : {}),
+      ...(mockSession ? { "X-Mock-Bypass-Auth": "1" } : {}),
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
       ...init?.headers,
     },
@@ -79,7 +102,13 @@ export const api = {
         body: JSON.stringify({ password, email }),
       })
     },
-    logout: () => request<AuthenticatedResponse>("/api/auth/logout", { method: "POST" }),
+    logout: async () => {
+      const result = await request<AuthenticatedResponse>("/api/auth/logout", { method: "POST" })
+      if (process.env.NEXT_PUBLIC_USE_MOCK_API === "1" && typeof window !== "undefined") {
+        window.localStorage.removeItem("opportunityos.mock.authenticated")
+      }
+      return result
+    },
     logoutAll: () =>
       request<AuthenticatedResponse>("/api/auth/logout-all", { method: "POST" }),
     me: () => request<AuthenticatedResponse>("/api/auth/me"),
@@ -87,25 +116,51 @@ export const api = {
 
   opportunities: {
     list: (params: {
-      track?: string
-      decision?: string
+      track?: string | string[]
+      decision?: string | string[]
       min_score?: number
+      min_fit_score?: number
+      max_fit_score?: number
+      min_preference_score?: number
+      max_preference_score?: number
+      min_confidence_score?: number
+      max_confidence_score?: number
+      min_priority_score?: number
+      max_priority_score?: number
       since?: string
-      q?: string
+      posted_from?: string
+      posted_to?: string
+      work_mode?: string[]
+      feedback_label?: string[]
+      activity_type?: string[]
+      location_country?: string[]
+      location_city?: string[]
+      remote_scope?: string[]
+      employment_type?: string[]
+      seniority_level?: string[]
+      target_tier?: string[]
+      title_family?: string[]
+      source_id?: string[]
       source_family?: string
-      source_id?: string
       activity?: string
       feedback?: string
+      sort_by?: string
+      q?: string
       page?: number
       page_size?: number
       /** Default `false`. When `true`, items hidden by an enabled
        * `hide`-mode filter are included in `items` (and `hidden_by` is
        * populated on them) instead of being omitted. */
       include_hidden?: boolean
+      include_tracked?: boolean
     }) => {
       const search = new URLSearchParams()
       for (const [key, value] of Object.entries(params)) {
-        if (value !== undefined && value !== "" && value !== null) {
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            if (item !== "") search.append(key, String(item))
+          }
+        } else if (value !== undefined && value !== "" && value !== null) {
           search.set(key, String(value))
         }
       }
@@ -144,16 +199,166 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ label, note }),
       }),
-    submitAction: (id: string, type: ActionType, until: string | null) =>
+    submitAction: (
+      id: string,
+      type: ActionType,
+      until: string | null,
+      idempotencyKey?: string,
+      stage?: ApplicationStage
+    ) =>
       request<ActionResponse>(`/api/opportunities/${id}/actions`, {
         method: "POST",
-        body: JSON.stringify({ type, until }),
+        body: JSON.stringify({ type, until, idempotency_key: idempotencyKey, stage }),
+      }),
+    restoreAction: (id: string, eventId: string, idempotencyKey: string) =>
+      request<RestoreTrackerResponse>(`/api/opportunities/${id}/restore`, {
+        method: "POST",
+        body: JSON.stringify({ event_id: eventId, idempotency_key: idempotencyKey }),
       }),
   },
 
+  tracker: {
+    list: (params: { bucket: TrackerBucket; page?: number; page_size?: number }) => {
+      const search = new URLSearchParams()
+      search.set("bucket", params.bucket)
+      if (params.page) search.set("page", String(params.page))
+      if (params.page_size) search.set("page_size", String(params.page_size))
+      return request<TrackerListResponse>(`/api/tracker?${search.toString()}`)
+    },
+    notes: {
+      list: (opportunityId: string, params: { page?: number; page_size?: number } = {}) => {
+        const search = new URLSearchParams()
+        search.set("page", String(params.page ?? 1))
+        search.set("page_size", String(params.page_size ?? 50))
+        return request<TrackerNoteListResponse>(
+          `/api/opportunities/${opportunityId}/tracker-notes?${search.toString()}`
+        )
+      },
+      create: (opportunityId: string, noteText: string, idempotencyKey: string) =>
+        request<TrackerNoteMutationResponse>(
+          `/api/opportunities/${opportunityId}/tracker-notes`,
+          {
+            method: "POST",
+            body: JSON.stringify({ note_text: noteText, idempotency_key: idempotencyKey }),
+          }
+        ),
+      update: (
+        opportunityId: string,
+        noteId: string,
+        body: { note_text: string } | { archived: true },
+        idempotencyKey: string
+      ) =>
+        request<TrackerNoteMutationResponse>(
+          `/api/opportunities/${opportunityId}/tracker-notes/${noteId}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ ...body, idempotency_key: idempotencyKey }),
+          }
+      ),
+    },
+    followUps: {
+      list: (opportunityId: string, params: { page?: number; page_size?: number } = {}) => {
+        const search = new URLSearchParams()
+        search.set("page", String(params.page ?? 1))
+        search.set("page_size", String(params.page_size ?? 50))
+        return request<TrackerFollowUpListResponse>(
+          `/api/opportunities/${opportunityId}/follow-ups?${search.toString()}`
+        )
+      },
+      overview: (bucket: TrackerFollowUpBucket, params: { page?: number; page_size?: number } = {}) => {
+        const search = new URLSearchParams()
+        search.set("bucket", bucket)
+        search.set("page", String(params.page ?? 1))
+        search.set("page_size", String(params.page_size ?? 25))
+        return request<TrackerFollowUpSummaryResponse>(`/api/tracker/follow-ups?${search.toString()}`)
+      },
+      create: (
+        opportunityId: string,
+        body: { due_date: string; note_text?: string | null },
+        idempotencyKey: string
+      ) => request<TrackerFollowUpMutationResponse>(`/api/opportunities/${opportunityId}/follow-ups`, {
+        method: "POST",
+        body: JSON.stringify({ ...body, idempotency_key: idempotencyKey }),
+      }),
+      update: (
+        opportunityId: string,
+        followUpId: string,
+        body: { due_date?: string; note_text?: string | null } | { completed: boolean },
+        idempotencyKey: string
+      ) => request<TrackerFollowUpMutationResponse>(
+        `/api/opportunities/${opportunityId}/follow-ups/${followUpId}`,
+        { method: "PATCH", body: JSON.stringify({ ...body, idempotency_key: idempotencyKey }) }
+      ),
+    },
+    interviews: {
+      list: (opportunityId: string, params: { page?: number; page_size?: number } = {}) => {
+        const search = new URLSearchParams()
+        search.set("page", String(params.page ?? 1))
+        search.set("page_size", String(params.page_size ?? 50))
+        return request<TrackerInterviewListResponse>(`/api/opportunities/${opportunityId}/interviews?${search.toString()}`)
+      },
+      overview: (params: { page?: number; page_size?: number } = {}) => {
+        const search = new URLSearchParams()
+        search.set("bucket", "upcoming")
+        search.set("page", String(params.page ?? 1))
+        search.set("page_size", String(params.page_size ?? 25))
+        return request<TrackerInterviewSummaryResponse>(`/api/tracker/interviews?${search.toString()}`)
+      },
+      create: (opportunityId: string, body: Partial<Omit<TrackerInterviewListResponse["items"][number], "id" | "opportunity_id" | "created_at" | "updated_at">>, idempotencyKey: string) =>
+        request<TrackerInterviewMutationResponse>(`/api/opportunities/${opportunityId}/interviews`, {
+          method: "POST",
+          body: JSON.stringify({ ...body, idempotency_key: idempotencyKey }),
+        }),
+      update: (opportunityId: string, interviewId: string, body: Partial<Omit<TrackerInterviewListResponse["items"][number], "id" | "opportunity_id" | "created_at" | "updated_at">>, idempotencyKey: string) =>
+        request<TrackerInterviewMutationResponse>(`/api/opportunities/${opportunityId}/interviews/${interviewId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ ...body, idempotency_key: idempotencyKey }),
+      }),
+    },
+    documents: {
+      list: (opportunityId: string, params: { page?: number; page_size?: number } = {}) => {
+        const search = new URLSearchParams()
+        search.set("page", String(params.page ?? 1))
+        search.set("page_size", String(params.page_size ?? 50))
+        return request<TrackerDocumentListResponse>(`/api/opportunities/${opportunityId}/tracker-documents?${search.toString()}`)
+      },
+      candidates: (opportunityId: string, params: { page?: number; page_size?: number } = {}) => {
+        const search = new URLSearchParams()
+        search.set("page", String(params.page ?? 1))
+        search.set("page_size", String(params.page_size ?? 50))
+        return request<TrackerDocumentCandidateListResponse>(`/api/opportunities/${opportunityId}/tracker-documents/candidates?${search.toString()}`)
+      },
+      link: (opportunityId: string, documentKind: TrackerDocumentKind, documentId: string, idempotencyKey: string) =>
+        request<TrackerDocumentMutationResponse>(`/api/opportunities/${opportunityId}/tracker-documents`, {
+          method: "POST",
+          body: JSON.stringify({ document_kind: documentKind, document_id: documentId, idempotency_key: idempotencyKey }),
+        }),
+      unlink: (opportunityId: string, linkId: string, idempotencyKey: string) =>
+        request<TrackerDocumentMutationResponse>(`/api/opportunities/${opportunityId}/tracker-documents/${linkId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ linked: false, idempotency_key: idempotencyKey }),
+        }),
+    },
+    activity: {
+      list: (opportunityId: string, params: { page?: number; page_size?: number } = {}) => {
+        const search = new URLSearchParams()
+        search.set("page", String(params.page ?? 1))
+        search.set("page_size", String(params.page_size ?? 50))
+        return request<TrackerActivityListResponse>(`/api/opportunities/${opportunityId}/tracker-events?${search.toString()}`)
+      },
+    },
+  },
+
+  feedFilterMetadata: {
+    get: () => request<FeedFilterMetadataResponse>("/api/feed/filter-metadata"),
+  },
+
   dashboard: {
-    daily: (days = 7) =>
-      request<DashboardResponse>(`/api/dashboard/daily?days=${days}`),
+    daily: (period: "today" | "yesterday" | "date" | "all_time" = "today", date?: string) => {
+      const params = new URLSearchParams({ period })
+      if (date) params.set("date", date)
+      return request<DashboardResponse>(`/api/dashboard/daily?${params.toString()}`)
+    },
   },
 
   filters: {

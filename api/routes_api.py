@@ -96,34 +96,47 @@ from .tracker_service import (
     restore_tracker_transition,
     transition_tracker_state,
 )
-from .tracker_notes_service import (
-    TrackerNoteError,
-    create_tracker_note,
-    list_tracker_notes,
-    update_tracker_note,
-)
-from .tracker_followups_service import (
-    TrackerFollowUpError,
-    create_tracker_follow_up,
-    list_opportunity_follow_ups,
-    list_tracker_follow_ups,
-    update_tracker_follow_up,
-)
-from .tracker_interviews_service import (
-    TrackerInterviewError,
-    create_tracker_interview,
-    list_opportunity_interviews,
-    list_tracker_interviews,
-    update_tracker_interview,
-)
-from .tracker_documents_service import (
-    TrackerDocumentError,
-    link_tracker_document,
-    list_tracker_document_candidates,
-    list_tracker_documents,
-    unlink_tracker_document,
-)
-from .tracker_activity_service import TrackerActivityError, list_tracker_activity
+# Deep tracker persistence (notes, follow-ups, interviews, document links,
+# activity timeline) is deliberately deferred from the W23 live-review repair.
+# Keep the routes fail-closed and explicit instead of importing ORM models that
+# are not present in the accepted W23 schema.
+class TrackerNoteError(Exception):
+    pass
+
+class TrackerFollowUpError(Exception):
+    pass
+
+class TrackerInterviewError(Exception):
+    pass
+
+class TrackerDocumentError(Exception):
+    pass
+
+class TrackerActivityError(Exception):
+    pass
+
+def _deferred_tracker_feature(*_args, **_kwargs):
+    raise HTTPException(
+        status_code=501,
+        detail="Deep tracker persistence is deferred from the current live review release.",
+    )
+
+create_tracker_note = _deferred_tracker_feature
+list_tracker_notes = _deferred_tracker_feature
+update_tracker_note = _deferred_tracker_feature
+create_tracker_follow_up = _deferred_tracker_feature
+list_opportunity_follow_ups = _deferred_tracker_feature
+list_tracker_follow_ups = _deferred_tracker_feature
+update_tracker_follow_up = _deferred_tracker_feature
+create_tracker_interview = _deferred_tracker_feature
+list_opportunity_interviews = _deferred_tracker_feature
+list_tracker_interviews = _deferred_tracker_feature
+update_tracker_interview = _deferred_tracker_feature
+link_tracker_document = _deferred_tracker_feature
+list_tracker_document_candidates = _deferred_tracker_feature
+list_tracker_documents = _deferred_tracker_feature
+unlink_tracker_document = _deferred_tracker_feature
+list_tracker_activity = _deferred_tracker_feature
 from .search import is_query_unparseable, rank_key, search_opportunity_ids
 from .serialization import (
     serialize_constraint,
@@ -1122,8 +1135,11 @@ def list_opportunities(
     target_tier: list[str] | None = Query(default=None),
     title_family: list[str] | None = Query(default=None),
     source_id: list[str] | None = Query(default=None),
+    source_family: str | None = None,
     feedback_label: list[str] | None = Query(default=None),
+    feedback: str | None = None,
     activity_type: list[str] | None = Query(default=None),
+    activity: str | None = None,
     min_fit_score: float | None = Query(default=None, ge=0, le=100),
     max_fit_score: float | None = Query(default=None, ge=0, le=100),
     min_preference_score: float | None = Query(default=None, ge=0, le=100),
@@ -1181,6 +1197,38 @@ def list_opportunities(
             else:
                 truth_pack_hash = "active"
 
+    resolved_source_ids = list(source_id or ())
+    if source_family:
+        registry = SourceRegistry()
+        family_source_ids = [
+            source_key
+            for source_key, policy in registry._sources.items()
+            if policy.category == source_family
+        ]
+        if resolved_source_ids:
+            resolved_source_ids = [
+                source_key for source_key in resolved_source_ids
+                if source_key in family_source_ids
+            ]
+        else:
+            resolved_source_ids = family_source_ids
+        if not resolved_source_ids:
+            resolved_source_ids = ["__no_matching_source__"]
+
+    resolved_feedback_labels = list(feedback_label or ())
+    if feedback and feedback not in resolved_feedback_labels:
+        resolved_feedback_labels.append(feedback)
+
+    resolved_activity_types = list(activity_type or ())
+    require_feedback = False
+    resolved_include_tracked = include_tracked
+    if activity and activity != "to_review":
+        resolved_include_tracked = True
+        if activity == "has_feedback":
+            require_feedback = True
+        elif activity != "any" and activity not in resolved_activity_types:
+            resolved_activity_types.append(activity)
+
     spec = FeedQuerySpec(
         truth_pack_hash=truth_pack_hash,
         track_values=tuple(track or ()),
@@ -1196,9 +1244,10 @@ def list_opportunities(
         seniority_levels=tuple(seniority_level or ()),
         target_tiers=tuple(target_tier or ()),
         title_families=tuple(title_family or ()),
-        source_ids=tuple(source_id or ()),
-        feedback_labels=tuple(feedback_label or ()),
-        activity_types=tuple(activity_type or ()),
+        source_ids=tuple(resolved_source_ids),
+        feedback_labels=tuple(resolved_feedback_labels),
+        activity_types=tuple(resolved_activity_types),
+        require_feedback=require_feedback,
         min_fit_score=min_fit_score,
         max_fit_score=max_fit_score,
         min_preference_score=min_preference_score,
@@ -1212,7 +1261,7 @@ def list_opportunities(
         sort_by=sort_by,
         q=q,
         include_hidden=include_hidden,
-        include_tracked=include_tracked,
+        include_tracked=resolved_include_tracked,
         page=norm_page,
         page_size=norm_page_size,
     )
@@ -2923,6 +2972,48 @@ def sources_health(session: Session = Depends(get_db)):
                 "last_poll": _iso(last_run.started_at) if last_run else None,
                 "last_status": last_run.status if last_run else None,
                 "last_record_count": last_run.raw_ingested if last_run else None,
+            }
+        )
+    return {"sources": sources}
+
+
+@router.get("/sources/overview")
+def sources_overview(session: Session = Depends(get_db)):
+    registry = SourceRegistry()
+    opportunity_counts = dict(
+        session.query(OpportunityRecord.source_id, func.count(OpportunityRecord.id))
+        .group_by(OpportunityRecord.source_id)
+        .all()
+    )
+    hidden_counts = dict(
+        session.query(FeedProjectionRecord.source_id, func.count(FeedProjectionRecord.id))
+        .filter(FeedProjectionRecord.visible.is_(False))
+        .group_by(FeedProjectionRecord.source_id)
+        .all()
+    )
+    sources = []
+    for source_id, policy in registry._sources.items():
+        last_run = (
+            session.query(SourcePollRunRecord)
+            .filter_by(source_id=source_id)
+            .order_by(SourcePollRunRecord.started_at.desc())
+            .first()
+        )
+        last_success = (
+            session.query(SourcePollRunRecord)
+            .filter_by(source_id=source_id, status="ok")
+            .order_by(SourcePollRunRecord.started_at.desc())
+            .first()
+        )
+        sources.append(
+            {
+                "source_family": policy.category,
+                "source_id": source_id,
+                "opportunity_count": int(opportunity_counts.get(source_id, 0)),
+                "hidden_count": int(hidden_counts.get(source_id, 0)),
+                "last_success_at": _iso(last_success.started_at) if last_success else None,
+                "last_status": last_run.status if last_run else None,
+                "manual_only": not policy.read_allowed,
             }
         )
     return {"sources": sources}

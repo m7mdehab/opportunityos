@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { HeaderStrip } from "@/components/feed/header-strip"
-import { FilterBar, EMPTY_FILTERS, type FeedFilters } from "@/components/feed/filter-bar"
+import { FilterBar, type FeedFilters } from "@/components/feed/filter-bar"
+import { FeedQueryChips, FeedQueryDrawer } from "@/components/feed/feed-query-drawer"
 import { OpportunityCard } from "@/components/feed/opportunity-card"
 import { DetailDrawer } from "@/components/feed/detail-drawer"
 import { FiltersDrawer } from "@/components/feed/filters-drawer"
@@ -23,6 +24,13 @@ import {
 } from "@/components/feed/empty-states"
 import { api } from "@/lib/api/client"
 import { ApiError } from "@/lib/contract/types"
+import type { ActionResponse, FeedFilterMetadataResponse, FeedQueryState } from "@/lib/contract/types"
+import {
+  EMPTY_FEED_QUERY,
+  hasActiveFeedQuery,
+  parseFeedQueryParams,
+  updateFeedUrlParams,
+} from "@/lib/feed-query-state"
 import { computeOverHidingWarning } from "@/lib/format/over-hiding"
 import type {
   ActionState,
@@ -31,12 +39,14 @@ import type {
   OpportunityListItem,
   SourceHealth,
   SourceOverview,
-  PollNowResponse,
   TruthStatusResponse,
 } from "@/lib/contract/types"
 
 type AuthPhase = "checking" | "authenticated" | "redirecting"
 const PAGE_SIZE = 50
+const UNDO_PROMPT_MS = 10_000
+
+type UndoNotice = { opportunityId: string; eventId: string; label: string }
 
 export default function FeedPage() {
   const router = useRouter()
@@ -44,10 +54,19 @@ export default function FeedPage() {
 
   const [truth, setTruth] = useState<TruthStatusResponse | null>(null)
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null)
+  const [metricPeriod, setMetricPeriod] = useState<"today" | "yesterday" | "date" | "all_time">("today")
+  const [metricDate, setMetricDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [sources, setSources] = useState<SourceHealth[] | null>(null)
   const [sourceOverview, setSourceOverview] = useState<SourceOverview[]>([])
+  const [sourceFamily, setSourceFamily] = useState("")
+  const [sourceId, setSourceId] = useState("")
+  const [activity, setActivity] = useState("to_review")
+  const [feedback, setFeedback] = useState("")
 
-  const [filters, setFilters] = useState<FeedFilters>(EMPTY_FILTERS)
+  const [query, setQuery] = useState<FeedQueryState>(EMPTY_FEED_QUERY)
+  const [queryReady, setQueryReady] = useState(false)
+  const [feedMetadata, setFeedMetadata] = useState<FeedFilterMetadataResponse | null>(null)
+  const [feedMetadataError, setFeedMetadataError] = useState<string | null>(null)
   const [items, setItems] = useState<OpportunityListItem[] | null>(null)
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -55,8 +74,16 @@ export default function FeedPage() {
   const [listError, setListError] = useState<string | null>(null)
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedActionState, setSelectedActionState] = useState<ActionState>(null)
   const [polling, setPolling] = useState(false)
-  const [pollResult, setPollResult] = useState<PollNowResponse | null>(null)
+  const [undoNotice, setUndoNotice] = useState<UndoNotice | null>(null)
+  const [undoError, setUndoError] = useState<string | null>(null)
+  const [undoSubmitting, setUndoSubmitting] = useState(false)
+  const [triagePendingId, setTriagePendingId] = useState<string | null>(null)
+  const [triageError, setTriageError] = useState<{ id: string; message: string } | null>(null)
+  const [selectedJobs, setSelectedJobs] = useState<Set<string>>(() => new Set())
+  const [batchStatus, setBatchStatus] = useState<string | null>(null)
+  const [batchPending, setBatchPending] = useState(false)
 
   // ---- D3 founder-controlled filters ----
   const [filtersDrawerOpen, setFiltersDrawerOpen] = useState(false)
@@ -64,10 +91,12 @@ export default function FeedPage() {
   // "Show N hidden" — a deliberate, visible, switchable control per the
   // founder's stated requirement (see d3-contract.md §6): nothing that a
   // `hide`-mode filter removes stays removed without a way back to it.
-  const [includeHidden, setIncludeHidden] = useState(false)
 
   // ---- C1 facets panel / C4 hidden-reasons / E23 manual sources ----
   const [facetsPanelOpen, setFacetsPanelOpen] = useState(false)
+  const [feedQueryDrawerOpen, setFeedQueryDrawerOpen] = useState(false)
+  const advancedFeedTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const previousFeedQueryDrawerOpen = useRef(false)
   const [hiddenReasonsOpen, setHiddenReasonsOpen] = useState(false)
   const [manualSourcesOpen, setManualSourcesOpen] = useState(false)
 
@@ -76,6 +105,7 @@ export default function FeedPage() {
   const cardRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
   const anyPanelOpen =
     filtersDrawerOpen ||
+    feedQueryDrawerOpen ||
     facetsPanelOpen ||
     hiddenReasonsOpen ||
     manualSourcesOpen ||
@@ -100,16 +130,76 @@ export default function FeedPage() {
     }
   }, [router])
 
-  const refreshDashboard = useCallback(() => {
-    api.dashboard.daily(7).then(setDashboard).catch(() => undefined)
+  // Hydrate the shareable feed query before the first list request, and
+  // restore it when the browser moves backward or forward in history.
+  useEffect(() => {
+    const restore = () => {
+      const parsed = parseFeedQueryParams(new URLSearchParams(window.location.search))
+      setQuery(parsed.filters)
+      setPage(parsed.page)
+      setQueryReady(true)
+    }
+    restore()
+    window.addEventListener("popstate", restore)
+    return () => window.removeEventListener("popstate", restore)
   }, [])
+
+  useEffect(() => {
+    if (authPhase !== "authenticated") return
+    api.feedFilterMetadata.get().then(setFeedMetadata).catch((error: unknown) => {
+      setFeedMetadata(null)
+      const detail = error instanceof ApiError && error.body && typeof error.body === "object" && "detail" in error.body && typeof error.body.detail === "string"
+        ? error.body.detail
+        : error instanceof Error ? error.message : "Advanced feed metadata is unavailable from this API adapter."
+      setFeedMetadataError(detail)
+    })
+  }, [authPhase])
+
+  useEffect(() => {
+    if (!queryReady) return
+    const timer = window.setTimeout(() => {
+      const current = new URLSearchParams(window.location.search)
+      const next = updateFeedUrlParams(current, query, page, PAGE_SIZE)
+      if (next.toString() === current.toString()) return
+      const search = next.toString()
+      window.history.pushState({ feedQuery: true }, "", `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`)
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [page, query, queryReady])
+
+  const filters: FeedFilters = {
+    track: query.track as FeedFilters["track"],
+    decision: query.decision as FeedFilters["decision"],
+    minScore: query.scoreRanges.fit_score.min,
+    q: query.q,
+    sourceFamily,
+    sourceId,
+    activity,
+    feedback,
+  }
+
+  const handleQueryChange = useCallback((next: FeedQueryState) => {
+    setPage(1)
+    setSelectedJobs(new Set())
+    setBatchStatus(null)
+    setQuery(next)
+  }, [])
+
+  const refreshDashboard = useCallback(() => {
+    api.dashboard.daily(metricPeriod, metricPeriod === "date" ? metricDate : undefined).then(setDashboard).catch(() => undefined)
+  }, [metricPeriod, metricDate])
+
+  useEffect(() => {
+    if (authPhase === "authenticated") refreshDashboard()
+  }, [authPhase, refreshDashboard])
 
   const refreshSources = useCallback(() => {
     api.sources
       .health()
       .then((r) => setSources(r.sources))
       .catch(() => undefined)
-    api.sources.overview()
+    api.sources
+      .overview()
       .then((r) => setSourceOverview(r.sources))
       .catch(() => setSourceOverview([]))
   }, [])
@@ -123,17 +213,30 @@ export default function FeedPage() {
     setListError(null)
     api.opportunities
       .list({
-        track: filters.track || undefined,
-        decision: filters.decision || undefined,
-        min_score: filters.minScore ? Number(filters.minScore) : undefined,
-        q: filters.q || undefined,
-        source_family: filters.sourceFamily || undefined,
-        source_id: filters.sourceId || undefined,
-        activity: filters.activity || undefined,
-        feedback: filters.feedback || undefined,
+        track: query.track,
+        decision: query.decision,
+        min_score: query.scoreRanges.fit_score.min ? Number(query.scoreRanges.fit_score.min) : undefined,
+        min_fit_score: query.scoreRanges.fit_score.min ? Number(query.scoreRanges.fit_score.min) : undefined,
+        max_fit_score: query.scoreRanges.fit_score.max ? Number(query.scoreRanges.fit_score.max) : undefined,
+        min_preference_score: query.scoreRanges.preference_score.min ? Number(query.scoreRanges.preference_score.min) : undefined,
+        max_preference_score: query.scoreRanges.preference_score.max ? Number(query.scoreRanges.preference_score.max) : undefined,
+        min_confidence_score: query.scoreRanges.confidence_score.min ? Number(query.scoreRanges.confidence_score.min) : undefined,
+        max_confidence_score: query.scoreRanges.confidence_score.max ? Number(query.scoreRanges.confidence_score.max) : undefined,
+        min_priority_score: query.scoreRanges.priority_score.min ? Number(query.scoreRanges.priority_score.min) : undefined,
+        max_priority_score: query.scoreRanges.priority_score.max ? Number(query.scoreRanges.priority_score.max) : undefined,
+        posted_from: query.postedFrom || undefined,
+        posted_to: query.postedTo || undefined,
+        ...query.multi,
+        source_family: sourceFamily || undefined,
+        source_id: sourceId ? [sourceId] : undefined,
+        activity: activity || undefined,
+        feedback: feedback || undefined,
+        include_tracked: activity !== "to_review" || query.multi.activity_type.length > 0,
+        sort_by: query.sortBy,
+        q: query.q || undefined,
         page,
         page_size: PAGE_SIZE,
-        include_hidden: includeHidden,
+        include_hidden: query.includeHidden,
       })
       .then((res) => {
         setItems(res.items)
@@ -145,15 +248,28 @@ export default function FeedPage() {
           router.replace("/login")
           return
         }
-        setListError("Could not load opportunities.")
+        const detail = err instanceof ApiError && err.body && typeof err.body === "object" && "detail" in err.body && typeof err.body.detail === "string"
+          ? err.body.detail
+          : "Could not load opportunities."
+        setListError(detail)
       })
       .finally(() => setListLoading(false))
-  }, [filters, includeHidden, page, router])
+  }, [query, sourceFamily, sourceId, activity, feedback, page, router])
 
   const refreshFromFirstPage = useCallback(() => {
     if (page === 1) refreshList()
-    else setPage(1)
+    else {
+      setSelectedJobs(new Set())
+      setBatchStatus(null)
+      setPage(1)
+    }
   }, [page, refreshList])
+
+  function changePage(nextPage: number) {
+    setSelectedJobs(new Set())
+    setBatchStatus(null)
+    setPage(nextPage)
+  }
 
   useEffect(() => {
     if (authPhase !== "authenticated") return
@@ -162,15 +278,15 @@ export default function FeedPage() {
   }, [authPhase, refreshTruth, refreshSources])
 
   useEffect(() => {
-    if (authPhase !== "authenticated") return
+    if (authPhase !== "authenticated" || !queryReady) return
     // Standard data-fetching effect (React docs: "Fetching data" under
     // "You Might Not Need an Effect"): setting the loading flag synchronously
     // before the async call is the documented pattern, not an accidental
-    // cascade — refetches are driven by `filters` changing, which is an
+    // cascade — refetches are driven by the feed query changing, which is an
     // external input this effect is meant to synchronize against.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refreshList()
-  }, [authPhase, refreshList])
+  }, [authPhase, queryReady, refreshList])
 
   // On a production-sized corpus both endpoints perform exact founder-policy
   // matching. Let the founder-visible feed finish first instead of making the
@@ -192,6 +308,14 @@ export default function FeedPage() {
     setFocusedIndex((i) => Math.min(i, Math.max(items.length - 1, 0)))
   }, [items])
 
+  useEffect(() => {
+    if (!undoNotice) return
+    const timer = window.setTimeout(() => {
+      setUndoNotice((current) => current?.eventId === undoNotice.eventId ? null : current)
+    }, UNDO_PROMPT_MS)
+    return () => window.clearTimeout(timer)
+  }, [undoNotice])
+
   // Actual DOM focus follows the cursor ("focus is visible and managed" —
   // required behaviour #4), not a CSS-only highlight left somewhere the
   // browser's own focus isn't.
@@ -201,6 +325,13 @@ export default function FeedPage() {
     if (!id) return
     cardRefs.current.get(id)?.focus()
   }, [focusedIndex, items, anyPanelOpen])
+
+  useEffect(() => {
+    if (previousFeedQueryDrawerOpen.current && !feedQueryDrawerOpen) {
+      window.setTimeout(() => advancedFeedTriggerRef.current?.focus(), 0)
+    }
+    previousFeedQueryDrawerOpen.current = feedQueryDrawerOpen
+  }, [feedQueryDrawerOpen])
 
   // j/k/o/a/x (required behaviour #4). Disabled while a text input has
   // focus or any drawer/panel is open, so the shortcuts never fight a
@@ -214,11 +345,13 @@ export default function FeedPage() {
       if (anyPanelOpen) return
       const target = e.target as HTMLElement | null
       const tag = target?.tagName
+      const focusedCard = target?.closest('[data-testid^="opportunity-card-"]')
       if (
         tag === "INPUT" ||
         tag === "TEXTAREA" ||
         tag === "SELECT" ||
-        target?.isContentEditable
+        target?.isContentEditable ||
+        (target?.closest("button, a, [role='button'], [role='link']") && !focusedCard)
       ) {
         return
       }
@@ -235,14 +368,14 @@ export default function FeedPage() {
       } else if (e.key === "a") {
         if (current) {
           api.opportunities
-            .submitAction(current.id, "mark_applied", null)
-            .then((res) => handleActionSubmitted(current.id, res.action_state))
+            .submitAction(current.id, "mark_applied", null, crypto.randomUUID())
+            .then((res) => handleActionSubmitted(current.id, res.tracker_state ?? res.action_state, res))
         }
       } else if (e.key === "x") {
         if (current) {
           api.opportunities
-            .submitAction(current.id, "dismiss", null)
-            .then((res) => handleActionSubmitted(current.id, res.action_state))
+            .submitAction(current.id, "dismiss", null, crypto.randomUUID())
+            .then((res) => handleActionSubmitted(current.id, res.action_state, res))
         }
       }
     }
@@ -254,7 +387,7 @@ export default function FeedPage() {
   async function handlePollNow() {
     setPolling(true)
     try {
-      setPollResult(await api.worker.pollNow())
+      await api.worker.pollNow()
       refreshSources()
       refreshFromFirstPage()
       refreshDashboard()
@@ -272,13 +405,81 @@ export default function FeedPage() {
     refreshDashboard()
   }
 
-  function handleActionSubmitted(id: string, state: ActionState) {
+  function handleActionSubmitted(id: string, state: ActionState, response?: ActionResponse) {
+    setSelectedActionState(state)
+    const eventId = response?.undo_event_id
+    const label = state === "saved" ? "Saved" : state === "applied" || state === "submitted" ? "Marked applied" : state === "rejected_by_founder" ? "Rejected" : "Updated"
+    setUndoNotice(eventId ? { opportunityId: id, eventId, label } : null)
+    setUndoError(null)
     setItems((prev) =>
-      prev
-        ? prev.map((o) => (o.id === id ? { ...o, action_state: state } : o))
-        : prev
+      prev ? prev.map((item) => item.id === id ? { ...item, action_state: state } : item) : prev
     )
     refreshDashboard()
+  }
+
+  async function handleCardTriage(id: string, type: "save" | "mark_applied" | "reject", preserveUndo = false): Promise<boolean> {
+    setTriagePendingId(id)
+    setTriageError(null)
+    if (!preserveUndo) setUndoNotice(null)
+    setUndoError(null)
+    try {
+      const response = await api.opportunities.submitAction(id, type, null, crypto.randomUUID())
+      handleActionSubmitted(id, response.tracker_state ?? response.action_state, response)
+      setSelectedJobs((current) => { const next = new Set(current); next.delete(id); return next })
+      return true
+    } catch (failure) {
+      const detail = failure instanceof ApiError && failure.body && typeof failure.body === "object" && "detail" in failure.body && typeof failure.body.detail === "string"
+        ? failure.body.detail
+        : failure instanceof Error ? failure.message : "Could not update this tracker state."
+      setTriageError({ id, message: detail })
+      return false
+    } finally {
+      setTriagePendingId(null)
+    }
+  }
+
+  async function handleBatchTriage(type: "save" | "mark_applied" | "reject") {
+    const ids = [...selectedJobs]
+    if (!ids.length || batchPending) return
+    if (type === "mark_applied" && !window.confirm(`Mark ${ids.length} selected jobs as Applied?`)) return
+    setBatchPending(true)
+    setBatchStatus(null)
+    const failed: string[] = []
+    try {
+      for (const id of ids) if (!(await handleCardTriage(id, type, true))) failed.push(id)
+      const succeeded = new Set(ids.filter((id) => !failed.includes(id)))
+      setItems((current) => current?.filter((item) => !succeeded.has(item.id)) ?? current)
+      setTotal((current) => Math.max(0, current - succeeded.size))
+      setSelectedJobs(new Set(failed))
+      setBatchStatus(failed.length ? `${ids.length - failed.length} succeeded; ${failed.length} failed. Failed jobs remain selected: ${failed.join(", ")}` : `${ids.length} jobs updated successfully.`)
+    } finally {
+      setBatchPending(false)
+    }
+  }
+
+  async function handleUndo() {
+    if (!undoNotice || undoSubmitting) return
+    setUndoSubmitting(true)
+    setUndoError(null)
+    try {
+      const response = await api.opportunities.restoreAction(
+        undoNotice.opportunityId,
+        undoNotice.eventId,
+        crypto.randomUUID()
+      )
+      if (undoNotice.opportunityId === selectedId) setSelectedActionState(response.action_state)
+      setUndoNotice(null)
+      refreshDashboard()
+      refreshFromFirstPage()
+    } catch (failure) {
+      const detail = failure instanceof ApiError && failure.body && typeof failure.body === "object" && "detail" in failure.body && typeof failure.body.detail === "string"
+        ? failure.body.detail
+        : failure instanceof Error ? failure.message : "Could not undo this tracker action."
+      setUndoError(detail)
+      if (failure instanceof ApiError && failure.status === 409) setUndoNotice(null)
+    } finally {
+      setUndoSubmitting(false)
+    }
   }
 
   const selectedItem = useMemo(
@@ -292,14 +493,11 @@ export default function FeedPage() {
   )
 
   const hasActiveFilters =
-    filters.track !== "" ||
-    filters.decision !== "" ||
-    filters.minScore !== "" ||
-    filters.q !== "" ||
-    filters.sourceFamily !== "" ||
-    filters.sourceId !== ""
-    || filters.activity !== "to_review"
-    || filters.feedback !== ""
+    hasActiveFeedQuery(query) ||
+    sourceFamily !== "" ||
+    sourceId !== "" ||
+    activity !== "to_review" ||
+    feedback !== ""
 
   const workerIdle =
     !!sources && sources.length > 0 && sources.every((s) => s.last_poll === null)
@@ -320,8 +518,11 @@ export default function FeedPage() {
         sources={sources}
         onPollNow={handlePollNow}
         polling={polling}
-        pollResult={pollResult}
         onOpenHiddenReasons={() => setHiddenReasonsOpen(true)}
+        metricPeriod={metricPeriod}
+        metricDate={metricDate}
+        onMetricPeriodChange={setMetricPeriod}
+        onMetricDateChange={(date) => { setMetricDate(date); setMetricPeriod("date") }}
       />
 
       {/* Master's addition #1: the >10% over-hiding warning must be
@@ -330,29 +531,68 @@ export default function FeedPage() {
       {overHidingWarning && <OverHidingWarningBanner warning={overHidingWarning} />}
 
       {truth && (
-        <FilterBar
+          <FilterBar
             filters={filters}
             sources={sourceOverview}
             onChange={(nextFilters) => {
-              setPage(1)
-              setFilters(nextFilters)
+              setSourceFamily(nextFilters.sourceFamily)
+              setSourceId(nextFilters.sourceId)
+              setActivity(nextFilters.activity)
+              setFeedback(nextFilters.feedback)
+              handleQueryChange({
+                ...query,
+                track: nextFilters.track,
+                decision: nextFilters.decision,
+                q: nextFilters.q,
+                scoreRanges: { ...query.scoreRanges, fit_score: { ...query.scoreRanges.fit_score, min: nextFilters.minScore } },
+              })
             }}
             onOpenFounderFilters={() => setFiltersDrawerOpen(true)}
             onOpenManualSources={() => setManualSourcesOpen(true)}
             onOpenFacets={() => setFacetsPanelOpen(true)}
             onToggleTutoringLane={() => {
-              setPage(1)
-              setFilters({
-                ...filters,
-                track: filters.track === "tutoring" ? "" : "tutoring",
+              handleQueryChange({
+                ...query,
+                track: query.track.includes("tutoring")
+                  ? query.track.filter((track) => track !== "tutoring")
+                  : [...query.track, "tutoring"],
               })
             }}
-            tutoringActive={filters.track === "tutoring"}
+            tutoringActive={query.track.includes("tutoring")}
             tutoringDisabled={!truth.loaded}
+            sortBy={query.sortBy}
+            onSortChange={(sortBy) => handleQueryChange({ ...query, sortBy })}
+            onOpenAdvanced={() => setFeedQueryDrawerOpen(true)}
+            onAdvancedTriggerRef={(element) => {
+              advancedFeedTriggerRef.current = element
+            }}
+            advancedDisabled={!feedMetadata}
+            metadata={feedMetadata}
           />
       )}
 
+      <FeedQueryChips value={query} onChange={handleQueryChange} />
+      {feedMetadataError && (
+        <p role="status" className="border-b border-amber-600/30 bg-amber-50 px-4 py-2 text-xs text-amber-950 dark:bg-amber-950/20 dark:text-amber-100 sm:px-6">
+          Advanced feed filtering is unsupported by this API adapter: {feedMetadataError} Track, decision, fit minimum, and search remain available.
+        </p>
+      )}
+
       <main className="flex-1 px-4 py-4 sm:px-6">
+        {undoNotice && !selectedId && (
+          <div role="status" data-testid="tracker-undo-notice" className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border bg-card px-4 py-3 text-sm">
+            <span>{undoNotice.label}.</span>
+            <Button type="button" size="sm" variant="outline" data-testid="undo-tracker-action" disabled={undoSubmitting} onClick={() => void handleUndo()}>
+              {undoSubmitting ? "Undoing…" : "Undo"}
+            </Button>
+          </div>
+        )}
+        {undoError && !selectedId && <p role="alert" data-testid="tracker-undo-error" className="mb-4 text-sm text-destructive">{undoError}</p>}
+        {batchStatus && (
+          <p role="status" data-testid="batch-action-status" className="mb-4 break-words rounded-lg border border-border bg-card px-4 py-3 text-sm">
+            {batchStatus}
+          </p>
+        )}
         {truth && !truth.loaded && (
           truth.validator.error_count > 0 ? (
             <InvalidTruthPackState findings={truth.validator.findings} />
@@ -363,7 +603,7 @@ export default function FeedPage() {
 
         {!truth ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : filters.track === "tutoring" ? (
+        ) : query.track.length === 1 && query.track[0] === "tutoring" ? (
           <TutoringSurface />
         ) : listLoading && !items ? (
           <p className="text-sm text-muted-foreground">Loading opportunities…</p>
@@ -375,8 +615,12 @@ export default function FeedPage() {
           hasActiveFilters ? (
             <NoFilterMatchesState
               onClear={() => {
+                setSourceFamily("")
+                setSourceId("")
+                setActivity("to_review")
+                setFeedback("")
                 setPage(1)
-                setFilters(EMPTY_FILTERS)
+                handleQueryChange(EMPTY_FEED_QUERY)
               }}
             />
           ) : workerIdle ? (
@@ -391,8 +635,19 @@ export default function FeedPage() {
               className="mb-3 text-xs text-muted-foreground"
             >
               {total} opportunit{total === 1 ? "y" : "ies"}
-              {includeHidden && " (including hidden)"}
+              {query.includeHidden && " (including hidden)"}
             </p>
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-2 text-sm">
+              <Button type="button" size="xs" variant="outline" disabled={batchPending || !items?.length} onClick={() => setSelectedJobs(new Set(items?.map((item) => item.id) ?? []))}>Select all visible</Button>
+              <Button type="button" size="xs" variant="ghost" disabled={batchPending || selectedJobs.size === 0} onClick={() => { setSelectedJobs(new Set()); setBatchStatus(null) }}>Clear selection</Button>
+              <span aria-live="polite" className="min-w-0 text-xs text-muted-foreground">{selectedJobs.size} selected</span>
+              {selectedJobs.size > 0 && <div data-testid="batch-action-toolbar" className="ml-auto flex min-w-0 flex-wrap gap-1.5">
+                <Button type="button" size="xs" variant="outline" disabled={batchPending} onClick={() => void handleBatchTriage("save")}>Save</Button>
+                <Button type="button" size="xs" variant="outline" disabled={batchPending} onClick={() => void handleBatchTriage("reject")}>Reject</Button>
+                <Button type="button" size="xs" variant="outline" disabled={batchPending} onClick={() => void handleBatchTriage("mark_applied")}>Mark Applied</Button>
+              </div>}
+              {batchPending && <span role="status" className="w-full text-xs">Updating selected jobs…</span>}
+            </div>
             <ul className="grid auto-rows-fr grid-cols-1 items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {items?.map((o, idx) => (
                 <OpportunityCard
@@ -403,8 +658,19 @@ export default function FeedPage() {
                   }}
                   opportunity={o}
                   keyboardFocused={idx === focusedIndex}
+                  selected={selectedJobs.has(o.id)}
+                  onSelectedChange={(selected) => setSelectedJobs((current) => {
+                    const next = new Set(current)
+                    if (selected) next.add(o.id)
+                    else next.delete(o.id)
+                    return next
+                  })}
+                  onTriageAction={(type) => void handleCardTriage(o.id, type)}
+                  triagePending={triagePendingId === o.id}
+                  triageError={triageError?.id === o.id ? triageError.message : null}
                   onOpen={() => {
                     setFocusedIndex(idx)
+                    setSelectedActionState(o.action_state)
                     setSelectedId(o.id)
                   }}
                 />
@@ -421,7 +687,7 @@ export default function FeedPage() {
                   variant="outline"
                   size="sm"
                   disabled={page <= 1 || listLoading}
-                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  onClick={() => changePage(Math.max(1, page - 1))}
                 >
                   Previous
                 </Button>
@@ -433,7 +699,7 @@ export default function FeedPage() {
                   variant="outline"
                   size="sm"
                   disabled={page >= pageCount || listLoading}
-                  onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+                  onClick={() => changePage(Math.min(pageCount, page + 1))}
                 >
                   Next
                 </Button>
@@ -447,19 +713,16 @@ export default function FeedPage() {
             outside the branches above so it survives even when a hide
             filter's default leaves nothing else on the page (an entirely
             hidden feed is exactly the case this control exists for). */}
-        {truth && !listLoading && !listError && (hiddenCount > 0 || includeHidden) && (
+        {truth && !listLoading && !listError && (hiddenCount > 0 || query.includeHidden) && (
           <div className="mt-4 flex justify-center">
             <Button
               type="button"
               variant="outline"
               size="sm"
               data-testid="toggle-hidden-opportunities"
-              onClick={() => {
-                setPage(1)
-                setIncludeHidden((v) => !v)
-              }}
+              onClick={() => handleQueryChange({ ...query, includeHidden: !query.includeHidden })}
             >
-              {includeHidden ? (
+              {query.includeHidden ? (
                 <>
                   <EyeOff aria-hidden="true" className="size-3.5" />
                   Hide hidden opportunities
@@ -482,6 +745,15 @@ export default function FeedPage() {
           refreshFromFirstPage()
           refreshDashboard()
         }}
+      />
+
+      <FeedQueryDrawer
+        open={feedQueryDrawerOpen}
+        onOpenChange={setFeedQueryDrawerOpen}
+        value={query}
+        onChange={handleQueryChange}
+        metadata={feedMetadata}
+        metadataError={feedMetadataError}
       />
 
       <FacetsPanel
@@ -509,10 +781,13 @@ export default function FeedPage() {
 
       <DetailDrawer
         opportunityId={selectedId}
-        initialActionState={selectedItem?.action_state ?? null}
+        initialActionState={selectedItem?.action_state ?? selectedActionState}
         initialFeedbackLabel={selectedItem?.feedback_label ?? null}
         onOpenChange={(open) => {
-          if (!open) setSelectedId(null)
+          if (!open) {
+            setSelectedId(null)
+            setSelectedActionState(null)
+          }
         }}
         onOpened={refreshDashboard}
         onFeedbackSubmitted={handleFeedbackSubmitted}
