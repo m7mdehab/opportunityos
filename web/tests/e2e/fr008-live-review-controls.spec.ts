@@ -65,7 +65,8 @@ test.describe("FR-008 live review controls", () => {
 
     await page.getByTestId("batch-action-toolbar").getByRole("button", { name: "Save", exact: true }).click()
     await expect(page.getByTestId("batch-action-status")).toContainText("updated successfully")
-    await expect(page.getByText("0 selected", { exact: true })).toBeVisible()
+    await expect(page.getByTestId("batch-action-toolbar")).toHaveCount(0)
+    await expect(page.locator('input[type="checkbox"][aria-label^="Select "]:checked')).toHaveCount(0)
     expect(await page.locator('[data-testid^="opportunity-card-"]').count()).toBeLessThan(cardsBefore)
   })
 })
