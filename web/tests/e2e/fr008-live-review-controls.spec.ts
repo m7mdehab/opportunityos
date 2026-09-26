@@ -25,7 +25,7 @@ test.describe("FR-008 live review controls", () => {
       page.evaluate(() => new URLSearchParams(window.location.search).getAll("track").length)
     ).toBe(2)
 
-    await page.getByRole("button", { name: "Clear filters" }).click()
+    await page.getByRole("search", { name: "Filter opportunities" }).getByRole("button", { name: "Clear filters" }).click()
     await expect.poll(() =>
       page.evaluate(() => new URLSearchParams(window.location.search).getAll("track").length)
     ).toBe(0)
@@ -39,7 +39,7 @@ test.describe("FR-008 live review controls", () => {
     await expect.poll(() =>
       page.evaluate(() => new URLSearchParams(window.location.search).getAll("source_family").length)
     ).toBe(2)
-    await page.getByRole("button", { name: "Clear filters" }).click()
+    await page.getByRole("search", { name: "Filter opportunities" }).getByRole("button", { name: "Clear filters" }).click()
 
     const activity = page.getByTestId("filter-facet-activity")
     await activity.locator("summary").click()
@@ -48,7 +48,7 @@ test.describe("FR-008 live review controls", () => {
     await expect.poll(() =>
       page.evaluate(() => new URLSearchParams(window.location.search).getAll("activity_type").sort())
     ).toEqual(["reject", "save"])
-    await page.getByRole("button", { name: "Clear filters" }).click()
+    await page.getByRole("search", { name: "Filter opportunities" }).getByRole("button", { name: "Clear filters" }).click()
 
     const feedback = page.getByTestId("filter-facet-feedback")
     await feedback.locator("summary").click()
@@ -57,7 +57,7 @@ test.describe("FR-008 live review controls", () => {
     await expect.poll(() =>
       page.evaluate(() => new URLSearchParams(window.location.search).getAll("feedback_label").sort())
     ).toEqual(["bad_match", "good_match"])
-    await page.getByRole("button", { name: "Clear filters" }).click()
+    await page.getByRole("search", { name: "Filter opportunities" }).getByRole("button", { name: "Clear filters" }).click()
 
     await page.getByTestId("open-advanced-feed-filters").click()
     const drawer = page.getByTestId("feed-query-drawer")
