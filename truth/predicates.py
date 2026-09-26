@@ -71,6 +71,18 @@ def _projected_specs() -> dict[str, PredicateSpec]:
 # ---------------------------------------------------------------------------
 _ASSERTION_ONLY_SPECS: tuple[PredicateSpec, ...] = (
     PredicateSpec(
+        name="career.target_role",
+        kind=PredicateKind.ASSERTION_ONLY,
+        source="assertions",
+        description="Founder's declared target role; supplied only via assertions.",
+    ),
+    PredicateSpec(
+        name="career.target_role_tier",
+        kind=PredicateKind.ASSERTION_ONLY,
+        source="assertions",
+        description="Founder-declared target-role tier (primary/adjacent/stretch); supplied only via assertions.",
+    ),
+    PredicateSpec(
         name="preference.track",
         kind=PredicateKind.ASSERTION_ONLY,
         source="assertions",
