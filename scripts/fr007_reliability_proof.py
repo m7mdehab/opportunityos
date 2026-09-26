@@ -27,6 +27,22 @@ SCENARIOS = ("A4", "A5", "A6", "A7", "A8")
 _SAFE_IDENTIFIER = re.compile(r"^[a-z_][a-z0-9_]*$")
 
 
+def _proof_pack(_path: object):
+    """Synthetic valid Truth Pack for disposable reliability probes only."""
+    from truth.fixtures import founder_shaped_graph
+    from truth.pack import LoadedPack, PackValidationReport
+
+    return LoadedPack(
+        graph=founder_shaped_graph(),
+        report=PackValidationReport(
+            valid=True,
+            section_counts=(("synthetic", 1),),
+            findings=(),
+        ),
+        truth_pack_hash="hash-proof-pack",
+    )
+
+
 def _result(scenario: str, state: str, **details: Any) -> dict[str, Any]:
     if scenario not in SCENARIOS or state not in STATES:
         raise ValueError("invalid proof result")
@@ -426,7 +442,7 @@ def execute_a5_source_probe(dsn: str) -> dict[str, Any]:
         adapters=adapters,
         session_factory=factory,
         truth_pack_path=None,
-        pack_loader=lambda _p: None,
+        pack_loader=_proof_pack,
     )
     runner = WorkerRunner(
         factory,
@@ -598,7 +614,7 @@ def execute_a6_idempotency_probe(dsn: str) -> dict[str, Any]:
         adapters=[adapter],
         session_factory=factory,
         truth_pack_path=None,
-        pack_loader=lambda _p: None,
+        pack_loader=_proof_pack,
     )
 
     poll_counts = []
@@ -975,7 +991,9 @@ def execute_a8_schedule_restart_probe(dsn: str) -> dict[str, Any]:
             session,
             registry=reg,
             now=restart_clock,
+            source_ids=[source_future, source_cooldown, source_due],
             force=False,
+            create_missing_schedules=False,
         )
         session.commit()
 
