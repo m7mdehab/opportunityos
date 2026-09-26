@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `7f5edae` — test(hosted): budget full end-to-end live proof
+- **State generated at commit:** `52d5e43` — fix(runtime): restore scorer credential predicate constants
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
