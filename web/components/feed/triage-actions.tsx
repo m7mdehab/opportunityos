@@ -6,29 +6,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { ActionState, ActionType } from "@/lib/contract/types"
 
-const APPLICATION_STATES: ActionState[] = [
-  "applied", "recruiter_screen", "assessment", "interviewing",
-  "final_interview", "offer", "accepted", "submitted",
-]
-const CLOSED_STATES: ActionState[] = [
-  "accepted", "rejected_by_founder", "rejected_by_employer", "withdrawn",
-  "no_response", "position_closed", "archived", "dismissed",
-]
-
 const ACTION_STATE_LABEL: Record<string, string> = {
   submitted: "Marked applied",
-  applied: "Applied",
-  saved: "Saved",
-  rejected_by_founder: "Rejected by me",
-  rejected_by_employer: "Rejected by employer",
-  recruiter_screen: "Recruiter screen",
-  assessment: "Assessment",
-  interviewing: "Interviewing",
-  final_interview: "Final interview",
-  offer: "Offer",
-  accepted: "Accepted",
-  withdrawn: "Withdrawn",
-  no_response: "No response",
   dismissed: "Dismissed",
   snoozed: "Snoozed",
 }
@@ -44,8 +23,6 @@ export function TriageActions({
 }) {
   const [showSnooze, setShowSnooze] = useState(false)
   const [until, setUntil] = useState("")
-  const isInApplication = currentState !== null && APPLICATION_STATES.includes(currentState)
-  const isClosed = currentState !== null && CLOSED_STATES.includes(currentState)
 
   return (
     <div className="space-y-2">
@@ -58,16 +35,7 @@ export function TriageActions({
         <Button
           type="button"
           size="sm"
-          variant="outline"
-          disabled={submitting || currentState === "saved" || isInApplication || isClosed}
-          onClick={() => onSubmit("save", null)}
-        >
-          Save for later
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          disabled={submitting || isInApplication || isClosed}
+          disabled={submitting}
           onClick={() => onSubmit("mark_applied", null)}
         >
           Mark applied
@@ -76,17 +44,22 @@ export function TriageActions({
           type="button"
           size="sm"
           variant="outline"
-          disabled={submitting || isInApplication || isClosed}
-          onClick={() => onSubmit("reject", null)}
+          disabled={submitting}
+          onClick={() => onSubmit("dismiss", null)}
         >
-          Reject
+          Dismiss
         </Button>
+        {currentState && (
+          <Button type="button" size="sm" variant="ghost" disabled={submitting} onClick={() => onSubmit("clear", null)}>
+            Clear / undo
+          </Button>
+        )}
         {!showSnooze ? (
           <Button
             type="button"
             size="sm"
             variant="outline"
-            disabled={submitting || currentState === "saved" || isInApplication || isClosed}
+            disabled={submitting}
             onClick={() => setShowSnooze(true)}
           >
             Snooze
@@ -118,11 +91,6 @@ export function TriageActions({
           </div>
         )}
       </div>
-      {currentState && isClosed && (
-        <p className="text-xs text-muted-foreground">
-          This application is closed. Restore is not available yet.
-        </p>
-      )}
     </div>
   )
 }
