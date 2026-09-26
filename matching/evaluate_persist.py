@@ -137,7 +137,9 @@ def _build_reasons(evaluation: MatchEvaluation) -> list[dict[str, Any]]:
 def _evaluation_detail_json(evaluation: MatchEvaluation) -> str:
     """Serialize the D6 detail-route payload: full hard-constraint checklist
     plus the evaluation-level strengths/gaps/unknowns/uncertainty_penalty/
-    explanation. ``passed`` is written as the literal JSON ``true``/``false``/
+    preference_score/confidence_score/confidence_factors/explanation.
+    ``passed`` is written as literal JSON
+    ``true``/``false``/
     ``null`` -- ``null`` means UNKNOWN (``HardConstraintResult.passed is
     None``) and is never coerced to ``false``.
     """
@@ -151,6 +153,15 @@ def _evaluation_detail_json(evaluation: MatchEvaluation) -> str:
                 "founder_fact": hc.founder_fact,
                 "is_hard_failure": hc.is_hard_failure,
                 "provenance_pointer": hc.provenance_pointer,
+                "constraint_type": hc.constraint_type,
+                "job_evidence_text": hc.job_evidence_text,
+                "job_evidence_field": hc.job_evidence_field,
+                "source_pointer": hc.source_pointer,
+                "founder_side_evidence": hc.founder_side_evidence,
+                "decision": hc.decision,
+                "confidence": hc.confidence,
+                "requirement_mandatory": hc.requirement_mandatory,
+                "explanation": hc.explanation,
             }
             for hc in evaluation.hard_constraints
         ],
@@ -158,6 +169,12 @@ def _evaluation_detail_json(evaluation: MatchEvaluation) -> str:
         "gaps": list(evaluation.gaps),
         "unknowns": list(evaluation.unknowns),
         "uncertainty_penalty": evaluation.uncertainty_penalty,
+        "preference_score": evaluation.preference_score,
+        "confidence_score": evaluation.confidence_score,
+        "confidence_factors": [
+            {"name": factor.name, "score": factor.score, "explanation": factor.explanation}
+            for factor in evaluation.confidence_factors
+        ],
         "explanation": evaluation.explanation,
     }
     return json.dumps(payload, sort_keys=True)
