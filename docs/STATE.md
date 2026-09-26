@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `7578918` — test(reliability): seed evaluation content hashes for FR-008 schema
+- **State generated at commit:** `c82b4d5` — test(hosted): accept shareable root feed query after login
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
