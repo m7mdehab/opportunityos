@@ -51,6 +51,7 @@ class HotEvaluationCapacityMaintenancePostgresTests(unittest.TestCase):
                     lifecycle_tier="hot",
                 )
             )
+            session.commit()
             session.add(
                 MatchEvaluationRecord(
                     id=f"eval-{uuid.uuid4().hex[:20]}",
