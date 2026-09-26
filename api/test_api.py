@@ -1033,6 +1033,7 @@ class OpportunityRoutesTest(ApiTestCase):
                 "gaps": ["gap one"],
                 "unknowns": ["unknown one"],
                 "uncertainty_penalty": 0.1,
+                "preference_score": 72.3,
                 "explanation": "synthetic evaluation for API tests",
             },
         )
@@ -1062,6 +1063,7 @@ class OpportunityRoutesTest(ApiTestCase):
 
         self.assertEqual(body["scoring"]["fit_score"], 55.5)
         self.assertEqual(body["scoring"]["uncertainty_penalty"], 0.1)
+        self.assertEqual(body["scoring"]["preference_score"], 72.3)
         self.assertEqual(body["scoring"]["strengths"], ["strength one"])
         self.assertEqual(body["scoring"]["gaps"], ["gap one"])
         self.assertEqual(body["scoring"]["unknowns"], ["unknown one"])
@@ -1105,6 +1107,7 @@ class OpportunityRoutesTest(ApiTestCase):
         self.assertEqual(scoring["strengths"], ["strong python background"])
         self.assertEqual(scoring["gaps"], ["no prior nonprofit work"])
         self.assertEqual(scoring["unknowns"], ["salary range not disclosed"])
+        self.assertIsNone(scoring["preference_score"])
         # evaluation_detail_json is NULL -> hard_constraints has nowhere to
         # come from for this row, so it is empty rather than fabricated.
         self.assertEqual(detail.json()["qualification"]["constraints"], [])
@@ -2212,6 +2215,177 @@ class SourcesAndWorkerTest(ApiTestCase):
 
         job_count = self.session.query(WorkerJobRecord).count()
         self.assertEqual(job_count, len(body["enqueued"]))
+
+
+# ---------------------------------------------------------------------------
+# W3.2/W3.3 portable score API contract
+# ---------------------------------------------------------------------------
+
+
+class ConfidenceScoreDetailPortableTest(unittest.TestCase):
+    """Exercise detail-payload assembly without a database connection."""
+
+    def _build_detail(self, evaluation_detail):
+        from types import SimpleNamespace
+
+        from api.routes_api import _build_opportunity_detail
+
+        class EmptyQuery:
+            def filter_by(self, **kwargs):
+                return self
+
+            def order_by(self, *args):
+                return self
+
+            def all(self):
+                return []
+
+        class EmptySession:
+            def query(self, *args):
+                return EmptyQuery()
+
+        evaluation = SimpleNamespace(
+            reasons_json="[]",
+            dimension_scores_json="[]",
+            evaluation_detail_json=evaluation_detail,
+            qualification_decision="qualified",
+            fit_score=78.0,
+            policy_version="synthetic-policy",
+            evaluated_at=datetime(2026, 9, 25, tzinfo=timezone.utc),
+            truth_pack_hash="synthetic-hash",
+        )
+        opportunity = SimpleNamespace(
+            id="synthetic-api-pref",
+            title="Synthetic role",
+            organization="Synthetic company",
+            source_id="synthetic-source",
+            source_url="https://example.invalid/job",
+            track="employment",
+            description="Synthetic opportunity.",
+            deadline=None,
+            posted_date=None,
+            is_stale=False,
+            reverified_at=None,
+            family_key=None,
+            work_mode="remote",
+            work_mode_source="adapter",
+            location_country="",
+            location_city="",
+            location_region="",
+            remote_scope="worldwide",
+            remote_scope_regions=None,
+            employment_type="full_time",
+            seniority_level="senior",
+            compensation_min=None,
+            compensation_max=None,
+            compensation_currency=None,
+            compensation_period=None,
+            title_family=None,
+            title_level=None,
+        )
+        with patch("api.routes_api._latest_evaluation", return_value=evaluation):
+            return _build_opportunity_detail(EmptySession(), opportunity)
+
+    def test_detail_exposes_persisted_preference_score(self):
+        detail_json = json.dumps({
+            "hard_constraints": [],
+            "strengths": [],
+            "gaps": [],
+            "unknowns": [],
+            "uncertainty_penalty": 0.0,
+            "preference_score": 67.5,
+            "confidence_score": 81.25,
+            "confidence_factors": [
+                {"name": "description_completeness", "score": 85.0, "explanation": "synthetic factor"},
+            ],
+            "explanation": "synthetic",
+        })
+
+        scoring = self._build_detail(detail_json)["scoring"]
+        self.assertEqual(scoring["preference_score"], 67.5)
+        self.assertEqual(scoring["confidence_score"], 81.25)
+        self.assertEqual(scoring["confidence_factors"], [
+            {"name": "description_completeness", "score": 85.0, "explanation": "synthetic factor"},
+        ])
+
+    def test_legacy_null_detail_exposes_null_preference_score(self):
+        scoring = self._build_detail(None)["scoring"]
+        self.assertIsNone(scoring["preference_score"])
+        self.assertIsNone(scoring["confidence_score"])
+        self.assertEqual(scoring["confidence_factors"], [])
+
+    def test_legacy_detail_without_confidence_fields_uses_null_defaults(self):
+        legacy_detail = json.dumps({
+            "hard_constraints": [],
+            "strengths": [],
+            "gaps": [],
+            "unknowns": [],
+            "uncertainty_penalty": 0.0,
+            "preference_score": None,
+            "explanation": "legacy evaluation detail",
+        })
+        scoring = self._build_detail(legacy_detail)["scoring"]
+        self.assertIsNone(scoring["confidence_score"])
+        self.assertEqual(scoring["confidence_factors"], [])
+
+
+class RecommendedOrderingPortableTest(unittest.TestCase):
+    """Exercise list-card ranking components without a database connection."""
+
+    def test_list_ranking_exposes_composite_and_each_component_separately(self):
+        from types import SimpleNamespace
+
+        from api.routes_api import _recommended_ranking_payload
+
+        projection = SimpleNamespace(
+            qualification_decision="qualified",
+            fit_score=82.25,
+            priority_score=123456789.0,
+            projected_at=datetime(2026, 9, 25, tzinfo=timezone.utc),
+        )
+        context = SimpleNamespace(evaluation_detail={
+            "preference_score": 77.5,
+            "confidence_score": 84.25,
+            "confidence_factors": [
+                {"name": "source_freshness_and_strength", "score": 68.0},
+            ],
+        })
+        opportunity = SimpleNamespace(
+            posted_date="2026-09-24",
+            is_stale=False,
+        )
+
+        ranking = _recommended_ranking_payload(projection, context, opportunity)
+        self.assertEqual(ranking, {
+            "priority_score": 123456789.0,
+            "eligibility": "eligible",
+            "capability_fit": 82.25,
+            "preference_score": 77.5,
+            "confidence_score": 84.25,
+            "freshness_score": 100.0,
+            "source_confidence": 68.0,
+        })
+
+    def test_missing_components_remain_null_in_list_payload(self):
+        from types import SimpleNamespace
+
+        from api.routes_api import _recommended_ranking_payload
+
+        projection = SimpleNamespace(
+            qualification_decision="uncertain",
+            fit_score=50.0,
+            priority_score=100.0,
+            projected_at=datetime(2026, 9, 25, tzinfo=timezone.utc),
+        )
+        context = SimpleNamespace(evaluation_detail={})
+        opportunity = SimpleNamespace(posted_date=None, is_stale=False)
+        ranking = _recommended_ranking_payload(projection, context, opportunity)
+        self.assertEqual(ranking["eligibility"], "review_required")
+        self.assertEqual(ranking["capability_fit"], 50.0)
+        self.assertIsNone(ranking["preference_score"])
+        self.assertIsNone(ranking["confidence_score"])
+        self.assertIsNone(ranking["freshness_score"])
+        self.assertIsNone(ranking["source_confidence"])
 
 
 # ---------------------------------------------------------------------------
@@ -3879,4 +4053,3 @@ class TutoringRoutesTest(ApiTestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
