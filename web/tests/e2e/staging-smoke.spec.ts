@@ -55,6 +55,11 @@ async function pageBinary(page: Page, path: string) {
 
 test.describe("Cloudflare staging hosted smoke", () => {
   test("desktop/mobile same-origin founder flow", async ({ page }) => {
+    // This hosted proof deliberately performs login, reversible mutations,
+    // reloads, and 20 sequential live feed SLO samples. The default 30s
+    // Playwright budget is therefore smaller than the work the test itself
+    // requires even when every individual feed request satisfies the 1.5s SLO.
+    test.setTimeout(120_000);
     // 1. Unauthenticated root access redirects to login gate
     await page.goto("/");
     await expect(page).toHaveURL(/\/login$/);
