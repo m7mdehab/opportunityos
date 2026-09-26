@@ -96,34 +96,47 @@ from .tracker_service import (
     restore_tracker_transition,
     transition_tracker_state,
 )
-from .tracker_notes_service import (
-    TrackerNoteError,
-    create_tracker_note,
-    list_tracker_notes,
-    update_tracker_note,
-)
-from .tracker_followups_service import (
-    TrackerFollowUpError,
-    create_tracker_follow_up,
-    list_opportunity_follow_ups,
-    list_tracker_follow_ups,
-    update_tracker_follow_up,
-)
-from .tracker_interviews_service import (
-    TrackerInterviewError,
-    create_tracker_interview,
-    list_opportunity_interviews,
-    list_tracker_interviews,
-    update_tracker_interview,
-)
-from .tracker_documents_service import (
-    TrackerDocumentError,
-    link_tracker_document,
-    list_tracker_document_candidates,
-    list_tracker_documents,
-    unlink_tracker_document,
-)
-from .tracker_activity_service import TrackerActivityError, list_tracker_activity
+# Deep tracker persistence (notes, follow-ups, interviews, document links,
+# activity timeline) is deliberately deferred from the W23 live-review repair.
+# Keep the routes fail-closed and explicit instead of importing ORM models that
+# are not present in the accepted W23 schema.
+class TrackerNoteError(Exception):
+    pass
+
+class TrackerFollowUpError(Exception):
+    pass
+
+class TrackerInterviewError(Exception):
+    pass
+
+class TrackerDocumentError(Exception):
+    pass
+
+class TrackerActivityError(Exception):
+    pass
+
+def _deferred_tracker_feature(*_args, **_kwargs):
+    raise HTTPException(
+        status_code=501,
+        detail="Deep tracker persistence is deferred from the current live review release.",
+    )
+
+create_tracker_note = _deferred_tracker_feature
+list_tracker_notes = _deferred_tracker_feature
+update_tracker_note = _deferred_tracker_feature
+create_tracker_follow_up = _deferred_tracker_feature
+list_opportunity_follow_ups = _deferred_tracker_feature
+list_tracker_follow_ups = _deferred_tracker_feature
+update_tracker_follow_up = _deferred_tracker_feature
+create_tracker_interview = _deferred_tracker_feature
+list_opportunity_interviews = _deferred_tracker_feature
+list_tracker_interviews = _deferred_tracker_feature
+update_tracker_interview = _deferred_tracker_feature
+link_tracker_document = _deferred_tracker_feature
+list_tracker_document_candidates = _deferred_tracker_feature
+list_tracker_documents = _deferred_tracker_feature
+unlink_tracker_document = _deferred_tracker_feature
+list_tracker_activity = _deferred_tracker_feature
 from .search import is_query_unparseable, rank_key, search_opportunity_ids
 from .serialization import (
     serialize_constraint,
