@@ -223,35 +223,67 @@ class StorageRepository:
             )
 
     def cleanup_archive_orphans(self, *, limit: int = 20) -> int:
-        """Retry bounded stale-object deletes; failed deletes remain observable/retryable."""
+        """Retry bounded stale-object deletes without retaining stale ORM rows.
+
+        Multiple hosted worker shards may enter orphan cleanup concurrently.
+        Snapshot only immutable primary-key strings here: committing one cleanup
+        expires ORM instances, and another shard may delete a later ledger row
+        before this loop reaches it. Retaining ORM rows across those commits can
+        therefore raise ObjectDeletedError while merely reading object_key.
+
+        Every destructive database operation below is conditional on the key.
+        If another cleaner already removed the ledger row, this worker skips it.
+        The private object delete remains fail-closed: provider failures leave
+        the ledger row present for a normal retry.
+        """
         if limit < 1:
             raise ValueError("limit must be >= 1")
-        rows = (
-            self.session.query(OpportunityArchiveOrphanRecord)
-            .order_by(OpportunityArchiveOrphanRecord.created_at.asc())
-            .limit(limit)
-            .all()
-        )
+        object_keys = [
+            row[0]
+            for row in (
+                self.session.query(OpportunityArchiveOrphanRecord.object_key)
+                .order_by(OpportunityArchiveOrphanRecord.created_at.asc())
+                .limit(limit)
+                .all()
+            )
+        ]
         removed = 0
-        for orphan in rows:
+        for object_key in object_keys:
+            still_queued = (
+                self.session.query(OpportunityArchiveOrphanRecord.object_key)
+                .filter_by(object_key=object_key)
+                .first()
+            )
+            if still_queued is None:
+                continue
             referenced = (
                 self.session.query(OpportunityColdArchiveRecord.opportunity_id)
-                .filter_by(object_key=orphan.object_key)
+                .filter_by(object_key=object_key)
                 .first()
             )
             if referenced:
-                self.session.delete(orphan)
+                self.session.query(OpportunityArchiveOrphanRecord).filter_by(
+                    object_key=object_key
+                ).delete(synchronize_session=False)
                 self.session.commit()
                 continue
             try:
-                delete_cold_object(orphan.object_key, client=self.cold_storage_client)
+                delete_cold_object(object_key, client=self.cold_storage_client)
             except Exception as exc:
                 self.session.rollback()
-                logger.warning("cold_archive_orphan_delete_failed", extra={"object_key": orphan.object_key, "reason": type(exc).__name__})
+                logger.warning(
+                    "cold_archive_orphan_delete_failed",
+                    extra={"object_key": object_key, "reason": type(exc).__name__},
+                )
                 continue
-            self.session.delete(orphan)
+            deleted = (
+                self.session.query(OpportunityArchiveOrphanRecord)
+                .filter_by(object_key=object_key)
+                .delete(synchronize_session=False)
+            )
             self.session.commit()
-            removed += 1
+            if deleted:
+                removed += 1
         return removed
 
     def is_founder_protected(self, opportunity_id: str) -> bool:
