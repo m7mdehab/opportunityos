@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `94c0194` — docs: mark W23 evidence complete before state commit
+- **State generated at commit:** `bec2a85` — ci: deploy tested main with migration and live FR008 smoke
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
