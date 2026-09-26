@@ -195,6 +195,13 @@ test.describe("D3 founder-controlled filters", () => {
     // ---- authoritative baselines, read directly from the API ----
     const summariesBefore = await getOpportunitySummaries(page)
     const scoredCount = summariesBefore.filter((o) => o.fit_score !== null).length
+    const reviewResult = await pageFetch(
+      page,
+      "/api/opportunities?include_hidden=true&activity=to_review&page_size=200"
+    )
+    const reviewSummaries = parseJson<{
+      items: Array<{ fit_score: number | null; hidden_by: string[] }>
+    }>(reviewResult, "GET /api/opportunities To Review").items
     expect(
       scoredCount,
       "no opportunity in this seed has a fit_score -- min_fit_score's path is untestable against it"
@@ -203,7 +210,7 @@ test.describe("D3 founder-controlled filters", () => {
     // enabled: scored opportunities not already hidden by some other
     // filter (red_lines, excluded_industries, ...). Computed live so this
     // holds regardless of what those already happen to be hiding.
-    const expectedNewlyHidden = summariesBefore.filter(
+    const expectedNewlyHidden = reviewSummaries.filter(
       (o) => o.fit_score !== null && o.hidden_by.length === 0
     ).length
     expect(
