@@ -44,6 +44,8 @@ export function TriageActions({
 }) {
   const [showSnooze, setShowSnooze] = useState(false)
   const [until, setUntil] = useState("")
+  const isInApplication = currentState !== null && APPLICATION_STATES.includes(currentState)
+  const isClosed = currentState !== null && CLOSED_STATES.includes(currentState)
 
   return (
     <div className="space-y-2">
