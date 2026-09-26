@@ -211,6 +211,7 @@ export interface FeedScoreBounds {
 export interface FeedQueryState {
   track: string[]
   decision: string[]
+  sourceFamily: string[]
   q: string
   multi: Record<FeedMultiFacetId, string[]>
   scoreRanges: Record<FeedScoreId, FeedScoreBounds>
