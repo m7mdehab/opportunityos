@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `d6a95b9` — fix(ci): remove duplicate FR008 hosted smoke declaration
+- **State generated at commit:** `43e14d7` — fix(ci): bind one-time branch pruning to main live deploy
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
