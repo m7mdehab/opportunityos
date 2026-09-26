@@ -1915,7 +1915,7 @@ export class MockStore {
     target_tier?: string[]
     title_family?: string[]
     source_id?: string[]
-    source_family?: string
+    source_family?: string[]
     activity?: string
     feedback?: string
     include_tracked?: boolean
@@ -1951,9 +1951,9 @@ export class MockStore {
     if (filters.feedback) {
       items = items.filter((o) => o.feedback_label === filters.feedback)
     }
-    if (filters.source_family) {
+    if (filters.source_family?.length) {
       const families = new Map(this.sourcesHealth().sources.map((source) => [source.source_id, source.category]))
-      items = items.filter((o) => families.get(o.source_id) === filters.source_family)
+      items = items.filter((o) => filters.source_family!.includes(families.get(o.source_id) ?? ""))
     }
 
     if (filters.track?.length) {
