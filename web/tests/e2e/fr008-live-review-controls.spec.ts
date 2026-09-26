@@ -30,7 +30,7 @@ test.describe("FR-008 live review controls", () => {
       page.evaluate(() => new URLSearchParams(window.location.search).getAll("track").length)
     ).toBe(0)
 
-    await page.getByRole("button", { name: "More filters" }).click()
+    await page.getByTestId("open-advanced-feed-filters").click()
     const drawer = page.getByTestId("feed-query-drawer")
     const workMode = drawer.getByTestId("feed-facet-work_mode")
     await workMode.locator("summary").click()
