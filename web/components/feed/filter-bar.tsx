@@ -4,28 +4,22 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { SlidersHorizontal } from "lucide-react"
-import type { Track, Decision, SourceOverview } from "@/lib/contract/types"
+import type { Track, Decision } from "@/lib/contract/types"
+import { FEED_SORT_IDS, FEED_SORT_LABELS, FEED_UNAVAILABLE_SORT_GROUPS } from "@/lib/feed-query-state"
+import type { FeedFilterMetadataResponse, FeedSortId } from "@/lib/contract/types"
 
 export interface FeedFilters {
-  track: Track | ""
-  decision: Exclude<Decision, null> | ""
+  track: Track[]
+  decision: Exclude<Decision, null>[]
   minScore: string
   q: string
-  sourceFamily: string
-  sourceId: string
-  activity: string
-  feedback: string
 }
 
 export const EMPTY_FILTERS: FeedFilters = {
-  track: "",
-  decision: "",
+  track: [],
+  decision: [],
   minScore: "",
   q: "",
-  sourceFamily: "",
-  sourceId: "",
-  activity: "to_review",
-  feedback: "",
 }
 
 const TRACKS: Track[] = [
@@ -42,18 +36,18 @@ const DECISIONS: Exclude<Decision, null>[] = [
 ]
 
 const selectClasses =
-  "h-9 rounded-lg border border-input bg-card text-foreground px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+  "h-8 w-40 max-w-full rounded-lg border border-input bg-card text-foreground px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
 
 export function FilterBar({
   filters,
   onChange,
   onOpenFounderFilters,
-  onOpenManualSources,
-  onOpenFacets,
-  onToggleTutoringLane,
-  tutoringActive = false,
-  tutoringDisabled = false,
-  sources,
+  sortBy,
+  onSortChange,
+  onOpenAdvanced,
+  onAdvancedTriggerRef,
+  advancedDisabled = false,
+  metadata,
 }: {
   filters: FeedFilters
   onChange: (next: FeedFilters) => void
@@ -62,34 +56,30 @@ export function FilterBar({
    * the drawer's filters decide what is hidden, ranked, or labelled across
    * every query. */
   onOpenFounderFilters: () => void
-  onOpenManualSources: () => void
-  onOpenFacets?: () => void
-  onToggleTutoringLane?: () => void
-  tutoringActive?: boolean
-  tutoringDisabled?: boolean
-  sources: SourceOverview[]
+  sortBy: FeedSortId
+  onSortChange: (next: FeedSortId) => void
+  onOpenAdvanced: () => void
+  onAdvancedTriggerRef?: (element: HTMLButtonElement | null) => void
+  advancedDisabled?: boolean
+  metadata?: FeedFilterMetadataResponse | null
 }) {
   const hasActiveFilters =
-    filters.track !== "" ||
-    filters.decision !== "" ||
+    filters.track.length > 0 ||
+    filters.decision.length > 0 ||
     filters.minScore !== "" ||
     filters.q !== ""
-    || filters.sourceFamily !== ""
-    || filters.sourceId !== ""
-    || filters.activity !== "to_review"
-    || filters.feedback !== ""
-
-  const families = [...new Set(sources.map((source) => source.source_family))].sort()
-  const familyMeta = new Map(families.map((family) => {
-    const rows = sources.filter((source) => source.source_family === family)
-    return [family, {
-      count: rows.reduce((total, row) => total + (row.manual_only ? 0 : row.opportunity_count), 0),
-      manualOnly: rows.some((row) => row.manual_only),
-    }]
-  }))
-  const sourceIds = sources.filter((source) => source.source_id && !source.manual_only && (!filters.sourceFamily || source.source_family === filters.sourceFamily))
-  const selectedFamily = familyMeta.get(filters.sourceFamily)
-  const allAutomatedCount = sources.reduce((total, row) => total + (row.manual_only ? 0 : row.opportunity_count), 0)
+  const trackValues = [...new Set([...TRACKS, ...(metadata?.facets.track.values.map((option) => option.value as Track) ?? [])])]
+  const decisionValues = [...new Set([...DECISIONS, ...(metadata?.facets.decision.values.map((option) => option.value as Exclude<Decision, null>) ?? [])])]
+  const toggle = <T extends string>(selected: T[], value: T, checked: boolean) => checked ? [...new Set([...selected, value])] : selected.filter((item) => item !== value)
+  const facet = <T extends string>(label: string, selected: T[], values: T[], setSelected: (next: T[]) => void, id: string) => (
+    <details name="primary-feed-facet" data-testid={`filter-facet-${id.replace("filter-", "")}`} className="relative min-w-0 max-w-full">
+      <summary id={id} className={`${selectClasses} flex cursor-pointer list-none items-center`}>{label}{selected.length ? ` (${selected.length})` : ""}</summary>
+      <div className="absolute left-0 z-20 mt-1 max-h-64 w-40 max-w-[calc(100vw-2rem)] overflow-auto rounded-lg border border-border bg-card p-2 shadow-lg">
+        <div className="mb-1 flex justify-end"><Button type="button" size="xs" variant="ghost" onClick={(event) => { setSelected([]); event.currentTarget.closest("details")?.removeAttribute("open") }}>Clear</Button></div>
+        {values.map((value) => <label key={value} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted"><input type="checkbox" checked={selected.includes(value)} onChange={(event) => setSelected(toggle(selected, value, event.target.checked))} />{value}</label>)}
+      </div>
+    </details>
+  )
 
   return (
     <form
@@ -98,48 +88,17 @@ export function FilterBar({
       className="flex flex-wrap items-end gap-3 border-b border-border bg-background px-4 py-3 sm:px-6"
       onSubmit={(e) => e.preventDefault()}
     >
-      <div className="flex flex-col gap-1">
+      <div className="flex min-w-0 max-w-full flex-col gap-1">
         <Label htmlFor="filter-track">Track</Label>
-        <select
-          id="filter-track"
-          className={selectClasses}
-          value={filters.track}
-          onChange={(e) =>
-            onChange({ ...filters, track: e.target.value as FeedFilters["track"] })
-          }
-        >
-          <option value="">All tracks</option>
-          {TRACKS.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
+        {facet("Track", filters.track, trackValues, (track) => onChange({ ...filters, track }), "filter-track")}
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className="flex min-w-0 max-w-full flex-col gap-1">
         <Label htmlFor="filter-decision">Decision</Label>
-        <select
-          id="filter-decision"
-          className={selectClasses}
-          value={filters.decision}
-          onChange={(e) =>
-            onChange({
-              ...filters,
-              decision: e.target.value as FeedFilters["decision"],
-            })
-          }
-        >
-          <option value="">All decisions</option>
-          {DECISIONS.map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
-          ))}
-        </select>
+        {facet("Decision", filters.decision, decisionValues, (decision) => onChange({ ...filters, decision }), "filter-decision")}
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className="flex min-w-0 max-w-full flex-col gap-1">
         <Label htmlFor="filter-min-score">Min score</Label>
         <Input
           id="filter-min-score"
@@ -147,59 +106,56 @@ export function FilterBar({
           inputMode="numeric"
           min={0}
           max={100}
-          className="h-9 w-24"
+          className="h-8 w-24"
           value={filters.minScore}
           onChange={(e) => onChange({ ...filters, minScore: e.target.value })}
         />
       </div>
 
-      <div className="flex flex-1 min-w-[10rem] flex-col gap-1">
+      <div className="flex min-w-[10rem] max-w-full flex-1 flex-col gap-1">
         <Label htmlFor="filter-search">Search</Label>
         <Input
           id="filter-search"
           type="search"
           placeholder="Title or organization"
-          className="h-9"
+          className="h-8"
           value={filters.q}
           onChange={(e) => onChange({ ...filters, q: e.target.value })}
         />
       </div>
 
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="filter-source-family">Source</Label>
-        <select id="filter-source-family" className={selectClasses} value={filters.sourceFamily} onChange={(e) => onChange({ ...filters, sourceFamily: e.target.value, sourceId: "" })}>
-          <option value="">All sources ({allAutomatedCount})</option>
-          {families.map((family) => { const meta = familyMeta.get(family)!; return <option key={family} value={family}>{family} ({meta.manualOnly ? "Manual only · 0 automated" : meta.count})</option> })}
+      <div className="flex min-w-0 max-w-full flex-col gap-1">
+        <Label htmlFor="feed-sort">Sort</Label>
+        <select
+          id="feed-sort"
+          className={selectClasses}
+          value={sortBy}
+          disabled={advancedDisabled}
+          title={advancedDisabled ? "Sort is unavailable on this API adapter" : undefined}
+          onChange={(e) => onSortChange(e.target.value as FeedSortId)}
+        >
+          <optgroup label="Available">
+            {FEED_SORT_IDS.map((sort) => (
+              <option key={sort} value={sort}>{FEED_SORT_LABELS[sort]}</option>
+            ))}
+          </optgroup>
+          {FEED_UNAVAILABLE_SORT_GROUPS.map((group) => (
+            <optgroup key={group.label} label={`${group.label} — unavailable`}>
+              {group.options.map((label) => (
+                <option key={label} disabled title={group.reason}>
+                  {label} — unavailable: {group.reason}
+                </option>
+              ))}
+            </optgroup>
+          ))}
         </select>
       </div>
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="filter-activity">Activity</Label>
-        <select id="filter-activity" data-testid="filter-activity" className={selectClasses} value={filters.activity} onChange={(e) => onChange({ ...filters, activity: e.target.value })}>
-          <option value="to_review">To review</option><option value="any">Any activity</option><option value="applied">Applied</option><option value="snoozed">Snoozed</option><option value="dismissed">Dismissed</option><option value="has_feedback">Has feedback</option>
-        </select>
-      </div>
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="filter-feedback">Feedback</Label>
-        <select id="filter-feedback" data-testid="filter-feedback" className={selectClasses} value={filters.feedback} onChange={(e) => onChange({ ...filters, feedback: e.target.value })}>
-          <option value="">All feedback states</option><option value="good_match">Good match</option><option value="bad_match">Bad match</option><option value="eligibility_wrong">Not eligible</option><option value="irrelevant_role">Wrong track</option><option value="duplicate_issue">Duplicate</option>
-        </select>
-      </div>
-      <Button type="button" variant="outline" size="lg" onClick={onOpenManualSources} data-testid="open-manual-sources-panel">Check manually</Button>
-      {filters.sourceFamily && !selectedFamily?.manualOnly && sourceIds.length > 1 && (
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="filter-source-id">Board</Label>
-          <select id="filter-source-id" className={selectClasses} value={filters.sourceId} onChange={(e) => onChange({ ...filters, sourceId: e.target.value })}>
-            <option value="">All {filters.sourceFamily}</option>
-            {sourceIds.map((source) => <option key={source.source_id!} value={source.source_id!}>{source.source_id} ({source.opportunity_count})</option>)}
-          </select>
-        </div>
-      )}
 
       {hasActiveFilters && (
         <Button
           type="button"
           variant="ghost"
-          size="lg"
+          size="sm"
           onClick={() => onChange(EMPTY_FILTERS)}
         >
           Clear filters
@@ -209,24 +165,26 @@ export function FilterBar({
       <Button
         type="button"
         variant="outline"
-        size="lg"
+        size="sm"
         className="ml-auto"
-        data-testid="open-founder-filters"
         onClick={onOpenFounderFilters}
       >
         <SlidersHorizontal aria-hidden="true" className="size-3.5" />
         Filters
       </Button>
-      {onOpenFacets && (
-        <Button type="button" variant="outline" size="lg" onClick={onOpenFacets} data-testid="open-facets-panel">
-          Facets
-        </Button>
-      )}
-      {onToggleTutoringLane && (
-        <Button type="button" variant={tutoringActive ? "secondary" : "outline"} size="lg" onClick={onToggleTutoringLane} disabled={tutoringDisabled} data-testid="toggle-tutoring-lane" aria-pressed={tutoringActive}>
-          Tutoring Lane
-        </Button>
-      )}
+
+      <Button
+        type="button"
+        ref={onAdvancedTriggerRef}
+        variant="outline"
+        size="sm"
+        data-testid="open-advanced-feed-filters"
+        title={advancedDisabled ? "Advanced filtering is unsupported by this API adapter" : undefined}
+        onClick={onOpenAdvanced}
+      >
+        <SlidersHorizontal aria-hidden="true" className="size-3.5" />
+        More filters
+      </Button>
     </form>
   )
 }
