@@ -2,7 +2,7 @@ name: One-time branch housekeeping
 
 on:
   workflow_run:
-    workflows: ["FR-008 Live Founder Deploy"]
+    workflows: ["OpportunityOS Main Live Deploy"]
     types: [completed]
 
 permissions:
