@@ -231,6 +231,7 @@ export default function FeedPage() {
         source_id: sourceId ? [sourceId] : undefined,
         activity: activity || undefined,
         feedback: feedback || undefined,
+        include_tracked: activity !== "to_review" || query.multi.activity_type.length > 0,
         sort_by: query.sortBy,
         q: query.q || undefined,
         page,
@@ -373,8 +374,8 @@ export default function FeedPage() {
       } else if (e.key === "x") {
         if (current) {
           api.opportunities
-            .submitAction(current.id, "reject", null, crypto.randomUUID())
-            .then((res) => handleActionSubmitted(current.id, res.tracker_state ?? res.action_state, res))
+            .submitAction(current.id, "dismiss", null, crypto.randomUUID())
+            .then((res) => handleActionSubmitted(current.id, res.action_state, res))
         }
       }
     }
@@ -491,7 +492,12 @@ export default function FeedPage() {
     [dashboard]
   )
 
-  const hasActiveFilters = hasActiveFeedQuery(query)
+  const hasActiveFilters =
+    hasActiveFeedQuery(query) ||
+    sourceFamily !== "" ||
+    sourceId !== "" ||
+    activity !== "to_review" ||
+    feedback !== ""
 
   const workerIdle =
     !!sources && sources.length > 0 && sources.every((s) => s.last_poll === null)
@@ -604,6 +610,10 @@ export default function FeedPage() {
           hasActiveFilters ? (
             <NoFilterMatchesState
               onClear={() => {
+                setSourceFamily("")
+                setSourceId("")
+                setActivity("to_review")
+                setFeedback("")
                 setPage(1)
                 handleQueryChange(EMPTY_FEED_QUERY)
               }}
@@ -634,7 +644,7 @@ export default function FeedPage() {
               {batchPending && <span role="status" className="w-full text-xs">Updating selected jobs…</span>}
               {batchStatus && <p role="status" data-testid="batch-action-status" className="w-full break-words text-xs">{batchStatus}</p>}
             </div>
-            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <ul className="grid auto-rows-fr grid-cols-1 items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {items?.map((o, idx) => (
                 <OpportunityCard
                   key={o.id}
