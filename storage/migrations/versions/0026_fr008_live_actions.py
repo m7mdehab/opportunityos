@@ -280,6 +280,72 @@ $function$;
     )
 
 
+    op.execute(
+        r"""
+CREATE OR REPLACE VIEW public.founder_activity_state AS
+WITH latest_event AS (
+  SELECT DISTINCT ON (e.opportunity_id)
+    e.opportunity_id, e.action_type, e.resulting_state, e.snoozed_until, e.created_at
+  FROM public.founder_activity_events e
+  ORDER BY e.opportunity_id, e.created_at DESC, e.id DESC
+), latest_feedback AS (
+  SELECT DISTINCT ON (f.opportunity_id)
+    f.opportunity_id, f.feedback_label, f.created_at AS feedback_updated_at
+  FROM public.founder_feedback f
+  ORDER BY f.opportunity_id, f.created_at DESC, f.id DESC
+), feedback_counts AS (
+  SELECT opportunity_id, count(*)::integer AS feedback_count
+  FROM public.founder_feedback
+  GROUP BY opportunity_id
+), legacy_applied AS (
+  SELECT DISTINCT opportunity_id
+  FROM public.outbound_actions
+  WHERE candidate_id='founder'
+    AND adapter_name='founder_attested'
+    AND action_status='submitted'
+)
+SELECT
+  o.id AS opportunity_id,
+  CASE
+    WHEN le.action_type='snooze' AND le.snoozed_until IS NOT NULL
+      AND le.snoozed_until > CURRENT_DATE THEN 'snoozed'
+    WHEN le.action_type IN ('save','mark_applied','reject','dismiss') THEN le.resulting_state
+    WHEN le.action_type='restore' THEN le.resulting_state
+    WHEN le.action_type IN ('snooze','clear') THEN NULL
+    ELSE NULL
+  END::varchar AS action_state,
+  CASE
+    WHEN le.action_type='snooze' AND le.snoozed_until > CURRENT_DATE
+      THEN le.snoozed_until::timestamp without time zone
+    ELSE NULL
+  END AS snoozed_until,
+  le.created_at AS action_updated_at,
+  lf.feedback_label,
+  coalesce(fc.feedback_count,0) AS feedback_count,
+  lf.feedback_updated_at,
+  le.opportunity_id IS NOT NULL
+    OR la.opportunity_id IS NOT NULL
+    OR coalesce(fc.feedback_count,0) > 0 AS has_activity
+FROM public.opportunities o
+LEFT JOIN latest_event le ON le.opportunity_id=o.id::text
+LEFT JOIN latest_feedback lf ON lf.opportunity_id::text=o.id::text
+LEFT JOIN feedback_counts fc ON fc.opportunity_id::text=o.id::text
+LEFT JOIN legacy_applied la ON la.opportunity_id::text=o.id::text
+WHERE public.opos_is_founder();
+"""
+    )
+
+    op.execute(
+        """CREATE OR REPLACE VIEW public.founder_feed_fr008
+           WITH (security_invoker = true)
+           AS
+           SELECT f.*,
+                  CASE WHEN f.work_mode='remote' THEN 0 ELSE 1 END AS remote_rank
+           FROM public.founder_feed_activity f"""
+    )
+    op.execute("GRANT SELECT ON public.founder_feed_fr008 TO authenticated")
+
+
 def downgrade() -> None:
     op.execute("DROP FUNCTION IF EXISTS public.founder_restore_action(text,text)")
     # Keep the wider CHECKs on downgrade to avoid making already-written FR-008
