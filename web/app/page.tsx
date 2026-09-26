@@ -6,7 +6,6 @@ import { HeaderStrip } from "@/components/feed/header-strip"
 import { FilterBar, type FeedFilters } from "@/components/feed/filter-bar"
 import { FeedQueryChips, FeedQueryDrawer } from "@/components/feed/feed-query-drawer"
 import { OpportunityCard } from "@/components/feed/opportunity-card"
-import { TrackerView } from "@/components/feed/tracker-view"
 import { DetailDrawer } from "@/components/feed/detail-drawer"
 import { FiltersDrawer } from "@/components/feed/filters-drawer"
 import { FacetsPanel } from "@/components/feed/facets-panel"
@@ -26,7 +25,6 @@ import {
 import { api } from "@/lib/api/client"
 import { ApiError } from "@/lib/contract/types"
 import type { ActionResponse, FeedFilterMetadataResponse, FeedQueryState } from "@/lib/contract/types"
-import { notifyTrackerActivityChanged } from "@/lib/tracker-activity"
 import {
   EMPTY_FEED_QUERY,
   hasActiveFeedQuery,
@@ -71,8 +69,6 @@ export default function FeedPage() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedActionState, setSelectedActionState] = useState<ActionState>(null)
-  const [activeWorkspace, setActiveWorkspace] = useState<"jobs" | "tracker">("jobs")
-  const [trackerRefreshKey, setTrackerRefreshKey] = useState(0)
   const [polling, setPolling] = useState(false)
   const [undoNotice, setUndoNotice] = useState<UndoNotice | null>(null)
   const [undoError, setUndoError] = useState<string | null>(null)
@@ -399,7 +395,6 @@ export default function FeedPage() {
     setUndoError(null)
     setItems((prev) => prev?.filter((o) => o.id !== id) ?? prev)
     if (wasInToReview) setTotal((previous) => Math.max(0, previous - 1))
-    setTrackerRefreshKey((previous) => previous + 1)
     refreshDashboard()
     refreshFromFirstPage()
   }
@@ -412,7 +407,6 @@ export default function FeedPage() {
     try {
       const response = await api.opportunities.submitAction(id, type, null, crypto.randomUUID())
       handleActionSubmitted(id, response.tracker_state ?? response.action_state, response)
-      notifyTrackerActivityChanged()
       setSelectedJobs((current) => { const next = new Set(current); next.delete(id); return next })
       return true
     } catch (failure) {
@@ -454,10 +448,8 @@ export default function FeedPage() {
       )
       if (undoNotice.opportunityId === selectedId) setSelectedActionState(response.action_state)
       setUndoNotice(null)
-      setTrackerRefreshKey((previous) => previous + 1)
-      refreshDashboard()
+        refreshDashboard()
       refreshFromFirstPage()
-      notifyTrackerActivityChanged()
     } catch (failure) {
       const detail = failure instanceof ApiError && failure.body && typeof failure.body === "object" && "detail" in failure.body && typeof failure.body.detail === "string"
         ? failure.body.detail
@@ -507,25 +499,12 @@ export default function FeedPage() {
         onMetricDateChange={(date) => { setMetricDate(date); setMetricPeriod("date") }}
       />
 
-      <nav aria-label="Opportunity workspace" className="flex flex-wrap gap-2 border-b border-border bg-background px-4 py-2 sm:px-6">
-        <Button
-          type="button"
-          size="sm"
-          variant={activeWorkspace === "jobs" ? "default" : "outline"}
-          aria-pressed={activeWorkspace === "jobs"}
-          data-testid="workspace-jobs"
-          onClick={() => setActiveWorkspace("jobs")}
-        >
-          Jobs / To Review
-        </Button>
-      </nav>
-
       {/* Master's addition #1: the >10% over-hiding warning must be
           visible, not just a tested pure function. See
           lib/format/over-hiding.ts for what this is derived from. */}
-      {activeWorkspace === "jobs" && overHidingWarning && <OverHidingWarningBanner warning={overHidingWarning} />}
+      {overHidingWarning && <OverHidingWarningBanner warning={overHidingWarning} />}
 
-      {truth && activeWorkspace === "jobs" && (
+      {truth && (
         <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-4 py-2 sm:px-6">
           <FilterBar
             filters={filters}
@@ -583,8 +562,8 @@ export default function FeedPage() {
         </div>
       )}
 
-      {activeWorkspace === "jobs" && <FeedQueryChips value={query} onChange={handleQueryChange} />}
-      {activeWorkspace === "jobs" && feedMetadataError && (
+      <FeedQueryChips value={query} onChange={handleQueryChange} />
+      {feedMetadataError && (
         <p role="status" className="border-b border-amber-600/30 bg-amber-50 px-4 py-2 text-xs text-amber-950 dark:bg-amber-950/20 dark:text-amber-100 sm:px-6">
           Advanced feed filtering is unsupported by this API adapter: {feedMetadataError} Track, decision, fit minimum, and search remain available.
         </p>
@@ -600,15 +579,6 @@ export default function FeedPage() {
           </div>
         )}
         {undoError && !selectedId && <p role="alert" data-testid="tracker-undo-error" className="mb-4 text-sm text-destructive">{undoError}</p>}
-        {activeWorkspace === "tracker" ? (
-          <TrackerView
-            refreshKey={trackerRefreshKey}
-            onOpen={(item) => {
-              setSelectedActionState(item.tracker_state ?? item.action_state)
-              setSelectedId(item.id)
-            }}
-          />
-        ) : <>
         {truth && !truth.loaded && (
           truth.validator.error_count > 0 ? (
             <InvalidTruthPackState findings={truth.validator.findings} />
@@ -749,7 +719,6 @@ export default function FeedPage() {
             </Button>
           </div>
         )}
-        </>}
       </main>
 
       <FiltersDrawer
