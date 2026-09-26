@@ -1,0 +1,27 @@
+name: FR-008 W7.5 Live Founder Deploy
+
+on:
+  push:
+    branches:
+      - release/fr008-w75-production
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-live-founder:
+    uses: ./.github/workflows/fr007-cloudflare-staging-deploy.yml
+    with:
+      mode: DEPLOY_STAGING
+      acknowledge_staging_deployment: true
+      ref: ${{ github.sha }}
+    secrets: inherit
+
+  smoke-live-founder:
+    needs: deploy-live-founder
+    uses: ./.github/workflows/fr007-cloudflare-staging-deploy.yml
+    with:
+      mode: SMOKE_STAGING
+      acknowledge_staging_deployment: false
+      ref: ${{ github.sha }}
+    secrets: inherit
