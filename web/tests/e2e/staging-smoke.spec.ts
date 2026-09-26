@@ -202,6 +202,9 @@ test.describe("Cloudflare staging hosted smoke", () => {
       );
       expect(restored.ok, `batch restore returned ${restored.status}`).toBe(true);
     }
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "OpportunityOS" })).toBeVisible();
+    await expect(page.getByTestId(`opportunity-card-${batchIds[0]}`)).toBeVisible();
 
     // 5b. Hosted cold/warm feed SLO and logical-equivalence proof.
     // This smoke runs immediately after a fresh Cloudflare deployment. The
