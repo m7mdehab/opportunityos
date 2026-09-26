@@ -71,7 +71,13 @@ def _to_utc_naive(value: datetime) -> datetime:
 
 
 def _dimension_scores_to_json(evaluation: MatchEvaluation) -> str:
-    """Serialize every ``MatchDimensionScore`` verbatim (all documented fields)."""
+    """Persist only dimension fields consumed by runtime/API contracts.
+
+    Full per-dimension strengths/gaps/unknowns and evidence/field references
+    are deterministic scorer output and duplicate evaluation-level detail and
+    reasons. The Founder API reads the numeric fields and explanation; the
+    premium compensation filter additionally reads stable signal_tags.
+    """
     payload = [
         {
             "dimension_name": ds.dimension_name,
@@ -79,17 +85,11 @@ def _dimension_scores_to_json(evaluation: MatchEvaluation) -> str:
             "weight": ds.weight,
             "weighted_score": ds.weighted_score,
             "explanation": ds.explanation,
-            "strengths": list(ds.strengths),
-            "gaps": list(ds.gaps),
-            "unknowns": list(ds.unknowns),
-            "evidence_refs": list(ds.evidence_refs),
-            "opportunity_field_refs": list(ds.opportunity_field_refs),
             "signal_tags": list(ds.signal_tags),
         }
         for ds in evaluation.dimension_scores
     ]
-    return json.dumps(payload, sort_keys=True)
-
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
 
 def _build_reasons(evaluation: MatchEvaluation) -> list[dict[str, Any]]:
     """Build a machine-readable, structured list of top reasons.
