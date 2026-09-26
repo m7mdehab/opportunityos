@@ -66,7 +66,7 @@ def _state(*, database_bytes: int = 14_101_651, opportunities: int = 40, coverag
             "expired_leases": 0,
             "oldest_due_age_seconds": None,
         },
-        "database_revision": "0025_current_feed_fast_path",
+        "database_revision": "0026_fr008_live_actions",
     }
 
 
