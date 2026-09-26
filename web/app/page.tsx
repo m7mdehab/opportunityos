@@ -58,10 +58,6 @@ export default function FeedPage() {
   const [metricDate, setMetricDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [sources, setSources] = useState<SourceHealth[] | null>(null)
   const [sourceOverview, setSourceOverview] = useState<SourceOverview[]>([])
-  const [sourceFamily, setSourceFamily] = useState("")
-  const [sourceId, setSourceId] = useState("")
-  const [activity, setActivity] = useState("to_review")
-  const [feedback, setFeedback] = useState("")
 
   const [query, setQuery] = useState<FeedQueryState>(EMPTY_FEED_QUERY)
   const [queryReady, setQueryReady] = useState(false)
@@ -172,10 +168,10 @@ export default function FeedPage() {
     decision: query.decision as FeedFilters["decision"],
     minScore: query.scoreRanges.fit_score.min,
     q: query.q,
-    sourceFamily,
-    sourceId,
-    activity,
-    feedback,
+    sourceFamily: query.sourceFamily,
+    sourceId: query.multi.source_id,
+    activity: query.multi.activity_type,
+    feedback: query.multi.feedback_label,
   }
 
   const handleQueryChange = useCallback((next: FeedQueryState) => {
@@ -227,11 +223,8 @@ export default function FeedPage() {
         posted_from: query.postedFrom || undefined,
         posted_to: query.postedTo || undefined,
         ...query.multi,
-        source_family: sourceFamily || undefined,
-        source_id: sourceId ? [sourceId] : undefined,
-        activity: activity || undefined,
-        feedback: feedback || undefined,
-        include_tracked: activity !== "to_review" || query.multi.activity_type.length > 0,
+        source_family: query.sourceFamily.length ? query.sourceFamily : undefined,
+        include_tracked: query.multi.activity_type.length > 0,
         sort_by: query.sortBy,
         q: query.q || undefined,
         page,
@@ -254,7 +247,7 @@ export default function FeedPage() {
         setListError(detail)
       })
       .finally(() => setListLoading(false))
-  }, [query, sourceFamily, sourceId, activity, feedback, page, router])
+  }, [query, page, router])
 
   const refreshFromFirstPage = useCallback(() => {
     if (page === 1) refreshList()
@@ -492,12 +485,7 @@ export default function FeedPage() {
     [dashboard]
   )
 
-  const hasActiveFilters =
-    hasActiveFeedQuery(query) ||
-    sourceFamily !== "" ||
-    sourceId !== "" ||
-    activity !== "to_review" ||
-    feedback !== ""
+  const hasActiveFilters = hasActiveFeedQuery(query)
 
   const workerIdle =
     !!sources && sources.length > 0 && sources.every((s) => s.last_poll === null)
@@ -535,15 +523,18 @@ export default function FeedPage() {
             filters={filters}
             sources={sourceOverview}
             onChange={(nextFilters) => {
-              setSourceFamily(nextFilters.sourceFamily)
-              setSourceId(nextFilters.sourceId)
-              setActivity(nextFilters.activity)
-              setFeedback(nextFilters.feedback)
               handleQueryChange({
                 ...query,
                 track: nextFilters.track,
                 decision: nextFilters.decision,
+                sourceFamily: nextFilters.sourceFamily,
                 q: nextFilters.q,
+                multi: {
+                  ...query.multi,
+                  source_id: nextFilters.sourceId,
+                  activity_type: nextFilters.activity,
+                  feedback_label: nextFilters.feedback,
+                },
                 scoreRanges: { ...query.scoreRanges, fit_score: { ...query.scoreRanges.fit_score, min: nextFilters.minScore } },
               })
             }}
@@ -615,10 +606,6 @@ export default function FeedPage() {
           hasActiveFilters ? (
             <NoFilterMatchesState
               onClear={() => {
-                setSourceFamily("")
-                setSourceId("")
-                setActivity("to_review")
-                setFeedback("")
                 setPage(1)
                 handleQueryChange(EMPTY_FEED_QUERY)
               }}
