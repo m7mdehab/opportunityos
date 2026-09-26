@@ -76,12 +76,6 @@ class CertificationState(_StringEnum):
     PLANNED = "planned"
 
 
-class TargetRoleTier(_StringEnum):
-    PRIMARY = "primary"
-    ADJACENT = "adjacent"
-    STRETCH = "stretch"
-
-
 class EngagementType(_StringEnum):
     FIXED_PRICE = "fixed_price"
     TIME_AND_MATERIALS = "time_and_materials"
@@ -301,21 +295,6 @@ class WorkAuthorization:
 
 
 @dataclass(frozen=True, slots=True)
-class TargetRoleRecord:
-    id: str
-    title: str
-    evidence_ids: tuple[str, ...]
-    tier: TargetRoleTier | None = None
-
-    def __post_init__(self) -> None:
-        _require_identifier(self.id)
-        _require_text(self.title, "title")
-        _validate_evidence_ids(self.evidence_ids)
-        if self.tier is not None and not isinstance(self.tier, TargetRoleTier):
-            raise ValueError("tier must be a TargetRoleTier or None")
-
-
-@dataclass(frozen=True, slots=True)
 class RedLineRule:
     id: str
     pattern: str
@@ -511,7 +490,6 @@ class CareerProfile:
     skills: tuple[SkillRecord, ...] = ()
     languages: tuple[LanguageRecord, ...] = ()
     work_authorizations: tuple[WorkAuthorization, ...] = ()
-    target_roles: tuple[TargetRoleRecord, ...] = ()
     approved_summaries: tuple[str, ...] = ()
     red_lines: tuple[RedLineRule, ...] = ()
     never_claims: tuple[NeverClaimRule, ...] = ()
@@ -521,7 +499,7 @@ class CareerProfile:
         _validate_evidence_ids(self.evidence_ids, allow_empty=True)
         for name in (
             "employment", "education", "certifications", "skills", "languages",
-            "work_authorizations", "target_roles", "approved_summaries", "red_lines", "never_claims",
+            "work_authorizations", "approved_summaries", "red_lines", "never_claims",
         ):
             if not isinstance(getattr(self, name), tuple):
                 raise ValueError(f"{name} must be an immutable tuple")
@@ -771,10 +749,6 @@ CANONICAL_MATERIAL_MANIFEST: tuple[MaterialFieldSpec, ...] = (
     MaterialFieldSpec(WorkAuthorization, "status", "work_authorization.status"),
     MaterialFieldSpec(WorkAuthorization, "expiry_date", "work_authorization.expiry_date", optional=True),
 
-    # Founder-declared employment target roles
-    MaterialFieldSpec(TargetRoleRecord, "title", "career.target_role"),
-    MaterialFieldSpec(TargetRoleRecord, "tier", "career.target_role_tier", optional=True),
-
     # ServiceRecord
     MaterialFieldSpec(ServiceRecord, "name", "service.name"),
     MaterialFieldSpec(ServiceRecord, "description", "service.description"),
@@ -807,7 +781,6 @@ CANONICAL_MATERIAL_MANIFEST: tuple[MaterialFieldSpec, ...] = (
     MaterialFieldSpec(CareerProfile, "skills", "career_profile.skills", is_nested_entity=True, optional=True),
     MaterialFieldSpec(CareerProfile, "languages", "career_profile.languages", is_nested_entity=True, optional=True),
     MaterialFieldSpec(CareerProfile, "work_authorizations", "career_profile.work_authorizations", is_nested_entity=True, optional=True),
-    MaterialFieldSpec(CareerProfile, "target_roles", "career_profile.target_roles", is_nested_entity=True, optional=True),
     MaterialFieldSpec(CareerProfile, "red_lines", "career_profile.red_lines", is_nested_entity=True, optional=True),
     MaterialFieldSpec(CareerProfile, "never_claims", "career_profile.never_claims", is_nested_entity=True, optional=True),
 
