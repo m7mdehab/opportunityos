@@ -2690,7 +2690,13 @@ function mockFacetValue(o: SeedOpportunity, facet: FeedFacetId): string {
   let raw: string | null | undefined
   switch (facet) {
     case "feedback_label": raw = o.feedback_label; break
-    case "activity_type": raw = o.action_state; break
+    case "activity_type":
+      if (o.action_state === "saved") return "save"
+      if (o.action_state === "applied" || o.action_state === "submitted") return "mark_applied"
+      if (o.action_state === "rejected_by_founder" || o.action_state === "dismissed") return "reject"
+      if (o.action_state === "snoozed") return "snooze"
+      raw = null
+      break
     case "track": return o.track
     case "decision": raw = o.decision; break
     case "work_mode": raw = extraction.work_mode; break
