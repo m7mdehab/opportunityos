@@ -118,6 +118,6 @@ jobs:
 
 
 
-# W22.5 isolated recovery retry trigger.
+# A reviewed change to this workflow intentionally triggers one bounded normal recovery drain on main.
 
 
