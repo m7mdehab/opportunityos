@@ -129,6 +129,7 @@ export const FEED_UNAVAILABLE_FILTERS: FeedUnavailableFilter[] = [
 export const EMPTY_FEED_QUERY: FeedQueryState = {
   track: [],
   decision: [],
+  sourceFamily: [],
   q: "",
   multi: {
     feedback_label: [],
@@ -163,6 +164,7 @@ export interface FeedQueryPageState {
 const QUERY_KEYS = [
   "track",
   "decision",
+  "source_family",
   "q",
   "min_score",
   "max_score",
@@ -229,6 +231,7 @@ export function parseFeedQueryParams(params: URLSearchParams): FeedQueryPageStat
     },
     track: [...new Set(params.getAll("track").filter(Boolean))],
     decision: [...new Set(params.getAll("decision").filter(Boolean))],
+    sourceFamily: [...new Set(params.getAll("source_family").filter(Boolean))],
     q: params.get("q") ?? "",
     postedFrom: validDate(params.get("posted_from")),
     postedTo: validDate(params.get("posted_to")),
@@ -251,6 +254,7 @@ export function buildFeedQueryParams(
 
   for (const value of filters.track) params.append("track", value)
   for (const value of filters.decision) params.append("decision", value)
+  for (const value of filters.sourceFamily) params.append("source_family", value)
   add("q", filters.q.trim())
   add("min_score", filters.scoreRanges.fit_score.min)
   add("min_fit_score", filters.scoreRanges.fit_score.min)
@@ -293,6 +297,7 @@ export function hasActiveFeedQuery(filters: FeedQueryState): boolean {
   return Boolean(
     filters.track.length > 0 ||
       filters.decision.length > 0 ||
+      filters.sourceFamily.length > 0 ||
       filters.q.trim() ||
       filters.postedFrom ||
       filters.postedTo ||
