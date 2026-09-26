@@ -91,6 +91,57 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole("heading", { name: "OpportunityOS" })).toBeVisible();
 
+    // 4b. FR-008 live review controls are present and genuinely multi-select.
+    const trackFacet = page.getByTestId("filter-facet-track");
+    await expect(trackFacet).toBeVisible();
+    await trackFacet.locator("summary").click();
+    const employmentTrack = trackFacet.getByRole("checkbox", { name: "employment", exact: true });
+    const contractTrack = trackFacet.getByRole("checkbox", { name: "contract", exact: true });
+    await employmentTrack.check();
+    await contractTrack.check();
+    await expect(employmentTrack).toBeChecked();
+    await expect(contractTrack).toBeChecked();
+    await expect.poll(() =>
+      page.evaluate(() => new URLSearchParams(window.location.search).getAll("track").length)
+    ).toBe(2);
+    await page.getByRole("button", { name: "Clear filters" }).click();
+    await expect.poll(() =>
+      page.evaluate(() => new URLSearchParams(window.location.search).getAll("track").length)
+    ).toBe(0);
+
+    // 4c. Card multi-select and batch toolbar must be visible on the hosted UI.
+    await expect(page.getByRole("button", { name: "Select all visible" })).toBeVisible();
+    await page.getByRole("button", { name: "Select all visible" }).click();
+    await expect(page.getByTestId("batch-action-toolbar")).toBeVisible();
+    const selectionBoxes = page.locator('input[type="checkbox"][aria-label^="Select "]');
+    expect(await selectionBoxes.count()).toBeGreaterThan(0);
+    await expect(selectionBoxes.first()).toBeChecked();
+    await page.getByRole("button", { name: "Clear selection" }).click();
+    await expect(page.getByTestId("batch-action-toolbar")).toHaveCount(0);
+
+    // 4d. Prove one hosted Save round-trip and immediately Undo it so the
+    // founder-visible review state is restored after the smoke.
+    const quickSave = page.locator('[data-testid^="quick-save-"]').first();
+    await expect(quickSave).toBeVisible();
+    const [saveResponse] = await Promise.all([
+      page.waitForResponse((response) =>
+        response.request().method() === "POST" &&
+        response.url().includes("/actions")
+      ),
+      quickSave.click(),
+    ]);
+    expect(saveResponse.status(), await saveResponse.text()).toBe(200);
+    await expect(page.getByTestId("tracker-undo-notice")).toBeVisible();
+    const [undoResponse] = await Promise.all([
+      page.waitForResponse((response) =>
+        response.request().method() === "POST" &&
+        response.url().includes("/restore")
+      ),
+      page.getByTestId("undo-tracker-action").click(),
+    ]);
+    expect(undoResponse.status(), await undoResponse.text()).toBe(200);
+    await expect(page.getByTestId("tracker-undo-notice")).toHaveCount(0);
+
     // 5. Feed endpoint returns exact contract
     const firstPage = await pageJson<{
       page: number;
