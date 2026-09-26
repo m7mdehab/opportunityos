@@ -201,6 +201,28 @@ test.describe("Cloudflare staging hosted smoke", () => {
     expect(await page.getByTestId("filter-facet-track").locator('input[type="checkbox"]').count()).toBeGreaterThan(1);
     await page.getByTestId("filter-facet-track").locator("summary").click();
 
+    const sourceFamilyFacet = page.getByTestId("filter-facet-source-family");
+    const activityFacet = page.getByTestId("filter-facet-activity");
+    const feedbackFacet = page.getByTestId("filter-facet-feedback");
+    for (const facet of [sourceFamilyFacet, activityFacet, feedbackFacet]) {
+      await expect(facet).toBeVisible();
+      await facet.locator("summary").click();
+      expect(await facet.locator('input[type="checkbox"]').count()).toBeGreaterThan(1);
+      await facet.locator("summary").click();
+    }
+
+    // Prove the primary Source checklist uses repeated live query params, not
+    // a single-select facade. Clear immediately so the rest of smoke remains
+    // corpus-neutral.
+    await sourceFamilyFacet.locator("summary").click();
+    const sourceFamilyBoxes = sourceFamilyFacet.locator('input[type="checkbox"]');
+    await sourceFamilyBoxes.nth(0).check();
+    await sourceFamilyBoxes.nth(1).check();
+    await expect.poll(() =>
+      page.evaluate(() => new URLSearchParams(window.location.search).getAll("source_family").length)
+    ).toBe(2);
+    await page.getByRole("button", { name: "Clear filters" }).click();
+
     await page.getByTestId("open-advanced-feed-filters").click();
     const advancedDrawer = page.getByTestId("feed-query-drawer");
     await expect(advancedDrawer).toBeVisible();
