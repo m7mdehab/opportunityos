@@ -40,8 +40,6 @@ from .models import (
     RelationType,
     ServiceRecord,
     SkillRecord,
-    TargetRoleRecord,
-    TargetRoleTier,
     TypedRelation,
     VerificationStatus,
     WorkAuthorization,
@@ -468,7 +466,7 @@ def parse_career_profile(value: Any) -> CareerProfile:
     data = _mapping(value, "career_profile")
     optional = {
         "evidence_ids", "employment", "education", "certifications", "skills", "languages",
-        "work_authorizations", "target_roles", "approved_summaries", "red_lines", "never_claims",
+        "work_authorizations", "approved_summaries", "red_lines", "never_claims",
     }
     _validate_keys(data, "career_profile", required={"id"}, optional=optional)
     return CareerProfile(
@@ -479,22 +477,9 @@ def parse_career_profile(value: Any) -> CareerProfile:
         skills=tuple(parse_skill(item) for item in _tuple(data.get("skills"), "career_profile.skills")),
         languages=tuple(parse_language(item) for item in _tuple(data.get("languages"), "career_profile.languages")),
         work_authorizations=tuple(parse_work_authorization(item) for item in _tuple(data.get("work_authorizations"), "career_profile.work_authorizations")),
-        target_roles=tuple(parse_target_role(item) for item in _tuple(data.get("target_roles"), "career_profile.target_roles")),
         approved_summaries=_strings(data.get("approved_summaries"), "career_profile.approved_summaries"),
         red_lines=tuple(parse_red_line(item) for item in _tuple(data.get("red_lines"), "career_profile.red_lines")),
         never_claims=tuple(parse_never_claim(item) for item in _tuple(data.get("never_claims"), "career_profile.never_claims")),
-    )
-
-
-def parse_target_role(value: Any) -> TargetRoleRecord:
-    data = _mapping(value, "target_role")
-    _validate_keys(data, "target_role", required={"id", "title", "evidence_ids"}, optional={"tier"})
-    tier = data.get("tier")
-    return TargetRoleRecord(
-        id=data["id"],
-        title=data["title"],
-        evidence_ids=_strings(data["evidence_ids"], "target_role.evidence_ids"),
-        tier=None if tier is None else _enum(TargetRoleTier, tier, "target_role.tier"),
     )
 
 
