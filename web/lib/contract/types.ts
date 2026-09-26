@@ -428,7 +428,7 @@ export interface FeedbackResponse {
   created_at: string
 }
 
-export type ActionType = "save" | "mark_applied" | "reject" | "dismiss" | "snooze" | "set_stage"
+export type ActionType = "save" | "mark_applied" | "reject" | "dismiss" | "snooze" | "clear" | "set_stage"
 
 export interface ActionResponse {
   opportunity_id: string
