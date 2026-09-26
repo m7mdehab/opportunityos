@@ -59,7 +59,9 @@ test.describe("Cloudflare staging hosted smoke", () => {
     // reloads, and 20 sequential live feed SLO samples. The default 30s
     // Playwright budget is therefore smaller than the work the test itself
     // requires even when every individual feed request satisfies the 1.5s SLO.
-    test.setTimeout(120_000);
+    // Hosted evidence also continues through artifact, tracker, source-health,
+    // logout, and mobile checks after the 20-sample SLO block.
+    test.setTimeout(300_000);
     // 1. Unauthenticated root access redirects to login gate
     await page.goto("/");
     await expect(page).toHaveURL(/\/login$/);
