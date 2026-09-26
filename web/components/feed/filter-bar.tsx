@@ -79,7 +79,7 @@ function ChecklistFacet<T extends string>({
   formatValue?: (value: T) => string
 }) {
   return (
-    <details data-testid={`filter-facet-${id}`} className="relative min-w-0 max-w-full">
+    <details name="feed-quick-facet" data-testid={`filter-facet-${id}`} className="relative min-w-0 max-w-full">
       <summary
         id={`filter-${id}`}
         className={`${selectClasses} flex cursor-pointer list-none items-center justify-between gap-2`}
@@ -194,6 +194,7 @@ export function FilterBar({
     .filter((sourceId): sourceId is string => Boolean(sourceId))
   const activityValues = [
     ...new Set([
+      "any",
       "save",
       "mark_applied",
       "reject",
@@ -216,6 +217,8 @@ export function FilterBar({
   ].sort()
   const humanize = (value: string) =>
     value.replaceAll("_", " ").replace(/^./, (character) => character.toUpperCase())
+  const formatActivity = (value: string) =>
+    value === "any" ? "Any activity" : humanize(value)
 
   return (
     <form
@@ -293,8 +296,17 @@ export function FilterBar({
           selected={filters.activity}
           values={activityValues}
           emptyLabel="To review"
-          formatValue={humanize}
-          onChange={(activity) => onChange({ ...filters, activity })}
+          formatValue={formatActivity}
+          onChange={(activity) => {
+            const selectedAny = activity.includes("any")
+            const previouslyAny = filters.activity.includes("any")
+            const normalized = selectedAny && !previouslyAny
+              ? ["any"]
+              : previouslyAny
+                ? activity.filter((value) => value !== "any")
+                : activity
+            onChange({ ...filters, activity: normalized })
+          }}
         />
       </div>
 
