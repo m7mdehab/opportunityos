@@ -40,7 +40,7 @@ from storage.models import (
 
 POPULATION = 26_000
 DATABASE_HARD_BUDGET = 200 * 1024 * 1024
-EXPECTED_HEAD = "0025_current_feed_fast_path"
+EXPECTED_HEAD = "0026_fr008_live_actions"
 SUCCESSFUL_CORPUS_SOURCE_ID = "__successful_corpus__"
 INSERT_BATCH_SIZE = 1000
 _benchmark_metadata = MetaData()
