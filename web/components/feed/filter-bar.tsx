@@ -368,7 +368,13 @@ export function FilterBar({
           type="button"
           variant="ghost"
           size="lg"
-          onClick={() => onChange(EMPTY_FILTERS)}
+          onClick={(event) => {
+            event.currentTarget
+              .closest("form")
+              ?.querySelectorAll<HTMLDetailsElement>('details[name="feed-quick-facet"][open]')
+              .forEach((details) => details.removeAttribute("open"))
+            onChange(EMPTY_FILTERS)
+          }}
         >
           Clear filters
         </Button>
