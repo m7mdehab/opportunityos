@@ -11,6 +11,9 @@ import type { OpportunityListItem } from "@/lib/contract/types"
 
 const ACTION_STATE_LABEL: Record<string, string> = {
   submitted: "Applied",
+  applied: "Applied",
+  saved: "Saved",
+  rejected_by_founder: "Rejected",
   dismissed: "Dismissed",
   snoozed: "Snoozed",
 }
@@ -51,8 +54,19 @@ export const OpportunityCard = forwardRef<
      * whether the drawer is open. Purely a visual/focus-management concern
      * — never sent to the API. */
     keyboardFocused?: boolean
+    selected?: boolean
+    onSelectedChange?: (selected: boolean) => void
+    onTriageAction?: (action: "save" | "mark_applied" | "reject") => void
+    triagePending?: boolean
+    triageError?: string | null
   }
->(function OpportunityCard({ opportunity, onOpen, keyboardFocused = false }, ref) {
+>(function OpportunityCard({
+  opportunity,
+  onOpen,
+  keyboardFocused = false,
+  selected = false,
+  onSelectedChange,
+}, ref) {
   const o = opportunity
   const isHidden = o.hidden_by.length > 0
   const domain = employerDomain(o.source_url)
@@ -200,7 +214,21 @@ export const OpportunityCard = forwardRef<
         </div>
       </button>
       <footer className="flex items-center justify-between gap-2 border-t border-border/70 px-4 py-2 text-[11px] text-muted-foreground">
-        <span className="truncate">{domain ?? "Original source"}</span>
+        <div className="flex min-w-0 items-center gap-2">
+          {onSelectedChange && (
+            <label className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap">
+              <input
+                aria-label={`Select ${o.title}`}
+                type="checkbox"
+                checked={selected}
+                onChange={(event) => onSelectedChange(event.target.checked)}
+                className="size-4 accent-primary"
+              />
+              Select
+            </label>
+          )}
+          <span className="truncate">{domain ?? "Original source"}</span>
+        </div>
         <a
           data-testid={`quick-apply-${o.id}`}
           href={o.source_url}
