@@ -57,7 +57,43 @@ export type Decision = "qualified" | "ineligible" | "uncertain" | null
 
 export type ConstraintOutcome = "PASS" | "FAIL" | "UNKNOWN"
 
-export type ActionState = "submitted" | "dismissed" | "snoozed" | null
+export type TrackerState =
+  | "to_review"
+  | "saved"
+  | "applied"
+  | "recruiter_screen"
+  | "assessment"
+  | "interviewing"
+  | "final_interview"
+  | "offer"
+  | "accepted"
+  | "rejected_by_founder"
+  | "rejected_by_employer"
+  | "withdrawn"
+  | "no_response"
+  | "position_closed"
+  | "archived"
+  | "dismissed"
+  | "snoozed"
+
+export type ApplicationStage =
+  | "applied"
+  | "recruiter_screen"
+  | "assessment"
+  | "interviewing"
+  | "final_interview"
+  | "offer"
+  | "accepted"
+  | "rejected_by_employer"
+  | "withdrawn"
+  | "no_response"
+
+export type TrackerBucket = "saved" | "applied" | "rejected" | "all"
+
+export type TrackerFollowUpBucket = "due_today" | "overdue" | "upcoming"
+export type TrackerFollowUpStatus = TrackerFollowUpBucket | "completed"
+
+export type ActionState = TrackerState | "submitted" | null
 
 export type FeedbackLabel =
   | "good_match"
@@ -129,8 +165,8 @@ export interface OpportunityListItem extends OpportunityExtractionFields {
    * this item. Always present, `[]` when empty — never `null`. Rendered as
    * chips; never implies the item was removed or re-scored. */
   flagged_by: string[]
-  source_family?: string
-  reverified_at?: string | null
+  /** Present on tracker lists; current feed entries omit this field. */
+  tracker_state?: TrackerState | null
 }
 
 export interface OpportunityListResponse {
@@ -141,6 +177,87 @@ export interface OpportunityListResponse {
    * filter, regardless of `include_hidden`. */
   hidden_count: number
   items: OpportunityListItem[]
+}
+
+export type FeedMultiFacetId =
+  | "feedback_label"
+  | "activity_type"
+  | "work_mode"
+  | "location_country"
+  | "location_city"
+  | "remote_scope"
+  | "employment_type"
+  | "seniority_level"
+  | "target_tier"
+  | "title_family"
+  | "source_id"
+
+export type FeedFacetId = "track" | "decision" | FeedMultiFacetId
+export type FeedScoreId = "fit_score" | "preference_score" | "confidence_score" | "priority_score"
+export type FeedSortId =
+  | "recommended"
+  | "fit_desc"
+  | "fit_asc"
+  | "newest_posted"
+  | "oldest_posted"
+  | "remote_first"
+
+export interface FeedScoreBounds {
+  min: string
+  max: string
+}
+
+/** Complete filter/sort state supported by the W5.1 SQL feed contract. */
+export interface FeedQueryState {
+  track: string[]
+  decision: string[]
+  q: string
+  multi: Record<FeedMultiFacetId, string[]>
+  scoreRanges: Record<FeedScoreId, FeedScoreBounds>
+  postedFrom: string
+  postedTo: string
+  sortBy: FeedSortId
+  includeHidden: boolean
+}
+
+export interface FeedFacetOptionCount {
+  value: string
+  count: number
+}
+
+export interface FeedFacetMetadata {
+  selection: "single" | "multiple"
+  values: FeedFacetOptionCount[]
+  option_count: number
+  truncated: boolean
+}
+
+export interface FeedScoreRangeMetadata {
+  min: number | null
+  max: number | null
+  unknown_count: number
+  threshold_counts: Record<"90+" | "80+" | "70+" | "60+" | "50+", number>
+}
+
+export interface FeedUnavailableFilter {
+  id: string
+  label: string
+  reason: string
+}
+
+export interface FeedFilterMetadataResponse {
+  truth_pack_hash: string
+  count_scope: {
+    visible_only: boolean
+    independent_of_selected_filters: boolean
+    includes_tracked_and_ineligible: boolean
+  }
+  facets: Record<FeedFacetId, FeedFacetMetadata>
+  ranges: Record<FeedScoreId, FeedScoreRangeMetadata> & {
+    posted_date: { min: string | null; max: string | null; unknown_count: number }
+  }
+  sorts: Array<{ value: FeedSortId; label: string }>
+  unavailable_filters: FeedUnavailableFilter[]
 }
 
 /** D3 — founder-controlled filters (`founder_filter_settings`). A toggle
@@ -221,29 +338,39 @@ export interface DimensionScore {
   rationale: string
 }
 
+export interface ConfidenceFactor {
+  name: string
+  /** 0-100 scale, as returned by the evaluation detail API. */
+  score: number
+  explanation: string
+}
+
 export interface Scoring {
   /** 0-100 scale, unlike DimensionScore.score. */
   fit_score: number | null
+  /** 0-100 scale; null when the evaluation has no preference result. */
+  preference_score: number | null
+  /** 0-100 scale; null when the evaluation has no confidence result. */
+  confidence_score: number | null
+  confidence_factors: ConfidenceFactor[]
   dimension_scores: DimensionScore[]
   strengths: string[]
   gaps: string[]
   unknowns: string[]
   uncertainty_penalty: number
   explanation: string
-  policy_version: string
-  evaluated_at: string
+  policy_version: string | null
+  evaluated_at: string | null
   truth_pack_hash: string | null
 }
 
 export interface ActionHistoryEntry {
   action_id: string
-  action_type?: string
   action_status: string
-  execution_mode?: string
-  until?: string | null
+  execution_mode: string
   created_at: string
-  updated_at?: string
-  notes?: string | null
+  updated_at: string
+  notes: string | null
 }
 
 export interface FeedbackHistoryEntry {
@@ -299,14 +426,202 @@ export interface FeedbackResponse {
   created_at: string
 }
 
-export type ActionType = "mark_applied" | "dismiss" | "snooze" | "clear"
+export type ActionType = "save" | "mark_applied" | "reject" | "dismiss" | "snooze" | "set_stage"
 
 export interface ActionResponse {
   opportunity_id: string
   action_state: ActionState
+  tracker_state?: TrackerState | null
   action_id: string | null
+  undo_event_id?: string | null
   until: string | null
   created_at: string
+}
+
+export interface RestoreTrackerResponse {
+  opportunity_id: string
+  tracker_state: TrackerState
+  action_state: ActionState
+  created_at: string
+}
+
+export interface TrackerListResponse {
+  bucket: TrackerBucket
+  page: number
+  page_size: number
+  total: number
+  items: OpportunityListItem[]
+}
+
+export interface TrackerNote {
+  id: string
+  opportunity_id: string
+  note_text: string
+  created_at: string
+  updated_at: string
+  archived_at: string | null
+}
+
+export interface TrackerNoteListResponse {
+  opportunity_id: string
+  page: number
+  page_size: number
+  total: number
+  items: TrackerNote[]
+}
+
+export interface TrackerNoteMutationResponse {
+  note: TrackerNote
+  changed: boolean
+}
+
+export interface TrackerFollowUp {
+  id: string
+  opportunity_id: string
+  due_date: string
+  note_text: string | null
+  completed_at: string | null
+  status: TrackerFollowUpStatus
+  created_at: string
+  updated_at: string
+}
+
+export interface TrackerFollowUpListResponse {
+  opportunity_id: string
+  page: number
+  page_size: number
+  total: number
+  items: TrackerFollowUp[]
+}
+
+export interface TrackerFollowUpSummaryItem extends Omit<TrackerFollowUp, "note_text"> {
+  opportunity: {
+    id: string
+    title: string
+    organization: string
+    tracker_state: TrackerState
+  }
+}
+
+export interface TrackerFollowUpSummaryResponse {
+  bucket: TrackerFollowUpBucket
+  page: number
+  page_size: number
+  total: number
+  items: TrackerFollowUpSummaryItem[]
+}
+
+export interface TrackerFollowUpMutationResponse {
+  follow_up: TrackerFollowUp
+  changed: boolean
+}
+
+export type TrackerInterviewType = "recruiter_screen" | "hiring_manager" | "technical" | "take_home" | "live_coding" | "case_study" | "panel" | "final" | "other"
+export type TrackerInterviewFormat = "phone" | "video" | "in_person"
+export type TrackerInterviewOutcome = "pending" | "completed" | "passed" | "not_selected" | "cancelled" | "other"
+
+export interface TrackerInterview {
+  id: string
+  opportunity_id: string
+  scheduled_at: string | null
+  round_label: string | null
+  interview_type: TrackerInterviewType | null
+  interview_format: TrackerInterviewFormat | null
+  interviewer_name: string | null
+  preparation_notes: string | null
+  post_interview_notes: string | null
+  outcome: TrackerInterviewOutcome | null
+  created_at: string
+  updated_at: string
+}
+
+export interface TrackerInterviewListResponse {
+  opportunity_id: string
+  page: number
+  page_size: number
+  total: number
+  items: TrackerInterview[]
+}
+
+export interface TrackerInterviewSummaryItem extends Omit<TrackerInterview, "preparation_notes" | "post_interview_notes"> {
+  opportunity: {
+    id: string
+    title: string
+    organization: string
+    tracker_state: TrackerState
+  }
+}
+
+export interface TrackerInterviewSummaryResponse {
+  bucket: "upcoming"
+  page: number
+  page_size: number
+  total: number
+  items: TrackerInterviewSummaryItem[]
+}
+
+export interface TrackerInterviewMutationResponse {
+  interview: TrackerInterview
+  changed: boolean
+}
+
+export type TrackerDocumentKind = "cv" | "cover_letter"
+
+export interface TrackerDocumentCandidate {
+  document_kind: TrackerDocumentKind
+  document_id: string
+  label: string
+  format: "pdf" | "docx"
+  recommended: boolean
+  created_at?: string | null
+}
+
+export interface TrackerDocumentCandidateListResponse {
+  opportunity_id: string
+  page: number
+  page_size: number
+  total: number
+  items: TrackerDocumentCandidate[]
+}
+
+export interface TrackerDocumentLink {
+  id: string
+  opportunity_id: string
+  document_kind: TrackerDocumentKind
+  document_id: string
+  linked_at: string
+  unlinked_at: string | null
+}
+
+export interface TrackerDocumentListResponse {
+  opportunity_id: string
+  page: number
+  page_size: number
+  total: number
+  selected_cv_document_id: string | null
+  selected_cover_letter_document_id: string | null
+  items: TrackerDocumentLink[]
+}
+
+export interface TrackerDocumentMutationResponse {
+  link: TrackerDocumentLink
+  changed: boolean
+}
+
+export interface TrackerActivityEvent {
+  id: string
+  action_type: string
+  from_state: string | null
+  to_state: string | null
+  event_at: string
+}
+
+export interface TrackerActivityListResponse {
+  opportunity_id: string
+  page: number
+  page_size: number
+  total: number
+  items: TrackerActivityEvent[]
 }
 
 export interface DashboardDay {
@@ -343,20 +658,6 @@ export interface SourceHealth {
 
 export interface SourcesHealthResponse {
   sources: SourceHealth[]
-}
-
-export interface SourceOverview {
-  source_family: string
-  source_id: string | null
-  opportunity_count: number
-  hidden_count: number
-  last_success_at: string | null
-  last_status: string | null
-  manual_only: boolean
-}
-
-export interface SourceOverviewResponse {
-  sources: SourceOverview[]
 }
 
 export interface PollNowEnqueued {
@@ -449,6 +750,8 @@ export interface SavedView {
   name: string
   facets: Record<string, { include: string[]; exclude: string[] }>
   search_query: string | null
+  /** Present for FR-008 feed-query views; null for legacy facet-only views. */
+  feed_query?: FeedQueryState | null
   is_default: boolean
 }
 
@@ -460,6 +763,7 @@ export interface SavedViewCreateRequest {
   name: string
   facets: Record<string, { include: string[]; exclude: string[] }>
   search_query?: string | null
+  feed_query?: FeedQueryState
   is_default?: boolean
 }
 
@@ -467,6 +771,7 @@ export interface SavedViewUpdateRequest {
   name?: string
   facets?: Record<string, { include: string[]; exclude: string[] }>
   search_query?: string | null
+  feed_query?: FeedQueryState
   is_default?: boolean
 }
 
