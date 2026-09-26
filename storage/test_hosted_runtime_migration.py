@@ -32,7 +32,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
 
         config = Config("alembic.ini")
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_current_head(), "0025_current_feed_fast_path")
+        self.assertEqual(script.get_current_head(), "0026_fr008_live_actions")
 
     def test_founder_claim_compatibility_migration_accepts_postgrest_json_claims(self):
         migration = Path(__file__).parent / "migrations" / "versions" / "0024_founder_jwt_claim_compat.py"
@@ -61,7 +61,22 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         self.assertNotIn("DROP VIEW", downgrade)
         self.assertNotIn("founder_feed_activity", downgrade)
         config = Config("alembic.ini")
-        self.assertEqual(ScriptDirectory.from_config(config).get_current_head(), "0025_current_feed_fast_path")
+        self.assertEqual(ScriptDirectory.from_config(config).get_current_head(), "0026_fr008_live_actions")
+
+
+    def test_fr008_live_actions_are_linear_after_current_feed_fast_path(self):
+        migration = Path(__file__).parent / "migrations" / "versions" / "0026_fr008_live_actions.py"
+        source = migration.read_text(encoding="utf-8")
+        self.assertIn('revision: str = "0026_fr008_live_actions"', source)
+        self.assertIn('down_revision: Union[str, None] = "0025_current_feed_fast_path"', source)
+        for required in (
+            "founder_restore_action",
+            "'save','mark_applied','reject'",
+            "founder_feed_fr008",
+            "remote_rank",
+            "security_invoker = true",
+        ):
+            self.assertIn(required, source)
 
     def test_capacity_revision_is_linear_after_activity_view_access(self):
         capacity = Path(__file__).parent / "migrations" / "versions" / "0020_capacity_archive.py"
