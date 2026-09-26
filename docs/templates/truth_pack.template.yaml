@@ -113,7 +113,7 @@ evidence:
   - id: ev-career-target-role
     content: "Declared target role: Widget Engineer. Target tier: primary."
     source: "self_reported"
-    locator: "career_profile.target_roles.0"
+    locator: "assertions.0"
   - id: ev-service
     content: "Widget Systems Consulting: scoped discovery through delivery for widget systems modernization engagements. Delivered as fixed price and retainer, using time and materials billing for extensions."
     source: "self_reported"
@@ -256,14 +256,9 @@ career_profile:
       status: "authorized"
       evidence_ids: ["ev-work-authorization"]
 
-  # target_roles: optional Founder-declared employment targets. `tier` may
-  # be primary, adjacent, or stretch; omit it when the Founder has not
-  # assigned a tier. The system must not infer the tier from other profile data.
-  target_roles:
-    - id: target-role-example-1
-      title: "Widget Engineer"
-      tier: "primary"
-      evidence_ids: ["ev-career-target-role"]
+  # Founder-declared employment targets are represented as explicit
+  # career.target_role assertions below. They are assertion-only in the
+  # current truth schema, not a nested career_profile collection.
 
   # approved_summaries: optional. See the "answer library" mapping note
   # above -- this is a flat list of pre-approved reusable summary strings,
@@ -421,6 +416,13 @@ approved_phrases:
 # could not support -- not to chase the specific wording that would make the
 # check pass.
 # ---------------------------------------------------------------------------
-assertions: []
+assertions:
+  - id: assertion-target-role-example-1
+    subject_id: career-jane-example
+    predicate: career.target_role
+    value: "Widget Engineer"
+    assertion_type: "user_assertion"
+    verification_status: "verified"
+    evidence_ids: ["ev-career-target-role"]
 relations: []
 metrics: []
