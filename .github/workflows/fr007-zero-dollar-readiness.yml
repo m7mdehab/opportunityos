@@ -91,7 +91,7 @@ jobs:
 
       - name: Install readiness dependencies
         if: ${{ success() }}
-        run: python -m pip install psycopg2-binary PyYAML
+        run: python -m pip install -e . psycopg2-binary PyYAML
 
       - name: Verify hosted Supabase database contract
         if: ${{ success() }}
@@ -101,13 +101,22 @@ jobs:
           python - <<'PY'
           import os
           import psycopg2
+          from alembic.config import Config
+          from alembic.script import ScriptDirectory
+
+          expected_revision = ScriptDirectory.from_config(Config("alembic.ini")).get_current_head()
+          if not expected_revision:
+              raise SystemExit("repository Alembic head could not be resolved")
+
           conn = psycopg2.connect(os.environ["DSN"], connect_timeout=10)
           try:
               with conn.cursor() as cur:
                   cur.execute("select version_num from public.alembic_version")
                   revision = cur.fetchone()[0]
-                  if revision != "0014_backup_heartbeat":
-                      raise SystemExit(f"unexpected revision: {revision}")
+                  if revision != expected_revision:
+                      raise SystemExit(
+                          f"database revision {revision} does not match repository head {expected_revision}"
+                      )
                   cur.execute("""
                     select count(*) from pg_class c
                     join pg_namespace n on n.oid=c.relnamespace
