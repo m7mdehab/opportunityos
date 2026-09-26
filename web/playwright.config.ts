@@ -28,7 +28,7 @@ const PORT = 3100
 export default defineConfig({
   testDir: "./tests/e2e",
   // Hosted-only smoke requires a deployed Cloudflare/Azure staging stack.
-  testIgnore: /staging-smoke\.spec\.ts$/,
+  testIgnore: /staging-(?:smoke|readonly-auth-feed)\.spec\.ts$/,
   fullyParallel: false,
   workers: 1,
   retries: 0,
