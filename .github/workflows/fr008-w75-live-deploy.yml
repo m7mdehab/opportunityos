@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   migrate-live-founder:
-    name: Migrate live Founder database
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -23,7 +22,7 @@ jobs:
           python-version: "3.12"
       - name: Install repository database tooling
         run: python -m pip install -e .
-      - name: Apply the exact main migration head
+      - name: Apply exact repository migration head
         env:
           OPPORTUNITYOS_DB_URL: ${{ secrets.CLOUD_DATABASE_URL }}
           CI: "true"
@@ -31,7 +30,7 @@ jobs:
           set -euo pipefail
           alembic upgrade head
           test "$(alembic heads | grep -c ' (head)')" = 1
-          alembic current | grep '0026_fr008_live_actions'
+          test "$(alembic current | grep -c '0026_fr008_live_actions')" = 1
 
   deploy-live-founder:
     needs: migrate-live-founder
