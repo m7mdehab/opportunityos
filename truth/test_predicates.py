@@ -249,6 +249,22 @@ class TestPredicateRegistryCompleteness(unittest.TestCase):
             self.assertTrue(predicates.is_declared(predicate_name))
             self.assertEqual(predicates.get(predicate_name).kind, PredicateKind.PROJECTED)
 
+    def test_fr008_preference_predicates_are_registered_as_assertion_only(self) -> None:
+        registry = predicates.all_predicates()
+        for name in (
+            predicates.PREFERENCE_WORK_MODE,
+            predicates.PREFERENCE_EMPLOYMENT_TYPE,
+            predicates.PREFERENCE_GEOGRAPHY,
+            predicates.PREFERENCE_RELOCATION,
+            predicates.PREFERENCE_COMPENSATION,
+            predicates.PREFERENCE_INDUSTRY,
+            predicates.PREFERENCE_COMPANY,
+            predicates.PREFERENCE_TIME_ZONE,
+            predicates.PREFERENCE_TRAVEL,
+        ):
+            self.assertEqual(registry[name].kind, PredicateKind.ASSERTION_ONLY)
+            self.assertEqual(registry[name].source, "assertions")
+
     def test_registry_predicates_are_classified_projected_or_assertion_only(self) -> None:
         registry = predicates.all_predicates()
         self.assertTrue(registry, "predicate registry must not be empty")
