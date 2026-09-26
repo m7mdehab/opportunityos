@@ -259,67 +259,273 @@ async function hostedFacetPayload(config: HostedConfig, token: string): Promise<
   });
   return NextResponse.json({ facets });
 }
+
+function postgrestIn(values: string[]): string {
+  const cleaned = values
+    .map((value) => value.trim().replace(/[\\\"(),]/g, " "))
+    .filter(Boolean);
+  return cleaned.length === 1
+    ? `eq.${cleaned[0]}`
+    : `in.(${cleaned.map((value) => `"${value}"`).join(",")})`;
+}
+
+function scoreMetadata(rows: Record<string, unknown>[], key: string) {
+  const values = rows
+    .map((row) => Number(row[key]))
+    .filter((value) => Number.isFinite(value));
+  const threshold_counts = Object.fromEntries(
+    [90, 80, 70, 60, 50].map((threshold) => [
+      `${threshold}+`,
+      values.filter((value) => value >= threshold).length,
+    ])
+  );
+  return {
+    min: values.length ? Math.min(...values) : null,
+    max: values.length ? Math.max(...values) : null,
+    unknown_count: rows.length - values.length,
+    threshold_counts,
+  };
+}
+
+function facetMetadata(rows: Record<string, unknown>[], key: string, mapValue?: (row: Record<string, unknown>) => unknown) {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const raw = mapValue ? mapValue(row) : row[key];
+    const value = raw == null || String(raw).trim() === "" ? "unknown" : String(raw).trim();
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  const values = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 100)
+    .map(([value, count]) => ({ value, count }));
+  return {
+    selection: "multiple" as const,
+    values,
+    option_count: counts.size,
+    truncated: counts.size > 100,
+  };
+}
+
+async function hostedFeedFilterMetadata(config: HostedConfig, token: string): Promise<NextResponse> {
+  const selected = [
+    "truth_pack_hash","track","qualification_decision","work_mode","location_country",
+    "location_city","remote_scope","employment_type","seniority_level","title_family",
+    "source_id","feedback_label","action_state","fit_score","priority_score","posted_date"
+  ].join(",");
+  const rows: Record<string, unknown>[] = [];
+  const pageSize = 1000;
+  for (let offset = 0; offset < 10000; offset += pageSize) {
+    const response = await hostedFetch(
+      config,
+      `/rest/v1/founder_feed_fr008?select=${selected}&visible=eq.true&is_stale=eq.false&offset=${offset}&limit=${pageSize}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const batch = await response.json().catch(() => []);
+    if (!response.ok) return NextResponse.json(batch, { status: response.status });
+    if (!Array.isArray(batch)) break;
+    for (const row of batch) if (row && typeof row === "object") rows.push(row as Record<string, unknown>);
+    if (batch.length < pageSize) break;
+  }
+
+  const activityFacet = facetMetadata(rows, "activity_type", (row) => {
+    const state = String(row.action_state ?? "");
+    if (state === "saved") return "save";
+    if (state === "applied" || state === "submitted") return "mark_applied";
+    if (state === "rejected_by_founder" || state === "dismissed") return "reject";
+    if (state === "snoozed") return "snooze";
+    return "";
+  });
+  activityFacet.values = activityFacet.values.filter((option) => option.value !== "unknown");
+  activityFacet.option_count = activityFacet.values.length;
+
+  const posted = rows
+    .map((row) => typeof row.posted_date === "string" ? row.posted_date.trim() : "")
+    .filter(Boolean)
+    .sort();
+
+  const unavailable = [
+    { id: "preference_score", label: "Preference score", reason: "Preference score is not yet projected into the accepted W23 live feed schema." },
+    { id: "confidence_score", label: "Confidence score", reason: "Confidence score is not yet projected into the accepted W23 live feed schema." },
+    { id: "target_tier", label: "Target tier", reason: "Target tier is not yet projected into the accepted W23 live feed schema." },
+    { id: "tracking_details", label: "Tracker notes, follow-ups, interviews and document links", reason: "Deep tracker persistence will ship as a separate reviewed increment after the live review controls." },
+  ];
+
+  return NextResponse.json({
+    truth_pack_hash: String(rows[0]?.truth_pack_hash ?? ""),
+    count_scope: {
+      visible_only: true,
+      independent_of_selected_filters: true,
+      includes_tracked_and_ineligible: true,
+    },
+    facets: {
+      track: facetMetadata(rows, "track"),
+      decision: facetMetadata(rows, "qualification_decision"),
+      feedback_label: facetMetadata(rows, "feedback_label"),
+      activity_type: activityFacet,
+      work_mode: facetMetadata(rows, "work_mode"),
+      location_country: facetMetadata(rows, "location_country"),
+      location_city: facetMetadata(rows, "location_city"),
+      remote_scope: facetMetadata(rows, "remote_scope"),
+      employment_type: facetMetadata(rows, "employment_type"),
+      seniority_level: facetMetadata(rows, "seniority_level"),
+      target_tier: { selection: "multiple", values: [], option_count: 0, truncated: false },
+      title_family: facetMetadata(rows, "title_family"),
+      source_id: facetMetadata(rows, "source_id"),
+    },
+    ranges: {
+      fit_score: scoreMetadata(rows, "fit_score"),
+      preference_score: { min: null, max: null, unknown_count: rows.length, threshold_counts: { "90+": 0, "80+": 0, "70+": 0, "60+": 0, "50+": 0 } },
+      confidence_score: { min: null, max: null, unknown_count: rows.length, threshold_counts: { "90+": 0, "80+": 0, "70+": 0, "60+": 0, "50+": 0 } },
+      priority_score: scoreMetadata(rows, "priority_score"),
+      posted_date: {
+        min: posted[0] ?? null,
+        max: posted.at(-1) ?? null,
+        unknown_count: rows.length - posted.length,
+      },
+    },
+    sorts: [
+      { value: "recommended", label: "Recommended" },
+      { value: "fit_desc", label: "Fit Score — Highest first" },
+      { value: "fit_asc", label: "Fit Score — Lowest first" },
+      { value: "newest_posted", label: "Newest posted" },
+      { value: "oldest_posted", label: "Oldest posted" },
+      { value: "remote_first", label: "Remote first" },
+    ],
+    unavailable_filters: unavailable,
+  });
+}
+
 async function hostedContract(request: NextRequest, path: string[], token: string, config: HostedConfig): Promise<NextResponse> {
   const subpath = path.join("/"); const method = request.method.toUpperCase(); const url = new URL(request.url);
+  if (subpath === "feed/filter-metadata" && method === "GET") {
+    return hostedFeedFilterMetadata(config, token);
+  }
   if (subpath === "opportunities" && method === "GET") {
     const page = Math.max(1, Number(url.searchParams.get("page") ?? "1") || 1);
     const pageSize = Math.min(200, Math.max(1, Number(url.searchParams.get("page_size") ?? "25") || 25));
     const includeHidden = url.searchParams.get("include_hidden") === "true";
+
     const buildFeedQuery = (visibility?: "visible" | "hidden") => {
-      const query = new URL(`${config.origin}/rest/v1/founder_feed_activity`);
+      const query = new URL(`${config.origin}/rest/v1/founder_feed_fr008`);
       query.searchParams.set("select", "*");
       query.searchParams.set("is_stale", "eq.false");
       if (visibility === "visible") query.searchParams.set("visible", "eq.true");
       if (visibility === "hidden") query.searchParams.set("visible", "eq.false");
-      query.searchParams.set("order", "priority_score.desc.nullslast,fit_score.desc.nullslast,projected_at.desc,opportunity_id.asc");
-      for (const [key, column, op] of [["track", "track", "eq"], ["decision", "qualification_decision", "eq"], ["min_score", "fit_score", "gte"], ["source_family", "source_family", "eq"], ["source_id", "source_id", "eq"]] as const) {
-        const value = url.searchParams.get(key); if (value) query.searchParams.set(column, `${op}.${value}`);
+
+      const sortBy = url.searchParams.get("sort_by") ?? "recommended";
+      const sortOrders: Record<string, string> = {
+        recommended: "priority_score.desc.nullslast,fit_score.desc.nullslast,projected_at.desc,opportunity_id.asc",
+        fit_desc: "fit_score.desc.nullslast,priority_score.desc.nullslast,opportunity_id.asc",
+        fit_asc: "fit_score.asc.nullslast,priority_score.desc.nullslast,opportunity_id.asc",
+        newest_posted: "posted_date.desc.nullslast,priority_score.desc.nullslast,opportunity_id.asc",
+        oldest_posted: "posted_date.asc.nullslast,priority_score.desc.nullslast,opportunity_id.asc",
+        remote_first: "remote_rank.asc,priority_score.desc.nullslast,fit_score.desc.nullslast,opportunity_id.asc",
+      };
+      query.searchParams.set("order", sortOrders[sortBy] ?? sortOrders.recommended);
+
+      const repeated: Array<[string, string]> = [
+        ["track", "track"],
+        ["decision", "qualification_decision"],
+        ["work_mode", "work_mode"],
+        ["location_country", "location_country"],
+        ["location_city", "location_city"],
+        ["remote_scope", "remote_scope"],
+        ["employment_type", "employment_type"],
+        ["seniority_level", "seniority_level"],
+        ["title_family", "title_family"],
+        ["source_id", "source_id"],
+        ["feedback_label", "feedback_label"],
+      ];
+      for (const [param, column] of repeated) {
+        const values = url.searchParams.getAll(param).filter(Boolean);
+        if (values.length) query.searchParams.set(column, postgrestIn(values));
       }
-      const activity = url.searchParams.get("activity");
-      if (activity === "to_review") query.searchParams.set("action_state", "is.null");
-      else if (["applied", "snoozed", "dismissed"].includes(activity ?? "")) query.searchParams.set("action_state", `eq.${activity === "applied" ? "submitted" : activity}`);
-      else if (activity === "has_feedback") query.searchParams.set("feedback_label", "not.is.null");
-      else if (activity === "any") query.searchParams.set("has_activity", "eq.true");
-      const feedback = url.searchParams.get("feedback");
-      if (feedback && feedback !== "") query.searchParams.set("feedback_label", feedback === "any" ? "not.is.null" : `eq.${feedback}`);
+
+      const minFit = url.searchParams.get("min_fit_score") ?? url.searchParams.get("min_score");
+      const maxFit = url.searchParams.get("max_fit_score") ?? url.searchParams.get("max_score");
+      const minPriority = url.searchParams.get("min_priority_score");
+      const maxPriority = url.searchParams.get("max_priority_score");
+      if (minFit) query.searchParams.set("fit_score", `gte.${minFit}`);
+      if (maxFit) query.searchParams.append("fit_score", `lte.${maxFit}`);
+      if (minPriority) query.searchParams.set("priority_score", `gte.${minPriority}`);
+      if (maxPriority) query.searchParams.append("priority_score", `lte.${maxPriority}`);
+
+      const postedFrom = url.searchParams.get("posted_from");
+      const postedTo = url.searchParams.get("posted_to");
+      if (postedFrom) query.searchParams.set("posted_date", `gte.${postedFrom}`);
+      if (postedTo) query.searchParams.append("posted_date", `lte.${postedTo}`);
+
+      const activities = url.searchParams.getAll("activity_type").filter(Boolean);
+      if (activities.length) {
+        const stateValues = [...new Set(activities.flatMap((activity) => {
+          if (activity === "save") return ["saved"];
+          if (activity === "mark_applied") return ["applied", "submitted"];
+          if (activity === "reject") return ["rejected_by_founder", "dismissed"];
+          if (activity === "snooze") return ["snoozed"];
+          return [];
+        }))];
+        if (stateValues.length) query.searchParams.set("action_state", postgrestIn(stateValues));
+      }
+
+      const legacyActivity = url.searchParams.get("activity");
+      if (legacyActivity === "to_review") query.searchParams.set("action_state", "is.null");
+      else if (legacyActivity === "has_feedback") query.searchParams.set("feedback_label", "not.is.null");
+      else if (legacyActivity === "any") query.searchParams.set("has_activity", "eq.true");
+
       const text = url.searchParams.get("q");
-      if (text) { const safe = text.replace(/[(),]/g, " "); query.searchParams.set("or", `(title.ilike.*${safe}*,organization.ilike.*${safe}*)`); }
+      if (text) {
+        const safe = text.replace(/[(),]/g, " ");
+        query.searchParams.set("or", `(title.ilike.*${safe}*,organization.ilike.*${safe}*)`);
+      }
       return query;
     };
+
     const q = buildFeedQuery(includeHidden ? undefined : "visible");
-    q.searchParams.set("offset", String((page - 1) * pageSize)); q.searchParams.set("limit", String(pageSize));
+    q.searchParams.set("offset", String((page - 1) * pageSize));
+    q.searchParams.set("limit", String(pageSize));
     const hiddenQuery = buildFeedQuery("hidden");
-    hiddenQuery.searchParams.set("select", "opportunity_id"); hiddenQuery.searchParams.set("limit", "1");
-    // The visible page/count and hidden count are independent PostgREST reads.
-    // Start both together so the public feed pays one upstream round trip, not
-    // two serial round trips, while preserving the exact count contract.
+    hiddenQuery.searchParams.set("select", "opportunity_id");
+    hiddenQuery.searchParams.set("limit", "1");
+
     const [visibleResponse, hiddenResponse] = await Promise.all([
       hostedFetch(config, `${q.pathname}${q.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } }),
       hostedFetch(config, `${hiddenQuery.pathname}${hiddenQuery.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } }),
     ]);
-    let response = visibleResponse;
-    let rows = await response.json().catch(() => []);
-    // A freshly replaced PostgREST view can lag schema-cache refresh. Keep the
-    // canonical feed readable while activity projection metadata catches up;
-    // activity-scoped requests remain fail-closed until their view is healthy.
-    if (!response.ok && !url.searchParams.has("activity") && !url.searchParams.has("feedback")) {
-      const fallback = new URL(`${config.origin}/rest/v1/founder_feed`);
-      for (const [key, value] of q.searchParams.entries()) if (!["select"].includes(key)) fallback.searchParams.set(key, value);
-      fallback.searchParams.set("select", "*");
-      response = await hostedFetch(config, `${fallback.pathname}${fallback.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } });
-      rows = await response.json().catch(() => []);
-    }
-    if (!response.ok) return NextResponse.json(rows, { status: response.status });
-    const range = response.headers.get("content-range") ?? "*/0"; const total = Number(range.split("/")[1] ?? "0") || 0;
+    const rows = await visibleResponse.json().catch(() => []);
+    if (!visibleResponse.ok) return NextResponse.json(rows, { status: visibleResponse.status });
+    const range = visibleResponse.headers.get("content-range") ?? "*/0";
+    const total = Number(range.split("/")[1] ?? "0") || 0;
     const hiddenRange = hiddenResponse.headers.get("content-range") ?? "*/0";
     const hiddenCount = Number(hiddenRange.split("/")[1] ?? "0") || 0;
-    return NextResponse.json({ page, page_size: pageSize, total, hidden_count: hiddenCount, items: Array.isArray(rows) ? rows.map(hostedFeedRow) : [] });
+    return NextResponse.json({
+      page,
+      page_size: pageSize,
+      total,
+      hidden_count: hiddenCount,
+      items: Array.isArray(rows) ? rows.map(hostedFeedRow) : [],
+    });
   }
   if (subpath.startsWith("opportunities/") && path.length === 3 && path[2] === "actions" && method === "POST") {
     const id = decodeURIComponent(path[1]); const body = await request.json().catch(() => null) as { type?: unknown; until?: unknown } | null;
     if (!body || typeof body.type !== "string") return hostedError("action type is required", 400);
     const response = await hostedFetch(config, "/rest/v1/rpc/founder_set_action", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ p_opportunity_id: id, p_type: body.type, p_until: typeof body.until === "string" ? body.until : null }) });
     const payload = await response.json().catch(() => null); if (!response.ok) return hostedError(typeof payload === "object" && payload && "message" in payload ? String((payload as Record<string, unknown>).message) : "action failed", response.status === 400 ? 422 : response.status); return NextResponse.json(payload);
+  }
+  if (subpath.startsWith("opportunities/") && path.length === 3 && path[2] === "restore" && method === "POST") {
+    const id = decodeURIComponent(path[1]);
+    const body = await request.json().catch(() => null) as { event_id?: unknown } | null;
+    if (!body || typeof body.event_id !== "string" || !body.event_id) return hostedError("event_id is required", 400);
+    const response = await hostedFetch(config, "/rest/v1/rpc/founder_restore_action", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ p_opportunity_id: id, p_event_id: body.event_id }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) return hostedError(
+      typeof payload === "object" && payload && "message" in payload ? String((payload as Record<string, unknown>).message) : "undo failed",
+      response.status === 400 ? 409 : response.status
+    );
+    return NextResponse.json(payload);
   }
   if (subpath.startsWith("opportunities/") && path.length === 3 && path[2] === "feedback" && method === "POST") {
     const id = decodeURIComponent(path[1]); const body = await request.json().catch(() => null) as { label?: unknown; note?: unknown } | null;
@@ -344,10 +550,49 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
     return NextResponse.json({ loaded: Boolean(hash), hash, path: "hosted-private-truth-pack", validator: { ok: Boolean(hash), error_count: 0, findings: [] }, sections: [] });
   }
   if (subpath === "dashboard/daily" && method === "GET") {
-    const days = Math.max(1, Math.min(31, Number(new URL(request.url).searchParams.get("days") ?? "7") || 7));
-    const response = await hostedFetch(config, "/rest/v1/rpc/founder_dashboard_daily", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ p_days: days, p_high_fit_threshold: 80 }) });
-    const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status });
-    return NextResponse.json({ days, high_fit_threshold: 80, series: Array.isArray(rows) ? rows.map((row: Record<string, unknown>) => ({ date: row.date, fetched: Number(row.fetched ?? 0), unique_new: Number(row.unique_new ?? 0), qualified: Number(row.qualified ?? 0), high_fit: Number(row.high_fit ?? 0), opened: Number(row.opened ?? 0), labelled: Number(row.labelled ?? 0), applied: Number(row.applied ?? 0), hidden_by_filters: Number(row.hidden_by_filters ?? 0) })) : [] });
+    const period = url.searchParams.get("period") ?? "today";
+    const requestedDate = url.searchParams.get("date");
+    const days = period === "all_time" || period === "yesterday" || period === "date" ? 90 : 1;
+    const response = await hostedFetch(config, "/rest/v1/rpc/founder_dashboard_daily", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ p_days: days, p_high_fit_threshold: 80 }),
+    });
+    const payload = await response.json().catch(() => []);
+    if (!response.ok) return NextResponse.json(payload, { status: response.status });
+    const rows = Array.isArray(payload) ? payload.map((row: Record<string, unknown>) => ({
+      date: String(row.date ?? ""),
+      fetched: Number(row.fetched ?? 0),
+      unique_new: Number(row.unique_new ?? 0),
+      qualified: Number(row.qualified ?? 0),
+      high_fit: Number(row.high_fit ?? 0),
+      opened: Number(row.opened ?? 0),
+      labelled: Number(row.labelled ?? 0),
+      applied: Number(row.applied ?? 0),
+      hidden_by_filters: Number(row.hidden_by_filters ?? 0),
+    })) : [];
+    let series = rows;
+    if (period === "today") series = rows.slice(0, 1);
+    if (period === "yesterday") {
+      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      series = rows.filter((row) => row.date === yesterday);
+    }
+    if (period === "date" && requestedDate) series = rows.filter((row) => row.date === requestedDate);
+    if (period === "all_time") {
+      const total = rows.reduce((sum, row) => ({
+        date: "all_time",
+        fetched: sum.fetched + row.fetched,
+        unique_new: sum.unique_new + row.unique_new,
+        qualified: sum.qualified + row.qualified,
+        high_fit: sum.high_fit + row.high_fit,
+        opened: sum.opened + row.opened,
+        labelled: sum.labelled + row.labelled,
+        applied: sum.applied + row.applied,
+        hidden_by_filters: sum.hidden_by_filters + row.hidden_by_filters,
+      }), { date: "all_time", fetched: 0, unique_new: 0, qualified: 0, high_fit: 0, opened: 0, labelled: 0, applied: 0, hidden_by_filters: 0 });
+      series = [total];
+    }
+    return NextResponse.json({ days, high_fit_threshold: 80, series });
   }
   if (subpath.startsWith("opportunities/") && path.length >= 4 && path[2] === "artifacts" && method === "GET") {
     const opportunityId = encodeURIComponent(path[1]);
