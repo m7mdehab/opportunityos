@@ -9,15 +9,15 @@ import { FEED_SORT_IDS, FEED_SORT_LABELS, FEED_UNAVAILABLE_SORT_GROUPS } from "@
 import type { FeedFilterMetadataResponse, FeedSortId } from "@/lib/contract/types"
 
 export interface FeedFilters {
-  track: Track | ""
-  decision: Exclude<Decision, null> | ""
+  track: Track[]
+  decision: Exclude<Decision, null>[]
   minScore: string
   q: string
 }
 
 export const EMPTY_FILTERS: FeedFilters = {
-  track: "",
-  decision: "",
+  track: [],
+  decision: [],
   minScore: "",
   q: "",
 }
@@ -64,12 +64,22 @@ export function FilterBar({
   metadata?: FeedFilterMetadataResponse | null
 }) {
   const hasActiveFilters =
-    filters.track !== "" ||
-    filters.decision !== "" ||
+    filters.track.length > 0 ||
+    filters.decision.length > 0 ||
     filters.minScore !== "" ||
     filters.q !== ""
   const trackValues = [...new Set([...TRACKS, ...(metadata?.facets.track.values.map((option) => option.value as Track) ?? [])])]
   const decisionValues = [...new Set([...DECISIONS, ...(metadata?.facets.decision.values.map((option) => option.value as Exclude<Decision, null>) ?? [])])]
+  const toggle = <T extends string>(selected: T[], value: T, checked: boolean) => checked ? [...new Set([...selected, value])] : selected.filter((item) => item !== value)
+  const facet = <T extends string>(label: string, selected: T[], values: T[], setSelected: (next: T[]) => void, id: string) => (
+    <details name="primary-feed-facet" data-testid={`filter-facet-${id.replace("filter-", "")}`} className="relative min-w-0 max-w-full">
+      <summary id={id} className={`${selectClasses} flex cursor-pointer list-none items-center`}>{label}{selected.length ? ` (${selected.length})` : ""}</summary>
+      <div className="absolute left-0 z-20 mt-1 max-h-64 w-40 max-w-[calc(100vw-2rem)] overflow-auto rounded-lg border border-border bg-card p-2 shadow-lg">
+        <div className="mb-1 flex justify-end"><Button type="button" size="xs" variant="ghost" onClick={(event) => { setSelected([]); event.currentTarget.closest("details")?.removeAttribute("open") }}>Clear</Button></div>
+        {values.map((value) => <label key={value} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted"><input type="checkbox" checked={selected.includes(value)} onChange={(event) => setSelected(toggle(selected, value, event.target.checked))} />{value}</label>)}
+      </div>
+    </details>
+  )
 
   return (
     <form
@@ -80,43 +90,12 @@ export function FilterBar({
     >
       <div className="flex min-w-0 max-w-full flex-col gap-1">
         <Label htmlFor="filter-track">Track</Label>
-        <select
-          id="filter-track"
-          className={selectClasses}
-          value={filters.track}
-          onChange={(e) =>
-            onChange({ ...filters, track: e.target.value as FeedFilters["track"] })
-          }
-        >
-          <option value="">All tracks</option>
-          {trackValues.map((t) => (
-            <option key={t} value={t}>
-              {t}{metadata?.facets.track.values.find((option) => option.value === t) ? ` (${metadata.facets.track.values.find((option) => option.value === t)?.count})` : ""}
-            </option>
-          ))}
-        </select>
+        {facet("Track", filters.track, trackValues, (track) => onChange({ ...filters, track }), "filter-track")}
       </div>
 
       <div className="flex min-w-0 max-w-full flex-col gap-1">
         <Label htmlFor="filter-decision">Decision</Label>
-        <select
-          id="filter-decision"
-          className={selectClasses}
-          value={filters.decision}
-          onChange={(e) =>
-            onChange({
-              ...filters,
-              decision: e.target.value as FeedFilters["decision"],
-            })
-          }
-        >
-          <option value="">All decisions</option>
-          {decisionValues.map((d) => (
-            <option key={d} value={d}>
-              {d}{metadata?.facets.decision.values.find((option) => option.value === d) ? ` (${metadata.facets.decision.values.find((option) => option.value === d)?.count})` : ""}
-            </option>
-          ))}
-        </select>
+        {facet("Decision", filters.decision, decisionValues, (decision) => onChange({ ...filters, decision }), "filter-decision")}
       </div>
 
       <div className="flex min-w-0 max-w-full flex-col gap-1">

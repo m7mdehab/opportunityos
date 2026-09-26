@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from storage.feed_projection import FeedProjectionRecord
 from storage.feed_query import FEED_SORTS
+from storage.models import FounderActivityEventRecord, FounderFeedbackRecord
 
 UNKNOWN = "unknown"
 MAX_FACET_VALUES = 100
@@ -25,8 +26,8 @@ class CategoryFacet:
 
 
 CATEGORY_FACETS = (
-    CategoryFacet("track", FeedProjectionRecord.track, normalize_case=False, single_select=True),
-    CategoryFacet("decision", FeedProjectionRecord.qualification_decision, single_select=True),
+    CategoryFacet("track", FeedProjectionRecord.track, normalize_case=False),
+    CategoryFacet("decision", FeedProjectionRecord.qualification_decision),
     CategoryFacet("work_mode", FeedProjectionRecord.work_mode),
     CategoryFacet("location_country", FeedProjectionRecord.location_country),
     CategoryFacet("location_city", FeedProjectionRecord.location_city),
@@ -36,6 +37,11 @@ CATEGORY_FACETS = (
     CategoryFacet("target_tier", FeedProjectionRecord.target_tier),
     CategoryFacet("title_family", FeedProjectionRecord.title_family, unknown_aliases=("other",)),
     CategoryFacet("source_id", FeedProjectionRecord.source_id),
+)
+
+EVENT_FACETS = (
+    ("feedback_label", FounderFeedbackRecord, FounderFeedbackRecord.feedback_label),
+    ("activity_type", FounderActivityEventRecord, FounderActivityEventRecord.action_type),
 )
 
 SCORE_COLUMNS = (
@@ -48,8 +54,8 @@ SCORE_THRESHOLDS = (90, 80, 70, 60, 50)
 
 SORT_LABELS = {
     "recommended": "Recommended",
-    "fit_desc": "Fit score: high to low",
-    "fit_asc": "Fit score: low to high",
+    "fit_desc": "Fit Score — Highest first",
+    "fit_asc": "Fit Score — Lowest first",
     "newest_posted": "Newest posted",
     "oldest_posted": "Oldest posted",
     "remote_first": "Remote first",
@@ -262,6 +268,24 @@ def _date_payload(session: Session, truth_pack_hash: str) -> dict[str, Any]:
     }
 
 
+def _event_facet_payload(session: Session, truth_pack_hash: str, model, column) -> dict[str, Any]:
+    rows = (
+        session.query(column, func.count(func.distinct(model.opportunity_id)))
+        .join(FeedProjectionRecord, FeedProjectionRecord.opportunity_id == model.opportunity_id)
+        .filter(*_visible_truth_filter(truth_pack_hash))
+        .group_by(column)
+        .order_by(column.asc())
+        .limit(MAX_FACET_VALUES + 1)
+        .all()
+    )
+    return {
+        "selection": "multiple",
+        "values": [{"value": value, "count": int(count)} for value, count in rows[:MAX_FACET_VALUES]],
+        "option_count": len(rows),
+        "truncated": len(rows) > MAX_FACET_VALUES,
+    }
+
+
 def feed_filter_metadata(session: Session, truth_pack_hash: str) -> dict[str, Any]:
     """Return bounded option counts and capability gaps for visible projections.
 
@@ -273,6 +297,8 @@ def feed_filter_metadata(session: Session, truth_pack_hash: str) -> dict[str, An
         facet.key: _category_payload(session, facet, truth_pack_hash)
         for facet in CATEGORY_FACETS
     }
+    for key, model, column in EVENT_FACETS:
+        facets[key] = _event_facet_payload(session, truth_pack_hash, model, column)
     return {
         "truth_pack_hash": truth_pack_hash,
         "count_scope": {

@@ -80,6 +80,29 @@ for (const viewport of [
     await expectNoHorizontalOverflow(page, "feed")
     await expectAxeClean(page, "feed")
 
+    await expect.poll(() => page.getByTestId("stat-fetched").innerText()).not.toBe("—")
+    const initialMetricValue = await page.getByTestId("stat-fetched").innerText()
+    const [yesterdayMetrics] = await Promise.all([
+      page.waitForResponse((response) => response.url().includes("/api/dashboard/daily") && response.url().includes("period=yesterday")),
+      page.getByTestId("metric-period").selectOption("yesterday"),
+    ])
+    expect((await yesterdayMetrics.json()).series[0].date).toBe(new Date(Date.now() - 86_400_000).toISOString().slice(0, 10))
+    await expect(page.getByTestId("stat-fetched")).toHaveText("0")
+    const specificDate = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10)
+    await page.getByTestId("metric-period").selectOption("date")
+    const [specificMetrics] = await Promise.all([
+      page.waitForResponse((response) => response.url().includes("period=date") && response.url().includes(`date=${specificDate}`)),
+      page.getByTestId("metric-specific-date").fill(specificDate),
+    ])
+    expect((await specificMetrics.json()).series[0].date).toBe(specificDate)
+    const [allTimeMetrics] = await Promise.all([
+      page.waitForResponse((response) => response.url().includes("period=all_time")),
+      page.getByTestId("metric-period").selectOption("all_time"),
+    ])
+    expect((await allTimeMetrics.json()).series[0].date).toBe("all-time")
+    await page.getByTestId("metric-period").selectOption("today")
+    await expect(page.getByTestId("stat-fetched")).toHaveText(initialMetricValue)
+
     let actionRequests = 0
     page.on("request", (request) => {
       if (request.method() === "POST" && request.url().includes("/actions")) actionRequests += 1
@@ -127,13 +150,53 @@ for (const viewport of [
     await expect(filterDrawer).not.toBeVisible()
     await expect(filterTrigger).toBeFocused()
 
-    await page.getByLabel("Track").selectOption("employment")
+    await page.locator("#filter-track").click()
+    await page.getByTestId("filter-facet-track").getByRole("checkbox", { name: "employment" }).check()
+    await page.locator("#filter-track").click()
+    await page.locator("#filter-decision").click()
+    await page.getByTestId("filter-facet-decision").getByRole("checkbox", { name: "qualified" }).check()
+    await page.getByTestId("filter-facet-decision").getByRole("checkbox", { name: "uncertain" }).check()
+    await expect(page).toHaveURL(/track=employment/)
+    await expect(page).toHaveURL(/decision=qualified/)
+    await expect(page).toHaveURL(/decision=uncertain/)
     await page.getByLabel("Sort").selectOption("fit_asc")
     await expect(page).toHaveURL(/track=employment/)
     await expect(page).toHaveURL(/sort_by=fit_asc/)
 
     await page.getByTestId("open-advanced-feed-filters").click()
     const savedViewDrawer = page.getByTestId("feed-query-drawer")
+    const sourceFacet = savedViewDrawer.getByTestId("feed-facet-source_id")
+    await sourceFacet.locator("summary").click()
+    await sourceFacet.locator('input[type="checkbox"]').nth(0).check()
+    await sourceFacet.locator('input[type="checkbox"]').nth(1).check()
+    await sourceFacet.locator('input[type="checkbox"]').nth(2).check()
+    await expect.poll(() => new URL(page.url()).searchParams.getAll("source_id").length).toBe(3)
+    await sourceFacet.locator("summary").click()
+    const workModeFacet = savedViewDrawer.getByTestId("feed-facet-work_mode")
+    await workModeFacet.locator("summary").click()
+    await workModeFacet.locator('input[type="checkbox"]').first().check()
+    await expect.poll(() => new URL(page.url()).searchParams.getAll("work_mode").length).toBe(1)
+    await workModeFacet.locator("summary").click()
+    const feedbackFacet = savedViewDrawer.getByTestId("feed-facet-feedback_label")
+    await feedbackFacet.locator("summary").click()
+    await feedbackFacet.locator('input[type="checkbox"]').nth(0).check()
+    await feedbackFacet.locator('input[type="checkbox"]').nth(1).check()
+    await feedbackFacet.locator('input[type="checkbox"]').nth(2).check()
+    await expect.poll(() => new URL(page.url()).searchParams.getAll("feedback_label").length).toBe(3)
+    await feedbackFacet.locator("summary").click()
+    const activityFacet = savedViewDrawer.getByTestId("feed-facet-activity_type")
+    await activityFacet.locator("summary").click()
+    await activityFacet.locator('input[type="checkbox"]').nth(0).check()
+    await activityFacet.locator('input[type="checkbox"]').nth(1).check()
+    await activityFacet.locator('input[type="checkbox"]').nth(2).check()
+    await expect.poll(() => new URL(page.url()).searchParams.getAll("activity_type").length).toBe(3)
+    await activityFacet.locator("summary").click()
+    await sourceFacet.locator("summary").click()
+    await sourceFacet.locator('input[type="checkbox"]').nth(1).uncheck()
+    await expect.poll(() => new URL(page.url()).searchParams.getAll("source_id").length).toBe(2)
+    await expect(page.getByTestId("feed-query-chips")).toContainText("Source")
+    await expect(page.getByTestId("feed-query-chips")).toContainText("Feedback")
+    await expect(page.getByTestId("feed-query-chips")).toContainText("Activity")
     await savedViewDrawer.getByLabel("Saved feed view name").fill(VIEW_NAME)
     await savedViewDrawer.getByRole("button", { name: "Save view" }).click()
     const savedViewButton = savedViewDrawer.getByRole("button", { name: VIEW_NAME, exact: true })
@@ -146,8 +209,8 @@ for (const viewport of [
     await expect(page).toHaveURL(/track=employment/)
     await expect(page).toHaveURL(/sort_by=fit_asc/)
     await expect(page.getByTestId("feed-query-chips")).toContainText("employment")
-    await page.getByRole("button", { name: "Clear filters" }).click()
-    await expect(page.getByLabel("Track")).toHaveValue("")
+    await page.getByTestId("feed-query-chips").getByRole("button", { name: "Clear all" }).click()
+    await expect(page).not.toHaveURL(/track=/)
     await page.getByTestId("toggle-hidden-opportunities").click()
     await expect(page.getByTestId("opportunity-count")).toContainText("including hidden")
 
@@ -230,5 +293,69 @@ for (const viewport of [
     await page.getByTestId("tracker-bucket-rejected").click()
     await expect(page.getByTestId(`opportunity-card-${triageId}`)).toHaveCount(0)
     await expectNoHorizontalOverflow(page, "tracker buckets after refresh")
+
+    await page.getByTestId("workspace-jobs").click()
+    const checkboxes = page.locator('input[aria-label^="Select "]')
+    await expect(checkboxes.first()).toBeVisible()
+    await checkboxes.nth(0).check()
+    await checkboxes.nth(1).check()
+    await expect(page.getByText("2 selected", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Clear selection" }).click()
+    await expect(page.getByText("0 selected", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Select all visible" }).click()
+    await expect(page.getByText(/\d+ selected/)).toBeVisible()
+    await expectNoHorizontalOverflow(page, "batch selection toolbar")
   })
 }
+
+test("FR-008 batch actions reuse tracker transitions and preserve a partial failure", async ({ page }) => {
+  test.setTimeout(90_000)
+  await page.setViewportSize({ width: 1280, height: 844 })
+  await login(page)
+  const quickSaves = page.locator('[data-testid^="quick-save-"]')
+  await expect(quickSaves.first()).toBeVisible()
+  const firstId = (await quickSaves.first().getAttribute("data-testid"))!.replace("quick-save-", "")
+  const visibleIds = await page.locator('[data-testid^="opportunity-card-"]').evaluateAll((cards) => cards.map((card) => card.getAttribute("data-testid")!.replace("opportunity-card-", "")))
+  const failedId = visibleIds.find((id) => id !== firstId)!
+  expect(failedId).toBeTruthy()
+  for (const id of [firstId, failedId]) {
+    await page.getByTestId(`opportunity-card-${id}`).locator("xpath=ancestor::li[1]").locator('input[aria-label^="Select "]').check()
+  }
+
+  await page.evaluate((id) => {
+    const originalSetItem = Storage.prototype.setItem
+    Storage.prototype.setItem = function (this: Storage, key: string, value: string) {
+      if (key === "opportunityos.mock.tracker.default" && value.includes(`"id":"${id}","action_state":"saved"`)) {
+        throw new DOMException("synthetic item persistence failure", "QuotaExceededError")
+      }
+      return originalSetItem.call(this, key, value)
+    }
+  }, failedId)
+  await page.getByTestId("batch-action-toolbar").getByRole("button", { name: "Save", exact: true }).click()
+  await expect(page.getByTestId("batch-action-status")).toContainText("1 succeeded; 1 failed.")
+  await expect(page.getByTestId(`opportunity-card-${firstId}`)).toHaveCount(0)
+  await expect(page.getByTestId(`opportunity-card-${failedId}`)).toBeVisible()
+  await expect(page.getByTestId(`opportunity-card-${failedId}`).locator("xpath=ancestor::li[1]").locator('input[aria-label^="Select "]')).toBeChecked()
+
+  await page.getByRole("button", { name: "Clear selection" }).click()
+  await page.getByRole("button", { name: "Undo" }).click()
+  await expect(page.getByTestId(`opportunity-card-${firstId}`)).toBeVisible()
+  await page.getByTestId(`opportunity-card-${firstId}`).locator("xpath=ancestor::li[1]").locator('input[aria-label^="Select "]').check()
+  await page.getByTestId("batch-action-toolbar").getByRole("button", { name: "Reject", exact: true }).click()
+  await expect(page.getByTestId("batch-action-status")).toHaveText("1 jobs updated successfully.")
+  await expect(page.getByTestId(`opportunity-card-${firstId}`)).toHaveCount(0)
+  await page.getByRole("button", { name: "Undo" }).click()
+  await expect(page.getByTestId(`opportunity-card-${firstId}`)).toBeVisible()
+  await page.getByTestId(`opportunity-card-${firstId}`).locator("xpath=ancestor::li[1]").locator('input[aria-label^="Select "]').check()
+
+  page.once("dialog", async (dialog) => {
+    expect(dialog.message()).toBe("Mark 1 selected jobs as Applied?")
+    await dialog.accept()
+  })
+  await page.getByTestId("batch-action-toolbar").getByRole("button", { name: "Mark Applied", exact: true }).click()
+  await expect(page.getByTestId("batch-action-status")).toHaveText("1 jobs updated successfully.")
+  await expect(page.getByTestId(`opportunity-card-${firstId}`)).toHaveCount(0)
+  await page.getByTestId("workspace-tracker").click()
+  await page.getByTestId("tracker-bucket-applied").click()
+  await expect(page.getByTestId(`opportunity-card-${firstId}`)).toBeVisible()
+})

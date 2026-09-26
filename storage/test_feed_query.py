@@ -11,6 +11,8 @@ from sqlalchemy.orm import sessionmaker
 from storage.feed_projection import FeedProjectionRecord, projection_identity
 from storage.feed_query import FeedQuerySpec, build_feed_query, feed_page
 from storage.models import (
+    FounderActivityEventRecord,
+    FounderFeedbackRecord,
     Base,
     FounderTriageStateRecord,
     OutboundActionRecordModel,
@@ -487,6 +489,85 @@ class FeedQueryContractTest(unittest.TestCase):
             feed_page(self.session, FeedQuerySpec(
                 truth_pack_hash="truth-a", sort_by="random", include_hidden=True
             ))
+
+    def test_repeated_track_and_decision_values_are_or_within_facets_and_and_across_facets(self) -> None:
+        self.add_projection("multi-employment-qualified", track="employment", decision="QUALIFIED", source_id="alpha")
+        self.add_projection("multi-tutoring-review", track="tutoring", decision="UNCERTAIN", source_id="alpha")
+        self.add_projection("multi-contract-qualified", track="contract", decision="QUALIFIED", source_id="beta")
+        self.session.commit()
+
+        result = feed_page(self.session, FeedQuerySpec(
+            truth_pack_hash="truth-a",
+            track_values=("employment", "tutoring"),
+            decision_values=("qualified", "uncertain"),
+            source_ids=("alpha", "beta"),
+            include_hidden=True,
+        ))
+        self.assertEqual(
+            {row.opportunity_id for row in result.rows},
+            {"multi-employment-qualified", "multi-tutoring-review"},
+        )
+        combined = feed_page(self.session, FeedQuerySpec(
+            truth_pack_hash="truth-a",
+            track_values=("employment", "tutoring"),
+            decision_values=("uncertain",),
+            source_ids=("alpha", "beta"),
+            include_hidden=True,
+        ))
+        self.assertEqual([row.opportunity_id for row in combined.rows], ["multi-tutoring-review"])
+
+    def test_fit_sort_ties_use_stable_projection_id_order(self) -> None:
+        self.add_projection("tie-z", fit=88.0)
+        self.add_projection("tie-a", fit=88.0)
+        self.session.commit()
+        descending = feed_page(self.session, FeedQuerySpec(
+            truth_pack_hash="truth-a", sort_by="fit_desc", include_hidden=True,
+        ))
+        tied = [row for row in descending.rows if row.fit_score == 88.0]
+        self.assertEqual([row.id for row in tied], sorted(row.id for row in tied))
+
+    def test_feedback_and_activity_multiselects_are_or_per_facet_and_and_with_source(self) -> None:
+        self.add_projection("event-a", source_id="alpha")
+        self.add_projection("event-b", source_id="alpha")
+        self.add_projection("event-c", source_id="beta")
+        for index, label in enumerate(("good_match", "bad_match")):
+            self.session.add(FounderFeedbackRecord(
+                id=f"feedback-{index}", opportunity_id="event-a", feedback_label=label,
+                structured_reason=None, notes=None, dedup_hash=f"dedup-{index}",
+            ))
+        self.session.add(FounderFeedbackRecord(
+            id="feedback-c", opportunity_id="event-c", feedback_label="review_required",
+            structured_reason=None, notes=None, dedup_hash="dedup-c",
+        ))
+        for index, action in enumerate(("saved", "rejected_by_founder")):
+            self.session.add(FounderActivityEventRecord(
+                id=f"activity-{index}", opportunity_id="event-a", action_type=action,
+                from_state="to_review", to_state=action, event_at=datetime.now(timezone.utc),
+                metadata_json="{}",
+            ))
+        self.session.add(FounderActivityEventRecord(
+            id="activity-c", opportunity_id="event-c", action_type="saved",
+            from_state="to_review", to_state="saved", event_at=datetime.now(timezone.utc),
+            metadata_json="{}",
+        ))
+        self.session.commit()
+
+        result = feed_page(self.session, FeedQuerySpec(
+            truth_pack_hash="truth-a",
+            feedback_labels=("good_match", "bad_match"),
+            activity_types=("saved", "rejected_by_founder"),
+            source_ids=("alpha", "beta"),
+            include_hidden=True,
+        ))
+        self.assertEqual({row.opportunity_id for row in result.rows}, {"event-a"})
+        combined = feed_page(self.session, FeedQuerySpec(
+            truth_pack_hash="truth-a",
+            feedback_labels=("review_required", "bad_match"),
+            activity_types=("saved",),
+            source_ids=("beta",),
+            include_hidden=True,
+        ))
+        self.assertEqual([row.opportunity_id for row in combined.rows], ["event-c"])
 
     def test_new_filters_compile_to_projection_only_postgresql_sql(self) -> None:
         query = build_feed_query(self.session, FeedQuerySpec(

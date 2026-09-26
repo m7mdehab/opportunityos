@@ -55,6 +55,8 @@ export default function FeedPage() {
 
   const [truth, setTruth] = useState<TruthStatusResponse | null>(null)
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null)
+  const [metricPeriod, setMetricPeriod] = useState<"today" | "yesterday" | "date" | "all_time">("today")
+  const [metricDate, setMetricDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [sources, setSources] = useState<SourceHealth[] | null>(null)
 
   const [query, setQuery] = useState<FeedQueryState>(EMPTY_FEED_QUERY)
@@ -77,6 +79,9 @@ export default function FeedPage() {
   const [undoSubmitting, setUndoSubmitting] = useState(false)
   const [triagePendingId, setTriagePendingId] = useState<string | null>(null)
   const [triageError, setTriageError] = useState<{ id: string; message: string } | null>(null)
+  const [selectedJobs, setSelectedJobs] = useState<Set<string>>(() => new Set())
+  const [batchStatus, setBatchStatus] = useState<string | null>(null)
+  const [batchPending, setBatchPending] = useState(false)
 
   // ---- D3 founder-controlled filters ----
   const [filtersDrawerOpen, setFiltersDrawerOpen] = useState(false)
@@ -169,12 +174,18 @@ export default function FeedPage() {
 
   const handleQueryChange = useCallback((next: FeedQueryState) => {
     setPage(1)
+    setSelectedJobs(new Set())
+    setBatchStatus(null)
     setQuery(next)
   }, [])
 
   const refreshDashboard = useCallback(() => {
-    api.dashboard.daily(7).then(setDashboard).catch(() => undefined)
-  }, [])
+    api.dashboard.daily(metricPeriod, metricPeriod === "date" ? metricDate : undefined).then(setDashboard).catch(() => undefined)
+  }, [metricPeriod, metricDate])
+
+  useEffect(() => {
+    if (authPhase === "authenticated") refreshDashboard()
+  }, [authPhase, refreshDashboard])
 
   const refreshSources = useCallback(() => {
     api.sources
@@ -192,8 +203,8 @@ export default function FeedPage() {
     setListError(null)
     api.opportunities
       .list({
-        track: query.track || undefined,
-        decision: query.decision || undefined,
+        track: query.track,
+        decision: query.decision,
         min_score: query.scoreRanges.fit_score.min ? Number(query.scoreRanges.fit_score.min) : undefined,
         min_fit_score: query.scoreRanges.fit_score.min ? Number(query.scoreRanges.fit_score.min) : undefined,
         max_fit_score: query.scoreRanges.fit_score.max ? Number(query.scoreRanges.fit_score.max) : undefined,
@@ -232,8 +243,18 @@ export default function FeedPage() {
 
   const refreshFromFirstPage = useCallback(() => {
     if (page === 1) refreshList()
-    else setPage(1)
+    else {
+      setSelectedJobs(new Set())
+      setBatchStatus(null)
+      setPage(1)
+    }
   }, [page, refreshList])
+
+  function changePage(nextPage: number) {
+    setSelectedJobs(new Set())
+    setBatchStatus(null)
+    setPage(nextPage)
+  }
 
   useEffect(() => {
     if (authPhase !== "authenticated") return
@@ -383,22 +404,41 @@ export default function FeedPage() {
     refreshFromFirstPage()
   }
 
-  async function handleCardTriage(id: string, type: "save" | "mark_applied" | "reject") {
+  async function handleCardTriage(id: string, type: "save" | "mark_applied" | "reject", preserveUndo = false): Promise<boolean> {
     setTriagePendingId(id)
     setTriageError(null)
-    setUndoNotice(null)
+    if (!preserveUndo) setUndoNotice(null)
     setUndoError(null)
     try {
       const response = await api.opportunities.submitAction(id, type, null, crypto.randomUUID())
       handleActionSubmitted(id, response.tracker_state ?? response.action_state, response)
       notifyTrackerActivityChanged()
+      setSelectedJobs((current) => { const next = new Set(current); next.delete(id); return next })
+      return true
     } catch (failure) {
       const detail = failure instanceof ApiError && failure.body && typeof failure.body === "object" && "detail" in failure.body && typeof failure.body.detail === "string"
         ? failure.body.detail
         : failure instanceof Error ? failure.message : "Could not update this tracker state."
       setTriageError({ id, message: detail })
+      return false
     } finally {
       setTriagePendingId(null)
+    }
+  }
+
+  async function handleBatchTriage(type: "save" | "mark_applied" | "reject") {
+    const ids = [...selectedJobs]
+    if (!ids.length || batchPending) return
+    if (type === "mark_applied" && !window.confirm(`Mark ${ids.length} selected jobs as Applied?`)) return
+    setBatchPending(true)
+    setBatchStatus(null)
+    const failed: string[] = []
+    try {
+      for (const id of ids) if (!(await handleCardTriage(id, type, true))) failed.push(id)
+      setSelectedJobs(new Set(failed))
+      setBatchStatus(failed.length ? `${ids.length - failed.length} succeeded; ${failed.length} failed. Failed jobs remain selected: ${failed.join(", ")}` : `${ids.length} jobs updated successfully.`)
+    } finally {
+      setBatchPending(false)
     }
   }
 
@@ -461,6 +501,10 @@ export default function FeedPage() {
         onPollNow={handlePollNow}
         polling={polling}
         onOpenHiddenReasons={() => setHiddenReasonsOpen(true)}
+        metricPeriod={metricPeriod}
+        metricDate={metricDate}
+        onMetricPeriodChange={setMetricPeriod}
+        onMetricDateChange={(date) => { setMetricDate(date); setMetricPeriod("date") }}
       />
 
       <nav aria-label="Opportunity workspace" className="flex flex-wrap gap-2 border-b border-border bg-background px-4 py-2 sm:px-6">
@@ -534,13 +578,13 @@ export default function FeedPage() {
           </Button>
           <Button
             type="button"
-            variant={query.track === "tutoring" ? "default" : "outline"}
+            variant={query.track.includes("tutoring") ? "default" : "outline"}
             size="sm"
             data-testid="toggle-tutoring-lane"
             disabled={!truth.loaded}
             title={!truth.loaded ? "A validated founder profile is required for tutoring materials" : undefined}
             onClick={() => {
-              handleQueryChange({ ...query, track: query.track === "tutoring" ? "" : "tutoring" })
+              handleQueryChange({ ...query, track: query.track.includes("tutoring") ? query.track.filter((track) => track !== "tutoring") : [...query.track, "tutoring"] })
             }}
           >
             <GraduationCap aria-hidden="true" className="size-3.5" />
@@ -585,7 +629,7 @@ export default function FeedPage() {
 
         {!truth ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : query.track === "tutoring" ? (
+        ) : query.track.length === 1 && query.track[0] === "tutoring" ? (
           <TutoringSurface />
         ) : listLoading && !items ? (
           <p className="text-sm text-muted-foreground">Loading opportunities…</p>
@@ -615,6 +659,18 @@ export default function FeedPage() {
               {total} opportunit{total === 1 ? "y" : "ies"}
               {query.includeHidden && " (including hidden)"}
             </p>
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-2 text-sm">
+              <Button type="button" size="xs" variant="outline" disabled={batchPending || !items?.length} onClick={() => setSelectedJobs(new Set(items?.map((item) => item.id) ?? []))}>Select all visible</Button>
+              <Button type="button" size="xs" variant="ghost" disabled={batchPending || selectedJobs.size === 0} onClick={() => { setSelectedJobs(new Set()); setBatchStatus(null) }}>Clear selection</Button>
+              <span aria-live="polite" className="min-w-0 text-xs text-muted-foreground">{selectedJobs.size} selected</span>
+              {selectedJobs.size > 0 && <div data-testid="batch-action-toolbar" className="ml-auto flex min-w-0 flex-wrap gap-1.5">
+                <Button type="button" size="xs" variant="outline" disabled={batchPending} onClick={() => void handleBatchTriage("save")}>Save</Button>
+                <Button type="button" size="xs" variant="outline" disabled={batchPending} onClick={() => void handleBatchTriage("reject")}>Reject</Button>
+                <Button type="button" size="xs" variant="outline" disabled={batchPending} onClick={() => void handleBatchTriage("mark_applied")}>Mark Applied</Button>
+              </div>}
+              {batchPending && <span role="status" className="w-full text-xs">Updating selected jobs…</span>}
+              {batchStatus && <p role="status" data-testid="batch-action-status" className="w-full break-words text-xs">{batchStatus}</p>}
+            </div>
             <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {items?.map((o, idx) => (
                 <OpportunityCard
@@ -625,6 +681,13 @@ export default function FeedPage() {
                   }}
                   opportunity={o}
                   keyboardFocused={idx === focusedIndex}
+                  selected={selectedJobs.has(o.id)}
+                  onSelectedChange={(selected) => setSelectedJobs((current) => {
+                    const next = new Set(current)
+                    if (selected) next.add(o.id)
+                    else next.delete(o.id)
+                    return next
+                  })}
                   onTriageAction={(type) => void handleCardTriage(o.id, type)}
                   triagePending={triagePendingId === o.id}
                   triageError={triageError?.id === o.id ? triageError.message : null}
@@ -647,7 +710,7 @@ export default function FeedPage() {
                   variant="outline"
                   size="sm"
                   disabled={page <= 1 || listLoading}
-                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  onClick={() => changePage(Math.max(1, page - 1))}
                 >
                   Previous
                 </Button>
@@ -659,7 +722,7 @@ export default function FeedPage() {
                   variant="outline"
                   size="sm"
                   disabled={page >= pageCount || listLoading}
-                  onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+                  onClick={() => changePage(Math.min(pageCount, page + 1))}
                 >
                   Next
                 </Button>

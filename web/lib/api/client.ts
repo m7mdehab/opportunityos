@@ -115,8 +115,8 @@ export const api = {
 
   opportunities: {
     list: (params: {
-      track?: string
-      decision?: string
+      track?: string | string[]
+      decision?: string | string[]
       min_score?: number
       min_fit_score?: number
       max_fit_score?: number
@@ -130,6 +130,8 @@ export const api = {
       posted_from?: string
       posted_to?: string
       work_mode?: string[]
+      feedback_label?: string[]
+      activity_type?: string[]
       location_country?: string[]
       location_city?: string[]
       remote_scope?: string[]
@@ -347,8 +349,11 @@ export const api = {
   },
 
   dashboard: {
-    daily: (days = 7) =>
-      request<DashboardResponse>(`/api/dashboard/daily?days=${days}`),
+    daily: (period: "today" | "yesterday" | "date" | "all_time" = "today", date?: string) => {
+      const params = new URLSearchParams({ period })
+      if (date) params.set("date", date)
+      return request<DashboardResponse>(`/api/dashboard/daily?${params.toString()}`)
+    },
   },
 
   filters: {

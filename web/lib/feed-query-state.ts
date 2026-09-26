@@ -7,6 +7,8 @@ import type {
 } from "@/lib/contract/types"
 
 export const FEED_MULTI_FACET_IDS: FeedMultiFacetId[] = [
+  "feedback_label",
+  "activity_type",
   "work_mode",
   "location_country",
   "location_city",
@@ -36,8 +38,8 @@ export const FEED_SORT_IDS: FeedSortId[] = [
 
 export const FEED_SORT_LABELS: Record<FeedSortId, string> = {
   recommended: "Recommended / Best match",
-  fit_desc: "Capability fit — high to low",
-  fit_asc: "Capability fit — low to high",
+  fit_desc: "Fit Score — Highest first",
+  fit_asc: "Fit Score — Lowest first",
   newest_posted: "Newest posted",
   oldest_posted: "Oldest posted",
   remote_first: "Remote first",
@@ -125,10 +127,12 @@ export const FEED_UNAVAILABLE_FILTERS: FeedUnavailableFilter[] = [
 ]
 
 export const EMPTY_FEED_QUERY: FeedQueryState = {
-  track: "",
-  decision: "",
+  track: [],
+  decision: [],
   q: "",
   multi: {
+    feedback_label: [],
+    activity_type: [],
     work_mode: [],
     location_country: [],
     location_city: [],
@@ -223,8 +227,8 @@ export function parseFeedQueryParams(params: URLSearchParams): FeedQueryPageStat
         max: validScore(params.get("max_priority_score")),
       },
     },
-    track: params.get("track") ?? "",
-    decision: params.get("decision") ?? "",
+    track: [...new Set(params.getAll("track").filter(Boolean))],
+    decision: [...new Set(params.getAll("decision").filter(Boolean))],
     q: params.get("q") ?? "",
     postedFrom: validDate(params.get("posted_from")),
     postedTo: validDate(params.get("posted_to")),
@@ -245,8 +249,8 @@ export function buildFeedQueryParams(
     if (value !== undefined && String(value) !== "") params.set(key, String(value))
   }
 
-  add("track", filters.track)
-  add("decision", filters.decision)
+  for (const value of filters.track) params.append("track", value)
+  for (const value of filters.decision) params.append("decision", value)
   add("q", filters.q.trim())
   add("min_score", filters.scoreRanges.fit_score.min)
   add("min_fit_score", filters.scoreRanges.fit_score.min)
@@ -287,8 +291,8 @@ export function hasActiveFeedQuery(filters: FeedQueryState): boolean {
     Boolean(filters.scoreRanges[score].min || filters.scoreRanges[score].max)
   )
   return Boolean(
-    filters.track ||
-      filters.decision ||
+    filters.track.length > 0 ||
+      filters.decision.length > 0 ||
       filters.q.trim() ||
       filters.postedFrom ||
       filters.postedTo ||

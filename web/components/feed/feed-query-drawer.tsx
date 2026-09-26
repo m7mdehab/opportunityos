@@ -31,6 +31,8 @@ import type {
 } from "@/lib/contract/types"
 
 const FACET_LABELS: Record<FeedMultiFacetId, string> = {
+  feedback_label: "Feedback",
+  activity_type: "Activity",
   work_mode: "Work mode",
   location_country: "Country",
   location_city: "City",
@@ -76,8 +78,8 @@ export function FeedQueryChips({
   onChange: (next: FeedQueryState) => void
 }) {
   const chips: Array<{ key: string; label: string; remove: () => void }> = []
-  if (value.track) chips.push({ key: "track", label: `Track: ${value.track}`, remove: () => onChange({ ...value, track: "" }) })
-  if (value.decision) chips.push({ key: "decision", label: `Decision: ${value.decision}`, remove: () => onChange({ ...value, decision: "" }) })
+  for (const track of value.track) chips.push({ key: `track:${track}`, label: `Track: ${track}`, remove: () => onChange({ ...value, track: value.track.filter((item) => item !== track) }) })
+  for (const decision of value.decision) chips.push({ key: `decision:${decision}`, label: `Decision: ${decision}`, remove: () => onChange({ ...value, decision: value.decision.filter((item) => item !== decision) }) })
   if (value.q.trim()) chips.push({ key: "q", label: `Search: ${value.q.trim()}`, remove: () => onChange({ ...value, q: "" }) })
   for (const facet of FEED_MULTI_FACET_IDS) {
     for (const option of value.multi[facet]) {

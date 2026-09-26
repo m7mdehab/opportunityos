@@ -176,6 +176,12 @@ class FeedFilterMetadataTest(unittest.TestCase):
         self.assertTrue(result["truncated"])
         self.assertEqual(result["values"][0]["value"], "source-000")
 
+    def test_feedback_and_activity_facets_are_multiple_select_and_count_only(self) -> None:
+        result = feed_filter_metadata(self.session, "truth-x")["facets"]
+        for facet in ("feedback_label", "activity_type"):
+            self.assertEqual(result[facet]["selection"], "multiple")
+            self.assertIn("values", result[facet])
+
     def test_supported_sorts_and_unsupported_filter_reasons_are_explicit(self) -> None:
         result = feed_filter_metadata(self.session, "truth-x")
         self.assertEqual(
@@ -193,7 +199,7 @@ class FeedFilterMetadataTest(unittest.TestCase):
             "cv_application_readiness", "tracked_user_metadata",
         }.issubset(ids))
 
-    def test_metadata_uses_only_grouped_or_scalar_projection_queries(self) -> None:
+    def test_metadata_uses_grouped_projection_and_event_facet_queries(self) -> None:
         statements: list[str] = []
 
         def record_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
@@ -208,7 +214,7 @@ class FeedFilterMetadataTest(unittest.TestCase):
         self.assertTrue(result["facets"])
         self.assertTrue(statements)
         self.assertTrue(all(sql.lstrip().startswith("select") for sql in statements))
-        self.assertTrue(all("from feed_projection" in sql for sql in statements))
+        self.assertTrue(all("feed_projection" in sql for sql in statements))
         self.assertTrue(all("opportunities" not in sql for sql in statements))
         self.assertTrue(all("reasons_json" not in sql and "source_url" not in sql for sql in statements))
         self.assertTrue(any("group by" in sql for sql in statements))

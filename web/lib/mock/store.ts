@@ -139,11 +139,14 @@ const MOCK_CONFIDENCE_FACTORS: ConfidenceFactor[] = [
   { name: "founder_evidence_completeness", score: 87, explanation: "Synthetic mock factor: evaluation evidence is represented by this fixture." },
 ]
 const FEED_FACETS: FeedFacetId[] = [
+  "feedback_label", "activity_type",
   "track", "decision", "work_mode", "location_country", "location_city",
   "remote_scope", "employment_type", "seniority_level", "target_tier",
   "title_family", "source_id",
 ]
 const FEED_MULTI_FACETS: FeedMultiFacetId[] = [
+  "feedback_label",
+  "activity_type",
   "work_mode", "location_country", "location_city", "remote_scope",
   "employment_type", "seniority_level", "target_tier", "title_family", "source_id",
 ]
@@ -1843,7 +1846,7 @@ export class MockStore {
         rightCount - leftCount || leftValue.localeCompare(rightValue)
       )
       facets[facet] = {
-        selection: facet === "track" || facet === "decision" ? "single" : "multiple",
+        selection: "multiple",
         values: ordered.slice(0, 100).map(([value, count]) => ({ value, count })),
         option_count: ordered.length,
         truncated: ordered.length > 100,
@@ -1888,8 +1891,8 @@ export class MockStore {
   }
 
   listOpportunities(filters: {
-    track?: string
-    decision?: string
+    track?: string[]
+    decision?: string[]
     min_score?: number
     min_fit_score?: number
     max_fit_score?: number
@@ -1902,6 +1905,8 @@ export class MockStore {
     posted_from?: string
     posted_to?: string
     work_mode?: string[]
+    feedback_label?: string[]
+    activity_type?: string[]
     location_country?: string[]
     location_city?: string[]
     remote_scope?: string[]
@@ -1932,13 +1937,15 @@ export class MockStore {
         : !outsideToReview.has(o.action_state ?? "")
     )
 
-    if (filters.track) {
-      items = items.filter((o) => o.track === filters.track)
+    if (filters.track?.length) {
+      items = items.filter((o) => filters.track!.includes(o.track))
     }
-    if (filters.decision) {
-      items = items.filter((o) => mockFacetValue(o, "decision") === filters.decision)
+    if (filters.decision?.length) {
+      items = items.filter((o) => filters.decision!.includes(mockFacetValue(o, "decision")))
     }
     const multiSelections: Record<FeedMultiFacetId, string[] | undefined> = {
+      feedback_label: filters.feedback_label,
+      activity_type: filters.activity_type,
       work_mode: filters.work_mode,
       location_country: filters.location_country,
       location_city: filters.location_city,
@@ -2545,20 +2552,32 @@ export class MockStore {
 
   // ---- dashboard / sources / worker / truth ----
 
-  dashboard(days: number): DashboardResponse {
+  dashboard(period: "today" | "yesterday" | "date" | "all_time", selectedDate?: string): DashboardResponse {
     // `hidden_by_filters` for *today* (index 0) is recomputed live against
     // current filter/facet settings on every call -- matching the real
     // API's `dashboard_daily`, which re-runs `apply_filters` against
     // today's rows on every request rather than a value frozen at seed
     // time. Earlier days stay the static snapshot this mock has no
     // per-day history to recompute against.
-    const series = this.dailyCounters.slice(0, days).map((day, i) =>
-      i === 0
-        ? { ...day, hidden_by_filters: this.hiddenCount([...this.opportunities.values()]) }
-        : day
-    )
+    const today = this.dailyCounters[0]
+    const yesterday = this.dailyCounters[1]
+    let chosen = today
+    if (period === "yesterday") chosen = yesterday ?? { ...today, date: "" }
+    if (period === "date") chosen = this.dailyCounters.find((day) => day.date === selectedDate) ?? { ...today, date: selectedDate ?? today.date, fetched: 0, unique_new: 0, qualified: 0, high_fit: 0, opened: 0, labelled: 0, applied: 0, hidden_by_filters: 0 }
+    if (period === "all_time") chosen = this.dailyCounters.reduce((total, day) => ({
+      date: "all-time",
+      fetched: total.fetched + day.fetched,
+      unique_new: total.unique_new + day.unique_new,
+      qualified: total.qualified + day.qualified,
+      high_fit: total.high_fit + day.high_fit,
+      opened: total.opened + day.opened,
+      labelled: total.labelled + day.labelled,
+      applied: total.applied + day.applied,
+      hidden_by_filters: total.hidden_by_filters + day.hidden_by_filters,
+    }), { ...today, date: "all-time", fetched: 0, unique_new: 0, qualified: 0, high_fit: 0, opened: 0, labelled: 0, applied: 0, hidden_by_filters: 0 })
+    const series = [{ ...chosen, ...(period === "today" ? { hidden_by_filters: this.hiddenCount([...this.opportunities.values()]) } : {}) }]
     return {
-      days,
+      days: 1,
       high_fit_threshold: HIGH_FIT_THRESHOLD,
       series,
     }
@@ -2637,6 +2656,8 @@ function mockFacetValue(o: SeedOpportunity, facet: FeedFacetId): string {
   const extraction = mockExtractionFields(o)
   let raw: string | null | undefined
   switch (facet) {
+    case "feedback_label": raw = o.feedback_label; break
+    case "activity_type": raw = o.action_state; break
     case "track": return o.track
     case "decision": raw = o.decision; break
     case "work_mode": raw = extraction.work_mode; break

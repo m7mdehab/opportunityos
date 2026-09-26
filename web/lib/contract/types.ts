@@ -180,6 +180,8 @@ export interface OpportunityListResponse {
 }
 
 export type FeedMultiFacetId =
+  | "feedback_label"
+  | "activity_type"
   | "work_mode"
   | "location_country"
   | "location_city"
@@ -207,8 +209,8 @@ export interface FeedScoreBounds {
 
 /** Complete filter/sort state supported by the W5.1 SQL feed contract. */
 export interface FeedQueryState {
-  track: string
-  decision: string
+  track: string[]
+  decision: string[]
   q: string
   multi: Record<FeedMultiFacetId, string[]>
   scoreRanges: Record<FeedScoreId, FeedScoreBounds>

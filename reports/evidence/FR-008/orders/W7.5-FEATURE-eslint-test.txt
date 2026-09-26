@@ -1,0 +1,2 @@
+Command: pnpm exec eslint app/page.tsx components/feed/filter-bar.tsx components/feed/header-strip.tsx components/feed/opportunity-card.tsx components/feed/feed-query-drawer.tsx lib/api/client.ts lib/contract/types.ts lib/feed-query-state.ts lib/mock/handlers.ts lib/mock/store.ts tests/e2e/fr008-responsive-accessibility.spec.ts --max-warnings=0
+Result: PASS (exit 0; no diagnostics)

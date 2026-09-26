@@ -1108,8 +1108,8 @@ def unhide_by_reason_route(payload: UnhideByReasonRequest, request: Request, ses
 @router.get("/opportunities")
 def list_opportunities(
     request: Request,
-    track: str | None = None,
-    decision: str | None = None,
+    track: list[str] | None = Query(default=None),
+    decision: list[str] | None = Query(default=None),
     min_score: float | None = None,
     max_score: float | None = None,
     since: str | None = None,
@@ -1122,6 +1122,8 @@ def list_opportunities(
     target_tier: list[str] | None = Query(default=None),
     title_family: list[str] | None = Query(default=None),
     source_id: list[str] | None = Query(default=None),
+    feedback_label: list[str] | None = Query(default=None),
+    activity_type: list[str] | None = Query(default=None),
     min_fit_score: float | None = Query(default=None, ge=0, le=100),
     max_fit_score: float | None = Query(default=None, ge=0, le=100),
     min_preference_score: float | None = Query(default=None, ge=0, le=100),
@@ -1181,8 +1183,8 @@ def list_opportunities(
 
     spec = FeedQuerySpec(
         truth_pack_hash=truth_pack_hash,
-        track=track,
-        decision=decision,
+        track_values=tuple(track or ()),
+        decision_values=tuple(decision or ()),
         min_score=min_score,
         max_score=max_score,
         since=since,
@@ -1195,6 +1197,8 @@ def list_opportunities(
         target_tiers=tuple(target_tier or ()),
         title_families=tuple(title_family or ()),
         source_ids=tuple(source_id or ()),
+        feedback_labels=tuple(feedback_label or ()),
+        activity_types=tuple(activity_type or ()),
         min_fit_score=min_fit_score,
         max_fit_score=max_fit_score,
         min_preference_score=min_preference_score,
@@ -1219,7 +1223,7 @@ def list_opportunities(
         FeedProjectionRecord.visible.is_(False),
     )
     if track:
-        hidden_count_query = hidden_count_query.filter(FeedProjectionRecord.track == track)
+        hidden_count_query = hidden_count_query.filter(FeedProjectionRecord.track.in_(track))
     hidden_count = hidden_count_query.scalar() or 0
 
     page_items: list[dict[str, Any]] = []
@@ -2515,7 +2519,13 @@ def digest_latest():
 # --------------------------------------------------------------------------
 
 @router.get("/dashboard/daily")
-def dashboard_daily(request: Request, days: int = 7, session: Session = Depends(get_db)):
+def dashboard_daily(
+    request: Request,
+    days: int = 7,
+    period: Literal["today", "yesterday", "date", "all_time"] | None = None,
+    metric_date: date | None = Query(default=None, alias="date"),
+    session: Session = Depends(get_db),
+):
     days = max(1, min(days, 90))
     high_fit_threshold = request.app.state.settings.high_fit_threshold
     today = datetime.now(timezone.utc).date()
@@ -2523,9 +2533,43 @@ def dashboard_daily(request: Request, days: int = 7, session: Session = Depends(
     filter_settings = _load_filter_settings(session)
     truth_graph = _truth_graph_from_request(request)
 
+    if period == "all_time":
+        all_query = _opportunity_query(session)
+        if _can_lightweight_prefilter_hidden(filter_settings, {}):
+            hidden_by_filters = len(_lightweight_hidden_ids(all_query, truth_graph, filter_settings))
+        else:
+            hidden_by_filters = 0
+            for opportunities in _opportunity_batches(all_query):
+                contexts = build_filter_contexts(session, truth_graph, opportunities)
+                hidden_by_filters += sum(1 for context in contexts if apply_filters(context, filter_settings).hidden_by)
+        day_row = {
+            "date": "all-time",
+            "fetched": int(session.query(func.coalesce(func.sum(SourcePollRunRecord.raw_ingested), 0)).scalar() or 0),
+            "unique_new": int(session.query(func.count(OpportunityRecord.id)).scalar() or 0),
+            "qualified": int(session.query(func.count(MatchEvaluationRecord.id)).filter(MatchEvaluationRecord.qualification_decision == "qualified").scalar() or 0),
+            "high_fit": int(session.query(func.count(MatchEvaluationRecord.id)).filter(MatchEvaluationRecord.fit_score >= high_fit_threshold).scalar() or 0),
+            "opened": int(session.query(func.count(FounderOpportunityViewRecord.id)).scalar() or 0),
+            "labelled": int(session.query(func.count(FounderFeedbackRecord.id)).scalar() or 0),
+            "applied": int(session.query(func.count(OutboundActionRecordModel.id)).filter(OutboundActionRecordModel.action_status == ActionStatus.SUBMITTED.value).scalar() or 0),
+            "hidden_by_filters": hidden_by_filters,
+        }
+        return {"days": 1, "high_fit_threshold": high_fit_threshold, "series": [day_row]}
+
+    if period is not None:
+        if period == "yesterday":
+            selected_day = today - timedelta(days=1)
+        elif period == "date":
+            if metric_date is None:
+                raise HTTPException(status_code=422, detail="date is required when period=date")
+            selected_day = metric_date
+        else:
+            selected_day = today
+        days_to_report = [selected_day]
+    else:
+        days_to_report = [today - timedelta(days=offset) for offset in range(days)]
+
     series = []
-    for offset in range(days):
-        day = today - timedelta(days=offset)
+    for day in days_to_report:
         day_start = datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
         day_end = day_start + timedelta(days=1)
 

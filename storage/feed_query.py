@@ -9,7 +9,12 @@ from sqlalchemy.orm import Query, Session
 
 from outbound.models import ActionStatus
 from storage.feed_projection import FeedProjectionRecord
-from storage.models import FounderTriageStateRecord, OutboundActionRecordModel
+from storage.models import (
+    FounderActivityEventRecord,
+    FounderFeedbackRecord,
+    FounderTriageStateRecord,
+    OutboundActionRecordModel,
+)
 
 UNKNOWN_FILTER_VALUE = "unknown"
 FEED_SORTS = frozenset({
@@ -34,6 +39,10 @@ class FeedQuerySpec:
     truth_pack_hash: str
     track: str | None = None
     decision: str | None = None
+    track_values: tuple[str, ...] = ()
+    decision_values: tuple[str, ...] = ()
+    feedback_labels: tuple[str, ...] = ()
+    activity_types: tuple[str, ...] = ()
     min_score: float | None = None
     max_score: float | None = None
     since: str | None = None
@@ -171,33 +180,35 @@ def build_feed_query(session: Session, spec: FeedQuerySpec) -> Query:
 
     if not spec.include_hidden:
         query = query.filter(FeedProjectionRecord.visible.is_(True))
-    if spec.track:
-        if spec.track.strip().casefold() == UNKNOWN_FILTER_VALUE:
-            query = query.filter(or_(
-                FeedProjectionRecord.track.is_(None),
-                func.trim(FeedProjectionRecord.track) == "",
-                func.lower(func.trim(FeedProjectionRecord.track)) == UNKNOWN_FILTER_VALUE,
-            ))
-        else:
-            query = query.filter(func.trim(FeedProjectionRecord.track) == spec.track.strip())
-    if spec.decision:
-        if spec.decision.strip().casefold() == UNKNOWN_FILTER_VALUE:
-            query = query.filter(or_(
-                FeedProjectionRecord.qualification_decision.is_(None),
-                func.trim(FeedProjectionRecord.qualification_decision) == "",
-                func.lower(func.trim(FeedProjectionRecord.qualification_decision)) == UNKNOWN_FILTER_VALUE,
-            ))
-        else:
-            query = query.filter(
-                func.lower(func.trim(FeedProjectionRecord.qualification_decision))
-                == spec.decision.strip().casefold()
-            )
-    elif not spec.decision or spec.decision.casefold() != "ineligible":
+    tracks = spec.track_values or ((spec.track,) if spec.track else ())
+    query = _apply_multi_select(
+        query, FeedProjectionRecord.track, tracks,
+        case_insensitive=False,
+        unknown_matches_empty=True,
+    )
+    decisions = spec.decision_values or ((spec.decision,) if spec.decision else ())
+    if decisions:
+        query = _apply_multi_select(
+            query, FeedProjectionRecord.qualification_decision, decisions,
+            case_insensitive=True,
+            unknown_matches_empty=True,
+        )
+    if not any(value.strip().casefold() == "ineligible" for value in decisions):
         # Only a proven ineligible decision is excluded. A missing or review-
         # required decision remains available for review.
         query = query.filter(or_(
             FeedProjectionRecord.qualification_decision.is_(None),
             func.lower(FeedProjectionRecord.qualification_decision) != "ineligible",
+        ))
+    if spec.feedback_labels:
+        query = query.filter(exists().where(
+            FounderFeedbackRecord.opportunity_id == FeedProjectionRecord.opportunity_id,
+            func.lower(FounderFeedbackRecord.feedback_label).in_([value.casefold() for value in spec.feedback_labels]),
+        ))
+    if spec.activity_types:
+        query = query.filter(exists().where(
+            FounderActivityEventRecord.opportunity_id == FeedProjectionRecord.opportunity_id,
+            func.lower(FounderActivityEventRecord.action_type).in_([value.casefold() for value in spec.activity_types]),
         ))
     if spec.min_score is not None:
         query = query.filter(FeedProjectionRecord.fit_score >= spec.min_score)

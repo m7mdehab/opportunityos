@@ -69,6 +69,8 @@ export const OpportunityCard = forwardRef<
      * whether the drawer is open. Purely a visual/focus-management concern
      * — never sent to the API. */
     keyboardFocused?: boolean
+    selected?: boolean
+    onSelectedChange?: (selected: boolean) => void
   }
 >(function OpportunityCard({
   opportunity,
@@ -77,6 +79,8 @@ export const OpportunityCard = forwardRef<
   triagePending = false,
   triageError = null,
   keyboardFocused = false,
+  selected = false,
+  onSelectedChange,
 }, ref) {
   const o = opportunity
   const isHidden = o.hidden_by.length > 0
@@ -89,7 +93,8 @@ export const OpportunityCard = forwardRef<
     onTriageAction !== undefined
 
   return (
-    <li className="flex flex-col gap-2">
+    <li className="flex min-w-0 flex-col gap-2">
+      {onSelectedChange && <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded px-2 text-sm text-muted-foreground"><input aria-label={`Select ${o.title}`} type="checkbox" checked={selected} onChange={(event) => onSelectedChange(event.target.checked)} className="size-4 accent-primary" />Select job</label>}
       <button
         ref={ref}
         type="button"

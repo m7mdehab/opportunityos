@@ -116,8 +116,8 @@ export const handlers = [
   http.get("/api/opportunities", ({ request }) => {
     if (!requireAuth(request)) return unauthorized()
     const url = new URL(request.url)
-    const track = url.searchParams.get("track") ?? undefined
-    const decision = url.searchParams.get("decision") ?? undefined
+    const track = url.searchParams.getAll("track")
+    const decision = url.searchParams.getAll("decision")
     const numberParam = (key: string) => {
       const raw = url.searchParams.get(key)
       return raw === null || raw === "" ? undefined : Number(raw)
@@ -142,6 +142,8 @@ export const handlers = [
       posted_from: url.searchParams.get("posted_from") ?? undefined,
       posted_to: url.searchParams.get("posted_to") ?? undefined,
       work_mode: url.searchParams.getAll("work_mode"),
+      feedback_label: url.searchParams.getAll("feedback_label"),
+      activity_type: url.searchParams.getAll("activity_type"),
       location_country: url.searchParams.getAll("location_country"),
       location_city: url.searchParams.getAll("location_city"),
       remote_scope: url.searchParams.getAll("remote_scope"),
@@ -723,8 +725,8 @@ export const handlers = [
   http.get("/api/dashboard/daily", ({ request }) => {
     if (!requireAuth(request)) return unauthorized()
     const url = new URL(request.url)
-    const days = Number(url.searchParams.get("days") ?? "7")
-    return HttpResponse.json(store().dashboard(days))
+    const period = (url.searchParams.get("period") ?? "today") as "today" | "yesterday" | "date" | "all_time"
+    return HttpResponse.json(store().dashboard(period, url.searchParams.get("date") ?? undefined))
   }),
 
   // ---- sources / worker ----

@@ -40,6 +40,10 @@ export function HeaderStrip({
   onPollNow,
   polling,
   onOpenHiddenReasons,
+  metricPeriod,
+  metricDate,
+  onMetricPeriodChange,
+  onMetricDateChange,
 }: {
   dashboard: DashboardResponse | null
   sources: SourceHealth[] | null
@@ -47,6 +51,10 @@ export function HeaderStrip({
   polling: boolean
   /** C4: the HIDDEN number links to the reason -> count audit table. */
   onOpenHiddenReasons: () => void
+  metricPeriod: "today" | "yesterday" | "date" | "all_time"
+  metricDate: string
+  onMetricPeriodChange: (period: "today" | "yesterday" | "date" | "all_time") => void
+  onMetricDateChange: (date: string) => void
 }) {
   const today = dashboard?.series[0]
 
@@ -56,12 +64,12 @@ export function HeaderStrip({
         <div>
           <h1 className="text-lg font-semibold">OpportunityOS</h1>
           <p className="text-xs text-muted-foreground">
-            Today&apos;s numbers{today ? ` — ${today.date}` : ""}
+            {metricPeriod === "all_time" ? "All time" : metricPeriod === "yesterday" ? "Yesterday" : metricPeriod === "date" ? `Specific date${today ? ` — ${today.date}` : ""}` : `Today${today ? ` — ${today.date}` : ""}`}
           </p>
         </div>
 
         <dl
-          aria-label="Today's dashboard numbers"
+          aria-label="Dashboard numbers"
           className="flex flex-wrap gap-x-5 gap-y-2"
         >
           {STATS.map(({ key, label }) =>
@@ -93,6 +101,14 @@ export function HeaderStrip({
             )
           )}
         </dl>
+
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <label htmlFor="metric-period" className="sr-only">Metric period</label>
+          <select id="metric-period" data-testid="metric-period" value={metricPeriod} onChange={(event) => onMetricPeriodChange(event.target.value as typeof metricPeriod)} className="h-8 max-w-full rounded-lg border border-input bg-card px-2 text-xs">
+            <option value="today">Today</option><option value="yesterday">Yesterday</option><option value="date">Specific date</option><option value="all_time">All time</option>
+          </select>
+          {metricPeriod === "date" && <input aria-label="Metrics specific date" data-testid="metric-specific-date" type="date" value={metricDate} onChange={(event) => onMetricDateChange(event.target.value)} className="h-8 max-w-full rounded-lg border border-input bg-card px-2 text-xs" />}
+        </div>
 
         <div className="flex min-w-0 max-w-full items-center gap-3">
           <ul
