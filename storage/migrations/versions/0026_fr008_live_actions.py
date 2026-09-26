@@ -345,10 +345,32 @@ WHERE public.opos_is_founder();
                   CASE WHEN f.work_mode='remote' THEN 0 ELSE 1 END AS remote_rank
            FROM public.founder_feed_activity f"""
     )
-    op.execute("GRANT SELECT ON public.founder_feed_fr008 TO authenticated")
+    op.execute("REVOKE ALL ON FUNCTION public.founder_restore_action(text,text) FROM PUBLIC")
+    op.execute("REVOKE ALL ON FUNCTION public.founder_set_action(text,text,date) FROM PUBLIC")
+    op.execute(
+        r"""
+DO $
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN
+    REVOKE ALL ON FUNCTION public.founder_restore_action(text,text) FROM anon;
+    REVOKE ALL ON FUNCTION public.founder_set_action(text,text,date) FROM anon;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
+    GRANT EXECUTE ON FUNCTION public.founder_restore_action(text,text) TO authenticated;
+    GRANT EXECUTE ON FUNCTION public.founder_set_action(text,text,date) TO authenticated;
+    GRANT SELECT ON public.founder_feed_fr008 TO authenticated;
+  END IF;
+END
+$;
+"""
+    )
 
 
 def downgrade() -> None:
+    # The FR-008 compatibility view must disappear before older activity/feed
+    # views are downgraded, otherwise PostgreSQL can correctly reject the
+    # dependency chain.
+    op.execute("DROP VIEW IF EXISTS public.founder_feed_fr008")
     op.execute("DROP FUNCTION IF EXISTS public.founder_restore_action(text,text)")
     # Keep the wider CHECKs on downgrade to avoid making already-written FR-008
     # events invalid. The function is restored to the accepted W23 behavior.
