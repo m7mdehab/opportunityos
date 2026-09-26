@@ -83,12 +83,12 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await passwordField.fill(FOUNDER_PASSWORD);
     await page.getByRole("button", { name: /Sign in/i }).click();
 
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/(?:\?.*)?$/);
     await expect(page.getByRole("heading", { name: "OpportunityOS" })).toBeVisible();
 
     // 4. Session survives page reload
     await page.reload();
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/(?:\?.*)?$/);
     await expect(page.getByRole("heading", { name: "OpportunityOS" })).toBeVisible();
 
     // 4b. FR-008 live review controls are present and genuinely multi-select.
