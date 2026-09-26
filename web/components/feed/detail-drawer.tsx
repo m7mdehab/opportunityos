@@ -135,7 +135,7 @@ export function DetailDrawer({
   return (
     <Dialog open={opportunityId !== null} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-h-[92dvh] min-w-0 w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)] overflow-x-clip overflow-y-auto p-0 sm:w-[92vw] sm:max-w-[92vw] lg:w-[84vw] lg:max-w-[84vw] xl:w-[80vw] xl:max-w-[120rem]"
+        className="left-4 right-4 max-h-[92dvh] min-w-0 w-auto max-w-none translate-x-0 overflow-x-clip overflow-y-auto p-0 sm:left-1/2 sm:right-auto sm:w-[92vw] sm:max-w-[92vw] sm:-translate-x-1/2 lg:w-[84vw] lg:max-w-[84vw] xl:w-[80vw] xl:max-w-[120rem]"
         aria-describedby={undefined}
       >
         {loading && (
