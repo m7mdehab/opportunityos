@@ -145,19 +145,24 @@ jobs:
           print("CANONICAL_TRUTH_PACK=PASS")
           PY
 
-      - name: Verify six immutable CV objects and hashes
+      - name: Verify immutable CV portfolio objects and hashes
         if: ${{ success() }}
         env:
           OPPORTUNITYOS_SUPABASE_URL: https://sunjfepvdzfknglrjwhm.supabase.co
         run: |
           python - <<'PY'
-          from matching.cv_selector import PORTFOLIO
+          from matching.cv_selector import PORTFOLIO, portfolio_hashes
           from matching.cv_storage import fetch_cv_bytes
+
+          assert PORTFOLIO, "fixed CV portfolio must not be empty"
+          assert len({variant.variant for variant in PORTFOLIO}) == len(PORTFOLIO)
+          assert len({variant.object_path for variant in PORTFOLIO}) == len(PORTFOLIO)
+          assert len(portfolio_hashes()) == len(PORTFOLIO)
+
           for variant in PORTFOLIO:
               payload = fetch_cv_bytes(variant)
               print(f"CV={variant.variant}=PASS bytes={len(payload)}")
-          assert len(PORTFOLIO) == 6
-          print("FIXED_CV_PORTFOLIO=PASS")
+          print(f"FIXED_CV_PORTFOLIO=PASS count={len(PORTFOLIO)}")
           PY
 
       - name: Verify Cloudflare account/token
