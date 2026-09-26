@@ -1,0 +1,41 @@
+name: One-time branch housekeeping
+
+on:
+  workflow_run:
+    workflows: ["FR-008 Live Founder Deploy"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  prune-superseded-branches:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Delete every superseded branch except main
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t branches < <(
+            git ls-remote --heads origin |
+              awk '{sub("refs/heads/","",$2); print $2}' |
+              sort -u
+          )
+          deleted=0
+          for branch in "${branches[@]}"; do
+            if [ "$branch" = "main" ]; then
+              continue
+            fi
+            echo "Deleting superseded branch: $branch"
+            git push origin --delete "$branch"
+            deleted=$((deleted + 1))
+          done
+          echo "Deleted $deleted superseded branch refs."
+          remaining="$(git ls-remote --heads origin | wc -l | tr -d ' ')"
+          test "$remaining" = "1"
+          git ls-remote --heads origin | grep 'refs/heads/main$'
