@@ -168,6 +168,18 @@ def restore_tracker_transition(
     if not request_key or len(request_key) > 128:
         raise TrackerTransitionError("idempotency key is required and must be at most 128 characters")
 
+    restore_id = _event_id(opportunity_id, request_key, "restore", now)
+    existing_restore = session.get(FounderActivityEventRecord, restore_id)
+    if existing_restore is not None:
+        if existing_restore.opportunity_id != opportunity_id or existing_restore.action_type != "restore":
+            raise TrackerTransitionError("idempotency key was already used for another action")
+        return RestoreResult(
+            opportunity_id,
+            existing_restore.resulting_state or "to_review",
+            False,
+            existing_restore.id,
+        )
+
     original = session.get(FounderActivityEventRecord, event_id)
     if original is None or original.opportunity_id != opportunity_id:
         raise TrackerTransitionError("tracker event not found")
@@ -221,19 +233,16 @@ def restore_tracker_transition(
             attestation.action_status = ActionStatus.UNDONE.value
             attestation.updated_at = timestamp
 
-    restore_id = _event_id(opportunity_id, request_key, "restore", now)
-    replay = session.get(FounderActivityEventRecord, restore_id)
-    if replay is None:
-        session.add(FounderActivityEventRecord(
+    session.add(FounderActivityEventRecord(
             id=restore_id,
             opportunity_id=opportunity_id,
             action_type="restore",
             resulting_state=None if previous_state == "to_review" else previous_state,
             snoozed_until=None,
             created_at=timestamp,
-        ))
-        session.flush()
-    return RestoreResult(opportunity_id, previous_state, replay is None, restore_id)
+    ))
+    session.flush()
+    return RestoreResult(opportunity_id, previous_state, True, restore_id)
 
 
 def or_before(model, event: FounderActivityEventRecord):
