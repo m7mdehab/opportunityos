@@ -14,7 +14,7 @@ import { ManualSourcesPanel } from "@/components/feed/manual-sources-panel"
 import { TutoringSurface } from "@/components/feed/tutoring-surface"
 import { OverHidingWarningBanner } from "@/components/feed/over-hiding-warning"
 import { Button } from "@/components/ui/button"
-import { EyeOff, Eye, SlidersHorizontal, Search, GraduationCap } from "lucide-react"
+import { EyeOff, Eye } from "lucide-react"
 import {
   NoTruthPackState,
   InvalidTruthPackState,
