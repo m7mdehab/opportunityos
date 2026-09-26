@@ -2,6 +2,7 @@
 
 import { forwardRef } from "react"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { DecisionBadge } from "@/components/feed/decision-badge"
 import { filterTitle } from "@/components/feed/filter-labels"
 import { AlertTriangle, EyeOff, Tag, Globe } from "lucide-react"
@@ -11,6 +12,20 @@ import type { OpportunityListItem } from "@/lib/contract/types"
 
 const ACTION_STATE_LABEL: Record<string, string> = {
   submitted: "Applied",
+  saved: "Saved",
+  applied: "Applied",
+  rejected_by_founder: "Rejected",
+  rejected_by_employer: "Rejected by employer",
+  recruiter_screen: "Recruiter screen",
+  assessment: "Assessment",
+  interviewing: "Interviewing",
+  final_interview: "Final interview",
+  offer: "Offer",
+  accepted: "Accepted",
+  withdrawn: "Withdrawn",
+  no_response: "No response",
+  position_closed: "Position closed",
+  archived: "Archived",
   dismissed: "Dismissed",
   snoozed: "Snoozed",
 }
@@ -47,21 +62,39 @@ export const OpportunityCard = forwardRef<
   {
     opportunity: OpportunityListItem
     onOpen: () => void
+    onTriageAction?: (action: "save" | "mark_applied" | "reject") => void
+    triagePending?: boolean
+    triageError?: string | null
     /** Keyboard-navigation cursor (`j`/`k` in `page.tsx`), independent of
      * whether the drawer is open. Purely a visual/focus-management concern
      * — never sent to the API. */
     keyboardFocused?: boolean
+    selected?: boolean
+    onSelectedChange?: (selected: boolean) => void
   }
->(function OpportunityCard({ opportunity, onOpen, keyboardFocused = false }, ref) {
+>(function OpportunityCard({
+  opportunity,
+  onOpen,
+  onTriageAction,
+  triagePending = false,
+  triageError = null,
+  keyboardFocused = false,
+  selected = false,
+  onSelectedChange,
+}, ref) {
   const o = opportunity
   const isHidden = o.hidden_by.length > 0
   const domain = employerDomain(o.source_url)
   const age = postedAge(o.posted_date)
   const location = locationLabel(o)
+  const canTriage =
+    o.track === "employment" &&
+    (o.action_state === null || o.action_state === "to_review") &&
+    onTriageAction !== undefined
 
   return (
-    <li className="h-full">
-      <article className="flex h-full flex-col rounded-lg border border-border bg-card">
+    <li className="flex min-w-0 flex-col gap-2">
+      {onSelectedChange && <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded px-2 text-sm text-muted-foreground"><input aria-label={`Select ${o.title}`} type="checkbox" checked={selected} onChange={(event) => onSelectedChange(event.target.checked)} className="size-4 accent-primary" />Select job</label>}
       <button
         ref={ref}
         type="button"
@@ -72,7 +105,7 @@ export const OpportunityCard = forwardRef<
         data-hidden={isHidden}
         data-keyboard-focused={keyboardFocused}
         className={cn(
-          "flex min-h-0 flex-1 w-full flex-col gap-2 p-4 text-left transition-colors",
+          "flex w-full flex-col gap-2 rounded-lg border p-4 text-left transition-colors",
           "hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:border-ring",
           // A row only ever appears here via the founder's own "Show
           // hidden" control (see page.tsx) — it must never blend in with
@@ -81,7 +114,7 @@ export const OpportunityCard = forwardRef<
           // border alone).
           isHidden
             ? "border-dashed border-amber-500/40 bg-amber-950/20 dark:bg-amber-950/20"
-            : "border-transparent",
+            : "border-border bg-card",
           // The keyboard cursor also gets its own ring even when the
           // browser's native focus-visible heuristic doesn't apply (e.g.
           // Playwright's programmatic `.focus()` in some browser/OS
@@ -89,9 +122,9 @@ export const OpportunityCard = forwardRef<
           keyboardFocused && "ring-2 ring-ring/60 border-ring"
         )}
       >
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+        <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
-            <h2 title={o.title} className="line-clamp-2 text-sm font-semibold leading-5 text-foreground">
+            <h2 className="truncate text-sm font-semibold text-foreground">
               {o.title}
             </h2>
             <p className="truncate text-xs text-muted-foreground">
@@ -188,7 +221,7 @@ export const OpportunityCard = forwardRef<
           </ul>
         )}
 
-        <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[11px] text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[11px] text-muted-foreground">
           {age && <span data-testid={`posted-age-${o.id}`}>{age}</span>}
           {o.deadline && <span>Deadline: {o.deadline}</span>}
           {domain && (
@@ -199,20 +232,42 @@ export const OpportunityCard = forwardRef<
           )}
         </div>
       </button>
-      <footer className="flex items-center justify-between gap-2 border-t border-border/70 px-4 py-2 text-[11px] text-muted-foreground">
-        <span className="truncate">{domain ?? "Original source"}</span>
-        <a
-          data-testid={`quick-apply-${o.id}`}
-          href={o.source_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label={`Quick apply to ${o.title} at ${o.organization}`}
-          className="shrink-0 font-medium text-primary underline underline-offset-4 hover:text-primary/80"
-        >
-          Quick apply ↗
-        </a>
-      </footer>
-      </article>
+      {canTriage && (
+        <div role="group" className="flex flex-wrap items-center gap-2 px-1" aria-label={`Quick triage for ${o.title}`}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            data-testid={`quick-save-${o.id}`}
+            disabled={triagePending}
+            onClick={() => onTriageAction("save")}
+          >
+            Save
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            data-testid={`quick-apply-${o.id}`}
+            disabled={triagePending}
+            onClick={() => onTriageAction("mark_applied")}
+          >
+            Mark Applied
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="destructive"
+            data-testid={`quick-reject-${o.id}`}
+            disabled={triagePending}
+            onClick={() => onTriageAction("reject")}
+          >
+            Reject
+          </Button>
+          {triagePending && <span role="status" className="text-xs text-muted-foreground">Updating…</span>}
+          {triageError && <span role="alert" className="text-xs text-destructive">{triageError}</span>}
+        </div>
+      )}
     </li>
   )
 })
