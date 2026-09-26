@@ -39,6 +39,7 @@ class FeedQuerySpec:
     decision_values: tuple[str, ...] = ()
     feedback_labels: tuple[str, ...] = ()
     activity_types: tuple[str, ...] = ()
+    require_feedback: bool = False
     min_score: float | None = None
     max_score: float | None = None
     since: str | None = None
@@ -190,6 +191,10 @@ def build_feed_query(session: Session, spec: FeedQuerySpec) -> Query:
             func.lower(FeedProjectionRecord.qualification_decision) != "ineligible",
         ))
 
+    if spec.require_feedback:
+        query = query.filter(exists().where(
+            FounderFeedbackRecord.opportunity_id == FeedProjectionRecord.opportunity_id,
+        ))
     if spec.feedback_labels:
         query = query.filter(exists().where(
             FounderFeedbackRecord.opportunity_id == FeedProjectionRecord.opportunity_id,
