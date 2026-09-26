@@ -279,7 +279,7 @@ export function FilterBar({
         </select>
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className="order-3 flex flex-col gap-1">
         <Label htmlFor="filter-activity">Activity</Label>
         <select
           id="filter-activity"
@@ -297,7 +297,7 @@ export function FilterBar({
         </select>
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className="order-3 flex flex-col gap-1">
         <Label htmlFor="filter-feedback">Feedback</Label>
         <select
           id="filter-feedback"
@@ -334,7 +334,7 @@ export function FilterBar({
         </div>
       )}
 
-      <div className="flex flex-col gap-1">
+      <div className="order-3 flex flex-col gap-1">
         <Label htmlFor="feed-sort">Sort</Label>
         <select
           id="feed-sort"
