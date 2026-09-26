@@ -228,7 +228,7 @@ export default function FeedPage() {
         posted_to: query.postedTo || undefined,
         ...query.multi,
         source_family: sourceFamily || undefined,
-        source_id: sourceId || undefined,
+        source_id: sourceId ? [sourceId] : undefined,
         activity: activity || undefined,
         feedback: feedback || undefined,
         sort_by: query.sortBy,
