@@ -366,11 +366,13 @@ export interface Scoring {
 
 export interface ActionHistoryEntry {
   action_id: string
+  action_type?: string
   action_status: string
-  execution_mode: string
+  execution_mode?: string
+  until?: string | null
   created_at: string
-  updated_at: string
-  notes: string | null
+  updated_at?: string
+  notes?: string | null
 }
 
 export interface FeedbackHistoryEntry {
@@ -658,6 +660,20 @@ export interface SourceHealth {
 
 export interface SourcesHealthResponse {
   sources: SourceHealth[]
+}
+
+export interface SourceOverview {
+  source_family: string
+  source_id: string | null
+  opportunity_count: number
+  hidden_count: number
+  last_success_at: string | null
+  last_status: string | null
+  manual_only: boolean
+}
+
+export interface SourceOverviewResponse {
+  sources: SourceOverview[]
 }
 
 export interface PollNowEnqueued {
