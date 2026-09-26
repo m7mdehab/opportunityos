@@ -123,7 +123,7 @@ async function getFilter(page: Page, filterId: string): Promise<FounderFilterJso
 }
 
 /** Every opportunity's `fit_score` and current `hidden_by`, read with
- * `include_hidden=true` so a `hide`-mode filter from a prior test can't
+ * `include_hidden=true&include_tracked=true` so a `hide`-mode filter from a prior test can't
  * hide the answer. `decision`/`fit_score` are never touched by any filter
  * (contract §2), so `fit_score` here is stable regardless of filter
  * settings; `hidden_by` is what lets the caller compute an *exact*
@@ -133,7 +133,7 @@ async function getFilter(page: Page, filterId: string): Promise<FounderFilterJso
 async function getOpportunitySummaries(
   page: Page
 ): Promise<Array<{ fit_score: number | null; hidden_by: string[] }>> {
-  const result = await pageFetch(page, "/api/opportunities?include_hidden=true&page_size=200")
+  const result = await pageFetch(page, "/api/opportunities?include_hidden=true&include_tracked=true&page_size=200")
   const body = parseJson<{ items: Array<{ fit_score: number | null; hidden_by: string[] }> }>(
     result,
     "GET /api/opportunities"
