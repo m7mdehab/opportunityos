@@ -525,7 +525,6 @@ export default function FeedPage() {
       {overHidingWarning && <OverHidingWarningBanner warning={overHidingWarning} />}
 
       {truth && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-4 py-2 sm:px-6">
           <FilterBar
             filters={filters}
             sources={sourceOverview}
@@ -543,6 +542,18 @@ export default function FeedPage() {
               })
             }}
             onOpenFounderFilters={() => setFiltersDrawerOpen(true)}
+            onOpenManualSources={() => setManualSourcesOpen(true)}
+            onOpenFacets={() => setFacetsPanelOpen(true)}
+            onToggleTutoringLane={() => {
+              handleQueryChange({
+                ...query,
+                track: query.track.includes("tutoring")
+                  ? query.track.filter((track) => track !== "tutoring")
+                  : [...query.track, "tutoring"],
+              })
+            }}
+            tutoringActive={query.track.includes("tutoring")}
+            tutoringDisabled={!truth.loaded}
             sortBy={query.sortBy}
             onSortChange={(sortBy) => handleQueryChange({ ...query, sortBy })}
             onOpenAdvanced={() => setFeedQueryDrawerOpen(true)}
@@ -552,41 +563,6 @@ export default function FeedPage() {
             advancedDisabled={!feedMetadata}
             metadata={feedMetadata}
           />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            data-testid="open-facets-panel"
-            onClick={() => setFacetsPanelOpen(true)}
-          >
-            <SlidersHorizontal aria-hidden="true" className="size-3.5" />
-            Facets
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            data-testid="open-manual-sources-panel"
-            onClick={() => setManualSourcesOpen(true)}
-          >
-            <Search aria-hidden="true" className="size-3.5" />
-            Check manually
-          </Button>
-          <Button
-            type="button"
-            variant={query.track.includes("tutoring") ? "default" : "outline"}
-            size="sm"
-            data-testid="toggle-tutoring-lane"
-            disabled={!truth.loaded}
-            title={!truth.loaded ? "A validated founder profile is required for tutoring materials" : undefined}
-            onClick={() => {
-              handleQueryChange({ ...query, track: query.track.includes("tutoring") ? query.track.filter((track) => track !== "tutoring") : [...query.track, "tutoring"] })
-            }}
-          >
-            <GraduationCap aria-hidden="true" className="size-3.5" />
-            Tutoring Lane
-          </Button>
-        </div>
       )}
 
       <FeedQueryChips value={query} onChange={handleQueryChange} />
