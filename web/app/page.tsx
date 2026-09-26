@@ -405,16 +405,15 @@ export default function FeedPage() {
   }
 
   function handleActionSubmitted(id: string, state: ActionState, response?: ActionResponse) {
-    const wasInToReview = items?.some((item) => item.id === id) ?? false
     setSelectedActionState(state)
     const eventId = response?.undo_event_id
     const label = state === "saved" ? "Saved" : state === "applied" || state === "submitted" ? "Marked applied" : state === "rejected_by_founder" ? "Rejected" : "Updated"
     setUndoNotice(eventId ? { opportunityId: id, eventId, label } : null)
     setUndoError(null)
-    setItems((prev) => prev?.filter((o) => o.id !== id) ?? prev)
-    if (wasInToReview) setTotal((previous) => Math.max(0, previous - 1))
+    setItems((prev) =>
+      prev ? prev.map((item) => item.id === id ? { ...item, action_state: state } : item) : prev
+    )
     refreshDashboard()
-    refreshFromFirstPage()
   }
 
   async function handleCardTriage(id: string, type: "save" | "mark_applied" | "reject", preserveUndo = false): Promise<boolean> {
@@ -447,6 +446,9 @@ export default function FeedPage() {
     const failed: string[] = []
     try {
       for (const id of ids) if (!(await handleCardTriage(id, type, true))) failed.push(id)
+      const succeeded = new Set(ids.filter((id) => !failed.includes(id)))
+      setItems((current) => current?.filter((item) => !succeeded.has(item.id)) ?? current)
+      setTotal((current) => Math.max(0, current - succeeded.size))
       setSelectedJobs(new Set(failed))
       setBatchStatus(failed.length ? `${ids.length - failed.length} succeeded; ${failed.length} failed. Failed jobs remain selected: ${failed.join(", ")}` : `${ids.length} jobs updated successfully.`)
     } finally {
