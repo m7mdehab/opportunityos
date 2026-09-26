@@ -233,6 +233,22 @@ class TestPredicateRegistryCompleteness(unittest.TestCase):
         total = sum(len(_find_predicate_literals(path)) for path in SCANNED_FILES)
         self.assertGreater(total, 0)
 
+    def test_scorer_credential_predicate_constants_are_bound(self) -> None:
+        """Scorer credential reads need named constants as well as registry entries."""
+        expected = {
+            "EDUCATION_QUALIFICATION": "education.qualification",
+            "CERTIFICATION_NAME": "certification.name",
+            "CERTIFICATION_STATE": "certification.state",
+        }
+        for constant_name, predicate_name in expected.items():
+            self.assertTrue(
+                hasattr(predicates, constant_name),
+                f"truth.predicates is missing scorer constant {constant_name}",
+            )
+            self.assertEqual(getattr(predicates, constant_name), predicate_name)
+            self.assertTrue(predicates.is_declared(predicate_name))
+            self.assertEqual(predicates.get(predicate_name).kind, PredicateKind.PROJECTED)
+
     def test_registry_predicates_are_classified_projected_or_assertion_only(self) -> None:
         registry = predicates.all_predicates()
         self.assertTrue(registry, "predicate registry must not be empty")
