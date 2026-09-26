@@ -112,13 +112,17 @@ test.describe("Cloudflare staging hosted smoke", () => {
       page.evaluate(() => new URLSearchParams(window.location.search).getAll("track").length)
     ).toBe(2);
     await trackFacet.locator("summary").click();
-    await page.getByRole("button", { name: "Clear filters" }).click();
+    await page.getByRole("search", { name: "Filter opportunities" }).getByRole("button", { name: "Clear filters" }).click();
     await expect.poll(() =>
       page.evaluate(() => new URLSearchParams(window.location.search).getAll("track").length)
     ).toBe(0);
 
     // 4c. Card multi-select and batch toolbar must be visible on the hosted UI.
-    await expect(page.getByRole("button", { name: "Select all visible" })).toBeVisible();
+    // A live filter clear triggers an async feed refresh; wait for the feed to
+    // repopulate before asserting the batch controls so mobile is not timing-
+    // sensitive to the production round trip.
+    await expect(page.locator('[data-testid^="opportunity-card-"]').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("button", { name: "Select all visible" })).toBeVisible({ timeout: 15_000 });
     await page.getByRole("button", { name: "Select all visible" }).click();
     await expect(page.getByTestId("batch-action-toolbar")).toBeVisible();
     const selectionBoxes = page.locator('input[type="checkbox"][aria-label^="Select "]');
@@ -221,7 +225,7 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await expect.poll(() =>
       page.evaluate(() => new URLSearchParams(window.location.search).getAll("source_family").length)
     ).toBe(2);
-    await page.getByRole("button", { name: "Clear filters" }).click();
+    await page.getByRole("search", { name: "Filter opportunities" }).getByRole("button", { name: "Clear filters" }).click();
 
     await page.getByTestId("open-advanced-feed-filters").click();
     const advancedDrawer = page.getByTestId("feed-query-drawer");
