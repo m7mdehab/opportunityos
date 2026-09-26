@@ -22,10 +22,10 @@ export interface FeedFilters {
   decision: Exclude<Decision, null>[]
   minScore: string
   q: string
-  sourceFamily: string
-  sourceId: string
-  activity: string
-  feedback: string
+  sourceFamily: string[]
+  sourceId: string[]
+  activity: string[]
+  feedback: string[]
 }
 
 export const EMPTY_FILTERS: FeedFilters = {
@@ -33,10 +33,10 @@ export const EMPTY_FILTERS: FeedFilters = {
   decision: [],
   minScore: "",
   q: "",
-  sourceFamily: "",
-  sourceId: "",
-  activity: "to_review",
-  feedback: "",
+  sourceFamily: [],
+  sourceId: [],
+  activity: [],
+  feedback: [],
 }
 
 const TRACKS: Track[] = [
@@ -67,12 +67,16 @@ function ChecklistFacet<T extends string>({
   selected,
   values,
   onChange,
+  emptyLabel = "All",
+  formatValue = (value) => value,
 }: {
   id: string
   label: string
   selected: T[]
   values: T[]
   onChange: (next: T[]) => void
+  emptyLabel?: string
+  formatValue?: (value: T) => string
 }) {
   return (
     <details data-testid={`filter-facet-${id}`} className="relative min-w-0 max-w-full">
@@ -82,7 +86,7 @@ function ChecklistFacet<T extends string>({
       >
         <span>{label}</span>
         <span className="text-xs text-muted-foreground">
-          {selected.length ? selected.length : "All"}
+          {selected.length ? selected.length : emptyLabel}
         </span>
       </summary>
       <div className="absolute left-0 z-30 mt-1 max-h-72 w-52 max-w-[calc(100vw-2rem)] overflow-auto rounded-lg border border-border bg-card p-2 shadow-lg">
@@ -109,7 +113,7 @@ function ChecklistFacet<T extends string>({
               checked={selected.includes(value)}
               onChange={(event) => onChange(toggleValue(selected, value, event.target.checked))}
             />
-            <span className="truncate">{value}</span>
+            <span className="truncate">{formatValue(value)}</span>
           </label>
         ))}
       </div>
@@ -155,10 +159,10 @@ export function FilterBar({
     filters.decision.length > 0 ||
     filters.minScore !== "" ||
     filters.q !== "" ||
-    filters.sourceFamily !== "" ||
-    filters.sourceId !== "" ||
-    filters.activity !== "to_review" ||
-    filters.feedback !== ""
+    filters.sourceFamily.length > 0 ||
+    filters.sourceId.length > 0 ||
+    filters.activity.length > 0 ||
+    filters.feedback.length > 0
 
   const trackValues = [
     ...new Set([
@@ -176,31 +180,36 @@ export function FilterBar({
   ]
 
   const families = [...new Set(sources.map((source) => source.source_family))].sort()
-  const familyMeta = new Map(
-    families.map((family) => {
-      const rows = sources.filter((source) => source.source_family === family)
-      return [
-        family,
-        {
-          count: rows.reduce(
-            (total, row) => total + (row.manual_only ? 0 : row.opportunity_count),
-            0
-          ),
-          manualOnly: rows.some((row) => row.manual_only),
-        },
-      ] as const
-    })
-  )
   const sourceIds = sources.filter(
     (source) =>
       source.source_id &&
       !source.manual_only &&
-      (!filters.sourceFamily || source.source_family === filters.sourceFamily)
+      (
+        filters.sourceFamily.length === 0 ||
+        filters.sourceFamily.includes(source.source_family)
+      )
   )
-  const allAutomatedCount = sources.reduce(
-    (total, row) => total + (row.manual_only ? 0 : row.opportunity_count),
-    0
-  )
+  const sourceIdValues = sourceIds
+    .map((source) => source.source_id)
+    .filter((sourceId): sourceId is string => Boolean(sourceId))
+  const activityValues = [
+    ...new Set(metadata?.facets.activity_type.values.map((option) => option.value) ?? []),
+  ].sort()
+  const feedbackValues = [
+    ...new Set([
+      "good_match",
+      "bad_match",
+      "eligibility_wrong",
+      "seniority_wrong",
+      "irrelevant_role",
+      "source_quality_issue",
+      "duplicate_issue",
+      "review_required",
+      ...(metadata?.facets.feedback_label.values.map((option) => option.value) ?? []),
+    ]),
+  ].sort()
+  const humanize = (value: string) =>
+    value.replaceAll("_", " ").replace(/^./, (character) => character.toUpperCase())
 
   return (
     <form
@@ -257,80 +266,54 @@ export function FilterBar({
         />
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className="flex min-w-0 max-w-full flex-col gap-1">
         <Label htmlFor="filter-source-family">Source</Label>
-        <select
-          id="filter-source-family"
-          className={selectClasses}
-          value={filters.sourceFamily}
-          onChange={(event) =>
-            onChange({ ...filters, sourceFamily: event.target.value, sourceId: "" })
+        <ChecklistFacet
+          id="source-family"
+          label="Source"
+          selected={filters.sourceFamily}
+          values={families}
+          onChange={(sourceFamily) =>
+            onChange({ ...filters, sourceFamily, sourceId: [] })
           }
-        >
-          <option value="">All sources ({allAutomatedCount})</option>
-          {families.map((family) => {
-            const info = familyMeta.get(family)!
-            return (
-              <option key={family} value={family}>
-                {family} ({info.manualOnly ? "Manual only · 0 automated" : info.count})
-              </option>
-            )
-          })}
-        </select>
+        />
       </div>
 
-      <div className="order-3 flex flex-col gap-1">
+      <div className="order-3 flex min-w-0 max-w-full flex-col gap-1">
         <Label htmlFor="filter-activity">Activity</Label>
-        <select
-          id="filter-activity"
-          data-testid="filter-activity"
-          className={selectClasses}
-          value={filters.activity}
-          onChange={(event) => onChange({ ...filters, activity: event.target.value })}
-        >
-          <option value="to_review">To review</option>
-          <option value="any">Any activity</option>
-          <option value="applied">Applied</option>
-          <option value="snoozed">Snoozed</option>
-          <option value="dismissed">Dismissed</option>
-          <option value="has_feedback">Has feedback</option>
-        </select>
+        <ChecklistFacet
+          id="activity"
+          label="Activity"
+          selected={filters.activity}
+          values={activityValues}
+          emptyLabel="To review"
+          formatValue={humanize}
+          onChange={(activity) => onChange({ ...filters, activity })}
+        />
       </div>
 
-      <div className="order-3 flex flex-col gap-1">
+      <div className="order-3 flex min-w-0 max-w-full flex-col gap-1">
         <Label htmlFor="filter-feedback">Feedback</Label>
-        <select
-          id="filter-feedback"
-          data-testid="filter-feedback"
-          className={selectClasses}
-          value={filters.feedback}
-          onChange={(event) => onChange({ ...filters, feedback: event.target.value })}
-        >
-          <option value="">All feedback states</option>
-          <option value="good_match">Good match</option>
-          <option value="bad_match">Bad match</option>
-          <option value="eligibility_wrong">Not eligible</option>
-          <option value="irrelevant_role">Wrong track</option>
-          <option value="duplicate_issue">Duplicate</option>
-        </select>
+        <ChecklistFacet
+          id="feedback"
+          label="Feedback"
+          selected={filters.feedback}
+          values={feedbackValues}
+          formatValue={humanize}
+          onChange={(feedback) => onChange({ ...filters, feedback })}
+        />
       </div>
 
-      {filters.sourceFamily && sourceIds.length > 1 && (
-        <div className="flex flex-col gap-1">
+      {filters.sourceFamily.length > 0 && sourceIdValues.length > 1 && (
+        <div className="flex min-w-0 max-w-full flex-col gap-1">
           <Label htmlFor="filter-source-id">Board</Label>
-          <select
-            id="filter-source-id"
-            className={selectClasses}
-            value={filters.sourceId}
-            onChange={(event) => onChange({ ...filters, sourceId: event.target.value })}
-          >
-            <option value="">All {filters.sourceFamily}</option>
-            {sourceIds.map((source) => (
-              <option key={source.source_id!} value={source.source_id!}>
-                {source.source_id} ({source.opportunity_count})
-              </option>
-            ))}
-          </select>
+          <ChecklistFacet
+            id="source-id"
+            label="Board"
+            selected={filters.sourceId}
+            values={sourceIdValues}
+            onChange={(sourceId) => onChange({ ...filters, sourceId })}
+          />
         </div>
       )}
 
