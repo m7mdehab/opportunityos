@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `5518ce3` — fix(ci): validate live database against repository Alembic head
+- **State generated at commit:** `47e0b92` — test(live): stabilize filter-clear and feed-refresh assertions
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
