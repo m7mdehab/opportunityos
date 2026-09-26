@@ -10,10 +10,11 @@ sources:
 2. **ASSERTION_ONLY** — supplied by a truth pack's top-level `assertions:` section
    (`truth/ingest.py::parse_assertion`, invoked from `graph_from_dict`). Nothing in
    `truth/graph.py` projects these; they exist only if a pack author writes them
-   directly into `assertions:`. They are not defects — `career.target_role`,
-   `preference.track`, `career.goal`, residence/location, capacity.team_size, and the
-   premium full-time/on-site compensation threshold are all legitimately supplied this
-   way — but code that reads them must know they carry no profile-projection guarantee.
+   directly into `assertions:`. They are not defects — legacy `career.target_role`
+   assertions remain loadable, and `preference.track`, `career.goal`, residence/location,
+   capacity.team_size, and the premium full-time/on-site compensation threshold are all
+   legitimately supplied this way — but code that reads them must know which predicates
+   have a profile-projection guarantee.
 
 `matching/scorer.py` and `matching/qualification.py` import predicate names from this
 module exclusively; neither spells a predicate string literal itself. See
@@ -69,15 +70,6 @@ def _projected_specs() -> dict[str, PredicateSpec]:
 # names that owning pack section.
 # ---------------------------------------------------------------------------
 _ASSERTION_ONLY_SPECS: tuple[PredicateSpec, ...] = (
-    PredicateSpec(
-        name="career.target_role",
-        kind=PredicateKind.ASSERTION_ONLY,
-        source="assertions",
-        description=(
-            "Founder's declared target role. Supplied only via the pack's top-level "
-            "`assertions:` section; no profile field projects it."
-        ),
-    ),
     PredicateSpec(
         name="preference.track",
         kind=PredicateKind.ASSERTION_ONLY,
@@ -147,6 +139,15 @@ _ASSERTION_ONLY_SPECS: tuple[PredicateSpec, ...] = (
             "Supplied only via the pack's top-level `assertions:` section."
         ),
     ),
+    PredicateSpec(name="preference.work_mode", kind=PredicateKind.ASSERTION_ONLY, source="assertions", description="Founder's preferred work modes; supplied only via assertions."),
+    PredicateSpec(name="preference.employment_type", kind=PredicateKind.ASSERTION_ONLY, source="assertions", description="Founder's preferred employment types; supplied only via assertions."),
+    PredicateSpec(name="preference.geography", kind=PredicateKind.ASSERTION_ONLY, source="assertions", description="Founder's preferred job geography; supplied only via assertions."),
+    PredicateSpec(name="preference.relocation", kind=PredicateKind.ASSERTION_ONLY, source="assertions", description="Founder's relocation preference; supplied only via assertions."),
+    PredicateSpec(name="preference.compensation", kind=PredicateKind.ASSERTION_ONLY, source="assertions", description="Founder's minimum compensation preference with currency and interval; supplied only via assertions."),
+    PredicateSpec(name="preference.industry", kind=PredicateKind.ASSERTION_ONLY, source="assertions", description="Founder's preferred industries; supplied only via assertions."),
+    PredicateSpec(name="preference.company", kind=PredicateKind.ASSERTION_ONLY, source="assertions", description="Founder's preferred companies; supplied only via assertions."),
+    PredicateSpec(name="preference.time_zone", kind=PredicateKind.ASSERTION_ONLY, source="assertions", description="Founder's preferred time zone or overlap; supplied only via assertions."),
+    PredicateSpec(name="preference.travel", kind=PredicateKind.ASSERTION_ONLY, source="assertions", description="Founder's travel preference; supplied only via assertions."),
 )
 
 _REGISTRY: dict[str, PredicateSpec] = {
@@ -181,6 +182,8 @@ def is_declared(name: str) -> bool:
 # ---------------------------------------------------------------------------
 
 # PROJECTED (truth/graph.py, from CANONICAL_MATERIAL_MANIFEST)
+CAREER_TARGET_ROLE = "career.target_role"
+CAREER_TARGET_ROLE_TIER = "career.target_role_tier"
 SKILL_NAME = "skill.name"
 # BRIEF-FR-006 B2: already projected today -- truth/models.py's
 # CANONICAL_MATERIAL_MANIFEST declares `MaterialFieldSpec(SkillRecord,
@@ -198,6 +201,8 @@ SKILL_PROFICIENCY = "skill.proficiency"
 # was needed.
 SKILL_CATEGORY = "skill.category"
 EDUCATION_QUALIFICATION = "education.qualification"
+CERTIFICATION_NAME = "certification.name"
+CERTIFICATION_STATE = "certification.state"
 EMPLOYMENT_TITLE = "employment.title"
 EMPLOYMENT_ORGANIZATION = "employment.organization"
 EMPLOYMENT_MARKET_FACING_TITLE = "employment.market_facing_title"
@@ -214,7 +219,6 @@ LANGUAGE_PROFICIENCY = "language.proficiency"
 CAPACITY_ANNUAL_TURNOVER_USD = "capacity.annual_turnover_usd"
 
 # ASSERTION_ONLY (pack's top-level `assertions:` section)
-CAREER_TARGET_ROLE = "career.target_role"
 PREFERENCE_TRACK = "preference.track"
 CAREER_GOAL = "career.goal"
 RESIDENCE_COUNTRY = "residence.country"
@@ -224,6 +228,15 @@ LOCATION_CITY = "location.city"
 LOCATION_COUNTRY = "location.country"
 CAPACITY_TEAM_SIZE = "capacity.team_size"
 PREFERENCE_FULLTIME_ONSITE_PREMIUM_MONTHLY = "preference.fulltime_onsite_premium_monthly"
+PREFERENCE_WORK_MODE = "preference.work_mode"
+PREFERENCE_EMPLOYMENT_TYPE = "preference.employment_type"
+PREFERENCE_GEOGRAPHY = "preference.geography"
+PREFERENCE_RELOCATION = "preference.relocation"
+PREFERENCE_COMPENSATION = "preference.compensation"
+PREFERENCE_INDUSTRY = "preference.industry"
+PREFERENCE_COMPANY = "preference.company"
+PREFERENCE_TIME_ZONE = "preference.time_zone"
+PREFERENCE_TRAVEL = "preference.travel"
 
 # Grouped tuples for `matching/` call sites that scan for founder location facts.
 RESIDENCE_LOCATION_PREDICATES: tuple[str, ...] = (
@@ -236,6 +249,7 @@ RESIDENCE_LOCATION_PREDICATES: tuple[str, ...] = (
 
 CAREER_TRAJECTORY_PREDICATES: tuple[str, ...] = (
     CAREER_TARGET_ROLE,
+    CAREER_TARGET_ROLE_TIER,
     PREFERENCE_TRACK,
     CAREER_GOAL,
 )
@@ -270,10 +284,14 @@ DOMAIN_FIT_PREDICATES: tuple[str, ...] = (
 )
 
 _NAMED_CONSTANTS: tuple[str, ...] = (
+    CAREER_TARGET_ROLE,
+    CAREER_TARGET_ROLE_TIER,
     SKILL_NAME,
     SKILL_PROFICIENCY,
     SKILL_CATEGORY,
     EDUCATION_QUALIFICATION,
+    CERTIFICATION_NAME,
+    CERTIFICATION_STATE,
     EMPLOYMENT_TITLE,
     EMPLOYMENT_ORGANIZATION,
     EMPLOYMENT_MARKET_FACING_TITLE,
@@ -288,7 +306,6 @@ _NAMED_CONSTANTS: tuple[str, ...] = (
     LANGUAGE_LANGUAGE,
     LANGUAGE_PROFICIENCY,
     CAPACITY_ANNUAL_TURNOVER_USD,
-    CAREER_TARGET_ROLE,
     PREFERENCE_TRACK,
     CAREER_GOAL,
     RESIDENCE_COUNTRY,
@@ -298,6 +315,15 @@ _NAMED_CONSTANTS: tuple[str, ...] = (
     LOCATION_COUNTRY,
     CAPACITY_TEAM_SIZE,
     PREFERENCE_FULLTIME_ONSITE_PREMIUM_MONTHLY,
+    PREFERENCE_WORK_MODE,
+    PREFERENCE_EMPLOYMENT_TYPE,
+    PREFERENCE_GEOGRAPHY,
+    PREFERENCE_RELOCATION,
+    PREFERENCE_COMPENSATION,
+    PREFERENCE_INDUSTRY,
+    PREFERENCE_COMPANY,
+    PREFERENCE_TIME_ZONE,
+    PREFERENCE_TRAVEL,
 )
 
 # Fail fast at import time if a named constant above ever drifts from the registry.
