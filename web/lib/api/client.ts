@@ -159,7 +159,7 @@ export const api = {
           for (const item of value) {
             if (item !== "") search.append(key, String(item))
           }
-        } else if (value !== undefined && value !== "" && value !== null && value !== false) {
+        } else if (value !== undefined && value !== "" && value !== null) {
           search.set(key, String(value))
         }
       }
