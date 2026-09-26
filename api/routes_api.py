@@ -9,9 +9,9 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
-from typing import Any, Iterator
+from typing import Any, Iterator, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session, defer
@@ -47,6 +47,7 @@ from storage.models import (
 )
 from storage.feed_projection import FeedProjectionRecord
 from storage.feed_query import FeedQuerySpec, feed_page
+from storage.ranking import feed_ranking_components
 from storage.repository import StorageRepository
 from truth.pack import TruthPackInvalid, TruthPackMissing, load_founder_pack
 from truth.validator import ClaimValidator
@@ -82,12 +83,47 @@ from .filters import (
     unavailable_reason,
     validate_filter_params,
 )
+from .feed_filter_metadata import feed_filter_metadata as build_feed_filter_metadata
 from .saved_views import (
     create_saved_view,
     delete_saved_view,
     list_saved_views,
     update_saved_view,
 )
+from .tracker_service import (
+    TrackerTransitionError,
+    list_tracker_items,
+    restore_tracker_transition,
+    transition_tracker_state,
+)
+from .tracker_notes_service import (
+    TrackerNoteError,
+    create_tracker_note,
+    list_tracker_notes,
+    update_tracker_note,
+)
+from .tracker_followups_service import (
+    TrackerFollowUpError,
+    create_tracker_follow_up,
+    list_opportunity_follow_ups,
+    list_tracker_follow_ups,
+    update_tracker_follow_up,
+)
+from .tracker_interviews_service import (
+    TrackerInterviewError,
+    create_tracker_interview,
+    list_opportunity_interviews,
+    list_tracker_interviews,
+    update_tracker_interview,
+)
+from .tracker_documents_service import (
+    TrackerDocumentError,
+    link_tracker_document,
+    list_tracker_document_candidates,
+    list_tracker_documents,
+    unlink_tracker_document,
+)
+from .tracker_activity_service import TrackerActivityError, list_tracker_activity
 from .search import is_query_unparseable, rank_key, search_opportunity_ids
 from .serialization import (
     serialize_constraint,
@@ -162,7 +198,9 @@ def _ranking_filter_contexts(
     if not opportunities:
         return []
 
-    detail_needed = any(affects_order(filter_id) for filter_id in ("geo_eligibility", "work_mode_onsite"))
+    # Preference/confidence and source evidence are part of the visible
+    # Recommended breakdown. This is bounded to the already-paginated rows.
+    detail_needed = True
     dimensions_needed = affects_order("premium_fulltime_onsite")
     opp_ids = [opp.id for opp in opportunities]
     evaluations = (
@@ -437,7 +475,12 @@ def _batch_action_states(session: Session, opportunity_ids: list[str]) -> dict[s
                 results[triage.opportunity_id] = "snoozed"
                 needs_submitted.discard(triage.opportunity_id)
         else:
-            results[triage.opportunity_id] = triage.state
+            # Keep the original feed-card action label for callers that still
+            # consume submitted semantics; the tracker endpoint exposes the
+            # canonical `applied` state separately.
+            results[triage.opportunity_id] = (
+                "submitted" if triage.state == "applied" else triage.state
+            )
             needs_submitted.discard(triage.opportunity_id)
 
     if needs_submitted:
@@ -803,6 +846,29 @@ def _family_sizes(session: Session, family_keys: list[str | None]) -> dict[str, 
     return {family_key: member_count for family_key, member_count in rows if member_count is not None}
 
 
+@router.get("/feed/filter-metadata")
+def feed_filter_metadata_route(request: Request, session: Session = Depends(get_db)):
+    """Expose count-only availability metadata for projection-backed feed filters."""
+    loaded_pack = getattr(request.app.state, "loaded_truth_pack", None)
+    truth_pack_hash = loaded_pack.truth_pack_hash if loaded_pack is not None else None
+    if not truth_pack_hash:
+        latest_row = (
+            session.query(FeedProjectionRecord.truth_pack_hash)
+            .order_by(FeedProjectionRecord.projected_at.desc())
+            .first()
+        )
+        if latest_row:
+            truth_pack_hash = latest_row[0]
+        else:
+            latest_eval = (
+                session.query(MatchEvaluationRecord.truth_pack_hash)
+                .order_by(MatchEvaluationRecord.evaluated_at.desc())
+                .first()
+            )
+            truth_pack_hash = latest_eval[0] if latest_eval else "active"
+    return build_feed_filter_metadata(session, truth_pack_hash)
+
+
 @router.get("/facets")
 def list_facets(request: Request, session: Session = Depends(get_db)):
     facet_settings = _load_facet_settings(session)
@@ -953,6 +1019,7 @@ class SavedViewCreateRequest(BaseModel):
     name: str
     facets: dict[str, Any] = {}
     search_query: str | None = None
+    feed_query: dict[str, Any] | None = None
     is_default: bool = False
 
 
@@ -964,6 +1031,7 @@ def create_saved_view_route(payload: SavedViewCreateRequest, session: Session = 
         name=payload.name,
         facets=payload.facets,
         search_query=payload.search_query,
+        feed_query=payload.feed_query,
         is_default=payload.is_default,
         now=now,
     )
@@ -973,6 +1041,7 @@ class SavedViewUpdateRequest(BaseModel):
     name: str | None = None
     facets: dict[str, Any] | None = None
     search_query: str | None = None
+    feed_query: dict[str, Any] | None = None
     is_default: bool | None = None
 
 
@@ -985,6 +1054,7 @@ def update_saved_view_route(view_id: str, payload: SavedViewUpdateRequest, sessi
         name=payload.name,
         facets=payload.facets,
         search_query=payload.search_query,
+        feed_query=payload.feed_query,
         is_default=payload.is_default,
         now=now,
     )
@@ -1038,13 +1108,38 @@ def unhide_by_reason_route(payload: UnhideByReasonRequest, request: Request, ses
 @router.get("/opportunities")
 def list_opportunities(
     request: Request,
-    track: str | None = None,
-    decision: str | None = None,
+    track: list[str] | None = Query(default=None),
+    decision: list[str] | None = Query(default=None),
     min_score: float | None = None,
     max_score: float | None = None,
     since: str | None = None,
+    work_mode: list[str] | None = Query(default=None),
+    location_country: list[str] | None = Query(default=None),
+    location_city: list[str] | None = Query(default=None),
+    remote_scope: list[str] | None = Query(default=None),
+    employment_type: list[str] | None = Query(default=None),
+    seniority_level: list[str] | None = Query(default=None),
+    target_tier: list[str] | None = Query(default=None),
+    title_family: list[str] | None = Query(default=None),
+    source_id: list[str] | None = Query(default=None),
+    feedback_label: list[str] | None = Query(default=None),
+    activity_type: list[str] | None = Query(default=None),
+    min_fit_score: float | None = Query(default=None, ge=0, le=100),
+    max_fit_score: float | None = Query(default=None, ge=0, le=100),
+    min_preference_score: float | None = Query(default=None, ge=0, le=100),
+    max_preference_score: float | None = Query(default=None, ge=0, le=100),
+    min_confidence_score: float | None = Query(default=None, ge=0, le=100),
+    max_confidence_score: float | None = Query(default=None, ge=0, le=100),
+    min_priority_score: float | None = None,
+    max_priority_score: float | None = None,
+    posted_from: date | None = None,
+    posted_to: date | None = None,
+    sort_by: Literal[
+        "recommended", "fit_desc", "fit_asc", "newest_posted", "oldest_posted", "remote_first"
+    ] = "recommended",
     q: str | None = None,
     include_hidden: bool = False,
+    include_tracked: bool = False,
     page: int = 1,
     page_size: int = 25,
     session: Session = Depends(get_db),
@@ -1088,13 +1183,36 @@ def list_opportunities(
 
     spec = FeedQuerySpec(
         truth_pack_hash=truth_pack_hash,
-        track=track,
-        decision=decision,
+        track_values=tuple(track or ()),
+        decision_values=tuple(decision or ()),
         min_score=min_score,
         max_score=max_score,
         since=since,
+        work_modes=tuple(work_mode or ()),
+        location_countries=tuple(location_country or ()),
+        location_cities=tuple(location_city or ()),
+        remote_scopes=tuple(remote_scope or ()),
+        employment_types=tuple(employment_type or ()),
+        seniority_levels=tuple(seniority_level or ()),
+        target_tiers=tuple(target_tier or ()),
+        title_families=tuple(title_family or ()),
+        source_ids=tuple(source_id or ()),
+        feedback_labels=tuple(feedback_label or ()),
+        activity_types=tuple(activity_type or ()),
+        min_fit_score=min_fit_score,
+        max_fit_score=max_fit_score,
+        min_preference_score=min_preference_score,
+        max_preference_score=max_preference_score,
+        min_confidence_score=min_confidence_score,
+        max_confidence_score=max_confidence_score,
+        min_priority_score=min_priority_score,
+        max_priority_score=max_priority_score,
+        posted_from=posted_from,
+        posted_to=posted_to,
+        sort_by=sort_by,
         q=q,
         include_hidden=include_hidden,
+        include_tracked=include_tracked,
         page=norm_page,
         page_size=norm_page_size,
     )
@@ -1105,7 +1223,7 @@ def list_opportunities(
         FeedProjectionRecord.visible.is_(False),
     )
     if track:
-        hidden_count_query = hidden_count_query.filter(FeedProjectionRecord.track == track)
+        hidden_count_query = hidden_count_query.filter(FeedProjectionRecord.track.in_(track))
     hidden_count = hidden_count_query.scalar() or 0
 
     page_items: list[dict[str, Any]] = []
@@ -1160,6 +1278,7 @@ def list_opportunities(
                 "feedback_label": feedback_labels.get(opp.id),
                 "hidden_by": hidden_by,
                 "flagged_by": flagged_by,
+                "ranking": _recommended_ranking_payload(proj, ctx, opp),
             }
             row.update(serialize_opportunity_extraction_fields(opp, family_sizes.get(opp.family_key)))
             page_items.append(row)
@@ -1174,6 +1293,472 @@ def list_opportunities(
     }
 
 
+@router.get("/tracker")
+def list_tracker(
+    request: Request,
+    bucket: Literal["saved", "applied", "rejected", "all"] = "all",
+    page: int = 1,
+    page_size: int = 25,
+    session: Session = Depends(get_db),
+):
+    loaded_pack = getattr(request.app.state, "loaded_truth_pack", None)
+    truth_pack_hash = loaded_pack.truth_pack_hash if loaded_pack is not None else None
+    if not truth_pack_hash:
+        latest = (
+            session.query(FeedProjectionRecord.truth_pack_hash)
+            .order_by(FeedProjectionRecord.projected_at.desc())
+            .first()
+        )
+        truth_pack_hash = latest[0] if latest else None
+    return list_tracker_items(
+        session,
+        bucket,
+        truth_pack_hash=truth_pack_hash,
+        page=page,
+        page_size=page_size,
+    )
+
+
+def _tracker_note_error(exc: TrackerNoteError) -> HTTPException:
+    message = str(exc)
+    if message in {"opportunity not found", "note not found"}:
+        return HTTPException(status_code=404, detail=message)
+    if (
+        message.startswith("note_text")
+        or message.startswith("idempotency_key is")
+        or message.startswith("provide note_text")
+    ):
+        return HTTPException(status_code=422, detail=message)
+    return HTTPException(status_code=409, detail=message)
+
+
+@router.get("/opportunities/{opportunity_id}/tracker-notes")
+def get_tracker_notes(
+    opportunity_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1),
+    session: Session = Depends(get_db),
+):
+    try:
+        return list_tracker_notes(
+            session,
+            opportunity_id,
+            page=page,
+            page_size=page_size,
+        )
+    except TrackerNoteError as exc:
+        raise _tracker_note_error(exc) from exc
+
+
+class TrackerNoteCreateRequest(BaseModel):
+    note_text: str
+    idempotency_key: str
+
+
+class TrackerNoteUpdateRequest(BaseModel):
+    note_text: str | None = None
+    archived: bool | None = None
+    idempotency_key: str
+
+
+@router.post("/opportunities/{opportunity_id}/tracker-notes")
+def post_tracker_note(
+    opportunity_id: str,
+    payload: TrackerNoteCreateRequest,
+    session: Session = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    try:
+        result = create_tracker_note(
+            session,
+            opportunity_id,
+            payload.note_text,
+            now,
+            request_key=payload.idempotency_key,
+        )
+        session.commit()
+    except TrackerNoteError as exc:
+        session.rollback()
+        raise _tracker_note_error(exc) from exc
+    return {"note": result.note, "changed": result.changed}
+
+
+@router.patch("/opportunities/{opportunity_id}/tracker-notes/{note_id}")
+def patch_tracker_note(
+    opportunity_id: str,
+    note_id: str,
+    payload: TrackerNoteUpdateRequest,
+    session: Session = Depends(get_db),
+):
+    if payload.archived is False:
+        raise HTTPException(status_code=422, detail="archived can only be set to true")
+    now = datetime.now(timezone.utc)
+    try:
+        result = update_tracker_note(
+            session,
+            opportunity_id,
+            note_id,
+            now,
+            request_key=payload.idempotency_key,
+            note_text=payload.note_text,
+            archive=payload.archived is True,
+        )
+        session.commit()
+    except TrackerNoteError as exc:
+        session.rollback()
+        raise _tracker_note_error(exc) from exc
+    return {"note": result.note, "changed": result.changed}
+
+
+def _tracker_follow_up_error(exc: TrackerFollowUpError) -> HTTPException:
+    message = str(exc)
+    if message in {"opportunity not found", "follow-up not found"}:
+        return HTTPException(status_code=404, detail=message)
+    if (
+        message.startswith("due_date")
+        or message.startswith("note_text")
+        or message.startswith("idempotency_key is")
+        or message.startswith("idempotency_key is too")
+        or message.startswith("provide ")
+        or message == "unknown follow-up bucket"
+    ):
+        return HTTPException(status_code=422, detail=message)
+    return HTTPException(status_code=409, detail=message)
+
+
+@router.get("/tracker/follow-ups")
+def get_tracker_follow_ups(
+    bucket: Literal["due_today", "overdue", "upcoming"],
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1),
+    session: Session = Depends(get_db),
+):
+    try:
+        return list_tracker_follow_ups(
+            session,
+            bucket,
+            today=datetime.now(timezone.utc).date(),
+            page=page,
+            page_size=page_size,
+        )
+    except TrackerFollowUpError as exc:
+        raise _tracker_follow_up_error(exc) from exc
+
+
+@router.get("/opportunities/{opportunity_id}/follow-ups")
+def get_opportunity_follow_ups(
+    opportunity_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1),
+    session: Session = Depends(get_db),
+):
+    try:
+        return list_opportunity_follow_ups(
+            session,
+            opportunity_id,
+            today=datetime.now(timezone.utc).date(),
+            page=page,
+            page_size=page_size,
+        )
+    except TrackerFollowUpError as exc:
+        raise _tracker_follow_up_error(exc) from exc
+
+
+class TrackerFollowUpCreateRequest(BaseModel):
+    due_date: str
+    note_text: str | None = None
+    idempotency_key: str
+
+
+class TrackerFollowUpUpdateRequest(BaseModel):
+    due_date: str | None = None
+    note_text: str | None = None
+    completed: bool | None = None
+    idempotency_key: str
+
+
+@router.post("/opportunities/{opportunity_id}/follow-ups")
+def post_opportunity_follow_up(
+    opportunity_id: str,
+    payload: TrackerFollowUpCreateRequest,
+    session: Session = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    try:
+        result = create_tracker_follow_up(
+            session,
+            opportunity_id,
+            payload.due_date,
+            payload.note_text,
+            now,
+            request_key=payload.idempotency_key,
+        )
+        session.commit()
+    except TrackerFollowUpError as exc:
+        session.rollback()
+        raise _tracker_follow_up_error(exc) from exc
+    return {"follow_up": result.follow_up, "changed": result.changed}
+
+
+@router.patch("/opportunities/{opportunity_id}/follow-ups/{follow_up_id}")
+def patch_opportunity_follow_up(
+    opportunity_id: str,
+    follow_up_id: str,
+    payload: TrackerFollowUpUpdateRequest,
+    session: Session = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    try:
+        result = update_tracker_follow_up(
+            session,
+            opportunity_id,
+            follow_up_id,
+            now,
+            request_key=payload.idempotency_key,
+            due_date=payload.due_date,
+            note_text=payload.note_text,
+            note_text_provided="note_text" in payload.model_fields_set,
+            completed=payload.completed,
+        )
+        session.commit()
+    except TrackerFollowUpError as exc:
+        session.rollback()
+        raise _tracker_follow_up_error(exc) from exc
+    return {"follow_up": result.follow_up, "changed": result.changed}
+
+
+def _tracker_interview_error(exc: TrackerInterviewError) -> HTTPException:
+    message = str(exc)
+    if message in {"opportunity not found", "interview not found"}:
+        return HTTPException(status_code=404, detail=message)
+    if (
+        message.startswith(("scheduled_at", "round_label", "interviewer_name", "preparation_notes", "post_interview_notes"))
+        or message.startswith("unknown interview")
+        or message.startswith("unknown outcome")
+        or message.startswith("idempotency_key is")
+        or message.startswith("provide ")
+        or message == "unknown interview bucket"
+    ):
+        return HTTPException(status_code=422, detail=message)
+    return HTTPException(status_code=409, detail=message)
+
+
+@router.get("/tracker/interviews")
+def get_tracker_interviews(
+    bucket: Literal["upcoming"] = "upcoming",
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1),
+    session: Session = Depends(get_db),
+):
+    try:
+        return list_tracker_interviews(
+            session,
+            bucket,
+            now=datetime.now(timezone.utc),
+            page=page,
+            page_size=page_size,
+        )
+    except TrackerInterviewError as exc:
+        raise _tracker_interview_error(exc) from exc
+
+
+@router.get("/opportunities/{opportunity_id}/interviews")
+def get_opportunity_interviews(
+    opportunity_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1),
+    session: Session = Depends(get_db),
+):
+    try:
+        return list_opportunity_interviews(session, opportunity_id, page=page, page_size=page_size)
+    except TrackerInterviewError as exc:
+        raise _tracker_interview_error(exc) from exc
+
+
+class TrackerInterviewCreateRequest(BaseModel):
+    scheduled_at: str | None = None
+    round_label: str | None = None
+    interview_type: str | None = None
+    interview_format: str | None = None
+    interviewer_name: str | None = None
+    preparation_notes: str | None = None
+    post_interview_notes: str | None = None
+    outcome: str | None = None
+    idempotency_key: str
+
+
+class TrackerInterviewUpdateRequest(BaseModel):
+    scheduled_at: str | None = None
+    round_label: str | None = None
+    interview_type: str | None = None
+    interview_format: str | None = None
+    interviewer_name: str | None = None
+    preparation_notes: str | None = None
+    post_interview_notes: str | None = None
+    outcome: str | None = None
+    idempotency_key: str
+
+
+@router.post("/opportunities/{opportunity_id}/interviews")
+def post_opportunity_interview(
+    opportunity_id: str,
+    payload: TrackerInterviewCreateRequest,
+    session: Session = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    try:
+        result = create_tracker_interview(
+            session,
+            opportunity_id,
+            payload.model_dump(exclude={"idempotency_key"}),
+            now,
+            request_key=payload.idempotency_key,
+        )
+        session.commit()
+    except TrackerInterviewError as exc:
+        session.rollback()
+        raise _tracker_interview_error(exc) from exc
+    return {"interview": result.interview, "changed": result.changed}
+
+
+@router.patch("/opportunities/{opportunity_id}/interviews/{interview_id}")
+def patch_opportunity_interview(
+    opportunity_id: str,
+    interview_id: str,
+    payload: TrackerInterviewUpdateRequest,
+    session: Session = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    fields = {
+        field: getattr(payload, field)
+        for field in payload.model_fields_set
+        if field != "idempotency_key"
+    }
+    try:
+        result = update_tracker_interview(
+            session,
+            opportunity_id,
+            interview_id,
+            fields,
+            now,
+            request_key=payload.idempotency_key,
+        )
+        session.commit()
+    except TrackerInterviewError as exc:
+        session.rollback()
+        raise _tracker_interview_error(exc) from exc
+    return {"interview": result.interview, "changed": result.changed}
+
+
+def _tracker_document_error(exc: TrackerDocumentError) -> HTTPException:
+    message = str(exc)
+    if message in {"opportunity not found", "document association not found"}:
+        return HTTPException(status_code=404, detail=message)
+    if (
+        message.startswith(("document_id", "unknown document_kind", "unknown CV", "cover-letter document identity", "idempotency_key is"))
+    ):
+        return HTTPException(status_code=422, detail=message)
+    return HTTPException(status_code=409, detail=message)
+
+
+@router.get("/opportunities/{opportunity_id}/tracker-documents")
+def get_tracker_documents(
+    opportunity_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1),
+    session: Session = Depends(get_db),
+):
+    try:
+        return list_tracker_documents(session, opportunity_id, page=page, page_size=page_size)
+    except TrackerDocumentError as exc:
+        raise _tracker_document_error(exc) from exc
+
+
+@router.get("/opportunities/{opportunity_id}/tracker-documents/candidates")
+def get_tracker_document_candidates(
+    opportunity_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1),
+    session: Session = Depends(get_db),
+):
+    try:
+        return list_tracker_document_candidates(session, opportunity_id, page=page, page_size=page_size)
+    except TrackerDocumentError as exc:
+        raise _tracker_document_error(exc) from exc
+
+
+class TrackerDocumentLinkRequest(BaseModel):
+    document_kind: Literal["cv", "cover_letter"]
+    document_id: str
+    idempotency_key: str
+
+
+class TrackerDocumentUnlinkRequest(BaseModel):
+    linked: bool
+    idempotency_key: str
+
+
+@router.post("/opportunities/{opportunity_id}/tracker-documents")
+def post_tracker_document(
+    opportunity_id: str,
+    payload: TrackerDocumentLinkRequest,
+    session: Session = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    try:
+        result = link_tracker_document(
+            session,
+            opportunity_id,
+            payload.document_kind,
+            payload.document_id,
+            now,
+            request_key=payload.idempotency_key,
+        )
+        session.commit()
+    except TrackerDocumentError as exc:
+        session.rollback()
+        raise _tracker_document_error(exc) from exc
+    return {"link": result.link, "changed": result.changed}
+
+
+@router.patch("/opportunities/{opportunity_id}/tracker-documents/{link_id}")
+def patch_tracker_document(
+    opportunity_id: str,
+    link_id: str,
+    payload: TrackerDocumentUnlinkRequest,
+    session: Session = Depends(get_db),
+):
+    if payload.linked:
+        raise HTTPException(status_code=422, detail="linked can only be set to false")
+    now = datetime.now(timezone.utc)
+    try:
+        result = unlink_tracker_document(
+            session,
+            opportunity_id,
+            link_id,
+            now,
+            request_key=payload.idempotency_key,
+        )
+        session.commit()
+    except TrackerDocumentError as exc:
+        session.rollback()
+        raise _tracker_document_error(exc) from exc
+    return {"link": result.link, "changed": result.changed}
+
+
+@router.get("/opportunities/{opportunity_id}/tracker-events")
+def get_tracker_activity(
+    opportunity_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1),
+    session: Session = Depends(get_db),
+):
+    try:
+        return list_tracker_activity(session, opportunity_id, page=page, page_size=page_size)
+    except TrackerActivityError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 def _posted_date_sort_key(value: str | None) -> tuple[int, Any]:
     """Sort helper: later dates sort first (ascending key), missing/unparseable
     dates sort last."""
@@ -1184,6 +1769,19 @@ def _posted_date_sort_key(value: str | None) -> tuple[int, Any]:
     except ValueError:
         return (1, "")
     return (0, -(parsed.toordinal()))
+
+
+def _recommended_ranking_payload(projection, context, opportunity) -> dict[str, Any]:
+    """Expose the stored composite and every component used by Recommended."""
+    return feed_ranking_components(
+        decision=projection.qualification_decision,
+        fit_score=projection.fit_score,
+        priority_score=projection.priority_score,
+        evaluation_detail=context.evaluation_detail if context is not None else None,
+        posted_date=opportunity.posted_date,
+        is_stale=bool(opportunity.is_stale),
+        as_of=(projection.projected_at.date() if projection.projected_at is not None else date.today()),
+    )
 
 
 def _build_opportunity_detail(session: Session, opp: OpportunityRecord) -> dict[str, Any]:
@@ -1198,6 +1796,9 @@ def _build_opportunity_detail(session: Session, opp: OpportunityRecord) -> dict[
         "gaps": [],
         "unknowns": [],
         "uncertainty_penalty": 0.0,
+        "preference_score": None,
+        "confidence_score": None,
+        "confidence_factors": [],
         "explanation": "",
         "policy_version": None,
         "evaluated_at": None,
@@ -1230,6 +1831,9 @@ def _build_opportunity_detail(session: Session, opp: OpportunityRecord) -> dict[
             "gaps": detail["gaps"] or fallback_gaps,
             "unknowns": detail["unknowns"] or fallback_unknowns,
             "uncertainty_penalty": detail["uncertainty_penalty"],
+            "preference_score": detail["preference_score"],
+            "confidence_score": detail["confidence_score"],
+            "confidence_factors": detail["confidence_factors"],
             "explanation": detail["explanation"],
             "policy_version": evaluation.policy_version,
             "evaluated_at": _iso(evaluation.evaluated_at),
@@ -1729,6 +2333,17 @@ def submit_feedback(
 class ActionRequest(BaseModel):
     type: str
     until: str | None = None
+    idempotency_key: str | None = None
+    stage: Literal[
+        "applied", "recruiter_screen", "assessment", "interviewing",
+        "final_interview", "offer", "accepted", "rejected_by_employer",
+        "withdrawn", "no_response",
+    ] | None = None
+
+
+class RestoreTrackerRequest(BaseModel):
+    event_id: str
+    idempotency_key: str
 
 
 @router.post("/opportunities/{opportunity_id}/actions")
@@ -1743,71 +2358,130 @@ def submit_action(
         raise HTTPException(status_code=404, detail="opportunity not found")
 
     now = datetime.now(timezone.utc)
+    if payload.type not in {"save", "mark_applied", "reject", "dismiss", "snooze", "set_stage"}:
+        response.status_code = 422
+        return {"detail": f"unknown action type: {payload.type!r}"}
+    if payload.type == "set_stage" and payload.stage is None:
+        response.status_code = 422
+        return {"detail": "set_stage requires an application stage"}
+    if payload.type != "set_stage" and payload.stage is not None:
+        response.status_code = 422
+        return {"detail": "stage is only valid for set_stage"}
 
-    if payload.type == "dismiss":
-        _upsert_triage_state(session, opportunity_id, "dismissed", None, now)
-        return {
-            "opportunity_id": opportunity_id,
-            "action_state": "dismissed",
-            "action_id": None,
-            "until": None,
-            "created_at": now.isoformat(),
-        }
-
+    until_date = None
     if payload.type == "snooze":
         until_date = _parse_future_date(payload.until, now)
         if until_date is None:
             response.status_code = 422
             return {"detail": "snooze requires a future 'until' date"}
-        _upsert_triage_state(session, opportunity_id, "snoozed", until_date, now)
-        return {
-            "opportunity_id": opportunity_id,
-            "action_state": "snoozed",
-            "action_id": None,
-            "until": until_date.date().isoformat(),
-            "created_at": now.isoformat(),
-        }
 
-    if payload.type == "mark_applied":
-        evaluation = _latest_evaluation(session, opportunity_id)
-        action_id = f"action-{uuid.uuid4().hex[:16]}"
-        record = OutboundActionRecordModel(
-            id=action_id,
-            opportunity_id=opportunity_id,
-            opportunity_content_hash=opp.content_hash,
-            workspace="default",
-            candidate_id="founder",
-            track=opp.track,
-            source=opp.source_id,
-            adapter_name="founder_attested",
-            adapter_version="1.0",
-            execution_mode=ExecutionMode.DRY_RUN.value,
-            qualification_decision=(evaluation.qualification_decision if evaluation else "uncertain"),
-            match_score_snapshot=(evaluation.fit_score if evaluation else 0.0),
-            artifact_ids_json="[]",
-            artifact_hashes_json="[]",
-            manifest_hash=hashlib.sha256(f"founder-attested:{opportunity_id}:{now.isoformat()}".encode()).hexdigest(),
-            action_status=ActionStatus.SUBMITTED.value,
-            # Unique per row, but no `idempotency_reservations` row is reserved
-            # or consumed for a founder-attested manual action -- see the
-            # `FeedbackAndActionTest` case that asserts the reservation table
-            # row count is unchanged by this endpoint.
-            idempotency_key=f"founder-attested:{opportunity_id}:{uuid.uuid4().hex}",
-            created_at=now,
-            updated_at=now,
+    try:
+        transition = transition_tracker_state(
+            session,
+            opportunity_id,
+            payload.type,
+            now,
+            snoozed_until=until_date,
+            request_key=payload.idempotency_key,
+            target_stage=payload.stage,
         )
-        session.add(record)
-        session.commit()
-        return {
-            "opportunity_id": opportunity_id,
-            "action_state": "submitted",
-            "action_id": action_id,
-            "until": None,
-            "created_at": now.isoformat(),
-        }
+    except TrackerTransitionError as exc:
+        session.rollback()
+        if str(exc) == "opportunity not found":
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    response.status_code = 422
-    return {"detail": f"unknown action type: {payload.type!r}"}
+    action_id = None
+    if payload.type == "mark_applied":
+        existing_attestation = (
+            session.query(OutboundActionRecordModel)
+            .filter_by(
+                opportunity_id=opportunity_id,
+                adapter_name="founder_attested",
+                action_status=ActionStatus.SUBMITTED.value,
+            )
+            .order_by(OutboundActionRecordModel.created_at.desc())
+            .first()
+        )
+        if existing_attestation is not None:
+            action_id = existing_attestation.id
+        elif transition.changed:
+            evaluation = _latest_evaluation(session, opportunity_id)
+            action_id = f"action-{uuid.uuid4().hex[:16]}"
+            session.add(OutboundActionRecordModel(
+                id=action_id,
+                opportunity_id=opportunity_id,
+                opportunity_content_hash=opp.content_hash,
+                workspace="default",
+                candidate_id="founder",
+                track=opp.track,
+                source=opp.source_id,
+                adapter_name="founder_attested",
+                adapter_version="1.0",
+                execution_mode=ExecutionMode.DRY_RUN.value,
+                qualification_decision=(evaluation.qualification_decision if evaluation else "uncertain"),
+                match_score_snapshot=(evaluation.fit_score if evaluation else 0.0),
+                artifact_ids_json="[]",
+                artifact_hashes_json="[]",
+                manifest_hash=hashlib.sha256(f"founder-attested:{opportunity_id}:{now.isoformat()}".encode()).hexdigest(),
+                action_status=ActionStatus.SUBMITTED.value,
+                # Founder attestation does not reserve an automated-submit key.
+                idempotency_key=f"founder-attested:{opportunity_id}:{uuid.uuid4().hex}",
+                created_at=now,
+                updated_at=now,
+            ))
+
+    session.commit()
+    return {
+        "opportunity_id": opportunity_id,
+        # Keep the old response value for existing callers while returning the
+        # canonical tracker state for the new Founder workflow.
+        "action_state": "submitted" if payload.type == "mark_applied" else transition.state,
+        "tracker_state": transition.state,
+        "action_id": action_id,
+        "undo_event_id": (
+            transition.event_id
+            if payload.type in {"save", "mark_applied", "reject"}
+            else None
+        ),
+        "until": until_date.date().isoformat() if until_date else None,
+        "created_at": now.isoformat(),
+    }
+
+
+@router.post("/opportunities/{opportunity_id}/restore")
+def restore_action(
+    opportunity_id: str,
+    payload: RestoreTrackerRequest,
+    session: Session = Depends(get_db),
+):
+    if not payload.event_id.strip():
+        raise HTTPException(status_code=422, detail="event_id is required")
+    if not payload.idempotency_key.strip():
+        raise HTTPException(status_code=422, detail="idempotency key is required")
+    if len(payload.idempotency_key) > 128:
+        raise HTTPException(status_code=422, detail="idempotency key is too long")
+    now = datetime.now(timezone.utc)
+    try:
+        result = restore_tracker_transition(
+            session,
+            opportunity_id,
+            payload.event_id,
+            now,
+            request_key=payload.idempotency_key,
+        )
+        session.commit()
+    except TrackerTransitionError as exc:
+        session.rollback()
+        if str(exc) == "tracker event not found":
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "opportunity_id": opportunity_id,
+        "tracker_state": result.state,
+        "action_state": result.state,
+        "created_at": now.isoformat(),
+    }
 
 
 def _parse_future_date(until: str | None, now: datetime) -> datetime | None:
@@ -1821,25 +2495,6 @@ def _parse_future_date(until: str | None, now: datetime) -> datetime | None:
     if parsed_dt <= now:
         return None
     return parsed_dt
-
-
-def _upsert_triage_state(session: Session, opportunity_id: str, state: str, snoozed_until: datetime | None, now: datetime) -> None:
-    existing = session.query(FounderTriageStateRecord).filter_by(opportunity_id=opportunity_id).first()
-    if existing is None:
-        session.add(
-            FounderTriageStateRecord(
-                opportunity_id=opportunity_id,
-                state=state,
-                snoozed_until=snoozed_until,
-                created_at=now,
-                updated_at=now,
-            )
-        )
-    else:
-        existing.state = state
-        existing.snoozed_until = snoozed_until
-        existing.updated_at = now
-    session.commit()
 
 
 # --------------------------------------------------------------------------
@@ -1864,7 +2519,13 @@ def digest_latest():
 # --------------------------------------------------------------------------
 
 @router.get("/dashboard/daily")
-def dashboard_daily(request: Request, days: int = 7, session: Session = Depends(get_db)):
+def dashboard_daily(
+    request: Request,
+    days: int = 7,
+    period: Literal["today", "yesterday", "date", "all_time"] | None = None,
+    metric_date: date | None = Query(default=None, alias="date"),
+    session: Session = Depends(get_db),
+):
     days = max(1, min(days, 90))
     high_fit_threshold = request.app.state.settings.high_fit_threshold
     today = datetime.now(timezone.utc).date()
@@ -1872,9 +2533,43 @@ def dashboard_daily(request: Request, days: int = 7, session: Session = Depends(
     filter_settings = _load_filter_settings(session)
     truth_graph = _truth_graph_from_request(request)
 
+    if period == "all_time":
+        all_query = _opportunity_query(session)
+        if _can_lightweight_prefilter_hidden(filter_settings, {}):
+            hidden_by_filters = len(_lightweight_hidden_ids(all_query, truth_graph, filter_settings))
+        else:
+            hidden_by_filters = 0
+            for opportunities in _opportunity_batches(all_query):
+                contexts = build_filter_contexts(session, truth_graph, opportunities)
+                hidden_by_filters += sum(1 for context in contexts if apply_filters(context, filter_settings).hidden_by)
+        day_row = {
+            "date": "all-time",
+            "fetched": int(session.query(func.coalesce(func.sum(SourcePollRunRecord.raw_ingested), 0)).scalar() or 0),
+            "unique_new": int(session.query(func.count(OpportunityRecord.id)).scalar() or 0),
+            "qualified": int(session.query(func.count(MatchEvaluationRecord.id)).filter(MatchEvaluationRecord.qualification_decision == "qualified").scalar() or 0),
+            "high_fit": int(session.query(func.count(MatchEvaluationRecord.id)).filter(MatchEvaluationRecord.fit_score >= high_fit_threshold).scalar() or 0),
+            "opened": int(session.query(func.count(FounderOpportunityViewRecord.id)).scalar() or 0),
+            "labelled": int(session.query(func.count(FounderFeedbackRecord.id)).scalar() or 0),
+            "applied": int(session.query(func.count(OutboundActionRecordModel.id)).filter(OutboundActionRecordModel.action_status == ActionStatus.SUBMITTED.value).scalar() or 0),
+            "hidden_by_filters": hidden_by_filters,
+        }
+        return {"days": 1, "high_fit_threshold": high_fit_threshold, "series": [day_row]}
+
+    if period is not None:
+        if period == "yesterday":
+            selected_day = today - timedelta(days=1)
+        elif period == "date":
+            if metric_date is None:
+                raise HTTPException(status_code=422, detail="date is required when period=date")
+            selected_day = metric_date
+        else:
+            selected_day = today
+        days_to_report = [selected_day]
+    else:
+        days_to_report = [today - timedelta(days=offset) for offset in range(days)]
+
     series = []
-    for offset in range(days):
-        day = today - timedelta(days=offset)
+    for day in days_to_report:
         day_start = datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
         day_end = day_start + timedelta(days=1)
 
