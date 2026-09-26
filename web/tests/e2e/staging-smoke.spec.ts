@@ -104,6 +104,7 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await expect.poll(() =>
       page.evaluate(() => new URLSearchParams(window.location.search).getAll("track").length)
     ).toBe(2);
+    await trackFacet.locator("summary").click();
     await page.getByRole("button", { name: "Clear filters" }).click();
     await expect.poll(() =>
       page.evaluate(() => new URLSearchParams(window.location.search).getAll("track").length)
