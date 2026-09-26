@@ -59,6 +59,8 @@ test.describe("Cloudflare staging hosted smoke", () => {
     // reloads, and 20 sequential live feed SLO samples. The default 30s
     // Playwright budget is therefore smaller than the work the test itself
     // requires even when every individual feed request satisfies the 1.5s SLO.
+    // Hosted evidence continues through artifacts, reversible Founder action,
+    // source health, logout, and mobile checks after the 20-sample SLO block.
     test.setTimeout(120_000);
     // 1. Unauthenticated root access redirects to login gate
     await page.goto("/");
@@ -437,31 +439,31 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await page.keyboard.press("Escape");
     await expect(drawer).not.toBeVisible();
 
-    // 13. Founder Save -> Undo round-trip uses the normal hosted UI/RPC path.
+    // 13. Founder Save -> Undo round-trip uses the actual live card action
+    // and the page-level Undo notice. The compact detail drawer intentionally
+    // does not duplicate these W7.5 triage controls.
     const activityOpportunityId = batchIds[0];
     const activityCard = page.getByTestId(`opportunity-card-${activityOpportunityId}`);
     await expect(activityCard).toBeVisible();
-    await activityCard.click();
-    const activityDrawer = page.getByRole("dialog");
-    await expect(activityDrawer).toBeVisible();
 
     const saveResponsePromise = page.waitForResponse((response) =>
       response.url().includes(`/api/opportunities/${activityOpportunityId}/actions`) &&
       response.request().method() === "POST"
     );
-    await activityDrawer.getByRole("button", { name: "Save for later" }).click();
+    await page.getByTestId(`quick-save-${activityOpportunityId}`).click();
     const saveResponse = await saveResponsePromise;
     expect(saveResponse.status()).toBe(200);
-    await expect(activityDrawer.getByTestId("undo-tracker-action")).toBeVisible();
+    await expect(page.getByTestId("tracker-undo-notice")).toBeVisible();
+    await expect(page.getByTestId("undo-tracker-action")).toBeVisible();
 
     const restoreResponsePromise = page.waitForResponse((response) =>
       response.url().includes(`/api/opportunities/${activityOpportunityId}/restore`) &&
       response.request().method() === "POST"
     );
-    await activityDrawer.getByTestId("undo-tracker-action").click();
+    await page.getByTestId("undo-tracker-action").click();
     const restoreResponse = await restoreResponsePromise;
     expect(restoreResponse.status()).toBe(200);
-    await expect(activityDrawer.getByTestId("undo-tracker-action")).toHaveCount(0);
+    await expect(page.getByTestId("undo-tracker-action")).toHaveCount(0);
 
     const activityDetail = await pageJson<{
       action_history: Array<{ action_type: string }>;
@@ -473,7 +475,6 @@ test.describe("Cloudflare staging hosted smoke", () => {
     expect(activityDetail.ok, `activity detail returned ${activityDetail.status}`).toBe(true);
     expect(activityDetail.body.action_history.some((event) => event.action_type === "save")).toBe(true);
     expect(activityDetail.body.action_history.some((event) => event.action_type === "restore")).toBe(true);
-    await page.keyboard.press("Escape");
     await expect(activityCard).toBeVisible();
 
     // 14. Read source health only; do not enqueue fresh polls after queue convergence.
