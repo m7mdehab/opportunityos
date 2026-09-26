@@ -23,7 +23,7 @@ class StorageV2CapacityBenchmarkTests(unittest.TestCase):
             "database_role": "postgres",
             "transaction_read_only": "off",
             "in_recovery": False,
-            "revision": "0026_fr008_live_actions",
+            "revision": "0025_current_feed_fast_path",
             "opportunities": 826,
             "hot": 13,
             "cold": 813,
