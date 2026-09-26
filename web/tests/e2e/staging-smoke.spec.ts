@@ -134,6 +134,75 @@ test.describe("Cloudflare staging hosted smoke", () => {
     expect(first.organization.length).toBeGreaterThan(0);
     expect(first.source_url.length).toBeGreaterThan(0);
 
+    // 5a. FR-008 live productivity controls must be present and functional,
+    // not merely compiled into an undeployed branch.
+    await expect(page.getByTestId("filter-facet-track")).toBeVisible();
+    await page.getByTestId("filter-facet-track").locator("summary").click();
+    await expect(page.getByTestId("filter-facet-track").locator('input[type="checkbox"]').first()).toBeVisible();
+    expect(await page.getByTestId("filter-facet-track").locator('input[type="checkbox"]').count()).toBeGreaterThan(1);
+    await page.getByTestId("filter-facet-track").locator("summary").click();
+
+    await page.getByTestId("open-advanced-feed-filters").click();
+    const advancedDrawer = page.getByTestId("feed-query-drawer");
+    await expect(advancedDrawer).toBeVisible();
+    const sourceFacet = page.getByTestId("feed-facet-source_id");
+    await sourceFacet.locator("summary").click();
+    expect(await sourceFacet.locator('input[type="checkbox"]').count()).toBeGreaterThan(1);
+    await page.keyboard.press("Escape");
+    await expect(advancedDrawer).not.toBeVisible();
+
+    const metricPeriod = page.getByTestId("metric-period");
+    await expect(metricPeriod).toBeVisible();
+    await metricPeriod.selectOption("yesterday");
+    await expect(metricPeriod).toHaveValue("yesterday");
+    await metricPeriod.selectOption("today");
+    await expect(metricPeriod).toHaveValue("today");
+
+    const reviewableSaveButtons = page.locator('[data-testid^="quick-save-"]');
+    expect(await reviewableSaveButtons.count(), "Hosted corpus needs two To Review jobs for reversible batch smoke").toBeGreaterThanOrEqual(2);
+    const batchIds: string[] = [];
+    for (let index = 0; index < 2; index += 1) {
+      const testId = await reviewableSaveButtons.nth(index).getAttribute("data-testid");
+      expect(testId).toMatch(/^quick-save-.+/);
+      const opportunityId = testId!.slice("quick-save-".length);
+      batchIds.push(opportunityId);
+      const card = page.getByTestId(`opportunity-card-${opportunityId}`);
+      const listItem = card.locator("xpath=..");
+      await listItem.getByRole("checkbox").check();
+    }
+    const batchToolbar = page.getByTestId("batch-action-toolbar");
+    await expect(batchToolbar).toBeVisible();
+    await expect(page.getByText("2 selected", { exact: true })).toBeVisible();
+    await batchToolbar.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByTestId("batch-action-status")).toContainText("2 jobs updated successfully.");
+
+    // Restore both jobs through the same hosted mutation boundary so smoke is
+    // state-neutral and never leaves test activity as Founder review input.
+    for (const opportunityId of batchIds) {
+      const actionDetail = await pageJson<{
+        action_history: Array<{ action_id: string; action_type: string }>;
+      }>(
+        page,
+        `/api/opportunities/${encodeURIComponent(opportunityId)}?batch_restore=${Date.now()}`,
+        { cache: "no-store" }
+      );
+      expect(actionDetail.ok, `batch detail returned ${actionDetail.status}`).toBe(true);
+      const saveEvent = actionDetail.body.action_history.find((event) => event.action_type === "save");
+      expect(saveEvent?.action_id, "Batch Save must create a reversible hosted activity event").toBeTruthy();
+      const restored = await pageJson<{ tracker_state: string }>(
+        page,
+        `/api/opportunities/${encodeURIComponent(opportunityId)}/restore`,
+        {
+          method: "POST",
+          body: {
+            event_id: saveEvent!.action_id,
+            idempotency_key: `staging-batch-restore-${opportunityId}-${Date.now()}`,
+          },
+        }
+      );
+      expect(restored.ok, `batch restore returned ${restored.status}`).toBe(true);
+    }
+
     // 5b. Hosted cold/warm feed SLO and logical-equivalence proof.
     // This smoke runs immediately after a fresh Cloudflare deployment. The
     // first authenticated feed read is the cold-edge observation; repeated
