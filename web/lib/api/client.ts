@@ -141,7 +141,7 @@ export const api = {
       target_tier?: string[]
       title_family?: string[]
       source_id?: string[]
-      source_family?: string
+      source_family?: string[]
       activity?: string
       feedback?: string
       sort_by?: string
