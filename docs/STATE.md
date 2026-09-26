@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `0242721` — test(truth): lock preference predicate bindings
+- **State generated at commit:** `e4fa065` — fix(feed): normalize legacy saved views for source families
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
