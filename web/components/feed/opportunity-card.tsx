@@ -66,12 +66,19 @@ export const OpportunityCard = forwardRef<
   keyboardFocused = false,
   selected = false,
   onSelectedChange,
+  onTriageAction,
+  triagePending = false,
+  triageError = null,
 }, ref) {
   const o = opportunity
   const isHidden = o.hidden_by.length > 0
   const domain = employerDomain(o.source_url)
   const age = postedAge(o.posted_date)
   const location = locationLabel(o)
+  const canTriage =
+    o.track === "employment" &&
+    (o.action_state === null || o.action_state === "to_review") &&
+    onTriageAction !== undefined
 
   return (
     <li className="h-full">
@@ -241,6 +248,46 @@ export const OpportunityCard = forwardRef<
         </a>
       </footer>
       </article>
+      {canTriage && (
+        <div
+          role="group"
+          aria-label={`Review actions for ${o.title}`}
+          className="flex flex-wrap items-center gap-2 px-1"
+        >
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            data-testid={`quick-save-${o.id}`}
+            disabled={triagePending}
+            onClick={() => onTriageAction("save")}
+          >
+            Save
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            data-testid={`quick-mark-applied-${o.id}`}
+            disabled={triagePending}
+            onClick={() => onTriageAction("mark_applied")}
+          >
+            Mark Applied
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="destructive"
+            data-testid={`quick-reject-${o.id}`}
+            disabled={triagePending}
+            onClick={() => onTriageAction("reject")}
+          >
+            Reject
+          </Button>
+          {triagePending && <span role="status" className="text-xs text-muted-foreground">Updating…</span>}
+          {triageError && <span role="alert" className="text-xs text-destructive">{triageError}</span>}
+        </div>
+      )}
     </li>
   )
 })
