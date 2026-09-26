@@ -66,6 +66,9 @@ test.describe("fixed CV and generated cover-letter artifacts", () => {
 
   test("cover letter retains truth-locked templates and claim rejection", async ({ page }) => {
     await login(page)
+    // opp-002 is intentionally a historical dismissed fixture. This artifact
+    // test needs that fixture, not the default To Review inbox.
+    await page.getByTestId("filter-activity").selectOption("any")
     const showHidden = page.getByTestId("toggle-hidden-opportunities")
     await showHidden.click()
 
