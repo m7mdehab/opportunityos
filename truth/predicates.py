@@ -206,6 +206,9 @@ EMPLOYMENT_RESPONSIBILITY = "employment.responsibility"
 ACHIEVEMENT_STATEMENT = "achievement.statement"
 SERVICE_NAME = "service.name"
 PORTFOLIO_TITLE = "portfolio.title"
+EDUCATION_QUALIFICATION = "education.qualification"
+CERTIFICATION_NAME = "certification.name"
+CERTIFICATION_STATE = "certification.state"
 WORK_AUTHORIZATION_JURISDICTION = "work_authorization.jurisdiction"
 WORK_AUTHORIZATION_STATUS = "work_authorization.status"
 LANGUAGE_LANGUAGE = "language.language"
@@ -281,6 +284,9 @@ _NAMED_CONSTANTS: tuple[str, ...] = (
     ACHIEVEMENT_STATEMENT,
     SERVICE_NAME,
     PORTFOLIO_TITLE,
+    EDUCATION_QUALIFICATION,
+    CERTIFICATION_NAME,
+    CERTIFICATION_STATE,
     WORK_AUTHORIZATION_JURISDICTION,
     WORK_AUTHORIZATION_STATUS,
     LANGUAGE_LANGUAGE,
