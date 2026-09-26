@@ -78,7 +78,7 @@ jobs:
           alembic downgrade 0019_activity_view_access
           test "$(alembic current | grep -c '0019_activity_view_access')" = 1
           alembic upgrade head
-          test "$(alembic current | grep -c '0026_fr008_live_actions')" = 1
+          test "$(alembic current | grep -c '0025_current_feed_fast_path')" = 1
       - name: Capacity/archive PostgreSQL proof
         run: |
           python -m unittest \
