@@ -2,6 +2,7 @@
 
 import { forwardRef } from "react"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { DecisionBadge } from "@/components/feed/decision-badge"
 import { filterTitle } from "@/components/feed/filter-labels"
 import { AlertTriangle, EyeOff, Tag, Globe } from "lucide-react"
