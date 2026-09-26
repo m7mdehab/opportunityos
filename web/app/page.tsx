@@ -588,6 +588,11 @@ export default function FeedPage() {
           </div>
         )}
         {undoError && !selectedId && <p role="alert" data-testid="tracker-undo-error" className="mb-4 text-sm text-destructive">{undoError}</p>}
+        {batchStatus && (
+          <p role="status" data-testid="batch-action-status" className="mb-4 break-words rounded-lg border border-border bg-card px-4 py-3 text-sm">
+            {batchStatus}
+          </p>
+        )}
         {truth && !truth.loaded && (
           truth.validator.error_count > 0 ? (
             <InvalidTruthPackState findings={truth.validator.findings} />
@@ -642,7 +647,6 @@ export default function FeedPage() {
                 <Button type="button" size="xs" variant="outline" disabled={batchPending} onClick={() => void handleBatchTriage("mark_applied")}>Mark Applied</Button>
               </div>}
               {batchPending && <span role="status" className="w-full text-xs">Updating selected jobs…</span>}
-              {batchStatus && <p role="status" data-testid="batch-action-status" className="w-full break-words text-xs">{batchStatus}</p>}
             </div>
             <ul className="grid auto-rows-fr grid-cols-1 items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {items?.map((o, idx) => (
