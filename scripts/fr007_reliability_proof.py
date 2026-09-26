@@ -419,6 +419,14 @@ def execute_a5_source_probe(dsn: str) -> dict[str, Any]:
         good_job_id = queue.enqueue_job("poll_source", {"source_id": "greenhouse:cloudflare"}, max_retries=2)
         session.commit()
 
+    from matching.test_qualification import create_test_graph
+    from truth.pack import LoadedPack, PackValidationReport
+
+    proof_pack = LoadedPack(
+        graph=create_test_graph(),
+        report=PackValidationReport(valid=True, section_counts=(("synthetic", 1),), findings=()),
+        truth_pack_hash="hash-proof-pack",
+    )
     registry = SourceRegistry()
     adapters = [GreenhouseAdapter("datadog"), GreenhouseAdapter("cloudflare")]
     transport = A5FixtureTransport()
@@ -428,7 +436,7 @@ def execute_a5_source_probe(dsn: str) -> dict[str, Any]:
         adapters=adapters,
         session_factory=factory,
         truth_pack_path=None,
-        pack_loader=lambda _p: None,
+        pack_loader=lambda _p: proof_pack,
     )
     runner = WorkerRunner(
         factory,
@@ -591,6 +599,14 @@ def execute_a6_idempotency_probe(dsn: str) -> dict[str, Any]:
         ]
     })
 
+    from matching.test_qualification import create_test_graph
+    from truth.pack import LoadedPack, PackValidationReport
+
+    proof_pack = LoadedPack(
+        graph=create_test_graph(),
+        report=PackValidationReport(valid=True, section_counts=(("synthetic", 1),), findings=()),
+        truth_pack_hash="hash-proof-pack",
+    )
     transport = A6DynamicTransport(stable_posting)
     adapter = GreenhouseAdapter("duolingo")
     registry = SourceRegistry()
@@ -600,7 +616,7 @@ def execute_a6_idempotency_probe(dsn: str) -> dict[str, Any]:
         adapters=[adapter],
         session_factory=factory,
         truth_pack_path=None,
-        pack_loader=lambda _p: None,
+        pack_loader=lambda _p: proof_pack,
     )
 
     poll_counts = []
