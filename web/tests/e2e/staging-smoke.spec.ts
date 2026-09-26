@@ -123,14 +123,14 @@ test.describe("Cloudflare staging hosted smoke", () => {
     // founder-visible review state is restored after the smoke.
     const quickSave = page.locator('[data-testid^="quick-save-"]').first();
     await expect(quickSave).toBeVisible();
-    const [saveResponse] = await Promise.all([
+    const [liveSaveResponse] = await Promise.all([
       page.waitForResponse((response) =>
         response.request().method() === "POST" &&
         response.url().includes("/actions")
       ),
       quickSave.click(),
     ]);
-    expect(saveResponse.status(), await saveResponse.text()).toBe(200);
+    expect(liveSaveResponse.status(), await liveSaveResponse.text()).toBe(200);
     await expect(page.getByTestId("tracker-undo-notice")).toBeVisible();
     const [undoResponse] = await Promise.all([
       page.waitForResponse((response) =>
