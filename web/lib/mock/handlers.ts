@@ -20,7 +20,7 @@ const FEEDBACK_LABELS: FeedbackLabel[] = [
   "review_required",
 ]
 
-const ACTION_TYPES: ActionType[] = ["save", "mark_applied", "reject", "dismiss", "snooze", "set_stage"]
+const ACTION_TYPES: ActionType[] = ["save", "mark_applied", "reject", "dismiss", "snooze", "clear", "set_stage"]
 
 function store() {
   return getStore(resolveScenario())
@@ -152,6 +152,10 @@ export const handlers = [
       target_tier: url.searchParams.getAll("target_tier"),
       title_family: url.searchParams.getAll("title_family"),
       source_id: url.searchParams.getAll("source_id"),
+      source_family: url.searchParams.get("source_family") ?? undefined,
+      activity: url.searchParams.get("activity") ?? undefined,
+      feedback: url.searchParams.get("feedback") ?? undefined,
+      include_tracked: url.searchParams.get("include_tracked") === "true",
       sort_by: (url.searchParams.get("sort_by") ?? "recommended") as "recommended" | "fit_desc" | "fit_asc" | "newest_posted" | "oldest_posted" | "remote_first",
       q,
       page,
@@ -733,6 +737,22 @@ export const handlers = [
   http.get("/api/sources/health", ({ request }) => {
     if (!requireAuth(request)) return unauthorized()
     return HttpResponse.json(store().sourcesHealth())
+  }),
+
+  http.get("/api/sources/overview", ({ request }) => {
+    if (!requireAuth(request)) return unauthorized()
+    const s = store()
+    const all = s.listOpportunities({ include_hidden: true, include_tracked: true, page_size: 10000 }).items
+    const sources = s.sourcesHealth().sources.map((source) => ({
+      source_family: source.category,
+      source_id: source.source_id,
+      opportunity_count: all.filter((item) => item.source_id === source.source_id).length,
+      hidden_count: all.filter((item) => item.source_id === source.source_id && item.hidden_by.length > 0).length,
+      last_success_at: source.last_status === "ok" ? source.last_poll : null,
+      last_status: source.last_status,
+      manual_only: source.read_policy !== "allowed",
+    }))
+    return HttpResponse.json({ sources })
   }),
 
   http.post("/api/worker/poll-now", ({ request }) => {
