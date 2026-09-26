@@ -434,6 +434,7 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
         ["seniority_level", "seniority_level"],
         ["title_family", "title_family"],
         ["source_id", "source_id"],
+        ["source_family", "source_family"],
         ["feedback_label", "feedback_label"],
       ];
       for (const [param, column] of repeated) {
