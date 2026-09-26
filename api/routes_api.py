@@ -1135,7 +1135,7 @@ def list_opportunities(
     target_tier: list[str] | None = Query(default=None),
     title_family: list[str] | None = Query(default=None),
     source_id: list[str] | None = Query(default=None),
-    source_family: str | None = None,
+    source_family: list[str] | None = Query(default=None),
     feedback_label: list[str] | None = Query(default=None),
     feedback: str | None = None,
     activity_type: list[str] | None = Query(default=None),
@@ -1198,17 +1198,23 @@ def list_opportunities(
                 truth_pack_hash = "active"
 
     resolved_source_ids = list(source_id or ())
-    if source_family:
+    resolved_source_families = {
+        value.strip().casefold()
+        for value in (source_family or ())
+        if value and value.strip()
+    }
+    if resolved_source_families:
         registry = SourceRegistry()
         family_source_ids = [
             source_key
             for source_key, policy in registry._sources.items()
-            if policy.category == source_family
+            if policy.category.casefold() in resolved_source_families
         ]
         if resolved_source_ids:
+            allowed_source_ids = set(family_source_ids)
             resolved_source_ids = [
                 source_key for source_key in resolved_source_ids
-                if source_key in family_source_ids
+                if source_key in allowed_source_ids
             ]
         else:
             resolved_source_ids = family_source_ids
