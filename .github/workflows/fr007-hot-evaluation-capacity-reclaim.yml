@@ -2,6 +2,13 @@ name: FR-007 Hot Evaluation Capacity Reclaim
 
 on:
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Run full recovery/drains or reclaim capacity without starting workers
+        type: choice
+        options: [full, maintenance-only]
+        default: full
+        required: true
   push:
     branches: [main]
     paths:
@@ -9,9 +16,6 @@ on:
       - api/serialization.py
       - scripts/db_capacity_maintenance.py
       - scripts/test_db_capacity_hot_postgres.py
-      - .github/workflows/fr007-hot-evaluation-capacity-reclaim.yml
-
-# Bootstrap note: once this workflow exists on main, any reviewed change to this file intentionally retriggers the bounded reclaim.
 
 permissions:
   contents: read
@@ -30,6 +34,7 @@ jobs:
     timeout-minutes: 20
     outputs:
       below_budget: ${{ steps.verify.outputs.below_budget }}
+      capacity_baseline_at: ${{ steps.plan.outputs.capacity_baseline_at }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -38,9 +43,23 @@ jobs:
       - name: Install repository dependencies
         run: python -m pip install -e .
       - name: Dry-run HOT evaluation compaction
+        id: plan
         env:
           OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
-        run: python scripts/db_capacity_maintenance.py hot-dimensions-plan
+        run: |
+          python scripts/db_capacity_maintenance.py hot-dimensions-plan
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+          engine = create_engine(os.environ["OPOS_TARGET_DB_URL"], pool_pre_ping=True)
+          try:
+              with engine.connect() as connection:
+                  baseline = connection.execute(text("SELECT now() AT TIME ZONE 'UTC'")).scalar_one()
+                  with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+                      handle.write(f"capacity_baseline_at={baseline.isoformat()}\n")
+          finally:
+              engine.dispose()
+          PY
       - name: Apply HOT evaluation compaction and physical reclaim
         env:
           OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
@@ -115,7 +134,7 @@ jobs:
 
   recover-orphan-deadletters:
     needs: maintain
-    if: needs.maintain.outputs.below_budget == 'true'
+    if: ${{ needs.maintain.outputs.below_budget == 'true' && (github.event_name != 'workflow_dispatch' || inputs.operation == 'full') }}
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -164,3 +183,119 @@ jobs:
             --max-jobs 30 \
             --time-budget-seconds 480 \
             --worker-id "${OPOS_WORKER_ID}"
+
+  final-verification:
+    needs: [maintain, recover-orphan-deadletters, drain]
+    if: ${{ always() && needs.maintain.result == 'success' }}
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install repository dependencies
+        run: python -m pip install -e .
+      - name: Verify post-operation capacity, queue, and compact envelope
+        env:
+          OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+          OPERATION: ${{ inputs.operation || 'full' }}
+          CAPACITY_BASELINE_AT: ${{ needs.maintain.outputs.capacity_baseline_at }}
+          RECOVERY_RESULT: ${{ needs.recover-orphan-deadletters.result }}
+          DRAIN_RESULT: ${{ needs.drain.result }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime
+          from sqlalchemy import create_engine, text
+          from scripts.db_capacity_guard import TARGET_BYTES
+
+          allowed = {
+              "dimension_name", "raw_score", "weight", "weighted_score",
+              "explanation", "signal_tags",
+          }
+          engine = create_engine(os.environ["OPOS_TARGET_DB_URL"], pool_pre_ping=True)
+          try:
+              with engine.connect() as connection:
+                  size = int(connection.execute(text(
+                      "SELECT pg_database_size(current_database())"
+                  )).scalar_one())
+                  queue = connection.execute(text("""
+                      SELECT status, job_type, count(*)::bigint AS count
+                      FROM worker_jobs GROUP BY status, job_type
+                      ORDER BY status, job_type
+                  """)).mappings().all()
+                  leases = connection.execute(text("""
+                      SELECT status, job_type, lease_owner, lease_expires_at, updated_at
+                      FROM worker_jobs WHERE status = 'RUNNING'
+                      ORDER BY job_type, id
+                  """)).mappings().all()
+                  failure_count = int(connection.execute(text("""
+                      SELECT count(*) FROM worker_jobs
+                      WHERE error_message LIKE '%W23 physical capacity ceiling%'
+                        AND updated_at >= :capacity_baseline_at
+                  """), {"capacity_baseline_at": datetime.fromisoformat(
+                      os.environ["CAPACITY_BASELINE_AT"]
+                  )}).scalar_one())
+                  dimensions = connection.execute(text("""
+                      SELECT e.dimension_scores_json
+                      FROM match_evaluations e
+                      JOIN opportunities o ON o.id=e.opportunity_id
+                      WHERE o.lifecycle_tier IN ('hot','protected')
+                        AND e.dimension_scores_json IS NOT NULL
+                  """)).scalars().all()
+                  lifecycle = connection.execute(text("""
+                      SELECT lifecycle_tier, count(*)::bigint AS count
+                      FROM opportunities GROUP BY lifecycle_tier ORDER BY lifecycle_tier
+                  """)).mappings().all()
+                  orphan_count = int(connection.execute(text("""
+                      SELECT count(*) FROM worker_jobs
+                      WHERE status='DEAD_LETTER'
+                        AND error_message LIKE '%Handler raised: Instance ''<OpportunityArchiveOrphanRecord%'
+                  """)).scalar_one())
+                  dead_letter_count = int(connection.execute(text(
+                      "SELECT count(*) FROM worker_jobs WHERE status='DEAD_LETTER'"
+                  )).scalar_one())
+              invalid = 0
+              for raw in dimensions:
+                  try:
+                      items = json.loads(raw)
+                  except Exception:
+                      invalid += 1
+                      continue
+                  if not isinstance(items, list) or any(
+                      not isinstance(item, dict) or (set(item) - allowed)
+                      for item in items
+                  ):
+                      invalid += 1
+
+              snapshot = {
+                  "database_bytes": size,
+                  "target_bytes": TARGET_BYTES,
+                  "below_target": size < TARGET_BYTES,
+                  "lifecycle_counts": [dict(row) for row in lifecycle],
+                  "worker_counts": [dict(row) for row in queue],
+                  "running_jobs": [dict(row) for row in leases],
+                  "orphan_race_dead_letters": orphan_count,
+                  "unrelated_dead_letters": dead_letter_count - orphan_count,
+                  "new_capacity_ceiling_failures_this_run": failure_count,
+                  "unsupported_hot_protected_dimension_rows": invalid,
+                  "operation": os.environ["OPERATION"],
+              }
+              print(json.dumps(snapshot, sort_keys=True, default=str))
+              if size >= TARGET_BYTES:
+                  raise SystemExit("post-operation database is at/above W23 200 MiB hard ceiling")
+              if invalid:
+                  raise SystemExit("HOT/PROTECTED dimensions contain unsupported fields")
+              if failure_count:
+                  raise SystemExit("workers hit the W23 capacity guard after reclaim")
+              if os.environ["OPERATION"] == "full" and (
+                  os.environ["RECOVERY_RESULT"] != "success"
+                  or os.environ["DRAIN_RESULT"] != "success"
+              ):
+                  raise SystemExit("recovery or bounded worker drain did not complete successfully")
+          finally:
+              engine.dispose()
+          PY
