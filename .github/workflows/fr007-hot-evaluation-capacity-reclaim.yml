@@ -129,6 +129,7 @@ jobs:
       - name: Enqueue fresh jobs for only the fixed orphan-race dead letters
         env:
           OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+          PYTHONPATH: ${{ github.workspace }}
         run: python scripts/fr007_recover_orphan_deadletters.py
 
   drain:

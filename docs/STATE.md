@@ -10,7 +10,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-09-27T00:27:12Z
+- **Generated:** 2026-09-27T00:36:43Z
 - **State generated at commit:** `e3d7c49` — fix(capacity): correlate hot dimension rewrite safely
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
