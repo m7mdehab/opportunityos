@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-09-17T10:01:21Z
-- **State generated at commit:** `1ff2fe0` — chore(ci): bootstrap hot capacity reclaim trigger
+- **Generated:** 2026-09-27T00:27:12Z
+- **State generated at commit:** `e3d7c49` — fix(capacity): correlate hot dimension rewrite safely
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief

@@ -283,32 +283,37 @@ def compact_hot_dimension_scores(connection, *, confirm: bool) -> dict[str, Any]
         raise ValueError("hot dimension compaction requires explicit --confirm-maintenance")
     before = hot_dimension_compaction_plan(connection)
     result = connection.execute(text("""
-        UPDATE match_evaluations e
+        WITH compact AS (
+          SELECT e.id,
+                 (
+                   SELECT COALESCE(
+                     jsonb_agg(
+                       jsonb_strip_nulls(
+                         jsonb_build_object(
+                           'dimension_name', item->'dimension_name',
+                           'raw_score', item->'raw_score',
+                           'weight', item->'weight',
+                           'weighted_score', item->'weighted_score',
+                           'explanation', item->'explanation',
+                           'signal_tags', item->'signal_tags'
+                         )
+                       )
+                     )::text,
+                     '[]'
+                   )
+                   FROM jsonb_array_elements(e.dimension_scores_json::jsonb) item
+                 ) AS payload
+          FROM match_evaluations e
+          JOIN opportunities o ON o.id = e.opportunity_id
+          WHERE o.lifecycle_tier IN ('hot', 'protected')
+            AND e.dimension_scores_json IS NOT NULL
+            AND left(e.dimension_scores_json, 1) = '['
+        )
+        UPDATE match_evaluations AS target
         SET dimension_scores_json = compact.payload
-        FROM opportunities o
-        CROSS JOIN LATERAL (
-          SELECT COALESCE(
-            jsonb_agg(
-              jsonb_strip_nulls(
-                jsonb_build_object(
-                  'dimension_name', item->'dimension_name',
-                  'raw_score', item->'raw_score',
-                  'weight', item->'weight',
-                  'weighted_score', item->'weighted_score',
-                  'explanation', item->'explanation',
-                  'signal_tags', item->'signal_tags'
-                )
-              )
-            )::text,
-            '[]'
-          ) AS payload
-          FROM jsonb_array_elements(e.dimension_scores_json::jsonb) item
-        ) compact
-        WHERE o.id = e.opportunity_id
-          AND o.lifecycle_tier IN ('hot', 'protected')
-          AND e.dimension_scores_json IS NOT NULL
-          AND left(e.dimension_scores_json, 1) = '['
-          AND e.dimension_scores_json IS DISTINCT FROM compact.payload
+        FROM compact
+        WHERE target.id = compact.id
+          AND target.dimension_scores_json IS DISTINCT FROM compact.payload
     """))
     after_logical = hot_dimension_compaction_plan(connection)
     return {
