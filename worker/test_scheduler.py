@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from opportunity.registry import SourceRegistry
 from storage.engine import get_engine, get_session_factory, init_db
@@ -17,6 +18,7 @@ from worker.scheduler import (
     get_poll_interval_hours,
     implicit_source_schedule_creation_enabled,
 )
+from scripts.db_capacity_guard import BLOCK_BYTES, CapacitySnapshot
 
 # Minimal fixture registry: one read-allowed source, one read-disabled source.
 # Mirrors the real docs/SOURCE_REGISTRY.yaml shape closely enough for
@@ -107,6 +109,29 @@ class TestReadPolicyBoundary(TestPollSchedulerBase):
 
 
 class TestBoundedHostedEnqueue(TestPollSchedulerBase):
+    def test_capacity_pause_does_not_create_schedules_or_queue_jobs(self):
+        session = self.session_factory()
+        try:
+            # Exercise the PostgreSQL-specific pre-enqueue branch while keeping
+            # the fixture DB local and deterministic; the branch exits before
+            # any PostgreSQL-only query or insert is reached.
+            with patch.object(self.engine.dialect, "name", "postgresql"), patch(
+                "scripts.db_capacity_guard.inspect_connection",
+                return_value=CapacitySnapshot(BLOCK_BYTES, False, False, "HEAVY_WORK_PAUSED"),
+            ):
+                enqueued, skipped = enqueue_due_sources(
+                    session,
+                    registry=self.registry,
+                    source_id="fixture_allowed",
+                    now=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                )
+            self.assertEqual(enqueued, [])
+            self.assertEqual(skipped, [{"source_id": "fixture_allowed", "reason": "capacity_pause"}])
+            self.assertEqual(session.query(SourceScheduleRecord).count(), 0)
+            self.assertEqual(session.query(WorkerJobRecord).count(), 0)
+        finally:
+            session.close()
+
     def test_existing_schedules_only_does_not_seed_registry_sources(self):
         session = self.session_factory()
         try:

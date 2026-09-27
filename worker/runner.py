@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Callable, Mapping, Optional
 
 from core.logging import get_logger, redact_data
+from scripts.db_capacity_guard import CapacityBlocked, CapacitySnapshot, inspect_connection
 from storage.models import WorkerJobRecord
 from worker.queue import BackgroundWorkerQueue
 
@@ -89,6 +90,7 @@ class WorkerRunner:
         poll_interval: float = 1.0,
         stop_event: Optional[threading.Event] = None,
         allowed_job_types: Optional[set[str]] = None,
+        capacity_inspector: Optional[Callable[[object], CapacitySnapshot]] = None,
     ) -> None:
         self.session_factory = session_factory
         self.handlers = dict(handlers)
@@ -99,6 +101,105 @@ class WorkerRunner:
         if allowed_job_types is not None and not allowed_job_types:
             raise ValueError("allowed_job_types must be non-empty when provided")
         self.allowed_job_types = set(allowed_job_types) if allowed_job_types is not None else None
+        # Injectable for deterministic SQLite unit coverage. Hosted PostgreSQL
+        # always uses the repository capacity inspection by default.
+        self.capacity_inspector = capacity_inspector
+
+    def _read_capacity_snapshot(self) -> tuple[Optional[CapacitySnapshot], bool]:
+        """Inspect capacity in a short-lived, read-only-use session.
+
+        The session is rolled back after the SELECTs and closed before a queue
+        claim is attempted, so the check cannot hold an idle transaction over
+        job execution. A probe failure is fail-closed: no job is claimed.
+        """
+        session = None
+        try:
+            session = self.session_factory()
+            bind = session.get_bind()
+            is_postgres = bool(bind is not None and bind.dialect.name == "postgresql")
+            if not is_postgres and self.capacity_inspector is None:
+                return None, True
+            inspector = self.capacity_inspector or inspect_connection
+            snapshot = inspector(session.connection())
+            session.rollback()
+            return snapshot, True
+        except Exception as exc:  # noqa: BLE001 - capacity inspection failure must not claim work
+            if session is not None:
+                try:
+                    session.rollback()
+                except Exception:  # noqa: BLE001 - closing the probe session is still required
+                    pass
+            logger.warning(
+                "worker.capacity_inspection_failed",
+                extra={
+                    "component": "worker.runner",
+                    "extra_data": {"worker_id": self.worker_id, "error": redact_data(str(exc))},
+                },
+            )
+            return None, False
+        finally:
+            if session is not None:
+                session.close()
+
+    def _capacity_allows_claim(self) -> tuple[bool, Optional[CapacitySnapshot]]:
+        snapshot, inspected = self._read_capacity_snapshot()
+        if not inspected:
+            return False, None
+        if snapshot is None:
+            return True, None
+        from scripts.db_capacity_guard import PREFERRED_BYTES
+
+        if snapshot.database_size_bytes >= PREFERRED_BYTES:
+            logger.info(
+                "worker.capacity_observed",
+                extra={
+                    "component": "worker.runner",
+                    "extra_data": {
+                        "worker_id": self.worker_id,
+                        "database_size_bytes": snapshot.database_size_bytes,
+                        "capacity_status": snapshot.status,
+                    },
+                },
+            )
+        if snapshot.pauses_heavy_work:
+            logger.info(
+                "worker.capacity_pause",
+                extra={
+                    "component": "worker.runner",
+                    "extra_data": {
+                        "worker_id": self.worker_id,
+                        "database_size_bytes": snapshot.database_size_bytes,
+                        "capacity_status": snapshot.status,
+                        "read_only": snapshot.read_only,
+                        "in_recovery": snapshot.in_recovery,
+                    },
+                },
+            )
+            return False, snapshot
+        return True, snapshot
+
+    def _log_capacity_growth(
+        self,
+        before: Optional[CapacitySnapshot],
+        after: Optional[CapacitySnapshot],
+        job_type: str,
+    ) -> None:
+        if before is None or after is None:
+            return
+        logger.info(
+            "worker.capacity_growth_sample",
+            extra={
+                "component": "worker.runner",
+                "extra_data": {
+                    "worker_id": self.worker_id,
+                    "job_type": job_type,
+                    "database_bytes_before": before.database_size_bytes,
+                    "database_bytes_after": after.database_size_bytes,
+                    "database_growth_bytes": after.database_size_bytes - before.database_size_bytes,
+                    "capacity_status_after": after.status,
+                },
+            },
+        )
 
     # -- lease ownership fencing -------------------------------------------------
 
@@ -222,6 +323,10 @@ class WorkerRunner:
 
     def run_once(self) -> bool:
         """Claim and process at most one job. Returns True if a job was processed."""
+        capacity_allows_claim, capacity_before = self._capacity_allows_claim()
+        if not capacity_allows_claim:
+            return False
+
         session = self.session_factory()
         try:
             queue = BackgroundWorkerQueue(session, worker_id=self.worker_id)
@@ -304,9 +409,26 @@ class WorkerRunner:
                 heartbeat_thread.join(timeout=self.lease_seconds + 5)
 
             if handler_exc is not None:
+                if isinstance(handler_exc, CapacityBlocked):
+                    released = queue.release_after_capacity_pause(job)
+                    logger.info(
+                        "worker.capacity_pause_after_claim",
+                        extra={
+                            "component": "worker.runner",
+                            "extra_data": {
+                                "worker_id": self.worker_id,
+                                "job_id": job_id,
+                                "job_type": job_type,
+                                "released_without_failure": released,
+                            },
+                        },
+                    )
+                    return False
+                self._log_capacity_growth(capacity_before, self._read_capacity_snapshot()[0], job_type)
                 self._fail_job_fenced(session, queue, job_id, job_type, f"Handler raised: {handler_exc}")
                 return True
 
+            self._log_capacity_growth(capacity_before, self._read_capacity_snapshot()[0], job_type)
             self._complete_job_fenced(session, queue, job_id, job_type)
             return True
         finally:
