@@ -228,21 +228,157 @@ def verify_archive(connection, opportunity_id: str) -> bool:
     return hashlib.sha256(compressed).hexdigest() == row["payload_sha256"] and json.loads(zlib.decompress(compressed))['opportunity_id'] == opportunity_id
 
 
+
+def hot_dimension_compaction_plan(connection) -> dict[str, Any]:
+    """Estimate HOT/PROTECTED dimension compaction without reading job text."""
+    row = connection.execute(text("""
+        WITH compact AS (
+          SELECT
+            octet_length(e.dimension_scores_json) AS current_bytes,
+            octet_length(
+              COALESCE((
+                SELECT jsonb_agg(
+                  jsonb_strip_nulls(
+                    jsonb_build_object(
+                      'dimension_name', item->'dimension_name',
+                      'raw_score', item->'raw_score',
+                      'weight', item->'weight',
+                      'weighted_score', item->'weighted_score',
+                      'explanation', item->'explanation',
+                      'signal_tags', item->'signal_tags'
+                    )
+                  )
+                )::text
+                FROM jsonb_array_elements(e.dimension_scores_json::jsonb) item
+              ), '[]')
+            ) AS compact_bytes
+          FROM match_evaluations e
+          JOIN opportunities o ON o.id = e.opportunity_id
+          WHERE o.lifecycle_tier IN ('hot', 'protected')
+            AND e.dimension_scores_json IS NOT NULL
+            AND left(e.dimension_scores_json, 1) = '['
+        )
+        SELECT count(*) AS rows,
+               COALESCE(sum(current_bytes), 0) AS current_bytes,
+               COALESCE(sum(compact_bytes), 0) AS compact_bytes,
+               COALESCE(sum(current_bytes - compact_bytes), 0) AS logical_savings_bytes
+        FROM compact
+    """)).mappings().one()
+    relation_bytes = int(connection.execute(
+        text("SELECT pg_total_relation_size('public.match_evaluations'::regclass)")
+    ).scalar_one())
+    database_bytes = int(connection.execute(
+        text("SELECT pg_database_size(current_database())")
+    ).scalar_one())
+    return {
+        **{key: int(value or 0) for key, value in dict(row).items()},
+        "relation_bytes": relation_bytes,
+        "database_bytes": database_bytes,
+    }
+
+
+def compact_hot_dimension_scores(connection, *, confirm: bool) -> dict[str, Any]:
+    """Rewrite only reconstructable dimension duplication for live HOT rows."""
+    if not confirm:
+        raise ValueError("hot dimension compaction requires explicit --confirm-maintenance")
+    before = hot_dimension_compaction_plan(connection)
+    result = connection.execute(text("""
+        UPDATE match_evaluations e
+        SET dimension_scores_json = compact.payload
+        FROM opportunities o
+        CROSS JOIN LATERAL (
+          SELECT COALESCE(
+            jsonb_agg(
+              jsonb_strip_nulls(
+                jsonb_build_object(
+                  'dimension_name', item->'dimension_name',
+                  'raw_score', item->'raw_score',
+                  'weight', item->'weight',
+                  'weighted_score', item->'weighted_score',
+                  'explanation', item->'explanation',
+                  'signal_tags', item->'signal_tags'
+                )
+              )
+            )::text,
+            '[]'
+          ) AS payload
+          FROM jsonb_array_elements(e.dimension_scores_json::jsonb) item
+        ) compact
+        WHERE o.id = e.opportunity_id
+          AND o.lifecycle_tier IN ('hot', 'protected')
+          AND e.dimension_scores_json IS NOT NULL
+          AND left(e.dimension_scores_json, 1) = '['
+          AND e.dimension_scores_json IS DISTINCT FROM compact.payload
+    """))
+    after_logical = hot_dimension_compaction_plan(connection)
+    return {
+        "rows_rewritten": int(result.rowcount or 0),
+        "before": before,
+        "after_logical": after_logical,
+    }
+
+
+def reclaim_match_evaluation_space(engine) -> dict[str, int]:
+    """Physically reclaim the compacted relation outside a transaction."""
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+        before_relation = int(connection.execute(
+            text("SELECT pg_total_relation_size('public.match_evaluations'::regclass)")
+        ).scalar_one())
+        before_database = int(connection.execute(
+            text("SELECT pg_database_size(current_database())")
+        ).scalar_one())
+        connection.execute(text("VACUUM (FULL, ANALYZE) public.match_evaluations"))
+        after_relation = int(connection.execute(
+            text("SELECT pg_total_relation_size('public.match_evaluations'::regclass)")
+        ).scalar_one())
+        after_database = int(connection.execute(
+            text("SELECT pg_database_size(current_database())")
+        ).scalar_one())
+    return {
+        "before_relation_bytes": before_relation,
+        "after_relation_bytes": after_relation,
+        "relation_reclaimed_bytes": max(0, before_relation - after_relation),
+        "before_database_bytes": before_database,
+        "after_database_bytes": after_database,
+        "database_reclaimed_bytes": max(0, before_database - after_database),
+    }
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Plan/apply zero-dollar database footprint maintenance")
-    parser.add_argument("operation", choices=("plan", "apply"))
-    parser.add_argument("--truth-pack-hash", required=True)
+    parser.add_argument("operation", choices=("plan", "apply", "hot-dimensions-plan", "hot-dimensions-apply"))
+    parser.add_argument("--truth-pack-hash")
     parser.add_argument("--dsn-env", default="OPOS_TARGET_DB_URL")
     parser.add_argument("--confirm-maintenance", action="store_true")
     args = parser.parse_args()
+    if args.operation in {"plan", "apply"} and not args.truth_pack_hash:
+        parser.error("--truth-pack-hash is required for cold maintenance")
     dsn = os.environ.get(args.dsn_env)
     if not dsn:
         parser.error(f"missing required environment variable {args.dsn_env}")
     engine = create_engine(dsn, pool_pre_ping=True)
     try:
-        with engine.begin() as connection:
-            result = build_plan(connection, truth_pack_hash=args.truth_pack_hash).as_dict() if args.operation == "plan" else apply_maintenance(connection, truth_pack_hash=args.truth_pack_hash, confirm=args.confirm_maintenance)
-            print(json.dumps(result, sort_keys=True, default=str))
+        if args.operation == "hot-dimensions-plan":
+            with engine.connect() as connection:
+                result = hot_dimension_compaction_plan(connection)
+        elif args.operation == "hot-dimensions-apply":
+            with engine.begin() as connection:
+                result = compact_hot_dimension_scores(
+                    connection,
+                    confirm=args.confirm_maintenance,
+                )
+            result["physical_reclaim"] = reclaim_match_evaluation_space(engine)
+        else:
+            with engine.begin() as connection:
+                result = (
+                    build_plan(connection, truth_pack_hash=args.truth_pack_hash).as_dict()
+                    if args.operation == "plan"
+                    else apply_maintenance(
+                        connection,
+                        truth_pack_hash=args.truth_pack_hash,
+                        confirm=args.confirm_maintenance,
+                    )
+                )
+        print(json.dumps(result, sort_keys=True, default=str))
     finally:
         engine.dispose()
     return 0

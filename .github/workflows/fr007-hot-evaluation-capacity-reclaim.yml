@@ -1,0 +1,163 @@
+name: FR-007 Hot Evaluation Capacity Reclaim
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - matching/evaluate_persist.py
+      - api/serialization.py
+      - scripts/db_capacity_maintenance.py
+      - scripts/test_db_capacity_hot_postgres.py
+      - .github/workflows/fr007-hot-evaluation-capacity-reclaim.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  # Serialize the maintenance and its recovery drain against the normal
+  # scheduled worker workflow so no worker can write while VACUUM FULL holds
+  # exclusive relation locks.
+  group: fr007-worker-drain
+  cancel-in-progress: false
+
+jobs:
+  maintain:
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      below_budget: ${{ steps.verify.outputs.below_budget }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install repository dependencies
+        run: python -m pip install -e .
+      - name: Dry-run HOT evaluation compaction
+        env:
+          OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+        run: python scripts/db_capacity_maintenance.py hot-dimensions-plan
+      - name: Apply HOT evaluation compaction and physical reclaim
+        env:
+          OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+        run: python scripts/db_capacity_maintenance.py hot-dimensions-apply --confirm-maintenance
+      - name: Reclaim ordinary public-table bloat without changing rows
+        env:
+          OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+          engine = create_engine(os.environ["OPOS_TARGET_DB_URL"], pool_pre_ping=True)
+          try:
+              with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+                  for relation in (
+                      "public.opportunities",
+                      "public.field_provenances",
+                      "public.opportunity_cold_archive",
+                      "public.feed_projection",
+                  ):
+                      connection.execute(text(f"VACUUM (FULL, ANALYZE) {relation}"))
+          finally:
+              engine.dispose()
+          PY
+      - name: Verify physical capacity and compact dimension invariant
+        id: verify
+        env:
+          OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+          from scripts.db_capacity_guard import TARGET_BYTES
+          allowed = {
+              "dimension_name", "raw_score", "weight", "weighted_score",
+              "explanation", "signal_tags",
+          }
+          engine = create_engine(os.environ["OPOS_TARGET_DB_URL"], pool_pre_ping=True)
+          try:
+              with engine.connect() as connection:
+                  size = int(connection.execute(text("SELECT pg_database_size(current_database())")).scalar_one())
+                  rows = connection.execute(text("""
+                      SELECT e.dimension_scores_json
+                      FROM match_evaluations e
+                      JOIN opportunities o ON o.id=e.opportunity_id
+                      WHERE o.lifecycle_tier IN ('hot','protected')
+                        AND e.dimension_scores_json IS NOT NULL
+                  """)).scalars().all()
+              import json
+              invalid = 0
+              for raw in rows:
+                  try:
+                      dimensions = json.loads(raw)
+                  except Exception:
+                      invalid += 1
+                      continue
+                  if not isinstance(dimensions, list):
+                      invalid += 1
+                      continue
+                  if any(not isinstance(item, dict) or (set(item) - allowed) for item in dimensions):
+                      invalid += 1
+              print(f"capacity_after_bytes={size} target_bytes={TARGET_BYTES} invalid_dimension_rows={invalid}")
+              if size >= TARGET_BYTES:
+                  raise SystemExit("capacity remains at/above W23 200 MiB hard ceiling")
+              if invalid:
+                  raise SystemExit("HOT/PROTECTED dimension envelope still contains unsupported duplicated fields")
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+                  handle.write("below_budget=true\n")
+          finally:
+              engine.dispose()
+          PY
+
+  recover-orphan-deadletters:
+    needs: maintain
+    if: needs.maintain.outputs.below_budget == 'true'
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install repository dependencies
+        run: python -m pip install -e .
+      - name: Enqueue fresh jobs for only the fixed orphan-race dead letters
+        env:
+          OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+        run: python scripts/fr007_recover_orphan_deadletters.py
+
+  drain:
+    needs: recover-orphan-deadletters
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5]
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install repository dependencies
+        run: python -m pip install -e .
+      - name: Drain one bounded normal worker shard after capacity recovery
+        env:
+          OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+          SUPABASE_STORAGE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL || 'https://sunjfepvdzfknglrjwhm.supabase.co' }}
+          STORAGE_SERVICE_KEY: ${{ secrets.STORAGE_SERVICE_KEY }}
+          OPPORTUNITYOS_ENVIRONMENT: cloud
+          OPPORTUNITYOS_TRUTH_PACK_PATH: founder/truth_pack.yaml.gz.b64
+          OPOS_WORKER_ID: "capacity-recovery-${{ github.run_id }}-${{ matrix.shard }}"
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          python scripts/fr007_hosted_bootstrap.py \
+            --mode drain \
+            --max-jobs 30 \
+            --time-budget-seconds 480 \
+            --worker-id "${OPOS_WORKER_ID}"

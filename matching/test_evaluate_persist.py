@@ -88,8 +88,18 @@ class EvaluateAndStoreTest(unittest.TestCase):
         self.assertIsInstance(dims, list)
         self.assertGreater(len(dims), 0)
         for dim in dims:
-            self.assertIn("dimension_name", dim)
-            self.assertIn("raw_score", dim)
+            self.assertEqual(
+                set(dim),
+                {
+                    "dimension_name",
+                    "raw_score",
+                    "weight",
+                    "weighted_score",
+                    "explanation",
+                    "signal_tags",
+                },
+            )
+            self.assertIsInstance(dim["signal_tags"], list)
 
         reasons = json.loads(rows[0].reasons_json)
         self.assertIsInstance(reasons, list)

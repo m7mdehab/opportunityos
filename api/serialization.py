@@ -4,12 +4,13 @@ and the fixed API contract shapes.
 `storage.models.MatchEvaluationRecord` writes (`matching/evaluate_persist.py`)
 five JSON-bearing columns this module reads:
 
-`dimension_scores_json` -> JSON list of:
+`dimension_scores_json` -> compact JSON list of:
     {"dimension_name", "raw_score", "weight", "weighted_score", "explanation",
-     ...}
-    (the writer also includes `strengths`/`gaps`/`unknowns`/`evidence_refs`/
-    `opportunity_field_refs` per entry; this module only reads the five
-    fields the API contract exposes.)
+     "signal_tags"}
+    The first five fields are the Founder API contract. `signal_tags` is
+    retained for the code-owned premium compensation filter. Heavier
+    per-dimension scorer evidence is deterministic/reconstructable and is not
+    duplicated into the current relational read model.
 
 `reasons_json` -> JSON **list** (not an object) of:
     {"kind": "strength"|"gap"|"unknown"|"hard_failure", "dimension": str,
