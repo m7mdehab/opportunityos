@@ -62,6 +62,13 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
         # Concurrency protection
         self.assertIn("cancel-in-progress: false", workflow)
 
+    def test_runtime_takeover_shares_worker_drain_concurrency_group(self):
+        worker_drain = (ROOT / ".github" / "workflows" / "fr007-worker-drain.yml").read_text(encoding="utf-8")
+        runtime_takeover = (ROOT / ".github" / "workflows" / "fr007-runtime-takeover-proof.yml").read_text(encoding="utf-8")
+        self.assertIn("group: fr007-worker-drain", worker_drain)
+        self.assertIn("group: fr007-worker-drain", runtime_takeover)
+        self.assertIn("cancel-in-progress: false", runtime_takeover)
+
     def test_worker_drain_schedule_and_defaults(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-worker-drain.yml").read_text(encoding="utf-8")
         self.assertIn('cron: "*/15 * * * *"', workflow)

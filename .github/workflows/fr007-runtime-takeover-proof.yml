@@ -26,7 +26,8 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: fr007-runtime-takeover-proof
+  # Serialize this workflow's production queue drain with scheduled/hosted drains.
+  group: fr007-worker-drain
   cancel-in-progress: false
 
 jobs:
