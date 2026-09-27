@@ -17,8 +17,8 @@
 
 - Focused capacity/worker suite: **116 passed**; serialization regression suite: **31 passed**.
 - PR #162 and #163 required checks passed, including governance/backend tests, frontend build/lint/Playwright, reliability proof, OCI smoke/queue durability, Guard, Mirror, and State.
-- Main deployment run `36318284154`: migrations and Cloudflare deployment succeeded. Authenticated Founder smoke did not pass; authenticated application behavior is not claimed verified.
-- Public `/login` returned HTTP 200 with title `OpportunityOS — Founder Alpha` on 2026-09-27. No authenticated Founder session was available.
+- Main workflow run `36318284154` used the Cloudflare staging deployment workflow: migration and `DEPLOY_STAGING` steps succeeded; `SMOKE_STAGING` failed. This run does not establish a successful authenticated smoke or production deployment.
+- A direct request to `https://opportunityos.m7mdehab.com/login` returned HTTP 200 with title `OpportunityOS — Founder Alpha` on 2026-09-27. Authenticated Founder behavior remains unverified because the hosted smoke did not establish a session.
 
 ## Live recovery
 
@@ -47,7 +47,7 @@ At 321,645,715 bytes (~306.7 MiB), the database is in **Monitor** (>=300 MiB), n
 
 Two different Greenhouse source polls showed unusually long in-fetch execution: the run #42 shard remained active until its 35-minute cancellation; the run #43 Stripe fetch eventually completed after ~31 minutes in the fetch stage and then persisted successfully. This is not a capacity error and produced no new capacity dead letter. It merits a separate diagnosis of end-to-end HTTP/read deadlines and large-source response behavior before more recovery work. This report does not claim that the transport cause has been proven.
 
-The public login surface responds normally. Authenticated Founder smoke reported missing batch-action status/sign-in remaining on the login screen, and one mobile feed-latency sample exceeded its target. This requires separate live smoke/auth/latency diagnosis; CI and public login status do not establish authenticated product health.
+The public login surface responds normally. In run `36318284154`, the staging smoke could not establish an authenticated session (one retry remained at `/login`); the desktop batch Save flow then lacked the expected `batch-action-status`. Mobile feed p95 was 2,885 ms against a 1,500 ms limit (retry: 1,849 ms). The desktop check also failed before the batch action status could be observed. These failures require separate live auth/feed-smoke and latency diagnosis; CI and public login status do not establish authenticated product health.
 
 ## Closure
 
