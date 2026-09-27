@@ -11,6 +11,8 @@ on:
       - scripts/test_db_capacity_hot_postgres.py
       - .github/workflows/fr007-hot-evaluation-capacity-reclaim.yml
 
+# Bootstrap note: once this workflow exists on main, any reviewed change to this file intentionally retriggers the bounded reclaim.
+
 permissions:
   contents: read
 
