@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-09-27T01:09:51Z
-- **State generated at commit:** `f5041c4` — fix(capacity): verify budget after bounded worker drains
+- **Generated:** 2026-09-27T11:40:48Z
+- **State generated at commit:** `8528867` — feat(worker): adapt drain parallelism to DB growth
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
