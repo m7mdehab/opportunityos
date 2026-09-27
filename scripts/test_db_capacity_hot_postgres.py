@@ -111,6 +111,10 @@ class HotEvaluationCapacityMaintenancePostgresTests(unittest.TestCase):
             "Synthetic rationale retained by the Founder API.",
         )
 
+        with self.engine.begin() as connection:
+            repeated = compact_hot_dimension_scores(connection, confirm=True)
+        self.assertEqual(repeated["rows_rewritten"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
