@@ -28,6 +28,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
 from api.artifact_cache import ArtifactStorageError
 from storage.cold_storage import client_from_env, get as get_cold_object, unpack
 from storage.engine import get_engine, get_production_db_url, get_session_factory
+from scripts.db_capacity_guard import HEAVY_WORK_PAUSE_BYTES, PREFERRED_BYTES
 
 MAX_ARCHIVE_OBJECTS = 50
 MAX_ARCHIVE_BYTES = 8 * 1024 * 1024
@@ -38,7 +39,7 @@ CORPUS_ARCHIVE_TOTAL_LIMIT = 250 * 1024 * 1024
 CORPUS_ARCHIVE_OBJECT_LIMIT = 30_000
 ARCHIVE_VERIFY_WORKERS = 5
 HISTORICAL_CORPUS_SIZE = 26_000
-DATABASE_HARD_BUDGET = 200 * 1024 * 1024
+DATABASE_HEAVY_WORK_BUDGET = HEAVY_WORK_PAUSE_BYTES
 ARCHIVE_STORAGE_RETRIES = 2
 
 
@@ -467,7 +468,7 @@ def compare_snapshots(
         "source_cold_verbose_evaluation_absent": int(a["source_cold_verbose_evaluation_rows"]) == 0,
         "archive_checksum_and_identity_verified": archive_proof.get("sha256_identity_verified") is True,
         "archive_download_source_scoped": archive_proof.get("download_scope") == "source-scoped-cold-archives-only",
-        "physical_database_within_hard_budget": int(after["database_bytes"]) <= DATABASE_HARD_BUDGET,
+        "physical_database_below_heavy_work_pause": int(after["database_bytes"]) < DATABASE_HEAVY_WORK_BUDGET,
         "physical_26k_benchmark_passed": (
             capacity_benchmark.get("status") == "PASS"
             and benchmark_population == HISTORICAL_CORPUS_SIZE
@@ -479,7 +480,7 @@ def compare_snapshots(
             and bool(benchmark_checks)
             and all(value is True for value in benchmark_checks.values())
         ),
-        "projected_database_within_hard_budget": projected_bytes <= DATABASE_HARD_BUDGET,
+        "projected_database_below_heavy_work_pause": projected_bytes < DATABASE_HEAVY_WORK_BUDGET,
         "benchmark_schema_matches_live_head": (
             capacity_benchmark.get("database_revision") == after.get("database_revision")
             and capacity_benchmark.get("database_revision") == "0025_current_feed_fast_path"
@@ -518,18 +519,20 @@ def compare_snapshots(
         "capacity_benchmark_database_bytes_after_population": capacity_benchmark.get("database_bytes_after_population"),
         "capacity_benchmark_application_relation_bytes": capacity_benchmark.get("benchmark_application_relation_bytes"),
         "projected_cold_archive_storage_bytes": capacity_benchmark.get("projected_cold_archive_storage_bytes"),
-        "projected_database_preferred_budget_pass": projected_bytes <= 150 * 1024 * 1024,
+        "projected_database_preferred_boundary_pass": projected_bytes < PREFERRED_BYTES,
         "projected_database_bytes": projected_bytes,
         "projected_database_mib": round(projected_bytes / (1024 * 1024), 2),
         "capacity_benchmark_top_relations": capacity_benchmark.get("top_relations", []),
         "capacity_benchmark_top_indexes": capacity_benchmark.get("top_indexes", []),
         "capacity_benchmark_checks": benchmark_checks,
         "capacity_window_review": (
-            "preferred<=150MiB"
-            if projected_bytes <= 150 * 1024 * 1024
-            else "inspected measured relation/index profile; hard ceiling<=200MiB"
-            if projected_bytes <= DATABASE_HARD_BUDGET
-            else "stop before full bootstrap"
+            "preferred<300MiB"
+            if projected_bytes < PREFERRED_BYTES
+            else "monitor 300-350MiB"
+            if projected_bytes < 350 * 1024 * 1024
+            else "warning 350-400MiB; use bounded waves"
+            if projected_bytes < DATABASE_HEAVY_WORK_BUDGET
+            else "pause new heavy work at 400MiB"
         ),
         "checks": checks,
         "full_registry_enqueue_performed": False,

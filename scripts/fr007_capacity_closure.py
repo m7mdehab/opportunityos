@@ -25,7 +25,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
-from scripts.db_capacity_guard import inspect_connection
+from scripts.db_capacity_guard import HARD_STOP_BYTES, inspect_connection
 from scripts.db_capacity_maintenance import apply_maintenance, build_plan
 
 
@@ -109,6 +109,11 @@ def live_maintenance(dsn: str, truth_pack_hash: str | None) -> dict:
     try:
         with engine.connect() as connection:
             before = snapshot(connection, truth_pack_hash)
+            state = inspect_connection(connection)
+            if state.pauses_heavy_work:
+                raise RuntimeError(
+                    "capacity maintenance paused before writes because the database is read-only, in recovery, or at/above 400 MiB"
+                )
             # Supabase's documented temporary quota maintenance override.
             connection.execute(text("SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE"))
             run_migration_on_connection(connection)
@@ -155,8 +160,8 @@ def live_maintenance(dsn: str, truth_pack_hash: str | None) -> dict:
                 print(f"vacuum_full_done relation={relation}", flush=True)
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_opportunities_search_tsv ON opportunities USING gin (search_tsv)"))
             after = snapshot(connection, selected_hash)
-            if after["database_size_bytes"] > 200 * 1024 * 1024:
-                raise RuntimeError("capacity maintenance did not reach the Storage V2 engineering budget")
+            if after["database_size_bytes"] >= HARD_STOP_BYTES:
+                raise RuntimeError("capacity maintenance reached the OpportunityOS internal hard stop")
             return {"before": before, "plan": plan.as_dict(), "maintenance": result, "after": after}
     finally:
         engine.dispose()
@@ -167,7 +172,7 @@ def fresh_write_proof(dsn: str) -> dict:
     try:
         with engine.connect() as connection:
             state = inspect_connection(connection)
-            if state.read_only or state.in_recovery or state.database_size_bytes > 200 * 1024 * 1024:
+            if state.read_only or state.in_recovery or state.database_size_bytes >= HARD_STOP_BYTES:
                 raise RuntimeError("fresh application connection is not writable/within capacity")
             transaction = connection.begin()
             try:

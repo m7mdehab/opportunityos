@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
-      below_budget: ${{ steps.verify.outputs.below_budget }}
+      heavy_work_allowed: ${{ steps.verify.outputs.heavy_work_allowed }}
       capacity_baseline_at: ${{ steps.plan.outputs.capacity_baseline_at }}
     steps:
       - uses: actions/checkout@v7
@@ -92,7 +92,7 @@ jobs:
           python - <<'PY'
           import os
           from sqlalchemy import create_engine, text
-          from scripts.db_capacity_guard import TARGET_BYTES
+          from scripts.db_capacity_guard import BLOCK_BYTES
           allowed = {
               "dimension_name", "raw_score", "weight", "weighted_score",
               "explanation", "signal_tags",
@@ -121,20 +121,20 @@ jobs:
                       continue
                   if any(not isinstance(item, dict) or (set(item) - allowed) for item in dimensions):
                       invalid += 1
-              print(f"capacity_after_bytes={size} target_bytes={TARGET_BYTES} invalid_dimension_rows={invalid}")
-              if size >= TARGET_BYTES:
-                  raise SystemExit("capacity remains at/above W23 200 MiB hard ceiling")
+              print(f"capacity_after_bytes={size} heavy_work_pause_bytes={BLOCK_BYTES} invalid_dimension_rows={invalid}")
+              if size >= BLOCK_BYTES:
+                  raise SystemExit("capacity remains at/above the 400 MiB heavy-work pause boundary")
               if invalid:
                   raise SystemExit("HOT/PROTECTED dimension envelope still contains unsupported duplicated fields")
               with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
-                  handle.write("below_budget=true\n")
+                  handle.write("heavy_work_allowed=true\n")
           finally:
               engine.dispose()
           PY
 
   recover-orphan-deadletters:
     needs: maintain
-    if: ${{ needs.maintain.outputs.below_budget == 'true' && (github.event_name != 'workflow_dispatch' || inputs.operation == 'full') }}
+    if: ${{ needs.maintain.outputs.heavy_work_allowed == 'true' && (github.event_name != 'workflow_dispatch' || inputs.operation == 'full') }}
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -210,7 +210,7 @@ jobs:
           import os
           from datetime import datetime
           from sqlalchemy import create_engine, text
-          from scripts.db_capacity_guard import TARGET_BYTES
+          from scripts.db_capacity_guard import BLOCK_BYTES, HARD_STOP_BYTES, PROVIDER_LIMIT_BYTES
 
           allowed = {
               "dimension_name", "raw_score", "weight", "weighted_score",
@@ -273,8 +273,13 @@ jobs:
 
               snapshot = {
                   "database_bytes": size,
-                  "target_bytes": TARGET_BYTES,
-                  "below_target": size < TARGET_BYTES,
+                  "heavy_work_pause_bytes": BLOCK_BYTES,
+                  "internal_hard_stop_bytes": HARD_STOP_BYTES,
+                  "provider_limit_bytes": PROVIDER_LIMIT_BYTES,
+                  "capacity_status": (
+                      "HARD_STOP_CAPACITY" if size >= HARD_STOP_BYTES else
+                      "HEAVY_WORK_PAUSED" if size >= BLOCK_BYTES else "NORMAL_OR_MONITOR"
+                  ),
                   "lifecycle_counts": [dict(row) for row in lifecycle],
                   "worker_counts": [dict(row) for row in queue],
                   "running_jobs": [dict(row) for row in leases],
@@ -285,8 +290,6 @@ jobs:
                   "operation": os.environ["OPERATION"],
               }
               print(json.dumps(snapshot, sort_keys=True, default=str))
-              if size >= TARGET_BYTES:
-                  raise SystemExit("post-operation database is at/above W23 200 MiB hard ceiling")
               if invalid:
                   raise SystemExit("HOT/PROTECTED dimensions contain unsupported fields")
               if failure_count:

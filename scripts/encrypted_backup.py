@@ -30,7 +30,8 @@ import tempfile
 MAGIC = b"OPOSBK01"
 NONCE_BYTES = 12
 KEY_ENV = "BACKUP_ENCRYPTION_KEY"
-MAX_BACKUP_BYTES = 200 * 1024 * 1024
+# This bounds a single backup artifact file; it is independent of database capacity.
+MAX_BACKUP_ARTIFACT_BYTES = 200 * 1024 * 1024
 
 
 class EncryptedBackupError(Exception):
@@ -71,7 +72,7 @@ def _validate_paths(source, destination):
         raise EncryptedBackupError("encrypted backup destination must differ from plaintext input")
     if not source_path.is_file() or source_path.stat().st_size <= 0:
         raise EncryptedBackupError("plaintext backup is missing or empty")
-    if source_path.stat().st_size > MAX_BACKUP_BYTES:
+    if source_path.stat().st_size > MAX_BACKUP_ARTIFACT_BYTES:
         raise EncryptedBackupError("backup exceeds configured size cap")
     if destination_path.exists():
         raise EncryptedBackupError("encrypted backup destination already exists")

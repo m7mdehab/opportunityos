@@ -15,14 +15,13 @@ from typing import Any
 
 from sqlalchemy import create_engine, text
 
-PREFERRED_BYTES = 150 * 1024 * 1024
-TARGET_BYTES = 200 * 1024 * 1024
-WARN_BYTES = 175 * 1024 * 1024
-STRONG_WARN_BYTES = 190 * 1024 * 1024
-# W23 accepts the measured 150-200 MiB review band, but no new heavy work may
-# start at or above the 200 MiB physical ceiling.
-BLOCK_BYTES = TARGET_BYTES
-HARD_STOP_BYTES = TARGET_BYTES
+MIB = 1024 * 1024
+PREFERRED_BYTES = 300 * MIB
+WARN_BYTES = 350 * MIB
+BLOCK_BYTES = 400 * MIB
+HEAVY_WORK_PAUSE_BYTES = BLOCK_BYTES
+HARD_STOP_BYTES = 425 * MIB
+PROVIDER_LIMIT_BYTES = 500 * MIB
 
 
 class CapacityBlocked(RuntimeError):
@@ -36,46 +35,60 @@ class CapacitySnapshot:
     in_recovery: bool
     status: str
 
+    @property
+    def pauses_heavy_work(self) -> bool:
+        return (
+            self.read_only
+            or self.in_recovery
+            or self.database_size_bytes >= BLOCK_BYTES
+        )
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "database_size_bytes": self.database_size_bytes,
             "read_only": self.read_only,
             "in_recovery": self.in_recovery,
             "status": self.status,
-            "target_bytes": TARGET_BYTES,
             "preferred_bytes": PREFERRED_BYTES,
             "warning_bytes": WARN_BYTES,
-            "strong_warning_bytes": STRONG_WARN_BYTES,
             "block_bytes": BLOCK_BYTES,
             "hard_stop_bytes": HARD_STOP_BYTES,
+            "provider_limit_bytes": PROVIDER_LIMIT_BYTES,
         }
 
 
 def inspect_connection(connection) -> CapacitySnapshot:
     size = int(connection.execute(text("SELECT pg_database_size(current_database())")).scalar_one())
-    read_only = bool(connection.execute(text("SELECT current_setting('default_transaction_read_only') = 'on'")).scalar_one())
+    read_only = bool(connection.execute(text(
+        "SELECT current_setting('default_transaction_read_only') = 'on' "
+        "OR current_setting('transaction_read_only') = 'on'"
+    )).scalar_one())
     in_recovery = bool(connection.execute(text("SELECT pg_is_in_recovery()")).scalar_one())
-    if read_only or in_recovery:
+    if read_only:
         status = "READ_ONLY"
+    elif in_recovery:
+        status = "IN_RECOVERY"
     elif size >= HARD_STOP_BYTES:
         status = "HARD_STOP_CAPACITY"
     elif size >= BLOCK_BYTES:
-        status = "BLOCKED_CAPACITY"
-    elif size >= STRONG_WARN_BYTES:
-        status = "STRONG_WARN_CAPACITY"
+        status = "HEAVY_WORK_PAUSED"
     elif size >= WARN_BYTES:
         status = "WARN_CAPACITY"
+    elif size >= PREFERRED_BYTES:
+        status = "MONITOR_CAPACITY"
     else:
-        status = "OK"
+        status = "NORMAL"
     return CapacitySnapshot(size, read_only, in_recovery, status)
 
 
 def assert_heavy_work_allowed(connection) -> CapacitySnapshot:
     snapshot = inspect_connection(connection)
     if snapshot.read_only or snapshot.in_recovery:
-        raise CapacityBlocked("database is read-only; heavy work is blocked")
-    if snapshot.database_size_bytes >= TARGET_BYTES:
-        raise CapacityBlocked("database reached the W23 physical capacity ceiling")
+        raise CapacityBlocked("database is read-only or in recovery; heavy work is paused")
+    if snapshot.database_size_bytes >= HARD_STOP_BYTES:
+        raise CapacityBlocked("database reached the OpportunityOS 425 MiB internal hard stop")
+    if snapshot.database_size_bytes >= BLOCK_BYTES:
+        raise CapacityBlocked("heavy work is paused at the OpportunityOS 400 MiB boundary")
     return snapshot
 
 

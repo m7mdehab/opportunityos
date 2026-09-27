@@ -118,7 +118,7 @@ class HarnessTests(unittest.TestCase):
         with patch.object(db, "connect", return_value=connection), \
              patch.object(db, "require_tool") as require_tool:
             with tempfile.TemporaryDirectory() as temp:
-                with self.assertRaisesRegex(db.HarnessError, "200 MiB database-size safety cap"):
+                with self.assertRaisesRegex(db.HarnessError, "425 MiB internal hard stop"):
                     db.backup(db.config("source", self.env), Path(temp) / "backup.dump")
             require_tool.assert_not_called()
 

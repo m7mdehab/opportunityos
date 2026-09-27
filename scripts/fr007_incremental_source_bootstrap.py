@@ -28,12 +28,13 @@ if str(REPOSITORY_ROOT) not in sys.path:
 from opportunity.registry import SourceRegistry
 from scripts.fr007_hosted_bootstrap import HOSTED_WORKER_POOL_SIZE, main as hosted_bootstrap_main
 from scripts.fr007_storage_v2_source_gate import _connect, snapshot, verify_source_archives
+from scripts.db_capacity_guard import HEAVY_WORK_PAUSE_BYTES
 from storage.models import WorkerJobRecord
 
 MODEL_PATH = REPOSITORY_ROOT / "reports/evidence/FR-007/W23_STORAGE_V2_CAPACITY_MODEL.json"
 MAX_SOURCES_PER_RUN = 125
 WORKER_TIME_BUDGET_SECONDS = 480
-DATABASE_HARD_BUDGET = 200 * 1024 * 1024
+DATABASE_HEAVY_WORK_BUDGET = HEAVY_WORK_PAUSE_BYTES
 MAX_INCREMENT_ARCHIVE_OBJECTS = 500
 MAX_INCREMENT_ARCHIVE_BYTES = 32 * 1024 * 1024
 MAX_SOURCE_FOLLOWUP_JOBS = 1
@@ -80,9 +81,9 @@ def invariant_failures(state: dict[str, Any], projected_bytes: int) -> list[str]
     failures: list[str] = []
     if state["database_revision"] != "0025_current_feed_fast_path":
         failures.append("schema_revision")
-    if int(state["database_bytes"]) > DATABASE_HARD_BUDGET:
+    if int(state["database_bytes"]) >= DATABASE_HEAVY_WORK_BUDGET:
         failures.append("physical_database_budget")
-    if projected_bytes > DATABASE_HARD_BUDGET:
+    if projected_bytes >= DATABASE_HEAVY_WORK_BUDGET:
         failures.append("projected_database_budget")
     if int(counts["opportunities"]) != int(counts["hot_opportunities"]) + int(counts["cold_opportunities"]) + int(counts["protected_opportunities"]):
         failures.append("lifecycle_tier_partition")

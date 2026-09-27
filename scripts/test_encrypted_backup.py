@@ -65,7 +65,7 @@ class TestEncryptedBackup(unittest.TestCase):
         self.assertEqual(integrity["expected_restore_type"], "fresh_public_schema")
 
     def test_backup_size_cap_fails_closed(self):
-        with patch.object(eb, "MAX_BACKUP_BYTES", 1):
+        with patch.object(eb, "MAX_BACKUP_ARTIFACT_BYTES", 1):
             with self.assertRaisesRegex(eb.EncryptedBackupError, "exceeds configured size cap"):
                 eb.encrypt_backup(self.source, self.encrypted, environ=self.env)
 

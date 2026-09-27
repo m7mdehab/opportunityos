@@ -28,7 +28,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = "OPOS_SOURCE_DB_URL"
 TARGET = "OPOS_TARGET_DB_URL"
 BASELINE = ROOT / "scripts" / "migration_baseline.py"
-MAX_INTEGRITY_BACKUP_DATABASE_BYTES = 200 * 1024 * 1024
+from scripts.db_capacity_guard import HARD_STOP_BYTES
+
+MAX_INTEGRITY_BACKUP_DATABASE_BYTES = HARD_STOP_BYTES
 
 
 class HarnessError(Exception):
@@ -195,7 +197,7 @@ def backup(settings, destination):
     finally:
         connection.close()
     if database_bytes > MAX_INTEGRITY_BACKUP_DATABASE_BYTES:
-        raise HarnessError("integrity backup stopped at the 200 MiB database-size safety cap")
+        raise HarnessError("integrity backup stopped at the OpportunityOS 425 MiB internal hard stop")
     tool = require_tool("pg_dump")
     argv = [tool, "--format=custom", "--schema=public", "--no-owner", "--no-privileges",
             "--file", str(path), "--dbname", settings["database"]]
