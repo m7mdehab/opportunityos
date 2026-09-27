@@ -271,12 +271,21 @@ def enqueue_due_sources(
 
     bind = session.get_bind()
     if bind is not None and bind.dialect.name == "postgresql":
-        from scripts.db_capacity_guard import assert_heavy_work_allowed
+        from scripts.db_capacity_guard import inspect_connection
 
-        # Capacity/read-only checks happen before schedule locks or queue rows
-        # are touched.  A blocked provider therefore cannot create another
-        # wave of doomed jobs.
-        assert_heavy_work_allowed(session.connection())
+        # Environmental pauses are clean scheduler outcomes, not source-job
+        # failures. No schedule lock or queue row is touched above the heavy
+        # work boundary or while the database is read-only/in recovery.
+        capacity = inspect_connection(session.connection())
+        if capacity.pauses_heavy_work:
+            session.rollback()
+            reason = (
+                "database_read_only_or_recovery"
+                if capacity.read_only or capacity.in_recovery
+                else "capacity_pause"
+            )
+            source = source_id or "*"
+            return [], [{"source_id": source, "reason": reason}]
 
     try:
         content = reg.path.read_text(encoding="utf-8")

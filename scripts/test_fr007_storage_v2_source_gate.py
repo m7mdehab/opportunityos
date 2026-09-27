@@ -64,7 +64,7 @@ def _capacity_benchmark(*, growth: int = 1024 * 1024, projected: int | None = No
         "top_indexes": [{"index_name": "ix_opportunities_search_tsv", "bytes": 1_000_000}],
         "checks": {
             "exact_physical_benchmark_population": True,
-            "projected_database_within_hard_budget": True,
+            "projected_database_below_heavy_work_pause": True,
         },
     }
 
@@ -419,8 +419,8 @@ class RepresentativeSourceEconomicsTests(unittest.TestCase):
         self.assertEqual(report["raw_opportunities_received"], 20)
         self.assertEqual(report["cold_archive_objects_created"], 17)
         self.assertEqual(report["compressed_archive_bytes_created"], 34_000)
-        self.assertLessEqual(report["projected_database_bytes"], 150 * 1024 * 1024)
-        self.assertEqual(report["capacity_window_review"], "preferred<=150MiB")
+        self.assertLess(report["projected_database_bytes"], source_gate.PREFERRED_BYTES)
+        self.assertEqual(report["capacity_window_review"], "preferred<300MiB")
         self.assertEqual(report["source_cold_archive_objects_after"], 17)
 
     def test_duplicated_cold_evaluation_fails_closed(self):
@@ -496,7 +496,7 @@ class RepresentativeSourceEconomicsTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "non-empty unique source sample"):
             compare_snapshots(before, after, archive_proof, _capacity_benchmark())
 
-    def test_measured_projected_database_may_use_reviewed_150_to_200_mib_window(self):
+    def test_measured_projected_database_may_use_warning_window_below_pause(self):
         before = _snapshot(12 * 1024 * 1024, 2 * 1024 * 1024)
         after = _snapshot(
             12 * 1024 * 1024 + 50_000,
@@ -516,19 +516,19 @@ class RepresentativeSourceEconomicsTests(unittest.TestCase):
             "compressed_bytes_downloaded": 34_000, "sha256_identity_verified": True,
             "download_scope": "source-scoped-cold-archives-only",
         }
-        benchmark = _capacity_benchmark(growth=180 * 1024 * 1024)
+        benchmark = _capacity_benchmark(growth=360 * 1024 * 1024)
 
         report = compare_snapshots(before, after, archive_proof, benchmark)
 
         self.assertEqual(report["status"], "PASS")
-        self.assertGreater(report["projected_database_bytes"], 150 * 1024 * 1024)
-        self.assertLessEqual(report["projected_database_bytes"], 200 * 1024 * 1024)
+        self.assertGreaterEqual(report["projected_database_bytes"], 350 * 1024 * 1024)
+        self.assertLess(report["projected_database_bytes"], source_gate.DATABASE_HEAVY_WORK_BUDGET)
         self.assertEqual(
             report["capacity_window_review"],
-            "inspected measured relation/index profile; hard ceiling<=200MiB",
+            "warning 350-400MiB; use bounded waves",
         )
 
-    def test_physical_projection_over_hard_database_budget_stops(self):
+    def test_projection_at_heavy_work_pause_stops_large_wave(self):
         before = _snapshot(12 * 1024 * 1024, 2 * 1024 * 1024)
         after = _snapshot(
             12 * 1024 * 1024 + 50_000,
@@ -553,11 +553,11 @@ class RepresentativeSourceEconomicsTests(unittest.TestCase):
             before,
             after,
             archive_proof,
-            _capacity_benchmark(growth=200 * 1024 * 1024),
+            _capacity_benchmark(growth=source_gate.DATABASE_HEAVY_WORK_BUDGET),
         )
 
         self.assertEqual(report["status"], "STOP_FOR_ARCHITECTURE_REVIEW")
-        self.assertFalse(report["checks"]["projected_database_within_hard_budget"])
+        self.assertFalse(report["checks"]["projected_database_below_heavy_work_pause"])
 
 
 if __name__ == "__main__":

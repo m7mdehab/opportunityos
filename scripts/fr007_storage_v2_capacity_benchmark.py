@@ -26,6 +26,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
 
 from opportunity.registry import SourceRegistry
 from storage.cold_storage import ARCHIVE_VERSION, archive_key
+from scripts.db_capacity_guard import HEAVY_WORK_PAUSE_BYTES
 from storage.engine import get_production_db_url
 from storage.feed_projection import FeedProjectionRecord
 from storage.models import (
@@ -39,7 +40,7 @@ from storage.models import (
 )
 
 POPULATION = 26_000
-DATABASE_HARD_BUDGET = 200 * 1024 * 1024
+DATABASE_HEAVY_WORK_BUDGET = HEAVY_WORK_PAUSE_BYTES
 EXPECTED_HEAD = "0025_current_feed_fast_path"
 SUCCESSFUL_CORPUS_SOURCE_ID = "__successful_corpus__"
 INSERT_BATCH_SIZE = 1000
@@ -818,7 +819,7 @@ def run_benchmark(source_id: str) -> dict[str, Any]:
                 and int(populated["tier_checks"]["storage_object_version_length"]) == int(shape["storage_object_shape"]["version_length"])
             ),
             "all_physical_measurements_are_post_population": int(populated["database_bytes"]) > int(empty["database_bytes"]),
-            "projected_database_within_hard_budget": projected <= DATABASE_HARD_BUDGET,
+            "projected_database_below_heavy_work_pause": projected < DATABASE_HEAVY_WORK_BUDGET,
         }
         largest_relations = {
             f"{row['schema_name']}.{row['relation']}": int(row["total_bytes"])
@@ -841,7 +842,7 @@ def run_benchmark(source_id: str) -> dict[str, Any]:
             "benchmark_growth_bytes": growth,
             "target_opportunities": POPULATION,
             "target_read_allowed_sources": len(source_ids),
-            "hard_database_budget_bytes": DATABASE_HARD_BUDGET,
+            "heavy_work_pause_bytes": DATABASE_HEAVY_WORK_BUDGET,
             "projected_final_database_bytes": projected,
             "projected_final_database_mib": round(projected / (1024 * 1024), 2),
             "projected_database_bytes_at_gate": projected,
@@ -943,7 +944,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     print(encoded)
     if report["status"] != "PASS":
-        raise SystemExit("physical 26k capacity benchmark or hard-budget gate did not pass")
+        raise SystemExit("physical 26k capacity benchmark or heavy-work pause gate did not pass")
     return 0
 
 

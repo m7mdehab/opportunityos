@@ -19,6 +19,7 @@ from truth.pack import LoadedPack, PackValidationReport
 from worker.handlers import HACKER_NEWS_SOURCE_ID, _retry_after_seconds, make_poll_source_handler
 from worker.queue import BackgroundWorkerQueue
 from worker.runner import UNKNOWN_JOB_TYPE_MARKER, WorkerRunner
+from scripts.db_capacity_guard import BLOCK_BYTES, CapacitySnapshot
 from opportunity.test_storage_v2_ingestion import MemoryPrivateStorage
 
 
@@ -81,6 +82,90 @@ class TestWorkerRunner(unittest.TestCase):
         runner = WorkerRunner(self.session_factory, {"noop": lambda payload: None}, worker_id="w-idle")
         processed = runner.run_once()
         self.assertFalse(processed)
+
+    def test_capacity_pause_leaves_pending_job_unchanged_before_claim(self):
+        job_id = self.queue.enqueue_job("poll_source", {"source_id": "himalayas"})
+        calls = []
+        runner = WorkerRunner(
+            self.session_factory,
+            {"poll_source": lambda payload: calls.append(payload)},
+            worker_id="w-capacity-pending",
+            capacity_inspector=lambda _connection: CapacitySnapshot(BLOCK_BYTES, False, False, "HEAVY_WORK_PAUSED"),
+        )
+
+        self.assertFalse(runner.run_once())
+        job = self._job_status(job_id)
+        self.assertEqual(calls, [])
+        self.assertEqual(job.status, "PENDING")
+        self.assertEqual(job.retry_count, 0)
+        self.assertIsNone(job.lease_owner)
+
+    def test_capacity_pause_leaves_retry_job_and_retry_count_unchanged(self):
+        job_id = self.queue.enqueue_job("poll_source", {"source_id": "himalayas"}, max_retries=5)
+        job = self._job_status(job_id)
+        job.status = "RETRY"
+        job.retry_count = 2
+        job.error_message = "previous transient failure"
+        job.run_after = datetime.now(timezone.utc) - timedelta(seconds=1)
+        self.setup_session.commit()
+        calls = []
+        runner = WorkerRunner(
+            self.session_factory,
+            {"poll_source": lambda payload: calls.append(payload)},
+            worker_id="w-capacity-retry",
+            capacity_inspector=lambda _connection: CapacitySnapshot(BLOCK_BYTES, False, False, "HEAVY_WORK_PAUSED"),
+        )
+
+        self.assertFalse(runner.run_once())
+        job = self._job_status(job_id)
+        self.assertEqual(calls, [])
+        self.assertEqual(job.status, "RETRY")
+        self.assertEqual(job.retry_count, 2)
+        self.assertEqual(job.error_message, "previous transient failure")
+        self.assertIsNone(job.lease_owner)
+
+    def test_read_only_and_recovery_pause_before_claim(self):
+        for snapshot in (
+            CapacitySnapshot(100, True, False, "READ_ONLY"),
+            CapacitySnapshot(100, False, True, "IN_RECOVERY"),
+        ):
+            with self.subTest(status=snapshot.status):
+                job_id = self.queue.enqueue_job("poll_source", {"source_id": "himalayas"})
+                calls = []
+                runner = WorkerRunner(
+                    self.session_factory,
+                    {"poll_source": lambda payload: calls.append(payload)},
+                    worker_id=f"w-{snapshot.status.lower()}",
+                    capacity_inspector=lambda _connection, value=snapshot: value,
+                )
+                self.assertFalse(runner.run_once())
+                job = self._job_status(job_id)
+                self.assertEqual(calls, [])
+                self.assertEqual(job.status, "PENDING")
+                self.assertEqual(job.retry_count, 0)
+
+    def test_below_threshold_claims_and_each_run_rechecks_capacity(self):
+        first_id = self.queue.enqueue_job("poll_source", {"source_id": "first"})
+        second_id = self.queue.enqueue_job("poll_source", {"source_id": "second"})
+        snapshots = iter((
+            CapacitySnapshot(BLOCK_BYTES - 1, False, False, "WARN_CAPACITY"),
+            CapacitySnapshot(BLOCK_BYTES - 1, False, False, "WARN_CAPACITY"),
+            CapacitySnapshot(BLOCK_BYTES, False, False, "HEAVY_WORK_PAUSED"),
+        ))
+        calls = []
+        runner = WorkerRunner(
+            self.session_factory,
+            {"poll_source": lambda payload: calls.append(payload["source_id"])},
+            worker_id="w-capacity-recheck",
+            capacity_inspector=lambda _connection: next(snapshots),
+        )
+
+        self.assertTrue(runner.run_once())
+        self.assertFalse(runner.run_once())
+        self.assertEqual(calls, ["first"])
+        self.assertEqual(self._job_status(first_id).status, "COMPLETED")
+        self.assertEqual(self._job_status(second_id).status, "PENDING")
+        self.assertEqual(self._job_status(second_id).retry_count, 0)
 
     def test_unknown_job_type_fails_with_distinctive_message(self):
         job_id = self.queue.enqueue_job("does_not_exist", {}, max_retries=5)

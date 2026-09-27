@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 from scripts import fr007_incremental_source_bootstrap as incremental
 from scripts.fr007_incremental_source_bootstrap import (
-    DATABASE_HARD_BUDGET,
+    DATABASE_HEAVY_WORK_BUDGET,
     invariant_failures,
     projected_final_database_bytes,
     select_registry_slice,
@@ -75,7 +75,7 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
         projected = projected_final_database_bytes(_state(), MODEL)
 
         self.assertGreater(projected, 150 * 1024 * 1024)
-        self.assertLessEqual(projected, DATABASE_HARD_BUDGET)
+        self.assertLess(projected, DATABASE_HEAVY_WORK_BUDGET)
         self.assertLess(projected, MODEL["projected_database_bytes_at_gate"] + 3 * 1024 * 1024)
 
     def test_projection_reserves_growth_and_decreases_as_corpus_converges(self):
@@ -90,10 +90,10 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
         self.assertGreaterEqual(progressed, 35_000_000)
 
     def test_projection_reflects_actual_over_budget_physical_size(self):
-        current = _state(database_bytes=DATABASE_HARD_BUDGET + 1, opportunities=26_000, coverage=343)
+        current = _state(database_bytes=DATABASE_HEAVY_WORK_BUDGET, opportunities=26_000, coverage=343)
 
-        self.assertGreater(projected_final_database_bytes(current, MODEL), DATABASE_HARD_BUDGET)
-        self.assertIn("physical_database_budget", invariant_failures(current, DATABASE_HARD_BUDGET + 1))
+        self.assertGreaterEqual(projected_final_database_bytes(current, MODEL), DATABASE_HEAVY_WORK_BUDGET)
+        self.assertIn("physical_database_budget", invariant_failures(current, DATABASE_HEAVY_WORK_BUDGET))
 
     def test_snapshot_invariants_stop_duplicate_projection_and_queue_leak(self):
         current = _state()
@@ -185,7 +185,7 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
         self.assertIn("--poll-source-only", script)
         self.assertIn("incremental-source-bootstrap", launcher)
         self.assertIn("uses: ./.github/workflows/fr007-incremental-source-bootstrap.yml", launcher)
-        self.assertIn("inputs.mode != 'incremental-source-bootstrap'", launcher)
+        self.assertIn("incremental-source-bootstrap:\n    if: ${{ inputs.mode == 'incremental-source-bootstrap' }}", launcher)
         self.assertIn("source_offset: ${{ inputs.source_offset }}", launcher)
         self.assertIn("max_sources: ${{ inputs.max_sources }}", launcher)
 
@@ -230,10 +230,10 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
         self.assertIn('max_jobs: "5"', launcher)
         self.assertIn("workflow_call:", worker)
         self.assertIn("github.event_name == 'workflow_call' && inputs.mode == 'drain'", worker)
-        self.assertIn("github.event_name == 'workflow_call' && (inputs.mode == 'all' || inputs.mode == 'enqueue')", worker)
+        self.assertIn("github.event_name == 'workflow_call' && (inputs.mode == 'all' || inputs.mode == 'enqueue' || inputs.mode == 'drain')", worker)
         self.assertIn("SUPABASE_STORAGE_URL:", worker)
         self.assertIn("STORAGE_SERVICE_KEY: ${{ secrets.STORAGE_SERVICE_KEY }}", worker)
-        self.assertIn("inputs.mode != 'queue-recovery'", launcher)
+        self.assertIn("queue-recovery:\n    if: ${{ inputs.mode == 'queue-recovery' }}", launcher)
 
     def test_registered_launcher_routes_current_branch_staging_deploy_then_smoke(self):
         launcher = (ROOT / ".github/workflows/fr007-current-readiness-launcher.yml").read_text(encoding="utf-8")
@@ -247,7 +247,7 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
         self.assertIn("staging-smoke:\n    if: ${{ inputs.mode == 'staging-smoke' }}\n    needs: [staging-deploy]", launcher)
         self.assertIn("uses: ./.github/workflows/fr007-founder-staging-ready.yml", launcher)
         self.assertNotIn("mode: SMOKE_STAGING", launcher)
-        self.assertIn("inputs.mode != 'staging-smoke'", launcher)
+        self.assertIn("staging-smoke:\n    if: ${{ inputs.mode == 'staging-smoke' }}\n    needs: [staging-deploy]", launcher)
         self.assertIn("alembic upgrade head", staging)
         self.assertIn("scripts/verify_founder_claim_compat.py", staging)
         self.assertLess(staging.index("scripts/verify_founder_claim_compat.py"), staging.index("npx playwright test"))
@@ -454,7 +454,7 @@ class IncrementalSourceBootstrapTests(unittest.TestCase):
     def test_incremental_runner_pauses_before_write_if_projected_budget_fails(self):
         ids = [f"source-{idx:03}" for idx in range(343)]
         registry = SimpleNamespace(_sources=set(ids), is_read_allowed=lambda _source_id: True)
-        before = _state(database_bytes=DATABASE_HARD_BUDGET + 1)
+        before = _state(database_bytes=DATABASE_HEAVY_WORK_BUDGET)
 
         with tempfile.TemporaryDirectory() as tmp, patch.object(incremental, "SourceRegistry", return_value=registry), patch.object(
             incremental, "_take_snapshot", return_value=before

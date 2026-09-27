@@ -8,6 +8,9 @@ from sqlalchemy import text
 from storage.models import WorkerJobRecord
 
 
+HEAVY_JOB_TYPES = frozenset({"poll_source", "evaluate_new"})
+
+
 class BackgroundWorkerQueue:
     """Production-ready transactional background worker queue with SKIP LOCKED and lease recovery."""
 
@@ -32,6 +35,12 @@ class BackgroundWorkerQueue:
         ``source_schedules`` row lock is still held. In that mode this method
         only flushes; the caller owns the surrounding transaction.
         """
+        bind = self.session.get_bind()
+        if job_type in HEAVY_JOB_TYPES and bind is not None and bind.dialect.name == "postgresql":
+            from scripts.db_capacity_guard import assert_heavy_work_allowed
+
+            assert_heavy_work_allowed(self.session.connection())
+
         job_id = f"job-{uuid.uuid4().hex[:12]}"
         record = WorkerJobRecord(
             id=job_id,
@@ -164,6 +173,10 @@ class BackgroundWorkerQueue:
                 # Mirror fail_job's increment-then-threshold policy exactly, so a job
                 # whose worker process died without calling complete_job/fail_job is
                 # still counted against max_retries instead of reclaimed forever.
+                stale_job._opos_capacity_restore_status = "RETRY"
+                stale_job._opos_capacity_restore_retry_count = stale_job.retry_count + 1
+                stale_job._opos_capacity_restore_error_message = stale_job.error_message
+                stale_job._opos_capacity_restore_run_after = now
                 stale_job.retry_count += 1
                 if stale_job.retry_count >= stale_job.max_retries:
                     stale_job.status = "DEAD_LETTER"
@@ -204,6 +217,10 @@ class BackgroundWorkerQueue:
             job = query.first()
 
             if job:
+                job._opos_capacity_restore_status = job.status
+                job._opos_capacity_restore_retry_count = job.retry_count
+                job._opos_capacity_restore_error_message = job.error_message
+                job._opos_capacity_restore_run_after = job.run_after
                 job.status = "RUNNING"
                 job.lease_owner = self.worker_id
                 job.lease_expires_at = now + timedelta(seconds=lease_duration_seconds)
@@ -212,6 +229,35 @@ class BackgroundWorkerQueue:
                 return job
 
             return None
+
+    def release_after_capacity_pause(self, job: WorkerJobRecord) -> bool:
+        """Return a claim to its pre-execution state without recording a failure.
+
+        This is only used when a deep, defense-in-depth capacity check catches
+        a threshold crossing after the pre-claim inspection. Normal capacity
+        pauses stop before any claim is made.
+        """
+        status = getattr(job, "_opos_capacity_restore_status", "RETRY")
+        retry_count = getattr(job, "_opos_capacity_restore_retry_count", job.retry_count)
+        values: Dict[str, Any] = {
+            "status": status,
+            "retry_count": retry_count,
+            "error_message": getattr(job, "_opos_capacity_restore_error_message", job.error_message),
+            "run_after": getattr(job, "_opos_capacity_restore_run_after", job.run_after),
+            "lease_owner": None,
+            "lease_expires_at": None,
+        }
+        updated = (
+            self.session.query(WorkerJobRecord)
+            .filter(
+                WorkerJobRecord.id == job.id,
+                WorkerJobRecord.lease_owner == self.worker_id,
+                WorkerJobRecord.status == "RUNNING",
+            )
+            .update(values, synchronize_session=False)
+        )
+        self.session.commit()
+        return bool(updated)
 
     def complete_job(self, job_id: str) -> bool:
         """Guarded UPDATE: marks the job COMPLETED only if this worker still holds

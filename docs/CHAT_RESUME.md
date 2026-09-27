@@ -244,3 +244,10 @@ Before moving to another chat:
 ### Founder-locked CV portfolio
 
 Employment applications do not synthesize CVs. ADR-0024 locks six final 2026 PDFs (AI Engineer, Business Analyst, Data Analyst, Data Engineer, Data Scientist, Master). Matching selects one immutable PDF, verifies its SHA-256, and attaches those exact bytes. Cover letters/application answers remain Truth-locked generated artifacts. The PDF bodies live in private Supabase Storage; the repository stores only the selection catalog and hashes.
+
+## W23 Capacity Policy Correction — active checkpoint (2026-09-27)
+
+- PR #162 (`fix/w23-capacity-policy-runtime`) carries the corrected 300/350/400/425 MiB capacity policy and pre-claim worker/scheduler pause.
+- Live database last observed at 211,168,403 bytes (~201.4 MiB), which is normal; no invasive capacity maintenance or Storage V3 work is authorized by this checkpoint.
+- Current PR checks and bounded production backlog recovery are in progress. Preserve historical capacity dead-letter and orphan-race rows; use existing queue recovery only after merge.
+- Current PR must finish with generated `docs/STATE.md` refreshed and CI green before merge. After merge, verify live DB, queue/lifecycle counts, deployment, and report growth evidence. Storage V3 remains deferred absent measured growth toward 350–400 MiB.
