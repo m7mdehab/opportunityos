@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-09-27T00:40:53Z
-- **State generated at commit:** `1f56c3e` — fix(capacity): set recovery script import path
+- **Generated:** 2026-09-27T01:09:51Z
+- **State generated at commit:** `f5041c4` — fix(capacity): verify budget after bounded worker drains
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
