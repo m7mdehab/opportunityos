@@ -10,7 +10,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-09-27T12:04:05Z
+- **Generated:** 2026-09-27T16:08:23Z
 - **State generated at commit:** `9a68208` — fix(worker): serialize hosted drain workflows
 - **Mirror sync:** `not yet recorded` at not yet recorded
 

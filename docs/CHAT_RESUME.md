@@ -247,7 +247,8 @@ Employment applications do not synthesize CVs. ADR-0024 locks six final 2026 PDF
 
 ## W23 Capacity Policy Correction — active checkpoint (2026-09-27)
 
-- PR #162 (`fix/w23-capacity-policy-runtime`) carries the corrected 300/350/400/425 MiB capacity policy and pre-claim worker/scheduler pause.
-- Live database last observed at 211,168,403 bytes (~201.4 MiB), which is normal; no invasive capacity maintenance or Storage V3 work is authorized by this checkpoint.
-- Current PR checks and bounded production backlog recovery are in progress. Preserve historical capacity dead-letter and orphan-race rows; use existing queue recovery only after merge.
-- Current PR must finish with generated `docs/STATE.md` refreshed and CI green before merge. After merge, verify live DB, queue/lifecycle counts, deployment, and report growth evidence. Storage V3 remains deferred absent measured growth toward 350–400 MiB.
+- PRs #162 and #163 landed corrected capacity thresholds and serialized worker-drain concurrency. The 200 MiB assumption is retired; thresholds are 300/350/400/425 MiB.
+- Live DB is in Monitor at 321,645,715 bytes (~306.7 MiB), 43.25 MiB below the 350 MiB warning. No capacity-induced dead letters appeared after merge; preserve 17 historical superseded-policy and 45 orphan-race dead-letter rows unchanged.
+- Bounded recovery advanced completed polls 632→827; orphan recovery matched 45 sources and enqueued zero because active work already represented all sources. Final queue: 827 completed polls, 140 completed evaluations, 1 pending evaluation, no RETRY/RUNNING/pending polls, and 76 historical dead letters. The long Stripe Greenhouse fetch completed normally after ~31 minutes in fetch; no direct row mutation occurred.
+- Do not start another broad drain until growth and fetch latency are reviewed. Authenticated Founder smoke remains unverified; investigate the repeated slow source-fetch path and live auth/feed smoke next. Storage V3 remains deferred.
+- Full evidence: `reports/evidence/FR-007/W23-CAPACITY-POLICY-RUNTIME-REPORT.md`.
