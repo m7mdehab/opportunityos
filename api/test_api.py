@@ -826,6 +826,9 @@ class OpportunityRoutesTest(ApiTestCase):
             "page": 1, "page_size": 25, "total": 0, "hidden_count": 0,
             "items": [], "message": None,
         })
+        server_timing = response.headers.get("server-timing", "")
+        for metric in ("auth_resolution", "truth_pack", "feed_query", "hidden_count", "response_serialization", "handler_total", "app_request"):
+            self.assertIn(metric, server_timing)
         self.assertTrue(statements)
         self.assertTrue(all(sql.startswith(("SELECT", "SHOW")) for sql in statements), statements)
         self.assertEqual(self.session.execute(text("SELECT count(*) FROM feed_projection")).scalar(), 0)

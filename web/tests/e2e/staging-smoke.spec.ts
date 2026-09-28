@@ -7,7 +7,7 @@ async function pageJson<T>(
   page: Page,
   path: string,
   init?: { method?: string; body?: unknown; cache?: RequestCache }
-): Promise<{ status: number; ok: boolean; body: T; elapsed_ms: number }> {
+): Promise<{ status: number; ok: boolean; body: T; ttfb_ms: number; elapsed_ms: number; server_timing: string }> {
   return page.evaluate(
     async ({ path: p, init: i }) => {
       const method = (i?.method ?? "GET").toUpperCase();
@@ -25,17 +25,21 @@ async function pageJson<T>(
         body: i?.body === undefined ? undefined : JSON.stringify(i.body),
         signal: AbortSignal.timeout(25_000),
       });
+      const ttfb_ms = performance.now() - started;
+      const server_timing = response.headers.get("server-timing") ?? "unavailable";
       const text = await response.text();
       const elapsed_ms = performance.now() - started;
       return {
         status: response.status,
         ok: response.ok,
         body: text ? JSON.parse(text) : null,
+        ttfb_ms,
         elapsed_ms,
+        server_timing,
       };
     },
     { path, init }
-  ) as Promise<{ status: number; ok: boolean; body: T; elapsed_ms: number }>;
+  ) as Promise<{ status: number; ok: boolean; body: T; ttfb_ms: number; elapsed_ms: number; server_timing: string }>;
 }
 
 async function pageBinary(page: Page, path: string) {
@@ -193,7 +197,7 @@ test.describe("Cloudflare staging hosted smoke", () => {
         employment_type: string;
         seniority_level: string;
       }>;
-    }>(page, "/api/opportunities?page=1&page_size=1");
+    }>(page, "/api/opportunities?sort_by=for_you&page=1&page_size=1");
 
     expect(firstPage.ok, `feed returned ${firstPage.status}`).toBe(true);
     expect(typeof firstPage.body.page).toBe("number");
@@ -201,10 +205,11 @@ test.describe("Cloudflare staging hosted smoke", () => {
     expect(typeof firstPage.body.total).toBe("number");
     expect(Array.isArray(firstPage.body.items)).toBe(true);
 
-    // Bootstrap prerequisite: staging corpus must have at least two feed rows
-    if (firstPage.body.total < 2) {
+    // Founder acceptance requires an actual For You recommendation, not a
+    // review-only corpus that would make the card latency measurement vacuous.
+    if (firstPage.body.total < 1) {
       throw new Error(
-        `Staging corpus has fewer than two feed rows (total=${firstPage.body.total}); run protected bootstrap workflow before running smoke.`
+        `Staging corpus has no For You rows (total=${firstPage.body.total}); run the bounded BC candidate refresh before hosted acceptance.`
       );
     }
 
@@ -331,10 +336,12 @@ test.describe("Cloudflare staging hosted smoke", () => {
     // first authenticated feed read is the cold-edge observation; repeated
     // reads establish the normal-request p95 at the current hosted corpus.
     const feedLatencies = [firstPage.elapsed_ms];
+    const feedTtfbLatencies = [firstPage.ttfb_ms];
+    const feedServerTimings = [firstPage.server_timing];
     for (let i = 0; i < 19; i += 1) {
       const sample = await pageJson<{ total: number; items: Array<{ id: string }> }>(
         page,
-        "/api/opportunities?page=1&page_size=1"
+        "/api/opportunities?sort_by=for_you&page=1&page_size=1"
       );
       expect(sample.ok, `SLO sample ${i + 2} returned ${sample.status}`).toBe(true);
       // Live ingestion/evaluation is allowed to change the corpus between SLO
@@ -344,12 +351,14 @@ test.describe("Cloudflare staging hosted smoke", () => {
       expect(sample.body.total).toBeGreaterThan(0);
       expect(typeof sample.body.items[0]?.id).toBe("string");
       feedLatencies.push(sample.elapsed_ms);
+      feedTtfbLatencies.push(sample.ttfb_ms);
+      feedServerTimings.push(sample.server_timing);
     }
     const sortedLatencies = [...feedLatencies].sort((a, b) => a - b);
     const p95Index = Math.max(0, Math.ceil(sortedLatencies.length * 0.95) - 1);
     const p95Ms = sortedLatencies[p95Index];
     console.log(
-      `FR007_HOSTED_FEED_SLO project=${test.info().project.name} cold_ms=${firstPage.elapsed_ms.toFixed(2)} p95_ms=${p95Ms.toFixed(2)} samples=${feedLatencies.length}`
+      `FR007_HOSTED_FEED_SLO project=${test.info().project.name} cold_total_ms=${firstPage.elapsed_ms.toFixed(2)} cold_ttfb_ms=${firstPage.ttfb_ms.toFixed(2)} warm_total_p95_ms=${p95Ms.toFixed(2)} warm_ttfb_p95_ms=${[...feedTtfbLatencies].sort((a, b) => a - b)[Math.max(0, Math.ceil(feedTtfbLatencies.length * 0.95) - 1)].toFixed(2)} samples=${feedLatencies.length} edge_and_backend=${feedServerTimings.join("|")}`
     );
     expect(p95Ms, "Hosted normal feed p95 must remain <= 1500ms").toBeLessThanOrEqual(1500);
 

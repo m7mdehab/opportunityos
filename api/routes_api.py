@@ -6,12 +6,14 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from time import perf_counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any, Iterator, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session, defer
@@ -1121,6 +1123,7 @@ def unhide_by_reason_route(payload: UnhideByReasonRequest, request: Request, ses
 @router.get("/opportunities")
 def list_opportunities(
     request: Request,
+    response: Response,
     track: list[str] | None = Query(default=None),
     decision: list[str] | None = Query(default=None),
     min_score: float | None = None,
@@ -1161,6 +1164,12 @@ def list_opportunities(
     page_size: int = 25,
     session: Session = Depends(get_db),
 ):
+    handler_started = perf_counter()
+    timings_ms: dict[str, float] = {}
+
+    def mark_timing(name: str, started: float) -> None:
+        timings_ms[name] = max(0.0, (perf_counter() - started) * 1000)
+
     norm_page = max(1, page)
     norm_page_size = max(1, min(page_size, 200))
 
@@ -1177,6 +1186,7 @@ def list_opportunities(
                 "message": search_message,
             }
 
+    phase_started = perf_counter()
     loaded_pack = request.app.state.loaded_truth_pack
     truth_pack_hash = loaded_pack.truth_pack_hash if loaded_pack is not None else None
     if not truth_pack_hash:
@@ -1197,6 +1207,7 @@ def list_opportunities(
                 truth_pack_hash = latest_eval[0]
             else:
                 truth_pack_hash = "active"
+    mark_timing("truth_pack", phase_started)
 
     resolved_source_ids = list(source_id or ())
     source_family_values = [source_family] if isinstance(source_family, str) else (source_family or ())
@@ -1274,8 +1285,11 @@ def list_opportunities(
         page=norm_page,
         page_size=norm_page_size,
     )
+    phase_started = perf_counter()
     feed = feed_page(session, spec)
+    mark_timing("feed_query", phase_started)
 
+    phase_started = perf_counter()
     hidden_count_query = session.query(func.count(FeedProjectionRecord.id)).filter(
         FeedProjectionRecord.truth_pack_hash == truth_pack_hash,
         FeedProjectionRecord.visible.is_(False),
@@ -1283,10 +1297,12 @@ def list_opportunities(
     if track:
         hidden_count_query = hidden_count_query.filter(FeedProjectionRecord.track.in_(track))
     hidden_count = hidden_count_query.scalar() or 0
+    mark_timing("hidden_count", phase_started)
 
     page_items: list[dict[str, Any]] = []
     page_ids = [row.opportunity_id for row in feed.rows]
     if page_ids:
+        phase_started = perf_counter()
         page_opportunities = (
             session.query(OpportunityRecord)
             .filter(OpportunityRecord.id.in_(page_ids))
@@ -1294,7 +1310,9 @@ def list_opportunities(
         )
         by_id = {opp.id: opp for opp in page_opportunities}
         ordered_opps = [by_id[opp_id] for opp_id in page_ids if opp_id in by_id]
+        mark_timing("opportunity_hydration", phase_started)
         truth_graph = _truth_graph_from_request(request)
+        phase_started = perf_counter()
         filter_settings = _load_filter_settings(session)
         facet_settings = _load_facet_settings(session)
         # Bounded page contexts: exactly len(page_ids) <= 25 items, never the full corpus
@@ -1302,10 +1320,18 @@ def list_opportunities(
             session, truth_graph, ordered_opps, filter_settings, facet_settings
         )
         ctx_by_id = {opp.id: ctx for opp, ctx in zip(ordered_opps, contexts)}
+        mark_timing("evaluation_context_hydration", phase_started)
+        phase_started = perf_counter()
         family_sizes = _family_sizes(session, [opp.family_key for opp in ordered_opps])
+        mark_timing("family_size_lookup", phase_started)
+        phase_started = perf_counter()
         action_states = _batch_action_states(session, page_ids)
+        mark_timing("action_state_lookup", phase_started)
+        phase_started = perf_counter()
         feedback_labels = _batch_feedback_labels(session, page_ids)
+        mark_timing("feedback_lookup", phase_started)
 
+        phase_started = perf_counter()
         for proj in feed.rows:
             opp = by_id.get(proj.opportunity_id)
             if opp is None:
@@ -1343,8 +1369,9 @@ def list_opportunities(
             }
             row.update(serialize_opportunity_extraction_fields(opp, family_sizes.get(opp.family_key)))
             page_items.append(row)
+        mark_timing("ranking_serialization", phase_started)
 
-    return {
+    response_payload = {
         "page": feed.page,
         "page_size": feed.page_size,
         "total": feed.total,
@@ -1352,6 +1379,15 @@ def list_opportunities(
         "items": page_items,
         "message": search_message,
     }
+    serialization_started = perf_counter()
+    json_response = JSONResponse(content=response_payload)
+    timings_ms["response_serialization"] = max(0.0, (perf_counter() - serialization_started) * 1000)
+    timings_ms["auth_resolution"] = float(getattr(request.state, "auth_resolution_ms", 0.0))
+    timings_ms["handler_total"] = max(0.0, (perf_counter() - handler_started) * 1000)
+    json_response.headers["Server-Timing"] = ", ".join(
+        f"{name};dur={duration:.2f}" for name, duration in timings_ms.items()
+    )
+    return json_response
 
 
 @router.get("/tracker")
