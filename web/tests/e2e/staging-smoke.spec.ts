@@ -102,8 +102,10 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await page.getByTestId("more-filters-dropdown").locator(":scope > summary").click();
     const trackFacet = page.getByTestId("filter-facet-track");
     await expect(trackFacet).toBeVisible();
-    await trackFacet.locator("summary").scrollIntoViewIfNeeded();
-    await trackFacet.locator("summary").click();
+    const trackSummary = trackFacet.locator("summary");
+    await trackSummary.focus();
+    await page.keyboard.press("Enter");
+    await expect(trackFacet).toHaveAttribute("open", "");
     const employmentTrack = trackFacet.getByRole("checkbox", { name: "employment", exact: true });
     const contractTrack = trackFacet.getByRole("checkbox", { name: "contract", exact: true });
     await employmentTrack.check();
@@ -113,7 +115,7 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await expect.poll(() =>
       page.evaluate(() => new URLSearchParams(window.location.search).getAll("track").length)
     ).toBe(2);
-    await trackFacet.locator("summary").click();
+    await page.keyboard.press("Enter");
     await page.getByRole("search", { name: "Filter opportunities" }).getByRole("button", { name: "Clear filters" }).click();
     await expect.poll(() =>
       page.evaluate(() => new URLSearchParams(window.location.search).getAll("track").length)
