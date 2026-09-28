@@ -98,6 +98,7 @@ class HostedAuthPostgresAcceptance(unittest.TestCase):
 
     def test_fr008_query_fast_paths_migrate_with_founder_contract(self):
         with self.engine.begin() as conn:
+            fixture_savepoint = conn.begin_nested()
             view_sql = conn.execute(sa.text(
                 "SELECT pg_get_viewdef('public.founder_feed_fr008'::regclass, true)"
             )).scalar_one().lower()
@@ -128,6 +129,7 @@ class HostedAuthPostgresAcceptance(unittest.TestCase):
             all_time = conn.execute(sa.text(
                 "SELECT * FROM public.founder_dashboard_daily(0,80) ORDER BY date DESC"
             )).mappings().all()
+            fixture_savepoint.rollback()
 
         self.assertIn("founder_feed f", view_sql)
         self.assertNotIn("founder_activity_state", view_sql)
