@@ -140,7 +140,7 @@ test.describe("Cloudflare staging hosted smoke", () => {
       // The live Founder feed can legitimately have no For You projection rows.
       // In that state, verify the batch action is unavailable rather than
       // fabricating jobs or mutating unrelated Founder state.
-      await expect(selectAllVisible).toBeDisabled();
+      await expect(selectAllVisible).toHaveCount(0);
       await expect(batchToolbar).toHaveCount(0);
       console.log("FR008_HOSTED_BATCH_SKIP reason=no_visible_for_you_jobs");
     }
@@ -218,25 +218,31 @@ test.describe("Cloudflare staging hosted smoke", () => {
     // 5a. FR-008 live productivity controls must be present and functional,
     // not merely compiled into an undeployed branch.
     await expect(page.getByTestId("filter-facet-track")).toBeVisible();
-    await page.getByTestId("filter-facet-track").locator("summary").click();
+    const liveTrackSummary = page.getByTestId("filter-facet-track").locator("summary");
+    await liveTrackSummary.focus();
+    await page.keyboard.press("Enter");
     await expect(page.getByTestId("filter-facet-track").locator('input[type="checkbox"]').first()).toBeVisible();
     expect(await page.getByTestId("filter-facet-track").locator('input[type="checkbox"]').count()).toBeGreaterThan(1);
-    await page.getByTestId("filter-facet-track").locator("summary").click();
+    await page.keyboard.press("Enter");
 
     const sourceFamilyFacet = page.getByTestId("filter-facet-source-family");
     const activityFacet = page.getByTestId("filter-facet-activity");
     const feedbackFacet = page.getByTestId("filter-facet-feedback");
     for (const facet of [sourceFamilyFacet, activityFacet, feedbackFacet]) {
       await expect(facet).toBeVisible();
-      await facet.locator("summary").click();
+      const summary = facet.locator("summary");
+      await summary.focus();
+      await page.keyboard.press("Enter");
       expect(await facet.locator('input[type="checkbox"]').count()).toBeGreaterThan(1);
-      await facet.locator("summary").click();
+      await page.keyboard.press("Enter");
     }
 
     // Prove the primary Source checklist uses repeated live query params, not
     // a single-select facade. Clear immediately so the rest of smoke remains
     // corpus-neutral.
-    await sourceFamilyFacet.locator("summary").click();
+    const sourceFamilySummary = sourceFamilyFacet.locator("summary");
+    await sourceFamilySummary.focus();
+    await page.keyboard.press("Enter");
     const sourceFamilyBoxes = sourceFamilyFacet.locator('input[type="checkbox"]');
     await sourceFamilyBoxes.nth(0).check();
     await sourceFamilyBoxes.nth(1).check();
