@@ -34,7 +34,7 @@ def candidate(opportunity_id: str = "job-1", **overrides) -> RecommendationCandi
 
 
 class RecommendationEngineTests(unittest.TestCase):
-    def test_for_you_requires_all_hard_gates_and_evidence(self):
+    def test_for_you_requires_hard_gates_and_treats_legacy_evidence_as_ranking_context(self):
         result = recommend(candidate())
         self.assertEqual(result.state, "for_you")
         self.assertEqual(result.reasons, ("recommendation_gates_passed",))
@@ -42,7 +42,24 @@ class RecommendationEngineTests(unittest.TestCase):
         self.assertEqual(recommend(candidate(application_url=None)).state, "review")
         self.assertEqual(recommend(candidate(geography="review")).state, "review")
         self.assertEqual(recommend(candidate(role_relevance="unknown")).state, "review")
-        self.assertEqual(recommend(candidate(evidence_completeness=55)).state, "review")
+        limited = recommend(candidate(evidence_completeness=50, confidence_score=70))
+        self.assertEqual(limited.state, "for_you")
+        self.assertIn("founder_evidence_limited", limited.reasons)
+        self.assertEqual(recommend(candidate(decision="uncertain")).state, "for_you")
+
+    def test_legacy_uncertain_is_not_a_recommendation_gate(self):
+        for role in ("core", "adjacent"):
+            with self.subTest(role=role):
+                result = recommend(candidate(role_relevance=role, decision="uncertain"))
+                self.assertEqual(result.state, "for_you")
+                self.assertIn("check_eligibility", result.reasons)
+
+    def test_uncertainty_affects_rank_without_blocking_discovery(self):
+        strong_evidence = recommend(candidate(evidence_completeness=90, confidence_score=90))
+        limited_evidence = recommend(candidate(evidence_completeness=48, confidence_score=70))
+        self.assertEqual(strong_evidence.state, "for_you")
+        self.assertEqual(limited_evidence.state, "for_you")
+        self.assertGreater(strong_evidence.rank_key, limited_evidence.rank_key)
 
     def test_explicit_incompatibilities_staleness_and_founder_rejections_exclude(self):
         for overrides in (

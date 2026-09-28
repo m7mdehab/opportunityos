@@ -7,6 +7,7 @@ unknown so later recommendation logic can route it to review.
 from __future__ import annotations
 
 import re
+from html import unescape
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
@@ -49,11 +50,35 @@ _CORE_TITLE = re.compile(
     r"data\s+engineer|data\s+scientist|machine\s+learning|mlops|"
     r"(?:ai|ml|llm)\s+engineer|ai\s+research)\b", re.I,
 )
-_DATA_AI_EVIDENCE = re.compile(
-    r"\b(?:data\s+(?:engineering|platform|pipeline|analytics|science|quality|governance|management)|"
-    r"machine\s+learning|\bmlops\b|\bAI\b|\bLLM\b|\bSQL\b|\bETL\b|"
-    r"data warehouse|dbt|lakehouse|feature store|vector database)\b", re.I,
+_TARGET_ROLE_EVIDENCE = re.compile(
+    r"\b(?:data\s+(?:engineering|platform|pipeline|analytics|science|quality|governance|management|warehouse|infrastructure|migration)|"
+    r"analytics\s+engineering|machine\s+learning|mlops|artificial\s+intelligence|"
+    r"(?:ai|ml|llm)\s+(?:engineering|engineer|platform|infrastructure)|"
+    r"etl|dbt|lakehouse|feature\s+store|vector\s+database)\b", re.I,
 )
+_TARGET_TITLE_EVIDENCE = re.compile(
+    r"(?:" + _TARGET_ROLE_EVIDENCE.pattern[:-2] + r"|\b(?:ai|ml|llm)\b)", re.I,
+)
+_NON_TARGET_DOMAIN_TITLE = re.compile(
+    r"\b(?:electrical|mechanical|structural|civil|chemical|industrial|manufacturing|"
+    r"process|aerospace|automotive|BESS|EPC|payroll|recruit(?:er|ing|ment)|"
+    r"account\s+executive|customer\s+service|risk\s+analyst|IT\s+operations|"
+    r"field\s+service|construction|gardener|marketing|sales)\b", re.I,
+)
+_COMPANY_SECTION = re.compile(
+    r"\b(?:about\s+(?:us|the\s+company|our\s+company)|who\s+we\s+are|"
+    r"company\s+overview|equal\s+opportunity|eeo\s+statement)\b", re.I,
+)
+
+
+def _role_description(title: str, description: str) -> str:
+    """Remove markup and company boilerplate before checking role evidence."""
+    plain = unescape(re.sub(r"<[^>]*>", " ", description or ""))
+    plain = re.sub(r"\s+", " ", plain).strip()
+    company_section = _COMPANY_SECTION.search(plain)
+    if company_section:
+        plain = plain[:company_section.start()]
+    return f"{title or ''} {plain[:6000]}"
 _US_CANDIDATE_RESTRICTION = re.compile(
     r"\b(?:US|U\.S\.|USA|United States)(?:[- ]based)?\s+"
     r"(?:applicants?|candidates?|residents?|employees?)\s+only\b|"
@@ -78,17 +103,24 @@ _EXPLICIT_COUNTRY_LIST = re.compile(
 def classify_role_relevance(title: str, description: str = "") -> RoleRelevance:
     """Classify from the existing canonical title-family taxonomy and evidence."""
     family, level, rule = normalize_title(title)
-    text = f"{title or ''} {description or ''}"
+    text = _role_description(title, description)
+    title_target = bool(_TARGET_TITLE_EVIDENCE.search(title or ""))
+    role_target = bool(_TARGET_ROLE_EVIDENCE.search(text))
+    if _NON_TARGET_DOMAIN_TITLE.search(title or ""):
+        return RoleRelevance("non_target", family, level, "non-target domain named in title")
     if family in (_CORE_FAMILIES - {"data_migration"}) or (
         family == "data_migration" and re.search(r"\bdata\b", title or "", re.I)
     ) or (family == "analytics_bi" and _CORE_TITLE.search(title or "")):
         classification, reason = "core", f"target title family ({family})"
-    elif family == "analytics_bi" and _DATA_AI_EVIDENCE.search(text):
+    elif family == "analytics_bi" and role_target:
         classification, reason = "core", "business-analysis title with data/AI evidence"
     elif family in _KNOWN_NON_TARGET:
         classification, reason = "non_target", f"non-target title family ({family})"
     elif family in {"backend", "devops_platform", "software_engineering", "security", "product", "customer_solutions_engineering"}:
-        if _DATA_AI_EVIDENCE.search(text):
+        # Broad software/backend/security/solutions titles are adjacent only
+        # when the role itself names a data/AI domain. Description keywords
+        # alone are too easily inherited from company boilerplate.
+        if title_target:
             classification, reason = "adjacent", f"adjacent title with data/AI evidence ({family})"
         else:
             classification, reason = "non_target", f"adjacent family lacks data/AI evidence ({family})"
