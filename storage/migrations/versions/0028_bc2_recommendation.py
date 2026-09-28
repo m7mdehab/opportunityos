@@ -144,9 +144,15 @@ def upgrade() -> None:
     op.execute(_FOUNDER_FEED)
     op.execute(_FOUNDER_FEED_ACTIVITY)
     op.execute(_FOUNDER_FEED_FR008)
-    op.execute("GRANT SELECT ON public.founder_feed TO authenticated")
-    op.execute("GRANT SELECT ON public.founder_feed_activity TO authenticated")
-    op.execute("GRANT SELECT ON public.founder_feed_fr008 TO authenticated")
+    op.execute("""
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
+          GRANT SELECT ON public.founder_feed TO authenticated;
+          GRANT SELECT ON public.founder_feed_activity TO authenticated;
+          GRANT SELECT ON public.founder_feed_fr008 TO authenticated;
+        END IF;
+      END $$
+    """)
 
 
 def downgrade() -> None:
@@ -175,9 +181,15 @@ def downgrade() -> None:
     """)
     op.execute(_FOUNDER_FEED_ACTIVITY_BC1)
     op.execute(_FOUNDER_FEED_FR008_BC1)
-    op.execute("GRANT SELECT ON public.founder_feed TO authenticated")
-    op.execute("GRANT SELECT ON public.founder_feed_activity TO authenticated")
-    op.execute("GRANT SELECT ON public.founder_feed_fr008 TO authenticated")
+    op.execute("""
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
+          GRANT SELECT ON public.founder_feed TO authenticated;
+          GRANT SELECT ON public.founder_feed_activity TO authenticated;
+          GRANT SELECT ON public.founder_feed_fr008 TO authenticated;
+        END IF;
+      END $$
+    """)
     op.drop_index("ix_feed_projection_recommendation_rank", table_name="feed_projection")
     op.drop_constraint("ck_feed_projection_recommendation_state", "feed_projection", type_="check")
     for column in (

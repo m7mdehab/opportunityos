@@ -82,6 +82,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         self.assertIn("op.execute(_FOUNDER_FEED_FR008)", source.split("def downgrade()", 1)[0])
         self.assertIn("f.recommendation_state", source)
         self.assertIn("f.recommendation_priority", source)
+        self.assertEqual(source.count("rolname='authenticated'"), 2)
 
     def test_bc2_appends_columns_after_existing_compatibility_view_shapes(self):
         migration = Path(__file__).parent / "migrations" / "versions" / "0028_bc2_recommendation.py"
