@@ -225,11 +225,17 @@ test.describe("Cloudflare staging hosted smoke", () => {
 
     // 5a. FR-008 live productivity controls must be present and functional,
     // not merely compiled into an undeployed branch.
-    await expect(page.getByTestId("filter-facet-track")).toBeVisible();
-    const liveTrackSummary = page.getByTestId("filter-facet-track").locator("summary");
+    // Clearing the earlier filter closes the containing disclosure, so reopen
+    // it before checking the nested Track checklist on desktop and mobile.
+    const liveMoreFilters = page.getByTestId("more-filters-dropdown");
+    await liveMoreFilters.locator(":scope > summary").click();
+    await expect(liveMoreFilters).toHaveAttribute("open", "");
+    const liveTrackFacet = page.getByTestId("filter-facet-track");
+    await expect(liveTrackFacet).toBeVisible();
+    const liveTrackSummary = liveTrackFacet.locator("summary");
     await liveTrackSummary.click();
-    await expect(page.getByTestId("filter-facet-track").locator('input[type="checkbox"]').first()).toBeVisible();
-    expect(await page.getByTestId("filter-facet-track").locator('input[type="checkbox"]').count()).toBeGreaterThan(1);
+    await expect(liveTrackFacet.locator('input[type="checkbox"]').first()).toBeVisible();
+    expect(await liveTrackFacet.locator('input[type="checkbox"]').count()).toBeGreaterThan(1);
     await page.keyboard.press("Enter");
 
     const sourceFamilyFacet = page.getByTestId("filter-facet-source-family");
