@@ -59,6 +59,12 @@ _TARGET_ROLE_EVIDENCE = re.compile(
 _TARGET_TITLE_EVIDENCE = re.compile(
     r"(?:" + _TARGET_ROLE_EVIDENCE.pattern[:-2] + r"|\b(?:ai|ml|llm)\b)", re.I,
 )
+_CONSUMER_AI_APP_TITLE = re.compile(r"\bAI\s+Neobank\s+App\b", re.I)
+_TECHNICAL_PRODUCT_SCOPE = re.compile(
+    r"\b(?:data|analytics|machine\s+learning|ml|ai)\s+"
+    r"(?:platform|infrastructure|engineering)\b",
+    re.I,
+)
 _NON_TARGET_DOMAIN_TITLE = re.compile(
     r"\b(?:electrical|mechanical|structural|civil|chemical|industrial|manufacturing|"
     r"process|aerospace|automotive|BESS|EPC|payroll|recruit(?:er|ing|ment)|"
@@ -104,7 +110,13 @@ def classify_role_relevance(title: str, description: str = "") -> RoleRelevance:
     """Classify from the existing canonical title-family taxonomy and evidence."""
     family, level, rule = normalize_title(title)
     text = _role_description(title, description)
-    title_target = bool(_TARGET_TITLE_EVIDENCE.search(title or ""))
+    title_text = title or ""
+    # AI can name the product being built rather than the role's technical
+    # domain. Do not turn consumer-product titles into AI engineering roles.
+    title_target = bool(
+        _TARGET_TITLE_EVIDENCE.search(title_text)
+        and not _CONSUMER_AI_APP_TITLE.search(title_text)
+    )
     role_target = bool(_TARGET_ROLE_EVIDENCE.search(text))
     if _NON_TARGET_DOMAIN_TITLE.search(title or ""):
         return RoleRelevance("non_target", family, level, "non-target domain named in title")
@@ -116,7 +128,12 @@ def classify_role_relevance(title: str, description: str = "") -> RoleRelevance:
         classification, reason = "core", "business-analysis title with data/AI evidence"
     elif family in _KNOWN_NON_TARGET:
         classification, reason = "non_target", f"non-target title family ({family})"
-    elif family in {"backend", "devops_platform", "software_engineering", "security", "product", "customer_solutions_engineering"}:
+    elif family == "product":
+        if _TECHNICAL_PRODUCT_SCOPE.search(title_text):
+            classification, reason = "adjacent", "product role explicitly scoped to a data/AI platform or infrastructure"
+        else:
+            classification, reason = "non_target", "product role is not a target technical discipline"
+    elif family in {"backend", "devops_platform", "software_engineering", "security", "customer_solutions_engineering"}:
         # Broad software/backend/security/solutions titles are adjacent only
         # when the role itself names a data/AI domain. Description keywords
         # alone are too easily inherited from company boilerplate.
