@@ -101,6 +101,7 @@ test.describe("W24 Founder UX polish", () => {
     await lists.getByRole("button", { name: "For You" }).click()
     await expect(page).not.toHaveURL(/feed_view=/)
     await expect.poll(() => feedRequests.some((url) => new URL(url).searchParams.getAll("recommendation_state").includes("for_you"))).toBe(true)
+    await expect.poll(() => feedRequests.some((url) => new URL(url).searchParams.get("sort_by") === "for_you")).toBe(true)
   })
 
   test("advanced metadata and source health load only when those controls open", async ({ page }) => {
