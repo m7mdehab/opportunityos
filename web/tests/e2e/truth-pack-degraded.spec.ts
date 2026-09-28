@@ -30,7 +30,10 @@ test.describe("truth-pack degraded browsing", () => {
     await expect(warning).toContainText("Founder profile not loaded")
     await expect(warning).toContainText("browse the live opportunity feed")
     await expect(page.getByTestId("opportunity-count")).toBeVisible()
-    await expect(page.locator('[data-decision="null"]').first()).toContainText("Not yet evaluated")
+    await page.locator('[data-testid^="opportunity-card-"]').first().click()
+    const detail = page.getByRole("dialog")
+    await detail.getByTestId("detail-diagnostics").locator(":scope > summary").click()
+    await expect(detail.locator('[data-decision="null"]').first()).toContainText("Not yet evaluated")
   })
 
   test("an invalid pack keeps the feed visible while evaluation remains disabled", async ({ page }) => {
@@ -40,6 +43,9 @@ test.describe("truth-pack degraded browsing", () => {
     await expect(warning).toContainText("Founder profile needs attention")
     await expect(warning).toContainText("identity.full_name")
     await expect(page.getByTestId("opportunity-count")).toBeVisible()
-    await expect(page.locator('[data-decision="null"]').first()).toContainText("Not yet evaluated")
+    await page.locator('[data-testid^="opportunity-card-"]').first().click()
+    const detail = page.getByRole("dialog")
+    await detail.getByTestId("detail-diagnostics").locator(":scope > summary").click()
+    await expect(detail.locator('[data-decision="null"]').first()).toContainText("Not yet evaluated")
   })
 })

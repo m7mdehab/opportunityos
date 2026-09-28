@@ -133,6 +133,7 @@ export const api = {
       work_mode?: string[]
       feedback_label?: string[]
       activity_type?: string[]
+      recommendation_state?: string[]
       location_country?: string[]
       location_city?: string[]
       remote_scope?: string[]

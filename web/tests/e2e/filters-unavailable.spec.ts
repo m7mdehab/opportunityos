@@ -26,6 +26,12 @@ async function login(page: Page) {
   await expect(page.getByRole("heading", { name: "OpportunityOS" })).toBeVisible()
 }
 
+async function openFounderRules(page: Page) {
+  const diagnostics = page.getByRole("search", { name: "Filter opportunities" }).locator("details").filter({ hasText: "Diagnostics & tools" })
+  if (!(await page.getByTestId("open-founder-filters").isVisible())) await diagnostics.locator(":scope > summary").click()
+  await page.getByTestId("open-founder-filters").click()
+}
+
 test.describe("D3 founder-controlled filters — unavailable_reason", () => {
   test("an unavailable filter renders as inert, shows its reason, and stays switchable", async ({
     page,
@@ -38,7 +44,7 @@ test.describe("D3 founder-controlled filters — unavailable_reason", () => {
     await login(page)
     await expect(page.getByTestId("opportunity-card-opp-001")).toBeVisible()
 
-    await page.getByRole("button", { name: "Filters" }).click()
+    await openFounderRules(page)
     const drawer = page.getByRole("dialog")
     await expect(drawer).toBeVisible()
 

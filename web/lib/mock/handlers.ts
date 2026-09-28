@@ -144,6 +144,7 @@ export const handlers = [
       work_mode: url.searchParams.getAll("work_mode"),
       feedback_label: url.searchParams.getAll("feedback_label"),
       activity_type: url.searchParams.getAll("activity_type"),
+      recommendation_state: url.searchParams.getAll("recommendation_state"),
       location_country: url.searchParams.getAll("location_country"),
       location_city: url.searchParams.getAll("location_city"),
       remote_scope: url.searchParams.getAll("remote_scope"),

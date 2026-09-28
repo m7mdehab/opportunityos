@@ -134,7 +134,6 @@ export function FilterBar({
   onAdvancedTriggerRef,
   sortBy,
   onSortChange,
-  advancedDisabled = false,
   metadata,
   sources,
 }: {
@@ -150,7 +149,6 @@ export function FilterBar({
   onAdvancedTriggerRef?: (element: HTMLButtonElement | null) => void
   sortBy: FeedSortId
   onSortChange: (next: FeedSortId) => void
-  advancedDisabled?: boolean
   metadata?: FeedFilterMetadataResponse | null
   sources: SourceOverview[]
 }) {
@@ -163,6 +161,7 @@ export function FilterBar({
     filters.sourceId.length > 0 ||
     filters.activity.length > 0 ||
     filters.feedback.length > 0
+  const selectedFilterCount = filters.track.length + filters.decision.length + filters.sourceFamily.length + filters.sourceId.length + filters.activity.filter((value) => value !== "any").length + filters.feedback.length + Number(filters.minScore !== "")
 
   const trackValues = [
     ...new Set([
@@ -180,18 +179,7 @@ export function FilterBar({
   ]
 
   const families = [...new Set(sources.map((source) => source.source_family))].sort()
-  const sourceIds = sources.filter(
-    (source) =>
-      source.source_id &&
-      !source.manual_only &&
-      (
-        filters.sourceFamily.length === 0 ||
-        filters.sourceFamily.includes(source.source_family)
-      )
-  )
-  const sourceIdValues = sourceIds
-    .map((source) => source.source_id)
-    .filter((sourceId): sourceId is string => Boolean(sourceId))
+  const sourceIdValues = sources.filter((source) => source.source_id && !source.manual_only && (filters.sourceFamily.length === 0 || filters.sourceFamily.includes(source.source_family))).map((source) => source.source_id).filter((sourceId): sourceId is string => Boolean(sourceId))
   const activityValues = [
     ...new Set([
       "any",
@@ -227,6 +215,16 @@ export function FilterBar({
       className="flex flex-wrap items-end gap-3 border-b border-border bg-background px-4 py-3 sm:px-6"
       onSubmit={(event) => event.preventDefault()}
     >
+      <div className="flex min-w-[10rem] flex-1 flex-col gap-1">
+        <Label htmlFor="filter-search">Search</Label>
+        <Input id="filter-search" type="search" placeholder="Title or organization" className="h-9" value={filters.q} onChange={(event) => onChange({ ...filters, q: event.target.value })} />
+      </div>
+
+      <details data-testid="more-filters-dropdown" className="relative min-w-0">
+        <summary className={`${selectClasses} flex h-10 cursor-pointer list-none items-center justify-between gap-2`}>
+          More filters{selectedFilterCount > 0 ? ` (${selectedFilterCount})` : ""}
+        </summary>
+        <div className="absolute left-0 z-30 mt-2 grid max-h-[75vh] w-[min(94vw,34rem)] grid-cols-1 gap-2 overflow-auto rounded-lg border border-border bg-card p-3 shadow-lg sm:grid-cols-2">
       <div className="flex min-w-0 max-w-full flex-col gap-1">
         <Label htmlFor="filter-track">Track</Label>
         <ChecklistFacet
@@ -260,18 +258,6 @@ export function FilterBar({
           className="h-9 w-24"
           value={filters.minScore}
           onChange={(event) => onChange({ ...filters, minScore: event.target.value })}
-        />
-      </div>
-
-      <div className="flex min-w-[10rem] flex-1 flex-col gap-1">
-        <Label htmlFor="filter-search">Search</Label>
-        <Input
-          id="filter-search"
-          type="search"
-          placeholder="Title or organization"
-          className="h-9"
-          value={filters.q}
-          onChange={(event) => onChange({ ...filters, q: event.target.value })}
         />
       </div>
 
@@ -335,13 +321,17 @@ export function FilterBar({
         </div>
       )}
 
+        </div>
+      </details>
+
+      {hasActiveFilters && <Button type="button" variant="ghost" size="sm" onClick={(event) => { event.currentTarget.closest("form")?.querySelectorAll<HTMLDetailsElement>('details[name="feed-quick-facet"][open]').forEach((details) => details.removeAttribute("open")); onChange(EMPTY_FILTERS) }}>Clear filters</Button>}
+
       <div className="order-3 flex flex-col gap-1">
         <Label htmlFor="feed-sort">Sort</Label>
         <select
           id="feed-sort"
           className={selectClasses}
           value={sortBy}
-          disabled={advancedDisabled}
           onChange={(event) => onSortChange(event.target.value as FeedSortId)}
         >
           <optgroup label="Available">
@@ -363,85 +353,19 @@ export function FilterBar({
         </select>
       </div>
 
-      {hasActiveFilters && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="lg"
-          onClick={(event) => {
-            event.currentTarget
-              .closest("form")
-              ?.querySelectorAll<HTMLDetailsElement>('details[name="feed-quick-facet"][open]')
-              .forEach((details) => details.removeAttribute("open"))
-            onChange(EMPTY_FILTERS)
-          }}
-        >
-          Clear filters
-        </Button>
-      )}
-
-      <Button
-        type="button"
-        variant="outline"
-        size="lg"
-        className="ml-auto"
-        data-testid="open-founder-filters"
-        onClick={onOpenFounderFilters}
-      >
-        <SlidersHorizontal aria-hidden="true" className="size-3.5" />
-        Filters
+      <Button type="button" ref={onAdvancedTriggerRef} variant="outline" size="lg" data-testid="open-advanced-feed-filters" onClick={onOpenAdvanced}>
+        <SlidersHorizontal aria-hidden="true" className="size-3.5" />Advanced query
       </Button>
 
-      <div aria-hidden="true" className="order-2 h-0 basis-full" />
-      <Button
-        type="button"
-        ref={onAdvancedTriggerRef}
-        variant="outline"
-        size="lg"
-        className="order-3"
-        data-testid="open-advanced-feed-filters"
-        disabled={advancedDisabled}
-        onClick={onOpenAdvanced}
-      >
-        <SlidersHorizontal aria-hidden="true" className="size-3.5" />
-        Advanced
-      </Button>
-
-      {onOpenFacets && (
-        <Button
-          type="button"
-          variant="outline"
-          size="lg"
-          data-testid="open-facets-panel"
-          onClick={onOpenFacets}
-        >
-          Facets
-        </Button>
-      )}
-
-      <Button
-        type="button"
-        variant="outline"
-        size="lg"
-        data-testid="open-manual-sources-panel"
-        onClick={onOpenManualSources}
-      >
-        Check manually
-      </Button>
-
-      {onToggleTutoringLane && (
-        <Button
-          type="button"
-          variant={tutoringActive ? "secondary" : "outline"}
-          size="lg"
-          data-testid="toggle-tutoring-lane"
-          aria-pressed={tutoringActive}
-          disabled={tutoringDisabled}
-          onClick={onToggleTutoringLane}
-        >
-          Tutoring Lane
-        </Button>
-      )}
+      <details className="order-3 relative ml-auto">
+        <summary className={`${selectClasses} flex h-10 cursor-pointer list-none items-center`}>Diagnostics &amp; tools</summary>
+        <div className="absolute right-0 z-30 mt-2 flex w-56 max-w-[calc(100vw-2rem)] flex-col gap-1 rounded-lg border border-border bg-card p-2 shadow-lg">
+          <Button type="button" variant="ghost" size="sm" className="justify-start" data-testid="open-founder-filters" onClick={onOpenFounderFilters}>Founder rules</Button>
+          {onOpenFacets && <Button type="button" variant="ghost" size="sm" className="justify-start" data-testid="open-facets-panel" onClick={onOpenFacets}>Facet counts</Button>}
+          <Button type="button" variant="ghost" size="sm" className="justify-start" data-testid="open-manual-sources-panel" onClick={onOpenManualSources}>Manual sources</Button>
+          {onToggleTutoringLane && <Button type="button" variant={tutoringActive ? "secondary" : "ghost"} size="sm" className="justify-start" data-testid="toggle-tutoring-lane" aria-pressed={tutoringActive} disabled={tutoringDisabled} onClick={onToggleTutoringLane}>Tutoring lane</Button>}
+        </div>
+      </details>
     </form>
   )
 }

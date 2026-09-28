@@ -1907,6 +1907,7 @@ export class MockStore {
     work_mode?: string[]
     feedback_label?: string[]
     activity_type?: string[]
+    recommendation_state?: string[]
     location_country?: string[]
     location_city?: string[]
     remote_scope?: string[]
@@ -1933,6 +1934,11 @@ export class MockStore {
       (o.action_state === "snoozed" && this.isSnoozeActive(o.id) === false)
 
     let items = [...this.opportunities.values()]
+
+    // Mock opportunity fixtures are deliberately treated as recommended so
+    // the Founder surface can exercise the same recommendation-state query
+    // contract as the hosted feed without inventing a second mock score.
+    if (filters.recommendation_state?.length && !filters.recommendation_state.includes("for_you")) items = []
 
     if (filters.activity && filters.activity !== "any") {
       if (filters.activity === "has_feedback") {
@@ -2780,6 +2786,8 @@ function toListItem(
     is_stale: o.is_stale,
     action_state: o.action_state,
     feedback_label: o.feedback_label,
+    recommendation_state: "for_you",
+    recommendation_reasons: o.top_reasons,
     hidden_by,
     flagged_by,
     ...mockExtractionFields(o),

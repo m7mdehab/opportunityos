@@ -28,6 +28,10 @@ test.describe("W24 Founder UX polish", () => {
     await page.getByTestId("opportunity-card-opp-001").click()
     const dialog = page.getByRole("dialog")
     await expect(dialog.getByTestId("role-at-a-glance")).toBeVisible()
+    await expect(dialog.getByTestId("detail-diagnostics")).not.toHaveAttribute("open")
+    await expect(dialog.getByTestId("detail-fit-score")).toBeHidden()
+    await dialog.getByTestId("detail-diagnostics").locator("summary").click()
+    await expect(dialog.getByTestId("detail-fit-score")).toContainText(/Canonical fit score:/)
     const disclosure = dialog.getByTestId("full-description-disclosure")
     await expect(disclosure).not.toHaveAttribute("open")
     await disclosure.getByText("Show full job description").click()
@@ -38,29 +42,18 @@ test.describe("W24 Founder UX polish", () => {
   test("unified toolbar and numeric source health remain aligned and readable", async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 })
     await login(page)
-    const controlIds = [
-      "filter-track",
-      "filter-decision",
-      "filter-min-score",
-      "filter-search",
-      "filter-source-family",
-      "open-founder-filters",
-      "open-facets-panel",
-      "open-manual-sources-panel",
-      "toggle-tutoring-lane",
-    ]
-    const controls = controlIds.map((id) => page.locator(`#${id}, [data-testid="${id}"]`).first())
-    for (const control of controls) await expect(control).toBeVisible()
-
-    const boxes = await Promise.all(controls.map((control) => control.boundingBox()))
-    const visibleBoxes = boxes.filter((box): box is NonNullable<typeof box> => box !== null)
-    expect(visibleBoxes).toHaveLength(controlIds.length)
-    const bottoms = visibleBoxes.map((box) => box.y + box.height)
-    const centers = visibleBoxes.map((box) => box.y + box.height / 2)
-    expect(Math.max(...bottoms) - Math.min(...bottoms)).toBeLessThanOrEqual(2)
-    expect(Math.max(...centers) - Math.min(...centers)).toBeLessThanOrEqual(2)
-    expect(new Set(visibleBoxes.map((box) => Math.round(box.height))).size).toBe(1)
-
+    await expect(page.getByLabel("Opportunity lists")).toBeVisible()
+    await expect(page.locator("#filter-search")).toBeVisible()
+    await expect(page.locator("#feed-sort")).toBeVisible()
+    await expect(page.getByTestId("more-filters-dropdown").locator(":scope > summary")).toContainText("More filters")
+    await expect(page.getByTestId("open-advanced-feed-filters")).toContainText("Advanced query")
+    const diagnostics = page.getByRole("search", { name: "Filter opportunities" }).locator("details").filter({ hasText: "Diagnostics & tools" })
+    await diagnostics.locator(":scope > summary").click()
+    await expect(page.getByTestId("open-founder-filters")).toBeVisible()
+    await expect(page.getByTestId("open-facets-panel")).toBeVisible()
+    await expect(page.getByTestId("open-manual-sources-panel")).toBeVisible()
+    await expect(page.getByTestId("toggle-tutoring-lane")).toBeVisible()
+    await page.locator("details").filter({ hasText: "Operations" }).locator(":scope > summary").click()
     await expect(page.getByTestId("source-health-summary")).toBeVisible()
     for (const key of ["healthy", "empty", "attention", "never-polled", "disabled"]) {
       await expect(page.getByTestId(`source-health-${key}`)).toContainText(/\d+/)
@@ -87,5 +80,44 @@ test.describe("W24 Founder UX polish", () => {
       )
     })
     expect(dialogFitsViewport).toBe(true)
+  })
+
+  test("primary job lists use recommendation and existing tracker filters", async ({ page }) => {
+    await login(page)
+    const feedRequests: string[] = []
+    page.on("request", (request) => {
+      if (request.url().includes("/api/opportunities?")) feedRequests.push(request.url())
+    })
+    const lists = page.getByRole("navigation", { name: "Opportunity lists" })
+    await lists.getByRole("button", { name: "Saved" }).click()
+    await expect(page).toHaveURL(/feed_view=saved/)
+    await expect.poll(() => feedRequests.some((url) => new URL(url).searchParams.getAll("activity_type").includes("save"))).toBe(true)
+    await lists.getByRole("button", { name: "Applied" }).click()
+    await expect(page).toHaveURL(/feed_view=applied/)
+    await expect.poll(() => feedRequests.some((url) => new URL(url).searchParams.getAll("activity_type").includes("mark_applied"))).toBe(true)
+    await lists.getByRole("button", { name: "Later" }).click()
+    await expect(page).toHaveURL(/feed_view=later/)
+    await expect.poll(() => feedRequests.some((url) => new URL(url).searchParams.getAll("activity_type").includes("snooze"))).toBe(true)
+    await lists.getByRole("button", { name: "For You" }).click()
+    await expect(page).not.toHaveURL(/feed_view=/)
+    await expect.poll(() => feedRequests.some((url) => new URL(url).searchParams.getAll("recommendation_state").includes("for_you"))).toBe(true)
+  })
+
+  test("advanced metadata and source health load only when those controls open", async ({ page }) => {
+    const requests: string[] = []
+    page.on("request", (request) => requests.push(new URL(request.url()).pathname))
+    await login(page)
+    await expect.poll(() => page.locator('[data-testid^="opportunity-card-"]').count()).toBeGreaterThan(0)
+    expect(requests).not.toContain("/api/feed/filter-metadata")
+    expect(requests).not.toContain("/api/sources/health")
+
+    const filterMetadata = page.waitForRequest((request) => new URL(request.url()).pathname === "/api/feed/filter-metadata")
+    await page.getByTestId("open-advanced-feed-filters").click()
+    await filterMetadata
+    await page.keyboard.press("Escape")
+
+    const sourceHealth = page.waitForRequest((request) => new URL(request.url()).pathname === "/api/sources/health")
+    await page.locator("details").filter({ hasText: "Operations" }).locator(":scope > summary").click()
+    await sourceHealth
   })
 })

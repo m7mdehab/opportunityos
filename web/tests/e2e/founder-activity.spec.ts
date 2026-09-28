@@ -20,6 +20,7 @@ async function login(page: Page) {
     await page.getByRole("button", { name: "Sign in" }).click()
     await expect(page).toHaveURL(/\/$/)
   }
+  await page.getByTestId("more-filters-dropdown").locator(":scope > summary").click()
   await expect(page.getByTestId("filter-facet-activity")).toBeVisible()
 }
 
@@ -39,6 +40,7 @@ test.describe("W25 Founder activity", () => {
       page.evaluate(() => new URLSearchParams(window.location.search).getAll("activity_type"))
     ).toEqual(["reject"])
     await page.reload()
+    await page.getByTestId("more-filters-dropdown").locator(":scope > summary").click()
     const reloadedActivity = page.getByTestId("filter-facet-activity")
     await reloadedActivity.locator("summary").click()
     await expect(reloadedActivity.getByRole("checkbox", { name: "Reject", exact: true })).toBeChecked()

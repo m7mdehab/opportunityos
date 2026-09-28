@@ -19,6 +19,7 @@ async function login(page: Page) {
     await expect(page.getByRole("heading", { name: "OpportunityOS" })).toBeVisible()
     // This end-to-end smoke exercises historical fixture rows as well as the
     // default To review queue, so deliberately broaden activity scope.
+    await page.getByTestId("more-filters-dropdown").locator(":scope > summary").click()
     const activity = page.getByTestId("filter-facet-activity")
     await activity.locator("summary").click()
     await activity.getByRole("checkbox", { name: "Any activity", exact: true }).check()
@@ -66,6 +67,7 @@ test.describe("founder alpha smoke", () => {
     await page.getByTestId("opportunity-card-opp-002").click()
     const drawer = page.getByRole("dialog")
     await expect(drawer).toBeVisible()
+    await drawer.getByTestId("detail-diagnostics").locator(":scope > summary").click()
 
     const failBadge = drawer.locator('[data-outcome="FAIL"]').first()
     const unknownBadge = drawer.locator('[data-outcome="UNKNOWN"]').first()
@@ -93,6 +95,7 @@ test.describe("founder alpha smoke", () => {
     await page.getByTestId("opportunity-card-opp-003").click()
     const uncertainDrawer = page.getByRole("dialog")
     await expect(uncertainDrawer).toBeVisible()
+    await uncertainDrawer.getByTestId("detail-diagnostics").locator(":scope > summary").click()
     const decisionBadge = uncertainDrawer
       .locator('[data-decision="uncertain"]')
       .first()

@@ -3,9 +3,8 @@
 import { forwardRef } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { DecisionBadge } from "@/components/feed/decision-badge"
 import { filterTitle } from "@/components/feed/filter-labels"
-import { AlertTriangle, EyeOff, Tag, Globe } from "lucide-react"
+import { AlertTriangle, EyeOff, Globe } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { employerDomain, postedAge } from "@/lib/format/posted-age"
 import type { OpportunityListItem } from "@/lib/contract/types"
@@ -116,21 +115,16 @@ export const OpportunityCard = forwardRef<
             <h2 title={o.title} className="line-clamp-2 text-sm font-semibold leading-5 text-foreground">
               {o.title}
             </h2>
-            <p className="truncate text-xs text-muted-foreground">
-              {o.organization} · {o.source_id}
-            </p>
+            <p className="truncate text-xs text-muted-foreground">{o.organization}</p>
           </div>
-          <div className="shrink-0 text-right">
-            <span className="block text-lg font-semibold tabular-nums">
-              {o.fit_score === null ? "—" : Math.round(o.fit_score)}
-            </span>
-            <span className="text-[11px] text-muted-foreground">fit score</span>
-          </div>
+          <span className="shrink-0 rounded-full border border-border px-2 py-1 text-[11px] text-muted-foreground">
+            {o.founder_geo_state === "eligible" ? "Eligible" : o.founder_geo_state === "likely_eligible" ? "Likely eligible" : o.founder_geo_state === "ineligible" ? "Not eligible" : "Eligibility review"}
+          </span>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
-          <DecisionBadge decision={o.decision} />
-          <Badge variant="outline">{o.track}</Badge>
+          {o.title_family && <Badge variant="outline">{o.title_family.replaceAll("_", " ")}</Badge>}
+          {o.seniority_level !== "unspecified" && <Badge variant="outline">{o.seniority_level.replaceAll("_", " ")}</Badge>}
           <Badge
             variant="outline"
             data-testid={`work-mode-${o.id}`}
@@ -181,34 +175,22 @@ export const OpportunityCard = forwardRef<
           )}
         </div>
 
-        {o.flagged_by.length > 0 && (
-          <div
-            aria-label="Ranked or labelled by"
-            className="flex flex-wrap items-center gap-1.5"
-          >
-            {o.flagged_by.map((filterId) => (
-              <Badge
-                key={filterId}
-                data-testid={`flag-chip-${o.id}-${filterId}`}
-                variant="outline"
-                className="gap-1 text-muted-foreground"
-              >
-                <Tag aria-hidden="true" className="size-3" />
-                {filterTitle(filterId)}
-              </Badge>
-            ))}
-          </div>
-        )}
-
-        {o.top_reasons.length > 0 && (
+        {(o.recommendation_reasons?.length || o.top_reasons.length) > 0 && (
+          <div>
+            <p className="text-[11px] font-medium text-foreground">Why it fits</p>
           <ul className="space-y-0.5 text-xs text-muted-foreground">
-            {o.top_reasons.slice(0, 3).map((r, i) => (
+            {(o.recommendation_reasons?.length ? o.recommendation_reasons : o.top_reasons).slice(0, 3).map((r, i) => (
               <li key={i} className="truncate">
                 • {r}
               </li>
             ))}
           </ul>
+          </div>
         )}
+
+        <p className="text-[11px] text-muted-foreground">
+          {o.application_access === "direct_free" ? "Direct application" : o.application_access === "free_intermediary" ? "Free application route" : o.application_access === "free_account_required" ? "Account required" : o.application_access === "premium_or_gated" ? "Gated application" : o.application_access === "manual_only" ? "Manual application" : "Application access not verified"}
+        </p>
 
         <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[11px] text-muted-foreground">
           {age && <span data-testid={`posted-age-${o.id}`}>{age}</span>}
@@ -245,7 +227,7 @@ export const OpportunityCard = forwardRef<
           aria-label={`Quick apply to ${o.title} at ${o.organization}`}
           className="shrink-0 font-medium text-primary underline underline-offset-4 hover:text-primary/80"
         >
-          Quick apply ↗
+          Apply ↗
         </a>
       </footer>
       <div
@@ -257,7 +239,7 @@ export const OpportunityCard = forwardRef<
           <>
             <Button type="button" size="sm" variant="outline" data-testid={`quick-save-${o.id}`} disabled={triagePending} onClick={() => onTriageAction("save")}>Save</Button>
             <Button type="button" size="sm" variant="outline" data-testid={`quick-mark-applied-${o.id}`} disabled={triagePending} onClick={() => onTriageAction("mark_applied")}>Mark Applied</Button>
-            <Button type="button" size="sm" variant="destructive" data-testid={`quick-reject-${o.id}`} disabled={triagePending} onClick={() => onTriageAction("reject")}>Reject</Button>
+            <Button type="button" size="sm" variant="destructive" data-testid={`quick-reject-${o.id}`} disabled={triagePending} onClick={() => onTriageAction("reject")}>Not for me</Button>
             {triagePending && <span role="status" className="text-xs text-muted-foreground">Updating…</span>}
             {triageError && <span role="alert" className="text-xs text-destructive">{triageError}</span>}
           </>

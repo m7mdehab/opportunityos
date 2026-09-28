@@ -14,6 +14,7 @@ async function login(page: Page) {
 test.describe("FR-008 live review controls", () => {
   test("primary and advanced filters are checkbox multi-selects", async ({ page }) => {
     await login(page)
+    await page.getByTestId("more-filters-dropdown").locator(":scope > summary").click()
 
     const track = page.getByTestId("filter-facet-track")
     await track.locator("summary").click()
