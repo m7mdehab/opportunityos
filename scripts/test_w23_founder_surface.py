@@ -7,7 +7,10 @@ class FounderSurfaceW23ContractTests(unittest.TestCase):
     def test_w23_web_sources_are_utf8_and_mojibake_free(self):
         bad = []
         for path in (ROOT / "web").rglob("*"):
-            if not path.is_file() or any(part in {"node_modules", ".next"} for part in path.parts):
+            if not path.is_file() or any(
+                part in {"node_modules", ".next", ".open-next", "playwright-report", "test-results"}
+                for part in path.parts
+            ):
                 continue
             try:
                 text = path.read_text(encoding="utf-8")
@@ -59,6 +62,17 @@ class FounderSurfaceW23ContractTests(unittest.TestCase):
         self.assertIn("priority_score.desc.nullslast", source)
         self.assertIn("founder_dashboard_daily", source)
         self.assertIn("hard_constraints", source)
+
+    def test_for_you_composes_filtered_candidates_before_api_pagination(self):
+        source = (ROOT / "web/app/api/[...path]/route.ts").read_text(encoding="utf-8")
+        helper = (ROOT / "web/lib/feed/compose-for-you.ts").read_text(encoding="utf-8")
+        self.assertIn('"founder_feed_fr008_diversity"', source)
+        self.assertIn("family_key: row.family_key ?? null", source)
+        self.assertIn("composeForYouRows(candidates, candidates.length)", source)
+        self.assertIn("composedRows.slice((page - 1) * pageSize, page * pageSize)", source)
+        self.assertIn("recommendation_priority", helper)
+        self.assertIn("bestByFamily", helper)
+        self.assertIn("const cap = rank <= 20 ? 4 : rank <= 50 ? 6 : null", helper)
 
     def test_detail_uses_intentional_dialog_layout_and_score(self):
         source = (ROOT / "web/components/feed/detail-drawer.tsx").read_text(encoding="utf-8")
