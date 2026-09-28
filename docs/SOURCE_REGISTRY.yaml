@@ -3,7 +3,7 @@ sources:
   - source_id: himalayas
     name: "himalayas"
     category: employment
-    poll_cadence_hours: 1
+    poll_cadence_hours: 24
     access:
       discovery: public_get
       detail: public_get_or_unknown
@@ -11,23 +11,24 @@ sources:
     attribution:
       required: review_required
     rate_limits:
-      documented: unknown
+      documented: rate_limited; request_volume_must_remain_reasonable
     commercial_use:
       status: review_required
     automation:
       read: allowed
       prepare: disabled
       submit: disabled
-    policy_status: unknown_disable_actions
+    policy_status: documented_public_search_api_attribution_required
     observed:
-      status: allowed_ok
-      detail: "HTTP 200 parsed records"
-      request_metadata: "method=GET; endpoint=/jobs/api"
-      latency_ms: 545
-      record_count: 20
-    last_policy_reviewed: 2026-08-28
+      status: documented_api; targeted_search_canary_pending
+      detail: "Official API docs support search by keyword, country, worldwide availability, seniority, employment type and freshness; payloads must link back to Himalayas and name Himalayas as source. Search data is refreshed daily. Targeted multi-query polling is code-gated and disabled by default; an explicit bounded canary is required before enabling it."
+      request_metadata: "method=GET; endpoint=/jobs/api/search; queries=target-role families; country=Egypt; worldwide=true; sort=recent; page=1"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-27
     policy_evidence:
-      - https://himalayas.app/terms
+      - https://himalayas.app/api
+      - https://himalayas.app/terms-and-conditions
   - source_id: jobicy
     name: "jobicy"
     category: employment
@@ -58,7 +59,7 @@ sources:
   - source_id: remotive
     name: "remotive"
     category: employment
-    poll_cadence_hours: 1
+    poll_cadence_hours: 24
     access:
       discovery: public_get
       detail: public_get_or_unknown
@@ -73,16 +74,17 @@ sources:
       read: allowed
       prepare: disabled
       submit: disabled
-    policy_status: unknown_disable_actions
+    policy_status: documented_public_api_delayed_24h_attribution_required
     observed:
       status: allowed_ok
       detail: "HTTP 200 parsed records"
       request_metadata: "method=GET; endpoint=/api/remote-jobs"
       latency_ms: 311
       record_count: 19
-    last_policy_reviewed: 2026-08-28
+    last_policy_reviewed: 2026-09-27
     policy_evidence:
-      - https://remotive.com/terms
+      - https://remotive.com/remote-jobs/api
+      - https://remotive.com/remote-jobs/rss-feed
   - source_id: remote_ok
     name: "remote_ok"
     category: employment

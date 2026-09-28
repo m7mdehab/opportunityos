@@ -7,6 +7,7 @@ import unittest
 from dataclasses import replace
 from datetime import date, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 from opportunity.discovery import boards
 from opportunity.registry import SourceRegistry
@@ -33,6 +34,40 @@ class CandidateUrlTests(unittest.TestCase):
             boards.candidate_url("lever", "acme"),
             "https://api.lever.co/v0/postings/acme?mode=json",
         )
+
+
+class OpportunitySeedTests(unittest.TestCase):
+    def test_only_recent_relevant_direct_ats_jobs_become_deduped_seeds(self):
+        jobs = [
+            SimpleNamespace(
+                id="one", title="Senior Data Engineer", description="Build data platforms",
+                posted_date="2026-09-20", canonical_outbound_url="https://job-boards.greenhouse.io/acme/jobs/123",
+                source_url="", organization="Acme",
+            ),
+            SimpleNamespace(
+                id="two", title="Data Engineer", description="Build pipelines",
+                posted_date="2026-09-21", canonical_outbound_url="https://boards.greenhouse.io/acme/jobs/456",
+                source_url="", organization="Acme",
+            ),
+            SimpleNamespace(
+                id="old", title="Data Engineer", description="",
+                posted_date="2025-01-01", canonical_outbound_url="https://jobs.lever.co/oldco/123",
+                source_url="", organization="Old Co",
+            ),
+            SimpleNamespace(
+                id="wrong-role", title="Customer Support Agent", description="",
+                posted_date="2026-09-20", canonical_outbound_url="https://jobs.lever.co/noise/123",
+                source_url="", organization="Noise",
+            ),
+            SimpleNamespace(
+                id="ashby", title="Senior Data Engineer", description="",
+                posted_date="2026-09-20", canonical_outbound_url="https://jobs.ashbyhq.com/acme/123",
+                source_url="", organization="Acme",
+            ),
+        ]
+        candidates = boards.candidates_from_relevant_opportunities(jobs, now=date(2026, 9, 28))
+        self.assertEqual(["greenhouse:acme"], [candidate.candidate_id for candidate in candidates])
+        self.assertEqual("recent_relevant_opportunity:one", candidates[0].seed)
 
     def test_ashby_url(self):
         self.assertEqual(

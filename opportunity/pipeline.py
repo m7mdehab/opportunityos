@@ -38,6 +38,7 @@ class IngestionBatch:
     ambiguous_duplicates_count: int
     track_counts: tuple[tuple[str, int], ...]
     eligibility_counts: tuple[tuple[str, int], ...]
+    total_filtered_candidates: int = 0
 
     @property
     def is_clean(self) -> bool:
@@ -79,6 +80,7 @@ class OpportunityPipeline:
         timestamp = now_iso or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
         all_raw_opportunities: list[Opportunity] = []
         total_raw = 0
+        total_filtered = 0
 
         for source_id, payload in payload_map.items():
             latency = (latencies_ms or {}).get(source_id, 15)
@@ -116,6 +118,7 @@ class OpportunityPipeline:
                 parse_result = adapter.parse_payload(payload, raw_pointer=f"payload:{source_id}", fetched_at=timestamp)
                 raw_count = parse_result.records_raw_count
                 parsed_opps = parse_result.opportunities
+                total_filtered += parse_result.records_filtered_count
 
                 # Validate provenance on each parsed opportunity
                 valid_opps: list[Opportunity] = []
@@ -189,6 +192,7 @@ class OpportunityPipeline:
             ambiguous_duplicates_count=dedup_result.ambiguous_duplicates_count,
             track_counts=track_counts,
             eligibility_counts=eligibility_counts,
+            total_filtered_candidates=total_filtered,
         )
 
     def execute_discovery(

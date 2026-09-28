@@ -21,6 +21,7 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Iterable, Sequence
+from urllib.parse import urlparse
 
 from opportunity.transport import DiscoveryRequest, HttpTransport, RateLimiter, TransportResponse
 
@@ -344,6 +345,52 @@ def dedupe_candidates(candidates: Iterable[BoardCandidate], already_registered: 
         seen.add(cid)
         out.append(candidate)
     return out
+
+
+def candidates_from_relevant_opportunities(
+    opportunities: Iterable[object], *, now: date | None = None, window_days: int = 90
+) -> list[BoardCandidate]:
+    """Derive bounded Greenhouse/Lever discovery candidates from recent relevant jobs.
+
+    The result is a seed list only. The existing sweep still enforces host-level
+    read authorization, exact endpoint rules, candidate deduplication, and registry
+    registration. Unknown/non-target or undated/stale jobs are not promoted to seeds.
+    """
+    from matching.recommendation_foundation import classify_role_relevance
+
+    today = now or datetime.now(timezone.utc).date()
+    cutoff = today - timedelta(days=window_days)
+    candidates: list[BoardCandidate] = []
+    for opportunity in opportunities:
+        title = str(getattr(opportunity, "title", "") or "")
+        if classify_role_relevance(title, str(getattr(opportunity, "description", "") or "")).classification not in {"core", "adjacent"}:
+            continue
+        posted = _parse_date(str(getattr(opportunity, "posted_date", "") or ""))
+        if posted is None or posted < cutoff:
+            continue
+        url = str(getattr(opportunity, "canonical_outbound_url", "") or getattr(opportunity, "source_url", "") or "")
+        try:
+            parsed = urlparse(url)
+        except ValueError:
+            continue
+        host = (parsed.hostname or "").lower().removeprefix("www.")
+        parts = [part for part in parsed.path.strip("/").split("/") if part]
+        kind = token = ""
+        if host in {"boards.greenhouse.io", "job-boards.greenhouse.io"} and len(parts) >= 3 and parts[1] == "jobs":
+            kind, token = "greenhouse", parts[0]
+        elif host == "jobs.lever.co" and len(parts) >= 2:
+            kind, token = "lever", parts[0]
+        if not token or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", token):
+            continue
+        candidates.append(
+            BoardCandidate(
+                kind=kind,
+                token=token,
+                company=str(getattr(opportunity, "organization", "") or token),
+                seed=f"recent_relevant_opportunity:{getattr(opportunity, 'id', '')}",
+            )
+        )
+    return dedupe_candidates(candidates)
 
 
 # ---------------------------------------------------------------------------

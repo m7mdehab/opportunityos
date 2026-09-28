@@ -38,8 +38,11 @@ class HimalayasAdapter(BaseAdapter):
         super().__init__(
             source_id="himalayas",
             track=Track.EMPLOYMENT,
-            feed_url="https://himalayas.app/jobs/api?limit=100",
-            policy_url="https://himalayas.app/terms",
+            # The safe default remains the documented 20-row cursor-browse
+            # endpoint. Targeted multi-query discovery is enabled only through
+            # the explicit BC canary flag in the worker.
+            feed_url="https://himalayas.app/jobs/api?limit=20",
+            policy_url="https://himalayas.app/api",
         )
 
     def parse_payload(
@@ -98,6 +101,8 @@ class HimalayasAdapter(BaseAdapter):
                 remote_id = url
             raw_pub = job.get("pubDate") or job.get("createdAt") or job.get("publishedAt")
             posted_date = parse_iso_date(raw_pub)
+            raw_expiry = job.get("expiryDate")
+            closing_date = parse_iso_date(raw_expiry)
 
             # Compensation without default currency or interval
             min_sal = job.get("minSalary") or job.get("min_salary")
@@ -183,6 +188,8 @@ class HimalayasAdapter(BaseAdapter):
                     prov_list.append(create_field_provenance("compensation.interval", "salary_range", comp.interval.value, DerivationType.RULE_DERIVATION, f"{item_pointer}.salary", record_checksum, "extract_compensation"))
             if posted_date:
                 prov_list.append(create_field_provenance("posted_date", raw_pub, posted_date, DerivationType.RAW_EXTRACTION, f"{item_pointer}.pubDate", record_checksum, "parse_iso_date"))
+            if closing_date:
+                prov_list.append(create_field_provenance("closing_date", raw_expiry, closing_date, DerivationType.RAW_EXTRACTION, f"{item_pointer}.expiryDate", record_checksum, "parse_iso_date"))
 
             opp_id = compute_deterministic_id(self.source_id, remote_id, title, organization, item_pointer)
 
@@ -211,6 +218,7 @@ class HimalayasAdapter(BaseAdapter):
                 geographic_eligibility=geo,
                 compensation=comp,
                 posted_date=posted_date,
+                closing_date=closing_date,
                 raw_provenance=provenance,
                 record_checksum=record_checksum,
                 raw_record_pointer=item_pointer,

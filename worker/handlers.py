@@ -31,7 +31,9 @@ Three job types are supported:
 from __future__ import annotations
 
 import json
+import os
 import uuid
+from dataclasses import replace
 from time import perf_counter
 from email.utils import parsedate_to_datetime
 from datetime import datetime, timedelta, timezone
@@ -41,6 +43,7 @@ from sqlalchemy import and_, or_, text
 
 from core.logging import get_logger, redact_data
 from matching.evaluate_persist import evaluate_and_store
+from matching.candidate_admission import admit_new_ats_candidates
 from matching.scorer import OpportunityScorer
 from matching.models import QualificationDecision
 from opportunity.clustering import compute_family_key
@@ -62,6 +65,7 @@ from opportunity.models import (
 )
 from opportunity.persistence import persist_evaluated_batch
 from opportunity.pipeline import OpportunityPipeline
+from opportunity.discovery.himalayas import merge_search_payloads, targeted_search_urls
 from opportunity.registry import SourceRegistry
 from opportunity.transport import AcquisitionService, BaseTransport, HttpTransport, RateLimiter
 from storage.models import FieldProvenanceRecord, MatchEvaluationRecord, OpportunityRecord, SourcePollRunRecord, SourceScheduleRecord
@@ -340,6 +344,8 @@ def _retry_after_seconds(report: Any, now: datetime) -> Optional[float]:
 #: source's single-request fetch already goes through
 #: ``OpportunityPipeline.execute_discovery`` -> ``AcquisitionService.acquire``.
 HACKER_NEWS_SOURCE_ID = "hacker_news_who_is_hiring"
+HIMALAYAS_SOURCE_ID = "himalayas"
+HIMALAYAS_TARGETED_SEARCH_ENV = "OPPORTUNITYOS_HIMALAYAS_TARGETED_SEARCH"
 
 _HN_FIREBASE_BASE = "https://hacker-news.firebaseio.com/v0"
 
@@ -415,6 +421,41 @@ def _fetch_hacker_news_who_is_hiring_governed(
         }),
         200,
     )
+
+
+def _fetch_himalayas_targeted_governed(
+    acquisition: AcquisitionService,
+    source_id: str = HIMALAYAS_SOURCE_ID,
+) -> tuple[Optional[str], Optional[int], Optional[str], int]:
+    """Fetch a bounded set of documented Egypt/worldwide target-role searches.
+
+    Each URL passes the normal registry, host-level pacing, and injected
+    transport. A 403/429 stops immediately; a failed or malformed page prevents
+    persistence of a misleading partial search result.
+    """
+    payloads: list[str] = []
+    for url in targeted_search_urls():
+        result = acquisition.acquire(source_id=source_id, url=url, method="GET")
+        status = result.response.status_code
+        if not result.authorized or not result.response.is_success or not result.response.body:
+            return None, status, result.refusal_reason or result.response.error_message, len(payloads)
+        payloads.append(result.response.body)
+    try:
+        merged_payload, raw_count = merge_search_payloads(payloads)
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        return None, 502, f"invalid Himalayas search response: {exc}", len(payloads)
+    logger.info(
+        "worker.himalayas_search_complete",
+        extra={
+            "component": "worker.handlers",
+            "extra_data": {
+                "source_id": source_id,
+                "query_count": len(payloads),
+                "raw_result_count": raw_count,
+            },
+        },
+    )
+    return merged_payload, 200, None, len(payloads)
 
 
 def make_poll_source_handler(
@@ -560,8 +601,62 @@ def make_poll_source_handler(
                     run_id=job_id or "run_default",
                     status_codes={source_id: hn_status or 200},
                 )
+            elif (
+                source_id == HIMALAYAS_SOURCE_ID
+                and os.environ.get(HIMALAYAS_TARGETED_SEARCH_ENV, "").strip().lower() == "true"
+            ):
+                himalayas_payload, himalayas_status, fetch_error, query_count = (
+                    _fetch_himalayas_targeted_governed(pipeline.acquisition, source_id)
+                )
+                if himalayas_payload is None:
+                    blocked = himalayas_status in _BLOCKED_STATUS_CODES
+                    _write_poll_run_record(
+                        _resolve_session_factory,
+                        source_id=source_id,
+                        job_id=job_id,
+                        started_at=started_at,
+                        status=BLOCKED_POLL_STATUS if blocked else "error",
+                        refusal_reason=f"http_{himalayas_status}" if blocked else None,
+                        error_message=None if blocked else (fetch_error or f"Himalayas search failed (status={himalayas_status})"),
+                    )
+                    return
+                logger.info(
+                    "worker.himalayas_targeted_discovery",
+                    extra={"component": "worker.handlers", "extra_data": {"source_id": source_id, "query_count": query_count}},
+                )
+                batch = pipeline.process_payloads(
+                    {source_id: himalayas_payload},
+                    now_iso=started_at.strftime("%Y-%m-%d"),
+                    run_id=job_id or "run_default",
+                    status_codes={source_id: himalayas_status or 200},
+                )
             else:
                 batch = pipeline.execute_discovery(source_ids=[source_id])
+            admitted_opportunities, excluded_non_target = admit_new_ats_candidates(
+                source_id, batch.opportunities
+            )
+            if excluded_non_target or batch.total_filtered_candidates:
+                batch = replace(
+                    batch,
+                    opportunities=admitted_opportunities,
+                    clusters=(),
+                    total_unique_opportunities=len(admitted_opportunities),
+                )
+                logger.info(
+                    "worker.ats_role_admission",
+                    extra={
+                        "component": "worker.handlers",
+                        "extra_data": {
+                            "source_id": source_id,
+                            "parsed_candidates": len(admitted_opportunities) + excluded_non_target,
+                            "raw_candidates": batch.total_raw_ingested,
+                            "prefiltered_non_target": batch.total_filtered_candidates,
+                            "admitted_candidates": len(admitted_opportunities),
+                            "excluded_non_target": excluded_non_target + batch.total_filtered_candidates,
+                            "filtered_before_parse": batch.total_filtered_candidates,
+                        },
+                    },
+                )
             acquisition_duration = perf_counter() - acquisition_started
         except Exception as exc:
             _write_poll_run_record(

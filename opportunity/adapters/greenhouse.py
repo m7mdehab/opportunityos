@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from matching.candidate_admission import is_unambiguously_non_target_title
 from opportunity.adapters.base import BaseAdapter
 from opportunity.models import (
     CompensationInterval,
@@ -60,8 +61,17 @@ class GreenhouseAdapter(BaseAdapter):
 
         raw_count = len(jobs)
         opportunities: list[Opportunity] = []
+        filtered_count = 0
         for idx, job in enumerate(jobs):
             if not isinstance(job, dict):
+                continue
+            # A broad company board may contain hundreds of unrelated posts.
+            # The canonical title-family gate runs before description cleanup,
+            # section extraction, skills, geography, and provenance work. It
+            # only drops families that remain non-target regardless of body;
+            # adjacent/unknown titles stay reviewable and are fully parsed.
+            if is_unambiguously_non_target_title(str(job.get("title") or "")):
+                filtered_count += 1
                 continue
             item_pointer = f"{raw_pointer or 'feed'}:jobs[{idx}]"
             record_checksum = compute_record_checksum(job)
@@ -218,4 +228,8 @@ class GreenhouseAdapter(BaseAdapter):
             )
             opportunities.append(opp)
 
-        return ParseResult(opportunities=tuple(opportunities), records_raw_count=raw_count)
+        return ParseResult(
+            opportunities=tuple(opportunities),
+            records_raw_count=raw_count,
+            records_filtered_count=filtered_count,
+        )

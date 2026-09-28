@@ -10,7 +10,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-09-27T16:19:23Z
+- **Generated:** 2026-09-28T02:27:51Z
 - **State generated at commit:** `49e01f1` — fix: grant recommendation views when hosted roles exist
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
@@ -90,9 +90,10 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Source Status Counts
 
-- allowed_ok: 342
+- allowed_ok: 341
 - credential_gated: 1
 - deliberately_not_fetched: 16
+- documented_api; targeted_search_canary_pending: 1
 - http_403: 2
 - inferred_from_sibling_403: 6
 - no_public_api: 5

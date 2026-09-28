@@ -60,6 +60,20 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual("Data Analyst - Product Insights", opp2.title)
         self.assertEqual("excluded", opp2.geographic_eligibility.status)  # US Only
 
+    def test_greenhouse_filters_only_unambiguous_non_target_titles_before_extraction(self):
+        payload = json.dumps({"jobs": [
+            {"id": 1, "title": "Account Executive", "content": "Long irrelevant sales description"},
+            {"id": 2, "title": "Backend Engineer", "content": "Long role description with no data signals"},
+            {"id": 3, "title": "Unclassified Specialist", "content": "Review me"},
+        ]})
+
+        result = GreenhouseAdapter("example").parse_payload(payload, fetched_at="2026-09-28")
+
+        self.assertEqual(3, result.records_raw_count)
+        self.assertEqual(1, result.records_filtered_count)
+        self.assertEqual(2, len(result.opportunities))
+        self.assertEqual({"Backend Engineer", "Unclassified Specialist"}, {job.title for job in result.opportunities})
+
     def test_lever_adapter(self):
         adapter = LeverAdapter("shyftlabs")
         payload = read_fixture("lever_shyftlabs.json")
@@ -120,6 +134,18 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(original.source_url, reordered.source_url)
         self.assertEqual(original.source_id, original.source_url)
         self.assertEqual(original.id, reordered.id)
+
+    def test_himalayas_expiry_date_is_persistable_as_closing_date(self):
+        job = json.loads(read_fixture("himalayas.json"))["jobs"][0]
+        job["expiryDate"] = 1798416000
+        opp = HimalayasAdapter().parse_payload(
+            json.dumps({"jobs": [job]}),
+            raw_pointer="fixture:himalayas",
+            fetched_at="2026-09-28",
+        ).opportunities[0]
+        self.assertEqual("2026-08-27", opp.posted_date)
+        self.assertEqual("2026-12-28", opp.closing_date)
+        self.assertIn("closing_date", {p.field_name for p in opp.field_provenances})
 
     def test_remotive_adapter(self):
         adapter = RemotiveAdapter()
