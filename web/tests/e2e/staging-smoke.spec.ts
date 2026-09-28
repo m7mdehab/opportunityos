@@ -42,6 +42,18 @@ async function pageJson<T>(
   ) as Promise<{ status: number; ok: boolean; body: T; ttfb_ms: number; elapsed_ms: number; server_timing: string }>;
 }
 
+function safeApiErrorSummary(body: unknown): string {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return `body_type=${typeof body}`;
+  const value = body as Record<string, unknown>;
+  return JSON.stringify({
+    code: typeof value.code === "string" ? value.code.slice(0, 64) : undefined,
+    message: typeof value.message === "string" ? value.message.slice(0, 200) : undefined,
+    details: typeof value.details === "string" ? value.details.slice(0, 200) : undefined,
+    hint: typeof value.hint === "string" ? value.hint.slice(0, 200) : undefined,
+    detail: typeof value.detail === "string" ? value.detail.slice(0, 200) : undefined,
+  });
+}
+
 async function pageBinary(page: Page, path: string) {
   return page.evaluate(async (p) => {
     const response = await fetch(p, { credentials: "same-origin" });
@@ -120,9 +132,9 @@ test.describe("Cloudflare staging hosted smoke", () => {
     const trackFacet = page.getByTestId("filter-facet-track");
     await expect(trackFacet).toBeVisible();
     const trackSummary = trackFacet.locator("summary");
-    await trackSummary.focus();
-    await page.keyboard.press("Enter");
+    await trackSummary.click();
     await expect(trackFacet).toHaveAttribute("open", "");
+    await expect.poll(() => trackFacet.locator('input[type="checkbox"]').count(), { timeout: 15_000 }).toBeGreaterThan(1);
     const employmentTrack = trackFacet.getByRole("checkbox", { name: "employment", exact: true });
     const contractTrack = trackFacet.getByRole("checkbox", { name: "contract", exact: true });
     await employmentTrack.check();
@@ -143,51 +155,40 @@ test.describe("Cloudflare staging hosted smoke", () => {
     const visibleCards = page.locator('[data-testid^="opportunity-card-"]');
     const selectAllVisible = page.getByRole("button", { name: "Select all visible" });
     const batchToolbar = page.getByTestId("batch-action-toolbar");
-    if (await visibleCards.count()) {
-      await expect(visibleCards.first()).toBeVisible({ timeout: 15_000 });
-      await expect(selectAllVisible).toBeVisible({ timeout: 15_000 });
-      await selectAllVisible.click();
-      await expect(batchToolbar).toBeVisible();
-      const selectionBoxes = page.locator('input[type="checkbox"][aria-label^="Select "]');
-      expect(await selectionBoxes.count()).toBeGreaterThan(0);
-      await expect(selectionBoxes.first()).toBeChecked();
-      await page.getByRole("button", { name: "Clear selection" }).click();
-      await expect(batchToolbar).toHaveCount(0);
-    } else {
-      // The live Founder feed can legitimately have no For You projection rows.
-      // In that state, verify the batch action is unavailable rather than
-      // fabricating jobs or mutating unrelated Founder state.
-      await expect(selectAllVisible).toHaveCount(0);
-      await expect(batchToolbar).toHaveCount(0);
-      console.log("FR008_HOSTED_BATCH_SKIP reason=no_visible_for_you_jobs");
-    }
+    await expect.poll(() => visibleCards.count(), { timeout: 15_000 }).toBeGreaterThan(0);
+    await expect(visibleCards.first()).toBeVisible();
+    await expect(selectAllVisible).toBeVisible();
+    await selectAllVisible.click();
+    await expect(batchToolbar).toBeVisible();
+    const selectionBoxes = page.locator('input[type="checkbox"][aria-label^="Select "]');
+    expect(await selectionBoxes.count()).toBeGreaterThan(0);
+    await expect(selectionBoxes.first()).toBeChecked();
+    await page.getByRole("button", { name: "Clear selection" }).click();
+    await expect(batchToolbar).toHaveCount(0);
 
     // 4d. Prove one hosted Save round-trip and immediately Undo it so the
     // founder-visible review state is restored after the smoke.
     const quickSave = page.locator('[data-testid^="quick-save-"]').first();
-    if (await quickSave.count()) {
-      await expect(quickSave).toBeVisible();
-      const [liveSaveResponse] = await Promise.all([
-        page.waitForResponse((response) =>
-          response.request().method() === "POST" &&
-          response.url().includes("/actions")
-        ),
-        quickSave.click(),
-      ]);
-      expect(liveSaveResponse.status(), await liveSaveResponse.text()).toBe(200);
-      await expect(page.getByTestId("tracker-undo-notice")).toBeVisible();
-      const [undoResponse] = await Promise.all([
-        page.waitForResponse((response) =>
-          response.request().method() === "POST" &&
-          response.url().includes("/restore")
-        ),
-        page.getByTestId("undo-tracker-action").click(),
-      ]);
-      expect(undoResponse.status(), await undoResponse.text()).toBe(200);
-      await expect(page.getByTestId("tracker-undo-notice")).toHaveCount(0);
-    } else {
-      console.log("FR008_HOSTED_SAVE_SKIP reason=no_visible_reviewable_jobs");
-    }
+    await expect.poll(() => page.locator('[data-testid^="quick-save-"]').count(), { timeout: 15_000 }).toBeGreaterThan(0);
+    await expect(quickSave).toBeVisible();
+    const [liveSaveResponse] = await Promise.all([
+      page.waitForResponse((response) =>
+        response.request().method() === "POST" &&
+        response.url().includes("/actions")
+      ),
+      quickSave.click(),
+    ]);
+    expect(liveSaveResponse.status(), await liveSaveResponse.text()).toBe(200);
+    await expect(page.getByTestId("tracker-undo-notice")).toBeVisible();
+    const [undoResponse] = await Promise.all([
+      page.waitForResponse((response) =>
+        response.request().method() === "POST" &&
+        response.url().includes("/restore")
+      ),
+      page.getByTestId("undo-tracker-action").click(),
+    ]);
+    expect(undoResponse.status(), await undoResponse.text()).toBe(200);
+    await expect(page.getByTestId("tracker-undo-notice")).toHaveCount(0);
 
     // 5. Feed endpoint returns exact contract
     const firstPage = await pageJson<{
@@ -212,7 +213,7 @@ test.describe("Cloudflare staging hosted smoke", () => {
       }>;
     }>(page, "/api/opportunities?sort_by=for_you&page=1&page_size=1");
 
-    expect(firstPage.ok, `feed returned ${firstPage.status}`).toBe(true);
+    expect(firstPage.ok, `feed returned ${firstPage.status}: ${safeApiErrorSummary(firstPage.body)}`).toBe(true);
     expect(typeof firstPage.body.page).toBe("number");
     expect(typeof firstPage.body.page_size).toBe("number");
     expect(typeof firstPage.body.total).toBe("number");
@@ -237,8 +238,7 @@ test.describe("Cloudflare staging hosted smoke", () => {
     // not merely compiled into an undeployed branch.
     await expect(page.getByTestId("filter-facet-track")).toBeVisible();
     const liveTrackSummary = page.getByTestId("filter-facet-track").locator("summary");
-    await liveTrackSummary.focus();
-    await page.keyboard.press("Enter");
+    await liveTrackSummary.click();
     await expect(page.getByTestId("filter-facet-track").locator('input[type="checkbox"]').first()).toBeVisible();
     expect(await page.getByTestId("filter-facet-track").locator('input[type="checkbox"]').count()).toBeGreaterThan(1);
     await page.keyboard.press("Enter");
@@ -249,18 +249,20 @@ test.describe("Cloudflare staging hosted smoke", () => {
     for (const facet of [sourceFamilyFacet, activityFacet, feedbackFacet]) {
       await expect(facet).toBeVisible();
       const summary = facet.locator("summary");
-      await summary.focus();
-      await page.keyboard.press("Enter");
-      expect(await facet.locator('input[type="checkbox"]').count()).toBeGreaterThan(1);
-      await page.keyboard.press("Enter");
+      await summary.click();
+      await expect(facet, `facet ${await facet.getAttribute("data-testid")} should open`).toHaveAttribute("open", "");
+      await expect.poll(
+        () => facet.locator('input[type="checkbox"]').count(),
+        { timeout: 15_000, message: `facet ${await facet.getAttribute("data-testid")} should expose multiple options` }
+      ).toBeGreaterThan(1);
+      await summary.click();
     }
 
     // Prove the primary Source checklist uses repeated live query params, not
     // a single-select facade. Clear immediately so the rest of smoke remains
     // corpus-neutral.
     const sourceFamilySummary = sourceFamilyFacet.locator("summary");
-    await sourceFamilySummary.focus();
-    await page.keyboard.press("Enter");
+    await sourceFamilySummary.click();
     const sourceFamilyBoxes = sourceFamilyFacet.locator('input[type="checkbox"]');
     await sourceFamilyBoxes.nth(0).check();
     await sourceFamilyBoxes.nth(1).check();
@@ -274,8 +276,7 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await expect(advancedDrawer).toBeVisible();
     const sourceFacet = page.getByTestId("feed-facet-source_id");
     const sourceFacetSummary = sourceFacet.locator("summary");
-    await sourceFacetSummary.focus();
-    await page.keyboard.press("Enter");
+    await sourceFacetSummary.click();
     const sourceIdOptions = sourceFacet.locator('input[type="checkbox"]');
     if (await sourceIdOptions.count() > 1) {
       await expect(sourceIdOptions.first()).toBeVisible();
