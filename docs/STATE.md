@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-27T16:19:23Z
-- **State generated at commit:** `aae1553` — fix: recreate recommendation feed views in dependency order
+- **State generated at commit:** `dee9829` — fix: preserve hosted feed view column order
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
