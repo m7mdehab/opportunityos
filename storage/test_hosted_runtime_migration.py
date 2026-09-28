@@ -32,12 +32,16 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
 
         config = Config("alembic.ini")
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_current_head(), "0029_fr008_query_fast_paths")
+        self.assertEqual(script.get_current_head(), "0030_dashboard_alltime")
 
     def test_current_revision_fits_alembic_version_column(self):
         namespace: dict[str, object] = {}
         migrations = Path(__file__).parent / "migrations" / "versions"
-        for filename in ("0027_bc1_recommendation_foundation.py", "0029_fr008_feed_activity_fast_path.py"):
+        for filename in (
+            "0027_bc1_recommendation_foundation.py",
+            "0029_fr008_feed_activity_fast_path.py",
+            "0030_dashboard_all_time_aggregate.py",
+        ):
             migration = migrations / filename
             namespace = {}
             exec(compile(migration.read_text(encoding="utf-8"), str(migration), "exec"), namespace)
@@ -78,7 +82,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         self.assertNotIn("DROP VIEW", downgrade)
         self.assertNotIn("founder_feed_activity", downgrade)
         config = Config("alembic.ini")
-        self.assertEqual(ScriptDirectory.from_config(config).get_current_head(), "0029_fr008_query_fast_paths")
+        self.assertEqual(ScriptDirectory.from_config(config).get_current_head(), "0030_dashboard_alltime")
 
     def test_bc2_adds_compact_recommendation_state_without_backfill(self):
         migration = Path(__file__).parent / "migrations" / "versions" / "0028_bc2_recommendation.py"

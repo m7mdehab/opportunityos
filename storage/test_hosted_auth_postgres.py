@@ -129,6 +129,9 @@ class HostedAuthPostgresAcceptance(unittest.TestCase):
             all_time = conn.execute(sa.text(
                 "SELECT * FROM public.founder_dashboard_daily(0,80) ORDER BY date DESC"
             )).mappings().all()
+            two_days = conn.execute(sa.text(
+                "SELECT * FROM public.founder_dashboard_daily(2,80) ORDER BY date DESC"
+            )).mappings().all()
             fixture_savepoint.rollback()
 
         self.assertIn("founder_feed f", view_sql)
@@ -139,10 +142,12 @@ class HostedAuthPostgresAcceptance(unittest.TestCase):
         self.assertIn("p_days = 0", dashboard_sql)
         self.assertIn("filter (where", dashboard_sql)
         self.assertIn("generate_series", dashboard_sql)
+        self.assertIn("jsonb_array_elements_text", dashboard_sql)
         self.assertEqual(today["date"], all_time[0]["date"])
-        self.assertGreaterEqual(len(all_time), 1)
+        self.assertEqual(len(all_time), 1)
+        self.assertEqual(len(two_days), 2)
         for metric in ("fetched", "unique_new", "qualified", "high_fit", "opened", "labelled", "applied", "hidden_by_filters"):
-            self.assertEqual(today[metric], all_time[0][metric])
+            self.assertGreaterEqual(all_time[0][metric], today[metric])
 
 
 if __name__ == "__main__":
