@@ -96,6 +96,54 @@ class HostedAuthPostgresAcceptance(unittest.TestCase):
             )).scalar_one()
         self.assertEqual(founder_policy, 1)
 
+    def test_fr008_query_fast_paths_migrate_with_founder_contract(self):
+        with self.engine.begin() as conn:
+            fixture_savepoint = conn.begin_nested()
+            view_sql = conn.execute(sa.text(
+                "SELECT pg_get_viewdef('public.founder_feed_fr008'::regclass, true)"
+            )).scalar_one().lower()
+            columns = conn.execute(sa.text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_schema='public' AND table_name='founder_feed_fr008' "
+                "ORDER BY ordinal_position"
+            )).scalars().all()
+            dashboard_sql = conn.execute(sa.text(
+                "SELECT pg_get_functiondef('public.founder_dashboard_daily(integer,double precision)'::regprocedure)"
+            )).scalar_one().lower()
+            founder_id = conn.execute(sa.text(
+                "SELECT supabase_user_id FROM public.founder_identity WHERE id='singleton'"
+            )).scalar_one_or_none()
+            if founder_id is None:
+                founder_id = "00000000-0000-0000-0000-000000000029"
+                conn.execute(sa.text(
+                    "INSERT INTO public.founder_identity(id,supabase_user_id) "
+                    "VALUES ('singleton',:founder_id)"
+                ), {"founder_id": founder_id})
+            conn.execute(sa.text(
+                "SELECT set_config('request.jwt.claim.sub',:founder_id,true)"
+            ), {"founder_id": founder_id})
+            conn.exec_driver_sql("SET LOCAL ROLE authenticated")
+            today = conn.execute(sa.text(
+                "SELECT * FROM public.founder_dashboard_daily(1,80)"
+            )).mappings().one()
+            all_time = conn.execute(sa.text(
+                "SELECT * FROM public.founder_dashboard_daily(0,80) ORDER BY date DESC"
+            )).mappings().all()
+            fixture_savepoint.rollback()
+
+        self.assertIn("founder_feed f", view_sql)
+        self.assertNotIn("founder_activity_state", view_sql)
+        self.assertNotIn("founder_feed_activity", view_sql)
+        self.assertLess(columns.index("action_state"), columns.index("role_relevance_class"))
+        self.assertLess(columns.index("has_activity"), columns.index("remote_rank"))
+        self.assertIn("p_days = 0", dashboard_sql)
+        self.assertIn("filter (where", dashboard_sql)
+        self.assertIn("generate_series", dashboard_sql)
+        self.assertEqual(today["date"], all_time[0]["date"])
+        self.assertGreaterEqual(len(all_time), 1)
+        for metric in ("fetched", "unique_new", "qualified", "high_fit", "opened", "labelled", "applied", "hidden_by_filters"):
+            self.assertEqual(today[metric], all_time[0][metric])
+
 
 if __name__ == "__main__":
     unittest.main()

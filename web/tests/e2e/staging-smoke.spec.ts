@@ -144,7 +144,11 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await expect.poll(() =>
       page.evaluate(() => new URLSearchParams(window.location.search).getAll("track").length)
     ).toBe(2);
-    await page.keyboard.press("Enter");
+    await trackSummary.click();
+    await expect(trackFacet).not.toHaveAttribute("open", "");
+    const moreFilters = page.getByTestId("more-filters-dropdown");
+    await moreFilters.locator(":scope > summary").click();
+    await expect(moreFilters).not.toHaveAttribute("open", "");
     await page.getByRole("search", { name: "Filter opportunities" }).getByRole("button", { name: "Clear filters" }).click();
     await expect.poll(() =>
       page.evaluate(() => new URLSearchParams(window.location.search).getAll("track").length)
@@ -274,10 +278,44 @@ test.describe("Cloudflare staging hosted smoke", () => {
 
     const metricPeriod = page.getByTestId("metric-period");
     await expect(metricPeriod).toBeVisible();
+    const metricsResponse = (period: string, date?: string) => page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname === "/api/dashboard/daily"
+        && url.searchParams.get("period") === period
+        && (!date || url.searchParams.get("date") === date);
+    });
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const yesterdayResponsePromise = metricsResponse("yesterday");
     await metricPeriod.selectOption("yesterday");
     await expect(metricPeriod).toHaveValue("yesterday");
+    const yesterdayResponse = await yesterdayResponsePromise;
+    expect(yesterdayResponse.ok(), "Yesterday metrics should load").toBe(true);
+    const yesterdayMetrics = await yesterdayResponse.json() as { days: number; series: Array<{ date: string }> };
+    expect(yesterdayMetrics.series[0]?.date).toBe(yesterday);
+    await metricPeriod.selectOption("date");
+    const selectedDate = page.getByTestId("metric-specific-date");
+    await expect(selectedDate).toBeVisible();
+    const specificDateResponsePromise = metricsResponse("date", yesterday);
+    await selectedDate.fill(yesterday);
+    const specificDateResponse = await specificDateResponsePromise;
+    expect(specificDateResponse.ok(), "Specific-date metrics should load").toBe(true);
+    const specificDateMetrics = await specificDateResponse.json() as { days: number; series: Array<{ date: string }> };
+    expect(specificDateMetrics.series[0]?.date).toBe(yesterday);
+    const allTimeResponsePromise = metricsResponse("all_time");
+    await metricPeriod.selectOption("all_time");
+    const allTimeResponse = await allTimeResponsePromise;
+    expect(allTimeResponse.ok(), "All-time metrics should load").toBe(true);
+    const allTimeMetrics = await allTimeResponse.json() as { days: number; series: Array<{ date: string }> };
+    expect(allTimeMetrics.series).toHaveLength(1);
+    expect(allTimeMetrics.series[0]?.date).toBe("all_time");
+    const todayResponsePromise = metricsResponse("today");
     await metricPeriod.selectOption("today");
     await expect(metricPeriod).toHaveValue("today");
+    const todayResponse = await todayResponsePromise;
+    expect(todayResponse.ok(), "Today metrics should load").toBe(true);
+    const todayMetrics = await todayResponse.json() as { days: number; series: Array<{ date: string }> };
+    expect(todayMetrics.series[0]?.date).toBe(new Date().toISOString().slice(0, 10));
+    console.log(`FR008_HOSTED_DASHBOARD_TIMING yesterday=${yesterdayResponse.headers()["server-timing"] ?? "unavailable"} all_time=${allTimeResponse.headers()["server-timing"] ?? "unavailable"} today=${todayResponse.headers()["server-timing"] ?? "unavailable"}`);
 
     const reviewableSaveButtons = page.locator('[data-testid^="quick-save-"]');
     if (await reviewableSaveButtons.count() >= 2) {

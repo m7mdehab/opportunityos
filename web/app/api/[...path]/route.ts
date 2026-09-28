@@ -576,14 +576,34 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
   if (subpath === "dashboard/daily" && method === "GET") {
     const period = url.searchParams.get("period") ?? "today";
     const requestedDate = url.searchParams.get("date");
-    const days = period === "all_time" || period === "yesterday" || period === "date" ? 90 : 1;
+    let days = period === "all_time" ? 0 : period === "yesterday" ? 2 : 1;
+    if (period === "date") {
+      if (!requestedDate || !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
+        return hostedError("A valid metrics date is required.", 400);
+      }
+      const requestedAt = Date.parse(`${requestedDate}T00:00:00.000Z`);
+      if (!Number.isFinite(requestedAt) || new Date(requestedAt).toISOString().slice(0, 10) !== requestedDate) {
+        return hostedError("A valid metrics date is required.", 400);
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      const todayAt = Date.parse(`${today}T00:00:00.000Z`);
+      if (requestedAt > todayAt) return hostedError("Metrics date cannot be in the future.", 400);
+      days = Math.floor((todayAt - requestedAt) / 86400000) + 1;
+      if (days > 3650) return hostedError("Metrics date is outside the available 10-year window.", 400);
+    }
+    const dashboardRpcStarted = performance.now();
     const response = await hostedFetch(config, "/rest/v1/rpc/founder_dashboard_daily", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: JSON.stringify({ p_days: days, p_high_fit_threshold: 80 }),
     });
+    const dashboardRpcElapsed = performance.now() - dashboardRpcStarted;
     const payload = await response.json().catch(() => []);
-    if (!response.ok) return NextResponse.json(payload, { status: response.status });
+    if (!response.ok) {
+      const failed = NextResponse.json(payload, { status: response.status });
+      failed.headers.set("Server-Timing", `dashboard_rpc;dur=${dashboardRpcElapsed.toFixed(2)}`);
+      return failed;
+    }
     const rows = Array.isArray(payload) ? payload.map((row: Record<string, unknown>) => ({
       date: String(row.date ?? ""),
       fetched: Number(row.fetched ?? 0),
@@ -616,7 +636,9 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
       }), { date: "all_time", fetched: 0, unique_new: 0, qualified: 0, high_fit: 0, opened: 0, labelled: 0, applied: 0, hidden_by_filters: 0 });
       series = [total];
     }
-    return NextResponse.json({ days, high_fit_threshold: 80, series });
+    const dashboardResponse = NextResponse.json({ days: series.length, high_fit_threshold: 80, series });
+    dashboardResponse.headers.set("Server-Timing", `dashboard_rpc;dur=${dashboardRpcElapsed.toFixed(2)}`);
+    return dashboardResponse;
   }
   if (subpath.startsWith("opportunities/") && path.length >= 4 && path[2] === "artifacts" && method === "GET") {
     const opportunityId = encodeURIComponent(path[1]);

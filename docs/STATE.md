@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-09-28T20:35:07Z
-- **State generated at commit:** `c040122` — fix(web): keep mobile filter panel in flow
+- **Generated:** 2026-09-28T21:27:56Z
+- **State generated at commit:** `ba969c9` — docs: update BC latency checkpoint head
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
