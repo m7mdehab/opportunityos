@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-09-28T21:52:13Z
-- **State generated at commit:** `d09a999` — fix(matching): separate AI products from technical roles
+- **Generated:** 2026-09-28T23:00:44Z
+- **State generated at commit:** `840e048` — perf(feed): make source overview query selective
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
