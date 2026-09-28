@@ -18,6 +18,7 @@ from api.filters import (
 )
 from api.serialization import unpack_dimension_scores, unpack_evaluation_detail, unpack_reasons
 from matching.recommendation_engine import BehaviorProfile, BehaviorSignal, build_behavior_profile
+from matching.recommendation_foundation import classify_role_relevance
 from matching.recommendation_projection import build_recommendation
 from storage.feed_projection import FeedProjectionRecord, projection_identity
 from storage.models import (
@@ -321,6 +322,7 @@ def build_projection_record(
     rank_components = (
         recommendation.role_tier,
         int(round(recommendation.fit_score)),
+        int(round(recommendation.evidence_quality_score)),
         int(round(recommendation.affinity_score)),
         int(round(recommendation.geography_score)),
         int(round(recommendation.freshness_score)),
@@ -506,6 +508,94 @@ def rebuild_feed_projection(
         skipped_without_evaluation=skipped,
         batches=batches,
         last_opportunity_id=cursor,
+    )
+
+
+def refresh_feed_projection_candidates(
+    session: Session,
+    opportunity_ids: list[str] | tuple[str, ...],
+    *,
+    truth_graph: Any,
+    truth_pack_hash: str,
+    max_candidates: int = 100,
+) -> ProjectionRebuildStats:
+    """Reclassify and refresh only explicit, visible HOT/PROTECTED candidates.
+
+    The explicit ID list is intentionally capped. This is the bounded live
+    canary path; broad projection rebuilds continue to use
+    :func:`rebuild_feed_projection` through their existing maintenance flow.
+    The caller owns the transaction and must commit only after checking the
+    resulting recommendations.
+    """
+    if not truth_pack_hash or truth_pack_hash == "active":
+        raise ValueError("an authoritative truth_pack_hash is required")
+    ids = tuple(dict.fromkeys(str(value).strip() for value in opportunity_ids if str(value).strip()))
+    if not ids:
+        raise ValueError("at least one opportunity ID is required")
+    if len(ids) > max_candidates:
+        raise ValueError(f"candidate refresh is limited to {max_candidates} opportunity IDs")
+
+    opportunities = (
+        session.query(OpportunityRecord)
+        .join(FeedProjectionRecord, FeedProjectionRecord.opportunity_id == OpportunityRecord.id)
+        .filter(
+            OpportunityRecord.id.in_(ids),
+            OpportunityRecord.lifecycle_tier.in_(("hot", "protected")),
+            FeedProjectionRecord.truth_pack_hash == truth_pack_hash,
+            FeedProjectionRecord.visible.is_(True),
+        )
+        .order_by(OpportunityRecord.id.asc())
+        .all()
+    )
+    if len(opportunities) != len(ids):
+        raise ValueError("every candidate must have a visible HOT/PROTECTED projection for this truth pack")
+
+    for opportunity in opportunities:
+        relevance = classify_role_relevance(opportunity.title or "", opportunity.description or "")
+        opportunity.title_family = relevance.title_family
+        opportunity.role_relevance_class = relevance.classification
+        opportunity.role_relevance_reason = relevance.reason
+    session.flush()
+
+    filters = load_filter_settings(session)
+    facets = load_facet_settings(session)
+    contexts = _contexts_for_truth_pack(session, truth_graph, truth_pack_hash, opportunities)
+    signals = _load_founder_behavior_signals(session)
+    signal_by_id = {signal.opportunity_id: signal for signal in signals}
+    projected_at = datetime.now(timezone.utc)
+    inserted = updated = skipped = 0
+    for opportunity in opportunities:
+        pair = contexts.get(opportunity.id)
+        if pair is None:
+            skipped += 1
+            continue
+        context, evaluation = pair
+        signal = signal_by_id.get(opportunity.id)
+        recommendation = build_projection_record(
+            opportunity,
+            context,
+            evaluation,
+            truth_pack_hash=truth_pack_hash,
+            filter_settings=filters,
+            facet_settings=facets,
+            behavior_profile=load_founder_behavior_profile(
+                session, exclude_opportunity_id=opportunity.id,
+            ),
+            feedback_label=signal.feedback_label if signal else None,
+            action_state=signal.action_type if signal else None,
+            projected_at=projected_at,
+        )
+        if upsert_projection(session, recommendation):
+            inserted += 1
+        else:
+            updated += 1
+
+    return ProjectionRebuildStats(
+        inserted=inserted,
+        updated=updated,
+        skipped_without_evaluation=skipped,
+        batches=1,
+        last_opportunity_id=opportunities[-1].id if opportunities else None,
     )
 
 

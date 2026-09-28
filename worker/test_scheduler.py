@@ -1,4 +1,5 @@
 import json
+import json
 import os
 import tempfile
 import unittest
@@ -18,7 +19,7 @@ from worker.scheduler import (
     get_poll_interval_hours,
     implicit_source_schedule_creation_enabled,
 )
-from scripts.db_capacity_guard import BLOCK_BYTES, CapacitySnapshot
+from scripts.db_capacity_guard import BLOCK_BYTES, WARN_BYTES, CapacitySnapshot
 
 # Minimal fixture registry: one read-allowed source, one read-disabled source.
 # Mirrors the real docs/SOURCE_REGISTRY.yaml shape closely enough for
@@ -115,7 +116,11 @@ class TestBoundedHostedEnqueue(TestPollSchedulerBase):
             # Exercise the PostgreSQL-specific pre-enqueue branch while keeping
             # the fixture DB local and deterministic; the branch exits before
             # any PostgreSQL-only query or insert is reached.
-            with patch.object(self.engine.dialect, "name", "postgresql"), patch(
+            with patch("worker.scheduler._scheduler_capacity", return_value=CapacitySnapshot(
+                BLOCK_BYTES, False, False, "HEAVY_WORK_PAUSED"
+            )), patch(
+                "worker.scheduler._lock_warning_poll_scheduler"
+            ), patch(
                 "scripts.db_capacity_guard.inspect_connection",
                 return_value=CapacitySnapshot(BLOCK_BYTES, False, False, "HEAVY_WORK_PAUSED"),
             ):
@@ -129,6 +134,65 @@ class TestBoundedHostedEnqueue(TestPollSchedulerBase):
             self.assertEqual(skipped, [{"source_id": "fixture_allowed", "reason": "capacity_pause"}])
             self.assertEqual(session.query(SourceScheduleRecord).count(), 0)
             self.assertEqual(session.query(WorkerJobRecord).count(), 0)
+        finally:
+            session.close()
+
+    def test_warning_capacity_does_not_extend_existing_poll_backlog(self):
+        session = self.session_factory()
+        try:
+            session.add(WorkerJobRecord(
+                id="already-pending", job_type="poll_source",
+                payload_json=json.dumps({"source_id": "some_other_source"}),
+                status="PENDING", retry_count=2, max_retries=3,
+                run_after=datetime(2026, 1, 1), created_at=datetime(2026, 1, 1),
+                updated_at=datetime(2026, 1, 1),
+            ))
+            session.commit()
+            with patch(
+                "worker.scheduler._scheduler_capacity",
+                return_value=CapacitySnapshot(WARN_BYTES, False, False, "WARN_CAPACITY"),
+            ), patch("worker.scheduler._lock_warning_poll_scheduler"):
+                enqueued, skipped = enqueue_due_sources(
+                    session, registry=self.registry,
+                    now=datetime(2026, 1, 2, tzinfo=timezone.utc),
+                )
+            self.assertEqual(enqueued, [])
+            self.assertEqual(skipped[0]["reason"], "warning_capacity_poll_work_already_active")
+            jobs = session.query(WorkerJobRecord).filter_by(job_type="poll_source").all()
+            self.assertEqual(len(jobs), 1)
+            self.assertEqual(jobs[0].status, "PENDING")
+            self.assertEqual(jobs[0].retry_count, 2)
+        finally:
+            session.close()
+
+    def test_warning_capacity_enqueues_only_one_due_source(self):
+        registry_path = Path(self.temp_dir.name) / "multiple_sources.yaml"
+        registry_path.write_text(_FIXTURE_REGISTRY_YAML.replace(
+            "  - source_id: fixture_disabled", "  - source_id: fixture_second\n"
+            "    name: Fixture Second\n    category: employment\n"
+            "    automation:\n      read: allowed\n    policy_status: reviewed_ok\n"
+            "    observed:\n      status: allowed_ok\n"
+            "  - source_id: fixture_disabled"
+        ), encoding="utf-8")
+        registry = SourceRegistry(registry_path=registry_path)
+        session = self.session_factory()
+        try:
+            with patch(
+                "worker.scheduler._scheduler_capacity",
+                return_value=CapacitySnapshot(WARN_BYTES, False, False, "WARN_CAPACITY"),
+            ), patch("worker.scheduler._lock_warning_poll_scheduler"):
+                enqueued, _ = enqueue_due_sources(
+                    session, registry=registry,
+                    now=datetime(2026, 1, 2, tzinfo=timezone.utc),
+                )
+                self.assertEqual(len(enqueued), 1)
+                again, skipped = enqueue_due_sources(
+                    session, registry=registry,
+                    now=datetime(2026, 1, 2, tzinfo=timezone.utc),
+                )
+            self.assertEqual(again, [])
+            self.assertEqual(skipped[0]["reason"], "warning_capacity_poll_work_already_active")
+            self.assertEqual(session.query(WorkerJobRecord).filter_by(job_type="poll_source").count(), 1)
         finally:
             session.close()
 
