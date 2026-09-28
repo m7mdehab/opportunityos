@@ -32,7 +32,13 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
 
         config = Config("alembic.ini")
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_current_head(), "0025_current_feed_fast_path")
+        self.assertEqual(script.get_current_head(), "0027_bc1_recommendation")
+
+    def test_current_revision_fits_alembic_version_column(self):
+        namespace: dict[str, object] = {}
+        migration = Path(__file__).parent / "migrations" / "versions" / "0027_bc1_recommendation_foundation.py"
+        exec(compile(migration.read_text(encoding="utf-8"), str(migration), "exec"), namespace)
+        self.assertLessEqual(len(namespace["revision"]), 32)
 
     def test_founder_claim_compatibility_migration_accepts_postgrest_json_claims(self):
         migration = Path(__file__).parent / "migrations" / "versions" / "0024_founder_jwt_claim_compat.py"
@@ -61,7 +67,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         self.assertNotIn("DROP VIEW", downgrade)
         self.assertNotIn("founder_feed_activity", downgrade)
         config = Config("alembic.ini")
-        self.assertEqual(ScriptDirectory.from_config(config).get_current_head(), "0025_current_feed_fast_path")
+        self.assertEqual(ScriptDirectory.from_config(config).get_current_head(), "0027_bc1_recommendation")
 
     def test_capacity_revision_is_linear_after_activity_view_access(self):
         capacity = Path(__file__).parent / "migrations" / "versions" / "0020_capacity_archive.py"
