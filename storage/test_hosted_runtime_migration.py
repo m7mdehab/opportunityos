@@ -78,6 +78,10 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
             self.assertIn(field, source)
         self.assertIn("server_default=\"review\"", source)
         self.assertNotIn("UPDATE feed_projection", source)
+        self.assertIn("op.execute(_FOUNDER_FEED_ACTIVITY)", source.split("def downgrade()", 1)[0])
+        self.assertIn("op.execute(_FOUNDER_FEED_FR008)", source.split("def downgrade()", 1)[0])
+        self.assertIn("f.recommendation_state", source)
+        self.assertIn("f.recommendation_priority", source)
 
     def test_capacity_revision_is_linear_after_activity_view_access(self):
         capacity = Path(__file__).parent / "migrations" / "versions" / "0020_capacity_archive.py"

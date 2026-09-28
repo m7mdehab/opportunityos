@@ -122,8 +122,8 @@ def upgrade() -> None:
     # Recreate dependent compatibility views so PostgREST exposes the new
     # compact fields while preserving security-invoker mode and read grants.
     op.execute(_FOUNDER_FEED)
-    op.execute(_FOUNDER_FEED_ACTIVITY_BC1)
-    op.execute(_FOUNDER_FEED_FR008_BC1)
+    op.execute(_FOUNDER_FEED_ACTIVITY)
+    op.execute(_FOUNDER_FEED_FR008)
     op.execute("GRANT SELECT ON public.founder_feed TO authenticated")
     op.execute("GRANT SELECT ON public.founder_feed_activity TO authenticated")
     op.execute("GRANT SELECT ON public.founder_feed_fr008 TO authenticated")
@@ -153,8 +153,8 @@ def downgrade() -> None:
       FROM public.feed_projection fp
       JOIN public.opportunities o ON o.id = fp.opportunity_id
     """)
-    op.execute(_FOUNDER_FEED_ACTIVITY)
-    op.execute(_FOUNDER_FEED_FR008)
+    op.execute(_FOUNDER_FEED_ACTIVITY_BC1)
+    op.execute(_FOUNDER_FEED_FR008_BC1)
     op.execute("GRANT SELECT ON public.founder_feed TO authenticated")
     op.execute("GRANT SELECT ON public.founder_feed_activity TO authenticated")
     op.execute("GRANT SELECT ON public.founder_feed_fr008 TO authenticated")

@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-27T16:19:23Z
-- **State generated at commit:** `0439f3e` — fix(bc1): keep migration revision within version column limit
+- **State generated at commit:** `ca4be9c` — feat: add BC-2 recommendation gates and ranking
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
