@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-09-28T02:27:51Z
-- **State generated at commit:** `49e01f1` — fix: grant recommendation views when hosted roles exist
+- **Generated:** 2026-09-28T02:36:07Z
+- **State generated at commit:** `375f26f` — feat: add governed source discovery controls
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
