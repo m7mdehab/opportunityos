@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-09-28T21:27:00Z
-- **State generated at commit:** `57a4371` — docs: record BC feed latency migration repair
+- **Generated:** 2026-09-28T21:27:56Z
+- **State generated at commit:** `ba969c9` — docs: update BC latency checkpoint head
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
