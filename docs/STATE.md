@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-09-28T21:19:08Z
-- **State generated at commit:** `9412085` — perf(feed): bound hosted feed and metric queries
+- **Generated:** 2026-09-28T21:21:12Z
+- **State generated at commit:** `09195b2` — test(storage): roll back founder identity fixture
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
