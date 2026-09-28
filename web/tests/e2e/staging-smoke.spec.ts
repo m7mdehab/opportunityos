@@ -59,6 +59,19 @@ async function pageBinary(page: Page, path: string) {
 
 test.describe("Cloudflare staging hosted smoke", () => {
   test("desktop/mobile same-origin founder flow", async ({ page }) => {
+    const firstAuthenticatedFeed: Array<{ elapsed_ms: number; server_timing: string }> = [];
+    page.on("requestfinished", (request) => {
+      if (request.method() !== "GET" || !new URL(request.url()).pathname.endsWith("/api/opportunities")) return;
+      void (async () => {
+        const response = await request.response();
+        if (!response?.ok() || firstAuthenticatedFeed.length) return;
+        const timing = request.timing();
+        firstAuthenticatedFeed.push({
+          elapsed_ms: timing.responseEnd,
+          server_timing: response.headers()["server-timing"] ?? "unavailable",
+        });
+      })();
+    });
     // This hosted proof deliberately performs login, reversible mutations,
     // reloads, and 20 sequential live feed SLO samples. The default 30s
     // Playwright budget is therefore smaller than the work the test itself
@@ -331,10 +344,11 @@ test.describe("Cloudflare staging hosted smoke", () => {
       console.log("FR008_HOSTED_BATCH_SAVE_SKIP reason=fewer_than_two_to_review_jobs");
     }
 
-    // 5b. Hosted cold/warm feed SLO and logical-equivalence proof.
-    // This smoke runs immediately after a fresh Cloudflare deployment. The
-    // first authenticated feed read is the cold-edge observation; repeated
-    // reads establish the normal-request p95 at the current hosted corpus.
+    // 5b. First authenticated UI feed request plus repeated same-origin probes.
+    // The first request is captured from the real browser flow immediately
+    // after login; edge/backend Server-Timing separates the subsequent hops.
+    // It is reported as the first request, not treated as a guaranteed cold
+    // process start because an unauthenticated request may have warmed the edge.
     const feedLatencies = [firstPage.elapsed_ms];
     const feedTtfbLatencies = [firstPage.ttfb_ms];
     const feedServerTimings = [firstPage.server_timing];
@@ -357,8 +371,9 @@ test.describe("Cloudflare staging hosted smoke", () => {
     const sortedLatencies = [...feedLatencies].sort((a, b) => a - b);
     const p95Index = Math.max(0, Math.ceil(sortedLatencies.length * 0.95) - 1);
     const p95Ms = sortedLatencies[p95Index];
+    expect(firstAuthenticatedFeed.length).toBeGreaterThan(0);
     console.log(
-      `FR007_HOSTED_FEED_SLO project=${test.info().project.name} cold_total_ms=${firstPage.elapsed_ms.toFixed(2)} cold_ttfb_ms=${firstPage.ttfb_ms.toFixed(2)} warm_total_p95_ms=${p95Ms.toFixed(2)} warm_ttfb_p95_ms=${[...feedTtfbLatencies].sort((a, b) => a - b)[Math.max(0, Math.ceil(feedTtfbLatencies.length * 0.95) - 1)].toFixed(2)} samples=${feedLatencies.length} edge_and_backend=${feedServerTimings.join("|")}`
+      `FR007_HOSTED_FEED_SLO project=${test.info().project.name} first_authenticated_total_ms=${firstAuthenticatedFeed[0].elapsed_ms.toFixed(2)} first_authenticated_server_timing=${firstAuthenticatedFeed[0].server_timing} probe_first_total_ms=${firstPage.elapsed_ms.toFixed(2)} probe_first_ttfb_ms=${firstPage.ttfb_ms.toFixed(2)} warm_total_p95_ms=${p95Ms.toFixed(2)} warm_ttfb_p95_ms=${[...feedTtfbLatencies].sort((a, b) => a - b)[Math.max(0, Math.ceil(feedTtfbLatencies.length * 0.95) - 1)].toFixed(2)} samples=${feedLatencies.length} edge_and_backend=${feedServerTimings.join("|")}`
     );
     expect(p95Ms, "Hosted normal feed p95 must remain <= 1500ms").toBeLessThanOrEqual(1500);
 
