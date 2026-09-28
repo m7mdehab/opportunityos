@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-09-28T03:37:41Z
-- **State generated at commit:** `7505bc8` — docs: refresh BC-4 execution state
+- **Generated:** 2026-09-28T03:53:23Z
+- **State generated at commit:** `4c97333` — fix: sort For You by recommendation rank
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
