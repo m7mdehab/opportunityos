@@ -89,7 +89,7 @@ function ChecklistFacet<T extends string>({
           {selected.length ? selected.length : emptyLabel}
         </span>
       </summary>
-      <div className="absolute left-0 z-30 mt-1 max-h-72 w-52 max-w-[calc(100vw-2rem)] overflow-auto rounded-lg border border-border bg-card p-2 shadow-lg">
+      <div className="mt-1 max-h-56 min-w-0 max-w-full overflow-auto rounded-lg border border-border bg-card p-2 shadow-lg">
         <div className="mb-1 flex justify-end">
           <Button
             type="button"

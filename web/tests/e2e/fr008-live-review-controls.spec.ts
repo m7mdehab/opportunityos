@@ -13,6 +13,7 @@ async function login(page: Page) {
 
 test.describe("FR-008 live review controls", () => {
   test("primary and advanced filters are checkbox multi-selects", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
     await login(page)
     await page.getByTestId("more-filters-dropdown").locator(":scope > summary").click()
 

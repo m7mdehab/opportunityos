@@ -23,6 +23,11 @@ async function login(page: Page) {
     const activity = page.getByTestId("filter-facet-activity")
     await activity.locator("summary").click()
     await activity.getByRole("checkbox", { name: "Any activity", exact: true }).check()
+    await activity.locator("summary").click()
+    await expect(activity).not.toHaveAttribute("open", "")
+    const moreFilters = page.getByTestId("more-filters-dropdown")
+    await moreFilters.locator(":scope > summary").click()
+    await expect(moreFilters).not.toHaveAttribute("open", "")
 }
 
 async function statValue(page: Page, key: string): Promise<number> {
