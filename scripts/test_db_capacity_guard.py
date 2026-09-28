@@ -35,6 +35,9 @@ def _snapshot(size, *, read_only=False, in_recovery=False):
 
 
 class CapacityGuardTests(unittest.TestCase):
+    def test_provider_limit_uses_decimal_megabytes(self):
+        self.assertEqual(PROVIDER_LIMIT_BYTES, 500_000_000)
+
     def test_thresholds_classify_normal_monitor_warning_pause_and_hard_stop(self):
         cases = (
             (PREFERRED_BYTES - 1, "NORMAL", False),

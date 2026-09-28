@@ -65,6 +65,14 @@ class OpportunityRecord(Base):
     compensation_period = Column(String(16), nullable=True)
     title_family = Column(String(64), nullable=True, index=True)
     title_level = Column(String(24), nullable=True)
+    role_relevance_class = Column(String(16), nullable=False, default="unknown", server_default="unknown")
+    role_relevance_reason = Column(String(160), nullable=False, default="not classified", server_default="not classified")
+    founder_geo_state = Column(String(24), nullable=False, default="review", server_default="review")
+    founder_geo_reason = Column(String(160), nullable=False, default="not classified", server_default="not classified")
+    application_url = Column(Text, nullable=True)
+    application_route = Column(String(16), nullable=False, default="unknown", server_default="unknown")
+    application_access = Column(String(24), nullable=False, default="unknown", server_default="unknown")
+    application_access_reason = Column(String(160), nullable=False, default="not classified", server_default="not classified")
     family_key = Column(String(64), nullable=True, index=True)
     # Text().with_variant(...): plain TEXT on every non-PostgreSQL dialect
     # (SQLite, used by several test suites' Base.metadata.create_all(), has no

@@ -21,7 +21,9 @@ WARN_BYTES = 350 * MIB
 BLOCK_BYTES = 400 * MIB
 HEAVY_WORK_PAUSE_BYTES = BLOCK_BYTES
 HARD_STOP_BYTES = 425 * MIB
-PROVIDER_LIMIT_BYTES = 500 * MIB
+# Supabase Free's database-size quota is decimal MB, not MiB. Keep this
+# provider-specific limit distinct from OpportunityOS's internal MiB policy.
+PROVIDER_LIMIT_BYTES = 500_000_000
 
 
 class CapacityBlocked(RuntimeError):

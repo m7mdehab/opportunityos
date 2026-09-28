@@ -134,6 +134,14 @@ export interface OpportunityExtractionFields {
   compensation_period: string | null
   title_family: string | null
   title_level: string | null
+  role_relevance_class: "core" | "adjacent" | "non_target" | "unknown"
+  role_relevance_reason: string
+  founder_geo_state: "eligible" | "likely_eligible" | "review" | "ineligible"
+  founder_geo_reason: string
+  application_url: string | null
+  application_route: "employer" | "ats" | "intermediary" | "source" | "email" | "dm" | "unknown"
+  application_access: "direct_free" | "free_intermediary" | "free_account_required" | "premium_or_gated" | "manual_only" | "unknown"
+  application_access_reason: string
   family_key: string | null
   /** `OpportunityFamilyRecord.member_count` for this row's `family_key`.
    * `null` when the row is not part of a clustered family — never a
