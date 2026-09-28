@@ -43,13 +43,13 @@ SELECT f.id, f.opportunity_id, f.opportunity_content_hash, f.truth_pack_hash,
   f.location_region, f.remote_scope, f.remote_scope_regions,
   f.employment_type, f.qualification_decision, f.fit_score, f.priority_score,
   f.reasons_json, f.red_line_match, f.excluded_industry_match, f.visible,
-  f.visibility_reason, f.evaluated_at, f.projected_at, f.is_stale,
-  f.reverified_at, f.opportunity_created_at, f.source_family,
+  f.visibility_reason, f.evaluated_at, f.projected_at,
+  a.action_state, a.snoozed_until, a.action_updated_at, a.feedback_label,
+  a.feedback_count, a.feedback_updated_at, a.has_activity,
+  f.is_stale, f.reverified_at, f.opportunity_created_at, f.source_family,
   f.role_relevance_class, f.role_relevance_reason, f.founder_geo_state,
   f.founder_geo_reason, f.application_url, f.application_route,
   f.application_access, f.application_access_reason,
-  a.action_state, a.snoozed_until, a.action_updated_at, a.feedback_label,
-  a.feedback_count, a.feedback_updated_at, a.has_activity,
   f.recommendation_state, f.recommendation_reasons_json,
   f.recommendation_priority, f.learned_affinity
 FROM public.founder_feed f
@@ -66,14 +66,14 @@ SELECT f.id, f.opportunity_id, f.opportunity_content_hash, f.truth_pack_hash,
   f.location_region, f.remote_scope, f.remote_scope_regions,
   f.employment_type, f.qualification_decision, f.fit_score, f.priority_score,
   f.reasons_json, f.red_line_match, f.excluded_industry_match, f.visible,
-  f.visibility_reason, f.evaluated_at, f.projected_at, f.is_stale,
-  f.reverified_at, f.opportunity_created_at, f.source_family,
-  f.role_relevance_class, f.role_relevance_reason, f.founder_geo_state,
-  f.founder_geo_reason, f.application_url, f.application_route,
-  f.application_access, f.application_access_reason,
+  f.visibility_reason, f.evaluated_at, f.projected_at,
   f.action_state, f.snoozed_until, f.action_updated_at, f.feedback_label,
   f.feedback_count, f.feedback_updated_at, f.has_activity,
   CASE WHEN f.work_mode='remote' THEN 0 ELSE 1 END AS remote_rank,
+  f.is_stale, f.reverified_at, f.opportunity_created_at, f.source_family,
+  f.role_relevance_class, f.role_relevance_reason, f.founder_geo_state,
+  f.founder_geo_reason, f.application_url, f.application_route,
+  f.application_access, f.application_access_reason,
   f.recommendation_state, f.recommendation_reasons_json,
   f.recommendation_priority, f.learned_affinity
 FROM public.founder_feed_activity f
@@ -81,7 +81,15 @@ FROM public.founder_feed_activity f
 
 _FOUNDER_FEED_ACTIVITY_BC1 = """
 CREATE VIEW public.founder_feed_activity WITH (security_invoker = true) AS
-SELECT f.*, a.action_state, a.snoozed_until, a.action_updated_at,
+SELECT f.id, f.opportunity_id, f.opportunity_content_hash, f.truth_pack_hash,
+  f.projection_version, f.title, f.organization, f.source_id, f.source_url,
+  f.posted_date, f.track, f.opportunity_type, f.title_family,
+  f.seniority_level, f.work_mode, f.location_country, f.location_city,
+  f.location_region, f.remote_scope, f.remote_scope_regions,
+  f.employment_type, f.qualification_decision, f.fit_score, f.priority_score,
+  f.reasons_json, f.red_line_match, f.excluded_industry_match, f.visible,
+  f.visibility_reason, f.evaluated_at, f.projected_at,
+  a.action_state, a.snoozed_until, a.action_updated_at,
   a.feedback_label, a.feedback_count, a.feedback_updated_at, a.has_activity
 FROM public.founder_feed f
 LEFT JOIN public.founder_activity_state a ON a.opportunity_id=f.opportunity_id
@@ -89,7 +97,17 @@ LEFT JOIN public.founder_activity_state a ON a.opportunity_id=f.opportunity_id
 
 _FOUNDER_FEED_FR008_BC1 = """
 CREATE VIEW public.founder_feed_fr008 WITH (security_invoker = true) AS
-SELECT f.*, CASE WHEN f.work_mode='remote' THEN 0 ELSE 1 END AS remote_rank
+SELECT f.id, f.opportunity_id, f.opportunity_content_hash, f.truth_pack_hash,
+  f.projection_version, f.title, f.organization, f.source_id, f.source_url,
+  f.posted_date, f.track, f.opportunity_type, f.title_family,
+  f.seniority_level, f.work_mode, f.location_country, f.location_city,
+  f.location_region, f.remote_scope, f.remote_scope_regions,
+  f.employment_type, f.qualification_decision, f.fit_score, f.priority_score,
+  f.reasons_json, f.red_line_match, f.excluded_industry_match, f.visible,
+  f.visibility_reason, f.evaluated_at, f.projected_at,
+  f.action_state, f.snoozed_until, f.action_updated_at, f.feedback_label,
+  f.feedback_count, f.feedback_updated_at, f.has_activity,
+  CASE WHEN f.work_mode='remote' THEN 0 ELSE 1 END AS remote_rank
 FROM public.founder_feed_activity f
 """
 

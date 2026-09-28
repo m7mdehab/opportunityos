@@ -83,6 +83,28 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         self.assertIn("f.recommendation_state", source)
         self.assertIn("f.recommendation_priority", source)
 
+    def test_bc2_appends_columns_after_existing_compatibility_view_shapes(self):
+        migration = Path(__file__).parent / "migrations" / "versions" / "0028_bc2_recommendation.py"
+        source = migration.read_text(encoding="utf-8")
+        activity = source.split("_FOUNDER_FEED_ACTIVITY = \"\"\"", 1)[1].split("\"\"\"", 1)[0]
+        fr008 = source.split("_FOUNDER_FEED_FR008 = \"\"\"", 1)[1].split("\"\"\"", 1)[0]
+
+        self.assertLess(activity.index("f.projected_at"), activity.index("a.action_state"))
+        self.assertLess(activity.index("a.has_activity"), activity.index("f.role_relevance_class"))
+        self.assertLess(activity.index("f.application_access_reason"), activity.index("f.recommendation_state"))
+
+        self.assertLess(fr008.index("f.projected_at"), fr008.index("f.action_state"))
+        self.assertLess(fr008.index("f.has_activity"), fr008.index("AS remote_rank"))
+        self.assertLess(fr008.index("AS remote_rank"), fr008.index("f.role_relevance_class"))
+        self.assertLess(fr008.index("f.application_access_reason"), fr008.index("f.recommendation_state"))
+
+        # Downgrade restores the physical pre-BC2 dependency-view shape; it
+        # must not expand stale f.* columns when the base view is recreated.
+        activity_down = source.split("_FOUNDER_FEED_ACTIVITY_BC1 = \"\"\"", 1)[1].split("\"\"\"", 1)[0]
+        fr008_down = source.split("_FOUNDER_FEED_FR008_BC1 = \"\"\"", 1)[1].split("\"\"\"", 1)[0]
+        self.assertNotIn("SELECT f.*", activity_down)
+        self.assertNotIn("SELECT f.*", fr008_down)
+
     def test_capacity_revision_is_linear_after_activity_view_access(self):
         capacity = Path(__file__).parent / "migrations" / "versions" / "0020_capacity_archive.py"
         source = capacity.read_text(encoding="utf-8")
