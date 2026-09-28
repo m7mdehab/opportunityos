@@ -17,10 +17,14 @@ from api.filters import (
     apply_filters,
 )
 from api.serialization import unpack_dimension_scores, unpack_evaluation_detail, unpack_reasons
+from matching.recommendation_engine import BehaviorProfile, BehaviorSignal, build_behavior_profile
+from matching.recommendation_projection import build_recommendation
 from storage.feed_projection import FeedProjectionRecord, projection_identity
 from storage.models import (
     FieldProvenanceRecord,
     FounderFacetRecord,
+    FounderActivityEventRecord,
+    FounderFeedbackRecord,
     FounderFilterSettingRecord,
     MatchEvaluationRecord,
     OpportunityRecord,
@@ -74,6 +78,83 @@ def load_facet_settings(session: Session) -> dict[str, FacetSettingsRow]:
             exclude=tuple(payload.get("exclude") or []),
         )
     return settings
+
+
+def load_founder_behavior_profile(
+    session: Session, *, exclude_opportunity_id: str | None = None,
+) -> BehaviorProfile:
+    """Derive a small preference profile from categorical Founder history.
+
+    Notes, explanations, and posting text are never selected. Latest feedback
+    and latest activity per opportunity avoid treating historical corrections
+    as independent current preferences.
+    """
+    cached_signals = _load_founder_behavior_signals(session)
+    return build_behavior_profile(cached_signals, exclude_opportunity_id=exclude_opportunity_id)
+
+
+def _load_founder_behavior_signals(session: Session) -> tuple[BehaviorSignal, ...]:
+    cached_signals = session.info.get("bc_founder_behavior_signals")
+    if isinstance(cached_signals, tuple):
+        return cached_signals
+
+    feedback_rows = (
+        session.query(
+            FounderFeedbackRecord.opportunity_id,
+            FounderFeedbackRecord.feedback_label,
+            OpportunityRecord.title_family,
+            OpportunityRecord.source_id,
+            FounderFeedbackRecord.created_at,
+            FounderFeedbackRecord.id,
+        )
+        .join(OpportunityRecord, OpportunityRecord.id == FounderFeedbackRecord.opportunity_id)
+        .order_by(
+            FounderFeedbackRecord.created_at.desc(),
+            FounderFeedbackRecord.id.desc(),
+        )
+        .all()
+    )
+    latest_feedback: dict[str, tuple[str, str | None, str | None]] = {}
+    for opportunity_id, label, family, source_id, _created_at, _event_id in feedback_rows:
+        latest_feedback.setdefault(opportunity_id, (label, family, source_id))
+
+    activity_rows = (
+        session.query(
+            FounderActivityEventRecord.opportunity_id,
+            FounderActivityEventRecord.action_type,
+            FounderActivityEventRecord.resulting_state,
+            OpportunityRecord.title_family,
+            OpportunityRecord.source_id,
+            FounderActivityEventRecord.created_at,
+            FounderActivityEventRecord.id,
+        )
+        .join(OpportunityRecord, OpportunityRecord.id == FounderActivityEventRecord.opportunity_id)
+        .order_by(
+            FounderActivityEventRecord.created_at.desc(),
+            FounderActivityEventRecord.id.desc(),
+        )
+        .all()
+    )
+    latest_activity: dict[str, tuple[str, str | None, str | None]] = {}
+    for opportunity_id, action, state, family, source_id, _created_at, _event_id in activity_rows:
+        latest_activity.setdefault(opportunity_id, (state or action, family, source_id))
+
+    signals: list[BehaviorSignal] = []
+    for opportunity_id in sorted(set(latest_feedback) | set(latest_activity)):
+        feedback = latest_feedback.get(opportunity_id)
+        action = latest_activity.get(opportunity_id)
+        family = (feedback[1] if feedback else None) or (action[1] if action else None)
+        source = (feedback[2] if feedback else None) or (action[2] if action else None)
+        signals.append(BehaviorSignal(
+            opportunity_id=opportunity_id,
+            role_family=family,
+            source_family=(source or "").split(":", 1)[0] or None,
+            feedback_label=feedback[0] if feedback else None,
+            action_type=action[0] if action else None,
+        ))
+    signal_tuple = tuple(signals)
+    session.info["bc_founder_behavior_signals"] = signal_tuple
+    return signal_tuple
 
 
 def _contexts_for_truth_pack(
@@ -176,6 +257,9 @@ def build_projection_record(
     truth_pack_hash: str,
     filter_settings: dict[str, FilterSettingsRow],
     facet_settings: dict[str, FacetSettingsRow],
+    behavior_profile: BehaviorProfile | None = None,
+    feedback_label: str | None = None,
+    action_state: str | None = None,
     projected_at: datetime | None = None,
 ) -> FeedProjectionRecord:
     now = projected_at or datetime.now(timezone.utc)
@@ -188,11 +272,13 @@ def build_projection_record(
         qualification_decision = evaluation.qualification_decision
         reasons_json = evaluation.reasons_json
         evaluated_at = evaluation.evaluated_at
+        evaluation_detail = unpack_evaluation_detail(evaluation.evaluation_detail_json)
     else:
         fit_score = None
         qualification_decision = None
         reasons_json = "[]"
         evaluated_at = now
+        evaluation_detail = {}
 
     hidden_by: list[str] = []
     rank_penalty = 0
@@ -212,6 +298,37 @@ def build_projection_record(
     # is constrained to 0..100, so a 1000-point tier gap preserves that order
     # without mutating the persisted fit score itself.
     priority_score = (fit_score - (1000.0 * rank_penalty)) if fit_score is not None else None
+    recommendation = build_recommendation(
+        opportunity_id=opportunity.id,
+        role_relevance=opportunity.role_relevance_class,
+        geography=opportunity.founder_geo_state,
+        application_access=opportunity.application_access,
+        application_url=opportunity.application_url,
+        decision=qualification_decision,
+        fit_score=fit_score,
+        evaluation_detail=evaluation_detail,
+        posted_date=opportunity.posted_date,
+        is_stale=bool(opportunity.is_stale),
+        role_family=opportunity.title_family,
+        source_family=opportunity.source_id.split(":", 1)[0],
+        feedback_label=feedback_label,
+        action_state=action_state,
+        family_key=opportunity.family_key,
+        organization=opportunity.organization,
+        as_of=now.date(),
+        behavior=behavior_profile,
+    )
+    rank_components = (
+        recommendation.role_tier,
+        int(round(recommendation.fit_score)),
+        int(round(recommendation.affinity_score)),
+        int(round(recommendation.geography_score)),
+        int(round(recommendation.freshness_score)),
+        int(round(recommendation.source_application_confidence)),
+    )
+    recommendation_priority = 0
+    for component in rank_components:
+        recommendation_priority = recommendation_priority * 101 + max(0, min(100, component))
 
     return FeedProjectionRecord(
         id=projection_identity(opportunity.id, truth_pack_hash),
@@ -236,6 +353,10 @@ def build_projection_record(
         application_route=opportunity.application_route,
         application_access=opportunity.application_access,
         application_access_reason=opportunity.application_access_reason,
+        recommendation_state=recommendation.state,
+        recommendation_reasons_json=json.dumps(recommendation.reasons, separators=(",", ":")),
+        recommendation_priority=float(recommendation_priority),
+        learned_affinity=recommendation.affinity_score,
         work_mode=opportunity.work_mode,
         location_country=opportunity.location_country,
         location_city=opportunity.location_city,
@@ -356,6 +477,17 @@ def rebuild_feed_projection(
                 truth_pack_hash=truth_pack_hash,
                 filter_settings=filters,
                 facet_settings=facets,
+                behavior_profile=load_founder_behavior_profile(
+                    session, exclude_opportunity_id=opportunity.id,
+                ),
+                feedback_label=next((
+                    signal.feedback_label for signal in _load_founder_behavior_signals(session)
+                    if signal.opportunity_id == opportunity.id
+                ), None),
+                action_state=next((
+                    signal.action_type for signal in _load_founder_behavior_signals(session)
+                    if signal.opportunity_id == opportunity.id
+                ), None),
                 projected_at=projected_at,
             )
             if upsert_projection(session, record):
@@ -464,6 +596,9 @@ def refresh_opportunity_projection(
 
     filters = filter_settings if filter_settings is not None else load_filter_settings(session)
     facets = facet_settings if facet_settings is not None else load_facet_settings(session)
+    behavior_profile = load_founder_behavior_profile(
+        session, exclude_opportunity_id=opportunity_id,
+    )
 
     if evaluation is not None:
         contexts = _contexts_for_truth_pack(session, truth_graph, truth_pack_hash, [opp])
@@ -482,6 +617,15 @@ def refresh_opportunity_projection(
         truth_pack_hash=truth_pack_hash,
         filter_settings=filters,
         facet_settings=facets,
+        behavior_profile=behavior_profile,
+        feedback_label=next((
+            signal.feedback_label for signal in _load_founder_behavior_signals(session)
+            if signal.opportunity_id == opportunity_id
+        ), None),
+        action_state=next((
+            signal.action_type for signal in _load_founder_behavior_signals(session)
+            if signal.opportunity_id == opportunity_id
+        ), None),
         projected_at=projected_at,
     )
     upsert_projection(session, record)

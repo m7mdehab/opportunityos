@@ -37,7 +37,11 @@ SELECT
     location_country, location_city, location_region, remote_scope,
     remote_scope_regions, employment_type, qualification_decision, fit_score,
     priority_score, reasons_json, red_line_match, excluded_industry_match,
-    visible, visibility_reason, evaluated_at, projected_at
+    visible, visibility_reason, evaluated_at, projected_at,
+    role_relevance_class, role_relevance_reason, founder_geo_state,
+    founder_geo_reason, application_url, application_route,
+    application_access, application_access_reason, recommendation_state,
+    recommendation_reasons_json, recommendation_priority, learned_affinity
 FROM public.feed_projection;
 
 GRANT SELECT ON public.{c.feed_view} TO authenticated;

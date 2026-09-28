@@ -44,6 +44,10 @@ class FeedProjectionRecord(Base):
     application_route = Column(String(16), nullable=False, default="unknown", server_default="unknown")
     application_access = Column(String(24), nullable=False, default="unknown", server_default="unknown")
     application_access_reason = Column(String(160), nullable=False, default="not classified", server_default="not classified")
+    recommendation_state = Column(String(16), nullable=False, default="review", server_default="review")
+    recommendation_reasons_json = Column(Text, nullable=False, default="[]", server_default="[]")
+    recommendation_priority = Column(Float, nullable=True)
+    learned_affinity = Column(Float, nullable=True)
     work_mode = Column(String(16), nullable=False)
     location_country = Column(String(2), nullable=True)
     location_city = Column(String(128), nullable=True)
@@ -88,6 +92,7 @@ class FeedProjectionRecord(Base):
         Index("ix_feed_projection_title_family", "title_family"),
         Index("ix_feed_projection_work_mode", "work_mode"),
         Index("ix_feed_projection_location_country", "location_country"),
+        Index("ix_feed_projection_recommendation_rank", "truth_pack_hash", "recommendation_state", "recommendation_priority"),
     )
 
 

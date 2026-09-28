@@ -32,7 +32,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
 
         config = Config("alembic.ini")
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_current_head(), "0027_bc1_recommendation")
+        self.assertEqual(script.get_current_head(), "0028_bc2_recommendation")
 
     def test_current_revision_fits_alembic_version_column(self):
         namespace: dict[str, object] = {}
@@ -67,7 +67,17 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         self.assertNotIn("DROP VIEW", downgrade)
         self.assertNotIn("founder_feed_activity", downgrade)
         config = Config("alembic.ini")
-        self.assertEqual(ScriptDirectory.from_config(config).get_current_head(), "0027_bc1_recommendation")
+        self.assertEqual(ScriptDirectory.from_config(config).get_current_head(), "0028_bc2_recommendation")
+
+    def test_bc2_adds_compact_recommendation_state_without_backfill(self):
+        migration = Path(__file__).parent / "migrations" / "versions" / "0028_bc2_recommendation.py"
+        source = migration.read_text(encoding="utf-8")
+        self.assertIn('revision: str = "0028_bc2_recommendation"', source)
+        self.assertIn('down_revision: Union[str, None] = "0027_bc1_recommendation"', source)
+        for field in ("recommendation_state", "recommendation_reasons_json", "recommendation_priority", "learned_affinity"):
+            self.assertIn(field, source)
+        self.assertIn("server_default=\"review\"", source)
+        self.assertNotIn("UPDATE feed_projection", source)
 
     def test_capacity_revision_is_linear_after_activity_view_access(self):
         capacity = Path(__file__).parent / "migrations" / "versions" / "0020_capacity_archive.py"

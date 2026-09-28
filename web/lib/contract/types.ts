@@ -164,6 +164,9 @@ export interface OpportunityListItem extends OpportunityExtractionFields {
   is_stale: boolean
   action_state: ActionState
   feedback_label: FeedbackLabel | null
+  recommendation_state?: "for_you" | "review" | "excluded"
+  recommendation_reasons?: string[]
+  learned_affinity?: number | null
   /** filter_ids in `hide` mode that currently match this item. Always
    * present, `[]` when empty — never `null`. Non-empty only when the item
    * is returned via `include_hidden=true`, since a `hide` match is

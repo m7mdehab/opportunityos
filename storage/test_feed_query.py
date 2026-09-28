@@ -34,6 +34,8 @@ class FeedQueryContractTest(unittest.TestCase):
             family: str | None = "data_engineering",
             source_id: str = "example",
             posted_date: str = "2026-09-17",
+            recommendation_state: str = "for_you",
+            recommendation_priority: float | None = None,
         ) -> None:
             self.session.add(OpportunityRecord(
                 id=opportunity_id,
@@ -72,6 +74,10 @@ class FeedQueryContractTest(unittest.TestCase):
                     qualification_decision=decision,
                     fit_score=fit,
                     priority_score=fit if priority is None else priority,
+                    recommendation_state=recommendation_state,
+                    recommendation_reasons_json="[]",
+                    recommendation_priority=fit if recommendation_priority is None else recommendation_priority,
+                    learned_affinity=50.0,
                     reasons_json="[]",
                     red_line_match=not visible,
                     excluded_industry_match=False,
@@ -83,7 +89,7 @@ class FeedQueryContractTest(unittest.TestCase):
             )
 
         add("opp-1", fit=91.0, priority=91.0)
-        add("opp-2", decision="UNCERTAIN", fit=72.0, priority=72.0)
+        add("opp-2", decision="UNCERTAIN", fit=72.0, priority=72.0, recommendation_priority=91.0)
         add("opp-3", fit=99.0, priority=99.0, visible=False)
         add("opp-4", truth_hash="truth-b", fit=98.0, priority=98.0)
         self.session.commit()
@@ -155,6 +161,38 @@ class FeedQueryContractTest(unittest.TestCase):
         self.assertIn("FROM feed_projection", sql)
         self.assertNotIn("FROM opportunities", sql)
         self.assertNotIn("JOIN opportunities", sql)
+
+    def test_for_you_query_uses_recommendation_state_and_persisted_score_with_id_tie_break(self) -> None:
+        result = feed_page(self.session, FeedQuerySpec(truth_pack_hash="truth-a", sort_by="for_you"))
+        self.assertEqual([row.opportunity_id for row in result.rows], ["opp-1", "opp-2"])
+        self.assertEqual(result.total, 2)
+
+    def test_recommendation_state_filters_before_pagination(self) -> None:
+        now = datetime.now(timezone.utc)
+        self.session.add(OpportunityRecord(
+            id="opp-review", track="employment", title="Role review", organization="Example",
+            description="", source_id="example", source_url="https://example.invalid/review",
+            content_hash="r" * 64, search_tsv="role example",
+        ))
+        self.session.add(FeedProjectionRecord(
+            id="opp-review", opportunity_id="opp-review", opportunity_content_hash="r" * 64,
+            truth_pack_hash="truth-a", projection_version="v1", title="Role review",
+            organization="Example", source_id="example", source_url="https://example.invalid/review",
+            posted_date="2026-09-17", track="employment", opportunity_type="employment",
+            title_family="data_engineering", seniority_level="mid", work_mode="remote",
+            location_country="EG", location_city="Cairo", location_region=None,
+            remote_scope="worldwide", remote_scope_regions=None, employment_type="full_time",
+            qualification_decision="QUALIFIED", fit_score=97.0, priority_score=97.0,
+            recommendation_state="review", recommendation_reasons_json="[]",
+            recommendation_priority=999999.0, learned_affinity=50.0,
+            reasons_json="[]", red_line_match=False, excluded_industry_match=False,
+            visible=True, visibility_reason=None, evaluated_at=now, projected_at=now,
+        ))
+        self.session.commit()
+        result = feed_page(self.session, FeedQuerySpec(
+            truth_pack_hash="truth-a", recommendation_states=("review",),
+        ))
+        self.assertEqual([row.opportunity_id for row in result.rows], ["opp-review"])
 
 
 if __name__ == "__main__":
