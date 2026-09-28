@@ -45,6 +45,12 @@ import type {
 type AuthPhase = "checking" | "authenticated" | "redirecting"
 const PAGE_SIZE = 50
 const UNDO_PROMPT_MS = 10_000
+type FeedView = "for_you" | "saved" | "applied" | "later"
+const FEED_VIEW_ACTIVITY: Partial<Record<FeedView, string>> = {
+  saved: "save",
+  applied: "mark_applied",
+  later: "snooze",
+}
 
 type UndoNotice = { opportunityId: string; eventId: string; label: string }
 
@@ -60,6 +66,7 @@ export default function FeedPage() {
   const [sourceOverview, setSourceOverview] = useState<SourceOverview[]>([])
 
   const [query, setQuery] = useState<FeedQueryState>(EMPTY_FEED_QUERY)
+  const [feedView, setFeedView] = useState<FeedView>("for_you")
   const [queryReady, setQueryReady] = useState(false)
   const [feedMetadata, setFeedMetadata] = useState<FeedFilterMetadataResponse | null>(null)
   const [feedMetadataError, setFeedMetadataError] = useState<string | null>(null)
@@ -133,6 +140,8 @@ export default function FeedPage() {
       const parsed = parseFeedQueryParams(new URLSearchParams(window.location.search))
       setQuery(parsed.filters)
       setPage(parsed.page)
+      const requestedView = new URLSearchParams(window.location.search).get("feed_view")
+      setFeedView(requestedView === "saved" || requestedView === "applied" || requestedView === "later" ? requestedView : "for_you")
       setQueryReady(true)
     }
     restore()
@@ -141,7 +150,7 @@ export default function FeedPage() {
   }, [])
 
   useEffect(() => {
-    if (authPhase !== "authenticated") return
+    if (!feedQueryDrawerOpen || feedMetadata || feedMetadataError) return
     api.feedFilterMetadata.get().then(setFeedMetadata).catch((error: unknown) => {
       setFeedMetadata(null)
       const detail = error instanceof ApiError && error.body && typeof error.body === "object" && "detail" in error.body && typeof error.body.detail === "string"
@@ -149,19 +158,21 @@ export default function FeedPage() {
         : error instanceof Error ? error.message : "Advanced feed metadata is unavailable from this API adapter."
       setFeedMetadataError(detail)
     })
-  }, [authPhase])
+  }, [feedQueryDrawerOpen, feedMetadata, feedMetadataError])
 
   useEffect(() => {
     if (authPhase !== "authenticated" || !queryReady) return
     const timer = window.setTimeout(() => {
       const current = new URLSearchParams(window.location.search)
       const next = updateFeedUrlParams(current, query, page, PAGE_SIZE)
+      if (feedView === "for_you") next.delete("feed_view")
+      else next.set("feed_view", feedView)
       if (next.toString() === current.toString()) return
       const search = next.toString()
       window.history.pushState({ feedQuery: true }, "", `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`)
     }, 250)
     return () => window.clearTimeout(timer)
-  }, [authPhase, page, query, queryReady])
+  }, [authPhase, feedView, page, query, queryReady])
 
   const filters: FeedFilters = {
     track: query.track as FeedFilters["track"],
@@ -194,6 +205,9 @@ export default function FeedPage() {
       .health()
       .then((r) => setSources(r.sources))
       .catch(() => undefined)
+  }, [])
+
+  const refreshSourceOverview = useCallback(() => {
     api.sources
       .overview()
       .then((r) => setSourceOverview(r.sources))
@@ -224,11 +238,12 @@ export default function FeedPage() {
         posted_to: query.postedTo || undefined,
         ...query.multi,
         activity_type: query.multi.activity_type.includes("any")
-          ? undefined
-          : query.multi.activity_type,
+          ? (FEED_VIEW_ACTIVITY[feedView] ? [FEED_VIEW_ACTIVITY[feedView]!] : undefined)
+          : [...new Set([...(FEED_VIEW_ACTIVITY[feedView] ? [FEED_VIEW_ACTIVITY[feedView]!] : []), ...query.multi.activity_type])],
+        recommendation_state: feedView === "for_you" ? ["for_you"] : undefined,
         source_family: query.sourceFamily.length ? query.sourceFamily : undefined,
-        activity: query.multi.activity_type.length ? undefined : "to_review",
-        include_tracked: query.multi.activity_type.length > 0,
+        activity: feedView === "for_you" && query.multi.activity_type.length === 0 ? "to_review" : undefined,
+        include_tracked: feedView !== "for_you" || query.multi.activity_type.length > 0,
         sort_by: query.sortBy,
         q: query.q || undefined,
         page,
@@ -251,7 +266,7 @@ export default function FeedPage() {
         setListError(detail)
       })
       .finally(() => setListLoading(false))
-  }, [query, page, router])
+  }, [query, feedView, page, router])
 
   const refreshFromFirstPage = useCallback(() => {
     if (page === 1) refreshList()
@@ -271,8 +286,12 @@ export default function FeedPage() {
   useEffect(() => {
     if (authPhase !== "authenticated") return
     refreshTruth()
-    refreshSources()
-  }, [authPhase, refreshTruth, refreshSources])
+    refreshSourceOverview()
+  }, [authPhase, refreshTruth, refreshSourceOverview])
+
+  useEffect(() => {
+    if (authPhase === "authenticated" && items?.length === 0 && sources === null) refreshSources()
+  }, [authPhase, items, refreshSources, sources])
 
   useEffect(() => {
     if (authPhase !== "authenticated" || !queryReady) return
@@ -386,6 +405,7 @@ export default function FeedPage() {
     try {
       await api.worker.pollNow()
       refreshSources()
+      refreshSourceOverview()
       refreshFromFirstPage()
       refreshDashboard()
     } finally {
@@ -510,12 +530,21 @@ export default function FeedPage() {
         sources={sources}
         onPollNow={handlePollNow}
         polling={polling}
+        onOpenOperations={refreshSources}
         onOpenHiddenReasons={() => setHiddenReasonsOpen(true)}
         metricPeriod={metricPeriod}
         metricDate={metricDate}
         onMetricPeriodChange={setMetricPeriod}
         onMetricDateChange={(date) => { setMetricDate(date); setMetricPeriod("date") }}
       />
+
+      <nav aria-label="Opportunity lists" className="flex gap-1 overflow-x-auto border-b border-border bg-background px-4 py-2 sm:px-6">
+        {(["for_you", "saved", "applied", "later"] as const).map((view) => (
+          <Button key={view} type="button" size="sm" variant={feedView === view ? "secondary" : "ghost"} aria-current={feedView === view ? "page" : undefined} onClick={() => { setFeedView(view); setPage(1); setSelectedJobs(new Set()); setBatchStatus(null) }}>
+            {view === "for_you" ? "For You" : view[0].toUpperCase() + view.slice(1)}
+          </Button>
+        ))}
+      </nav>
 
       {/* Master's addition #1: the >10% over-hiding warning must be
           visible, not just a tested pure function. See
@@ -561,7 +590,6 @@ export default function FeedPage() {
             onAdvancedTriggerRef={(element) => {
               advancedFeedTriggerRef.current = element
             }}
-            advancedDisabled={!feedMetadata}
             metadata={feedMetadata}
           />
       )}

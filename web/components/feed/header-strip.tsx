@@ -40,6 +40,7 @@ export function HeaderStrip({
   polling,
   pollResult = null,
   onOpenHiddenReasons,
+  onOpenOperations,
   metricPeriod,
   metricDate,
   onMetricPeriodChange,
@@ -56,8 +57,9 @@ export function HeaderStrip({
   onMetricDateChange: (date: string) => void
   /** C4: the HIDDEN number links to the reason -> count audit table. */
   onOpenHiddenReasons: () => void
+  onOpenOperations: () => void
 }) {
-  const today = dashboard?.series[0]
+  const periodMetrics = dashboard?.series[0]
   const health = sourceSummary(sources)
 
   return (
@@ -71,13 +73,13 @@ export function HeaderStrip({
               : metricPeriod === "yesterday"
                 ? "Yesterday"
                 : metricPeriod === "date"
-                  ? `Specific date${today ? ` — ${today.date}` : ""}`
-                  : `Today${today ? ` — ${today.date}` : ""}`}
+                  ? `Specific date${periodMetrics ? ` — ${periodMetrics.date}` : ""}`
+                  : `Today${periodMetrics ? ` — ${periodMetrics.date}` : ""}`}
           </p>
         </div>
 
         <dl
-          aria-label="Today's dashboard numbers"
+          aria-label={`${metricPeriod === "all_time" ? "All time" : metricPeriod === "yesterday" ? "Yesterday" : metricPeriod === "date" ? "Specific date" : "Today"} dashboard numbers`}
           className="flex flex-wrap gap-x-5 gap-y-2"
         >
           {STATS.map(({ key, label }) =>
@@ -93,7 +95,7 @@ export function HeaderStrip({
                     onClick={onOpenHiddenReasons}
                     className="rounded text-base font-semibold tabular-nums underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
                   >
-                    {today ? today[key] : "—"}
+                    {periodMetrics ? periodMetrics[key] : "—"}
                   </button>
                 </dd>
               </div>
@@ -103,7 +105,7 @@ export function HeaderStrip({
                   {label}
                 </dt>
                 <dd data-testid={`stat-${String(key)}`} className="text-base font-semibold tabular-nums">
-                  {today ? today[key] : "—"}
+                  {periodMetrics ? periodMetrics[key] : "—"}
                 </dd>
               </div>
             )
@@ -136,7 +138,9 @@ export function HeaderStrip({
           )}
         </div>
 
-        <div className="flex min-w-0 max-w-full items-center gap-3">
+        <details className="relative flex min-w-0 max-w-full items-center gap-3" onToggle={(event) => { if (event.currentTarget.open) onOpenOperations() }}>
+          <summary className="cursor-pointer rounded-md border border-input px-3 py-2 text-xs">Operations</summary>
+          <div className="absolute right-0 top-full z-30 mt-2 w-[min(96vw,24rem)] rounded-lg border border-border bg-card p-3 shadow-lg">
           <div aria-label="Source health" data-testid="source-health-summary" className="grid grid-cols-5 gap-2 text-center text-[10px] leading-tight">
             {([
               ["healthy", "Healthy", health.healthy],
@@ -176,9 +180,9 @@ export function HeaderStrip({
               </p>
             )}
           </div>
-
-          <ThemeToggle />
-        </div>
+          </div>
+        </details>
+        <ThemeToggle />
       </div>
     </header>
   )

@@ -2,7 +2,7 @@
 
 Date: 2026-09-28  
 Base: `f8b5d0429824f2ff20c242fb9d7c02b6a720bed5`  
-Checkpoint: built locally on `work/bc3-source-discovery`; not yet landed or live.
+Checkpoint: merged to `main` as PR #168; current `main` is `b900a446c4d4006d1c30c0abcf890a57384efd52`.
 
 ## Implemented
 
@@ -39,8 +39,8 @@ Full local unittest discovery ran 1,697 tests and ended with 13 failures, 11 err
 
 The first PostgreSQL-backed FR-007 CI proof run exposed one interaction with existing A5/A6 synthetic Greenhouse rows: both used reliability-only titles that the canonical admission rule intentionally rejects. The proof is about worker source isolation and idempotent persistence, so its synthetic successful rows were changed to canonical data-engineering titles; poll, content-change, and stable-ID assertions remain intact. This is a test-fixture alignment, not a change to production role-admission semantics. The corrected PostgreSQL proof must pass on a rerun before merge.
 
-These are focused local checks, not PR CI, deployment, or authenticated live-product evidence. The BC-3 checkpoint remains subject to review and CI before merge.
+The required PR CI passed on the final PR head (`2399c3274ba78c59ae3d7a1b3f772f7e1763f047`): Mandatory Governance & Test Suite (run `36371008213`), FR-007 Reliability Proof Harness (`36371008155`), OCI Container Runtime Smoke (`36371008093`), State (`36371008092`), Guard (`36371008125`), and Mirror (`36371008137`). PR #168 was merged; no source activation, source write canary, or backfill was performed. The changed worker/source behavior is on `main`; this is not a claim that new sources are activated in the live hosted worker.
 
 ## Next
 
-Finish the bounded branch review, push/open the BC-3 PR, obtain required checks, merge and verify deployment. Continue to BC-4 only after BC-3 lands; keep historical replay acceptance for the designated BC-5 gate.
+BC-4 Founder Surface Reset is implemented on PR #169 (`work/bc4-founder-surface`) and is awaiting required checks. Keep historical replay acceptance for the designated BC-5 gate, and do not activate sources or backfill before that gate.

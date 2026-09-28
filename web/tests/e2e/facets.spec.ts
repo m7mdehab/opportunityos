@@ -19,6 +19,12 @@ async function login(page: Page) {
   await expect(page.getByRole("heading", { name: "OpportunityOS" })).toBeVisible()
 }
 
+async function openDiagnosticsAction(page: Page, testId: string) {
+  const diagnostics = page.locator("details").filter({ hasText: "Diagnostics & tools" })
+  if (!(await page.getByTestId(testId).isVisible())) await diagnostics.locator("summary").click()
+  await page.getByTestId(testId).click()
+}
+
 interface FetchResult {
   ok: boolean
   status: number
@@ -95,7 +101,7 @@ test.describe("C1 facets panel", () => {
       page.waitForResponse(
         (res) => res.request().method() === "GET" && res.url().includes("/api/facets")
       ),
-      page.getByTestId("open-facets-panel").click(),
+      openDiagnosticsAction(page, "open-facets-panel"),
     ])
     expect(drawerFacetsResponse.ok(), await drawerFacetsResponse.text()).toBe(true)
     const panel = page.getByRole("dialog")
@@ -139,7 +145,7 @@ test.describe("C1 facets panel", () => {
   test("the language facet renders as permanently unavailable", async ({ page }) => {
     await login(page)
     await expect(page.getByTestId("opportunity-count")).toBeVisible()
-    await page.getByTestId("open-facets-panel").click()
+    await openDiagnosticsAction(page, "open-facets-panel")
     const panel = page.getByRole("dialog")
     await expect(panel).toBeVisible()
 
@@ -161,7 +167,7 @@ test.describe("C1 saved views", () => {
 
     const viewName = `E2E view ${Date.now()}`
 
-    await page.getByTestId("open-facets-panel").click()
+    await openDiagnosticsAction(page, "open-facets-panel")
     const panel = page.getByRole("dialog")
     await expect(panel).toBeVisible()
 
@@ -219,7 +225,7 @@ test.describe("C1 saved views", () => {
     expect(survived?.name).toBe(viewName)
     expect(survived?.is_default).toBe(true)
 
-    await page.getByTestId("open-facets-panel").click()
+    await openDiagnosticsAction(page, "open-facets-panel")
     const reopened = page.getByRole("dialog")
     await expect(reopened).toBeVisible()
     const rowAfterReopen = reopened.getByTestId(`saved-view-${created.id}`)
@@ -262,7 +268,7 @@ test.describe("C4 hidden-reasons audit", () => {
     const scoredCount = summaries.items.filter((o) => o.fit_score !== null).length
     expect(scoredCount, "no scored opportunity in this seed").toBeGreaterThan(0)
 
-    await page.getByRole("button", { name: "Filters" }).click()
+    await openDiagnosticsAction(page, "open-founder-filters")
     const filtersDrawer = page.getByRole("dialog")
     await expect(filtersDrawer).toBeVisible()
     const minFitRow = filtersDrawer.getByTestId("filter-row-min_fit_score")
@@ -330,7 +336,7 @@ test.describe("C4 hidden-reasons audit", () => {
     // triggers `onFiltersChanged` -> `refreshDashboard`, which a raw
     // `pageFetch` write would not, and a `page.reload()` would reset the
     // mock's session).
-    await page.getByRole("button", { name: "Filters" }).click()
+    await openDiagnosticsAction(page, "open-founder-filters")
     const filtersDrawer = page.getByRole("dialog")
     await expect(filtersDrawer).toBeVisible()
     const minFitRow = filtersDrawer.getByTestId("filter-row-min_fit_score")

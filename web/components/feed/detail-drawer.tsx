@@ -156,16 +156,6 @@ export function DetailDrawer({
                 {detail.organization} · {detail.source_id}
               </DialogDescription>
               <div className="flex flex-wrap items-center gap-2 pt-1">
-                <DecisionBadge decision={detail.qualification.decision} />
-                <span className="text-xs text-muted-foreground">{detail.track}</span>
-                {detail.scoring.fit_score !== null && (
-                  <span
-                    data-testid="detail-fit-score"
-                    className="text-sm font-semibold tabular-nums"
-                  >
-                    Fit {Math.round(detail.scoring.fit_score)}
-                  </span>
-                )}
                 <span className="text-xs text-muted-foreground">
                   {detail.work_mode} ·{" "}
                   {detail.location_city ?? detail.location_country ?? "Location unknown"}
@@ -292,6 +282,14 @@ export function DetailDrawer({
               </main>
 
               <aside className="min-w-0 space-y-6">
+                <details data-testid="detail-diagnostics" className="rounded-lg border border-border p-3">
+                  <summary className="cursor-pointer text-sm font-semibold">Diagnostics and match detail</summary>
+                  <div className="mt-4 space-y-6">
+                <div className="flex flex-wrap items-center gap-2">
+                  <DecisionBadge decision={detail.qualification.decision} />
+                  <span className="text-xs text-muted-foreground">{detail.track}</span>
+                </div>
+                {detail.scoring.fit_score !== null && <p data-testid="detail-fit-score" className="text-xs text-muted-foreground">Canonical fit score: {Math.round(detail.scoring.fit_score)}</p>}
                 <section aria-labelledby="qualification-heading">
                   <h3 id="qualification-heading" className="text-sm font-semibold">
                     Qualification checklist
@@ -472,6 +470,15 @@ export function DetailDrawer({
                 </section>
 
                 <Separator />
+
+                  </div>
+                </details>
+
+                <section aria-label="Application route" className="rounded-md border border-border p-3 text-xs">
+                  <p className="font-medium">Application access</p>
+                  <p className="mt-1 text-muted-foreground">{detail.application_access.replaceAll("_", " ")} · {detail.application_access_reason}</p>
+                  <p className="mt-1 text-muted-foreground">Geography: {detail.founder_geo_state.replaceAll("_", " ")} · {detail.founder_geo_reason}</p>
+                </section>
 
                 <section aria-labelledby="feedback-heading">
                   <h3 id="feedback-heading" className="text-sm font-semibold">

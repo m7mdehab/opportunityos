@@ -45,6 +45,12 @@ async function login(page: Page) {
   await expect(page.getByRole("heading", { name: "OpportunityOS" })).toBeVisible()
 }
 
+async function openFounderRules(page: Page) {
+  const diagnostics = page.getByRole("search", { name: "Filter opportunities" }).locator("details").filter({ hasText: "Diagnostics & tools" })
+  if (!(await page.getByTestId("open-founder-filters").isVisible())) await diagnostics.locator(":scope > summary").click()
+  await page.getByTestId("open-founder-filters").click()
+}
+
 async function opportunityCount(page: Page): Promise<number> {
   // Zero visible opportunities is a real, valid state (page.tsx renders an
   // empty-state card instead of the "N opportunities" paragraph then) —
@@ -228,7 +234,7 @@ test.describe("D3 founder-controlled filters", () => {
         (res) => res.request().method() === "GET" && res.url().includes("/api/filters"),
         { timeout: 15_000 }
       ),
-      page.getByRole("button", { name: "Filters" }).click(),
+      openFounderRules(page),
     ])
     expect(
       drawerFiltersResponse.ok(),
@@ -386,7 +392,7 @@ test.describe("D3 founder-controlled filters", () => {
         (res) => res.request().method() === "GET" && res.url().includes("/api/filters"),
         { timeout: 15_000 }
       ),
-      page.getByRole("button", { name: "Filters" }).click(),
+      openFounderRules(page),
     ])
     expect(drawerFiltersResponse.ok(), await drawerFiltersResponse.text()).toBe(true)
     const drawer = page.getByRole("dialog")
@@ -432,7 +438,7 @@ test.describe("D3 founder-controlled filters", () => {
         (res) => res.request().method() === "GET" && res.url().includes("/api/filters"),
         { timeout: 15_000 }
       ),
-      page.getByRole("button", { name: "Filters" }).click(),
+      openFounderRules(page),
     ])
     expect(drawerFiltersResponse.ok(), await drawerFiltersResponse.text()).toBe(true)
     const drawer = page.getByRole("dialog")

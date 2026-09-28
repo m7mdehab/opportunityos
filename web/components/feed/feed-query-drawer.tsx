@@ -228,7 +228,7 @@ export function FeedQueryDrawer({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl" data-testid="feed-query-drawer">
         <SheetHeader>
-          <SheetTitle>Advanced feed filters</SheetTitle>
+          <SheetTitle>More filters</SheetTitle>
           <SheetDescription>Filter the opportunity feed. Counts describe visible opportunities and do not change with your current selections; tracked and ineligible opportunities are included.</SheetDescription>
         </SheetHeader>
         <div className="space-y-4 overflow-y-auto px-4 pb-3">

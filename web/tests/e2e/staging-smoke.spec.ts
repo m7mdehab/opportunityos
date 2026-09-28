@@ -99,6 +99,7 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await expect(page.getByRole("heading", { name: "OpportunityOS" })).toBeVisible();
 
     // 4b. FR-008 live review controls are present and genuinely multi-select.
+    await page.getByTestId("more-filters-dropdown").locator(":scope > summary").click();
     const trackFacet = page.getByTestId("filter-facet-track");
     await expect(trackFacet).toBeVisible();
     await trackFacet.locator("summary").click();
