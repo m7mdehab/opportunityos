@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-28T04:09:59Z
-- **State generated at commit:** `244ab9e` — fix(bc): allow discovery mode without explicit IDs
+- **State generated at commit:** `a20cc31` — test(bc): make hosted feed acceptance wait for live controls
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
