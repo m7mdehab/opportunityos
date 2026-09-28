@@ -244,7 +244,7 @@ export default function FeedPage() {
         source_family: query.sourceFamily.length ? query.sourceFamily : undefined,
         activity: feedView === "for_you" && query.multi.activity_type.length === 0 ? "to_review" : undefined,
         include_tracked: feedView !== "for_you" || query.multi.activity_type.length > 0,
-        sort_by: query.sortBy,
+        sort_by: feedView === "for_you" && query.sortBy === "recommended" ? "for_you" : query.sortBy,
         q: query.q || undefined,
         page,
         page_size: PAGE_SIZE,
