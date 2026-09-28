@@ -32,7 +32,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
 
         config = Config("alembic.ini")
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_current_head(), "0031_source_overview_fastpath")
+        self.assertEqual(script.get_current_head(), "0032_source_catalog_fastpath")
 
     def test_current_revision_fits_alembic_version_column(self):
         namespace: dict[str, object] = {}
@@ -42,6 +42,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
             "0029_fr008_feed_activity_fast_path.py",
             "0030_dashboard_all_time_aggregate.py",
             "0031_source_overview_fast_path.py",
+            "0032_source_catalog_fast_path.py",
         ):
             migration = migrations / filename
             namespace = {}
@@ -83,7 +84,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         self.assertNotIn("DROP VIEW", downgrade)
         self.assertNotIn("founder_feed_activity", downgrade)
         config = Config("alembic.ini")
-        self.assertEqual(ScriptDirectory.from_config(config).get_current_head(), "0031_source_overview_fastpath")
+        self.assertEqual(ScriptDirectory.from_config(config).get_current_head(), "0032_source_catalog_fastpath")
 
     def test_source_overview_uses_selective_source_id_scans(self):
         migration = Path(__file__).parent / "migrations" / "versions" / "0031_source_overview_fast_path.py"
@@ -97,6 +98,18 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         self.assertIn("o.is_stale IS FALSE AND fp.visible IS FALSE", source)
         upgrade = source.split("def upgrade()", 1)[1].split("def downgrade()", 1)[0]
         self.assertNotIn("JOIN public.founder_feed", upgrade)
+
+    def test_source_catalog_avoids_the_counts_and_opportunities_path(self):
+        migration = Path(__file__).parent / "migrations" / "versions" / "0032_source_catalog_fast_path.py"
+        source = migration.read_text(encoding="utf-8")
+        self.assertIn('revision: str = "0032_source_catalog_fastpath"', source)
+        self.assertIn('down_revision: Union[str, None] = "0031_source_overview_fastpath"', source)
+        self.assertIn("WITH (security_invoker = true)", source)
+        self.assertIn("FROM public.source_schedules s", source)
+        self.assertIn("('reddit')", source)
+        self.assertNotIn("feed_projection", source)
+        self.assertNotIn("opportunities", source)
+        self.assertIn("GRANT SELECT ON public.founder_source_catalog TO authenticated", source)
         self.assertIn("('reddit')", source)
 
     def test_bc2_adds_compact_recommendation_state_without_backfill(self):

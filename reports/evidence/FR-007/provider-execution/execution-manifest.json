@@ -23,12 +23,12 @@
     },
     {
       "evidence": "migration.after_revision",
-      "expected": "Alembic revision 0031_source_overview_fastpath",
+      "expected": "Alembic revision 0032_source_catalog_fastpath",
       "failure": "stop; do not continue to verification or storage bootstrap",
       "id": "migration",
       "input": "migration-manifest.json",
       "kind": "APPLY_MIGRATION",
-      "operation": "execute migrations/01_*.sql through migrations/31_*.sql in order on an empty target, or run Alembic upgrade head after a full restore"
+      "operation": "execute migrations/01_*.sql through migrations/32_*.sql in order on an empty target, or run Alembic upgrade head after a full restore"
     },
     {
       "evidence": "rls.provider_security",

@@ -39,6 +39,15 @@ class FounderSurfaceW23ContractTests(unittest.TestCase):
         upgrade = source.split("def upgrade()", 1)[1].split("def downgrade()", 1)[0]
         self.assertNotIn("JOIN public.founder_feed", upgrade)
 
+    def test_source_filter_endpoint_uses_light_catalog(self):
+        route = (ROOT / "web/app/api/[...path]/route.ts").read_text(encoding="utf-8")
+        types = (ROOT / "web/lib/contract/types.ts").read_text(encoding="utf-8")
+        self.assertIn("founder_source_catalog?select=*&order=source_family.asc,source_id.asc", route)
+        self.assertIn('source_catalog;dur=${elapsed.toFixed(2)}', route)
+        self.assertIn("opportunity_count: null", route)
+        self.assertIn("opportunity_count: number | null", types)
+        self.assertIn("hidden_count: number | null", types)
+
     def test_hosted_route_has_visible_and_hidden_feed_contract(self):
         source = (ROOT / "web/app/api/[...path]/route.ts").read_text(encoding="utf-8")
         self.assertIn('query.searchParams.set("is_stale", "eq.false")', source)
