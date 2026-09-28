@@ -32,13 +32,16 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
 
         config = Config("alembic.ini")
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_current_head(), "0028_bc2_recommendation")
+        self.assertEqual(script.get_current_head(), "0029_fr008_query_fast_paths")
 
     def test_current_revision_fits_alembic_version_column(self):
         namespace: dict[str, object] = {}
-        migration = Path(__file__).parent / "migrations" / "versions" / "0027_bc1_recommendation_foundation.py"
-        exec(compile(migration.read_text(encoding="utf-8"), str(migration), "exec"), namespace)
-        self.assertLessEqual(len(namespace["revision"]), 32)
+        migrations = Path(__file__).parent / "migrations" / "versions"
+        for filename in ("0027_bc1_recommendation_foundation.py", "0029_fr008_feed_activity_fast_path.py"):
+            migration = migrations / filename
+            namespace = {}
+            exec(compile(migration.read_text(encoding="utf-8"), str(migration), "exec"), namespace)
+            self.assertLessEqual(len(namespace["revision"]), 32)
 
     def test_founder_claim_compatibility_migration_accepts_postgrest_json_claims(self):
         migration = Path(__file__).parent / "migrations" / "versions" / "0024_founder_jwt_claim_compat.py"
@@ -67,7 +70,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         self.assertNotIn("DROP VIEW", downgrade)
         self.assertNotIn("founder_feed_activity", downgrade)
         config = Config("alembic.ini")
-        self.assertEqual(ScriptDirectory.from_config(config).get_current_head(), "0028_bc2_recommendation")
+        self.assertEqual(ScriptDirectory.from_config(config).get_current_head(), "0029_fr008_query_fast_paths")
 
     def test_bc2_adds_compact_recommendation_state_without_backfill(self):
         migration = Path(__file__).parent / "migrations" / "versions" / "0028_bc2_recommendation.py"
@@ -110,6 +113,35 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         self.assertLess(activity_down.index("f.projected_at"), activity_down.index("f.is_stale"))
         self.assertLess(activity_down.index("f.source_family"), activity_down.index("a.action_state"))
         self.assertLess(fr008_down.index("f.source_family"), fr008_down.index("f.action_state"))
+
+    def test_fr008_feed_fast_path_hydrates_activity_without_full_opportunity_state_scan(self):
+        migration = Path(__file__).parent / "migrations" / "versions" / "0029_fr008_feed_activity_fast_path.py"
+        source = migration.read_text(encoding="utf-8")
+        self.assertIn('revision: str = "0029_fr008_query_fast_paths"', source)
+        self.assertIn('down_revision: Union[str, None] = "0028_bc2_recommendation"', source)
+        fast_view = source.split("_FOUNDER_FEED_FR008_FAST = r\"\"\"", 1)[1].split("\"\"\"", 1)[0]
+        self.assertIn("FROM public.founder_feed f", fast_view)
+        self.assertIn("LEFT JOIN latest_event", fast_view)
+        self.assertIn("LEFT JOIN latest_feedback", fast_view)
+        self.assertIn("LEFT JOIN feedback_counts", fast_view)
+        self.assertIn("LEFT JOIN legacy_applied", fast_view)
+        self.assertNotIn("founder_activity_state", fast_view)
+        self.assertNotIn("FROM public.opportunities", fast_view)
+        self.assertIn("WHERE public.opos_is_founder()", fast_view)
+        self.assertIn("f.recommendation_state", source)
+        self.assertIn("f.application_access", source)
+        dashboard = source.split("_FOUNDER_DASHBOARD_DAILY_FAST = r\"\"\"", 1)[1].split("\"\"\"", 1)[0]
+        self.assertIn("p_days < 0 OR p_days > 3650", dashboard)
+        self.assertIn("p_days = 0", dashboard)
+        self.assertIn("evaluations AS (", dashboard)
+        self.assertIn("count(*) FILTER (WHERE e.fit_score >= p_high_fit_threshold)", dashboard)
+        self.assertIn("GROUP BY 1", dashboard)
+        self.assertNotIn("SELECT count(*)::integer FROM opportunities o WHERE o.created_at >= c.day", dashboard)
+        self.assertIn("p_days IS NULL OR p_days < 0", dashboard)
+        self.assertIn("p_days = 0", dashboard)
+        self.assertIn("FROM founder_feed f CROSS JOIN first_day b", dashboard)
+        self.assertIn("count(DISTINCT f.opportunity_id)", dashboard)
+        self.assertIn("GRANT EXECUTE ON FUNCTION public.founder_dashboard_daily", source)
 
     def test_capacity_revision_is_linear_after_activity_view_access(self):
         capacity = Path(__file__).parent / "migrations" / "versions" / "0020_capacity_archive.py"
