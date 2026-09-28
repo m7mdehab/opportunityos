@@ -38,6 +38,24 @@ class RecommendationFoundationTests(unittest.TestCase):
             ).classification,
             "non_target",
         )
+        # The AI/ML token can describe a consumer product rather than the
+        # discipline of the role. These live titles must not enter For You.
+        for title in (
+            "Product Manager - AI Neobank App",
+            "Product Lead - AI Neobank App",
+            "Mobile Application Developer - AI Neobank App",
+        ):
+            with self.subTest(title=title):
+                self.assertEqual(classify_role_relevance(title).classification, "non_target")
+        # These stored live rows had stale adjacent labels from an older pass.
+        for title in (
+            "Data Center Engineer",
+            "Global Safety & Security Manager",
+            "Business Developer",
+            "Senior Network Engineer",
+        ):
+            with self.subTest(title=title):
+                self.assertEqual(classify_role_relevance(title).classification, "non_target")
         self.assertEqual(classify_role_relevance("Risk Analyst", "Our company builds AI tools").classification, "non_target")
         self.assertEqual(classify_role_relevance("Associate Demo Engineer", "About Us: AI analytics platform").classification, "non_target")
         self.assertEqual(
