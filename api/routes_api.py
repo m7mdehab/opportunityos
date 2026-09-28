@@ -1332,6 +1332,8 @@ def list_opportunities(
         mark_timing("feedback_lookup", phase_started)
 
         phase_started = perf_counter()
+        filter_recompute_ms = 0.0
+        ranking_payload_ms = 0.0
         for proj in feed.rows:
             opp = by_id.get(proj.opportunity_id)
             if opp is None:
@@ -1339,12 +1341,17 @@ def list_opportunities(
             ctx = ctx_by_id.get(opp.id)
             flagged_by = []
             if ctx is not None:
+                recompute_started = perf_counter()
                 outcome = apply_filters(ctx, filter_settings)
+                filter_recompute_ms += max(0.0, (perf_counter() - recompute_started) * 1000)
                 flagged_by = outcome.flagged_by
 
             hidden_by = json.loads(proj.visibility_reason) if proj.visibility_reason else []
             reasons = unpack_reasons(proj.reasons_json)
             top_reasons = top_reasons_from_list(reasons)
+            ranking_started = perf_counter()
+            ranking_payload = _recommended_ranking_payload(proj, ctx, opp)
+            ranking_payload_ms += max(0.0, (perf_counter() - ranking_started) * 1000)
             row = {
                 "id": opp.id,
                 "title": opp.title,
@@ -1365,11 +1372,13 @@ def list_opportunities(
                 "learned_affinity": proj.learned_affinity,
                 "hidden_by": hidden_by,
                 "flagged_by": flagged_by,
-                "ranking": _recommended_ranking_payload(proj, ctx, opp),
+                "ranking": ranking_payload,
             }
             row.update(serialize_opportunity_extraction_fields(opp, family_sizes.get(opp.family_key)))
             page_items.append(row)
-        mark_timing("ranking_serialization", phase_started)
+        mark_timing("page_payload_build", phase_started)
+        timings_ms["filter_recomputation"] = filter_recompute_ms
+        timings_ms["ranking_payload"] = ranking_payload_ms
 
     response_payload = {
         "page": feed.page,

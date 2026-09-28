@@ -2660,6 +2660,9 @@ class FilterSettingsRouteTest(ApiTestCase):
         # until another valid PUT was issued by hand.
         feed_resp = self.client.get("/api/opportunities")
         self.assertEqual(feed_resp.status_code, 200, feed_resp.text)
+        server_timing = feed_resp.headers.get("Server-Timing", "")
+        for metric in ("filter_recomputation", "ranking_payload", "page_payload_build"):
+            self.assertIn(metric, server_timing)
         filters_resp = self.client.get("/api/filters")
         self.assertEqual(filters_resp.status_code, 200, filters_resp.text)
 
