@@ -49,7 +49,7 @@ class SupabaseBundlePostgresProof(unittest.TestCase):
                     cur.execute(path.read_text(encoding="utf-8"))
                 cur.execute((root / "provider-security.sql").read_text(encoding="utf-8"))
                 cur.execute("SELECT version_num FROM alembic_version")
-                self.assertEqual(cur.fetchone()[0], "0032_source_catalog_fastpath")
+                self.assertEqual(cur.fetchone()[0], "0033_hosted_feed_family_key")
                 cur.execute("SELECT relrowsecurity FROM pg_class WHERE oid=to_regclass('public.alembic_version')")
                 self.assertTrue(cur.fetchone()[0])
                 for role in ("anon", "authenticated"):
@@ -141,6 +141,22 @@ class SupabaseBundlePostgresProof(unittest.TestCase):
                              WHERE oid='public.founder_source_catalog'::regclass)
                 """)
                 self.assertEqual(cur.fetchone(), (True, False, True))
+                cur.execute("""
+                    SELECT has_table_privilege('authenticated',
+                             'public.founder_feed_fr008_diversity', 'SELECT'),
+                           has_table_privilege('anon',
+                             'public.founder_feed_fr008_diversity', 'SELECT'),
+                           (SELECT reloptions @> ARRAY['security_invoker=true']
+                              FROM pg_class
+                             WHERE oid='public.founder_feed_fr008_diversity'::regclass),
+                           EXISTS (
+                             SELECT 1 FROM information_schema.columns
+                              WHERE table_schema='public'
+                                AND table_name='founder_feed_fr008_diversity'
+                                AND column_name='family_key'
+                           )
+                """)
+                self.assertEqual(cur.fetchone(), (True, False, True, True))
                 cur.execute("SELECT count(*) FROM public.founder_feed WHERE visible IS TRUE AND is_stale IS FALSE")
                 self.assertEqual(cur.fetchone()[0], 2)
                 cur.execute("GRANT SELECT ON founder_sessions TO anon, authenticated")

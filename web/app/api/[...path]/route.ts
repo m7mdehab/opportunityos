@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { composeForYouRows } from "@/lib/feed/compose-for-you";
 
 // Hop-by-hop headers that should not be forwarded
 const FORBIDDEN_HEADERS = new Set([
@@ -90,7 +91,7 @@ function hostedFeedRow(row: Record<string, unknown>) {
     recommendation_state: row.recommendation_state ?? "review",
     recommendation_reasons: asStringArray(parseJson(row.recommendation_reasons_json)),
     learned_affinity: row.learned_affinity ?? null,
-    family_key: null, family_size: null,
+    family_key: row.family_key ?? null, family_size: null,
     source_family: row.source_family ?? String(row.source_id ?? "").split(":")[0], reverified_at: row.reverified_at ?? null,
   };
 }
@@ -416,15 +417,19 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
     const page = Math.max(1, Number(url.searchParams.get("page") ?? "1") || 1);
     const pageSize = Math.min(200, Math.max(1, Number(url.searchParams.get("page_size") ?? "25") || 25));
     const includeHidden = url.searchParams.get("include_hidden") === "true";
+    const sortBy = url.searchParams.get("sort_by") ?? "recommended";
+    const selectedRecommendationStates = url.searchParams.getAll("recommendation_state").filter(Boolean);
+    const composeForYou = sortBy === "for_you" && !includeHidden &&
+      (selectedRecommendationStates.length === 0 || selectedRecommendationStates.every((state) => state === "for_you"));
 
     const buildFeedQuery = (visibility?: "visible" | "hidden") => {
-      const query = new URL(`${config.origin}/rest/v1/founder_feed_fr008`);
+      const view = composeForYou && visibility === "visible" ? "founder_feed_fr008_diversity" : "founder_feed_fr008";
+      const query = new URL(`${config.origin}/rest/v1/${view}`);
       query.searchParams.set("select", "*");
       query.searchParams.set("is_stale", "eq.false");
       if (visibility === "visible") query.searchParams.set("visible", "eq.true");
       if (visibility === "hidden") query.searchParams.set("visible", "eq.false");
 
-      const sortBy = url.searchParams.get("sort_by") ?? "recommended";
       const sortOrders: Record<string, string> = {
         recommended: "priority_score.desc.nullslast,fit_score.desc.nullslast,projected_at.desc,opportunity_id.asc",
         fit_desc: "fit_score.desc.nullslast,priority_score.desc.nullslast,opportunity_id.asc",
@@ -499,8 +504,9 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
     };
 
     const q = buildFeedQuery(includeHidden ? undefined : "visible");
-    q.searchParams.set("offset", String((page - 1) * pageSize));
-    q.searchParams.set("limit", String(pageSize));
+    q.searchParams.set("offset", composeForYou ? "0" : String((page - 1) * pageSize));
+    const compositionBatchSize = 1000;
+    q.searchParams.set("limit", String(composeForYou ? compositionBatchSize : pageSize));
     const hiddenQuery = buildFeedQuery("hidden");
     hiddenQuery.searchParams.set("select", "opportunity_id");
     hiddenQuery.searchParams.set("limit", "1");
@@ -508,25 +514,62 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
     const visibleStarted = performance.now();
     const hiddenStarted = performance.now();
     const [visibleResult, hiddenResult] = await Promise.all([
-      hostedFetch(config, `${q.pathname}${q.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } }).then((response) => ({ response, elapsed: performance.now() - visibleStarted })),
+      hostedFetch(config, `${q.pathname}${q.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } }).then((response) => ({ response })),
       hostedFetch(config, `${hiddenQuery.pathname}${hiddenQuery.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } }).then((response) => ({ response, elapsed: performance.now() - hiddenStarted })),
     ]);
-    const { response: visibleResponse, elapsed: visibleElapsed } = visibleResult;
+    const { response: visibleResponse } = visibleResult;
     const { response: hiddenResponse, elapsed: hiddenElapsed } = hiddenResult;
     const rows = await visibleResponse.json().catch(() => []);
     if (!visibleResponse.ok) return NextResponse.json(rows, { status: visibleResponse.status });
     const range = visibleResponse.headers.get("content-range") ?? "*/0";
-    const total = Number(range.split("/")[1] ?? "0") || 0;
+    const rawTotal = Number(range.split("/")[1] ?? "0") || 0;
+    const candidates: Record<string, unknown>[] = Array.isArray(rows) ? [...rows] : [];
+    let visibleElapsed = 0;
+    if (composeForYou && rawTotal > candidates.length) {
+      for (let offset = candidates.length; offset < rawTotal; offset += compositionBatchSize * 4) {
+        const offsets = Array.from(
+          { length: Math.min(4, Math.ceil((rawTotal - offset) / compositionBatchSize)) },
+          (_, index) => offset + index * compositionBatchSize,
+        );
+        const batchResults = await Promise.all(offsets.map(async (batchOffset) => {
+          const batchQuery = new URL(q);
+          batchQuery.searchParams.set("offset", String(batchOffset));
+          const started = performance.now();
+          const response = await hostedFetch(config, `${batchQuery.pathname}${batchQuery.search}`, {
+            headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" },
+          });
+          const elapsed = performance.now() - started;
+          const batchRows = await response.json().catch(() => []);
+          return { response, elapsed, rows: batchRows };
+        }));
+        const failedBatch = batchResults.find((batch) => !batch.response.ok);
+        if (failedBatch) return NextResponse.json(failedBatch.rows, { status: failedBatch.response.status });
+        for (const batch of batchResults) {
+          if (Array.isArray(batch.rows)) candidates.push(...batch.rows as Record<string, unknown>[]);
+        }
+      }
+    }
+    visibleElapsed = performance.now() - visibleStarted;
     const hiddenRange = hiddenResponse.headers.get("content-range") ?? "*/0";
     const hiddenCount = Number(hiddenRange.split("/")[1] ?? "0") || 0;
+    const compositionStarted = performance.now();
+    const composedRows = composeForYou
+      ? composeForYouRows(candidates, candidates.length)
+      : candidates;
+    const compositionElapsed = composeForYou ? performance.now() - compositionStarted : 0;
+    const total = composeForYou ? composedRows.length : rawTotal;
+    const pageRows = composeForYou
+      ? composedRows.slice((page - 1) * pageSize, page * pageSize)
+      : composedRows;
     const response = NextResponse.json({
       page,
       page_size: pageSize,
       total,
       hidden_count: hiddenCount,
-      items: Array.isArray(rows) ? rows.map(hostedFeedRow) : [],
+      items: pageRows.map(hostedFeedRow),
     });
-    response.headers.set("Server-Timing", `feed_query;dur=${visibleElapsed.toFixed(2)}, hidden_count;dur=${hiddenElapsed.toFixed(2)}`);
+    const compositionTiming = composeForYou ? `, feed_composition;dur=${compositionElapsed.toFixed(2)}` : "";
+    response.headers.set("Server-Timing", `feed_query;dur=${visibleElapsed.toFixed(2)}, hidden_count;dur=${hiddenElapsed.toFixed(2)}${compositionTiming}`);
     return response;
   }
   if (subpath.startsWith("opportunities/") && path.length === 3 && path[2] === "actions" && method === "POST") {

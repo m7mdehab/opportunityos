@@ -38,8 +38,9 @@ class SupabaseExecutionBundleTests(unittest.TestCase):
             "0027_bc1_recommendation", "0028_bc2_recommendation",
             "0029_fr008_query_fast_paths", "0030_dashboard_alltime",
             "0031_source_overview_fastpath", "0032_source_catalog_fastpath",
+            "0033_hosted_feed_family_key",
         ])
-        self.assertEqual(chain[-1]["revision"], "0032_source_catalog_fastpath")
+        self.assertEqual(chain[-1]["revision"], "0033_hosted_feed_family_key")
         self.assertEqual(len({item["revision"] for item in chain}), len(chain))
 
     def test_generation_is_deterministic_and_hashes_match(self):
@@ -51,7 +52,7 @@ class SupabaseExecutionBundleTests(unittest.TestCase):
                 if path.is_file():
                     other = Path(right) / path.relative_to(left)
                     self.assertEqual(path.read_bytes(), other.read_bytes(), path.name)
-            self.assertEqual(bundle.verify_manifest(Path(left))["expected_final_revision"], "0032_source_catalog_fastpath")
+            self.assertEqual(bundle.verify_manifest(Path(left))["expected_final_revision"], "0033_hosted_feed_family_key")
             manifest = json.loads((Path(left) / "migration-manifest.json").read_text(encoding="utf-8"))
             policy_alignment = next(item for item in manifest["migrations"] if item["revision"] == "0012_hosted_policy_alignment")
             self.assertTrue(policy_alignment["effects"]["touches_rls"])
