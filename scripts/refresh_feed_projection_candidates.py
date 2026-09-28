@@ -73,9 +73,9 @@ def discover_current_candidates(session, *, truth_pack_hash: str, limit: int = M
     return tuple(item[2] for item in selected[:limit])
 
 
-def main(argv: list[str] | None = None) -> int:
+def _parse_args(argv: list[str] | None = None) -> tuple[argparse.Namespace, tuple[str, ...]]:
     parser = argparse.ArgumentParser(
-        description="Reclassify and refresh up to 100 explicitly selected visible feed candidates"
+        description="Reclassify and refresh up to 100 bounded visible feed candidates"
     )
     selection = parser.add_mutually_exclusive_group(required=True)
     selection.add_argument("--opportunity-id", action="append")
@@ -91,12 +91,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     ids = tuple(dict.fromkeys(value.strip() for value in (args.opportunity_id or ()) if value.strip()))
-    if not ids:
+    if not args.discover_current_candidates and not ids:
         parser.error("at least one non-empty --opportunity-id is required")
     if args.candidate_limit < 1 or args.candidate_limit > MAX_CANDIDATES:
         parser.error(f"--candidate-limit must be between 1 and {MAX_CANDIDATES}")
     if ids and len(ids) > MAX_CANDIDATES:
         parser.error(f"at most {MAX_CANDIDATES} candidate IDs may be refreshed per run")
+    return args, ids
+
+
+def main(argv: list[str] | None = None) -> int:
+    args, ids = _parse_args(argv)
 
     try:
         loaded = load_founder_pack(args.truth_pack)

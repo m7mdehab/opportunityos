@@ -4,7 +4,19 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from scripts.refresh_feed_projection_candidates import discover_current_candidates
+from scripts.refresh_feed_projection_candidates import _parse_args, discover_current_candidates
+
+
+class RefreshCandidateArgsTests(TestCase):
+    def test_discovery_mode_does_not_require_explicit_ids(self):
+        args, ids = _parse_args(["--discover-current-candidates", "--candidate-limit", "50"])
+        self.assertTrue(args.discover_current_candidates)
+        self.assertEqual(ids, ())
+
+    def test_explicit_mode_keeps_bounded_candidate_ids(self):
+        args, ids = _parse_args(["--opportunity-id", "job-1"])
+        self.assertFalse(args.discover_current_candidates)
+        self.assertEqual(ids, ("job-1",))
 
 
 class DiscoverCurrentCandidatesTests(TestCase):
