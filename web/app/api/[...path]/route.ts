@@ -559,7 +559,28 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
   }
   if (subpath === "worker/poll-now" && method === "POST") { const response = await hostedFetch(config, "/rest/v1/rpc/enqueue_poll_now", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: await request.text() || "{}" }); const payload = await response.json().catch(() => null); if (!response.ok) return NextResponse.json(payload, { status: response.status }); const object = payload && typeof payload === "object" && !Array.isArray(payload) ? payload as Record<string, unknown> : {}; const enqueued = Array.isArray(object.enqueued) ? object.enqueued.filter((item: unknown) => item && typeof item === "object" && "source_id" in item && "job_id" in item) : []; const skipped = Array.isArray(object.skipped) ? object.skipped.filter((item: unknown) => item && typeof item === "object" && "source_id" in item && "reason" in item) : []; return NextResponse.json({ enqueued, skipped }); }
   if (subpath === "sources/health" && method === "GET") { const response = await hostedFetch(config, "/rest/v1/founder_source_health?select=*&order=source_id.asc", { headers: { Authorization: `Bearer ${token}` } }); const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status }); return NextResponse.json({ sources: Array.isArray(rows) ? rows.map((row: Record<string, unknown>) => ({ source_id: row.source_id, name: row.source_id, category: "", read_policy: "allowed", last_poll: row.last_poll_finished_at ?? null, last_status: row.last_poll_status ?? row.last_status ?? null, last_record_count: row.last_raw_ingested ?? null })) : [] }); }
-  if (subpath === "sources/overview" && method === "GET") { const response = await hostedFetch(config, "/rest/v1/founder_source_overview?select=*&order=source_family.asc,source_id.asc", { headers: { Authorization: `Bearer ${token}` } }); const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status }); return NextResponse.json({ sources: Array.isArray(rows) ? rows.map((row: Record<string, unknown>) => ({ source_family: row.source_family, source_id: row.source_id ?? null, opportunity_count: Number(row.opportunity_count ?? 0), hidden_count: Number(row.hidden_count ?? 0), last_success_at: row.last_success_at ?? null, last_status: row.last_status ?? null, manual_only: Boolean(row.manual_only) })) : [] }); }
+  if (subpath === "sources/overview" && method === "GET") {
+    const started = performance.now();
+    const response = await hostedFetch(config, "/rest/v1/founder_source_catalog?select=*&order=source_family.asc,source_id.asc", { headers: { Authorization: `Bearer ${token}` } });
+    const rows = await response.json().catch(() => []);
+    const elapsed = performance.now() - started;
+    if (!response.ok) {
+      const failed = NextResponse.json(rows, { status: response.status });
+      failed.headers.set("Server-Timing", `source_catalog;dur=${elapsed.toFixed(2)}`);
+      return failed;
+    }
+    const result = NextResponse.json({ sources: Array.isArray(rows) ? rows.map((row: Record<string, unknown>) => ({
+      source_family: row.source_family,
+      source_id: row.source_id ?? null,
+      opportunity_count: null,
+      hidden_count: null,
+      last_success_at: row.last_success_at ?? null,
+      last_status: row.last_status ?? null,
+      manual_only: Boolean(row.manual_only),
+    })) : [] });
+    result.headers.set("Server-Timing", `source_catalog;dur=${elapsed.toFixed(2)}`);
+    return result;
+  }
   if (subpath.startsWith("opportunities/") && path.length === 2 && method === "GET") { const id = encodeURIComponent(path[1]); const response = await hostedFetch(config, `/rest/v1/founder_opportunity_detail?id=eq.${id}&select=*`, { headers: { Authorization: `Bearer ${token}` } }); const rows = await response.json().catch(() => []); if (!response.ok) return NextResponse.json(rows, { status: response.status }); if (!Array.isArray(rows) || !rows.length) return hostedError("opportunity not found", 404); const activityResponse = await hostedFetch(config, "/rest/v1/rpc/founder_activity_detail", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ p_opportunity_id: path[1] }) }); const activityPayload = await activityResponse.json().catch(() => ({})); return NextResponse.json(hostedDetail(rows[0] as Record<string, unknown>, activityPayload as Record<string, unknown>)); }
   if (["filters", "facets", "saved-views"].includes(subpath) && method === "GET") {
     const view = subpath === "filters" ? "founder_filters" : subpath === "facets" ? "founder_facet_settings_view" : "founder_saved_view_records";

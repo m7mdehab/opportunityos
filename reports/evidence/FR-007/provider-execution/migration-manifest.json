@@ -1,6 +1,6 @@
 {
   "database_engine": "PostgreSQL 17",
-  "expected_final_revision": "0031_source_overview_fastpath",
+  "expected_final_revision": "0032_source_catalog_fastpath",
   "format": 1,
   "migrations": [
     {
@@ -530,6 +530,20 @@
       "order": 31,
       "revision": "0031_source_overview_fastpath",
       "sha256": "906d7f19631f0ea21e7364eb550ce67048e232136a79c176962f87caefed3009"
+    },
+    {
+      "down_revision": "0031_source_overview_fastpath",
+      "effects": {
+        "indexes": [],
+        "tables_or_columns": [],
+        "touches_auth": false,
+        "touches_rls": false,
+        "touches_storage_metadata": false
+      },
+      "filename": "migrations/32_0032_source_catalog_fastpath.sql",
+      "order": 32,
+      "revision": "0032_source_catalog_fastpath",
+      "sha256": "426395c2388612cb4251c7126bed52d66efca8118b7ae7797f160dd33393a2c0"
     }
   ],
   "project_ref": "sunjfepvdzfknglrjwhm",
@@ -538,7 +552,7 @@
   "secret_policy": "runtime injection only; no credentials or private payloads",
   "verification_files": {
     "evidence-template.json": "bea9bfc5b69ee39257db693335d332107f91f501928a746980d80fcbe2d44689",
-    "execution-manifest.json": "9da1b80a85f3f80dd8331fa8904fbc79c4651a804718a80adde6a858dcd369ee",
+    "execution-manifest.json": "25ca2f97e0b9f5a5fd41b39a0a2b9a61d772986962fa2e5adae454488a609fd6",
     "provider-security.sql": "0244074765ed81c04dadc755ea71ec7ff5c16b89b6e671bfc7db712970a72470",
     "storage-rollback.sql": "2e94435c07c4a997450726b823635c545a0f6298d6bcd3af74db0034627719e4",
     "storage.sql": "ce7247edb08f4284dfb2ceb9c71404d4d197b8bdf104834d413cae77f5298ece",

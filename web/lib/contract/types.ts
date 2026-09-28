@@ -677,8 +677,8 @@ export interface SourcesHealthResponse {
 export interface SourceOverview {
   source_family: string
   source_id: string | null
-  opportunity_count: number
-  hidden_count: number
+  opportunity_count: number | null
+  hidden_count: number | null
   last_success_at: string | null
   last_status: string | null
   manual_only: boolean

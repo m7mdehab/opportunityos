@@ -49,7 +49,7 @@ class SupabaseBundlePostgresProof(unittest.TestCase):
                     cur.execute(path.read_text(encoding="utf-8"))
                 cur.execute((root / "provider-security.sql").read_text(encoding="utf-8"))
                 cur.execute("SELECT version_num FROM alembic_version")
-                self.assertEqual(cur.fetchone()[0], "0031_source_overview_fastpath")
+                self.assertEqual(cur.fetchone()[0], "0032_source_catalog_fastpath")
                 cur.execute("SELECT relrowsecurity FROM pg_class WHERE oid=to_regclass('public.alembic_version')")
                 self.assertTrue(cur.fetchone()[0])
                 for role in ("anon", "authenticated"):
@@ -119,6 +119,28 @@ class SupabaseBundlePostgresProof(unittest.TestCase):
                 self.assertIn(('greenhouse', 'greenhouse:two', 1, False), overview)
                 self.assertIn(('lever', 'lever:empty', 0, False), overview)
                 self.assertIn(('reddit', None, 0, True), overview)
+                cur.execute("""
+                    SELECT source_family, source_id, manual_only
+                      FROM public.founder_source_catalog
+                     WHERE source_id IN ('greenhouse:one','greenhouse:two','lever:empty')
+                        OR source_family='reddit'
+                     ORDER BY source_family, source_id NULLS FIRST
+                """)
+                catalog = cur.fetchall()
+                self.assertIn(('greenhouse', 'greenhouse:one', False), catalog)
+                self.assertIn(('greenhouse', 'greenhouse:two', False), catalog)
+                self.assertIn(('lever', 'lever:empty', False), catalog)
+                self.assertIn(('reddit', None, True), catalog)
+                cur.execute("""
+                    SELECT has_table_privilege('authenticated',
+                             'public.founder_source_catalog', 'SELECT'),
+                           has_table_privilege('anon',
+                             'public.founder_source_catalog', 'SELECT'),
+                           (SELECT reloptions @> ARRAY['security_invoker=true']
+                              FROM pg_class
+                             WHERE oid='public.founder_source_catalog'::regclass)
+                """)
+                self.assertEqual(cur.fetchone(), (True, False, True))
                 cur.execute("SELECT count(*) FROM public.founder_feed WHERE visible IS TRUE AND is_stale IS FALSE")
                 self.assertEqual(cur.fetchone()[0], 2)
                 cur.execute("GRANT SELECT ON founder_sessions TO anon, authenticated")
