@@ -62,6 +62,11 @@ from opportunity.models import CompensationInterval, FieldProvenance, Opportunit
 from opportunity.pipeline import IngestionBatch
 from storage.repository import StorageRepository
 from matching.models import QualificationDecision
+from matching.recommendation_foundation import (
+    classify_application_access,
+    classify_founder_geography,
+    classify_role_relevance,
+)
 from matching.scorer import OpportunityScorer
 from truth.graph import TruthGraph
 
@@ -153,6 +158,24 @@ def _build_opp_data(opp: Opportunity, *, is_stale: bool) -> Dict[str, Any]:
     if comp is not None and comp.interval != CompensationInterval.UNSPECIFIED:
         compensation_period = comp.interval.value
 
+    # Persist the existing canonical title taxonomy and adapter-extracted
+    # seniority. These are query/display scalars already represented by the
+    # schema; previously the persistence seam left them null/unspecified even
+    # though FR-008's normalizers had generated the values.
+    role_relevance = classify_role_relevance(opp.title, opp.description)
+    title_family = role_relevance.title_family
+    title_level = role_relevance.title_level
+    application_url = opp.canonical_outbound_url.strip() or opp.source_url.strip()
+    application_access = classify_application_access(opp.source, opp.source_url, application_url)
+    founder_geo_state, founder_geo_reason = classify_founder_geography(
+        description=opp.description,
+        location_country=opp.location_country,
+        location_region=opp.location_region,
+        work_mode=opp.work_mode.value,
+        remote_scope=opp.remote_scope.value,
+        remote_scope_regions=opp.remote_scope_regions,
+    )
+
     return {
         "id": opp.id,
         "track": opp.track.value,
@@ -181,6 +204,19 @@ def _build_opp_data(opp: Opportunity, *, is_stale: bool) -> Dict[str, Any]:
         "compensation_max": int(round(comp.max_amount)) if comp is not None and comp.max_amount is not None else None,
         "compensation_currency": comp.currency if comp is not None else None,
         "compensation_period": compensation_period,
+        "seniority_level": (
+            title_level if opp.seniority.value == "unspecified" else opp.seniority.value
+        ),
+        "title_family": title_family,
+        "title_level": title_level,
+        "role_relevance_class": role_relevance.classification,
+        "role_relevance_reason": role_relevance.reason,
+        "founder_geo_state": founder_geo_state,
+        "founder_geo_reason": founder_geo_reason,
+        "application_url": application_access.application_url or None,
+        "application_route": application_access.route,
+        "application_access": application_access.access,
+        "application_access_reason": application_access.reason,
         # A2 (BRIEF-FR-006) clustering: deterministic, pure function of
         # organization + title (see opportunity.clustering.family_key). This
         # is the only field this deliverable's allowed edit to

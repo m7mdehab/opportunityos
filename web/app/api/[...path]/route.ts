@@ -78,7 +78,16 @@ function hostedFeedRow(row: Record<string, unknown>) {
     location_region: row.location_region ?? null, remote_scope: row.remote_scope ?? "unspecified", remote_scope_regions: [],
     employment_type: row.employment_type ?? "unspecified", seniority_level: row.seniority_level ?? "unspecified",
     compensation_min: null, compensation_max: null, compensation_currency: null, compensation_period: null,
-    title_family: row.title_family ?? null, title_level: null, family_key: null, family_size: null,
+    title_family: row.title_family ?? null, title_level: null,
+    role_relevance_class: row.role_relevance_class ?? "unknown",
+    role_relevance_reason: row.role_relevance_reason ?? "not classified",
+    founder_geo_state: row.founder_geo_state ?? "review",
+    founder_geo_reason: row.founder_geo_reason ?? "not classified",
+    application_url: row.application_url ?? null,
+    application_route: row.application_route ?? "unknown",
+    application_access: row.application_access ?? "unknown",
+    application_access_reason: row.application_access_reason ?? "not classified",
+    family_key: null, family_size: null,
     source_family: row.source_family ?? String(row.source_id ?? "").split(":")[0], reverified_at: row.reverified_at ?? null,
   };
 }
