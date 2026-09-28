@@ -87,6 +87,9 @@ function hostedFeedRow(row: Record<string, unknown>) {
     application_route: row.application_route ?? "unknown",
     application_access: row.application_access ?? "unknown",
     application_access_reason: row.application_access_reason ?? "not classified",
+    recommendation_state: row.recommendation_state ?? "review",
+    recommendation_reasons: asStringArray(parseJson(row.recommendation_reasons_json)),
+    learned_affinity: row.learned_affinity ?? null,
     family_key: null, family_size: null,
     source_family: row.source_family ?? String(row.source_id ?? "").split(":")[0], reverified_at: row.reverified_at ?? null,
   };
@@ -429,8 +432,12 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
         newest_posted: "posted_date.desc.nullslast,priority_score.desc.nullslast,opportunity_id.asc",
         oldest_posted: "posted_date.asc.nullslast,priority_score.desc.nullslast,opportunity_id.asc",
         remote_first: "remote_rank.asc,priority_score.desc.nullslast,fit_score.desc.nullslast,opportunity_id.asc",
+        for_you: "recommendation_priority.desc.nullslast,opportunity_id.asc",
       };
       query.searchParams.set("order", sortOrders[sortBy] ?? sortOrders.recommended);
+      if (sortBy === "for_you" && visibility !== "hidden" && !url.searchParams.getAll("recommendation_state").length) {
+        query.searchParams.set("recommendation_state", "eq.for_you");
+      }
 
       const repeated: Array<[string, string]> = [
         ["track", "track"],
@@ -445,6 +452,7 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
         ["source_id", "source_id"],
         ["source_family", "source_family"],
         ["feedback_label", "feedback_label"],
+        ["recommendation_state", "recommendation_state"],
       ];
       for (const [param, column] of repeated) {
         const values = url.searchParams.getAll(param).filter(Boolean);

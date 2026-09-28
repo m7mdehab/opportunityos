@@ -1151,8 +1151,9 @@ def list_opportunities(
     posted_from: date | None = None,
     posted_to: date | None = None,
     sort_by: Literal[
-        "recommended", "fit_desc", "fit_asc", "newest_posted", "oldest_posted", "remote_first"
+        "recommended", "fit_desc", "fit_asc", "newest_posted", "oldest_posted", "remote_first", "for_you"
     ] = "recommended",
+    recommendation_state: list[str] | None = Query(default=None),
     q: str | None = None,
     include_hidden: bool = False,
     include_tracked: bool = False,
@@ -1266,6 +1267,7 @@ def list_opportunities(
         posted_from=posted_from,
         posted_to=posted_to,
         sort_by=sort_by,
+        recommendation_states=tuple(recommendation_state or ()),
         q=q,
         include_hidden=include_hidden,
         include_tracked=resolved_include_tracked,
@@ -1332,6 +1334,9 @@ def list_opportunities(
                 "is_stale": bool(opp.is_stale),
                 "action_state": action_states.get(opp.id),
                 "feedback_label": feedback_labels.get(opp.id),
+                "recommendation_state": proj.recommendation_state,
+                "recommendation_reasons": json.loads(proj.recommendation_reasons_json or "[]"),
+                "learned_affinity": proj.learned_affinity,
                 "hidden_by": hidden_by,
                 "flagged_by": flagged_by,
                 "ranking": _recommended_ranking_payload(proj, ctx, opp),

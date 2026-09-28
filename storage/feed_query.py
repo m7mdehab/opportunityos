@@ -25,6 +25,7 @@ FEED_SORTS = frozenset({
     "newest_posted",
     "oldest_posted",
     "remote_first",
+    "for_you",
 })
 
 
@@ -73,6 +74,7 @@ class FeedQuerySpec:
     posted_from: date | str | None = None
     posted_to: date | str | None = None
     sort_by: str = "recommended"
+    recommendation_states: tuple[str, ...] = ()
 
     @property
     def normalized_page(self) -> int:
@@ -169,6 +171,14 @@ def build_feed_query(session: Session, spec: FeedQuerySpec) -> Query:
 
     if not spec.include_hidden:
         query = query.filter(FeedProjectionRecord.visible.is_(True))
+
+    if spec.recommendation_states:
+        query = _apply_multi_select(
+            query, FeedProjectionRecord.recommendation_state,
+            spec.recommendation_states, case_insensitive=False,
+        )
+    elif spec.sort_by == "for_you":
+        query = query.filter(FeedProjectionRecord.recommendation_state == "for_you")
 
     tracks = spec.track_values or ((spec.track,) if spec.track else ())
     query = _apply_multi_select(
@@ -331,6 +341,8 @@ def ordered_feed_query(query: Query, sort_by: str = "recommended") -> Query:
             case((func.lower(FeedProjectionRecord.work_mode) == "remote", 0), else_=1).asc(),
             FeedProjectionRecord.priority_score.desc().nullslast(),
         )
+    elif sort_by == "for_you":
+        ordering = (FeedProjectionRecord.recommendation_priority.desc().nullslast(),)
     else:
         ordering = (FeedProjectionRecord.priority_score.desc().nullslast(),)
     return query.order_by(*ordering, FeedProjectionRecord.id.asc())

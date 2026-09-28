@@ -83,6 +83,12 @@ class EvaluateAndStoreTest(unittest.TestCase):
 
         rows = self.session.query(MatchEvaluationRecord).all()
         self.assertEqual(len(rows), 1)
+        projection = self.session.query(FeedProjectionRecord).filter_by(opportunity_id="opp-insert-1").one()
+        # New opportunities without BC-1 role/geo/application evidence are
+        # safely routed to Review instead of entering For You by numeric fit.
+        self.assertEqual(projection.recommendation_state, "review")
+        self.assertIsNotNone(projection.recommendation_priority)
+        self.assertIn("role_relevance_unknown", projection.recommendation_reasons_json)
 
         dims = json.loads(rows[0].dimension_scores_json)
         self.assertIsInstance(dims, list)

@@ -32,7 +32,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
 
         config = Config("alembic.ini")
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_current_head(), "0027_bc1_recommendation")
+        self.assertEqual(script.get_current_head(), "0028_bc2_recommendation")
 
     def test_current_revision_fits_alembic_version_column(self):
         namespace: dict[str, object] = {}
@@ -67,7 +67,49 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         self.assertNotIn("DROP VIEW", downgrade)
         self.assertNotIn("founder_feed_activity", downgrade)
         config = Config("alembic.ini")
-        self.assertEqual(ScriptDirectory.from_config(config).get_current_head(), "0027_bc1_recommendation")
+        self.assertEqual(ScriptDirectory.from_config(config).get_current_head(), "0028_bc2_recommendation")
+
+    def test_bc2_adds_compact_recommendation_state_without_backfill(self):
+        migration = Path(__file__).parent / "migrations" / "versions" / "0028_bc2_recommendation.py"
+        source = migration.read_text(encoding="utf-8")
+        self.assertIn('revision: str = "0028_bc2_recommendation"', source)
+        self.assertIn('down_revision: Union[str, None] = "0027_bc1_recommendation"', source)
+        for field in ("recommendation_state", "recommendation_reasons_json", "recommendation_priority", "learned_affinity"):
+            self.assertIn(field, source)
+        self.assertIn("server_default=\"review\"", source)
+        self.assertNotIn("UPDATE feed_projection", source)
+        self.assertIn("op.execute(_FOUNDER_FEED_ACTIVITY)", source.split("def downgrade()", 1)[0])
+        self.assertIn("op.execute(_FOUNDER_FEED_FR008)", source.split("def downgrade()", 1)[0])
+        self.assertIn("f.recommendation_state", source)
+        self.assertIn("f.recommendation_priority", source)
+        self.assertEqual(source.count("rolname='authenticated'"), 2)
+
+    def test_bc2_appends_columns_after_existing_compatibility_view_shapes(self):
+        migration = Path(__file__).parent / "migrations" / "versions" / "0028_bc2_recommendation.py"
+        source = migration.read_text(encoding="utf-8")
+        activity = source.split("_FOUNDER_FEED_ACTIVITY = \"\"\"", 1)[1].split("\"\"\"", 1)[0]
+        fr008 = source.split("_FOUNDER_FEED_FR008 = \"\"\"", 1)[1].split("\"\"\"", 1)[0]
+
+        self.assertLess(activity.index("f.projected_at"), activity.index("f.is_stale"))
+        self.assertLess(activity.index("f.source_family"), activity.index("a.action_state"))
+        self.assertLess(activity.index("a.has_activity"), activity.index("f.role_relevance_class"))
+        self.assertLess(activity.index("f.application_access_reason"), activity.index("f.recommendation_state"))
+
+        self.assertLess(fr008.index("f.projected_at"), fr008.index("f.is_stale"))
+        self.assertLess(fr008.index("f.source_family"), fr008.index("f.action_state"))
+        self.assertLess(fr008.index("f.has_activity"), fr008.index("AS remote_rank"))
+        self.assertLess(fr008.index("AS remote_rank"), fr008.index("f.role_relevance_class"))
+        self.assertLess(fr008.index("f.application_access_reason"), fr008.index("f.recommendation_state"))
+
+        # Downgrade restores the physical pre-BC2 dependency-view shape; it
+        # must not expand stale f.* columns when the base view is recreated.
+        activity_down = source.split("_FOUNDER_FEED_ACTIVITY_BC1 = \"\"\"", 1)[1].split("\"\"\"", 1)[0]
+        fr008_down = source.split("_FOUNDER_FEED_FR008_BC1 = \"\"\"", 1)[1].split("\"\"\"", 1)[0]
+        self.assertNotIn("SELECT f.*", activity_down)
+        self.assertNotIn("SELECT f.*", fr008_down)
+        self.assertLess(activity_down.index("f.projected_at"), activity_down.index("f.is_stale"))
+        self.assertLess(activity_down.index("f.source_family"), activity_down.index("a.action_state"))
+        self.assertLess(fr008_down.index("f.source_family"), fr008_down.index("f.action_state"))
 
     def test_capacity_revision_is_linear_after_activity_view_access(self):
         capacity = Path(__file__).parent / "migrations" / "versions" / "0020_capacity_archive.py"

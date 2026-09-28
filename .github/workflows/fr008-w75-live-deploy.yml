@@ -30,7 +30,7 @@ jobs:
           set -euo pipefail
           alembic upgrade head
           test "$(alembic heads | grep -c ' (head)')" = 1
-          test "$(alembic current | grep -c '0027_bc1_recommendation')" = 1
+          test "$(alembic current | grep -c '0028_bc2_recommendation')" = 1
 
   deploy-live-founder:
     needs: migrate-live-founder
