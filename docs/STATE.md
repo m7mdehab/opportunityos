@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-09-28T02:40:38Z
-- **State generated at commit:** `57d09f4` — test: align reliability fixtures with role admission
+- **Generated:** 2026-09-28T03:35:21Z
+- **State generated at commit:** `4a839a6` — feat: reset founder feed surface for BC-4
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
