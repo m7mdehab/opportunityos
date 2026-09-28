@@ -89,11 +89,13 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         activity = source.split("_FOUNDER_FEED_ACTIVITY = \"\"\"", 1)[1].split("\"\"\"", 1)[0]
         fr008 = source.split("_FOUNDER_FEED_FR008 = \"\"\"", 1)[1].split("\"\"\"", 1)[0]
 
-        self.assertLess(activity.index("f.projected_at"), activity.index("a.action_state"))
+        self.assertLess(activity.index("f.projected_at"), activity.index("f.is_stale"))
+        self.assertLess(activity.index("f.source_family"), activity.index("a.action_state"))
         self.assertLess(activity.index("a.has_activity"), activity.index("f.role_relevance_class"))
         self.assertLess(activity.index("f.application_access_reason"), activity.index("f.recommendation_state"))
 
-        self.assertLess(fr008.index("f.projected_at"), fr008.index("f.action_state"))
+        self.assertLess(fr008.index("f.projected_at"), fr008.index("f.is_stale"))
+        self.assertLess(fr008.index("f.source_family"), fr008.index("f.action_state"))
         self.assertLess(fr008.index("f.has_activity"), fr008.index("AS remote_rank"))
         self.assertLess(fr008.index("AS remote_rank"), fr008.index("f.role_relevance_class"))
         self.assertLess(fr008.index("f.application_access_reason"), fr008.index("f.recommendation_state"))
@@ -104,6 +106,9 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         fr008_down = source.split("_FOUNDER_FEED_FR008_BC1 = \"\"\"", 1)[1].split("\"\"\"", 1)[0]
         self.assertNotIn("SELECT f.*", activity_down)
         self.assertNotIn("SELECT f.*", fr008_down)
+        self.assertLess(activity_down.index("f.projected_at"), activity_down.index("f.is_stale"))
+        self.assertLess(activity_down.index("f.source_family"), activity_down.index("a.action_state"))
+        self.assertLess(fr008_down.index("f.source_family"), fr008_down.index("f.action_state"))
 
     def test_capacity_revision_is_linear_after_activity_view_access(self):
         capacity = Path(__file__).parent / "migrations" / "versions" / "0020_capacity_archive.py"
