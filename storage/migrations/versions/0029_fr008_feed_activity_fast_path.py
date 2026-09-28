@@ -261,13 +261,9 @@ $$
 
 def upgrade() -> None:
     op.execute(_FOUNDER_FEED_FR008_FAST)
-    op.execute("GRANT SELECT ON public.founder_feed_fr008 TO authenticated")
     op.execute(_FOUNDER_DASHBOARD_DAILY_FAST)
-    op.execute("GRANT EXECUTE ON FUNCTION public.founder_dashboard_daily(integer, double precision) TO authenticated")
 
 
 def downgrade() -> None:
     op.execute(_FOUNDER_DASHBOARD_DAILY_PREVIOUS)
-    op.execute("GRANT EXECUTE ON FUNCTION public.founder_dashboard_daily(integer, double precision) TO authenticated")
     op.execute(_FOUNDER_FEED_FR008_PREVIOUS)
-    op.execute("GRANT SELECT ON public.founder_feed_fr008 TO authenticated")

@@ -141,7 +141,6 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         self.assertIn("p_days = 0", dashboard)
         self.assertIn("FROM founder_feed f CROSS JOIN first_day b", dashboard)
         self.assertIn("count(DISTINCT f.opportunity_id)", dashboard)
-        self.assertIn("GRANT EXECUTE ON FUNCTION public.founder_dashboard_daily", source)
 
     def test_capacity_revision_is_linear_after_activity_view_access(self):
         capacity = Path(__file__).parent / "migrations" / "versions" / "0020_capacity_archive.py"
