@@ -15,7 +15,17 @@ test.describe("FR-008 live review controls", () => {
   test("primary and advanced filters are checkbox multi-selects", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await login(page)
-    await page.getByTestId("more-filters-dropdown").locator(":scope > summary").click()
+    const moreFilters = page.getByTestId("more-filters-dropdown")
+    const moreFiltersSummary = moreFilters.locator(":scope > summary")
+    await moreFiltersSummary.click()
+    const viewport = page.viewportSize()
+    if (viewport && viewport.width <= 640) {
+      const summaryBox = await moreFiltersSummary.boundingBox()
+      const panelBox = await moreFilters.locator(":scope > div").boundingBox()
+      expect(summaryBox).not.toBeNull()
+      expect(panelBox).not.toBeNull()
+      expect(panelBox!.y).toBeGreaterThanOrEqual(summaryBox!.y + summaryBox!.height - 1)
+    }
 
     const track = page.getByTestId("filter-facet-track")
     await track.locator("summary").click()
