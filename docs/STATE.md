@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-09-28T21:36:42Z
-- **State generated at commit:** `1c3eba2` — docs: record BC deploy assertion blocker
+- **Generated:** 2026-09-28T21:52:13Z
+- **State generated at commit:** `613dfdf` — docs: record hosted smoke remediation checkpoint
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
