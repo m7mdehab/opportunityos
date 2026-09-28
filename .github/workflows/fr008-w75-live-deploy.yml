@@ -32,8 +32,35 @@ jobs:
           test "$(alembic heads | grep -c ' (head)')" = 1
           test "$(alembic current | grep -c '0028_bc2_recommendation')" = 1
 
-  deploy-live-founder:
+  refresh-bounded-feed-candidates:
     needs: migrate-live-founder
+    environment: fr007-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install repository database tooling
+        run: python -m pip install -e .
+      - name: Read-only bounded candidate dry run
+        env:
+          OPPORTUNITYOS_DB_URL: ${{ secrets.CLOUD_DATABASE_URL }}
+          OPPORTUNITYOS_ENVIRONMENT: cloud
+          OPPORTUNITYOS_TRUTH_PACK_PATH: founder/truth_pack.yaml.gz.b64
+        run: python scripts/refresh_feed_projection_candidates.py --discover-current-candidates --candidate-limit 50
+      - name: Refresh bounded actionable candidates
+        env:
+          OPPORTUNITYOS_DB_URL: ${{ secrets.CLOUD_DATABASE_URL }}
+          OPPORTUNITYOS_ENVIRONMENT: cloud
+          OPPORTUNITYOS_TRUTH_PACK_PATH: founder/truth_pack.yaml.gz.b64
+        run: python scripts/refresh_feed_projection_candidates.py --discover-current-candidates --candidate-limit 50 --execute
+
+  deploy-live-founder:
+    needs: [migrate-live-founder, refresh-bounded-feed-candidates]
     uses: ./.github/workflows/fr007-cloudflare-staging-deploy.yml
     with:
       mode: DEPLOY_STAGING
