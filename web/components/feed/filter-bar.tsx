@@ -220,11 +220,11 @@ export function FilterBar({
         <Input id="filter-search" type="search" placeholder="Title or organization" className="h-9" value={filters.q} onChange={(event) => onChange({ ...filters, q: event.target.value })} />
       </div>
 
-      <details data-testid="more-filters-dropdown" className="relative min-w-0">
+      <details data-testid="more-filters-dropdown" className="relative z-40 min-w-0">
         <summary className={`${selectClasses} flex h-10 cursor-pointer list-none items-center justify-between gap-2`}>
           More filters{selectedFilterCount > 0 ? ` (${selectedFilterCount})` : ""}
         </summary>
-        <div className="absolute left-0 z-30 mt-2 grid max-h-[75vh] w-[min(94vw,34rem)] grid-cols-1 gap-2 overflow-auto rounded-lg border border-border bg-card p-3 shadow-lg sm:grid-cols-2">
+        <div className="absolute left-0 z-50 mt-2 grid max-h-[75vh] w-[min(94vw,34rem)] grid-cols-1 gap-2 overflow-auto rounded-lg border border-border bg-card p-3 shadow-lg sm:grid-cols-2">
       <div className="flex min-w-0 max-w-full flex-col gap-1">
         <Label htmlFor="filter-track">Track</Label>
         <ChecklistFacet

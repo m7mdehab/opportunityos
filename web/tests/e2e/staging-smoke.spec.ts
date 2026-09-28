@@ -166,29 +166,14 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await page.getByRole("button", { name: "Clear selection" }).click();
     await expect(batchToolbar).toHaveCount(0);
 
-    // 4d. Prove one hosted Save round-trip and immediately Undo it so the
-    // founder-visible review state is restored after the smoke.
+    // This hosted site uses real Founder history. Verify the Save affordance
+    // without writing a Save/Undo event pair; action transitions run in the
+    // disposable PostgreSQL/browser suites instead.
     const quickSave = page.locator('[data-testid^="quick-save-"]').first();
     await expect.poll(() => page.locator('[data-testid^="quick-save-"]').count(), { timeout: 15_000 }).toBeGreaterThan(0);
     await expect(quickSave).toBeVisible();
-    const [liveSaveResponse] = await Promise.all([
-      page.waitForResponse((response) =>
-        response.request().method() === "POST" &&
-        response.url().includes("/actions")
-      ),
-      quickSave.click(),
-    ]);
-    expect(liveSaveResponse.status(), await liveSaveResponse.text()).toBe(200);
-    await expect(page.getByTestId("tracker-undo-notice")).toBeVisible();
-    const [undoResponse] = await Promise.all([
-      page.waitForResponse((response) =>
-        response.request().method() === "POST" &&
-        response.url().includes("/restore")
-      ),
-      page.getByTestId("undo-tracker-action").click(),
-    ]);
-    expect(undoResponse.status(), await undoResponse.text()).toBe(200);
-    await expect(page.getByTestId("tracker-undo-notice")).toHaveCount(0);
+    await expect(quickSave).toBeEnabled();
+    console.log("FR008_HOSTED_SAVE_MUTATION_SKIP reason=no_isolated_founder_fixture");
 
     // 5. Feed endpoint returns exact contract
     const firstPage = await pageJson<{
@@ -295,54 +280,19 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await expect(metricPeriod).toHaveValue("today");
 
     const reviewableSaveButtons = page.locator('[data-testid^="quick-save-"]');
-    const batchIds: string[] = [];
     if (await reviewableSaveButtons.count() >= 2) {
-      for (let index = 0; index < 2; index += 1) {
-        const testId = await reviewableSaveButtons.nth(index).getAttribute("data-testid");
-        expect(testId).toMatch(/^quick-save-.+/);
-        const opportunityId = testId!.slice("quick-save-".length);
-        batchIds.push(opportunityId);
-        const card = page.getByTestId(`opportunity-card-${opportunityId}`);
-        const listItem = card.locator("xpath=..");
-        await listItem.getByRole("checkbox").check();
-      }
+      const selectionBoxes = page.locator('input[type="checkbox"][aria-label^="Select "]');
+      await selectionBoxes.nth(0).check();
+      await selectionBoxes.nth(1).check();
       const batchToolbar = page.getByTestId("batch-action-toolbar");
       await expect(batchToolbar).toBeVisible();
       await expect(page.getByText("2 selected", { exact: true })).toBeVisible();
-      await batchToolbar.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(page.getByTestId("batch-action-status")).toContainText("2 jobs updated successfully.");
-
-      // Restore both jobs through the same hosted mutation boundary so smoke is
-      // state-neutral and never leaves test activity as Founder review input.
-      for (const opportunityId of batchIds) {
-        const actionDetail = await pageJson<{
-          action_history: Array<{ action_id: string; action_type: string }>;
-        }>(
-          page,
-          `/api/opportunities/${encodeURIComponent(opportunityId)}?batch_restore=${Date.now()}`,
-          { cache: "no-store" }
-        );
-        expect(actionDetail.ok, `batch detail returned ${actionDetail.status}`).toBe(true);
-        const saveEvent = actionDetail.body.action_history.find((event) => event.action_type === "save");
-        expect(saveEvent?.action_id, "Batch Save must create a reversible hosted activity event").toBeTruthy();
-        const restored = await pageJson<{ tracker_state: string }>(
-          page,
-          `/api/opportunities/${encodeURIComponent(opportunityId)}/restore`,
-          {
-            method: "POST",
-            body: {
-              event_id: saveEvent!.action_id,
-              idempotency_key: `staging-batch-restore-${opportunityId}-${Date.now()}`,
-            },
-          }
-        );
-        expect(restored.ok, `batch restore returned ${restored.status}`).toBe(true);
-      }
-      await page.reload();
-      await expect(page.getByRole("heading", { name: "OpportunityOS" })).toBeVisible();
-      await expect(page.getByTestId(`opportunity-card-${batchIds[0]}`)).toBeVisible();
+      await expect(batchToolbar.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+      await expect(batchToolbar.getByRole("button", { name: "Reject", exact: true })).toBeEnabled();
+      await expect(batchToolbar.getByRole("button", { name: "Mark Applied", exact: true })).toBeEnabled();
+      await page.getByRole("button", { name: "Clear selection" }).click();
     } else {
-      console.log("FR008_HOSTED_BATCH_SAVE_SKIP reason=fewer_than_two_to_review_jobs");
+      console.log("FR008_HOSTED_BATCH_CONTROLS_SKIP reason=fewer_than_two_reviewable_jobs");
     }
 
     // 5b. First authenticated UI feed request plus repeated same-origin probes.
@@ -532,46 +482,9 @@ test.describe("Cloudflare staging hosted smoke", () => {
       await expect(drawer).not.toBeVisible();
     }
 
-    // 13. Founder Save -> Undo round-trip uses a reviewable live card where
-    // available. Empty For You projections are recorded, not backfilled for smoke.
-    if (batchIds.length > 0) {
-      const activityOpportunityId = batchIds[0];
-      const activityCard = page.getByTestId(`opportunity-card-${activityOpportunityId}`);
-      await expect(activityCard).toBeVisible();
-
-      const saveResponsePromise = page.waitForResponse((response) =>
-        response.url().includes(`/api/opportunities/${activityOpportunityId}/actions`) &&
-        response.request().method() === "POST"
-      );
-      await page.getByTestId(`quick-save-${activityOpportunityId}`).click();
-      const saveResponse = await saveResponsePromise;
-      expect(saveResponse.status()).toBe(200);
-      await expect(page.getByTestId("tracker-undo-notice")).toBeVisible();
-      await expect(page.getByTestId("undo-tracker-action")).toBeVisible();
-
-      const restoreResponsePromise = page.waitForResponse((response) =>
-        response.url().includes(`/api/opportunities/${activityOpportunityId}/restore`) &&
-        response.request().method() === "POST"
-      );
-      await page.getByTestId("undo-tracker-action").click();
-      const restoreResponse = await restoreResponsePromise;
-      expect(restoreResponse.status()).toBe(200);
-      await expect(page.getByTestId("undo-tracker-action")).toHaveCount(0);
-
-      const activityDetail = await pageJson<{
-        action_history: Array<{ action_type: string }>;
-      }>(
-        page,
-        `/api/opportunities/${encodeURIComponent(activityOpportunityId)}?activity_proof=${Date.now()}`,
-        { cache: "no-store" }
-      );
-      expect(activityDetail.ok, `activity detail returned ${activityDetail.status}`).toBe(true);
-      expect(activityDetail.body.action_history.some((event) => event.action_type === "save")).toBe(true);
-      expect(activityDetail.body.action_history.some((event) => event.action_type === "restore")).toBe(true);
-      await expect(activityCard).toBeVisible();
-    } else {
-      console.log("FR008_HOSTED_ACTIVITY_SKIP reason=no_visible_reviewable_jobs");
-    }
+    // No Save/Undo mutation is made against the real Founder account here;
+    // the authenticated UI affordance is covered above and transitions run in
+    // the disposable real-PostgreSQL/browser suite.
 
     // 14. Read source health only; do not enqueue fresh polls after queue convergence.
     const sources = await pageJson<{ sources: Array<{ source_id: string }> }>(page, "/api/sources/health");
