@@ -30,6 +30,15 @@ class FounderSurfaceW23ContractTests(unittest.TestCase):
         self.assertIn("regexp_split_to_table", source)
         self.assertIn("visibility_reason", source)
 
+    def test_source_overview_fast_path_keeps_counts_without_scanning_feed_view(self):
+        source = (ROOT / "storage/migrations/versions/0031_source_overview_fast_path.py").read_text(encoding="utf-8")
+        self.assertIn("LEFT JOIN LATERAL", source)
+        self.assertIn("WHERE fp.source_id = s.source_id", source)
+        self.assertIn("o.is_stale IS FALSE AND fp.visible IS TRUE", source)
+        self.assertIn("o.is_stale IS FALSE AND fp.visible IS FALSE", source)
+        upgrade = source.split("def upgrade()", 1)[1].split("def downgrade()", 1)[0]
+        self.assertNotIn("JOIN public.founder_feed", upgrade)
+
     def test_hosted_route_has_visible_and_hidden_feed_contract(self):
         source = (ROOT / "web/app/api/[...path]/route.ts").read_text(encoding="utf-8")
         self.assertIn('query.searchParams.set("is_stale", "eq.false")', source)
@@ -54,8 +63,8 @@ class FounderSurfaceW23ContractTests(unittest.TestCase):
 
     def test_source_ui_aggregates_and_manual_path(self):
         source = (ROOT / "web/components/feed/filter-bar.tsx").read_text(encoding="utf-8")
-        self.assertIn("Manual only · 0 automated", source)
-        self.assertIn("reduce((total, row)", source)
+        self.assertIn("sources.map((source) => source.source_family)", source)
+        self.assertIn("sources.filter((source) => source.source_id", source)
         self.assertIn("onOpenManualSources", source)
 
     def test_poll_now_and_greenhouse_board_contracts_are_conservative(self):
