@@ -37,6 +37,8 @@ Passed locally:
 
 Full local unittest discovery ran 1,697 tests and ended with 13 failures, 11 errors, and 78 skips. The surfaced failures included unrelated Founder activity model/API contract mismatches, a SQL-rendering string assertion in `storage.test_feed_regression`, and generated `.open-next` cache hygiene. No failures were in BC-3 changed behavior. This is not reported as a green repository-wide suite; required PR checks remain necessary and the unrelated failures are a separate baseline/runtime issue unless CI ties one to this patch.
 
+The first PostgreSQL-backed FR-007 CI proof run exposed one interaction with existing A5/A6 synthetic Greenhouse rows: both used reliability-only titles that the canonical admission rule intentionally rejects. The proof is about worker source isolation and idempotent persistence, so its synthetic successful rows were changed to canonical data-engineering titles; poll, content-change, and stable-ID assertions remain intact. This is a test-fixture alignment, not a change to production role-admission semantics. The corrected PostgreSQL proof must pass on a rerun before merge.
+
 These are focused local checks, not PR CI, deployment, or authenticated live-product evidence. The BC-3 checkpoint remains subject to review and CI before merge.
 
 ## Next
