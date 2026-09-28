@@ -295,8 +295,12 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await metricPeriod.selectOption("yesterday");
     await expect(metricPeriod).toHaveValue("yesterday");
     const yesterdayResponse = await yesterdayResponsePromise;
-    expect(yesterdayResponse.ok(), "Yesterday metrics should load").toBe(true);
-    const yesterdayMetrics = await yesterdayResponse.json() as { days: number; series: Array<{ date: string }> };
+    const yesterdayBody = await yesterdayResponse.json().catch(() => null);
+    expect(
+      yesterdayResponse.ok(),
+      `Yesterday metrics returned ${yesterdayResponse.status}: ${safeApiErrorSummary(yesterdayBody)}`
+    ).toBe(true);
+    const yesterdayMetrics = yesterdayBody as { days: number; series: Array<{ date: string }> };
     expect(yesterdayMetrics.series[0]?.date).toBe(yesterday);
     await metricPeriod.selectOption("date");
     const selectedDate = page.getByTestId("metric-specific-date");
@@ -304,22 +308,34 @@ test.describe("Cloudflare staging hosted smoke", () => {
     const specificDateResponsePromise = metricsResponse("date", yesterday);
     await selectedDate.fill(yesterday);
     const specificDateResponse = await specificDateResponsePromise;
-    expect(specificDateResponse.ok(), "Specific-date metrics should load").toBe(true);
-    const specificDateMetrics = await specificDateResponse.json() as { days: number; series: Array<{ date: string }> };
+    const specificDateBody = await specificDateResponse.json().catch(() => null);
+    expect(
+      specificDateResponse.ok(),
+      `Specific-date metrics returned ${specificDateResponse.status}: ${safeApiErrorSummary(specificDateBody)}`
+    ).toBe(true);
+    const specificDateMetrics = specificDateBody as { days: number; series: Array<{ date: string }> };
     expect(specificDateMetrics.series[0]?.date).toBe(yesterday);
     const allTimeResponsePromise = metricsResponse("all_time");
     await metricPeriod.selectOption("all_time");
     const allTimeResponse = await allTimeResponsePromise;
-    expect(allTimeResponse.ok(), "All-time metrics should load").toBe(true);
-    const allTimeMetrics = await allTimeResponse.json() as { days: number; series: Array<{ date: string }> };
+    const allTimeBody = await allTimeResponse.json().catch(() => null);
+    expect(
+      allTimeResponse.ok(),
+      `All-time metrics returned ${allTimeResponse.status}: ${safeApiErrorSummary(allTimeBody)}`
+    ).toBe(true);
+    const allTimeMetrics = allTimeBody as { days: number; series: Array<{ date: string }> };
     expect(allTimeMetrics.series).toHaveLength(1);
     expect(allTimeMetrics.series[0]?.date).toBe("all_time");
     const todayResponsePromise = metricsResponse("today");
     await metricPeriod.selectOption("today");
     await expect(metricPeriod).toHaveValue("today");
     const todayResponse = await todayResponsePromise;
-    expect(todayResponse.ok(), "Today metrics should load").toBe(true);
-    const todayMetrics = await todayResponse.json() as { days: number; series: Array<{ date: string }> };
+    const todayBody = await todayResponse.json().catch(() => null);
+    expect(
+      todayResponse.ok(),
+      `Today metrics returned ${todayResponse.status}: ${safeApiErrorSummary(todayBody)}`
+    ).toBe(true);
+    const todayMetrics = todayBody as { days: number; series: Array<{ date: string }> };
     expect(todayMetrics.series[0]?.date).toBe(new Date().toISOString().slice(0, 10));
     console.log(`FR008_HOSTED_DASHBOARD_TIMING yesterday=${yesterdayResponse.headers()["server-timing"] ?? "unavailable"} all_time=${allTimeResponse.headers()["server-timing"] ?? "unavailable"} today=${todayResponse.headers()["server-timing"] ?? "unavailable"}`);
 
