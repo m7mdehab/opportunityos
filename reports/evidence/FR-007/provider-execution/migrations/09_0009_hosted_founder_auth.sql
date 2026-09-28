@@ -52,6 +52,10 @@ ALTER TABLE artifact_cache ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN EXECUTE 'CREATE POLICY artifact_cache_browser_deny_anon ON artifact_cache FOR ALL TO anon USING (false) WITH CHECK (false)'; END IF; IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN EXECUTE 'CREATE POLICY artifact_cache_browser_deny_authenticated ON artifact_cache FOR ALL TO authenticated USING (false) WITH CHECK (false)'; END IF; END $$;
 
+ALTER TABLE backup_heartbeats ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN EXECUTE 'CREATE POLICY backup_heartbeats_browser_deny_anon ON backup_heartbeats FOR ALL TO anon USING (false) WITH CHECK (false)'; END IF; IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN EXECUTE 'CREATE POLICY backup_heartbeats_browser_deny_authenticated ON backup_heartbeats FOR ALL TO authenticated USING (false) WITH CHECK (false)'; END IF; END $$;
+
 ALTER TABLE feed_projection ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN EXECUTE 'CREATE POLICY feed_projection_browser_deny_anon ON feed_projection FOR ALL TO anon USING (false) WITH CHECK (false)'; END IF; IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN EXECUTE 'CREATE POLICY feed_projection_browser_deny_authenticated ON feed_projection FOR ALL TO authenticated USING (false) WITH CHECK (false)'; END IF; END $$;

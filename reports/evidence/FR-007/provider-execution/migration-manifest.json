@@ -1,6 +1,6 @@
 {
   "database_engine": "PostgreSQL 17",
-  "expected_final_revision": "0015_hosted_founder_surface",
+  "expected_final_revision": "0031_source_overview_fastpath",
   "format": 1,
   "migrations": [
     {
@@ -192,7 +192,7 @@
       "filename": "migrations/09_0009_hosted_founder_auth.sql",
       "order": 9,
       "revision": "0009_hosted_founder_auth",
-      "sha256": "98b333f5c6cf26f47c31fd323c29fdded518a65bb058fc07b6dd1ea9326f9321"
+      "sha256": "e866d1fbb6fc8520650bd593045025e136ef50c396d1c9e4b4d08e47849254dd"
     },
     {
       "down_revision": "0009_hosted_founder_auth",
@@ -285,16 +285,261 @@
       "order": 15,
       "revision": "0015_hosted_founder_surface",
       "sha256": "6bad90b4ccebb3008d091928236c770b4f5c74a6aa7327614c5a28c586f9150c"
+    },
+    {
+      "down_revision": "0015_hosted_founder_surface",
+      "effects": {
+        "indexes": [],
+        "tables_or_columns": [],
+        "touches_auth": true,
+        "touches_rls": true,
+        "touches_storage_metadata": false
+      },
+      "filename": "migrations/16_0016_founder_activity.sql",
+      "order": 16,
+      "revision": "0016_founder_activity",
+      "sha256": "357a245f87545b4d09975b2ac5db11be85466803f8f8e600d8743eb6368e5b19"
+    },
+    {
+      "down_revision": "0016_founder_activity",
+      "effects": {
+        "indexes": [],
+        "tables_or_columns": [],
+        "touches_auth": true,
+        "touches_rls": true,
+        "touches_storage_metadata": false
+      },
+      "filename": "migrations/17_0017_founder_activity_correction.sql",
+      "order": 17,
+      "revision": "0017_founder_activity_correction",
+      "sha256": "e1aadb941be0fdfc8671f37cc1a3915af3928f0c231cda31310aa3e44d1f3432"
+    },
+    {
+      "down_revision": "0017_founder_activity_correction",
+      "effects": {
+        "indexes": [],
+        "tables_or_columns": [],
+        "touches_auth": false,
+        "touches_rls": false,
+        "touches_storage_metadata": false
+      },
+      "filename": "migrations/18_0018_activity_live_fix.sql",
+      "order": 18,
+      "revision": "0018_activity_live_fix",
+      "sha256": "8bf23daf98c3c1f975448890e839736cfae1c39f7c636d206b89a87798592e02"
+    },
+    {
+      "down_revision": "0018_activity_live_fix",
+      "effects": {
+        "indexes": [],
+        "tables_or_columns": [],
+        "touches_auth": false,
+        "touches_rls": false,
+        "touches_storage_metadata": false
+      },
+      "filename": "migrations/19_0019_activity_view_access.sql",
+      "order": 19,
+      "revision": "0019_activity_view_access",
+      "sha256": "a75dbac4efe9ccfdb49856a227da99d24ca0894e44337bc34b01068584834708"
+    },
+    {
+      "down_revision": "0019_activity_view_access",
+      "effects": {
+        "indexes": [
+          "ix_opportunity_cold_archive_content_hash"
+        ],
+        "tables_or_columns": [
+          "opportunity_cold_archive"
+        ],
+        "touches_auth": false,
+        "touches_rls": false,
+        "touches_storage_metadata": false
+      },
+      "filename": "migrations/20_0020_capacity_archive.sql",
+      "order": 20,
+      "revision": "0020_capacity_archive",
+      "sha256": "9ee7e8440c0c4a3bb13aa2beed1ba1174c83c111a9bd9ea94821d70c7c2d63be"
+    },
+    {
+      "down_revision": "0020_capacity_archive",
+      "effects": {
+        "indexes": [
+          "ix_opportunity_cold_archive_object_key"
+        ],
+        "tables_or_columns": [
+          "opportunities",
+          "opportunity_cold_archive"
+        ],
+        "touches_auth": false,
+        "touches_rls": false,
+        "touches_storage_metadata": false
+      },
+      "filename": "migrations/21_0021_storage_v2.sql",
+      "order": 21,
+      "revision": "0021_storage_v2",
+      "sha256": "1f3b520ae3eba63ecf5aa9800966c0af2fe549b3c57e0650b31b70589059a1de"
+    },
+    {
+      "down_revision": "0021_storage_v2",
+      "effects": {
+        "indexes": [
+          "ix_opportunities_lifecycle_tier"
+        ],
+        "tables_or_columns": [
+          "feed_projection",
+          "match_evaluations",
+          "opportunities",
+          "opportunity_archive_orphans",
+          "opportunity_cold_archive"
+        ],
+        "touches_auth": false,
+        "touches_rls": true,
+        "touches_storage_metadata": false
+      },
+      "filename": "migrations/22_0022_storage_v2_direct_tiering.sql",
+      "order": 22,
+      "revision": "0022_storage_v2_direct_tiering",
+      "sha256": "6577c6e2deb0d2fb6d7e0ba1e3bbe6198d0f542101f682ac086089bb47a52a04"
+    },
+    {
+      "down_revision": "0022_storage_v2_direct_tiering",
+      "effects": {
+        "indexes": [],
+        "tables_or_columns": [],
+        "touches_auth": false,
+        "touches_rls": true,
+        "touches_storage_metadata": false
+      },
+      "filename": "migrations/23_0023_alembic_access.sql",
+      "order": 23,
+      "revision": "0023_alembic_access",
+      "sha256": "b3dc77e89450ec507fa43386944192d80726cdd60e6cb4582b0534926d98fc55"
+    },
+    {
+      "down_revision": "0023_alembic_access",
+      "effects": {
+        "indexes": [],
+        "tables_or_columns": [],
+        "touches_auth": false,
+        "touches_rls": false,
+        "touches_storage_metadata": false
+      },
+      "filename": "migrations/24_0024_founder_jwt_claims.sql",
+      "order": 24,
+      "revision": "0024_founder_jwt_claims",
+      "sha256": "daa5382dbb0e37b3617e8209edb9263ae1d76fa85ab144e10badcdcbb1323316"
+    },
+    {
+      "down_revision": "0024_founder_jwt_claims",
+      "effects": {
+        "indexes": [],
+        "tables_or_columns": [],
+        "touches_auth": false,
+        "touches_rls": false,
+        "touches_storage_metadata": false
+      },
+      "filename": "migrations/25_0025_current_feed_fast_path.sql",
+      "order": 25,
+      "revision": "0025_current_feed_fast_path",
+      "sha256": "48d1b91c5d7ae906be33b91b1b971f5a8ad2c4b840b0268b435404a250d13527"
+    },
+    {
+      "down_revision": "0025_current_feed_fast_path",
+      "effects": {
+        "indexes": [],
+        "tables_or_columns": [],
+        "touches_auth": false,
+        "touches_rls": false,
+        "touches_storage_metadata": false
+      },
+      "filename": "migrations/26_0026_fr008_live_actions.sql",
+      "order": 26,
+      "revision": "0026_fr008_live_actions",
+      "sha256": "5ffb7bd900b422dc9752fc8b234fedc658c81166cfb19e81407acaacb5a04e54"
+    },
+    {
+      "down_revision": "0026_fr008_live_actions",
+      "effects": {
+        "indexes": [],
+        "tables_or_columns": [],
+        "touches_auth": false,
+        "touches_rls": false,
+        "touches_storage_metadata": false
+      },
+      "filename": "migrations/27_0027_bc1_recommendation.sql",
+      "order": 27,
+      "revision": "0027_bc1_recommendation",
+      "sha256": "15da8060bd6b808d49c201dbc5eb13fd09d5b6264e92cd3604eb014e254ad2ae"
+    },
+    {
+      "down_revision": "0027_bc1_recommendation",
+      "effects": {
+        "indexes": [
+          "ix_feed_projection_recommendation_rank"
+        ],
+        "tables_or_columns": [
+          "feed_projection"
+        ],
+        "touches_auth": false,
+        "touches_rls": false,
+        "touches_storage_metadata": false
+      },
+      "filename": "migrations/28_0028_bc2_recommendation.sql",
+      "order": 28,
+      "revision": "0028_bc2_recommendation",
+      "sha256": "085711c51338ab07960913effe25d3af7bcdb9fff69a47c0e7d47ca2dffdbce8"
+    },
+    {
+      "down_revision": "0028_bc2_recommendation",
+      "effects": {
+        "indexes": [],
+        "tables_or_columns": [],
+        "touches_auth": false,
+        "touches_rls": false,
+        "touches_storage_metadata": false
+      },
+      "filename": "migrations/29_0029_fr008_query_fast_paths.sql",
+      "order": 29,
+      "revision": "0029_fr008_query_fast_paths",
+      "sha256": "490caf8f09cfe5ead720fffbc54f99d7c53afe5e84f51b810e0afe90ecbb455b"
+    },
+    {
+      "down_revision": "0029_fr008_query_fast_paths",
+      "effects": {
+        "indexes": [],
+        "tables_or_columns": [],
+        "touches_auth": false,
+        "touches_rls": false,
+        "touches_storage_metadata": false
+      },
+      "filename": "migrations/30_0030_dashboard_alltime.sql",
+      "order": 30,
+      "revision": "0030_dashboard_alltime",
+      "sha256": "35479311c0bd2663bfc69c1917a98675a5b141c49e3513e8010b44dee06d35c3"
+    },
+    {
+      "down_revision": "0030_dashboard_alltime",
+      "effects": {
+        "indexes": [],
+        "tables_or_columns": [],
+        "touches_auth": false,
+        "touches_rls": false,
+        "touches_storage_metadata": false
+      },
+      "filename": "migrations/31_0031_source_overview_fastpath.sql",
+      "order": 31,
+      "revision": "0031_source_overview_fastpath",
+      "sha256": "906d7f19631f0ea21e7364eb550ce67048e232136a79c176962f87caefed3009"
     }
   ],
-  "project_ref": "lrrcpwaapwynzdsxzwhy",
+  "project_ref": "sunjfepvdzfknglrjwhm",
   "provider": "supabase",
   "region": "eu-central-1",
   "secret_policy": "runtime injection only; no credentials or private payloads",
   "verification_files": {
-    "evidence-template.json": "8e08d05ee67e468b157de73c136ef7d3faeed050e367596c549dcf222c408052",
-    "execution-manifest.json": "eb7c3a035b673228187df9e4884f80793ab9de4bf37e50bcb624bbd09c30547a",
-    "provider-security.sql": "b5c741c82fd88b4d8714047a5a7631e98b257b569f757fd92dad863d18800d07",
+    "evidence-template.json": "bea9bfc5b69ee39257db693335d332107f91f501928a746980d80fcbe2d44689",
+    "execution-manifest.json": "9da1b80a85f3f80dd8331fa8904fbc79c4651a804718a80adde6a858dcd369ee",
+    "provider-security.sql": "0244074765ed81c04dadc755ea71ec7ff5c16b89b6e671bfc7db712970a72470",
     "storage-rollback.sql": "2e94435c07c4a997450726b823635c545a0f6298d6bcd3af74db0034627719e4",
     "storage.sql": "ce7247edb08f4284dfb2ceb9c71404d4d197b8bdf104834d413cae77f5298ece",
     "verify/parity.sql": "dfa128a1b72655b73c5d4883e893c5e4c23de48f2761c98aece230336248b070",
