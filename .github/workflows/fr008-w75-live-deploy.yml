@@ -51,13 +51,13 @@ jobs:
           OPPORTUNITYOS_DB_URL: ${{ secrets.CLOUD_DATABASE_URL }}
           OPPORTUNITYOS_ENVIRONMENT: cloud
           OPPORTUNITYOS_TRUTH_PACK_PATH: founder/truth_pack.yaml.gz.b64
-        run: python scripts/refresh_feed_projection_candidates.py --discover-current-candidates --candidate-limit 50
+        run: python -m scripts.refresh_feed_projection_candidates --discover-current-candidates --candidate-limit 50
       - name: Refresh bounded actionable candidates
         env:
           OPPORTUNITYOS_DB_URL: ${{ secrets.CLOUD_DATABASE_URL }}
           OPPORTUNITYOS_ENVIRONMENT: cloud
           OPPORTUNITYOS_TRUTH_PACK_PATH: founder/truth_pack.yaml.gz.b64
-        run: python scripts/refresh_feed_projection_candidates.py --discover-current-candidates --candidate-limit 50 --execute
+        run: python -m scripts.refresh_feed_projection_candidates --discover-current-candidates --candidate-limit 50 --execute
 
   deploy-live-founder:
     needs: [migrate-live-founder, refresh-bounded-feed-candidates]
