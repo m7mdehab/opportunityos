@@ -102,6 +102,7 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await page.getByTestId("more-filters-dropdown").locator(":scope > summary").click();
     const trackFacet = page.getByTestId("filter-facet-track");
     await expect(trackFacet).toBeVisible();
+    await trackFacet.locator("summary").scrollIntoViewIfNeeded();
     await trackFacet.locator("summary").click();
     const employmentTrack = trackFacet.getByRole("checkbox", { name: "employment", exact: true });
     const contractTrack = trackFacet.getByRole("checkbox", { name: "contract", exact: true });
