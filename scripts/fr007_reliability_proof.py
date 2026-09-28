@@ -380,8 +380,8 @@ def execute_a5_source_probe(dsn: str) -> dict[str, Any]:
                     "jobs": [
                         {
                             "id": 9901,
-                            "title": "Staff Reliability Engineer",
-                            "content": "<p>Ensure 99.999% uptime across global edge network</p>",
+                            "title": "Staff Data Engineer, Reliability",
+                            "content": "<p>Ensure data pipeline reliability and 99.999% uptime across global edge systems</p>",
                             "location": {"name": "Remote"},
                             "absolute_url": "https://boards.greenhouse.io/cloudflare/jobs/9901",
                             "updated_at": "2026-09-18T12:00:00Z",
@@ -590,8 +590,8 @@ def execute_a6_idempotency_probe(dsn: str) -> dict[str, Any]:
         "jobs": [
             {
                 "id": 8801,
-                "title": "Lead Reliability Engineer",
-                "content": "<p>Ensure language learning services stay resilient and reliable worldwide</p>",
+                "title": "Lead Data Engineer, Reliability",
+                "content": "<p>Build resilient data pipelines and ensure their reliability worldwide</p>",
                 "location": {"name": "Remote"},
                 "absolute_url": "https://boards.greenhouse.io/duolingo/jobs/8801",
                 "updated_at": "2026-09-10T00:00:00Z",
@@ -668,8 +668,8 @@ def execute_a6_idempotency_probe(dsn: str) -> dict[str, Any]:
         "jobs": [
             {
                 "id": 8801,
-                "title": "Principal Systems Reliability Architect",
-                "content": "<p>Redesign distributed reliability infrastructure across cloud environments</p>",
+                "title": "Principal Data Engineer, Reliability Platform",
+                "content": "<p>Redesign distributed data reliability infrastructure across cloud environments</p>",
                 "location": {"name": "Remote"},
                 "absolute_url": "https://boards.greenhouse.io/duolingo/jobs/8801",
                 "updated_at": "2026-09-18T16:00:00Z",
@@ -697,7 +697,7 @@ def execute_a6_idempotency_probe(dsn: str) -> dict[str, Any]:
     changed_content_reverified = bool(
         changed_opp.id == target_opp_id
         and changed_hash != content_hashes[0]
-        and changed_title == "Principal Systems Reliability Architect"
+        and changed_title == "Principal Data Engineer, Reliability Platform"
         and changed_reverified_at is not None
         and no_duplicate_nat_keys
         and changed_poll_outcome == "updated"

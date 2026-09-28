@@ -486,6 +486,7 @@ class ParseResult:
     records_raw_count: int
     has_schema_drift: bool = False
     parser_error: str | None = None
+    records_filtered_count: int = 0
 
     def __len__(self) -> int:
         return len(self.opportunities)

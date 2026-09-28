@@ -4,6 +4,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -11,12 +12,19 @@ import json
 
 from opportunity.adapters.greenhouse import GreenhouseAdapter
 from opportunity.registry import SourceRegistry
-from opportunity.transport import BaseTransport, MockTransport, RateLimiter, TransportResponse
+from opportunity.transport import AcquisitionService, BaseTransport, MockTransport, RateLimiter, TransportResponse
+from opportunity.discovery.himalayas import targeted_search_urls
 from storage.engine import get_engine, get_session_factory, init_db
 from storage.models import OpportunityRecord, SourcePollRunRecord, WorkerJobRecord
 from matching.test_qualification import create_test_graph
 from truth.pack import LoadedPack, PackValidationReport
-from worker.handlers import HACKER_NEWS_SOURCE_ID, _retry_after_seconds, make_poll_source_handler
+from worker.handlers import (
+    HACKER_NEWS_SOURCE_ID,
+    HIMALAYAS_TARGETED_SEARCH_ENV,
+    _fetch_himalayas_targeted_governed,
+    _retry_after_seconds,
+    make_poll_source_handler,
+)
 from worker.queue import BackgroundWorkerQueue
 from worker.runner import UNKNOWN_JOB_TYPE_MARKER, WorkerRunner
 from scripts.db_capacity_guard import BLOCK_BYTES, CapacitySnapshot
@@ -508,10 +516,22 @@ class TestPollSourceHandler(unittest.TestCase):
             cold_storage_client=MemoryPrivateStorage(),
         )
 
-        handler({"source_id": "himalayas"})
+        with patch.dict(os.environ, {HIMALAYAS_TARGETED_SEARCH_ENV: "false"}):
+            handler({"source_id": "himalayas"})
+        self.assertEqual(1, len(fetch_calls))
+        self.assertIn("/jobs/api?limit=20", fetch_calls[0][1])
 
-        self.assertEqual(len(fetch_calls), 1, "the governed acquisition path must actually have fetched")
+        fetch_calls.clear()
+        with patch.dict(os.environ, {HIMALAYAS_TARGETED_SEARCH_ENV: "true"}):
+            handler({"source_id": "himalayas"})
+
+        self.assertEqual(
+            len(targeted_search_urls()),
+            len(fetch_calls),
+            "each bounded target-role search must use the governed acquisition path",
+        )
         self.assertEqual(fetch_calls[0][0], "himalayas")
+        self.assertTrue(all("/jobs/api/search?" in url for _, url in fetch_calls))
         self.assertEqual(refusals, [], "a read-allowed source must never record a refusal")
 
 
@@ -724,6 +744,27 @@ class TestSharedRateLimiterPerATSHost(unittest.TestCase):
         # because both prior calls landed in the same host bucket.
         wait = limiter.acquire("boards-api.greenhouse.io")
         self.assertGreater(wait, 0.0)
+
+
+class TestHimalayasGovernedSearch(unittest.TestCase):
+    def test_rate_limit_stops_the_search_plan_without_retrying_or_partial_success(self):
+        first_url = targeted_search_urls()[0]
+        calls = []
+
+        class RateLimitedTransport(BaseTransport):
+            def fetch(self, request):
+                calls.append(request.url)
+                return TransportResponse(status_code=429, body="", latency_ms=1)
+
+        acquisition = AcquisitionService(
+            registry=SourceRegistry(), transport=RateLimitedTransport(), rate_limiter=RateLimiter()
+        )
+        payload, status, error, completed = _fetch_himalayas_targeted_governed(acquisition)
+        self.assertIsNone(payload)
+        self.assertEqual(429, status)
+        self.assertEqual(0, completed)
+        self.assertEqual([first_url], calls)
+        self.assertIsNone(error)
 
 
 if __name__ == "__main__":

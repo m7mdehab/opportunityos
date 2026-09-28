@@ -1,4 +1,5 @@
 """Integration tests for OpportunityPipeline with mock transport."""
+import json
 import pathlib
 import unittest
 
@@ -42,6 +43,19 @@ class PipelineTests(unittest.TestCase):
         empty_batch = pipeline.process_payloads({}, now_iso="2026-08-30")
         self.assertEqual(empty_batch.total_raw_ingested, 0)
         self.assertFalse(empty_batch.is_clean)
+
+    def test_pipeline_aggregates_safe_greenhouse_title_prefilter_count(self) -> None:
+        pipeline = OpportunityPipeline()
+        payload = json.dumps({"jobs": [
+            {"id": 1, "title": "Account Executive", "content": "Long sales description"},
+            {"id": 2, "title": "Data Analyst", "content": "Analyze data"},
+        ]})
+
+        batch = pipeline.process_payloads({"greenhouse:cloudflare": payload}, now_iso="2026-09-28")
+
+        self.assertEqual(2, batch.total_raw_ingested)
+        self.assertEqual(1, batch.total_filtered_candidates)
+        self.assertEqual(1, batch.total_unique_opportunities)
 
     def test_pipeline_with_mock_transport_discovery(self) -> None:
         transport = MockTransport({

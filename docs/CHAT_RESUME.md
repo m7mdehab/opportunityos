@@ -1,5 +1,9 @@
 # OpportunityOS Chat Resume
 
+## Active Founder Execution — BC Wave
+
+The active Founder execution instruction is the sequential BC wave from the 2026-09-28 task context. BC-1 and BC-2 are landed; BC-3 Source & Discovery is the current checkpoint on `work/bc3-source-discovery` from `main` `f8b5d0429824f2ff20c242fb9d7c02b6a720bed5`. BC-2 historical replay acceptance remains pending and is a gate before broad source activation/backfill. Live DB was measured read-only at `363,228,307` bytes (~346.40 MiB), just below the 350 MiB warning threshold; keep new discovery writes disabled. See `reports/BC3_SOURCE_DISCOVERY_CHECKPOINT.md` for implementation, source-policy decisions, evidence, and next steps. After BC-3 lands, proceed to BC-4, then BC-5 replay acceptance; don't report the BC wave closed before those gates and live checks.
+
 Purpose: boot a fresh ChatGPT/agent session without reconstructing OPOS history from chat transcripts.
 
 Last compacted: 2026-09-18, Africa/Cairo.
