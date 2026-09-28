@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-28T04:09:59Z
-- **State generated at commit:** `190b24a` — test(bc5): use keyboard for nested track filter smoke
+- **State generated at commit:** `da14aaa` — test(bc5): verify empty feed and checklist with keyboard
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
