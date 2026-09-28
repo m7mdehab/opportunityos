@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-09-28T20:08:14Z
-- **State generated at commit:** `2e9cc2d` — fix(web): expand mobile filter checklists inline
+- **Generated:** 2026-09-28T20:15:26Z
+- **State generated at commit:** `5d818c9` — test(web): close filter panels after smoke setup
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
