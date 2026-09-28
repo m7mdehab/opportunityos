@@ -30,7 +30,10 @@ jobs:
           set -euo pipefail
           alembic upgrade head
           test "$(alembic heads | grep -c ' (head)')" = 1
-          test "$(alembic current | grep -c '0028_bc2_recommendation')" = 1
+          expected_head="$(alembic heads | awk 'NR == 1 { print $1 }')"
+          current_head="$(alembic current | awk 'NR == 1 { print $1 }')"
+          test -n "$expected_head"
+          test "$current_head" = "$expected_head"
 
   refresh-bounded-feed-candidates:
     needs: migrate-live-founder

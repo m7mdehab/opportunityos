@@ -43,6 +43,14 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
             exec(compile(migration.read_text(encoding="utf-8"), str(migration), "exec"), namespace)
             self.assertLessEqual(len(namespace["revision"]), 32)
 
+    def test_live_deploy_verifies_current_revision_against_repository_head(self):
+        workflow = Path(__file__).parents[1] / ".github" / "workflows" / "fr008-w75-live-deploy.yml"
+        source = workflow.read_text(encoding="utf-8")
+        self.assertIn('expected_head="$(alembic heads | awk \'NR == 1 { print $1 }\')"', source)
+        self.assertIn('current_head="$(alembic current | awk \'NR == 1 { print $1 }\')"', source)
+        self.assertIn('test "$current_head" = "$expected_head"', source)
+        self.assertNotIn("0028_bc2_recommendation", source)
+
     def test_founder_claim_compatibility_migration_accepts_postgrest_json_claims(self):
         migration = Path(__file__).parent / "migrations" / "versions" / "0024_founder_jwt_claim_compat.py"
         source = migration.read_text(encoding="utf-8")
