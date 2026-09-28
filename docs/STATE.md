@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-09-28T23:00:44Z
-- **State generated at commit:** `840e048` — perf(feed): make source overview query selective
+- **Generated:** 2026-09-28T23:02:00Z
+- **State generated at commit:** `a02ff5f` — docs(state): update BC closure handoff
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
