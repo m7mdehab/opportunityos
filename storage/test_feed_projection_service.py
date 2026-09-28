@@ -12,6 +12,7 @@ from api.filters import FilterSettingsRow
 from storage.feed_projection import FeedProjectionRecord
 from storage.feed_projection_service import (
     rebuild_feed_projection,
+    refresh_feed_projection_candidates,
     refresh_existing_feed_projections,
     refresh_opportunity_projection,
 )
@@ -108,6 +109,60 @@ class FeedProjectionMaterializationTest(unittest.TestCase):
             self.assertEqual(second.inserted, 0)
             self.assertEqual(second.updated, 1)
             self.assertEqual(session.query(FeedProjectionRecord).count(), 1)
+        finally:
+            session.close()
+
+    def test_targeted_refresh_reclassifies_roles_and_allows_uncertain_low_evidence_discovery(self) -> None:
+        session = self.Session()
+        try:
+            target = self._opportunity("opp-targeted", title="Senior Data Engineer")
+            target.lifecycle_tier = "hot"
+            target.role_relevance_class = "unknown"
+            target.founder_geo_state = "likely_eligible"
+            target.application_access = "direct_free"
+            target.application_url = "https://boards.greenhouse.io/example/jobs/123"
+            session.add(target)
+            session.flush()
+            evaluation = self._evaluation(
+                "opp-targeted", decision="uncertain", fit=42.0,
+            )
+            evaluation.evaluation_detail_json = (
+                '{"confidence_score":72,"confidence_factors":'
+                '[{"name":"founder_evidence_completeness","score":50}]}'
+            )
+            session.add(evaluation)
+            session.commit()
+
+            rebuild_feed_projection(session, truth_graph=None, truth_pack_hash="truth-a")
+            session.commit()
+            before = session.query(FeedProjectionRecord).one()
+            self.assertEqual(before.recommendation_state, "review")
+
+            stats = refresh_feed_projection_candidates(
+                session, ["opp-targeted"], truth_graph=None, truth_pack_hash="truth-a",
+            )
+            session.commit()
+
+            self.assertEqual(stats.updated, 1)
+            row = session.query(FeedProjectionRecord).one()
+            opportunity = session.query(OpportunityRecord).one()
+            self.assertEqual(opportunity.role_relevance_class, "core")
+            self.assertEqual(row.recommendation_state, "for_you")
+            self.assertIn("check_eligibility", row.recommendation_reasons_json)
+            self.assertIn("founder_evidence_limited", row.recommendation_reasons_json)
+        finally:
+            session.close()
+
+    def test_targeted_refresh_rejects_more_than_the_safe_candidate_limit(self) -> None:
+        session = self.Session()
+        try:
+            with self.assertRaisesRegex(ValueError, "limited to 100"):
+                refresh_feed_projection_candidates(
+                    session,
+                    [f"opp-{index}" for index in range(101)],
+                    truth_graph=None,
+                    truth_pack_hash="truth-a",
+                )
         finally:
             session.close()
 

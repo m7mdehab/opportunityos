@@ -826,6 +826,9 @@ class OpportunityRoutesTest(ApiTestCase):
             "page": 1, "page_size": 25, "total": 0, "hidden_count": 0,
             "items": [], "message": None,
         })
+        server_timing = response.headers.get("server-timing", "")
+        for metric in ("auth_resolution", "truth_pack", "feed_query", "hidden_count", "response_serialization", "handler_total", "app_request"):
+            self.assertIn(metric, server_timing)
         self.assertTrue(statements)
         self.assertTrue(all(sql.startswith(("SELECT", "SHOW")) for sql in statements), statements)
         self.assertEqual(self.session.execute(text("SELECT count(*) FROM feed_projection")).scalar(), 0)
@@ -2657,6 +2660,9 @@ class FilterSettingsRouteTest(ApiTestCase):
         # until another valid PUT was issued by hand.
         feed_resp = self.client.get("/api/opportunities")
         self.assertEqual(feed_resp.status_code, 200, feed_resp.text)
+        server_timing = feed_resp.headers.get("Server-Timing", "")
+        for metric in ("filter_recomputation", "ranking_payload", "page_payload_build"):
+            self.assertIn(metric, server_timing)
         filters_resp = self.client.get("/api/filters")
         self.assertEqual(filters_resp.status_code, 200, filters_resp.text)
 

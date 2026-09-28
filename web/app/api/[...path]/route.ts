@@ -505,23 +505,29 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
     hiddenQuery.searchParams.set("select", "opportunity_id");
     hiddenQuery.searchParams.set("limit", "1");
 
-    const [visibleResponse, hiddenResponse] = await Promise.all([
-      hostedFetch(config, `${q.pathname}${q.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } }),
-      hostedFetch(config, `${hiddenQuery.pathname}${hiddenQuery.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } }),
+    const visibleStarted = performance.now();
+    const hiddenStarted = performance.now();
+    const [visibleResult, hiddenResult] = await Promise.all([
+      hostedFetch(config, `${q.pathname}${q.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } }).then((response) => ({ response, elapsed: performance.now() - visibleStarted })),
+      hostedFetch(config, `${hiddenQuery.pathname}${hiddenQuery.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } }).then((response) => ({ response, elapsed: performance.now() - hiddenStarted })),
     ]);
+    const { response: visibleResponse, elapsed: visibleElapsed } = visibleResult;
+    const { response: hiddenResponse, elapsed: hiddenElapsed } = hiddenResult;
     const rows = await visibleResponse.json().catch(() => []);
     if (!visibleResponse.ok) return NextResponse.json(rows, { status: visibleResponse.status });
     const range = visibleResponse.headers.get("content-range") ?? "*/0";
     const total = Number(range.split("/")[1] ?? "0") || 0;
     const hiddenRange = hiddenResponse.headers.get("content-range") ?? "*/0";
     const hiddenCount = Number(hiddenRange.split("/")[1] ?? "0") || 0;
-    return NextResponse.json({
+    const response = NextResponse.json({
       page,
       page_size: pageSize,
       total,
       hidden_count: hiddenCount,
       items: Array.isArray(rows) ? rows.map(hostedFeedRow) : [],
     });
+    response.headers.set("Server-Timing", `feed_query;dur=${visibleElapsed.toFixed(2)}, hidden_count;dur=${hiddenElapsed.toFixed(2)}`);
+    return response;
   }
   if (subpath.startsWith("opportunities/") && path.length === 3 && path[2] === "actions" && method === "POST") {
     const id = decodeURIComponent(path[1]); const body = await request.json().catch(() => null) as { type?: unknown; until?: unknown } | null;
@@ -658,13 +664,28 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
 }
 
 async function hostedRequest(request: NextRequest, path: string[]): Promise<NextResponse> {
+  const hostedStarted = performance.now();
   const config = hostedConfig(); if (!config) return hostedError("hosted Supabase configuration is unavailable", 503);
   const method = request.method.toUpperCase(); if (method !== "GET" && method !== "HEAD" && request.headers.get("x-opportunityos-csrf") !== "1") return hostedError("CSRF validation failed", 403);
   const subpath = path.join("/");
   if (subpath === "auth/login" && method === "POST") { const payload = await request.json().catch(() => null) as { email?: unknown; password?: unknown } | null; if (!payload || typeof payload.email !== "string" || typeof payload.password !== "string") return hostedError("email and password are required", 400); const auth = await hostedFetch(config, "/auth/v1/token?grant_type=password", { method: "POST", body: JSON.stringify({ email: payload.email, password: payload.password }) }); if (!auth.ok) return hostedError("authentication failed", 401); const response = NextResponse.json({ authenticated: true }); setSessionCookies(response, await auth.json() as HostedSession); return response; }
   if (subpath === "auth/logout" && method === "POST") { const token = request.cookies.get(ACCESS_COOKIE)?.value; if (token) await hostedFetch(config, "/auth/v1/logout", { method: "POST", headers: { Authorization: `Bearer ${token}` } }).catch(() => undefined); const response = NextResponse.json({ authenticated: false }); clearSessionCookies(response); return response; }
   if (subpath === "auth/me" && method === "GET") { const auth = await hostedAccess(request, config); if (auth instanceof NextResponse) return auth; const response = NextResponse.json({ authenticated: true }); if (auth.refreshed) setSessionCookies(response, auth.refreshed); return response; }
-  const auth = await hostedAccess(request, config); if (auth instanceof NextResponse) return auth; const response = await hostedContract(request, path, auth.token, config); if (auth.refreshed) setSessionCookies(response, auth.refreshed); return response;
+  const authStarted = performance.now();
+  const auth = await hostedAccess(request, config);
+  const authElapsed = performance.now() - authStarted;
+  if (auth instanceof NextResponse) {
+    auth.headers.set("Server-Timing", `edge_auth;dur=${authElapsed.toFixed(2)}, edge_request;dur=${(performance.now() - hostedStarted).toFixed(2)}`);
+    return auth;
+  }
+  const contractStarted = performance.now();
+  const response = await hostedContract(request, path, auth.token, config);
+  const contractElapsed = performance.now() - contractStarted;
+  const existingTiming = response.headers.get("Server-Timing");
+  const edgeTiming = `edge_auth;dur=${authElapsed.toFixed(2)}, edge_contract;dur=${contractElapsed.toFixed(2)}, edge_request;dur=${(performance.now() - hostedStarted).toFixed(2)}`;
+  response.headers.set("Server-Timing", existingTiming ? `${existingTiming}, ${edgeTiming}` : edgeTiming);
+  if (auth.refreshed) setSessionCookies(response, auth.refreshed);
+  return response;
 }
 
 async function proxyRequest(
@@ -738,6 +759,7 @@ async function proxyRequest(
   const body = hasBody ? await request.arrayBuffer() : undefined;
 
   try {
+    const upstreamStarted = performance.now();
     const upstreamRes = await fetch(targetUrl, {
       method,
       headers: forwardHeaders,
@@ -767,6 +789,9 @@ async function proxyRequest(
       if (cookie) resHeaders.append("set-cookie", cookie);
     }
 
+    const existingTiming = upstreamRes.headers.get("Server-Timing");
+    const proxyTiming = `edge_upstream_fetch;dur=${(performance.now() - upstreamStarted).toFixed(2)}`;
+    resHeaders.set("Server-Timing", existingTiming ? `${existingTiming}, ${proxyTiming}` : proxyTiming);
     return new NextResponse(upstreamRes.body, {
       status: upstreamRes.status,
       statusText: upstreamRes.statusText,

@@ -22,13 +22,14 @@ import threading
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Mapping, Optional, Sequence
 
-from sqlalchemy import or_
+from sqlalchemy import or_, text
 
 from core.logging import get_logger
 from opportunity.registry import SourceRegistry
 from storage.models import SourcePollRunRecord, SourceScheduleRecord, WorkerJobRecord
 from worker.handlers import BLOCKED_POLL_STATUS
 from worker.queue import BackgroundWorkerQueue
+from scripts.db_capacity_guard import WARN_BYTES, CapacitySnapshot, inspect_connection
 
 logger = get_logger("opportunityos.worker.scheduler")
 
@@ -138,6 +139,21 @@ def _active_poll_source_ids(session) -> set[str]:
         if source_id:
             active.add(source_id)
     return active
+
+
+def _scheduler_capacity(session) -> CapacitySnapshot | None:
+    """Read capacity on PostgreSQL; local SQLite schedulers have no DB metric."""
+    bind = session.get_bind()
+    if bind is None or bind.dialect.name != "postgresql":
+        return None
+    return inspect_connection(session.connection())
+
+
+def _lock_warning_poll_scheduler(session) -> None:
+    """Serialize warning-band scheduler decisions across hosted replicas."""
+    session.execute(text(
+        "SELECT pg_advisory_xact_lock(hashtext('opportunityos-warning-poll-scheduler'))"
+    ))
 
 
 def _blocked_source_ids_from_db(session) -> set[str]:
@@ -269,14 +285,12 @@ def enqueue_due_sources(
     curr_now_naive = _to_naive_utc(curr_now) or datetime.now(timezone.utc).replace(tzinfo=None)
     default_interval = interval_hours if interval_hours is not None else get_poll_interval_hours()
 
-    bind = session.get_bind()
-    if bind is not None and bind.dialect.name == "postgresql":
-        from scripts.db_capacity_guard import inspect_connection
-
+    capacity = _scheduler_capacity(session)
+    warning_capacity = bool(capacity and capacity.database_size_bytes >= WARN_BYTES)
+    if capacity is not None:
         # Environmental pauses are clean scheduler outcomes, not source-job
         # failures. No schedule lock or queue row is touched above the heavy
         # work boundary or while the database is read-only/in recovery.
-        capacity = inspect_connection(session.connection())
         if capacity.pauses_heavy_work:
             session.rollback()
             reason = (
@@ -286,6 +300,17 @@ def enqueue_due_sources(
             )
             source = source_id or "*"
             return [], [{"source_id": source, "reason": reason}]
+
+    if warning_capacity:
+        # At Warning, never extend a poll backlog. Serialize the global check
+        # across replicas and permit at most one outstanding poll job across
+        # sources; leave any existing jobs and retry history untouched.
+        _lock_warning_poll_scheduler(session)
+        if _active_poll_source_ids(session):
+            return [], [{
+                "source_id": source_id or "*",
+                "reason": "warning_capacity_poll_work_already_active",
+            }]
 
     try:
         content = reg.path.read_text(encoding="utf-8")
@@ -407,6 +432,8 @@ def enqueue_due_sources(
         sched.updated_at = curr_now_naive
         active_sources.add(sid)
         enqueued.append({"source_id": sid, "job_id": job_id})
+        if warning_capacity:
+            break
 
     return enqueued, skipped
 

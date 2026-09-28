@@ -125,12 +125,13 @@ class Recommendation:
     geography_score: float
     freshness_score: float
     source_application_confidence: float
+    evidence_quality_score: float = 0.0
 
     @property
     def rank_key(self) -> tuple[float, ...]:
         return (
-            self.role_tier, self.fit_score, self.affinity_score,
-            self.geography_score, self.freshness_score,
+            self.role_tier, self.fit_score, self.evidence_quality_score,
+            self.affinity_score, self.geography_score, self.freshness_score,
             self.source_application_confidence,
         )
 
@@ -142,9 +143,9 @@ def recommend(
 ) -> Recommendation:
     """Apply recommendation hard gates before deterministic ranking.
 
-    Incomplete evidence is never converted into a negative fit; it routes the
-    item to Review. A low evidence-confidence value also prevents a strong
-    For You recommendation even when a numeric fit score exists.
+    Recommendation gates represent disqualifying or un-actionable facts.
+    Capability evidence and confidence affect ranking and are surfaced as
+    uncertainty reasons, but never act as universal eligibility gates.
     """
     role = candidate.role_relevance.casefold()
     geo = candidate.geography.casefold()
@@ -178,14 +179,16 @@ def recommend(
         state, reasons = "review", ["geography_needs_review"]
     elif access not in _ACTIONABLE_ACCESS or not (candidate.application_url or "").strip():
         state, reasons = "review", ["application_route_needs_review"]
-    elif decision not in {"qualified", "eligible"}:
-        state, reasons = "review", ["qualification_needs_review"]
-    elif candidate.fit_score is None or candidate.evidence_completeness is None:
-        state, reasons = "review", ["capability_evidence_incomplete"]
-    elif candidate.evidence_completeness < 65.0 or (candidate.confidence_score or 0.0) < 40.0:
-        state, reasons = "review", ["capability_evidence_too_sparse"]
     else:
         state, reasons = "for_you", ["recommendation_gates_passed"]
+        if decision not in {"qualified", "eligible"}:
+            reasons.append("check_eligibility")
+        if candidate.fit_score is None:
+            reasons.append("capability_fit_unscored")
+        if candidate.evidence_completeness is None or (candidate.evidence_completeness or 0.0) < 65.0:
+            reasons.append("founder_evidence_limited")
+        if (candidate.confidence_score or 0.0) < 40.0:
+            reasons.append("match_confidence_low")
 
     profile = behavior or BehaviorProfile((), ())
     affinity = profile.score(role_family=candidate.role_family, source_family=candidate.source_family)
@@ -201,6 +204,10 @@ def recommend(
         geography_score=geo_score,
         freshness_score=max(0.0, min(100.0, candidate.freshness_score or 0.0)),
         source_application_confidence=max(0.0, min(100.0, candidate.source_application_confidence or 0.0)),
+        evidence_quality_score=max(0.0, min(100.0, (
+            (candidate.evidence_completeness if candidate.evidence_completeness is not None else 0.0)
+            + (candidate.confidence_score if candidate.confidence_score is not None else 0.0)
+        ) / (int(candidate.evidence_completeness is not None) + int(candidate.confidence_score is not None) or 1))),
     )
 
 

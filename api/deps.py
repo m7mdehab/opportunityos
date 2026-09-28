@@ -4,6 +4,7 @@ per-request structured logging context."""
 from __future__ import annotations
 
 import uuid
+from time import perf_counter
 from typing import Iterator
 
 from fastapi import Depends, HTTPException, Request
@@ -39,6 +40,7 @@ def require_session(request: Request) -> None:
     router level, to every non-auth route rather than repeated per
     endpoint, so a route added later cannot accidentally ship unguarded.
     """
+    auth_started = perf_counter()
     settings = request.app.state.settings
     cookie_name = "__Host-oos_session" if settings.cloud_mode else SESSION_COOKIE_NAME
     token = request.cookies.get(cookie_name)
@@ -52,7 +54,9 @@ def require_session(request: Request) -> None:
     else:
         valid = verify_session(request.app.state.session_serializer, token)
     if not valid:
+        request.state.auth_resolution_ms = (perf_counter() - auth_started) * 1000
         raise HTTPException(status_code=401, detail="not authenticated")
+    request.state.auth_resolution_ms = (perf_counter() - auth_started) * 1000
 
 
 def request_id(request: Request) -> str:

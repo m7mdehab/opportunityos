@@ -9,6 +9,7 @@ module evaluates `app = create_app()` at import time.
 from __future__ import annotations
 
 import uuid
+from time import perf_counter
 
 from fastapi import FastAPI, Request
 from fastapi.exception_handlers import request_validation_exception_handler
@@ -76,10 +77,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def request_id_and_logging(request: Request, call_next):
+        request_started = perf_counter()
         req_id = uuid.uuid4().hex[:16]
         request.state.request_id = req_id
         response = await call_next(request)
         response.headers["X-Request-Id"] = req_id
+        app_duration_ms = max(0.0, (perf_counter() - request_started) * 1000)
+        server_timing = response.headers.get("Server-Timing")
+        app_timing = f"app_request;dur={app_duration_ms:.2f}"
+        response.headers["Server-Timing"] = f"{server_timing}, {app_timing}" if server_timing else app_timing
         logger.info(
             "request handled",
             extra={

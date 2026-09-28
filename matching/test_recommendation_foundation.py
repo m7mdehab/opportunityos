@@ -14,13 +14,37 @@ class RecommendationFoundationTests(unittest.TestCase):
         self.assertEqual(classify_role_relevance("Senior Data Engineer").classification, "core")
         self.assertEqual(
             classify_role_relevance("Backend Engineer", "Build a data platform with SQL pipelines").classification,
+            "non_target",
+        )
+        self.assertEqual(
+            classify_role_relevance("Backend Engineer - Data Platform").classification,
+            "core",
+        )
+        self.assertEqual(
+            classify_role_relevance("Backend Engineer - AI Tooling").classification,
             "adjacent",
         )
+        self.assertEqual(
+            classify_role_relevance(
+                "Backend Engineer",
+                "Build distributed services. About Us: We are leaders in machine learning and AI data platforms.",
+            ).classification,
+            "non_target",
+        )
+        self.assertEqual(
+            classify_role_relevance(
+                "Staff BESS Electrical Design Engineer, EPC",
+                "Design electrical battery storage systems for construction projects.",
+            ).classification,
+            "non_target",
+        )
+        self.assertEqual(classify_role_relevance("Risk Analyst", "Our company builds AI tools").classification, "non_target")
+        self.assertEqual(classify_role_relevance("Associate Demo Engineer", "About Us: AI analytics platform").classification, "non_target")
         self.assertEqual(
             classify_role_relevance("Backend Engineer", "Build distributed services").classification,
             "non_target",
         )
-        self.assertEqual(classify_role_relevance("Gardener").classification, "unknown")
+        self.assertEqual(classify_role_relevance("Gardener").classification, "non_target")
 
     def test_us_employer_or_office_is_not_an_applicant_restriction(self):
         state, _ = classify_founder_geography(
