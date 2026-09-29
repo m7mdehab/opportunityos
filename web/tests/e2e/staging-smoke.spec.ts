@@ -222,6 +222,63 @@ test.describe("Cloudflare staging hosted smoke", () => {
     expect(first.title.length).toBeGreaterThan(0);
     expect(first.organization.length).toBeGreaterThan(0);
     expect(first.source_url.length).toBeGreaterThan(0);
+    for (const timingName of [
+      "feed_query",
+      "hidden_count",
+      "feed_response_decode",
+      "feed_row_hydration",
+      "feed_serialize",
+      "feed_handler_total",
+      "edge_auth",
+      "edge_contract",
+      "edge_request",
+    ]) {
+      expect(firstPage.server_timing, `Server-Timing should include ${timingName}`).toContain(timingName);
+    }
+
+    // Inspect the actual hosted top 50 response (which may contain fewer than
+    // 50 unique candidates). This is read-only and gives the closure evidence
+    // the titles, routes, geography, and concentration that the Founder sees.
+    const topForYou = await pageJson<{
+      total: number;
+      items: Array<{
+        title: string;
+        organization: string;
+        source_id: string;
+        family_key: string | null;
+        recommendation_state: string;
+        role_relevance_class: string;
+        founder_geo_state: string;
+        application_access: string;
+        application_url: string | null;
+        feedback_label: string | null;
+      }>;
+    }>(page, "/api/opportunities?sort_by=for_you&page=1&page_size=50");
+    expect(topForYou.ok, `top 50 returned ${topForYou.status}: ${safeApiErrorSummary(topForYou.body)}`).toBe(true);
+    expect(topForYou.body.total).toBeGreaterThan(0);
+    expect(topForYou.body.items.length).toBeGreaterThan(0);
+    const topFamilies = topForYou.body.items.map((item) => item.family_key).filter((family): family is string => Boolean(family));
+    expect(new Set(topFamilies).size, "For You should contain at most one result per known title family").toBe(topFamilies.length);
+    const organizations = topForYou.body.items.reduce<Record<string, number>>((counts, item) => {
+      const key = item.organization.trim() || "Unknown employer";
+      counts[key] = (counts[key] ?? 0) + 1;
+      return counts;
+    }, {});
+    const sourceCounts = topForYou.body.items.reduce<Record<string, number>>((counts, item) => {
+      counts[item.source_id] = (counts[item.source_id] ?? 0) + 1;
+      return counts;
+    }, {});
+    for (const item of topForYou.body.items) {
+      expect(item.recommendation_state).toBe("for_you");
+      expect(["core", "adjacent"]).toContain(item.role_relevance_class);
+      expect(["eligible", "likely_eligible"]).toContain(item.founder_geo_state);
+      expect(["direct_free", "free_intermediary", "free_account_required"]).toContain(item.application_access);
+      expect(item.application_url).toBeTruthy();
+      expect(["bad_match", "irrelevant_role", "eligibility_wrong"]).not.toContain(item.feedback_label);
+    }
+    console.log(
+      `BC_HOSTED_FOR_YOU_TOP50 total=${topForYou.body.total} returned=${topForYou.body.items.length} titles=${JSON.stringify(topForYou.body.items.map(({ title, organization }) => ({ title, organization })))} employer_counts=${JSON.stringify(organizations)} source_counts=${JSON.stringify(sourceCounts)}`
+    );
 
     // 5a. FR-008 live productivity controls must be present and functional,
     // not merely compiled into an undeployed branch.
@@ -387,6 +444,37 @@ test.describe("Cloudflare staging hosted smoke", () => {
       `FR007_HOSTED_FEED_SLO project=${test.info().project.name} first_authenticated_total_ms=${firstAuthenticatedFeed[0].elapsed_ms.toFixed(2)} first_authenticated_server_timing=${firstAuthenticatedFeed[0].server_timing} probe_first_total_ms=${firstPage.elapsed_ms.toFixed(2)} probe_first_ttfb_ms=${firstPage.ttfb_ms.toFixed(2)} warm_total_p95_ms=${p95Ms.toFixed(2)} warm_ttfb_p95_ms=${[...feedTtfbLatencies].sort((a, b) => a - b)[Math.max(0, Math.ceil(feedTtfbLatencies.length * 0.95) - 1)].toFixed(2)} samples=${feedLatencies.length} edge_and_backend=${feedServerTimings.join("|")}`
     );
     expect(p95Ms, "Hosted normal feed p95 must remain <= 1500ms").toBeLessThanOrEqual(1500);
+
+    // Verify all tracked views with read-only GETs. These requests must not
+    // create Founder actions, so Saved/Applied/Later history remains intact.
+    const listNav = page.getByRole("navigation", { name: "Opportunity lists" });
+    for (const view of [
+      { label: "Saved", activity: "save" },
+      { label: "Applied", activity: "mark_applied" },
+      { label: "Later", activity: "snooze" },
+    ]) {
+      const viewResponsePromise = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return url.pathname === "/api/opportunities" && url.searchParams.getAll("activity_type").includes(view.activity);
+      });
+      await listNav.getByRole("button", { name: view.label, exact: true }).click();
+      const viewResponse = await viewResponsePromise;
+      const viewBody = await viewResponse.json().catch(() => null) as { total?: unknown } | null;
+      expect(viewResponse.ok(), `${view.label} view returned ${viewResponse.status}`).toBe(true);
+      expect(typeof viewBody?.total, `${view.label} view must return a total`).toBe("number");
+      await expect(listNav.getByRole("button", { name: view.label, exact: true })).toHaveAttribute("aria-current", "page");
+      console.log(`BC_HOSTED_TRACKED_VIEW view=${view.label.toLowerCase()} total=${String(viewBody?.total)}`);
+    }
+    const forYouResponsePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname === "/api/opportunities" && url.searchParams.getAll("recommendation_state").includes("for_you");
+    });
+    await listNav.getByRole("button", { name: "For You", exact: true }).click();
+    const forYouResponse = await forYouResponsePromise;
+    expect(forYouResponse.ok(), `For You restore returned ${forYouResponse.status}`).toBe(true);
+    await expect(listNav.getByRole("button", { name: "For You", exact: true })).toHaveAttribute("aria-current", "page");
+
+    console.log("BC_HOSTED_ORIGIN_TIMING_UNAVAILABLE reason=cloudflare_same_origin_proxy_and_httponly_founder_session");
 
     // 6. Pagination proof: page 2 returns a different item
     const secondPage = await pageJson<{
