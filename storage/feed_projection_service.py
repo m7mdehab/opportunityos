@@ -20,6 +20,7 @@ from api.serialization import unpack_dimension_scores, unpack_evaluation_detail,
 from matching.recommendation_engine import BehaviorProfile, BehaviorSignal, build_behavior_profile
 from matching.recommendation_foundation import classify_role_relevance
 from matching.recommendation_projection import build_recommendation
+from matching.recommendation_foundation import classify_founder_geography, classify_required_credentials
 from storage.feed_projection import FeedProjectionRecord, projection_identity
 from storage.models import (
     FieldProvenanceRecord,
@@ -299,10 +300,34 @@ def build_projection_record(
     # is constrained to 0..100, so a 1000-point tier gap preserves that order
     # without mutating the persisted fit score itself.
     priority_score = (fit_score - (1000.0 * rank_penalty)) if fit_score is not None else None
+    regions = opportunity.remote_scope_regions
+    if isinstance(regions, str):
+        try:
+            regions = json.loads(regions)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            regions = ()
+    if not isinstance(regions, (tuple, list)):
+        regions = ()
+    truth_graph = getattr(context, "truth_graph", None) if context is not None else None
+    founder_geo_state, founder_geo_reason = classify_founder_geography(
+        title=opportunity.title,
+        description=opportunity.description or "",
+        location_country=opportunity.location_country,
+        location_city=opportunity.location_city,
+        location_region=opportunity.location_region,
+        work_mode=opportunity.work_mode or "unspecified",
+        remote_scope=opportunity.remote_scope or "unspecified",
+        remote_scope_regions=regions,
+        truth_graph=truth_graph,
+    )
+    eligibility_state, eligibility_reason = classify_required_credentials(
+        opportunity.description or "",
+        truth_graph=truth_graph,
+    )
     recommendation = build_recommendation(
         opportunity_id=opportunity.id,
         role_relevance=opportunity.role_relevance_class,
-        geography=opportunity.founder_geo_state,
+        geography=founder_geo_state,
         application_access=opportunity.application_access,
         application_url=opportunity.application_url,
         decision=qualification_decision,
@@ -318,6 +343,8 @@ def build_projection_record(
         organization=opportunity.organization,
         as_of=now.date(),
         behavior=behavior_profile,
+        eligibility_state=eligibility_state,
+        eligibility_reason=eligibility_reason,
     )
     rank_components = (
         recommendation.role_tier,
@@ -349,8 +376,8 @@ def build_projection_record(
         seniority_level=opportunity.seniority_level,
         role_relevance_class=opportunity.role_relevance_class,
         role_relevance_reason=opportunity.role_relevance_reason,
-        founder_geo_state=opportunity.founder_geo_state,
-        founder_geo_reason=opportunity.founder_geo_reason,
+        founder_geo_state=founder_geo_state,
+        founder_geo_reason=founder_geo_reason,
         application_url=opportunity.application_url,
         application_route=opportunity.application_route,
         application_access=opportunity.application_access,

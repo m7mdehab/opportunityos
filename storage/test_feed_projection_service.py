@@ -153,6 +153,68 @@ class FeedProjectionMaterializationTest(unittest.TestCase):
         finally:
             session.close()
 
+    def test_targeted_refresh_excludes_us_onsite_even_when_description_has_global_boilerplate(self) -> None:
+        session = self.Session()
+        try:
+            target = self._opportunity("opp-us-onsite")
+            target.lifecycle_tier = "hot"
+            target.founder_geo_state = "likely_eligible"
+            target.application_access = "direct_free"
+            target.application_url = "https://boards.greenhouse.io/example/jobs/124"
+            target.location_country = "US"
+            target.location_city = None
+            target.location_region = "Arlington, VA"
+            target.work_mode = "onsite"
+            target.remote_scope = "unspecified"
+            target.description = "We are a global company with teams worldwide. This job is onsite in Arlington."
+            session.add(target)
+            session.flush()
+            session.add(self._evaluation("opp-us-onsite", decision="uncertain"))
+            session.commit()
+
+            rebuild_feed_projection(session, truth_graph=None, truth_pack_hash="truth-a")
+            session.commit()
+            refresh_feed_projection_candidates(
+                session, ["opp-us-onsite"], truth_graph=None, truth_pack_hash="truth-a",
+            )
+            session.commit()
+
+            row = session.query(FeedProjectionRecord).one()
+            self.assertEqual(row.founder_geo_state, "ineligible")
+            self.assertEqual(row.recommendation_state, "excluded")
+            self.assertIn("onsite/hybrid workplace", row.founder_geo_reason)
+        finally:
+            session.close()
+
+    def test_targeted_refresh_reviews_unverified_required_clearance(self) -> None:
+        session = self.Session()
+        try:
+            target = self._opportunity("opp-clearance")
+            target.lifecycle_tier = "hot"
+            target.application_access = "direct_free"
+            target.application_url = "https://boards.greenhouse.io/example/jobs/125"
+            target.description = (
+                "Remote from Egypt. Required qualifications: Active Secret security clearance required."
+            )
+            session.add(target)
+            session.flush()
+            session.add(self._evaluation("opp-clearance", decision="uncertain"))
+            session.commit()
+
+            rebuild_feed_projection(session, truth_graph=None, truth_pack_hash="truth-a")
+            session.commit()
+            refresh_feed_projection_candidates(
+                session, ["opp-clearance"], truth_graph=None, truth_pack_hash="truth-a",
+            )
+            session.commit()
+
+            row = session.query(FeedProjectionRecord).one()
+            self.assertEqual(row.founder_geo_state, "eligible")
+            self.assertEqual(row.recommendation_state, "review")
+            self.assertIn("required_clearance_unverified", row.recommendation_reasons_json)
+        finally:
+            session.close()
+
     def test_targeted_refresh_rejects_more_than_the_safe_candidate_limit(self) -> None:
         session = self.Session()
         try:

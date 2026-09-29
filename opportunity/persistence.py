@@ -168,8 +168,10 @@ def _build_opp_data(opp: Opportunity, *, is_stale: bool) -> Dict[str, Any]:
     application_url = opp.canonical_outbound_url.strip() or opp.source_url.strip()
     application_access = classify_application_access(opp.source, opp.source_url, application_url)
     founder_geo_state, founder_geo_reason = classify_founder_geography(
+        title=opp.title,
         description=opp.description,
         location_country=opp.location_country,
+        location_city=opp.location_city,
         location_region=opp.location_region,
         work_mode=opp.work_mode.value,
         remote_scope=opp.remote_scope.value,

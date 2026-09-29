@@ -38,6 +38,8 @@ def build_recommendation(
     organization: str | None = None,
     as_of=None,
     behavior: BehaviorProfile | None = None,
+    eligibility_state: str | None = None,
+    eligibility_reason: str | None = None,
 ) -> Recommendation:
     from datetime import date
 
@@ -66,4 +68,6 @@ def build_recommendation(
         freshness_score=freshness,
         source_application_confidence=source_confidence_score(detail),
         evidence_completeness=evidence_completeness,
+        eligibility_state=eligibility_state,
+        eligibility_reason=eligibility_reason,
     ), behavior=behavior)
