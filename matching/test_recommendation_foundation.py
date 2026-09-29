@@ -195,6 +195,24 @@ class RecommendationFoundationTests(unittest.TestCase):
             ("ineligible", "founder_lacks_required_credential"),
         )
 
+    def test_unrelated_physical_engineering_titles_are_not_data_adjacent(self):
+        for title in (
+            "Staff BESS Electrical Design Engineer, EPC",
+            "Staff Mechanical Design Engineer, EPC",
+            "Staff Cathode Engineer",
+            "Packaging Engineer",
+            "Chemical Engineer",
+            "Functional Safety Engineer, Energy Storage",
+            "Software Validation Engineer, Energy Storage",
+        ):
+            with self.subTest(title=title):
+                self.assertEqual(classify_role_relevance(title, "").classification, "non_target")
+
+        self.assertEqual(
+            classify_role_relevance("Senior Software Engineer, Data Engineering", "").classification,
+            "adjacent",
+        )
+
     def test_clearance_and_citizenship_requirements_remain_review_without_founder_evidence(self):
         state, reason = classify_founder_geography(
             description=(
