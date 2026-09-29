@@ -2,7 +2,7 @@
 
 ## Status
 
-The remaining hosted acceptance instrumentation and read-only smoke assertions are implemented locally on `work/bc-hosted-smoke-closure`, based on verified `main` SHA `8906c455e11c1304f53739c48a3d888a9d47d35a`. They are not pushed or deployed. BC is not closed.
+The remaining hosted acceptance instrumentation and read-only smoke assertions are committed and pushed on `work/bc-hosted-smoke-closure`, based on verified `main` SHA `8906c455e11c1304f53739c48a3d888a9d47d35a`. PR #191 is open; the changes are not deployed. BC is not closed.
 
 ## Change
 
@@ -22,4 +22,4 @@ The remaining hosted acceptance instrumentation and read-only smoke assertions a
 
 ## Not yet verified
 
-The updated authenticated desktop and 390px hosted smoke has not run. The actual hosted top-50 titles, employer/source concentration, tracked-view totals, and new Server-Timing values therefore have not been observed. The production feed was not mutated. GitHub CLI reports no authenticated GitHub host in this session, preventing branch push, PR creation, CI checks, merge, and deployment.
+The updated authenticated desktop and 390px hosted smoke has not run. The actual hosted top-50 titles, employer/source concentration, tracked-view totals, and new Server-Timing values therefore have not been observed. The production feed was not mutated. GitHub CLI reports no authenticated host, but the branch push succeeded through the configured Git credential manager and PR #191 was created through the existing authenticated Chrome session. Required checks, merge, deployment, and hosted acceptance remain pending.

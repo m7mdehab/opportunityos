@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-09-29T00:29:52Z
-- **State generated at commit:** `a1600be` — docs(bc): record live feed composition checkpoint
+- **Generated:** 2026-09-29T00:33:12Z
+- **State generated at commit:** `37af72b` — test(bc): expand hosted feed closure evidence
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
