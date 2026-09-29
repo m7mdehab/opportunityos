@@ -414,6 +414,7 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
     return hostedFeedFilterMetadata(config, token);
   }
   if (subpath === "opportunities" && method === "GET") {
+    const feedHandlerStarted = performance.now();
     const page = Math.max(1, Number(url.searchParams.get("page") ?? "1") || 1);
     const pageSize = Math.min(200, Math.max(1, Number(url.searchParams.get("page_size") ?? "25") || 25));
     const includeHidden = url.searchParams.get("include_hidden") === "true";
@@ -514,17 +515,20 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
     const visibleStarted = performance.now();
     const hiddenStarted = performance.now();
     const [visibleResult, hiddenResult] = await Promise.all([
-      hostedFetch(config, `${q.pathname}${q.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } }).then((response) => ({ response })),
+      hostedFetch(config, `${q.pathname}${q.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } }).then((response) => ({ response, elapsed: performance.now() - visibleStarted })),
       hostedFetch(config, `${hiddenQuery.pathname}${hiddenQuery.search}`, { headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" } }).then((response) => ({ response, elapsed: performance.now() - hiddenStarted })),
     ]);
     const { response: visibleResponse } = visibleResult;
     const { response: hiddenResponse, elapsed: hiddenElapsed } = hiddenResult;
+    let visibleElapsed = visibleResult.elapsed;
+    let responseDecodeElapsed = 0;
+    const responseDecodeStarted = performance.now();
     const rows = await visibleResponse.json().catch(() => []);
+    responseDecodeElapsed += performance.now() - responseDecodeStarted;
     if (!visibleResponse.ok) return NextResponse.json(rows, { status: visibleResponse.status });
     const range = visibleResponse.headers.get("content-range") ?? "*/0";
     const rawTotal = Number(range.split("/")[1] ?? "0") || 0;
     const candidates: Record<string, unknown>[] = Array.isArray(rows) ? [...rows] : [];
-    let visibleElapsed = 0;
     if (composeForYou && rawTotal > candidates.length) {
       for (let offset = candidates.length; offset < rawTotal; offset += compositionBatchSize * 4) {
         const offsets = Array.from(
@@ -534,14 +538,18 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
         const batchResults = await Promise.all(offsets.map(async (batchOffset) => {
           const batchQuery = new URL(q);
           batchQuery.searchParams.set("offset", String(batchOffset));
-          const started = performance.now();
+          const queryStarted = performance.now();
           const response = await hostedFetch(config, `${batchQuery.pathname}${batchQuery.search}`, {
             headers: { Authorization: `Bearer ${token}`, Prefer: "count=exact" },
           });
-          const elapsed = performance.now() - started;
+          const queryElapsed = performance.now() - queryStarted;
+          const decodeStarted = performance.now();
           const batchRows = await response.json().catch(() => []);
-          return { response, elapsed, rows: batchRows };
+          const decodeElapsed = performance.now() - decodeStarted;
+          return { response, queryElapsed, decodeElapsed, rows: batchRows };
         }));
+        visibleElapsed += Math.max(...batchResults.map((batch) => batch.queryElapsed));
+        responseDecodeElapsed += batchResults.reduce((total, batch) => total + batch.decodeElapsed, 0);
         const failedBatch = batchResults.find((batch) => !batch.response.ok);
         if (failedBatch) return NextResponse.json(failedBatch.rows, { status: failedBatch.response.status });
         for (const batch of batchResults) {
@@ -549,7 +557,6 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
         }
       }
     }
-    visibleElapsed = performance.now() - visibleStarted;
     const hiddenRange = hiddenResponse.headers.get("content-range") ?? "*/0";
     const hiddenCount = Number(hiddenRange.split("/")[1] ?? "0") || 0;
     const compositionStarted = performance.now();
@@ -561,15 +568,28 @@ async function hostedContract(request: NextRequest, path: string[], token: strin
     const pageRows = composeForYou
       ? composedRows.slice((page - 1) * pageSize, page * pageSize)
       : composedRows;
-    const response = NextResponse.json({
+    const hydrationStarted = performance.now();
+    const items = pageRows.map(hostedFeedRow);
+    const hydrationElapsed = performance.now() - hydrationStarted;
+    const responsePayload = {
       page,
       page_size: pageSize,
       total,
       hidden_count: hiddenCount,
-      items: pageRows.map(hostedFeedRow),
+      items,
+    };
+    const serializationStarted = performance.now();
+    const responseBody = JSON.stringify(responsePayload);
+    const serializationElapsed = performance.now() - serializationStarted;
+    const response = new NextResponse(responseBody, {
+      headers: { "Content-Type": "application/json; charset=utf-8" },
     });
     const compositionTiming = composeForYou ? `, feed_composition;dur=${compositionElapsed.toFixed(2)}` : "";
-    response.headers.set("Server-Timing", `feed_query;dur=${visibleElapsed.toFixed(2)}, hidden_count;dur=${hiddenElapsed.toFixed(2)}${compositionTiming}`);
+    const handlerElapsed = performance.now() - feedHandlerStarted;
+    response.headers.set(
+      "Server-Timing",
+      `feed_query;dur=${visibleElapsed.toFixed(2)}, hidden_count;dur=${hiddenElapsed.toFixed(2)}, feed_response_decode;dur=${responseDecodeElapsed.toFixed(2)}, feed_row_hydration;dur=${hydrationElapsed.toFixed(2)}, feed_serialize;dur=${serializationElapsed.toFixed(2)}, feed_handler_total;dur=${handlerElapsed.toFixed(2)}${compositionTiming}`,
+    );
     return response;
   }
   if (subpath.startsWith("opportunities/") && path.length === 3 && path[2] === "actions" && method === "POST") {
