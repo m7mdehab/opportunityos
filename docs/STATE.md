@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-29T00:33:12Z
-- **State generated at commit:** `37af72b` — test(bc): expand hosted feed closure evidence
+- **State generated at commit:** `743a255` — docs(bc): record hosted smoke PR checkpoint
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
