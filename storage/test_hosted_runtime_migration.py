@@ -32,7 +32,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
 
         config = Config("alembic.ini")
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_current_head(), "0033_hosted_feed_family_key")
+        self.assertEqual(script.get_current_head(), "0034_opportunity_created_at")
 
     def test_current_revision_fits_alembic_version_column(self):
         namespace: dict[str, object] = {}
@@ -44,6 +44,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
             "0031_source_overview_fast_path.py",
             "0032_source_catalog_fast_path.py",
             "0033_hosted_feed_family_key_expose_family_keys_in_hosted_feed.py",
+            "0034_opportunity_created_at_index.py",
         ):
             migration = migrations / filename
             namespace = {}
@@ -85,7 +86,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         self.assertNotIn("DROP VIEW", downgrade)
         self.assertNotIn("founder_feed_activity", downgrade)
         config = Config("alembic.ini")
-        self.assertEqual(ScriptDirectory.from_config(config).get_current_head(), "0033_hosted_feed_family_key")
+        self.assertEqual(ScriptDirectory.from_config(config).get_current_head(), "0034_opportunity_created_at")
 
     def test_source_overview_uses_selective_source_id_scans(self):
         migration = Path(__file__).parent / "migrations" / "versions" / "0031_source_overview_fast_path.py"
@@ -123,6 +124,17 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         self.assertIn("GRANT SELECT ON public.founder_feed_fr008_diversity TO authenticated", source)
         self.assertIn("REVOKE ALL ON public.founder_feed_fr008_diversity FROM anon", source)
         self.assertIn("DROP VIEW IF EXISTS public.founder_feed_fr008_diversity", source)
+
+    def test_dashboard_creation_date_index_is_concurrent_and_reversible(self):
+        migration = Path(__file__).parent / "migrations" / "versions" / "0034_opportunity_created_at_index.py"
+        source = migration.read_text(encoding="utf-8")
+        self.assertIn("revision: str = '0034_opportunity_created_at'", source)
+        self.assertIn("down_revision: Union[str, None] = '0033_hosted_feed_family_key'", source)
+        self.assertIn('"ix_opportunities_created_at"', source)
+        self.assertIn('"created_at"', source)
+        self.assertIn("postgresql_concurrently=True", source)
+        self.assertEqual(source.count("op.get_context().autocommit_block()"), 2)
+        self.assertIn("op.drop_index(", source)
 
     def test_bc2_adds_compact_recommendation_state_without_backfill(self):
         migration = Path(__file__).parent / "migrations" / "versions" / "0028_bc2_recommendation.py"
