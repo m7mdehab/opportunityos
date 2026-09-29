@@ -99,6 +99,15 @@ class HostedAuthPostgresAcceptance(unittest.TestCase):
     def test_fr008_query_fast_paths_migrate_with_founder_contract(self):
         with self.engine.begin() as conn:
             fixture_savepoint = conn.begin_nested()
+            index_exists = conn.execute(sa.text(
+                "SELECT to_regclass('public.ix_opportunities_created_at') IS NOT NULL"
+            )).scalar_one()
+            conn.exec_driver_sql("SET LOCAL enable_seqscan = off")
+            index_plan = " ".join(conn.execute(sa.text(
+                "EXPLAIN (COSTS OFF) SELECT id FROM public.opportunities "
+                "WHERE created_at >= current_date - 1 AND created_at < current_date + 1"
+            )).scalars().all())
+            conn.exec_driver_sql("SET LOCAL enable_seqscan = on")
             view_sql = conn.execute(sa.text(
                 "SELECT pg_get_viewdef('public.founder_feed_fr008'::regclass, true)"
             )).scalar_one().lower()
@@ -135,6 +144,8 @@ class HostedAuthPostgresAcceptance(unittest.TestCase):
             fixture_savepoint.rollback()
 
         self.assertIn("founder_feed f", view_sql)
+        self.assertTrue(index_exists)
+        self.assertIn("ix_opportunities_created_at", index_plan)
         self.assertNotIn("founder_activity_state", view_sql)
         self.assertNotIn("founder_feed_activity", view_sql)
         self.assertLess(columns.index("action_state"), columns.index("role_relevance_class"))

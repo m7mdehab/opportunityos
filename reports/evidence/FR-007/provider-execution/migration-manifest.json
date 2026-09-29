@@ -1,6 +1,6 @@
 {
   "database_engine": "PostgreSQL 17",
-  "expected_final_revision": "0033_hosted_feed_family_key",
+  "expected_final_revision": "0034_opportunity_created_at",
   "format": 1,
   "migrations": [
     {
@@ -558,6 +558,22 @@
       "order": 33,
       "revision": "0033_hosted_feed_family_key",
       "sha256": "6122b8f344d1a15fabd37c4d4593280fb87f00fe2c50ce9002ea11bb2fa8373c"
+    },
+    {
+      "down_revision": "0033_hosted_feed_family_key",
+      "effects": {
+        "indexes": [
+          "ix_opportunities_created_at"
+        ],
+        "tables_or_columns": [],
+        "touches_auth": false,
+        "touches_rls": false,
+        "touches_storage_metadata": false
+      },
+      "filename": "migrations/34_0034_opportunity_created_at.sql",
+      "order": 34,
+      "revision": "0034_opportunity_created_at",
+      "sha256": "454dea044a54a258a3f2994d2db2578c7a1d0437381c8f77bf517ca9249930a9"
     }
   ],
   "project_ref": "sunjfepvdzfknglrjwhm",
@@ -566,7 +582,7 @@
   "secret_policy": "runtime injection only; no credentials or private payloads",
   "verification_files": {
     "evidence-template.json": "bea9bfc5b69ee39257db693335d332107f91f501928a746980d80fcbe2d44689",
-    "execution-manifest.json": "645fbb0f2db20b198279629a9ffe8b4e5886ed65826c340ca16611a39c103f3b",
+    "execution-manifest.json": "79dbf09517a14e8cbcaad400f472f9661548d0bb9de596340f3eca846c149654",
     "provider-security.sql": "0244074765ed81c04dadc755ea71ec7ff5c16b89b6e671bfc7db712970a72470",
     "storage-rollback.sql": "2e94435c07c4a997450726b823635c545a0f6298d6bcd3af74db0034627719e4",
     "storage.sql": "ce7247edb08f4284dfb2ceb9c71404d4d197b8bdf104834d413cae77f5298ece",
