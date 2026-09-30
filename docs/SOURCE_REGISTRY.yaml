@@ -203,6 +203,94 @@ sources:
       - https://developer.personio.de/docs/integration-of-open-positions
       - https://developer.personio.de/v1.0/reference/get_xml
       - https://developer.personio.de/docs/retrieving-open-job-positions
+  - source_id: workable_spi_v3
+    name: "Workable SPI v3 authenticated API"
+    category: employment
+    poll_cadence_hours: 0
+    access:
+      discovery: authenticated_api
+      detail: authenticated_api
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: account_scoped
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: authenticated_bearer_token_required_not_authorized
+    observed:
+      status: not_used
+      detail: "Workable's current first-party Help Center requires a Super Admin-generated API token with r_jobs scope for SPI v3 requests. This surface remains disabled and was not called."
+      request_metadata: "SPI=v3; auth=Bearer token; network_requests=0"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-30
+    policy_evidence:
+      - https://help.workable.com/hc/en-us/articles/115012771647-Using-the-Workable-API-to-create-a-careers-page
+  - source_id: workable_public_jobs
+    name: "Workable public published-jobs endpoint"
+    category: employment
+    poll_cadence_hours: 168
+    access:
+      discovery: documented_public_get
+      detail: public_job_page_only
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: bounded_single_request_per_watchlist_account
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: first_party_documented_public_jobs_endpoint_bounded_probe
+    observed:
+      status: allowed_ok
+      detail: "On 2026-09-30, one public account request to each of nine allowlisted Workable employers returned HTTP 200 and 219 jobs total. Unicode-safe normalization and the corrected in-memory pipeline produced 50 core/adjacent records; 7 raw postings had explicit Egypt-compatible scope after honoring job-title EMEA Remote scope, and those 7 had no unresolved mandatory credential. Existing dedupe reduced them to four distinct candidates with publicly accessible application pages (HTTP 200 plus Apply action): three Hugging Face EMEA-remote roles and one Hack The Box worldwide Senior Data Engineer. Final For You=4 from 2 employers, below the 5-candidate gate. The authenticated SPI v3 API was not used. No records were persisted."
+      request_metadata: "method=GET; endpoint=/api/accounts/{allowlisted_subdomain}?details=true; allowlist=9; http_200=9; raw_jobs=219; canonical_unique=99; core_adjacent=50; egypt_compatible_raw=7; credential_clean_eligible=7; actionable_unique=4; for_you=4; employers_for_you=2; no_auth; no_persistence"
+      latency_ms: 832
+      record_count: 219
+    last_policy_reviewed: 2026-09-30
+    policy_evidence:
+      - https://help.workable.com/hc/en-us/articles/115012771647-Using-the-Workable-API-to-create-a-careers-page
+      - https://workable.readme.io/reference/jobs-1
+      - https://www.workable.com/terms
+      - https://www.workable.com/robots.txt
+  - source_id: workable_public_job_pages
+    name: "Workable public job/application pages"
+    category: employment
+    poll_cadence_hours: 0
+    access:
+      discovery: public_get
+      detail: public_job_page_only
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: candidate_only_page_verification
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: public_listing_application_read_verification_only
+    observed:
+      status: allowed_ok
+      detail: "Read-only verification of four surviving candidate pages on 2026-09-30 returned HTTP 200 and an application action marker. Workable's Job Board terms say candidates may search and apply without creating an account. No account was created, no form was submitted, and no candidate information was entered."
+      request_metadata: "method=GET; candidate_pages=4; http_200=4; apply_marker=4; no_auth; no_submission"
+      latency_ms: 0
+      record_count: 4
+    last_policy_reviewed: 2026-09-30
+    policy_evidence:
+      - https://help.workable.com/hc/en-us/articles/115012771647-Using-the-Workable-API-to-create-a-careers-page
+      - https://jobs.workable.com/terms
   - source_id: we_work_remotely
     name: "we_work_remotely"
     category: employment

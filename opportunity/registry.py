@@ -84,6 +84,27 @@ SOURCE_ENDPOINT_RULES: dict[str, EndpointRule] = {
         allowed_methods=frozenset({"GET"}),
         require_https=True,
     ),
+    # Workable's public published-jobs endpoint is distinct from SPI v3.
+    # Bind the public request to one exact endpoint and the current nine-board
+    # reconnaissance set; the authenticated API has no matching rule.
+    "workable_public_jobs": EndpointRule(
+        allowed_hosts=frozenset({"www.workable.com"}),
+        allowed_path_prefix="/api/accounts/",
+        allowed_methods=frozenset({"GET"}),
+        require_https=True,
+    ),
+    "workable_public_job_pages": EndpointRule(
+        allowed_hosts=frozenset({
+            "huggingface.workable.com", "worknomads.workable.com",
+            "libertexgroup.workable.com", "unitary.workable.com",
+            "dreamix-ltd.workable.com", "trinetix.workable.com",
+            "everwest.workable.com", "hack-the-box-ltd.workable.com",
+            "globaldevgroup.workable.com", "apply.workable.com",
+        }),
+        allowed_path_prefix="/jobs/",
+        allowed_methods=frozenset({"GET"}),
+        require_https=True,
+    ),
     "remote_ok": EndpointRule(
         allowed_hosts=frozenset({"remoteok.com", "remoteok.io"}),
         allowed_path_prefix="/api",
@@ -274,6 +295,19 @@ class SourceRegistry:
 
         if source_id == "personio_xml":
             path_allowed = path == "/xml" or bool(re.fullmatch(r"/job/\d+/?", path))
+        elif source_id == "workable_public_jobs":
+            account = path.removeprefix("/api/accounts/")
+            path_allowed = path == f"/api/accounts/{account}" and account in {
+                "huggingface", "worknomads", "libertexgroup", "unitary",
+                "dreamix-ltd", "trinetix", "everwest", "hack-the-box-ltd",
+                "globaldevgroup",
+            }
+            query = urllib.parse.parse_qs(parsed.query)
+            path_allowed = path_allowed and query.get("details") == ["true"]
+        elif source_id == "workable_public_job_pages":
+            path_allowed = bool(re.fullmatch(r"/jobs/[^/]+(?:/candidates/new)?/?", path))
+            if host == "apply.workable.com":
+                path_allowed = bool(re.fullmatch(r"/j/[A-Za-z0-9]+/?", path))
         else:
             path_allowed = path.startswith(rule.allowed_path_prefix) or (
                 rule.allowed_path_prefix.endswith(".rss") and path.endswith(".rss")

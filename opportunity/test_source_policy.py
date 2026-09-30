@@ -123,6 +123,32 @@ class SourcePolicyBindingTests(unittest.TestCase):
             with self.subTest(url=url):
                 self.assertFalse(registry.validate_preflight("personio_xml", url, "GET")[0])
 
+    def test_workable_probe_separates_public_jobs_from_authenticated_spi(self):
+        registry = SourceRegistry(REGISTRY_PATH)
+        self.assertTrue(registry.is_read_allowed("workable_public_jobs"))
+        self.assertFalse(registry.is_read_allowed("workable_spi_v3"))
+        allowed = (
+            "https://www.workable.com/api/accounts/huggingface?details=true",
+            "https://huggingface.workable.com/jobs/81B46579FE",
+            "https://apply.workable.com/j/81B46579FE",
+        )
+        for source_id, url in zip(
+            ("workable_public_jobs", "workable_public_job_pages", "workable_public_job_pages"),
+            allowed,
+        ):
+            with self.subTest(url=url):
+                self.assertTrue(registry.validate_preflight(source_id, url, "GET")[0])
+        refused = (
+            ("workable_public_jobs", "https://www.workable.com/spi/v3/jobs"),
+            ("workable_public_jobs", "https://www.workable.com/api/accounts/unknown?details=true"),
+            ("workable_public_jobs", "https://www.workable.com/api/accounts/huggingface"),
+            ("workable_public_jobs", "https://www.workable.com/api/accounts/huggingface/?details=true"),
+            ("workable_public_job_pages", "https://apply.workable.com/j/../../private"),
+        )
+        for source_id, url in refused:
+            with self.subTest(url=url):
+                self.assertFalse(registry.validate_preflight(source_id, url, "GET")[0])
+
 
 if __name__ == "__main__":
     unittest.main()
