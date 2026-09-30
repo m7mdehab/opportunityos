@@ -32,7 +32,7 @@ sources:
   - source_id: jobicy
     name: "jobicy"
     category: employment
-    poll_cadence_hours: 1
+    poll_cadence_hours: 12
     access:
       discovery: public_get
       detail: public_get_or_unknown
@@ -50,8 +50,8 @@ sources:
     policy_status: documented_public_api_permitted_attribution_required
     observed:
       status: allowed_ok
-      detail: "Historical 2026-09-02 robots.txt HTTP 403 is preserved and remains valid for that path. On 2026-09-30, current first-party API documentation (updated 2026-09-16) was reviewed: the public structured Jobs API is expressly intended for websites, applications, AI tools and automated workflows; no key/account is needed for listings; normal integrations need no separate agreement; retain Jobicy attribution and canonical listing URL; do not poll more than hourly. This authorization is limited to the documented API, not HTML scraping or the paid Commercial API."
-      request_metadata: "method=GET; endpoint=/api/v2/remote-jobs; taxonomy=locations,industries; bounded target-role tags; geo=anywhere; no auth; read-only; result_count=2 unique roles from one employer"
+      detail: "Historical 2026-09-02 robots.txt HTTP 403 is preserved and remains valid for that path. On 2026-09-30, current first-party API documentation (updated 2026-09-16) was reviewed: the public structured Jobs API is expressly intended for websites, applications, AI tools and automated workflows; no key/account is needed for listings; normal integrations need no separate agreement; retain Jobicy attribution and canonical listing URL. Documentation recommends only a few checks per day and sets an hourly minimum interval. This one-time reconnaissance issued 17 role-tag requests plus two taxonomy requests; do not repeat the burst. Use a 12-hour-or-slower cadence for any future single-request polling. Authorization is limited to the documented API, not HTML scraping or the paid Commercial API."
+      request_metadata: "method=GET; endpoint=/api/v2/remote-jobs; taxonomy_requests=2; role_tag_requests=17; geo=anywhere_subset=8; unique_geo_anywhere_result_count=2; one_employer; no_auth; read_only"
       latency_ms: 0
       record_count: 2
     last_policy_reviewed: 2026-09-30
