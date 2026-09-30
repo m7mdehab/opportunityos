@@ -35,6 +35,12 @@ class TestAcquisitionAndRegistryAuthority(unittest.TestCase):
         authorized, reason = self.registry.validate_preflight("jobicy", api_url)
         self.assertTrue(authorized, reason)
 
+        # The bounded next BC read is this one structured EMEA request; this
+        # checks repository policy only and does not contact Jobicy.
+        emea_url = "https://jobicy.com/api/v2/remote-jobs?geo=emea&industry=data-science&count=20"
+        authorized, reason = self.registry.validate_preflight("jobicy", emea_url)
+        self.assertTrue(authorized, reason)
+
         res = self.service.acquire("jobicy", api_url)
         self.assertTrue(res.authorized)
 

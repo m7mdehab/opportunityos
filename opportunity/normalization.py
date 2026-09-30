@@ -33,6 +33,7 @@ from .models import (
     Track,
     WorkMode,
 )
+from .unicode_safety import normalize_unicode
 
 
 def clean_text(text: Any) -> str:
@@ -42,7 +43,7 @@ def clean_text(text: Any) -> str:
     if isinstance(text, dict):
         values = text.get("eng") or text.get("ENG") or next(iter(text.values()), [])
         text = values[0] if isinstance(values, list) and values else values
-    val_str = str(text)
+    val_str = normalize_unicode(str(text))
     # Strip HTML tags
     val_no_html = re.sub(r"<[^>]+>", " ", val_str)
     # Unescape HTML entities
@@ -54,6 +55,7 @@ def clean_text(text: Any) -> str:
 
 def compute_record_checksum(raw_item: Any) -> str:
     """Compute deterministic SHA-256 checksum for a single raw item payload."""
+    raw_item = normalize_unicode(raw_item)
     if isinstance(raw_item, str):
         payload = raw_item.encode("utf-8")
     else:
@@ -61,7 +63,7 @@ def compute_record_checksum(raw_item: Any) -> str:
         try:
             payload = json.dumps(raw_item, sort_keys=True).encode("utf-8")
         except Exception:
-            payload = str(raw_item).encode("utf-8")
+            payload = normalize_unicode(str(raw_item)).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 

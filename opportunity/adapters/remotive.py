@@ -31,6 +31,7 @@ from opportunity.normalization import (
     extract_work_location,
     parse_iso_date,
 )
+from opportunity.unicode_safety import normalize_unicode
 
 
 class RemotiveAdapter(BaseAdapter):
@@ -47,7 +48,8 @@ class RemotiveAdapter(BaseAdapter):
     def parse_payload(
         self, payload: str, raw_pointer: str = "", fetched_at: str = ""
     ) -> ParseResult:
-        data = json.loads(payload)
+        payload = normalize_unicode(payload)
+        data = normalize_unicode(json.loads(payload))
         if not isinstance(data, dict) or "jobs" not in data:
             return ParseResult(opportunities=(), records_raw_count=0, has_schema_drift=True)
 

@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Iterator
 
+from opportunity.unicode_safety import normalize_unicode
+
 
 class Track(str, Enum):
     EMPLOYMENT = "employment"
@@ -262,6 +264,13 @@ def compute_canonical_content_hash(
     requirements: tuple[str, ...] = (),
     skills: tuple[str, ...] = (),
 ) -> str:
+    organization = normalize_unicode(organization)
+    title = normalize_unicode(title)
+    location_raw = normalize_unicode(location_raw)
+    description = normalize_unicode(description)
+    responsibilities = normalize_unicode(responsibilities)
+    requirements = normalize_unicode(requirements)
+    skills = normalize_unicode(skills)
     norm_org = organization.strip().casefold()
     norm_title = re.sub(r"\s+", " ", title.strip().casefold())
     norm_loc = re.sub(r"\s+", " ", location_raw.strip().casefold())
@@ -289,7 +298,7 @@ def compute_canonical_content_hash(
 
 def serialize_source_record(value: Any) -> str:
     """Serialize the exact adapter-level source record for cold recovery."""
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    return json.dumps(normalize_unicode(value), ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
 
 
 def compute_dedup_key(
