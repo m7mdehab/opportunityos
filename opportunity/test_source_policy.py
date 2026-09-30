@@ -104,6 +104,25 @@ class SourcePolicyBindingTests(unittest.TestCase):
         }
         self.assertEqual({"hacker_news_who_is_hiring"}, new_e23_bound)
 
+    def test_personio_probe_is_limited_to_public_xml_and_numeric_job_pages(self):
+        registry = SourceRegistry(REGISTRY_PATH)
+        allowed = (
+            "https://jobleads.jobs.personio.de/xml?language=en",
+            "https://jobleads.jobs.personio.de/job/2746946?language=en",
+        )
+        for url in allowed:
+            with self.subTest(url=url):
+                self.assertEqual((True, "Authorized"), registry.validate_preflight("personio_xml", url, "GET"))
+        refused = (
+            "https://jobleads.jobs.personio.de/xml/extra?language=en",
+            "https://jobleads.jobs.personio.de/job/not-a-number",
+            "https://jobs.personio.de/xml?language=en",
+            "http://jobleads.jobs.personio.de/xml?language=en",
+        )
+        for url in refused:
+            with self.subTest(url=url):
+                self.assertFalse(registry.validate_preflight("personio_xml", url, "GET")[0])
+
 
 if __name__ == "__main__":
     unittest.main()

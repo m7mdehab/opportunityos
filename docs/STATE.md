@@ -10,7 +10,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-09-29T01:36:26Z
+- **Generated:** 2026-09-30T20:26:13Z
 - **State generated at commit:** `f4fd150` — policy: distinguish public Teamtailor RSS from API
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
@@ -90,7 +90,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Source Status Counts
 
-- allowed_ok: 343
+- allowed_ok: 344
 - authenticated_required: 1
 - credential_gated: 1
 - deliberately_not_fetched: 16

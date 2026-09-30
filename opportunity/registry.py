@@ -66,6 +66,24 @@ SOURCE_ENDPOINT_RULES: dict[str, EndpointRule] = {
         allowed_methods=frozenset({"GET"}),
         require_https=True,
     ),
+    # Personio's company career-site XML feed is a documented public read
+    # surface. Keep this probe bounded to its explicit eight-host watchlist;
+    # the authenticated Recruiting API is not authorized by this rule.
+    "personio_xml": EndpointRule(
+        allowed_hosts=frozenset({
+            "jobleads.jobs.personio.de",
+            "adorsys.jobs.personio.de",
+            "retoflow.jobs.personio.de",
+            "schickler.jobs.personio.de",
+            "eraneos.jobs.personio.de",
+            "lmit.jobs.personio.de",
+            "thinkport-gmbh.jobs.personio.de",
+            "ptg.jobs.personio.de",
+        }),
+        allowed_path_prefix="/xml",
+        allowed_methods=frozenset({"GET"}),
+        require_https=True,
+    ),
     "remote_ok": EndpointRule(
         allowed_hosts=frozenset({"remoteok.com", "remoteok.io"}),
         allowed_path_prefix="/api",
@@ -254,7 +272,13 @@ class SourceRegistry:
         if source_id == "teamtailor_rss" and path != "/jobs.rss":
             return False, f"Refused: Teamtailor RSS path must be exactly '/jobs.rss', got '{path}'"
 
-        if not path.startswith(rule.allowed_path_prefix) and not (rule.allowed_path_prefix.endswith(".rss") and path.endswith(".rss")):
+        if source_id == "personio_xml":
+            path_allowed = path == "/xml" or bool(re.fullmatch(r"/job/\d+/?", path))
+        else:
+            path_allowed = path.startswith(rule.allowed_path_prefix) or (
+                rule.allowed_path_prefix.endswith(".rss") and path.endswith(".rss")
+            )
+        if not path_allowed:
             return False, f"Refused: Path '{path}' does not match allowed prefix '{rule.allowed_path_prefix}' for source '{source_id}'"
 
         if method_upper not in rule.allowed_methods:

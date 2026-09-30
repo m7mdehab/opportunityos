@@ -173,6 +173,36 @@ sources:
     policy_evidence:
       - https://support.teamtailor.com/en/articles/11171756-rss-feed-how-to-guide
       - https://support.teamtailor.com/en/articles/5963369-use-our-teamtailor-api
+  - source_id: personio_xml
+    name: "Personio public company career-site XML"
+    category: employment
+    poll_cadence_hours: 168
+    access:
+      discovery: public_get
+      detail: public_job_page_only
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: not_specified_bounded_probe_only
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: documented_public_company_career_xml_bounded_watchlist
+    observed:
+      status: allowed_ok
+      detail: "On 2026-09-30, one read-only request to each of eight exact public career-site XML feeds returned HTTP 200 and 88 postings total. The corrected in-memory pipeline found 16 core/adjacent roles, zero with explicit Egypt-compatible geography, and zero For You candidates. Sixteen target roles had no unresolved mandatory credential detected. No detail/application pages were fetched because no target role passed the geography gate. Nothing was persisted. The authenticated Recruiting API remains outside this source permission."
+      request_metadata: "method=GET; endpoint=/xml?language=en; allowlist=8 exact hosts; http_200=8; raw_jobs=88; unique=88; core_adjacent=16; egypt_compatible=0; credential_clean_of_relevant=16; actionable=0; for_you=0; no_auth; no_persistence"
+      latency_ms: 502
+      record_count: 88
+    last_policy_reviewed: 2026-09-30
+    policy_evidence:
+      - https://developer.personio.de/docs/integration-of-open-positions
+      - https://developer.personio.de/v1.0/reference/get_xml
+      - https://developer.personio.de/docs/retrieving-open-job-positions
   - source_id: we_work_remotely
     name: "we_work_remotely"
     category: employment
