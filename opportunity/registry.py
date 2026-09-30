@@ -38,6 +38,15 @@ SOURCE_ENDPOINT_RULES: dict[str, EndpointRule] = {
         allowed_methods=frozenset({"GET"}),
         require_https=True,
     ),
+    # The public Jobicy Jobs API is documented for product integrations.
+    # Keep reads bound to that JSON endpoint; job pages and arbitrary HTML are
+    # not authorized acquisition surfaces.
+    "jobicy": EndpointRule(
+        allowed_hosts=frozenset({"jobicy.com"}),
+        allowed_path_prefix="/api/v2/remote-jobs",
+        allowed_methods=frozenset({"GET"}),
+        require_https=True,
+    ),
     "remote_ok": EndpointRule(
         allowed_hosts=frozenset({"remoteok.com", "remoteok.io"}),
         allowed_path_prefix="/api",

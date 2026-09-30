@@ -32,30 +32,33 @@ sources:
   - source_id: jobicy
     name: "jobicy"
     category: employment
+    poll_cadence_hours: 1
     access:
       discovery: public_get
       detail: public_get_or_unknown
       submit: prohibited_or_unknown
     attribution:
-      required: review_required
+      required: required
     rate_limits:
-      documented: unknown
+      documented: max_once_per_hour
     commercial_use:
       status: review_required
     automation:
-      read: disabled
+      read: allowed
       prepare: disabled
       submit: disabled
-    policy_status: unknown_disable_actions
+    policy_status: documented_public_api_permitted_attribution_required
     observed:
-      status: robots_unreachable
-      detail: "2026-09-02 re-recon: robots.txt fetch to jobicy.com returned HTTP 403 on all three attempts (AGENTS.md 403 stop rule observed; no further requests made to this host)"
-      request_metadata: "method=GET; endpoint=/robots.txt"
+      status: allowed_ok
+      detail: "Historical 2026-09-02 robots.txt HTTP 403 is preserved and remains valid for that path. On 2026-09-30, current first-party API documentation (updated 2026-09-16) was reviewed: the public structured Jobs API is expressly intended for websites, applications, AI tools and automated workflows; no key/account is needed for listings; normal integrations need no separate agreement; retain Jobicy attribution and canonical listing URL; do not poll more than hourly. This authorization is limited to the documented API, not HTML scraping or the paid Commercial API."
+      request_metadata: "method=GET; endpoint=/api/v2/remote-jobs; taxonomy=locations,industries; bounded target-role tags; geo=anywhere; no auth; read-only; result_count=2 unique roles from one employer"
       latency_ms: 0
-      record_count: 0
-    last_policy_reviewed: 2026-09-02
+      record_count: 2
+    last_policy_reviewed: 2026-09-30
     policy_evidence:
       - https://jobicy.com/terms
+      - https://jobicy.com/jobs-rss-feed
+      - https://github.com/Jobicy/remote-jobs-api
   - source_id: remotive
     name: "remotive"
     category: employment
