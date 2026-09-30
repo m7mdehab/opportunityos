@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-29T01:36:26Z
-- **State generated at commit:** `91de296` — fix: normalize malformed source unicode safely
+- **State generated at commit:** `f4fd150` — policy: distinguish public Teamtailor RSS from API
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -90,7 +90,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Source Status Counts
 
-- allowed_ok: 342
+- allowed_ok: 343
+- authenticated_required: 1
 - credential_gated: 1
 - deliberately_not_fetched: 16
 - documented_api; targeted_search_canary_pending: 1
