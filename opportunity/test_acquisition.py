@@ -56,6 +56,36 @@ class TestAcquisitionAndRegistryAuthority(unittest.TestCase):
         self.assertFalse(authorized)
         self.assertIn("unauthorized", reason)
 
+    def test_teamtailor_rss_is_bounded_and_api_remains_disabled(self) -> None:
+        self.assertFalse(self.registry.is_read_allowed("teamtailor_api"))
+        rss_hosts = (
+            "appsilon-1739358905.teamtailor.com", "axmed.teamtailor.com",
+            "castai.teamtailor.com", "combineglobalrecruitment.na.teamtailor.com",
+            "enfuceoy.teamtailor.com", "lineten.teamtailor.com",
+            "nanlabs.na.teamtailor.com", "silenteight.teamtailor.com",
+            "sullyai.teamtailor.com", "swishanalytics.na.teamtailor.com",
+        )
+        for host in rss_hosts:
+            authorized, reason = self.registry.validate_preflight(
+                "teamtailor_rss", f"https://{host}/jobs.rss"
+            )
+            self.assertTrue(authorized, reason)
+
+        for url in (
+            "https://api.teamtailor.com/v1/jobs",
+            "https://unlisted.teamtailor.com/jobs.rss",
+            "https://appsilon-1739358905.teamtailor.com/jobs.rss.evil",
+            "https://appsilon-1739358905.teamtailor.com/jobs",
+        ):
+            authorized, _ = self.registry.validate_preflight("teamtailor_rss", url)
+            self.assertFalse(authorized, url)
+
+        authorized, reason = self.registry.validate_preflight(
+            "teamtailor_api", "https://api.teamtailor.com/v1/jobs"
+        )
+        self.assertFalse(authorized)
+        self.assertIn("disabled", reason)
+
     def test_mutating_methods_strictly_forbidden(self) -> None:
         for method in ("PUT", "PATCH", "DELETE"):
             authorized, reason = self.registry.validate_preflight(

@@ -116,6 +116,63 @@ sources:
     last_policy_reviewed: 2026-08-28
     policy_evidence:
       - https://remoteok.com/terms
+  - source_id: teamtailor_api
+    name: "Teamtailor authenticated Public API"
+    category: employment
+    poll_cadence_hours: 0
+    access:
+      discovery: authenticated_api
+      detail: authenticated_api
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: account_scoped
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: authenticated_api_key_required_not_authorized
+    observed:
+      status: authenticated_required
+      detail: "Historical 2026-09-27 finding preserved: Teamtailor Public API access requires an API key created by a Company Admin in an account. This 2026-09-30 review confirms that API requirement remains separate from documented public career-site RSS. No API requests or account access were used for the BC probe."
+      request_metadata: "method=GET; API not used"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-30
+    policy_evidence:
+      - https://support.teamtailor.com/en/articles/5963369-use-our-teamtailor-api
+  - source_id: teamtailor_rss
+    name: "Teamtailor public career-site RSS"
+    category: employment
+    poll_cadence_hours: 168
+    access:
+      discovery: public_get
+      detail: public_job_page_only
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: not_specified_public_rss
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: documented_public_career_rss_bounded_watchlist
+    observed:
+      status: allowed_ok
+      detail: "On 2026-09-30, Teamtailor first-party RSS documentation confirmed public jobs.rss feeds for Teamtailor career sites and listed title, description, publication date, advert URL, remote status, global ID, locations, department, role, and division. RSS is distinct from the authenticated Public API, which requires an account-generated API key. A bounded read-only probe of ten exact /jobs.rss hosts returned nine HTTP 200 feeds containing 77 postings; one feed returned 404 and one successful feed was empty. The in-memory corrected funnel produced one For You result; no posting was persisted. Keep future reads to the same explicit watchlist and a weekly-or-slower interval."
+      request_metadata: "method=GET; endpoint=/jobs.rss; watchlist=10 employers; http_200=9; http_404=1; raw_jobs=77; parsed_unique=77; core_adjacent=12; Egypt_compatible=2; credential_clean=77; actionable=1; for_you=1; no_auth; no_persistence"
+      latency_ms: 0
+      record_count: 77
+    last_policy_reviewed: 2026-09-30
+    policy_evidence:
+      - https://support.teamtailor.com/en/articles/11171756-rss-feed-how-to-guide
+      - https://support.teamtailor.com/en/articles/5963369-use-our-teamtailor-api
   - source_id: we_work_remotely
     name: "we_work_remotely"
     category: employment

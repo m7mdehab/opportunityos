@@ -47,6 +47,25 @@ SOURCE_ENDPOINT_RULES: dict[str, EndpointRule] = {
         allowed_methods=frozenset({"GET"}),
         require_https=True,
     ),
+    # Teamtailor's public career-site RSS is separate from its authenticated
+    # Public API. Hosts are limited to the current BC reconnaissance watchlist.
+    "teamtailor_rss": EndpointRule(
+        allowed_hosts=frozenset({
+            "appsilon-1739358905.teamtailor.com",
+            "axmed.teamtailor.com",
+            "castai.teamtailor.com",
+            "combineglobalrecruitment.na.teamtailor.com",
+            "enfuceoy.teamtailor.com",
+            "lineten.teamtailor.com",
+            "nanlabs.na.teamtailor.com",
+            "silenteight.teamtailor.com",
+            "sullyai.teamtailor.com",
+            "swishanalytics.na.teamtailor.com",
+        }),
+        allowed_path_prefix="/jobs.rss",
+        allowed_methods=frozenset({"GET"}),
+        require_https=True,
+    ),
     "remote_ok": EndpointRule(
         allowed_hosts=frozenset({"remoteok.com", "remoteok.io"}),
         allowed_path_prefix="/api",
@@ -231,6 +250,9 @@ class SourceRegistry:
 
         if host not in rule.allowed_hosts:
             return False, f"Refused: Host '{host}' is unauthorized for source '{source_id}' (allowed: {sorted(rule.allowed_hosts)})"
+
+        if source_id == "teamtailor_rss" and path != "/jobs.rss":
+            return False, f"Refused: Teamtailor RSS path must be exactly '/jobs.rss', got '{path}'"
 
         if not path.startswith(rule.allowed_path_prefix) and not (rule.allowed_path_prefix.endswith(".rss") and path.endswith(".rss")):
             return False, f"Refused: Path '{path}' does not match allowed prefix '{rule.allowed_path_prefix}' for source '{source_id}'"
