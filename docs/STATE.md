@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-09-29T01:36:26Z
-- **State generated at commit:** `ca9d879` — docs(bc): record hosted closure evidence
+- **State generated at commit:** `91de296` — fix: normalize malformed source unicode safely
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -90,7 +90,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Source Status Counts
 
-- allowed_ok: 341
+- allowed_ok: 342
 - credential_gated: 1
 - deliberately_not_fetched: 16
 - documented_api; targeted_search_canary_pending: 1
@@ -99,7 +99,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 - no_public_api: 5
 - not_a_postings_feed: 5
 - parse_empty: 2
-- robots_unreachable: 17
+- robots_unreachable: 16
 
 ## Next Prerequisites
 
