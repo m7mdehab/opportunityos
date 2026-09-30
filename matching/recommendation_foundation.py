@@ -165,11 +165,11 @@ _US_PLACE = re.compile(
 _REQUIRED_CREDENTIAL = re.compile(
     r"\b(?:(?:active|current|valid)\s+)?(?:top\s+secret|secret|TS\s*/\s*SCI(?:\s+with\s+polygraph)?|"
     r"security\s+clearance|professional\s+(?:license|licence|certification)|"
-    r"(?:license|licence|certification)\s+in\s+[A-Z][\w.+/# -]{1,50})\b", re.I,
+    r"(?:license|licence|certification)\s+in\s+[A-Z][\w.+/# -]{1,50}|ACCA|ACA|CPA)\b", re.I,
 )
 _REQUIRED_CONTEXT = re.compile(
     r"\b(?:required|must\s+(?:have|hold|maintain|possess)|need\s+to\s+(?:have|hold)|"
-    r"eligib(?:le|ility)\s+to\s+obtain|ability\s+to\s+obtain)\b|"
+    r"eligib(?:le|ility)\s+to\s+obtain|ability\s+to\s+obtain|qualified\s+(?:accountant|professional))\b|"
     r"\bsecurity\s+clearance\s*[:\-]", re.I,
 )
 _PHYSICAL_LOCATION_LINE = re.compile(

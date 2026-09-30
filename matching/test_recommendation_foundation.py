@@ -227,6 +227,13 @@ class RecommendationFoundationTests(unittest.TestCase):
         self.assertEqual((state, reason), ("review", "required_us_citizenship_unverified"))
         self.assertEqual((credential_state, credential_reason), ("review", "required_clearance_unverified"))
 
+    def test_required_accounting_credential_is_not_silently_treated_as_unrestricted(self):
+        posting = "A qualified accountant (ACA, ACCA, or CPA) is required for this role."
+        self.assertEqual(
+            classify_required_credentials(posting),
+            ("review", "required_credential_unverified"),
+        )
+
     def test_onsite_outside_egypt_requires_place_specific_verified_relocation_preference(self):
         self.assertEqual(classify_founder_geography(
             location_country="US", location_region="Arlington, VA", work_mode="onsite",
