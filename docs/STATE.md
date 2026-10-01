@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-10-01T21:32:40Z
-- **State generated at commit:** `b1b8f43` — build: advance provider migration evidence bundle
+- **Generated:** 2026-10-01T21:35:35Z
+- **State generated at commit:** `bbdcf52` — fix: reject incomplete live feed reconciliation
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
