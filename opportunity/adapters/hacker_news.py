@@ -345,6 +345,9 @@ class HackerNewsWhoIsHiringAdapter(BaseAdapter):
                     native_region=role_location,
                 )
                 role_track = extract_track(self.track, "", role_title, role_description)
+                role_seniority = extract_seniority(role_title, role_description)
+                role_emp_type = extract_employment_type("", role_title, role_description)
+                role_skills = extract_skills_from_text(role_description)
                 role_geo = derive_geographic_eligibility(
                     title=role_title,
                     location_raw=role_location,
@@ -368,7 +371,7 @@ class HackerNewsWhoIsHiringAdapter(BaseAdapter):
                         ensure_ascii=False,
                     ),
                 )
-                role_field_provenances = (
+                role_field_provenances = [
                     create_field_provenance(
                         "track", "", role_track.value, DerivationType.RULE_DERIVATION,
                         role_pointer, role_checksum, "extract_track",
@@ -391,16 +394,43 @@ class HackerNewsWhoIsHiringAdapter(BaseAdapter):
                         role_checksum, role_work_loc.work_mode_rule_id or "extract_work_location",
                     ),
                     create_field_provenance(
+                        "location_raw", role_location, role_location,
+                        DerivationType.RAW_EXTRACTION, f"{role_pointer}.location",
+                        role_checksum, "parse_linked_role_location",
+                    ),
+                    create_field_provenance(
+                        "employment_type", role_description, role_emp_type.value,
+                        DerivationType.RULE_DERIVATION, f"{role_pointer}.text",
+                        role_checksum, "extract_employment_type",
+                    ),
+                    create_field_provenance(
+                        "seniority", role_title, role_seniority.value,
+                        DerivationType.RULE_DERIVATION, f"{role_pointer}.text",
+                        role_checksum, "extract_seniority",
+                    ),
+                    create_field_provenance(
                         "geographic_eligibility", role_location, role_geo.status,
                         DerivationType.RULE_DERIVATION, f"{role_pointer}.location",
                         role_checksum, "classify_geography",
                     ),
-                )
+                ]
+                if role_skills:
+                    role_field_provenances.append(create_field_provenance(
+                        "skills", role_description, ", ".join(role_skills),
+                        DerivationType.RULE_DERIVATION, f"{role_pointer}.text",
+                        role_checksum, "extract_skills_from_text",
+                    ))
                 role_date = None
                 try:
                     role_date = datetime.fromtimestamp(int(comment.get("time")), timezone.utc).date().isoformat()
                 except (TypeError, ValueError, OSError, OverflowError):
                     pass
+                if role_date:
+                    role_field_provenances.append(create_field_provenance(
+                        "posted_date", str(comment.get("time")), role_date,
+                        DerivationType.SOURCE_METADATA_DERIVATION, f"{role_pointer}.time",
+                        role_checksum, "hacker_news_item_timestamp",
+                    ))
                 opportunities.append(Opportunity(
                     id=role_id,
                     track=role_track,
@@ -412,9 +442,9 @@ class HackerNewsWhoIsHiringAdapter(BaseAdapter):
                     description=role_description,
                     responsibilities=(),
                     requirements=(),
-                    skills=extract_skills_from_text(role_description),
-                    seniority=extract_seniority(role_title, role_description),
-                    employment_type=extract_employment_type("", role_title, role_description),
+                    skills=role_skills,
+                    seniority=role_seniority,
+                    employment_type=role_emp_type,
                     location_raw=role_location,
                     work_mode=role_work_loc.work_mode,
                     work_mode_source=role_work_loc.work_mode_source,
@@ -428,7 +458,7 @@ class HackerNewsWhoIsHiringAdapter(BaseAdapter):
                     raw_provenance=role_provenance,
                     record_checksum=role_checksum,
                     raw_record_pointer=role_pointer,
-                    field_provenances=role_field_provenances,
+                    field_provenances=tuple(role_field_provenances),
                     canonical_outbound_url=application_url,
                     raw_source_record_json=self.serialize_source_record(comment),
                 ))

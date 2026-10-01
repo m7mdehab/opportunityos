@@ -353,6 +353,13 @@ class AdapterTests(unittest.TestCase):
             classify_role_relevance(candidate.title, candidate.description).classification,
             "adjacent",
         )
+        from opportunity.pipeline import OpportunityPipeline
+        batch = OpportunityPipeline(
+            adapters=[HackerNewsWhoIsHiringAdapter()], registry=SourceRegistry()
+        ).process_payloads(
+            {"hacker_news_who_is_hiring": payload}, now_iso="2026-10-01"
+        )
+        self.assertIn(candidate.id, {opp.id for opp in batch.opportunities})
 
 
 _HN_DISABLED_REGISTRY_YAML = """
