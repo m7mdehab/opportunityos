@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-10-01T20:33:48Z
-- **State generated at commit:** `212b86c` — fix(bc): complete keyword-only canary refresh
+- **State generated at commit:** `e7ec065` — fix(deploy): bound BC projection release
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
