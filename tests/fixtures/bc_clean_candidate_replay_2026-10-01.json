@@ -1,0 +1,154 @@
+{
+  "fixture": "Six individually audited BC candidates across captured production, public Lever API, and public Hacker News evidence",
+  "captured_at": "2026-10-01",
+  "provenance": {
+    "production_candidates": "Read-only HOT/PROTECTED public opportunity evidence and feed projection captured 2026-10-01; no Founder data included in candidate payloads.",
+    "lever_candidates": "One public Lever Postings API response for VRChat; SHA-256 0d031408faf2b2450bd3f78700536b1ac63bd61fd9c1baa0f012e269caa99f44.",
+    "founder_state_check": "Separate read-only Founder feedback/activity/triage lookup on 2026-10-01 found no Founder records for the original five candidate IDs; the LiveKit parent comment also has no Founder records. Three additional examined records were excluded from supply count: Canonical 4810491 has irrelevant_role/dismissed; Canonical 5703396 has good_match/applied/submitted; Deeter Analytics HN 49571280 has mark_applied/submitted.",
+    "application_routes": "Canonical Greenhouse and VRChat Lever public job/application routes individually returned HTTP 200 and displayed application forms; the public LiveKit Ashby application page exposed its application fields without auth; no forms were submitted.",
+    "hacker_news_candidate": "Existing live HN opportunity hacker_news_who_is_hiring:49570095, re-read from official Firebase item endpoint 2026-10-01. The comment contains the specific Software Engineer, Agents role, EMEA/APJ remote scope, and public Ashby URL. Public Ashby page and application tab were loaded without authentication; no form was submitted. Parent opportunity had no Founder feedback/activity/triage. The job-specific Ashby page describes core AI-agent infrastructure, LLM systems, and developer frameworks. Item fixture SHA is recorded in the source decision report."
+  },
+  "candidates": [
+    {
+      "opportunity_id": "greenhouse:canonical:5667860",
+      "title": "Engineering Manager - Data Platform",
+      "organization": "Canonical",
+      "source_id": "greenhouse:canonical",
+      "evidence_text": "<p>Canonical is building a comprehensive suite of multi-cloud and on-premise data solutions for the enterprise. We want to make it easy to operate any database on any cloud, or on premise. The data platform team covers the full range of data stores and data technologies, spanning from big data, NoSQL, cache-layer capabilities, and analytics; all the way to structured SQL engines like Postgres and MySQL. We aim to deliver fault-tolerant mission-critical distributed systems, and the world’s best data platform.&nbsp;</p> <p>We are looking for technical Engineering Managers to lead teams focused on Big Data and MySQL databases. We write code in Python and encode modern operational practices for data applications at scale on Kubernetes and cloud machines.</p> <p><strong>Location:</strong><em> This role can be filled in European, Middle East, African or any American region / time zone.</em></p> <h2>What your day will look like</h2> <ul> <li>You will lead a team building scalable data solutions for Kubernetes and cloud machines</li> <li>You will hire, coach, mentor, provide feedback, and lead your team by example</li> <li>You will demonstrate sound engineering skill by directly contributing code when needed</li> <li>Effectively set and manage expectations with other engineering teams, senior management, and external stakeholders</li> <li>Advocate modern, agile software development practices</li> <li>Develop and evangelize great engineering and organizational practices</li> <li>Ensure that your team delivers excellent products that users love by maintaining a culture of quality and engineering excellence</li> <li>Grow a healthy, collaborative engineering culture aligned with the company’s values.</li> <li>Be an active part of the leadership team and collaborate with other leaders in the organization</li> <li>Work from home with global travel twice yearly, for internal events of one or two weeks duration</li> </ul> <h2>What we are looking for in you</h2> <ul> <li>A software engineering background, preferably with Python and Golang experience</li> <li>Experience running in production and at scale, preferably Big Data or MySQL</li> <li>Excellent judgement about people - their motivations, abilities, developmental needs, and prospects for success</li> <li>Proven ability to build high-quality, open-source software</li> <li>Proven to drive good engineering practices around performance and quality</li> <li>An open-minded attitude to new technologies and the drive to push the boundaries of what is possible</li> <li>The ambition to build products that improve how people operate software and infrastructure everywhere</li> <li>Love developing and growing people and have a track record of doing it</li> <li>Knowledgeable and passionate about software development</li> </ul> <h2>Additional skills that you might also bring</h2> <ul> <li>Specialist knowledge in one or more of Spark, Superset, MySQL, or similar</li> <li>Prior experience working with open source and a will to build products with the community</li> </ul> <h2>What we offer you</h2> <p>Your base pay will depend on various factors including your geographical location, level of experience, knowledge and skills. In addition to the benefits above, certain roles are also eligible for additional benefits and rewards including annual bonuses and sales incentives based on revenue or utilisation. Our compensation philosophy is to ensure equity right across our global workforce.&nbsp;&nbsp;</p> <p>In addition to a competitive base pay, we provide all team members with additional benefits, which reflect our values and ideals. Please note that additional benefits may apply depending on the work location and, for more information on these, please ask your Talent Partner.</p> <ul> <li>Fully remote working environment - we’ve been working remotely since 2004!</li> <li>Personal learning and development budget of 2,000USD per annum</li> <li>Annual compensation review</li> <li>Recognition rewards</li> <li>Annual holiday leave</li> <li>Parental Leave</li> <li>Employee Assistance Programme</li> <li>Opportunity to travel to new locations to meet colleagues at ‘sprints’</li> <li>Priority Pass for travel and travel upgrades for long haul company events</li> </ul> <h2>About Canonical</h2> <p>Canonical is a pioneering tech firm that is at the forefront of the global move to open source. As the company that publishes Ubuntu, one of the most important open source projects and the platform for AI, IoT and the cloud, we are changing the world on a daily basis. We recruit on a global basis and set a very high standard for people joining the company. We expect excellence - in order to succeed, we need to be the best at what we do.</p> <p>Canonical has been a remote-first company since its inception in 2004.​ Work at Canonical is a step into the future, and will challenge you to think differently, work smarter, learn new skills, and raise your game. Canonical provides a unique window into the world of",
+      "location_country": null,
+      "location_city": null,
+      "location_region": null,
+      "work_mode": "remote",
+      "remote_scope": "worldwide",
+      "remote_scope_regions": null,
+      "application_url": null,
+      "source_url": "https://job-boards.greenhouse.io/canonical/jobs/5667860",
+      "posted_date": "2026-08-05",
+      "is_stale": false,
+      "evidence_sha256": "b1c22dbb6de64e9c2fdcdeff393d42b2778c433b178c25a0ef424a6ca54e2284"
+    },
+    {
+      "opportunity_id": "greenhouse:canonical:6394147",
+      "title": "Lead Data Governance Engineer",
+      "organization": "Canonical",
+      "source_id": "greenhouse:canonical",
+      "evidence_text": "<p>Canonical is a leading provider of open-source software and operating systems for global enterprise and technology markets. Our platform, Ubuntu, is very widely used in breakthrough enterprise initiatives such as public cloud, data science, AI, engineering innovation and IoT. Our customers include the world's leading public cloud and silicon providers, and industry leaders in many sectors. The company is a pioneer of global distributed collaboration, with 1200+ colleagues in more than 80 countries and very few office-based roles. Teams meet two to four times yearly in person, in interesting locations around the world, to align on strategy and execution.</p> <p>The company is founder led, profitable and growing.</p> <p>We are hiring a <strong>Lead Data Governance Engineer</strong> with focus on data governance policies, processes, standards, and monitoring in compliance with internal policies and applicable regulatory frameworks, e.g., GDPR, DPA, ISO, etc. A successful candidate will develop Python-based tooling to automate the operations of an internal data mesh solution such as data labeling and quality metrics in a data, access management and data security best practices.</p> <p>The Data Governance team in the Commercial Systems unit has a mission to enable a secure and well-governed access to comprehensive data sets originating at many internal and external data sources formed in a data mesh. The team works with well-known open-source data governance tools such as Trino and Ranger, defines and executes data governance processes, and democratizes the data at Canonical.</p> <p><strong>Location</strong>: This role will be based remotely in the EMEA region.</p> <h3><strong>The role entails</strong></h3> <ul> <li>Define, monitor, and execute data governance policies</li> <li>Design, implement, and maintain tooling for automated data mesh operations</li> <li>Deploy and operate services developed by the team</li> <li>Depending on your seniority, coach, mentor, and offer career development feedback</li> <li>Develop and evangelize great engineering and organizational practices</li> </ul> <h3><strong>What we are looking for in you</strong></h3> <ul> <li>Exceptional academic track record from both high school and university</li> <li>Undergraduate degree in a technical subject or a compelling narrative about your alternative chosen path</li> <li>Track record of going above-and-beyond expectations to achieve outstanding results&nbsp;</li> <li>Experience with data quality, governance, and security processes and tools</li> <li>Experience with software development in Python and SQL</li> <li>Professional written and spoken English with excellent presentation skills</li> <li>Result-oriented, with a personal drive to meet commitments&nbsp;</li> <li>Ability to travel internationally twice a year, for company events up to two weeks long</li> </ul> <h3><strong>Nice-to-have skills</strong></h3> <ul> <li>Performance engineering and security experience</li> <li>Experience with Airbyte, Ranger, Superset, Temporal, or Trino</li> </ul> <h3><strong>What we offer colleagues</strong></h3> <p>We consider geographical location, experience, and performance in shaping compensation worldwide. We revisit compensation annually (and more often for graduates and associates) to ensure we recognize outstanding performance. In addition to base pay, we offer a performance-driven annual bonus or commission. We provide all team members with additional benefits, which reflect our values and ideals. We balance our programs to meet local needs and ensure fairness globally.</p> <ul> <li>Distributed work environment with twice-yearly team sprints in person</li> <li>Personal learning and development budget of USD 2,000 per year</li> <li>Annual compensation review</li> <li>Recognition rewards</li> <li>Annual holiday leave</li> <li>Maternity and paternity leave</li> <li>Employee Assistance Program</li> <li>Opportunity to travel to new locations to meet colleagues</li> <li>Priority Pass, and travel upgrades for long haul company events</li> </ul> <h3><strong>About Canonical</strong></h3> <p>Canonical is a pioneering tech firm at the forefront of the global move to open source. As the company that publishes Ubuntu, one of the most important open source projects and the platform for AI, IoT and the cloud, we are changing the world of software. We recruit on a global basis and set a very high standard for people joining the company. We expect excellence - in order to succeed, we need to be the best at what we do. Most colleagues at Canonical have worked from home since its inception in 2004.​ Working here is a step into the future, and will challenge you to think differently, work smarter, learn new skills, and raise your game.</p> <p><strong>Canonical is an equal opportunity employer</strong></p> <p>We are proud to foster a workplace free from discrimination. Diversity of experience, perspectives, and background create a better work environment and better p",
+      "location_country": null,
+      "location_city": null,
+      "location_region": null,
+      "work_mode": "remote",
+      "remote_scope": "unspecified",
+      "remote_scope_regions": null,
+      "application_url": null,
+      "source_url": "https://job-boards.greenhouse.io/canonical/jobs/6394147",
+      "posted_date": "2026-08-05",
+      "is_stale": false,
+      "evidence_sha256": "10371c2cfca4285621d42f3651ccfe3be0fc522819adcd9e9c60e244d872abab"
+    },
+    {
+      "opportunity_id": "greenhouse:canonical:6783943",
+      "title": "MLOps Field Engineer",
+      "organization": "Canonical",
+      "source_id": "greenhouse:canonical",
+      "evidence_text": "<p>Canonical is a leading provider of open source software and operating systems to the global enterprise and technology markets. Our platform, Ubuntu, is very widely used in breakthrough enterprise initiatives such as public cloud, data science, AI, engineering innovation, and IoT. Our customers include the world's leading public cloud and silicon providers, and industry leaders in many sectors. The company is a pioneer of global distributed collaboration, with 1200+ colleagues in 75+ countries and very few office-based roles. Teams meet two to four times yearly in person, in interesting locations around the world, to align on strategy and execution.</p> <p>The company is founder-led, profitable, and growing.</p> <p>We are hiring an <strong>MLOps Field Engineer</strong> to help global companies embrace AI/ML in their business, using the latest open source capabilities on public and private cloud infrastructure, Linux and Kubernetes. Our team applies expert insights to real-world customer problems, enabling the enterprise adoption of Ubuntu, Kubeflow, MLFlow, Feast, DVC and related analytics, machine learning and data technologies. We are working to create the world's best open source data platform, covering traditional SQL databases and today's NoSQL data stores, as well as the machinery which turns data into insights and executable models.&nbsp;</p> <p>The people who love this role are MLOps engineers who enjoy customer conversations and solving customer problems during the presales cycle. They are solutions architects who like to solve customer problems through architecture, presentations and training. This role is highly focused on designing ML architectures for external customers. It is not a software development role.&nbsp;</p> <p>This role is particularly suited to candidates with a technical background who are business minded and driven by commercial success. This role is on our global Field Engineering team and will work closely with enterprise sales leads. We are specifically looking for people interested in solving the most difficult problems in modern data architectures. Training LLMs on multiple Kubernetes clusters deployed on a hybrid cloud infrastructure with GPU sharing across multiple teams? Processing 10M events in real time for financial transactions? Object detection on 10k parallel 4K video streams? These are the problems we solve day to day.</p> <p><strong>Location</strong>: Most of our colleagues work from home. We are growing teams in EMEA, Americas and APAC time zones, so can accommodate candidates from almost any country.</p> <p><strong>What your day will look like</strong></p> <p>The global Field Engineering team members are Linux and cloud solutions architects for our customers, designing private and public cloud solutions fitting their workload needs. They are the cloud consultants who work hands-on with the technologies by deploying, testing and handing over the solution to our support or managed services team at the end of a project. They are also software engineers who use Python to develop Kubernetes operators and Linux open source infrastructure-as-code.</p> <ul> <li>Work across the entire Linux stack, from kernel, networking, storage, to applications,</li> <li>Architect cloud infrastructure solutions like Kubernetes, Kubeflow, OpenStack and Spark,</li> <li>Deliver solutions either on-premise or in public cloud (AWS, Azure, Google Cloud),</li> <li>Collect customer business requirements and advise them on Ubuntu and relevant open source applications,</li> <li>Grow a healthy, collaborative engineering culture in line with the company values,</li> <li>Deliver presentations and demonstrations of Ubuntu Pro and AI/ML capabilities to prospective and current clients,</li> <li>Liaise with product teams to give them feedback on requirements to influence roadmap,</li> <li>Work collaboratively with your sales team to reach our common targets,</li> <li>Global travel up to 30% of time for internal, external events and customer meetings.</li> </ul> <p><strong>What we are looking for in you</strong></p> <ul> <li>Exceptional academic track record from both high school and university,</li> <li>Undergraduate degree in a technical subject or a compelling narrative about your alternative chosen path,</li> <li>Experience in data engineering, MLOps, or big data solutions deployment,</li> <li>Experience with a relevant programming language, like Python, R, or Rust,</li> <li>Confidence to respectfully speak up, exchange feedback, and share ideas without hesitation,</li> <li>Track record of going above-and-beyond expectations to achieve outstanding results,</li> <li>Demonstrated personal interest in continuous learning and development,</li> <li>Practical knowledge of Linux, virtualization, containers and networking,</li> <li>Business-minded technology thinker and problem solver,</li> <li>Knowledge of cloud computing concepts &amp; leaders, such as Kubernetes, AWS, Azure, GCP,</li> <li>Interest in l",
+      "location_country": null,
+      "location_city": null,
+      "location_region": null,
+      "work_mode": "remote",
+      "remote_scope": "worldwide",
+      "remote_scope_regions": null,
+      "application_url": null,
+      "source_url": "https://job-boards.greenhouse.io/canonical/jobs/6783943",
+      "posted_date": "2026-08-05",
+      "is_stale": false,
+      "evidence_sha256": "827578abf9514db8405a7d0ef983d48015a4e532c0abe20fc8f2180e71fbb84f"
+    },
+    {
+      "opportunity_id": "lever:vrchat:f6d04b6b-8d9f-4261-9d1c-4fbf867d636c",
+      "title": "Senior Data Scientist",
+      "organization": "Vrchat",
+      "source_id": "lever:vrchat",
+      "source_url": "https://jobs.lever.co/vrchat/f6d04b6b-8d9f-4261-9d1c-4fbf867d636c",
+      "application_url": "https://jobs.lever.co/vrchat/f6d04b6b-8d9f-4261-9d1c-4fbf867d636c",
+      "evidence_text": "Join the VRChat Team! VRChat offers a first-of-its-kind, game-changing platform that provides an endless collection of social VR experiences and gives the power of creation to its robust community. With over 250,000 worlds and growing, VRChat’s vision is to allow users to bring their imaginations to life and help shape the metaverse anywhere in the world on any device. VRChat has raised around $100M to date with the support of our investors, which include: Makers Fund, Anthos Capital and HTC. We have a great team which includes people from: Netflix, Twitter, Meta, Microsoft, Roblox, Google, Amazon, Unity, Spotify, Discord, Uber, eBay, Robinhood, Twitch, Zynga and TikTok. Come and join the mission! Job Overview As a Senior Data Scientist on VRChat’s Data Team, you will play a key role in driving strategic product decisions and advancing our product roadmap across growth, user experience, creator, and economy verticals. The ideal candidate will have a background in a technical field, will have experience working with large production data sets, and will have some experience delivering data products on a fast-paced team. This position will be full-time and remote.",
+      "location_country": "US",
+      "location_city": "",
+      "location_region": "Anywhere",
+      "work_mode": "remote",
+      "remote_scope": "worldwide",
+      "remote_scope_regions": []
+    },
+    {
+      "opportunity_id": "lever:vrchat:93875494-9d42-446d-a069-9c14296e46ed",
+      "title": "Staff Engineer - Recommendations",
+      "organization": "Vrchat",
+      "source_id": "lever:vrchat",
+      "source_url": "https://jobs.lever.co/vrchat/93875494-9d42-446d-a069-9c14296e46ed",
+      "application_url": "https://jobs.lever.co/vrchat/93875494-9d42-446d-a069-9c14296e46ed",
+      "evidence_text": "Join the VRChat Team! VRChat offers a first-of-its-kind, game-changing platform that provides an endless collection of social VR experiences and gives the power of creation to its robust community. With over 250,000 worlds and growing, VRChat’s vision is to allow users to bring their imaginations to life and help shape the metaverse anywhere in the world on any device. VRChat has raised $100M to date with the support of investors, Makers Fund, Anthos Capital and HTC. We have a great team which includes people from: Netflix, Twitter, Meta, Microsoft, Roblox, Google, Amazon, Unity, Spotify, Discord, Uber, eBay, Robinhood, Twitch, Zynga and TikTok. Come and join the mission! Job Overview We’re looking for a data / ML engineer to join our Social Experience team. You will be instrumental in developing and refining the data-driven recommendations systems that help our users connect, interact, and discover content and communities. This role involves working with AWS, Python/FastAPI, Node.js, and Snowflake to build, train, and operationalize personalization systems. You will be instrumental in processing and transforming the large volumes of data generated by our platform to create meaningful user experiences. If you’re passionate about data engineering and leveraging data to enhance content discovery, this role could be the perfect fit.",
+      "location_country": "US",
+      "location_city": "",
+      "location_region": "Anywhere",
+      "work_mode": "remote",
+      "remote_scope": "worldwide",
+      "remote_scope_regions": []
+    },
+    {
+      "opportunity_id": "hacker_news_who_is_hiring:49570095_software-engineer-agents",
+      "title": "Software Engineer, Agents",
+      "organization": "LiveKit",
+      "source_id": "hacker_news_who_is_hiring",
+      "source_url": "https://news.ycombinator.com/item?id=49570095",
+      "application_url": "https://jobs.ashbyhq.com/livekit/1757f49e-7e19-4c45-85f7-e4637dff66fb/application",
+      "evidence_text": "LiveKit| http://livekit.io/ | VoiceAI | webRTC | Remote | Full Time LiveKit is building the infrastructure layer for the voice-driven era of computing. Our platform gives developers everything they need to build, test, deploy, scale, and observe agents in production. Role: Software Engineer, Agents. Job-specific location: NAMER, EMEA, APJ (Remote).",
+      "location_country": null,
+      "location_city": null,
+      "location_region": "North America; APJ; EMEA",
+      "work_mode": "remote",
+      "remote_scope": "region_restricted",
+      "remote_scope_regions": [
+        "North America",
+        "APJ",
+        "EMEA"
+      ],
+      "posted_date": "2026-09-04",
+      "is_stale": false,
+      "evidence_provenance": {
+        "hn_item_id": 49570095,
+        "hn_item_url": "https://hacker-news.firebaseio.com/v0/item/49570095.json",
+        "ashby_job_url": "https://jobs.ashbyhq.com/livekit/1757f49e-7e19-4c45-85f7-e4637dff66fb",
+        "verified_public_application_url": "https://jobs.ashbyhq.com/livekit/1757f49e-7e19-4c45-85f7-e4637dff66fb/application"
+      }
+    }
+  ],
+  "founder_state_exclusions": [
+    {
+      "opportunity_id": "greenhouse:canonical:4810491",
+      "feedback": [
+        "irrelevant_role"
+      ],
+      "activity": [
+        "dismissed"
+      ],
+      "triage": "dismissed"
+    },
+    {
+      "opportunity_id": "greenhouse:canonical:5703396",
+      "feedback": [
+        "good_match"
+      ],
+      "activity": [
+        "mark_applied"
+      ],
+      "triage": "submitted"
+    },
+    {
+      "opportunity_id": "hacker_news_who_is_hiring:49571280",
+      "feedback": [],
+      "activity": [
+        "mark_applied"
+      ],
+      "triage": "submitted"
+    }
+  ]
+}

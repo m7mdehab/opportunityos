@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+import json
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -127,6 +128,40 @@ class ProductionEvidenceReplayTests(unittest.TestCase):
             "greenhouse:canonical:6394147",
             "greenhouse:canonical:6783943",
         })
+
+    def test_individually_audited_candidates_preserve_founder_actions(self) -> None:
+        result = replay(Path("tests/fixtures/bc_clean_candidate_replay_2026-10-01.json"))
+        fixture = json.loads(
+            Path("tests/fixtures/bc_clean_candidate_replay_2026-10-01.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(result["candidate_count"], 6)
+        self.assertEqual(result["gate_counts"], {
+            "role_core_or_adjacent": 6,
+            "Egypt_compatible": 6,
+            "credential_clean": 6,
+            "actionable_access": 6,
+            "For_You": 6,
+        })
+        self.assertEqual(set(result["for_you_employers"]), {"Canonical", "Vrchat", "LiveKit"})
+        self.assertEqual(
+            {row["source_id"].split(":", 1)[0] for row in result["candidates"]},
+            {"greenhouse", "lever", "hacker_news_who_is_hiring"},
+        )
+        surviving_ids = {row["opportunity_id"] for row in result["candidates"]}
+        excluded_ids = {row["opportunity_id"] for row in fixture["founder_state_exclusions"]}
+        self.assertTrue(surviving_ids.isdisjoint(excluded_ids))
+        self.assertEqual(
+            {row["title"] for row in result["candidates"]},
+            {
+                "Engineering Manager - Data Platform",
+                "Lead Data Governance Engineer",
+                "MLOps Field Engineer",
+                "Senior Data Scientist",
+                "Staff Engineer - Recommendations",
+                "Software Engineer, Agents",
+            },
+        )
+        self.assertIn("Public Ashby page", fixture["provenance"]["hacker_news_candidate"])
 
 
 if __name__ == "__main__":

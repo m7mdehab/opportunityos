@@ -28,6 +28,35 @@ class RecommendationFoundationTests(unittest.TestCase):
         )
         self.assertEqual(
             classify_role_relevance(
+                "Staff Engineer - Recommendations",
+                "Job Overview: We’re looking for a data / ML engineer to build recommendation systems.",
+            ).classification,
+            "adjacent",
+        )
+        self.assertEqual(
+            classify_role_relevance(
+                "Staff Engineer - Recommendations",
+                "About Us: We hire data / ML engineers. This role builds generic infrastructure.",
+            ).classification,
+            "non_target",
+        )
+        self.assertEqual(
+            classify_role_relevance(
+                "Software Engineer, Agents",
+                "This role designs core abstractions and infrastructure for AI agents, "
+                "including LLM-based applications and the agent framework.",
+            ).classification,
+            "adjacent",
+        )
+        self.assertEqual(
+            classify_role_relevance(
+                "Software Engineer",
+                "Our company builds AI agents. This role maintains a generic billing service.",
+            ).classification,
+            "non_target",
+        )
+        self.assertEqual(
+            classify_role_relevance(
                 "Backend Engineer",
                 "Build distributed services. About Us: We are leaders in machine learning and AI data platforms.",
             ).classification,

@@ -47,7 +47,9 @@ from __future__ import annotations
 import json
 import re
 from html import unescape
+from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlsplit
 
 from opportunity.acquisition import AcquisitionService
 from opportunity.adapters.base import BaseAdapter
@@ -76,6 +78,12 @@ USER_AGENT = "OpportunityOS-SourceRecon/1.1 (+https://github.com/m7mdehab/opport
 FIREBASE_BASE = "https://hacker-news.firebaseio.com/v0"
 
 _TAG_RE = re.compile(r"<[^>]+>")
+_LINKED_ASHBY_ROLE_RE = re.compile(
+    r"(?:>>|&gt;&gt;)\s*(?P<title>[^|<>]{3,120})\s*\|\s*"
+    r"(?P<location>[^:<>]{3,100})\s*:\s*(?:<[^>]*>\s*)*"
+    r"<a\s+href=\"(?P<url>https?://[^\"]+)\"[^>]*>",
+    re.I,
+)
 
 
 def _strip_html(text: str) -> str:
@@ -296,5 +304,133 @@ class HackerNewsWhoIsHiringAdapter(BaseAdapter):
                 canonical_outbound_url=url,
             )
             opportunities.append(opp)
+
+            # Some Who-Is-Hiring comments are company-level posts that list
+            # several separately titled jobs with explicit remote regions and
+            # public Ashby links. Keep the original company post above, and
+            # also emit role-specific child opportunities so BC can assess the
+            # actual title, geography, and public application route. The HN
+            # comment remains the discovery/source URL; the employer's public
+            # ATS URL is the application route. This only applies when the
+            # source comment itself names a role, remote scope, and ATS URL.
+            decoded_text = unescape(raw_text)
+            role_intro = clean_text(_strip_html(re.split(r"\bHiring:\s*", plain_text, maxsplit=1, flags=re.I)[0]))
+            linked_roles = list(_LINKED_ASHBY_ROLE_RE.finditer(decoded_text))
+            for role_index, role_match in enumerate(linked_roles):
+                role_title = clean_text(role_match.group("title"))
+                role_location = clean_text(role_match.group("location"))
+                application_listing_url = role_match.group("url").strip()
+                if not role_title or not role_location or "remote" not in role_location.casefold():
+                    continue
+                parsed_application_url = urlsplit(application_listing_url)
+                if (
+                    parsed_application_url.scheme.casefold() != "https"
+                    or (parsed_application_url.hostname or "").casefold() != "jobs.ashbyhq.com"
+                ):
+                    continue
+                application_url = application_listing_url.rstrip("/") + "/application"
+
+                role_description = clean_text(
+                    f"{role_intro} Role: {role_title}. Job-specific location: {role_location}."
+                )
+                role_pointer = f"{item_pointer}.linked_roles[{role_index}]"
+                role_slug = re.sub(r"[^a-z0-9]+", "-", role_title.casefold()).strip("-")
+                role_remote_id = f"{remote_id}:{role_slug}"
+                role_id = compute_deterministic_id(
+                    self.source_id, role_remote_id, role_title, organization, role_pointer
+                )
+                role_work_loc = extract_work_location(
+                    role_location,
+                    role_description,
+                    native_region=role_location,
+                )
+                role_track = extract_track(self.track, "", role_title, role_description)
+                role_geo = derive_geographic_eligibility(
+                    title=role_title,
+                    location_raw=role_location,
+                    description=role_description,
+                    track=role_track,
+                    source=self.source_id,
+                    url=url,
+                )
+                role_checksum = compute_record_checksum({
+                    "source_comment_id": remote_id,
+                    "job_title": role_title,
+                    "job_location": role_location,
+                    "application_url": application_url,
+                })
+                role_provenance = self.create_provenance(
+                    source_url=url,
+                    raw_pointer=role_pointer,
+                    fetched_at=fetched_at,
+                    payload=json.dumps(
+                        {"source_comment": comment, "application_url": application_url},
+                        ensure_ascii=False,
+                    ),
+                )
+                role_field_provenances = (
+                    create_field_provenance(
+                        "track", "", role_track.value, DerivationType.RULE_DERIVATION,
+                        role_pointer, role_checksum, "extract_track",
+                    ),
+                    create_field_provenance(
+                        "organization", first_line, organization, DerivationType.RAW_EXTRACTION,
+                        f"{role_pointer}.text", role_checksum, "clean_text",
+                    ),
+                    create_field_provenance(
+                        "title", role_match.group("title"), role_title, DerivationType.RAW_EXTRACTION,
+                        f"{role_pointer}.text", role_checksum, "parse_linked_role_title",
+                    ),
+                    create_field_provenance(
+                        "description", role_intro, role_description, DerivationType.RAW_EXTRACTION,
+                        f"{role_pointer}.text", role_checksum, "role_context_and_job_scoped_location",
+                    ),
+                    create_field_provenance(
+                        "work_mode", role_location, role_work_loc.work_mode.value,
+                        DerivationType.RULE_DERIVATION, f"{role_pointer}.location",
+                        role_checksum, role_work_loc.work_mode_rule_id or "extract_work_location",
+                    ),
+                    create_field_provenance(
+                        "geographic_eligibility", role_location, role_geo.status,
+                        DerivationType.RULE_DERIVATION, f"{role_pointer}.location",
+                        role_checksum, "classify_geography",
+                    ),
+                )
+                role_date = None
+                try:
+                    role_date = datetime.fromtimestamp(int(comment.get("time")), timezone.utc).date().isoformat()
+                except (TypeError, ValueError, OSError, OverflowError):
+                    pass
+                opportunities.append(Opportunity(
+                    id=role_id,
+                    track=role_track,
+                    source=self.source_id,
+                    source_url=url,
+                    source_id=role_remote_id,
+                    organization=organization,
+                    title=role_title[:255],
+                    description=role_description,
+                    responsibilities=(),
+                    requirements=(),
+                    skills=extract_skills_from_text(role_description),
+                    seniority=extract_seniority(role_title, role_description),
+                    employment_type=extract_employment_type("", role_title, role_description),
+                    location_raw=role_location,
+                    work_mode=role_work_loc.work_mode,
+                    work_mode_source=role_work_loc.work_mode_source,
+                    location_country=role_work_loc.location_country,
+                    location_city=role_work_loc.location_city,
+                    location_region=role_work_loc.location_region,
+                    remote_scope=role_work_loc.remote_scope,
+                    remote_scope_regions=role_work_loc.remote_scope_regions,
+                    geographic_eligibility=role_geo,
+                    posted_date=role_date,
+                    raw_provenance=role_provenance,
+                    record_checksum=role_checksum,
+                    raw_record_pointer=role_pointer,
+                    field_provenances=role_field_provenances,
+                    canonical_outbound_url=application_url,
+                    raw_source_record_json=self.serialize_source_record(comment),
+                ))
 
         return ParseResult(opportunities=tuple(opportunities), records_raw_count=raw_count)

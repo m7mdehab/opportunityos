@@ -59,6 +59,23 @@ _TARGET_ROLE_EVIDENCE = re.compile(
 _TARGET_TITLE_EVIDENCE = re.compile(
     r"(?:" + _TARGET_ROLE_EVIDENCE.pattern[:-2] + r"|\b(?:ai|ml|llm)\b)", re.I,
 )
+_ROLE_SCOPED_DATA_ML_ENGINEER = re.compile(
+    r"\b(?:job\s+overview|position\s+overview|the\s+role)\b.{0,500}?"
+    r"\b(?:looking\s+for|seeking|hiring)\s+(?:a\s+)?"
+    r"(?:data\s*/\s*ml|ml\s*/\s*data|data\s+and\s+ml|ml\s+and\s+data)\s+engineer\b",
+    re.I,
+)
+_ROLE_SCOPED_AI_AGENT_ENGINEER = re.compile(
+    r"\b(?:software|platform|infrastructure)\s+engineer\b.{0,24}\bagents?\b",
+    re.I,
+)
+_AI_AGENT_ENGINEERING_SCOPE = re.compile(
+    r"\b(?:AI agents|agentic computing|agentic systems|agents in production)\b.{0,500}"
+    r"\b(?:core abstractions|infrastructure|framework|LLM-based applications)\b"
+    r"|\b(?:core abstractions|infrastructure|framework|LLM-based applications)\b.{0,500}"
+    r"\b(?:AI agents|agentic computing|agentic systems|agents in production)\b",
+    re.I,
+)
 _CONSUMER_AI_APP_TITLE = re.compile(r"\bAI\s+Neobank\s+App\b", re.I)
 _TECHNICAL_PRODUCT_SCOPE = re.compile(
     r"\b(?:data|analytics|machine\s+learning|ml|ai)\s+"
@@ -400,6 +417,11 @@ def classify_role_relevance(title: str, description: str = "") -> RoleRelevance:
         and not _CONSUMER_AI_APP_TITLE.search(title_text)
     )
     role_target = bool(_TARGET_ROLE_EVIDENCE.search(text))
+    role_scoped_data_ml_engineer = bool(_ROLE_SCOPED_DATA_ML_ENGINEER.search(text))
+    role_scoped_ai_agent_engineer = bool(
+        _ROLE_SCOPED_AI_AGENT_ENGINEER.search(title or "")
+        and _AI_AGENT_ENGINEERING_SCOPE.search(description or "")
+    )
     if _NON_TARGET_DOMAIN_TITLE.search(title or ""):
         return RoleRelevance("non_target", family, level, "non-target domain named in title")
     if family in (_CORE_FAMILIES - {"data_migration"}) or (
@@ -419,7 +441,11 @@ def classify_role_relevance(title: str, description: str = "") -> RoleRelevance:
         # Broad software/backend/security/solutions titles are adjacent only
         # when the role itself names a data/AI domain. Description keywords
         # alone are too easily inherited from company boilerplate.
-        if title_target:
+        if role_scoped_data_ml_engineer:
+            classification, reason = "adjacent", "software title with job-scoped data/ML engineer role"
+        elif role_scoped_ai_agent_engineer:
+            classification, reason = "adjacent", "software engineering role scoped to AI-agent infrastructure"
+        elif title_target:
             classification, reason = "adjacent", f"adjacent title with data/AI evidence ({family})"
         else:
             classification, reason = "non_target", f"adjacent family lacks data/AI evidence ({family})"
