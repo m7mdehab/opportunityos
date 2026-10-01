@@ -105,6 +105,16 @@ def summarize_reconciliation_states(
     }
 
 
+def reconciliation_refresh_is_complete(
+    *, inserted: int, updated: int, skipped_without_evaluation: int, expected_count: int,
+) -> bool:
+    """True only when every selected feed row was recomputed from an evaluation."""
+    return (
+        skipped_without_evaluation == 0
+        and inserted + updated == expected_count
+    )
+
+
 def discover_current_candidates(session, *, truth_pack_hash: str, limit: int = MAX_CANDIDATES) -> tuple[str, ...]:
     """Read a recent, already-actionable HOT/PROTECTED slice and classify in memory."""
     if not 1 <= limit <= MAX_CANDIDATES:
@@ -228,6 +238,25 @@ def main(argv: list[str] | None = None) -> int:
                 truth_pack_hash=loaded.truth_pack_hash,
                 max_candidates=MAX_CANDIDATES,
             )
+            if args.execute and not reconciliation_refresh_is_complete(
+                inserted=stats.inserted,
+                updated=stats.updated,
+                skipped_without_evaluation=stats.skipped_without_evaluation,
+                expected_count=len(ids),
+            ):
+                session.rollback()
+                print(json.dumps({
+                    "committed": False,
+                    "mode": "execute_rejected",
+                    "candidate_count": len(ids),
+                    "inserted": stats.inserted,
+                    "updated": stats.updated,
+                    "skipped_without_evaluation": stats.skipped_without_evaluation,
+                    "reason": "every current For You row must be recomputed before reconciliation commit",
+                    "database_bytes_before": before_bytes,
+                    "database_bytes_after": before_bytes,
+                }, sort_keys=True))
+                return 2
             session.flush()
             raw_states = dict(
                 session.query(

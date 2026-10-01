@@ -5,6 +5,7 @@ import unittest
 from scripts.refresh_feed_projection_candidates import (
     MAX_CANDIDATES,
     _parse_args,
+    reconciliation_refresh_is_complete,
     summarize_reconciliation_states,
 )
 
@@ -40,6 +41,17 @@ class BCProjectionReconciliationTests(unittest.TestCase):
             summarize_reconciliation_states({"for_you": 1, "pending": 1}, expected_count=2)
         with self.assertRaisesRegex(ValueError, "invalid or incomplete"):
             summarize_reconciliation_states({"for_you": 1}, expected_count=2)
+
+    def test_reconciliation_refuses_rows_without_a_fresh_evaluation(self) -> None:
+        self.assertTrue(reconciliation_refresh_is_complete(
+            inserted=0, updated=3, skipped_without_evaluation=0, expected_count=3,
+        ))
+        self.assertFalse(reconciliation_refresh_is_complete(
+            inserted=0, updated=2, skipped_without_evaluation=1, expected_count=3,
+        ))
+        self.assertFalse(reconciliation_refresh_is_complete(
+            inserted=0, updated=2, skipped_without_evaluation=0, expected_count=3,
+        ))
 
     def test_reconciliation_parser_rejects_a_corpus_wide_limit(self) -> None:
         with self.assertRaises(SystemExit):
