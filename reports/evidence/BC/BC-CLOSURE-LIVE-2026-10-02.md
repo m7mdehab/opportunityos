@@ -17,6 +17,8 @@ The corrected BC recommendation semantics, bounded projection refresh, feed cont
 | PR #197 production deployment | Workflow run `36934888756`; migration, bounded refresh, Cloudflare deploy, and hosted smoke passed |
 | Open PR count at last branch inspection | 0 before this evidence-only update |
 
+After that deployment, explicit bounded runtime work used workflow `36937555252` to poll only `lever:vrchat` (`schedules=1`, `enqueued=1`, `processed=1`) and workflow `36937856169` to drain one pending evaluation. Both succeeded. The poll returned 13 raw / 9 unique records, inserted 7 and left 2 unchanged; the new records remain Review. The drain completed the evaluation without database growth. No other source was requested by these explicit runs.
+
 The full backend run recorded 1,881 tests, 11 failures, 19 errors, and 22 skips. Current-main comparison showed the same failure/error counts (main had 1,879 tests), so the branch introduced no additional failure or error. Do not describe the repository-wide backend suite as entirely green; the existing baseline failures remain recorded. PR #197's first attempt had two additional stale migration-head assertion failures; both were corrected and the final run passed.
 
 PR #196 production smoke exposed a five-second statement timeout on All Time and Sort overflow at 390px. PR #197 applied `0036_dashboard_all_time_timeout` and made the Sort control full width on narrow screens. The final deployed smoke passed for desktop and 390px mobile.
@@ -64,23 +66,23 @@ The All Time dashboard metric now completes under the migration's extended funct
 
 ## Capacity, queue, lifecycle, and Founder state
 
-Latest read-only production measurement after deployment:
+Latest read-only production measurement after the bounded Lever poll and evaluation drain:
 
-- Database: **382,921,875 bytes**, approximately **365.16 MiB**.
-- 15,920,275 bytes (15.19 MiB) above the 350 MiB Warning threshold.
-- 34,411,373 bytes (32.82 MiB) below the 398 MiB canary abort line.
-- 36,508,525 bytes (34.82 MiB) below the 400 MiB heavy-work pause.
-- 62,722,925 bytes (59.82 MiB) below the 425 MiB hard stop.
-- 117,078,125 bytes below the 500,000,000-byte provider quota.
+- Database: **383,069,331 bytes**, approximately **365.30 MiB**.
+- 16,067,731 bytes (15.30 MiB) above the 350 MiB Warning threshold.
+- 34,263,917 bytes (32.67 MiB) below the 398 MiB canary abort line.
+- 36,361,069 bytes (34.67 MiB) below the 400 MiB heavy-work pause.
+- 62,575,469 bytes (59.68 MiB) below the 425 MiB hard stop.
+- 116,930,669 bytes below the 500,000,000-byte provider quota.
 
-The PR #197 deterministic six-ID refresh inserted no new canonical opportunities and had zero measured database growth. The earlier bounded PR #196 reconciliation changed only the selected current feed projection rows; it measured +327,680 bytes, left the active queue empty, and preserved Founder state. No broad source activation, full-corpus projection rewrite, or manual queue mutation occurred.
+The PR #197 deterministic six-ID refresh inserted no new canonical opportunities and had zero measured database growth. The earlier bounded PR #196 reconciliation changed only the selected current feed projection rows; it measured +327,680 bytes and preserved Founder state. The later explicitly bounded `lever:vrchat` poll inserted seven canonical records and grew the database by 147,456 bytes; the one-job evaluation drain added zero measured bytes. Those seven records are Review, not recommendation candidates. No broad source activation, full-corpus projection rewrite, or manual queue mutation occurred.
 
 Latest durable queue counts:
 
 | Status | Job type | Count |
 |---|---|---:|
-| COMPLETED | evaluate_new | 164 |
-| COMPLETED | poll_source | 1,679 |
+| COMPLETED | evaluate_new | 166 |
+| COMPLETED | poll_source | 1,681 |
 | DEAD_LETTER | poll_source | 77 |
 | PENDING / RETRY / RUNNING | any | 0 |
 
@@ -90,9 +92,9 @@ Founder state after deployment remains: founder identity 1, feedback 171, activi
 
 ## Scheduler state and next bounded operation
 
-The live `source_schedules` table has **342 due sources**, with the last observed scheduled polls on September 28. The queue is currently empty. At/above Warning, the deployed scheduler serializes its decision and allows at most one outstanding `poll_source` across the source set; repeated ticks can still consume the overdue set over time. Therefore do not restart the full overdue corpus as a single recovery wave. The existing explicit hosted bootstrap accepts a maximum five-source batch; begin future freshness recovery with one explicitly selected, already-permitted source, measure bytes and queue after it completes, and only then decide whether to proceed to the next small batch. Do not alter Founder data, capacity thresholds, or scheduler semantics to achieve faster catch-up.
+The live `source_schedules` table has **341 due sources**. The two post-deployment worker runs processed exactly one explicitly selected Lever poll and one pending evaluation; after them, the queue is empty. At/above Warning, the deployed scheduler serializes its decision and allows at most one outstanding `poll_source` across the source set; repeated ticks can still consume the overdue set over time. Therefore do not restart the full overdue corpus as a single recovery wave. The existing explicit hosted bootstrap accepts a maximum five-source batch; begin future freshness recovery with one explicitly selected, already-permitted source, measure bytes and queue after it completes, and only then decide whether to proceed to the next small batch. Do not alter Founder data, capacity thresholds, or scheduler semantics to achieve faster catch-up.
 
-This is a controlled backlog/freshness limitation, not a queue durability or capacity-triggered job failure. Keep Jobicy, Remotive, Teamtailor, Personio, Workable, and other source policy decisions in `docs/SOURCE_REGISTRY.yaml`; no extra source request is required to justify the live For You result.
+This is a controlled backlog/freshness limitation, not a queue durability or capacity-triggered job failure. Keep Jobicy, Remotive, Teamtailor, Personio, Workable, and other source policy decisions in `docs/SOURCE_REGISTRY.yaml`; no extra source request is required to justify the live For You result. The post-deployment bounded source execution did not enable the regular scheduler or consume the 341-source due set.
 
 ## Closure boundary
 
