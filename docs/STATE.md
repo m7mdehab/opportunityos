@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-10-01T19:36:05Z
-- **State generated at commit:** `67579fb` — fix(hn): preserve linked role provenance
+- **Generated:** 2026-10-01T19:44:03Z
+- **State generated at commit:** `b3d0be9` — test(reliability): isolate schedule restart scenario
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
