@@ -4,6 +4,7 @@ import unittest
 
 from scripts.refresh_feed_projection_candidates import (
     MAX_CANDIDATES,
+    MAX_RECONCILIATION_CANDIDATES,
     _parse_args,
     reconciliation_refresh_is_complete,
     summarize_reconciliation_states,
@@ -12,7 +13,8 @@ from scripts.refresh_feed_projection_candidates import (
 
 class BCProjectionReconciliationTests(unittest.TestCase):
     def test_current_for_you_reconciliation_is_bounded(self) -> None:
-        self.assertEqual(MAX_CANDIDATES, 200)
+        self.assertEqual(MAX_CANDIDATES, 100)
+        self.assertEqual(MAX_RECONCILIATION_CANDIDATES, 200)
         args, ids = _parse_args([
             "--reconcile-current-for-you",
             "--candidate-limit",
@@ -58,7 +60,7 @@ class BCProjectionReconciliationTests(unittest.TestCase):
             _parse_args([
                 "--reconcile-current-for-you",
                 "--candidate-limit",
-                str(MAX_CANDIDATES + 1),
+                str(MAX_RECONCILIATION_CANDIDATES + 1),
             ])
 
 

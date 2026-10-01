@@ -25,7 +25,8 @@ from storage.models import OpportunityRecord, WorkerJobRecord
 from truth.pack import TruthPackInvalid, TruthPackMissing, load_founder_pack
 
 
-MAX_CANDIDATES = 200
+MAX_CANDIDATES = 100
+MAX_RECONCILIATION_CANDIDATES = 200
 TRANSACTION_ABORT_BYTES = 398 * 1024 * 1024
 _ACTIONABLE_ACCESS = frozenset({"direct_free", "free_intermediary", "free_account_required"})
 _FOUNDER_STATE_TABLES = (
@@ -60,15 +61,15 @@ def _active_queue_count(session) -> int:
 
 
 def discover_current_for_you_ids(
-    session, *, truth_pack_hash: str, limit: int = MAX_CANDIDATES,
+    session, *, truth_pack_hash: str, limit: int = MAX_RECONCILIATION_CANDIDATES,
 ) -> tuple[str, ...]:
     """Select the bounded currently surfaced set for canonical re-projection.
 
     This intentionally selects only rows already shown in For You. It is a
     stale-projection repair path, not a corpus backfill.
     """
-    if not 1 <= limit <= MAX_CANDIDATES:
-        raise ValueError(f"reconciliation limit must be between 1 and {MAX_CANDIDATES}")
+    if not 1 <= limit <= MAX_RECONCILIATION_CANDIDATES:
+        raise ValueError(f"reconciliation limit must be between 1 and {MAX_RECONCILIATION_CANDIDATES}")
     query = (
         session.query(FeedProjectionRecord.opportunity_id)
         .join(OpportunityRecord, OpportunityRecord.id == FeedProjectionRecord.opportunity_id)
@@ -184,8 +185,11 @@ def _parse_args(argv: list[str] | None = None) -> tuple[argparse.Namespace, tupl
     ids = tuple(dict.fromkeys(value.strip() for value in (args.opportunity_id or ()) if value.strip()))
     if not args.discover_current_candidates and not args.reconcile_current_for_you and not ids:
         parser.error("select a discovery mode or provide at least one non-empty --opportunity-id")
-    if args.candidate_limit < 1 or args.candidate_limit > MAX_CANDIDATES:
-        parser.error(f"--candidate-limit must be between 1 and {MAX_CANDIDATES}")
+    candidate_limit_max = (
+        MAX_RECONCILIATION_CANDIDATES if args.reconcile_current_for_you else MAX_CANDIDATES
+    )
+    if args.candidate_limit < 1 or args.candidate_limit > candidate_limit_max:
+        parser.error(f"--candidate-limit must be between 1 and {candidate_limit_max}")
     if ids and len(ids) > MAX_CANDIDATES:
         parser.error(f"at most {MAX_CANDIDATES} candidate IDs may be refreshed per run")
     return args, ids
@@ -236,7 +240,7 @@ def main(argv: list[str] | None = None) -> int:
                 ids,
                 truth_graph=loaded.graph,
                 truth_pack_hash=loaded.truth_pack_hash,
-                max_candidates=MAX_CANDIDATES,
+                max_candidates=MAX_RECONCILIATION_CANDIDATES,
             )
             if args.execute and not reconciliation_refresh_is_complete(
                 inserted=stats.inserted,
