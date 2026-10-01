@@ -32,7 +32,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
 
         config = Config("alembic.ini")
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_current_head(), "0034_opportunity_created_at")
+        self.assertEqual(script.get_current_head(), "0035_dashboard_hidden_fastpath")
 
     def test_current_revision_fits_alembic_version_column(self):
         namespace: dict[str, object] = {}
@@ -45,6 +45,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
             "0032_source_catalog_fast_path.py",
             "0033_hosted_feed_family_key_expose_family_keys_in_hosted_feed.py",
             "0034_opportunity_created_at_index.py",
+            "0035_dashboard_hidden_fastpath.py",
         ):
             migration = migrations / filename
             namespace = {}
@@ -86,7 +87,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         self.assertNotIn("DROP VIEW", downgrade)
         self.assertNotIn("founder_feed_activity", downgrade)
         config = Config("alembic.ini")
-        self.assertEqual(ScriptDirectory.from_config(config).get_current_head(), "0034_opportunity_created_at")
+        self.assertEqual(ScriptDirectory.from_config(config).get_current_head(), "0035_dashboard_hidden_fastpath")
 
     def test_source_overview_uses_selective_source_id_scans(self):
         migration = Path(__file__).parent / "migrations" / "versions" / "0031_source_overview_fast_path.py"
@@ -135,6 +136,19 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         self.assertIn("postgresql_concurrently=True", source)
         self.assertEqual(source.count("op.get_context().autocommit_block()"), 2)
         self.assertIn("op.drop_index(", source)
+
+    def test_dashboard_hidden_count_uses_partial_projection_index(self):
+        migration = Path(__file__).parent / "migrations" / "versions" / "0035_dashboard_hidden_fastpath.py"
+        source = migration.read_text(encoding="utf-8")
+        self.assertIn('revision: str = "0035_dashboard_hidden_fastpath"', source)
+        self.assertIn('down_revision: Union[str, None] = "0034_opportunity_created_at"', source)
+        self.assertIn('"ix_feed_projection_hidden_reason"', source)
+        self.assertIn('"visible IS FALSE AND visibility_reason IS NOT NULL AND visibility_reason <> \'\'"', source)
+        dashboard = source.split("_FOUNDER_DASHBOARD_DAILY = r\"\"\"", 1)[1].split("\"\"\"", 1)[0]
+        self.assertIn("FROM feed_projection fp", dashboard)
+        self.assertIn("fp.visible IS FALSE", dashboard)
+        self.assertIn("jsonb_array_elements_text(fp.visibility_reason::jsonb)", dashboard)
+        self.assertNotIn("FROM founder_feed f", dashboard)
 
     def test_bc2_adds_compact_recommendation_state_without_backfill(self):
         migration = Path(__file__).parent / "migrations" / "versions" / "0028_bc2_recommendation.py"
