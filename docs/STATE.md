@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-09-30T21:01:10Z
-- **State generated at commit:** `9069f1b` — probe: record bounded Workable supply
+- **Generated:** 2026-10-01T19:36:05Z
+- **State generated at commit:** `67579fb` — fix(hn): preserve linked role provenance
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
@@ -90,7 +90,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Source Status Counts
 
-- allowed_ok: 346
+- allowed_ok: 347
 - authenticated_required: 1
 - credential_gated: 1
 - deliberately_not_fetched: 16
