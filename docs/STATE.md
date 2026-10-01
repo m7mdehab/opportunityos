@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-10-01T21:43:14Z
-- **State generated at commit:** `f7317f6` — fix: keep bounded refresh and reconciliation limits separate
+- **Generated:** 2026-10-01T22:05:13Z
+- **State generated at commit:** `14d20d3` — fix: keep All Time metrics and mobile sort usable
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
