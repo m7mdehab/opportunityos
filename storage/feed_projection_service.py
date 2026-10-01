@@ -18,7 +18,10 @@ from api.filters import (
 )
 from api.serialization import unpack_dimension_scores, unpack_evaluation_detail, unpack_reasons
 from matching.recommendation_engine import BehaviorProfile, BehaviorSignal, build_behavior_profile
-from matching.recommendation_foundation import classify_role_relevance
+from matching.recommendation_foundation import (
+    classify_application_access,
+    classify_role_relevance,
+)
 from matching.recommendation_projection import build_recommendation
 from matching.recommendation_foundation import classify_founder_geography, classify_required_credentials
 from storage.feed_projection import FeedProjectionRecord, projection_identity
@@ -210,6 +213,27 @@ def _contexts_for_truth_pack(
         )
         result[opp.id] = (context, evaluation)
     return result
+
+
+def _refresh_known_application_route(opportunity: OpportunityRecord) -> None:
+    """Fill a known public ATS route during a bounded candidate refresh.
+
+    Older opportunities often have a public ATS ``source_url`` but a null
+    ``application_url`` and ``application_access='unknown'`` because they
+    predate the application-access contract. Reuse the canonical classifier
+    on the listing route; leave genuinely unknown routes unchanged.
+    """
+    access = classify_application_access(
+        opportunity.source_id or "",
+        opportunity.source_url or "",
+        opportunity.application_url,
+    )
+    if access.access == "unknown":
+        return
+    opportunity.application_url = access.application_url
+    opportunity.application_route = access.route
+    opportunity.application_access = access.access
+    opportunity.application_access_reason = access.reason
 
 
 def _search_text(opp: OpportunityRecord) -> str:
@@ -578,6 +602,7 @@ def refresh_feed_projection_candidates(
         raise ValueError("every candidate must have a visible HOT/PROTECTED projection for this truth pack")
 
     for opportunity in opportunities:
+        _refresh_known_application_route(opportunity)
         relevance = classify_role_relevance(opportunity.title or "", opportunity.description or "")
         opportunity.title_family = relevance.title_family
         opportunity.role_relevance_class = relevance.classification
@@ -688,6 +713,13 @@ def refresh_opportunity_projection(
     opp = session.get(OpportunityRecord, opportunity_id)
     if opp is None:
         return None
+
+    _refresh_known_application_route(opp)
+    relevance = classify_role_relevance(opp.title or "", opp.description or "")
+    opp.title_family = relevance.title_family
+    opp.role_relevance_class = relevance.classification
+    opp.role_relevance_reason = relevance.reason
+    session.flush()
 
     if opp.lifecycle_tier == "cold":
         session.query(FeedProjectionRecord).filter_by(opportunity_id=opportunity_id).delete(

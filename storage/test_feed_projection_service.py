@@ -388,6 +388,53 @@ class FeedProjectionMaterializationTest(unittest.TestCase):
         finally:
             session.close()
 
+    def test_bounded_refresh_recovers_verified_public_greenhouse_application_route(self) -> None:
+        session = self.Session()
+        try:
+            opportunity = self._opportunity("opp-legacy-greenhouse", title="Lead Data Engineer")
+            opportunity.source_id = "greenhouse:canonical"
+            opportunity.source_url = "https://job-boards.greenhouse.io/canonical/jobs/123"
+            opportunity.application_url = None
+            opportunity.application_route = "unknown"
+            opportunity.application_access = "unknown"
+            opportunity.location_country = None
+            opportunity.location_city = None
+            opportunity.location_region = "EMEA Remote"
+            opportunity.description = (
+                "Lead Data Engineer. Location: this role is remote in the EMEA region. "
+                "Build durable data pipelines with Python and SQL."
+            )
+            opportunity.work_mode = "remote"
+            opportunity.remote_scope = "unspecified"
+            opportunity.lifecycle_tier = "hot"
+            session.add(opportunity)
+            session.flush()
+            session.add(self._evaluation("opp-legacy-greenhouse", decision="uncertain", fit=71.0))
+            session.commit()
+
+            projected = refresh_opportunity_projection(
+                session,
+                opportunity_id="opp-legacy-greenhouse",
+                truth_pack_hash="truth-a",
+            )
+            session.commit()
+
+            refreshed = session.query(OpportunityRecord).filter_by(
+                id="opp-legacy-greenhouse"
+            ).one()
+            self.assertEqual(refreshed.application_url, opportunity.source_url)
+            self.assertEqual(refreshed.application_route, "ats")
+            self.assertEqual(refreshed.application_access, "direct_free")
+            self.assertIsNotNone(projected)
+            self.assertEqual(projected.application_access, "direct_free")
+            self.assertEqual(
+                projected.recommendation_state,
+                "for_you",
+                projected.recommendation_reasons_json,
+            )
+        finally:
+            session.close()
+
     def test_settings_refresh_updates_only_one_authoritative_projection(self) -> None:
         session = self.Session()
         try:
