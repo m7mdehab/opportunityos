@@ -19,12 +19,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 2
       - name: Detect bounded BC candidate release
         id: release
         shell: bash
         run: |
           changed_files="$(git diff-tree --no-commit-id --name-only -r HEAD HEAD^)"
-          if grep -qx 'scripts/bc_candidate_canary.py' <<<"$changed_files"; then
+          if grep -Eq '^(scripts/bc_candidate_canary\.py|\.github/workflows/fr008-w75-live-deploy\.yml|reports/evidence/BC/)' <<<"$changed_files"; then
             echo "bc_canary=true" >> "$GITHUB_OUTPUT"
           else
             echo "bc_canary=false" >> "$GITHUB_OUTPUT"
