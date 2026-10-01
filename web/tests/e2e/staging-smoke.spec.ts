@@ -249,6 +249,8 @@ test.describe("Cloudflare staging hosted smoke", () => {
         recommendation_state: string;
         role_relevance_class: string;
         founder_geo_state: string;
+        work_mode: string;
+        location_country: string | null;
         application_access: string;
         application_url: string | null;
         feedback_label: string | null;
@@ -275,6 +277,12 @@ test.describe("Cloudflare staging hosted smoke", () => {
       expect(["direct_free", "free_intermediary", "free_account_required"]).toContain(item.application_access);
       expect(item.application_url).toBeTruthy();
       expect(["bad_match", "irrelevant_role", "eligibility_wrong"]).not.toContain(item.feedback_label);
+      if (["onsite", "on_site", "hybrid"].includes(item.work_mode)) {
+        expect(
+          ["EG", "EGY", "EGYPT"],
+          `${item.title} at ${item.organization} has a non-Egypt physical worksite`
+        ).toContain((item.location_country ?? "").toUpperCase());
+      }
     }
     console.log(
       `BC_HOSTED_FOR_YOU_TOP50 total=${topForYou.body.total} returned=${topForYou.body.items.length} titles=${JSON.stringify(topForYou.body.items.map(({ title, organization }) => ({ title, organization })))} employer_counts=${JSON.stringify(organizations)} source_counts=${JSON.stringify(sourceCounts)}`
@@ -291,8 +299,13 @@ test.describe("Cloudflare staging hosted smoke", () => {
     await expect(liveTrackFacet).toBeVisible();
     const liveTrackSummary = liveTrackFacet.locator("summary");
     await liveTrackSummary.click();
-    await expect(liveTrackFacet.locator('input[type="checkbox"]').first()).toBeVisible();
-    expect(await liveTrackFacet.locator('input[type="checkbox"]').count()).toBeGreaterThan(1);
+    const liveTrackOptions = liveTrackFacet.locator('input[type="checkbox"]');
+    await expect(liveTrackOptions.first()).toBeVisible();
+    expect(await liveTrackOptions.count()).toBeGreaterThan(1);
+    const trackOptionBox = await liveTrackOptions.first().boundingBox();
+    expect(trackOptionBox).not.toBeNull();
+    expect(trackOptionBox!.x + trackOptionBox!.width, "Checklist option must stay inside viewport")
+      .toBeLessThanOrEqual(page.viewportSize()?.width ?? 0);
     await page.keyboard.press("Enter");
 
     const sourceFamilyFacet = page.getByTestId("filter-facet-source-family");
@@ -383,6 +396,10 @@ test.describe("Cloudflare staging hosted smoke", () => {
     const allTimeMetrics = allTimeBody as { days: number; series: Array<{ date: string }> };
     expect(allTimeMetrics.series).toHaveLength(1);
     expect(allTimeMetrics.series[0]?.date).toBe("all_time");
+    const metricPeriodBox = await metricPeriod.boundingBox();
+    expect(metricPeriodBox).not.toBeNull();
+    expect(metricPeriodBox!.x + metricPeriodBox!.width, "Date selector must remain inside viewport")
+      .toBeLessThanOrEqual(page.viewportSize()?.width ?? 0);
     const todayResponsePromise = metricsResponse("today");
     await metricPeriod.selectOption("today");
     await expect(metricPeriod).toHaveValue("today");
@@ -407,10 +424,43 @@ test.describe("Cloudflare staging hosted smoke", () => {
       await expect(batchToolbar.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
       await expect(batchToolbar.getByRole("button", { name: "Reject", exact: true })).toBeEnabled();
       await expect(batchToolbar.getByRole("button", { name: "Mark Applied", exact: true })).toBeEnabled();
+      const toolbarBox = await batchToolbar.boundingBox();
+      expect(toolbarBox).not.toBeNull();
+      expect(toolbarBox!.x + toolbarBox!.width, "Batch toolbar must not overflow viewport")
+        .toBeLessThanOrEqual(page.viewportSize()?.width ?? 0);
       await page.getByRole("button", { name: "Clear selection" }).click();
     } else {
       console.log("FR008_HOSTED_BATCH_CONTROLS_SKIP reason=fewer_than_two_reviewable_jobs");
     }
+
+    const sortControl = page.getByLabel("Sort", { exact: true });
+    await expect(sortControl).toBeVisible();
+    await expect(sortControl.locator('option[value="fit_desc"]')).toHaveText("Fit Score — Highest first");
+    await expect(sortControl.locator('option[value="fit_asc"]')).toHaveText("Fit Score — Lowest first");
+    const sortBox = await sortControl.boundingBox();
+    expect(sortBox).not.toBeNull();
+    expect(sortBox!.x + sortBox!.width, "Fit-score sorting must stay reachable")
+      .toBeLessThanOrEqual(page.viewportSize()?.width ?? 0);
+    const fitDescResponsePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname === "/api/opportunities" && url.searchParams.get("sort_by") === "fit_desc";
+    });
+    await sortControl.selectOption("fit_desc");
+    expect((await fitDescResponsePromise).ok()).toBe(true);
+    const fitAscResponsePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname === "/api/opportunities" && url.searchParams.get("sort_by") === "fit_asc";
+    });
+    await sortControl.selectOption("fit_asc");
+    expect((await fitAscResponsePromise).ok()).toBe(true);
+    const recommendedResponsePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname === "/api/opportunities" && url.searchParams.get("sort_by") === "for_you";
+    });
+    await sortControl.selectOption("recommended");
+    expect((await recommendedResponsePromise).ok()).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth))
+      .toBeLessThanOrEqual(page.viewportSize()?.width ?? 0);
 
     // 5b. First authenticated UI feed request plus repeated same-origin probes.
     // The first request is captured from the real browser flow immediately

@@ -119,6 +119,20 @@ class HostedAuthPostgresAcceptance(unittest.TestCase):
             dashboard_sql = conn.execute(sa.text(
                 "SELECT pg_get_functiondef('public.founder_dashboard_daily(integer,double precision)'::regprocedure)"
             )).scalar_one().lower()
+            hidden_index_exists = conn.execute(sa.text(
+                "SELECT to_regclass('public.ix_feed_projection_hidden_reason') IS NOT NULL"
+            )).scalar_one()
+            conn.exec_driver_sql("SET LOCAL enable_seqscan = off")
+            hidden_plan = " ".join(conn.execute(sa.text(
+                "EXPLAIN (COSTS OFF) SELECT fp.opportunity_id "
+                "FROM public.feed_projection fp "
+                "JOIN public.opportunities o ON o.id=fp.opportunity_id "
+                "WHERE o.is_stale IS FALSE AND fp.visible IS FALSE "
+                "AND fp.visibility_reason IS NOT NULL AND fp.visibility_reason <> '' "
+                "AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(fp.visibility_reason::jsonb) reason(value) "
+                "WHERE reason.value <> '' AND reason.value NOT LIKE 'facet:%')"
+            )).scalars().all()).lower()
+            conn.exec_driver_sql("SET LOCAL enable_seqscan = on")
             founder_id = conn.execute(sa.text(
                 "SELECT supabase_user_id FROM public.founder_identity WHERE id='singleton'"
             )).scalar_one_or_none()
@@ -153,7 +167,12 @@ class HostedAuthPostgresAcceptance(unittest.TestCase):
         self.assertIn("p_days = 0", dashboard_sql)
         self.assertIn("filter (where", dashboard_sql)
         self.assertIn("generate_series", dashboard_sql)
+        self.assertTrue(hidden_index_exists)
+        self.assertIn("ix_feed_projection_hidden_reason", hidden_plan)
         self.assertIn("jsonb_array_elements_text", dashboard_sql)
+        self.assertIn("from feed_projection fp", dashboard_sql)
+        self.assertIn("fp.visible is false", dashboard_sql)
+        self.assertNotIn("from founder_feed f", dashboard_sql)
         self.assertEqual(today["date"], all_time[0]["date"])
         self.assertEqual(len(all_time), 1)
         self.assertEqual(len(two_days), 2)
