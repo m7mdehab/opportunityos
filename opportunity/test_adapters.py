@@ -163,6 +163,20 @@ class AdapterTests(unittest.TestCase):
         self.assertIn("Kubernetes", opp.skills)
         self.assertIn("Terraform", opp.skills)
 
+    def test_remotive_lone_surrogate_does_not_abort_valid_source_response(self):
+        # JSON escape decodes to a lone surrogate, which cannot be encoded as UTF-8.
+        payload = r'''{"jobs":[
+          {"id":1,"url":"https://example.test/jobs/1","title":"Data Engineer","company_name":"First Co","description":"Build pipelines \udc9d safely","candidate_required_location":"Worldwide"},
+          {"id":2,"url":"https://example.test/jobs/2","title":"Analytics Engineer","company_name":"Second Co","description":"Valid 🚀 description","candidate_required_location":"Worldwide"}
+        ]}'''
+        result = RemotiveAdapter().parse_payload(payload, raw_pointer="fixture:remotive-unicode", fetched_at="2026-09-30")
+
+        self.assertEqual(result.records_raw_count, 2)
+        self.assertEqual(len(result.opportunities), 2)
+        self.assertIn("\ufffd", result.opportunities[0].description)
+        self.assertIn("🚀", result.opportunities[1].description)
+        self.assertNotIn("\udc9d", result.opportunities[0].raw_source_record_json or "")
+
     def test_remote_ok_adapter(self):
         adapter = RemoteOKAdapter()
         payload = read_fixture("remote_ok.json")
@@ -309,6 +323,43 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual("inference", opp.work_mode_source)
         self.assertEqual(RemoteScope.WORLDWIDE, opp.remote_scope)
         self.assertEqual(RemotePolicy.REMOTE, opp.remote_policy)
+
+    def test_hacker_news_linked_roles_emit_stable_role_specific_ashby_opportunities(self):
+        source_item = json.loads(
+            (Path(__file__).resolve().parents[1] / "tests" / "fixtures"
+             / "bc_hn_livekit_item_49570095_2026-10-01.json").read_text(encoding="utf-8")
+        )
+        payload = json.dumps({"thread_id": 49600000, "thread_title": "Who is hiring?", "comments": [source_item]})
+        result = HackerNewsWhoIsHiringAdapter().parse_payload(
+            payload, raw_pointer="fixture:hn", fetched_at="2026-10-01"
+        )
+        linked_roles = [opp for opp in result.opportunities if opp.source_id.startswith("49570095:")]
+        self.assertEqual(len(linked_roles), 4)
+        candidate = next(opp for opp in linked_roles if opp.title == "Software Engineer, Agents")
+        self.assertEqual(
+            candidate.id,
+            "hacker_news_who_is_hiring:49570095_software-engineer-agents",
+        )
+        self.assertEqual(candidate.source_url, "https://news.ycombinator.com/item?id=49570095")
+        self.assertEqual(
+            candidate.canonical_outbound_url,
+            "https://jobs.ashbyhq.com/livekit/1757f49e-7e19-4c45-85f7-e4637dff66fb/application",
+        )
+        self.assertIn("EMEA", candidate.location_region)
+        self.assertEqual(candidate.work_mode, WorkMode.REMOTE)
+        self.assertEqual(candidate.posted_date, "2026-09-04")
+        from matching.recommendation_foundation import classify_role_relevance
+        self.assertEqual(
+            classify_role_relevance(candidate.title, candidate.description).classification,
+            "adjacent",
+        )
+        from opportunity.pipeline import OpportunityPipeline
+        batch = OpportunityPipeline(
+            adapters=[HackerNewsWhoIsHiringAdapter()], registry=SourceRegistry()
+        ).process_payloads(
+            {"hacker_news_who_is_hiring": payload}, now_iso="2026-10-01"
+        )
+        self.assertIn(candidate.id, {opp.id for opp in batch.opportunities})
 
 
 _HN_DISABLED_REGISTRY_YAML = """

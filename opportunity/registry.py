@@ -38,6 +38,73 @@ SOURCE_ENDPOINT_RULES: dict[str, EndpointRule] = {
         allowed_methods=frozenset({"GET"}),
         require_https=True,
     ),
+    # The public Jobicy Jobs API is documented for product integrations.
+    # Keep reads bound to that JSON endpoint; job pages and arbitrary HTML are
+    # not authorized acquisition surfaces.
+    "jobicy": EndpointRule(
+        allowed_hosts=frozenset({"jobicy.com"}),
+        allowed_path_prefix="/api/v2/remote-jobs",
+        allowed_methods=frozenset({"GET"}),
+        require_https=True,
+    ),
+    # Teamtailor's public career-site RSS is separate from its authenticated
+    # Public API. Hosts are limited to the current BC reconnaissance watchlist.
+    "teamtailor_rss": EndpointRule(
+        allowed_hosts=frozenset({
+            "appsilon-1739358905.teamtailor.com",
+            "axmed.teamtailor.com",
+            "castai.teamtailor.com",
+            "combineglobalrecruitment.na.teamtailor.com",
+            "enfuceoy.teamtailor.com",
+            "lineten.teamtailor.com",
+            "nanlabs.na.teamtailor.com",
+            "silenteight.teamtailor.com",
+            "sullyai.teamtailor.com",
+            "swishanalytics.na.teamtailor.com",
+        }),
+        allowed_path_prefix="/jobs.rss",
+        allowed_methods=frozenset({"GET"}),
+        require_https=True,
+    ),
+    # Personio's company career-site XML feed is a documented public read
+    # surface. Keep this probe bounded to its explicit eight-host watchlist;
+    # the authenticated Recruiting API is not authorized by this rule.
+    "personio_xml": EndpointRule(
+        allowed_hosts=frozenset({
+            "jobleads.jobs.personio.de",
+            "adorsys.jobs.personio.de",
+            "retoflow.jobs.personio.de",
+            "schickler.jobs.personio.de",
+            "eraneos.jobs.personio.de",
+            "lmit.jobs.personio.de",
+            "thinkport-gmbh.jobs.personio.de",
+            "ptg.jobs.personio.de",
+        }),
+        allowed_path_prefix="/xml",
+        allowed_methods=frozenset({"GET"}),
+        require_https=True,
+    ),
+    # Workable's public published-jobs endpoint is distinct from SPI v3.
+    # Bind the public request to one exact endpoint and the current nine-board
+    # reconnaissance set; the authenticated API has no matching rule.
+    "workable_public_jobs": EndpointRule(
+        allowed_hosts=frozenset({"www.workable.com"}),
+        allowed_path_prefix="/api/accounts/",
+        allowed_methods=frozenset({"GET"}),
+        require_https=True,
+    ),
+    "workable_public_job_pages": EndpointRule(
+        allowed_hosts=frozenset({
+            "huggingface.workable.com", "worknomads.workable.com",
+            "libertexgroup.workable.com", "unitary.workable.com",
+            "dreamix-ltd.workable.com", "trinetix.workable.com",
+            "everwest.workable.com", "hack-the-box-ltd.workable.com",
+            "globaldevgroup.workable.com", "apply.workable.com",
+        }),
+        allowed_path_prefix="/jobs/",
+        allowed_methods=frozenset({"GET"}),
+        require_https=True,
+    ),
     "remote_ok": EndpointRule(
         allowed_hosts=frozenset({"remoteok.com", "remoteok.io"}),
         allowed_path_prefix="/api",
@@ -223,7 +290,29 @@ class SourceRegistry:
         if host not in rule.allowed_hosts:
             return False, f"Refused: Host '{host}' is unauthorized for source '{source_id}' (allowed: {sorted(rule.allowed_hosts)})"
 
-        if not path.startswith(rule.allowed_path_prefix) and not (rule.allowed_path_prefix.endswith(".rss") and path.endswith(".rss")):
+        if source_id == "teamtailor_rss" and path != "/jobs.rss":
+            return False, f"Refused: Teamtailor RSS path must be exactly '/jobs.rss', got '{path}'"
+
+        if source_id == "personio_xml":
+            path_allowed = path == "/xml" or bool(re.fullmatch(r"/job/\d+/?", path))
+        elif source_id == "workable_public_jobs":
+            account = path.removeprefix("/api/accounts/")
+            path_allowed = path == f"/api/accounts/{account}" and account in {
+                "huggingface", "worknomads", "libertexgroup", "unitary",
+                "dreamix-ltd", "trinetix", "everwest", "hack-the-box-ltd",
+                "globaldevgroup",
+            }
+            query = urllib.parse.parse_qs(parsed.query)
+            path_allowed = path_allowed and query.get("details") == ["true"]
+        elif source_id == "workable_public_job_pages":
+            path_allowed = bool(re.fullmatch(r"/jobs/[^/]+(?:/candidates/new)?/?", path))
+            if host == "apply.workable.com":
+                path_allowed = bool(re.fullmatch(r"/j/[A-Za-z0-9]+/?", path))
+        else:
+            path_allowed = path.startswith(rule.allowed_path_prefix) or (
+                rule.allowed_path_prefix.endswith(".rss") and path.endswith(".rss")
+            )
+        if not path_allowed:
             return False, f"Refused: Path '{path}' does not match allowed prefix '{rule.allowed_path_prefix}' for source '{source_id}'"
 
         if method_upper not in rule.allowed_methods:

@@ -112,6 +112,8 @@ class RecommendationCandidate:
     freshness_score: float | None = None
     source_application_confidence: float | None = None
     evidence_completeness: float | None = None
+    eligibility_state: str | None = None
+    eligibility_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,12 +163,16 @@ def recommend(
         state, reasons = "excluded", ["non_target_role"]
     elif geo == "ineligible":
         state, reasons = "excluded", ["geography_incompatible"]
+    elif candidate.eligibility_state == "ineligible":
+        state, reasons = "excluded", [candidate.eligibility_reason or "required_eligibility_contradicted"]
     elif feedback in _NEGATIVE_LABELS:
         state, reasons = "excluded", ["founder_negative_role_feedback"]
     elif action in _EXCLUDED_ACTIONS:
         state, reasons = "excluded", [f"already_{action}"]
     elif decision == "ineligible":
         state, reasons = "excluded", ["qualification_ineligible"]
+    elif candidate.eligibility_state == "review":
+        state, reasons = "review", [candidate.eligibility_reason or "required_eligibility_unverified"]
     elif feedback == "eligibility_wrong":
         state, reasons = "review", ["founder_eligibility_correction"]
     elif feedback in {

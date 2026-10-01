@@ -30,15 +30,61 @@ class TestAcquisitionAndRegistryAuthority(unittest.TestCase):
         self.assertFalse(res.authorized)
         self.assertEqual(res.response.status_code, 403)
 
-    def test_disabled_source_refused_preflight(self) -> None:
-        # jobicy is disabled in docs/SOURCE_REGISTRY.yaml
-        authorized, reason = self.registry.validate_preflight("jobicy", "https://jobicy.com/api/v2/remote-jobs")
-        self.assertFalse(authorized)
-        self.assertIn("disabled by policy", reason)
+    def test_jobicy_documented_public_api_is_read_allowed_but_listing_html_is_not(self) -> None:
+        api_url = "https://jobicy.com/api/v2/remote-jobs?count=5&geo=anywhere&industry=data-science"
+        authorized, reason = self.registry.validate_preflight("jobicy", api_url)
+        self.assertTrue(authorized, reason)
 
-        res = self.service.acquire("jobicy", "https://jobicy.com/api/v2/remote-jobs")
-        self.assertFalse(res.authorized)
-        self.assertEqual(res.response.status_code, 403)
+        # The bounded next BC read is this one structured EMEA request; this
+        # checks repository policy only and does not contact Jobicy.
+        emea_url = "https://jobicy.com/api/v2/remote-jobs?geo=emea&industry=data-science&count=20"
+        authorized, reason = self.registry.validate_preflight("jobicy", emea_url)
+        self.assertTrue(authorized, reason)
+
+        res = self.service.acquire("jobicy", api_url)
+        self.assertTrue(res.authorized)
+
+        authorized, reason = self.registry.validate_preflight(
+            "jobicy", "https://jobicy.com/jobs/152294-data-engineer-intern"
+        )
+        self.assertFalse(authorized)
+        self.assertIn("does not match allowed prefix", reason)
+
+        authorized, reason = self.registry.validate_preflight(
+            "jobicy", "https://example.com/api/v2/remote-jobs"
+        )
+        self.assertFalse(authorized)
+        self.assertIn("unauthorized", reason)
+
+    def test_teamtailor_rss_is_bounded_and_api_remains_disabled(self) -> None:
+        self.assertFalse(self.registry.is_read_allowed("teamtailor_api"))
+        rss_hosts = (
+            "appsilon-1739358905.teamtailor.com", "axmed.teamtailor.com",
+            "castai.teamtailor.com", "combineglobalrecruitment.na.teamtailor.com",
+            "enfuceoy.teamtailor.com", "lineten.teamtailor.com",
+            "nanlabs.na.teamtailor.com", "silenteight.teamtailor.com",
+            "sullyai.teamtailor.com", "swishanalytics.na.teamtailor.com",
+        )
+        for host in rss_hosts:
+            authorized, reason = self.registry.validate_preflight(
+                "teamtailor_rss", f"https://{host}/jobs.rss"
+            )
+            self.assertTrue(authorized, reason)
+
+        for url in (
+            "https://api.teamtailor.com/v1/jobs",
+            "https://unlisted.teamtailor.com/jobs.rss",
+            "https://appsilon-1739358905.teamtailor.com/jobs.rss.evil",
+            "https://appsilon-1739358905.teamtailor.com/jobs",
+        ):
+            authorized, _ = self.registry.validate_preflight("teamtailor_rss", url)
+            self.assertFalse(authorized, url)
+
+        authorized, reason = self.registry.validate_preflight(
+            "teamtailor_api", "https://api.teamtailor.com/v1/jobs"
+        )
+        self.assertFalse(authorized)
+        self.assertIn("disabled", reason)
 
     def test_mutating_methods_strictly_forbidden(self) -> None:
         for method in ("PUT", "PATCH", "DELETE"):

@@ -89,7 +89,7 @@ class SourcePolicyBindingTests(unittest.TestCase):
                 self.assertTrue(entry.get("policy_status"), "policy_status must be set")
                 reviewed = entry.get("last_policy_reviewed")
                 self.assertIsNotNone(reviewed, "last_policy_reviewed must be set")
-                self.assertEqual(str(reviewed), "2026-09-02" if source_id == "jobicy" else "2026-09-03")
+                self.assertEqual(str(reviewed), "2026-09-30" if source_id == "jobicy" else "2026-09-03")
 
     def test_hacker_news_is_the_only_new_e23_source_bound_to_an_adapter(self):
         # Guards against accidentally wiring a manual_only/platform_application source
@@ -103,6 +103,51 @@ class SourcePolicyBindingTests(unittest.TestCase):
             "tutor_com", "chegg", "cambly",
         }
         self.assertEqual({"hacker_news_who_is_hiring"}, new_e23_bound)
+
+    def test_personio_probe_is_limited_to_public_xml_and_numeric_job_pages(self):
+        registry = SourceRegistry(REGISTRY_PATH)
+        allowed = (
+            "https://jobleads.jobs.personio.de/xml?language=en",
+            "https://jobleads.jobs.personio.de/job/2746946?language=en",
+        )
+        for url in allowed:
+            with self.subTest(url=url):
+                self.assertEqual((True, "Authorized"), registry.validate_preflight("personio_xml", url, "GET"))
+        refused = (
+            "https://jobleads.jobs.personio.de/xml/extra?language=en",
+            "https://jobleads.jobs.personio.de/job/not-a-number",
+            "https://jobs.personio.de/xml?language=en",
+            "http://jobleads.jobs.personio.de/xml?language=en",
+        )
+        for url in refused:
+            with self.subTest(url=url):
+                self.assertFalse(registry.validate_preflight("personio_xml", url, "GET")[0])
+
+    def test_workable_probe_separates_public_jobs_from_authenticated_spi(self):
+        registry = SourceRegistry(REGISTRY_PATH)
+        self.assertTrue(registry.is_read_allowed("workable_public_jobs"))
+        self.assertFalse(registry.is_read_allowed("workable_spi_v3"))
+        allowed = (
+            "https://www.workable.com/api/accounts/huggingface?details=true",
+            "https://huggingface.workable.com/jobs/81B46579FE",
+            "https://apply.workable.com/j/81B46579FE",
+        )
+        for source_id, url in zip(
+            ("workable_public_jobs", "workable_public_job_pages", "workable_public_job_pages"),
+            allowed,
+        ):
+            with self.subTest(url=url):
+                self.assertTrue(registry.validate_preflight(source_id, url, "GET")[0])
+        refused = (
+            ("workable_public_jobs", "https://www.workable.com/spi/v3/jobs"),
+            ("workable_public_jobs", "https://www.workable.com/api/accounts/unknown?details=true"),
+            ("workable_public_jobs", "https://www.workable.com/api/accounts/huggingface"),
+            ("workable_public_jobs", "https://www.workable.com/api/accounts/huggingface/?details=true"),
+            ("workable_public_job_pages", "https://apply.workable.com/j/../../private"),
+        )
+        for source_id, url in refused:
+            with self.subTest(url=url):
+                self.assertFalse(registry.validate_preflight(source_id, url, "GET")[0])
 
 
 if __name__ == "__main__":

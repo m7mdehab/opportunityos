@@ -955,9 +955,10 @@ def execute_a8_schedule_restart_probe(dsn: str) -> dict[str, Any]:
     source_due = "greenhouse:stripe"
 
     with factory() as session:
-        session.query(SourceScheduleRecord).filter(
-            SourceScheduleRecord.source_id.in_([source_future, source_cooldown, source_due])
-        ).delete(synchronize_session=False)
+        # A7 exercises the full registry and leaves durable rows behind. A8
+        # must prove restart behavior for its three controlled sources only;
+        # otherwise the test accidentally measures unrelated A7 schedules.
+        session.query(SourceScheduleRecord).delete(synchronize_session=False)
         session.query(WorkerJobRecord).filter(
             WorkerJobRecord.job_type == "poll_source"
         ).delete(synchronize_session=False)
@@ -994,6 +995,7 @@ def execute_a8_schedule_restart_probe(dsn: str) -> dict[str, Any]:
             registry=reg,
             now=restart_clock,
             force=False,
+            create_missing_schedules=False,
         )
         session.commit()
 

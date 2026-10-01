@@ -13,6 +13,7 @@ from opportunity.models import (
     Track,
     serialize_source_record,
 )
+from opportunity.unicode_safety import normalize_unicode
 
 
 class BaseAdapter(abc.ABC):
@@ -54,7 +55,8 @@ class BaseAdapter(abc.ABC):
     ) -> SourceProvenance:
         """Create deterministic SourceProvenance."""
         now_iso = fetched_at or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
-        checksum = hashlib.sha256(payload.encode("utf-8")).hexdigest() if payload else ""
+        safe_payload = normalize_unicode(payload)
+        checksum = hashlib.sha256(safe_payload.encode("utf-8")).hexdigest() if safe_payload else ""
         return SourceProvenance(
             source_id=self.source_id,
             source_url=source_url,

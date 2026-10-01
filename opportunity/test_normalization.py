@@ -13,6 +13,7 @@ from opportunity.models import (
 )
 from opportunity.normalization import (
     clean_text,
+    compute_record_checksum,
     create_field_provenance,
     derive_geographic_eligibility,
     extract_compensation,
@@ -34,6 +35,11 @@ class NormalizationTests(unittest.TestCase):
         self.assertEqual(clean_text("   Lots   of \n\n whitespace \t here  "), "Lots of whitespace here")
         self.assertEqual(clean_text(None), "")
         self.assertEqual(clean_text({"eng": ["Software Engineer"]}), "Software Engineer")
+
+    def test_source_unicode_normalization_preserves_valid_text_and_replaces_lone_surrogates(self) -> None:
+        self.assertEqual(clean_text("Data Engineer \U0001f680 \udc9d role"), "Data Engineer \U0001f680 \ufffd role")
+        self.assertEqual(clean_text("Valid pair: \ud83d\ude80"), "Valid pair: \U0001f680")
+        self.assertEqual(compute_record_checksum({"tags": ["café", "\udc9d"]}), compute_record_checksum({"tags": ["café", "\ufffd"]}))
 
     def test_extract_seniority(self) -> None:
         self.assertEqual(extract_seniority("Senior Software Engineer"), SeniorityLevel.SENIOR)

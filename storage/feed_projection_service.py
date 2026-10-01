@@ -18,8 +18,12 @@ from api.filters import (
 )
 from api.serialization import unpack_dimension_scores, unpack_evaluation_detail, unpack_reasons
 from matching.recommendation_engine import BehaviorProfile, BehaviorSignal, build_behavior_profile
-from matching.recommendation_foundation import classify_role_relevance
+from matching.recommendation_foundation import (
+    classify_application_access,
+    classify_role_relevance,
+)
 from matching.recommendation_projection import build_recommendation
+from matching.recommendation_foundation import classify_founder_geography, classify_required_credentials
 from storage.feed_projection import FeedProjectionRecord, projection_identity
 from storage.models import (
     FieldProvenanceRecord,
@@ -211,6 +215,27 @@ def _contexts_for_truth_pack(
     return result
 
 
+def _refresh_known_application_route(opportunity: OpportunityRecord) -> None:
+    """Fill a known public ATS route during a bounded candidate refresh.
+
+    Older opportunities often have a public ATS ``source_url`` but a null
+    ``application_url`` and ``application_access='unknown'`` because they
+    predate the application-access contract. Reuse the canonical classifier
+    on the listing route; leave genuinely unknown routes unchanged.
+    """
+    access = classify_application_access(
+        opportunity.source_id or "",
+        opportunity.source_url or "",
+        opportunity.application_url,
+    )
+    if access.access == "unknown":
+        return
+    opportunity.application_url = access.application_url
+    opportunity.application_route = access.route
+    opportunity.application_access = access.access
+    opportunity.application_access_reason = access.reason
+
+
 def _search_text(opp: OpportunityRecord) -> str:
     parts = (
         opp.title,
@@ -299,10 +324,34 @@ def build_projection_record(
     # is constrained to 0..100, so a 1000-point tier gap preserves that order
     # without mutating the persisted fit score itself.
     priority_score = (fit_score - (1000.0 * rank_penalty)) if fit_score is not None else None
+    regions = opportunity.remote_scope_regions
+    if isinstance(regions, str):
+        try:
+            regions = json.loads(regions)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            regions = ()
+    if not isinstance(regions, (tuple, list)):
+        regions = ()
+    truth_graph = getattr(context, "truth_graph", None) if context is not None else None
+    founder_geo_state, founder_geo_reason = classify_founder_geography(
+        title=opportunity.title,
+        description=opportunity.description or "",
+        location_country=opportunity.location_country,
+        location_city=opportunity.location_city,
+        location_region=opportunity.location_region,
+        work_mode=opportunity.work_mode or "unspecified",
+        remote_scope=opportunity.remote_scope or "unspecified",
+        remote_scope_regions=regions,
+        truth_graph=truth_graph,
+    )
+    eligibility_state, eligibility_reason = classify_required_credentials(
+        opportunity.description or "",
+        truth_graph=truth_graph,
+    )
     recommendation = build_recommendation(
         opportunity_id=opportunity.id,
         role_relevance=opportunity.role_relevance_class,
-        geography=opportunity.founder_geo_state,
+        geography=founder_geo_state,
         application_access=opportunity.application_access,
         application_url=opportunity.application_url,
         decision=qualification_decision,
@@ -318,6 +367,8 @@ def build_projection_record(
         organization=opportunity.organization,
         as_of=now.date(),
         behavior=behavior_profile,
+        eligibility_state=eligibility_state,
+        eligibility_reason=eligibility_reason,
     )
     rank_components = (
         recommendation.role_tier,
@@ -349,8 +400,8 @@ def build_projection_record(
         seniority_level=opportunity.seniority_level,
         role_relevance_class=opportunity.role_relevance_class,
         role_relevance_reason=opportunity.role_relevance_reason,
-        founder_geo_state=opportunity.founder_geo_state,
-        founder_geo_reason=opportunity.founder_geo_reason,
+        founder_geo_state=founder_geo_state,
+        founder_geo_reason=founder_geo_reason,
         application_url=opportunity.application_url,
         application_route=opportunity.application_route,
         application_access=opportunity.application_access,
@@ -551,6 +602,7 @@ def refresh_feed_projection_candidates(
         raise ValueError("every candidate must have a visible HOT/PROTECTED projection for this truth pack")
 
     for opportunity in opportunities:
+        _refresh_known_application_route(opportunity)
         relevance = classify_role_relevance(opportunity.title or "", opportunity.description or "")
         opportunity.title_family = relevance.title_family
         opportunity.role_relevance_class = relevance.classification
@@ -649,6 +701,7 @@ def refresh_opportunity_projection(
     facet_settings: dict[str, FacetSettingsRow] | None = None,
     projected_at: datetime | None = None,
     allow_unevaluated: bool = False,
+    reclassify_role: bool = False,
 ) -> FeedProjectionRecord | None:
     """Incrementally build or update the feed projection for a single opportunity.
 
@@ -661,6 +714,14 @@ def refresh_opportunity_projection(
     opp = session.get(OpportunityRecord, opportunity_id)
     if opp is None:
         return None
+
+    _refresh_known_application_route(opp)
+    if reclassify_role:
+        relevance = classify_role_relevance(opp.title or "", opp.description or "")
+        opp.title_family = relevance.title_family
+        opp.role_relevance_class = relevance.classification
+        opp.role_relevance_reason = relevance.reason
+        session.flush()
 
     if opp.lifecycle_tier == "cold":
         session.query(FeedProjectionRecord).filter_by(opportunity_id=opportunity_id).delete(

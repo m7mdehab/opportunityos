@@ -32,30 +32,33 @@ sources:
   - source_id: jobicy
     name: "jobicy"
     category: employment
+    poll_cadence_hours: 12
     access:
       discovery: public_get
       detail: public_get_or_unknown
       submit: prohibited_or_unknown
     attribution:
-      required: review_required
+      required: required
     rate_limits:
-      documented: unknown
+      documented: max_once_per_hour
     commercial_use:
       status: review_required
     automation:
-      read: disabled
+      read: allowed
       prepare: disabled
       submit: disabled
-    policy_status: unknown_disable_actions
+    policy_status: documented_public_api_permitted_attribution_required
     observed:
-      status: robots_unreachable
-      detail: "2026-09-02 re-recon: robots.txt fetch to jobicy.com returned HTTP 403 on all three attempts (AGENTS.md 403 stop rule observed; no further requests made to this host)"
-      request_metadata: "method=GET; endpoint=/robots.txt"
+      status: allowed_ok
+      detail: "Historical 2026-09-02 robots.txt HTTP 403 is preserved and remains valid for that path. On 2026-09-30, current first-party API documentation (updated 2026-09-16) was reviewed: the public structured Jobs API is expressly intended for websites, applications, AI tools and automated workflows; no key/account is needed for listings; normal integrations need no separate agreement; retain Jobicy attribution and canonical listing URL. Documentation recommends only a few checks per day and sets an hourly minimum interval. The 2026-09-30 bounded reconnaissance returned two Worldwide listings from one employer and did not meet the five-job supply gate. On 2026-10-01T18:49:58Z, one additional read-only EMEA/data-science request returned seven records, none with Egypt-compatible posting geography; no candidates were persisted. Keep future reads at least 12 hours apart. Authorization is limited to the documented API, not HTML scraping or the paid Commercial API."
+      request_metadata: "method=GET; endpoint=/api/v2/remote-jobs; 2026-09-30 bounded requests=19; 2026-10-01 request=1; count=20; geo=emea; industry=data-science; HTTP=200; raw=7; Egypt_compatible=0; ForYou=0; no_auth; read_only; no_persistence"
       latency_ms: 0
-      record_count: 0
-    last_policy_reviewed: 2026-09-02
+      record_count: 2
+    last_policy_reviewed: 2026-09-30
     policy_evidence:
       - https://jobicy.com/terms
+      - https://jobicy.com/jobs-rss-feed
+      - https://github.com/Jobicy/remote-jobs-api
   - source_id: remotive
     name: "remotive"
     category: employment
@@ -77,10 +80,10 @@ sources:
     policy_status: documented_public_api_delayed_24h_attribution_required
     observed:
       status: allowed_ok
-      detail: "HTTP 200 parsed records"
-      request_metadata: "method=GET; endpoint=/api/remote-jobs"
+      detail: "One bounded GET on 2026-10-01T18:41:08Z returned HTTP 200 and 16 raw software-dev/data-search records. The Unicode-safe normalized in-memory pipeline found no clean Egypt-compatible For You candidate: target AI/data roles had explicit geographic allow-lists excluding Egypt or were otherwise not a target role. Payload retained as tests/fixtures/bc_remotive_probe_2026-10-01.json (SHA-256 34f2f1dc4d40760959c4014ba0bfbd2543b1193c1b641543242b0e6b74889591). No records were persisted."
+      request_metadata: "method=GET; endpoint=/api/remote-jobs?category=software-dev&search=data&limit=20; timestamp=2026-10-01T18:41:08Z; HTTP=200; raw=16; unique=16; core_adjacent=3; Egypt_compatible=0; credential_clean=3; actionable=0; ForYou=0; read_only; no_persistence"
       latency_ms: 311
-      record_count: 19
+      record_count: 16
     last_policy_reviewed: 2026-09-27
     policy_evidence:
       - https://remotive.com/remote-jobs/api
@@ -103,16 +106,193 @@ sources:
       read: allowed
       prepare: disabled
       submit: disabled
-    policy_status: unknown_disable_actions
+    policy_status: documented_public_api_attribution_required
     observed:
       status: allowed_ok
-      detail: "HTTP 200 parsed records"
-      request_metadata: "method=GET; endpoint=/api"
-      latency_ms: 1078
-      record_count: 100
-    last_policy_reviewed: 2026-08-28
+      detail: "Current first-party FAQ and terms reviewed 2026-10-01: the public JSON feed requires no authentication; aggregators must credit Remote OK and link each original listing. One bounded API request (2026-10-01T18:51:25Z) returned 68 postings. Thirteen were role-relevant, but none passed all corrected gates: one explicitly required US work authorization, the remaining worldwide-looking candidates lacked explicit job-specific Egypt-compatible scope and/or a verified actionable application destination. No records were persisted. Payload retained at tests/fixtures/bc_remoteok_data_python_probe_2026-10-01.json (SHA-256 0d10fc00fc82771a2ea2a5697d5fdc4c96011a6d57ee7caceccba1a41d6daed1)."
+      request_metadata: "method=GET; endpoint=/api?tags=data,python; timestamp=2026-10-01T18:51:25Z; HTTP=200; raw=68; normalized=67; core_adjacent=13; Egypt_compatible_role=0; credential_clean=13; verified_actionable=0; ForYou=0; read_only; no_persistence"
+      latency_ms: 0
+      record_count: 68
+    last_policy_reviewed: 2026-10-01
     policy_evidence:
       - https://remoteok.com/terms
+      - https://remoteok.com/faq
+      - https://remoteok.com/legal
+  - source_id: teamtailor_api
+    name: "Teamtailor authenticated Public API"
+    category: employment
+    poll_cadence_hours: 0
+    access:
+      discovery: authenticated_api
+      detail: authenticated_api
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: account_scoped
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: authenticated_api_key_required_not_authorized
+    observed:
+      status: authenticated_required
+      detail: "Historical 2026-09-27 finding preserved: Teamtailor Public API access requires an API key created by a Company Admin in an account. This 2026-09-30 review confirms that API requirement remains separate from documented public career-site RSS. No API requests or account access were used for the BC probe."
+      request_metadata: "method=GET; API not used"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-30
+    policy_evidence:
+      - https://support.teamtailor.com/en/articles/5963369-use-our-teamtailor-api
+  - source_id: teamtailor_rss
+    name: "Teamtailor public career-site RSS"
+    category: employment
+    poll_cadence_hours: 168
+    access:
+      discovery: public_get
+      detail: public_job_page_only
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: not_specified_public_rss
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: documented_public_career_rss_bounded_watchlist
+    observed:
+      status: allowed_ok
+      detail: "On 2026-09-30, Teamtailor first-party RSS documentation confirmed public jobs.rss feeds for Teamtailor career sites and listed title, description, publication date, advert URL, remote status, global ID, locations, department, role, and division. RSS is distinct from the authenticated Public API, which requires an account-generated API key. A bounded read-only probe of ten exact /jobs.rss hosts returned nine HTTP 200 feeds containing 77 postings; one feed returned 404 and one successful feed was empty. The in-memory corrected funnel produced one For You result; no posting was persisted. Keep future reads to the same explicit watchlist and a weekly-or-slower interval."
+      request_metadata: "method=GET; endpoint=/jobs.rss; watchlist=10 employers; http_200=9; http_404=1; raw_jobs=77; parsed_unique=77; core_adjacent=12; Egypt_compatible=2; credential_clean=77; actionable=1; for_you=1; no_auth; no_persistence"
+      latency_ms: 0
+      record_count: 77
+    last_policy_reviewed: 2026-09-30
+    policy_evidence:
+      - https://support.teamtailor.com/en/articles/11171756-rss-feed-how-to-guide
+      - https://support.teamtailor.com/en/articles/5963369-use-our-teamtailor-api
+  - source_id: personio_xml
+    name: "Personio public company career-site XML"
+    category: employment
+    poll_cadence_hours: 168
+    access:
+      discovery: public_get
+      detail: public_job_page_only
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: not_specified_bounded_probe_only
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: documented_public_company_career_xml_bounded_watchlist
+    observed:
+      status: allowed_ok
+      detail: "On 2026-09-30, one read-only request to each of eight exact public career-site XML feeds returned HTTP 200 and 88 postings total. The corrected in-memory pipeline found 16 core/adjacent roles, zero with explicit Egypt-compatible geography, and zero For You candidates. Sixteen target roles had no unresolved mandatory credential detected. No detail/application pages were fetched because no target role passed the geography gate. Nothing was persisted. The authenticated Recruiting API remains outside this source permission."
+      request_metadata: "method=GET; endpoint=/xml?language=en; allowlist=8 exact hosts; http_200=8; raw_jobs=88; unique=88; core_adjacent=16; egypt_compatible=0; credential_clean_of_relevant=16; actionable=0; for_you=0; no_auth; no_persistence"
+      latency_ms: 502
+      record_count: 88
+    last_policy_reviewed: 2026-09-30
+    policy_evidence:
+      - https://developer.personio.de/docs/integration-of-open-positions
+      - https://developer.personio.de/v1.0/reference/get_xml
+      - https://developer.personio.de/docs/retrieving-open-job-positions
+  - source_id: workable_spi_v3
+    name: "Workable SPI v3 authenticated API"
+    category: employment
+    poll_cadence_hours: 0
+    access:
+      discovery: authenticated_api
+      detail: authenticated_api
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: account_scoped
+    commercial_use:
+      status: review_required
+    automation:
+      read: disabled
+      prepare: disabled
+      submit: disabled
+    policy_status: authenticated_bearer_token_required_not_authorized
+    observed:
+      status: not_used
+      detail: "Workable's current first-party Help Center requires a Super Admin-generated API token with r_jobs scope for SPI v3 requests. This surface remains disabled and was not called."
+      request_metadata: "SPI=v3; auth=Bearer token; network_requests=0"
+      latency_ms: 0
+      record_count: 0
+    last_policy_reviewed: 2026-09-30
+    policy_evidence:
+      - https://help.workable.com/hc/en-us/articles/115012771647-Using-the-Workable-API-to-create-a-careers-page
+  - source_id: workable_public_jobs
+    name: "Workable public published-jobs endpoint"
+    category: employment
+    poll_cadence_hours: 168
+    access:
+      discovery: documented_public_get
+      detail: public_job_page_only
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: bounded_single_request_per_watchlist_account
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: first_party_documented_public_jobs_endpoint_bounded_probe
+    observed:
+      status: allowed_ok
+      detail: "On 2026-09-30, one public account request to each of nine allowlisted Workable employers returned HTTP 200 and 219 jobs total. Unicode-safe normalization and the corrected in-memory pipeline produced 50 core/adjacent records; 7 raw postings had explicit Egypt-compatible scope after honoring job-title EMEA Remote scope, and those 7 had no unresolved mandatory credential. Existing dedupe reduced them to four distinct candidates with publicly accessible application pages (HTTP 200 plus Apply action): three Hugging Face EMEA-remote roles and one Hack The Box worldwide Senior Data Engineer. Final For You=4 from 2 employers, below the 5-candidate gate. The authenticated SPI v3 API was not used. No records were persisted."
+      request_metadata: "method=GET; endpoint=/api/accounts/{allowlisted_subdomain}?details=true; allowlist=9; http_200=9; raw_jobs=219; canonical_unique=99; core_adjacent=50; egypt_compatible_raw=7; credential_clean_eligible=7; actionable_unique=4; for_you=4; employers_for_you=2; no_auth; no_persistence"
+      latency_ms: 832
+      record_count: 219
+    last_policy_reviewed: 2026-09-30
+    policy_evidence:
+      - https://help.workable.com/hc/en-us/articles/115012771647-Using-the-Workable-API-to-create-a-careers-page
+      - https://workable.readme.io/reference/jobs-1
+      - https://www.workable.com/terms
+      - https://www.workable.com/robots.txt
+  - source_id: workable_public_job_pages
+    name: "Workable public job/application pages"
+    category: employment
+    poll_cadence_hours: 0
+    access:
+      discovery: public_get
+      detail: public_job_page_only
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: candidate_only_page_verification
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: public_listing_application_read_verification_only
+    observed:
+      status: allowed_ok
+      detail: "Read-only verification of four surviving candidate pages on 2026-09-30 returned HTTP 200 and an application action marker. Workable's Job Board terms say candidates may search and apply without creating an account. No account was created, no form was submitted, and no candidate information was entered."
+      request_metadata: "method=GET; candidate_pages=4; http_200=4; apply_marker=4; no_auth; no_submission"
+      latency_ms: 0
+      record_count: 4
+    last_policy_reviewed: 2026-09-30
+    policy_evidence:
+      - https://help.workable.com/hc/en-us/articles/115012771647-Using-the-Workable-API-to-create-a-careers-page
+      - https://jobs.workable.com/terms
   - source_id: we_work_remotely
     name: "we_work_remotely"
     category: employment
@@ -597,13 +777,15 @@ sources:
     policy_status: unknown_disable_actions
     observed:
       status: allowed_ok
-      detail: "HTTP 200 parsed records"
-      request_metadata: "method=GET; endpoint=/v0/postings/shyftlabs"
-      latency_ms: 1687
-      record_count: 22
-    last_policy_reviewed: 2026-08-28
+      detail: "A separate single read-only request on 2026-10-01 returned 23 postings. Unicode-safe LeverAdapter normalization and the corrected in-memory BC replay found 11 core/adjacent postings; all 11 were credential-clean and had a classifier-recognized public Lever application route, but 10 required onsite/hybrid work outside Egypt and one had no explicit Egypt-compatible applicant scope. Egypt-compatible=0; For You=0. No record was persisted. The earlier 2026-10-01 request observation (22 records) is retained in the branch evidence report."
+      request_metadata: "method=GET; endpoint=/v0/postings/shyftlabs?mode=json; requests=1; http=200; raw=23; normalized=23; unique=23; core_adjacent=11; Egypt_compatible=0; credential_clean=23; actionable_access=23; for_you=0; read_only; no_persistence"
+      latency_ms: 0
+      record_count: 23
+    last_policy_reviewed: 2026-10-01
     policy_evidence:
       - https://www.lever.co/terms
+      - https://help.lever.co/s/article/Lever-Career-Site-Options
+      - https://hire.lever.co/developer/support
   - source_id: lever:ryz_labs
     name: "lever:ryz_labs"
     category: employment
@@ -630,6 +812,34 @@ sources:
       record_count: 35
     last_policy_reviewed: 2026-08-28
     policy_evidence:
+      - https://www.lever.co/terms
+  - source_id: lever:vrchat
+    name: "lever:vrchat"
+    category: employment
+    access:
+      discovery: public_get
+      detail: public_get_or_unknown
+      submit: prohibited_or_unknown
+    attribution:
+      required: review_required
+    rate_limits:
+      documented: unknown
+    commercial_use:
+      status: review_required
+    automation:
+      read: allowed
+      prepare: disabled
+      submit: disabled
+    policy_status: public_postings_api_read_only
+    observed:
+      status: allowed_ok
+      detail: "The official Lever Postings API documents public retrieval of published job-board records, separate from authenticated employer API capabilities. One GET on 2026-10-01T18:43:54Z returned 13 VRChat postings. Unicode-safe parsing and corrected BC replay found two clean candidates: Senior Data Scientist and Staff Engineer - Recommendations (the latter requires a narrowly job-scoped role classifier rule). Both source-native Anywhere listings expose public free Lever application forms. No records were persisted. Payload retained at tests/fixtures/bc_lever_vrchat_probe_2026-10-01.json (SHA-256 0d031408faf2b2450bd3f78700536b1ac63bd61fd9c1baa0f012e269caa99f44)."
+      request_metadata: "method=GET; endpoint=/v0/postings/vrchat?mode=json; timestamp=2026-10-01T18:43:54Z; HTTP=200; raw=13; normalized=13; deduplicated=13; core_adjacent=2; Egypt_compatible_raw=11; credential_clean=13; actionable_access_raw=13; ForYou=2; read_only; no_persistence"
+      latency_ms: 0
+      record_count: 13
+    last_policy_reviewed: 2026-10-01
+    policy_evidence:
+      - https://hire.lever.co/developer/support
       - https://www.lever.co/terms
   - source_id: ashby:socket
     name: "ashby:socket"
@@ -1419,10 +1629,13 @@ sources:
     policy_status: read_allowed
     observed:
       status: allowed_ok
-      detail: "2026-09-03 recon: robots.txt Allow: /*.json$ for all user agents; GET /v0/item/1.json returned HTTP 200. Public Firebase mirror, no auth. Adapter: opportunity/adapters/hacker_news.py (HackerNewsWhoIsHiringAdapter). Multi-step thread discovery is documented in that module as a fetch-orchestration seam for the Master to wire into worker/handlers.py."
-      request_metadata: "method=GET; endpoint=/v0/item/1.json"
+      detail: "2026-09-03 recon: robots.txt Allow: /*.json$ for all user agents; GET /v0/item/1.json returned HTTP 200. Public Firebase mirror, no auth. On 2026-10-01 an already-ingested item (49570095) was re-read through its exact public Firebase item URL to verify an embedded LiveKit Software Engineer, Agents role. The linked public Ashby listing and application form exposed the role, EMEA/APJ remote scope, and application fields without authentication or payment; no form was submitted. This is a read of the documented public HN API and a direct employer-published application page, not broad crawling. The bounded BC fixture preserves the evidence."
+      request_metadata: "method=GET; endpoint=/v0/item/49570095.json; timestamp=2026-10-01; exact_existing_item_only; HTTP=200; one role URL checked; no_persistence"
       latency_ms: 0
-      record_count: 0
+      record_count: 1
+    last_policy_reviewed: 2026-10-01
+    policy_evidence:
+      - https://github.com/HackerNews/API
     last_policy_reviewed: 2026-09-03
     policy_evidence:
       - https://github.com/HackerNews/API
