@@ -31,7 +31,7 @@ jobs:
           else
             echo "bc_reconcile=false" >> "$GITHUB_OUTPUT"
           fi
-          if grep -Eq '^(scripts/bc_candidate_canary\.py|\.github/workflows/fr008-w75-live-deploy\.yml|reports/evidence/BC/)' <<<"$changed_files"; then
+          if grep -Eq '^(scripts/bc_candidate_canary\.py|\.github/workflows/fr008-w75-live-deploy\.yml|storage/migrations/versions/0036_dashboard_all_time_timeout\.py|web/components/feed/filter-bar\.tsx|reports/evidence/BC/.*)$' <<<"$changed_files"; then
             echo "bc_canary=true" >> "$GITHUB_OUTPUT"
           else
             echo "bc_canary=false" >> "$GITHUB_OUTPUT"

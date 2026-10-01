@@ -326,11 +326,11 @@ export function FilterBar({
 
       {hasActiveFilters && <Button type="button" variant="ghost" size="sm" onClick={(event) => { event.currentTarget.closest("form")?.querySelectorAll<HTMLDetailsElement>('details[name="feed-quick-facet"][open]').forEach((details) => details.removeAttribute("open")); onChange(EMPTY_FILTERS) }}>Clear filters</Button>}
 
-      <div className="order-3 flex flex-col gap-1">
+      <div className="order-3 flex w-full min-w-0 flex-col gap-1 sm:w-auto">
         <Label htmlFor="feed-sort">Sort</Label>
         <select
           id="feed-sort"
-          className={selectClasses}
+          className={`${selectClasses} w-full sm:w-auto`}
           value={sortBy}
           onChange={(event) => onSortChange(event.target.value as FeedSortId)}
         >
