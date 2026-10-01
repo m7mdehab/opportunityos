@@ -701,6 +701,7 @@ def refresh_opportunity_projection(
     facet_settings: dict[str, FacetSettingsRow] | None = None,
     projected_at: datetime | None = None,
     allow_unevaluated: bool = False,
+    reclassify_role: bool = False,
 ) -> FeedProjectionRecord | None:
     """Incrementally build or update the feed projection for a single opportunity.
 
@@ -715,11 +716,12 @@ def refresh_opportunity_projection(
         return None
 
     _refresh_known_application_route(opp)
-    relevance = classify_role_relevance(opp.title or "", opp.description or "")
-    opp.title_family = relevance.title_family
-    opp.role_relevance_class = relevance.classification
-    opp.role_relevance_reason = relevance.reason
-    session.flush()
+    if reclassify_role:
+        relevance = classify_role_relevance(opp.title or "", opp.description or "")
+        opp.title_family = relevance.title_family
+        opp.role_relevance_class = relevance.classification
+        opp.role_relevance_reason = relevance.reason
+        session.flush()
 
     if opp.lifecycle_tier == "cold":
         session.query(FeedProjectionRecord).filter_by(opportunity_id=opportunity_id).delete(

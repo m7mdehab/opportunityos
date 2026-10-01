@@ -316,6 +316,7 @@ def run_canary(*, execute: bool) -> dict[str, Any]:
                     opportunity_id,
                     truth_graph=loaded_pack.graph,
                     truth_pack_hash=loaded_pack.truth_pack_hash,
+                    reclassify_role=True,
                 )
                 if projected is None:
                     raise RuntimeError(f"projection refresh returned no row for {opportunity_id}")

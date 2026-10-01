@@ -416,6 +416,7 @@ class FeedProjectionMaterializationTest(unittest.TestCase):
                 session,
                 opportunity_id="opp-legacy-greenhouse",
                 truth_pack_hash="truth-a",
+                reclassify_role=True,
             )
             session.commit()
 
