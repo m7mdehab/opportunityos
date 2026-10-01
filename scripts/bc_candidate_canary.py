@@ -56,6 +56,21 @@ FOUNDER_STATE_TABLES = (
 FIXTURE_DIR = Path(__file__).resolve().parents[1] / "tests" / "fixtures"
 
 
+class PartialCanaryFailure(RuntimeError):
+    def __init__(
+        self,
+        cause: Exception,
+        *,
+        inserted_ids: list[str],
+        unchanged_ids: list[str],
+        capacity_measurements: list[dict[str, Any]],
+    ) -> None:
+        super().__init__(f"canary stopped after bounded commits: {type(cause).__name__}: {cause}")
+        self.inserted_ids = list(inserted_ids)
+        self.unchanged_ids = list(unchanged_ids)
+        self.capacity_measurements = list(capacity_measurements)
+
+
 def _founder_state_snapshot(session) -> dict[str, dict[str, Any]]:
     snapshot: dict[str, dict[str, Any]] = {}
     for table_name in FOUNDER_STATE_TABLES:
@@ -313,7 +328,7 @@ def run_canary(*, execute: bool) -> dict[str, Any]:
             for opportunity_id in REFRESH_IDS:
                 projected = refresh_opportunity_projection(
                     repository_session,
-                    opportunity_id,
+                    opportunity_id=opportunity_id,
                     truth_graph=loaded_pack.graph,
                     truth_pack_hash=loaded_pack.truth_pack_hash,
                     reclassify_role=True,
@@ -369,6 +384,13 @@ def run_canary(*, execute: bool) -> dict[str, Any]:
             },
             "source_families_added": ["Lever", "Hacker News/Ashby"],
         }
+    except Exception as error:
+        raise PartialCanaryFailure(
+            error,
+            inserted_ids=inserted,
+            unchanged_ids=unchanged,
+            capacity_measurements=capacity_measurements,
+        ) from error
     finally:
         repository_session.close()
 
@@ -380,7 +402,19 @@ def main() -> int:
     try:
         print(json.dumps(run_canary(execute=args.execute), sort_keys=True))
     except Exception as error:  # emit only a concise, secret-free failure
-        print(json.dumps({"committed": False, "error": f"{type(error).__name__}: {error}"}, sort_keys=True))
+        result: dict[str, Any] = {"error": f"{type(error).__name__}: {error}"}
+        if isinstance(error, PartialCanaryFailure):
+            result.update(
+                {
+                    "partial": True,
+                    "inserted_ids": error.inserted_ids,
+                    "unchanged_ids": error.unchanged_ids,
+                    "capacity_after_each_insert": error.capacity_measurements,
+                }
+            )
+        else:
+            result["committed"] = False
+        print(json.dumps(result, sort_keys=True))
         return 1
     return 0
 
