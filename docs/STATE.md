@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-10-01T20:05:01Z
-- **State generated at commit:** `4e16d0f` — feat(bc): add bounded candidate landing canary
+- **Generated:** 2026-10-01T20:15:47Z
+- **State generated at commit:** `51b5619` — fix(feed): preserve role facets outside BC refresh
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
