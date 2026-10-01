@@ -1,5 +1,7 @@
 # BC Final Canary Supply Gate — 2026-10-01
 
+> Historical checkpoint only. This stop report is superseded by [`BC-CLOSURE-LIVE-2026-10-02.md`](BC-CLOSURE-LIVE-2026-10-02.md): the replay corpus was subsequently completed from retained production evidence, CI passed without branch-introduced regression, and PRs #196/#197 deployed the bounded production correction. Its source-selection question and stop decision are not current instructions.
+
 ## Decision
 
 **STOP before production canary, adapter implementation, PR, merge, or deployment.** The frozen five-candidate set required by the final canary order cannot be reproduced from captured payloads in the repository, and the one bounded ShyftLabs Lever response produced no Egypt-compatible For You candidates. No production writes or queue/scheduler operations were performed.

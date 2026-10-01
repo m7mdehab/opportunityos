@@ -1629,14 +1629,11 @@ sources:
     policy_status: read_allowed
     observed:
       status: allowed_ok
-      detail: "2026-09-03 recon: robots.txt Allow: /*.json$ for all user agents; GET /v0/item/1.json returned HTTP 200. Public Firebase mirror, no auth. On 2026-10-01 an already-ingested item (49570095) was re-read through its exact public Firebase item URL to verify an embedded LiveKit Software Engineer, Agents role. The linked public Ashby listing and application form exposed the role, EMEA/APJ remote scope, and application fields without authentication or payment; no form was submitted. This is a read of the documented public HN API and a direct employer-published application page, not broad crawling. The bounded BC fixture preserves the evidence."
-      request_metadata: "method=GET; endpoint=/v0/item/49570095.json; timestamp=2026-10-01; exact_existing_item_only; HTTP=200; one role URL checked; no_persistence"
+      detail: "2026-09-03 recon recorded robots.txt Allow: /*.json$ and public unauthenticated Firebase JSON. On 2026-10-01 existing item 49570095 was re-read at its exact documented API URL; its LiveKit Software Engineer, Agents comment linked to a public Ashby listing/application form with EMEA/APJ remote scope and no authentication/payment gate. The BC release uses this already-ingested opportunity as an actual For You card; this probe did not create or persist a new posting, and no form was submitted. Evidence is retained in tests/fixtures/bc_hn_livekit_item_49570095_2026-10-01.json."
+      request_metadata: "method=GET; endpoint=/v0/item/49570095.json; timestamp=2026-10-01; exact_existing_item_only; HTTP=200; one role URL checked; reused_existing_opportunity; no_new_persistence"
       latency_ms: 0
       record_count: 1
-    last_policy_reviewed: 2026-10-01
-    policy_evidence:
-      - https://github.com/HackerNews/API
-    last_policy_reviewed: 2026-09-03
+    last_policy_reviewed: 2026-10-02
     policy_evidence:
       - https://github.com/HackerNews/API
       - https://hacker-news.firebaseio.com/robots.txt

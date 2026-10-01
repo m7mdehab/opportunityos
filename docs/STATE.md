@@ -10,7 +10,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-10-01T22:14:47Z
+- **Generated:** 2026-10-01T22:35:52Z
 - **State generated at commit:** `c8581b2` — ci: keep dashboard release on reviewed canary path
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
