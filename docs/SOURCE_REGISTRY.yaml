@@ -775,13 +775,15 @@ sources:
     policy_status: unknown_disable_actions
     observed:
       status: allowed_ok
-      detail: "HTTP 200 parsed records"
-      request_metadata: "method=GET; endpoint=/v0/postings/shyftlabs"
-      latency_ms: 1687
-      record_count: 22
-    last_policy_reviewed: 2026-08-28
+      detail: "A separate single read-only request on 2026-10-01 returned 23 postings. Unicode-safe LeverAdapter normalization and the corrected in-memory BC replay found 11 core/adjacent postings; all 11 were credential-clean and had a classifier-recognized public Lever application route, but 10 required onsite/hybrid work outside Egypt and one had no explicit Egypt-compatible applicant scope. Egypt-compatible=0; For You=0. No record was persisted. The earlier 2026-10-01 request observation (22 records) is retained in the branch evidence report."
+      request_metadata: "method=GET; endpoint=/v0/postings/shyftlabs?mode=json; requests=1; http=200; raw=23; normalized=23; unique=23; core_adjacent=11; Egypt_compatible=0; credential_clean=23; actionable_access=23; for_you=0; read_only; no_persistence"
+      latency_ms: 0
+      record_count: 23
+    last_policy_reviewed: 2026-10-01
     policy_evidence:
       - https://www.lever.co/terms
+      - https://help.lever.co/s/article/Lever-Career-Site-Options
+      - https://hire.lever.co/developer/support
   - source_id: lever:ryz_labs
     name: "lever:ryz_labs"
     category: employment
