@@ -159,6 +159,13 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         self.assertIn("SET statement_timeout = '15s'", source)
         self.assertIn("RESET statement_timeout", source)
 
+    def test_dashboard_and_sort_deploy_uses_reviewed_candidate_canary(self):
+        workflow = Path(__file__).parents[1] / ".github" / "workflows" / "fr008-w75-live-deploy.yml"
+        source = workflow.read_text(encoding="utf-8")
+        self.assertIn("storage/migrations/versions/0036_dashboard_all_time_timeout\\.py", source)
+        self.assertIn("web/components/feed/filter-bar\\.tsx", source)
+        self.assertIn("python -m scripts.bc_candidate_canary --execute", source)
+
     def test_bc2_adds_compact_recommendation_state_without_backfill(self):
         migration = Path(__file__).parent / "migrations" / "versions" / "0028_bc2_recommendation.py"
         source = migration.read_text(encoding="utf-8")
