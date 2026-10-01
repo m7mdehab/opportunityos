@@ -32,7 +32,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
 
         config = Config("alembic.ini")
         script = ScriptDirectory.from_config(config)
-        self.assertEqual(script.get_current_head(), "0035_dashboard_hidden_fastpath")
+        self.assertEqual(script.get_current_head(), "0036_dashboard_all_time_timeout")
 
     def test_current_revision_fits_alembic_version_column(self):
         namespace: dict[str, object] = {}
@@ -46,6 +46,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
             "0033_hosted_feed_family_key_expose_family_keys_in_hosted_feed.py",
             "0034_opportunity_created_at_index.py",
             "0035_dashboard_hidden_fastpath.py",
+            "0036_dashboard_all_time_timeout.py",
         ):
             migration = migrations / filename
             namespace = {}
@@ -87,7 +88,7 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         self.assertNotIn("DROP VIEW", downgrade)
         self.assertNotIn("founder_feed_activity", downgrade)
         config = Config("alembic.ini")
-        self.assertEqual(ScriptDirectory.from_config(config).get_current_head(), "0035_dashboard_hidden_fastpath")
+        self.assertEqual(ScriptDirectory.from_config(config).get_current_head(), "0036_dashboard_all_time_timeout")
 
     def test_source_overview_uses_selective_source_id_scans(self):
         migration = Path(__file__).parent / "migrations" / "versions" / "0031_source_overview_fast_path.py"
@@ -149,6 +150,14 @@ class HostedRuntimeMigrationContractTests(unittest.TestCase):
         self.assertIn("fp.visible IS FALSE", dashboard)
         self.assertIn("jsonb_array_elements_text(fp.visibility_reason::jsonb)", dashboard)
         self.assertNotIn("FROM founder_feed f", dashboard)
+
+    def test_all_time_dashboard_has_bounded_extended_timeout(self):
+        migration = Path(__file__).parent / "migrations" / "versions" / "0036_dashboard_all_time_timeout.py"
+        source = migration.read_text(encoding="utf-8")
+        self.assertIn('revision: str = "0036_dashboard_all_time_timeout"', source)
+        self.assertIn('down_revision: Union[str, None] = "0035_dashboard_hidden_fastpath"', source)
+        self.assertIn("SET statement_timeout = '15s'", source)
+        self.assertIn("RESET statement_timeout", source)
 
     def test_bc2_adds_compact_recommendation_state_without_backfill(self):
         migration = Path(__file__).parent / "migrations" / "versions" / "0028_bc2_recommendation.py"
