@@ -13,10 +13,22 @@ jobs:
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      bc_canary: ${{ steps.release.outputs.bc_canary }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
+      - name: Detect bounded BC candidate release
+        id: release
+        shell: bash
+        run: |
+          changed_files="$(git diff-tree --no-commit-id --name-only -r HEAD HEAD^)"
+          if grep -qx 'scripts/bc_candidate_canary.py' <<<"$changed_files"; then
+            echo "bc_canary=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "bc_canary=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -50,17 +62,26 @@ jobs:
       - name: Install repository database tooling
         run: python -m pip install -e .
       - name: Read-only bounded candidate dry run
+        if: needs.migrate-live-founder.outputs.bc_canary != 'true'
         env:
           OPPORTUNITYOS_DB_URL: ${{ secrets.CLOUD_DATABASE_URL }}
           OPPORTUNITYOS_ENVIRONMENT: cloud
           OPPORTUNITYOS_TRUTH_PACK_PATH: founder/truth_pack.yaml.gz.b64
         run: python -m scripts.refresh_feed_projection_candidates --discover-current-candidates --candidate-limit 50
       - name: Refresh bounded actionable candidates
+        if: needs.migrate-live-founder.outputs.bc_canary != 'true'
         env:
           OPPORTUNITYOS_DB_URL: ${{ secrets.CLOUD_DATABASE_URL }}
           OPPORTUNITYOS_ENVIRONMENT: cloud
           OPPORTUNITYOS_TRUTH_PACK_PATH: founder/truth_pack.yaml.gz.b64
         run: python -m scripts.refresh_feed_projection_candidates --discover-current-candidates --candidate-limit 50 --execute
+      - name: Refresh only the reviewed BC candidate set
+        if: needs.migrate-live-founder.outputs.bc_canary == 'true'
+        env:
+          OPPORTUNITYOS_DB_URL: ${{ secrets.CLOUD_DATABASE_URL }}
+          OPPORTUNITYOS_ENVIRONMENT: cloud
+          OPPORTUNITYOS_TRUTH_PACK_PATH: founder/truth_pack.yaml.gz.b64
+        run: python -m scripts.bc_candidate_canary --execute
 
   deploy-live-founder:
     needs: [migrate-live-founder, refresh-bounded-feed-candidates]
