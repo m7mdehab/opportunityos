@@ -1,5 +1,7 @@
 # BC replay and source decision — 2026-10-01
 
+> This replay report preserves the source and candidate evidence collected on October 1. Its “Remaining work” list records the state at that time and is superseded by [`BC-CLOSURE-LIVE-2026-10-02.md`](BC-CLOSURE-LIVE-2026-10-02.md), which records completion, deployment, and live verification.
+
 ## Result
 
 The audited evidence now contains six clean candidates through the corrected BC pipeline, with Founder history preserved. They come from three employers and three source families (Greenhouse, Lever, and Hacker News). This clears the replay supply/diversity gate only; it does not authorize production writes or release. No production rows, projections, schedules, or queue jobs were changed.

@@ -68,7 +68,8 @@ class SourcePolicyBindingTests(unittest.TestCase):
 
     def test_every_e23_added_or_corrected_entry_has_policy_status_and_dated_review(self):
         # BRIEF-FR-006 E23: every source this order registered or corrected must carry a
-        # policy_status and a last_policy_reviewed date (2026-09-03).
+        # policy_status and a dated last_policy_reviewed value. Jobicy and HN
+        # have later first-party reviews recorded by their source-specific work.
         e23_source_ids = {
             "hacker_news_who_is_hiring", "reddit_forhire", "reddit_remotejobs",
             "reddit_machinelearningjobs", "reddit_datajobs", "reddit_hiring", "reddit_jobbit",
@@ -89,7 +90,11 @@ class SourcePolicyBindingTests(unittest.TestCase):
                 self.assertTrue(entry.get("policy_status"), "policy_status must be set")
                 reviewed = entry.get("last_policy_reviewed")
                 self.assertIsNotNone(reviewed, "last_policy_reviewed must be set")
-                self.assertEqual(str(reviewed), "2026-09-30" if source_id == "jobicy" else "2026-09-03")
+                expected_reviewed = {
+                    "jobicy": "2026-09-30",
+                    "hacker_news_who_is_hiring": "2026-10-02",
+                }.get(source_id, "2026-09-03")
+                self.assertEqual(str(reviewed), expected_reviewed)
 
     def test_hacker_news_is_the_only_new_e23_source_bound_to_an_adapter(self):
         # Guards against accidentally wiring a manual_only/platform_application source
