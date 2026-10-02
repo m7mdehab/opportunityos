@@ -718,6 +718,14 @@ def _predict_next_cohort_bytes(state: dict[str, Any], current_bytes: int) -> int
     return _predict_source_batch_bytes(state, current_bytes, MAX_COHORT_SOURCES)
 
 
+def _maintenance_reason_for_cohort(current_bytes: int, projected_bytes: int) -> str | None:
+    if current_bytes >= COHORT_START_BYTES:
+        return "measured_capacity_reaches_380_mib"
+    if projected_bytes >= OVERNIGHT_CATCHUP_CEILING_BYTES:
+        return "projected_capacity_reaches_390_mib"
+    return None
+
+
 def _predict_source_batch_bytes(state: dict[str, Any], current_bytes: int, source_count: int) -> int:
     historical = []
     for cohort in state["cohorts"]:
@@ -751,16 +759,17 @@ def run_cohort(state_path: Path, cohort_index: int) -> dict[str, Any]:
         pre = _runtime_snapshot(session, source_id=cohort_ids[0])
         _require_clean_queue(pre)
         _require_capacity(pre)
-        if pre["database_bytes"] >= COHORT_START_BYTES:
+        projected = _predict_next_cohort_bytes(state, pre["database_bytes"])
+        maintenance_reason = _maintenance_reason_for_cohort(pre["database_bytes"], projected)
+        if maintenance_reason == "measured_capacity_reaches_380_mib":
             state["status"] = "MAINTENANCE_REQUIRED"
             state["required_before_next_cohort_bytes"] = COHORT_START_BYTES
             state["last_snapshot"] = pre
             _write_json(state_path, state)
             return state
-        projected = _predict_next_cohort_bytes(state, pre["database_bytes"])
-        if projected >= COHORT_START_BYTES:
+        if maintenance_reason == "projected_capacity_reaches_390_mib":
             state["status"] = "MAINTENANCE_REQUIRED"
-            state["maintenance_reason"] = "predicted_next_cohort_reaches_380_mib"
+            state["maintenance_reason"] = maintenance_reason
             state["next_cohort_projection_bytes"] = projected
             state["last_snapshot"] = pre
             _write_json(state_path, state)
@@ -889,9 +898,14 @@ def run_cohort(state_path: Path, cohort_index: int) -> dict[str, Any]:
     state["cohorts"].sort(key=lambda item: item["cohort_index"])
     state["last_snapshot"] = final
     state["status"] = "COHORT_COMPLETE"
-    if after_bytes >= PROACTIVE_MAINTENANCE_BYTES or cohort_report["next_cohort_projection_bytes"] >= COHORT_START_BYTES:
+    if (
+        after_bytes >= PROACTIVE_MAINTENANCE_BYTES
+        or cohort_report["next_cohort_projection_bytes"] >= OVERNIGHT_CATCHUP_CEILING_BYTES
+    ):
         state["status"] = "MAINTENANCE_REQUIRED"
-        state["maintenance_reason"] = "measured_or_projected_growth_reaches_380_mib"
+        state["maintenance_reason"] = _maintenance_reason_for_cohort(
+            after_bytes, cohort_report["next_cohort_projection_bytes"]
+        )
     _write_json(state_path, state)
     return state
 
