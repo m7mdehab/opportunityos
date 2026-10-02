@@ -35,10 +35,15 @@ MAX_PARALLEL_SOURCE_WORKERS = 5
 MAX_RETAINED_WORKER_CONNECTIONS = 10
 WORKER_TIME_BUDGET_SECONDS = 480
 # The hosted runner's time budget is checked between jobs; an already-claimed
-# source handler is allowed to finish. Keep a bounded in-flight grace for large
-# public boards so the orchestrator does not kill a nearly-finished worker.
-WORKER_IN_FLIGHT_GRACE_SECONDS = 420
-WORKER_PROCESS_TIMEOUT_SECONDS = WORKER_TIME_BUDGET_SECONDS + WORKER_IN_FLIGHT_GRACE_SECONDS
+# source handler is allowed to finish. Production history includes healthy
+# public-board polls lasting 2,250 seconds, so the orchestration timeout must
+# exceed that observed duration or it will kill valid work and replay it.
+MAX_OBSERVED_SUCCESSFUL_SOURCE_POLL_SECONDS = 2_250
+WORKER_IN_FLIGHT_GRACE_SECONDS = 450
+WORKER_PROCESS_TIMEOUT_SECONDS = max(
+    WORKER_TIME_BUDGET_SECONDS + 420,
+    MAX_OBSERVED_SUCCESSFUL_SOURCE_POLL_SECONDS + WORKER_IN_FLIGHT_GRACE_SECONDS,
+)
 WAVE_TIMEOUT_SECONDS = 75 * 60
 COHORT_START_BYTES = 380 * 1024 * 1024
 PROACTIVE_MAINTENANCE_BYTES = 380 * 1024 * 1024

@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-10-02T02:41:13Z
-- **State generated at commit:** `31d5a23` — fix: allow bounded completion of large source polls
+- **Generated:** 2026-10-02T04:53:29Z
+- **State generated at commit:** `a630dc5` — fix: allow historically slow source polls to finish
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
