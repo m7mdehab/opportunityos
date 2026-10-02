@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+from datetime import timedelta
 
 from scripts.fr007_due_source_catchup import (
     CatchupSafetyError,
@@ -15,6 +16,9 @@ from scripts.fr007_due_source_catchup import (
     MAX_PARALLEL_SOURCE_WORKERS,
     MAX_RETAINED_WORKER_CONNECTIONS,
     OVERNIGHT_CATCHUP_CEILING_BYTES,
+    WORKER_PROCESS_TIMEOUT_SECONDS,
+    WORKER_TIME_BUDGET_SECONDS,
+    WAVE_TIMEOUT_SECONDS,
     assert_founder_state_unchanged,
     cohort_for_index,
     freeze_manifest_entries,
@@ -29,6 +33,7 @@ from scripts.fr007_due_source_catchup import (
     _existing_after_freeze,
     _maintenance_reason_for_cohort,
     _predict_source_batch_bytes,
+    _drain_poll_jobs,
 )
 from scripts.migration_head_guard import migration_heads_match, repository_migration_heads
 
@@ -127,6 +132,8 @@ class DueSourceSafetyTests(unittest.TestCase):
         self._validate()
         self.assertEqual(MAX_PARALLEL_SOURCE_WORKERS, 5)
         self.assertEqual(MAX_RETAINED_WORKER_CONNECTIONS, 10)
+        self.assertGreater(WORKER_PROCESS_TIMEOUT_SECONDS, WORKER_TIME_BUDGET_SECONDS)
+        self.assertLess(WORKER_PROCESS_TIMEOUT_SECONDS, WAVE_TIMEOUT_SECONDS)
 
     def test_cooling_or_read_disabled_source_fails_closed(self):
         with self.assertRaises(CatchupSafetyError):
@@ -205,6 +212,54 @@ class DueSourceSafetyTests(unittest.TestCase):
             {"error_message": "Handler raised: HTTPError"},
         )
         self.assertEqual(unavailable[0], "deferred")
+
+    def test_timed_out_worker_is_recovered_by_lease_and_does_not_abort_the_wave(self):
+        import scripts.fr007_due_source_catchup as catchup
+
+        now = datetime.now(timezone.utc)
+        job_id = "poll-1"
+        pending = {
+            "id": job_id, "job_type": "poll_source", "status": "PENDING",
+            "run_after": (now - timedelta(seconds=5)).isoformat(),
+            "lease_expires_at": None, "retry_count": 0, "max_retries": 3,
+            "error_message": "", "payload": {"source_id": "greenhouse:slow"},
+        }
+        expired = {
+            **pending, "status": "RUNNING",
+            "lease_expires_at": (now - timedelta(seconds=5)).isoformat(),
+        }
+        completed = {**pending, "status": "COMPLETED"}
+        active_snapshots = [[pending], [expired], []]
+        row_snapshots = [{job_id: pending}, {job_id: expired}, {job_id: completed}]
+
+        class FakeSession:
+            def close(self):
+                pass
+
+        with (
+            patch.object(catchup, "_connect", side_effect=lambda: (MagicMock(), FakeSession())),
+            patch.object(catchup, "_query_jobs", side_effect=active_snapshots),
+            patch.object(catchup, "_job_rows", side_effect=row_snapshots),
+            patch.object(
+                catchup, "_spawn_workers",
+                side_effect=[
+                    [{"worker_id": "worker-1", "return_code": None, "error_class": "TimeoutExpired"}],
+                    [{"worker_id": "worker-2", "return_code": 0}],
+                ],
+            ) as spawn,
+        ):
+            result = _drain_poll_jobs({job_id}, wave_tag="test", baseline_job_ids=set())
+
+        self.assertEqual(result["job_rows"][job_id]["status"], "COMPLETED")
+        self.assertEqual(result["worker_rounds"], 2)
+        self.assertEqual(spawn.call_count, 2)
+
+    def test_exhausted_worker_lease_timeout_is_a_source_local_deferral(self):
+        outcome = _classify_source_terminal(
+            None,
+            {"error_message": "Lease expired without completion (worker presumed dead); retry_count 3 reached max_retries 3"},
+        )
+        self.assertEqual(outcome, ("deferred", "worker_timeout_after_bounded_retries"))
 
     def test_wave_growth_projection_uses_measured_rate_with_floor_and_margin(self):
         state = {"cohorts": [], "last_wave": None}

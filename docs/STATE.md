@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-10-02T02:06:30Z
-- **State generated at commit:** `3d03863` — fix: separate cohort maintenance and pause thresholds
+- **Generated:** 2026-10-02T02:41:13Z
+- **State generated at commit:** `31d5a23` — fix: allow bounded completion of large source polls
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
