@@ -58,7 +58,7 @@ from truth.pack import load_founder_pack
 from worker.handlers import _update_source_schedule, default_handler_registry
 from worker.queue import BackgroundWorkerQueue
 from worker.runner import WorkerRunner
-from worker.scheduler import PollScheduler, enqueue_due_sources
+from worker.scheduler import PollScheduler, enqueue_due_catchup_sources, enqueue_due_sources
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_PACK_PATH = REPO_ROOT / "docs" / "templates" / "truth_pack.template.yaml"
@@ -406,6 +406,72 @@ class TestPostgresQueueDurability(unittest.TestCase):
             self.assertEqual(followup.status, "PENDING")
         finally:
             verify.close()
+
+    def test_controlled_due_catchup_enqueues_one_exact_five_source_wave(self) -> None:
+        suffix = uuid.uuid4().hex[:10]
+        source_ids = [f"catchup_fixture_{suffix}_{index}" for index in range(5)]
+        registry_path = Path(self.tmp_dir) / f"catchup-registry-{suffix}.yaml"
+        registry_path.write_text(
+            "sources:\n" + "".join(
+                f"  - source_id: {source_id}\n    name: '{source_id}'\n"
+                "    category: employment\n    automation:\n      read: allowed\n"
+                "    policy_status: reviewed_ok\n    observed:\n      status: allowed_ok\n"
+                for source_id in source_ids
+            ),
+            encoding="utf-8",
+        )
+        registry = SourceRegistry(registry_path=registry_path)
+        session = self.session_factory()
+        job_ids = []
+        try:
+            active = session.query(WorkerJobRecord).filter(
+                WorkerJobRecord.status.in_(("PENDING", "RETRY", "RUNNING"))
+            ).count()
+            self.assertEqual(active, 0, "controlled wave starts only with a globally empty queue")
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            for source_id in source_ids:
+                session.add(SourceScheduleRecord(
+                    source_id=source_id,
+                    cadence_hours=6.0,
+                    next_due_at=now - timedelta(minutes=1),
+                    cooldown_until=None,
+                    consecutive_failures=0,
+                    created_at=now,
+                    updated_at=now,
+                ))
+            session.commit()
+            scheduled = enqueue_due_catchup_sources(
+                session, source_ids, registry=registry,
+                now=now.replace(tzinfo=timezone.utc),
+            )
+            session.commit()
+            job_ids = [item["job_id"] for item in scheduled]
+            self.assertEqual([item["source_id"] for item in scheduled], source_ids)
+            rows = session.query(WorkerJobRecord).filter(WorkerJobRecord.id.in_(job_ids)).all()
+            self.assertEqual(len(rows), 5)
+            self.assertEqual({row.job_type for row in rows}, {"poll_source"})
+            self.assertEqual({row.status for row in rows}, {"PENDING"})
+            for row in rows:
+                row.status = "COMPLETED"
+            session.query(SourceScheduleRecord).filter(
+                SourceScheduleRecord.source_id.in_(source_ids)
+            ).delete(synchronize_session=False)
+            session.commit()
+        finally:
+            try:
+                session.rollback()
+                rows = session.query(WorkerJobRecord).filter(
+                    WorkerJobRecord.id.in_(job_ids)
+                ).all() if job_ids else []
+                for row in rows:
+                    row.status = "COMPLETED"
+                session.query(SourceScheduleRecord).filter(
+                    SourceScheduleRecord.source_id.in_(source_ids)
+                ).delete(synchronize_session=False)
+                session.commit()
+            except Exception:
+                session.rollback()
+            session.close()
 
     def test_lease_expiration_and_recovery(self) -> None:
         """When a worker process crashes, its expired lease is safely reclaimed with retry_count increment."""
