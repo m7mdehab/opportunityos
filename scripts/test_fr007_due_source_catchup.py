@@ -272,7 +272,23 @@ class DueSourceSafetyTests(unittest.TestCase):
         )
         state["cohorts"] = [{"processed_sources": 50, "database_growth_bytes": 10_000_000}]
         projected = _predict_source_batch_bytes(state, start, 5)
-        self.assertGreaterEqual(projected, start + int(200_000 * 5 * 1.5))
+        self.assertGreaterEqual(projected, start + int(200_000 * 5 * 1.2))
+
+    def test_measured_cohort_forecast_keeps_a_margin_without_starving_safe_waves(self):
+        from scripts.fr007_due_source_catchup import _predict_next_cohort_bytes
+
+        state = {
+            "cohorts": [
+                {"processed_sources": 50, "database_growth_bytes": 7_888_896},
+                {"processed_sources": 50, "database_growth_bytes": 8_101_888},
+                {"processed_sources": 50, "database_growth_bytes": 3_366_912},
+            ],
+            "last_wave": None,
+        }
+        current = 397_364_371
+        projected = _predict_next_cohort_bytes(state, current)
+        self.assertLess(projected, OVERNIGHT_CATCHUP_CEILING_BYTES)
+        self.assertGreater(projected, current + 8_101_888)
 
     def test_cohort_projection_uses_390_mib_ceiling_after_current_size_is_reclaimed(self):
         self.assertIsNone(
