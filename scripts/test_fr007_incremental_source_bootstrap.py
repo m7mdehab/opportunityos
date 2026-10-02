@@ -17,6 +17,7 @@ from scripts.fr007_incremental_source_bootstrap import (
     projected_final_database_bytes,
     select_registry_slice,
 )
+from scripts.migration_head_guard import migration_heads_match, repository_migration_heads
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -66,11 +67,17 @@ def _state(*, database_bytes: int = 14_101_651, opportunities: int = 40, coverag
             "expired_leases": 0,
             "oldest_due_age_seconds": None,
         },
-        "database_revision": "0025_current_feed_fast_path",
+        "database_revision": repository_migration_heads()[0],
     }
 
 
 class IncrementalSourceBootstrapTests(unittest.TestCase):
+    def test_repository_migration_head_is_accepted_and_stale_head_fails_closed(self):
+        expected = repository_migration_heads()
+        self.assertTrue(expected)
+        self.assertTrue(migration_heads_match(expected, expected))
+        self.assertFalse(migration_heads_match(("0025_current_feed_fast_path",), expected))
+
     def test_capacity_projection_reproduces_reviewed_band_with_reserve(self):
         projected = projected_final_database_bytes(_state(), MODEL)
 
