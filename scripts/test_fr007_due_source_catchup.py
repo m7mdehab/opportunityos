@@ -36,6 +36,7 @@ from scripts.fr007_due_source_catchup import (
     _manifest_due_at,
     _maintenance_reason_for_cohort,
     _predict_source_batch_bytes,
+    _validate_maintenance_checkpoint,
     _drain_poll_jobs,
 )
 from scripts.migration_head_guard import migration_heads_match, repository_migration_heads
@@ -327,7 +328,7 @@ class DueSourceSafetyTests(unittest.TestCase):
         projected = _predict_source_batch_bytes(state, start, 5)
         self.assertGreaterEqual(projected, start + int(200_000 * 5 * 1.2))
 
-    def test_measured_cohort_forecast_keeps_a_margin_without_starving_safe_waves(self):
+    def test_measured_cohort_forecast_respects_recent_high_growth_with_margin(self):
         from scripts.fr007_due_source_catchup import _predict_next_cohort_bytes
 
         state = {
@@ -340,8 +341,26 @@ class DueSourceSafetyTests(unittest.TestCase):
         }
         current = 397_364_371
         projected = _predict_next_cohort_bytes(state, current)
+        self.assertGreaterEqual(projected, OVERNIGHT_CATCHUP_CEILING_BYTES)
+        self.assertEqual(projected, current + int((8_101_888 / 50) * 50 * 1.5))
+
+    def test_next_cohort_forecast_uses_recent_completed_cohorts_with_uncertainty_margin(self):
+        from scripts.fr007_due_source_catchup import _predict_next_cohort_bytes
+
+        state = {
+            "cohorts": [
+                {"processed_sources": 50, "database_growth_bytes": 8_101_888},
+                {"processed_sources": 50, "database_growth_bytes": 3_366_912},
+                {"processed_sources": 50, "database_growth_bytes": 2_834_432},
+            ],
+            # A five-source wave is already included in the latest cohort and
+            # must not be extrapolated as the full-cohort rate.
+            "last_wave": {"source_ids": ["a", "b", "c", "d", "e"], "database_growth_bytes": 901_120},
+        }
+        current = 401_370_259
+        projected = _predict_next_cohort_bytes(state, current)
+        self.assertEqual(projected, current + int((3_366_912 / 50) * 50 * 1.5))
         self.assertLess(projected, OVERNIGHT_CATCHUP_CEILING_BYTES)
-        self.assertGreater(projected, current + 8_101_888)
 
     def test_cohort_projection_uses_390_mib_ceiling_after_current_size_is_reclaimed(self):
         self.assertIsNone(
@@ -355,9 +374,7 @@ class DueSourceSafetyTests(unittest.TestCase):
         )
         self.assertEqual(
             _maintenance_reason_for_cohort(
-                COHORT_START_BYTES,
-                COHORT_START_BYTES,
-                resuming_partial_cohort=True,
+                COHORT_START_BYTES, COHORT_START_BYTES
             ),
             "measured_capacity_reaches_380_mib",
         )
@@ -365,7 +382,13 @@ class DueSourceSafetyTests(unittest.TestCase):
             _maintenance_reason_for_cohort(
                 COHORT_START_BYTES,
                 OVERNIGHT_CATCHUP_CEILING_BYTES - 1,
-                resuming_partial_cohort=True,
+                maintenance_run_id="37007725634",
+            )
+        )
+        self.assertIsNone(
+            _maintenance_reason_for_cohort(
+                COHORT_START_BYTES,
+                OVERNIGHT_CATCHUP_CEILING_BYTES - 1,
                 maintenance_run_id="36986273710",
             )
         )
@@ -375,6 +398,22 @@ class DueSourceSafetyTests(unittest.TestCase):
             ),
             "projected_capacity_reaches_390_mib",
         )
+        self.assertEqual(
+            _maintenance_reason_for_cohort(
+                COHORT_START_BYTES,
+                OVERNIGHT_CATCHUP_CEILING_BYTES,
+                maintenance_run_id="37007725634",
+            ),
+            "projected_capacity_reaches_390_mib",
+        )
+
+    def test_maintenance_checkpoint_authorizes_one_fresh_bounded_cohort(self):
+        state = {"status": "MAINTENANCE_REQUIRED", "maintenance_checkpoint": {"run_id": "123"}}
+        _validate_maintenance_checkpoint(state, "456")
+        with self.assertRaises(CatchupSafetyError):
+            _validate_maintenance_checkpoint(state, "123")
+        with self.assertRaises(CatchupSafetyError):
+            _validate_maintenance_checkpoint({"status": "RUNNING"}, "456")
 
     def test_partial_cohort_projection_uses_only_unfinished_sources(self):
         from scripts.fr007_due_source_catchup import _predict_next_cohort_bytes
@@ -387,7 +426,7 @@ class DueSourceSafetyTests(unittest.TestCase):
         remaining = _predict_next_cohort_bytes(state, current, source_count=40)
         full = _predict_next_cohort_bytes(state, current, source_count=50)
         self.assertLess(remaining, full)
-        self.assertEqual(remaining - current, (8_000_000 // 50) * 40 * 1.2)
+        self.assertEqual(remaining - current, (8_000_000 // 50) * 40 * 1.5)
 
     def test_parser_and_database_errors_are_not_silently_deferred(self):
         for message in ("ValueError malformed source response", "psycopg IntegrityError"):

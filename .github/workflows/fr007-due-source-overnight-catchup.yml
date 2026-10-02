@@ -17,7 +17,7 @@ on:
         required: false
         default: "0"
       maintenance_run_id:
-        description: Successful maintenance-only run ID, required only to resume a paused partial cohort after maintenance
+        description: Fresh successful maintenance-only run ID authorizing one bounded cohort after a capacity pause
         required: false
         default: ""
 

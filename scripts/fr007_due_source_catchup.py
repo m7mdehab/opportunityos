@@ -53,11 +53,12 @@ MAX_SOURCE_JOB_ATTEMPTS = DEFAULT_SOURCE_MAX_RETRIES + 1
 POLL_WAVE_TIMEOUT_SECONDS = MAX_SOURCE_JOB_ATTEMPTS * WORKER_PROCESS_TIMEOUT_SECONDS + 600
 COHORT_START_BYTES = 380 * 1024 * 1024
 PROACTIVE_MAINTENANCE_BYTES = 380 * 1024 * 1024
-# Keep a 20% uncertainty reserve over the largest observed growth per source.
-# The 50-source cohort is also guarded again at every five-source wave; a 50%
-# reserve here double-counted that per-wave control and prevented progress even
-# when the actual forecast left the 390 MiB ceiling clear.
-COHORT_PREDICTION_MULTIPLIER = 1.2
+# The cohort estimate uses the larger of the last two completed cohort rates,
+# with a 50% uncertainty reserve. Each five-source wave is independently
+# checked before it starts, so isolated wave growth does not get extrapolated
+# as if it were representative of an entire cohort.
+COHORT_PREDICTION_MULTIPLIER = 1.5
+WAVE_PREDICTION_MULTIPLIER = 1.2
 DEFAULT_MEASURED_BYTES_PER_SOURCE = 147_456
 STATE_VERSION = 1
 
@@ -823,23 +824,44 @@ def _schedule_and_run_wave(
 def _predict_next_cohort_bytes(
     state: dict[str, Any], current_bytes: int, source_count: int = MAX_COHORT_SOURCES
 ) -> int:
-    return _predict_source_batch_bytes(state, current_bytes, source_count)
+    recent_cohorts = state.get("cohorts", [])[-2:]
+    if not recent_cohorts:
+        per_source = DEFAULT_MEASURED_BYTES_PER_SOURCE
+    else:
+        rates = []
+        for cohort in recent_cohorts:
+            processed_count = max(
+                1,
+                int(cohort.get("processed_sources") or len(cohort.get("source_ids", []))),
+            )
+            rates.append(max(0, int(cohort.get("database_growth_bytes", 0))) / processed_count)
+        per_source = max(rates)
+    return int(current_bytes + per_source * source_count * COHORT_PREDICTION_MULTIPLIER)
 
 
 def _maintenance_reason_for_cohort(
     current_bytes: int,
     projected_bytes: int,
     *,
-    resuming_partial_cohort: bool = False,
     maintenance_run_id: str | None = None,
 ) -> str | None:
     if current_bytes >= COHORT_START_BYTES and not (
-        resuming_partial_cohort and maintenance_run_id
+        maintenance_run_id
     ):
         return "measured_capacity_reaches_380_mib"
     if projected_bytes >= OVERNIGHT_CATCHUP_CEILING_BYTES:
         return "projected_capacity_reaches_390_mib"
     return None
+
+
+def _validate_maintenance_checkpoint(state: dict[str, Any], run_id: str) -> None:
+    if not run_id.isdigit():
+        raise CatchupSafetyError("maintenance run ID must be numeric")
+    if state.get("status") != "MAINTENANCE_REQUIRED":
+        raise CatchupSafetyError("a maintenance checkpoint is accepted only after a capacity pause")
+    previous_checkpoint = state.get("maintenance_checkpoint") or {}
+    if previous_checkpoint.get("run_id") == run_id:
+        raise CatchupSafetyError("each capacity-paused cohort requires a fresh maintenance-only run")
 
 
 def _predict_source_batch_bytes(state: dict[str, Any], current_bytes: int, source_count: int) -> int:
@@ -855,7 +877,7 @@ def _predict_source_batch_bytes(state: dict[str, Any], current_bytes: int, sourc
         count = max(1, len(last_wave.get("source_ids", [])))
         historical.append(max(0, int(last_wave.get("database_growth_bytes", 0))) / count)
     per_source = max([DEFAULT_MEASURED_BYTES_PER_SOURCE, *historical])
-    return int(current_bytes + per_source * source_count * COHORT_PREDICTION_MULTIPLIER)
+    return int(current_bytes + per_source * source_count * WAVE_PREDICTION_MULTIPLIER)
 
 
 def run_cohort(
@@ -882,19 +904,19 @@ def run_cohort(
         _require_clean_queue(pre)
         _require_capacity(pre)
         if maintenance_run_id is not None:
-            if not maintenance_run_id.isdigit():
-                raise CatchupSafetyError("maintenance run ID must be numeric")
-            if state.get("status") != "MAINTENANCE_REQUIRED" or not resuming_partial_cohort:
-                raise CatchupSafetyError(
-                    "a maintenance checkpoint is accepted only when resuming a paused partial cohort"
-                )
+            _validate_maintenance_checkpoint(state, maintenance_run_id)
+            state["maintenance_checkpoint"] = {
+                "run_id": maintenance_run_id,
+                "cohort_index": cohort_index,
+                "database_bytes": pre["database_bytes"],
+                "captured_at": datetime.now(timezone.utc).isoformat(),
+            }
         projected = _predict_next_cohort_bytes(
             state, pre["database_bytes"], len(remaining_ids)
         )
         maintenance_reason = _maintenance_reason_for_cohort(
             pre["database_bytes"],
             projected,
-            resuming_partial_cohort=resuming_partial_cohort,
             maintenance_run_id=maintenance_run_id,
         )
         if maintenance_reason == "measured_capacity_reaches_380_mib":
@@ -912,13 +934,6 @@ def run_cohort(
             return state
         founder_before = pre["founder_state"]
         before_bytes = pre["database_bytes"]
-        if maintenance_run_id is not None:
-            state["maintenance_checkpoint"] = {
-                "run_id": maintenance_run_id,
-                "cohort_index": cohort_index,
-                "database_bytes": before_bytes,
-                "captured_at": datetime.now(timezone.utc).isoformat(),
-            }
     finally:
         session.close()
         engine.dispose()
