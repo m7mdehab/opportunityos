@@ -348,10 +348,39 @@ class DueSourceSafetyTests(unittest.TestCase):
         )
         self.assertEqual(
             _maintenance_reason_for_cohort(
+                COHORT_START_BYTES,
+                COHORT_START_BYTES,
+                resuming_partial_cohort=True,
+            ),
+            "measured_capacity_reaches_380_mib",
+        )
+        self.assertIsNone(
+            _maintenance_reason_for_cohort(
+                COHORT_START_BYTES,
+                OVERNIGHT_CATCHUP_CEILING_BYTES - 1,
+                resuming_partial_cohort=True,
+                maintenance_run_id="36986273710",
+            )
+        )
+        self.assertEqual(
+            _maintenance_reason_for_cohort(
                 COHORT_START_BYTES - 1, OVERNIGHT_CATCHUP_CEILING_BYTES
             ),
             "projected_capacity_reaches_390_mib",
         )
+
+    def test_partial_cohort_projection_uses_only_unfinished_sources(self):
+        from scripts.fr007_due_source_catchup import _predict_next_cohort_bytes
+
+        state = {
+            "cohorts": [{"processed_sources": 50, "database_growth_bytes": 8_000_000}],
+            "last_wave": None,
+        }
+        current = 399_985_811
+        remaining = _predict_next_cohort_bytes(state, current, source_count=40)
+        full = _predict_next_cohort_bytes(state, current, source_count=50)
+        self.assertLess(remaining, full)
+        self.assertEqual(remaining - current, (8_000_000 // 50) * 40 * 1.2)
 
     def test_parser_and_database_errors_are_not_silently_deferred(self):
         for message in ("ValueError malformed source response", "psycopg IntegrityError"):
@@ -373,6 +402,8 @@ class MigrationHeadTests(unittest.TestCase):
         workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/fr007-due-source-overnight-catchup.yml").read_text(encoding="utf-8")
         self.assertIn("if: github.ref == 'refs/heads/main'", workflow)
         self.assertIn("group: fr007-worker-drain", workflow)
+        self.assertIn("maintenance_run_id:", workflow)
+        self.assertIn("--maintenance-run-id", workflow)
         self.assertIn("--cohort-index", workflow)
         self.assertIn("retention-days: 30", workflow)
 

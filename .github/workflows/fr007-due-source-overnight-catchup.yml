@@ -13,9 +13,13 @@ on:
         required: false
         default: ""
       cohort_index:
-        description: Zero-based sequential cohort index (maximum seven cohorts for the expected 341 sources)
+        description: Zero-based sequential cohort index (maximum seven cohorts for the frozen manifest)
         required: false
         default: "0"
+      maintenance_run_id:
+        description: Successful maintenance-only run ID, required only to resume a paused partial cohort after maintenance
+        required: false
+        default: ""
 
 permissions:
   actions: read
@@ -65,6 +69,7 @@ jobs:
         run: >-
           python scripts/fr007_due_source_catchup.py
           --cohort-index "${{ inputs.cohort_index }}"
+          ${{ inputs.maintenance_run_id != '' && format('--maintenance-run-id {0}', inputs.maintenance_run_id) || '' }}
           --state-file catchup-state/catchup-state.json
       - name: Verify final frozen-manifest and production invariants
         if: inputs.operation == 'finalize'

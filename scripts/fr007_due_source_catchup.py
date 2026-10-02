@@ -807,12 +807,22 @@ def _schedule_and_run_wave(
         engine.dispose()
 
 
-def _predict_next_cohort_bytes(state: dict[str, Any], current_bytes: int) -> int:
-    return _predict_source_batch_bytes(state, current_bytes, MAX_COHORT_SOURCES)
+def _predict_next_cohort_bytes(
+    state: dict[str, Any], current_bytes: int, source_count: int = MAX_COHORT_SOURCES
+) -> int:
+    return _predict_source_batch_bytes(state, current_bytes, source_count)
 
 
-def _maintenance_reason_for_cohort(current_bytes: int, projected_bytes: int) -> str | None:
-    if current_bytes >= COHORT_START_BYTES:
+def _maintenance_reason_for_cohort(
+    current_bytes: int,
+    projected_bytes: int,
+    *,
+    resuming_partial_cohort: bool = False,
+    maintenance_run_id: str | None = None,
+) -> str | None:
+    if current_bytes >= COHORT_START_BYTES and not (
+        resuming_partial_cohort and maintenance_run_id
+    ):
         return "measured_capacity_reaches_380_mib"
     if projected_bytes >= OVERNIGHT_CATCHUP_CEILING_BYTES:
         return "projected_capacity_reaches_390_mib"
@@ -835,7 +845,9 @@ def _predict_source_batch_bytes(state: dict[str, Any], current_bytes: int, sourc
     return int(current_bytes + per_source * source_count * COHORT_PREDICTION_MULTIPLIER)
 
 
-def run_cohort(state_path: Path, cohort_index: int) -> dict[str, Any]:
+def run_cohort(
+    state_path: Path, cohort_index: int, maintenance_run_id: str | None = None
+) -> dict[str, Any]:
     state = _read_state(state_path)
     manifest = state["manifest"]
     entries = manifest["entries"]
@@ -846,14 +858,32 @@ def run_cohort(state_path: Path, cohort_index: int) -> dict[str, Any]:
     cohort_ids = [item["source_id"] for item in cohort]
     if len(cohort_ids) > MAX_COHORT_SOURCES:
         raise CatchupSafetyError("top-level cohort exceeded fifty source identities")
+    remaining_ids = [source_id for source_id in cohort_ids if source_id not in state["results"]]
+    resuming_partial_cohort = bool(len(remaining_ids) < len(cohort_ids))
+    if not remaining_ids:
+        raise CatchupSafetyError("cohort has no remaining frozen source identities")
 
     engine, session = _connect()
     try:
         pre = _runtime_snapshot(session, source_id=cohort_ids[0])
         _require_clean_queue(pre)
         _require_capacity(pre)
-        projected = _predict_next_cohort_bytes(state, pre["database_bytes"])
-        maintenance_reason = _maintenance_reason_for_cohort(pre["database_bytes"], projected)
+        if maintenance_run_id is not None:
+            if not maintenance_run_id.isdigit():
+                raise CatchupSafetyError("maintenance run ID must be numeric")
+            if state.get("status") != "MAINTENANCE_REQUIRED" or not resuming_partial_cohort:
+                raise CatchupSafetyError(
+                    "a maintenance checkpoint is accepted only when resuming a paused partial cohort"
+                )
+        projected = _predict_next_cohort_bytes(
+            state, pre["database_bytes"], len(remaining_ids)
+        )
+        maintenance_reason = _maintenance_reason_for_cohort(
+            pre["database_bytes"],
+            projected,
+            resuming_partial_cohort=resuming_partial_cohort,
+            maintenance_run_id=maintenance_run_id,
+        )
         if maintenance_reason == "measured_capacity_reaches_380_mib":
             state["status"] = "MAINTENANCE_REQUIRED"
             state["required_before_next_cohort_bytes"] = COHORT_START_BYTES
@@ -869,6 +899,13 @@ def run_cohort(state_path: Path, cohort_index: int) -> dict[str, Any]:
             return state
         founder_before = pre["founder_state"]
         before_bytes = pre["database_bytes"]
+        if maintenance_run_id is not None:
+            state["maintenance_checkpoint"] = {
+                "run_id": maintenance_run_id,
+                "cohort_index": cohort_index,
+                "database_bytes": before_bytes,
+                "captured_at": datetime.now(timezone.utc).isoformat(),
+            }
     finally:
         session.close()
         engine.dispose()
@@ -1089,6 +1126,10 @@ def main(argv: list[str] | None = None) -> int:
     group.add_argument("--freeze", action="store_true")
     group.add_argument("--cohort-index", type=int)
     group.add_argument("--finalize", action="store_true")
+    parser.add_argument(
+        "--maintenance-run-id",
+        help="Successful maintenance-only workflow run authorizing a partial-cohort resume above 380 MiB",
+    )
     args = parser.parse_args(argv)
     try:
         if args.freeze:
@@ -1096,7 +1137,9 @@ def main(argv: list[str] | None = None) -> int:
         elif args.finalize:
             result = finalize_live_run(args.state_file)
         else:
-            result = run_cohort(args.state_file, args.cohort_index)
+            result = run_cohort(
+                args.state_file, args.cohort_index, args.maintenance_run_id
+            )
     except CatchupSafetyError as exc:
         print(json.dumps({"status": "SAFETY_STOP", "reason": str(exc)}, sort_keys=True))
         return 2
