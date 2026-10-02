@@ -33,6 +33,7 @@ from scripts.fr007_due_source_catchup import (
     validate_wave_contract,
     _classify_source_terminal,
     _existing_after_freeze,
+    _manifest_due_at,
     _maintenance_reason_for_cohort,
     _predict_source_batch_bytes,
     _drain_poll_jobs,
@@ -55,6 +56,12 @@ class DueSourceManifestTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(manifest_sha256(first), manifest_sha256(second))
         validate_manifest({"version": 1, "entries": first, "sha256": manifest_sha256(first)})
+
+    def test_manifest_due_timestamp_is_parsed_from_frozen_serialized_value(self):
+        due = _manifest_due_at({"next_due_at": "2026-10-02T00:00:00+00:00"})
+        self.assertEqual(due, datetime(2026, 10, 2, tzinfo=timezone.utc))
+        with self.assertRaisesRegex(CatchupSafetyError, "invalid due timestamp"):
+            _manifest_due_at({"next_due_at": "not-a-timestamp"})
 
     def test_duplicate_source_identity_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "duplicate"):

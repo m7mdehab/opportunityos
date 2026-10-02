@@ -72,6 +72,17 @@ def _utc(value: datetime | None) -> datetime | None:
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
 
+def _manifest_due_at(entry: dict[str, Any]) -> datetime:
+    try:
+        due_at = datetime.fromisoformat(entry["next_due_at"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise CatchupSafetyError("frozen manifest has an invalid due timestamp") from exc
+    normalized = _utc(due_at)
+    if normalized is None:
+        raise CatchupSafetyError("frozen manifest has no due timestamp")
+    return normalized
+
+
 def _iso(value: datetime | None) -> str | None:
     normalized = _utc(value)
     return normalized.isoformat() if normalized else None
@@ -937,8 +948,8 @@ def run_cohort(
                 if cooling is not None and cooling > now:
                     state["results"][source_id] = {"status": "deferred", "reason": "source_cooldown_active"}
                     continue
-                frozen_due = _utc(entry["next_due_at"])
-                if frozen_due is None or frozen_due > frozen_at:
+                frozen_due = _manifest_due_at(entry)
+                if frozen_due > frozen_at:
                     raise CatchupSafetyError("frozen manifest contains a source not due at creation")
                 wave_sources.append(source_id)
             finally:
@@ -975,7 +986,7 @@ def run_cohort(
             manifest_ids={entry["source_id"] for entry in entries},
             founder_state_baseline=manifest["founder_state_at_freeze"],
             frozen_due_at={
-                entry["source_id"]: datetime.fromisoformat(entry["next_due_at"])
+                entry["source_id"]: _manifest_due_at(entry)
                 for entry in entries if entry["source_id"] in wave_sources
             },
             manifest_created_at=frozen_at,
