@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import unittest
+import subprocess
+import sys
+from pathlib import Path
 
 from scripts.db_capacity_guard import PROVIDER_LIMIT_BYTES
 from scripts.db_capacity_maintenance import (
@@ -11,6 +14,18 @@ from scripts.db_capacity_maintenance import (
 
 
 class RelationRewriteHeadroomTests(unittest.TestCase):
+    def test_maintenance_cli_imports_when_run_as_a_script(self):
+        root = Path(__file__).resolve().parents[1]
+        result = subprocess.run(
+            [sys.executable, "scripts/db_capacity_maintenance.py", "--help"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("hot-dimensions-apply", result.stdout)
+
     def test_estimate_includes_database_relation_and_safety_margin(self):
         self.assertEqual(
             relation_rewrite_peak_estimate(400_000_000, 50_000_000),

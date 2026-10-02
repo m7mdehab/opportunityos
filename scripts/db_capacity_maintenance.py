@@ -11,10 +11,16 @@ import argparse
 import hashlib
 import json
 import os
+import sys
 import zlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from sqlalchemy import create_engine, text
 from storage.cold_storage import ARCHIVE_VERSION, hosted_storage_configured, pack, put
