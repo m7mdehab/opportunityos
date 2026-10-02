@@ -83,10 +83,10 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
         self.assertIn('OPOS_WORKER_ID: "hosted-bootstrap-${{ github.run_id }}-${{ matrix.shard }}"', workflow)
         self.assertIn('--worker-id "${OPOS_WORKER_ID}"', workflow)
 
-    def test_worker_drain_timeout_headroom(self):
+    def test_worker_drain_timeout_covers_historically_slow_source_poll(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-worker-drain.yml").read_text(encoding="utf-8")
         drain_section = workflow.split("drain:", 1)[1]
-        self.assertIn("timeout-minutes: 35", drain_section)
+        self.assertIn("timeout-minutes: 50", drain_section)
 
     def test_final_closure_fails_closed_on_piped_failures_and_direct_script_imports(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-final-runtime-closure.yml").read_text(encoding="utf-8")
