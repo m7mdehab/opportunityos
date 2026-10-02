@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-10-02T01:11:17Z
-- **State generated at commit:** `4437135` — fix: distinguish CV recommendations from founder state
+- **Generated:** 2026-10-02T02:06:30Z
+- **State generated at commit:** `3d03863` — fix: separate cohort maintenance and pause thresholds
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief

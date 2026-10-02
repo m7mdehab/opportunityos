@@ -27,6 +27,7 @@ from scripts.fr007_due_source_catchup import (
     validate_wave_contract,
     _classify_source_terminal,
     _existing_after_freeze,
+    _maintenance_reason_for_cohort,
     _predict_source_batch_bytes,
 )
 from scripts.migration_head_guard import migration_heads_match, repository_migration_heads
@@ -214,6 +215,23 @@ class DueSourceSafetyTests(unittest.TestCase):
         state["cohorts"] = [{"processed_sources": 50, "database_growth_bytes": 10_000_000}]
         projected = _predict_source_batch_bytes(state, start, 5)
         self.assertGreaterEqual(projected, start + int(200_000 * 5 * 1.5))
+
+    def test_cohort_projection_uses_390_mib_ceiling_after_current_size_is_reclaimed(self):
+        self.assertIsNone(
+            _maintenance_reason_for_cohort(
+                COHORT_START_BYTES - 1, COHORT_START_BYTES + 1
+            )
+        )
+        self.assertEqual(
+            _maintenance_reason_for_cohort(COHORT_START_BYTES, COHORT_START_BYTES),
+            "measured_capacity_reaches_380_mib",
+        )
+        self.assertEqual(
+            _maintenance_reason_for_cohort(
+                COHORT_START_BYTES - 1, OVERNIGHT_CATCHUP_CEILING_BYTES
+            ),
+            "projected_capacity_reaches_390_mib",
+        )
 
     def test_parser_and_database_errors_are_not_silently_deferred(self):
         for message in ("ValueError malformed source response", "psycopg IntegrityError"):
