@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-10-02T13:27:01Z
-- **State generated at commit:** `d1a3fa6` — fix: guard maintenance rewrites against provider headroom
+- **Generated:** 2026-10-02T13:34:38Z
+- **State generated at commit:** `358b651` — fix: resolve repository imports in maintenance CLI
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
