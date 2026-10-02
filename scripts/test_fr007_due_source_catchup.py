@@ -36,6 +36,7 @@ from scripts.fr007_due_source_catchup import (
     _manifest_due_at,
     _maintenance_reason_for_cohort,
     _predict_source_batch_bytes,
+    _validate_maintenance_checkpoint,
     _drain_poll_jobs,
 )
 from scripts.migration_head_guard import migration_heads_match, repository_migration_heads
@@ -355,9 +356,7 @@ class DueSourceSafetyTests(unittest.TestCase):
         )
         self.assertEqual(
             _maintenance_reason_for_cohort(
-                COHORT_START_BYTES,
-                COHORT_START_BYTES,
-                resuming_partial_cohort=True,
+                COHORT_START_BYTES, COHORT_START_BYTES
             ),
             "measured_capacity_reaches_380_mib",
         )
@@ -365,7 +364,13 @@ class DueSourceSafetyTests(unittest.TestCase):
             _maintenance_reason_for_cohort(
                 COHORT_START_BYTES,
                 OVERNIGHT_CATCHUP_CEILING_BYTES - 1,
-                resuming_partial_cohort=True,
+                maintenance_run_id="37007725634",
+            )
+        )
+        self.assertIsNone(
+            _maintenance_reason_for_cohort(
+                COHORT_START_BYTES,
+                OVERNIGHT_CATCHUP_CEILING_BYTES - 1,
                 maintenance_run_id="36986273710",
             )
         )
@@ -375,6 +380,22 @@ class DueSourceSafetyTests(unittest.TestCase):
             ),
             "projected_capacity_reaches_390_mib",
         )
+        self.assertEqual(
+            _maintenance_reason_for_cohort(
+                COHORT_START_BYTES,
+                OVERNIGHT_CATCHUP_CEILING_BYTES,
+                maintenance_run_id="37007725634",
+            ),
+            "projected_capacity_reaches_390_mib",
+        )
+
+    def test_maintenance_checkpoint_authorizes_one_fresh_bounded_cohort(self):
+        state = {"status": "MAINTENANCE_REQUIRED", "maintenance_checkpoint": {"run_id": "123"}}
+        _validate_maintenance_checkpoint(state, "456")
+        with self.assertRaises(CatchupSafetyError):
+            _validate_maintenance_checkpoint(state, "123")
+        with self.assertRaises(CatchupSafetyError):
+            _validate_maintenance_checkpoint({"status": "RUNNING"}, "456")
 
     def test_partial_cohort_projection_uses_only_unfinished_sources(self):
         from scripts.fr007_due_source_catchup import _predict_next_cohort_bytes
