@@ -73,6 +73,8 @@ jobs:
           python - <<'PY'
           import os
           from sqlalchemy import create_engine, text
+          from scripts.db_capacity_guard import PROVIDER_LIMIT_BYTES
+          from scripts.db_capacity_maintenance import relation_rewrite_peak_estimate
           engine = create_engine(os.environ["OPOS_TARGET_DB_URL"], pool_pre_ping=True)
           try:
               with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
