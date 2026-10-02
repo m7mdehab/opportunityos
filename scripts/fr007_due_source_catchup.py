@@ -854,6 +854,20 @@ def _maintenance_reason_for_cohort(
     return None
 
 
+def _maintenance_reason_before_cohort_start(
+    current_bytes: int, *, maintenance_run_id: str | None = None
+) -> str | None:
+    """Require maintenance at 380 MiB, then let per-wave forecasts enforce 390 MiB.
+
+    A whole 50-source cohort can project above 390 MiB even though its next
+    five-source wave is safe. The wave-level guard is the right place to pause
+    that bounded execution without blocking every remaining source at once.
+    """
+    if current_bytes >= COHORT_START_BYTES and not maintenance_run_id:
+        return "measured_capacity_reaches_380_mib"
+    return None
+
+
 def _validate_maintenance_checkpoint(state: dict[str, Any], run_id: str) -> None:
     if not run_id.isdigit():
         raise CatchupSafetyError("maintenance run ID must be numeric")
@@ -914,10 +928,8 @@ def run_cohort(
         projected = _predict_next_cohort_bytes(
             state, pre["database_bytes"], len(remaining_ids)
         )
-        maintenance_reason = _maintenance_reason_for_cohort(
-            pre["database_bytes"],
-            projected,
-            maintenance_run_id=maintenance_run_id,
+        maintenance_reason = _maintenance_reason_before_cohort_start(
+            pre["database_bytes"], maintenance_run_id=maintenance_run_id
         )
         if maintenance_reason == "measured_capacity_reaches_380_mib":
             state["status"] = "MAINTENANCE_REQUIRED"
@@ -925,13 +937,7 @@ def run_cohort(
             state["last_snapshot"] = pre
             _write_json(state_path, state)
             return state
-        if maintenance_reason == "projected_capacity_reaches_390_mib":
-            state["status"] = "MAINTENANCE_REQUIRED"
-            state["maintenance_reason"] = maintenance_reason
-            state["next_cohort_projection_bytes"] = projected
-            state["last_snapshot"] = pre
-            _write_json(state_path, state)
-            return state
+        state["next_cohort_projection_bytes"] = projected
         founder_before = pre["founder_state"]
         before_bytes = pre["database_bytes"]
     finally:
@@ -1014,8 +1020,9 @@ def run_cohort(
         state["last_wave"] = wave
         _write_json(state_path, state)
         if wave["database_bytes_after"] >= OVERNIGHT_CATCHUP_CEILING_BYTES:
-            state["status"] = "SAFETY_PAUSE_390_MIB"
-            state["failures"].append({"cohort": cohort_index, "wave": wave_index, "reason": state["status"]})
+            state["status"] = "MAINTENANCE_REQUIRED"
+            state["maintenance_reason"] = "measured_capacity_reaches_390_mib_after_wave"
+            state["required_before_next_cohort_bytes"] = COHORT_START_BYTES
             _write_json(state_path, state)
             return state
 
