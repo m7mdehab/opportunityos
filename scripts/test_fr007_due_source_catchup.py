@@ -96,7 +96,7 @@ class DueSourceManifestTests(unittest.TestCase):
             result = _existing_after_freeze(None, "source:1", frozen_at)
         self.assertEqual(result["status"], "success")
 
-    def test_resume_preserves_terminal_worker_timeout_without_poll_evidence(self):
+    def test_resume_retries_one_timeout_from_superseded_orchestration_bound(self):
         frozen_at = datetime(2026, 10, 2, tzinfo=timezone.utc)
         from unittest.mock import patch
         terminal_job = {
@@ -107,13 +107,31 @@ class DueSourceManifestTests(unittest.TestCase):
             "error_message": "Lease expired without completion (worker presumed dead)",
         }
         with patch("scripts.fr007_due_source_catchup._latest_poll", return_value=None), patch(
-            "scripts.fr007_due_source_catchup._latest_source_job_after_freeze",
-            return_value=terminal_job,
+            "scripts.fr007_due_source_catchup._source_jobs_after_freeze",
+            return_value=[terminal_job],
+        ):
+            result = _existing_after_freeze(object(), "source:1", frozen_at)
+        self.assertIsNone(result)
+
+    def test_resume_defers_after_second_exhausted_worker_lease_timeout(self):
+        frozen_at = datetime(2026, 10, 2, tzinfo=timezone.utc)
+        from unittest.mock import patch
+        first = {
+            "id": "job-timeout-1",
+            "status": "DEAD_LETTER",
+            "retry_count": 3,
+            "max_retries": 3,
+            "error_message": "Lease expired without completion (worker presumed dead)",
+        }
+        second = {**first, "id": "job-timeout-2"}
+        with patch("scripts.fr007_due_source_catchup._latest_poll", return_value=None), patch(
+            "scripts.fr007_due_source_catchup._source_jobs_after_freeze",
+            return_value=[first, second],
         ):
             result = _existing_after_freeze(object(), "source:1", frozen_at)
         self.assertEqual(result["status"], "deferred")
         self.assertEqual(result["reason"], "worker_timeout_after_bounded_retries")
-        self.assertEqual(result["worker_job"]["id"], "job-timeout")
+        self.assertEqual(result["worker_job"]["id"], "job-timeout-2")
 
     def test_freeze_excludes_cooling_and_read_disabled_and_never_adds_later_due_sources(self):
         now = datetime(2026, 10, 2, 12, 0, tzinfo=timezone.utc)
