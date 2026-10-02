@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-10-02T13:34:38Z
-- **State generated at commit:** `6835f12` — fix: import rewrite capacity guards in workflow
+- **State generated at commit:** `05c4fef` — fix: resume source catch-up in safe capacity waves
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
