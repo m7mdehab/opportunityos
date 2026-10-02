@@ -178,7 +178,7 @@ class DueSourceSafetyTests(unittest.TestCase):
 
     def test_terminal_external_http_failure_is_deferred_after_normal_retries(self):
         outcome = _classify_source_terminal(
-            {"status": "error", "error_message": "404 Client Error"},
+            {"status": "error", "error_message": "HTTP Error 404: Not Found"},
             {"error_message": "Handler raised: HTTPError"},
         )
         self.assertEqual(outcome, ("deferred", "external_source_http_failure"))
@@ -187,6 +187,11 @@ class DueSourceSafetyTests(unittest.TestCase):
             {"error_message": "Handler raised: HTTPError"},
         )
         self.assertEqual(rate_limited[0], "deferred")
+        unavailable = _classify_source_terminal(
+            {"status": "error", "error_message": "HTTP Error 503: Service Unavailable"},
+            {"error_message": "Handler raised: HTTPError"},
+        )
+        self.assertEqual(unavailable[0], "deferred")
 
     def test_wave_growth_projection_uses_measured_rate_with_floor_and_margin(self):
         state = {"cohorts": [], "last_wave": None}

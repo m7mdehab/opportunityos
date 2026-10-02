@@ -175,7 +175,10 @@ def _founder_state(connection) -> dict[str, int]:
         "founder_identity": "founder_identity",
         "feedback": "founder_feedback",
         "activity": "founder_activity_events",
+        "opportunity_views": "founder_opportunity_views",
         "triage": "founder_triage_states",
+        "filter_settings": "founder_filter_settings",
+        "facets": "founder_facets",
         "saved_views": "founder_saved_views",
         "cv_selections": "founder_cv_selections",
         "outbound_actions": "outbound_actions",
@@ -187,6 +190,17 @@ def _founder_state(connection) -> dict[str, int]:
     counts["auth_users"] = int(
         connection.execute(text("SELECT count(*) FROM auth.users")).scalar_one()
     )
+    distributions = (
+        ("feedback_label", "SELECT feedback_label AS value, count(*)::bigint AS count FROM public.founder_feedback GROUP BY feedback_label"),
+        ("activity_action", "SELECT action_type || ':' || COALESCE(resulting_state, '') AS value, count(*)::bigint AS count FROM public.founder_activity_events GROUP BY action_type, resulting_state"),
+        ("triage_state", "SELECT state AS value, count(*)::bigint AS count FROM public.founder_triage_states GROUP BY state"),
+        ("outbound_status", "SELECT action_status AS value, count(*)::bigint AS count FROM public.outbound_actions GROUP BY action_status"),
+        ("cv_variant", "SELECT variant AS value, count(*)::bigint AS count FROM public.founder_cv_selections GROUP BY variant"),
+    )
+    for label, query in distributions:
+        rows = connection.execute(text(query)).mappings().all()
+        for row in rows:
+            counts[f"{label}:{row['value']}"] = int(row["count"])
     return counts
 
 
@@ -504,6 +518,10 @@ def _classify_source_terminal(poll: dict[str, Any] | None, job: dict[str, Any]) 
         "connecttimeout", "readtimeout", "ssl error", "temporary name resolution",
         "no address associated with hostname", "nodename nor servname",
         "server disconnected", "http 408", "http 429", "429 client error",
+        "http error 408", "http error 429", "500 server error", "http error 500",
+        "502 bad gateway", "502 server error", "http error 502",
+        "503 service unavailable", "503 server error", "http error 503",
+        "504 gateway timeout", "504 server error", "http error 504",
         "rate limit", "too many requests",
     )
     external_http_markers = (
@@ -511,7 +529,9 @@ def _classify_source_terminal(poll: dict[str, Any] | None, job: dict[str, Any]) 
         "http 410", "http 418", "http 422", "400 client error",
         "401 client error", "403 client error", "404 client error",
         "405 client error", "410 client error", "418 client error",
-        "422 client error",
+        "422 client error", "http error 400", "http error 401",
+        "http error 403", "http error 404", "http error 405",
+        "http error 410", "http error 418", "http error 422",
     )
     if poll["status"] == "error" and any(marker in error for marker in transient_markers):
         return "deferred", "transient_source_failure_after_normal_retries"
