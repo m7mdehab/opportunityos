@@ -45,6 +45,12 @@ WORKER_PROCESS_TIMEOUT_SECONDS = max(
     MAX_OBSERVED_SUCCESSFUL_SOURCE_POLL_SECONDS + WORKER_IN_FLIGHT_GRACE_SECONDS,
 )
 WAVE_TIMEOUT_SECONDS = 75 * 60
+# A poll wave must outlive the durable queue's complete bounded retry budget.
+# Otherwise the coordinator can exit while a valid source attempt still owns a
+# live lease, leaving its wave uncheckpointed and blocking the frozen manifest.
+DEFAULT_SOURCE_MAX_RETRIES = int(WorkerJobRecord.max_retries.default.arg)
+MAX_SOURCE_JOB_ATTEMPTS = DEFAULT_SOURCE_MAX_RETRIES + 1
+POLL_WAVE_TIMEOUT_SECONDS = MAX_SOURCE_JOB_ATTEMPTS * WORKER_PROCESS_TIMEOUT_SECONDS + 600
 COHORT_START_BYTES = 380 * 1024 * 1024
 PROACTIVE_MAINTENANCE_BYTES = 380 * 1024 * 1024
 # Keep a 20% uncertainty reserve over the largest observed growth per source.
@@ -422,7 +428,7 @@ def _sleep_until_next_attempt(rows: list[dict[str, Any]], *, deadline: float) ->
 def _drain_poll_jobs(
     job_ids: set[str], *, wave_tag: str, baseline_job_ids: set[str]
 ) -> dict[str, Any]:
-    deadline = time.monotonic() + WAVE_TIMEOUT_SECONDS
+    deadline = time.monotonic() + POLL_WAVE_TIMEOUT_SECONDS
     attempt_round = 0
     while time.monotonic() < deadline:
         engine, session = _connect()
