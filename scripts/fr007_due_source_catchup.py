@@ -47,7 +47,11 @@ WORKER_PROCESS_TIMEOUT_SECONDS = max(
 WAVE_TIMEOUT_SECONDS = 75 * 60
 COHORT_START_BYTES = 380 * 1024 * 1024
 PROACTIVE_MAINTENANCE_BYTES = 380 * 1024 * 1024
-COHORT_PREDICTION_MULTIPLIER = 1.5
+# Keep a 20% uncertainty reserve over the largest observed growth per source.
+# The 50-source cohort is also guarded again at every five-source wave; a 50%
+# reserve here double-counted that per-wave control and prevented progress even
+# when the actual forecast left the 390 MiB ceiling clear.
+COHORT_PREDICTION_MULTIPLIER = 1.2
 DEFAULT_MEASURED_BYTES_PER_SOURCE = 147_456
 STATE_VERSION = 1
 
