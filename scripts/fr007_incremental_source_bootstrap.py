@@ -29,6 +29,7 @@ from opportunity.registry import SourceRegistry
 from scripts.fr007_hosted_bootstrap import HOSTED_WORKER_POOL_SIZE, main as hosted_bootstrap_main
 from scripts.fr007_storage_v2_source_gate import _connect, snapshot, verify_source_archives
 from scripts.db_capacity_guard import HEAVY_WORK_PAUSE_BYTES
+from scripts.migration_head_guard import migration_heads_match
 from storage.models import WorkerJobRecord
 
 MODEL_PATH = REPOSITORY_ROOT / "reports/evidence/FR-007/W23_STORAGE_V2_CAPACITY_MODEL.json"
@@ -79,7 +80,9 @@ def invariant_failures(state: dict[str, Any], projected_bytes: int) -> list[str]
     counts = state["counts"]
     queue = state["queue"]
     failures: list[str] = []
-    if state["database_revision"] != "0025_current_feed_fast_path":
+    revision = state.get("database_revision")
+    revisions = revision if isinstance(revision, (list, tuple)) else (() if revision is None else (revision,))
+    if not migration_heads_match(revisions):
         failures.append("schema_revision")
     if int(state["database_bytes"]) >= DATABASE_HEAVY_WORK_BUDGET:
         failures.append("physical_database_budget")

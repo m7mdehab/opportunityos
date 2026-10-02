@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-10-01T23:01:12Z
-- **State generated at commit:** `b4fc10d` — docs: record bounded BC source recovery
+- **Generated:** 2026-10-02T00:43:09Z
+- **State generated at commit:** `0bd7fcc` — test: exercise controlled catch-up on PostgreSQL
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
