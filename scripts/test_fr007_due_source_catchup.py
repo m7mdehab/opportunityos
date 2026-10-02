@@ -182,6 +182,11 @@ class DueSourceSafetyTests(unittest.TestCase):
             {"error_message": "Handler raised: HTTPError"},
         )
         self.assertEqual(outcome, ("deferred", "external_source_http_failure"))
+        rate_limited = _classify_source_terminal(
+            {"status": "error", "error_message": "429 Client Error: Too Many Requests"},
+            {"error_message": "Handler raised: HTTPError"},
+        )
+        self.assertEqual(rate_limited[0], "deferred")
 
     def test_wave_growth_projection_uses_measured_rate_with_floor_and_margin(self):
         state = {"cohorts": [], "last_wave": None}

@@ -500,7 +500,11 @@ def _classify_source_terminal(poll: dict[str, Any] | None, job: dict[str, Any]) 
         "timeout", "timed out", "connection reset", "connection refused",
         "temporary failure", "temporary unavailable", "http 500", "http 502",
         "http 503", "http 504", "provider error", "remote end closed",
-        "name or service not known", "network is unreachable",
+        "name or service not known", "network is unreachable", "connectionerror",
+        "connecttimeout", "readtimeout", "ssl error", "temporary name resolution",
+        "no address associated with hostname", "nodename nor servname",
+        "server disconnected", "http 408", "http 429", "429 client error",
+        "rate limit", "too many requests",
     )
     external_http_markers = (
         "http 400", "http 401", "http 403", "http 404", "http 405",
