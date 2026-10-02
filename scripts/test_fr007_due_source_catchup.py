@@ -133,6 +133,9 @@ class DueSourceSafetyTests(unittest.TestCase):
         self.assertEqual(MAX_PARALLEL_SOURCE_WORKERS, 5)
         self.assertEqual(MAX_RETAINED_WORKER_CONNECTIONS, 10)
         self.assertGreater(WORKER_PROCESS_TIMEOUT_SECONDS, WORKER_TIME_BUDGET_SECONDS)
+        # A previously successful production source took 2,250s; orchestration
+        # must not kill that valid in-flight poll and create a retry loop.
+        self.assertGreaterEqual(WORKER_PROCESS_TIMEOUT_SECONDS, 2_700)
         self.assertLess(WORKER_PROCESS_TIMEOUT_SECONDS, WAVE_TIMEOUT_SECONDS)
 
     def test_cooling_or_read_disabled_source_fails_closed(self):
