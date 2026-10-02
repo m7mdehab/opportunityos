@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-10-02T07:49:25Z
-- **State generated at commit:** `c65ff56` — fix: wait through bounded source poll retries
+- **Generated:** 2026-10-02T08:31:41Z
+- **State generated at commit:** `33789de` — fix: preserve exhausted source timeout on catch-up resume
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
