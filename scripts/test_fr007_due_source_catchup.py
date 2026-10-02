@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+import tempfile
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -16,6 +18,7 @@ from scripts.fr007_due_source_catchup import (
     assert_founder_state_unchanged,
     cohort_for_index,
     freeze_manifest_entries,
+    finalize_live_run,
     manifest_sha256,
     pending_manifest_sources,
     registry_due_entries_from_schedules,
@@ -155,6 +158,15 @@ class DueSourceSafetyTests(unittest.TestCase):
         assert_founder_state_unchanged(counts, dict(counts))
         with self.assertRaisesRegex(CatchupSafetyError, "Founder-state"):
             assert_founder_state_unchanged(counts, {**counts, "feedback": 5})
+
+    def test_finalizer_refuses_an_incomplete_frozen_manifest_before_database_access(self):
+        entries = freeze_manifest_entries(_entries(1))
+        manifest = {"version": 1, "entries": entries, "sha256": manifest_sha256(entries)}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            path.write_text(json.dumps({"manifest": manifest, "results": {}}), encoding="utf-8")
+            with self.assertRaisesRegex(CatchupSafetyError, "not reconciled"):
+                finalize_live_run(path)
 
     def test_transient_source_failure_is_deferred_without_stopping_other_sources(self):
         outcome = _classify_source_terminal(

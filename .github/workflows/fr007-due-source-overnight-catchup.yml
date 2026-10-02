@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: Freeze the starting manifest or run exactly one 50-source cohort
+        description: Freeze the manifest, run a 50-source cohort, or perform final live verification
         required: true
         type: choice
-        options: [freeze-manifest, run-cohort]
+        options: [freeze-manifest, run-cohort, finalize]
       previous_run_id:
         description: Successful run that uploaded the frozen manifest/state artifact; blank only for freeze-manifest
         required: false
@@ -39,7 +39,7 @@ jobs:
       - name: Install repository
         run: python -m pip install -e .
       - name: Download the previous frozen manifest checkpoint
-        if: inputs.operation == 'run-cohort'
+        if: inputs.operation == 'run-cohort' || inputs.operation == 'finalize'
         uses: actions/download-artifact@v4
         with:
           name: fr007-overnight-catchup-state
@@ -66,6 +66,16 @@ jobs:
           python scripts/fr007_due_source_catchup.py
           --cohort-index "${{ inputs.cohort_index }}"
           --state-file catchup-state/catchup-state.json
+      - name: Verify final frozen-manifest and production invariants
+        if: inputs.operation == 'finalize'
+        env:
+          OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+          SUPABASE_STORAGE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL || 'https://sunjfepvdzfknglrjwhm.supabase.co' }}
+          STORAGE_SERVICE_KEY: ${{ secrets.STORAGE_SERVICE_KEY }}
+          OPPORTUNITYOS_ENVIRONMENT: cloud
+          OPPORTUNITYOS_TRUTH_PACK_PATH: founder/truth_pack.yaml.gz.b64
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/fr007_due_source_catchup.py --finalize --state-file catchup-state/catchup-state.json
       - name: Upload sanitized manifest and cohort checkpoint
         if: always() && hashFiles('catchup-state/catchup-state.json') != ''
         uses: actions/upload-artifact@v4

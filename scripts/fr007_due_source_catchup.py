@@ -830,15 +830,93 @@ def run_cohort(state_path: Path, cohort_index: int) -> dict[str, Any]:
     return state
 
 
+def finalize_live_run(state_path: Path) -> dict[str, Any]:
+    state = _read_state(state_path)
+    manifest = state["manifest"]
+    expected_ids = {entry["source_id"] for entry in manifest["entries"]}
+    if set(state["results"]) != expected_ids:
+        missing = len(expected_ids - set(state["results"]))
+        extra = len(set(state["results"]) - expected_ids)
+        raise CatchupSafetyError(
+            f"frozen manifest is not reconciled (missing={missing}, extra={extra})"
+        )
+    if any(item.get("status") not in {"success", "deferred"} for item in state["results"].values()):
+        raise CatchupSafetyError("frozen manifest contains an unresolved source result")
+
+    engine, session = _connect()
+    try:
+        source_id = manifest["entries"][0]["source_id"]
+        final = _runtime_snapshot(session, source_id=source_id)
+        _require_clean_queue(final)
+        assert_founder_state_unchanged(manifest["founder_state_at_freeze"], final["founder_state"])
+        if final["database_bytes"] >= 400 * 1024 * 1024:
+            raise CatchupSafetyError("final database size is at or above the 400 MiB heavy-work pause")
+        if final["lifecycle"]["opportunities"] != sum(
+            final["lifecycle"][key] for key in (
+                "hot_opportunities", "cold_opportunities", "protected_opportunities"
+            )
+        ):
+            raise CatchupSafetyError("final lifecycle tier partition invariant failed")
+        if final["lifecycle"]["cold_archive_rows"] != final["lifecycle"]["cold_opportunities"]:
+            raise CatchupSafetyError("final cold archive cardinality invariant failed")
+        for key in (
+            "cold_description_rows", "cold_raw_payload_rows", "cold_provenance_rows",
+            "cold_verbose_evaluation_rows",
+        ):
+            if final["lifecycle"][key] != 0:
+                raise CatchupSafetyError(f"final cold storage invariant failed: {key}")
+        if (
+            final["lifecycle"]["max_projections_per_opportunity"] > 1
+            or final["lifecycle"]["max_evaluations_per_opportunity"] > 1
+        ):
+            raise CatchupSafetyError("final duplicate projection/evaluation invariant failed")
+    finally:
+        session.close()
+        engine.dispose()
+
+    deferred = {
+        source_id: result.get("reason")
+        for source_id, result in state["results"].items()
+        if result.get("status") == "deferred"
+    }
+    state["final_snapshot"] = final
+    state["final_summary"] = {
+        "manifest_count": manifest["count"],
+        "manifest_sha256": manifest["sha256"],
+        "successes": len(expected_ids) - len(deferred),
+        "deferred": deferred,
+        "dead_letter_count_at_freeze": manifest["queue_at_freeze"].get("dead_letter", 0),
+        "dead_letter_count_final": final["queue"].get("dead_letter", 0),
+        "dead_letter_delta": (
+            final["queue"].get("dead_letter", 0)
+            - manifest["queue_at_freeze"].get("dead_letter", 0)
+        ),
+        "database_bytes_final": final["database_bytes"],
+        "queue_final": final["queue"],
+    }
+    if final["database_bytes"] >= PROACTIVE_MAINTENANCE_BYTES:
+        state["status"] = "FINAL_MAINTENANCE_RECOMMENDED"
+    else:
+        state["status"] = "FINAL_VERIFIED"
+    _write_json(state_path, state)
+    return state
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state-file", type=Path, required=True)
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--freeze", action="store_true")
     group.add_argument("--cohort-index", type=int)
+    group.add_argument("--finalize", action="store_true")
     args = parser.parse_args(argv)
     try:
-        result = freeze_live_manifest(args.state_file) if args.freeze else run_cohort(args.state_file, args.cohort_index)
+        if args.freeze:
+            result = freeze_live_manifest(args.state_file)
+        elif args.finalize:
+            result = finalize_live_run(args.state_file)
+        else:
+            result = run_cohort(args.state_file, args.cohort_index)
     except CatchupSafetyError as exc:
         print(json.dumps({"status": "SAFETY_STOP", "reason": str(exc)}, sort_keys=True))
         return 2
@@ -854,7 +932,10 @@ def main(argv: list[str] | None = None) -> int:
         "result_count": len(result.get("results", {})),
         "database_bytes": (result.get("last_snapshot") or {}).get("database_bytes", manifest["database_bytes_at_freeze"]),
     }, sort_keys=True))
-    return 0 if result.get("status", "MANIFEST_FROZEN") in {"MANIFEST_FROZEN", "COHORT_COMPLETE", "MAINTENANCE_REQUIRED"} else 1
+    return 0 if result.get("status", "MANIFEST_FROZEN") in {
+        "MANIFEST_FROZEN", "COHORT_COMPLETE", "MAINTENANCE_REQUIRED",
+        "FINAL_MAINTENANCE_RECOMMENDED", "FINAL_VERIFIED",
+    } else 1
 
 
 if __name__ == "__main__":
