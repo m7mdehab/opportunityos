@@ -689,6 +689,7 @@ def _source_jobs_after_freeze(
 def _schedule_and_run_wave(
     source_ids: list[str], *, wave_tag: str, manifest_ids: set[str],
     founder_state_baseline: dict[str, int],
+    frozen_due_at: dict[str, datetime], manifest_created_at: datetime,
 ) -> dict[str, Any]:
     engine, session = _connect()
     try:
@@ -697,15 +698,11 @@ def _schedule_and_run_wave(
         _require_capacity(before)
         assert_founder_state_unchanged(founder_state_baseline, before["founder_state"])
         before_bytes = before["database_bytes"]
-        now = datetime.now(timezone.utc)
-        schedule_rows = session.query(SourceScheduleRecord).filter(
-            SourceScheduleRecord.source_id.in_(source_ids)
-        ).all()
         due_ids = {
-            row.source_id for row in schedule_rows
-            if _utc(row.next_due_at) is not None
-            and _utc(row.next_due_at) <= now
-            and (_utc(row.cooldown_until) is None or _utc(row.cooldown_until) <= now)
+            source_id for source_id in source_ids
+            if source_id in frozen_due_at
+            and _utc(frozen_due_at[source_id]) is not None
+            and _utc(frozen_due_at[source_id]) <= _utc(manifest_created_at)
         }
         registry = SourceRegistry()
         read_allowed_ids = {
@@ -724,7 +721,12 @@ def _schedule_and_run_wave(
         baseline_job_ids = {
             row[0] for row in session.query(WorkerJobRecord.id).all()
         }
-        scheduled = enqueue_due_catchup_sources(session, source_ids)
+        scheduled = enqueue_due_catchup_sources(
+            session,
+            source_ids,
+            frozen_due_at=frozen_due_at,
+            manifest_created_at=manifest_created_at,
+        )
         if [item["source_id"] for item in scheduled] != source_ids:
             raise CatchupSafetyError("scheduler did not enqueue exactly the frozen source wave")
         session.commit()
@@ -935,8 +937,9 @@ def run_cohort(
                 if cooling is not None and cooling > now:
                     state["results"][source_id] = {"status": "deferred", "reason": "source_cooldown_active"}
                     continue
-                if due is None or due > now:
-                    raise CatchupSafetyError("frozen source became not-due without a post-freeze poll")
+                frozen_due = _utc(entry["next_due_at"])
+                if frozen_due is None or frozen_due > frozen_at:
+                    raise CatchupSafetyError("frozen manifest contains a source not due at creation")
                 wave_sources.append(source_id)
             finally:
                 session.close()
@@ -971,6 +974,11 @@ def run_cohort(
             wave_tag=wave_tag,
             manifest_ids={entry["source_id"] for entry in entries},
             founder_state_baseline=manifest["founder_state_at_freeze"],
+            frozen_due_at={
+                entry["source_id"]: datetime.fromisoformat(entry["next_due_at"])
+                for entry in entries if entry["source_id"] in wave_sources
+            },
+            manifest_created_at=frozen_at,
         )
         cohort_waves.append(wave)
         for source_id, result in wave["sources"].items():

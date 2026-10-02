@@ -147,6 +147,61 @@ class TestControlledOvernightCatchupEnqueue(unittest.TestCase):
         self.assertEqual(queue.enqueue_job.call_count, 5)
         self.assertTrue(all(row.next_due_at > now for row in schedules))
 
+    def test_frozen_due_manifest_survives_later_cadence_advance(self):
+        source_ids = ["fixture_allowed"]
+        registry = MagicMock()
+        registry._sources = {source_ids[0]: object()}
+        registry.is_read_allowed.return_value = True
+        session = MagicMock()
+        session.get_bind.return_value.dialect.name = "postgresql"
+        session.connection.return_value = object()
+        freeze_time = datetime(2026, 10, 2, 0, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 10, 2, 9, 10, tzinfo=timezone.utc)
+        schedule = SimpleNamespace(
+            source_id=source_ids[0], cadence_hours=6.0,
+            next_due_at=datetime(2026, 10, 2, 12, 13),
+            cooldown_until=None,
+        )
+        empty_queue = MagicMock()
+        empty_queue.filter.return_value.scalar.return_value = 0
+        schedule_query = MagicMock()
+        schedule_query.filter.return_value.with_for_update.return_value.all.return_value = [schedule]
+        session.query.side_effect = [empty_queue, schedule_query]
+        queue = MagicMock()
+        queue.enqueue_job.return_value = "job-catchup"
+
+        with patch("worker.scheduler.inspect_connection", return_value=CapacitySnapshot(
+            WARN_BYTES, False, False, "WARN_CAPACITY"
+        )), patch("worker.scheduler._lock_warning_poll_scheduler"), \
+             patch("worker.scheduler.BackgroundWorkerQueue", return_value=queue):
+            result = enqueue_due_catchup_sources(
+                session,
+                source_ids,
+                registry=registry,
+                now=now,
+                frozen_due_at={source_ids[0]: freeze_time - timedelta(minutes=1)},
+                manifest_created_at=freeze_time,
+            )
+
+        self.assertEqual(result, [{"source_id": source_ids[0], "job_id": "job-catchup"}])
+        queue.enqueue_job.assert_called_once()
+
+    def test_frozen_due_manifest_rejects_source_not_due_at_freeze(self):
+        source_ids = ["fixture_allowed"]
+        registry = MagicMock()
+        registry._sources = {source_ids[0]: object()}
+        registry.is_read_allowed.return_value = True
+        session = MagicMock()
+        freeze_time = datetime(2026, 10, 2, 0, 0, tzinfo=timezone.utc)
+        with self.assertRaisesRegex(ValueError, "not due at manifest creation"):
+            enqueue_due_catchup_sources(
+                session,
+                source_ids,
+                registry=registry,
+                frozen_due_at={source_ids[0]: freeze_time + timedelta(minutes=1)},
+                manifest_created_at=freeze_time,
+            )
+
     def test_explicit_lane_refuses_capacity_and_cooling_sources(self):
         source_ids = ["fixture_allowed"]
         registry = MagicMock()
