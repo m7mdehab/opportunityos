@@ -382,6 +382,7 @@ def _job_rows(session, job_ids: set[str]) -> dict[str, dict[str, Any]]:
         "id": row.id,
         "job_type": row.job_type,
         "status": row.status,
+        "created_at": _iso(row.created_at),
         "retry_count": int(row.retry_count),
         "max_retries": int(row.max_retries),
         "run_after": _iso(row.run_after),
@@ -575,6 +576,8 @@ def _latest_poll(session, source_id: str) -> dict[str, Any] | None:
 
 
 def _classify_source_terminal(poll: dict[str, Any] | None, job: dict[str, Any]) -> tuple[str, str | None]:
+    if _poll_started_before_job(poll, job):
+        poll = None
     if poll is None:
         error = str(job.get("error_message") or "").lower()
         if "lease expired without completion" in error:
@@ -623,6 +626,71 @@ def _classify_source_terminal(poll: dict[str, Any] | None, job: dict[str, Any]) 
     if poll["status"] == "error" and any(marker in error for marker in external_http_markers):
         return "deferred", "external_source_http_failure"
     raise CatchupSafetyError("source terminal result was not an evidenced source-local failure")
+
+
+def _poll_started_before_job(poll: dict[str, Any] | None, job: dict[str, Any]) -> bool:
+    if poll is None or not poll.get("started_at") or not job.get("created_at"):
+        return False
+    poll_started = _utc(datetime.fromisoformat(poll["started_at"]))
+    job_created = _utc(datetime.fromisoformat(job["created_at"]))
+    return poll_started is not None and job_created is not None and poll_started < job_created
+
+
+def _reconcile_checkpoint_result(
+    result: dict[str, Any], job: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Correct a checkpoint success backed only by a poll older than its job."""
+    if result.get("status") != "success" or job.get("status") != "DEAD_LETTER":
+        return None
+    if not _poll_started_before_job(result.get("poll"), job):
+        raise CatchupSafetyError("dead-letter source job has no newer poll evidence")
+    status, reason = _classify_source_terminal(None, job)
+    if status != "deferred":
+        raise CatchupSafetyError("dead-letter source job was not classified as a deferral")
+    return {**result, "status": status, "reason": reason}
+
+
+def _reconcile_checkpoint_results(session, state: dict[str, Any]) -> int:
+    results = state.get("results", {})
+    job_ids = {
+        str(result["job_id"])
+        for result in results.values()
+        if result.get("job_id")
+    }
+    if not job_ids:
+        return 0
+    rows = session.query(WorkerJobRecord).filter(WorkerJobRecord.id.in_(job_ids)).all()
+    jobs = {
+        row.id: {
+            "id": row.id,
+            "status": str(row.status),
+            "created_at": _iso(row.created_at),
+            "error_message": row.error_message,
+        }
+        for row in rows
+    }
+    corrected: set[str] = set()
+    for source_id, result in results.items():
+        job = jobs.get(str(result.get("job_id") or ""))
+        if job is None:
+            continue
+        replacement = _reconcile_checkpoint_result(result, job)
+        if replacement is not None:
+            results[source_id] = replacement
+            corrected.add(source_id)
+    if corrected:
+        for cohort in state.get("cohorts", []):
+            cohort_sources = set(cohort.get("source_ids", []))
+            if not corrected.intersection(cohort_sources):
+                continue
+            cohort_results = [results[source_id] for source_id in cohort_sources if source_id in results]
+            cohort["successes"] = sum(item.get("status") == "success" for item in cohort_results)
+            cohort["deferred"] = sum(item.get("status") == "deferred" for item in cohort_results)
+            cohort["processed_sources"] = len(cohort_results)
+        state["checkpoint_reconciled_source_results"] = sorted(
+            set(state.get("checkpoint_reconciled_source_results", [])) | corrected
+        )
+    return len(corrected)
 
 
 def _existing_after_freeze(session, source_id: str, frozen_at: datetime) -> dict[str, Any] | None:
@@ -904,6 +972,12 @@ def run_cohort(
     earlier_ids = {item["source_id"] for item in entries[: cohort_index * MAX_COHORT_SOURCES]}
     if not earlier_ids.issubset(state["results"]):
         raise CatchupSafetyError("cohorts must execute sequentially against the frozen manifest")
+    engine, session = _connect()
+    try:
+        _reconcile_checkpoint_results(session, state)
+    finally:
+        session.close()
+        engine.dispose()
     cohort_ids = [item["source_id"] for item in cohort]
     if len(cohort_ids) > MAX_COHORT_SOURCES:
         raise CatchupSafetyError("top-level cohort exceeded fifty source identities")
@@ -1091,6 +1165,12 @@ def finalize_live_run(state_path: Path) -> dict[str, Any]:
         raise CatchupSafetyError(
             f"frozen manifest is not reconciled (missing={missing}, extra={extra})"
         )
+    engine, session = _connect()
+    try:
+        _reconcile_checkpoint_results(session, state)
+    finally:
+        session.close()
+        engine.dispose()
     if any(item.get("status") not in {"success", "deferred"} for item in state["results"].values()):
         raise CatchupSafetyError("frozen manifest contains an unresolved source result")
 
