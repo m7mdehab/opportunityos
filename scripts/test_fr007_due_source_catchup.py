@@ -33,6 +33,8 @@ from scripts.fr007_due_source_catchup import (
     validate_wave_contract,
     _classify_source_terminal,
     _existing_after_freeze,
+    _reconcile_checkpoint_result,
+    _reconcile_checkpoint_results,
     _manifest_due_at,
     _maintenance_reason_for_cohort,
     _maintenance_reason_before_cohort_start,
@@ -253,6 +255,89 @@ class DueSourceSafetyTests(unittest.TestCase):
         )
         self.assertEqual(outcome, ("deferred", "transient_source_failure_after_normal_retries"))
         self.assertEqual(_classify_source_terminal({"status": "ok"}, {})[0], "success")
+
+    def test_stale_successful_poll_does_not_override_current_timeout_dead_letter(self):
+        result = {
+            "job_id": "job-current",
+            "poll": {
+                "status": "ok",
+                "started_at": "2026-09-29T09:16:30+00:00",
+                "finished_at": "2026-09-29T09:20:17+00:00",
+            },
+            "status": "success",
+            "reason": None,
+        }
+        job = {
+            "id": "job-current",
+            "status": "DEAD_LETTER",
+            "created_at": "2026-10-02T17:45:28+00:00",
+            "error_message": "Lease expired without completion (worker presumed dead); retry_count 3 reached max_retries 3",
+        }
+
+        reconciled = _reconcile_checkpoint_result(result, job)
+
+        self.assertEqual(reconciled["status"], "deferred")
+        self.assertEqual(reconciled["reason"], "worker_timeout_after_bounded_retries")
+        self.assertEqual(_classify_source_terminal(result["poll"], job), (
+            "deferred", "worker_timeout_after_bounded_retries"
+        ))
+
+    def test_dead_letter_with_current_poll_evidence_fails_closed(self):
+        result = {
+            "job_id": "job-current",
+            "poll": {
+                "status": "ok",
+                "started_at": "2026-10-02T17:45:29+00:00",
+                "finished_at": "2026-10-02T17:46:00+00:00",
+            },
+            "status": "success",
+        }
+        job = {
+            "id": "job-current",
+            "status": "DEAD_LETTER",
+            "created_at": "2026-10-02T17:45:28+00:00",
+            "error_message": "Lease expired without completion (worker presumed dead)",
+        }
+        with self.assertRaisesRegex(CatchupSafetyError, "no newer poll evidence"):
+            _reconcile_checkpoint_result(result, job)
+
+    def test_checkpoint_reconciliation_updates_result_and_cohort_counts(self):
+        stale_result = {
+            "job_id": "job-current",
+            "poll": {
+                "status": "ok",
+                "started_at": "2026-09-29T09:16:30+00:00",
+                "finished_at": "2026-09-29T09:20:17+00:00",
+            },
+            "status": "success",
+            "reason": None,
+        }
+        dead_letter = SimpleNamespace(
+            id="job-current",
+            status="DEAD_LETTER",
+            created_at=datetime(2026, 10, 2, 17, 45, 28),
+            error_message="Lease expired without completion (worker presumed dead); retry_count 3 reached max_retries 3",
+        )
+        session = MagicMock()
+        session.query.return_value.filter.return_value.all.return_value = [dead_letter]
+        state = {
+            "results": {"source:1": stale_result},
+            "cohorts": [{
+                "source_ids": ["source:1"],
+                "successes": 1,
+                "deferred": 0,
+                "processed_sources": 1,
+            }],
+        }
+
+        changed = _reconcile_checkpoint_results(session, state)
+
+        self.assertEqual(changed, 1)
+        self.assertEqual(state["results"]["source:1"]["status"], "deferred")
+        self.assertEqual(state["cohorts"][0]["successes"], 0)
+        self.assertEqual(state["cohorts"][0]["deferred"], 1)
+        self.assertEqual(state["cohorts"][0]["processed_sources"], 1)
+        self.assertEqual(_reconcile_checkpoint_results(session, state), 0)
 
     def test_terminal_external_http_failure_is_deferred_after_normal_retries(self):
         outcome = _classify_source_terminal(

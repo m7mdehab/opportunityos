@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-10-02T13:34:38Z
-- **State generated at commit:** `94d74b6` — docs: name storage metadata reclaim step accurately
+- **State generated at commit:** `4a9f1e8` — fix(catchup): reject stale poll success
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
