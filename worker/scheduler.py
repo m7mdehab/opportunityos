@@ -456,12 +456,17 @@ def enqueue_due_catchup_sources(
     *,
     registry: Optional[SourceRegistry] = None,
     now: Optional[datetime] = None,
+    frozen_due_at: Optional[dict[str, datetime]] = None,
+    manifest_created_at: Optional[datetime] = None,
 ) -> list[dict[str, str]]:
     """Enqueue one exact, manifest-backed five-source catch-up wave.
 
     This is a separately named opt-in path. The routine scheduler remains
     conservative at Warning and does not inherit this batch allowance.
-    Caller commits the queue inserts and cadence advancement atomically.
+    Caller commits the queue inserts and cadence advancement atomically. When
+    the caller supplies the frozen manifest timestamps, that snapshot proves
+    due status; a later routine cadence update cannot remove an identity from
+    the already-frozen catch-up target.
     """
     reg = registry or SourceRegistry()
     selected = list(source_ids)
@@ -474,6 +479,16 @@ def enqueue_due_catchup_sources(
         raise ValueError("controlled catch-up wave contains unregistered sources")
     if any(not reg.is_read_allowed(source_id) for source_id in selected):
         raise ValueError("controlled catch-up wave contains a read-disabled source")
+    if (frozen_due_at is None) != (manifest_created_at is None):
+        raise ValueError("controlled catch-up requires both frozen due timestamps and manifest time")
+    if frozen_due_at is not None:
+        manifest_time = _to_naive_utc(manifest_created_at)
+        if manifest_time is None or set(frozen_due_at) != set(selected):
+            raise ValueError("controlled catch-up frozen manifest does not match the selected wave")
+        for source_id in selected:
+            due_at = _to_naive_utc(frozen_due_at[source_id])
+            if due_at is None or due_at > manifest_time:
+                raise ValueError("controlled catch-up source was not due at manifest creation")
 
     bind = session.get_bind()
     if bind is None or bind.dialect.name != "postgresql":
@@ -511,7 +526,7 @@ def enqueue_due_catchup_sources(
             schedule = by_id[source_id]
             if schedule.cooldown_until is not None and schedule.cooldown_until > curr_now_naive:
                 raise RuntimeError("controlled catch-up manifest source is cooling")
-            if schedule.next_due_at > curr_now_naive:
+            if frozen_due_at is None and schedule.next_due_at > curr_now_naive:
                 raise RuntimeError("controlled catch-up manifest source is no longer due")
 
         queue = BackgroundWorkerQueue(session)
