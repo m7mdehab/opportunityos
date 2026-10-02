@@ -51,6 +51,8 @@ jobs:
           python - <<'PY'
           import os
           from sqlalchemy import create_engine, text
+          from scripts.db_capacity_guard import PROVIDER_LIMIT_BYTES
+          from scripts.db_capacity_maintenance import relation_rewrite_peak_estimate
           engine = create_engine(os.environ["OPOS_TARGET_DB_URL"], pool_pre_ping=True)
           try:
               with engine.connect() as connection:
@@ -80,6 +82,27 @@ jobs:
                       "public.opportunity_cold_archive",
                       "public.feed_projection",
                   ):
+                      database_bytes = int(connection.execute(
+                          text("SELECT pg_database_size(current_database())")
+                      ).scalar_one())
+                      relation_bytes = int(connection.execute(
+                          text("SELECT pg_total_relation_size(CAST(:relation AS regclass))"),
+                          {"relation": relation},
+                      ).scalar_one())
+                      estimated_peak = relation_rewrite_peak_estimate(
+                          database_bytes, relation_bytes
+                      )
+                      if estimated_peak >= PROVIDER_LIMIT_BYTES:
+                          print(
+                              f"deferred_rewrite={relation} database_bytes={database_bytes} "
+                              f"relation_bytes={relation_bytes} estimated_peak_bytes={estimated_peak} "
+                              f"provider_limit_bytes={PROVIDER_LIMIT_BYTES}"
+                          )
+                          continue
+                      print(
+                          f"rewrite_preflight={relation} database_bytes={database_bytes} "
+                          f"relation_bytes={relation_bytes} estimated_peak_bytes={estimated_peak}"
+                      )
                       connection.execute(text(f"VACUUM (FULL, ANALYZE) {relation}"))
           finally:
               engine.dispose()
