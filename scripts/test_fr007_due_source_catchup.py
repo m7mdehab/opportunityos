@@ -15,7 +15,9 @@ from scripts.fr007_due_source_catchup import (
     MAX_COHORT_SOURCES,
     MAX_PARALLEL_SOURCE_WORKERS,
     MAX_RETAINED_WORKER_CONNECTIONS,
+    MAX_SOURCE_JOB_ATTEMPTS,
     OVERNIGHT_CATCHUP_CEILING_BYTES,
+    POLL_WAVE_TIMEOUT_SECONDS,
     WORKER_PROCESS_TIMEOUT_SECONDS,
     WORKER_TIME_BUDGET_SECONDS,
     WAVE_TIMEOUT_SECONDS,
@@ -137,6 +139,13 @@ class DueSourceSafetyTests(unittest.TestCase):
         # must not kill that valid in-flight poll and create a retry loop.
         self.assertGreaterEqual(WORKER_PROCESS_TIMEOUT_SECONDS, 2_700)
         self.assertLess(WORKER_PROCESS_TIMEOUT_SECONDS, WAVE_TIMEOUT_SECONDS)
+
+    def test_poll_wave_deadline_covers_the_full_durable_retry_budget(self):
+        self.assertEqual(MAX_SOURCE_JOB_ATTEMPTS, 4)
+        self.assertGreaterEqual(
+            POLL_WAVE_TIMEOUT_SECONDS,
+            MAX_SOURCE_JOB_ATTEMPTS * WORKER_PROCESS_TIMEOUT_SECONDS,
+        )
 
     def test_cooling_or_read_disabled_source_fails_closed(self):
         with self.assertRaises(CatchupSafetyError):
