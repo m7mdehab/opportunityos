@@ -121,7 +121,9 @@ jobs:
         shard: [1, 2, 3, 4, 5]
     environment: fr007-staging
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    # A source poll has previously succeeded in 2,250s (37.5m). Keep enough
+    # runner headroom for that valid handler duration plus process teardown.
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
