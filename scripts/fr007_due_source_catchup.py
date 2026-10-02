@@ -438,7 +438,13 @@ def _drain_poll_jobs(
             if not unfinished:
                 return {"job_rows": poll_rows, "worker_rounds": attempt_round}
             runnable = pending + due_retry
-            run_count = min(MAX_PARALLEL_SOURCE_WORKERS, len(runnable)) if runnable else 0
+            now = datetime.now(timezone.utc)
+            expired_running = [
+                row for row in running
+                if row.get("lease_expires_at")
+                and (_utc(datetime.fromisoformat(row["lease_expires_at"])) or now) <= now
+            ]
+            run_count = min(MAX_PARALLEL_SOURCE_WORKERS, len(runnable) + len(expired_running))
         finally:
             session.close()
             engine.dispose()
@@ -449,8 +455,20 @@ def _drain_poll_jobs(
                 worker_id_prefix=f"due-catchup-{wave_tag}-{attempt_round}",
                 poll_only=True,
             )
-            if any(result.get("return_code") != 0 for result in results):
-                raise CatchupSafetyError("normal source worker exited non-zero during poll wave")
+            unexpected_exit = [
+                result for result in results
+                if result.get("return_code") != 0
+                and result.get("error_class") != "TimeoutExpired"
+            ]
+            if unexpected_exit:
+                error_classes = sorted({
+                    result.get("error_class") or f"exit_{result.get('return_code')}"
+                    for result in unexpected_exit
+                })
+                raise CatchupSafetyError(
+                    "normal source worker exited unexpectedly during poll wave: "
+                    + ", ".join(error_classes)
+                )
         else:
             _sleep_until_next_attempt(unfinished, deadline=deadline)
     raise CatchupSafetyError("poll wave exceeded its bounded retry deadline")
@@ -526,6 +544,9 @@ def _latest_poll(session, source_id: str) -> dict[str, Any] | None:
 
 def _classify_source_terminal(poll: dict[str, Any] | None, job: dict[str, Any]) -> tuple[str, str | None]:
     if poll is None:
+        error = str(job.get("error_message") or "").lower()
+        if "lease expired without completion" in error:
+            return "deferred", "worker_timeout_after_bounded_retries"
         raise CatchupSafetyError("source worker reached a terminal queue state without poll evidence")
     if poll and poll["status"] == "ok":
         return "success", None
