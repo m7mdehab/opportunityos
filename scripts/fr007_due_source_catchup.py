@@ -615,22 +615,58 @@ def _classify_source_terminal(poll: dict[str, Any] | None, job: dict[str, Any]) 
 
 def _existing_after_freeze(session, source_id: str, frozen_at: datetime) -> dict[str, Any] | None:
     latest = _latest_poll(session, source_id)
-    if not latest or not latest["finished_at"]:
+    if latest and latest["finished_at"]:
+        finished = datetime.fromisoformat(latest["finished_at"])
+        if finished > frozen_at:
+            if latest["status"] == "ok":
+                return {"status": "success", "reason": "normal_scheduler_processed_after_manifest_freeze", "poll": latest}
+            if latest["status"] == "blocked":
+                return {"status": "deferred", "reason": latest.get("refusal_reason") or "provider_cooldown", "poll": latest}
+            if latest["status"] == "refused":
+                return {"status": "deferred", "reason": "runtime_policy_refusal", "poll": latest}
+            if latest["status"] == "error":
+                terminal, reason = _classify_source_terminal(
+                    latest, {"error_message": latest.get("error_message")}
+                )
+                return {"status": terminal, "reason": reason, "poll": latest}
+
+    # A coordinator/workflow can be cancelled after a durable worker lease has
+    # expired but before the source handler writes its SourcePollRunRecord. On
+    # resume, carry that terminal source-local timeout forward instead of
+    # enqueuing a fresh queue job and silently granting the source more retries.
+    worker_job = _latest_source_job_after_freeze(session, source_id, frozen_at)
+    if worker_job is not None and worker_job["status"] == "DEAD_LETTER":
+        terminal, reason = _classify_source_terminal(None, worker_job)
+        return {"status": terminal, "reason": reason, "worker_job": worker_job}
+    return None
+
+
+def _latest_source_job_after_freeze(
+    session, source_id: str, frozen_at: datetime
+) -> dict[str, Any] | None:
+    if session is None:
         return None
-    finished = datetime.fromisoformat(latest["finished_at"])
-    if finished <= frozen_at:
-        return None
-    if latest["status"] == "ok":
-        return {"status": "success", "reason": "normal_scheduler_processed_after_manifest_freeze", "poll": latest}
-    if latest["status"] == "blocked":
-        return {"status": "deferred", "reason": latest.get("refusal_reason") or "provider_cooldown", "poll": latest}
-    if latest["status"] == "refused":
-        return {"status": "deferred", "reason": "runtime_policy_refusal", "poll": latest}
-    if latest["status"] == "error":
-        terminal, reason = _classify_source_terminal(
-            latest, {"error_message": latest.get("error_message")}
+    frozen_naive = frozen_at.astimezone(timezone.utc).replace(tzinfo=None)
+    rows = (
+        session.query(WorkerJobRecord)
+        .filter(
+            WorkerJobRecord.job_type == "poll_source",
+            WorkerJobRecord.created_at > frozen_naive,
         )
-        return {"status": terminal, "reason": reason, "poll": latest}
+        .order_by(WorkerJobRecord.created_at.desc())
+        .all()
+    )
+    for row in rows:
+        payload = json.loads(row.payload_json or "{}")
+        if payload.get("source_id") != source_id:
+            continue
+        return {
+            "id": row.id,
+            "status": str(row.status),
+            "retry_count": int(row.retry_count),
+            "max_retries": int(row.max_retries),
+            "error_message": row.error_message,
+        }
     return None
 
 
