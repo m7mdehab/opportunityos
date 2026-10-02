@@ -34,6 +34,11 @@ MAX_COHORT_SOURCES = 50
 MAX_PARALLEL_SOURCE_WORKERS = 5
 MAX_RETAINED_WORKER_CONNECTIONS = 10
 WORKER_TIME_BUDGET_SECONDS = 480
+# The hosted runner's time budget is checked between jobs; an already-claimed
+# source handler is allowed to finish. Keep a bounded in-flight grace for large
+# public boards so the orchestrator does not kill a nearly-finished worker.
+WORKER_IN_FLIGHT_GRACE_SECONDS = 420
+WORKER_PROCESS_TIMEOUT_SECONDS = WORKER_TIME_BUDGET_SECONDS + WORKER_IN_FLIGHT_GRACE_SECONDS
 WAVE_TIMEOUT_SECONDS = 75 * 60
 COHORT_START_BYTES = 380 * 1024 * 1024
 PROACTIVE_MAINTENANCE_BYTES = 380 * 1024 * 1024
@@ -379,7 +384,7 @@ def _spawn_workers(*, count: int, worker_id_prefix: str, poll_only: bool) -> lis
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 env=os.environ.copy(),
-                timeout=WORKER_TIME_BUDGET_SECONDS + 120,
+                timeout=WORKER_PROCESS_TIMEOUT_SECONDS,
             )
             return {"worker_id": worker_id, "return_code": int(completed.returncode)}
         except Exception as exc:

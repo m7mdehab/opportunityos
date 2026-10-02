@@ -16,6 +16,9 @@ from scripts.fr007_due_source_catchup import (
     MAX_PARALLEL_SOURCE_WORKERS,
     MAX_RETAINED_WORKER_CONNECTIONS,
     OVERNIGHT_CATCHUP_CEILING_BYTES,
+    WORKER_PROCESS_TIMEOUT_SECONDS,
+    WORKER_TIME_BUDGET_SECONDS,
+    WAVE_TIMEOUT_SECONDS,
     assert_founder_state_unchanged,
     cohort_for_index,
     freeze_manifest_entries,
@@ -129,6 +132,8 @@ class DueSourceSafetyTests(unittest.TestCase):
         self._validate()
         self.assertEqual(MAX_PARALLEL_SOURCE_WORKERS, 5)
         self.assertEqual(MAX_RETAINED_WORKER_CONNECTIONS, 10)
+        self.assertGreater(WORKER_PROCESS_TIMEOUT_SECONDS, WORKER_TIME_BUDGET_SECONDS)
+        self.assertLess(WORKER_PROCESS_TIMEOUT_SECONDS, WAVE_TIMEOUT_SECONDS)
 
     def test_cooling_or_read_disabled_source_fails_closed(self):
         with self.assertRaises(CatchupSafetyError):
