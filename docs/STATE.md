@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-10-02T13:34:38Z
-- **State generated at commit:** `4a9f1e8` — fix(catchup): reject stale poll success
+- **Generated:** 2026-10-02T21:11:57Z
+- **State generated at commit:** `e551145` — docs: record overnight source catch-up
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
