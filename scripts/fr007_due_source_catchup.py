@@ -53,11 +53,12 @@ MAX_SOURCE_JOB_ATTEMPTS = DEFAULT_SOURCE_MAX_RETRIES + 1
 POLL_WAVE_TIMEOUT_SECONDS = MAX_SOURCE_JOB_ATTEMPTS * WORKER_PROCESS_TIMEOUT_SECONDS + 600
 COHORT_START_BYTES = 380 * 1024 * 1024
 PROACTIVE_MAINTENANCE_BYTES = 380 * 1024 * 1024
-# Keep a 20% uncertainty reserve over the largest observed growth per source.
-# The 50-source cohort is also guarded again at every five-source wave; a 50%
-# reserve here double-counted that per-wave control and prevented progress even
-# when the actual forecast left the 390 MiB ceiling clear.
-COHORT_PREDICTION_MULTIPLIER = 1.2
+# The cohort estimate uses the larger of the last two completed cohort rates,
+# with a 50% uncertainty reserve. Each five-source wave is independently
+# checked before it starts, so isolated wave growth does not get extrapolated
+# as if it were representative of an entire cohort.
+COHORT_PREDICTION_MULTIPLIER = 1.5
+WAVE_PREDICTION_MULTIPLIER = 1.2
 DEFAULT_MEASURED_BYTES_PER_SOURCE = 147_456
 STATE_VERSION = 1
 
@@ -823,7 +824,19 @@ def _schedule_and_run_wave(
 def _predict_next_cohort_bytes(
     state: dict[str, Any], current_bytes: int, source_count: int = MAX_COHORT_SOURCES
 ) -> int:
-    return _predict_source_batch_bytes(state, current_bytes, source_count)
+    recent_cohorts = state.get("cohorts", [])[-2:]
+    if not recent_cohorts:
+        per_source = DEFAULT_MEASURED_BYTES_PER_SOURCE
+    else:
+        rates = []
+        for cohort in recent_cohorts:
+            processed_count = max(
+                1,
+                int(cohort.get("processed_sources") or len(cohort.get("source_ids", []))),
+            )
+            rates.append(max(0, int(cohort.get("database_growth_bytes", 0))) / processed_count)
+        per_source = max(rates)
+    return int(current_bytes + per_source * source_count * COHORT_PREDICTION_MULTIPLIER)
 
 
 def _maintenance_reason_for_cohort(
@@ -864,7 +877,7 @@ def _predict_source_batch_bytes(state: dict[str, Any], current_bytes: int, sourc
         count = max(1, len(last_wave.get("source_ids", [])))
         historical.append(max(0, int(last_wave.get("database_growth_bytes", 0))) / count)
     per_source = max([DEFAULT_MEASURED_BYTES_PER_SOURCE, *historical])
-    return int(current_bytes + per_source * source_count * COHORT_PREDICTION_MULTIPLIER)
+    return int(current_bytes + per_source * source_count * WAVE_PREDICTION_MULTIPLIER)
 
 
 def run_cohort(

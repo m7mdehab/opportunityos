@@ -328,7 +328,7 @@ class DueSourceSafetyTests(unittest.TestCase):
         projected = _predict_source_batch_bytes(state, start, 5)
         self.assertGreaterEqual(projected, start + int(200_000 * 5 * 1.2))
 
-    def test_measured_cohort_forecast_keeps_a_margin_without_starving_safe_waves(self):
+    def test_measured_cohort_forecast_respects_recent_high_growth_with_margin(self):
         from scripts.fr007_due_source_catchup import _predict_next_cohort_bytes
 
         state = {
@@ -341,8 +341,26 @@ class DueSourceSafetyTests(unittest.TestCase):
         }
         current = 397_364_371
         projected = _predict_next_cohort_bytes(state, current)
+        self.assertGreaterEqual(projected, OVERNIGHT_CATCHUP_CEILING_BYTES)
+        self.assertEqual(projected, current + int((8_101_888 / 50) * 50 * 1.5))
+
+    def test_next_cohort_forecast_uses_recent_completed_cohorts_with_uncertainty_margin(self):
+        from scripts.fr007_due_source_catchup import _predict_next_cohort_bytes
+
+        state = {
+            "cohorts": [
+                {"processed_sources": 50, "database_growth_bytes": 8_101_888},
+                {"processed_sources": 50, "database_growth_bytes": 3_366_912},
+                {"processed_sources": 50, "database_growth_bytes": 2_834_432},
+            ],
+            # A five-source wave is already included in the latest cohort and
+            # must not be extrapolated as the full-cohort rate.
+            "last_wave": {"source_ids": ["a", "b", "c", "d", "e"], "database_growth_bytes": 901_120},
+        }
+        current = 401_370_259
+        projected = _predict_next_cohort_bytes(state, current)
+        self.assertEqual(projected, current + int((3_366_912 / 50) * 50 * 1.5))
         self.assertLess(projected, OVERNIGHT_CATCHUP_CEILING_BYTES)
-        self.assertGreater(projected, current + 8_101_888)
 
     def test_cohort_projection_uses_390_mib_ceiling_after_current_size_is_reclaimed(self):
         self.assertIsNone(
@@ -408,7 +426,7 @@ class DueSourceSafetyTests(unittest.TestCase):
         remaining = _predict_next_cohort_bytes(state, current, source_count=40)
         full = _predict_next_cohort_bytes(state, current, source_count=50)
         self.assertLess(remaining, full)
-        self.assertEqual(remaining - current, (8_000_000 // 50) * 40 * 1.2)
+        self.assertEqual(remaining - current, (8_000_000 // 50) * 40 * 1.5)
 
     def test_parser_and_database_errors_are_not_silently_deferred(self):
         for message in ("ValueError malformed source response", "psycopg IntegrityError"):
