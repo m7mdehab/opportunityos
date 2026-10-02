@@ -24,9 +24,10 @@ class RelationRewriteHeadroomTests(unittest.TestCase):
         steps = workflow["jobs"]["maintain"]["steps"]
         step = next(
             item for item in steps
-            if item.get("name") == "Reclaim ordinary public-table bloat without changing rows"
+            if item.get("name") == "Reclaim application and Storage metadata bloat without changing rows"
         )
         script = step["run"].split("python - <<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+        self.assertIn('"storage.objects"', script)
         tree = ast.parse(script)
         imported = {
             alias.asname or alias.name
