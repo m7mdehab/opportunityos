@@ -19,6 +19,18 @@ from typing import Any
 from sqlalchemy import create_engine, text
 from storage.cold_storage import ARCHIVE_VERSION, hosted_storage_configured, pack, put
 
+from scripts.db_capacity_guard import PROVIDER_LIMIT_BYTES
+
+PROVIDER_REWRITE_SAFETY_MARGIN_BYTES = 16 * 1024 * 1024
+
+
+def relation_rewrite_peak_estimate(database_bytes: int, relation_bytes: int) -> int:
+    """Estimate rewrite-time database use with a reserve for index/temp overhead."""
+    return int(database_bytes) + int(relation_bytes) + PROVIDER_REWRITE_SAFETY_MARGIN_BYTES
+
+
+def relation_rewrite_fits_provider(database_bytes: int, relation_bytes: int) -> bool:
+    return relation_rewrite_peak_estimate(database_bytes, relation_bytes) < PROVIDER_LIMIT_BYTES
 
 
 @dataclass(frozen=True)
@@ -332,6 +344,18 @@ def reclaim_match_evaluation_space(engine) -> dict[str, int]:
         before_database = int(connection.execute(
             text("SELECT pg_database_size(current_database())")
         ).scalar_one())
+        estimated_peak = relation_rewrite_peak_estimate(before_database, before_relation)
+        if estimated_peak >= PROVIDER_LIMIT_BYTES:
+            return {
+                "before_relation_bytes": before_relation,
+                "after_relation_bytes": before_relation,
+                "relation_reclaimed_bytes": 0,
+                "before_database_bytes": before_database,
+                "after_database_bytes": before_database,
+                "database_reclaimed_bytes": 0,
+                "estimated_peak_bytes": estimated_peak,
+                "skipped_for_provider_headroom": 1,
+            }
         connection.execute(text("VACUUM (FULL, ANALYZE) public.match_evaluations"))
         after_relation = int(connection.execute(
             text("SELECT pg_total_relation_size('public.match_evaluations'::regclass)")
@@ -346,6 +370,8 @@ def reclaim_match_evaluation_space(engine) -> dict[str, int]:
         "before_database_bytes": before_database,
         "after_database_bytes": after_database,
         "database_reclaimed_bytes": max(0, before_database - after_database),
+        "estimated_peak_bytes": estimated_peak,
+        "skipped_for_provider_headroom": 0,
     }
 
 def main() -> int:
