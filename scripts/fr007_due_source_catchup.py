@@ -94,8 +94,40 @@ def validate_evaluation_job_rows(rows: list[dict[str, Any]], allowed_ids: set[st
         raise CatchupSafetyError("evaluation queue contains work outside the current source wave")
 
 
+def _founder_owned_state(state: dict[str, int]) -> dict[str, int]:
+    """Exclude selector output that normal evaluations recompute per opportunity.
+
+    ``founder_cv_selections`` is populated by ``evaluate_persist`` from the
+    authoritative fixed-CV selector; it is not a manually edited Founder
+    preference. New or refreshed evaluations may legitimately add or update
+    these recommendation rows while Founder-owned actions/preferences remain
+    unchanged.
+    """
+    return {
+        key: value for key, value in state.items()
+        if key != "cv_selections" and not key.startswith("cv_variant:")
+    }
+
+
+def cv_recommendation_state(state: dict[str, int]) -> dict[str, int]:
+    """Return separately reportable evaluation-derived CV recommendation counts."""
+    return {
+        key: value for key, value in state.items()
+        if key == "cv_selections" or key.startswith("cv_variant:")
+    }
+
+
+def cv_recommendation_delta(before: dict[str, int], after: dict[str, int]) -> dict[str, int]:
+    keys = cv_recommendation_state(before).keys() | cv_recommendation_state(after).keys()
+    return {
+        key: cv_recommendation_state(after).get(key, 0)
+        - cv_recommendation_state(before).get(key, 0)
+        for key in sorted(keys)
+    }
+
+
 def assert_founder_state_unchanged(before: dict[str, int], after: dict[str, int]) -> None:
-    if before != after:
+    if _founder_owned_state(before) != _founder_owned_state(after):
         raise CatchupSafetyError("Founder-state aggregate changed during source catch-up")
 
 
@@ -669,6 +701,11 @@ def _schedule_and_run_wave(
             "database_bytes_before": before_bytes,
             "database_bytes_after": final["database_bytes"],
             "database_growth_bytes": final["database_bytes"] - before_bytes,
+            "cv_recommendation_counts_before": cv_recommendation_state(before["founder_state"]),
+            "cv_recommendation_counts_after": cv_recommendation_state(final["founder_state"]),
+            "cv_recommendation_delta": cv_recommendation_delta(
+                before["founder_state"], final["founder_state"]
+            ),
             "snapshot": final,
         }
         return wave
@@ -834,6 +871,11 @@ def run_cohort(state_path: Path, cohort_index: int) -> dict[str, Any]:
         "database_bytes_before": before_bytes,
         "database_bytes_after": after_bytes,
         "database_growth_bytes": after_bytes - before_bytes,
+        "cv_recommendation_counts_at_cohort_start": cv_recommendation_state(founder_before),
+        "cv_recommendation_counts_at_cohort_end": cv_recommendation_state(final["founder_state"]),
+        "cv_recommendation_delta": cv_recommendation_delta(
+            founder_before, final["founder_state"]
+        ),
         "next_cohort_projection_bytes": _predict_next_cohort_bytes(
             {**state, "cohorts": state["cohorts"] + [{"processed_sources": len(started_ids), "database_growth_bytes": after_bytes - before_bytes}]},
             after_bytes,
@@ -917,6 +959,13 @@ def finalize_live_run(state_path: Path) -> dict[str, Any]:
         ),
         "database_bytes_final": final["database_bytes"],
         "queue_final": final["queue"],
+        "cv_recommendation_counts_at_freeze": cv_recommendation_state(
+            manifest["founder_state_at_freeze"]
+        ),
+        "cv_recommendation_counts_final": cv_recommendation_state(final["founder_state"]),
+        "cv_recommendation_delta": cv_recommendation_delta(
+            manifest["founder_state_at_freeze"], final["founder_state"]
+        ),
     }
     if final["database_bytes"] >= PROACTIVE_MAINTENANCE_BYTES:
         state["status"] = "FINAL_MAINTENANCE_RECOMMENDED"
