@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-10-02T09:17:06Z
-- **State generated at commit:** `ba0e1ec` — fix: honor frozen due source manifest on resume
+- **Generated:** 2026-10-02T09:27:57Z
+- **State generated at commit:** `ccd92ea` — fix: parse serialized due time in catch-up manifest
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
