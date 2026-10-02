@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-10-02T12:43:19Z
-- **State generated at commit:** `a4ca205` — fix: allow bounded cohort after capacity maintenance
+- **Generated:** 2026-10-02T12:49:35Z
+- **State generated at commit:** `ca52643` — fix: forecast catch-up from recent cohort growth
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
