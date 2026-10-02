@@ -10,8 +10,8 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 
 ## Repository
 
-- **Generated:** 2026-10-02T02:06:30Z
-- **State generated at commit:** `3d03863` — fix: separate cohort maintenance and pause thresholds
+- **Generated:** 2026-10-02T02:38:10Z
+- **State generated at commit:** `8a25154` — fix: recover due catch-up worker timeouts
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
