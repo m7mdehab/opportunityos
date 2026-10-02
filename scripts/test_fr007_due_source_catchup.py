@@ -35,6 +35,7 @@ from scripts.fr007_due_source_catchup import (
     _existing_after_freeze,
     _manifest_due_at,
     _maintenance_reason_for_cohort,
+    _maintenance_reason_before_cohort_start,
     _predict_source_batch_bytes,
     _validate_maintenance_checkpoint,
     _drain_poll_jobs,
@@ -405,6 +406,40 @@ class DueSourceSafetyTests(unittest.TestCase):
                 maintenance_run_id="37007725634",
             ),
             "projected_capacity_reaches_390_mib",
+        )
+
+    def test_large_remaining_cohort_uses_safe_five_source_wave_forecast(self):
+        from scripts.fr007_due_source_catchup import _predict_next_cohort_bytes
+
+        state = {
+            "cohorts": [
+                {"processed_sources": 50, "database_growth_bytes": 7_888_896},
+                {"processed_sources": 50, "database_growth_bytes": 8_101_888},
+                {"processed_sources": 50, "database_growth_bytes": 3_366_912},
+                {"processed_sources": 50, "database_growth_bytes": 2_834_432},
+            ],
+            "last_wave": {
+                "source_ids": ["a", "b", "c", "d", "e"],
+                "database_growth_bytes": 2_000_000,
+            },
+        }
+        current = 406_000_000
+        full_remaining_projection = _predict_next_cohort_bytes(
+            state, current, source_count=40
+        )
+        next_wave_projection = _predict_source_batch_bytes(state, current, 5)
+        self.assertGreaterEqual(full_remaining_projection, OVERNIGHT_CATCHUP_CEILING_BYTES)
+        self.assertLess(next_wave_projection, OVERNIGHT_CATCHUP_CEILING_BYTES)
+        self.assertIsNone(
+            _maintenance_reason_before_cohort_start(
+                current, maintenance_run_id="37016924457"
+            )
+        )
+
+    def test_measured_capacity_still_requires_maintenance_without_fresh_checkpoint(self):
+        self.assertEqual(
+            _maintenance_reason_before_cohort_start(COHORT_START_BYTES),
+            "measured_capacity_reaches_380_mib",
         )
 
     def test_maintenance_checkpoint_authorizes_one_fresh_bounded_cohort(self):
