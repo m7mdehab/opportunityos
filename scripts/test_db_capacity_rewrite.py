@@ -27,6 +27,7 @@ class RelationRewriteHeadroomTests(unittest.TestCase):
             if item.get("name") == "Reclaim ordinary public-table bloat without changing rows"
         )
         script = step["run"].split("python - <<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+        self.assertIn('"storage.objects"', script)
         tree = ast.parse(script)
         imported = {
             alias.asname or alias.name

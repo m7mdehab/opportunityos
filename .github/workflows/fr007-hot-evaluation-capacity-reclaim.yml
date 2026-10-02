@@ -83,6 +83,9 @@ jobs:
                       "public.field_provenances",
                       "public.opportunity_cold_archive",
                       "public.feed_projection",
+                      # Physical reclamation only; never mutate Storage rows here.
+                      # Supabase Storage data changes continue to go through its API.
+                      "storage.objects",
                   ):
                       database_bytes = int(connection.execute(
                           text("SELECT pg_database_size(current_database())")
