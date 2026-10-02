@@ -22,7 +22,7 @@ import threading
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Mapping, Optional, Sequence
 
-from sqlalchemy import or_, text
+from sqlalchemy import func, or_, text
 
 from core.logging import get_logger
 from opportunity.registry import SourceRegistry
@@ -38,6 +38,8 @@ ENV_POLL_INTERVAL_HOURS = "OPPORTUNITYOS_POLL_INTERVAL_HOURS"
 
 #: Default poll interval, in hours, when the environment variable above is unset.
 DEFAULT_POLL_INTERVAL_HOURS = 6.0
+OVERNIGHT_CATCHUP_MAX_SOURCES = 5
+OVERNIGHT_CATCHUP_CEILING_BYTES = 390 * 1024 * 1024
 
 #: Job types this scheduler is responsible for enqueuing.
 _SCHEDULED_JOB_TYPE = "poll_source"
@@ -436,6 +438,97 @@ def enqueue_due_sources(
             break
 
     return enqueued, skipped
+
+
+def controlled_catchup_capacity_allowed(snapshot: CapacitySnapshot | None) -> bool:
+    """The supervised overnight lane stops at its 390 MiB operating ceiling."""
+    return bool(
+        snapshot is not None
+        and not snapshot.read_only
+        and not snapshot.in_recovery
+        and snapshot.database_size_bytes < OVERNIGHT_CATCHUP_CEILING_BYTES
+    )
+
+
+def enqueue_due_catchup_sources(
+    session,
+    source_ids: Sequence[str],
+    *,
+    registry: Optional[SourceRegistry] = None,
+    now: Optional[datetime] = None,
+) -> list[dict[str, str]]:
+    """Enqueue one exact, manifest-backed five-source catch-up wave.
+
+    This is a separately named opt-in path. The routine scheduler remains
+    conservative at Warning and does not inherit this batch allowance.
+    Caller commits the queue inserts and cadence advancement atomically.
+    """
+    reg = registry or SourceRegistry()
+    selected = list(source_ids)
+    if not 1 <= len(selected) <= OVERNIGHT_CATCHUP_MAX_SOURCES:
+        raise ValueError("controlled catch-up wave must contain one to five sources")
+    if len(set(selected)) != len(selected):
+        raise ValueError("controlled catch-up wave contains duplicate sources")
+    invalid = [source_id for source_id in selected if source_id not in reg._sources]
+    if invalid:
+        raise ValueError("controlled catch-up wave contains unregistered sources")
+    if any(not reg.is_read_allowed(source_id) for source_id in selected):
+        raise ValueError("controlled catch-up wave contains a read-disabled source")
+
+    bind = session.get_bind()
+    if bind is None or bind.dialect.name != "postgresql":
+        raise RuntimeError("controlled catch-up requires PostgreSQL")
+    connection = session.connection()
+    capacity = inspect_connection(connection)
+    if not controlled_catchup_capacity_allowed(capacity):
+        raise RuntimeError("controlled catch-up capacity ceiling or database state blocks the wave")
+
+    try:
+        # Share the same transaction lock with warning-band routine scheduling.
+        _lock_warning_poll_scheduler(session)
+        capacity = inspect_connection(connection)
+        if not controlled_catchup_capacity_allowed(capacity):
+            raise RuntimeError("controlled catch-up capacity changed before wave enqueue")
+
+        active_count = (
+            session.query(func.count(WorkerJobRecord.id))
+            .filter(WorkerJobRecord.status.in_(("PENDING", "RETRY", "RUNNING")))
+            .scalar()
+        )
+        if int(active_count or 0):
+            raise RuntimeError("controlled catch-up requires a globally empty runnable queue")
+
+        curr_now = now or datetime.now(timezone.utc)
+        curr_now_naive = _to_naive_utc(curr_now) or datetime.now(timezone.utc).replace(tzinfo=None)
+        query = session.query(SourceScheduleRecord).filter(
+            SourceScheduleRecord.source_id.in_(selected)
+        )
+        schedules = query.with_for_update().all()
+        by_id = {record.source_id: record for record in schedules}
+        if set(by_id) != set(selected):
+            raise RuntimeError("controlled catch-up manifest source has no durable schedule")
+        for source_id in selected:
+            schedule = by_id[source_id]
+            if schedule.cooldown_until is not None and schedule.cooldown_until > curr_now_naive:
+                raise RuntimeError("controlled catch-up manifest source is cooling")
+            if schedule.next_due_at > curr_now_naive:
+                raise RuntimeError("controlled catch-up manifest source is no longer due")
+
+        queue = BackgroundWorkerQueue(session)
+        enqueued = []
+        for source_id in selected:
+            schedule = by_id[source_id]
+            job_id = queue.enqueue_job(
+                _SCHEDULED_JOB_TYPE, {"source_id": source_id}, commit=False
+            )
+            schedule.last_attempt_at = curr_now_naive
+            schedule.next_due_at = curr_now_naive + timedelta(hours=schedule.cadence_hours)
+            schedule.updated_at = curr_now_naive
+            enqueued.append({"source_id": source_id, "job_id": job_id})
+        return enqueued
+    except Exception:
+        session.rollback()
+        raise
 
 
 class PollScheduler:

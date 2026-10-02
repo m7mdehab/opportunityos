@@ -5,7 +5,8 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from opportunity.registry import SourceRegistry
 from storage.engine import get_engine, get_session_factory, init_db
@@ -15,6 +16,8 @@ from worker.scheduler import (
     DEFAULT_POLL_INTERVAL_HOURS,
     ENV_POLL_INTERVAL_HOURS,
     PollScheduler,
+    controlled_catchup_capacity_allowed,
+    enqueue_due_catchup_sources,
     enqueue_due_sources,
     get_poll_interval_hours,
     implicit_source_schedule_creation_enabled,
@@ -96,6 +99,89 @@ class TestPollSchedulerBase(unittest.TestCase):
         finally:
             session.close()
 
+
+class TestControlledOvernightCatchupEnqueue(unittest.TestCase):
+    def test_catchup_capacity_boundary_and_readonly_recovery_always_refuse(self):
+        self.assertTrue(controlled_catchup_capacity_allowed(
+            CapacitySnapshot(390 * 1024 * 1024 - 1, False, False, "WARN_CAPACITY")
+        ))
+        for snapshot in (
+            CapacitySnapshot(390 * 1024 * 1024, False, False, "WARN_CAPACITY"),
+            CapacitySnapshot(100, True, False, "READ_ONLY"),
+            CapacitySnapshot(100, False, True, "IN_RECOVERY"),
+        ):
+            self.assertFalse(controlled_catchup_capacity_allowed(snapshot))
+
+    def test_exact_five_manifest_sources_enqueue_under_warning_capacity(self):
+        source_ids = [f"fixture_{index}" for index in range(5)]
+        registry = MagicMock()
+        registry._sources = {source_id: object() for source_id in source_ids}
+        registry.is_read_allowed.return_value = True
+        session = MagicMock()
+        session.get_bind.return_value.dialect.name = "postgresql"
+        session.connection.return_value = object()
+        empty_queue = MagicMock()
+        empty_queue.filter.return_value.scalar.return_value = 0
+        schedule_query = MagicMock()
+        now = datetime(2026, 10, 2, 12, 0)
+        schedules = [SimpleNamespace(
+            source_id=source_id,
+            cadence_hours=6.0,
+            next_due_at=now - timedelta(minutes=1),
+            cooldown_until=None,
+        ) for source_id in source_ids]
+        schedule_query.filter.return_value.with_for_update.return_value.all.return_value = schedules
+        session.query.side_effect = [empty_queue, schedule_query]
+        queue = MagicMock()
+        queue.enqueue_job.side_effect = [f"job-{index}" for index in range(5)]
+        warning_snapshot = CapacitySnapshot(WARN_BYTES, False, False, "WARN_CAPACITY")
+
+        with patch("worker.scheduler.inspect_connection", return_value=warning_snapshot), \
+             patch("worker.scheduler._lock_warning_poll_scheduler"), \
+             patch("worker.scheduler.BackgroundWorkerQueue", return_value=queue):
+            result = enqueue_due_catchup_sources(
+                session, source_ids, registry=registry, now=now.replace(tzinfo=timezone.utc)
+            )
+
+        self.assertEqual([row["source_id"] for row in result], source_ids)
+        self.assertEqual(queue.enqueue_job.call_count, 5)
+        self.assertTrue(all(row.next_due_at > now for row in schedules))
+
+    def test_explicit_lane_refuses_capacity_and_cooling_sources(self):
+        source_ids = ["fixture_allowed"]
+        registry = MagicMock()
+        registry._sources = {source_ids[0]: object()}
+        registry.is_read_allowed.return_value = True
+        session = MagicMock()
+        session.get_bind.return_value.dialect.name = "postgresql"
+        session.connection.return_value = object()
+        queue = MagicMock()
+        cooling = SimpleNamespace(
+            source_id=source_ids[0], cadence_hours=6.0,
+            next_due_at=datetime(2026, 10, 2, 11, 0),
+            cooldown_until=datetime(2026, 10, 2, 13, 0),
+        )
+        empty_queue = MagicMock()
+        empty_queue.filter.return_value.scalar.return_value = 0
+        schedule_query = MagicMock()
+        schedule_query.filter.return_value.with_for_update.return_value.all.return_value = [cooling]
+        session.query.side_effect = [empty_queue, schedule_query]
+        with patch("worker.scheduler.inspect_connection", return_value=CapacitySnapshot(
+            400 * 1024 * 1024, False, False, "HEAVY_WORK_PAUSED"
+        )), patch("worker.scheduler._lock_warning_poll_scheduler"), \
+             patch("worker.scheduler.BackgroundWorkerQueue", return_value=queue):
+            with self.assertRaisesRegex(RuntimeError, "capacity"):
+                enqueue_due_catchup_sources(session, source_ids, registry=registry)
+        queue.enqueue_job.assert_not_called()
+
+        with patch("worker.scheduler.inspect_connection", return_value=CapacitySnapshot(
+            WARN_BYTES, False, False, "WARN_CAPACITY"
+        )), patch("worker.scheduler._lock_warning_poll_scheduler"), \
+             patch("worker.scheduler.BackgroundWorkerQueue", return_value=queue):
+            with self.assertRaisesRegex(RuntimeError, "cooling"):
+                enqueue_due_catchup_sources(session, source_ids, registry=registry,
+                                             now=datetime(2026, 10, 2, 12, 0, tzinfo=timezone.utc))
+        queue.enqueue_job.assert_not_called()
 
 class TestReadPolicyBoundary(TestPollSchedulerBase):
     def test_read_disabled_sources_never_enqueued(self):
