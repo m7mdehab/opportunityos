@@ -210,6 +210,14 @@ def _drain(
                 )
                 .count()
             )
+            pending_poll_jobs = (
+                refill_session.query(WorkerJobRecord)
+                .filter(
+                    WorkerJobRecord.job_type == "poll_source",
+                    WorkerJobRecord.status.in_(("PENDING", "RETRY")),
+                )
+                .count()
+            )
         except Exception:
             refill_session.rollback()
             raise
@@ -224,12 +232,13 @@ def _drain(
         reasons = {item.get("reason") for item in skipped}
         if "warning_capacity_ceiling" in reasons or "capacity_pause" in reasons:
             break
-        if not remaining_due:
+        if not remaining_due and not pending_poll_jobs:
             break
 
-        # Another shard owns the current bounded source wave. Stay alive so
-        # throughput does not collapse at refill boundaries, but wait locally
-        # long enough to avoid turning an idle shard into database chatter.
+        # Another shard owns the current bounded source wave, or the final
+        # wave still has unclaimed poll jobs. Stay alive long enough to retain
+        # five-way throughput, but use a coarse local wait so idle workers do
+        # not recreate the database chatter this change is meant to remove.
         time.sleep(15.0)
     return processed
 
