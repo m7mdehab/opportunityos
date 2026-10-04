@@ -38,6 +38,7 @@ HOSTED_WORKER_POOL_SIZE = 2
 HOSTED_WORKER_MAX_OVERFLOW = 0
 HOSTED_WORKER_POOL_TIMEOUT_SECONDS = 30.0
 HOSTED_WORKER_APPLICATION_NAME = "opportunityos-fr007-worker"
+HOSTED_MIN_SOURCE_CADENCE_HOURS = 12.0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -108,7 +109,12 @@ def _source_schedules(
         if not dry_run:
             # Existing scheduler semantics are authoritative for cadence and
             # next_due_at; do not manufacture a warm-up storm.
-            get_or_create_source_schedule(session, sid, cadence.get(sid, 6.0), now)
+            get_or_create_source_schedule(
+                session,
+                sid,
+                max(cadence.get(sid, 6.0), HOSTED_MIN_SOURCE_CADENCE_HOURS),
+                now,
+            )
     if not dry_run:
         session.commit()
     return count
