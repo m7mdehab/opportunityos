@@ -287,11 +287,11 @@ class StorageRepository:
         return removed
 
     def is_founder_protected(self, opportunity_id: str) -> bool:
-        """Return true for any persisted Founder, application, or outbound history."""
+        """Return true for persisted Founder-owned, application, or outbound history.\n\n        Evaluation-derived CV recommendations are deliberately excluded: they are\n        recomputable product output, not Founder intent, and must not pin a row in\n        the protected lifecycle tier.\n        """
         return bool(self.get_founder_protected_ids([opportunity_id]))
 
     def get_founder_protected_ids(self, opportunity_ids: List[str], *, chunk_size: int = 500) -> set[str]:
-        """Find protected IDs with narrow UNION queries instead of loading opportunity bodies."""
+        """Find genuinely protected IDs without treating generated recommendations as intent."""
         protected: set[str] = set()
         models = (
             FounderFeedbackRecord,
@@ -303,7 +303,6 @@ class StorageRepository:
             PipelineEventRecord,
             ReconciliationRecordModel,
             NotificationRecord,
-            FounderCVSelectionRecord,
         )
         ids = list(dict.fromkeys(opportunity_ids))
         for start in range(0, len(ids), chunk_size):
