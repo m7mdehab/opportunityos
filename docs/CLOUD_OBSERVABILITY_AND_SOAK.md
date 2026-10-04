@@ -8,8 +8,8 @@ This runbook documents the operational architecture, health checks, alerting lif
 
 External monitoring operates from GitHub Actions via `.github/workflows/fr007-cloud-observability.yml`:
 
-- **Scheduled Cadence**: `*/30 * * * *` (runs every 30 minutes).
-- **Execution Surface**: `ubuntu-slim` hosted runner (consuming 1 billed minute per run = 1,440 billed min/month out of the 2,000 minute free allowance, leaving 560 minutes of CI headroom).
+- **Scheduled Cadence**: `47 */12 * * *` (runs twice daily, at 00:47 and 12:47 UTC).
+- **Execution Surface**: standard `ubuntu-latest` hosted runner. Scheduled monitoring now runs about 60 times/month instead of roughly 1,440 times/month.
 - **Manual Dispatch Modes**:
   - `MONITOR`: Performs live end-to-end health check across all configured subsystems, captures an immutable soak snapshot (even during failures), and processes alert mutations.
   - `TEST_ALERT`: Injects a synthetic, non-destructive incident into the alerting pipeline to verify notification and issue creation without disrupting production.
@@ -87,7 +87,7 @@ This generates a controlled payload titled `[FR-007 Monitor] SYNTHETIC TEST ALER
 ## 5. Soak Snapshots & 7-Day Verification (A-14)
 
 ### Snapshot Generation
-Each 30-minute monitor cycle produces an immutable JSON snapshot, even during failure conditions:
+Each 12-hour monitor cycle produces an immutable JSON snapshot, even during failure conditions:
 ```bash
 python scripts/fr007_soak_snapshot.py \
   --report-file .monitor_output/report.json \
@@ -126,13 +126,13 @@ python scripts/fetch_soak_artifacts.py --target-dir .monitor_output/soak/
 python scripts/fr007_soak_verify.py \
   --input-dir .monitor_output/soak/ \
   --min-hours 168.0 \
-  --max-gap-hours 4.0 \
+  --max-gap-hours 14.0 \
   --require-backup
 ```
 Acceptance Predicates:
 1. **Proof Scope**: All evaluated snapshots must have `proof_scope == "FULL_HOSTED"`. STATIC or synthetic records cannot count toward live soak.
 2. **Duration**: $\ge 168.0\text{ hours}$ (7 full continuous days) between earliest and latest snapshot.
-3. **Continuity**: Maximum gap between consecutive snapshots $\le 4.0\text{ hours}$.
+3. **Continuity**: Maximum gap between consecutive snapshots $\le 14.0\text{ hours}$, allowing limited GitHub scheduler jitter around the 12-hour cadence.
 4. **Health**: 0 snapshots exhibiting `overall_state == "FAIL"` or `NOT_CONFIGURED`.
 5. **Backup**: Latest backup manifest must be `PASS` or `WARN`.
 6. **Founder Independence**: All snapshots have `founder_pc_dependency == false`. Any `true` value immediately fails the gate.
@@ -154,5 +154,5 @@ All allocations must adhere to `docs/CLOUD_COST_QUOTA_ENVELOPE.md`:
 - Supabase: < 500 MB DB, < 1 GB storage, < 5 GB egress (permanent free allowance).
 - Azure Container Apps: 0.25 vCPU, 0.5 GiB covered under Azure for Students credit (temporary credit, $0 out-of-pocket).
 - Cloudflare Workers: < 100k daily requests (permanent free allowance).
-- GitHub Actions: 30-min cadence = 1,440 billed min/month, leaving 560 minutes of CI headroom under the 2,000 minute free allowance.
+- GitHub Actions: twice-daily observability = about 60 scheduled monitor runs/month, materially reducing runner and Supabase usage.
 - Net Founder Out-of-Pocket: **$0.00**.

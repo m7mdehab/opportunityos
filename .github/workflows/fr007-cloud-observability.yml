@@ -2,9 +2,9 @@ name: FR-007 Cloud Observability & Release Gates
 
 on:
   schedule:
-    # 30-minute interval for external liveness, queue, and database observability.
-    # Standard hosted runners on the current public repository are no-charge; cadence is reliability-driven.
-    - cron: "*/30 * * * *"
+    # Founder-only cadence: twice daily, staggered 30 minutes after the worker drain.
+    # This preserves useful health coverage while materially reducing Supabase traffic.
+    - cron: "47 */12 * * *"
   push:
     branches:
       - main
@@ -92,7 +92,7 @@ jobs:
           echo "Fetching remote soak snapshot artifacts from workflow runs..."
           python scripts/fetch_soak_artifacts.py --target-dir .monitor_output/soak/
           echo "Verifying 7-day soak evidence (fail-closed gate)..."
-          python scripts/fr007_soak_verify.py --input-dir .monitor_output/soak/ --require-backup
+          python scripts/fr007_soak_verify.py --input-dir .monitor_output/soak/ --max-gap-hours 14.0 --require-backup
           echo "Building Release Evidence Index..."
           python scripts/fr007_release_evidence.py --markdown reports/evidence/FR-007/RELEASE_SUMMARY.md
 

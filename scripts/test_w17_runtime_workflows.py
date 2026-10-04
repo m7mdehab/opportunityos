@@ -71,7 +71,7 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
 
     def test_worker_drain_schedule_and_defaults(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-worker-drain.yml").read_text(encoding="utf-8")
-        self.assertIn('cron: "*/15 * * * *"', workflow)
+        self.assertIn('cron: "17 */12 * * *"', workflow)
         # Scheduled/default per-shard parameters: 30 jobs, 480 seconds
         self.assertIn('default: "30"', workflow)
         self.assertIn('default: "480"', workflow)
