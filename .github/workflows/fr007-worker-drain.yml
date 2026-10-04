@@ -95,7 +95,7 @@ jobs:
               if snapshot.database_size_bytes < WARN_BYTES:
                   parallelism = 5
               elif (
-                  os.environ.get("GITHUB_EVENT_NAME") == "schedule"
+                  os.environ.get("GITHUB_EVENT_NAME") in {"schedule", "push"}
                   and snapshot.database_size_bytes < OVERNIGHT_CATCHUP_CEILING_BYTES
               ):
                   parallelism = 5
@@ -161,8 +161,9 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           set -euo pipefail
-          if [[ "${GITHUB_EVENT_NAME}" == "schedule" ]]; then
-            # Twice-daily founder sweep: keep five workers busy until every
+          if [[ "${GITHUB_EVENT_NAME}" == "schedule" || "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            # Twice-daily founder sweep (and the reviewed main deployment of
+            # this workflow): keep five workers busy until every
             # source that was due at sweep start has been attempted, or the
             # repository capacity guard stops new source work.
             MAX_JOBS=500
@@ -186,7 +187,7 @@ jobs:
 
   verify-scheduled-sweep:
     needs: [enqueue, drain]
-    if: ${{ always() && github.event_name == 'schedule' && needs.enqueue.outputs.can_start == 'true' }}
+    if: ${{ always() && (github.event_name == 'schedule' || github.event_name == 'push') && needs.enqueue.outputs.can_start == 'true' }}
     environment: fr007-staging
     runs-on: ubuntu-latest
     timeout-minutes: 10
