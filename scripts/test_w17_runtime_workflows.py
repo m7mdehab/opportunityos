@@ -32,8 +32,8 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
 
     def test_backup_workflow_separates_daily_founder_state_from_monthly_integrity(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-encrypted-backup.yml").read_text(encoding="utf-8")
-        self.assertIn('cron: "17 2 * * *"', workflow)
-        self.assertIn('cron: "47 2 1 * *"', workflow)
+        self.assertIn('cron: "17 5 * * *"', workflow)
+        self.assertIn('cron: "47 5 1 * *"', workflow)
         self.assertIn("backup_class:", workflow)
         self.assertIn("founder_state", workflow)
         self.assertIn("integrity", workflow)
@@ -79,10 +79,10 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
         # to clear the twice-daily due-source set without increasing source cadence.
         self.assertIn('default: "30"', workflow)
         self.assertIn('default: "480"', workflow)
-        self.assertIn("github.event_name == 'schedule' && '150'", workflow)
-        self.assertIn("github.event_name == 'schedule' && '2700'", workflow)
+        self.assertIn('MAX_JOBS=400', workflow)
+        self.assertIn('TIME_BUDGET=10800', workflow)
         self.assertIn("RAW_MAX > 150 ? 150", workflow)
-        self.assertIn("RAW_BUDGET > 2700 ? 2700", workflow)
+        self.assertIn("RAW_BUDGET > 540 ? 540", workflow)
         self.assertIn("CATCHUP_PARALLELISM_LIMIT_BYTES = 380 * 1024 * 1024", workflow)
 
     def test_worker_drain_unique_worker_id_per_shard(self):
@@ -93,7 +93,7 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
     def test_worker_drain_timeout_covers_historically_slow_source_poll(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-worker-drain.yml").read_text(encoding="utf-8")
         drain_section = workflow.split("drain:", 1)[1]
-        self.assertIn("timeout-minutes: 90", drain_section)
+        self.assertIn("timeout-minutes: 240", drain_section)
 
     def test_final_closure_fails_closed_on_piped_failures_and_direct_script_imports(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-final-runtime-closure.yml").read_text(encoding="utf-8")
@@ -112,6 +112,37 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
         self.assertIn("inputs.mode == 'enqueue'", enqueue_section)
         # Drain runs on all / drain, skipped on enqueue
         self.assertIn("inputs.mode == 'drain'", drain_section)
+
+    def test_live_runtime_mutations_cannot_reappear_on_push(self):
+        runtime_takeover = (ROOT / ".github" / "workflows" / "fr007-runtime-takeover-proof.yml").read_text(encoding="utf-8")
+        self.assertIn("workflow_dispatch:", runtime_takeover)
+        self.assertGreaterEqual(
+            runtime_takeover.count("github.event_name == 'workflow_dispatch'"),
+            4,
+        )
+        self.assertIn(
+            "always() && github.event_name == 'workflow_dispatch'",
+            runtime_takeover,
+        )
+
+        for name in (
+            "fr007-hot-evaluation-capacity-reclaim.yml",
+            "fr007-orphan-deadletter-recovery.yml",
+            "fr007-hosted-bootstrap.yml",
+            "fr007-incremental-source-bootstrap.yml",
+            "fr007-due-source-overnight-catchup.yml",
+        ):
+            workflow = (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
+            self.assertIn("workflow_dispatch:", workflow)
+            self.assertNotIn("\n  push:", workflow)
+
+    def test_main_deploy_does_not_refresh_live_candidates_on_unrelated_pushes(self):
+        workflow = (ROOT / ".github" / "workflows" / "fr008-w75-live-deploy.yml").read_text(encoding="utf-8")
+        self.assertNotIn("Read-only bounded candidate dry run", workflow)
+        self.assertNotIn("Refresh bounded actionable candidates", workflow)
+        self.assertNotIn("--discover-current-candidates --candidate-limit 50", workflow)
+        self.assertIn("Read-only current For You reconciliation dry run", workflow)
+        self.assertIn("Refresh only the reviewed BC candidate set", workflow)
 
     def test_clean_rebuild_bootstrap_requires_explicit_bounded_source_selection(self):
         bootstrap = (ROOT / "scripts" / "fr007_hosted_bootstrap.py").read_text(encoding="utf-8")

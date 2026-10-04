@@ -45,12 +45,18 @@ class FounderStateBackupTests(unittest.TestCase):
             opportunities = source_meta.tables["opportunities"]
             conn.execute(insert(opportunities), [
                 {"id": "founder-protected", "lifecycle_tier": "protected", "title": "Protected"},
+                {"id": "derived-only", "lifecycle_tier": "protected", "title": "Generated output only"},
                 {"id": "cold-only", "lifecycle_tier": "cold", "title": "Not exported"},
             ])
             activity = source_meta.tables["founder_activity_events"]
             conn.execute(insert(activity), {
                 "id": "activity-1", "opportunity_id": "founder-protected",
                 "action_text": "mark_applied",
+            })
+            cv_selection = source_meta.tables["founder_cv_selections"]
+            conn.execute(insert(cv_selection), {
+                "id": "cv-derived", "opportunity_id": "derived-only",
+                "action_text": "master",
             })
             filters = source_meta.tables["founder_filter_settings"]
             conn.execute(insert(filters), {"id": "custom-filter", "action_text": "enabled"})
@@ -62,6 +68,7 @@ class FounderStateBackupTests(unittest.TestCase):
             self.assertEqual(metrics["backup_class"], "founder_state")
             self.assertEqual(payload["source_revision"], "0025_current_feed_fast_path")
             self.assertEqual([row["id"] for row in payload["table_rows"]["opportunities"]], ["founder-protected"])
+            self.assertEqual(payload["table_rows"]["founder_cv_selections"], [])
             self.assertEqual(metrics["source_json_bytes"] <= backup.MAX_SNAPSHOT_BYTES, True)
 
             target = _test_engine()
@@ -150,6 +157,14 @@ class FounderStateBackupTests(unittest.TestCase):
         with Session(engine) as session:
             session.add(record)
             session.commit()
+        metadata = MetaData()
+        metadata.reflect(bind=engine)
+        with engine.begin() as conn:
+            conn.execute(insert(metadata.tables["founder_activity_events"]), {
+                "id": f"activity-{opportunity_id}",
+                "opportunity_id": opportunity_id,
+                "action_text": "mark_applied",
+            })
         try:
             with tempfile.TemporaryDirectory() as temp:
                 archive = Path(temp) / "must-not-be-written.json.gz"

@@ -46,8 +46,8 @@ def validate_workflow_contract(workflow_text: str) -> tuple[bool, list[str]]:
         errors.append("Workflow requires 'actions: read' permission to fetch remote soak artifacts")
 
     # 4. Schedule cadence
-    if 'cron: "47 */12 * * *"' not in workflow_text and "cron: '47 */12 * * *'" not in workflow_text:
-        errors.append("Workflow schedule must remain '47 */12 * * *' for the founder-only monitoring contract")
+    if 'cron: "47 4,16 * * *"' not in workflow_text and "cron: '47 4,16 * * *'" not in workflow_text:
+        errors.append("Workflow schedule must remain '47 4,16 * * *' so monitoring follows the bounded worker window")
 
     # 5. CLI flag alignment
     if "--output-report" not in workflow_text:

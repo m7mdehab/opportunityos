@@ -82,20 +82,6 @@ jobs:
           OPPORTUNITYOS_ENVIRONMENT: cloud
           OPPORTUNITYOS_TRUTH_PACK_PATH: founder/truth_pack.yaml.gz.b64
         run: python -m scripts.refresh_feed_projection_candidates --reconcile-current-for-you --candidate-limit 200 --execute
-      - name: Read-only bounded candidate dry run
-        if: needs.migrate-live-founder.outputs.bc_canary != 'true' && needs.migrate-live-founder.outputs.bc_reconcile != 'true'
-        env:
-          OPPORTUNITYOS_DB_URL: ${{ secrets.CLOUD_DATABASE_URL }}
-          OPPORTUNITYOS_ENVIRONMENT: cloud
-          OPPORTUNITYOS_TRUTH_PACK_PATH: founder/truth_pack.yaml.gz.b64
-        run: python -m scripts.refresh_feed_projection_candidates --discover-current-candidates --candidate-limit 50
-      - name: Refresh bounded actionable candidates
-        if: needs.migrate-live-founder.outputs.bc_canary != 'true' && needs.migrate-live-founder.outputs.bc_reconcile != 'true'
-        env:
-          OPPORTUNITYOS_DB_URL: ${{ secrets.CLOUD_DATABASE_URL }}
-          OPPORTUNITYOS_ENVIRONMENT: cloud
-          OPPORTUNITYOS_TRUTH_PACK_PATH: founder/truth_pack.yaml.gz.b64
-        run: python -m scripts.refresh_feed_projection_candidates --discover-current-candidates --candidate-limit 50 --execute
       - name: Refresh only the reviewed BC candidate set
         if: needs.migrate-live-founder.outputs.bc_canary == 'true' && needs.migrate-live-founder.outputs.bc_reconcile != 'true'
         env:

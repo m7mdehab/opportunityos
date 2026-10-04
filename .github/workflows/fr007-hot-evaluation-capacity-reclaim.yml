@@ -9,14 +9,6 @@ on:
         options: [full, maintenance-only]
         default: full
         required: true
-  push:
-    branches: [main]
-    paths:
-      - matching/evaluate_persist.py
-      - api/serialization.py
-      - scripts/db_capacity_maintenance.py
-      - scripts/test_db_capacity_hot_postgres.py
-
 permissions:
   contents: read
 

@@ -116,10 +116,12 @@ jobs:
         shard: [1, 2, 3, 4, 5]
     environment: fr007-staging
     runs-on: ubuntu-latest
-    # Twice-daily runs may need to clear the full due-source set. Keep enough
-    # runner headroom for a 45-minute scheduled drain budget plus a historically
-    # valid 2,250s (37.5m) long-tail source handler near the end of that budget.
-    timeout-minutes: 90
+    # Twice-daily runs must be able to clear the full due-source set. The live
+    # 344-source timing envelope is ~26.4k source-seconds, so five workers need
+    # ~88 minutes before evaluation/backoff overhead. A 3-hour scheduled budget
+    # plus one historically valid long-tail handler remains inside this 4-hour
+    # job bound without changing source cadence or worker concurrency.
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -138,10 +140,17 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           set -euo pipefail
-          RAW_MAX="${{ github.event_name == 'schedule' && '150' || inputs.max_jobs || '30' }}"
-          RAW_BUDGET="${{ github.event_name == 'schedule' && '2700' || inputs.time_budget_seconds || '480' }}"
-          MAX_JOBS=$(( RAW_MAX > 150 ? 150 : (RAW_MAX < 1 ? 30 : RAW_MAX) ))
-          TIME_BUDGET=$(( RAW_BUDGET > 2700 ? 2700 : (RAW_BUDGET < 10 ? 480 : RAW_BUDGET) ))
+          if [[ "${{ github.event_name }}" == "schedule" ]]; then
+            # Scheduled capacity is time-bounded, not frequency-expanded:
+            # same twice-daily source set, same five-worker envelope.
+            MAX_JOBS=400
+            TIME_BUDGET=10800
+          else
+            RAW_MAX="${{ inputs.max_jobs || '30' }}"
+            RAW_BUDGET="${{ inputs.time_budget_seconds || '480' }}"
+            MAX_JOBS=$(( RAW_MAX > 150 ? 150 : (RAW_MAX < 1 ? 30 : RAW_MAX) ))
+            TIME_BUDGET=$(( RAW_BUDGET > 540 ? 540 : (RAW_BUDGET < 10 ? 480 : RAW_BUDGET) ))
+          fi
           python scripts/fr007_hosted_bootstrap.py --mode drain --max-jobs "${MAX_JOBS}" --time-budget-seconds "${TIME_BUDGET}" --worker-id "${OPOS_WORKER_ID}"
 
 

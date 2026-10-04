@@ -1,8 +1,9 @@
 """Bounded, encrypted-backup input for irreplaceable Founder state.
 
-Only the allowlisted Founder/configuration tables are read. Opportunity rows
-are fetched only for Founder-protected or Founder-referenced IDs; the source
-corpus is never scanned or exported wholesale by the daily backup path.
+Only the allowlisted irreplaceable Founder/configuration tables are read.
+Opportunity rows are fetched only for IDs referenced by irreplaceable Founder,
+application, or outbound state; generated recommendation tables do not expand
+the daily snapshot. The source corpus is never scanned or exported wholesale.
 """
 from __future__ import annotations
 
@@ -42,6 +43,13 @@ STATE_TABLES = (
     "pipeline_events",
     "inbox_checkpoints",
     "inbound_evidence",
+)
+# Keep the table in the v1 snapshot shape so older backups remain readable,
+# but do not export generated CV recommendations in the daily irreplaceable-
+# state class. They are deterministic product output and can be rebuilt.
+REBUILDABLE_STATE_TABLES = frozenset({"founder_cv_selections"})
+IRREPLACEABLE_STATE_TABLES = tuple(
+    name for name in STATE_TABLES if name not in REBUILDABLE_STATE_TABLES
 )
 SNAPSHOT_TABLES = ("opportunities", *STATE_TABLES)
 MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024
@@ -108,13 +116,21 @@ def export_snapshot(engine, destination: str | Path) -> dict:
 
                 tables = {name: _table(metadata, dialect, name) for name in SNAPSHOT_TABLES}
                 opportunity = tables["opportunities"]
-                id_queries = [select(opportunity.c.id).where(opportunity.c.lifecycle_tier == "protected")]
-                for name in STATE_TABLES:
+                # Founder-state backup is driven by irreplaceable references,
+                # not by the lifecycle label. A generated recommendation must
+                # never pull thousands of otherwise ordinary opportunity
+                # bodies into a daily backup.
+                id_queries = []
+                for name in IRREPLACEABLE_STATE_TABLES:
                     table = tables[name]
                     if "opportunity_id" in table.c:
-                        id_queries.append(select(table.c.opportunity_id).where(table.c.opportunity_id.is_not(None)))
-                id_union = union(*id_queries).limit(MAX_PROTECTED_OPPORTUNITIES + 1)
-                opportunity_ids = sorted(str(row[0]) for row in conn.execute(id_union).all())
+                        id_queries.append(
+                            select(table.c.opportunity_id).where(table.c.opportunity_id.is_not(None))
+                        )
+                opportunity_ids = []
+                if id_queries:
+                    id_union = union(*id_queries).limit(MAX_PROTECTED_OPPORTUNITIES + 1)
+                    opportunity_ids = sorted(str(row[0]) for row in conn.execute(id_union).all())
                 if len(opportunity_ids) > MAX_PROTECTED_OPPORTUNITIES:
                     raise FounderStateBackupError("Founder-protected opportunity count exceeds backup safety cap")
 
@@ -126,6 +142,8 @@ def export_snapshot(engine, destination: str | Path) -> dict:
                 if dialect == "postgresql":
                     for name in SNAPSHOT_TABLES:
                         table = tables[name]
+                        if name in REBUILDABLE_STATE_TABLES:
+                            continue
                         if name == "opportunities" and not opportunity_ids:
                             continue
                         size_source = table.alias("backup_source_row")
@@ -145,6 +163,9 @@ def export_snapshot(engine, destination: str | Path) -> dict:
                 rows_by_table = {}
                 for name in SNAPSHOT_TABLES:
                     table = tables[name]
+                    if name in REBUILDABLE_STATE_TABLES:
+                        rows_by_table[name] = []
+                        continue
                     statement = select(table)
                     if name == "opportunities":
                         statement = statement.where(table.c.id.in_(sorted(opportunity_ids))) if opportunity_ids else None

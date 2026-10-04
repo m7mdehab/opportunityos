@@ -2,8 +2,8 @@ name: FR-007 egress-bounded encrypted backups
 
 on:
   schedule:
-    - cron: "17 2 * * *"
-    - cron: "47 2 1 * *"
+    - cron: "17 5 * * *"
+    - cron: "47 5 1 * *"
   workflow_dispatch:
     inputs:
       acknowledge_backup:
@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      BACKUP_CLASS: ${{ github.event.schedule == '47 2 1 * *' && 'integrity' || inputs.backup_class || 'founder_state' }}
+      BACKUP_CLASS: ${{ github.event.schedule == '47 5 1 * *' && 'integrity' || inputs.backup_class || 'founder_state' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

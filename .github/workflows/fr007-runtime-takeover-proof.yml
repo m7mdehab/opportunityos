@@ -1,6 +1,7 @@
 name: FR-007 Runtime Takeover Proof
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -91,6 +92,7 @@ jobs:
           python scripts/check_guard.py --allow-missing-patterns
 
   enqueue:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     needs: deterministic
     environment: fr007-staging
     runs-on: ubuntu-latest
@@ -112,6 +114,7 @@ jobs:
           python scripts/fr007_hosted_bootstrap.py --mode enqueue
 
   drain:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     needs: enqueue
     strategy:
       fail-fast: false
@@ -143,6 +146,7 @@ jobs:
             --worker-id "${OPOS_WORKER_ID}"
 
   observe:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     needs: enqueue
     environment: fr007-staging
     runs-on: ubuntu-latest
@@ -231,7 +235,7 @@ jobs:
           PY
 
   summarize:
-    if: always()
+    if: ${{ always() && github.event_name == 'workflow_dispatch' }}
     needs: [deterministic, enqueue, drain, observe]
     environment: fr007-staging
     runs-on: ubuntu-latest
