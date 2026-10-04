@@ -357,6 +357,45 @@ class TestBoundedHostedEnqueue(TestPollSchedulerBase):
         finally:
             session.close()
 
+    def test_explicit_active_poll_cap_applies_below_warning_capacity(self):
+        registry_path = Path(self.temp_dir.name) / "bounded_normal_sources.yaml"
+        extra_sources = "".join(
+            f"""  - source_id: normal_{index}
+    name: Normal {index}
+    category: employment
+    automation:
+      read: allowed
+    policy_status: reviewed_ok
+    observed:
+      status: allowed_ok
+"""
+            for index in range(1, 7)
+        )
+        registry_path.write_text(
+            _FIXTURE_REGISTRY_YAML.replace(
+                "  - source_id: fixture_disabled",
+                extra_sources + "  - source_id: fixture_disabled",
+            ),
+            encoding="utf-8",
+        )
+        registry = SourceRegistry(registry_path=registry_path)
+        session = self.session_factory()
+        try:
+            with patch("worker.scheduler._lock_warning_poll_scheduler"):
+                enqueued, _ = enqueue_due_sources(
+                    session,
+                    registry=registry,
+                    now=datetime(2026, 1, 2, tzinfo=timezone.utc),
+                    max_active_poll_sources=5,
+                )
+            self.assertEqual(len(enqueued), 5)
+            self.assertEqual(
+                session.query(WorkerJobRecord).filter_by(job_type="poll_source").count(),
+                5,
+            )
+        finally:
+            session.close()
+
     def test_warning_capacity_ceiling_stops_new_source_work_without_advancing_schedule(self):
         session = self.session_factory()
         try:
