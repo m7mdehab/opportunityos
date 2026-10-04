@@ -13,7 +13,7 @@ on:
         required: false
         default: "30"
       time_budget_seconds:
-        description: "Time budget in seconds per shard (capped to 540)"
+        description: "Time budget in seconds per shard (manual cap 2700; scheduled runs use 2700)"
         required: false
         default: "480"
   workflow_call:
