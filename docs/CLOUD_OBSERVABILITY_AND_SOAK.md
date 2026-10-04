@@ -8,7 +8,7 @@ This runbook documents the operational architecture, health checks, alerting lif
 
 External monitoring operates from GitHub Actions via `.github/workflows/fr007-cloud-observability.yml`:
 
-- **Scheduled Cadence**: `47 */12 * * *` (runs twice daily, at 00:47 and 12:47 UTC).
+- **Scheduled Cadence**: `47 4,16 * * *` (runs twice daily, at 04:47 and 16:47 UTC), 4h30 after the 00:17/12:17 worker starts so the monitor observes settled post-run state.
 - **Execution Surface**: standard `ubuntu-latest` hosted runner. Scheduled monitoring now runs about 60 times/month instead of roughly 1,440 times/month.
 - **Manual Dispatch Modes**:
   - `MONITOR`: Performs live end-to-end health check across all configured subsystems, captures an immutable soak snapshot (even during failures), and processes alert mutations.
@@ -29,7 +29,7 @@ External monitoring operates from GitHub Actions via `.github/workflows/fr007-cl
 | **Queue Dead Letters** | `status = 'failed'` in `worker_jobs` | 0 dead-letter jobs. | - | > 0 jobs in terminal failed status. |
 | **Expired Worker Leases** | `locked_until < NOW()` while `status = 'running'` | 0 expired leases. | - | > 0 orphaned locked jobs. |
 | **Queue Due Age** | `NOW() - scheduled_for` for oldest pending job | < 15 minutes. | >= 15 minutes. | >= 60 minutes (stalled queue worker). |
-| **Scheduler Heartbeat** | `NOW() - MAX(last_polled_at)` in `source_schedules` | < 15 minutes. | >= 15 minutes. | >= 60 minutes (stalled scheduler). |
+| **Scheduler / Source Progress** | Durable `source_schedules.next_due_at` plus latest successful source poll | No source beyond its cadence grace and no stale active queue. | Any source beyond cadence grace without an active job. | Queue/lease failure or persistent overdue sources after the bounded worker window. |
 | **Source Freshness** | Per-source `NOW() > next_due` in `source_schedules` | All active sources within cadence. | 1 source overdue by > `1.5 * cadence_hours`. | >= 2 sources overdue by > `1.5 * cadence_hours`. |
 | **Backup Heartbeat** | Sanitized backup manifest in storage | Manifest age < 24h, `result: "SUCCESS"`. | Manifest age >= 24h. | Manifest age >= 36h, missing manifest, or `result: "FAILED"`. |
 
