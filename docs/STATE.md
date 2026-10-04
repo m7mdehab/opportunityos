@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-10-02T21:11:57Z
-- **State generated at commit:** `2a90a87` — test: lock hosted 12-hour source floor
+- **State generated at commit:** `b147e17` — test: valid hot dimensions never rewrite for formatting
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
