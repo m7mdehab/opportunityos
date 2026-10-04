@@ -274,6 +274,7 @@ def enqueue_due_sources(
     force: bool = False,
     create_missing_schedules: bool = True,
     due_before: Optional[datetime] = None,
+    max_active_poll_sources: Optional[int] = None,
 ) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
     """Enqueue due/eligible poll_source jobs.
 
@@ -284,6 +285,8 @@ def enqueue_due_sources(
     reg = registry or SourceRegistry()
     if source_id is not None and source_ids is not None:
         raise ValueError("source_id and source_ids are mutually exclusive")
+    if max_active_poll_sources is not None and max_active_poll_sources <= 0:
+        raise ValueError("max_active_poll_sources must be positive")
     curr_now = now or datetime.now(timezone.utc)
     curr_now_naive = _to_naive_utc(curr_now) or datetime.now(timezone.utc).replace(tzinfo=None)
     due_cutoff_naive = _to_naive_utc(due_before) if due_before is not None else curr_now_naive
@@ -293,7 +296,7 @@ def enqueue_due_sources(
 
     capacity = _scheduler_capacity(session)
     warning_capacity = bool(capacity and capacity.database_size_bytes >= WARN_BYTES)
-    warning_slots: int | None = None
+    bounded_slots: int | None = None
     if capacity is not None:
         # Environmental pauses are clean scheduler outcomes, not source-job
         # failures. No schedule lock or queue row is touched above the heavy
@@ -308,28 +311,35 @@ def enqueue_due_sources(
             source = source_id or "*"
             return [], [{"source_id": source, "reason": reason}]
 
-    if warning_capacity:
-        # Warning-band work is allowed only as a bounded five-source wave, the
-        # same connection envelope used by the supervised catch-up lane. This
-        # lets a 12-hour sweep make forward progress without ever manufacturing
-        # an unbounded poll backlog. Above 390 MiB we stop enqueueing new source
-        # work and leave the durable due timestamps untouched for a later
-        # capacity-reclaim pass.
-        if capacity is not None and capacity.database_size_bytes >= OVERNIGHT_CATCHUP_CEILING_BYTES:
-            session.rollback()
-            return [], [{
-                "source_id": source_id or "*",
-                "reason": "warning_capacity_ceiling",
-            }]
+    if warning_capacity and capacity is not None and capacity.database_size_bytes >= OVERNIGHT_CATCHUP_CEILING_BYTES:
+        # Never start new source work above the reviewed warning-band catch-up
+        # ceiling. Existing jobs can still finish under the separate 400 MiB
+        # heavy-work pause boundary.
+        session.rollback()
+        return [], [{
+            "source_id": source_id or "*",
+            "reason": "warning_capacity_ceiling",
+        }]
+
+    if warning_capacity or max_active_poll_sources is not None:
+        # Serialize bounded scheduler decisions across hosted shards. Warning
+        # capacity always caps the source wave at five; scheduled sweeps also
+        # request an explicit five-source cap even below warning capacity so a
+        # 12-hour tick never manufactures a hundreds-row queue backlog.
         _lock_warning_poll_scheduler(session)
-        warning_slots = max(
-            0,
-            OVERNIGHT_CATCHUP_MAX_SOURCES - len(_active_poll_source_ids(session)),
-        )
-        if warning_slots == 0:
+        caps = []
+        if warning_capacity:
+            caps.append(OVERNIGHT_CATCHUP_MAX_SOURCES)
+        if max_active_poll_sources is not None:
+            caps.append(max_active_poll_sources)
+        active_limit = min(caps)
+        bounded_slots = max(0, active_limit - len(_active_poll_source_ids(session)))
+        if bounded_slots == 0:
             return [], [{
                 "source_id": source_id or "*",
-                "reason": "warning_capacity_poll_work_already_active",
+                "reason": "warning_capacity_poll_work_already_active"
+                if warning_capacity
+                else "bounded_poll_work_already_active",
             }]
 
     try:
@@ -452,7 +462,7 @@ def enqueue_due_sources(
         sched.updated_at = curr_now_naive
         active_sources.add(sid)
         enqueued.append({"source_id": sid, "job_id": job_id})
-        if warning_slots is not None and len(enqueued) >= warning_slots:
+        if bounded_slots is not None and len(enqueued) >= bounded_slots:
             break
 
     return enqueued, skipped
