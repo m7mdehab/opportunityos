@@ -44,6 +44,12 @@ class W17RuntimeWorkflowContractTests(unittest.TestCase):
         self.assertIn("source.dump.manifest.json", workflow)
         self.assertIn("secrets.CLOUD_DATABASE_URL || secrets.OPOS_TARGET_DB_URL", workflow)
 
+    def test_hot_capacity_verification_stays_server_side(self):
+        workflow = (ROOT / ".github" / "workflows" / "fr007-hot-evaluation-capacity-reclaim.yml").read_text(encoding="utf-8")
+        self.assertIn("hot_dimension_invariant_summary", workflow)
+        self.assertNotIn("SELECT e.dimension_scores_json", workflow)
+        self.assertNotIn("dimensions = connection.execute", workflow)
+
     def test_worker_drain_five_shard_matrix_and_structure(self):
         workflow = (ROOT / ".github" / "workflows" / "fr007-worker-drain.yml").read_text(encoding="utf-8")
         # Enqueue phase exists and executes once (no matrix)
