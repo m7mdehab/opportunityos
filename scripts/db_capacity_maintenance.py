@@ -247,6 +247,72 @@ def verify_archive(connection, opportunity_id: str) -> bool:
 
 
 
+
+
+_HOT_DIMENSION_ALLOWED_KEYS = (
+    "dimension_name",
+    "raw_score",
+    "weight",
+    "weighted_score",
+    "explanation",
+    "signal_tags",
+)
+
+
+def hot_dimension_invariant_summary(connection) -> dict[str, int]:
+    """Validate the HOT/PROTECTED dimension envelope entirely in PostgreSQL.
+
+    Only aggregate counts cross the database boundary. This prevents routine
+    capacity verification from exporting tens of megabytes of JSON to a
+    GitHub runner while preserving the exact same allowed-key invariant.
+    """
+    row = connection.execute(text("""
+        SELECT
+          count(*)::bigint AS rows_checked,
+          count(*) FILTER (
+            WHERE NOT (
+              e.dimension_scores_json IS JSON ARRAY
+              AND NOT EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements(
+                  CASE
+                    WHEN e.dimension_scores_json IS JSON ARRAY
+                    THEN e.dimension_scores_json::jsonb
+                    ELSE '[]'::jsonb
+                  END
+                ) AS item
+                WHERE jsonb_typeof(item) <> 'object'
+                   OR EXISTS (
+                     SELECT 1
+                     FROM jsonb_object_keys(
+                       CASE
+                         WHEN jsonb_typeof(item) = 'object' THEN item
+                         ELSE '{}'::jsonb
+                       END
+                     ) AS key
+                     WHERE key NOT IN (
+                       'dimension_name',
+                       'raw_score',
+                       'weight',
+                       'weighted_score',
+                       'explanation',
+                       'signal_tags'
+                     )
+                   )
+              )
+            )
+          )::bigint AS invalid_rows
+        FROM match_evaluations e
+        JOIN opportunities o ON o.id = e.opportunity_id
+        WHERE o.lifecycle_tier IN ('hot', 'protected')
+          AND e.dimension_scores_json IS NOT NULL
+    """)).mappings().one()
+    return {
+        "rows_checked": int(row["rows_checked"] or 0),
+        "invalid_rows": int(row["invalid_rows"] or 0),
+    }
+
+
 def hot_dimension_compaction_plan(connection) -> dict[str, Any]:
     """Estimate HOT/PROTECTED dimension compaction without reading job text."""
     row = connection.execute(text("""
