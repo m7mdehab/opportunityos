@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from scripts.db_capacity_maintenance import (
     compact_hot_dimension_scores,
     hot_dimension_compaction_plan,
+    hot_dimension_validation_summary,
 )
 from storage.models import MatchEvaluationRecord, OpportunityRecord
 
@@ -110,6 +111,11 @@ class HotEvaluationCapacityMaintenancePostgresTests(unittest.TestCase):
             dimensions[0]["explanation"],
             "Synthetic rationale retained by the Founder API.",
         )
+
+        with self.engine.begin() as connection:
+            validation = hot_dimension_validation_summary(connection)
+        self.assertGreaterEqual(validation["checked_rows"], 1)
+        self.assertEqual(validation["invalid_rows"], 0)
 
         with self.engine.begin() as connection:
             repeated = compact_hot_dimension_scores(connection, confirm=True)
