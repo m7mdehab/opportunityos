@@ -2,7 +2,7 @@
 
 Ensures .github/workflows/fr007-cloud-observability.yml adheres to:
 - Standard GitHub-hosted Ubuntu runner only; no larger/billable runner
-- Correct 30-minute external-monitor schedule
+- Correct 12-hour external-monitor schedule
 - Proper permissions (issues: write, actions: read)
 - Non-cancelled concurrency for ordered alert execution
 - Artifact retention >= 7 days (set to 90 days)
@@ -46,14 +46,16 @@ def validate_workflow_contract(workflow_text: str) -> tuple[bool, list[str]]:
         errors.append("Workflow requires 'actions: read' permission to fetch remote soak artifacts")
 
     # 4. Schedule cadence
-    if 'cron: "*/30 * * * *"' not in workflow_text and "cron: '*/30 * * * *'" not in workflow_text:
-        errors.append("Workflow schedule must remain '*/30 * * * *' for the hosted monitoring contract")
+    if 'cron: "47 */12 * * *"' not in workflow_text and "cron: '47 */12 * * *'" not in workflow_text:
+        errors.append("Workflow schedule must remain '47 */12 * * *' for the founder-only monitoring contract")
 
     # 5. CLI flag alignment
     if "--output-report" not in workflow_text:
         errors.append("Workflow must invoke monitor with '--output-report'")
     if "--output-incident" not in workflow_text:
         errors.append("Workflow must invoke monitor with '--output-incident'")
+    if "--max-gap-hours 14.0" not in workflow_text:
+        errors.append("12-hour monitoring must allow up to a 14-hour soak snapshot gap for scheduler jitter")
 
     # 6. Fail-closed gates
     if "fr007_soak_verify.py || true" in workflow_text:
