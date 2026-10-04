@@ -329,10 +329,31 @@ def freeze_live_manifest(path: Path) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
         entries = _registry_due_entries(session, registry, now)
         if not entries:
-            raise CatchupSafetyError("no read-allowed, non-cooling due sources to freeze")
+            capacity = inspect_connection(session.connection())
+            manifest = {
+                "version": STATE_VERSION,
+                "created_at": now.isoformat(),
+                "count": 0,
+                "sha256": manifest_sha256([]),
+                "entries": [],
+                "database_bytes_at_freeze": int(capacity.database_size_bytes),
+                "founder_state_at_freeze": {},
+                "queue_at_freeze": {},
+            }
+            result = {
+                "manifest": manifest,
+                "results": {},
+                "cohorts": [],
+                "waves": [],
+                "failures": [],
+                "status": "NO_DUE_SOURCES",
+            }
+            _write_json(path, result)
+            return result
         state = _runtime_snapshot(session, source_id=entries[0]["source_id"])
         _require_clean_queue(state)
-        _require_capacity(state)
+        if state["capacity_read_only"] or state["capacity_in_recovery"]:
+            raise CatchupSafetyError("database is read-only or in recovery")
         manifest = {
             "version": STATE_VERSION,
             "created_at": now.isoformat(),
@@ -343,7 +364,14 @@ def freeze_live_manifest(path: Path) -> dict[str, Any]:
             "founder_state_at_freeze": state["founder_state"],
             "queue_at_freeze": state["queue"],
         }
-        result = {"manifest": manifest, "results": {}, "cohorts": [], "failures": []}
+        result = {
+            "manifest": manifest,
+            "results": {},
+            "cohorts": [],
+            "waves": [],
+            "failures": [],
+            "status": "MANIFEST_FROZEN",
+        }
         _write_json(path, result)
         return result
     finally:
