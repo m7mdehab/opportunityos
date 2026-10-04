@@ -11,7 +11,7 @@ Next: Complete the real zero-dollar hosted staging path: finish Supabase parity/
 ## Repository
 
 - **Generated:** 2026-10-02T21:11:57Z
-- **State generated at commit:** `9f7f4ad` — chore: remove obsolete generated-CV protection import
+- **State generated at commit:** `4c1d959` — test: prevent push-driven live work from returning
 - **Mirror sync:** `not yet recorded` at not yet recorded
 
 ## Active Brief
