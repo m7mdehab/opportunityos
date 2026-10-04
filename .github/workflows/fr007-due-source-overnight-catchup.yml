@@ -1,28 +1,33 @@
-name: FR-007 frozen due-source overnight catch-up
+name: FR-007 frozen due-source resilient catch-up
 
 on:
   workflow_dispatch:
     inputs:
       operation:
-        description: Freeze the manifest, run a 50-source cohort, or perform final live verification
+        description: Run the autonomous state machine or a legacy supervised operation
         required: true
         type: choice
-        options: [freeze-manifest, run-cohort, finalize]
+        options: [auto, freeze-manifest, run-cohort, finalize]
+        default: auto
       previous_run_id:
-        description: Successful run that uploaded the frozen manifest/state artifact; blank only for freeze-manifest
+        description: Previous catch-up run that uploaded the checkpoint artifact
         required: false
         default: ""
       cohort_index:
-        description: Zero-based sequential cohort index (maximum seven cohorts for the frozen manifest)
+        description: Legacy zero-based sequential 50-source cohort index
         required: false
         default: "0"
       maintenance_run_id:
-        description: Fresh successful maintenance-only run ID authorizing one bounded cohort after a capacity pause
+        description: Successful maintenance-only run authorizing progress above 380 MiB
         required: false
         default: ""
+  schedule:
+    # Single production discovery owner: twice daily. Continuations self-dispatch
+    # only while a frozen manifest still has safe work remaining.
+    - cron: "17 */12 * * *"
 
 permissions:
-  actions: read
+  actions: write
   contents: read
 
 concurrency:
@@ -42,22 +47,64 @@ jobs:
           python-version: "3.11"
       - name: Install repository
         run: python -m pip install -e .
-      - name: Download the previous frozen manifest checkpoint
-        if: inputs.operation == 'run-cohort' || inputs.operation == 'finalize'
+
+      - name: Download previous checkpoint
+        if: ${{ (inputs.previous_run_id || '') != '' && (inputs.operation == 'auto' || inputs.operation == 'run-cohort' || inputs.operation == 'finalize') }}
         uses: actions/download-artifact@v4
         with:
           name: fr007-overnight-catchup-state
           path: catchup-state
           run-id: ${{ inputs.previous_run_id }}
           github-token: ${{ github.token }}
-      - name: Freeze the current due/read-allowed manifest
-        if: inputs.operation == 'freeze-manifest'
+
+      - name: Freeze current due/read-allowed manifest
+        if: ${{ ((github.event_name == 'schedule' || inputs.operation == 'auto') && (inputs.previous_run_id || '') == '') || inputs.operation == 'freeze-manifest' }}
         env:
           OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
           OPPORTUNITYOS_ENVIRONMENT: cloud
           PYTHONPATH: ${{ github.workspace }}
         run: python scripts/fr007_due_source_catchup.py --freeze --state-file catchup-state/catchup-state.json
-      - name: Execute one sequential 50-source cohort
+
+      - name: Execute one resilient checkpointed wave
+        id: auto-step
+        if: ${{ github.event_name == 'schedule' || inputs.operation == 'auto' }}
+        env:
+          OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+          SUPABASE_STORAGE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL || 'https://sunjfepvdzfknglrjwhm.supabase.co' }}
+          STORAGE_SERVICE_KEY: ${{ secrets.STORAGE_SERVICE_KEY }}
+          OPPORTUNITYOS_ENVIRONMENT: cloud
+          OPPORTUNITYOS_TRUTH_PACK_PATH: founder/truth_pack.yaml.gz.b64
+          PYTHONPATH: ${{ github.workspace }}
+          MAINTENANCE_RUN_ID: ${{ inputs.maintenance_run_id || '' }}
+        run: |
+          set -euo pipefail
+          EXTRA=()
+          if [[ -n "${MAINTENANCE_RUN_ID}" ]]; then
+            EXTRA+=(--maintenance-run-id "${MAINTENANCE_RUN_ID}")
+          fi
+          python scripts/fr007_due_source_catchup.py             --step             --state-file catchup-state/catchup-state.json             "${EXTRA[@]}"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          state = json.loads(Path("catchup-state/catchup-state.json").read_text(encoding="utf-8"))
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+              handle.write(f"status={state.get('status', '')}\n")
+              handle.write(f"result_count={len(state.get('results', {}))}\n")
+          PY
+
+      - name: Finalize autonomous frozen manifest
+        if: ${{ steps.auto-step.outputs.status == 'READY_TO_FINALIZE' }}
+        env:
+          OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
+          SUPABASE_STORAGE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL || 'https://sunjfepvdzfknglrjwhm.supabase.co' }}
+          STORAGE_SERVICE_KEY: ${{ secrets.STORAGE_SERVICE_KEY }}
+          OPPORTUNITYOS_ENVIRONMENT: cloud
+          OPPORTUNITYOS_TRUTH_PACK_PATH: founder/truth_pack.yaml.gz.b64
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/fr007_due_source_catchup.py --finalize --state-file catchup-state/catchup-state.json
+
+      - name: Execute one legacy sequential 50-source cohort
         if: inputs.operation == 'run-cohort'
         env:
           OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
@@ -66,12 +113,16 @@ jobs:
           OPPORTUNITYOS_ENVIRONMENT: cloud
           OPPORTUNITYOS_TRUTH_PACK_PATH: founder/truth_pack.yaml.gz.b64
           PYTHONPATH: ${{ github.workspace }}
-        run: >-
-          python scripts/fr007_due_source_catchup.py
-          --cohort-index "${{ inputs.cohort_index }}"
-          ${{ inputs.maintenance_run_id != '' && format('--maintenance-run-id {0}', inputs.maintenance_run_id) || '' }}
-          --state-file catchup-state/catchup-state.json
-      - name: Verify final frozen-manifest and production invariants
+          MAINTENANCE_RUN_ID: ${{ inputs.maintenance_run_id || '' }}
+        run: |
+          set -euo pipefail
+          EXTRA=()
+          if [[ -n "${MAINTENANCE_RUN_ID}" ]]; then
+            EXTRA+=(--maintenance-run-id "${MAINTENANCE_RUN_ID}")
+          fi
+          python scripts/fr007_due_source_catchup.py             --cohort-index "${{ inputs.cohort_index }}"             --state-file catchup-state/catchup-state.json             "${EXTRA[@]}"
+
+      - name: Legacy final verification
         if: inputs.operation == 'finalize'
         env:
           OPOS_TARGET_DB_URL: ${{ secrets.OPOS_TARGET_DB_URL }}
@@ -81,7 +132,8 @@ jobs:
           OPPORTUNITYOS_TRUTH_PACK_PATH: founder/truth_pack.yaml.gz.b64
           PYTHONPATH: ${{ github.workspace }}
         run: python scripts/fr007_due_source_catchup.py --finalize --state-file catchup-state/catchup-state.json
-      - name: Upload sanitized manifest and cohort checkpoint
+
+      - name: Upload sanitized manifest and checkpoint
         if: always() && hashFiles('catchup-state/catchup-state.json') != ''
         uses: actions/upload-artifact@v4
         with:
@@ -89,3 +141,23 @@ jobs:
           path: catchup-state/catchup-state.json
           if-no-files-found: error
           retention-days: 30
+
+      - name: Continue autonomous catch-up
+        if: ${{ steps.auto-step.outputs.status == 'STEP_COMPLETE' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run fr007-due-source-overnight-catchup.yml             --ref main             -f operation=auto             -f previous_run_id="${{ github.run_id }}"
+
+      - name: Request bounded maintenance before resuming
+        if: ${{ steps.auto-step.outputs.status == 'MAINTENANCE_REQUIRED' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run fr007-hot-evaluation-capacity-reclaim.yml             --ref main             -f operation=maintenance-only             -f resume_catchup_run_id="${{ github.run_id }}"
+
+      - name: Surface capacity circuit-breaker
+        if: ${{ steps.auto-step.outputs.status == 'CAPACITY_BLOCKED' }}
+        run: |
+          echo "::error::Catch-up stopped safely because maintenance could not create enough verified headroom."
+          exit 1
