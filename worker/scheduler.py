@@ -273,6 +273,7 @@ def enqueue_due_sources(
     interval_hours: Optional[float] = None,
     force: bool = False,
     create_missing_schedules: bool = True,
+    due_before: Optional[datetime] = None,
 ) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
     """Enqueue due/eligible poll_source jobs.
 
@@ -285,10 +286,14 @@ def enqueue_due_sources(
         raise ValueError("source_id and source_ids are mutually exclusive")
     curr_now = now or datetime.now(timezone.utc)
     curr_now_naive = _to_naive_utc(curr_now) or datetime.now(timezone.utc).replace(tzinfo=None)
+    due_cutoff_naive = _to_naive_utc(due_before) if due_before is not None else curr_now_naive
+    if due_cutoff_naive is not None and due_cutoff_naive > curr_now_naive:
+        raise ValueError("due_before cannot be in the future")
     default_interval = interval_hours if interval_hours is not None else get_poll_interval_hours()
 
     capacity = _scheduler_capacity(session)
     warning_capacity = bool(capacity and capacity.database_size_bytes >= WARN_BYTES)
+    warning_slots: int | None = None
     if capacity is not None:
         # Environmental pauses are clean scheduler outcomes, not source-job
         # failures. No schedule lock or queue row is touched above the heavy
@@ -304,11 +309,24 @@ def enqueue_due_sources(
             return [], [{"source_id": source, "reason": reason}]
 
     if warning_capacity:
-        # At Warning, never extend a poll backlog. Serialize the global check
-        # across replicas and permit at most one outstanding poll job across
-        # sources; leave any existing jobs and retry history untouched.
+        # Warning-band work is allowed only as a bounded five-source wave, the
+        # same connection envelope used by the supervised catch-up lane. This
+        # lets a 12-hour sweep make forward progress without ever manufacturing
+        # an unbounded poll backlog. Above 390 MiB we stop enqueueing new source
+        # work and leave the durable due timestamps untouched for a later
+        # capacity-reclaim pass.
+        if capacity is not None and capacity.database_size_bytes >= OVERNIGHT_CATCHUP_CEILING_BYTES:
+            session.rollback()
+            return [], [{
+                "source_id": source_id or "*",
+                "reason": "warning_capacity_ceiling",
+            }]
         _lock_warning_poll_scheduler(session)
-        if _active_poll_source_ids(session):
+        warning_slots = max(
+            0,
+            OVERNIGHT_CATCHUP_MAX_SOURCES - len(_active_poll_source_ids(session)),
+        )
+        if warning_slots == 0:
             return [], [{
                 "source_id": source_id or "*",
                 "reason": "warning_capacity_poll_work_already_active",
@@ -354,7 +372,7 @@ def enqueue_due_sources(
             skipped.append({"source_id": source_id, "reason": "already_queued"})
             return enqueued, skipped
 
-        if not force and sched.next_due_at > curr_now_naive:
+        if not force and sched.next_due_at > due_cutoff_naive:
             skipped.append({"source_id": source_id, "reason": "not_due"})
             return enqueued, skipped
 
@@ -422,7 +440,7 @@ def enqueue_due_sources(
             skipped.append({"source_id": sid, "reason": "already_queued"})
             continue
 
-        if sched.next_due_at > curr_now_naive:
+        if sched.next_due_at > due_cutoff_naive:
             skipped.append({"source_id": sid, "reason": "not_due"})
             continue
 
@@ -434,7 +452,7 @@ def enqueue_due_sources(
         sched.updated_at = curr_now_naive
         active_sources.add(sid)
         enqueued.append({"source_id": sid, "job_id": job_id})
-        if warning_capacity:
+        if warning_slots is not None and len(enqueued) >= warning_slots:
             break
 
     return enqueued, skipped
