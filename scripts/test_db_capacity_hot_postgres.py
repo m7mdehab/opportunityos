@@ -121,6 +121,38 @@ class HotEvaluationCapacityMaintenancePostgresTests(unittest.TestCase):
             repeated = compact_hot_dimension_scores(connection, confirm=True)
         self.assertEqual(repeated["rows_rewritten"], 0)
 
+    def test_valid_allowed_dimension_payload_is_not_reformatted_or_enlarged(self) -> None:
+        valid_payload = json.dumps(
+            [{
+                "signal_tags": ["premium_shortfall"],
+                "explanation": "Already valid, formatting is not a defect.",
+                "weighted_score": 0.15,
+                "weight": 0.2,
+                "raw_score": 0.75,
+                "dimension_name": "compensation_fit",
+            }],
+            separators=(",", ":"),
+        )
+        with self.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "UPDATE match_evaluations SET dimension_scores_json = %s WHERE opportunity_id = %s",
+                (valid_payload, self.opp_id),
+            )
+            before = connection.exec_driver_sql(
+                "SELECT dimension_scores_json FROM match_evaluations WHERE opportunity_id = %s",
+                (self.opp_id,),
+            ).scalar_one()
+            plan = hot_dimension_compaction_plan(connection)
+            result = compact_hot_dimension_scores(connection, confirm=True)
+            after = connection.exec_driver_sql(
+                "SELECT dimension_scores_json FROM match_evaluations WHERE opportunity_id = %s",
+                (self.opp_id,),
+            ).scalar_one()
+
+        self.assertEqual(plan["rows"], 0)
+        self.assertEqual(result["rows_rewritten"], 0)
+        self.assertEqual(after, before)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -285,6 +285,21 @@ def hot_dimension_compaction_plan(connection) -> dict[str, Any]:
           WHERE o.lifecycle_tier IN ('hot', 'protected')
             AND e.dimension_scores_json IS NOT NULL
             AND left(e.dimension_scores_json, 1) = '['
+            AND EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(e.dimension_scores_json::jsonb) AS unsupported(item)
+              WHERE CASE
+                WHEN jsonb_typeof(unsupported.item) <> 'object' THEN true
+                ELSE EXISTS (
+                  SELECT 1
+                  FROM jsonb_object_keys(unsupported.item) AS key(name)
+                  WHERE key.name NOT IN (
+                    'dimension_name', 'raw_score', 'weight',
+                    'weighted_score', 'explanation', 'signal_tags'
+                  )
+                )
+              END
+            )
         )
         SELECT count(*) AS rows,
                COALESCE(sum(current_bytes), 0) AS current_bytes,
@@ -379,6 +394,21 @@ def compact_hot_dimension_scores(connection, *, confirm: bool) -> dict[str, Any]
           WHERE o.lifecycle_tier IN ('hot', 'protected')
             AND e.dimension_scores_json IS NOT NULL
             AND left(e.dimension_scores_json, 1) = '['
+            AND EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(e.dimension_scores_json::jsonb) AS unsupported(item)
+              WHERE CASE
+                WHEN jsonb_typeof(unsupported.item) <> 'object' THEN true
+                ELSE EXISTS (
+                  SELECT 1
+                  FROM jsonb_object_keys(unsupported.item) AS key(name)
+                  WHERE key.name NOT IN (
+                    'dimension_name', 'raw_score', 'weight',
+                    'weighted_score', 'explanation', 'signal_tags'
+                  )
+                )
+              END
+            )
         )
         UPDATE match_evaluations AS target
         SET dimension_scores_json = compact.payload
