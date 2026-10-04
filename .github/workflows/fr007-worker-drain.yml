@@ -34,7 +34,8 @@ on:
         type: string
         default: "480"
   schedule:
-    - cron: "*/15 * * * *"
+    # Founder-only cadence: twice daily to keep discovery fresh while bounding Supabase usage.
+    - cron: "17 */12 * * *"
   push:
     branches:
       - main
